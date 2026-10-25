@@ -13,7 +13,22 @@ survey adds its line, with the date it read the site, in the same change as its 
 whose publisher has since opened or closed it is judged again and its line replaced.
 
 A **refused** site counts for nothing: no page of it is read, and a search result on it is not a
-reading of it. An **allowed** site may carry a condition: *a few pages, one at a time* where the
+reading of it. A site is refused for what it refuses the survey's agent, which reads a page because
+a user asked and identifies as `Claude-User`:
+- a `robots.txt` that closes the path to the group naming `Claude-User`, or to `*` where no group
+  names it;
+- a usage signal that refuses a model's input (`Content-Signal: ai-input=no`,
+  `Content-Usage: ai-use=n`);
+- terms that bar robots, automated access, scraping, mining, or use by or for AI;
+- a reservation of text-and-data mining;
+- no page reaching the fetch tool: a 403, a 401 or a challenge, a timeout or an answer with no
+  body (a page drawn by script is not one), a tool that declines the host, or a redirect to a refused site or to a paid gate for AI agents.
+
+A refusal of training refuses no reading. That covers a group naming only `ClaudeBot`, the retired
+`anthropic-ai` or `Claude-Web` (which `ClaudeBot` honours), `Claude-SearchBot` or another company's
+crawler; `Content-Signal: ai-train=no`; and terms that bar only training a model. The `robots.txt`
+column records such a group, and the verdict does not rest on it (`/coverage-survey` § Ground
+rules has the sources, #2012). An **allowed** site may carry a condition: *a few pages, one at a time* where the
 terms limit the rate of requests or bar copying in bulk by script; *through the API, one request
 at a time* for Wikivoyage, whose Action API the `lookup` command calls as a program under
 Wikimedia's API rules (ADR-0148 decision 4), though `/w/` is closed to crawlers; *closed paths
