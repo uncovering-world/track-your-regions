@@ -505,8 +505,9 @@ them are museums a traveller goes to for their finds: the Egyptian Museum and th
 Museum, the National Archaeological Museums of Athens and Naples, the Acropolis Museum and Mexico
 City's National Museum of Anthropology. All six are typed archaeological and stand over the
 places' line on their own fame, and the kind offers all six (2026-10-24, after run 287). The
-canon holds no finds, so it does not calibrate the finds' line (18 and 15). That would need a
-list of finds of its own.
+canon holds no finds, so it does not calibrate the finds' line (18 and 15). The finds' line is
+checked against a canon of its own: the finds a traveller goes to a museum to see, Notable works'
+list in `db/catalogue-coverage/calibration/notable-works.jsonl` (#1988).
 
 **Dry runs 131–137 are the second entrance's** (#895, 2026-09-15). Four died on the way to the
 first that finished, each for a reason now written into the code: 131 to a restart of the dev
