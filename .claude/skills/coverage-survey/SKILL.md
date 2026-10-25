@@ -62,7 +62,7 @@ Which guides may be read is decided by the ground rule, site by site, and it cha
 
 A national or city tourism board, or a guide written by residents. It is counted like any other source, and it is where the places residents go and the sights opened since the foreign guides were last revised turn up. A directory of every restaurant, hotel or museum is not a recommendation and is not counted for them.
 
-Look in `docs/sources/sights/` first: a record for the country names the sources an earlier survey read there, what they sort their places into and what they measured. Each source from inside the country that you read gets a record there, in the shape `docs/sources/README.md` states for `sights/`: a new one, or, where the record exists, the region's measurement added to its body. The record carries the counts once the list is merged (step 7), and is committed with the list.
+Look in `docs/sources/sights/` first: a record for the country names the sources an earlier survey read there, what they sort their places into and what they measured. Each source from inside the country that you read gets a record there, in the shape `docs/sources/README.md` states for `sights/`: a new one, or, where the record exists, the region's measurement added to its body. The record carries the counts once the list is merged (step 7), and is committed with the list. Its `agent` verdict is the site's `site-access.md` line; its `program` verdict stays `unknown`, since a survey proposes no sync and judges nothing for a program.
 
 ### 6. Read UNESCO's lists
 
