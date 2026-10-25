@@ -356,9 +356,8 @@ for `unesco`:
 It is `backend/src/scripts/catalogueCoverageLookup.ts`, and it names itself to Wikimedia through
 `userAgent()` like every other outbound call. `unesco` reads the catalogue's own UNESCO rows
 (`worldHeritageReading.ts`, #1981). The UNESCO run takes the list from the open dataset as a
-program under ADR-0148, and the survey's agent may not read whc.unesco.org, whose `robots.txt`
-refuses Anthropic agents, nor fetch the dataset's `/api/` paths as pages, which
-`data.unesco.org`'s `robots.txt` closes to every agent but Googlebot. So the lookup reads what the
+program under ADR-0148, and the survey's agent may not read whc.unesco.org, whose pages answer
+403 to its fetch tool, nor fetch the dataset's `/api/` paths as pages, which `data.unesco.org`'s `robots.txt` closes to every agent but Googlebot. So the lookup reads what the
 run holds instead of fetching the dataset a second time. A property is a place holding a standing World Heritage membership,
 and its components are the points it shows under the property's number, whatever extension
 renumbered it (`1459-113` of 1459, `91quater-001` of 91), and the points a merge folded into one it
@@ -512,9 +511,13 @@ Each list is merged from:
 - UNESCO's World Heritage List, as the catalogue's own UNESCO rows hold it (`lookup unesco`).
 
 The lists of 2026-10-02 first read UNESCO from its State Party pages and its intangible-heritage
-pages, which refuse Anthropic agents now (`docs/sources/site-access.md`). Every such count was
-checked again against the catalogue's UNESCO rows (#1981): a count stands where those rows name
-the property or one of its components, and every intangible-heritage count was withdrawn.
+pages. From 2026-10-24 those hosts' `robots.txt` named `ClaudeBot`, and the survey then refused
+any site that named an Anthropic agent, so every such count was checked again against the
+catalogue's UNESCO rows (#1981): a count stands where those rows name the property or one of its
+components, and every intangible-heritage count was withdrawn. The rule now refuses only what a
+site refuses the survey's reading, and a refusal of training is not that (#2012), so the
+intangible-heritage pages may be read again a few at a time; the withdrawn counts come back only
+when a survey reads them.
 
 In these lists every count stands on a page that was fetched and names the thing. The skill
 also lets a site that may be read, but draws its pages by script, count through the titles and
@@ -529,8 +532,10 @@ Planet's Italian and Spanish sites could be read. Lonely Planet's English and Fr
 Bradt, Time Out, Rick Steves, Moon, Marco Polo and National Geographic could not: their
 `robots.txt` or their terms bar robots, mining or use by AI. Routard's terms bar automated
 extraction save with the publisher's leave, and its `robots.txt` gives that leave: it allows
-`ClaudeBot` and `anthropic-ai`, Anthropic's agents, by name, which is the one case in which
-the skill's rule reads a site in spite of such a clause. Uzbekistan's national tourism site
+`ClaudeBot` and `anthropic-ai`, Anthropic's agents, by name, and the skill's rule takes an
+allowance by name as the publisher's leave. A clause that lets an AI system retrieve single
+pages to answer a user, as UNESCO's terms § 5 does, is the other leave the rule reads a site
+under in spite of such a bar. Uzbekistan's national tourism site
 bars something narrower, "automated scripts for mass copying of materials", which is kept the
 way a limit on the rate of requests is: a few pages, one at a time. With the English guides
 refused, a list often lacks an English guidebook and rests more on the source from inside the
