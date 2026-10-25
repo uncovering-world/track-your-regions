@@ -6478,7 +6478,8 @@
                 "merge_proposal_answered",
                 "visit_question_answered",
                 "identifier_settled",
-                "separated"
+                "separated",
+                "kept_out"
               ]
             }
           },
@@ -6611,7 +6612,8 @@
                 "merge_proposal_answered",
                 "visit_question_answered",
                 "identifier_settled",
-                "separated"
+                "separated",
+                "kept_out"
               ]
             }
           },
@@ -14044,6 +14046,116 @@
         }
       }
     },
+    "/api/experiences/{id}/kinds": {
+      "get": {
+        "operationId": "getExperiencesByIdKinds",
+        "summary": "List every kind a place belongs to and where it stands, for the curator's card",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceKindStandings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/keep-out": {
+      "post": {
+        "operationId": "postExperiencesByIdKeepOut",
+        "summary": "Take a published place out of one of its kinds; put it back with the admission override",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeepOutOfKindBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeptOutOfKind"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/admission-pin/hand-back": {
       "post": {
         "operationId": "postExperiencesByIdAdmissionPinHandBack",
@@ -20021,7 +20133,8 @@
               "merge_proposal_answered",
               "visit_question_answered",
               "identifier_settled",
-              "separated"
+              "separated",
+              "kept_out"
             ]
           },
           "region_id": {
@@ -20193,7 +20306,8 @@
               "merge_proposal_answered",
               "visit_question_answered",
               "identifier_settled",
-              "separated"
+              "separated",
+              "kept_out"
             ]
           },
           "created_at": {
@@ -26028,6 +26142,53 @@
         "additionalProperties": false,
         "description": "What Jev has cost, and how often curators chose what it suggested (#1260, #1272, #1249, #1768)."
       },
+      "KeepOutOfKindBody": {
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "membershipId"
+        ]
+      },
+      "KeptOutOfKind": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "admission": {
+            "type": "string",
+            "enum": [
+              "admitted",
+              "refused"
+            ],
+            "description": "The verdict now standing on the membership: refused, by the curator."
+          }
+        },
+        "required": [
+          "experienceId",
+          "membershipId",
+          "admission"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's refusal of a published place from one of its kinds, from the place's own card (#2022)."
+      },
       "LearnedRule": {
         "type": "object",
         "properties": {
@@ -28966,6 +29127,112 @@
         ],
         "additionalProperties": false,
         "description": "One kind a place is offered in. A place belongs to no kind, and none of its kinds is the primary one (ADR-0084)."
+      },
+      "PlaceKindStanding": {
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "kindId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "kindName": {
+            "type": "string"
+          },
+          "type": {
+            "description": "The type within the kind, as the membership holds it; null where it has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "description": "offered: readers find the place in this kind; waiting: an arrival a curator has not passed; kept-out: a curator's refusal, pinned; refused: the kind's rule refuses it.",
+            "$ref": "#/components/schemas/PlaceKindState"
+          },
+          "reason": {
+            "description": "The reason a refused or kept-out membership carries.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answeredAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When a curator kept it out."
+          },
+          "note": {
+            "description": "The curator's words on keeping it out.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "curatorName": {
+            "description": "Who kept it out, as they chose to be named; null where they chose nothing or the act lies outside the caller's regions, as in the curation log.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canAnswer": {
+            "type": "boolean",
+            "description": "Whether the caller's scope reaches this kind's source, so they may take it out or put it back."
+          }
+        },
+        "required": [
+          "membershipId",
+          "kindId",
+          "kindName",
+          "type",
+          "state",
+          "reason",
+          "answeredAt",
+          "note",
+          "curatorName",
+          "canAnswer"
+        ],
+        "additionalProperties": false,
+        "description": "One kind of a place, with where it stands (#2022)."
+      },
+      "PlaceKindStandings": {
+        "type": "object",
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceKindStanding"
+            }
+          }
+        },
+        "required": [
+          "kinds"
+        ],
+        "additionalProperties": false,
+        "description": "Every kind a place belongs to, for the curator's card (#2022)."
+      },
+      "PlaceKindState": {
+        "type": "string",
+        "enum": [
+          "offered",
+          "waiting",
+          "kept-out",
+          "refused"
+        ]
       },
       "PlaceResult": {
         "type": "object",

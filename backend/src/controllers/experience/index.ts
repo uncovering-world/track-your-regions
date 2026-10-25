@@ -16,6 +16,7 @@ export * from './manualExperienceController.js';
 export * from './lifecycleController.js';
 export * from './pinQuestionController.js';
 export * from './visitQuestionController.js';
+export * from './keepOutController.js';
 export * from './admissionPinController.js';
 export * from './locationStateController.js';
 export * from './locationEditController.js';

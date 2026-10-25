@@ -717,6 +717,15 @@ export const visitQuestionAnswerBodySchema = z.object({
 });
 
 /**
+ * A curator takes a published place out of one of its kinds from the place's
+ * card (#2022), with no question asked: the membership named, and why.
+ */
+export const keepOutOfKindBodySchema = z.object({
+  membershipId: bodyRowIdSchema,
+  note: z.string().max(1000).optional(),
+});
+
+/**
  * A selection of review rows and one answer for all of them (#852).
  *
  * A row is what a click sends: which row — the queue's own kind word and the

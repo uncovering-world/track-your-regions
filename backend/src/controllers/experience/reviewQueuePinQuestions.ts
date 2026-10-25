@@ -40,7 +40,7 @@ export const PINNED_BY = `LEFT JOIN LATERAL (
       SELECT cl.created_at AS at, cl.details->>'note' AS note, cl.curator_id, cl.region_id
         FROM experience_curation_log cl
        WHERE cl.experience_id = e.id
-         AND (cl.action IN ('admission_overridden', 'admission_confirmed', 'arrival_refused', 'admission_pin_kept')
+         AND (cl.action IN ('admission_overridden', 'admission_confirmed', 'arrival_refused', 'admission_pin_kept', 'kept_out')
               -- The listing verdict that took the place out of the kind pins it too.
               OR (cl.action IN ('marked_former', 'missing_dismissed') AND cl.details->>'takenOutOfKind' = 'true')
               -- And a refusal answering a run's question about a place with nothing to see (#1770).
