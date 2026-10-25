@@ -487,6 +487,14 @@ export const MergeProposalsAnswered = z.strictObject({
 }).describe("A curator's answer to pairs of near places with similar names (#1249).");
 export type MergeProposalsAnswered = z.infer<typeof MergeProposalsAnswered>;
 
+export const MergeProposalTakenBack = z.strictObject({
+  proposalId: z.number().int(),
+  answer: z.enum(['part_of', 'two']).describe('The answer taken back.'),
+  partId: z.number().int().nullable().describe('The place a *part of* answer named as the part; null for *two places*.'),
+  catalogue: z.boolean().describe("Whether the answer was the pass's, read off Wikidata (ADR-0150), rather than a curator's."),
+}).describe("A near pair's answer taken back (#1991): the pair is open on the review queue again, and the pass never answers it from Wikidata again.");
+export type MergeProposalTakenBack = z.infer<typeof MergeProposalTakenBack>;
+
 export const ViewSuggestions = z.strictObject({
   configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no suggestion, nothing else changes.'),
   suggestions: z.array(z.strictObject({

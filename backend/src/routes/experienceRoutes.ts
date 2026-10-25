@@ -21,6 +21,7 @@ import {
   ComponentItemSuggestions,
   PointHintSuggestions,
   MergeProposalsAnswered,
+  MergeProposalTakenBack,
   MergeProposalSuggestions,
   VisitSuggestion,
   CurationLog,
@@ -51,6 +52,7 @@ import { separatePlaceMembership, undoPlaceSeparation } from '../controllers/exp
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
+import { takeBackMergeProposalAnswer } from '../controllers/experience/mergeProposalTakeBackController.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
 import { suggestPointHints } from '../controllers/experience/pointHintSuggestionController.js';
 import { searchReviewRegions } from '../controllers/experience/reviewRegionSearchController.js';
@@ -135,6 +137,7 @@ import {
   chooseViewsBodySchema,
   answerComponentItemsBodySchema,
   answerMergeProposalsBodySchema,
+  mergeProposalParamsSchema,
   reviewQueueQuerySchema,
   reviewRegionSearchQuerySchema,
   syncLogIdParamSchema,
@@ -671,6 +674,17 @@ export const experienceCurationRoutes = [
     body: answerMergeProposalsBodySchema,
     response: MergeProposalsAnswered,
     handler: answerMergeProposals,
+  }),
+  // The way back from a pair's *part of* or *two places* (#1991), the pass's
+  // answer from Wikidata or a curator's: the pair is open again, and never
+  // answered from Wikidata again. In the answer's scope, and rate-limited as it is.
+  defineRoute({
+    method: 'post', path: '/:id/merge-proposals/:proposalId/take-back', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'Take back a near pair\'s part-of or two-places answer, opening the pair again',
+    params: mergeProposalParamsSchema,
+    response: MergeProposalTakenBack,
+    handler: takeBackMergeProposalAnswer,
   }),
   // Jev's suggestion for that card (#1260): the stored one for the views as
   // they stand, or a new one asked for — a POST, since a call may be paid for.
