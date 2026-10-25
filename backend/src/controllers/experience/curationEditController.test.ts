@@ -342,6 +342,31 @@ describe('editExperience and the picture credit', () => {
     expect(claims()).toContain('metadata.website');
   });
 
+  it("records whose text an edited description is, and claims it either way (ADR-0149)", async () => {
+    // An edit of UNESCO's paragraph keeps its credit as an adaptation; the
+    // curator's own text carries none. Both are the curator's word, which a
+    // run must not undo.
+    const adaptedFrom = () => {
+      const update = mockClientQuery.mock.calls.find(
+        ([sql]) => typeof sql === 'string' && sql.includes('UPDATE experiences'),
+      ) as [string, unknown[]];
+      const patch = update[1].find(v => typeof v === 'string' && v.includes('descriptionAdaptedFrom'));
+      return patch === undefined ? undefined : (JSON.parse(String(patch)) as Record<string, unknown>).descriptionAdaptedFrom;
+    };
+
+    queueQueries({ lockedCurated: [] });
+    await editWith({ description: 'Founded, as legend has it, by Romulus and Remus in 753 BC…', descriptionAdapted: true });
+    expect(adaptedFrom()).toBe('unesco');
+    expect(claims()).toContain('"metadata.descriptionAdaptedFrom"');
+    expect(claims()).toContain('"description"');
+
+    mockClientQuery.mockReset();
+    queueQueries({ lockedCurated: [] });
+    await editWith({ description: 'Ruins of the ancient city of Aksum.', descriptionAdapted: false });
+    expect(adaptedFrom()).toBeNull();
+    expect(claims()).toContain('"metadata.descriptionAdaptedFrom"');
+  });
+
   it('claims the credit when it resolved one', async () => {
     queueQueries({ lockedCurated: [] });
     vi.stubGlobal('fetch', vi.fn(async () => ({

@@ -124,6 +124,14 @@ describe('createManualExperience curation state', () => {
     expect(res.status).toHaveBeenCalledWith(201);
   });
 
+  it('claims the description the curator wrote, so no source is credited with it (ADR-0149)', async () => {
+    queueQueries();
+    await callCreateManualExperience().done;
+
+    const insert = mockClientQuery.mock.calls.find(([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO experiences'));
+    expect(insert?.[0]).toContain(`CASE WHEN $4::text IS NOT NULL THEN '["description"]'::jsonb ELSE '[]'::jsonb END`);
+  });
+
   it('writes the location verified too - the curator placed the point by hand', async () => {
     const { done } = callCreateManualExperience();
     await done;

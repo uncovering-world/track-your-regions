@@ -385,11 +385,15 @@ export async function insertCuratedExperience(
     INSERT INTO experiences (
       source_id, external_id, name, description,
       location, image_url, tags, country_codes, country_names,
-      metadata, is_manual, created_by, status
+      metadata, is_manual, created_by, status, curated_fields
     ) VALUES (
       $1, $2, $3, $4,
       ST_SetSRID(ST_MakePoint($5, $6), 4326), $7, $8, $9, $10,
-      $11, true, $12, 'active'
+      $11, true, $12, 'active',
+      -- The curator wrote the description, so it is claimed from the start: a
+      -- merge that later brings a source's membership here neither credits the
+      -- text to that source nor lets its next run replace it (ADR-0149).
+      CASE WHEN $4::text IS NOT NULL THEN '["description"]'::jsonb ELSE '[]'::jsonb END
     ) RETURNING id
   `, [
     row.sourceId, row.externalId, row.name, row.description,
