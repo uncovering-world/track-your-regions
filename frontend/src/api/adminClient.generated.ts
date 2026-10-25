@@ -1988,6 +1988,7 @@ export const CuratorActivityEntryAction = {
   visit_question_answered: 'visit_question_answered',
   identifier_settled: 'identifier_settled',
   separated: 'separated',
+  kept_out: 'kept_out',
 } as const;
 
 /**
@@ -5981,6 +5982,7 @@ export const GetAdminCuratorsByUserIdActivityAction = {
   visit_question_answered: 'visit_question_answered',
   identifier_settled: 'identifier_settled',
   separated: 'separated',
+  kept_out: 'kept_out',
 } as const;
 
 export type GetAdminCurationActivityParams = {
@@ -6056,6 +6058,7 @@ export const GetAdminCurationActivityAction = {
   visit_question_answered: 'visit_question_answered',
   identifier_settled: 'identifier_settled',
   separated: 'separated',
+  kept_out: 'kept_out',
 } as const;
 
 export type GetAdminUsersSearchParams = {

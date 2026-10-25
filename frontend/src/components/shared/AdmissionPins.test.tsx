@@ -81,7 +81,7 @@ describe('admission pins', () => {
     mockedPins.mockResolvedValue({ pins: [{ ...BRITISH, answer: 'refused', answeredReason: null, canHandBack: false }], more: false });
     show(<PlacePins experienceId={6205} regionId={null} />);
 
-    expect(await screen.findByText(/put it back from the kept-out list/)).toBeTruthy();
+    expect(await screen.findByText(/put it back from the place’s Kinds or the kept-out list/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Hand the pin back' })).toBeNull();
   });
 

@@ -58,6 +58,7 @@ import { CurationHistory } from './CurationHistory';
 import { PlacePins } from './AdmissionPins';
 import { PlaceIdentifiers } from './PlaceIdentifiers';
 import { KindSeparation } from './KindSeparation';
+import { PlaceKinds } from './PlaceKinds';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { tidyLabel } from '@tyr/shared/labels';
 import { queryKeys } from '../../api/queryKeys';
@@ -246,6 +247,10 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
       </DialogTitle>
 
       <DialogContent>
+        {/* What the place is offered as, kind by kind, above what it is called (#2022).
+            Keyed by the place: the next one opens with no kind half taken out. */}
+        <PlaceKinds key={`kinds-${experience.id}`} experienceId={experience.id} regionId={regionId} />
+
         {/* Edit Section */}
         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>
           Edit Details

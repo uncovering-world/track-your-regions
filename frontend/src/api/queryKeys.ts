@@ -140,6 +140,10 @@ export const queryKeys = {
     /** The admission pins in scope (#1369): every one, or one place's. What a hand-back invalidates. */
     admissionPinsAll: ['curation', 'admissionPins'] as const,
     admissionPins: (experienceId: Id | null) => ['curation', 'admissionPins', experienceId] as const,
+    /** Every kind of one place and where it stands (#2022). A keep-out or a put-back invalidates the place's;
+     *  a hand-back and a separation, which change a kind's standing from elsewhere in the dialog, every one. */
+    placeKindsAll: ['curation', 'placeKinds'] as const,
+    placeKinds: (experienceId: Id) => ['curation', 'placeKinds', experienceId] as const,
     scopes: ['curator-scopes'] as const,
   },
 
