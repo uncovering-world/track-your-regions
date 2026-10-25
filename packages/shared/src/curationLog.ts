@@ -50,6 +50,7 @@ export const CURATION_LOG_ACTIONS = [
   'visit_question_answered',
   'identifier_settled',
   'separated',
+  'kept_out',
 ] as const;
 
 /** One act of the curation log. */

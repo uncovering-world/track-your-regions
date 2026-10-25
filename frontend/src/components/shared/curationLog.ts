@@ -131,6 +131,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // A curator's answer to a run's question about an offered place with nothing
   // to see (#1770): refused from the kind, or kept.
   visit_question_answered: { label: 'Visit answered', color: BLUE },
+  // A published place taken out of one kind from its own card, with no
+  // question asked (#2022): red like the other refusals, named for the kind.
+  kept_out: { label: 'Taken out of a kind', color: RED },
   // A pin released, with the rule's verdict written in its place: one an
   // unread batch answer made (#1365, ADR-0096), or one a curator let the rule
   // decide once a run asked about it again (#1367). Red like a kept-out row,
@@ -505,6 +508,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   component_item_taken_back: d => formatComponentItemTakenBack(d),
   merge_proposal_answered: d => formatMergeProposalAnswered(d),
   visit_question_answered: d => formatVisitQuestionAnswered(d),
+  kept_out: d => formatKeptOut(d),
   identifier_settled: d => formatIdentifierSettled(d),
 };
 
@@ -629,6 +633,12 @@ function formatVisitQuestionAnswered(d: Record<string, unknown>): string | null 
     d.answer === 'refused' ? `Refused from ${kind}: nothing to see` : `Kept in ${kind}`,
     typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null,
   ].filter(Boolean).join(' — ');
+}
+
+function formatKeptOut(d: Record<string, unknown>): string | null {
+  const kind = typeof d.kind === 'string' ? d.kind : 'its kind';
+  return [`Out of ${kind}`, typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null]
+    .filter(Boolean).join(' — ');
 }
 
 /** A place a merge row names: by the name it had at the act, and its id, which tells two of one name apart. */
