@@ -224,5 +224,19 @@ export function useAddressedRegion({ address, go, isCustomWorldView, authLoading
     setRegionBreadcrumbs([]);
   }, []);
 
-  return { selectedRegion, setSelectedRegion, regionBreadcrumbs, clearRegion };
+  /**
+   * The address names a region and nothing is selected yet: a link to a
+   * region, between the map mounting and the region arriving. Derived in the
+   * render rather than read off `restoreId`, which an effect sets a render
+   * later, so the first frame already knows. Whatever would draw the world at
+   * that moment waits instead (#2044); an addressed region that never
+   * resolves is written out of the address above, which ends the wait.
+   *
+   * A departure passes through it too, for the one commit between the
+   * selection clearing and the address catching up through the router's
+   * transition: that frame draws no world and requests nothing.
+   */
+  const regionPending = urlRegionId !== null && selectedRegion === null;
+
+  return { selectedRegion, regionPending, setSelectedRegion, regionBreadcrumbs, clearRegion };
 }

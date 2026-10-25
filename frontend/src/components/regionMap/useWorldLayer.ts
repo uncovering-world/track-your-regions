@@ -40,7 +40,7 @@ export interface WorldLayerState {
 }
 
 export function useWorldLayer(): WorldLayerState {
-  const { selectedRegion, isCustomWorldView } = useNavigation();
+  const { selectedRegion, regionPending, isCustomWorldView } = useNavigation();
   const { address, go } = useAppAddress();
   const [folded, setFolded] = useState(false);
 
@@ -48,9 +48,11 @@ export function useWorldLayer(): WorldLayerState {
    * A custom world view with nothing selected. Not the default world view: its
    * map is the administrative tree, which owns no regions, so a pin there could
    * be hovered and never opened — and ADR-0042 refuses to answer a click by
-   * writing another world view's address.
+   * writing another world view's address. Nor while a link to a region waits
+   * for it: the layer would read every point in the catalogue for a view
+   * nobody sees (#2044).
    */
-  const active = isCustomWorldView && !selectedRegion;
+  const active = isCustomWorldView && !selectedRegion && !regionPending;
 
   // The same key the list and Discover read the kinds under, so the control
   // costs no request of its own wherever one of them has already asked — and

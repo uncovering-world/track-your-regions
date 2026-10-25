@@ -28,12 +28,19 @@ export function useTileUrls(
     selectedWorldView,
     selectedWorldViewId,
     isCustomWorldView,
+    regionPending,
     tileVersion,
   } = useNavigation();
+
+  // A link to a region, before the region has arrived, has no level to draw
+  // yet: without the selection the level reads as the whole world, so no tile
+  // is asked for until it arrives (#2044).
+  const waiting = isCustomWorldView && regionPending;
 
   // Build tile URL for current view
   const tileUrl = useMemo(() => {
     if (!selectedWorldViewId && !selectedWorldView) return null;
+    if (waiting) return null;
 
     const versionParam = `&_v=${tileVersion}`;
     let url: string;
@@ -54,11 +61,11 @@ export function useTileUrls(
     }
 
     return url;
-  }, [selectedWorldViewId, selectedWorldView, isCustomWorldView, viewingRegionId, viewingParentId, tileVersion]);
+  }, [selectedWorldViewId, selectedWorldView, isCustomWorldView, waiting, viewingRegionId, viewingParentId, tileVersion]);
 
   // Island boundaries tile URL (for hull regions)
   const islandTileUrl = useMemo(() => {
-    if (!isCustomWorldView || !selectedWorldViewId) return null;
+    if (!isCustomWorldView || !selectedWorldViewId || waiting) return null;
 
     // The world view is not optional here. `tile_region_islands` filters on
     // `uses_hull` alone, so a request carrying no scope answered with the islands
@@ -70,15 +77,15 @@ export function useTileUrls(
     const parentParam = viewingRegionId === 'all-leaf' ? '' : `&parent_id=${viewingRegionId}`;
 
     return `${MARTIN_URL}/tile_region_islands/{z}/{x}/{y}?${scope}${parentParam}&_v=${tileVersion}`;
-  }, [isCustomWorldView, selectedWorldViewId, viewingRegionId, tileVersion]);
+  }, [isCustomWorldView, selectedWorldViewId, waiting, viewingRegionId, tileVersion]);
 
   // Root regions border overlay URL (only at root level for hover highlighting)
   const rootRegionsBorderUrl = useMemo(() => {
-    if (!isCustomWorldView || !selectedWorldViewId) return null;
+    if (!isCustomWorldView || !selectedWorldViewId || waiting) return null;
     if (viewingRegionId !== 'all-leaf') return null;
 
     return `${MARTIN_URL}/tile_world_view_root_regions/{z}/{x}/{y}?world_view_id=${selectedWorldViewId}&_v=${tileVersion}`;
-  }, [isCustomWorldView, selectedWorldViewId, viewingRegionId, tileVersion]);
+  }, [isCustomWorldView, selectedWorldViewId, waiting, viewingRegionId, tileVersion]);
 
   // Context layers — one per ancestor level, showing each ancestor's siblings.
   // For non-leaf regions: all breadcrumbs (children are in main tiles, context shows ancestors).
