@@ -19844,7 +19844,7 @@
           },
           "description": {
             "type": "string",
-            "maxLength": 1000
+            "maxLength": 10000
           },
           "type": {
             "description": "The type within the kind the place is created under, never the kind itself, which is `kindId`.",
@@ -22437,7 +22437,7 @@
           },
           "description": {
             "type": "string",
-            "maxLength": 1000
+            "maxLength": 10000
           },
           "subtitle": {
             "type": "string",

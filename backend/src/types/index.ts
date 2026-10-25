@@ -310,7 +310,7 @@ export const assignExperienceBodySchema = z.object({
 
 export const editExperienceBodySchema = z.object({
   name: storedName(COLUMN_WIDTHS.experiences.name).optional(),
-  description: z.string().max(1000).optional(),
+  description: z.string().max(10000).optional(),
   subtitle: z.string().max(10000).optional(),
   type: z.string().max(COLUMN_WIDTHS.experience_kind_memberships.type).optional(),
   imageUrl: safeImageUrlSchema,
@@ -327,7 +327,7 @@ export const createManualExperienceBodySchema = z.object({
   // Written as the place's name and again as its first location's, so the
   // bound is whichever column is narrower.
   name: storedName(Math.min(COLUMN_WIDTHS.experiences.name, COLUMN_WIDTHS.experience_locations.name)),
-  description: z.string().max(1000).optional(),
+  description: z.string().max(10000).optional(),
   type: z.string().max(COLUMN_WIDTHS.experience_kind_memberships.type).optional()
     .describe('The type within the kind the place is created under, never the kind itself, which is `kindId`.'),
   longitude: z.number().min(-180).max(180),
