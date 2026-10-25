@@ -22,7 +22,7 @@ terms:
   database_right: reserved
   attribution: "Viajeros Callejeros"
   agent: refused
-  agent_rests_on: "site-access.md, www.viajeroscallejeros.com, read 2026-10-24: `robots.txt` disallows Anthropic agents by name; it was open on 2026-10-02"
+  agent_rests_on: "site-access.md, www.viajeroscallejeros.com, read 2026-10-25: the home page answers 403 to the fetch tool; the file refuses only training (#2012)"
   program: unknown
   program_rests_on: "no sync is proposed from this record"
   model: none
@@ -61,18 +61,18 @@ publisher's country, and its unit is `any`: it is read per destination.
 destination has list articles (so many places to see, a day in the city, the best tours) and
 diary pages of a trip, day by day. A place is a numbered heading or a name in the day's text.
 
-**Terms ([the access table](../site-access.md), 2026-10-24).** `www.viajeroscallejeros.com`:
-`refused`. `robots.txt` disallows Anthropic agents by name: `ClaudeBot`, `anthropic-ai` and
-`Claude-Web` each stand under `Disallow: /`. On 2026-10-02, when the surveys read it, the file
-was open and named no Anthropic agent. Terms, as the legal notice read on 2026-10-02 put them:
+**Terms ([the access table](../site-access.md), 2026-10-25).** `www.viajeroscallejeros.com`:
+`refused`. Its pages answer 403 to the survey's fetch tool. `robots.txt` names `ClaudeBot`,
+`anthropic-ai` and `Claude-Web` under `Disallow: /` and signals `ai-train=no`, a refusal of
+training that refuses no reading (#2012); `*` is open. On 2026-10-02, when the surveys read it,
+the file was open and named no Anthropic agent. Terms, as the legal notice read on 2026-10-02 put them:
 silent on automated reading, at https://www.viajeroscallejeros.com/aviso-legal/. Reproduction,
 distribution and public communication "con fines comerciales" are forbidden without
 authorisation.
 
-**What decides it.** The access table: `refused`, on the site's own `robots.txt`. Terms 0, so
+**What decides it.** The access table: `refused`, on the 403 the site answers. Terms 0, so
 the verdict is `veto` and the status `refused`. Nothing of it counts. Identity is 0 as well: a
-place is a heading of a list article. What would reopen it is a `robots.txt` that admits an
-Anthropic agent again.
+place is a heading of a list article. What would reopen it is the site answering the fetch tool again.
 
 **What the survey measured.** The Cusco region survey of 2026-10-02 read ten pages of it by
 fetch, readers' comments cut before reading, and the Mexico City survey four, while the site was
@@ -81,7 +81,7 @@ record carries no figure but what was withdrawn. The kinds in the front matter a
 which the surveys had filed two or more of the entries it was named on. The surveys withdrew, by
 region:
 
-- Cusco region: 84 counts (`robots.txt` refuses Anthropic agents since 2026-10-24). On 11
+- Cusco region: 84 counts (refused from 2026-10-24 under the rule then in force, which refused any site whose `robots.txt` named an Anthropic agent; since #2012 it stays refused because its pages answer 403). On 11
   entries it was one of only two sources. Re-judged, 4 are kept on a second source that names
   them, Lonely Planet's Italian site (`www.lonelyplanetitalia.it`), and 7 are dropped, no other
   source read naming them. The list holds 125 entries.

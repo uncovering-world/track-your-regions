@@ -22,7 +22,7 @@ terms:
   database_right: reserved
   attribution: "a Mark on every use (§ 3.4.2), a link back (§ 3.4.6), logos served from Tripadvisor"
   agent: refused
-  agent_rests_on: "site-access.md, www.tripadvisor.com, read 2026-10-25: `robots.txt` disallows Anthropic agents (`ClaudeBot` / `Disallow: /`)"
+  agent_rests_on: "site-access.md, www.tripadvisor.com, read 2026-10-25: the home page answers 403 to the fetch tool; the file refuses only training (#2012)"
   program: refused
   program_rests_on: "the Content API terms bar storing the content beyond their window"
   model: none
@@ -66,5 +66,6 @@ P3134. In the dump of 2026-10-19 the property is on 34,057 items. 31,981 of them
 coordinate, and a Wikivoyage edition uses 38.8 % of those. Among them are 3,677 places of
 worship, 1,432 art museums and 3,155 hotels. The statement is Wikidata's, under CC0. Reading it
 uses nothing of the API, so the refusal above stands for the API while the presence of the id
-on an item is available as a signal. `robots.txt` on www.tripadvisor.com disallows ClaudeBot
-(read 2026-10-25), so the site itself is not read either.
+on an item is available as a signal. www.tripadvisor.com answers 403 to the survey's fetch tool
+(read 2026-10-25), so the site itself is not read either; its `robots.txt` names only `ClaudeBot`,
+a refusal of training.

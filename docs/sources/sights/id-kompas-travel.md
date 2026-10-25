@@ -22,7 +22,7 @@ terms:
   database_right: not-asserted
   attribution: unknown
   agent: refused
-  agent_rests_on: "site-access.md, travel.kompas.com, read 2026-10-02: `robots.txt` disallows Anthropic agents"
+  agent_rests_on: "site-access.md, travel.kompas.com, read 2026-10-25: `robots.txt` disallows `Claude-User`, the agent that reads (`Disallow: /`); its terms bar automated access, mining and use by AI"
   program: unknown
   program_rests_on: "no sync is proposed from this record"
   model: none
@@ -54,8 +54,8 @@ looked_at: 2026-10-02
 The travel section of an Indonesian news site. Looked at on 2026-10-02 because the Bali survey
 met 403 on the first article it fetched and left it alone.
 
-**Terms ([the access table](../site-access.md), 2026-10-02).** `travel.kompas.com`: `refused`
-(`robots.txt` disallows Anthropic agents). `robots.txt`: disallows Anthropic agents (The file
+**Terms ([the access table](../site-access.md), 2026-10-25).** `travel.kompas.com`: `refused`
+(`robots.txt` disallows `Claude-User`, the agent that reads). `robots.txt`: disallows Anthropic agents (The file
 opens: "# Use of any device, tool, or process designed to data mine or scrape the content using
 automated means is prohibited without prior written permission from PT. Kompas Cyber Media.
 Prohibited uses include but are not limited to: (1) text and data mining activities; (2) the
