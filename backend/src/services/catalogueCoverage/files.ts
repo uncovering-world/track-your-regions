@@ -435,8 +435,9 @@ function checkCalibrationSources(rows: Row<CalibrationSource>[], problems: strin
 }
 
 /**
- * One kind's calibration list (#1864): the file is named by a live kind of place, each
- * entry is one item once, and each entry names reference lists the register has.
+ * One kind's calibration list (#1864): the file is named by a live kind of place or of
+ * work (#1988: a work's fame line admits the venue that shows it), each entry is one item
+ * once, and each entry names reference lists the register has.
  */
 function checkCalibrationList(
   file: string, kindSlug: string, rows: Row<CalibrationEntry>[],
@@ -447,8 +448,8 @@ function checkCalibrationList(
     problems.push(`${file}: no kind ${kindSlug} in kinds.jsonl`);
   } else if (kind.status !== 'live') {
     problems.push(`${file}: ${kindSlug} is only proposed: a fame line is a live kind's to calibrate`);
-  } else if (kind.form !== 'place') {
-    problems.push(`${file}: ${kindSlug} holds a ${kind.form}: a calibration list names places, by their Wikidata items`);
+  } else if (kind.form !== 'place' && kind.form !== 'work') {
+    problems.push(`${file}: ${kindSlug} is a kind of ${kind.form}: a calibration list names places or works, by their Wikidata items`);
   }
   const slugs = new Map<string, number>();
   const items = new Map<string, Row<CalibrationEntry>>();
