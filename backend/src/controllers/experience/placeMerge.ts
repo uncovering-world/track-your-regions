@@ -93,7 +93,7 @@ export async function mergePlaces(
     /** The region the curator's authority came from, named on the audit rows. */
     regionId?: number | null;
     /** Bookkeeping that rides in the merge's transaction, after its record is written (a separation's undo). */
-    within?: (client: PoolClient, mergeId: number) => Promise<void>;
+    within?: (client: PoolClient, mergeId: number, locks: { survivor: LockedExperience; folded: LockedExperience }) => Promise<void>;
   },
 ): Promise<{ result?: { mergeId: number }; refusal?: Refusal }> {
   if (survivorId === foldedId) return { refusal: { status: 400, error: 'A place cannot be merged into itself' } };
@@ -138,7 +138,7 @@ export async function mergePlaces(
     await logOnBoth(client, 'merged', {
       survivorId, foldedId, mergeId, userId: mergedBy, reason, detail, regionId, memberships: record.memberships,
     });
-    if (within) await within(client, mergeId);
+    if (within) await within(client, mergeId, { survivor: survivor.lock, folded: folded.lock });
     await client.query('COMMIT');
   } catch (error) {
     unusable = await rollbackQuietly(client);
@@ -395,7 +395,7 @@ export async function undoMerge(
     // A merge that undid a separation (ADR-0144 decision 5): undone, the two
     // are separate again, so the separation stands again, with its word and
     // its questions.
-    await reopenSeparationsUndoneBy(client, mergeId, userId, folded.lock);
+    await reopenSeparationsUndoneBy(client, mergeId, userId, folded.lock, survivor.lock);
     await client.query(
       'UPDATE experience_merges SET undone_at = NOW(), undone_by = $2 WHERE id = $1', [mergeId, userId],
     );

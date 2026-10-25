@@ -18,6 +18,7 @@ import type {
 import type { ImageCredit } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { QueueItemKind } from './reviewQueueVocabulary.js';
+import type { TextSource } from '@tyr/shared/textCredits';
 
 /**
  * A queue row as the driver hands it over, after `withDangerFields`: the
@@ -50,6 +51,9 @@ export interface QueueRow {
   wikipedia_url?: string | null;
   /** The object's subtitle where it has one, else its description (#1780). */
   object_description?: string | null;
+  /** Whose text that line is, where it is the description (ADR-0149). */
+  object_description_source?: TextSource | null;
+  object_description_adapted?: boolean;
   region_names?: string[] | null;
   admission_note?: string | null;
   in_danger?: boolean;
@@ -178,6 +182,8 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     unesco_url: row.unesco_url,
     wikipedia_url: row.wikipedia_url,
     object_description: row.object_description,
+    object_description_source: row.object_description_source,
+    object_description_adapted: row.object_description_adapted,
     region_names: row.region_names,
     admission_note: row.admission_note,
     seen_in: row.seen_in,

@@ -306,6 +306,75 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
     expect(osm.find(row => row.id === result!.separatedId)?.osm).toEqual({ extentFrom: 'way/1' });
   });
 
+  it("leaves UNESCO's text with the place a kind other than UNESCO's is separated from (ADR-0149)", async () => {
+    await pool.query(
+      `UPDATE experiences SET description = 'UNESCO paragraph', metadata = '{"unesco": {"dataset": "whc001"}, "descriptionAdaptedFrom": "unesco"}'
+        WHERE id = $1`,
+      [PANTHEON],
+    );
+    const { result } = await separateMembership({ placeId: PANTHEON, membershipId: siteMembership, separatedBy: curatorId });
+
+    const rows = await pool.query<{ id: number; description: string | null; marked: boolean; adapted: boolean }>(
+      `SELECT id, description, metadata ? 'unesco' AS marked, metadata ? 'descriptionAdaptedFrom' AS adapted
+         FROM experiences WHERE id = ANY($1) ORDER BY id = $2 DESC`,
+      [[PANTHEON, result!.separatedId], PANTHEON],
+    );
+    expect(rows.rows.map(({ id: _id, ...row }) => row)).toEqual([
+      { description: 'UNESCO paragraph', marked: true, adapted: true },
+      { description: null, marked: false, adapted: false },
+    ]);
+  });
+
+  it("takes UNESCO's text with UNESCO's membership, and brings it back on the undo (ADR-0149)", async () => {
+    const unescoMembership = await membershipOf('UNESCO World Heritage Sites');
+    await pointPlacedBy('Rotunda', 12.4769, [unescoMembership]);
+    await pool.query(
+      `UPDATE experiences SET description = 'A curator''s edit of UNESCO''s paragraph', curated_fields = '["description"]',
+              metadata = '{"unesco": {"dataset": "whc001"}, "descriptionAdaptedFrom": "unesco"}'
+        WHERE id = $1`,
+      [PANTHEON],
+    );
+    const textOf = async (id: number) => (await pool.query<{ description: string | null; claimed: boolean; marked: boolean; adapted: boolean }>(
+      `SELECT description, curated_fields ? 'description' AS claimed, metadata ? 'unesco' AS marked,
+              metadata ? 'descriptionAdaptedFrom' AS adapted FROM experiences WHERE id = $1`,
+      [id],
+    )).rows[0];
+    const edit = { description: "A curator's edit of UNESCO's paragraph", claimed: true, marked: true, adapted: true };
+    const none = { description: null, claimed: false, marked: false, adapted: false };
+
+    const { result } = await separateMembership({ placeId: PANTHEON, membershipId: unescoMembership, separatedBy: curatorId });
+    expect(await textOf(result!.separatedId)).toEqual(edit);
+    expect(await textOf(PANTHEON)).toEqual(none);
+
+    const undone = await undoSeparation(result!.separationId, curatorId);
+    expect(undone.refusal).toBeUndefined();
+    expect(await textOf(PANTHEON)).toEqual(edit);
+
+    expect((await undoMerge(undone.result!.mergeId, curatorId)).refusal).toBeUndefined();
+    expect(await textOf(PANTHEON)).toEqual(none);
+    expect(await textOf(result!.separatedId)).toEqual(edit);
+  });
+
+  it("keeps a curator's own description on the original when UNESCO's membership leaves (ADR-0149)", async () => {
+    const unescoMembership = await membershipOf('UNESCO World Heritage Sites');
+    await pointPlacedBy('Rotunda', 12.4769, [unescoMembership]);
+    await pool.query(
+      `UPDATE experiences SET description = 'A curator''s own paragraph', curated_fields = '["description"]',
+              metadata = '{"unesco": {"dataset": "whc001"}}' WHERE id = $1`,
+      [PANTHEON],
+    );
+    const { result } = await separateMembership({ placeId: PANTHEON, membershipId: unescoMembership, separatedBy: curatorId });
+    const rows = await pool.query<{ id: number; description: string | null; claimed: boolean }>(
+      `SELECT id, description, curated_fields ? 'description' AS claimed
+         FROM experiences WHERE id = ANY($1) ORDER BY id = $2 DESC`,
+      [[PANTHEON, result!.separatedId], PANTHEON],
+    );
+    expect(rows.rows.map(({ id: _id, ...row }) => row)).toEqual([
+      { description: "A curator's own paragraph", claimed: true },
+      { description: null, claimed: false },
+    ]);
+  });
+
   it("copies what OpenStreetMap said only to a place that takes the outline (ADR-0146)", async () => {
     await pool.query(
       `UPDATE experiences SET boundary = ST_Multi(ST_GeomFromText('POLYGON((12.476 41.898, 12.477 41.898, 12.477 41.899, 12.476 41.899, 12.476 41.898))', 4326)),

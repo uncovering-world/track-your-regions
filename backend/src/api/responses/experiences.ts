@@ -11,6 +11,18 @@
 
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
+import { TEXT_SOURCES } from '@tyr/shared/textCredits';
+
+/** Whose text the description is, which the reader is shown beside it (ADR-0149). */
+export const DescriptionSource = z.enum(TEXT_SOURCES).nullable().describe(
+  "Whose text the description is, such as `unesco` for the World Heritage Centre's paragraph (CC BY-SA 4.0), which a"
+  + ' reader is shown with its credit (ADR-0149). Null for a curator\'s own text, or where there is no description.',
+);
+
+/** Whether the description is a curator's edit of that source's text, credited as an adaptation (ADR-0149). */
+const DescriptionAdapted = z.boolean().describe(
+  "Whether the description is a curator's edit of its source's text, which the credit calls an adaptation (ADR-0149).",
+);
 
 export const LocationCurationState = z.enum(CHECK_VALUES.experience_locations.curation_state)
   .describe(
@@ -173,6 +185,8 @@ export const Experience = z.strictObject({
   description: z.string().nullable().describe(
     "The paragraph a reader opens: UNESCO's for a World Heritage site, or a curator's text (#1795).",
   ),
+  description_source: DescriptionSource,
+  description_adapted: DescriptionAdapted,
   type: z.string().nullable().describe(
     'The type within the kind, such as `cultural` on a World Heritage site or `cathedral` on a place of worship. Null'
     + ' on a museum, whose kind has no types (ADR-0045).',
@@ -243,6 +257,8 @@ export const ExperienceDetail = z.strictObject({
   name_local: z.record(z.string(), z.string()).nullable(),
   subtitle: z.string().nullable(),
   description: z.string().nullable(),
+  description_source: DescriptionSource,
+  description_adapted: DescriptionAdapted,
   type: z.string().nullable(),
   country_codes: z.array(z.string()).nullable()
     .describe('Null on a place created by hand without a country, which the columns allow.'),
@@ -282,6 +298,8 @@ export const ExperienceSearchResult = z.strictObject({
   id: z.number().int(),
   name: z.string(),
   description: z.string().nullable(),
+  description_source: DescriptionSource,
+  description_adapted: DescriptionAdapted,
   type: z.string().nullable(),
   kind_id: z.number().int(),
   kind_name: z.string(),

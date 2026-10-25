@@ -24,7 +24,7 @@
 
 import type { PoolClient } from 'pg';
 import { OBJECT_LOCK } from './locks.js';
-import { MEMBERSHIPS } from './membership.js';
+import { DESCRIPTION_SOURCE_ID, MEMBERSHIPS } from './membership.js';
 import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
 import { shownBySql } from './placePoints.js';
 
@@ -404,6 +404,57 @@ export async function insertCuratedExperience(
 }
 
 /**
+ * Undoing a separation of the UNESCO membership brings its text back with it
+ * (ADR-0149): the merge moves no content, so the description, its claim and
+ * the two keys the separation took off the original return from the folded
+ * place. Only where the separation moved the UNESCO membership, and the
+ * original has no description of its own and now holds it.
+ */
+export async function returnSeparatedUnescoText(
+  client: PoolClient,
+  original: LockedExperience,
+  folded: LockedExperience,
+  separationId: number,
+): Promise<void> {
+  await client.query(
+    `UPDATE experiences o
+        SET description = f.description,
+            curated_fields = (COALESCE(o.curated_fields, '[]'::jsonb) - 'description')
+              || CASE WHEN COALESCE(f.curated_fields, '[]'::jsonb) ? 'description' THEN '["description"]'::jsonb ELSE '[]'::jsonb END,
+            metadata = (COALESCE(o.metadata, '{}'::jsonb) - 'unesco' - 'descriptionAdaptedFrom')
+              || jsonb_strip_nulls(jsonb_build_object('unesco', f.metadata -> 'unesco',
+                                                      'descriptionAdaptedFrom', f.metadata -> 'descriptionAdaptedFrom'))
+       FROM experiences f
+      WHERE o.id = $1 AND f.id = $2 AND o.description IS NULL AND f.description IS NOT NULL
+        AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = o.id AND m.source_id = $3)
+        AND EXISTS (SELECT 1 FROM experience_separations s JOIN ${MEMBERSHIPS} sm ON sm.id = s.membership_id
+                     WHERE s.id = $4 AND sm.source_id = $3)`,
+    [original.id, folded.id, DESCRIPTION_SOURCE_ID, separationId],
+  );
+}
+
+/**
+ * A place UNESCO's membership leaves lets UNESCO's text go with it (ADR-0149):
+ * it keeps a description only where a curator wrote it as their own, and
+ * loses the mark and the curator's word on whose text it is. Called by the
+ * separation and by the undo of the merge that had undone one.
+ */
+export async function releaseUnescoText(client: PoolClient, place: LockedExperience): Promise<void> {
+  await client.query(
+    `UPDATE experiences e
+        SET description = CASE WHEN own.kept THEN e.description END,
+            curated_fields = CASE WHEN own.kept THEN e.curated_fields
+                                  ELSE COALESCE(e.curated_fields, '[]'::jsonb) - 'description' END,
+            metadata = COALESCE(e.metadata, '{}'::jsonb) - 'unesco' - 'descriptionAdaptedFrom'
+       FROM (SELECT p.id, COALESCE(p.curated_fields, '[]'::jsonb) ? 'description'
+                          AND p.metadata->>'descriptionAdaptedFrom' IS NULL AS kept
+               FROM experiences p WHERE p.id = $1) own
+      WHERE e.id = own.id`,
+    [place.id],
+  );
+}
+
+/**
  * The place a curator's separation makes of one kind's membership (ADR-0144):
  * the original's content, under the membership's own view of the name, the
  * subtitle, the picture and its credit, and the point (`reported_*`), and the
@@ -412,7 +463,10 @@ export async function insertCuratedExperience(
  * with the membership whose source drew it (ADR-0146 decision 5): the new place
  * takes it and the original lets it go, with what OpenStreetMap said about it
  * (`metadata.osm`), since the drawer's run reaches only the place its
- * membership is on. Answers with the object's token: the
+ * membership is on. UNESCO's text goes the same way (ADR-0149): the
+ * description, its mark and the curator's word on it go with the UNESCO
+ * membership, and the original keeps only a description a curator claimed as
+ * their own. Answers with the object's token: the
  * insert's own row lock is the object lock, as for a curator's created place.
  */
 export async function insertSeparatedExperience(
@@ -424,7 +478,8 @@ export async function insertSeparatedExperience(
     WITH next AS (SELECT nextval(pg_get_serial_sequence('experiences', 'id')) AS id)
     INSERT INTO experiences (
       id, source_id, external_id, name, name_local, subtitle, description, tags, location,
-      country_codes, country_names, image_url, metadata, status, boundary, area_km2, boundary_source_id
+      country_codes, country_names, image_url, metadata, status, boundary, area_km2, boundary_source_id,
+      curated_fields
     )
     SELECT next.id, m.source_id,
            -- Which source first brought a place, and under what id, is all
@@ -438,23 +493,30 @@ export async function insertSeparatedExperience(
                 THEN 'separated-' || next.id ELSE m.external_id END,
            COALESCE(m.reported_name, e.name), e.name_local,
            CASE WHEN m.reported_name IS NULL THEN e.subtitle ELSE m.reported_subtitle END,
-           e.description, e.tags, COALESCE(m.reported_location, e.location),
+           CASE WHEN m.source_id = $3 AND NOT (COALESCE(e.curated_fields, '[]'::jsonb) ? 'description' AND e.metadata->>'descriptionAdaptedFrom' IS NULL) THEN e.description END, e.tags, COALESCE(m.reported_location, e.location),
            e.country_codes, e.country_names,
            CASE WHEN m.reported_name IS NULL THEN e.image_url ELSE m.reported_image_url END,
            -- What OpenStreetMap said goes only with the outline it is about.
            (COALESCE(e.metadata, '{}'::jsonb) - 'imageCredit'
-              - CASE WHEN e.boundary_source_id IS NOT DISTINCT FROM m.source_id THEN '' ELSE 'osm' END)
+              - CASE WHEN e.boundary_source_id IS NOT DISTINCT FROM m.source_id THEN '' ELSE 'osm' END
+              - CASE WHEN m.source_id = $3 THEN '{}'::text[] ELSE ARRAY['unesco', 'descriptionAdaptedFrom'] END)
              || CASE WHEN m.reported_name IS NULL THEN jsonb_strip_nulls(jsonb_build_object('imageCredit', e.metadata -> 'imageCredit'))
                      ELSE jsonb_strip_nulls(jsonb_build_object('imageCredit', m.reported_image_credit)) END,
            e.status,
            CASE WHEN e.boundary_source_id = m.source_id THEN e.boundary END,
            CASE WHEN e.boundary_source_id = m.source_id THEN e.area_km2 END,
-           CASE WHEN e.boundary_source_id = m.source_id THEN m.source_id END
+           CASE WHEN e.boundary_source_id = m.source_id THEN m.source_id END,
+           -- A curator's edit of UNESCO's text stays theirs on the place it
+           -- goes to; a description a curator wrote as their own stays behind.
+           CASE WHEN m.source_id = $3 AND COALESCE(e.curated_fields, '[]'::jsonb) ? 'description'
+                     AND e.metadata->>'descriptionAdaptedFrom' IS NOT NULL
+                THEN '["description"]'::jsonb ELSE '[]'::jsonb END
       FROM next, experiences e
       JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.id = $2
      WHERE e.id = $1
-    RETURNING id
-  `, [original.id, membershipId]);
+    RETURNING id, source_id
+  `, [original.id, membershipId, DESCRIPTION_SOURCE_ID]);
+  if (inserted.rows[0].source_id === DESCRIPTION_SOURCE_ID) await releaseUnescoText(client, original);
   await client.query(
     `UPDATE experiences e SET boundary = NULL, area_km2 = NULL, boundary_source_id = NULL,
             metadata = COALESCE(e.metadata, '{}'::jsonb) - 'osm'

@@ -15,6 +15,7 @@ import type {
   LinkedPlace, PlaceKind, SiteFind, WorkVenue,
 } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
+import type { TextSource } from '@tyr/shared/textCredits';
 
 type Membership = CheckValue<'experiences', 'source_membership'>;
 type Existence = CheckValue<'experiences', 'existence'>;
@@ -66,6 +67,8 @@ export interface ExperienceListRow {
   name: string;
   subtitle: string | null;
   description: string | null;
+  description_source: TextSource | null;
+  description_adapted: boolean;
   type: string | null;
   kind_id: number;
   kind_name: string;
@@ -102,6 +105,8 @@ export function experienceOf(row: ExperienceListRow): Experience {
     name: row.name,
     subtitle: row.subtitle,
     description: row.description,
+    description_source: row.description_source,
+    description_adapted: row.description_adapted,
     type: row.type,
     kind_id: row.kind_id,
     country_codes: row.country_codes,
@@ -139,6 +144,8 @@ export interface ExperienceDetailRow {
   name_local: Record<string, string> | null;
   subtitle: string | null;
   description: string | null;
+  description_source: TextSource | null;
+  description_adapted: boolean;
   type: string | null;
   country_codes: string[] | null;
   country_names: string[] | null;
@@ -173,6 +180,8 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     name_local: row.name_local,
     subtitle: row.subtitle,
     description: row.description,
+    description_source: row.description_source,
+    description_adapted: row.description_adapted,
     type: row.type,
     country_codes: row.country_codes,
     country_names: row.country_names,
@@ -205,6 +214,8 @@ export interface SearchRow {
   id: number;
   name: string;
   description: string | null;
+  description_source: TextSource | null;
+  description_adapted: boolean;
   type: string | null;
   kind_id: number;
   kind_name: string;
@@ -227,6 +238,8 @@ export function searchResultOf(row: SearchRow): ExperienceSearchResult {
     id: row.id,
     name: row.name,
     description: row.description,
+    description_source: row.description_source,
+    description_adapted: row.description_adapted,
     type: row.type,
     kind_id: row.kind_id,
     kind_name: row.kind_name,

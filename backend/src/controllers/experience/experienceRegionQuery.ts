@@ -23,7 +23,7 @@ import {
 // A region's count is of places (ADR-0046 decision 8, #822): the cards it
 // offers, each once, whatever kinds they belong to.
 import { countedPlacesSql } from './experienceCounts.js';
-import { placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
+import { descriptionAdaptedSql, descriptionSourceSql, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { isNewSql } from './experienceNewBadge.js';
 import { dangerSelectSql } from './experienceDanger.js';
 import { findsOnViewCountSql } from './siteFinds.js';
@@ -161,6 +161,8 @@ export function buildRegionQueries(opts: {
         e.name,
         e.subtitle,
         e.description,
+        ${descriptionSourceSql('e')} AS description_source,
+      ${descriptionAdaptedSql('e')} AS description_adapted,
         -- The type within that kind is the membership's too (ADR-0084).
         m.type,
         -- The kind, off the row's membership: what a colour and a group are
@@ -246,6 +248,8 @@ export function buildRegionQueries(opts: {
         e.name,
         e.subtitle,
         e.description,
+        ${descriptionSourceSql('e')} AS description_source,
+      ${descriptionAdaptedSql('e')} AS description_adapted,
         -- The type within that kind is the membership's too (ADR-0084).
         m.type,
         -- The kind, off the row's membership: what a colour and a group are
