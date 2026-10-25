@@ -2,11 +2,12 @@
  * The World Heritage List as a coverage survey reads it (#1981): the
  * properties and their components the catalogue's UNESCO run holds, read off
  * the catalogue's own rows. The run reads UNESCO's open dataset (`whc001` on
- * data.unesco.org, CC BY-SA 4.0, `unescoApi.ts`); a survey, which is an
- * agent's reading, may not read whc.unesco.org, whose robots.txt refuses
- * Anthropic agents, nor the dataset's `/api/` paths, which its robots.txt
- * closes to every agent but Googlebot (`docs/sources/site-access.md`). So the
- * survey reads what the run already holds.
+ * data.unesco.org, CC BY-SA 4.0, `unescoApi.ts`) as a program under its
+ * operator's rules (ADR-0148). A survey's agent, reading pages, may not read
+ * whc.unesco.org, whose robots.txt refuses Anthropic agents, nor fetch the
+ * dataset's `/api/` paths, which its robots.txt closes to every agent but
+ * Googlebot (`docs/sources/site-access.md`). So the survey reads what the run
+ * already holds rather than fetch the dataset a second time.
  *
  * A property is a place holding a membership of the World Heritage source the
  * source still lists; its components are the points the place shows (its own
