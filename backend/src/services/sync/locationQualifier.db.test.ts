@@ -114,6 +114,31 @@ describe("a part's name rewritten only in its typesetting (#1834)", () => {
     expect(result.delta.changed[0].fields).toEqual([expect.objectContaining({ field: 'name', held: true })]);
   });
 
+  it("takes the World Heritage list's name mended on the same point, and holds the defect written back (#1965)", async () => {
+    // The Rideau Canal's Shoal Tower, as the list writes it.
+    await pool.query("UPDATE experience_locations SET name = 'Shoal Tower,Kingston' WHERE experience_id = $1", [CHURCHES]);
+    const before = (await pool.query<{ id: number }>(
+      'SELECT id FROM experience_locations WHERE experience_id = $1 AND external_ref = $2', [CHURCHES, REF],
+    )).rows[0].id;
+    const result = await writeExperienceLocations(
+      CHURCHES, [{ ...POINT, name: 'Shoal Tower, Kingston' }], { syncLogId: null, sourceId: archaeology },
+    );
+
+    expect(await pointName()).toBe('Shoal Tower, Kingston');
+    expect(result.delta.changed[0].fields).toEqual([expect.objectContaining({
+      field: 'name', held: false, passedTheGate: 'typography',
+    })]);
+    expect((await pool.query<{ id: number }>(
+      'SELECT id FROM experience_locations WHERE experience_id = $1 AND external_ref = $2', [CHURCHES, REF],
+    )).rows.map(row => row.id)).toEqual([before]);
+
+    const back = await writeExperienceLocations(
+      CHURCHES, [{ ...POINT, name: 'Shoal Tower,Kingston' }], { syncLogId: null, sourceId: archaeology },
+    );
+    expect(await pointName()).toBe('Shoal Tower, Kingston');
+    expect(back.delta.changed[0].fields).toEqual([expect.objectContaining({ field: 'name', held: true })]);
+  });
+
   it('keeps a curator\'s name over a typographic rewrite', async () => {
     await pool.query(
       `UPDATE experience_locations SET name = 'Maltepe Tumulus\u2019', curated_fields = '["name"]'::jsonb WHERE experience_id = $1`,

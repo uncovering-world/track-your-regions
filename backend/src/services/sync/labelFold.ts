@@ -68,6 +68,34 @@ export const tidyLabelSql = (expression: string): string =>
 const alternation = (codePoints: readonly number[]): string =>
   '(' + codePoints.map(cp => '\\u' + cp.toString(16).padStart(4, '0')).join('|') + ')';
 
+/** Every double quote shape folded to the straight one, as `foldTypography` does before it reads the list's defects. */
+const straightDoubleQuotesSql = (expression: string): string =>
+  `regexp_replace(${expression}, '${alternation([0x201c, 0x201d, 0x201e, 0x201f, 0x2033, 0x00ab, 0x00bb])}', '"', 'g')`;
+
+/** The Latin ligatures, U+FB00–U+FB06. */
+const LIGATURES: readonly number[] = [0xfb00, 0xfb01, 0xfb02, 0xfb03, 0xfb04, 0xfb05, 0xfb06];
+
+/**
+ * `untypeset` (`@tyr/shared/labels`) as SQL over a text expression: the World
+ * Heritage list's defects mended (#1965, ADR-0147). The letters a ligature
+ * spells are the TypeScript rule's own normalisation of it, and the whole is
+ * pinned to `untypeset` by `labelFold.db.test.ts`.
+ */
+export const untypesetSql = (expression: string): string => {
+  const unspaced = `regexp_replace(mended_b.t, '([[:alpha:]]) +(?=${alternation(LIGATURES)})', '\\1', 'g')`;
+  const spelled = LIGATURES.reduce(
+    (text, cp) => `replace(${text}, chr(${cp}), '${String.fromCodePoint(cp).normalize('NFKC')}')`, unspaced,
+  );
+  return `(SELECT regexp_replace(${spelled}, '([[:alpha:]]),(?=[[:alpha:]])', '\\1, ', 'g')
+             FROM (SELECT CASE WHEN (length(${straightDoubleQuotesSql('mended_u.t')}) - length(replace(${straightDoubleQuotesSql('mended_u.t')}, '"', ''))) % 2 = 1
+                                    AND mended_u.t ~ '[[:alpha:]]"$'
+                               THEN left(mended_u.t, -1) ELSE mended_u.t END AS t
+                     FROM (SELECT replace(left(mended_p.t, mended_p.n), '"', '') || substr(mended_p.t, mended_p.n + 1) AS t
+                             FROM (SELECT mended_v.t,
+                                          length(COALESCE(substring(${straightDoubleQuotesSql('mended_v.t')} from '^(?:[^"]|(?<=[[:alpha:]])"+)*'), '')) AS n
+                                     FROM (SELECT ${expression} AS t) mended_v) mended_p) mended_u) mended_b)`;
+};
+
 /**
  * `foldTypography` (`@tyr/shared/labels`) as SQL over a text expression, for
  * the location writer's guard on a held point's name (#1834) and, spelled out
@@ -77,19 +105,24 @@ const alternation = (codePoints: readonly number[]): string =>
  */
 export const typographyFoldSql = (expression: string): string => {
   const quotes = alternation([0x2018, 0x2019, 0x201a, 0x201b, 0x02bc, 0x2032]);
-  const doubleQuotes = alternation([0x201c, 0x201d, 0x201e, 0x201f, 0x2033, 0x00ab, 0x00bb]);
   const dashes = alternation([0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212]);
-  const folded = `regexp_replace(regexp_replace(regexp_replace(normalize(${expression}, NFC),
-      '${quotes}', '''', 'g'), '${doubleQuotes}', '"', 'g'), '${dashes}', '-', 'g')`;
-  return tidyLabelSql(`regexp_replace(${folded}, '(${SQL_WHITESPACE_ALTERNATION}|\\\\[tn])+$', '')`);
+  const stripped = `regexp_replace(normalize(${expression}, NFC), '(${SQL_WHITESPACE_ALTERNATION}|\\\\[tn])+$', '')`;
+  return tidyLabelSql(`regexp_replace(regexp_replace(${untypesetSql(straightDoubleQuotesSql(stripped))},
+      '${quotes}', '''', 'g'), '${dashes}', '-', 'g')`);
 };
+
+/** Whether a text holds one of the list's defects, its double quote shapes read straight. */
+const defectiveSql = (expression: string): string =>
+  `(${untypesetSql(straightDoubleQuotesSql(expression))} <> ${straightDoubleQuotesSql(expression)})`;
 
 /**
  * `sameTypography` as SQL: an incoming text that differs from the stored one,
- * ends in no literal escape, and folds to the same text. Null on either side
- * is no rewrite.
+ * ends in no literal escape, brings none of the list's defects into a stored
+ * text clear of them, and folds to the same text. Null on either side is no
+ * rewrite.
  */
 export const sameTypographySql = (stored: string, incoming: string): string =>
   `COALESCE(${stored} <> ${incoming}
      AND ${incoming} !~ '\\\\[tn]${SQL_WHITESPACE_ALTERNATION}*$'
+     AND NOT (${defectiveSql(incoming)} AND NOT ${defectiveSql(stored)})
      AND ${typographyFoldSql(stored)} = ${typographyFoldSql(incoming)}, false)`;
