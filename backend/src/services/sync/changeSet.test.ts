@@ -604,6 +604,22 @@ describe('a metadata key the run computes about its own pass', () => {
     expect(SYNC_OWNED_METADATA_KEYS).toContain('osm');
   });
 
+  it('asks nobody about the day the UNESCO run read the dataset', () => {
+    // `metadata.unesco` is the run's own record of what it took from `whc001`
+    // (ADR-0149), stamped with the day it read it. The date moves every pass;
+    // a card asking a curator to approve it would come back every run.
+    const rome = (readAt: string) => snapshot({
+      name: 'Historic Centre of Rome',
+      metadata: { unesco: { dataset: 'whc001', id: '91', readAt, licence: 'CC BY-SA 4.0', facts: ['name'], text: ['description'] } },
+    });
+
+    const result = computeChangeSet(rome('2026-10-24'), rome('2026-10-25'), [], WROTE);
+
+    expect(result.changedFields).toEqual([]);
+    expect(result.changeType).toBe('unchanged');
+    expect(SYNC_OWNED_METADATA_KEYS).toContain('unesco');
+  });
+
   it('never meets the work that did the qualifying, which is the membership\'s', () => {
     // `admittedFor` is written on the place's membership (`admitted_for`,
     // #822) and enters neither the row's metadata nor this diff — so it is not

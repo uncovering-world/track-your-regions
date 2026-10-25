@@ -83,6 +83,9 @@ export const PLACE_FIELD_MARKS: Readonly<Record<string, ReaderMark>> = {
   'metadata.museumReadershipNote': 'unseen',
   'metadata.worshipReadershipNote': 'unseen',
   'metadata.osm': 'unseen',
+  // The run's mark of what it took from UNESCO's dataset (ADR-0149); a reader sees the
+  // credit it answers for, never the mark.
+  'metadata.unesco': 'unseen',
 };
 
 /** The local names' prefix: `nameLocal.ko` is marked as `nameLocal`. */

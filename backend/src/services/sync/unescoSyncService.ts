@@ -42,6 +42,7 @@ import { WaitBudget } from './sourceRetry.js';
 import { medoidOf } from './anchorPoint.js';
 import { parseDangerListing } from './dangerListing.js';
 import { UnplaceableRecord } from './itemOutcome.js';
+import { unescoProvenance } from './unescoProvenance.js';
 import type {
   SyncProgress,
   UnescoApiRecord,
@@ -61,6 +62,12 @@ const UNESCO_SOURCE_ID = 1; // Seeded in migration
  * queries inside the write loop.
  */
 let storedCredits = new Map<string, StoredCredit>();
+/** The day this run read the dataset, stamped on every row it writes (`metadata.unesco`). */
+let recordsReadAt = todayUtc();
+
+function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /**
  * A component's name: everything between `name:` and the `ref:` that follows
@@ -432,6 +439,7 @@ export function transformRecord(
   record: UnescoApiRecord,
   facts: SiteFacts = { article: null, picture: null },
   credits: Map<string, ImageCredit> = new Map(),
+  readAt: string = recordsReadAt,
 ): ProcessedExperience | null {
   const locations = parseComponentsList(record.components_list);
   const point = resolveMainPoint(record, locations);
@@ -452,6 +460,7 @@ export function transformRecord(
     transboundary: isSet(record.transboundary),
     unescoUrl: `https://whc.unesco.org/en/list/${record.id_no}`,
     wikipediaUrl: facts.article,
+    unesco: unescoProvenance(String(record.id_no), readAt, Boolean(record.short_description_en)),
     // Through `creditToWrite` like the other two collectors, and for the reason
     // this source makes sharpest: it carries more of the catalogue's photographs
     // than any other, and a curator replacing one of them with a picture of their
@@ -602,6 +611,7 @@ export function syncUnescoSites(
     // is absent from the list.
     sourceCompleteness: 'authoritative',
     fetchItems: async (progress) => {
+      recordsReadAt = todayUtc();
       const fixture = await readFixtureRecords<UnescoApiRecord>('unesco.json');
       if (fixture !== null) {
         console.log(`[UNESCO Sync] Using fixture source: ${fixture.length} records`);

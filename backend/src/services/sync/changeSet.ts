@@ -286,6 +286,10 @@ export const SYNC_OWNED_METADATA_KEYS = [
   // card asking them to approve a re-tag on somebody else's wiki would be
   // asking about the rule rather than about the place.
   'osm',
+  // Which of the row's fields came from UNESCO's dataset, and when it was read
+  // (ADR-0149). The run's own record of what it took, stamped every pass, so a
+  // new date is no change to the place.
+  'unesco',
 ] as const;
 
 /** Whether a metadata key belongs to the run rather than to the object. */
