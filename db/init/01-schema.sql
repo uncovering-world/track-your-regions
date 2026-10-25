@@ -2573,8 +2573,9 @@ INSERT INTO experience_kinds (id, name, display_priority) VALUES
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
 
--- The eighth kind: a bridge, an aqueduct, a dam, a canal or a tunnel a
--- traveller goes to or through for itself (#1860, ADR-0131), filled from the
+-- The eighth kind: a bridge, an aqueduct, a dam or a tunnel a traveller goes to
+-- or through for itself, and a canal's lock, flight of locks, boat lift or
+-- inclined plane a traveller stops at (#1860, #1947, ADR-0131), filled from the
 -- same gather.
 INSERT INTO experience_kinds (id, name, display_priority) VALUES
     (8, 'Bridges & engineering marvels', 8)
@@ -3588,13 +3589,15 @@ ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
 
 -- Bridges & engineering marvels' one source: Wikidata, read in the same pass.
--- Its line reads a year's readers and whether a Wikivoyage guide names the
--- work, and is in code (`bridges/kind.ts`). Gated on arrival (ADR-0025).
+-- Its lines read a year's readers and whether a Wikivoyage guide names the
+-- work, and are in code (`bridges/kind.ts`): a canal's locks and lifts are held
+-- to a line of their own, and a canal waits for long objects (#1947, #1948).
+-- Gated on arrival (ADR-0025).
 INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     8,
     'Bridges & engineering marvels',
-    'Bridges, aqueducts, dams, canals and tunnels a traveller goes to or through, worldwide, sourced from Wikidata',
+    'Bridges, aqueducts, dams, tunnels and a canal''s locks and lifts a traveller goes to or through, worldwide, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
     '{}'::jsonb,
     8,
