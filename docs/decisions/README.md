@@ -168,6 +168,7 @@ and accepted by it.
 | [0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md) | The World Heritage list's typesetting defects are mended on reading, and the mend passes the gate | Accepted | 2026-10-25 |
 | [0148](0148-a-documented-api-is-used-under-its-operators-rules-and-page-reading-under-robots-txt.md) | A documented API is used under its operator's rules, and page reading under robots.txt | Accepted | 2026-10-25 |
 | [0149](0149-what-the-catalogue-takes-from-unescos-dataset-it-keeps-separable-credits-and-offers-under-cc-by-sa.md) | What the catalogue takes from UNESCO's dataset it keeps separable, credits, and offers under CC BY-SA | Accepted | 2026-10-25 |
+| [0150](0150-wikidatas-part-of-answers-a-near-pair.md) | Wikidata's part-of answers a near pair | Accepted | 2026-10-25 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
