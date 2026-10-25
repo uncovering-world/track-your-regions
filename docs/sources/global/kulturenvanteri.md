@@ -21,7 +21,11 @@ terms:
   licence: "no licence named; content may be used with the source credited, and copying the data into databases by bots or scraping is forbidden"
   database_right: reserved
   attribution: "the page link, the author and Kültür Envanteri"
-  scraping: forbidden
+  agent: refused
+  agent_rests_on: "site-access.md, kulturenvanteri.com, read 2026-10-25: terms bar collecting the data by bots or scraping, with no leave for an AI agent"
+  program: refused
+  program_rests_on: "its terms, quoted in the body, bar automated copying"
+  model: none
 access:
   mode: scrape
   format: html

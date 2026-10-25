@@ -21,7 +21,11 @@ terms:
   licence: "none stated"
   database_right: not-asserted
   attribution: "Visit Ethiopia"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, visitethiopia.et, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

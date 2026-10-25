@@ -21,7 +21,11 @@ terms:
   licence: "Tripadvisor Content API Master Terms"
   database_right: reserved
   attribution: "a Mark on every use (§ 3.4.2), a link back (§ 3.4.6), logos served from Tripadvisor"
-  scraping: forbidden
+  agent: refused
+  agent_rests_on: "site-access.md, www.tripadvisor.com, read 2026-10-25: `robots.txt` disallows Anthropic agents (`ClaudeBot` / `Disallow: /`)"
+  program: refused
+  program_rests_on: "the Content API terms bar storing the content beyond their window"
+  model: none
 access:
   mode: api
   format: json

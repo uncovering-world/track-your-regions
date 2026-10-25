@@ -21,7 +21,11 @@ terms:
   licence: "none; its terms of service ask permission for copying or republishing and allow one copy of a page for non-commercial use"
   database_right: not-asserted
   attribution: "The Local's Guide To Egypt"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.localguidetoegypt.com, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

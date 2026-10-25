@@ -21,7 +21,11 @@ terms:
   licence: "none; the licence on its privacy-policy page excludes publishing or displaying its material and systematic collection by robots or mining"
   database_right: reserved
   attribution: "Armenia Travel (Tourism Committee of Armenia)"
-  scraping: forbidden
+  agent: refused
+  agent_rests_on: "site-access.md, armenia.travel, read 2026-10-02: terms bar robots, automated access or mining, with no leave for an AI agent"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

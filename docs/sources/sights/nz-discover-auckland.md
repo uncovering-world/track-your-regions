@@ -21,7 +21,11 @@ terms:
   licence: "the organisation's terms: material may be reproduced free of charge and without further permission, for informational purposes, accurately, with the source acknowledged"
   database_right: not-asserted
   attribution: "sourced from Tātaki Auckland Unlimited and subject to copyright"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.aucklandnz.com, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: "html; the items of its collections are drawn by script"

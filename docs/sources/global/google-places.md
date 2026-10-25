@@ -21,7 +21,11 @@ terms:
   licence: "Google Maps Platform Terms of Service"
   database_right: reserved
   attribution: "required, on a Google map"
-  scraping: forbidden
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: refused
+  program_rests_on: "the Google Maps Platform Terms bar storing and combining the content"
+  model: none
 access:
   mode: api
   format: json

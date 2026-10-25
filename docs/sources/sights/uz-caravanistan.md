@@ -21,7 +21,11 @@ terms:
   licence: "CC BY-SA 4.0 (the site footer)"
   database_right: share-alike
   attribution: "Caravanistan, CC BY-SA 4.0"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, caravanistan.com, read 2026-10-02; the line gives the reason"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

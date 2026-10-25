@@ -21,7 +21,11 @@ terms:
   licence: "none; website terms (last updated 14 July 2026): content may be viewed, downloaded and printed for personal, non-commercial use; no commercial use without written consent"
   database_right: reserved
   attribution: "AA Traveller (New Zealand Automobile Association)"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.aa.co.nz, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

@@ -21,7 +21,11 @@ terms:
   licence: "none; a copyright paragraph on the privacy page: unauthorised secondary usage, for profit or otherwise, is prohibited"
   database_right: reserved
   attribution: "Another Kyoto (Kyoto Prefecture)"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.kyototourism.org, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

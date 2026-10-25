@@ -21,7 +21,11 @@ terms:
   licence: "none; Terms of Use (last updated October 2024), section 11: no use of the content on any AI platform, retrieval included, without written approval"
   database_right: reserved
   attribution: "none: no use beyond viewing is allowed"
-  scraping: forbidden
+  agent: refused
+  agent_rests_on: "site-access.md, www.timeout.com, read 2026-10-02: terms bar use by or for AI"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

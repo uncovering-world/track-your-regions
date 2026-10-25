@@ -21,7 +21,11 @@ terms:
   licence: "CC BY 4.0 (the geodata); the text and photographs of the rky.fi and kyppi.fi pages are © Museovirasto"
   database_right: waived
   attribution: "Museovirasto, CC BY 4.0"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): the Museovirasto GeoServer, CC BY 4.0 for the geodata"
+  model: none
 access:
   mode: api
   format: "WFS 2.0 (GeoJSON, any srsName), 13 layers: suojellut_rakennukset_{piste,alue}, muinaisjaannos_{piste,alue}, rky_{piste,viiva,alue}, maailmanperinto_{piste,alue}, muu_kulttuuriperintokohde_{piste,alue}, vark_{pisteet,alueet}; AccessConstraints NONE, no key"

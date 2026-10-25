@@ -21,7 +21,11 @@ terms:
   licence: unknown
   database_right: unknown
   attribution: "Ministerio de Cultura del Perú, Dirección General de Museos"
-  scraping: reserved
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: reserved
+  program_rests_on: "scraping only, and its terms were not found; ask first"
+  model: none
 access:
   mode: scrape
   format: html

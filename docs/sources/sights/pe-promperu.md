@@ -21,7 +21,11 @@ terms:
   licence: "none; peru.travel's terms: the user may not copy, distribute, reproduce or publish its information"
   database_right: reserved
   attribution: "PromPerú"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.peru.travel, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: "html; peru.travel's attraction index, calendar and restaurant guide are filter forms drawn by script"

@@ -21,7 +21,11 @@ terms:
   licence: "per file; only the count of files is kept, no file and no picture"
   database_right: not-asserted
   attribution: "none needed for a count; a picture shown is credited from extmetadata as ever (ADR-0043)"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): the Commons Action API under Wikimedia's API rules; only counts are kept"
+  model: none
 access:
   mode: api
   format: "MediaWiki API, generator=categorymembers (files) with prop=coordinates, gcmlimit=max, read until 10 files taken there or to its end, at most 20,000 files"

@@ -21,7 +21,11 @@ terms:
   licence: "none; legal notice: no reproduction, distribution or public communication for commercial ends without authorisation"
   database_right: reserved
   attribution: "Viajeros Callejeros"
-  scraping: forbidden
+  agent: refused
+  agent_rests_on: "site-access.md, www.viajeroscallejeros.com, read 2026-10-24: `robots.txt` disallows Anthropic agents by name; it was open on 2026-10-02"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

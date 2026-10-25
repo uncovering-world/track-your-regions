@@ -21,7 +21,11 @@ terms:
   licence: "none; terms and conditions: no licence beyond strictly personal use, no reproducing or publishing without MiTur's prior written authorisation"
   database_right: reserved
   attribution: "Italia.it (Ministero del Turismo)"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.italia.it, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

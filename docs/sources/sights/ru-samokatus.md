@@ -21,7 +21,11 @@ terms:
   licence: "none stated; the access table finds the policy page silent on automated reading"
   database_right: unknown
   attribution: "Самокатус"
-  scraping: unknown
+  agent: allowed
+  agent_rests_on: "site-access.md, samokatus.ru, read 2026-10-02: closed paths not read"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

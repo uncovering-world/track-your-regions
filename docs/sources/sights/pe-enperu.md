@@ -21,7 +21,11 @@ terms:
   licence: "none; the footer: no reproducing, distributing or using the content without prior written authorisation"
   database_right: reserved
   attribution: Enperu
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.enperu.org, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

@@ -21,7 +21,11 @@ terms:
   licence: unknown
   database_right: unknown
   attribution: unknown
-  scraping: unknown
+  agent: allowed
+  agent_rests_on: "site-access.md, www.skyscrapercenter.com, read 2026-10-25: closed paths not read"
+  program: unknown
+  program_rests_on: "no terms page found; nothing documents the site for programs"
+  model: none
 access:
   mode: scrape
   format: html

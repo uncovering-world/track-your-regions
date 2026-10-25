@@ -21,7 +21,11 @@ terms:
   licence: "CC BY-SA 3.0 (the article text); what is read is titles and Wikidata ids, which the licence does not reach"
   database_right: not-asserted
   attribution: "English Wikipedia (given wherever its judgement is shown)"
-  scraping: not-needed
+  agent: allowed
+  agent_rests_on: "site-access.md, en.wikipedia.org, read 2026-10-24; the line gives the reason"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): the Wikipedia Action API under Wikimedia's API rules; titles and items are kept, not text"
+  model: none
 access:
   mode: api
   format: "MediaWiki Action API — `prop=categories` for one article's categories (the vote); `list=categorymembers` for the walk that was measured and not adopted"

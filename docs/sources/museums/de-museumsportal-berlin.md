@@ -21,7 +21,11 @@ terms:
   licence: none stated
   database_right: reserved
   attribution: "Museumsportal Berlin"
-  scraping: reserved
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: reserved
+  program_rests_on: "scraping only; its robots.txt Content-Signal reads ai-train=no, use=reference, read as \"ask first\" (filling-a-kind.md § 5)"
+  model: none
 access:
   mode: scrape
   format: html

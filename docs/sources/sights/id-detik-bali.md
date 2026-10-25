@@ -21,7 +21,11 @@ terms:
   licence: "the publisher's copyright page: free use by individuals for reference and non-commercial purposes"
   database_right: not-asserted
   attribution: detikBali
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.detik.com, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

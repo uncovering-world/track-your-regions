@@ -21,7 +21,11 @@ terms:
   licence: "the portal's Copyright Policy: reproduction free of charge after permission by mail, accurately, with the source acknowledged"
   database_right: not-asserted
   attribution: "Delhi Tourism (DTTDC), acknowledged prominently, as its Copyright Policy asks"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, delhitourism.gov.in, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

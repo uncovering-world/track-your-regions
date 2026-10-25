@@ -21,7 +21,11 @@ terms:
   licence: "none named; the copyright page lets content be copied for strictly personal purposes or with the source named, and asks written authorisation for commercial reproduction"
   database_right: reserved
   attribution: "turismoroma.it, named as the source"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.turismoroma.it, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

@@ -21,7 +21,11 @@ terms:
   licence: "none stated"
   database_right: not-asserted
   attribution: LastSecond
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, lastsecond.ir, read 2026-10-02: closed paths not read"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

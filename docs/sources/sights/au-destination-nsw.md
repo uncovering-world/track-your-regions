@@ -21,7 +21,11 @@ terms:
   licence: "none; terms of use (last updated 23 September 2021): the content may be used or reproduced for non-commercial personal use only"
   database_right: reserved
   attribution: "Destination NSW"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.sydney.com, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

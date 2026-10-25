@@ -21,7 +21,11 @@ terms:
   licence: "none; the site's terms of use of materials: any use only with the editors' prior written permission, quotation up to 30% with a hyperlink"
   database_right: not-asserted
   attribution: "Gazeta.uz, with a hyperlink to the page quoted"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.gazeta.uz, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

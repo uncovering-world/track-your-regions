@@ -21,7 +21,11 @@ terms:
   licence: "per file: CC BY, CC BY-SA, CC0 or public domain, read from extmetadata (the picture-credit rule, ADR-0043)"
   database_right: not-asserted
   attribution: "the file's author and licence, from extmetadata, on every display (ImageCreditLine)"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): the Commons Action API under Wikimedia's API rules"
+  model: none
 access:
   mode: api
   format: "MediaWiki API, list=geosearch with gsnamespace=6, gsradius up to 10 km, gslimit up to 500 (50 used)"

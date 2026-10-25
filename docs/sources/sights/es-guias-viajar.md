@@ -21,7 +21,11 @@ terms:
   licence: "none; legal notice: photographs and videos may be reused on a non-commercial site with the source named; article text may not be copied"
   database_right: reserved
   attribution: "Guías Viajar"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, guias-viajar.com, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

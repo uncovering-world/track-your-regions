@@ -21,7 +21,11 @@ terms:
   licence: "none; Terms of Use: no AI use of the content, retrieval included, and no automated collection"
   database_right: not-asserted
   attribution: unknown
-  scraping: reserved
+  agent: refused
+  agent_rests_on: "site-access.md, travel.kompas.com, read 2026-10-02: `robots.txt` disallows Anthropic agents"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

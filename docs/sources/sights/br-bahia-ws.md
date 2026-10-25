@@ -21,7 +21,11 @@ terms:
   licence: "none; Termos e Condições de Uso § 2: a copy for personal, non-commercial viewing only; no copying, no passing on, no mirroring"
   database_right: not-asserted
   attribution: Bahia.ws
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, bahia.ws, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

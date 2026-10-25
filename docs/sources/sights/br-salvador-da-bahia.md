@@ -21,7 +21,11 @@ terms:
   licence: "none; Termos de Uso § 6.1: no copying, distributing or republishing without Secult's prior written consent (the access table has these terms as unread)"
   database_right: reserved
   attribution: "Salvador da Bahia (Secult, Prefeitura de Salvador)"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.salvadordabahia.com, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

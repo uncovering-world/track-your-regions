@@ -21,7 +21,11 @@ terms:
   licence: "CC BY 4.0"
   database_right: waived
   attribution: "GeoNames (geonames.org)"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): the GeoNames dump, CC BY 4.0"
+  model: none
 access:
   mode: dump
   format: "tab-separated dumps — allCountries.zip (422 MB), alternateNamesV2.zip (204 MB), daily"

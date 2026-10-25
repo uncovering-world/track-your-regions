@@ -21,7 +21,11 @@ terms:
   licence: "the list is an annex to a ministerial order published in Monitorul Oficial; patrimoniu.ro's Termeni și condiții reserve the site's content; the copies read are Wikidata (CC0) and the Romanian Wikipedia (CC BY-SA 4.0, text) with Commons pictures"
   database_right: reserved
   attribution: "Wikidata (CC0); Lista monumentelor istorice din județul <X>, Wikipedia în limba română, CC BY-SA 4.0"
-  scraping: reserved
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: reserved
+  program_rests_on: "the list is read through Wikidata's copy; the ministry's own terms are not answered, as the body says"
+  model: none
 access:
   mode: api
   format: "SPARQL over QLever's Wikidata copy (one query: item, P1770 code, P625 coordinate, Romanian label, P18 picture — 2.8 MB, 2 s); the county lists as wikitext tables (LMI code, name, address, coordinate, Commons picture); the institute's list as PDFs per county (2015 edition) — a document, not read here"

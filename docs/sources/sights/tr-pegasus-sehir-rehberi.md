@@ -21,7 +21,11 @@ terms:
   licence: "none stated; robots.txt carries Content-Signal: search=yes, ai-input=yes, ai-train=yes"
   database_right: not-asserted
   attribution: Pegasus
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.flypgs.com, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

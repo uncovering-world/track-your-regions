@@ -21,7 +21,11 @@ terms:
   licence: "CC BY-SA 4.0 (the text); the pictures are Commons files under their own licences"
   database_right: share-alike
   attribution: "Wikipedia (<lang>), CC BY-SA 4.0 — and nothing of the text is copied: the item is what is read"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): the Wikipedia Action API under Wikimedia's API rules"
+  model: none
 access:
   mode: api
   format: "MediaWiki API; list=geosearch (gsradius ≤ 10 km, gsprimary primary|secondary|all, gsprop type|name), or generator=geosearch with prop=pageprops (ppprop=wikibase_item) and prop=coordinates to get the item and the distance in one call"

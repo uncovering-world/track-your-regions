@@ -21,7 +21,11 @@ terms:
   licence: "none; Terms of Use: no reproducing, publishing or displaying of any of the Content without prior written consent"
   database_right: not-asserted
   attribution: "Incredible India (Ministry of Tourism, Government of India)"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.incredibleindia.gov.in, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

@@ -21,7 +21,11 @@ terms:
   licence: "none; material may be downloaded and copied for personal, non-commercial use; no redistribution, and no reproduction without the publisher's written permission"
   database_right: reserved
   attribution: japan-guide.com
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.japan-guide.com, read 2026-10-02: closed paths not read"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html
