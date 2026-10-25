@@ -342,17 +342,26 @@ Both run against the active database, the one `npm run db:migrate` would use.
 
 The report reads the tables, never the files: after a list changes, load before reporting.
 
-A third subcommand reads the web and touches no database. It is what a survey looks things up
-with, so that an identifier on a list is one a search returned and a distance confirmed:
+A third subcommand is what a survey looks things up with, so that an identifier on a list is
+one a search returned and a distance confirmed. It reads the web, and touches no database but
+for `unesco`:
 
 ```bash
 ./scripts/catalogue-coverage.sh lookup wikivoyage "Yerevan" --save <dir>   # what the article names, by section, and the articles it links
 ./scripts/catalogue-coverage.sh lookup search "Zvartnots Cathedral"        # the Wikidata items a name could be
-./scripts/catalogue-coverage.sh lookup facts 40.18 44.51 Q17054090         # label, sitelinks, distance from that centre, coordinates, classes
+./scripts/catalogue-coverage.sh lookup facts 40.18 44.51 Q17054090         # label, sitelinks, distance from that centre, coordinates, classes, World Heritage id
+./scripts/catalogue-coverage.sh lookup unesco PE 1459                       # the World Heritage properties of a country or an id, with their components
 ```
 
 It is `backend/src/scripts/catalogueCoverageLookup.ts`, and it names itself to Wikimedia through
-`userAgent()` like every other outbound call.
+`userAgent()` like every other outbound call. `unesco` reads the catalogue's own UNESCO rows
+(`worldHeritageReading.ts`), since a survey may read neither whc.unesco.org, whose `robots.txt`
+refuses Anthropic agents, nor the open dataset's `/api/`, which `data.unesco.org`'s closes to every
+agent but Googlebot (#1981). A property is a place holding a standing World Heritage membership,
+and its components are the points it shows under the property's number, whatever extension
+renumbered it (`1459-113` of 1459, `91quater-001` of 91), and the points a merge folded into one it
+shows while the property still places that one (`worldHeritageReading.ts` holds the rule). It
+runs where the catalogue's database answers.
 
 ## The two skills
 
@@ -498,7 +507,12 @@ Each list is merged from:
 - the guides whose sites may be read, among them one in a language visitors to the region
   read, where that is not English;
 - a source written from inside the country: a tourism board or a guide written by residents;
-- UNESCO's State Party page and its intangible-heritage pages.
+- UNESCO's World Heritage List, as the catalogue's own UNESCO rows hold it (`lookup unesco`).
+
+The lists of 2026-10-02 first read UNESCO from its State Party pages and its intangible-heritage
+pages, which refuse Anthropic agents now (`docs/sources/site-access.md`). Every such count was
+checked again against the catalogue's UNESCO rows (#1981): a count stands where those rows name
+the property or one of its components, and every intangible-heritage count was withdrawn.
 
 In these lists every count stands on a page that was fetched and names the thing. The skill
 also lets a site that may be read, but draws its pages by script, count through the titles and
