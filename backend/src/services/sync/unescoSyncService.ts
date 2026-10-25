@@ -11,6 +11,7 @@ import {
   type LocationWriteRun,
 } from './locationWriter.js';
 import type { IncomingLocation } from './locationIncoming.js';
+import { untypeset } from '@tyr/shared/labels';
 import { feedText } from './unescoText.js';
 import { recordComponentItemsReport, upsertExperienceRecord } from './syncUtils.js';
 import {
@@ -78,7 +79,17 @@ function componentName(entry: string): string | null {
   ref.lastIndex = name.index + name[0].length;
   const refFound = ref.exec(entry);
   if (!refFound) return null;
-  return feedText(readOnce(entry.slice(name.index + name[0].length, refFound.index).trim().replace(/,$/, '').trim()));
+  return componentText(entry.slice(name.index + name[0].length, refFound.index).trim().replace(/,$/, '').trim());
+}
+
+/**
+ * A component's name as text: read once, the feed's markup read, and the
+ * list's typesetting defects mended (`untypeset`, #1965, ADR-0147). Mended here
+ * and not in `feedText`, which a site's own name goes through as well: the
+ * source's view of a site (`reported_*`) keeps what the list says.
+ */
+function componentText(name: string): string {
+  return untypeset(feedText(readOnce(name)));
 }
 
 /**
@@ -132,7 +143,7 @@ function parseComponentsList(componentsList: string | undefined): ParsedLocation
     if (lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
     // Via Appia's 1708-003 has an empty name, which stays empty.
     const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
-    locations.push({ name: feedText(readOnce(name)), externalRef: ref, lat, lon });
+    locations.push({ name: componentText(name), externalRef: ref, lat, lon });
   }
   return locations;
 }

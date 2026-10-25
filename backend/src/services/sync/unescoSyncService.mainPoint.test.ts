@@ -356,6 +356,27 @@ describe("a site's components (#1803)", () => {
     ]);
   });
 
+  it("mends the list's typesetting in a component's name, and keeps the site's own name as the list writes it (#1965)", () => {
+    // The Rideau Canal (1221) and the Volcanoes of Kamchatka (765bis), as the list writes them.
+    const site = transformRecord(record({
+      id_no: '1221',
+      name_en: 'Rideau Canal,Ottawa',
+      components_list: components(
+        { name: 'Shoal Tower,Kingston', ref: '1221-005', latitude: 44.2297, longitude: -76.4766 },
+        { name: 'Southern Kamchatka" Regional Nature Park (two parcels)', ref: '765bis-005', latitude: 51.5, longitude: 157.2 },
+        { name: 'Jebel Barisha [Deirouné]', ref: '1348-004', latitude: 36.2, longitude: 36.6 },
+      ),
+    }));
+
+    expect(site?.name).toBe('Rideau Canal,Ottawa');
+    // Each point keeps its own reference and coordinate: a mended name moves no point.
+    expect(site?.locations.map(location => [location.name, location.externalRef, location.lat, location.lon])).toEqual([
+      ['Shoal Tower, Kingston', '1221-005', 44.2297, -76.4766],
+      ['Southern Kamchatka Regional Nature Park (two parcels)', '765bis-005', 51.5, 157.2],
+      ['Jebel Barisha [Deirouné]', '1348-004', 36.2, 36.6],
+    ]);
+  });
+
   it('fails a site whose list is in neither form, rather than read it as no components', () => {
     expect(() => transformRecord(record({ components_list: 'Carnuntum; Enns' }))).toThrow('Components list is not JSON');
     expect(() => transformRecord(record({ components_list: '{"name": "Carnuntum"}' }))).toThrow('not a list');
