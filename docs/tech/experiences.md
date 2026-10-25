@@ -5899,6 +5899,29 @@ rule reads about it changes, and a change of the rule pairs the whole catalogue:
   0, so every database gets the current rule's pairs — ADR-0120's included — once. A change to
   the reach, a threshold, the word list or a name the rule reads raises the constant.
 
+**Wikidata answers *part of*** (#1991, ADR-0150). Right after it pairs, the drain answers an open
+pair *part of* where one place's item states P361 "part of" toward the other's, or the other's
+states P527 "has part" toward it (`answerFromWikidata`, `wikidataPartsSql`). The items are the ones
+that claim each place's identity (`place_identifiers`), and the statements are the best-ranked
+ones of the local subset (`wikidata_claims`). The part is the place the statement names. A pair is
+left to a curator when its statements name each place as the part of the other, when its items
+are tied only by P276 "location" or by nothing, when the subset holds no statement, and when a
+curator took its answer back (`taken_back_at`). The answer names no curator: `answered_by` is null,
+`answered_by_catalogue` is true and `answer_statement` holds `{property, subject, value}`, P361
+first where both state the relation. Schema checks hold the three to each other (migration 173). Its
+`merge_proposal_answered` row carries `catalogue: 'wikidata'` and the statement, and the history
+shows it as *The catalogue — Wikidata*, with the statement beside its ids
+(`frontend/src/components/shared/curationLog.ts`). A pair a curator is answering at that moment
+holds the pair's advisory lock and is skipped (`pg_try_advisory_xact_lock`), and a curator's answer
+is never rewritten. Rule version 3 brought it, so the first drain after the deploy answered the
+pairs already open; on the development catalogue on 2026-10-25, a rolled-back run answered 13 of
+the 26 open pairs, Westminster Abbey and the Bremen Roland among them. The run's closing line
+counts them (`pairingSentence`). The answer follows a pair's place's next drain, not a change of
+what the rule reads: an item confirmed on a place after its pair was proposed, or a statement that
+arrives with a later subset build, marks no place (`mark_pairing_due()` has no trigger on
+`place_identifiers` or `wikidata_claims`), so such a pair stays a question until something else
+marks one of its places, or the rule's version moves.
+
 **Near places with similar names, on the queue** (`merge-proposals`) — one card per place that
 stays if a pair is made one, the lower id (`place_a`), with a row per open pair. Open while
 unanswered and while both places are still offered and unmerged (`mergeProposalOpenSql`,
@@ -5926,6 +5949,18 @@ stays, beside the `merged` row the merge itself writes. A batch (`reviewAnswerDi
 one place only of the exact pairs — one and the same folded name within fifty metres — and keeps
 every open pair two; which is the part, and a pair merely alike, are the card's. The card's one
 button answers every exact pair *one place* at once, and nothing is written until the curator saves.
+
+**A *part of* or *two places* is taken back from the history** (#1991, ADR-0150 decision 4). The
+`merge_proposal_answered` row of either answer, the pass's or a curator's, offers *Take back this
+answer* until a later row names the same pair (`takeablePair`, `curationLog.ts`).
+`POST /api/experiences/:id/merge-proposals/:proposalId/take-back`
+(`mergeProposalTakeBackController.ts`) takes the pair's advisory lock, then both places' locks, and
+is scoped by the sources of both places' memberships. It opens the pair again
+(`takeBackMergeProposal`, `mergeProposalAnswers.ts`) and stamps `taken_back_at`, so the pair is back
+on the queue and the pass never answers it from Wikidata again. It writes one
+`merge_proposal_taken_back` row on the place that stays. *One place* is refused there: its merge is
+undone from the `merged` row, which opens the pair with it. A pair taken back and then forgotten by
+the pass, its point moved out of reach, loses the mark with the row.
 
 **Jev's judgement on the near-places card** (#1249, ADR-0087). Where `JEV_API_KEY` is set, the
 card asks `POST /api/experiences/:id/merge-proposal-suggestions`
