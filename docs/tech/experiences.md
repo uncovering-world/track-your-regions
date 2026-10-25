@@ -5957,7 +5957,12 @@ under no run, so never set aside with a batch; after the component items in the 
 nothing is wrong on either card and the question is whether readers should see one card or two. The
 row carries the other place — its name, kinds, picture, point and Wikidata item beside the anchor's
 own, so two different items on a pair are visible — the distance, the similarity, whether the pair
-is *exact* and the reach (`MergePair`). The card (`MergeProposalsCard.tsx`) gives each pair three
+is *exact* and the reach (`MergePair`). Each item carries its label and description from the local
+Wikidata subset (`termsOf` in `services/sync/subset/entities.ts`, read by `queryMergeProposals`),
+never a live call, #1970. The card shows one item the two share as one link; two items each beside
+the place that carries it, named with its kinds, so Babylon's city (Q5684) is told from the item of
+its World Heritage listing (Q100329356) under one and the same name; and a place that resolves to
+no item, a serial site or a place whose point was never written, as having none (`PairItems`). The card (`MergeProposalsCard.tsx`) gives each pair three
 answers, `POST /api/experiences/:id/merge-proposals` (`mergeProposalController.ts`), each pair its
 own act: *one place* runs `mergePlaces` with the anchor as the survivor and `reason: 'curator'` —
 its own transaction and locks, so a pair the merge refuses (both places in one kind, ADR-0086
