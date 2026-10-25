@@ -19,7 +19,7 @@ import { renderCoverageReport } from './reportText.js';
 
 const kind = (over: Partial<KindRow>): KindRow => ({
   slug: 'archaeology', name: 'Archaeology', form: 'place', status: 'live', experience_kind_id: 5, issue_number: null,
-  in_venue: false, enter_sitelinks: 22, ...over,
+  in_venue: false, enter_sitelinks: 22, find_enter_sitelinks: null, ...over,
 });
 const KINDS: KindRow[] = [
   kind({}),
@@ -502,7 +502,40 @@ describe('the statements', () => {
     // A refusal is a changeset row of the latest real, closed run, never a membership.
     expect(sql).toContain("ch.change_type = 'filtered'");
     expect(sql).toContain("NOT l.is_dry_run AND l.status IN ('success', 'partial')");
+    // A kind of work stands by the treasure its item names, shown by a venue a reader may go to (#1988).
+    expect(sql).toContain("JOIN coverage_kinds ck ON ck.slug = c.kind_slug AND ck.form = 'work' JOIN treasures t ON t.external_id = c.wikidata_id");
+    expect(sql).toContain(collapse(`${publishedContentSql('t')} AND EXISTS (SELECT 1 ${venuesShowingSql('t')})`));
     expect(sql).not.toMatch(/\bname\s*=|ILIKE|similarity\(/i);
+  });
+});
+
+describe('a kind of work against its own calibration list (#1988)', () => {
+  const works = (findLine: number | null) => buildCoverageReport(facts({
+    kinds: KINDS.map(k => (k.slug === 'notable-works' ? { ...k, find_enter_sitelinks: findLine } : k)),
+    calibration: [
+      top('rosetta-stone', { kind_slug: 'notable-works', sitelinks: 105, offered: true }),
+      // A treasure the catalogue holds that no venue a reader may go to shows.
+      top('phaistos-disc', { kind_slug: 'notable-works', sitelinks: 40, held_as: 'Phaistos Disc' }),
+      // Over the finds' line and under the artworks': out of reach, not under the line.
+      top('mask-of-agamemnon', { kind_slug: 'notable-works', sitelinks: 20 }),
+      top('lydenburg-heads', { kind_slug: 'notable-works', sitelinks: 9 }),
+    ],
+  })).liveKinds.find(live => live.slug === 'notable-works')?.calibration;
+
+  it('stands a work offered where a venue shows it, and held where the catalogue holds it unshown', () => {
+    expect(works(18)).toMatchObject({ entries: 4, offered: 1 });
+    expect(works(18)?.misses.map(miss => [miss.slug, miss.standing, miss.detail])).toEqual([
+      ['phaistos-disc', 'held', 'Phaistos Disc'],
+      ['mask-of-agamemnon', 'absent', null],
+      ['lydenburg-heads', 'under_line', null],
+    ]);
+  });
+
+  it('puts a work under the line only below the lowest door a work enters by: the finds\' line where a source states one', () => {
+    const standing = (findLine: number | null, slug: string) => works(findLine)?.misses.find(miss => miss.slug === slug)?.standing;
+    expect(standing(18, 'mask-of-agamemnon')).toBe('absent');
+    // With no finds' line the artworks' own is the only door.
+    expect(standing(null, 'mask-of-agamemnon')).toBe('under_line');
   });
 });
 

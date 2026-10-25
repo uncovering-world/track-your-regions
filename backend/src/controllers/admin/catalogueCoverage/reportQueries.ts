@@ -26,6 +26,8 @@ import { placePointsSql } from '../../../db/placePoints.js';
 export type KindRow = Pick<CoverageKindsRow, 'slug' | 'name' | 'form' | 'status' | 'experience_kind_id' | 'issue_number' | 'in_venue'> & {
   /** The sitelinks a place needs to enter this kind's world tier, where its source states one. */
   enter_sitelinks: number | null;
+  /** For a kind of work, the finds' line a source row states: a find under it links to no venue. */
+  find_enter_sitelinks: number | null;
 };
 
 export type RegionRow = Pick<CoverageRegionsRow, 'slug' | 'name' | 'country'> & { surveyed: string };
@@ -77,11 +79,14 @@ export interface UnnamedRow {
  */
 export type CalibrationRow = Pick<CoverageCalibrationEntriesRow, 'kind_slug' | 'slug' | 'name' | 'wikidata_id' | 'sitelinks'> & {
   sources: string[];
-  /** The kind offers a place known by the item. */
+  /** A kind of place offers a place known by the item; for a kind of work, a venue a reader may go to shows a treasure the item names. */
   offered: boolean;
-  /** The kind admits a place known by the item, which a reader does not see yet: it waits for a curator. */
+  /** The kind admits a place known by the item, which a reader does not see yet: it waits for a curator. Never set for a work. */
   admitted: boolean;
-  /** A catalogue place known by the item exists and the kind does not offer it; the name of one such place, else null. */
+  /**
+   * Not offered, and the catalogue holds the item all the same: the name of one place known by it that the kind
+   * does not offer, or for a work the name of the treasure no such venue shows; else null.
+   */
   held_as: string | null;
   /** What the latest real, closed run of one of the kind's sources said when it refused the item; null where none did. */
   refused_for: string | null;
@@ -105,7 +110,10 @@ const KINDS_SQL = `
   SELECT ck.slug, ck.name, ck.form, ck.status, ck.experience_kind_id, ck.issue_number, ck.in_venue,
          (SELECT MIN((s.api_config->>'enterSitelinks')::int)
             FROM experience_sources s
-           WHERE s.kind_id = ck.experience_kind_id AND s.is_active) AS enter_sitelinks
+           WHERE s.kind_id = ck.experience_kind_id AND s.is_active) AS enter_sitelinks,
+         (SELECT MIN((s.api_config->>'findEnterSitelinks')::int)
+            FROM experience_sources s
+           WHERE ck.form = 'work' AND s.is_active) AS find_enter_sitelinks
     FROM coverage_kinds ck
    ORDER BY ck.slug`;
 
@@ -302,7 +310,10 @@ const UNNAMED_SQL = `
  * place's own id before a membership's; refused when the latest real, closed run of one of the
  * kind's active sources filtered the item, with the reason the run recorded
  * (`experience_sync_changes`, a refusal is never a membership row); absent otherwise. A kind of
- * work has no catalogue kind and no list, so the join is by the kind's `experience_kind_id`.
+ * place is joined by its `experience_kind_id`. A kind of work has no catalogue kind (#1988): a work
+ * is offered where a treasure the item names is shown by a venue a reader may go to
+ * (`venuesShowingSql`, the survey matches' own fragment), and held where such a treasure exists
+ * and no such venue shows it.
  *
  * The identifiers are joined once and aggregated per entry, as `MATCHES_SQL` joins them: a
  * subquery per entry over the whole `known_as` union ran it once per top, with no index, and
@@ -322,7 +333,7 @@ const CALIBRATION_SQL = `
            bool_or(COALESCE(counted.admitted, false)) AS admitted,
            (array_agg(e.name ORDER BY k.own DESC, e.id))[1] AS held_as
       FROM coverage_calibration_entries c
-      JOIN coverage_kinds ck ON ck.slug = c.kind_slug
+      JOIN coverage_kinds ck ON ck.slug = c.kind_slug AND ck.form = 'place'
       JOIN known_as k ON k.id = c.wikidata_id
       JOIN experiences e ON e.id = k.experience_id
       LEFT JOIN LATERAL (
@@ -331,6 +342,14 @@ const CALIBRATION_SQL = `
           FROM ${MEMBERSHIPS} m
          WHERE m.experience_id = e.id AND m.kind_id = ck.experience_kind_id
       ) counted ON true
+     GROUP BY c.kind_slug, c.slug
+  ), works AS (
+    SELECT c.kind_slug, c.slug,
+           bool_or(${publishedContentSql('t')} AND EXISTS (SELECT 1 ${venuesShowingSql('t')})) AS offered,
+           (array_agg(t.name ORDER BY t.id))[1] AS held_as
+      FROM coverage_calibration_entries c
+      JOIN coverage_kinds ck ON ck.slug = c.kind_slug AND ck.form = 'work'
+      JOIN treasures t ON t.external_id = c.wikidata_id
      GROUP BY c.kind_slug, c.slug
   ), refusals AS (
     SELECT ck.slug AS kind_slug, ch.external_id, (array_agg(ch.error ORDER BY ch.id DESC))[1] AS error
@@ -342,12 +361,13 @@ const CALIBRATION_SQL = `
   SELECT c.kind_slug, c.slug, c.name, c.wikidata_id, c.sitelinks,
          ARRAY(SELECT cs.source_slug FROM coverage_calibration_entry_sources cs
                 WHERE cs.kind_slug = c.kind_slug AND cs.entry_slug = c.slug ORDER BY cs.source_slug) AS sources,
-         COALESCE(h.offered, false) AS offered,
+         COALESCE(h.offered, w.offered, false) AS offered,
          COALESCE(h.admitted, false) AS admitted,
-         h.held_as,
+         COALESCE(h.held_as, w.held_as) AS held_as,
          r.error AS refused_for
     FROM coverage_calibration_entries c
     LEFT JOIN holding h ON (h.kind_slug, h.slug) = (c.kind_slug, c.slug)
+    LEFT JOIN works w ON (w.kind_slug, w.slug) = (c.kind_slug, c.slug)
     LEFT JOIN refusals r ON r.kind_slug = c.kind_slug AND r.external_id = c.wikidata_id
    ORDER BY c.kind_slug, c.slug`;
 

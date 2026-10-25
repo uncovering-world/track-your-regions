@@ -31,8 +31,11 @@ const QID = {
   north: 'Q96000007', acrossTheLine: 'Q96000008', byThePole: 'Q96000009',
 } as const;
 const UNESCO = '96001';
-/** The calibration list's own items (#1864): one the last run refused, one under the line, one out of reach. */
-const TOPS = { refusedByRun: 'Q96000050', underLine: 'Q96000051', outOfReach: 'Q96000052', pendingMissing: 'Q96000053' } as const;
+/** The items the calibration lists name and no fixture place holds (#1864, #1988). */
+const TOPS = {
+  refusedByRun: 'Q96000050', underLine: 'Q96000051', outOfReach: 'Q96000052', pendingMissing: 'Q96000053',
+  findNotHeld: 'Q96000054', findUnderLine: 'Q96000055',
+} as const;
 const HERITAGE_ITEM = 'Q96000040';
 // The offered dig stands at 50 N 10 E; a degree of latitude is 111.2 km.
 const AT = { lat: 50, lon: 10 };
@@ -150,6 +153,12 @@ async function files(): Promise<CoverageFiles> {
       { slug: 'lost-top', name: 'Lost top', wikidata: QID.lost, sources: ['coverage-surveys'], sitelinks: 45, note: '' },
       // Unread, and marked missing by the next run: no curator will see it, so held and named.
       { slug: 'pending-missing-top', name: 'Pending and missing', wikidata: TOPS.pendingMissing, sources: ['coverage-surveys'], sitelinks: 44, note: '' },
+    ]], ['notable-works', [
+      // A kind of work stands by its treasure (#1988): shown by an offered venue, held where no venue a reader may go to shows it.
+      { slug: 'find-on-view', name: 'Find on view', wikidata: WORKS.shown, sources: ['coverage-surveys'], sitelinks: 60, note: '' },
+      { slug: 'find-nobody-can-see', name: 'Find nobody can see', wikidata: WORKS.hidden, sources: ['coverage-surveys'], sitelinks: 50, note: '' },
+      { slug: 'find-not-held', name: 'Find not held', wikidata: TOPS.findNotHeld, sources: ['coverage-surveys'], sitelinks: 40, note: '' },
+      { slug: 'find-under-every-line', name: 'Find under every line', wikidata: TOPS.findUnderLine, sources: ['coverage-surveys'], sitelinks: 5, note: '' },
     ]]]),
   };
 }
@@ -312,6 +321,17 @@ describe('the coverage report on a real database', () => {
       ['under-the-line', 'under_line', null],
     ]);
     expect(report.liveKinds.find(kind => kind.slug === 'world-heritage')?.calibration).toBeNull();
+  });
+
+  it('stands each find of a kind of work by its treasure: shown by a venue a reader may go to, held unshown, absent, under every line (#1988)', () => {
+    const works = report.liveKinds.find(kind => kind.slug === 'notable-works')?.calibration;
+    expect(works).toMatchObject({ entries: 4, offered: 1, admitted: 0 });
+    expect(works?.misses.map(miss => [miss.slug, miss.standing, miss.detail])).toEqual([
+      // Linked to a dig that waits for a curator: no reader may go there, so the find is held.
+      ['find-nobody-can-see', 'held', WORKS.hidden],
+      ['find-not-held', 'absent', null],
+      ['find-under-every-line', 'under_line', null],
+    ]);
   });
 
   it('calls stale a row judgement no offered row within reach carries', () => {

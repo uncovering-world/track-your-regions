@@ -151,7 +151,7 @@ export interface CalibrationTop {
   sitelinks: number | null;
   sources: string[];
   standing: CalibrationStanding;
-  /** The catalogue place that holds it, for a held one; the run's reason, for a refused one. */
+  /** For a held one, the catalogue place that holds it, or for a work the treasure no venue shows; the run's reason, for a refused one. */
   detail: string | null;
 }
 
@@ -283,6 +283,18 @@ const CODE_LINES: Readonly<Record<string, number>> = {
  */
 function lineOf(kind: KindRow): number | null {
   return kind.enter_sitelinks ?? CODE_LINES[kind.slug] ?? null;
+}
+
+/**
+ * The line a calibration top is under (#1988). For a kind of place it is the kind's own.
+ * A work reaches a venue through more than one door: an artwork at the museums' line,
+ * a find at the finds' line on its source row. So a work is under the line only below
+ * the lowest of them.
+ */
+function calibrationLineOf(kind: KindRow): number | null {
+  const lines = [lineOf(kind), kind.form === 'work' ? kind.find_enter_sitelinks : null]
+    .filter((line): line is number => line !== null);
+  return lines.length === 0 ? null : Math.min(...lines);
 }
 
 function offeredIn(result: ExpectationResult, kind: KindRow): boolean {
@@ -512,7 +524,7 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
         wellKnownMissing,
         judgedByCause: judgedByCause(wellKnownMissing),
         belowLineMissing: absent.length - wellKnown.length,
-        calibration: calibrationOf(kind, facts.calibration, line, sourceNames),
+        calibration: calibrationOf(kind, facts.calibration, calibrationLineOf(kind), sourceNames),
       };
     })
     .sort((a, b) => a.slug.localeCompare(b.slug));

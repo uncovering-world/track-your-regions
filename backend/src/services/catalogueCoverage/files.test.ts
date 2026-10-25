@@ -240,14 +240,22 @@ describe('the calibration lists (#1864)', () => {
     expect(problemsOf(files({ calibrationSources: [source()] }))).toEqual([]);
   });
 
-  it('refuses a list for a kind the register lacks, one only proposed, or one that holds no place', () => {
+  it('refuses a list for a kind the register lacks, one only proposed, or one that holds neither a place nor a work', () => {
     expect(problemsOf(calibrated({ digs: [top()] }))).toEqual(['calibration/digs.jsonl: no kind digs in kinds.jsonl']);
     expect(problemsOf(calibrated({ markets: [top()] }))).toEqual([
       'calibration/markets.jsonl: markets is only proposed: a fame line is a live kind\'s to calibrate',
     ]);
-    expect(problemsOf(calibrated({ 'notable-works': [top()] }))).toEqual([
-      'calibration/notable-works.jsonl: notable-works holds a work: a calibration list names places, by their Wikidata items',
+    const liveActivity = KINDS.map(kind => (kind.slug === 'on-site-activities' ? { ...kind, status: 'live' } : kind));
+    expect(problemsOf(files({ kinds: liveActivity, calibrationSources: [source()], calibration: { 'on-site-activities': [top()] } }))).toEqual([
+      'calibration/on-site-activities.jsonl: on-site-activities is a kind of activity: a calibration list names places or works, by their Wikidata items',
     ]);
+  });
+
+  it('takes a list for a live kind of work: the finds a museum is admitted for (#1988)', () => {
+    const rosetta = top({ slug: 'rosetta-stone', name: 'Rosetta Stone', wikidata: 'Q48584', sitelinks: 105 });
+    const dir = calibrated({ 'notable-works': [rosetta] });
+    expect(problemsOf(dir)).toEqual([]);
+    expect(readCoverageFiles(dir).calibration.get('notable-works')?.map(t => [t.slug, t.wikidata])).toEqual([['rosetta-stone', 'Q48584']]);
   });
 
   it('refuses a slug or an item used twice in one list, naming the first line', () => {
