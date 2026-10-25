@@ -23,6 +23,7 @@
     "./preferences": "./src/preferences.ts",
     "./readerFields": "./src/readerFields.ts",
     "./runStatuses": "./src/runStatuses.ts",
+    "./textCredits": "./src/textCredits.ts",
     "./visits": "./src/visits.ts"
   },
   "scripts": {
