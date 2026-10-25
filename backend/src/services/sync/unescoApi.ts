@@ -24,6 +24,14 @@
  * not own: a User-Agent that says who is calling, a deadline so a hung socket
  * cannot hang a run, and a retry that waits rather than gives up — which the old
  * one did not have, so a single 502 from their front end ended the run.
+ *
+ * The portal's `robots.txt` closes `/api/` to every agent but Googlebot. That is
+ * Opendatasoft's default file, written for crawlers, and it does not decide this
+ * call (ADR-0148): the dataset page lists this export as its download, and the
+ * platform documents it for programs. UNESCO's terms bar API clients from bulk
+ * download save under an applicable licence, and the dataset is CC BY-SA 4.0.
+ * The source's record holds the reading and the terms, with their dates
+ * (`docs/sources/global/unesco-world-heritage-list.md`).
  */
 
 import {
