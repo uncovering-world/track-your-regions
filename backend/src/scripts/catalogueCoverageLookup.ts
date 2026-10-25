@@ -1,15 +1,18 @@
 /**
  * The lookups a survey makes while a region's list is compiled (ADR-0081):
- * what Wikivoyage names, which Wikidata items a name could be, and what
- * Wikidata holds about an item.
+ * what Wikivoyage names, which Wikidata items a name could be, what Wikidata
+ * holds about an item, and the World Heritage properties of a country.
  *
  * It exists so that an identifier on a survey list is always one a search
  * returned and a distance confirmed, never one written from memory. It reads
- * and prints; it writes no list and touches no database.
+ * and prints; it writes no list. Only `unesco` reads the database, the
+ * catalogue's own UNESCO rows (`worldHeritageReading`, #1981), so it runs where
+ * the catalogue's database answers.
  *
  *   wikivoyage <Title>... [--save <dir>]   what each article names, by section, and the districts and day trips it links
  *   search <phrase>...                     the Wikidata items a name could be
  *   facts <lat> <lon> <Qid>...             label, sitelinks, distance from the centre and classes of each item
+ *   unesco <CC|id>...                      the World Heritage properties of each country (ISO code) or id, with their components
  *
  * A phrase or a title with spaces is one quoted argument. Phrases and ids are
  * also read from standard input, one per line, when none is given.
@@ -19,6 +22,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { userAgent } from '../config/userAgent.js';
+import { pool } from '../db/index.js';
+import { worldHeritageReading } from '../services/catalogueCoverage/worldHeritageReading.js';
 
 const WIKIVOYAGE_API = 'https://en.wikivoyage.org/w/api.php';
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
@@ -239,6 +244,8 @@ export interface ItemFacts {
   lon: number | null;
   /** The ids of what the item is an instance of. */
   classes: string[];
+  /** Its World Heritage ids (P757), for a property the catalogue does not hold yet (#1981). */
+  worldHeritage: string[];
 }
 
 /** What a survey list keeps of a Wikidata item. */
@@ -253,6 +260,7 @@ export function factsOf(id: string, entity: Entity | undefined): ItemFacts {
     lat: point ? Math.round(point.latitude * 1e5) / 1e5 : null,
     lon: point ? Math.round(point.longitude * 1e5) / 1e5 : null,
     classes: values('P31').map(value => (value as { id: string }).id),
+    worldHeritage: values('P757').filter((value): value is string => typeof value === 'string'),
   };
 }
 
@@ -273,7 +281,28 @@ async function facts(lat: number, lon: number, ids: string[]): Promise<void> {
       ? 'NO-COORD'
       : `${Math.round(kmBetween({ lat, lon }, { lat: item.lat, lon: item.lon }))} km`;
     const classes = item.classes.map(id => classNames[id]?.labels?.en?.value ?? id).join('; ');
-    console.log([item.id, item.label, item.sitelinks, distance, item.lat ?? '', item.lon ?? '', classes].join('\t'));
+    const heritage = item.worldHeritage.length > 0 ? `WHS ${item.worldHeritage.join(',')}` : '';
+    console.log([item.id, item.label, item.sitelinks, distance, item.lat ?? '', item.lon ?? '', classes, heritage].join('\t'));
+  }
+}
+
+/** The properties and components of each country or id asked, read off the catalogue's UNESCO rows. */
+async function unesco(asked: string[]): Promise<void> {
+  // An argument that is neither would read as "the catalogue holds nothing here",
+  // which is the reading a survey withdraws a credit on.
+  if (asked.length === 0 || asked.some(arg => !/^(?:[A-Za-z]{2}|\d+[a-z]*)$/.test(arg))) {
+    console.error(USAGE);
+    process.exit(2);
+  }
+  const countries = asked.filter(arg => /^[A-Za-z]{2}$/.test(arg));
+  const ids = asked.filter(arg => /^\d+[a-z]*$/.test(arg));
+  try {
+    for (const property of await worldHeritageReading(pool, { countries, ids })) {
+      console.log(`## ${property.id} | ${property.name} | ${property.countries.join(', ')}`);
+      for (const component of property.components) console.log(`   ${component.ref} | ${component.name ?? ''}`);
+    }
+  } finally {
+    await pool.end();
   }
 }
 
@@ -286,20 +315,20 @@ async function fromStdin(): Promise<string[]> {
   return Buffer.concat(chunks).toString('utf8').split('\n').map(line => line.trim()).filter(line => line !== '');
 }
 
-const USAGE = 'Usage: wikivoyage <Title>... [--save <dir>] | search <phrase>... | facts <lat> <lon> <Qid>...';
+const USAGE = 'Usage: wikivoyage <Title>... [--save <dir>] | search <phrase>... | facts <lat> <lon> <Qid>... | unesco <CC|id>...';
 
-async function main(): Promise<void> {
-  const [command, ...rest] = process.argv.slice(2);
-  if (command === 'wikivoyage') {
+/** Each command, given the arguments after its name. */
+const COMMANDS: Record<string, (rest: string[]) => Promise<void>> = {
+  wikivoyage: async (rest) => {
     const saveFlag = rest.indexOf('--save');
     // A relative path is taken from where the command was typed: `npm --prefix backend run`
     // moves the working directory to `backend/` and leaves the caller's in `INIT_CWD`.
     const saveDir = saveFlag >= 0 && rest[saveFlag + 1] ? resolvePath(process.env.INIT_CWD ?? process.cwd(), rest[saveFlag + 1]) : undefined;
     const titles = rest.filter((_, index) => saveFlag < 0 || (index !== saveFlag && index !== saveFlag + 1));
     await wikivoyage(titles.length > 0 ? titles : await fromStdin(), saveDir);
-  } else if (command === 'search') {
-    await search(rest.length > 0 ? rest : await fromStdin());
-  } else if (command === 'facts') {
+  },
+  search: async (rest) => search(rest.length > 0 ? rest : await fromStdin()),
+  facts: async (rest) => {
     const [lat, lon, ...ids] = rest;
     if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) {
       console.error(USAGE);
@@ -307,10 +336,18 @@ async function main(): Promise<void> {
     }
     const asked = ids.length > 0 ? ids : await fromStdin();
     await facts(Number(lat), Number(lon), asked.map(line => line.split(/\s/)[0]).filter(id => /^Q[1-9]\d*$/.test(id)));
-  } else {
+  },
+  unesco: async (rest) => unesco(rest.length > 0 ? rest : await fromStdin()),
+};
+
+async function main(): Promise<void> {
+  const [command, ...rest] = process.argv.slice(2);
+  const run = Object.hasOwn(COMMANDS, command ?? '') ? COMMANDS[command] : undefined;
+  if (!run) {
     console.error(USAGE);
     process.exit(2);
   }
+  await run(rest);
 }
 
 // Only run main() when invoked directly, not when imported by a spec.

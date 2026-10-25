@@ -10,9 +10,12 @@
 #   scripts/catalogue-coverage.sh lookup wikivoyage <Title>... [--save <dir>]
 #   scripts/catalogue-coverage.sh lookup search <phrase>...
 #   scripts/catalogue-coverage.sh lookup facts <lat> <lon> <Qid>...
+#   scripts/catalogue-coverage.sh lookup unesco <CC|id>...
 #       what a survey looks up while a list is compiled: what Wikivoyage names,
-#       which Wikidata items a name could be, what Wikidata holds about an item.
-#       It reads the web and prints; it touches no database
+#       which Wikidata items a name could be, what Wikidata holds about an item,
+#       and the World Heritage properties of a country with their components.
+#       It reads and prints; only `unesco` reads the database, the catalogue's
+#       own UNESCO rows (#1981)
 #
 # The backend's own scripts read the connection from the environment and
 # nothing loads .env for them, so this sets it the way db-migrate.sh does: the
@@ -28,7 +31,7 @@ DB_NAME="$(get_active_db)"
 export DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME
 
 usage() {
-    echo "Usage: scripts/catalogue-coverage.sh load [--dir <path>] | report [--region <slug>]... [--json] | lookup wikivoyage|search|facts ..." >&2
+    echo "Usage: scripts/catalogue-coverage.sh load [--dir <path>] | report [--region <slug>]... [--json] | lookup wikivoyage|search|facts|unesco ..." >&2
 }
 
 case "${1:-}" in
