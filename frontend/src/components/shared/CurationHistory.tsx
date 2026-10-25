@@ -7,6 +7,10 @@
  * What an entry reads as — the chip naming each act and the line under it — is
  * `curationLog.ts`, presentation the admin panel reads too.
  *
+ * A near pair's *part of* or *two places* is taken back from its row the same
+ * way (#1991), whether the pass read it off Wikidata or a curator gave it: the
+ * pair is asked about again on the review queue.
+ *
  * A place a merge folded another entry into reads that entry's history too
  * (#1366): what was decided about it came along with what the merge moved, a
  * pin among them. Those rows say which entry they were about and offer nothing
@@ -20,14 +24,17 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import UndoIcon from '@mui/icons-material/Undo';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchCurationLog, takeBackPointItem, undoPlaceMerge, undoSeparation, type CurationLogEntry } from '../../api/curation';
+import {
+  fetchCurationLog, takeBackMergeProposal, takeBackPointItem, undoPlaceMerge, undoSeparation, type CurationLogEntry,
+} from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
 import { formatRelativeTime } from '../../utils/dateFormat';
 import { displayNameOf } from '../../utils/displayName';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';
 import {
-  actionLabel, catalogueActor, formatLogDetails, takeableItems, undoableMerge, undoableSeparation, type TakeableItem,
+  actionLabel, catalogueActor, formatLogDetails, takeableItems, takeablePair, undoableMerge, undoableSeparation,
+  type TakeableItem,
 } from './curationLog';
 
 interface CurationHistoryProps {
@@ -52,7 +59,9 @@ function takeBackLabel(item: TakeableItem): string {
   return `Take back: ${point} ← ${item.label ?? item.item}`;
 }
 
-function HistoryRow({ entry, onUndo, undoLabel = 'Undo this merge', undoing, takeBacks = [], onTakeBack, takingBack }: {
+function HistoryRow({
+  entry, onUndo, undoLabel = 'Undo this merge', undoing, takeBacks = [], onTakeBack, takingBack, onTakeBackPair, takingBackPair,
+}: {
   entry: CurationLogEntry;
   /** Present on a merge, or a separation (ADR-0144), this place can still undo. */
   onUndo?: () => void;
@@ -63,6 +72,9 @@ function HistoryRow({ entry, onUndo, undoLabel = 'Undo this merge', undoing, tak
   onTakeBack?: (item: TakeableItem) => void;
   /** The point whose take-back is in flight, if any. */
   takingBack?: number;
+  /** Present on a near pair's answer this place can still take back (#1991). */
+  onTakeBackPair?: () => void;
+  takingBackPair?: boolean;
 }) {
   const actionInfo = actionLabel(entry.action) || { label: entry.action, color: '#6B7280' };
   const details = formatLogDetails(entry);
@@ -139,6 +151,17 @@ function HistoryRow({ entry, onUndo, undoLabel = 'Undo this merge', undoing, tak
             {takingBack === item.locationId ? 'Taking back…' : takeBackLabel(item)}
           </Button>
         ))}
+        {onTakeBackPair && (
+          <Button
+            size="small"
+            startIcon={<UndoIcon fontSize="small" />}
+            disabled={takingBackPair}
+            onClick={onTakeBackPair}
+            sx={{ mt: 0.25, py: 0, textTransform: 'none', fontSize: '0.7rem' }}
+          >
+            {takingBackPair ? 'Taking back…' : 'Take back this answer'}
+          </Button>
+        )}
       </Box>
       <Typography
         variant="caption"
@@ -208,6 +231,16 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
     },
   });
 
+  const takeBackPair = useMutation({
+    mutationFn: (proposalId: number) => takeBackMergeProposal(experienceId, proposalId),
+    onSuccess: () => {
+      // The pair is open again: the place's history, and the review queue,
+      // where it is asked about again, are read afresh.
+      queryClient.invalidateQueries({ queryKey: queryKeys.experience.curationLogAll });
+      queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll });
+    },
+  });
+
   const log = logQuery.data ?? [];
   return (
     <>
@@ -239,6 +272,9 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
         {takeBack.isError && (
           <Alert severity="error" sx={{ py: 0, mb: 1 }}>{(takeBack.error as Error).message}</Alert>
         )}
+        {takeBackPair.isError && (
+          <Alert severity="error" sx={{ py: 0, mb: 1 }}>{(takeBackPair.error as Error).message}</Alert>
+        )}
         <Box sx={{ maxHeight: 240, overflowY: 'auto' }}>
           {logQuery.isLoading && (
             <LoadingSpinner size={20} padding="8px 0" />
@@ -256,6 +292,7 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
           {log.map((entry) => {
             const own = entry.folded_id === null;
             const act = own ? undoableAct(entry, log, experienceId) : null;
+            const pair = own ? takeablePair(entry, log) : null;
             return (
               <HistoryRow
                 key={entry.id}
@@ -266,6 +303,8 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
                 takeBacks={own ? takeableItems(entry, log) : []}
                 onTakeBack={item => takeBack.mutate(item)}
                 takingBack={takeBack.isPending ? takeBack.variables?.locationId : undefined}
+                onTakeBackPair={pair === null ? undefined : () => takeBackPair.mutate(pair)}
+                takingBackPair={takeBackPair.isPending && takeBackPair.variables === pair}
               />
             );
           })}
