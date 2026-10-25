@@ -195,6 +195,17 @@ all (#470) were on no map anywhere. `WorldExperiencePoints` draws the catalogue 
 (#910, [ADR-0061](../decisions/0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md)):
 every reader-visible place of one kind, or of all kinds, across the whole world.
 
+**A link to a region never draws the world on its way there** (#2044). On `/wv/5/r/6737` the
+selection arrives a round trip after the map mounts, and without it the map's level reads as
+the whole world. `regionPending` from `useNavigation` closes that gap: it is true while the
+address names a region and nothing is selected yet. It is derived in the render, so the first
+frame already has it. While it holds, `useWorldLayer` keeps the layer off and `useTileUrls`
+returns no tile URL, so a link to the Prado's card reads no point of the catalogue and no
+world tile on its way. A departure passes through the flag for the one commit before the
+address catches up, which draws no world either. An addressed region that never resolves is
+written out of the address (`useAddressedRegion`), which ends the wait and brings the world
+back.
+
 **It is a read of points, not of objects.** The catalogue's objects stand at more than twice as
 many places a traveller can be sent to (3 766 objects at 8 842 places on 2026-09-22), and a serial World Heritage site is one row and
 hundreds of them. A read of objects answers one row where a traveller has hundreds of places to
