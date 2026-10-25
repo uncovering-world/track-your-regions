@@ -236,7 +236,22 @@ Reading a list and showing what it says are two different permissions, and both 
   `User-agent: *` group of its `robots.txt` does not decide it. Wikidata's query service,
   Wikimedia's Action API, Overpass and Nominatim all close their paths to `*` and document them
   for scripts. A group naming `TrackYourRegionsBot`, a usage signal, and a TDM reservation where
-  the source is read under the exception rather than a licence still bind such a call (#2005).
+  the source is read under the exception rather than a licence still bind such a call. Every bot
+  client asks `assertRobotsAllow` (`backend/src/services/robots/robotsSignals.ts`) before it sends
+  one: a sync run reads the host's file afresh at its start (`refreshRobotsForRun`), every other
+  client within an hour (`CACHE_MS`), a group naming the token is applied to the path, and a
+  usage signal refusing a model's input (`Content-Signal: ai-input=no`, or `Content-Usage:
+  ai-use=n` where it is the most specific line for the path) stops a read made to be handed to a
+  model, such as an article's lead read for Jev's visit question. A signal is about using content, not reaching it, so a
+  catalogue read of the same host goes on: a run stores facts, and a curator's suggestion that
+  offers Jev two sources' names passes facts, not the host's text. A refusal of training refuses
+  nothing, since no program trains. A refusal is handled as any failure of the read it stops: a read the
+  run cannot go without (the source's list, its SPARQL and OSM reads) ends the run, and its sync
+  history entry records the host and the reason (the run log's `error_details`), while a read the
+  run can do without is logged and skipped this time: a refused credit batch leaves its pictures
+  uncredited, and a refused lead read leaves its place unasked. A file that cannot
+  be read lets the call go on, logged. No run relies on the TDM exception, so a reservation is not
+  checked.
   The source's record states what the host's `robots.txt` says for the path and why it does not
   decide.
 - **Scraping** is the access mode of last resort (§ 6.2). A program that fetches pages is a

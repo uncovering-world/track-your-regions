@@ -84,7 +84,8 @@ decision 1), for three reasons, all read on 2026-10-25:
 The run identifies itself (`UNESCO_USER_AGENT`, `userAgent({ bot: true })`), asks only for the
 fields it reads, waits on a `429` or a `502` and retries within its budget, and follows no links.
 No group names `TrackYourRegionsBot`, and the file carries no usage signal. A change to either
-changes this verdict (ADR-0148 decision 5). Reading the file is owed by #2005.
+changes this verdict (ADR-0148 decision 5). The run asks the file before its call
+(`assertRobotsAllow`), as every bot client does.
 
 The survey's agent is the other half: it may not fetch the dataset's `/api/` paths as pages, and
 reads the list through the catalogue's own rows instead (`lookup unesco`, #1981).

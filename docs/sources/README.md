@@ -124,8 +124,13 @@ documents for programs is judged on that documentation, the licence and the term
 judged as a crawl (`docs/tech/filling-a-kind.md` § 5). Neither is read off the other. A leave
 given to an Anthropic agent by name is no leave for a program, and a host refused to the agent can
 still be read by a program through its documented API. `program` is `unknown` wherever the record
-proposes no sync. Where the planned use passes what is read to a model (`model`), a terms clause
-that bars use by or for AI bars the program too, unless a licence the clause yields to covers it.
+proposes no sync. A `robots.txt` group naming `TrackYourRegionsBot`, or a usage signal on the path
+a program calls, is named in `program_rests_on`. The clients ask the file before they call
+(`assertRobotsAllow`): a sync run reads it afresh at its start, and every other client within the
+hour. So a new group stops a call before its record is updated, and so does a new signal against
+a read made to be handed to a model. Where the planned use passes what is
+read to a model (`model`), a terms clause that bars use by or for AI bars the program too, unless
+a licence the clause yields to covers it.
 
 A record under `sights/` reads the same shape with three differences. Its `kinds` are the slugs
 of the coverage register (`db/catalogue-coverage/kinds.jsonl`), the kinds a traveller expects,
