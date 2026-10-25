@@ -28,6 +28,9 @@ docs/sources/
 ├── heritage/                ← national heritage registers: protected monuments, sites and areas
 │   ├── ch-kgs-inventar.md
 │   └── …
+├── public-art/              ← registers of a city's or a country's public art: sculpture, monuments, murals
+│   ├── de-bildhauerei-in-berlin.md
+│   └── …
 └── global/                  ← sources native to no unit: read per unit, or read for the world
     ├── openstreetmap-planet.md
     ├── openstreetmap-qlever.md
@@ -49,7 +52,8 @@ or an association that recommends what a visitor should see, eat and do, which t
 catalogue-coverage surveys read ([`docs/tech/catalogue-coverage.md`](../tech/catalogue-coverage.md));
 `heritage/` for a national heritage register — the protected monuments, sites and areas a state
 lists, which answer for the World Heritage, archaeology and architecture kinds alike and give a
-World Heritage component its official record (#1306); `public-art/` when the first monument register arrives; `global/` for the sources native to no unit — one that answers for any kind
+World Heritage component its official record (#1306); `public-art/` for a register of the public art of a city or a country, which answers for
+Public art and Monuments & memorials; `global/` for the sources native to no unit — one that answers for any kind
 read per unit, and one that answers for the whole world at once, which is what a world tier is
 read from. A file per source, named `<country code>-<slug>.md` for a native source and
 `<slug>.md` for a global one.
