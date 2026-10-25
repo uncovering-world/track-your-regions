@@ -41,14 +41,15 @@ export interface FamilyFields {
  * languages, its own text, the states party's codes and the facts of the
  * inscription. Wikidata's item, the place's own website, its classes, fame and
  * the counts a run makes of it. UNESCO's page about a site is its own key
- * (`unescoUrl`, #1538). The country names both families write, but they name
+ * (`unescoUrl`, #1538), and so is the run's mark of what it took from UNESCO's
+ * dataset (`unesco`, ADR-0149). The country names both families write, but they name
  * UNESCO's codes, so they go with them (ADR-0111, #1553). The Wikipedia
  * article is written by both families and listed for neither.
  */
 export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
   unesco: {
     columns: ['nameLocal', 'description', 'countryCodes', 'countryNames'],
-    metadata: ['dateInscribed', 'inDanger', 'dangerList', 'criteria', 'region', 'transboundary', 'areaHectares', 'unescoUrl'],
+    metadata: ['dateInscribed', 'inDanger', 'dangerList', 'criteria', 'region', 'transboundary', 'areaHectares', 'unescoUrl', 'unesco'],
   },
   wikidata: {
     columns: [],
