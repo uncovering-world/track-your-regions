@@ -172,8 +172,8 @@ merge rule can still change it (Museumsportal Berlin keeps the address to write 
 national registry is still to be read). `refused` is for what no measurement can rescue — the
 terms — and for a score that stayed below the line after the canon was measured. One pairing is
 the exception: a source a sync read before the register existed keeps `adopted` while its verdict
-says `hold`, and the record names the issue that answers its share-alike. UNESCO's World Heritage
-List is that case (#2010).
+says `hold`, and the record names the issue that answers its share-alike. No source is in that
+state now: UNESCO's World Heritage List was, until ADR-0149 answered its share-alike (#2010).
 
 A record moves forward by an issue and says which in `issue`; the body keeps the history in
 order, newest last. A refused record is kept, not deleted — it is what stops the same source

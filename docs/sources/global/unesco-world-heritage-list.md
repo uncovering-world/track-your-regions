@@ -43,7 +43,7 @@ scorecard:
   access: 2
   cadence: 1
   total: 13
-  verdict: hold
+  verdict: adoptable
 status: adopted
 issue: 2000
 looked_at: 2026-10-25
@@ -125,12 +125,14 @@ articles. It would have to keep the same properties and components.
 - **Access 2.** An API.
 - **Cadence 1.** Irregular.
 
-The verdict is `hold`, because the terms score 1 for share-alike (`docs/tech/filling-a-kind.md`
-§ 6.2, *Hold*; the share-alike question itself is § 5). The run predates the register, and the catalogue stores more than facts: every property's
-short description, CC BY-SA text, shown with no credit. #2010 asks what the catalogue owes for it.
+The verdict is `adoptable`, at 13 of 16. The terms score 1 for share-alike, and the catalogue
+has answered what that binds ([ADR-0149](../../decisions/0149-what-the-catalogue-takes-from-unescos-dataset-it-keeps-separable-credits-and-offers-under-cc-by-sa.md), #2010): every row the run writes is marked with what it took
+from `whc001` (`metadata.unesco`, the facts apart from the text), that part is offered under
+CC BY-SA 4.0 to anyone who asks, and the description, CC BY-SA text, is shown with "UNESCO World
+Heritage Centre, CC BY-SA 4.0" wherever it is shown. Until then the verdict was `hold`
+(`docs/tech/filling-a-kind.md` § 6.2).
 
 **Status.** `adopted`: the UNESCO run reads it (World Heritage Sites, `experience_sources` id 1).
-It holds `adopted` beside a `hold` verdict because the run predates the register
-(`docs/sources/README.md` § Status). The maintainer decided on 2026-10-25 to answer the
-share-alike as ADR-0059 does for OpenStreetMap, and #2010 builds that. This record was written by
-#2000, after ADR-0148.
+The run predates the register (`docs/sources/README.md` § Status). The maintainer decided on
+2026-10-25 to answer the share-alike as ADR-0059 does for OpenStreetMap, and ADR-0149 records it.
+This record was written by #2000, after ADR-0148.
