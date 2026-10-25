@@ -228,7 +228,8 @@ const SYNC_OWNED_SLICE = `COALESCE((
 
 /**
  * The keys of the incoming metadata a held row takes all the same (#1353): a
- * credit re-read for the same picture, a number re-measured by a little
+ * credit re-read for the same picture or arriving for it where the place holds
+ * none (ADR-0151), a number re-measured by a little
  * (`passingMetadataKeys`, `changeSet.ts`). `$29`, worked out in TS from the
  * stored row read under the lock and filed by the diff with the same rule.
  */

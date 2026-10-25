@@ -353,6 +353,39 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     }
   });
 
+  it('writes the credit of the picture a place shows where it holds none (#1966)', async () => {
+    // Stonehenge: `Stonehenge Total.jpg` shown with no credit, and Stefan Kühn's
+    // credit for that file brought by Archaeology.
+    const created = await upsertExperienceRecord(site({}));
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, archaeology],
+    );
+    const log = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
+       VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [archaeology],
+    )).rows[0].id;
+    const state = async () => (await pool.query<{ credit: unknown; pointer: number | null; state: string }>(
+      `SELECT e.metadata -> 'imageCredit' AS credit, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
+         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+        WHERE e.id = $1`,
+      [created.experienceId, archaeology],
+    )).rows[0];
+    const kuhn = { author: 'Stefan Kühn', license: 'CC BY-SA 3.0' };
+    try {
+      const credited = await upsertExperienceRecord(site({ imageCredit: kuhn }), { syncLogId: log });
+      expect(credited.changeSet.heldFields).toEqual([]);
+      expect(credited.changeSet.changedFields.map(f => [f.field, f.passedTheGate]))
+        .toEqual([['metadata.imageCredit', 'same-file-credit']]);
+      expect(await state()).toEqual({ credit: kuhn, pointer: null, state: 'verified' });
+    } finally {
+      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
+      await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
+    }
+  });
+
   it('writes the Wikidata item a place holds none of, and asks about another item (#1794)', async () => {
     // Ajanta Caves: made by the UNESCO run, which writes no item, and known to
     // Archaeology by its membership's id.

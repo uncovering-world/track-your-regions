@@ -78,7 +78,8 @@ export type FieldSignificance = 'major' | 'minor';
  * unasked (#1353): it replaces no fact a reader holds (ADR-0099, ADR-0133, ADR-0135).
  * A part's name
  * with a qualifier added and nothing removed (*Church of All Saints* → *…,
- * Blizne*); a picture credit re-read for the same file under the same licence;
+ * Blizne*); a picture credit re-read for the same file under the same licence,
+ * or arriving for it where the place holds none (ADR-0151);
  * a measurement (`MEASURED_METADATA_KEYS`) the source re-took within
  * `REMEASURED_SHARE` (an area of 821.7474 ha → 821.748); the Wikidata item a
  * place held none of, written by a run that knows the place by it (`own-item`,
@@ -126,19 +127,22 @@ export function passesAsUnseen(field: string): boolean {
 /**
  * Whether a metadata key's rewrite passes the gate, and as which class, or
  * null. `sameImage` is whether the place keeps its picture: a credit passes
- * only beside the same file. The keys the gate weighs as major
- * (`MAJOR_METADATA_KEYS` — an inscription year among them) never pass, and a
- * value that appears or disappears is no re-reading.
+ * only beside the same file, and only one that names a licence. The keys the gate weighs as major
+ * (`MAJOR_METADATA_KEYS` — an inscription year among them) never pass. A
+ * value that disappears, or one that appears other than as the file's first
+ * credit or the place's first Wikidata item, is no re-reading.
  */
 export function metadataPassesTheGate(key: string, old: unknown, next: unknown, sameImage: boolean): GatePass | null {
   if ((MAJOR_METADATA_KEYS as readonly string[]).includes(key)) return null;
   if (key === 'imageCredit') {
     const [a, b] = [old as { license?: unknown } | null, next as { license?: unknown } | null];
-    // A licence on both sides, and the same one: a credit that names none
-    // cannot be read as the same terms.
-    return sameImage && a && b && typeof a === 'object' && typeof b === 'object'
-      && typeof a.license === 'string' && a.license !== '' && a.license === b.license
-      ? 'same-file-credit' : null;
+    if (!sameImage || !b || typeof b !== 'object' || typeof b.license !== 'string' || b.license === '') return null;
+    // The file's credit where the place holds none (#1966): the picture stays,
+    // and a reader only gains the author's name. Otherwise a licence on both
+    // sides, and the same one: a credit that names none cannot be read as the
+    // same terms.
+    if (isEmptyValue(old)) return 'same-file-credit';
+    return a && typeof a === 'object' && a.license === b.license ? 'same-file-credit' : null;
   }
   // Every Wikidata kind writes as the item the id its membership knows the place
   // by, so an item arriving where the place holds none is that id written down:

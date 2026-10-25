@@ -1378,7 +1378,7 @@ export const ChangedFieldSignificance = {
 } as const;
 
 /**
- * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, a text rewritten in its typesetting alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place (ADR-0140).
+ * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture or arriving for it where the place holds none (ADR-0151), an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, a text rewritten in its typesetting alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place (ADR-0140).
  */
 export type ChangedFieldPassedTheGate = typeof ChangedFieldPassedTheGate[keyof typeof ChangedFieldPassedTheGate];
 
@@ -1409,7 +1409,7 @@ export interface ChangedField {
   curatedConflict?: boolean;
   /** The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025). */
   held?: boolean;
-  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, a text rewritten in its typesetting alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place (ADR-0140). */
+  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture or arriving for it where the place holds none (ADR-0151), an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, a text rewritten in its typesetting alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place (ADR-0140). */
   passedTheGate?: ChangedFieldPassedTheGate;
 }
 
