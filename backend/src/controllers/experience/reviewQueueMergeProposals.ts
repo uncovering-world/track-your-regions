@@ -11,14 +11,19 @@
  * the one rule the keys phase and the answer (`mergeProposalController.ts`)
  * read too. The card names the anchor's first membership, so an answer from
  * the batch is scoped as the keys phase scoped the question: by a source of
- * either place.
+ * either place. Each place's item carries its label and description from the
+ * local Wikidata subset (`termsOf`), so a curator tells two items apart on the
+ * card (#1970): Babylon's city, Q5684, from its World Heritage listing,
+ * Q100329356.
  */
 
 import type { QueryResult } from 'pg';
+import type { MergePair } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, rowKindJoinSql } from '../../db/membership.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
+import { termsOf } from '../../services/sync/subset/entities.js';
 import { mergeProposalOpenSql } from './reviewQueuePredicates.js';
 
 /**
@@ -70,6 +75,7 @@ const PAIRS = `(SELECT jsonb_agg(jsonb_build_object(
            'otherLongitude', ST_X(b.location),
            'otherWikidataItem', ${itemSql('b')},
            'anchorWikidataItem', ${itemSql('e')},
+           'anchorKinds', ${kindNamesSql('e')},
            'distanceM', p.distance_m,
            'nameSimilarity', p.name_similarity,
            'exact', p.exact,
@@ -84,8 +90,11 @@ const PAIRS = `(SELECT jsonb_agg(jsonb_build_object(
 /** The anchor's first membership: whose source a batch answer names, as the keys phase scoped the row. */
 const ANCHOR_MEMBERSHIP = `(SELECT m.id FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id ORDER BY m.id LIMIT 1)`;
 
+/** A pair as the statement builds it, before its items' terms are read. */
+type BarePair = Omit<MergePair, 'otherWikidataLabel' | 'otherWikidataDescription' | 'anchorWikidataLabel' | 'anchorWikidataDescription'>;
+
 export async function queryMergeProposals(ids: number[]): Promise<QueryResult> {
-  return pool.query(`
+  const result = await pool.query<{ merge_pairs: BarePair[] | null }>(`
     SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'merge-proposals' AS kind, NULL::jsonb AS proposed,
@@ -98,4 +107,15 @@ export async function queryMergeProposals(ids: number[]): Promise<QueryResult> {
                     WHERE p.place_a = e.id AND ${mergeProposalOpenSql('p', 'e', 'b')})
      ORDER BY e.id
   `, [ids]);
+  const pairs = result.rows.flatMap(row => row.merge_pairs ?? []);
+  const terms = await termsOf([...new Set(pairs.flatMap(pair => [pair.otherWikidataItem, pair.anchorWikidataItem])
+    .filter((item): item is string => item !== null))]);
+  const of = (item: string | null) => (item === null ? undefined : terms.get(item));
+  for (const pair of pairs as MergePair[]) {
+    pair.otherWikidataLabel = of(pair.otherWikidataItem)?.label ?? null;
+    pair.otherWikidataDescription = of(pair.otherWikidataItem)?.description ?? null;
+    pair.anchorWikidataLabel = of(pair.anchorWikidataItem)?.label ?? null;
+    pair.anchorWikidataDescription = of(pair.anchorWikidataItem)?.description ?? null;
+  }
+  return result;
 }
