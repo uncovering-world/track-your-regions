@@ -243,7 +243,8 @@ Reading a list and showing what it says are two different permissions, and both 
   crawler (ADR-0148 decision 3), so scraping needs the terms and the robots signals to permit it
   (the group naming `TrackYourRegionsBot`, or the `*` group where none does), a stable page
   shape, and a rate the site's own guidance allows. The verdicts of `docs/sources/site-access.md` are an AI agent's and
-  are no leave for a program.
+  are no leave for a program: a record's `program` field holds the program's own verdict
+  (`docs/sources/README.md` § The record).
 
 ## 6. Finding and judging a source
 
@@ -329,8 +330,8 @@ The register lives in [`docs/sources/`](../sources/README.md) — one file per s
 front matter of fixed shape and a body of evidence, grouped by the kind it enumerates. The
 shape, in short: what the source is (slug, publisher, URLs), the kinds it enumerates and the
 tier, the unit (level and code), what a row carries (identity, Wikidata link, coordinates,
-languages, signal), the terms (licence, database right, the attribution sentence, whether
-scraping is permitted), the access mode and cadence, the scorecard with its evidence and date,
+languages, signal), the terms (licence, database right, the attribution sentence, the `agent`
+and `program` verdicts, what reaches a model), the access mode and cadence, the scorecard with its evidence and date,
 a **status** — `looked-at`, `evaluated`, `adopted`, `refused`, `expired` — and the issue that
 moved it. The full schema and the status vocabulary are the register's README. It is files
 rather than a table because nothing reads it yet; the first sync that does brings the validator

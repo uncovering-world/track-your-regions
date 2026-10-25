@@ -84,7 +84,11 @@ terms:
   licence: "Licence Ouverte / Open Licence 2.0"
   database_right: waived                # waived (by the licence) | share-alike (waived on the condition a derivative database carries the same licence) | not-asserted | reserved | unknown
   attribution: "Ministère de la Culture, Liste des Musées de France, last updated <date>"
-  scraping: not-needed                  # not-needed (an API or a dump exists, used under its operator's rules: ADR-0148) | permitted | reserved (a robots signal or terms reserve it: ask first) | forbidden — the detail (which signal, which clause) goes in the body
+  agent: allowed                        # allowed | refused | unknown — may an AI agent read its pages: the site-access.md line, never judged here
+  agent_rests_on: "site-access.md, www.culture.gouv.fr, read 2026-10-02: nothing refuses it"
+  program: allowed                      # allowed | reserved | refused | unknown — may a program of the catalogue read it, under ADR-0148; unknown where no sync is proposed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): the data.gouv.fr file, Licence Ouverte 2.0"
+  model: none                           # none, or what the planned use passes to a model (Jev, the import's AI matching)
 access:
   mode: dump                            # api | dump | scrape | document
   format: csv
@@ -112,13 +116,23 @@ looked_at: 2026-09-06
 Fields a source does not have are written as `none` or `unknown`, never omitted: an absent
 field reads as "not looked at", a `none` as "looked at and not there".
 
+**Two readers, two verdicts** (#1996). `agent` is an AI agent reading the source's pages during
+a coverage survey: it is the verdict of [`site-access.md`](site-access.md) for the source's host,
+copied with the date of that line, and judged only there. `program` is a program of the catalogue,
+a sync under its own User-Agent, judged under ADR-0148: an endpoint or a dump the publisher
+documents for programs is judged on that documentation, the licence and the terms, and a scrape is
+judged as a crawl (`docs/tech/filling-a-kind.md` § 5). Neither is read off the other. A leave
+given to an Anthropic agent by name is no leave for a program, and a host refused to the agent can
+still be read by a program through its documented API. `program` is `unknown` wherever the record
+proposes no sync. Where the planned use passes what is read to a model (`model`), a terms clause
+that bars use by or for AI bars the program too, unless a licence the clause yields to covers it.
+
 A record under `sights/` reads the same shape with three differences. Its `kinds` are the slugs
 of the coverage register (`db/catalogue-coverage/kinds.jsonl`), the kinds a traveller expects,
 since a guide recommends across kinds the catalogue does not hold yet. Its body says what a
 survey measured: on how many entries of a region's list the source was counted, by type. And
-its terms are the verdict of [`site-access.md`](site-access.md), quoted with the clause they
-rest on. That verdict is an AI agent's reading pages, and is no leave for a program: a program's
-access is judged under ADR-0148, an API under its operator's rules and a scrape as a crawl. A record of a commercial guide carries counts and never the places it selected
+its `agent` verdict is that of [`site-access.md`](site-access.md), quoted with the clause it
+rests on, and its `program` verdict is `unknown` until a sync is proposed from it. A record of a commercial guide carries counts and never the places it selected
 (ADR-0081 decision 7).
 
 Two more rules hold under `sights/`. The line between it and `global/` is selection:
