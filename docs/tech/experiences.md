@@ -1100,14 +1100,17 @@ On 2026-10-23 the local names, the tags, the countries and the metadata keys `cr
 alone does not pass, since another item may be another object (ADR-0129 decision 2,
 `passesAsUnseen`). Typography is `foldTypography` (`@tyr/shared/labels`): the same text once
 composed, with quote, apostrophe and dash shapes folded, a trailing literal `\t` or `\n` escape
-dropped (*Gwangneung Cluster\t*, as the World Heritage list once wrote some component names) and
-whitespace runs collapsed. It applies to a place's name, subtitle and description and to a point's
-name; *Hollokö* → *Hollok ö* is a corruption and is held. A value passed as `unseen` stays findable
+dropped (*Gwangneung Cluster\t*, as the World Heritage list once wrote some component names),
+the list's typesetting defects mended (`untypeset`, ADR-0147: a comma's missing space, a ligature
+and the space before it, an unmatched double quote) and whitespace runs collapsed. It applies to a
+place's name, subtitle and description and to a point's name; *Hollokö* → *Hollok ö* is a
+corruption and is held. A value passed as `unseen` stays findable
 in the record (`passedTheGate: unseen`, with its old and new values). The change that marks a field
 shown owes one held question per place for what was written while it was unseen, built from those
 entries; no code does it yet, since no field has been marked shown since. A key the incoming
 record lacks stays a question: the held `metadata` arm merges only the keys a record carries.
-Typography passes one way: a rewrite that adds a trailing escape is asked. Migration 154
+Typography passes one way: a rewrite that adds a trailing escape, or one of the list's defects to a
+text clear of them, is asked. Migration 154
 wrote what the cards held only for these two classes and closed them: 47 of 532 open held cards on
 the development catalogue on 2026-10-23. It left alone a card a curator had answered a field of,
 and 21 that held only a removal of a year or makers by a kind that never writes them (#1879).
@@ -1501,6 +1504,25 @@ made only of bytes that decode as well-formed UTF-8 is that UTF-8; anything else
 written. The Routes of Santiago de Compostela in France (868) came with no point and no
 component in that update, and 1567 with neither: the run filters each (`UnplaceableRecord`,
 #1814) with its reason, and the place keeps what it holds.
+
+**A component's name is read without the list's typesetting defects** (`untypeset`,
+`@tyr/shared/labels`, applied by `componentText`, ADR-0147, #1965). Three mends:
+- a comma between two letters gets a space after it: *Shoal Tower,Kingston* is *Shoal Tower,
+  Kingston*. A comma between two digits stays, as in *Tokhwa-ri Tombs No. 1,2,3*;
+- a Latin ligature is spelled out, and a space before it that follows a letter goes: *Dionysian
+  forti ﬁcations* is *Dionysian fortifications*;
+- a double quote with no opening one, after a letter, goes: *Southern Kamchatka" Regional Nature
+  Park* and the last quote of *"Kluchevskoy" Regional Nature Park"*. One after a digit is an inch
+  or a second and stays.
+
+Square brackets stay as the list writes them ("Jebel Barisha [Deirouné]", "[main complex of
+Mahabalipuram]"), since rewriting them would make the catalogue harder to compare with UNESCO's
+own data. A site's own name is not mended, so the source's view of it (`reported_name`) keeps what
+the list says. The mend is typography to the gate: the raw name and the mended one fold to the same
+text (`foldTypography`), so the next run writes the mend over a stored raw name as passed
+(`passedTheGate: typography`), and a run that sends the raw name again is no rewrite. A point is
+paired with its component by its reference and its coordinate, never by its name, so a mend moves no
+point. A part follows its point (`part_follows_point`).
 
 **A site's countries are read from the same update's JSON** (`parseDelimitedField`,
 `unescoSyncService.ts`, #1816). `iso_codes` comes as JSON text, `["FR", "BE"]` for 1567, and
