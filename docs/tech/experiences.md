@@ -1058,7 +1058,11 @@ with a qualifier and nothing removed — the stored name, not empty, then a comm
 (*Church of All Saints* → *Church of All Saints, Blizne* — 111 of the 114 held part names on
 2026-10-12; *Church of St Mary* → *Church of St Mary Magdalene* is another dedication and is held) —,
 a picture credit re-read for the same file under the same stated licence, on a picture no curator
-claimed (*No machine-readable author provided. Ansgar Walk* → *Ansgar Walk*), and a measurement (`MEASURED_METADATA_KEYS`, an area — never
+claimed (*No machine-readable author provided. Ansgar Walk* → *Ansgar Walk*) — or arriving with a
+stated licence where the place holds none, since the picture stays and a reader only gains the
+author's name ([ADR-0151](../decisions/0151-a-credit-a-place-holds-none-of-passes-the-gate.md),
+#1966: Stonehenge's `Stonehenge Total.jpg`, credited to Stefan Kühn; migration 174 wrote the ones
+the earlier runs held) —, and a measurement (`MEASURED_METADATA_KEYS`, an area — never
 a year) the source re-took within `REMEASURED_SHARE`, a tenth (821.7474 → 821.748 ha). A fourth
 class, `own-item`, is the Wikidata item arriving where the place holds none
 ([ADR-0129](../decisions/0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md), #1794).
