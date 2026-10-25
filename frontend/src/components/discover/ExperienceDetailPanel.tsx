@@ -50,6 +50,7 @@ import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
+import { DescriptionText } from '../shared/DescriptionText';
 import { ContentsSection } from './ContentsSection';
 import { locationLabel, pointOfRow } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
@@ -302,11 +303,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
         )}
 
         {/* Description: the paragraph, the subtitle being under the name */}
-        {description && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {description}
-          </Typography>
-        )}
+        <DescriptionText text={description} source={experience.description_source} adapted={experience.description_adapted} mb={2} />
 
         {/* Date inscribed */}
         {details?.metadata?.dateInscribed != null && (

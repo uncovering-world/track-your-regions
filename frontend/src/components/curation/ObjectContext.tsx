@@ -23,6 +23,7 @@ import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
 import { safeHref } from '../../utils/safeHref';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { DescriptionCreditLine } from '../shared/DescriptionText';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { proposedPoint } from './MoveFact';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
@@ -161,9 +162,14 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
           // What the object is, in the source's words: "museum in Saint Petersburg,
           // Russia". One line, so a UNESCO site's paragraph does not push the card's
           // question down; cut with an ellipsis and whole on hover (#1780).
-          <Typography variant="body2" color="text.secondary" noWrap title={description}>
-            {description}
-          </Typography>
+          // UNESCO's paragraph carries its credit here too: a curator reads it as
+          // much as a visitor does (ADR-0149).
+          <>
+            <Typography variant="body2" color="text.secondary" noWrap title={description}>
+              {description}
+            </Typography>
+            <DescriptionCreditLine source={item.object_description_source} adapted={item.object_description_adapted} />
+          </>
         )}
         {madeOf && (
           <Typography variant="caption" color="text.secondary" display="block">

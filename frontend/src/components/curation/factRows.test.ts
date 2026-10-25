@@ -34,6 +34,15 @@ describe('rowsFor', () => {
     expect(rowsFor([{ field: 'metadata.inDanger', old: false, new: true }], NO_CONTEXT)[0].event).toBe(true);
   });
 
+  it("credits UNESCO's text on the place's description row, never on a point's, whose line is Wikidata's", () => {
+    const rewritten = { field: 'description', old: 'The property comprises four component parts…', new: 'The property comprises six component parts…' };
+
+    expect(rowsFor([rewritten], NO_CONTEXT)[0].sentence)
+      .toBe("The new text is UNESCO World Heritage Centre's, under CC BY-SA 4.0.");
+    expect(rowsFor([{ field: 'description', old: null, new: 'prehistoric pile dwelling in Switzerland' }], { ...NO_CONTEXT, part: true })[0].sentence)
+      .toBeNull();
+  });
+
   it('makes one row per fact that moved, named as the fact, in the order the queue gave', () => {
     const rows = rowsFor(bamiyan, NO_CONTEXT);
     expect(rows.map(r => r.meaning.label)).toEqual(['in danger', 'inscription criteria', 'picture credit']);
