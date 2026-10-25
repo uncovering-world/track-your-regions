@@ -77,6 +77,8 @@ anything else: terms 1. No address to write to was read.
 drinks, dances, arts, villages and ceremonies; its calendar of every holy day of 2026 was not
 counted, as a directory. The Bali survey of 2026-10-02 counted it on 88 of the 290 entries of
 `db/catalogue-coverage/expectations/bali.jsonl` (by type: place 50, food 12, event 10, activity
-9, drink 7). On 10 of them nothing else but the surveyor's own list names the entry. The kinds
+9, drink 7). On 10 of them nothing else but the surveyor's own list names the entry. Since
+UNESCO's counts were checked again (#1981) the list holds 289 entries, and these figures are
+unchanged. The kinds
 in the front matter are those under which the survey filed two or more of the entries it is
 named on.

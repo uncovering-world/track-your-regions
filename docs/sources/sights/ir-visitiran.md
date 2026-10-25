@@ -75,5 +75,7 @@ attractions list, the Isfahan province page and the Natanz page; eight names tha
 a search's summary were withdrawn. The Isfahan survey of 2026-10-02 counted it on 71 of the 149
 entries of `db/catalogue-coverage/expectations/isfahan.jsonl` (by type: place 42, food 14,
 object 6, event 5, activity 4). On none of them is the surveyor's own list the only other
-source. The kinds in the front matter are those under which the survey filed two or more of the
-entries it is named on.
+source. Since UNESCO's counts were checked again (#1981) the list holds 148 entries; it stands on
+the same 71, and on 2 of them nothing else but the surveyor's own list names the entry: UNESCO's
+count was withdrawn from both. The kinds in the front matter are those under which the survey
+filed two or more of the entries it is named on.

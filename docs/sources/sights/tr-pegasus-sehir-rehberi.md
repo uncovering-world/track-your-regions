@@ -74,5 +74,6 @@ total of 6. No licence is stated: ask first. No address to write to was read.
 eat, places to see, a historical walk, and four blog articles. The Istanbul survey of 2026-10-02
 counted it on 137 of the 266 entries of `db/catalogue-coverage/expectations/istanbul.jsonl` (by
 type: place 119, food 9, activity 3, work 3, event 2, drink 1). On 11 of them nothing else but
-the surveyor's own list names the entry. The kinds in the front matter are those under which the
-survey filed two or more of the entries it is named on.
+the surveyor's own list names the entry. Since UNESCO's counts were checked again (#1981) the
+list holds 263 entries, and these figures are unchanged. The kinds in the front matter are those
+under which the survey filed two or more of the entries it is named on.

@@ -75,5 +75,6 @@ prefecture page, its eight area pages, two Nara pages and two Shiga pages. The K
 2026-10-02 counted it on 119 of the 246 entries of
 `db/catalogue-coverage/expectations/kyoto.jsonl` (by type: place 90, activity 9, event 7, route
 5, drink 2, work 2, object 2, food 2). On 1 of them nothing else but the surveyor's own list
-names the entry. Places among those: Kawai Kanjiro's House. The kinds in the front matter are
-those under which the survey filed two or more of the entries it is named on.
+names the entry. Places among those: Kawai Kanjiro's House. Since UNESCO's counts were checked
+again (#1981) the list holds 245 entries, and these figures are unchanged. The kinds in the front
+matter are those under which the survey filed two or more of the entries it is named on.

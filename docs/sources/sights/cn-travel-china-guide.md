@@ -81,5 +81,6 @@ withdrawn in the second, as a directory of everything: 92 counts with it. The Be
 2026-10-02 counted it on 87 of the 247 entries of
 `db/catalogue-coverage/expectations/beijing.jsonl` (by type: place 63, activity 9, event 8, food
 4, work 1, route 1, object 1). On 7 of them nothing else but the surveyor's own list names the
-entry. The kinds in the front matter are those under which the survey filed two or more of the
-entries it is named on.
+entry. Since UNESCO's counts were checked again (#1981) the list holds 246 entries, and these
+figures are unchanged. The kinds in the front matter are those under which the survey filed two
+or more of the entries it is named on.

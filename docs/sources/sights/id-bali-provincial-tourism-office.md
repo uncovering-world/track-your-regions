@@ -75,5 +75,7 @@ a PDF, was not opened, and its tourism-village lists, the Love Bali listings and
 calendar were counted for nothing, as directories. The Bali survey of 2026-10-02 counted it on
 42 of the 290 entries of `db/catalogue-coverage/expectations/bali.jsonl` (by type: place 42). On
 2 of them nothing else but the surveyor's own list names the entry. Places among those: Nungnung
-Waterfall; Tukad Cepung Waterfall. The kinds in the front matter are those under which the
+Waterfall; Tukad Cepung Waterfall. Since UNESCO's counts were checked again (#1981) the list
+holds 289 entries, and these figures are unchanged. The kinds in the front matter are those under
+which the
 survey filed two or more of the entries it is named on.

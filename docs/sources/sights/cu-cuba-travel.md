@@ -77,5 +77,8 @@ the other address, refused the survey's connection and this record's. The Havana
 `db/catalogue-coverage/expectations/havana.jsonl` (by type: place 79, food 8, activity 7, event
 7, drink 3, route 1). On 24 of them nothing else but the surveyor's own list names the entry.
 Places among those: Acuario Nacional de Cuba; Cueva del Indio; Estadio Latinoamericano;
-ExpoCuba; Iglesia de San Francisco de Paula. The kinds in the front matter are those under which
+ExpoCuba; Iglesia de San Francisco de Paula. Since UNESCO's counts were checked again (#1981) it
+stands on the same 105 entries, and on 27 of them nothing else but the surveyor's own list names
+the entry: UNESCO's count was withdrawn from three. The kinds in the front matter are those under
+which
 the survey filed two or more of the entries it is named on.

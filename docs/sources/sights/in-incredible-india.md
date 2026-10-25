@@ -74,5 +74,8 @@ the address did not come through in the text read. The site has a contact page
 places to visit near Delhi", a directory, was not opened. The Delhi survey of 2026-10-02 counted
 it on 87 of the 220 entries of `db/catalogue-coverage/expectations/delhi.jsonl` (by type: place
 70, food 13, activity 3, event 1). On 6 of them nothing else but the surveyor's own list names
-the entry. Places among those: Asola Bhatti Wildlife Sanctuary. The kinds in the front matter
+the entry. Places among those: Asola Bhatti Wildlife Sanctuary. Since UNESCO's counts were
+checked again (#1981) it stands on the same 87 entries, and on 7 of them nothing else but the
+surveyor's own list names the entry: UNESCO's count was withdrawn from one. The kinds in the
+front matter
 are those under which the survey filed two or more of the entries it is named on.

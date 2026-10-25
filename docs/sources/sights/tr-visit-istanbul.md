@@ -77,5 +77,6 @@ directorate.
 entries of `db/catalogue-coverage/expectations/istanbul.jsonl` (by type: place 90, food 12,
 activity 2, drink 1). On 8 of them nothing else but the surveyor's own list names the entry.
 Places among those: Church of St Mary of the Mongols; Ali Muhiddin Hacı Bekir; Hafız Mustafa
-1864; Boukoleon Palace. The kinds in the front matter are those under which the survey filed two
-or more of the entries it is named on.
+1864; Boukoleon Palace. Since UNESCO's counts were checked again (#1981) the list holds 263
+entries, and these figures are unchanged. The kinds in the front matter are those under which the
+survey filed two or more of the entries it is named on.

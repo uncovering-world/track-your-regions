@@ -92,5 +92,7 @@ the Ziyarat index, a directory, and one from a search that carried the name. The
 survey of 2026-10-02 counted it on 35 of the 94 entries of
 `db/catalogue-coverage/expectations/samarkand.jsonl` (by type: place 25, food 7, activity 2,
 event 1). On 1 of them nothing else but the surveyor's own list names the entry. Places among
-those: Amankutan gorge. The kinds in the front matter are those under which the survey filed two
+those: Amankutan gorge. Since UNESCO's counts were checked again (#1981) it stands on the same 35
+entries, and on 2 of them nothing else but the surveyor's own list names the entry: UNESCO's count
+was withdrawn from one. The kinds in the front matter are those under which the survey filed two
 or more of the entries it is named on.

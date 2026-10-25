@@ -72,6 +72,8 @@ Juan Teotihuacán, the fifty destinations near the city, the city's typical food
 Barrios Mágicos. It was read for fourteen entries only, those Viajeros Callejeros had left with
 one source, so its figure is not a measure of the whole list. The Mexico City survey counts it
 on 5 of the 245 entries of `db/catalogue-coverage/expectations/mexico-city.jsonl` (by type:
-place 4, work 1). On 1 of them nothing else but the surveyor's own list names the entry. Which
+place 4, work 1). On 1 of them nothing else but the surveyor's own list names the entry. Since
+UNESCO's counts were checked again (#1981) the list holds 244 entries, and these figures are
+unchanged. Which
 entries those are is kept under `docs/local/`, a guide's selection being its publisher's. No kind
 holds two of the entries it is named on; the kinds in the front matter are those of the five.

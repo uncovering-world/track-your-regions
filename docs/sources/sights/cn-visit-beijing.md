@@ -73,4 +73,5 @@ its first pass and 23 articles and a list in its second, before the robots line 
 the titles of the list of weekend routes; the attraction, food and brand pages there are
 directories and count for nothing. The Beijing survey of 2026-10-02 counted it on 4 of the 247
 entries of `db/catalogue-coverage/expectations/beijing.jsonl` (by type: place 2, activity 1,
-event 1). On none of them is the surveyor's own list the only other source.
+event 1). On none of them is the surveyor's own list the only other source. Since UNESCO's
+counts were checked again (#1981) the list holds 246 entries, and these figures are unchanged.

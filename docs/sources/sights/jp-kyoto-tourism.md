@@ -71,5 +71,7 @@ copyright paragraph reserves any secondary use: ask first.
 **What the survey measured.** Two pages by fetch: `discoverkyoto` and the titles of
 `itineraries`. The Kyoto survey of 2026-10-02 counted it on 5 of the 246 entries of
 `db/catalogue-coverage/expectations/kyoto.jsonl` (by type: place 2, activity 1, drink 1, food
-1). On none of them is the surveyor's own list the only other source. The kinds in the front
-matter are those under which the survey filed two or more of the entries it is named on.
+1). On none of them is the surveyor's own list the only other source. Since UNESCO's counts were
+checked again (#1981) the list holds 245 entries, and these figures are unchanged. The kinds in
+the front matter are those under which the survey filed two or more of the entries it is named
+on.

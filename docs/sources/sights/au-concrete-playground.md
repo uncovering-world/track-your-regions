@@ -68,5 +68,7 @@ age; the one read for this record is from 2017.
 **What the survey measured.** Seventeen pages by fetch. The Sydney survey of 2026-10-02 counted
 it on 197 of the 483 entries of `db/catalogue-coverage/expectations/sydney.jsonl` (by type:
 place 169, activity 12, route 11, event 3, food 1, drink 1). On none of them is the surveyor's
-own list the only other source. The kinds in the front matter are those under which the survey
+own list the only other source. Since UNESCO's counts were checked again (#1981) the list holds
+482 entries, and these figures are unchanged. The kinds in the front matter are those under which
+the survey
 filed two or more of the entries it is named on.

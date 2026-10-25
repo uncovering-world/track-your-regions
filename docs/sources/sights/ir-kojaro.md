@@ -73,5 +73,7 @@ contact page (`/contact-us/`).
 Isfahan and the local dishes. The Isfahan survey of 2026-10-02 counted it on 66 of the 149
 entries of `db/catalogue-coverage/expectations/isfahan.jsonl` (by type: place 40, food 15,
 object 6, event 3, activity 2). On 4 of them nothing else but the surveyor's own list names the
-entry. The kinds in the front matter are those under which the survey filed two or more of the
-entries it is named on.
+entry. Since UNESCO's counts were checked again (#1981) the list holds 148 entries; it stands on
+the same 66, and on 5 of them nothing else but the surveyor's own list names the entry: UNESCO's
+count was withdrawn from one. The kinds in the front matter are those under which the survey
+filed two or more of the entries it is named on.

@@ -77,5 +77,8 @@ access.
 Kyoto survey of 2026-10-02 counted it on 128 of the 246 entries of
 `db/catalogue-coverage/expectations/kyoto.jsonl` (by type: place 85, event 12, food 11, activity
 10, route 4, object 4, drink 1, work 1). On 1 of them nothing else but the surveyor's own list
-names the entry. The kinds in the front matter are those under which the survey filed two or
-more of the entries it is named on.
+names the entry. Since UNESCO's counts were checked again (#1981) it stands on 127 of the 245
+entries (by type: place 85, event 12, activity 10, food 10, route 4, object 4, drink 1, work 1):
+washoku, which it shared with UNESCO alone, left the list. On 1 of them nothing else but the
+surveyor's own list names the entry. The kinds in the front matter are those under which the
+survey filed two or more of the entries it is named on.

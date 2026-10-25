@@ -71,5 +71,6 @@ contact page (`/contactus/`).
 and restaurants, and the temple fairs. The Beijing survey of 2026-10-02 counted it on 90 of the
 247 entries of `db/catalogue-coverage/expectations/beijing.jsonl` (by type: place 58, food 14,
 activity 8, event 8, work 1, drink 1). On 6 of them nothing else but the surveyor's own list
-names the entry. The kinds in the front matter are those under which the survey filed two or
-more of the entries it is named on.
+names the entry. Since UNESCO's counts were checked again (#1981) the list holds 246 entries,
+and these figures are unchanged. The kinds in the front matter are those under which the survey
+filed two or more of the entries it is named on.
