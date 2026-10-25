@@ -90,12 +90,16 @@ describe('what a survey keeps of a Wikidata item', () => {
       claims: {
         P625: [{ mainsnak: { datavalue: { value: { latitude: -14.175, longitude: -71.366666667 } } } }],
         P31: [{ mainsnak: { datavalue: { value: { id: 'Q486972' } } } }, { mainsnak: { datavalue: { value: { id: 'Q839954' } } } }],
+        // Raqch'i is a part of Qhapaq Ñan; the item states the property's id (#1981).
+        P757: [{ mainsnak: { datavalue: { value: '1459' } } }],
       },
-    })).toEqual({ id: 'Q2876258', label: "Raqch'i", sitelinks: 3, lat: -14.175, lon: -71.36667, classes: ['Q486972', 'Q839954'] });
+    })).toEqual({
+      id: 'Q2876258', label: "Raqch'i", sitelinks: 3, lat: -14.175, lon: -71.36667, classes: ['Q486972', 'Q839954'], worldHeritage: ['1459'],
+    });
   });
 
   it('says so when the item has no point, no label and no class, or does not exist', () => {
-    const bare = { id: 'Q1', label: '(no English label)', sitelinks: 0, lat: null, lon: null, classes: [] };
+    const bare = { id: 'Q1', label: '(no English label)', sitelinks: 0, lat: null, lon: null, classes: [], worldHeritage: [] };
     expect(factsOf('Q1', {})).toEqual(bare);
     expect(factsOf('Q1', undefined)).toEqual(bare);
   });
