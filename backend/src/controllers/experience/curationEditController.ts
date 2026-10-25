@@ -35,6 +35,8 @@ interface EditPayload {
   wikipediaUrl: string | undefined;
   hasWebsiteUpdate: boolean;
   hasWikipediaUpdate: boolean;
+  /** Whether the description is an edit of UNESCO's text, undefined where the edit does not say (ADR-0149). */
+  descriptionAdapted: boolean | undefined;
   /**
    * Whose picture the *new* one is, resolved before the write.
    *
@@ -72,6 +74,7 @@ function parseEditPayload(body: Record<string, unknown>): EditPayload {
     wikipediaUrl,
     hasWebsiteUpdate: websiteUrl !== undefined,
     hasWikipediaUpdate: wikipediaUrl !== undefined,
+    descriptionAdapted: body.descriptionAdapted as boolean | undefined,
   };
 }
 
@@ -82,7 +85,7 @@ function validateEditPayload(payload: EditPayload): string | null {
     ?? refusalFor(wikipediaUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
     ?? refusalFor(imageUrl, isDisplayablePictureUrl, DISPLAYABLE_PICTURE_URL_MESSAGE);
   if (refusal) return refusal;
-  const hasMetadataUpdate = hasWebsiteUpdate || hasWikipediaUpdate;
+  const hasMetadataUpdate = hasWebsiteUpdate || hasWikipediaUpdate || payload.descriptionAdapted !== undefined;
   if (updates.length === 0 && !hasMetadataUpdate) {
     return 'No fields to update';
   }
@@ -104,6 +107,10 @@ function metadataPatchOf(payload: EditPayload): Record<string, unknown> | null {
   // Written in the same statement as the image itself, so no moment exists in
   // which the row holds one photograph and another photographer's name.
   if (payload.imageCredit !== undefined) patch.imageCredit = payload.imageCredit;
+  // The curator's word on whose text the description is (ADR-0149): an edit of
+  // UNESCO's keeps the credit as an adaptation, their own carries none. Claimed
+  // like a website, so a run keeps it, and a `null` is a decision too.
+  if (payload.descriptionAdapted !== undefined) patch.descriptionAdaptedFrom = payload.descriptionAdapted ? 'unesco' : null;
   return Object.keys(patch).length > 0 ? patch : null;
 }
 

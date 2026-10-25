@@ -317,6 +317,10 @@ export const editExperienceBodySchema = z.object({
   tags: z.array(z.string().max(100)).max(50).optional(),
   websiteUrl: safeUrlSchema,
   wikipediaUrl: safeUrlSchema,
+  // Whether the description is the curator's edit of UNESCO's text, which keeps
+  // its credit as an adaptation, or the curator's own, which carries none
+  // (ADR-0149). Sent with a description of a place the UNESCO source holds.
+  descriptionAdapted: z.boolean().optional(),
 });
 
 export const createManualExperienceBodySchema = z.object({
