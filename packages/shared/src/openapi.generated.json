@@ -21297,6 +21297,20 @@
         "additionalProperties": false,
         "description": "A region's grandchildren and everything below deleted, making its children leaves."
       },
+      "DescriptionSource": {
+        "anyOf": [
+          {
+            "type": "string",
+            "enum": [
+              "unesco"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Whose text the description is, such as `unesco` for the World Heritage Centre's paragraph (CC BY-SA 4.0), which a reader is shown with its credit (ADR-0149). Null for a curator's own text, or where there is no description."
+      },
       "DismissedGap": {
         "type": "object",
         "properties": {
@@ -22449,6 +22463,9 @@
           },
           "wikipediaUrl": {
             "type": "string"
+          },
+          "descriptionAdapted": {
+            "type": "boolean"
           }
         }
       },
@@ -22582,6 +22599,13 @@
               "string",
               "null"
             ]
+          },
+          "description_source": {
+            "$ref": "#/components/schemas/DescriptionSource"
+          },
+          "description_adapted": {
+            "type": "boolean",
+            "description": "Whether the description is a curator's edit of its source's text, which the credit calls an adaptation (ADR-0149)."
           },
           "type": {
             "description": "The type within the kind, such as `cultural` on a World Heritage site or `cathedral` on a place of worship. Null on a museum, whose kind has no types (ADR-0045).",
@@ -22755,6 +22779,8 @@
           "name",
           "subtitle",
           "description",
+          "description_source",
+          "description_adapted",
           "type",
           "kind_id",
           "country_codes",
@@ -22854,6 +22880,13 @@
               "string",
               "null"
             ]
+          },
+          "description_source": {
+            "$ref": "#/components/schemas/DescriptionSource"
+          },
+          "description_adapted": {
+            "type": "boolean",
+            "description": "Whether the description is a curator's edit of its source's text, which the credit calls an adaptation (ADR-0149)."
           },
           "type": {
             "type": [
@@ -23067,6 +23100,8 @@
           "name_local",
           "subtitle",
           "description",
+          "description_source",
+          "description_adapted",
           "type",
           "country_codes",
           "country_names",
@@ -23445,6 +23480,13 @@
               "null"
             ]
           },
+          "description_source": {
+            "$ref": "#/components/schemas/DescriptionSource"
+          },
+          "description_adapted": {
+            "type": "boolean",
+            "description": "Whether the description is a curator's edit of its source's text, which the credit calls an adaptation (ADR-0149)."
+          },
           "type": {
             "type": [
               "string",
@@ -23547,6 +23589,8 @@
           "id",
           "name",
           "description",
+          "description_source",
+          "description_adapted",
           "type",
           "kind_id",
           "kind_name",
@@ -32760,6 +32804,12 @@
               "string",
               "null"
             ]
+          },
+          "object_description_source": {
+            "$ref": "#/components/schemas/DescriptionSource"
+          },
+          "object_description_adapted": {
+            "type": "boolean"
           },
           "region_names": {
             "anyOf": [

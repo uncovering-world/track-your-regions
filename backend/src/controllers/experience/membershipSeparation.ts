@@ -33,7 +33,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { insertSeparatedExperience, lockExperience, type LockedExperience } from '../../db/experienceWriter.js';
+import { insertSeparatedExperience, lockExperience, returnSeparatedUnescoText, type LockedExperience } from '../../db/experienceWriter.js';
 import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import { moveChangesOfPlace } from '../../services/sync/changeRecorder.js';
 import { copyPointsFor, movePoints } from './experienceLocationWriter.js';
@@ -279,7 +279,8 @@ export async function undoSeparation(
   const merged = await mergePlaces({
     survivorId: found.original_id, foldedId: found.separated_id, mergedBy: userId, reason: 'curator', regionId,
     detail: { separationId },
-    within: async (client, mergeId) => {
+    within: async (client, mergeId, locks) => {
+      await returnSeparatedUnescoText(client, locks.survivor, locks.folded, separationId);
       if (found.verdict_written && found.scheme && found.value) {
         await client.query('SELECT lock_place_identifiers($1, ARRAY[$2::text])', [found.scheme, found.value]);
         await takeBackIdentifierVerdict(client, { experienceId: found.original_id, scheme: found.scheme, value: found.value });

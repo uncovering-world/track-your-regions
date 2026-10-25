@@ -319,6 +319,44 @@ export function placeKindsSql(experience = 'e'): string {
         WHERE pk.experience_id = ${experience}.id AND ${membershipOfferedSql('pk')})`;
 }
 
+/** The source whose run alone writes a place's description: UNESCO (ADR-0149). */
+export const DESCRIPTION_SOURCE_ID = 1;
+
+/**
+ * The source whose text a place's description is, as `@tyr/shared/textCredits`
+ * names it, or NULL (ADR-0149). `'unesco'` where the UNESCO source holds the
+ * place, standing or not, and its description is UNESCO's text: unclaimed,
+ * since a description is written by the UNESCO run or by a curator and by no
+ * other source (`fieldFamilies.ts`), or claimed by a curator who said it is an
+ * edit of UNESCO's (`metadata.descriptionAdaptedFrom`). A curator's own text,
+ * as Aksum's is, carries none. Read off the membership and the claim rather
+ * than the run's mark (`metadata.unesco`), which a row has only once a run has
+ * stamped it.
+ */
+export function descriptionSourceSql(experience = 'e'): string {
+  return `CASE WHEN ${experience}.description IS NOT NULL
+                 AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} ds
+                              WHERE ds.experience_id = ${experience}.id AND ds.source_id = ${DESCRIPTION_SOURCE_ID})
+                 AND (NOT ${descriptionClaimedSql(experience)}
+                      OR ${experience}.metadata->>'descriptionAdaptedFrom' = 'unesco')
+               THEN 'unesco' END`;
+}
+
+/**
+ * Whether the description is a curator's edit of its source's text, which the
+ * credit calls an adaptation (ADR-0149): claimed, and said to be an edit.
+ * False wherever `descriptionSourceSql` is NULL.
+ */
+export function descriptionAdaptedSql(experience = 'e'): string {
+  return `(${descriptionClaimedSql(experience)}
+           AND COALESCE(${experience}.metadata->>'descriptionAdaptedFrom' = 'unesco', FALSE)
+           AND ${descriptionSourceSql(experience)} IS NOT NULL)`;
+}
+
+function descriptionClaimedSql(experience: string): string {
+  return `(COALESCE(${experience}.curated_fields, '[]'::jsonb) ? 'description')`;
+}
+
 /**
  * The kinds that hold a work a place shows, by the memberships that place its
  * link (`experience_treasure_placements`, #1252), in the kinds' display order

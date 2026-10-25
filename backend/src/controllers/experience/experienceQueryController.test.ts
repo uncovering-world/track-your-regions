@@ -26,6 +26,7 @@ const EXPERIENCE_ROW = {
   name_local: null,
   subtitle: null,
   description: null,
+  description_source: null, description_adapted: false,
   type: 'cultural',
   country_codes: ['KR'],
   country_names: ['Republic of Korea'],
@@ -746,6 +747,16 @@ describe('searchExperiences region context', () => {
     expect(sql).toContain('LEFT JOIN LATERAL (SELECT shown.* FROM experience_kind_memberships shown');
     expect(sql).not.toContain('em.source_id = e.source_id');
     expect(sql).toContain('m.kind_name');
+  });
+
+  it('carries the description\'s source out of the CTE, which the answer requires (#2010)', async () => {
+    const sql = await searchSql();
+
+    // Computed inside matches, the two columns reach the answer only when the
+    // outer select names them; the response schema requires both.
+    const outer = sql.slice(sql.indexOf('LIMIT $3'), sql.indexOf('FROM matches m'));
+    expect(outer).toContain('m.description_source');
+    expect(outer).toContain('m.description_adapted');
   });
 
   it('re-states the order outside the CTE, which a join does not carry', async () => {

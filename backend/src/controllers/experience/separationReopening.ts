@@ -8,7 +8,8 @@
  */
 
 import type { PoolClient } from 'pg';
-import type { LockedExperience } from '../../db/experienceWriter.js';
+import { releaseUnescoText, type LockedExperience } from '../../db/experienceWriter.js';
+import { DESCRIPTION_SOURCE_ID, MEMBERSHIPS } from '../../db/membership.js';
 import { writeIdentifierVerdict } from './placeIdentifierVerdictWriter.js';
 
 export async function reopenSeparationsUndoneBy(
@@ -16,6 +17,7 @@ export async function reopenSeparationsUndoneBy(
   mergeId: number,
   userId: number,
   separated: LockedExperience,
+  original: LockedExperience,
 ): Promise<void> {
   const reopened = await client.query<{ id: number; original_id: number; scheme: string | null; value: string | null; verdict_written: boolean }>(
     `UPDATE experience_separations SET undone_at = NULL, undone_by = NULL, merge_id = NULL
@@ -23,6 +25,14 @@ export async function reopenSeparationsUndoneBy(
       RETURNING id, original_id, scheme, value, verdict_written`,
     [mergeId],
   );
+  // UNESCO's text came back with the undone separation; standing again, the
+  // separation takes it away again (ADR-0149).
+  const unescoLeft = await client.query(
+    `SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = $1 AND m.source_id = $2
+       AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} o WHERE o.experience_id = $3 AND o.source_id = $2)`,
+    [separated.id, DESCRIPTION_SOURCE_ID, original.id],
+  );
+  if (reopened.rows.length > 0 && (unescoLeft.rowCount ?? 0) > 0) await releaseUnescoText(client, original);
   for (const separation of reopened.rows) {
     if (separation.verdict_written && separation.scheme && separation.value) {
       await client.query('SELECT lock_place_identifiers($1, ARRAY[$2::text])', [separation.scheme, separation.value]);

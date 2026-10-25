@@ -20,7 +20,7 @@ import {
   readerRegionMembershipSql,
 } from '../../db/readerPredicates.js';
 import { includeLost } from './includeLost.js';
-import { KINDS, MEMBERSHIPS, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
+import { descriptionAdaptedSql, descriptionSourceSql, KINDS, MEMBERSHIPS, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { wholeOfSql } from '../../db/placePoints.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
@@ -102,6 +102,8 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       e.name_local,
       e.subtitle,
       e.description,
+      ${descriptionSourceSql('e')} AS description_source,
+      ${descriptionAdaptedSql('e')} AS description_adapted,
       -- The type within the kind the row is shown under: the membership's (ADR-0084),
       -- or for a part with no kind of its own its whole's (ADR-0100 decision 2).
       COALESCE(m.type, wm.type) AS type,
@@ -336,6 +338,8 @@ export async function searchExperiences(
         e.id,
         e.name,
         e.description,
+        ${descriptionSourceSql('e')} AS description_source,
+        ${descriptionAdaptedSql('e')} AS description_adapted,
         em.type,
         -- The kind, off the row's membership (#819). Its own aliases, since
         -- m outside is this CTE.
@@ -372,6 +376,8 @@ export async function searchExperiences(
       m.id,
       m.name,
       m.description,
+      m.description_source,
+      m.description_adapted,
       m.type,
       m.kind_id,
       m.kind_name,

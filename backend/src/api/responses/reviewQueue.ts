@@ -24,7 +24,7 @@ import {
   QUEUE_ITEM_KINDS, QUEUE_KINDS, REVIEW_ANSWERS, WAITING_SUBS,
 } from '../../controllers/experience/reviewQueueVocabulary.js';
 import { ContentKind, PlacementFailure } from './curation.js';
-import { ImageCredit, WorkVenue } from './experiences.js';
+import { DescriptionSource, ImageCredit, WorkVenue } from './experiences.js';
 
 /** A timestamp as the wire carries it: an ISO string, from a `Date` or from PostgreSQL's JSON. */
 const timestamp = z.iso.datetime({ offset: true });
@@ -400,6 +400,8 @@ export const ReviewQueueItem = z.strictObject({
   object_description: z.string().nullable().optional().describe(
     "What the object is, in a line: its subtitle (Wikidata's line) where it has one, else its description (UNESCO's paragraph, a curator's text) (#1780).",
   ),
+  object_description_source: DescriptionSource.optional(),
+  object_description_adapted: z.boolean().optional(),
   region_names: z.array(z.string()).nullable().optional(),
   seen_in: z.array(z.string()).optional().describe(
     'On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in,'

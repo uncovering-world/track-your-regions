@@ -10,6 +10,7 @@
  */
 
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
+import { descriptionAdaptedSql, descriptionSourceSql } from '../../db/membership.js';
 import { dangerSelectSql } from './experienceDanger.js';
 import { pointsShownSql } from '../../db/placePoints.js';
 
@@ -82,6 +83,11 @@ export function objectContextSelectSql(alias = 'e'): string {
           -- description (UNESCO's paragraph, a curator's text). The card's
           -- header draws it (#1780).
           COALESCE(NULLIF(${alias}.subtitle, ''), NULLIF(${alias}.description, '')) AS object_description,
+          -- Whose text that line is, where it is the description: the card
+          -- credits UNESCO's paragraph as every other screen does (ADR-0149).
+          CASE WHEN NULLIF(${alias}.subtitle, '') IS NULL AND NULLIF(${alias}.description, '') IS NOT NULL
+               THEN ${descriptionSourceSql(alias)} END AS object_description_source,
+          (NULLIF(${alias}.subtitle, '') IS NULL AND ${descriptionAdaptedSql(alias)}) AS object_description_adapted,
           -- The run's own question about a row it could not settle by its rule
           -- (ADR-0058): an art museum with an antiquities department is a
           -- judgement about the exposition that no classes answer, so the run
