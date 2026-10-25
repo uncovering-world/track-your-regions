@@ -171,8 +171,12 @@ describe('useNavigation — the region the address names', () => {
 
   it('restores the region a shared link names, with its breadcrumbs', async () => {
     const { result } = renderAt('/wv/5/r/7100');
+    // Pending from the first frame, before any effect has run: the map draws
+    // no world in the gap (#2044).
+    expect(result.current.nav.regionPending).toBe(true);
 
     await waitFor(() => expect(result.current.nav.selectedRegion?.id).toBe(7100));
+    expect(result.current.nav.regionPending).toBe(false);
     expect(result.current.nav.selectedRegion?.name).toBe('Malta');
     expect(result.current.nav.selectedRegion?.focusBbox).toEqual(MALTA.focusBbox);
     expect(result.current.nav.regionBreadcrumbs.map(r => r.id)).toEqual([6737, 7100]);
@@ -215,6 +219,8 @@ describe('useNavigation — the region the address names', () => {
     await waitFor(() => expect(result.current.at).toBe('/wv/5'));
     expect(result.current.type).toBe('REPLACE');
     expect(result.current.nav.selectedRegion).toBeNull();
+    // The world view alone again, so the world is drawn once more.
+    expect(result.current.nav.regionPending).toBe(false);
   });
 
   it('degrades when the region belongs to another world view', async () => {

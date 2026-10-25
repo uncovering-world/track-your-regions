@@ -8,6 +8,7 @@ const { mockFetchKinds, navState, addressState, mockGo } = vi.hoisted(() => ({
   mockFetchKinds: vi.fn(),
   navState: {
     selectedRegion: null as { id: number } | null,
+    regionPending: false,
     isCustomWorldView: true,
   },
   addressState: {
@@ -54,6 +55,7 @@ describe('useWorldLayer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     navState.selectedRegion = null;
+    navState.regionPending = false;
     navState.isCustomWorldView = true;
     addressState.address = MAP_ROOT;
     mockFetchKinds.mockResolvedValue(KINDS);
@@ -70,6 +72,17 @@ describe('useWorldLayer', () => {
     // which is what "selecting a region keeps behaving as today" means.
     navState.selectedRegion = { id: 6737 };
     expect(render().result.current.active).toBe(false);
+  });
+
+  it('stays off on a link to a region before the region has resolved', async () => {
+    // Europe's address with no selection yet: the gap between the map mounting
+    // and the region arriving, in which the layer used to read every point in
+    // the catalogue (#2044).
+    addressState.address = { ...MAP_ROOT, regionId: 6737 };
+    navState.regionPending = true;
+    const { result } = render();
+    expect(result.current.active).toBe(false);
+    await waitFor(() => expect(mockFetchKinds).not.toHaveBeenCalled());
   });
 
   it('draws in no world view whose regions could not open a pin', () => {

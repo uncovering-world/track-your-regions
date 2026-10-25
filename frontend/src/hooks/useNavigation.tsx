@@ -30,6 +30,8 @@ interface NavigationContextType {
   // `useAddressedRegion` — so setting it writes the address too.
   selectedRegion: Region | null;
   setSelectedRegion: (region: Region | null, options?: SelectRegionOptions) => void;
+  // The address names a region the selection does not hold yet (#2044).
+  regionPending: boolean;
   rootRegions: Region[];
 
   // Breadcrumbs (works for both GADM divisions and custom regions)
@@ -168,7 +170,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // effects are declared before the reconciliation below on purpose — on a
   // Back across a world-view switch the follow asks for the new region first,
   // and the switch's clearing of the old context must not cancel that ask.
-  const { selectedRegion, setSelectedRegion, regionBreadcrumbs, clearRegion } = useAddressedRegion({
+  const { selectedRegion, regionPending, setSelectedRegion, regionBreadcrumbs, clearRegion } = useAddressedRegion({
     address, go, isCustomWorldView, authLoading,
   });
 
@@ -484,6 +486,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     setSelectedDivision: handleSetSelectedDivision,
     selectedRegion,
     setSelectedRegion,
+    regionPending,
     rootRegions,
     divisionBreadcrumbs,
     regionBreadcrumbs,
@@ -502,6 +505,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     handleSetSelectedDivision,
     selectedRegion,
     setSelectedRegion,
+    regionPending,
     rootRegions,
     divisionBreadcrumbs,
     regionBreadcrumbs,

@@ -7,6 +7,7 @@ const mockNavigation = {
   selectedWorldView: null as { id: number } | null,
   selectedWorldViewId: null as number | null,
   isCustomWorldView: false,
+  regionPending: false,
   tileVersion: 1,
 };
 
@@ -22,7 +23,36 @@ beforeEach(() => {
   mockNavigation.selectedWorldView = null;
   mockNavigation.selectedWorldViewId = null;
   mockNavigation.isCustomWorldView = false;
+  mockNavigation.regionPending = false;
   mockNavigation.tileVersion = 1;
+});
+
+describe('useTileUrls — a link to a region before it resolves', () => {
+  it('fetches no world tiles while the addressed region is on its way, and the region\'s once it is', () => {
+    // Europe in world view 5: without the selection the level reads as the
+    // whole world, so the map fetched the world's leaf tiles, islands and root
+    // borders for a view nobody sees (#2044).
+    mockNavigation.selectedWorldViewId = 5;
+    mockNavigation.isCustomWorldView = true;
+    mockNavigation.regionPending = true;
+    const { result, rerender } = renderHook(({ level }) => useTileUrls(level, 'root'), {
+      initialProps: { level: 'all-leaf' as 'all-leaf' | number },
+    });
+    expect(result.current.tileUrl).toBeNull();
+    expect(result.current.islandTileUrl).toBeNull();
+    expect(result.current.rootRegionsBorderUrl).toBeNull();
+
+    mockNavigation.regionPending = false;
+    rerender({ level: 6737 });
+    expect(scope(result.current.tileUrl).get('parent_id')).toBe('6737');
+  });
+
+  it('keeps the world on the map root, where the address names no region', () => {
+    mockNavigation.selectedWorldViewId = 5;
+    mockNavigation.isCustomWorldView = true;
+    const { result } = renderHook(() => useTileUrls('all-leaf', 'root'));
+    expect(scope(result.current.tileUrl).get('world_view_id')).toBe('5');
+  });
 });
 
 /**
