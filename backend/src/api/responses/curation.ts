@@ -164,6 +164,41 @@ export const VisitQuestionAnswered = z.strictObject({
 }).describe("A curator's answer to a run's question about an offered place with nothing to see (#1770).");
 export type VisitQuestionAnswered = z.infer<typeof VisitQuestionAnswered>;
 
+export const KeptOutOfKind = z.strictObject({
+  experienceId: z.number().int(),
+  membershipId: z.number().int(),
+  admission: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+    .describe('The verdict now standing on the membership: refused, by the curator.'),
+}).describe("A curator's refusal of a published place from one of its kinds, from the place's own card (#2022).");
+export type KeptOutOfKind = z.infer<typeof KeptOutOfKind>;
+
+/** Where one kind of a place stands, as the place's card says it. */
+export const PlaceKindState = z.enum(['offered', 'waiting', 'kept-out', 'refused']);
+
+export const PlaceKindStanding = z.strictObject({
+  membershipId: z.number().int(),
+  kindId: z.number().int(),
+  kindName: z.string(),
+  type: z.string().nullable().describe("The type within the kind, as the membership holds it; null where it has none."),
+  state: PlaceKindState.describe(
+    'offered: readers find the place in this kind; waiting: an arrival a curator has not passed; kept-out: a'
+    + " curator's refusal, pinned; refused: the kind's rule refuses it.",
+  ),
+  reason: z.string().nullable().describe('The reason a refused or kept-out membership carries.'),
+  answeredAt: z.iso.datetime({ offset: true }).nullable().describe('When a curator kept it out.'),
+  note: z.string().nullable().describe("The curator's words on keeping it out."),
+  curatorName: z.string().nullable().describe(
+    'Who kept it out, as they chose to be named; null where they chose nothing or the act lies outside the caller\'s'
+    + ' regions, as in the curation log.',
+  ),
+  canAnswer: z.boolean().describe("Whether the caller's scope reaches this kind's source, so they may take it out or put it back."),
+}).describe('One kind of a place, with where it stands (#2022).');
+
+export const PlaceKindStandings = z.strictObject({
+  kinds: z.array(PlaceKindStanding),
+}).describe("Every kind a place belongs to, for the curator's card (#2022).");
+export type PlaceKindStandings = z.infer<typeof PlaceKindStandings>;
+
 // The shared lists, held to the schema's CHECKs by `curationLogActions.test.ts`.
 export const IdentifierScheme = z.enum(IDENTIFIER_SCHEMES);
 export const IdentifierVerdict = z.enum(IDENTIFIER_VERDICTS);

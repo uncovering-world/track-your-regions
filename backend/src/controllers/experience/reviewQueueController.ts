@@ -388,7 +388,7 @@ export async function getReviewQueue(
     LEFT JOIN LATERAL (
       SELECT cl.created_at AS at, cl.details->>'note' AS note
         FROM experience_curation_log cl
-       WHERE cl.experience_id = e.id AND (cl.action IN ('admission_confirmed', 'arrival_refused', 'marked_former', 'admission_pin_released', 'admission_pin_kept')
+       WHERE cl.experience_id = e.id AND (cl.action IN ('admission_confirmed', 'arrival_refused', 'kept_out', 'marked_former', 'admission_pin_released', 'admission_pin_kept')
               OR (cl.action = 'visit_question_answered' AND cl.details->>'answer' = 'refused'))
          AND (cl.details->>'membershipId')::int = m.id
        ORDER BY cl.created_at DESC

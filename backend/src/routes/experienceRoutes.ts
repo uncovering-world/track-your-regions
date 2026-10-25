@@ -13,6 +13,8 @@ import {
   PlaceIdentifiers,
   IdentifierSettled,
   VisitQuestionAnswered,
+  KeptOutOfKind,
+  PlaceKindStandings,
   AdmissionPins,
   AdmissionPinHandedBack,
   ComponentItemsAnswered,
@@ -98,6 +100,8 @@ import {
   getPlaceIdentifiers,
   settlePlaceIdentifier,
   answerVisitQuestion,
+  keepOutOfKind,
+  listPlaceKinds,
   listAdmissionPins,
   handBackPin,
   setExperienceState,
@@ -138,6 +142,7 @@ import {
   pinQuestionAnswerBodySchema,
   identifierVerdictBodySchema,
   visitQuestionAnswerBodySchema,
+  keepOutOfKindBodySchema,
   admissionPinsQuerySchema,
   handBackPinBodySchema,
   refuseArrivalBodySchema,
@@ -563,6 +568,25 @@ export const experienceCurationRoutes = [
     body: visitQuestionAnswerBodySchema,
     response: VisitQuestionAnswered,
     handler: answerVisitQuestion,
+  }),
+  // A curator's word on one kind of a place from the place's own card (#2022):
+  // where each kind stands, and taking a published place out of one, with no
+  // question asked. The refusal writes a membership row and a log row in one
+  // transaction, limited as the visit question's refusal is.
+  defineRoute({
+    method: 'get', path: '/:id/kinds', access: 'curator', cache: 'no-store',
+    summary: 'List every kind a place belongs to and where it stands, for the curator\'s card',
+    params: idParamSchema,
+    response: PlaceKindStandings,
+    handler: listPlaceKinds,
+  }),
+  defineRoute({
+    method: 'post', path: '/:id/keep-out', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Take a published place out of one of its kinds; put it back with the admission override',
+    params: idParamSchema,
+    body: keepOutOfKindBodySchema,
+    response: KeptOutOfKind,
+    handler: keepOutOfKind,
   }),
   // Hand back a pin with no question asked (#1369): one membership row and one
   // log row in one transaction, limited as the pin's other answers are.
