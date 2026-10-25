@@ -84,7 +84,7 @@ terms:
   licence: "Licence Ouverte / Open Licence 2.0"
   database_right: waived                # waived (by the licence) | share-alike (waived on the condition a derivative database carries the same licence) | not-asserted | reserved | unknown
   attribution: "Ministère de la Culture, Liste des Musées de France, last updated <date>"
-  scraping: not-needed                  # not-needed (an API or a dump exists) | permitted | reserved (a robots signal or terms reserve it: ask first) | forbidden — the detail (which signal, which clause) goes in the body
+  scraping: not-needed                  # not-needed (an API or a dump exists, used under its operator's rules: ADR-0148) | permitted | reserved (a robots signal or terms reserve it: ask first) | forbidden — the detail (which signal, which clause) goes in the body
 access:
   mode: dump                            # api | dump | scrape | document
   format: csv
@@ -117,7 +117,8 @@ of the coverage register (`db/catalogue-coverage/kinds.jsonl`), the kinds a trav
 since a guide recommends across kinds the catalogue does not hold yet. Its body says what a
 survey measured: on how many entries of a region's list the source was counted, by type. And
 its terms are the verdict of [`site-access.md`](site-access.md), quoted with the clause they
-rest on. A record of a commercial guide carries counts and never the places it selected
+rest on. That verdict is an AI agent's reading pages, and is no leave for a program: a program's
+access is judged under ADR-0148, an API under its operator's rules and a scrape as a crawl. A record of a commercial guide carries counts and never the places it selected
 (ADR-0081 decision 7).
 
 Two more rules hold under `sights/`. The line between it and `global/` is selection:

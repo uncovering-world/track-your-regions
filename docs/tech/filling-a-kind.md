@@ -231,8 +231,19 @@ Reading a list and showing what it says are two different permissions, and both 
 - **Pictures are Commons only**, whatever the source says about its own photographs
   (ADR-0043). A source's picture URL is not stored; the picture, if any, is found on Commons
   through the place's Wikidata item.
-- **Scraping** is the access mode of last resort (§ 6.2): it needs the terms and the robots
-  signals to permit it, a stable page shape, and a rate the site's own guidance allows.
+- **An API or a dump** an operator documents for programs is used under that operator's rules
+  (ADR-0148): its documentation and limits, the data's licence and the terms. The
+  `User-agent: *` group of its `robots.txt` does not decide it. Wikidata's query service,
+  Wikimedia's Action API, Overpass and Nominatim all close their paths to `*` and document them
+  for scripts. A group naming `TrackYourRegionsBot`, a usage signal, and a TDM reservation where
+  the source is read under the exception rather than a licence still bind such a call (#2005).
+  The source's record states what the host's `robots.txt` says for the path and why it does not
+  decide.
+- **Scraping** is the access mode of last resort (§ 6.2). A program that fetches pages is a
+  crawler (ADR-0148 decision 3), so scraping needs the terms and the robots signals to permit it
+  (the group naming `TrackYourRegionsBot`, or the `*` group where none does), a stable page
+  shape, and a rate the site's own guidance allows. The verdicts of `docs/sources/site-access.md` are an AI agent's and
+  are no leave for a program.
 
 ## 6. Finding and judging a source
 
