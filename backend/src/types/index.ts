@@ -168,6 +168,12 @@ export const editLocationBodySchema = z.object({
   { message: 'Nothing to change: pass a name, a coordinate, a picture, a description, or any of them' },
 );
 
+/** `/api/experiences/:id/merge-proposals/:proposalId…` — one near pair of a place (#1991). */
+export const mergeProposalParamsSchema = z.object({
+  id: rowIdSchema,
+  proposalId: rowIdSchema,
+});
+
 /** One work of one experience: the museum a curator is acting from, and the work in it. */
 export const workEditParamsSchema = z.object({
   id: rowIdSchema,

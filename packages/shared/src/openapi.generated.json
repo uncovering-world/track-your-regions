@@ -6479,7 +6479,8 @@
                 "visit_question_answered",
                 "identifier_settled",
                 "separated",
-                "kept_out"
+                "kept_out",
+                "merge_proposal_taken_back"
               ]
             }
           },
@@ -6613,7 +6614,8 @@
                 "visit_question_answered",
                 "identifier_settled",
                 "separated",
-                "kept_out"
+                "kept_out",
+                "merge_proposal_taken_back"
               ]
             }
           },
@@ -14576,6 +14578,66 @@
         }
       }
     },
+    "/api/experiences/{id}/merge-proposals/{proposalId}/take-back": {
+      "post": {
+        "operationId": "postExperiencesByIdMergeProposalsByProposalIdTakeBack",
+        "summary": "Take back a near pair's part-of or two-places answer, opening the pair again",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "proposalId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeProposalTakenBack"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/view-suggestions": {
       "post": {
         "operationId": "postExperiencesByIdViewSuggestions",
@@ -20134,7 +20196,8 @@
               "visit_question_answered",
               "identifier_settled",
               "separated",
-              "kept_out"
+              "kept_out",
+              "merge_proposal_taken_back"
             ]
           },
           "region_id": {
@@ -20307,7 +20370,8 @@
               "visit_question_answered",
               "identifier_settled",
               "separated",
-              "kept_out"
+              "kept_out",
+              "merge_proposal_taken_back"
             ]
           },
           "created_at": {
@@ -27876,6 +27940,49 @@
         ],
         "additionalProperties": false,
         "description": "Jev's judgement of the pairs of near places with similar names a place is the lower id of (#1249), per pair it could judge; never applied."
+      },
+      "MergeProposalTakenBack": {
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "answer": {
+            "type": "string",
+            "enum": [
+              "part_of",
+              "two"
+            ],
+            "description": "The answer taken back."
+          },
+          "partId": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The place a *part of* answer named as the part; null for *two places*."
+          },
+          "catalogue": {
+            "type": "boolean",
+            "description": "Whether the answer was the pass's, read off Wikidata (ADR-0150), rather than a curator's."
+          }
+        },
+        "required": [
+          "proposalId",
+          "answer",
+          "partId",
+          "catalogue"
+        ],
+        "additionalProperties": false,
+        "description": "A near pair's answer taken back (#1991): the pair is open on the review queue again, and the pass never answers it from Wikidata again."
       },
       "MergeProposalsAnswered": {
         "type": "object",
