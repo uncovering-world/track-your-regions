@@ -3022,6 +3022,7 @@ export const CurationLogEntryAction = {
   identifier_settled: 'identifier_settled',
   separated: 'separated',
   kept_out: 'kept_out',
+  merge_proposal_taken_back: 'merge_proposal_taken_back',
 } as const;
 
 /**
@@ -5808,6 +5809,34 @@ export interface MergeProposalsAnswered {
   partOf: number;
   /** Pairs the answer could not be written for — answered meanwhile, a merge the catalogue refused, or a pair outside the caller's sources — each with why; the others stand. A pair also in `merged` was merged and its answer not recorded: one pair, not two. */
   refused: MergeProposalsAnsweredRefusedItem[];
+}
+
+/**
+ * The answer taken back.
+ */
+export type MergeProposalTakenBackAnswer = typeof MergeProposalTakenBackAnswer[keyof typeof MergeProposalTakenBackAnswer];
+
+
+export const MergeProposalTakenBackAnswer = {
+  part_of: 'part_of',
+  two: 'two',
+} as const;
+
+/**
+ * A near pair's answer taken back (#1991): the pair is open on the review queue again, and the pass never answers it from Wikidata again.
+ */
+export interface MergeProposalTakenBack {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  proposalId: number;
+  /** The answer taken back. */
+  answer: MergeProposalTakenBackAnswer;
+  /** The place a *part of* answer named as the part; null for *two places*. */
+  partId: number | null;
+  /** Whether the answer was the pass's, read off Wikidata (ADR-0150), rather than a curator's. */
+  catalogue: boolean;
 }
 
 export type ViewSuggestionsSuggestionsItemField = typeof ViewSuggestionsSuggestionsItemField[keyof typeof ViewSuggestionsSuggestionsItemField];
@@ -11180,6 +11209,33 @@ return apiFetch<MergeProposalsAnswered>(getPostExperiencesByIdMergeProposalsUrl(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(answerMergeProposalsBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdMergeProposalsByProposalIdTakeBackUrl = (id: number,
+    proposalId: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/merge-proposals/${encodeURIComponent(String(proposalId))}/take-back`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Take back a near pair's part-of or two-places answer, opening the pair again
+ */
+export const postExperiencesByIdMergeProposalsByProposalIdTakeBack = async (id: number,
+    proposalId: number, options?: Parameters<typeof apiFetch>[1]): Promise<MergeProposalTakenBack> => {
+
+  return apiFetch<MergeProposalTakenBack>(getPostExperiencesByIdMergeProposalsByProposalIdTakeBackUrl(id,proposalId),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}
 

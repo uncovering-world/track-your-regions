@@ -16,7 +16,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
-import { ACTION_LABELS, actionLabel, catalogueActor, catalogueMerge, formatLogDetails, takeableItems } from './curationLog';
+import {
+  ACTION_LABELS, actionLabel, catalogueActor, catalogueMerge, formatLogDetails, takeableItems, takeablePair,
+} from './curationLog';
 
 /** An entry as the controllers write it. */
 function entry(action: string, details: Record<string, unknown>) {
@@ -451,5 +453,64 @@ describe("the catalogue's own acts in the history (ADR-0086, ADR-0141)", () => {
       .toBe('The catalogue — the same name at the point');
     expect(catalogueActor({ action: 'component_items_answered', details: { accepted: [], refused: [] } })).toBeNull();
     expect(catalogueActor({ action: 'merged', details: { reason: 'curator', mergeId: 2 } })).toBeNull();
+  });
+});
+
+/**
+ * Matera's World Heritage site (202) and the Sassi di Matera (15334): Wikidata's
+ * item for the Sassi (Q2350404) states P361 "part of" the site's (Q55739617), so
+ * the pass answers the pair itself (#1991, ADR-0150).
+ */
+describe("a near pair's part of, read off Wikidata and taken back (#1991)", () => {
+  const fromWikidata = {
+    id: 7, action: 'merge_proposal_answered',
+    details: {
+      proposalId: 51, otherId: 15334, otherName: 'Sassi di Matera', answer: 'part_of', partId: 15334, catalogue: 'wikidata',
+      statement: { property: 'P361', subject: 'Q2350404', value: 'Q55739617' },
+    },
+  };
+  const takenBack = {
+    id: 8, action: 'merge_proposal_taken_back',
+    details: { proposalId: 51, otherId: 15334, otherName: 'Sassi di Matera', answer: 'part_of', partId: 15334, catalogue: 'wikidata' },
+  };
+
+  it('names the catalogue and the statement, each item by the place it is the item of', () => {
+    expect(catalogueActor(fromWikidata)).toBe('The catalogue — Wikidata');
+    expect(formatLogDetails(entry('merge_proposal_answered', fromWikidata.details))).toBe(
+      'Sassi di Matera (#15334): part of this place\n'
+      + "Wikidata: its item Q2350404 states “part of” (P361) this place's item Q55739617",
+    );
+    // The same relation stated the other way round, by the whole's item.
+    expect(formatLogDetails(entry('merge_proposal_answered', {
+      ...fromWikidata.details, statement: { property: 'P527', subject: 'Q55739617', value: 'Q2350404' },
+    }))).toBe(
+      'Sassi di Matera (#15334): part of this place\n'
+      + "Wikidata: this place's item Q55739617 states “has part” (P527) its item Q2350404",
+    );
+  });
+
+  it("reads a curator's answer as before, with no statement and nobody but the curator", () => {
+    const curator = { ...fromWikidata.details, catalogue: undefined, statement: undefined };
+    expect(catalogueActor({ action: 'merge_proposal_answered', details: curator })).toBeNull();
+    expect(formatLogDetails(entry('merge_proposal_answered', curator))).toBe('Sassi di Matera (#15334): part of this place');
+  });
+
+  it('reads the take-back as the answer it took back', () => {
+    expect(actionLabel('merge_proposal_taken_back')?.label).toBe('Answer taken back');
+    expect(formatLogDetails(entry('merge_proposal_taken_back', takenBack.details)))
+      .toBe('Sassi di Matera (#15334): part of this place — taken back from Wikidata, asked again');
+    expect(formatLogDetails(entry('merge_proposal_taken_back', { ...takenBack.details, answer: 'two', partId: undefined, catalogue: undefined })))
+      .toBe('Sassi di Matera (#15334): two places — taken back, asked again');
+  });
+
+  it('offers a part of or two places back until a later row for the pair, never one place', () => {
+    expect(takeablePair(fromWikidata, [fromWikidata])).toBe(51);
+    expect(takeablePair(fromWikidata, [takenBack, fromWikidata])).toBeNull();
+    const two = { id: 9, action: 'merge_proposal_answered', details: { ...takenBack.details, answer: 'two', catalogue: undefined } };
+    // Taken back and answered again by a curator: the newer answer is the one offered.
+    expect(takeablePair(two, [two, takenBack, fromWikidata])).toBe(51);
+    expect(takeablePair(fromWikidata, [two, takenBack, fromWikidata])).toBeNull();
+    expect(takeablePair({ id: 10, action: 'merge_proposal_answered', details: { proposalId: 52, answer: 'one', mergeId: 3 } }, [])).toBeNull();
+    expect(takeablePair(takenBack, [takenBack])).toBeNull();
   });
 });

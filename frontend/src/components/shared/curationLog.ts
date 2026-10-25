@@ -128,6 +128,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // A curator's answer to a near place with a name alike (#1249): one place,
   // which the merged row beside it records; two places; or one part of the other.
   merge_proposal_answered: { label: 'Pair answered', color: BLUE },
+  // And the way back from a *part of* or *two places* (#1991), green like the
+  // other take-backs: the pair is asked about again.
+  merge_proposal_taken_back: { label: 'Answer taken back', color: GREEN },
   // A curator's answer to a run's question about an offered place with nothing
   // to see (#1770): refused from the kind, or kept.
   visit_question_answered: { label: 'Visit answered', color: BLUE },
@@ -507,6 +510,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   component_items_answered: d => formatComponentItemsAnswered(d),
   component_item_taken_back: d => formatComponentItemTakenBack(d),
   merge_proposal_answered: d => formatMergeProposalAnswered(d),
+  merge_proposal_taken_back: d => formatMergeProposalTakenBack(d),
   visit_question_answered: d => formatVisitQuestionAnswered(d),
   kept_out: d => formatKeptOut(d),
   identifier_settled: d => formatIdentifierSettled(d),
@@ -601,11 +605,45 @@ const CLEARED_WORDS: Record<string, string> = {
  * "…: this place is part of it".
  */
 function formatMergeProposalAnswered(d: Record<string, unknown>): string | null {
+  const answer = pairAnswerLine(d);
+  if (answer === null) return null;
+  const statement = d.catalogue === 'wikidata' ? wikidataStatementLine(d) : null;
+  return statement === null ? answer : `${answer}\n${statement}`;
+}
+
+/** The pair and what it was answered, in the history's words. */
+function pairAnswerLine(d: Record<string, unknown>): string | null {
   if (typeof d.answer !== 'string') return null;
   const other = mergedPlace(d.otherName, d.otherId);
   if (d.answer === 'one') return `${other}: one place, merged into this one`;
   if (d.answer === 'two') return `${other}: two places`;
   return d.partId === d.otherId ? `${other}: part of this place` : `${other}: this place is part of it`;
+}
+
+/** The two properties a *part of* is read from (ADR-0150), named in words beside their ids. */
+const PART_PROPERTIES: Record<string, string> = { P361: 'part of', P527: 'has part' };
+
+/**
+ * The Wikidata statement the pass answered a pair from (#1991), each item
+ * named by the place it is the item of: "Wikidata: its item Q55739617 states
+ * “part of” (P361) this place's item Q2350404". P361 is stated by the part's
+ * item, P527 by the whole's.
+ */
+function wikidataStatementLine(d: Record<string, unknown>): string | null {
+  const statement = d.statement as { property?: unknown; subject?: unknown; value?: unknown } | null | undefined;
+  const property = typeof statement?.property === 'string' ? PART_PROPERTIES[statement.property] : undefined;
+  if (!property || typeof statement?.subject !== 'string' || typeof statement.value !== 'string') return null;
+  const otherIsPart = d.partId === d.otherId;
+  const subjectIsOther = statement.property === 'P361' ? otherIsPart : !otherIsPart;
+  const [subject, value] = subjectIsOther ? ['its item', "this place's item"] : ["this place's item", 'its item'];
+  return `Wikidata: ${subject} ${statement.subject} states “${property}” (${statement.property}) ${value} ${statement.value}`;
+}
+
+/** A pair's answer taken back (#1991): "Sassi di Matera (#202): part of this place — taken back, asked again". */
+function formatMergeProposalTakenBack(d: Record<string, unknown>): string | null {
+  const answer = pairAnswerLine(d);
+  if (answer === null) return null;
+  return `${answer} — taken back${d.catalogue === 'wikidata' ? ' from Wikidata' : ''}, asked again`;
 }
 
 /** What each word a curator may say of an identifier reads as in the history (#1896). */
@@ -750,6 +788,28 @@ export function takeableItems(
     }));
 }
 
+/**
+ * The pair a `merge_proposal_answered` row can still take back (#1991), or
+ * null: a *part of* or *two places* with no later row for the same pair — a
+ * take-back, or another answer, which is then the one to take back; later by
+ * the log's id, since two rows can carry one timestamp. *One place* is undone
+ * with its merge instead. Whether the take-back may run now is the server's
+ * answer, as it is for a merge's undo.
+ */
+export function takeablePair(
+  entry: { id: number; action: string; details?: unknown },
+  log: readonly { id: number; action: string; details?: unknown }[],
+): number | null {
+  if (entry.action !== 'merge_proposal_answered') return null;
+  const details = entry.details as { proposalId?: unknown; answer?: unknown } | null | undefined;
+  if (typeof details?.proposalId !== 'number' || (details.answer !== 'part_of' && details.answer !== 'two')) return null;
+  const proposalId = details.proposalId;
+  const superseded = log.some(other => other.id > entry.id
+    && (other.action === 'merge_proposal_taken_back' || other.action === 'merge_proposal_answered')
+    && (other.details as { proposalId?: unknown } | null | undefined)?.proposalId === proposalId);
+  return superseded ? null : proposalId;
+}
+
 /** Whether a history row is the catalogue's own merge of two places sharing a Wikidata item (ADR-0086). */
 export function catalogueMerge(entry: { action: string; details?: unknown }): boolean {
   const details = entry.details as { reason?: unknown } | null | undefined;
@@ -759,8 +819,9 @@ export function catalogueMerge(entry: { action: string; details?: unknown }): bo
 /**
  * Who a history row names when the catalogue made it rather than a curator,
  * or null for a curator's row: its own merge of two places on one Wikidata
- * item (ADR-0086), and its own acceptance of component candidates of the
- * point's own name at the point (ADR-0141).
+ * item (ADR-0086), its own acceptance of component candidates of the
+ * point's own name at the point (ADR-0141), and its own *part of* read off
+ * Wikidata's statement (ADR-0150).
  */
 export function catalogueActor(entry: { action: string; details?: unknown }): string | null {
   if (catalogueMerge(entry)) return 'The catalogue — one Wikidata item';
@@ -768,5 +829,6 @@ export function catalogueActor(entry: { action: string; details?: unknown }): st
   if (entry.action === 'component_items_answered' && details?.catalogue === 'exact') {
     return 'The catalogue — the same name at the point';
   }
+  if (entry.action === 'merge_proposal_answered' && details?.catalogue === 'wikidata') return 'The catalogue — Wikidata';
   return null;
 }

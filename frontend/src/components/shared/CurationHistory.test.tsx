@@ -11,9 +11,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CurationLogEntry } from '../../api/curation';
 
 vi.mock('../../utils/queryInvalidation', () => ({ invalidateExperiences: vi.fn() }));
-vi.mock('../../api/curation', () => ({ fetchCurationLog: vi.fn(), undoPlaceMerge: vi.fn(), undoSeparation: vi.fn(), takeBackPointItem: vi.fn() }));
+vi.mock('../../api/curation', () => ({
+  fetchCurationLog: vi.fn(), undoPlaceMerge: vi.fn(), undoSeparation: vi.fn(), takeBackPointItem: vi.fn(), takeBackMergeProposal: vi.fn(),
+}));
 
-import { fetchCurationLog, takeBackPointItem, undoPlaceMerge } from '../../api/curation';
+import { fetchCurationLog, takeBackMergeProposal, takeBackPointItem, undoPlaceMerge } from '../../api/curation';
 import { CurationHistory } from './CurationHistory';
 
 const mockedLog = fetchCurationLog as unknown as ReturnType<typeof vi.fn>;
@@ -159,6 +161,51 @@ describe('a confirmed component item in the history of its site', () => {
     openHistory(9850);
 
     expect(await screen.findByText('Bologa: Castrul Bologa (Q98501) taken back; the picture and the description came off with it')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Take back/ })).toBeNull();
+  });
+});
+
+/**
+ * A near pair's part of is taken back from the history of the place it is
+ * recorded on (#1991): the pass read the Sassi di Matera (15334) as part of
+ * Matera's World Heritage site (202) off Wikidata, and a curator who disagrees
+ * opens the pair again from that row.
+ */
+describe("a near pair's answer in the history of the place it is recorded on", () => {
+  const ANSWERED = {
+    id: 7, action: 'merge_proposal_answered', curator_name: null, region_name: null, folded_id: null, folded_name: null, created_at: '2026-10-25T21:00:00Z',
+    details: {
+      proposalId: 51, otherId: 15334, otherName: 'Sassi di Matera', answer: 'part_of', partId: 15334, catalogue: 'wikidata',
+      statement: { property: 'P361', subject: 'Q2350404', value: 'Q55739617' },
+    },
+  } as unknown as CurationLogEntry;
+  const TAKEN_BACK = {
+    id: 8, action: 'merge_proposal_taken_back', curator_name: 'Ada', region_name: null, folded_id: null, folded_name: null, created_at: '2026-10-25T22:00:00Z',
+    details: { proposalId: 51, otherId: 15334, otherName: 'Sassi di Matera', answer: 'part_of', partId: 15334, catalogue: 'wikidata' },
+  } as unknown as CurationLogEntry;
+  const mockedTakeBackPair = takeBackMergeProposal as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockedLog.mockReset();
+    mockedTakeBackPair.mockReset();
+  });
+
+  it('names the catalogue, says the statement, and offers the take-back of the pair', async () => {
+    mockedLog.mockResolvedValue([ANSWERED]);
+    mockedTakeBackPair.mockResolvedValue({ proposalId: 51, answer: 'part_of', partId: 15334, catalogue: true });
+    openHistory(202);
+
+    expect(await screen.findByText('The catalogue — Wikidata')).toBeTruthy();
+    expect(screen.getByText(/its item Q2350404 states “part of” \(P361\) this place's item Q55739617/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Take back this answer' }));
+    await waitFor(() => expect(mockedTakeBackPair).toHaveBeenCalledWith(202, 51));
+  });
+
+  it('offers nothing once the answer was taken back', async () => {
+    mockedLog.mockResolvedValue([TAKEN_BACK, ANSWERED]);
+    openHistory(202);
+
+    expect(await screen.findByText('Sassi di Matera (#15334): part of this place — taken back from Wikidata, asked again')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Take back/ })).toBeNull();
   });
 });
