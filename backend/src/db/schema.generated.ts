@@ -1668,7 +1668,7 @@ export const CHECK_VALUES = {
     judgement: ["same", "other"],
   },
   experience_curation_log: {
-    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released", "admission_pin_kept", "admission_pin_handed_back", "merge_proposal_answered", "visit_question_answered", "identifier_settled", "separated"],
+    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released", "admission_pin_kept", "admission_pin_handed_back", "merge_proposal_answered", "visit_question_answered", "identifier_settled", "separated", "kept_out"],
   },
   experience_held_decisions: {
     answer: ["published", "refused"],

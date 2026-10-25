@@ -521,6 +521,9 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // #1885): written on both places' histories, the way back from a merge or
     // a run's join that a shared identifier misled.
     'separated',
+    // A published place taken out of one of its kinds from its own card, with
+    // no question asked (#2022): the membership's refusal, pinned.
+    'kept_out',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
