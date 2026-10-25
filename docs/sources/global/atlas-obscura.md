@@ -45,7 +45,7 @@ scorecard:
   total: 12
   verdict: adoptable
 status: looked-at
-issue: 1977
+issue: 1992
 looked_at: 2026-10-25
 ---
 
@@ -82,3 +82,14 @@ Wikidata's editors made it: a place Atlas Obscura lists may lack the statement.
 to every agent and leaves `/places/` open. The terms page answered 403 to the fetch on
 2026-10-25, as it is noted in `site-access.md`, so no page of the site is counted on. The
 score of 2 for terms is the Wikidata statement's: nothing of Atlas Obscura's is copied or shown.
+
+**Measured again for Public art (#1992, 2026-10-25)**, on a pool of 196,140 items in the closure
+of the kind's classes, wider than the run's
+([report](../../research/2026-10-25-how-public-art-enters-the-catalogue.md)):
+
+- It marks 21 of the 30 calibration entries the kind's classes reach under the line. It also marks
+  7 of the 16 street-art entries no class reaches, among them Leake Street, Balmy Alley and
+  Djerbahood.
+- Under the line it is on 744 pool items with one edition or more, and 510 with two or more.
+- A sample of 40 of the 510 held about 24 sights, about 8 roadside giants and about 8 items
+  that are not public art.
