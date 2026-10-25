@@ -14,6 +14,7 @@ import type {
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointHintSuggestions, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
+  KeptOutOfKind, PlaceKindStandings,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -24,6 +25,7 @@ import {
   postExperiencesByIdComponentItemSuggestions, postExperiencesByIdPointHintSuggestions,
   postExperiencesByIdMergeProposals, type AnswerMergeProposalsBody, postExperiencesByIdMergeProposalSuggestions,
   postExperiencesByIdVisitSuggestion, postExperiencesByIdVisitQuestion, type VisitQuestionAnswerBody,
+  getExperiencesByIdKinds, postExperiencesByIdKeepOut, type KeepOutOfKindBody,
   postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody,
   getExperiencesByIdIdentifiers, postExperiencesByIdIdentifiers,
   getExperiencesReviewPins, postExperiencesByIdAdmissionPinHandBack, type HandBackPinBody, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
@@ -48,6 +50,7 @@ export type {
   PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PlaceIdentifier, PlaceIdentifiers, IdentifierSettled, IdentifierVerdictBody, PointItemTakenBack, ViewsChosen, ViewSuggestions, VisitQuestionAnswerBody, VisitQuestionAnswered, VisitSuggestion, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
+  KeepOutOfKindBody, KeptOutOfKind, PlaceKindStanding, PlaceKindStandings,
 } from './client.generated';
 
 /**
@@ -199,6 +202,19 @@ export async function answerVisitQuestion(
   body: VisitQuestionAnswerBody,
 ): Promise<VisitQuestionAnswered> {
   return postExperiencesByIdVisitQuestion(experienceId, body);
+}
+
+/** Every kind a place belongs to and where it stands, for the curator's card (#2022). */
+export async function fetchPlaceKinds(experienceId: number): Promise<PlaceKindStandings> {
+  return getExperiencesByIdKinds(experienceId);
+}
+
+/**
+ * Take a published place out of one of its kinds (#2022), with no question
+ * asked; `setExperienceAdmission` with `override` puts it back.
+ */
+export async function keepOutOfKind(experienceId: number, body: KeepOutOfKindBody): Promise<KeptOutOfKind> {
+  return postExperiencesByIdKeepOut(experienceId, body);
 }
 
 /** The admission pins in the caller's scope, or one place's (#1369). */

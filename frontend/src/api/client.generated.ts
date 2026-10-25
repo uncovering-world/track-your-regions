@@ -3001,6 +3001,7 @@ export const CurationLogEntryAction = {
   visit_question_answered: 'visit_question_answered',
   identifier_settled: 'identifier_settled',
   separated: 'separated',
+  kept_out: 'kept_out',
 } as const;
 
 /**
@@ -5274,6 +5275,105 @@ export interface VisitQuestionAnswered {
   answer: VisitQuestionAnsweredAnswer;
   /** The verdict now standing on the membership: refused by the curator, or admitted as before. */
   admission: VisitQuestionAnsweredAdmission;
+}
+
+export type PlaceKindState = typeof PlaceKindState[keyof typeof PlaceKindState];
+
+
+export const PlaceKindState = {
+  offered: 'offered',
+  waiting: 'waiting',
+  'kept-out': 'kept-out',
+  refused: 'refused',
+} as const;
+
+/**
+ * One kind of a place, with where it stands (#2022).
+ */
+export interface PlaceKindStanding {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kindId: number;
+  kindName: string;
+  /**
+     * The type within the kind, as the membership holds it; null where it has none.
+     * @nullable
+     */
+  type: string | null;
+  /** offered: readers find the place in this kind; waiting: an arrival a curator has not passed; kept-out: a curator's refusal, pinned; refused: the kind's rule refuses it. */
+  state: PlaceKindState;
+  /**
+     * The reason a refused or kept-out membership carries.
+     * @nullable
+     */
+  reason: string | null;
+  /** When a curator kept it out. */
+  answeredAt: string | null;
+  /**
+     * The curator's words on keeping it out.
+     * @nullable
+     */
+  note: string | null;
+  /**
+     * Who kept it out, as they chose to be named; null where they chose nothing or the act lies outside the caller's regions, as in the curation log.
+     * @nullable
+     */
+  curatorName: string | null;
+  /** Whether the caller's scope reaches this kind's source, so they may take it out or put it back. */
+  canAnswer: boolean;
+}
+
+/**
+ * Every kind a place belongs to, for the curator's card (#2022).
+ */
+export interface PlaceKindStandings {
+  kinds: PlaceKindStanding[];
+}
+
+export interface KeepOutOfKindBody {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId: number;
+  /** @maxLength 1000 */
+  note?: string;
+}
+
+/**
+ * The verdict now standing on the membership: refused, by the curator.
+ */
+export type KeptOutOfKindAdmission = typeof KeptOutOfKindAdmission[keyof typeof KeptOutOfKindAdmission];
+
+
+export const KeptOutOfKindAdmission = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+/**
+ * A curator's refusal of a published place from one of its kinds, from the place's own card (#2022).
+ */
+export interface KeptOutOfKind {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /** The verdict now standing on the membership: refused, by the curator. */
+  admission: KeptOutOfKindAdmission;
 }
 
 export interface HandBackPinBody {
@@ -10713,6 +10813,71 @@ return apiFetch<VisitQuestionAnswered>(getPostExperiencesByIdVisitQuestionUrl(id
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(visitQuestionAnswerBody)
+  }
+);}
+
+
+
+export const getGetExperiencesByIdKindsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/kinds`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary List every kind a place belongs to and where it stands, for the curator's card
+ */
+export const getExperiencesByIdKinds = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<PlaceKindStandings> => {
+
+  return apiFetch<PlaceKindStandings>(getGetExperiencesByIdKindsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdKeepOutUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/keep-out`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Take a published place out of one of its kinds; put it back with the admission override
+ */
+export const postExperiencesByIdKeepOut = async (id: number,
+    keepOutOfKindBody: KeepOutOfKindBody, options?: Parameters<typeof apiFetch>[1]): Promise<KeptOutOfKind> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<KeptOutOfKind>(getPostExperiencesByIdKeepOutUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(keepOutOfKindBody)
   }
 );}
 

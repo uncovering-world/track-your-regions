@@ -12,6 +12,7 @@ import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { separateKind } from '../../api/curation';
+import { queryKeys } from '../../api/queryKeys';
 import type { Experience } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 
@@ -27,6 +28,8 @@ export function KindSeparation({ experience, regionId, onSeparated }: {
     mutationFn: (kindId: number) => separateKind(experience.id, kindId),
     onSuccess: () => {
       invalidateExperiences(queryClient, { regionId: regionId ?? undefined, experienceId: experience.id });
+      // The separated kind is another place's now: no Kinds list of either may be served from before.
+      queryClient.invalidateQueries({ queryKey: queryKeys.curation.placeKindsAll });
       onSeparated();
     },
   });
@@ -36,7 +39,7 @@ export function KindSeparation({ experience, regionId, onSeparated }: {
 
   return (
     <Box sx={{ mt: 2 }}>
-      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Kinds of this place</Typography>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Separate a kind</Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
         One place for {kinds.map(kind => kind.kind_name).join(' and ')}. If one of them is another place, separate it.
       </Typography>

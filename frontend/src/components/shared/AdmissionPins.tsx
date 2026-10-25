@@ -47,6 +47,8 @@ function PinRow({ pin, regionId, showName }: { pin: AdmissionPin; regionId: numb
     mutationFn: () => handBackAdmissionPin(pin.experienceId, { membershipId: pin.membershipId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.curation.admissionPinsAll });
+      // A handed-back refusal is the rule's again: the place's Kinds row says so (#2022).
+      queryClient.invalidateQueries({ queryKey: queryKeys.curation.placeKindsAll });
       queryClient.invalidateQueries({ queryKey: queryKeys.experience.curationLogAll });
       queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll });
       invalidateExperiences(queryClient, { regionId, experienceId: pin.experienceId });
@@ -84,7 +86,7 @@ function PinRow({ pin, regionId, showName }: { pin: AdmissionPin; regionId: numb
         // A curator's own refusal answered no rule, and a source that publishes a
         // list never takes a refused place back by itself: the put-back is its way back.
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-          A curator’s own refusal, not an answer to a rule: to show it again, put it back from the kept-out list.
+          A curator’s own refusal, not an answer to a rule: to show it again, put it back from the place’s Kinds or the kept-out list.
         </Typography>
       )}
     </Box>
