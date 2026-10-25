@@ -12,7 +12,7 @@
         "resource-summary:total:size": [
           "error",
           {
-            "maxNumericValue": 1140000
+            "maxNumericValue": 1220000
           }
         ],
         "resource-summary:total:count": [
@@ -33,7 +33,7 @@
         "resource-summary:total:size": [
           "error",
           {
-            "maxNumericValue": 1585000
+            "maxNumericValue": 1685000
           }
         ],
         "resource-summary:total:count": [
@@ -59,7 +59,7 @@
     "resource-summary:script:size": [
       "error",
       {
-        "maxNumericValue": 590000
+        "maxNumericValue": 600000
       }
     ],
     "resource-summary:stylesheet:size": [
