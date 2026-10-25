@@ -2849,7 +2849,7 @@ export interface SiteFindsResponse {
 
 export interface CreateManualExperienceBody {
   name: string;
-  /** @maxLength 1000 */
+  /** @maxLength 10000 */
   description?: string;
   /**
      * The type within the kind the place is created under, never the kind itself, which is `kindId`.
@@ -2949,7 +2949,7 @@ export interface AssignExperienceBody {
 
 export interface EditExperienceBody {
   name?: string;
-  /** @maxLength 1000 */
+  /** @maxLength 10000 */
   description?: string;
   /** @maxLength 10000 */
   subtitle?: string;
