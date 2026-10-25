@@ -158,13 +158,14 @@ and accepted by it.
 | [0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md) | The OpenStreetMap layer keeps a full geometry only for what a kind draws | Accepted | 2026-10-22 |
 | [0137](0137-a-point-a-reader-sees-is-another-sources-point-within-ten-metres.md) | A point a reader sees is another source's point within ten metres | Accepted — decision 1 narrowed by [0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md) | 2026-10-23 |
 | [0138](0138-unescos-page-about-a-site-is-kept-by-every-other-familys-run.md) | UNESCO's page about a site is kept by every other family's run | Accepted | 2026-10-23 |
-| [0139](0139-a-field-no-reader-sees-and-a-typographic-rewrite-pass-the-gate.md) | A field no reader sees, and a typographic rewrite, pass the gate | Accepted | 2026-10-23 |
+| [0139](0139-a-field-no-reader-sees-and-a-typographic-rewrite-pass-the-gate.md) | A field no reader sees, and a typographic rewrite, pass the gate | Accepted — decision 2 narrowed by [0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md) | 2026-10-23 |
 | [0140](0140-a-short-move-passes-the-gate.md) | A short move passes the gate | Accepted | 2026-10-23 |
 | [0141](0141-the-catalogue-accepts-a-component-candidate-of-the-points-own-name-at-the-point.md) | The catalogue accepts a component candidate of the point's own name at the point | Accepted | 2026-10-23 |
 | [0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md) | A place is found by its identifiers before a run creates one | Accepted | 2026-10-23 |
 | [0144](0144-a-curator-separates-one-kinds-membership-into-a-place-of-its-own.md) | A curator separates one kind's membership of a place into a place of its own | Accepted | 2026-10-24 |
 | [0145](0145-an-edition-is-one-place-with-a-point-at-every-cast.md) | An edition is one place with a point at every cast | Accepted | 2026-10-23 |
 | [0146](0146-a-places-outline-belongs-to-the-source-that-drew-it.md) | A place's outline belongs to the source that drew it | Accepted | 2026-10-25 |
+| [0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md) | The World Heritage list's typesetting defects are mended on reading, and the mend passes the gate | Accepted | 2026-10-25 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

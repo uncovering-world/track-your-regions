@@ -1,7 +1,7 @@
 # ADR-0139: A field no reader sees, and a typographic rewrite, pass the gate
 
 **Date:** 2026-10-23
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md)
 **Issue:** [#1834](https://github.com/uncovering-world/track-your-regions/issues/1834)
 **Narrows:** [ADR-0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) decision 1
 
