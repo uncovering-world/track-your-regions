@@ -23,3 +23,4 @@ and says so in its first lines.
 | [2026-10-17 — Which source can give a place its street address, per kind](2026-10-17-which-source-gives-a-place-its-street-address.md) | #1189, #1193 |
 | [2026-10-21 — How map products and guides sort sights, and what the surveys expect](2026-10-21-how-maps-and-guides-sort-sights.md) | #1163, ADR-0131 |
 | [2026-10-25 — What the databases Wikidata links places to could do for the catalogue](2026-10-25-what-the-databases-wikidata-links-places-to-could-do.md) | #1977 |
+| [2026-10-25 — What a site's robots.txt binds: crawlers, API clients and AI agents](2026-10-25-what-a-sites-robots-txt-binds.md) | #2003, #2000, ADR-0148 |
