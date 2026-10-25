@@ -24,3 +24,4 @@ and says so in its first lines.
 | [2026-10-21 — How map products and guides sort sights, and what the surveys expect](2026-10-21-how-maps-and-guides-sort-sights.md) | #1163, ADR-0131 |
 | [2026-10-25 — What the databases Wikidata links places to could do for the catalogue](2026-10-25-what-the-databases-wikidata-links-places-to-could-do.md) | #1977 |
 | [2026-10-25 — What a site's robots.txt binds: crawlers, API clients and AI agents](2026-10-25-what-a-sites-robots-txt-binds.md) | #2003, #2000, ADR-0148 |
+| [2026-10-25 — How public art could enter the catalogue past its editions line](2026-10-25-how-public-art-enters-the-catalogue.md) | #1992, #2033, #2034, #2035, #2036, #2037 |
