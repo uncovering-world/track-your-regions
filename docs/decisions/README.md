@@ -166,6 +166,7 @@ and accepted by it.
 | [0145](0145-an-edition-is-one-place-with-a-point-at-every-cast.md) | An edition is one place with a point at every cast | Accepted | 2026-10-23 |
 | [0146](0146-a-places-outline-belongs-to-the-source-that-drew-it.md) | A place's outline belongs to the source that drew it | Accepted | 2026-10-25 |
 | [0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md) | The World Heritage list's typesetting defects are mended on reading, and the mend passes the gate | Accepted | 2026-10-25 |
+| [0148](0148-a-documented-api-is-used-under-its-operators-rules-and-page-reading-under-robots-txt.md) | A documented API is used under its operator's rules, and page reading under robots.txt | Accepted | 2026-10-25 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
