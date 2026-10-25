@@ -41,6 +41,7 @@ import { yearLabel } from '../../utils/yearLabel';
 import { extentLabel } from '../shared/ExtentLine';
 import { PictureFact } from './PictureFact';
 import { MoveFact } from './MoveFact';
+import { TEXT_CREDITS } from '@tyr/shared/textCredits';
 
 /** One field of a proposal, as the queue carries it: the part of its `ChangedField` a rendering reads. */
 export type ProposedField = Pick<ChangedField, 'field' | 'old' | 'new'>;
@@ -63,6 +64,8 @@ export interface ChangeContext {
   inDanger?: boolean;
   dangerSince?: number | null;
   imageCredit?: ImageCredit | null;
+  /** The rows are a point's or a work's, not the place's own: a point's description is Wikidata's line. */
+  part?: boolean;
 }
 
 /** Which column of the table a value is rendered in: what readers see, or what is proposed. */
@@ -363,6 +366,13 @@ const MEANINGS: Record<string, FieldMeaning> = {
     label: 'description',
     what: 'The paragraph a reader opens, under the subtitle: UNESCO’s text for a World Heritage site, or a curator’s.',
     whenItChanges: 'The source rewrote it. Read both; a rewrite can drop what a curator added.',
+    // Only the UNESCO run proposes a description, so the new text is the World
+    // Heritage Centre's, and the sentence carries its credit as the extent's
+    // carries OpenStreetMap's: a tooltip is not visible without interaction
+    // (ADR-0149, `DescriptionText`). A removal proposes no text to credit.
+    describeChange: (_before, after, context) => (context.part || isEmptyValue(after)
+      ? null
+      : `The new text is ${TEXT_CREDITS.unesco.holder}'s, under ${TEXT_CREDITS.unesco.licence}.`),
   },
   // The fallback for a value no kind declares; a value from a kind's own vocabulary
   // is explained in that vocabulary's words by `meaningOf` (#814). Never "category":

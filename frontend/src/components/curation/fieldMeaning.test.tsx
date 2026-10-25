@@ -374,8 +374,17 @@ describe('what a change means, in one line', () => {
   });
 
   it('has no sentence for a text a person simply rewrote', () => {
-    expect(change('description', 'a', 'b')).toBeNull();
+    expect(change('subtitle', 'a', 'b')).toBeNull();
     expect(change('name', 'a', 'b')).toBeNull();
+  });
+
+  it("names whose text a new description is, since only UNESCO's run proposes one (ADR-0149)", () => {
+    expect(change('description', 'a', 'b')).toBe("The new text is UNESCO World Heritage Centre's, under CC BY-SA 4.0.");
+  });
+
+  it('credits no one for a description the row proposes to remove', () => {
+    expect(change('description', 'a', null)).toBeNull();
+    expect(change('description', 'a', '')).toBeNull();
   });
 
   it('knows which facts no reader surface shows, so a card can say what publishing changes', () => {

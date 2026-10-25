@@ -27,7 +27,10 @@ import {
   Chip,
   Divider,
   FormControl,
+  FormControlLabel,
   FormHelperText,
+  Radio,
+  RadioGroup,
   InputLabel,
   Select,
   MenuItem,
@@ -52,6 +55,7 @@ import {
 import { useEditForm } from '../../hooks/useEditForm';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { PictureWithCredit } from './PictureWithCredit';
+import { DescriptionCreditLine } from './DescriptionText';
 import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
 import { CurationHistory } from './CurationHistory';
@@ -94,7 +98,70 @@ function creditForPreview(editImageUrl: string, row: Experience): ImageCredit | 
 
 /** What the edit form holds, named by the request body's keys (ADR-0076). */
 type EditFields = Required<Pick<Parameters<typeof editExperience>[1],
-  'name' | 'subtitle' | 'description' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl'>>;
+  'name' | 'subtitle' | 'description' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl' | 'descriptionAdapted'>>;
+
+/** The source whose run writes a place's description (ADR-0149). */
+const UNESCO_SOURCE_ID = 1;
+
+/** Whether the UNESCO source holds the place, whose description is then UNESCO's text or a curator's word on it. */
+function holdsUnescoText(experience: Experience | null): boolean {
+  return !!experience?.kinds?.some(kind => kind.source_id === UNESCO_SOURCE_ID)
+    || experience?.description_source === 'unesco';
+}
+
+/**
+ * Whether the dialog asks whose the description is: of such a place's text once
+ * the curator touched it, or once a curator already claimed it.
+ */
+function asksAuthorship(experience: Experience | null, description: string): boolean {
+  if (!holdsUnescoText(experience) || description.trim() === '') return false;
+  const edited = description !== (experience?.description ?? '');
+  const claimedOwn = !!experience?.description && !experience.description_source;
+  return edited || !!experience?.description_adapted || claimedOwn;
+}
+
+/**
+ * A changed description of such a place always says whose it is: a claimed
+ * description without that word would read as the curator's own. The word goes
+ * only where it was asked, so a text edited and then restored sends none.
+ */
+function withAdaptation(
+  changes: Partial<EditFields>, experience: Experience | null, description: string, adapted: boolean,
+): Partial<EditFields> {
+  const { descriptionAdapted: asked, ...rest } = changes;
+  return asksAuthorship(experience, description) && (changes.description !== undefined || asked !== undefined)
+    ? { ...rest, descriptionAdapted: adapted }
+    : rest;
+}
+
+/**
+ * Whose text the description being edited is, and the credit readers will see
+ * under it (ADR-0149). Asked only of a text the curator has touched: UNESCO's
+ * paragraph as the run wrote it is UNESCO's, and calling it anyone's own would
+ * be untrue. An edit of it keeps its credit as an adaptation; the curator's own
+ * text carries none.
+ */
+function DescriptionAuthorship({ experience, description, adapted, onAdapted }: {
+  experience: Experience | null;
+  description: string;
+  adapted: boolean;
+  onAdapted: (adapted: boolean) => void;
+}) {
+  if (!holdsUnescoText(experience) || description.trim() === '') return null;
+  const edited = description !== (experience?.description ?? '');
+  const asks = asksAuthorship(experience, description);
+  return (
+    <>
+      {asks && (
+        <RadioGroup row value={adapted ? 'adapted' : 'own'} onChange={(_e, value) => onAdapted(value === 'adapted')}>
+          <FormControlLabel value="adapted" control={<Radio size="small" />} label="Edit of UNESCO's text" />
+          <FormControlLabel value="own" control={<Radio size="small" />} label="My own text" />
+        </RadioGroup>
+      )}
+      <DescriptionCreditLine source={adapted ? 'unesco' : null} adapted={edited || !!experience?.description_adapted} />
+    </>
+  );
+}
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
@@ -127,6 +194,9 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
       imageUrl: experience?.image_url ?? '',
       websiteUrl: text(metadata?.website),
       wikipediaUrl: text(metadata?.wikipediaUrl),
+      // Whose text the description is, for a place the UNESCO source holds: an
+      // edit of UNESCO's unless the curator once said it is their own.
+      descriptionAdapted: experience?.description_source === 'unesco',
     },
     resetKey: experience?.id ?? null,
     tidy: { name: tidyLabel },
@@ -289,6 +359,15 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
             multiline
             rows={2}
           />
+          {/* On a World Heritage place the curator says whose text the description is:
+              an edit of UNESCO's keeps its credit as an adaptation, their own carries
+              none (ADR-0149). The line under it is the credit readers will see. */}
+          <DescriptionAuthorship
+            experience={experience}
+            description={form.values.description}
+            adapted={form.values.descriptionAdapted}
+            onAdapted={adapted => form.set('descriptionAdapted', adapted)}
+          />
           {/* The kind's own types and nothing else — cultural / natural / mixed for a
               World Heritage site, monument / sculpture for public art, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue
               for a place of worship — and no control
@@ -358,8 +437,9 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
             size="small"
             variant="contained"
             startIcon={<SaveIcon />}
-            onClick={() => form.submit(editMutation.mutateAsync)}
-            disabled={!form.dirty || form.missing || isPending}
+            onClick={() => form.submit(changes => editMutation.mutateAsync(withAdaptation(changes, experience, form.values.description, form.values.descriptionAdapted)))}
+            disabled={!form.dirty || form.missing || isPending
+              || Object.keys(withAdaptation(form.changes(), experience, form.values.description, form.values.descriptionAdapted)).length === 0}
           >
             {editMutation.isPending ? 'Saving...' : 'Save Changes'}
           </Button>

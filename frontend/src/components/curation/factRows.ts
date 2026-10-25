@@ -367,7 +367,7 @@ export function partGroups(
     // In the part's own context: its fields are what a rendering may look beside,
     // and its picture's credit is whose photograph readers see of *it* — the
     // object's would credit the museum's photographer under a work's picture.
-    rows: rowsFor(part.fields, { ...context, proposed: part.fields, imageCredit: part.imageCredit ?? null }),
+    rows: rowsFor(part.fields, { ...context, proposed: part.fields, imageCredit: part.imageCredit ?? null, part: true }),
   }))
     // A part whose fields all have no value on either side asks nothing: a heading over
     // no rows would read as a question with nothing to answer.

@@ -1971,6 +1971,16 @@ export interface GroupDescriptions {
 }
 
 /**
+ * Whose text the description is, such as `unesco` for the World Heritage Centre's paragraph (CC BY-SA 4.0), which a reader is shown with its credit (ADR-0149). Null for a curator's own text, or where there is no description.
+ */
+export type DescriptionSource = typeof DescriptionSource[keyof typeof DescriptionSource] | null;
+
+
+export const DescriptionSource = {
+  unesco: 'unesco',
+} as const;
+
+/**
  * Whether this kind's source still lists the place (#1289): `former` where a curator recorded it as delisted in this kind — a World Heritage Site UNESCO delisted — while the place itself may still be listed by another kind.
  */
 export type PlaceKindSourceMembership = typeof PlaceKindSourceMembership[keyof typeof PlaceKindSourceMembership];
@@ -2083,6 +2093,9 @@ export interface ExperienceSearchResult {
   name: string;
   /** @nullable */
   description: string | null;
+  description_source: DescriptionSource | null;
+  /** Whether the description is a curator's edit of its source's text, which the credit calls an adaptation (ADR-0149). */
+  description_adapted: boolean;
   /** @nullable */
   type: string | null;
   /**
@@ -2285,6 +2298,9 @@ export interface Experience {
      * @nullable
      */
   description: string | null;
+  description_source: DescriptionSource | null;
+  /** Whether the description is a curator's edit of its source's text, which the credit calls an adaptation (ADR-0149). */
+  description_adapted: boolean;
   /**
      * The type within the kind, such as `cultural` on a World Heritage site or `cathedral` on a place of worship. Null on a museum, whose kind has no types (ADR-0045).
      * @nullable
@@ -2519,6 +2535,9 @@ export interface ExperienceDetail {
   subtitle: string | null;
   /** @nullable */
   description: string | null;
+  description_source: DescriptionSource | null;
+  /** Whether the description is a curator's edit of its source's text, which the credit calls an adaptation (ADR-0149). */
+  description_adapted: boolean;
   /** @nullable */
   type: string | null;
   /** Null on a place created by hand without a country, which the columns allow. */
@@ -2944,6 +2963,7 @@ export interface EditExperienceBody {
   tags?: string[];
   websiteUrl?: string;
   wikipediaUrl?: string;
+  descriptionAdapted?: boolean;
 }
 
 /**
@@ -4116,6 +4136,8 @@ export interface ReviewQueueItem {
      * @nullable
      */
   object_description?: string | null;
+  object_description_source?: DescriptionSource | null;
+  object_description_adapted?: boolean;
   region_names?: string[] | null;
   /** On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. An open refusal carries none, since it is asked only where no other kind offers the place (#1838). */
   seen_in?: string[];

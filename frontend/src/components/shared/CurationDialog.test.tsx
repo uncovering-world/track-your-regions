@@ -78,6 +78,8 @@ const bamiyan: Experience = {
   name: 'Cultural Landscape and Archaeological Remains of the Bamiyan Valley',
   subtitle: null,
   description: 'The remains of the Buddhas and the monastic caves around them.',
+  description_source: 'unesco',
+  description_adapted: false,
   type: 'cultural',
   // World Heritage: the one kind whose type a curator can set in this dialog.
   kind_id: 1,
@@ -163,6 +165,55 @@ describe('CurationDialog clearing a field', () => {
       ...bamiyan,
       metadata: { website: PORTAL_PAGE, wikipediaUrl: 'https://en.wikipedia.org/wiki/Buddhas_of_Bamiyan' },
     });
+  });
+
+  it("credits UNESCO's description, as an adaptation once rewritten, and not once the curator calls it their own", async () => {
+    renderDialog();
+    await screen.findByDisplayValue(PORTAL_PAGE);
+    expect(screen.getByText('Text:', { exact: false })).toHaveTextContent('Text: UNESCO World Heritage Centre · CC BY-SA 4.0');
+    expect(screen.queryByLabelText('My own text')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'The niches of two Buddhas, and the caves around them.' } });
+    expect(screen.getByText('Text: adapted from', { exact: false })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('My own text'));
+    expect(screen.queryByText('UNESCO World Heritage Centre')).not.toBeInTheDocument();
+  });
+
+  it('says whose text a rewritten description is whenever it sends one', async () => {
+    renderDialog();
+    await screen.findByDisplayValue(PORTAL_PAGE);
+
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'The niches of two Buddhas, and the caves around them.' } });
+    save();
+
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, {
+      description: 'The niches of two Buddhas, and the caves around them.', descriptionAdapted: true,
+    }));
+  });
+
+  it('sends no word on whose text it is once the description is restored', async () => {
+    renderDialog();
+    await screen.findByDisplayValue(PORTAL_PAGE);
+
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'The niches of two Buddhas, and the caves around them.' } });
+    fireEvent.click(screen.getByLabelText('My own text'));
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: bamiyan.description } });
+    clear('Image URL');
+    save();
+
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { imageUrl: '' }));
+  });
+
+  it('offers no save once the restored description leaves nothing to send', async () => {
+    renderDialog();
+    await screen.findByDisplayValue(PORTAL_PAGE);
+
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'The niches of two Buddhas, and the caves around them.' } });
+    fireEvent.click(screen.getByLabelText('My own text'));
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: bamiyan.description } });
+
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
   });
 
   it('sends an emptied picture rather than dropping it', async () => {

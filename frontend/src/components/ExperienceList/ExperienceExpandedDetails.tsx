@@ -40,6 +40,7 @@ import type { VisitedStatus } from '../../api/visited';
 import { experienceContentsQuery, experienceDetailsQuery, siteFindsQuery } from '../../api/experienceCardQueries';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
+import { DescriptionText } from '../shared/DescriptionText';
 import { PlaceLinks } from '../shared/PlaceLinks';
 import { descriptionBeyondSubtitle } from '../shared/PlaceSubtitle';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
@@ -333,11 +334,7 @@ function ExperienceExpandedDetailsComponent({
       </Box>
 
       {/* Description: the paragraph; the subtitle is on the row above the card */}
-      {description && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          {description}
-        </Typography>
-      )}
+      <DescriptionText text={description} source={experience.description_source} adapted={experience.description_adapted} />
 
       {/* Date inscribed */}
       {details?.metadata?.dateInscribed != null && (

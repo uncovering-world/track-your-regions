@@ -38,7 +38,7 @@ export function movedPointGroups(contents: ReviewQueueItem | undefined, objectNa
           // the point is looked at, both pins and the arrow between them.
           movedPointId: point.id,
         },
-        rows: rowsFor([field], { proposed: [field] }),
+        rows: rowsFor([field], { proposed: [field], part: true }),
       };
     });
 }
