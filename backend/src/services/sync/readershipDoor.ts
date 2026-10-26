@@ -23,10 +23,14 @@
  * work: the Kelpies, *Maman*. It asks no witnesses. Its rule admits a work by
  * an artwork class and refuses one that is lost or stands indoors, which is
  * what the witnesses ask of a place, so the reading is the only question left.
+ *
+ * ADR-0152 widens what a place door reads to the places under the pool's floor
+ * the world reads at the bar (`readUnderFloor`): the readership names them
+ * first, and only those are asked of Wikidata.
  */
 
 import { pool } from '../../db/index.js';
-import { burstsAmong, readershipYear, readWorks } from '../dumps/readership/workReadership.js';
+import { burstsAmong, readAtLeast, readershipYear, readWorks } from '../dumps/readership/workReadership.js';
 import { latestUsage } from '../dumps/wikivoyage/usageTables.js';
 import { WITNESSES, WITNESSES_NEEDED, witnessWords, type Witness } from './visit/witnesses.js';
 import { toContent } from './museum/worksCollector.js';
@@ -135,6 +139,25 @@ export async function openPlaceDoor(
 ): Promise<ReadershipDoor | null> {
   return readDoor(places, async (views) => doorOf(places, views, line, held, new Set()));
 }
+
+/**
+ * The places under a pool's floor the place door may open for (ADR-0152): the
+ * bar read over `places` as `openPlaceDoor` reads it, then every item the year
+ * reads at that bar in fewer than `floor` editions. None where the door is
+ * shut — no Wikivoyage usage built for its witnesses (`placeReadershipDoorFor`),
+ * no year to read, or an empty tier — since it then opens for nothing.
+ */
+export async function readUnderFloor(places: readonly DoorWork[], line: number, floor: number): Promise<string[]> {
+  if (!await latestUsage()) return [];
+  const year = await readershipYear();
+  if (!year) return [];
+  const { views } = await readWorks(year, places.map(place => place.qid));
+  const { bar } = doorOf(places, views, line, new Set(), new Set());
+  return Number.isFinite(bar) ? readAtLeast(year, bar, floor) : [];
+}
+
+/** The places under the pool's floor a run's place door may open for (`readUnderFloor`), over the places it holds. */
+export type UnderFloorReader = (places: DoorWork[]) => Promise<string[]>;
 
 /** The year's reading of the items, the door it opens, and the burst flag on what it opened for. */
 async function readDoor(

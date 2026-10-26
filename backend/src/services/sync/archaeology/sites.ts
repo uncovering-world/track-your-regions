@@ -38,9 +38,10 @@ import type { KeepWkt, OsmObject, OsmReaderName } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncContract.js';
-import { fewWitnessesReason, placeDoorNote, type OpenedWork, type PlaceDoor, type ReadershipDoor } from '../readershipDoor.js';
+import { fewWitnessesReason, placeDoorNote, type OpenedWork, type PlaceDoor, type ReadershipDoor, type UnderFloorReader } from '../readershipDoor.js';
 import { isVisited, type Witness } from '../visit/witnesses.js';
 import type { VisitWitnessReader } from '../visit/visitWitnesses.js';
+import { collectUnderFloor } from './underFloor.js';
 
 const FACT_BATCH = 50;
 
@@ -534,9 +535,13 @@ export async function collectSitesByFame(
   entrance: SiteEntrance,
   openDoor?: PlaceDoor,
   witnesses?: VisitWitnessReader,
+  underFloor?: UnderFloorReader,
 ): Promise<SitesByFame> {
   const { trees } = share;
   const { pool, byId, byOsm, named, byArticleOnly } = await collectPool(run, share, admitted, entrance);
+  // The sites under the floor the world reads (ADR-0152), as rows a class
+  // question named: each carries a site class, and the rule reads it unchanged.
+  for (const entity of await collectUnderFloor(run, underFloor, pool, trees, admitted, line)) pool.set(entity.qid, entity);
   const qids = [...pool.keys()];
   // Vouched for by a class question or by the map: a row asked for by id
   // vouches for nothing but the id. A row the map named carries no class

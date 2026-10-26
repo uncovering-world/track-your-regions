@@ -114,6 +114,14 @@ function door(query: string): SparqlBinding[] {
   // The editions count every line reads, the second entrance's included (ADR-0082).
   if (isWikipediaEditionsQuery(query)) return wikipediaEditionsRows(query, (qid) => POOL[qid]?.sitelinks);
 
+  // Which of the items the readership names are sites with a point (ADR-0152):
+  // every class of each one that carries a coordinate.
+  if (query.includes('?point')) {
+    return [...query.matchAll(/wd:(Q\d+)/g)].map((m) => m[1])
+      .filter((qid) => POOL[qid]?.lat != null)
+      .flatMap((qid) => (CLASSES[qid] ?? []).map((cls) => ({ e: uri(qid), class: uri(cls) })));
+  }
+
   // A batch asked for by id: whatever the pool holds under those ids, whatever
   // their classes — a question by id vouches for nothing but the id.
   if (/VALUES \?e \{/.test(query)) {
@@ -446,6 +454,46 @@ describe('collectSitesByFame', () => {
     );
     expect(answer.sites.has('Q22647')).toBe(true);
     expect(answer.sites.get('Q22647')!.note).toBeUndefined();
+  });
+
+  it('takes into the pool a site under its floor the readership names, and the door admits it (ADR-0152)', async () => {
+    // Gerasa carries 12 editions, under the 15 every class question asks for,
+    // so no class question names it. The reader is handed the sites the source
+    // holds at the line, Troy and Pompeii, and names Gerasa, Troy and the
+    // British Museum: Troy is in the pool already and the museum is no site,
+    // so Gerasa alone joins the pool, and the door opens for it.
+    const { run } = runner();
+    const held: string[][] = [];
+    const door: ReadershipDoor = { opened: new Map([['Q56072866', { views: 140_000, burst: false }]]), bar: 100_000, exit: 70_000 };
+    const handed: string[][] = [];
+    const admitted = new Set(['Q22647', 'Q43332']);
+    const answer = await collectSitesByFame(
+      run, await shareFor(run, admitted), admitted, LINE, osmReader([]), NO_ENTRANCE,
+      async (places) => {
+        handed.push(places.map((place) => place.qid));
+        return door;
+      },
+      undefined,
+      async (places) => {
+        held.push(places.map((place) => place.qid).sort());
+        return ['Q56072866', 'Q22647', 'Q6373'];
+      },
+    );
+    expect(held).toEqual([['Q22647', 'Q43332']]);
+    expect(handed[0]).toContain('Q56072866');
+    expect(handed[0]).not.toContain('Q6373');
+    expect(answer.sites.get('Q56072866')?.note).toContain('Admitted below the sitelinks line, read 140,000 times');
+  });
+
+  it('asks the readership nothing about sites under the floor without a reader', async () => {
+    const { run } = runner();
+    const asked: string[] = [];
+    const watching = { ...run, sparql: async (query: string) => { asked.push(query); return door(query); } };
+    const answer = await collectSitesByFame(
+      watching, await shareFor(watching, new Set<string>()), new Set<string>(), LINE, osmReader([]), NO_ENTRANCE,
+    );
+    expect(asked.some((query) => query.includes('?point'))).toBe(false);
+    expect(answer.sites.has('Q56072866')).toBe(false);
   });
 
   it('fails the run when the mirror answers about almost nothing', async () => {

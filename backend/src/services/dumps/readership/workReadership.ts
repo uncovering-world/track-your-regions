@@ -93,6 +93,26 @@ export async function readWorks(
   return { views, counted };
 }
 
+/**
+ * The items the year reads at least `views` times over the editions a door
+ * counts, in fewer than `belowEditions` of them (#1757): the places under a
+ * pool's floor, asked of the readership before anything is asked of Wikidata.
+ * An item with fewer Wikipedia editions than the floor is read in fewer than
+ * that many, so the edition count only narrows. The sum is the raw one, before
+ * decision 3 sets any pair aside, so no item `readWorks` would count at the
+ * bar is missed; the door reads every one it returns again.
+ */
+export async function readAtLeast(year: ReadershipYear, views: number, belowEditions: number): Promise<string[]> {
+  const result = await pool.query<{ item: string }>(
+    `SELECT item FROM readership_months
+      WHERE site = ANY($1::text[]) AND month = ANY($2::date[])
+      GROUP BY item
+     HAVING sum(views) >= $3 AND count(DISTINCT site) < $4`,
+    [year.editions, year.months, views, belowEditions],
+  );
+  return result.rows.map(row => row.item);
+}
+
 /** One month of a work's series: its views and, where the month kept it, the views of each day. */
 export interface MonthSeries { views: number; daily: number[] | null }
 
