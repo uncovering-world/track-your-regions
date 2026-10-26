@@ -32,7 +32,9 @@ const next = (table: SubsetTable) => inWorkbench(`${table}_next`);
 /**
  * The properties `wikidata_claims` holds a row for: what the catalogue reads
  * today (#1434). Any other statement is in the entity, and adding a property
- * here takes effect on the next build without a new pass over the dump.
+ * here takes effect on the next build without a new pass over the dump, once
+ * `DERIVE_VERSION` (`buildRules.ts`) is raised with it: the copy rules a build
+ * keeps say which derive made them, and an unraised version reads as current.
  */
 export const CLAIM_PROPERTIES = [
   'P31', 'P279', 'P17', 'P18', 'P131', 'P144', 'P170', 'P189', 'P195', 'P276', 'P361', 'P527', 'P571', 'P576',
