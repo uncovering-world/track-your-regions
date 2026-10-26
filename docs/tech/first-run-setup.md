@@ -25,8 +25,9 @@ npm run db:load-gadm # load world boundaries (if you skipped it during setup)
 3. **Records the migration ledger** (`db-migrate.sh baseline --only-if-empty`).
    Compose builds this database from `db/init/01-schema.sql`, so it already
    carries everything in `db/migrations/` and their backfills have no rows to
-   repair; recording that keeps it from standing at 40 pending files it must not
-   run (ADR-0041). Only when the ledger is empty, so re-running setup after a new
+   repair; recording that keeps it from standing with every migration pending and
+   none it may run (ADR-0041) — `db:migrate` refuses an empty ledger on such a
+   database rather than replaying them (#2073). Only when the ledger is empty, so re-running setup after a new
    migration has landed cannot write that migration down as applied.
 4. **Creates the first admin** (`createAdmin.ts`). The password is read from stdin
    (never passed on the command line); leave it blank to have one generated and
