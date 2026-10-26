@@ -81,7 +81,8 @@ import {
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
 import { wikipediaStructureFor } from './wikipediaStructure.js';
-import { placeReadershipDoorFor } from './readershipDoor.js';
+import { placeReadershipDoorFor, readUnderFloor, type UnderFloorReader } from './readershipDoor.js';
+import { POOL_MIN_SITELINKS } from './publicArt/queries.js';
 
 // =============================================================================
 // Fetch
@@ -119,6 +120,10 @@ async function fetchArchaeologyItems(
   // A site the world reads opens a second door to the world tier (ADR-0127),
   // while the source's curator gate is on.
   const openSiteDoor = await placeReadershipDoorFor(ARCHAEOLOGY_SOURCE_ID, line.enterSitelinks, LOG_PREFIX);
+  // And reads the sites under the pool's floor the world reads at its bar
+  // (ADR-0152), only while the door is open.
+  const underFloorSites: UnderFloorReader | undefined = openSiteDoor
+    && ((places) => readUnderFloor(places, line.enterSitelinks, POOL_MIN_SITELINKS));
 
   // The collection, read through the OpenStreetMap door the environment names
   // (`osm/oneDoorPerRun.ts`): unset, the layer while a fresh one is in place
@@ -156,6 +161,7 @@ async function fetchArchaeologyItems(
           // What other kinds refused as held at a museum (ADR-0102).
           handOvers,
           openSiteDoor,
+          underFloorSites,
           onPhase: (message) => { progress.statusMessage = message; },
           checkCancel: () => {
             if (progress.cancel) throw new Error('Sync cancelled');

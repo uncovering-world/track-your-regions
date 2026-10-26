@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
 import { readershipWindow } from './readershipBuild.js';
-import { burstsAmong, readershipYear, readWorks } from './workReadership.js';
+import { burstsAmong, readAtLeast, readershipYear, readWorks } from './workReadership.js';
 
 /**
  * A work's year read back from the readership tables (ADR-0055, ADR-0056),
@@ -86,6 +86,19 @@ describe('a work read back from the readership year', () => {
     const year = (await readershipYear())!;
     const { counted } = await readWorks(year, [WORK, SPIKE]);
     expect([...await burstsAmong(year, [WORK, SPIKE], counted)]).toEqual([SPIKE]);
+  });
+
+  it('names the items read at a bar in fewer editions than a floor, over the counted editions only (ADR-0152)', async () => {
+    const year = (await readershipYear())!;
+    const among = async (views: number, below: number) =>
+      (await readAtLeast(year, views, below)).filter((item) => ITEMS.includes(item)).sort();
+    // The work is read 24,000 times in its two counted editions; West Frisian's
+    // 12,000 are no counted edition's, so it stays under a bar of 30,000.
+    expect(await among(30_000, 3)).toEqual([FILLER, SPIKE]);
+    expect(await among(20_000, 3)).toEqual([WORK, FILLER, SPIKE]);
+    // Read in two editions, it is not under a floor of two.
+    expect(await among(20_000, 2)).toEqual([FILLER, SPIKE]);
+    expect(await among(100_000, 2)).toEqual([FILLER]);
   });
 
   it('reads nothing while a month is not folded with the redirects in place', async () => {

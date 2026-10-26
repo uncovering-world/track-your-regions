@@ -108,7 +108,7 @@ import {
 } from './museumVerdict.js';
 export type { CollectedArchaeologyMuseum } from './museumVerdict.js';
 import { collectSitesByFame, type OsmReader, type SiteEntrance } from './sites.js';
-import type { PlaceDoor } from '../readershipDoor.js';
+import type { PlaceDoor, UnderFloorReader } from '../readershipDoor.js';
 import type { VisitWitnessReader } from '../visit/visitWitnesses.js';
 import { reportProposal, uniteDoors, type CollectedArchaeologySite } from './proposal.js';
 import { contentsLine, type SourceLine } from '../sourceLine.js';
@@ -221,6 +221,11 @@ export interface ArchaeologyPipelineDeps {
    * none, in a test that asks no witnesses.
    */
   visitWitnesses?: VisitWitnessReader;
+  /**
+   * The sites under the pool's floor the world reads at the door's bar
+   * (ADR-0152), or none: the door is shut, or a test asks no readership.
+   */
+  underFloorSites?: UnderFloorReader;
   onPhase?: (message: string) => void;
   /** Throws to abandon the run; called before every query. */
   checkCancel?: () => void;
@@ -471,7 +476,7 @@ export async function collectArchaeology(
     digs: deps.osmDigs,
     resolveArticles: deps.resolveArticles,
     categories: deps.categories,
-  }, deps.openSiteDoor, deps.visitWitnesses);
+  }, deps.openSiteDoor, deps.visitWitnesses, deps.underFloorSites);
 
   // What the run will actually write: a find is stored as a treasure of a museum
   // this run admits, so the diff is measured against what the database will hold.

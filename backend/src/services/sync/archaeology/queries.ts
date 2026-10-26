@@ -53,10 +53,12 @@ import {
 } from './classes.js';
 import type { FindFacts } from './finds.js';
 import { readsSubset } from '../subset/reader.js';
-import { subsetFindFacts, subsetSiteFacts } from '../subset/archaeology.js';
+import { subsetFindFacts, subsetSiteFacts, subsetSitesAmong } from '../subset/archaeology.js';
 
 const CLASS_BATCH = 25;
 const ID_BATCH = 50;
+/** Items per question when asking which of a readership's names are sites: two cheap statements each. */
+const SITES_AMONG_BATCH = 400;
 
 /**
  * The eleven class trees the rules read: what an archaeology museum is, which
@@ -288,6 +290,39 @@ export async function collectMuseumPool(
     }
   }
   return pool;
+}
+
+/**
+ * Which of `qids` are sites with a point (#1757, ADR-0152): a class of their
+ * own (`wdt:P31`) in `siteClasses` and a coordinate (`wdt:P625`), as the pool
+ * questions ask, with no sitelink floor. The readership names the items, so
+ * the question is asked by id rather than by class: the site tree holds
+ * hundreds of thousands of items under the floor, and the world reads a few
+ * hundred of them.
+ */
+export async function fetchSitesAmong(
+  door: Door,
+  qids: string[],
+  siteClasses: ReadonlySet<string>,
+): Promise<string[]> {
+  const asked = qids.filter(isQid);
+  if (!asked.length) return [];
+  const { sparql, step } = doorOf(door);
+  if (readsSubset(sparql)) return subsetSitesAmong(asked, [...siteClasses]);
+  const sites = new Set<string>();
+  for (const batch of chunk(asked, SITES_AMONG_BATCH)) {
+    await step();
+    const rows = await sparql(`
+      SELECT ?e ?class WHERE {
+        VALUES ?e { ${values(batch)} }
+        ?e wdt:P31 ?class .
+        FILTER EXISTS { ?e wdt:P625 ?point }
+      }`, { kind: 'edges', label: `which of ${batch.length} items the world reads are sites` });
+    for (const row of rows) {
+      if (siteClasses.has(extractQid(row.class?.value ?? ''))) sites.add(extractQid(row.e?.value ?? ''));
+    }
+  }
+  return asked.filter((qid) => sites.has(qid));
 }
 
 /** What the site rule reads off the item itself. */
