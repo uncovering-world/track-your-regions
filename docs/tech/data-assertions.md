@@ -403,13 +403,14 @@ index lookup, so that is what is asked — about a second for the pair, measured
 `db/migrations/034-unnamed-gadm-rows.sql` is the repair, and both rules name it.
 
 **The danger rule** is about one fact stored twice. A World Heritage site in
-danger is written into the row as the `in_danger` tag and as the
-`metadata.inDanger` flag the badge keys on, and the two disagreed on every row
+danger is written as the place's `in_danger` tag and as the `inDanger` flag
+the badge keys on, among its World Heritage membership's facts (#2068), and
+the two disagreed on every row
 for four years while every sync run reported success — a run compares what it
 fetched against what it stored, and both halves were stored exactly as the
 importer meant them. The tag was right on 58 sites, the flag was false on all
-1272, and the badge appeared for nobody (#600). It asks the two stored columns
-rather than UNESCO's own field, which is what keeps it a rule about this
+1272, and the badge appeared for nobody (#600). It asks the two stored values,
+whatever the membership's state, rather than UNESCO's own field, which is what keeps it a rule about this
 catalogue instead of a second copy of the importer's reading — the copy that
 would rot — and it asks in **both** directions, because the halves fail
 differently: tagged with no flag is the danger-listed site showing nothing
@@ -426,8 +427,8 @@ the badge follows the flag; reporting it would fill the screen after every
 Committee session with rows the import did not break. The exclusion asks the
 changeset `pending_change_sync_log_id` points at whether it holds
 `metadata.inDanger`, not merely whether a pointer is set: any held field sets
-the pointer, and on the dev database every one of the 1272 UNESCO rows carries
-one (the criteria and a credit are held on all of them) while 58 hold the flag
+the pointer, and on the dev database every one of the 1272 UNESCO rows carried
+one (the criteria and a credit were held on all of them) while 58 held the flag
 — a bare pointer test would have switched the check off for the whole source
 it was written for. Since #722 it asks one thing more: whether that held flag is
 still **unanswered**. A curator who says "not this" to the proposed flag has
