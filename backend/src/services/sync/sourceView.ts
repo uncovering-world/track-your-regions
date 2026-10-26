@@ -54,6 +54,12 @@ export interface StoredView {
   lat: number | string;
 }
 
+/** The Wikipedia article the run's record reports, as `reported_wikipedia_url` stores it (#1975). */
+export function reportedArticle(params: Pick<ViewRecord, 'metadata'>): string | null {
+  const article = params.metadata.wikipediaUrl;
+  return typeof article === 'string' && article !== '' ? article : null;
+}
+
 /**
  * The fields of the run's record that some other standing view of the place
  * contradicts, or that the run leaves empty where another view reports a value
@@ -79,6 +85,7 @@ export async function contestedFields(
     subtitle: '$4::text',
     imageUrl: '$5::text',
     location: 'ST_SetSRID(ST_MakePoint($6::float8, $7::float8), 4326)',
+    wikipediaUrl: '$8::text',
   };
   const result = await query.query<{ field: ViewField }>(
     `SELECT DISTINCT unnest(
@@ -88,7 +95,8 @@ export async function contestedFields(
       WHERE m.experience_id = $1
         AND m.external_id <> $2
         AND ${viewStandsSql('m')}`,
-    [placeId, params.externalId, params.name, params.subtitle, params.imageUrl, params.lon, params.lat],
+    [placeId, params.externalId, params.name, params.subtitle, params.imageUrl, params.lon, params.lat,
+      reportedArticle(params)],
   );
   const contested = new Set(result.rows.map(row => row.field));
   // An anchor is the run's, not the place's coordinate (ADR-0095): there is no
@@ -130,10 +138,18 @@ export async function fieldsKeptAsStored(
   ];
 }
 
+/** The run's metadata with one key as the place stores it, or without it where the place holds none. */
+function keepStoredKey(metadata: Record<string, unknown>, stored: StoredView, key: string): void {
+  const storedMetadata = stored.metadata ?? {};
+  if (Object.hasOwn(storedMetadata, key)) metadata[key] = storedMetadata[key];
+  else delete metadata[key];
+}
+
 /**
  * The run's record with each contested field as the place holds it. The
  * picture's credit goes with the picture: the place keeps the credit of the
- * photograph it keeps, or none where it holds none.
+ * photograph it keeps, or none where it holds none. The article is a key of
+ * the metadata, kept the same way.
  */
 export function keptAsStored<T extends ViewRecord>(
   params: T,
@@ -151,10 +167,9 @@ export function keptAsStored<T extends ViewRecord>(
     }
     if (field === 'imageUrl') {
       kept.imageUrl = stored.image_url;
-      const storedMetadata = stored.metadata ?? {};
-      if (Object.hasOwn(storedMetadata, 'imageCredit')) kept.metadata.imageCredit = storedMetadata.imageCredit;
-      else delete kept.metadata.imageCredit;
+      keepStoredKey(kept.metadata, stored, 'imageCredit');
     }
+    if (field === 'wikipediaUrl') keepStoredKey(kept.metadata, stored, 'wikipediaUrl');
   }
   return kept;
 }

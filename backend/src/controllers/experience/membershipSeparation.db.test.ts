@@ -392,6 +392,19 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
     expect(rows.find(row => row.id === result!.separatedId)).toMatchObject({ osm: null, drawn: false });
   });
 
+  it("gives the new place its view's article, even on a view that recorded no name (#1975)", async () => {
+    await pool.query(`UPDATE experiences SET metadata = '{"wikipediaUrl": "https://en.wikipedia.org/wiki/Pantheon,_Rome"}'::jsonb WHERE id = $1`, [PANTHEON]);
+    await pool.query(
+      'UPDATE experience_kind_memberships SET reported_name = NULL, reported_wikipedia_url = $2 WHERE id = $1',
+      [worshipMembership, 'https://en.wikipedia.org/wiki/Santa_Maria_ad_Martyres'],
+    );
+    const { result } = await separateMembership({ placeId: PANTHEON, membershipId: worshipMembership, separatedBy: curatorId });
+    const article = (await pool.query<{ article: string | null }>(
+      "SELECT metadata ->> 'wikipediaUrl' AS article FROM experiences WHERE id = $1", [result!.separatedId],
+    )).rows[0].article;
+    expect(article).toBe('https://en.wikipedia.org/wiki/Santa_Maria_ad_Martyres');
+  });
+
   it('refuses the place\'s only kind, and changes nothing', async () => {
     await separateMembership({ placeId: PANTHEON, membershipId: siteMembership, separatedBy: curatorId });
     const outcome = await separateMembership({ placeId: PANTHEON, membershipId: worshipMembership, separatedBy: curatorId });

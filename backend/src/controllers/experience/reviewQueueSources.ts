@@ -32,7 +32,7 @@ const VIEWS_OF_FIELD = `(SELECT jsonb_agg(jsonb_build_object(
            'membership_id', m.id,
            'kind_name', k.name,
            'source_name', s.name,
-           'value', CASE WHEN f IN ('name', 'subtitle') THEN ${viewValueSql('f', 'm')} END,
+           'value', CASE WHEN f IN ('name', 'subtitle', 'wikipediaUrl') THEN ${viewValueSql('f', 'm')} END,
            'image_url', CASE WHEN f = 'imageUrl' THEN m.reported_image_url END,
            'image_credit', CASE WHEN f = 'imageUrl' THEN m.reported_image_credit END,
            'latitude', CASE WHEN f = 'location' THEN ST_Y(m.reported_location) END,

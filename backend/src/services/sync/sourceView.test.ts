@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { contestedFields, keepsItsPicture, keptAsStored, type StoredView, type ViewRecord } from './sourceView.js';
+import {
+  contestedFields, keepsItsPicture, keptAsStored, reportedArticle, type StoredView, type ViewRecord,
+} from './sourceView.js';
 
 /**
  * The run's half of a source's view (#1246): which fields another source
@@ -16,7 +18,10 @@ const RECORD: ViewRecord = {
   imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Archaeology.jpg',
   lon: 35.2433,
   lat: 31.7781,
-  metadata: { wikidataQid: 'Q9480', imageCredit: { artist: 'Archaeology photographer' } },
+  metadata: {
+    wikidataQid: 'Q9480', imageCredit: { artist: 'Archaeology photographer' },
+    wikipediaUrl: 'https://en.wikipedia.org/wiki/Dome_of_the_Rock',
+  },
 };
 
 const STORED: StoredView = {
@@ -57,6 +62,24 @@ describe('the record a run writes where another source disagrees', () => {
 
     expect(Object.hasOwn(kept.metadata, 'imageCredit')).toBe(false);
   });
+
+  it('keeps the article the place links, or none where it links none (#1975)', () => {
+    const stored = { ...STORED, metadata: { ...STORED.metadata, wikipediaUrl: 'https://en.wikipedia.org/wiki/Temple_Mount' } };
+
+    expect(keptAsStored(RECORD, stored, ['wikipediaUrl']).metadata.wikipediaUrl)
+      .toBe('https://en.wikipedia.org/wiki/Temple_Mount');
+    expect(Object.hasOwn(keptAsStored(RECORD, STORED, ['wikipediaUrl']).metadata, 'wikipediaUrl')).toBe(false);
+    expect(RECORD.metadata.wikipediaUrl).toBe('https://en.wikipedia.org/wiki/Dome_of_the_Rock');
+  });
+});
+
+describe('the article a run reports (#1975)', () => {
+  it('is the record\'s article, and nothing where it has none', () => {
+    expect(reportedArticle(RECORD)).toBe('https://en.wikipedia.org/wiki/Dome_of_the_Rock');
+    expect(reportedArticle({ metadata: {} })).toBeNull();
+    expect(reportedArticle({ metadata: { wikipediaUrl: '' } })).toBeNull();
+    expect(reportedArticle({ metadata: { wikipediaUrl: 42 } })).toBeNull();
+  });
 });
 
 describe('the fields another source contradicts', () => {
@@ -73,7 +96,11 @@ describe('the fields another source contradicts', () => {
     expect(sql).toMatch(/m\.missing_since IS NULL AND m\.source_membership = 'present'/);
     // A field the run leaves empty where another view has one is kept too.
     expect(sql).toMatch(/NULLIF\(\$5::text, ''\) IS NULL AND NULLIF\(m\.reported_image_url, ''\) IS NOT NULL/);
-    expect(params).toEqual([9480, 'Q9480', RECORD.name, RECORD.subtitle, RECORD.imageUrl, RECORD.lon, RECORD.lat]);
+    expect(sql).toMatch(/NULLIF\(\$8::text, ''\) IS NOT NULL AND NULLIF\(m\.reported_wikipedia_url, ''\) IS NOT NULL/);
+    expect(params).toEqual([
+      9480, 'Q9480', RECORD.name, RECORD.subtitle, RECORD.imageUrl, RECORD.lon, RECORD.lat,
+      'https://en.wikipedia.org/wiki/Dome_of_the_Rock',
+    ]);
   });
 
   it("does not contest the anchor of a place of several points, which is the run's (ADR-0095)", async () => {

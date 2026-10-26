@@ -31,6 +31,13 @@ describe('indexOfWhatIsStored', () => {
     expect(facts.picture?.url).toBe(COMMONS);
   });
 
+  it("offers back the article UNESCO's view reported, never the place's (#1975)", async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ external_id: '307', image_url: null, article: null }] });
+
+    expect(factsForSite(await indexOfWhatIsStored(), '307').article).toBeNull();
+    expect(mockedQuery.mock.calls[0][0]).toContain('sm.reported_wikipedia_url AS article');
+  });
+
   it('does not offer back a picture the writer would refuse', async () => {
     // A row still carrying the portal's photograph, on a database the repair
     // has not been run on: offered back, the run would propose it and the

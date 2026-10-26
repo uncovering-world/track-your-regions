@@ -138,6 +138,30 @@ describe('a source\'s view of a place (ADR-0084)', () => {
     expect(outcome.changeSet.heldFields).toEqual([]);
   });
 
+  it('keeps the place\'s article where another source links a different one, and proposes nothing (#1975)', async () => {
+    const cathedral = 'https://en.wikipedia.org/wiki/Cologne_Cathedral';
+    const site = 'https://en.wikipedia.org/wiki/Cologne_Cathedral_fixture_site';
+    // Unpublished, so the worship run writes its article rather than holding it.
+    await seed('pending');
+    await upsertExperienceRecord(params(worship, { metadata: { wikidataQid: QID, imageCredit: CREDIT, wikipediaUrl: cathedral } }));
+
+    const outcome = await upsertExperienceRecord(params(unesco, {
+      metadata: { wikidataQid: QID, imageCredit: CREDIT, wikipediaUrl: site },
+    }));
+
+    const stored = await pool.query<{ article: string; reported: Record<number, string> }>(
+      `SELECT e.metadata->>'wikipediaUrl' AS article,
+              (SELECT jsonb_object_agg(m.source_id, m.reported_wikipedia_url) FROM experience_kind_memberships m
+                WHERE m.experience_id = e.id) AS reported
+         FROM experiences e WHERE e.id = $1`,
+      [CATHEDRAL],
+    );
+    expect(stored.rows[0].article).toBe(cathedral);
+    expect(stored.rows[0].reported).toEqual({ [worship]: cathedral, [unesco]: site });
+    const fields = [...outcome.changeSet.changedFields, ...outcome.changeSet.heldFields].map(f => f.field);
+    expect(fields).not.toContain('metadata.wikipediaUrl');
+  });
+
   it('keeps a picture the item still carries, with its credit, and proposes nothing (#1778)', async () => {
     // The place holds one of its item's two pictures and the run chose the other, as
     // every reader keeps the first by URL: the place keeps its picture and the gated

@@ -247,7 +247,7 @@ export const SourceView = z.strictObject({
   membership_id: z.number().int(),
   kind_name: z.string(),
   source_name: z.string(),
-  value: z.string().nullable().describe('The name or description as the source reports it; null for a picture or a point.'),
+  value: z.string().nullable().describe('The name, subtitle or Wikipedia article as the source reports it; null for a picture or a point.'),
   image_url: z.string().nullable(),
   image_credit: ImageCredit.nullable(),
   latitude: z.number().nullable(),

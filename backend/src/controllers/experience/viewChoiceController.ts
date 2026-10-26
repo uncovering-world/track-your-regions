@@ -1,6 +1,7 @@
 /**
  * A curator's answer to two data sources that describe one place differently
- * (#1246): which source's name, subtitle, picture or point the place shows.
+ * (#1246): which source's name, subtitle, picture, point or Wikipedia article
+ * the place shows (#1975).
  * POST /api/experiences/:id/choose-views
  *
  * The question is open for a field two standing views under different ids
@@ -44,6 +45,9 @@ function assignmentOf(field: ViewField, membershipParam: string, creditParam: st
   if (field === 'name') return `name = ${from('reported_name')}`;
   if (field === 'subtitle') return `subtitle = ${from('reported_subtitle')}`;
   if (field === 'location') return `location = ${from('reported_location')}`;
+  if (field === 'wikipediaUrl') {
+    return `metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('wikipediaUrl', ${from('reported_wikipedia_url')})`;
+  }
   // The picture's credit goes with the picture: the view's own, or the one
   // read from Commons when the view recorded none. Never without one — the
   // caller refuses a picture whose photographer nobody could name.

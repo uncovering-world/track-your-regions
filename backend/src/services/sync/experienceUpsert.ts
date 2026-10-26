@@ -38,8 +38,8 @@
  * source of one kind meeting the first's membership is #628's design, not
  * this statement's.
  *
- * **No source owns the name, subtitle, picture or coordinate**
- * (ADR-0084, #1246). The membership records the run's view of them as the
+ * **No source owns the name, subtitle, picture, coordinate or Wikipedia
+ * article** (ADR-0084, #1246, #1975). The membership records the run's view of them as the
  * source reported them, and a field another source of the place contradicts is
  * bound as the place already holds it (`sourceView.ts`), so the arms below, the
  * diff and the hold never see it as a proposal: neither source overwrites the
@@ -91,7 +91,7 @@ import { shortMovePassesSql } from '../../db/shortMove.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockIdentifiedPlace, lockSourcedExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
-import { fieldsKeptAsStored, keptAsStored } from './sourceView.js';
+import { fieldsKeptAsStored, keptAsStored, reportedArticle } from './sourceView.js';
 
 export interface ExperienceUpsertParams {
   sourceId: number;
@@ -921,7 +921,7 @@ async function writeUnderLock(
         experience_id, kind_id, source_id, external_id, type, admitted_for, curation_state, published_at,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at,
         reported_name, reported_subtitle, reported_image_url, reported_location, reported_image_credit,
-        wikidata_items
+        reported_wikipedia_url, wikidata_items
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
@@ -932,7 +932,7 @@ async function writeUnderLock(
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
              CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END,
              $15, $15, NOW(),
-             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb, $27::text[]
+             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb, $35::text, $27::text[]
         FROM ins
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
@@ -968,6 +968,7 @@ async function writeUnderLock(
         reported_image_url = EXCLUDED.reported_image_url,
         reported_location = EXCLUDED.reported_location,
         reported_image_credit = EXCLUDED.reported_image_credit,
+        reported_wikipedia_url = EXCLUDED.reported_wikipedia_url,
         wikidata_items = COALESCE(EXCLUDED.wikidata_items, ${MEMBERSHIPS}.wikidata_items),
         updated_at = NOW()
       RETURNING pending_change_sync_log_id
@@ -1022,6 +1023,8 @@ async function writeUnderLock(
       held && stored ? passingColumns(snapshotFromRow(stored), snapshotFromParams(written, null, shortMove), stored.curated_fields ?? []) : [],
       params.castPoints ?? null,
       params.readsExtents ?? false,
+      // The article the run reported, the last field of its view (#1975).
+      reportedArticle(params),
     ]
   );
 
