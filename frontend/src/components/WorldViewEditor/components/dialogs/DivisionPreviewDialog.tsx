@@ -17,7 +17,7 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../../../shared/GuardedMap';
 import type * as maplibregl from 'maplibre-gl';
-import { fetchGeoshape, getChildrenRegionGeometry } from '../../../../api/admin/worldViewImport';
+import { getChildrenRegionGeometry } from '../../../../api/admin/worldViewImport';
 import { frameGeoJson } from '../../../../utils/mapUtils';
 import { extractImageUrl, toThumbnailUrl } from '../../../../utils/imageUrl';
 
@@ -87,56 +87,6 @@ function getRightPanelToggleLabel(
   return 'show subregions';
 }
 
-// Sub-component: renders the geoshape map section (loading / map / empty).
-interface GeoshapeMapContentProps {
-  geoshapeLoading: boolean;
-  geoshapeData: GeoJSON.FeatureCollection | null;
-  geoshapeMapRef: React.RefObject<MapRef | null>;
-}
-
-function GeoshapeMapContent({ geoshapeLoading, geoshapeData, geoshapeMapRef }: GeoshapeMapContentProps) {
-  if (geoshapeLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
-        <CircularProgress size={24} />
-      </Box>
-    );
-  }
-  if (!geoshapeData) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
-        <Typography variant="caption" color="text.secondary">No geoshape available</Typography>
-      </Box>
-    );
-  }
-  const handleLoad = () => frameGeoJson(geoshapeMapRef.current, geoshapeData, { padding: 40, duration: 0 });
-  return (
-    <MapGL
-      unavailableCompact
-      unavailableDetail="This preview is map-only; the division's other details are on the tabs beside it."
-      ref={geoshapeMapRef}
-      initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
-      style={{ width: '100%', flex: 1 }}
-      mapStyle={MAP_STYLE}
-      onLoad={handleLoad}
-    >
-      <NavigationControl position="top-right" showCompass={false} />
-      <Source id="geoshape" type="geojson" data={geoshapeData}>
-        <Layer
-          id="geoshape-fill"
-          type="fill"
-          paint={{ 'fill-color': '#e53935', 'fill-opacity': 0.3 }}
-        />
-        <Layer
-          id="geoshape-outline"
-          type="line"
-          paint={{ 'line-color': '#e53935', 'line-width': 2 }}
-        />
-      </Source>
-    </MapGL>
-  );
-}
-
 // Helper: classify a division ID against AI suggestion/rejection/unclear sets.
 function classifyDivision(
   divId: number,
@@ -162,7 +112,7 @@ interface DivisionPreviewDialogProps {
   regionMapLabel?: string;
   /** Name of the region being reviewed (shown in the strip header) */
   regionName?: string;
-  /** Wikidata ID for geoshape fallback (when no regionMapUrl) */
+  /** The region's Wikidata item: with one, a source panel stands beside the divisions */
   wikidataId?: string;
   /** World view ID for fetching children geometry */
   worldViewId?: number;
@@ -178,7 +128,7 @@ interface DivisionPreviewDialogProps {
   onSplitDeeper?: (source: 'geoshape' | 'points' | 'image' | null) => void;
   /** Optional AI vision match callback — suggests divisions via image analysis */
   onVisionMatch?: () => Promise<{ ids: number[]; rejectedIds?: number[]; unclearIds?: number[]; reasoning?: string; debugImages?: { regionMap: string; divisionsMap: string } }>;
-  /** Marker points from point matching (shown when no image/geoshape) */
+  /** Marker points from point matching (shown when no image) */
   markerPoints?: Array<{ name: string; lat: number; lon: number }>;
   /** Whether accept/reject actions are in progress */
   actionPending?: boolean;
@@ -353,7 +303,6 @@ export function DivisionPreviewDialog({
   actionPending,
 }: DivisionPreviewDialogProps) {
   const mapRef = useRef<MapRef>(null);
-  const geoshapeMapRef = useRef<MapRef>(null);
   const transferMapRef = useRef<MapRef>(null);
   const pointsMapRef = useRef<MapRef>(null);
   const markerPointsData = useMemo((): GeoJSON.FeatureCollection => ({
@@ -364,9 +313,6 @@ export function DivisionPreviewDialog({
       geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
     })),
   }), [markerPoints]);
-  const [geoshapeData, setGeoshapeData] = useState<GeoJSON.FeatureCollection | null>(null);
-  const [geoshapeLoading, setGeoshapeLoading] = useState(false);
-  const [geoshapeError, setGeoshapeError] = useState(false);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [aiSuggestedIds, setAiSuggestedIds] = useState<Set<number>>(new Set());
   const [aiRejectedIds, setAiRejectedIds] = useState<Set<number>>(new Set());
@@ -397,28 +343,15 @@ export function DivisionPreviewDialog({
     }
   };
 
-  // Fetch geoshape when dialog opens with wikidataId (preferred over image)
+  // Closing the dialog clears the chosen source and the AI's answer
   useEffect(() => {
-    if (!division || !wikidataId) {
-      setGeoshapeData(null);
-      setGeoshapeError(false);
-      setSelectedSource(null);
-      setAiSuggestedIds(new Set());
-      setAiRejectedIds(new Set());
-      setAiUnclearIds(new Set());
-      setAiReasoning(null);
-      setAiDebugImages(null);
-      return;
-    }
-
-    let stale = false;
-    setGeoshapeLoading(true);
-    setGeoshapeError(false);
-    fetchGeoshape(wikidataId)
-      .then(data => { if (!stale) setGeoshapeData(data); })
-      .catch(() => { if (!stale) setGeoshapeError(true); })
-      .finally(() => { if (!stale) setGeoshapeLoading(false); });
-    return () => { stale = true; };
+    if (division && wikidataId) return;
+    setSelectedSource(null);
+    setAiSuggestedIds(new Set());
+    setAiRejectedIds(new Set());
+    setAiUnclearIds(new Set());
+    setAiReasoning(null);
+    setAiDebugImages(null);
   }, [division, wikidataId]);
 
   // Detect transfer preview: a FeatureCollection with role properties (donor, moving, target_outline)
@@ -438,8 +371,6 @@ export function DivisionPreviewDialog({
   }, [isTransferPreview, geometry]);
 
   // Build list of available left-panel sources
-  const geoshapeHasFeatures = !!geoshapeData && geoshapeData.features.length > 0;
-  const geoshapeAvailable = !!wikidataId && !geoshapeError && (geoshapeLoading || geoshapeHasFeatures);
   // The stored map is wiki content: drawn only as toThumbnailUrl allows (#694).
   const mapSrc = regionMapUrl ? toThumbnailUrl(regionMapUrl, 500) : '';
   const imageAvailable = !!mapSrc;
@@ -447,16 +378,14 @@ export function DivisionPreviewDialog({
 
   const availableSources = useMemo(() => {
     const sources: Array<{ key: string; label: string }> = [];
-    if (geoshapeAvailable) sources.push({ key: 'geoshape', label: 'Geoshape' });
     if (imageAvailable) sources.push({ key: 'image', label: regionMapLabel ?? 'Region map' });
     if (pointsAvailable) sources.push({ key: 'points', label: 'Marker points' });
     return sources;
-  }, [geoshapeAvailable, imageAvailable, pointsAvailable, regionMapLabel]);
+  }, [imageAvailable, pointsAvailable, regionMapLabel]);
 
   const activeSource = selectedSource && availableSources.some(s => s.key === selectedSource)
     ? selectedSource
     : availableSources[0]?.key ?? null;
-  const showGeoshape = activeSource === 'geoshape';
   const showImage = activeSource === 'image';
   const showPoints = activeSource === 'points';
   const hasSideBySide = availableSources.length > 0 || !!wikidataId;
@@ -580,23 +509,6 @@ export function DivisionPreviewDialog({
             </Box>
           )}
 
-          {/* Wikidata geoshape map (left side) */}
-          {showGeoshape && (
-            <Box sx={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              borderRight: 1,
-              borderColor: 'divider',
-            }}>
-              <GeoshapeMapContent
-                geoshapeLoading={geoshapeLoading}
-                geoshapeData={geoshapeData}
-                geoshapeMapRef={geoshapeMapRef}
-              />
-            </Box>
-          )}
-
           {/* Marker points map */}
           {hasSideBySide && showPoints && markerPoints && markerPoints.length > 0 && (
             <Box sx={{ flex: 1, borderRight: 1, borderColor: 'divider' }}>
@@ -622,7 +534,7 @@ export function DivisionPreviewDialog({
             </Box>
           )}
           {/* Placeholder when no source data at all */}
-          {hasSideBySide && !showGeoshape && !showImage && !showPoints && (
+          {hasSideBySide && !showImage && !showPoints && (
             <Box sx={{
               flex: 1,
               display: 'flex',
@@ -638,7 +550,7 @@ export function DivisionPreviewDialog({
                 No source map available
               </Typography>
               <Typography variant="caption" color="text.disabled" textAlign="center" sx={{ mt: 0.5 }}>
-                Neither a region map image nor a Wikidata geoshape exists for this region
+                Neither a region map image nor marker points exist for this region, and its shape is not available
               </Typography>
             </Box>
           )}
