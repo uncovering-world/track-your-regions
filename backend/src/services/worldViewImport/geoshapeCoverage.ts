@@ -8,8 +8,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { getOrFetchGeoshape } from './geoshapeCache.js';
-import { tryBuildCompositeGeoshape } from './geoshapeComposite.js';
+import { geoshapeHeld } from './geoshapeCache.js';
 
 // =============================================================================
 // Division-to-division coverage helpers
@@ -312,9 +311,9 @@ export async function refineCoveringSet(
 async function loadRegionGeoshapeContext(
   worldViewId: number,
   regionId: number,
-): Promise<{ wikidataId?: string; sourceUrl?: string; isLeaf?: boolean }> {
+): Promise<{ wikidataId?: string; isLeaf?: boolean }> {
   const wdResult = await pool.query(
-    `SELECT ris.source_external_id, ris.source_url, r.is_leaf
+    `SELECT ris.source_external_id, r.is_leaf
      FROM region_import_state ris
      JOIN regions r ON r.id = ris.region_id
      WHERE ris.region_id = $1 AND r.world_view_id = $2`,
@@ -323,21 +322,13 @@ async function loadRegionGeoshapeContext(
   const row = wdResult.rows[0];
   return {
     wikidataId: row?.source_external_id as string | undefined,
-    sourceUrl: row?.source_url as string | undefined,
     isLeaf: row?.is_leaf as boolean | undefined,
   };
 }
 
-/** Ensure the region's Wikidata geoshape is cached (with composite fallback) and update geo_available. */
-async function ensureGeoshapeAvailable(
-  wikidataId: string,
-  regionId: number,
-  sourceUrl: string | undefined,
-): Promise<boolean> {
-  let available = await getOrFetchGeoshape(wikidataId);
-  if (!available) {
-    available = await tryBuildCompositeGeoshape(wikidataId, sourceUrl);
-  }
+/** Whether a shape is held for the region's item, recorded as its geo_available. */
+async function ensureGeoshapeAvailable(wikidataId: string, regionId: number): Promise<boolean> {
+  const available = await geoshapeHeld(wikidataId);
   await pool.query(
     'UPDATE region_import_state SET geo_available = $1 WHERE region_id = $2',
     [available, regionId],
@@ -846,11 +837,11 @@ export async function geoshapeMatchRegion(
   scopeAncestorId?: number,
 ): Promise<GeoshapeMatchResult> {
   // 1. Load region context
-  const { wikidataId, sourceUrl, isLeaf } = await loadRegionGeoshapeContext(worldViewId, regionId);
+  const { wikidataId, isLeaf } = await loadRegionGeoshapeContext(worldViewId, regionId);
   if (!wikidataId) return { found: 0, suggestions: [] };
 
   // 2. Ensure geoshape is cached; bail if unavailable
-  const available = await ensureGeoshapeAvailable(wikidataId, regionId, sourceUrl);
+  const available = await ensureGeoshapeAvailable(wikidataId, regionId);
   if (!available) return { found: 0, suggestions: [], geoshapeUnavailable: true };
 
   // 3. Resolve scope from ancestor chain

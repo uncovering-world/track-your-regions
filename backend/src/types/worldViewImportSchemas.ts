@@ -272,10 +272,6 @@ export const wvImportRenameRegionSchema = z.object({
   sourceExternalId: z.string().max(100).optional(),
 });
 
-export const wikidataIdParamSchema = z.object({
-  wikidataId: z.string().regex(/^Q\d+$/),
-});
-
 export const divisionIdBodySchema = z.object({
   divisionId: bodyRowIdSchema,
 });

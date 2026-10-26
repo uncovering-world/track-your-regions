@@ -344,7 +344,7 @@ export const adminImportRoutes = [
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/wv-import/matches/:worldViewId/geoshape-match',
-    summary: 'Suggest divisions for one region by comparing them with its Wikidata shape',
+    summary: 'Suggest divisions for one region by comparing them with the shape held for it, or from its Wikivoyage markers when none is',
     params: worldViewIdParamSchema,
     body: wvImportGeoshapeMatchSchema,
     response: CoveringMatchResult,

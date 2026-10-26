@@ -26,11 +26,9 @@
  * and after each one the pass waits as long as that leaf took (at most
  * `MAX_PAUSE_MS`), and at least `POINT_PAUSE_MS` after a point fallback. A shape
  * from the `wikidata_geoshapes` cache costs milliseconds and so waits almost
- * nothing. The work that leaves the machine waits its own length: a geoshape
- * fetched through `acquireFetchSlot`, a composite built from Wikidata and
- * Wikivoyage when the item has no shape (`tryBuildCompositeGeoshape`, whose
- * SPARQL query is not otherwise paced), and a point fallback's Wikivoyage page.
- * That is the query service's own rule: pause at least as long as the query took.
+ * nothing. The work that leaves the machine waits its own length: a point
+ * fallback's Wikivoyage page.
+ * That is the Wikimedia query service's rule: pause at least as long as the request took.
  *
  * A cancel during the pass stops the scoring and nothing else. The name
  * matcher's results are already written, so the run finishes as a completed one,

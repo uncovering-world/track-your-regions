@@ -38,9 +38,9 @@ export interface AuthenticatedRequest extends Request {
  * caller's own and small — an id list, a profile.
  *
  * Not everything behind this middleware is. Some of it is public reference
- * data that happens to be admin-gated — GADM's boundaries at full resolution
- * and Wikimedia's geoshape for a Wikidata id, gated because the editor is the
- * only caller rather than because the answer is anyone's own. Every route
+ * data that happens to be admin-gated — GADM's boundaries at full resolution,
+ * gated because the editor is the only caller rather than because the answer
+ * is anyone's own. Every route
  * states its own policy (`api/route.ts`, ADR-0071), and the registry sets it
  * after this middleware, where `setHeader` replaces: those reads and the
  * streams say `private, no-cache` (`revalidate`), the admin images

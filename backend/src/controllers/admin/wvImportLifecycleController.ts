@@ -1,16 +1,15 @@
 /**
  * Admin WorldView Import — Lifecycle controller
  *
- * Owns: import session start/status/cancel + Wikidata geoshape proxy.
+ * Owns: import session start/status/cancel.
  * See ADR-0009 for the domain-split rationale.
  */
 
 import { pool } from '../../db/index.js';
-import type { Geoshape, ImportCancelled, ImportStarted, ImportStatus } from '../../api/responses/worldViewImport.js';
+import type { ImportCancelled, ImportStarted, ImportStatus } from '../../api/responses/worldViewImport.js';
 import type { z } from 'zod/v4';
-import { badRequest, createError, failure } from '../../middleware/errorHandler.js';
-import type { wikidataIdParamSchema, wvImportBodySchema } from '../../types/index.js';
-import { geoshapeOf } from './wvImportAnswerRows.js';
+import { badRequest, createError } from '../../middleware/errorHandler.js';
+import type { wvImportBodySchema } from '../../types/index.js';
 import {
   startImport,
   getLatestImportStatus,
@@ -18,56 +17,6 @@ import {
 } from '../../services/worldViewImport/index.js';
 import { IMPORT_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
 import { operationAnswer } from '../../services/operationProgress.js';
-import { userAgent } from '../../config/userAgent.js';
-
-// =============================================================================
-// Geoshape proxy
-// =============================================================================
-
-/**
- * Proxy Wikidata geoshape GeoJSON for a given Wikidata ID.
- * GET /api/admin/wv-import/geoshape/:wikidataId
- *
- * The maps.wikimedia.org endpoint requires User-Agent + Referer headers
- * that browsers won't send cross-origin, so we proxy through the backend.
- */
-export async function getGeoshape(
-  { params: { wikidataId } }: { params: z.output<typeof wikidataIdParamSchema> },
-): Promise<Geoshape> {
-  let response: globalThis.Response;
-  try {
-    // Check local cache first (includes composite geoshapes built from children)
-    const cached = await pool.query<{ geometry: unknown }>(
-      `SELECT ST_AsGeoJSON(geom)::json AS geometry
-       FROM wikidata_geoshapes
-       WHERE wikidata_id = $1 AND not_available = FALSE AND geom IS NOT NULL`,
-      [wikidataId],
-    );
-    if (cached.rows.length > 0 && cached.rows[0].geometry) {
-      return geoshapeOf(wikidataId, [{ geometry: cached.rows[0].geometry }]);
-    }
-    // Fall back to Wikimedia
-    const url = `https://maps.wikimedia.org/geoshape?getgeojson=1&ids=${wikidataId}`;
-    response = await fetch(url, {
-      headers: {
-        'User-Agent': userAgent(),
-        'Referer': 'https://en.wikivoyage.org/',
-      },
-    });
-
-    if (response.ok) {
-      const geojson: unknown = await response.json();
-      const features = typeof geojson === 'object' && geojson !== null && Array.isArray((geojson as { features?: unknown }).features)
-        ? (geojson as { features: unknown[] }).features
-        : [];
-      return geoshapeOf(wikidataId, features);
-    }
-  } catch (err) {
-    console.error('[WV Import] Geoshape fetch error for %s:', wikidataId, err);
-    throw failure('Failed to fetch geoshape from Wikimedia', 502);
-  }
-  throw failure(`Geoshape fetch failed: ${response.statusText}`, response.status);
-}
 
 // =============================================================================
 // Tree validation helper (used by startWorldViewImport)

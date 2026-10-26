@@ -57,6 +57,7 @@ function coveringMatchOf(result: {
   totalCoverage?: number;
   scopeAncestorName?: string;
   nextScope?: { ancestorId: number; ancestorName: string };
+  shapeUnavailable?: true;
 }): CoveringMatchResult {
   return {
     found: result.found,
@@ -64,6 +65,7 @@ function coveringMatchOf(result: {
     ...(result.totalCoverage !== undefined ? { totalCoverage: result.totalCoverage } : {}),
     ...(result.scopeAncestorName !== undefined ? { scopeAncestorName: result.scopeAncestorName } : {}),
     ...(result.nextScope ? { nextScope: { ancestorId: result.nextScope.ancestorId, ancestorName: result.nextScope.ancestorName } } : {}),
+    ...(result.shapeUnavailable ? { shapeUnavailable: true as const } : {}),
   };
 }
 
@@ -210,7 +212,9 @@ export async function geocodeMatch(
 
 /**
  * Match a region by comparing its Wikidata geoshape geometry against GADM divisions.
- * Scopes search to the relevant GADM subtree for performance.
+ * Scopes search to the relevant GADM subtree for performance. A region with no
+ * shape held is matched by its Wikivoyage markers instead, as the spatial pass
+ * does, and the answer says the shape was unavailable (#2084).
  * POST /api/admin/wv-import/matches/:worldViewId/geoshape-match
  */
 export async function geoshapeMatch(
@@ -221,7 +225,10 @@ export async function geoshapeMatch(
 
   let body: CoveringMatchResult;
   try {
-    const result = await geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId);
+    const shape = await geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId);
+    const result = shape.geoshapeUnavailable
+      ? { ...await pointMatchRegion(worldViewId, regionId, scopeAncestorId), shapeUnavailable: true as const }
+      : shape;
     // Score what the search found, so a perfect match is accepted (#1629)
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);

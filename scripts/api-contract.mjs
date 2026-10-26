@@ -46,7 +46,6 @@ export const EXCLUDED = {
   getAiModels: 'lists OpenAI models when a key is set',
   getAdminImageProxy: 'fetches from Wikimedia Commons',
   getAdminDataAssertions: 'runs every catalogue check, and is limited to five calls a minute on purpose',
-  getAdminWvImportGeoshapeByWikidataId: 'fetches from Wikimedia when the shape is not stored',
   getWorldViewsRegionsByRegionIdGeometryComputeStream: 'computes and stores a region geometry',
   getAdminWvImportMatchesByWorldViewIdColorMatchStream: 'starts the colour-match pipeline',
   getAdminWvImportMatchesByWorldViewIdCoverageStream: 'runs the coverage analysis',

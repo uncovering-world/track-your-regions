@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FoundSuggestion, Geoshape, MatchSuggestion } from '../../api/responses/worldViewImport.js';
-import { foundSuggestionOf, geoshapeOf, matchSuggestionOf } from './wvImportAnswerRows.js';
+import { FoundSuggestion, MatchSuggestion } from '../../api/responses/worldViewImport.js';
+import { foundSuggestionOf, matchSuggestionOf } from './wvImportAnswerRows.js';
 
 // Baja California Sur (GADM 234504), offered to a region while a sibling
 // region holds México (GADM 234491), its parent: a `split` conflict, the one
@@ -49,28 +49,5 @@ describe('a suggestion a matcher just wrote', () => {
   it('sends no conflict key when nobody holds the division', () => {
     const suggestion = foundSuggestionOf({ divisionId: 234504, name: 'Baja California Sur', path: 'México > Baja California Sur', score: 500 });
     expect('conflict' in FoundSuggestion.parse(suggestion)).toBe(false);
-  });
-});
-
-// Albania (Q222): the shape is illustrative, a triangle inside the country.
-const albania = { type: 'Polygon', coordinates: [[[19.8, 41.3], [20.0, 41.3], [19.9, 41.5], [19.8, 41.3]]] };
-
-describe('a geoshape from Wikimedia', () => {
-  it('tags each polygon with the item and drops Wikimedia\'s own feature keys', () => {
-    const shape = geoshapeOf('Q222', [{ type: 'Feature', id: 'Q222', properties: { stroke: '#555' }, geometry: albania }]);
-    expect(Geoshape.parse(shape)).toEqual({
-      type: 'FeatureCollection',
-      features: [{ type: 'Feature', properties: { id: 'Q222' }, geometry: albania }],
-    });
-  });
-
-  it('drops a geometry that is not an area', () => {
-    const border = { type: 'LineString', coordinates: [[19.8, 41.3], [20.0, 41.3]] };
-    const shape = geoshapeOf('Q222', [{ geometry: border }, { geometry: albania }, null]);
-    expect(Geoshape.parse(shape).features.map(f => f.geometry.type)).toEqual(['Polygon']);
-  });
-
-  it('answers an item Wikimedia holds no shape for with no features', () => {
-    expect(Geoshape.parse(geoshapeOf('Q14201440', []))).toEqual({ type: 'FeatureCollection', features: [] });
   });
 });

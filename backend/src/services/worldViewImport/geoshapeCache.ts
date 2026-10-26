@@ -3,10 +3,9 @@ import type { PoolClient } from 'pg';
 import { userAgent } from '../../config/userAgent.js';
 import { assertRobotsAllow, RobotsRefusal } from '../robots/robotsSignals.js';
 
-const GEOSHAPE_URL = 'https://maps.wikimedia.org/geoshape';
 // World-view import machinery, and it says so wherever it is called from: an
-// unattended run walking every region, or one shape an admin's dialog asked
-// for. The marker names the traffic rather than who is watching it, which is
+// unattended run walking every region, or one Commons map an admin's review
+// asked for. The marker names the traffic rather than who is watching it, which is
 // why a single admin click can emit both markers — see `config/userAgent.ts`.
 const USER_AGENT = userAgent({ bot: true });
 const FETCH_DELAY_MS = 1500;
@@ -41,97 +40,20 @@ export async function acquireFetchSlot(): Promise<void> {
 }
 
 /**
- * Get or fetch a Wikidata geoshape geometry.
- * Caches results (including "not available") in wikidata_geoshapes table.
- * Returns true if geoshape is available, false otherwise.
+ * Whether the store holds a shape for a Wikidata item. Nothing is fetched: Wikimedia Maps (`maps.wikimedia.org`) draws
+ * an item's shape, and its Maps Terms of Use do not allow third-party services
+ * to use it (#2084). A region whose item has no shape here is matched by its
+ * points instead.
  */
-export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
-  // Check cache first
-  const cached = await pool.query(
-    'SELECT not_available FROM wikidata_geoshapes WHERE wikidata_id = $1',
+export async function geoshapeHeld(wikidataId: string): Promise<boolean> {
+  const held = await pool.query<{ held: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM wikidata_geoshapes
+       WHERE wikidata_id = $1 AND not_available = FALSE AND geom IS NOT NULL
+     ) AS held`,
     [wikidataId],
   );
-  if (cached.rows.length > 0) {
-    return !cached.rows[0].not_available;
-  }
-
-  await acquireFetchSlot();
-
-  // Fetch from Wikimedia
-  let answered = false;
-  try {
-    const url = `${GEOSHAPE_URL}?getgeojson=1&ids=${wikidataId}`;
-    await assertRobotsAllow(url);
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Referer': 'https://en.wikivoyage.org/',
-      },
-    });
-
-    if (!response.ok) {
-      console.warn(`[GeoshapeCache] HTTP ${response.status} for ${wikidataId}`);
-      // Don't poison the cache for transient errors (429 rate limit, 5xx server errors).
-      // Only persist not_available=TRUE for permanent client errors (4xx other than 429).
-      const transient = response.status === 429 || response.status >= 500;
-      if (!transient) {
-        await pool.query(
-          `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
-           ON CONFLICT (wikidata_id) DO NOTHING`,
-          [wikidataId],
-        );
-      }
-      return false;
-    }
-
-    const geojson = await response.json() as { features?: Array<{ geometry?: unknown }> };
-    answered = true;
-
-    // Extract geometry from FeatureCollection
-    const features = geojson?.features;
-    if (!features || features.length === 0 || !features[0]?.geometry) {
-      await pool.query(
-        `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
-         ON CONFLICT (wikidata_id) DO NOTHING`,
-        [wikidataId],
-      );
-      return false;
-    }
-
-    const geometry = features[0].geometry;
-    const geomJson = JSON.stringify(geometry);
-
-    // Store with validation — use ST_Buffer(geom, 0) instead of ST_MakeValid
-    // because ST_MakeValid can collapse self-intersecting archipelago polygons
-    // into a single merged shape (destroying island boundaries), while Buffer(0)
-    // preserves individual polygon parts and gives correct overlap with GADM.
-    await pool.query(
-      `INSERT INTO wikidata_geoshapes (wikidata_id, geom)
-       VALUES ($1, ST_Multi(ST_CollectionExtract(ST_Buffer(ST_SetSRID(ST_GeomFromGeoJSON($2), 4326), 0), 3)))
-       ON CONFLICT (wikidata_id) DO UPDATE SET
-         geom = EXCLUDED.geom,
-         not_available = FALSE`,
-      [wikidataId, geomJson],
-    );
-
-    return true;
-  } catch (err) {
-    console.error('[GeoshapeCache] Failed to fetch geoshape for %s:', wikidataId, err);
-    // A request that failed (a dropped connection, a timeout, an unreadable
-    // answer) says nothing about the item and is asked again next time, as a
-    // 429 or a 5xx is. Only a shape Wikimedia sent that cannot be stored is
-    // remembered as none: asked again, it would fail the same way. A part a
-    // blip left unanswered would otherwise block its parent's composite for
-    // good (#1628).
-    if (answered) {
-      await pool.query(
-        `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
-         ON CONFLICT (wikidata_id) DO NOTHING`,
-        [wikidataId],
-      );
-    }
-    return false;
-  }
+  return held.rows[0]?.held === true;
 }
 
 /** Metadata returned from a fetched Wikimedia Commons map data file */
@@ -324,7 +246,7 @@ export async function computeIoU(
 
 /**
  * Compute geo similarity for a region's suggestions.
- * Fetches/caches the Wikidata geoshape, then computes IoU for each suggestion.
+ * Reads the stored geoshape, then computes IoU for each suggestion.
  * Updates region_import_state.geo_available and region_match_suggestions.geo_similarity.
  *
  * Auto-accept: if exactly one suggestion has IoU = 1.0, auto-match it.
@@ -490,7 +412,7 @@ export async function computeGeoSimilarityForRegion(
   const wikidataId = wdResult.rows[0]?.source_external_id as string | undefined;
   if (!wikidataId) return;
 
-  const available = await getOrFetchGeoshape(wikidataId);
+  const available = await geoshapeHeld(wikidataId);
   await client.query(
     'UPDATE region_import_state SET geo_available = $1 WHERE region_id = $2',
     [available, regionId],
