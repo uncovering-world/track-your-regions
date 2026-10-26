@@ -3046,8 +3046,14 @@ held sites at the line or over stands in, as one at the line does (`siteStanding
 `archaeology/siteTest.ts`). A held site stays while it reads at the 35th percentile. The bar is read
 over the held sites, not over every candidate at the line, where Athens and Istanbul would set it.
 The rest of the rule is unchanged, so a row the door opened for that the map shows to be a living
-town is refused by name. The door reads only the pool the site door already asks for, from its
-floor of 15 sitelinks. It is shut while the source's curator gate is off and while the year is not
+town is refused by name. The door reads the pool the site door already asks for, from its floor of
+15 sitelinks, and the sites under that floor the world reads at the bar (ADR-0152, #1757,
+`readUnderFloor` and `archaeology/underFloor.ts`). The readership names those first: every item
+read at the bar in fewer counted editions than the floor (`readAtLeast`), about 20,000 on
+2026-10-26, of which Wikidata is asked which carry a class under the site tree and a coordinate
+(`fetchSitesAmong`, its subset twin `subsetSitesAmong`). Those few dozen, the Temple of Poseidon at
+Sounion and the Inca Trail among them, join the pool as a class question's rows and meet the same
+rule and witnesses. It is shut while the source's curator gate is off and while the year is not
 folded with the redirects in place. A site it alone admits carries the curator's question in
 `admissionNote` (`placeDoorNote`): its reading, the bar, the burst flag and its witnesses.
 
