@@ -9,13 +9,13 @@
  */
 
 import type {
-  AIMatchOneResult, CoveringMatchResult, DbSearchResult, GeocodeMatchResult, Geoshape, ImportCancelled,
+  AIMatchOneResult, CoveringMatchResult, DbSearchResult, GeocodeMatchResult, ImportCancelled,
   ImportStarted, ImportStatus, InstancesSynced, MatchAccepted, MatchAcceptedRestRejected, MatchesAccepted,
   MatchReset, MatchStats, MatchTree, RematchCancelled, RematchStarted, RematchStatus, RemainingRejected, SuggestionRejected,
   TransferAccepted, TransferPreview,
 } from '../adminClient.generated';
 import {
-  getAdminWvImportGeoshapeByWikidataId, getAdminWvImportImportStatus,
+  getAdminWvImportImportStatus,
   getAdminWvImportMatchesByWorldViewIdRematchStatus, getAdminWvImportMatchesByWorldViewIdStats,
   getAdminWvImportMatchesByWorldViewIdTree, postAdminWvImportBaseLayer, postAdminWvImportImport,
   postAdminWvImportImportCancel, postAdminWvImportMatchesByWorldViewIdAccept,
@@ -36,7 +36,7 @@ import {
 // component imports a call's answer from the module of the call.
 export type {
   AIMatchOneResult, AssignedDivision, CoveringMatchResult, DbSearchResult, FoundSuggestion, GeocodeMatchResult,
-  Geoshape, ImportCancelled, ImportStarted, ImportStatus, InstancesSynced, MarkerPoint, MatchAccepted,
+  ImportCancelled, ImportStarted, ImportStatus, InstancesSynced, MarkerPoint, MatchAccepted,
   MatchAcceptedRestRejected, MatchesAccepted, MatchReset, MatchStats, MatchStatus, MatchSuggestion, MatchTree,
   MatchTreeNode, RematchCancelled, RematchStarted, RematchStatus, RemainingRejected, SuggestionConflict, SuggestionRejected,
   TransferAccepted, TransferPreview,
@@ -176,14 +176,6 @@ export async function aiMatchOneRegion(
   regionId: number,
 ): Promise<AIMatchOneResult> {
   return postAdminWvImportMatchesByWorldViewIdAiMatchOne(worldViewId, { regionId });
-}
-
-// =============================================================================
-// Geoshape Fetch
-// =============================================================================
-
-export async function fetchGeoshape(wikidataId: string): Promise<Geoshape> {
-  return getAdminWvImportGeoshapeByWikidataId(wikidataId);
 }
 
 // =============================================================================

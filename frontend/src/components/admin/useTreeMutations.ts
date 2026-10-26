@@ -45,6 +45,7 @@ import {
   checkDivisionOverlap,
   type MatchTreeNode,
   type ChildrenCoverage,
+  type CoveringMatchResult,
 } from '../../api/admin/worldViewImport';
 import { queryKeys } from '../../api/queryKeys';
 // ─── Types shared between hook and component ─────────────────────────────────
@@ -356,6 +357,30 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
     },
   });
 
+  /** What a marker match found, prefixed with why it ran in place of a shape match. */
+  const showMarkerMatch = (data: CoveringMatchResult, regionId: number, prefix: string) => {
+    if (data.found > 0) {
+      setGeocodeProgress({
+        regionId,
+        message: `${prefix}Found ${data.found} division(s) from markers`,
+      });
+      setTimeout(() => setGeocodeProgress(null), 4000);
+    } else if (data.nextScope) {
+      setGeocodeProgress({
+        regionId,
+        message: `${prefix}No marker matches in ${data.scopeAncestorName ?? 'current'} scope`,
+        nextScope: data.nextScope,
+        retryType: 'point',
+      });
+    } else {
+      setGeocodeProgress({
+        regionId,
+        message: `${prefix}No divisions found from markers`,
+      });
+      setTimeout(() => setGeocodeProgress(null), 4000);
+    }
+  };
+
   const geoshapeMatchMutation = useMutation({
     mutationFn: ({ regionId, scopeAncestorId }: { regionId: number; scopeAncestorId?: number }) =>
       geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId),
@@ -363,6 +388,12 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
       setGeocodeProgress({ regionId, message: 'Matching by geoshape...' });
     },
     onSuccess: (data, { regionId }) => {
+      // With no shape held, the backend matched the region by its Wikivoyage markers (#2084)
+      if (data.shapeUnavailable) {
+        showMarkerMatch(data, regionId, 'No shape for this region. ');
+        invalidateTree(regionId);
+        return;
+      }
       const coverageMsg = data.totalCoverage != null
         ? ` (${Math.round(data.totalCoverage * 100)}% coverage)`
         : '';
@@ -401,26 +432,7 @@ export function useTreeMutations(worldViewId: number, deps: TreeMutationDeps) {
       setGeocodeProgress({ regionId, message: 'Matching by markers...' });
     },
     onSuccess: (data, { regionId }) => {
-      if (data.found > 0) {
-        setGeocodeProgress({
-          regionId,
-          message: `Found ${data.found} division(s) from markers`,
-        });
-        setTimeout(() => setGeocodeProgress(null), 4000);
-      } else if (data.nextScope) {
-        setGeocodeProgress({
-          regionId,
-          message: `No marker matches in ${data.scopeAncestorName ?? 'current'} scope`,
-          nextScope: data.nextScope,
-          retryType: 'point',
-        });
-      } else {
-        setGeocodeProgress({
-          regionId,
-          message: 'No divisions found from markers',
-        });
-        setTimeout(() => setGeocodeProgress(null), 4000);
-      }
+      showMarkerMatch(data, regionId, '');
       invalidateTree(regionId);
     },
     onError: () => {

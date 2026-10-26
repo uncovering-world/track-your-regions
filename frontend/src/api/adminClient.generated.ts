@@ -3871,6 +3871,8 @@ export interface CoveringMatchResult {
   scopeAncestorName?: string;
   /** Where a wider search would look, offered when this one found nothing. */
   nextScope?: CoveringMatchResultNextScope;
+  /** Set when no shape is held for the region, so its divisions were matched from the places its Wikivoyage article marks. */
+  shapeUnavailable?: true;
 }
 
 /**
@@ -5794,25 +5796,6 @@ export interface CoverageFailed {
  * One event of the coverage stream (`/coverage-stream`), told apart by `type`.
  */
 export type CoverageEvent = CoverageProgress | CoverageComplete | CoverageFailed;
-
-export type GeoshapeFeaturesItemProperties = {
-  /** The Wikidata item. */
-  id: string;
-};
-
-export type GeoshapeFeaturesItem = {
-  type: 'Feature';
-  properties: GeoshapeFeaturesItemProperties;
-  geometry: AreaGeometry;
-};
-
-/**
- * A Wikidata item's shape, from the local cache or from Wikimedia's map service; no feature where it has none.
- */
-export interface Geoshape {
-  type: 'FeatureCollection';
-  features: GeoshapeFeaturesItem[];
-}
 
 export type PostAdminSyncSourcesBySourceIdFindComponentItemsParams = {
 /**
@@ -8690,7 +8673,7 @@ export const getPostAdminWvImportMatchesByWorldViewIdGeoshapeMatchUrl = (worldVi
 
 /**
  * Requires an admin.
- * @summary Suggest divisions for one region by comparing them with its Wikidata shape
+ * @summary Suggest divisions for one region by comparing them with the shape held for it, or from its Wikivoyage markers when none is
  */
 export const postAdminWvImportMatchesByWorldViewIdGeoshapeMatch = async (worldViewId: number,
     wvImportGeoshapeMatchBody: WvImportGeoshapeMatchBody, options?: Parameters<typeof apiFetch>[1]): Promise<CoveringMatchResult> => {
@@ -10579,31 +10562,6 @@ export const getAdminWvImportMatchesByWorldViewIdCoverageStream = async (worldVi
     params?: GetAdminWvImportMatchesByWorldViewIdCoverageStreamParams, options?: Parameters<typeof apiFetch>[1]): Promise<string> => {
 
   return apiFetch<string>(getGetAdminWvImportMatchesByWorldViewIdCoverageStreamUrl(worldViewId,params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getGetAdminWvImportGeoshapeByWikidataIdUrl = (wikidataId: string,) => {
-
-
-
-
-  return `/api/admin/wv-import/geoshape/${encodeURIComponent(String(wikidataId))}`
-}
-
-/**
- * Requires an admin.
- * @summary Fetch the boundary of a Wikidata item as GeoJSON, from the local store or Wikimedia
- */
-export const getAdminWvImportGeoshapeByWikidataId = async (wikidataId: string, options?: Parameters<typeof apiFetch>[1]): Promise<Geoshape> => {
-
-  return apiFetch<Geoshape>(getGetAdminWvImportGeoshapeByWikidataIdUrl(wikidataId),
   {
     ...options,
     method: 'GET'
