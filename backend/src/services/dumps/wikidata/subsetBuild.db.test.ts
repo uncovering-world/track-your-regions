@@ -410,16 +410,20 @@ describe('a cast group reached only through P144 (#880)', () => {
     lines = [
       dumpLine('P31', 'instance of', [], { datatype: 'wikibase-item' }),
       dumpLine('P144', 'based on', [], { datatype: 'wikibase-item' }),
+      dumpLine('P170', 'creator', [], { datatype: 'wikibase-item' }),
       dumpLine('P625', 'coordinate location', [], { datatype: 'globe-coordinate' }),
-      dumpLine('Q18003128', 'The Thinker', [{ property: 31, value: item(28890616) }], { sitelinks: { enwiki: 'The Thinker' } }),
+      dumpLine('Q18003128', 'The Thinker', [
+        { property: 31, value: item(28890616) }, { property: 170, value: item(30755) },
+      ], { sitelinks: { enwiki: 'The Thinker' } }),
+      // A P144 item is a cast only by the group's own creator (ADR-0155): Rodin's here.
       dumpLine('Q130544842', 'The Thinker, Kyoto', [
-        { property: 625, value: at(34.99, 135.7723) }, { property: 144, value: item(18003128) },
+        { property: 625, value: at(34.99, 135.7723) }, { property: 144, value: item(18003128) }, { property: 170, value: item(30755) },
       ]),
       // A dump also has items outside the scope, whose terms are spooled.
       dumpLine('Q900999', 'An unrelated item', []),
     ];
     await build();
-    expect(await ids('wikidata_entities')).toEqual(['P144', 'P31', 'P625', 'Q130544842', 'Q18003128']);
+    expect(await ids('wikidata_entities')).toEqual(['P144', 'P170', 'P31', 'P625', 'Q130544842', 'Q18003128']);
     const { rows } = await pool.query("SELECT subject, property, rank, value_item, value FROM wikidata_claims WHERE property = 'P144'");
     expect(rows).toEqual([{ subject: 'Q130544842', property: 'P144', rank: 0, value_item: 'Q18003128', value: null }]);
     const { subsetCastGroupIds, subsetCastItems } = await import('../../sync/subset/castGroups.js');

@@ -50,6 +50,13 @@ describe('fetchCastItems', () => {
     expect(await fetchCastItems(async () => [], [BURGHERS])).toEqual(new Map());
   });
 
+  it('takes an item based on the group as a cast only when it has the group\'s creator (#2092)', async () => {
+    let asked = '';
+    await fetchCastItems(async (query: string) => { asked = query; return []; }, [BURGHERS]);
+    expect(asked).toContain('{ ?cast wdt:P144 ?g . FILTER EXISTS { ?cast wdt:P170 ?maker . ?g wdt:P170 ?maker } }');
+    expect(asked).not.toMatch(/\{ \?cast wdt:P144 \?g \}/);
+  });
+
   it.each([false, true])('keeps a cast that returned to the same placement, regardless of statement order (%s)', async (reversed) => {
     const standing = cast('Q29273401', 'The Burghers of Calais', 'Point(1.8535 50.9523)', {
       at: ref('Q6454'), atLabel: { value: 'Calais' }, countryLabel: { value: 'France' },

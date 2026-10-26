@@ -7,8 +7,9 @@
  * name it as what they are part of (`P361`). The group carries the fame; the
  * casts carry the points.
  *
- * A cast is a part, or an item naming the group by `P361` or `P144`, that has
- * a coordinate of its own and a placement that has not ended: a part with no
+ * A cast is a part, an item naming the group by `P361`, or one naming it by
+ * `P144` with the group's creator (`castPattern`), that has a coordinate of
+ * its own and a placement that has not ended: a part with no
  * coordinate — the study of one figure — is no cast, and a cast whose every
  * `P276` carries an end time has left. It is called by where it stands, the
  * placement that holds, else by its own label, and judged by where it stands
@@ -105,6 +106,18 @@ function readCastRows(rows: SparqlBinding[]): Map<string, Map<string, CastReadin
   return readings;
 }
 
+/**
+ * The pattern binding `?cast` to a cast of `group`, a SPARQL term: a part, an
+ * item naming it as what it is part of, or an item naming it as what it is
+ * based on that has the group's creator. A work based on *The Thinker* by no
+ * one, or by someone else — the parody in Greenwich — is another work (#2092,
+ * ADR-0155).
+ */
+export function castPattern(group: string): string {
+  return `{ ${group} wdt:P527 ?cast } UNION { ?cast wdt:P361 ${group} }
+      UNION { ?cast wdt:P144 ${group} . FILTER EXISTS { ?cast wdt:P170 ?maker . ${group} wdt:P170 ?maker } }`;
+}
+
 /** The casts of each of `groups`, by group; a group with none has no entry. */
 export async function fetchCastItems(door: Door, groups: string[]): Promise<Map<string, CastItem[]>> {
   const asked = groups.filter(isQid);
@@ -122,7 +135,7 @@ export async function fetchCastItems(door: Door, groups: string[]): Promise<Map<
   const rows = await sparql(`
     SELECT ?g ?cast ?castLabel ?coord ?cls ?at ?atLabel ?ended ?countryLabel WHERE {
       VALUES ?g { ${values(asked)} }
-      { ?g wdt:P527 ?cast } UNION { ?cast wdt:P361 ?g } UNION { ?cast wdt:P144 ?g }
+      ${castPattern('?g')}
       ?cast wdt:P625 ?coord .
       OPTIONAL { ?cast wdt:P31 ?cls }
       OPTIONAL { ?cast p:P276 ?placement . ?placement a wikibase:BestRank ; ps:P276 ?at .

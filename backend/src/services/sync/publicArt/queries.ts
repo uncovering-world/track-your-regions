@@ -42,6 +42,7 @@ import {
 } from './countryOfPlace.js';
 import { settleCountriesByPoint } from './countryByPoint.js';
 import { namingPart } from './castNaming.js';
+import { castPattern } from './castGroups.js';
 
 /**
  * The floor of the pool sits below the line a row *stays* above
@@ -376,7 +377,7 @@ export async function fetchCastGroupPool(run: QueryRunner): Promise<PoolEntity[]
       ?e wdt:P31 wd:${CAST_GROUP} ; wikibase:sitelinks ?sl .
       FILTER(?sl >= ${POOL_MIN_SITELINKS})
       FILTER NOT EXISTS { ?e wdt:P625 ?own }
-      { ?e wdt:P527 ?cast } UNION { ?cast wdt:P361 ?e } UNION { ?cast wdt:P144 ?e }
+      ${castPattern('?e')}
       ?cast wdt:P625 ?castCoord .${POOL_DETAILS}
     }
     LIMIT ${POOL_LIMIT}`, { kind: 'pool', label: 'pool: groups of casts with no point of their own' });
