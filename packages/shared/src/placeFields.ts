@@ -11,8 +11,8 @@
  * not Archaeology's. A kind's field lives on that kind's membership
  * (`experience_kind_memberships.facts`) and the place's on the place, so two
  * kinds of one place never write over each other. UNESCO's facts about an
- * inscription are the World Heritage kind's and are still stored on the place
- * until they move to its membership (#1775).
+ * inscription are the World Heritage kind's, on its membership (#2068), and
+ * UNESCO's page about a site is the place's, like a website (ADR-0138).
  *
  * **Shown.** A gated source may not overwrite what a reader can already see
  * (ADR-0025), so the gate asks a curator about a rewrite of a field a reader is
@@ -87,12 +87,15 @@ export const PLACE_FIELDS: Readonly<Record<string, PlaceField>> = {
   // The run's mark of what it took from UNESCO's dataset (ADR-0149); a reader
   // sees the credit it answers for, never the mark.
   'metadata.unesco': place('unseen'),
+  // UNESCO's page about the site, a link a traveller reads like a website, which
+  // places no World Heritage membership holds keep too (ADR-0138).
+  'metadata.unescoUrl': place('shown'),
 
-  // The inscription, the World Heritage kind's.
+  // The inscription, the World Heritage kind's: a delisted site loses it with
+  // its membership.
   'metadata.dateInscribed': kind('shown'),
   'metadata.inDanger': kind('shown'),
   'metadata.dangerList': kind('shown'),
-  'metadata.unescoUrl': kind('shown'),
   'metadata.criteria': kind('unseen'),
   'metadata.region': kind('unseen'),
   'metadata.transboundary': kind('unseen'),

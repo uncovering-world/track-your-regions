@@ -47,6 +47,9 @@ const PARAMS: ExperienceUpsertParams = {
   metadata: { inDanger: false, dateInscribed: 1981 },
 };
 
+/** The run's record's World Heritage facts, which its membership stores (#2068). */
+const FACTS = JSON.stringify(PARAMS.metadata);
+
 /** The row the read after the lock returns: the place as it stood, and the hold decided on it. */
 function storedRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -688,9 +691,10 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // the columns a held row takes (`passingColumns`, #1834), casts, unsaid (ADR-0145),
     // whether the source reads extents, unsaid (ADR-0146), and the article the
     // run reports, its view's (#1975), and the label it sent, before a twin's
-    // suffix (#1967), and the kind's own facts for its membership (ADR-0153).
-    expect(params).toHaveLength(37);
-    expect(params.slice(31)).toEqual([[], null, false, null, PARAMS.name, '{}']);
+    // suffix (#1967), and the kind's own facts for its membership (ADR-0153),
+    // whole for a new one and as a held one keeps them (#2068).
+    expect(params).toHaveLength(38);
+    expect(params.slice(31)).toEqual([[], null, false, null, PARAMS.name, FACTS, FACTS]);
     expect(sql).not.toContain("'artworkCount'");
   });
 
@@ -1142,10 +1146,8 @@ describe('a picture a run may not store', () => {
       metadata: { ...PARAMS.metadata, imageCredit: { author: 'Thomas Wolf' } },
     }, { syncLogId: 42 });
 
-    const metadata = upsert()[1].find(
-      (v): v is string => typeof v === 'string' && v.startsWith('{') && v.includes('inDanger'),
-    );
-    expect(JSON.parse(String(metadata))).toHaveProperty('imageCredit');
+    // $14, the place's metadata.
+    expect(JSON.parse(String(upsert()[1][13]))).toHaveProperty('imageCredit');
   });
 
   it('is refused in a dry run too, so a preview says what the run would do', async () => {

@@ -3,8 +3,9 @@ import { FAMILY_FIELDS, fieldsOfOthers, keptForFamilies } from './fieldFamilies.
 
 /**
  * A run writes another family's fields as the place holds them (ADR-0109,
- * #1534): the Acropolis keeps UNESCO's names, text, states and inscription
- * facts under an Archaeology run that reads none of them.
+ * #1534): the Acropolis keeps UNESCO's names, text, states and page under an
+ * Archaeology run that reads none of them. Its inscription facts are not the
+ * place's at all: they are on its World Heritage membership (#2068).
  */
 
 const STORED = {
@@ -12,7 +13,7 @@ const STORED = {
   description: 'The Acropolis of Athens and its monuments are universal symbols of the classical spirit.',
   country_codes: ['GR'],
   country_names: ['Greece'],
-  metadata: { dateInscribed: '1987', inDanger: false, wikidataQid: 'Q131013' },
+  metadata: { unescoUrl: 'https://whc.unesco.org/en/list/404', wikidataQid: 'Q131013' },
 };
 const RUN = {
   nameLocal: { en: 'Acropolis of Athens' },
@@ -29,13 +30,16 @@ describe('keeping the fields another family of sources brings (#1534)', () => {
       description: STORED.description,
       countryCodes: ['GR'],
       countryNames: ['Greece'],
-      metadata: { wikidataQid: 'Q131013', website: 'https://odysseus.culture.gr/', dateInscribed: '1987', inDanger: false },
+      metadata: {
+        wikidataQid: 'Q131013', website: 'https://odysseus.culture.gr/',
+        unescoUrl: 'https://whc.unesco.org/en/list/404',
+      },
     });
   });
 
   it('drops a key of the other family the place does not hold, rather than writing the run\'s', () => {
-    const kept = keptForFamilies({ ...RUN, metadata: { ...RUN.metadata, region: 'Europe' } }, STORED, FAMILY_FIELDS.unesco);
-    expect(kept.metadata).not.toHaveProperty('region');
+    const kept = keptForFamilies({ ...RUN, metadata: { ...RUN.metadata, unesco: { description: true } } }, STORED, FAMILY_FIELDS.unesco);
+    expect(kept.metadata).not.toHaveProperty('unesco');
   });
 
   it('changes nothing where no other family holds the place', () => {

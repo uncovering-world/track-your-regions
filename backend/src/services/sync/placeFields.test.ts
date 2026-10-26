@@ -57,22 +57,22 @@ describe('the reader mark of every field a run writes', () => {
 });
 
 describe('whose each field is', () => {
-  it('keeps no kind\'s field among the keys a family stores on the place, UNESCO\'s inscription aside', () => {
+  it('keeps no kind\'s field among the keys a family stores on the place', () => {
     // A kind's field on the place is written over by every other kind's run
     // of it (ADR-0153): Charminar kept Monuments & memorials' year under
-    // Places of worship. The inscription moves to its membership next (#1775).
-    const onThePlace = FAMILY_FIELDS.wikidata.metadata.filter(key => PLACE_FIELDS[`metadata.${key}`]?.owner === 'kind');
-    expect(onThePlace).toEqual([]);
-    for (const key of FAMILY_FIELDS.unesco.metadata) {
-      expect([key, PLACE_FIELDS[`metadata.${key}`]?.owner]).not.toEqual([key, undefined]);
+    // Places of worship, and UNESCO's inscription is its membership's (#2068).
+    for (const family of [FAMILY_FIELDS.wikidata, FAMILY_FIELDS.unesco]) {
+      for (const key of family.metadata) expect([key, PLACE_FIELDS[`metadata.${key}`]?.owner]).toEqual([key, 'place']);
     }
   });
 
-  it('marks unseen every field a membership stores, since its write passes no gate', () => {
-    // The membership's facts are written as the run read them, held or not:
-    // a field a reader is shown would have to be asked of a curator first.
-    for (const key of KIND_FACT_KEYS) expect([key, placeFieldMark(`metadata.${key}`)]).toEqual([key, 'unseen']);
-    expect(KIND_FACT_KEYS).toEqual(expect.arrayContaining(['year', 'creators', 'admissionNote', 'wikidataClasses']));
-    expect(KIND_FACT_KEYS).not.toContain('dateInscribed');
+  it('shows a reader only the inscription\'s year and danger listing among the facts a membership stores', () => {
+    // The membership's unseen facts are written as the run read them, held or
+    // not. The three a reader is shown -- the year inscribed, the danger flag
+    // and its listing (#2068) -- are kept on a held membership until a curator
+    // publishes them (`heldFacts`).
+    const shown = KIND_FACT_KEYS.filter(key => placeFieldMark(`metadata.${key}`) === 'shown');
+    expect(shown.sort()).toEqual(['dangerList', 'dateInscribed', 'inDanger']);
+    expect(KIND_FACT_KEYS).toEqual(expect.arrayContaining(['year', 'creators', 'admissionNote', 'wikidataClasses', 'criteria']));
   });
 });

@@ -39,10 +39,10 @@ afterAll(async () => {
 });
 
 describe('experiences.curated_fields refuses a whole-column metadata claim', () => {
-  it('takes a claim on each key, a major one included', async () => {
-    expect(await placeClaiming(['description', 'metadata.inDanger', 'metadata.website'])).toBeNull();
+  it('takes a claim on each key', async () => {
+    expect(await placeClaiming(['description', 'metadata.wikipediaUrl', 'metadata.website'])).toBeNull();
     const stored = await pool.query('SELECT curated_fields FROM experiences WHERE id = $1', [PLACE]);
-    expect(stored.rows).toEqual([{ curated_fields: ['description', 'metadata.inDanger', 'metadata.website'] }]);
+    expect(stored.rows).toEqual([{ curated_fields: ['description', 'metadata.wikipediaUrl', 'metadata.website'] }]);
   });
 
   it('refuses the bare column name on insert', async () => {

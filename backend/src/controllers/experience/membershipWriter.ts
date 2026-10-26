@@ -465,6 +465,24 @@ export async function publishTypeOnMembership(
 }
 
 /**
+ * A held proposal's facts of the kind, published onto the membership being
+ * published (ADR-0153, #2068), for the reason the type is: the run whose
+ * proposal it was is that membership's source.
+ */
+export async function publishFactsOnMembership(
+  client: PoolClient,
+  lock: LockedExperience,
+  membershipId: number,
+  held: { value: Record<string, unknown> } | undefined,
+): Promise<void> {
+  if (!held) return;
+  await client.query(
+    `UPDATE ${MEMBERSHIPS} SET facts = $3::jsonb, updated_at = NOW() WHERE id = $2 AND experience_id = $1`,
+    [lock.id, membershipId, JSON.stringify(held.value)],
+  );
+}
+
+/**
  * The membership of a place a curator created by hand, in the kind of the
  * source the curator chose (ADR-0045 decision 4, #822): `verified` and
  * published from the moment it exists, since a person's judgement does not

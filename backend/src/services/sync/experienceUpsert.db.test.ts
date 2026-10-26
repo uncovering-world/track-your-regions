@@ -319,8 +319,10 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
        VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [archaeology],
     )).rows[0].id;
+    // The place's metadata with the run's membership's facts over it, where
+    // the area lives (#2068): the record as the run names it.
     const state = async () => (await pool.query<{ metadata: Record<string, unknown>; pointer: number | null; state: string }>(
-      `SELECT e.metadata, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
+      `SELECT e.metadata || m.facts AS metadata, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
          FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
         WHERE e.id = $1`,
       [created.experienceId, archaeology],
@@ -593,37 +595,45 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
   });
 });
 
-describe('a claim on a major metadata key (#727, ADR-0077 decision 2)', () => {
-  it('keeps the curator\'s flag and records it as theirs, while an unclaimed key follows the source', async () => {
+describe('a claim on a metadata key (#727, ADR-0077 decision 2)', () => {
+  it('keeps the curator\'s value and records it as theirs, while an unclaimed key follows the source', async () => {
     const site = (metadata: Record<string, unknown>) => ({
       ...params(archaeology, NEW_SITE_QID, 'A new site'), metadata: { wikidataQid: NEW_SITE_QID, ...metadata },
     });
     // Created by the run, so its membership is still unread and the gate holds
     // nothing: the write takes the arm that re-applies claimed keys.
-    const created = await upsertExperienceRecord(site({ inDanger: false, website: 'https://old.example' }));
+    const created = await upsertExperienceRecord(site({
+      website: 'https://old.example', wikipediaUrl: 'https://en.wikipedia.org/wiki/Old',
+    }));
     await pool.query(
       `UPDATE experiences
-          SET metadata = metadata || '{"inDanger": true}'::jsonb,
-              curated_fields = '["metadata.inDanger"]'::jsonb
+          SET metadata = metadata || '{"website": "https://curated.example"}'::jsonb,
+              curated_fields = '["metadata.website"]'::jsonb
         WHERE id = $1`,
       [created.experienceId],
     );
 
-    const outcome = await upsertExperienceRecord(site({ inDanger: false, website: 'https://new.example' }));
+    const outcome = await upsertExperienceRecord(site({
+      website: 'https://old.example', wikipediaUrl: 'https://en.wikipedia.org/wiki/New',
+    }));
 
     const stored = await pool.query<{ metadata: Record<string, unknown> }>(
       'SELECT metadata FROM experiences WHERE id = $1', [created.experienceId],
     );
-    expect(stored.rows[0].metadata).toMatchObject({ inDanger: true, website: 'https://new.example' });
-    // The record says what the write did: the flag is the curator's, the link applied.
+    expect(stored.rows[0].metadata).toMatchObject({
+      website: 'https://curated.example', wikipediaUrl: 'https://en.wikipedia.org/wiki/New',
+    });
+    // The record says what the write did: the website is the curator's, the article applied.
     expect(outcome.changeSet.heldFields).toEqual([]);
-    expect(outcome.changeSet.curatedConflicts.map(f => f.field)).toEqual(['metadata.inDanger']);
-    expect(outcome.changeSet.changedFields.map(f => f.field)).toEqual(['metadata.website']);
+    expect(outcome.changeSet.curatedConflicts.map(f => f.field)).toEqual(['metadata.website']);
+    expect(outcome.changeSet.changedFields.map(f => f.field)).toEqual(['metadata.wikipediaUrl']);
   });
 });
 
 describe('a field another family of sources brings (ADR-0109, #1534)', () => {
+  // The inscription, on the World Heritage membership (#2068), and UNESCO's page, on the place.
   const UNESCO_FACTS = { dateInscribed: '1987', inDanger: false, criteria: '(i)(ii)(iii)(iv)(vi)', region: 'Europe and North America' };
+  const UNESCO_PAGE = 'https://whc.unesco.org/en/list/404';
   const UNESCO_NAMES = { en: 'Acropolis, Athens', fr: "Acropole d'Athènes", ru: 'Афинский Акрополь' };
   const UNESCO_TEXT = 'The Acropolis of Athens and its monuments are universal symbols of the classical spirit.';
 
@@ -634,14 +644,14 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
       `INSERT INTO experiences (id, source_id, external_id, name, name_local, description, country_codes, country_names, metadata, location)
        VALUES ($1, $2, $3, 'Acropolis, Athens', $4, $5, '{GR}', '{Greece}', $6, ST_SetSRID(ST_MakePoint(23.7262, 37.9715), 4326))`,
       [ACROPOLIS, unesco.id, ACROPOLIS_WHC, JSON.stringify(UNESCO_NAMES), UNESCO_TEXT,
-        JSON.stringify({ ...UNESCO_FACTS, wikidataQid: ACROPOLIS_QID })],
+        JSON.stringify({ unescoUrl: UNESCO_PAGE, wikidataQid: ACROPOLIS_QID })],
     );
     await pool.query(
       `INSERT INTO experience_kind_memberships
          (experience_id, kind_id, source_id, external_id, curation_state, published_at, facts)
-       VALUES ($1, $2, $3, $4, 'auto', NOW(), '{}'), ($1, $5, $6, $7, 'auto', NOW(), $8)`,
+       VALUES ($1, $2, $3, $4, 'auto', NOW(), $9), ($1, $5, $6, $7, 'auto', NOW(), $8)`,
       [ACROPOLIS, unesco.kind_id, unesco.id, ACROPOLIS_WHC, arch.kind_id, arch.id, ACROPOLIS_QID,
-        JSON.stringify({ wikidataClasses: ['Q570116'] })],
+        JSON.stringify({ wikidataClasses: ['Q570116'] }), JSON.stringify(UNESCO_FACTS)],
     );
   });
 
@@ -650,6 +660,11 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
     `SELECT facts -> 'wikidataClasses' AS classes FROM experience_kind_memberships
       WHERE experience_id = $1 AND external_id = $2`, [ACROPOLIS, ACROPOLIS_QID],
   )).rows[0].classes;
+
+  const inscription = async () => (await pool.query<{ facts: Record<string, unknown> }>(
+    `SELECT facts FROM experience_kind_memberships WHERE experience_id = $1 AND external_id = $2`,
+    [ACROPOLIS, ACROPOLIS_WHC],
+  )).rows[0].facts;
 
   const stored = async () => (await pool.query<{
     name_local: Record<string, string>; description: string | null; country_codes: string[];
@@ -670,12 +685,13 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
 
     expect(await stored()).toMatchObject({
       name_local: UNESCO_NAMES, description: UNESCO_TEXT, country_codes: ['GR'], country_names: ['Greece'],
-      metadata: UNESCO_FACTS,
+      metadata: { unescoUrl: UNESCO_PAGE },
     });
+    expect(await inscription()).toEqual(UNESCO_FACTS);
     expect(await archaeologyClasses()).toEqual(['Q570116', 'Q839954']);
     expect(proposed(outcome)).not.toEqual(expect.arrayContaining(['nameLocal.fr']));
     // The Archaeology record names the country 'France' (the fixture's default): UNESCO's 'Greece' stands (#1553).
-    for (const field of ['description', 'countryCodes', 'countryNames', 'metadata.dateInscribed', 'metadata.inDanger', 'metadata.criteria', 'metadata.region']) {
+    for (const field of ['description', 'countryCodes', 'countryNames', 'metadata.unescoUrl', 'metadata.dateInscribed', 'metadata.inDanger']) {
       expect(proposed(outcome)).not.toContain(field);
     }
   });
@@ -689,10 +705,12 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
       countryCodes: ['GR'],
       lon: 23.7262,
       lat: 37.9715,
-      metadata: { ...UNESCO_FACTS, dateInscribed: '1987' },
+      metadata: { ...UNESCO_FACTS, unescoUrl: UNESCO_PAGE },
     });
 
-    expect((await stored()).metadata).toMatchObject({ wikidataQid: ACROPOLIS_QID });
+    expect((await stored()).metadata).toMatchObject({ wikidataQid: ACROPOLIS_QID, unescoUrl: UNESCO_PAGE });
+    expect((await stored()).metadata).not.toHaveProperty('dateInscribed');
+    expect(await inscription()).toEqual(UNESCO_FACTS);
     expect(await archaeologyClasses()).toEqual(['Q570116']);
   });
 
@@ -709,8 +727,11 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
       metadata: { wikidataQid: ACROPOLIS_QID },
     });
 
-    // The place readers see is behind Archaeology's gate: the run's view is a proposal again.
-    expect(proposed(outcome)).toEqual(expect.arrayContaining(['metadata.dateInscribed', 'countryCodes']));
+    // The place readers see is behind Archaeology's gate: the run's view is a
+    // proposal again. The inscription is no field of the place, so no run of
+    // another kind proposes it away (#2068).
+    expect(proposed(outcome)).toEqual(expect.arrayContaining(['countryCodes']));
+    expect(proposed(outcome)).not.toContain('metadata.dateInscribed');
   });
 });
 
