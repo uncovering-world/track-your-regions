@@ -4,11 +4,10 @@
  *
  * POST /api/experiences/:id/kinds   { kindId, type?, note? }
  *
- * A run finds a place only through its kind's rule. The East Side Gallery is a
- * mile of murals on the Berlin Wall, and Wikidata types it an art museum, so
- * Public art's run never reads it and Art Museums' rule keeps it out: the most
- * visited street-art place in Europe sat in no kind a traveller browses. The
- * curator's add is the way in: a membership admitted, published and pinned
+ * A run finds a place only through its kind's rule, and a place no rule reads
+ * sits in no kind a traveller browses: Haus Schwarzenberg in Berlin, a
+ * courtyard of street art filed under no English Wikipedia category and no
+ * genre, is one no run of Public art finds. The curator's add is the way in: a membership admitted, published and pinned
  * (`insertCuratorKindMembership`), so the place joins that kind's lists, counts
  * and map at once and every later run leaves it there. The way back is the
  * card's own Take out… (`keepOutController.ts`).

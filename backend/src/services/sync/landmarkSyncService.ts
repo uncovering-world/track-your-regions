@@ -5,8 +5,9 @@
  * (`publicArt/pipeline.ts`), admits what each kind's rule admits and refuses
  * what it refuses with the reason on the row (ADR-0024), keeps Wikidata's
  * answers between runs (ADR-0030), and writes each landmark as one experience
- * with one point. No grouping, no treasures — simpler than museums, and since
- * #754 the same shape.
+ * with one point. No grouping, and no treasures but a street-art place's
+ * murals (#2055, `publicArt/streetArtWorks.ts`) — simpler than museums, and
+ * since #754 the same shape.
  *
  * Each source is a member of the place pass (ADR-0132, `places/placePass.ts`):
  * the places are gathered once for every source of `PLACE_PASS`, and each of
@@ -26,6 +27,7 @@ import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { classifyPublicArt, ENTER_SITELINKS, openArtworkDoor, PUBLIC_ART_KIND, streetArtCandidates } from './publicArt/pipeline.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
+import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
 import { artworkReadershipDoorFor, type PlaceDoor } from './readershipDoor.js';
 import { shareOf, type GatheredPlaces, type PlaceGather } from './places/gather.js';
 import type { SparqlFn } from './wikidataQueries.js';
@@ -76,6 +78,8 @@ export interface PlaceClassifier {
    * question under (`readershipNote`), one per source (`SOURCE_OWN_METADATA`).
    */
   noteKey?: string;
+  /** What the kind's places hold, where its places hold works: Public art's street-art places (#2055). */
+  contents?: PlaceContents;
 }
 
 /**
@@ -87,7 +91,8 @@ interface ArtworkDoor { open: () => Promise<PlaceDoor | undefined>; noteKey: str
 /**
  * Public art's and Monuments & memorials' classifier: their kind's rule over
  * the public-art share. `streetArt` says the kind holds the street-art places
- * its entrance names (#2035), and reads what their rule asks.
+ * its entrance names (#2035), reads what their rule asks, and writes the works
+ * they hold (#2055).
  */
 function publicArtClassifier(rule: KindRule, door?: ArtworkDoor, streetArt = false): PlaceClassifier {
   return {
@@ -104,6 +109,7 @@ function publicArtClassifier(rule: KindRule, door?: ArtworkDoor, streetArt = fal
     types: rule.types,
     tag: 'outdoor',
     ...(door ? { noteKey: door.noteKey } : {}),
+    ...(streetArt ? { contents: streetArtContents(LANDMARK_SOURCE_ID, LOG_PREFIX) } : {}),
   };
 }
 
@@ -283,6 +289,9 @@ async function upsertLandmarkExperience(
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
+    // What a street-art place holds, after its point (#2055); the floor's
+    // verdict goes with the run's id, as a museum's does.
+    const treasures = await classifier.contents?.write(experienceId, landmark.qid, context, credits.fetched);
     // One point per landmark, so this reports a source that moved it — a withdrawal
     // and an arrival, since identity is the point together with the source's reference
     // (ADR-0022), and a coordinate rewritten more than ten metres away is a different
@@ -290,7 +299,7 @@ async function upsertLandmarkExperience(
     // is reported at all. For an edition it reports a cast that arrived or left.
     // Worth recording even where the object's own `lon`/`lat` diff says the same:
     // the row was replaced, and a reader's tick did not follow it.
-    contents = { locations: written.delta };
+    contents = { locations: written.delta, ...(treasures ? { treasures } : {}) };
   }
 
   return {
@@ -326,13 +335,16 @@ async function fetchLandmarkItems(
 
   const { gathered, sparql } = await gather(progress);
   const { items, fetched, filtered } = await classifier.classify(gathered, admitted, sparql);
+  // What the admitted places hold, read before the first is written, so the
+  // coverage floor is measured over the whole run (ADR-0044).
+  const held = await classifier.contents?.read(items, sparql, progress);
 
   // After the decision, so the credit pass asks about the rows that will exist
   // rather than every candidate the pool named. Its own patience: the
   // collection's is spent by the time this runs.
   progress.statusMessage = 'Asking Commons who took the pictures...';
   const creditBudget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
-  credits.fetched = await fetchCommonsCredits(items.map((l) => l.imageUrl), {
+  credits.fetched = await fetchCommonsCredits([...items.map((l) => l.imageUrl), ...(held?.imageUrls ?? [])], {
     userAgent: WIKIDATA_USER_AGENT,
     budget: creditBudget,
     isCancelled: () => progress.cancel,
@@ -344,7 +356,10 @@ async function fetchLandmarkItems(
 
   // What the subset cannot read is left as it is, not read as gone.
   const unread = readsSubset(sparql) ? await unreadOnSubset(sourceId) : undefined;
-  return { items, fetchedCount: fetched, filtered, unread, typeVocabulary: classifier.types };
+  return {
+    items, fetchedCount: fetched, filtered, unread, typeVocabulary: classifier.types,
+    ...(held ? { withdrawalSkippedReason: held.withdrawalSkippedReason } : {}),
+  };
 }
 
 /** One public-art source of the pass: its kind's rule, writing the kind `sourceId` fills. */

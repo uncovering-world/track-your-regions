@@ -7,10 +7,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 import { subsetDoor } from '../subset/reader.js';
-import { fetchItemsOfGenres, fetchRootsOfClasses, fetchStreetArtMarks } from './streetArtQueries.js';
+import {
+  fetchItemsOfClasses, fetchItemsOfGenres, fetchRootsOfClasses, fetchStreetArtHoldings, fetchStreetArtMarks,
+} from './streetArtQueries.js';
 
 const subset = vi.hoisted(() => ({
   subsetItemsOfGenres: vi.fn(async () => ['Q5908090']),
+  subsetItemsOfClasses: vi.fn(async () => ['Q313746']),
+  subsetStreetArtHoldings: vi.fn(async () => [{ place: 'Q313746', work: 'Q2410932' }]),
   subsetStreetArtMarks: vi.fn(async (qids: string[]) => new Map(qids.map(q => [q, { atlasObscura: true, ended: false }]))),
   subsetRootsOfClasses: vi.fn(async () => new Map([['Q2977', ['Q1370598']]])),
 }));
@@ -29,6 +33,31 @@ describe('the street-art questions asked live (#2035)', () => {
     expect(sparql.mock.calls[0][0]).toContain('wdt:P136');
     expect(await fetchItemsOfGenres(sparql, [])).toEqual([]);
     expect(sparql).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the items of the classes through the class tree (#2055)', async () => {
+    const sparql = door([{ e: ref('Q313746') }]);
+    expect(await fetchItemsOfClasses(sparql, ['Q1541532'])).toEqual(['Q313746']);
+    expect(sparql.mock.calls[0][0]).toContain('wdt:P31/wdt:P279*');
+    expect(await fetchItemsOfClasses(sparql, [])).toEqual([]);
+    expect(sparql).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads what a place holds from both sides of the statement, standing only (#2055)', async () => {
+    const sparql = door([
+      { place: ref('Q313746'), work: ref('Q2410932') },
+      { place: ref('Q313746'), work: ref('Q3057616') },
+      { place: ref('Q313746'), work: { value: 'not an entity' } },
+    ]);
+    expect(await fetchStreetArtHoldings(sparql, ['Q313746', 'not a qid'])).toEqual([
+      { place: 'Q313746', work: 'Q2410932' },
+      { place: 'Q313746', work: 'Q3057616' },
+    ]);
+    const query = sparql.mock.calls[0][0];
+    for (const property of ['P527', 'P276', 'P361']) expect(query).toContain(`p:${property}`);
+    expect(query).toContain('pq:P582');
+    expect(query).toContain('wikibase:DeprecatedRank');
+    expect(query).not.toContain('not a qid');
   });
 
   it('folds the rows of an entry and an end into one mark per item', async () => {
@@ -62,6 +91,8 @@ describe('the street-art questions asked of the subset (#2035)', () => {
   it('sends no SPARQL and answers what the subset answers', async () => {
     const sparql = subsetDoor(door([]));
     expect(await fetchItemsOfGenres(sparql, ['Q17516'])).toEqual(['Q5908090']);
+    expect(await fetchItemsOfClasses(sparql, ['Q1541532'])).toEqual(['Q313746']);
+    expect(await fetchStreetArtHoldings(sparql, ['Q313746'])).toEqual([{ place: 'Q313746', work: 'Q2410932' }]);
     expect(Object.fromEntries(await fetchStreetArtMarks(sparql, ['Q1630131'])))
       .toEqual({ Q1630131: { atlasObscura: true, ended: false } });
     expect(Object.fromEntries(await fetchRootsOfClasses(sparql, ['Q2977'], ['Q1370598'])))

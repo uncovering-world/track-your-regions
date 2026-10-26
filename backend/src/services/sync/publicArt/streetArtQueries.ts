@@ -1,15 +1,17 @@
 /**
  * What the street-art places' entrance and line ask Wikidata (#2035): the
- * items filed under a genre, whether a candidate has an Atlas Obscura entry
- * (`P7772`) and an end (`P576`), and which of the excluded roots each of its
- * classes is a kind of. Each question has a twin in the subset
+ * items filed under a genre or typed by a class (#2055), whether a candidate has an Atlas Obscura entry
+ * (`P7772`) and an end (`P576`), which of the excluded roots each of its
+ * classes is a kind of, and what an admitted place holds. Each question has a twin in the subset
  * (`subset/streetArt.ts`), asked instead when the run reads it.
  */
 
 import { extractQid, isQid } from '../wikidataUtils.js';
 import { chunk, qidsOf, values, type SparqlFn } from '../wikidataQueries.js';
 import { readsSubset } from '../subset/reader.js';
-import { subsetItemsOfGenres, subsetRootsOfClasses, subsetStreetArtMarks } from '../subset/streetArt.js';
+import {
+  subsetItemsOfClasses, subsetItemsOfGenres, subsetRootsOfClasses, subsetStreetArtHoldings, subsetStreetArtMarks,
+} from '../subset/streetArt.js';
 
 const BATCH = 200;
 
@@ -28,6 +30,17 @@ export async function fetchItemsOfGenres(sparql: SparqlFn, genres: readonly stri
   const rows = await sparql(
     `SELECT DISTINCT ?e WHERE { VALUES ?g { ${values([...genres])} } ?e wdt:P136 ?g }`,
     { kind: 'pool', label: `items filed under ${genres.length} genre(s)` },
+  );
+  return qidsOf(rows, 'e');
+}
+
+/** Every item typed by one of `classes` or a subclass of one (`P31/P279*`). */
+export async function fetchItemsOfClasses(sparql: SparqlFn, classes: readonly string[]): Promise<string[]> {
+  if (!classes.length) return [];
+  if (readsSubset(sparql)) return subsetItemsOfClasses(classes);
+  const rows = await sparql(
+    `SELECT DISTINCT ?e WHERE { VALUES ?c { ${values([...classes])} } ?e wdt:P31/wdt:P279* ?c }`,
+    { kind: 'pool', label: `items of ${classes.length} class(es)` },
   );
   return qidsOf(rows, 'e');
 }
@@ -87,6 +100,50 @@ async function liveRootsOfClasses(sparql: SparqlFn, classes: string[], roots: re
     const cls = extractQid(row.c?.value ?? '');
     const root = extractQid(row.root?.value ?? '');
     if (isQid(cls) && isQid(root)) out.set(cls, [...(out.get(cls) ?? []), root]);
+  }
+  return out;
+}
+
+/** One work a street-art place holds. */
+export interface StreetArtHolding {
+  place: string;
+  work: string;
+}
+
+/**
+ * What each of `places` holds by a standing statement (#2055): a part the
+ * place names (`P527`), or a work that says it stands in the place (`P276`)
+ * or is part of it (`P361`). Of the East Side Gallery's seven murals, the wall
+ * names three as parts, five say they stand there and five that they are part
+ * of it: no one statement names them all. Asked at no floor, since a mural is
+ * written up in one or two languages and is still what the wall is visited for.
+ */
+export async function fetchStreetArtHoldings(sparql: SparqlFn, places: string[]): Promise<StreetArtHolding[]> {
+  const out: StreetArtHolding[] = [];
+  for (const batch of chunk(places.filter(isQid), BATCH)) {
+    out.push(...(readsSubset(sparql) ? await subsetStreetArtHoldings(batch) : await liveStreetArtHoldings(sparql, batch)));
+  }
+  return out;
+}
+
+/** A statement of `property` from `?from` to `?to` that still stands: not deprecated, and with no end time. */
+const standing = (from: string, property: string, to: string) => `${from} p:${property} ?st . ?st ps:${property} ${to} .
+      ?st wikibase:rank ?rank . FILTER(?rank != wikibase:DeprecatedRank)
+      FILTER NOT EXISTS { ?st pq:P582 ?ended }`;
+
+async function liveStreetArtHoldings(sparql: SparqlFn, places: string[]): Promise<StreetArtHolding[]> {
+  const rows = await sparql(`
+    SELECT DISTINCT ?place ?work WHERE {
+      VALUES ?place { ${values(places)} }
+      { ${standing('?place', 'P527', '?work')} }
+      UNION { ${standing('?work', 'P276', '?place')} }
+      UNION { ${standing('?work', 'P361', '?place')} }
+    }`, { kind: 'statements', label: `what ${places.length} street-art places hold` });
+  const out: StreetArtHolding[] = [];
+  for (const row of rows) {
+    const place = extractQid(row.place?.value ?? '');
+    const work = extractQid(row.work?.value ?? '');
+    if (isQid(place) && isQid(work)) out.push({ place, work });
   }
   return out;
 }

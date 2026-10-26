@@ -4,10 +4,13 @@
  * art painted on it — the Lennon Wall in Prague, Hosier Lane in Melbourne,
  * Beco do Batman in São Paulo. Public art holds it as it holds a sculpture.
  *
- * No class names such a place: the Lennon Wall is typed a wall, Hosier Lane a
- * road, the Freedom Tunnel a railway tunnel. So the entrance is what the place
- * is filed under — an English Wikipedia category of street art or graffiti, or
- * the genre street art or graffiti (`P136`) — and the line is fame read three
+ * Almost no class names such a place: the Lennon Wall is typed a wall, Hosier
+ * Lane a road, the Freedom Tunnel a railway tunnel. So the entrance is what the
+ * place is filed under — an English Wikipedia category of street art or
+ * graffiti, or the genre street art or graffiti (`P136`) — and the one class
+ * that does name one, a wall of graffiti paintings (#2055), which is all that
+ * says the East Side Gallery is street art: Wikidata types it an art museum,
+ * and no category or genre files it. The line is fame read three
  * ways at once, since a lane is read in few languages: an Atlas Obscura entry
  * (`P7772`), a Wikivoyage guide naming it, and a year's readers. A newcomer
  * needs two of the three, a place the source holds keeps its place on one.
@@ -25,6 +28,15 @@ import type { PublicArtType } from './kindRules.js';
 
 /** The genres a street-art place is filed under (`P136`): street art and graffiti. */
 export const STREET_ART_GENRES = ['Q17516', 'Q17514'] as const;
+
+/**
+ * The classes a street-art place is typed by (`P31`, through the class tree):
+ * a wall of graffiti paintings, `Hall of Fame` in Wikidata's English label.
+ * Of the items typed so, the East Side Gallery is the one the line passed,
+ * measured on the subset on 2026-10-26: the others are halls of fame few read
+ * about.
+ */
+export const GRAFFITI_WALL_CLASSES = ['Q1541532'] as const;
 
 /**
  * The English Wikipedia categories the entrance reads: a title naming street

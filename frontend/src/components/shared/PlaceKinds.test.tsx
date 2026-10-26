@@ -3,7 +3,7 @@
  * adding it to one no run offers it in (#2035). The Temple of Concord is
  * offered by Places of worship and by Archaeology; the Theatre of Pompey by
  * Archaeology alone; the East Side Gallery, which Wikidata types an art
- * museum, is kept out of Art Museums by its rule and found by no other run.
+ * museum, is kept out of Art Museums by its rule and, here, in no other kind.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
