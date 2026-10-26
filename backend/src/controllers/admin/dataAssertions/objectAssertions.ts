@@ -17,6 +17,7 @@ import {
   MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql, membershipAdmittedSql,
 } from '../../../db/membership.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
+import { WORLD_HERITAGE_KIND_ID } from '../../../db/inscription.js';
 import {
   BURIAL_CLASSES, KILL_CLASSES, LOST_CLASSES, VETO_CLASSES, WORSHIP_CLASSES,
 } from '../../../services/sync/publicArt/classes.js';
@@ -31,15 +32,17 @@ import { publishedContentSql } from '../../../db/readerPredicates.js';
 /**
  * One fact, stored twice, asked whether the two copies still agree.
  *
- * A World Heritage site in danger is written into the row as the `in_danger`
- * tag and as the `metadata.inDanger` flag the badge keys on. They came from
+ * A World Heritage site in danger is written as the place's `in_danger` tag
+ * and as the `inDanger` flag the badge keys on, which the site's World Heritage
+ * membership holds among its facts (`db/inscription.ts`, #2068). They came from
  * different halves of the source and disagreed on every row for four years: the
  * tag was right on 58 sites, the flag was false on all 1272, and the badge three
  * surfaces draw off the flag appeared for nobody (#600). Every sync run reported
  * success throughout, because a run compares what it fetched with what it
  * stored and both halves were stored exactly as the importer meant them.
  *
- * Asked of the two stored columns and not of UNESCO's vocabulary, which is what
+ * Asked of the two stored values, whatever the membership's state, and not of
+ * UNESCO's vocabulary, which is what
  * makes it a rule about this catalogue rather than a second copy of the
  * importer's reading. The import writes both from one predicate now, so a row
  * here means either that predicate came apart again or something wrote one half
@@ -61,8 +64,7 @@ import { publishedContentSql } from '../../../db/readerPredicates.js';
  *
  * The exclusion is the held flag, not the held row. `pending_change_sync_log_id`
  * is set by *any* held field, and on this database every one of the 1272
- * UNESCO rows carries it -- the criteria and a picture credit are held on all
- * of them -- so leaving out every row with a pointer would switch this check
+ * UNESCO rows carried it when the check was written, so leaving out every row with a pointer would switch this check
  * off for the whole source it was written for. Asking the pointed-at
  * changeset whether it holds `metadata.inDanger` leaves out the 58 rows whose
  * flag is actually waiting on a curator and keeps the guard over the rest.
@@ -99,11 +101,12 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                COALESCE(e.tags ? 'in_danger', FALSE) AS tagged,
-               COALESCE(e.metadata->'inDanger' = 'true'::jsonb, FALSE) AS flagged,
-               e.metadata->>'dangerList' AS listing
+               COALESCE(wh.facts->'inDanger' = 'true'::jsonb, FALSE) AS flagged,
+               wh.facts->>'dangerList' AS listing
           FROM experiences e
+          LEFT JOIN ${MEMBERSHIPS} wh ON wh.experience_id = e.id AND wh.kind_id = ${WORLD_HERITAGE_KIND_ID}
          WHERE COALESCE(e.tags ? 'in_danger', FALSE)
-               <> COALESCE(e.metadata->'inDanger' = 'true'::jsonb, FALSE)
+               <> COALESCE(wh.facts->'inDanger' = 'true'::jsonb, FALSE)
            -- Not while a curator holds the flag itself: the tag moved ahead of
            -- it by design (#570), and the badge follows the flag. The pointed-at
            -- changeset is asked, not the pointer: any held field sets the

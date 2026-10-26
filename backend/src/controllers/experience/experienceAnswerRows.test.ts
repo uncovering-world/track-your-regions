@@ -14,7 +14,7 @@ const ACROPOLIS_IN_ARCHAEOLOGY = {
 const ACROPOLIS: ExperienceDetailRow = {
   id: 14723, source_id: 5, external_id: 'Q131013', name: 'Acropolis of Athens', name_local: { el: 'Ακρόπολη Αθηνών' },
   subtitle: null, description: 'citadel on a rocky outcrop above Athens', description_source: null, description_adapted: false, type: 'site',
-  country_codes: ['GR'], country_names: ['Greece'], image_url: null, metadata: { sitelinks: 120 },
+  country_codes: ['GR'], country_names: ['Greece'], image_url: null, metadata: { sitelinks: 120 }, date_inscribed: '1987',
   created_at: new Date('2026-09-13T10:00:00.000Z'), updated_at: new Date('2026-09-14T11:30:00.000Z'),
   source_membership: 'present', existence: 'extant', missing_since: null, longitude: 23.7263, latitude: 37.9715,
   boundary_geojson: { type: 'MultiPolygon', coordinates: [[[[23.72, 37.97], [23.73, 37.97], [23.73, 37.98], [23.72, 37.97]]]] },

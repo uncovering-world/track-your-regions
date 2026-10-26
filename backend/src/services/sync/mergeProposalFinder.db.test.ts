@@ -44,23 +44,24 @@ interface Place {
   lon: number;
   state?: 'auto' | 'pending';
   admission?: 'admitted' | 'refused';
-  metadata?: Record<string, unknown>;
+  /** The kind's own facts, on its membership: a World Heritage Site's inscribed area (#2068). */
+  facts?: Record<string, unknown>;
   reportedName?: string;
 }
 
-async function place({ id, name, source, lon, state = 'auto', admission = 'admitted', metadata = {}, reportedName }: Place): Promise<number> {
+async function place({ id, name, source, lon, state = 'auto', admission = 'admitted', facts = {}, reportedName }: Place): Promise<number> {
   await pool.query(
-    `INSERT INTO experiences (id, source_id, external_id, name, location, metadata)
-     SELECT $1, s.id, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326), $6::jsonb
-       FROM experience_sources s WHERE s.name = $7`,
-    [id, `fixture-${id}`, name, lon, ISLAND.lat, JSON.stringify(metadata), source],
+    `INSERT INTO experiences (id, source_id, external_id, name, location)
+     SELECT $1, s.id, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)
+       FROM experience_sources s WHERE s.name = $6`,
+    [id, `fixture-${id}`, name, lon, ISLAND.lat, source],
   );
   const membership = await pool.query<{ id: number }>(
     `INSERT INTO experience_kind_memberships
-            (experience_id, kind_id, source_id, external_id, curation_state, published_at, reported_name, admission)
-     SELECT $1, s.kind_id, s.id, $2, $3::text, CASE WHEN $3::text = 'auto' THEN NOW() END, $4, $6
+            (experience_id, kind_id, source_id, external_id, curation_state, published_at, reported_name, admission, facts)
+     SELECT $1, s.kind_id, s.id, $2, $3::text, CASE WHEN $3::text = 'auto' THEN NOW() END, $4, $6, $7::jsonb
        FROM experience_sources s WHERE s.name = $5 RETURNING id`,
-    [id, `fixture-${id}`, state, reportedName ?? null, source, admission],
+    [id, `fixture-${id}`, state, reportedName ?? null, source, admission, JSON.stringify(facts)],
   );
   const point = await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
@@ -92,7 +93,7 @@ beforeAll(async () => {
   await place({ id: P.chapelA, name: 'Fixture Chapel', source: 'Places of worship', lon: east(3000) });
   await place({ id: P.chapelB, name: 'Fixture Chapel', source: 'Places of worship', lon: east(3020) });
   // 700 ha: a radius of 1 493 m, so a twin 900 m off is within reach.
-  await place({ id: P.property, name: 'Fixture Mining Landscape', source: 'UNESCO World Heritage Sites', lon: east(10000), metadata: { areaHectares: 700 } });
+  await place({ id: P.property, name: 'Fixture Mining Landscape', source: 'UNESCO World Heritage Sites', lon: east(10000), facts: { areaHectares: 700 } });
   await place({ id: P.propertyTwin, name: 'Mining landscape of Fixture', source: 'Archaeology', lon: east(10900) });
   await place({ id: P.whole, name: 'Fixture Monuments', source: 'UNESCO World Heritage Sites', lon: east(20000) });
   await place({ id: P.part, name: 'Fixture Temple', source: 'UNESCO World Heritage Sites', lon: east(20050) });

@@ -114,6 +114,7 @@ import {
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
+import { inscribedAreaSql } from '../../db/inscription.js';
 import { foldedPointsSql, shownBySql } from '../../db/placePoints.js';
 import { completePairing } from './locationMatching.js';
 
@@ -178,7 +179,7 @@ const ownPointSql = (alias: string) => `(${shownBySql(alias, 'ARRAY[$1::int]')} 
  */
 const APPROXIMATE_REASONS = `(SELECT p.id AS point_id,
          CASE WHEN stands_for_whole_site(p.name, u.ref, site.name, m.external_id, $6)
-               AND outsizes_its_minute((site.metadata->>'areaHectares')::numeric, u.lat) THEN NULL
+               AND outsizes_its_minute(${inscribedAreaSql('site')}, u.lat) THEN NULL
               ELSE u.reason END AS reason
     FROM unnest($2::text[], $3::float8[], $4::float8[], $5::text[]) AS u(ref, lon, lat, reason)
     JOIN experience_locations p ON ${ownPointSql('p')} AND p.missing_since IS NULL

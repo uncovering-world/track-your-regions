@@ -22,6 +22,7 @@ import {
 import { includeLost } from './includeLost.js';
 import { descriptionAdaptedSql, descriptionSourceSql, KINDS, MEMBERSHIPS, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { wholeOfSql } from '../../db/placePoints.js';
+import { inscriptionFactsSql } from '../../db/inscription.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
@@ -114,6 +115,9 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       e.country_names,
       e.image_url,
       e.metadata,
+      -- The inscription's year is the World Heritage kind's, shown while its
+      -- membership stands (#2068).
+      ${inscriptionFactsSql('e')}->>'dateInscribed' AS date_inscribed,
       e.created_at,
       e.updated_at,
       ${lifecycleSelectSql()},

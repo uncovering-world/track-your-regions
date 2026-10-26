@@ -266,6 +266,8 @@ export const ExperienceDetail = z.strictObject({
   image_url: z.string().nullable(),
   metadata: z.record(z.string(), z.unknown()).nullable()
     .describe("The source's metadata, as an open record until #574 settles its model."),
+  date_inscribed: z.string().nullable()
+    .describe('The year UNESCO inscribed the site, off its World Heritage membership: null for a site no membership holds, one a curator judged former (delisted), or one refused (#2068).'),
   created_at: timestamp,
   updated_at: timestamp,
   source_membership: SourceMembership,
