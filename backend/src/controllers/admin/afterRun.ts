@@ -20,6 +20,11 @@
  *    moved, admitted, refused — are paired again with near places of similar
  *    names (#1950, `drainPairing`), with every other place marked since.
  *
+ * Each step is guarded on its own (#2074): one that fails is logged, named in
+ * the closing line, and the steps after it still run. The search needs the
+ * local Wikidata subset, so it asks for that first, and a run on a machine
+ * that has none says so and leaves the search to the card's action.
+ *
  * The steps run here rather than inside the run, since each is a curation
  * write the sync layer sits below. However the run ended: a run cancelled or
  * failed half-way still wrote what it wrote. Every entry of the pass is kept
@@ -34,7 +39,7 @@
 
 import { pool } from '../../db/index.js';
 import { Operation } from '../../services/operationProgress.js';
-import { FINDER_STEPS } from '../../services/sync/componentItemFinder.js';
+import { FINDER_STEPS, heldSubset } from '../../services/sync/componentItemFinder.js';
 import { runComponentItemSearch, type AcceptExact } from '../../services/sync/componentItemJob.js';
 import { drainPairing, pairingSentence } from '../../services/sync/mergeProposalFinder.js';
 import { isTerminalSyncStatus, runningSyncs, type SyncProgress } from '../../services/sync/types.js';
@@ -89,6 +94,11 @@ async function searchNewComponents(
     operation.note('Cancelled before the search');
     return null;
   }
+  if (!(await heldSubset())) {
+    operation.note('The local Wikidata subset is not built: the search waits for it');
+    const components = `${points.length} new component${points.length === 1 ? '' : 's'}`;
+    return `${components} left without an item, since the local Wikidata subset is not built: build it under Public Dumps, then Find component items`;
+  }
   shown.statusMessage = `Looking for the items of ${points.length} components this run left without one...`;
   const found = await runComponentItemSearch(shown, operation, { pointIds: points }, accept);
   if (found === null) {
@@ -113,6 +123,19 @@ async function pairNearPlaces(shown: SyncProgress, operation: Operation, index: 
   const sentence = pairingSentence(await drainPairing());
   operation.advance();
   return sentence;
+}
+
+/**
+ * One step, answering its clause; a step that fails answers a clause naming
+ * it, so that the steps after it still run.
+ */
+async function guarded(name: string, logId: SyncProgress['logId'], step: () => Promise<string | null>): Promise<string | null> {
+  try {
+    return await step();
+  } catch (error) {
+    console.error('%s %s after run %s failed:', LOG_PREFIX, name, logId, error);
+    return `${name} failed; the server log has the cause`;
+  }
 }
 
 /**
@@ -146,18 +169,17 @@ export async function afterRun(startedId: number, pass: readonly number[], accep
   shown.operation = operation;
   shown.status = 'processing';
   const said: string[] = [];
+  const run = async (name: string, step: () => Promise<string | null>) => {
+    const sentence = await guarded(name, shown.logId, step);
+    if (sentence !== null) said.push(sentence);
+  };
   try {
-    await joinPlacesClaimingOneItem();
+    await run('the joining of places claiming one item', async () => { await joinPlacesClaimingOneItem(); return null; });
     if (searches) {
-      const found = await searchNewComponents(shown, operation, shown.logId!, accept);
-      if (found !== null) said.push(found);
+      await run('the search for the new components\' items', () => searchNewComponents(shown, operation, shown.logId!, accept));
     }
-    said.push(await pairNearPlaces(shown, operation, steps));
+    await run('the pairing of near places', () => pairNearPlaces(shown, operation, steps));
     operation.finish(said.join('; '));
-  } catch (error) {
-    console.error('%s the steps after run %s failed:', LOG_PREFIX, shown.logId, error);
-    operation.finish('failed');
-    said.push('the steps after the run failed; the server log has the cause');
   } finally {
     // The run's own verdict stands; the steps only add to its line.
     shown.status = isTerminalSyncStatus(ended) ? ended : 'complete';
