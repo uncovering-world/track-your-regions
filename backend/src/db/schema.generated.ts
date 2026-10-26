@@ -372,6 +372,7 @@ export interface ExperienceKindMembershipsRow {
   reported_location: string | null;
   reported_image_credit: unknown | null;
   reported_wikipedia_url: string | null;
+  reported_label: string | null;
   wikidata_items: string[] | null;
   created_at: Date;
   updated_at: Date;
