@@ -2,11 +2,12 @@
  * Putting a place into a kind no run offers it in, at the foot of its Kinds
  * section (#2035).
  *
- * A run finds a place only through its kind's rule: the East Side Gallery is a
- * mile of murals that Wikidata types an art museum, so Public art never reads
- * it. Closed, this is one row that says what it is for; open, the kind, its
- * type from the kind's own vocabulary, what the add does for readers and for
- * later runs, and an optional reason kept in the place's history. The list
+ * A run finds a place only through its kind's rule: Haus Schwarzenberg in
+ * Berlin is a courtyard of street art filed under no English Wikipedia
+ * category and no genre, so no run of Public art finds it. Closed, this is one
+ * row that says what it is for; open, the kind, its type from the kind's own
+ * vocabulary, what the add does for readers and for later runs, and an
+ * optional reason kept in the place's history. The list
  * holds only the kinds the place is not in yet, and never World Heritage Sites
  * — the server's `addable`.
  */

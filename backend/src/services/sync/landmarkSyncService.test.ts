@@ -41,6 +41,9 @@ vi.mock('./publicArt/pipeline.js', () => ({
 }));
 // What the street-art rule reads (#2035); its own spec is streetArtPlaces.test.ts.
 vi.mock('./publicArt/streetArtPlaces.js', () => ({ readStreetArt: vi.fn() }));
+/** What a street-art place holds (#2055): one reader and writer per run of Public art. */
+const placeContents = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));
+vi.mock('./publicArt/streetArtWorks.js', () => ({ streetArtContents: vi.fn(() => placeContents) }));
 // The readership door reads the year and the source's gate (#2033); its own spec is readershipDoor.test.ts.
 vi.mock('./readershipDoor.js', () => ({ artworkReadershipDoorFor: vi.fn() }));
 vi.mock('./worship/places.js', () => ({ WORSHIP_KIND: { name: 'places of worship' } }));
@@ -178,6 +181,8 @@ beforeEach(() => {
   vi.mocked(openArtworkDoor).mockResolvedValue(null);
   vi.mocked(streetArtCandidates).mockReturnValue(['Q1630131']);
   vi.mocked(readStreetArt).mockResolvedValue(STREET_ART_READ);
+  placeContents.read.mockResolvedValue({ withdrawalSkippedReason: null, imageUrls: [] });
+  placeContents.write.mockResolvedValue(undefined);
   mockedUpsert.mockResolvedValue({
     experienceId: 7, changeSet: { changeType: 'unchanged' }, nameSnapshot: 'Freedom Monument', returnedFromMissing: false,
   });
@@ -335,6 +340,33 @@ describe('public art in the place pass', () => {
       creators: ['Kārlis Zāle'],
       sitelinksCount: 41,
     });
+  });
+
+  it('reads and writes what a street-art place holds in Public art alone, its pictures credited (#2055)', async () => {
+    const vrubel = 'https://commons.wikimedia.org/wiki/Special:FilePath/Vrubel.jpg';
+    placeContents.read.mockResolvedValue({ withdrawalSkippedReason: 'placed 0 of the 7 works', imageUrls: [vrubel] });
+    const works = { added: [], withdrawn: [], returned: [], changed: [] };
+    placeContents.write.mockResolvedValue(works);
+    const { fetchCommonsCredits } = await import('./imageCredit.js');
+    const context: SyncRunContext = {
+      dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
+    };
+
+    const config = await configOf();
+    const fetched = await config.fetchItems(progress(), []);
+    expect(placeContents.read).toHaveBeenCalledWith(fetched.items, expect.any(Function), expect.anything());
+    expect(vi.mocked(fetchCommonsCredits).mock.calls[0][0]).toContain(vrubel);
+    expect(fetched.withdrawalSkippedReason).toBe('placed 0 of the 7 works');
+    const result = await config.processItem(landmark(), progress(), context);
+    expect(placeContents.write).toHaveBeenCalledWith(7, 'Q337179', context, expect.any(Map));
+    expect(result.contents).toEqual({ locations: {}, treasures: works });
+
+    vi.clearAllMocks();
+    const monuments = await configOf({}, 6);
+    await monuments.fetchItems(progress(), []);
+    await monuments.processItem(landmark(), progress(), context);
+    expect(placeContents.read).not.toHaveBeenCalled();
+    expect(placeContents.write).not.toHaveBeenCalled();
   });
 
   it('writes the readership door\'s question under Public art\'s own key, and Monuments & memorials writes none (#2033)', async () => {

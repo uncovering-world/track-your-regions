@@ -491,8 +491,8 @@ export async function insertManualMembership(
 
 /**
  * A place put into a kind no run offers it in, by a curator from its card
- * (#2035): the East Side Gallery is street art that Wikidata types an art
- * museum, so Public art's run never finds it. Admitted, `verified` and
+ * (#2035): Haus Schwarzenberg in Berlin is street art no run of Public art
+ * finds, filed under no English Wikipedia category and no genre. Admitted, `verified` and
  * published at once, as a manual create's membership is, and pinned on its
  * admission and, where one was given, its type, so a later run's admission
  * sweep leaves it and a run that does list it keeps the curator's type. The pin carries no verdict: no
