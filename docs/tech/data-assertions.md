@@ -487,7 +487,7 @@ question the public-art import asks every candidate (#754, #1807,
 something a traveller stands in front of, or a building, a place of worship, a
 camp, a stadium, an archaeological site, a tomb, an organisation, a settlement
 that Wikidata also calls a monument? The rule refuses such a row on every run
-it reaches and stores what it read on the row (`metadata.wikidataClasses`), so
+it reaches and stores what it read on the kind's membership (its `wikidataClasses` fact, ADR-0153), so
 the rows the rule can miss are the ones it never reached: the 205 created
 before it existed — eleven Spanish cathedrals among them, typed `Catholic
 cathedral, monument` because "Monumento" is what Spain's heritage register
@@ -504,8 +504,9 @@ memorials lets a commemorative form lift, read from the genre too (#1832) — an
 building class the way the rule does, by an artwork class, and a burial class by a
 commemorative form, which only Monuments & memorials reads (a Public art admission of a burial
 class is reported whatever the answer): not approximated, but read from the
-rule's own answer, which the run stores beside the classes (`metadata.wikidataArtwork`, one per
-place, whichever kind's run wrote it last)
+rule's own answer, which the run stores beside the classes (`wikidataArtwork`, on each kind's
+own membership; a place both kinds admit is named by the first of the two, Public art's
+before Monuments & memorials', whose reading trips the check)
 because the closures that answer — a holy well is in the fountain closure — are
 walked from Wikidata each run and no constant could hold them. A row written
 before that key existed reads as no answer, the conservative reading. The

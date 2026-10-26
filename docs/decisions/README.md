@@ -128,7 +128,7 @@ and accepted by it.
 | [0106](0106-public-dump-builds-run-in-a-worker-process-queued-through-the-ledger.md) | Public dump builds run in a worker process, queued through the ledger | Accepted | 2026-10-14 |
 | [0107](0107-a-subset-build-cut-in-its-second-pass-is-picked-up-not-started-again.md) | A subset build cut in its second pass is picked up, not started again | Accepted | 2026-10-15 |
 | [0108](0108-gitleaks-reads-every-tracked-file-for-a-generic-credential.md) | gitleaks reads every tracked file for a generic credential | Accepted | 2026-10-15 |
-| [0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) | A field belongs to the family of sources that brings it | Accepted — decisions 1 and 3 narrowed by [0111](0111-a-shared-field-that-names-a-familys-own-field-goes-with-it.md); decision 2 narrowed by [0138](0138-unescos-page-about-a-site-is-kept-by-every-other-familys-run.md) | 2026-10-15 |
+| [0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) | A field belongs to the family of sources that brings it | Accepted — decisions 1 and 3 narrowed by [0111](0111-a-shared-field-that-names-a-familys-own-field-goes-with-it.md); decision 2 narrowed by [0138](0138-unescos-page-about-a-site-is-kept-by-every-other-familys-run.md); decisions 1 and 2 narrowed by [0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md) | 2026-10-15 |
 | [0110](0110-a-works-floor-counts-the-sources-own-works-less-its-fame-decisions.md) | A works floor counts the source's own works, less what its fame line decides | Accepted | 2026-10-15 |
 | [0111](0111-a-shared-field-that-names-a-familys-own-field-goes-with-it.md) | A shared field that names another family's own field goes with that field | Accepted | 2026-10-16 |
 | [0112](0112-a-handed-over-work-its-statements-place-nowhere-goes-where-the-refusal-named.md) | A handed-over work its own statements place nowhere goes where the refusal named | Accepted | 2026-10-16 |
@@ -171,6 +171,7 @@ and accepted by it.
 | [0150](0150-wikidatas-part-of-answers-a-near-pair.md) | Wikidata's part-of answers a near pair | Accepted | 2026-10-25 |
 | [0151](0151-a-credit-a-place-holds-none-of-passes-the-gate.md) | A credit for the picture a place shows passes the gate where it holds none | Accepted | 2026-10-26 |
 | [0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md) | The site door reads the sites under the pool's floor the world reads | Accepted | 2026-10-26 |
+| [0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md) | A field belongs to the place or to one kind, by what it means | Accepted | 2026-10-26 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

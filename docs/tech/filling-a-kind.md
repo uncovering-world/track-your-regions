@@ -153,6 +153,12 @@ is the museums' own, reused); the UNESCO list is the degenerate case in which th
   writes its whole record over a place another source shares, as the Archaeology run did over
   UNESCO's inscription facts before #1534. This family is the ownership sense of the word, not
   § 7's families of sources.
+- **Its kind's own facts** ([ADR-0153](../decisions/0153-a-field-belongs-to-the-place-or-to-one-kind.md)):
+  what the run concludes about a place rather than reads off it — the classes its rule read, a
+  count it makes, the question it asks a curator. Each is a `kind` entry in `PLACE_FIELDS`
+  (`@tyr/shared/placeFields`), which sends it to the run's membership (`facts`) rather than the
+  place; a new key also joins the database check that refuses it on the place
+  (`experiences_metadata_holds_no_kind_fact_check`, a migration of its own).
 
 ## 4. Which kind of source each tier prefers, and why
 
