@@ -54,6 +54,14 @@ export interface FetchResult<T> {
    */
   refusedContents?: FilteredEntity[];
   /**
+   * Works part of which another kind's place holds although the run did not
+   * refuse them as that place's: the casts in a museum of a group of casts that
+   * passed the rule, whatever the line decided of it (#2036). Recorded with the
+   * refusals' hand-overs (ADR-0102), so the museum takes the work while the run
+   * shows any casts outdoors; never marked through this list.
+   */
+  handOvers?: FilteredEntity[];
+  /**
    * Why this run may not withdraw the contents it stopped seeing, or absent
    * when it may.
    *

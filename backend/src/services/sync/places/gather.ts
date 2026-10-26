@@ -19,6 +19,7 @@ import {
   type SparqlFn,
 } from '../wikidataQueries.js';
 import {
+  emptyFacts,
   fetchBroadPool,
   fetchClassPool,
   fetchEntitiesByIds,
@@ -302,7 +303,11 @@ export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]
   const reading = requests.filter(({ kind }) => kind.readsContainers).map(({ kind }) => shares.get(kind)!);
   if (reading.length) {
     const asked = new Map(reading.flatMap((share) => [...share.facts]));
-    const containers = await loadContainment(run, [...asked.values()]);
+    // A group of casts is judged where each cast stands (#2036), so what holds
+    // the casts is asked with what holds the candidates.
+    const casts = reading.flatMap((share) => [...share.pool.values()].flatMap((entity) => entity.casts ?? []))
+      .flatMap((cast) => cast.placements?.length ? [{ ...emptyFacts(), locations: cast.placements }] : []);
+    const containers = await loadContainment(run, [...asked.values(), ...casts]);
     for (const share of reading) share.containers = containers;
   }
   // Subjects once, for the candidates of the kinds that read them.

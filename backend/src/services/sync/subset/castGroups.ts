@@ -22,6 +22,8 @@ export interface CastItemReading {
   countryLabel: string | null;
   /** Every `P31` of the cast: what the group is read as, since its own class says only "group of casts". */
   classes: string[];
+  /** Where the cast stands (`P276`, the placements that hold), as the live reader answers it. */
+  placements: string[];
 }
 
 /** The items naming each of `groups` by `P361` or `P144`, by group. */
@@ -66,6 +68,7 @@ function readingOf(id: string, claims: CompactEntity['claims'], terms: Map<strin
     name: (at ? terms.get(at)?.label : undefined) ?? terms.get(id)?.label ?? null,
     countryLabel: country,
     classes: itemsOf(bestStatements(claims.P31)),
+    placements: standing,
   };
 }
 

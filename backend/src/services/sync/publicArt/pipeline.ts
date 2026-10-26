@@ -31,7 +31,7 @@ import {
 } from './classes.js';
 import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
 import { artworkDoorNote, type PlaceDoor, type ReadershipDoor } from '../readershipDoor.js';
-import { publicArtVerdict } from './publicArtTest.js';
+import { publicArtVerdict, type PublicArtFacts } from './publicArtTest.js';
 import { streetArtVerdict } from './streetArtTest.js';
 import { enterStreetArtPlaces, type StreetArtReading } from './streetArtPlaces.js';
 import type { KindFacts, KindRule } from './kindRules.js';
@@ -81,6 +81,12 @@ export interface CollectedPublicArt {
   /** Distinct entities the pool named. */
   fetched: number;
   filtered: FilteredEntity[];
+  /**
+   * The works part of which another kind holds: the held casts of a group of
+   * casts that passed the rule, whatever the line decided of it (#2036),
+   * recorded as hand-overs (ADR-0102).
+   */
+  handOvers: FilteredEntity[];
 }
 
 /**
@@ -179,18 +185,25 @@ async function readCastGroups(run: QueryRunner, pool: Map<string, PoolEntity>, f
   }
 }
 
-/** The row the run writes for an admitted entity: the pool's facts, the verdict's type, and an edition's casts (#880). */
+/**
+ * The row the run writes for an admitted entity: the pool's facts, the
+ * verdict's type, and an edition's casts (#880) — of a group of casts, only the
+ * ones the verdict found open to a passer-by (#2036).
+ */
 function landmarkOf(
-  entity: PoolEntity, lat: number, lon: number, known: EntityFacts, verdict: { type: WikidataLandmark['type']; artwork: boolean },
+  entity: PoolEntity, lat: number, lon: number, known: EntityFacts,
+  verdict: { type: WikidataLandmark['type']; artwork: boolean; openCasts?: number[] },
 ): WikidataLandmark {
+  const { openCasts } = verdict;
+  const casts = openCasts ? entity.casts?.filter((_, i) => openCasts.includes(i)) : entity.casts;
   return {
     qid: entity.qid,
     label: entity.label,
     description: entity.description,
     lat,
     lon,
-    ...(entity.casts ? {
-      casts: entity.casts.map(cast => ({ name: cast.placeLabel, lat: cast.lat, lon: cast.lon, countryLabel: cast.countryLabel })),
+    ...(casts ? {
+      casts: casts.map(cast => ({ name: cast.placeLabel, lat: cast.lat, lon: cast.lon, countryLabel: cast.countryLabel })),
     } : {}),
     imageUrl: entity.imageUrl,
     itemPictures: entity.itemPictures,
@@ -264,10 +277,26 @@ function verdictOf(
     depicts: known.depicts,
     genres: known.genres,
     subjects: known.depicts.flatMap((qid) => subjects.get(qid) ?? []),
+    ...castsJudged(entity, containers),
     onEarth: entity.onEarth,
     lat: entity.lat,
     lon: entity.lon,
   }, trees, rule, offered);
+}
+
+/**
+ * The casts a group of casts is judged at (#2036): every cast item, in the
+ * entity's order, with what its own placements stand in — a cast placed nowhere
+ * stands where its point is. Nothing for an edition read off one item's
+ * coordinates, whose casts are no items with a place of their own.
+ */
+function castsJudged(entity: PoolEntity, containers: Containment): Pick<PublicArtFacts, 'casts'> {
+  const casts = entity.casts ?? [];
+  if (!casts.some((cast) => cast.placements)) return {};
+  return { casts: casts.map((cast) => ({
+    containers: chainOf({ ...emptyFacts(), locations: cast.placements ?? [] }, containers),
+    ...(cast.classes ? { classes: cast.classes } : {}),
+  })) };
 }
 
 /**
@@ -288,8 +317,15 @@ function lineOrDoor(
   return standing;
 }
 
-/** What a candidate comes to: an item admitted, a refusal with its reason, or null when it is never in. */
-type Decision = { item: WikidataLandmark } | { refused: FilteredEntity } | null;
+/**
+ * What a candidate comes to: a row, a refusal, or nothing, and, beside any of
+ * them, the hand-over of the casts it has in a museum (#2036).
+ */
+type Decision =
+  | { item: WikidataLandmark; handOver?: FilteredEntity }
+  | { refused: FilteredEntity; handOver?: FilteredEntity }
+  | { handOver: FilteredEntity }
+  | null;
 
 /**
  * The street-art rule's decision on a candidate it decides, or undefined where
@@ -348,12 +384,17 @@ function kindDecision(
   // The verdict refused anything placeless above; this narrows the type,
   // it cannot fire.
   if (entity.lat === null || entity.lon === null) return null;
+  // A cast in a museum is the museum's whatever the line says of the group.
+  const handOver = verdict.handOver ? { handOver: { externalId: entity.qid, name: entity.label, ...verdict.handOver } } : null;
   const entry = lineOrDoor(entity, held, door);
-  if (entry === 'out') return null;
+  if (entry === 'out') return handOver;
   if (entry === 'fell') {
-    return { refused: { externalId: entity.qid, name: entity.label, reason: belowLineReason(entity.sitelinks, LINE), ...type } };
+    return { refused: { externalId: entity.qid, name: entity.label, reason: belowLineReason(entity.sitelinks, LINE), ...type }, ...handOver };
   }
-  return { item: { ...landmarkOf(entity, entity.lat, entity.lon, known, verdict), ...entry } };
+  // The museum's changeset names the reason, and here this kind admits the
+  // work: the reason says so rather than reading as a refusal.
+  const admitted = handOver && { handOver: { ...handOver.handOver, reason: `taken as ${rule.noun} at its other casts; a cast ${handOver.handOver.reason}` } };
+  return { item: { ...landmarkOf(entity, entity.lat, entity.lon, known, verdict), ...entry }, ...admitted };
 }
 
 /**
@@ -384,6 +425,7 @@ export function classifyPublicArt(
   const { pool } = gathered;
   const items: WikidataLandmark[] = [];
   const filtered: FilteredEntity[] = [];
+  const handOvers: FilteredEntity[] = [];
   const decidedAsStreetArt = new Set(streetArt ? streetArtCandidates(gathered, rule) : []);
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
   for (const entity of candidates) {
@@ -392,7 +434,8 @@ export function classifyPublicArt(
       ? streetArtDecision(entity, gathered, streetArt, held) : undefined;
     const decision = streetArtSays === undefined ? kindDecision(entity, gathered, rule, held, offered, door) : streetArtSays;
     if (decision && 'item' in decision) items.push(decision.item);
-    else if (decision) filtered.push(decision.refused);
+    else if (decision && 'refused' in decision) filtered.push(decision.refused);
+    if (decision?.handOver) handOvers.push(decision.handOver);
   }
 
   const byDoor = items.filter((item) => item.readershipNote).map((item) => item.label);
@@ -401,7 +444,7 @@ export function classifyPublicArt(
     + `${pool.size - items.length - filtered.length} below the line and never in`
     + (byDoor.length ? `; the readership door admitted ${byDoor.join(', ')}` : ''),
   );
-  return { items, fetched: pool.size, filtered };
+  return { items, fetched: pool.size, filtered, handOvers };
 }
 
 /**

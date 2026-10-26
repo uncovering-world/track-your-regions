@@ -69,7 +69,7 @@ export interface PlaceClassifier {
    * what a classifier asks beyond it.
    */
   classify(gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn): Promise<{
-    items: WikidataLandmark[]; fetched: number; filtered: FilteredEntity[];
+    items: WikidataLandmark[]; fetched: number; filtered: FilteredEntity[]; handOvers?: FilteredEntity[];
   }>;
   types: readonly string[];
   tag: string;
@@ -325,7 +325,7 @@ async function fetchLandmarkItems(
   const admitted = await admittedExternalIds(sourceId);
 
   const { gathered, sparql } = await gather(progress);
-  const { items, fetched, filtered } = await classifier.classify(gathered, admitted, sparql);
+  const { items, fetched, filtered, handOvers } = await classifier.classify(gathered, admitted, sparql);
   // What the admitted places hold, read before the first is written, so the
   // coverage floor is measured over the whole run (ADR-0044).
   const held = await classifier.contents?.read(items, sparql, progress);
@@ -348,7 +348,7 @@ async function fetchLandmarkItems(
   // What the subset cannot read is left as it is, not read as gone.
   const unread = readsSubset(sparql) ? await unreadOnSubset(sourceId) : undefined;
   return {
-    items, fetchedCount: fetched, filtered, unread, typeVocabulary: classifier.types,
+    items, fetchedCount: fetched, filtered, handOvers, unread, typeVocabulary: classifier.types,
     ...(held ? { withdrawalSkippedReason: held.withdrawalSkippedReason } : {}),
   };
 }

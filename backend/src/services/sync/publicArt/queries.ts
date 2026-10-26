@@ -81,6 +81,17 @@ export interface PoolCast {
   placeQid: string | null;
   placeLabel: string | null;
   countryLabel: string | null;
+  /**
+   * Where a cast item of a group of casts stands (its `P276` that holds), which
+   * the rule judges the cast by (#2036). Absent for a cast read off an item's
+   * own qualified coordinates, which has no item of its own to place.
+   */
+  placements?: string[];
+  /**
+   * What such a cast item is (its `P31`), which decides whether it stands
+   * outdoors by what it is when it is on a venue's grounds (#2036).
+   */
+  classes?: string[];
 }
 
 /** Everything single-valued about a candidate, from the pool row that named it. */

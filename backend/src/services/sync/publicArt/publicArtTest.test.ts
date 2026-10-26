@@ -527,6 +527,74 @@ describe('publicArtVerdict — a work stranded outdoors on a venue no kind offer
   });
 });
 
+describe('publicArtVerdict — a group of casts is judged at each cast (#2036)', () => {
+  // The Thinker as Wikidata places the group: in Musée Rodin, among others.
+  const RODIN = inside('Q650519', 'Musée Rodin', [MUSEUM]);
+  const KYOTO = inside('Q147286', 'Kyoto National Museum', [MUSEUM]);
+  const BUENOS_AIRES = inside('Q1486', 'Buenos Aires', ['Q515']);
+  const thinker = (casts: ContainerFact[][]) => facts({
+    qid: 'Q18003128', classes: ['Q28890616', SCULPTURE], containers: [RODIN],
+    casts: casts.map((containers) => ({ containers })),
+  });
+
+  it("admits the group when one cast stands outdoors, whatever the group's own place says, showing only that cast", () => {
+    expect(publicArtVerdict(thinker([[RODIN], [BUENOS_AIRES]]), trees, art)).toEqual({
+      pass: true, type: expect.any(String), artwork: true, openCasts: [1],
+      // The cast in the museum is the museum's, and so is the group its statements place there.
+      handOver: { reason: 'inside Musée Rodin: a work of a museum, not public art', heldIn: ['Q650519'] },
+    });
+  });
+
+  it("judges each cast by its own classes: one cast's colossal statue keeps no other on a museum's grounds", () => {
+    // Museums no kind offers, so a colossal statue on their grounds stays public art (#1444).
+    const WAR_MUSEUM = inside('Q2457600', 'National Museum of the History of Ukraine in World War II', [MILITARY_MUSEUM]);
+    const SANSEVERO = inside('Q897839', 'Cappella Sansevero', [MUSEUM]);
+    const group = facts({
+      qid: 'Q1', classes: ['Q28890616', SCULPTURE, COLOSSAL_STATUE], containers: [],
+      casts: [{ containers: [SANSEVERO], classes: [SCULPTURE] }, { containers: [WAR_MUSEUM], classes: [COLOSSAL_STATUE] }],
+    });
+    expect(publicArtVerdict(group, trees, art, new Set())).toEqual({
+      pass: true, type: expect.any(String), artwork: true, openCasts: [1],
+      handOver: { reason: 'inside Cappella Sansevero: a work of a museum, not public art', heldIn: ['Q897839'] },
+    });
+  });
+
+  it('admits the group when a cast stands nowhere its item names: it stands where its point is', () => {
+    expect(publicArtVerdict(thinker([[KYOTO], []]), trees, art)).toMatchObject({
+      pass: true, openCasts: [1], handOver: { heldIn: ['Q147286', 'Q650519'] },
+    });
+  });
+
+  it('hands nothing over when every cast stands outdoors', () => {
+    expect(publicArtVerdict(thinker([[BUENOS_AIRES]]), trees, art)).not.toHaveProperty('handOver');
+  });
+
+  it("refuses the group when its one cast is held, as the cast would be, and hands it to the group's own museum too", () => {
+    const v = publicArtVerdict(thinker([[KYOTO]]), trees, art);
+    expect(v).toEqual({
+      pass: false, reason: 'inside Kyoto National Museum: a work of a museum, not public art', heldIn: ['Q147286', 'Q650519'],
+    });
+  });
+
+  it('refuses the group when every cast is held, naming each holder', () => {
+    const v = publicArtVerdict(thinker([[RODIN], [KYOTO]]), trees, art);
+    expect(v).toEqual({
+      pass: false,
+      reason: 'every cast is held — inside Musée Rodin: a work of a museum, not public art; '
+        + 'inside Kyoto National Museum: a work of a museum, not public art',
+      heldIn: ['Q650519', 'Q147286'],
+    });
+  });
+
+  it('judges a group with no cast item at its own containers, as any work', () => {
+    expect(reasonOf(publicArtVerdict(thinker([]), trees, art))).toBe('inside Musée Rodin: a work of a museum, not public art');
+  });
+
+  it('names no open casts for a work that is no group of casts', () => {
+    expect(publicArtVerdict(facts({ classes: [SCULPTURE] }), trees, art)).not.toHaveProperty('openCasts');
+  });
+});
+
 describe('publicArtVerdict — what it admits', () => {
   it('admits a bare monument to Monuments & memorials as a monument, and not to Public art', () => {
     // Freedom Monument, Riga: monument.

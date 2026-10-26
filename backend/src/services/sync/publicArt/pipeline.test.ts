@@ -190,6 +190,13 @@ describe('collectPublicArt', () => {
           { qid: 'Q130544842', label: 'Le Penseur (Kyoto National Museum)', coord: 'Point(135.7723 34.99)', at: { qid: 'Q147286', label: 'Kyoto National Museum' }, country: 'Japan', classes: [SCULPTURE] },
         ],
       },
+      // What the casts stand in, which the rule judges each cast by (#2036).
+      // No museum tree is given, so nothing here holds a cast.
+      containers: {
+        Q6454: { label: 'Calais', classes: ['Q515'] },
+        Q41506: { label: 'Stanford University', classes: ['Q3918'] },
+        Q147286: { label: 'Kyoto National Museum', classes: ['Q33506'] },
+      },
     };
     const { items, filtered } = await collectPublicArt(doorTo(world), new Set());
     expect(filtered).toEqual([]);
@@ -205,6 +212,68 @@ describe('collectPublicArt', () => {
     expect([thinker.lat, thinker.lon]).toEqual([34.99, 135.7723]);
     expect(thinker.countryLabel).toBe('Japan');
     expect(thinker.casts).toEqual([{ name: 'Kyoto National Museum', lat: 34.99, lon: 135.7723, countryLabel: 'Japan' }]);
+  });
+
+  it('admits a group of casts when one cast stands outdoors, and refuses it when every cast is held (#2036)', async () => {
+    const CAST_GROUP = 'Q28890616';
+    const MUSEUM = 'Q33506';
+    const rodinCast = { qid: 'Q900200', label: 'The Thinker (Musée Rodin)', coord: 'Point(2.3158 48.8553)', at: { qid: 'Q650519', label: 'Musée Rodin' }, country: 'France', classes: [SCULPTURE] };
+    const worldWith = (second: CastFixture, sitelinks = 53): World => ({
+      museumTree: [MUSEUM],
+      // The Thinker as Wikidata places the group: in Musée Rodin, which the
+      // group's own verdict would have refused it as.
+      entities: [{ qid: 'Q18003128', label: 'The Thinker', under: '', sitelinks, classes: [CAST_GROUP], locations: ['Q650519', 'Q845468'] }],
+      casts: { Q18003128: [rodinCast, second] },
+      containers: {
+        Q650519: { label: 'Musée Rodin', classes: [MUSEUM] },
+        Q1486: { label: 'Buenos Aires', classes: ['Q515'] },
+        Q147286: { label: 'Kyoto National Museum', classes: [MUSEUM] },
+        Q845468: { label: 'Strasbourg Museum of Modern and Contemporary Art', classes: [MUSEUM] },
+      },
+    });
+
+    const outdoors = await collectPublicArt(doorTo(worldWith(
+      { qid: 'Q900201', label: 'The Thinker (Buenos Aires)', coord: 'Point(-58.3926 -34.6097)', at: { qid: 'Q1486', label: 'Buenos Aires' }, country: 'Argentina', classes: [SCULPTURE] },
+    )), new Set());
+    expect(outdoors.filtered).toEqual([]);
+    // Public art shows the cast a passer-by walks up to; the one in the museum is the museum's,
+    // handed over with the places the group's own statements name, so neither kind loses it.
+    expect(outdoors.items.map((i) => [i.qid, i.casts])).toEqual([['Q18003128', [
+      { name: 'Buenos Aires', lat: -34.6097, lon: -58.3926, countryLabel: 'Argentina' },
+    ]]]);
+    expect(outdoors.handOvers).toEqual([{
+      externalId: 'Q18003128', name: 'The Thinker',
+      reason: 'taken as public art at its other casts; a cast inside Musée Rodin: a work of a museum, not public art',
+      heldIn: ['Q650519', 'Q845468'],
+    }]);
+
+    // A group the source held that fell below the stay line is refused, and the museum
+    // still takes its cast: the hand-over then carries the cast's own reason, not the
+    // admitted wording.
+    const fell = await collectPublicArt(doorTo(worldWith(
+      { qid: 'Q900201', label: 'The Thinker (Buenos Aires)', coord: 'Point(-58.3926 -34.6097)', at: { qid: 'Q1486', label: 'Buenos Aires' }, country: 'Argentina', classes: [SCULPTURE] },
+      STAY_SITELINKS - 1,
+    )), new Set(['Q18003128']));
+    expect(fell.items).toEqual([]);
+    expect(fell.filtered.map((f) => f.externalId)).toEqual(['Q18003128']);
+    expect(fell.handOvers).toEqual([{
+      externalId: 'Q18003128', name: 'The Thinker',
+      reason: 'inside Musée Rodin: a work of a museum, not public art',
+      heldIn: ['Q650519', 'Q845468'],
+    }]);
+
+    const held = await collectPublicArt(doorTo(worldWith(
+      { qid: 'Q130544842', label: 'Le Penseur (Kyoto National Museum)', coord: 'Point(135.7723 34.99)', at: { qid: 'Q147286', label: 'Kyoto National Museum' }, country: 'Japan', classes: [SCULPTURE] },
+    )), new Set());
+    expect(held.items).toEqual([]);
+    expect(held.filtered).toEqual([{
+      externalId: 'Q18003128', name: 'The Thinker',
+      reason: 'every cast is held — inside Musée Rodin: a work of a museum, not public art; '
+        + 'inside Kyoto National Museum: a work of a museum, not public art',
+      // The casts' holders, then the places the group's own statements name, for a museum's run to take it (ADR-0102).
+      heldIn: ['Q650519', 'Q147286', 'Q845468'],
+    }]);
+    expect(held.handOvers).toEqual([]);
   });
 
   it('admits what clears the line and files what the rule refuses, with its reason', async () => {

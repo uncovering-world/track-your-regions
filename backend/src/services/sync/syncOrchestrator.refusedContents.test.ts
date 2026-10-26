@@ -69,6 +69,7 @@ vi.mock('./missingDetection.js', () => ({
 import { updateSyncLog } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
 import { markRefused } from './admission.js';
+import { recordHandOvers } from './handOvers.js';
 
 const TEST_SOURCE_ID = 999;
 
@@ -158,5 +159,34 @@ describe('an object a row holds that the rule refused', () => {
       expect.objectContaining({ filtered: 2 }),
       undefined,
     );
+  });
+});
+
+describe('a work the run admits that another place also holds (#2036)', () => {
+  beforeEach(() => {
+    runningSyncs.clear();
+    vi.clearAllMocks();
+  });
+
+  it('is recorded as a hand-over beside the refusals, and neither marked nor reported as refused', async () => {
+    // The Thinker admitted through its cast in Buenos Aires; its cast in Musée Rodin is the museum's.
+    const thinker = {
+      externalId: 'Q18003128', name: 'The Thinker',
+      reason: 'taken as public art at its other casts; a cast inside Musée Rodin: a work of a museum, not public art', heldIn: ['Q650519'],
+    };
+    const horseman = {
+      externalId: 'Q680156', name: 'Bamberg Horseman',
+      reason: 'inside Bamberg Cathedral: a work of a place of worship, not public art', heldIn: ['Q5924'],
+    };
+    await orchestrateSync(runWith({
+      items: [{ id: 'Q18003128', name: 'The Thinker' }],
+      fetchedCount: 2,
+      filtered: [horseman],
+      handOvers: [thinker],
+    }), 1);
+
+    expect(recordHandOvers).toHaveBeenCalledWith(TEST_SOURCE_ID, [horseman, thinker], 42, false);
+    expect(markRefused).toHaveBeenCalledWith(TEST_SOURCE_ID, [horseman], false);
+    expect(recorded().filter((r) => r.externalId === 'Q18003128').map((r) => r.error)).not.toContain(thinker.reason);
   });
 });
