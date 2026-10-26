@@ -12,7 +12,7 @@ const { computeGeoSimilarityIfNeeded } = await import('./geoshapeCache.js');
 function oneSuggestion(scores: { iou: number; fwd: number; rev: number }, held = false) {
   poolQuery.mockImplementation(async (sql: string) => {
     if (sql.includes('AS "divisionId"')) return { rows: [{ divisionId: 57583 }] };
-    if (sql.includes('FROM wikidata_geoshapes WHERE wikidata_id')) return { rows: [{ not_available: false }] };
+    if (sql.includes('AS held')) return { rows: [{ held: true }] };
     if (sql.includes('WITH geoms AS')) return { rows: [{ iou: scores.iou, fwd_coverage: scores.fwd, rev_coverage: scores.rev }] };
     return { rows: [], rowCount: 0 };
   });

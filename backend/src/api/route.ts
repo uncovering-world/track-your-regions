@@ -53,8 +53,8 @@ export type Access = 'public' | 'optional' | 'signed-in' | 'curator' | 'admin';
  * - `revalidate`: stored by the caller's browser only, and revalidated on every
  *   use, so the origin re-authorizes each one. A body shaped by the caller;
  *   public reference data behind a gate — GADM's boundary at full resolution,
- *   Wikimedia's geoshape, the same bytes for every caller and large enough
- *   that a `304` beats the whole body on every dialog open, while `no-cache`
+ *   the same bytes for every caller and large enough that a `304` beats the
+ *   whole body on every dialog open, while `no-cache`
  *   keeps it from a caller who has since lost the gate; and a stream, whose
  *   token rides in the query string, so no `Authorization` keeps a shared
  *   cache off it (RFC 9111 § 3.5) and `private` is the whole guarantee. The

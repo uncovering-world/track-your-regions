@@ -180,6 +180,7 @@ export const CoveringMatchResult = z.strictObject({
   totalCoverage: z.number().optional().describe('How much of the region\'s shape the covering set covers, from 0 to 1.'),
   scopeAncestorName: z.string().optional().describe('The ancestor whose divisions the search was held to.'),
   nextScope,
+  shapeUnavailable: z.literal(true).optional().describe('Set when no shape is held for the region, so its divisions were matched from the places its Wikivoyage article marks.'),
 }).describe('Divisions matched from the region\'s Wikidata shape, or from the places its Wikivoyage article marks.');
 export type CoveringMatchResult = z.infer<typeof CoveringMatchResult>;
 
@@ -190,16 +191,6 @@ export const AIMatchOneResult = z.strictObject({
   cost: z.number().describe('US dollars.'),
 }).describe('A model\'s match for one region.');
 export type AIMatchOneResult = z.infer<typeof AIMatchOneResult>;
-
-export const Geoshape = z.strictObject({
-  type: z.literal('FeatureCollection'),
-  features: z.array(z.strictObject({
-    type: z.literal('Feature'),
-    properties: z.strictObject({ id: z.string().describe('The Wikidata item.') }),
-    geometry: AreaGeometry,
-  })),
-}).describe('A Wikidata item\'s shape, from the local cache or from Wikimedia\'s map service; no feature where it has none.');
-export type Geoshape = z.infer<typeof Geoshape>;
 
 export const RematchStarted = z.strictObject({
   started: z.literal(true),

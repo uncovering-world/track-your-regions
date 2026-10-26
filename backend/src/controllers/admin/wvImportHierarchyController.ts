@@ -11,7 +11,7 @@ import {
   trigramSearch,
 } from '../../services/worldViewImport/aiMatcher.js';
 import { descendantSearchScopes } from '../../services/worldViewImport/dbSearchMatcher.js';
-import { getOrFetchGeoshape, computeIoU } from '../../services/worldViewImport/geoshapeCache.js';
+import { geoshapeHeld, computeIoU } from '../../services/worldViewImport/geoshapeCache.js';
 import { computeDivisionCoverage } from '../../services/worldViewImport/geoshapeCoverage.js';
 import {
   type UndoEntry,
@@ -369,7 +369,7 @@ async function findTrigramCandidatesForLeaves(
 async function computeMatchGeoSim(match: TrigramMatch): Promise<number | null> {
   if (!match.wikidataId) return null;
   try {
-    const available = await getOrFetchGeoshape(match.wikidataId);
+    const available = await geoshapeHeld(match.wikidataId);
     if (available) {
       return await computeIoU(match.wikidataId, match.divisionId);
     }

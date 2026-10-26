@@ -1,21 +1,19 @@
 /**
  * The world-view import's colour-match run as a reviewer sees it: the stream
  * the run reports on, the reviewer's answers to the questions it waits on,
- * the images its review screen draws, the coverage stream, and Wikimedia's
- * boundary for a Wikidata id (ADR-0071). Spread into `adminDeclaredRoutes`.
+ * the images its review screen draws and the coverage stream (ADR-0071).
+ * Spread into `adminDeclaredRoutes`.
  */
 
 import { defineRoute, IMAGE, stream } from '../api/route.js';
 import { ColorMatchEvent, ReviewAnswered } from '../api/responses/wvImportCvMatch.js';
 import { CoverageEvent } from '../api/responses/wvImportCoverage.js';
-import { Geoshape } from '../api/responses/worldViewImport.js';
 import { getCoverageSSE } from '../controllers/admin/wvImportCoverageController.js';
-import { getGeoshape } from '../controllers/admin/wvImportLifecycleController.js';
 import {
   answerClusterReview, answerIcpAdjustment, answerWaterReview, clusterHighlightImage, clusterPreviewImage, waterCropImage,
 } from '../controllers/admin/wvImportReviewAnswers.js';
 import {
-  coverageSSEQuerySchema, reviewIdParamSchema, wikidataIdParamSchema, worldViewIdParamSchema,
+  coverageSSEQuerySchema, reviewIdParamSchema, worldViewIdParamSchema,
   wvImportClusterHighlightParamSchema, wvImportClusterReviewAnswerSchema, wvImportColorMatchSchema,
   wvImportIcpAdjustmentBodySchema, wvImportWaterCropParamSchema, wvImportWaterReviewBodySchema,
 } from '../types/index.js';
@@ -91,15 +89,5 @@ export const adminImportReviewRoutes = [
     query: coverageSSEQuerySchema,
     response: stream(CoverageEvent),
     handler: getCoverageSSE,
-  }),
-  // Wikimedia's boundary for a Wikidata id: the same bytes for every caller,
-  // admin-gated because the editor is the one that asks, and re-requested on
-  // every open of the dialog — kept by the browser and revalidated.
-  defineRoute({
-    method: 'get', path: '/wv-import/geoshape/:wikidataId', access: 'admin', cache: 'revalidate',
-    summary: 'Fetch the boundary of a Wikidata item as GeoJSON, from the local store or Wikimedia',
-    params: wikidataIdParamSchema,
-    response: Geoshape,
-    handler: getGeoshape,
   }),
 ];

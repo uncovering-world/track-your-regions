@@ -8,7 +8,7 @@
 
 import { pool } from '../../db/index.js';
 import { parseMapshapes } from '../../services/wikivoyageExtract/parser.js';
-import { getOrFetchGeoshape, getOrFetchCommonsMapGeoshape } from '../../services/worldViewImport/geoshapeCache.js';
+import { getOrFetchCommonsMapGeoshape } from '../../services/worldViewImport/geoshapeCache.js';
 import { userAgent } from '../../config/userAgent.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import {
@@ -203,10 +203,6 @@ async function determineScopeDivisionIds(regionId: number): Promise<number[]> {
 
 async function getAvailableWikidataIds(resolvedMapshapes: ResolvedMapshape[]): Promise<Set<string>> {
   const allWikidataIds = [...new Set(resolvedMapshapes.flatMap(m => m.wikidataIds))];
-  for (const wdId of allWikidataIds) {
-    if (!wdId.startsWith('commons:')) await getOrFetchGeoshape(wdId);
-  }
-
   const availableResult = await pool.query(
     'SELECT wikidata_id FROM wikidata_geoshapes WHERE wikidata_id = ANY($1) AND not_available = FALSE',
     [allWikidataIds],

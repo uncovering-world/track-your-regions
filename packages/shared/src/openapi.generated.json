@@ -8853,7 +8853,7 @@
     "/api/admin/wv-import/matches/{worldViewId}/geoshape-match": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdGeoshapeMatch",
-        "summary": "Suggest divisions for one region by comparing them with its Wikidata shape",
+        "summary": "Suggest divisions for one region by comparing them with the shape held for it, or from its Wikivoyage markers when none is",
         "tags": [
           "admin"
         ],
@@ -11917,55 +11917,6 @@
                 "schema": {
                   "type": "string",
                   "description": "Server-sent events, framed as the EventSource format defines."
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/wv-import/geoshape/{wikidataId}": {
-      "get": {
-        "operationId": "getAdminWvImportGeoshapeByWikidataId",
-        "summary": "Fetch the boundary of a Wikidata item as GeoJSON, from the local store or Wikimedia",
-        "tags": [
-          "admin"
-        ],
-        "description": "Requires an admin.",
-        "x-access": "admin",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "wikidataId",
-            "schema": {
-              "type": "string",
-              "pattern": "^Q\\d+$"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The answer.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Geoshape"
                 }
               }
             }
@@ -19960,6 +19911,11 @@
               "ancestorName"
             ],
             "additionalProperties": false
+          },
+          "shapeUnavailable": {
+            "description": "Set when no shape is held for the region, so its divisions were matched from the places its Wikivoyage article marks.",
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -25045,55 +25001,6 @@
         ],
         "additionalProperties": false,
         "description": "Divisions containing the place the region's name geocodes to."
-      },
-      "Geoshape": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "FeatureCollection"
-          },
-          "features": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "Feature"
-                },
-                "properties": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "description": "The Wikidata item."
-                    }
-                  },
-                  "required": [
-                    "id"
-                  ],
-                  "additionalProperties": false
-                },
-                "geometry": {
-                  "$ref": "#/components/schemas/AreaGeometry"
-                }
-              },
-              "required": [
-                "type",
-                "properties",
-                "geometry"
-              ],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": [
-          "type",
-          "features"
-        ],
-        "additionalProperties": false,
-        "description": "A Wikidata item's shape, from the local cache or from Wikimedia's map service; no feature where it has none."
       },
       "GroupDescriptions": {
         "type": "object",
