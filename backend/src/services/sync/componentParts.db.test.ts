@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
+import { pointNameSql } from '../../db/placePoints.js';
 import { writeExperienceLocations, type LocationWriteRun } from './locationWriter.js';
 
 /**
@@ -221,5 +222,73 @@ describe('a component that stands for its whole site is not parted (#1899)', () 
     const revived = (await parts(THEBES)).find(p => p.external_ref === '87-001')!;
     expect(revived.part_id).toBe(karnak.part_id);
     expect((await pool.query('SELECT merged_into_id FROM experiences WHERE id = $1', [karnak.part_id])).rows[0].merged_into_id).toBeNull();
+  });
+});
+
+describe('a component the list names nothing is named for what it is (#2065)', () => {
+  // The World Heritage list calls two components of Tarraco "The " and gives two
+  // sections of Via Appia no name at all.
+  const unnamed = { name: 'The ', externalRef: '87-004', lon: 32.6061, lat: 25.7275 };
+  const nameless = { name: '', externalRef: '87-005', lon: 32.6125, lat: 25.7208 };
+
+  const readerName = async (location: number) =>
+    (await pool.query<{ name: string | null }>(
+      `SELECT ${pointNameSql('el')} AS name FROM experience_locations el WHERE el.id = $1`, [location],
+    )).rows[0].name;
+
+  it("names the part by its site and reference, and leaves the reader's point to its reference", async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, unnamed, nameless], run);
+
+    const parted = await parts(THEBES);
+    expect(parted.map(p => [p.external_ref, p.name])).toEqual([
+      ['87-001', 'Temple of Karnak'],
+      ['87-004', 'Ancient Thebes (parts fixture) (87-004)'],
+      ['87-005', 'Ancient Thebes (parts fixture) (87-005)'],
+    ]);
+    // Beside the site's other points the web calls it "87-004"; the site's name would repeat the card's.
+    expect(await readerName(parted[1].location_id)).toBeNull();
+  });
+
+  it("renames a part named by its site when the site's name changes, and leaves a named part alone", async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, nameless], run);
+
+    await pool.query(`UPDATE experiences SET name = 'Thebes and its Necropolis (parts fixture)' WHERE id = $1`, [THEBES]);
+
+    expect((await parts(THEBES)).map(p => [p.external_ref, p.name])).toEqual([
+      ['87-001', 'Temple of Karnak'],
+      ['87-005', 'Thebes and its Necropolis (parts fixture) (87-005)'],
+    ]);
+  });
+
+  it("renames the part by its point's article once the run records one, the point keeping the list's name", async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, unnamed], run);
+    const part = (await parts(THEBES)).find(p => p.external_ref === '87-004')!;
+
+    await pool.query(
+      `UPDATE experience_locations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
+      [part.location_id, JSON.stringify({ wikipediaUrl: 'https://en.wikipedia.org/wiki/Mortuary_Temple_of_Hatshepsut' })],
+    );
+
+    expect((await parts(THEBES)).find(p => p.external_ref === '87-004')?.name).toBe('Mortuary Temple of Hatshepsut');
+    expect(await readerName(part.location_id)).toBe('Mortuary Temple of Hatshepsut');
+    const point = await pool.query<{ name: string }>('SELECT name FROM experience_locations WHERE id = $1', [part.location_id]);
+    expect(point.rows[0].name).toBe('The');
+  });
+
+  it('reads an article title as a reader does, and refuses an address that is not one', async () => {
+    const title = async (url: string) =>
+      (await pool.query<{ title: string | null }>('SELECT wikipedia_article_title($1) AS title', [url])).rows[0].title;
+    expect(await title('https://en.wikipedia.org/wiki/Roman_quarry_of_El_M%C3%A8dol')).toBe('Roman quarry of El Mèdol');
+    expect(await title('https://en.wikipedia.org/wiki/Ta%27_%C4%A6a%C4%A1rat')).toBe("Ta' Ħaġrat");
+    expect(await title('https://en.wikipedia.org/wiki/Broken_%FF')).toBeNull();
+    expect(await title('https://example.org/wiki/Karnak')).toBeNull();
+  });
+
+  it('counts nothing or a lone "The" as no name, and any real name as a name', async () => {
+    const namesNothing = async (name: string | null) =>
+      (await pool.query<{ nothing: boolean }>('SELECT names_nothing($1) AS nothing', [name])).rows[0].nothing;
+    for (const name of [null, '', '  ', 'The ', 'THE']) expect(await namesNothing(name)).toBe(true);
+    // Die in the Drôme and Å in Lofoten are places.
+    for (const name of ['The Hague', 'Port', 'Ular', 'Die', 'Å']) expect(await namesNothing(name)).toBe(false);
   });
 });
