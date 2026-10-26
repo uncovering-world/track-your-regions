@@ -50,6 +50,7 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, placeOfferedSql } from '../../db/membership.js';
+import { inscribedAreaSql } from '../../db/inscription.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { BEST } from './subset/entities.js';
 
@@ -123,12 +124,12 @@ function nameWithinSql(a: string, b: string): string {
 
 /**
  * A place's reach in metres: `BASE_REACH_M`, or the radius of a circle of its
- * inscribed area (`metadata.areaHectares`, a World Heritage row's) where that
- * is wider, up to `WIDEST_REACH_M`.
+ * inscribed area (`inscribedAreaSql`, its World Heritage membership's) where
+ * that is wider, up to `WIDEST_REACH_M`.
  */
 export function reachSql(e = 'e'): string {
   return `GREATEST(${BASE_REACH_M}, LEAST(${WIDEST_REACH_M},
-            sqrt(COALESCE((${e}.metadata->>'areaHectares')::numeric, 0) * 10000 / pi())))::int`;
+            sqrt(COALESCE(${inscribedAreaSql(e)}, 0) * 10000 / pi())))::int`;
 }
 
 /**

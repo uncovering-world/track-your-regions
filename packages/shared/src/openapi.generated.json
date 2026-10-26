@@ -23115,6 +23115,13 @@
             ],
             "description": "The source's metadata, as an open record until #574 settles its model."
           },
+          "date_inscribed": {
+            "description": "The year UNESCO inscribed the site, off its World Heritage membership: null for a site no membership holds, one a curator judged former (delisted), or one refused (#2068).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "anyOf": [
               {
@@ -23280,6 +23287,7 @@
           "country_names",
           "image_url",
           "metadata",
+          "date_inscribed",
           "created_at",
           "updated_at",
           "source_membership",

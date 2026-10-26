@@ -45,7 +45,7 @@ describe('the danger flag against its tag', () => {
     // hand-made object flagged in danger with nothing tagging it. Measured
     // against the live catalogue with one such row inserted in a transaction:
     // uncoalesced finds nothing, this finds it.
-    expect(sql).toContain("COALESCE(e.tags ? 'in_danger', FALSE) <> COALESCE(e.metadata->'inDanger' = 'true'::jsonb, FALSE)");
+    expect(sql).toContain("COALESCE(e.tags ? 'in_danger', FALSE) <> COALESCE(wh.facts->'inDanger' = 'true'::jsonb, FALSE)");
   });
 
   it('asks the two stored columns, not UNESCO\'s own field', () => {
@@ -73,7 +73,10 @@ describe('the danger flag against its tag', () => {
     // credit is not — see `heldFieldRefusedSql`.
     expect(sql).toContain(collapse(heldFieldAnsweredSql('e.id', 'ch.sync_log_id')));
     expect(sql).not.toContain(collapse(heldFieldRefusedSql('e.id', 'ch.sync_log_id')));
-    expect(sql).toContain("e.metadata->'inDanger' = 'true'::jsonb");
+    // The flag is the World Heritage membership's (#2068), whatever its state:
+    // a delisted site's stored flag still has to agree with its tag.
+    expect(sql).toContain('LEFT JOIN experience_kind_memberships wh ON wh.experience_id = e.id AND wh.kind_id = 1');
+    expect(sql).toContain("wh.facts->'inDanger' = 'true'::jsonb");
   });
 
   it('catches the disagreement whichever half is missing', () => {

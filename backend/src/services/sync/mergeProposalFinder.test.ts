@@ -4,6 +4,7 @@
  * fragments it composes rather than against a second spelling of them.
  */
 import { describe, it, expect } from 'vitest';
+import { inscribedAreaSql } from '../../db/inscription.js';
 import { placeOfferedSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { BASE_REACH_M, EXACT_DISTANCE_M, MIN_SIMILARITY, PROPOSAL_ROWS_SQL, WIDEST_REACH_M, candidatePairsSql, foldedNamesSql, reachSql, GENERIC_NAME_WORDS, MIN_WORD_LENGTH, pairingSentence } from './mergeProposalFinder.js';
@@ -82,7 +83,8 @@ describe('a place\'s reach', () => {
     expect(BASE_REACH_M).toBe(300);
     expect(WIDEST_REACH_M).toBe(3000);
     const sql = collapse(reachSql('e'));
-    expect(sql).toContain(`GREATEST(${BASE_REACH_M}, LEAST(${WIDEST_REACH_M}, sqrt(COALESCE((e.metadata->>'areaHectares')::numeric, 0) * 10000 / pi())))::int`);
+    // The area is the World Heritage membership's (#2068), read in any state.
+    expect(sql).toContain(`GREATEST(${BASE_REACH_M}, LEAST(${WIDEST_REACH_M}, sqrt(COALESCE(${collapse(inscribedAreaSql('e'))}, 0) * 10000 / pi())))::int`);
   });
 });
 
