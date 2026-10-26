@@ -24,7 +24,7 @@ const P = {
   property: 9725, propertyTwin: 9726, whole: 9727, part: 9728, partTwin: 9729, pending: 9730,
   westOfTheLine: 9731, eastOfTheLine: 9732, monastery: 9733, monasteryTwin: 9734, oldTown: 9735, townMuseum: 9736,
   fort: 9737, fortTwin: 9738, windmill: 9739, windmillArrival: 9740, well: 9741, wellRefused: 9742,
-  gate: 9743, gateTwin: 9744,
+  gate: 9743, gateTwin: 9744, signalTower: 9745, signalTowerTwin: 9746,
 } as const;
 const ALL = Object.values(P);
 
@@ -252,6 +252,25 @@ describe('pairing a place again when what the rule reads changes (#1950)', () =>
 
     await drainPairing();
     expect(await pairOf(P.gate)).toMatchObject({ place_b: P.gateTwin, exact: true });
+  });
+
+  it('forgets the open pair of two places a merge makes one, and proposes it again once the merge is undone (#1933)', async () => {
+    await place({ id: P.signalTower, name: 'Fixture Signal Tower', source: 'Places of worship', lon: east(100000) });
+    await place({ id: P.signalTowerTwin, name: 'Fixture Signal Tower', source: 'Archaeology', lon: east(100015) });
+    await drainPairing();
+    expect(await pairOf(P.signalTower)).toMatchObject({ place_b: P.signalTowerTwin, answer: null });
+
+    // What a merge does to the folded place: both places are marked, and the pair asks nothing any more,
+    // so the check never lists a question the review queue does not ask.
+    await pool.query('UPDATE experiences SET merged_into_id = $2 WHERE id = $1', [P.signalTowerTwin, P.signalTower]);
+    expect(await marked([P.signalTower, P.signalTowerTwin])).toEqual([P.signalTower, P.signalTowerTwin]);
+    await drainPairing();
+    expect(await pairOf(P.signalTower)).toBeUndefined();
+
+    // What the undo does to it: the two stand apart again and are asked about again.
+    await pool.query('UPDATE experiences SET merged_into_id = NULL WHERE id = $1', [P.signalTowerTwin]);
+    await drainPairing();
+    expect(await pairOf(P.signalTower)).toMatchObject({ place_b: P.signalTowerTwin, answer: null });
   });
 
   it('pairs the whole catalogue once when the stored rule version is not the rule\'s', async () => {
