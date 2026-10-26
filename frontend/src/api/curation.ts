@@ -14,7 +14,7 @@ import type {
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeProposalTakenBack, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointHintSuggestions, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
-  KeptOutOfKind, PlaceKindStandings,
+  KeptOutOfKind, KindAddedToPlace, PlaceKindStandings,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -26,6 +26,7 @@ import {
   postExperiencesByIdMergeProposals, type AnswerMergeProposalsBody, postExperiencesByIdMergeProposalSuggestions,
   postExperiencesByIdVisitSuggestion, postExperiencesByIdVisitQuestion, type VisitQuestionAnswerBody,
   getExperiencesByIdKinds, postExperiencesByIdKeepOut, type KeepOutOfKindBody,
+  postExperiencesByIdKinds, type AddToKindBody,
   postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody,
   getExperiencesByIdIdentifiers, postExperiencesByIdIdentifiers,
   getExperiencesReviewPins, postExperiencesByIdAdmissionPinHandBack, type HandBackPinBody, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
@@ -52,6 +53,7 @@ export type {
   RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
   KeepOutOfKindBody, KeptOutOfKind, PlaceKindStanding, PlaceKindStandings,
+  AddableKind, AddToKindBody, KindAddedToPlace,
 } from './client.generated';
 
 /**
@@ -216,6 +218,14 @@ export async function fetchPlaceKinds(experienceId: number): Promise<PlaceKindSt
  */
 export async function keepOutOfKind(experienceId: number, body: KeepOutOfKindBody): Promise<KeptOutOfKind> {
   return postExperiencesByIdKeepOut(experienceId, body);
+}
+
+/**
+ * Put a place into a kind no run offers it in (#2035); `keepOutOfKind` takes
+ * it out again.
+ */
+export async function addToKind(experienceId: number, body: AddToKindBody): Promise<KindAddedToPlace> {
+  return postExperiencesByIdKinds(experienceId, body);
 }
 
 /** The admission pins in the caller's scope, or one place's (#1369). */
