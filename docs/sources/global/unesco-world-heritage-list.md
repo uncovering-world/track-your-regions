@@ -119,7 +119,10 @@ articles. It would have to keep the same properties and components.
   and 1567 came with neither, and the run files them (`UnplaceableRecord`, #1814). The score
   counts the rows the run keeps, each of which has a coordinate, while `row.coordinates` says
   `most` of what the dataset sends.
-- **Names 2.** Six languages.
+- **Names 2.** Six languages. A component's name is in English only, and a few are stubs: "The "
+  for two of Tarraco's (875-012, 875-013), nothing for two sections of the Via Appia (1708-003,
+  1708-004). The part is then named by its article or its site and reference
+  (`docs/tech/experiences.md` § Serial nominations, #2065).
 - **Signal 1.** Being inscribed is an editorial cut.
 - **Terms 1.** Share-alike.
 - **Access 2.** An API.

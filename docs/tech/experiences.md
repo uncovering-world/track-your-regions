@@ -195,11 +195,14 @@ part's point, the id the site's card opens it at; a curator's scope over a part 
 whole (`maySeeUnreadExperience`, `wholeOfSql` in `placePoints.ts`). The web follows a part's address
 to the site's card opened at that point (`useFoldedCard`, `docs/tech/addresses.md`).
 
-A reader calls a part's point by its own name, else by the part place's (`pointNameSql`,
-`placePoints.ts`, #1924): a place another kind brought and a merge made a site's part carries its name
+A reader calls a part's point by its own name, else by the part place's where the part holds a kind
+(`pointNameSql`, `placePoints.ts`, #1924): a place another kind brought and a merge made a site's part carries its name
 on the part row, and its point, which that kind placed, none of its own, so Etchmiadzin Cathedral's
 point read as "40.16186, 44.29100" on its site's card — 173 such points on 78 sites on the development
-catalogue on 2026-10-23. The object's own read, both shapes of the region batch, the world layer's
+catalogue on 2026-10-23. A name that names nothing (`names_nothing()`, "The") counts as none, and a
+part with no kind lends its point's Wikipedia article title instead of its name, which without an
+article is the site's with the reference and beside the site's other points would repeat both (#2065):
+Tarraco's 875-012 reads "Roman villa of Centcelles", a section of the Via Appia "1708-003". The object's own read, both shapes of the region batch, the world layer's
 markers and a signed-in reader's visited-status read, which Discover takes its rows' names from, read
 it; the curator's reads keep the point's name as the source wrote it, which is what a curator corrects.
 
@@ -1480,9 +1483,11 @@ traveller's visit to the component becomes a visit to the part place (§ A part 
 its picture, credit, description and item stay on the point. Where the point holds no picture, a
 reader is served the part place's own picture and credit (`pointPictureSql`, #1946). That is the case
 for a part that holds a kind of its own: the kind's place keeps its picture on the place row, and its
-point carries none. A part's name, coordinate and reference are its point's: the trigger
-`follow_component_point()` carries a rename, a move or a renumbering of the point to the part and
-its relation, whoever writes it — the run, a curator, a publish — except on a part that holds a kind of
+point carries none. A part's name, coordinate and reference are its point's — the name unless it
+names nothing (§ A site's components are the entries of `components_list`): the trigger
+`follow_component_point()` carries a rename, a move, a renumbering or a new article of the point to
+the part and its relation, and `follow_component_site()` a rename of the site to a part its name and
+reference name, whoever writes it — the run, a curator, a publish — except on a part that holds a kind of
 its own, which names itself (`part_follows_point`, migration 124, #1250). Naming itself is not
 being renamed by the kind's run, though: the component point is UNESCO's view of the part, and a
 kind's run that reaches the part counts it among the views that contest a field (§ No source owns the
@@ -1506,8 +1511,19 @@ with no ref or no point is skipped. The form before it, `{name: …, ref: …, l
 read (`parseFormerComponentsList`), and a list in neither form fails the site by name: under the
 new form the former parser read every site as having no components, and run 187 failed every one
 of the 1273 records. A name the source leaves empty, as it does for
-parts of the Via Appia, stays empty; one it writes wrong, as "The " for two parts of Tarraco, is
-kept as written and is a suspicious-data heuristic's to flag (#497). A name the export sends
+two sections of the Via Appia (1708-003, 1708-004), stays empty on the point, and one it writes
+wrong, as "The " for the Roman villa of Centcelles and Els Munts (875-012, 875-013, Tarraco), stays
+as written: the point is the list's view of the component. The part is named for what it is
+(`component_part_name()`, #2065): where the point's name names nothing (`names_nothing()`: empty, or
+the lone article *The*, the only one the catalogue holds; a wider list would take Die in the Drôme for
+an article), the title of the point's English Wikipedia article
+(`wikipedia_article_title()`, which decodes `El_M%C3%A8dol` as *El Mèdol*), else the site's name
+with the reference, *Via Appia. Regina Viarum (1708-003)*, which a link to the part carries as its point's slug
+(`useFoldedCard`).
+Among the site's points a reader's point is called by the article title or, without one, by its
+reference (`pointNameSql`). The run records the article after it parts the site, so the trigger
+renames the part when the article arrives. Migration 179 renamed the parts already named "The" or a
+bare reference. A name the export sends
 decoded twice is read once (`readOnce`, #1405): Birka and Hovgården's part comes as
 "HovgÃ¥rden", the two UTF-8 bytes of "å" read as two Latin-1 characters. Such a pair in a name
 made only of bytes that decode as well-formed UTF-8 is that UTF-8; anything else is kept as
@@ -5596,7 +5612,8 @@ that module; the run's upsert, missing detection and picture repair; and the see
 `INSERT INTO` or `UPDATE` of `experiences` anywhere else is refused. Two writers live in the
 database, as invariants: `part_site_components()` inserts a serial site's component parts, and
 the trigger `follow_component_point()` keeps a component part's name and coordinate its point's and
-stamps its `updated_at`, through `part_follows_point`, which the undo of a merge applies too; a part
+stamps its `updated_at`, through `part_follows_point`, which the undo of a merge and the trigger
+`follow_component_site()` on a site's rename apply too; a part
 that holds a kind of its own is left to name itself (§ Serial nominations).
 
 **A point is written under its object's token too.** Every curator write to
