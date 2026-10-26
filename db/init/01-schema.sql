@@ -5605,7 +5605,7 @@ CREATE TABLE IF NOT EXISTS region_import_state (
     region_map_url TEXT,
     map_image_reviewed BOOLEAN DEFAULT FALSE,
     marker_points JSONB,
-    geo_available BOOLEAN,  -- NULL = unknown, set after geoshape lookup (geoshapeCoverage.ts)
+    geo_available BOOLEAN,  -- NULL = unknown, set when a geoshape match looks for the shape (geoshapeCoverage.ts)
     hierarchy_reviewed BOOLEAN NOT NULL DEFAULT FALSE,  -- admin confirmed child set via AI Review Children
     hierarchy_warnings TEXT[]  -- AI-flagged issues with the region's child set
 );
@@ -5706,27 +5706,31 @@ COMMENT ON COLUMN region_subdivision_groups.existing_region_id IS 'The child reg
 COMMENT ON COLUMN region_subdivision_groups.color IS 'The colour picked for the group, often with the eyedropper from the reference map, as #rrggbb; null for the palette''s.';
 COMMENT ON TABLE region_member_group_assignments IS 'Which group of the Create Subregions dialog a region member is in (#595): at most one, and gone with the member or the group. A member no longer in the group''s region is not read as assigned.';
 
--- Wikidata geoshape cache (geometry for geoshape-based GADM matching)
--- Cache-first proxy: filled from maps.wikimedia.org and from composite unions of
--- child entity geoshapes. Keyed by Wikidata QID or "commons:{filename}".
--- See backend/src/services/worldViewImport/geoshapeCache.ts / geoshapeComposite.ts.
+-- Wikidata geoshape store (geometry for geoshape-based GADM matching)
+-- Holds the shapes of Commons maps an admin's review fetched, keyed
+-- "commons:{filename}". Nothing is fetched from maps.wikimedia.org, whose terms
+-- do not allow a third-party service, and no composite union is built from it
+-- (#2084): until the import holds shapes from a source it may use (#2085), no
+-- row is keyed by a Wikidata QID, and a region is matched by its Wikivoyage
+-- markers.
+-- See backend/src/services/worldViewImport/geoshapeCache.ts.
 CREATE TABLE IF NOT EXISTS workbench.wikidata_geoshapes (
     wikidata_id TEXT PRIMARY KEY,            -- Wikidata QID or "commons:{filename}"
     geom geometry(MultiPolygon, 4326),       -- NULL when not_available; SRID 4326
     not_available BOOLEAN NOT NULL DEFAULT FALSE,  -- TRUE = no geoshape exists (negative cache)
-    composite_of INTEGER CHECK (composite_of > 0),  -- parts a composite is the union of; NULL for a shape Wikimedia holds
+    composite_of INTEGER CHECK (composite_of > 0),  -- parts a composite is the union of; NULL for a shape held whole
     -- Negative-cache invariant: a row is either a real geoshape or a not_available
     -- marker. Stops a NULL geom with not_available=FALSE from reaching PostGIS calls
-    -- (e.g. geoshapeCoverage.ts) and blocks a degenerate composite union from
-    -- overwriting a valid cached geom with NULL via ON CONFLICT DO UPDATE.
+    -- (e.g. geoshapeCoverage.ts) and blocks a degenerate shape from overwriting
+    -- a valid cached geom with NULL via ON CONFLICT DO UPDATE.
     CONSTRAINT wikidata_geoshapes_geom_presence CHECK (not_available OR geom IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS idx_wikidata_geoshapes_geom ON workbench.wikidata_geoshapes USING GIST (geom);
 
-COMMENT ON TABLE workbench.wikidata_geoshapes IS 'Cache of Wikidata/Commons geoshapes (and composite unions) for WorldView Import geoshape matching';
+COMMENT ON TABLE workbench.wikidata_geoshapes IS 'Commons map shapes for WorldView Import geoshape matching, keyed commons:{file}; nothing from maps.wikimedia.org and no composite unions (#2084), so no row is keyed by a Wikidata QID until #2085';
 COMMENT ON COLUMN workbench.wikidata_geoshapes.not_available IS 'Negative cache: TRUE means a geoshape lookup confirmed none exists';
-COMMENT ON COLUMN workbench.wikidata_geoshapes.composite_of IS 'How many parts a composite geoshape is the union of, every part the item names (#1628); NULL for a shape Wikimedia holds for the item';
+COMMENT ON COLUMN workbench.wikidata_geoshapes.composite_of IS 'How many parts a composite geoshape is the union of, every part the item names (#1628); NULL for a shape held whole. No composite is built since #2084';
 
 -- =============================================================================
 -- AI Settings
