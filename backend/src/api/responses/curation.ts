@@ -124,6 +124,10 @@ export const AdmissionPin = z.strictObject({
     'Who answered, as they chose to be named; null where they chose nothing or where the act lies outside the'
     + " caller's regions, as in the curation log.",
   ),
+  added: z.boolean().describe(
+    "Whether the answer is a curator's add to a kind no run offered the place in (#2035), listed here once a run"
+    + ' came to list it: a put-back of nothing, since no rule turned it down.',
+  ),
   questioned: z.boolean().describe('Whether a run no longer agrees with it, and the review queue asks about it (#1367).'),
   canHandBack: z.boolean().describe(
     "Whether the pin can be handed back to the next run; false for a curator's own refusal of an arrival, which a"
@@ -172,6 +176,13 @@ export const KeptOutOfKind = z.strictObject({
 }).describe("A curator's refusal of a published place from one of its kinds, from the place's own card (#2022).");
 export type KeptOutOfKind = z.infer<typeof KeptOutOfKind>;
 
+export const KindAddedToPlace = z.strictObject({
+  experienceId: z.number().int(),
+  membershipId: z.number().int().describe('The membership the add wrote: admitted, published and pinned.'),
+  kindId: z.number().int(),
+}).describe("A place put into a kind no run offers it in, by a curator from its card (#2035).");
+export type KindAddedToPlace = z.infer<typeof KindAddedToPlace>;
+
 /** Where one kind of a place stands, as the place's card says it. */
 export const PlaceKindState = z.enum(['offered', 'waiting', 'kept-out', 'refused']);
 
@@ -185,18 +196,27 @@ export const PlaceKindStanding = z.strictObject({
     + " curator's refusal, pinned; refused: the kind's rule refuses it.",
   ),
   reason: z.string().nullable().describe('The reason a refused or kept-out membership carries.'),
-  answeredAt: z.iso.datetime({ offset: true }).nullable().describe('When a curator kept it out.'),
-  note: z.string().nullable().describe("The curator's words on keeping it out."),
+  added: z.boolean().describe('Whether a curator put the place into this kind by hand, no run offering it there (#2035).'),
+  answeredAt: z.iso.datetime({ offset: true }).nullable().describe('When a curator kept it out, or added it.'),
+  note: z.string().nullable().describe("The curator's words on keeping it out, or on adding it."),
   curatorName: z.string().nullable().describe(
-    'Who kept it out, as they chose to be named; null where they chose nothing or the act lies outside the caller\'s'
-    + ' regions, as in the curation log.',
+    'Who kept it out or added it, as they chose to be named; null where they chose nothing or the act lies outside'
+    + ' the caller\'s regions, as in the curation log.',
   ),
   canAnswer: z.boolean().describe("Whether the caller's scope reaches this kind's source, so they may take it out or put it back."),
 }).describe('One kind of a place, with where it stands (#2022).');
 
+export const AddableKind = z.strictObject({
+  kindId: z.number().int(),
+  kindName: z.string(),
+}).describe('A kind the caller may put the place into (#2035).');
+
 export const PlaceKindStandings = z.strictObject({
   kinds: z.array(PlaceKindStanding),
-}).describe("Every kind a place belongs to, for the curator's card (#2022).");
+  addable: z.array(AddableKind).describe(
+    'The kinds the place has no membership in, World Heritage Sites aside, whose source the caller\'s scope reaches.',
+  ),
+}).describe("Every kind a place belongs to, for the curator's card (#2022), and the kinds it may be added to.");
 export type PlaceKindStandings = z.infer<typeof PlaceKindStandings>;
 
 // The shared lists, held to the schema's CHECKs by `curationLogActions.test.ts`.

@@ -488,3 +488,46 @@ export async function insertManualMembership(
     )
   `, [lock.id, sourceId, type]);
 }
+
+/**
+ * A place put into a kind no run offers it in, by a curator from its card
+ * (#2035): the East Side Gallery is street art that Wikidata types an art
+ * museum, so Public art's run never finds it. Admitted, `verified` and
+ * published at once, as a manual create's membership is, and pinned on its
+ * admission and, where one was given, its type, so a later run's admission
+ * sweep leaves it and a run that does list it keeps the curator's type. The pin carries no verdict: no
+ * rule answered the place, so a run has nothing to ask again about it.
+ *
+ * Its id within the source is a Wikidata item the place already carries on
+ * another membership, so a run of the kind's source that later lists the item
+ * writes this membership rather than a second one; a place with none keeps its
+ * own key. Another place of the source holding that item is the unique
+ * violation the handler answers.
+ */
+export async function insertCuratorKindMembership(
+  client: PoolClient,
+  lock: LockedExperience,
+  sourceId: number,
+  type: string | null,
+): Promise<number> {
+  const inserted = await client.query<{ id: number }>(`
+    INSERT INTO ${MEMBERSHIPS} (
+      experience_id, kind_id, source_id, external_id, type, admission, curated_fields, curation_state, published_at
+    )
+    VALUES (
+      $1, (SELECT kind_id FROM experience_sources WHERE id = $2), $2,
+      COALESCE(
+        (SELECT other.external_id FROM ${MEMBERSHIPS} other
+          WHERE other.experience_id = $1 AND other.external_id ~ '^Q[0-9]+$'
+          ORDER BY other.id LIMIT 1),
+        (SELECT external_id FROM experiences WHERE id = $1)
+      ),
+      $3::text, 'admitted',
+      -- A type is claimed only where one was given, so a run may still file one.
+      CASE WHEN $3::text IS NULL THEN '["admission"]' ELSE '["admission", "type"]' END::jsonb,
+      'verified', NOW()
+    )
+    RETURNING id
+  `, [lock.id, sourceId, type]);
+  return inserted.rows[0].id;
+}

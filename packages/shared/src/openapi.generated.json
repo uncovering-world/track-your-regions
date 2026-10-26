@@ -6480,7 +6480,8 @@
                 "identifier_settled",
                 "separated",
                 "kept_out",
-                "merge_proposal_taken_back"
+                "merge_proposal_taken_back",
+                "kind_added"
               ]
             }
           },
@@ -6615,7 +6616,8 @@
                 "identifier_settled",
                 "separated",
                 "kept_out",
-                "merge_proposal_taken_back"
+                "merge_proposal_taken_back",
+                "kind_added"
               ]
             }
           },
@@ -14096,6 +14098,64 @@
             }
           }
         }
+      },
+      "post": {
+        "operationId": "postExperiencesByIdKinds",
+        "summary": "Put a place into a kind no run offers it in; take it out again with keep-out",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddToKindBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KindAddedToPlace"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/experiences/{id}/keep-out": {
@@ -16260,6 +16320,47 @@
           "ruleText"
         ]
       },
+      "AddToKindBody": {
+        "type": "object",
+        "properties": {
+          "kindId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "type": {
+            "description": "The type within the kind, from its vocabulary; absent for a kind that has none.",
+            "type": "string",
+            "maxLength": 100
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "kindId"
+        ]
+      },
+      "AddableKind": {
+        "type": "object",
+        "properties": {
+          "kindId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "kindName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kindId",
+          "kindName"
+        ],
+        "additionalProperties": false,
+        "description": "A kind the caller may put the place into (#2035)."
+      },
       "AdjacencyEdge": {
         "type": "object",
         "properties": {
@@ -16407,6 +16508,10 @@
               "null"
             ]
           },
+          "added": {
+            "type": "boolean",
+            "description": "Whether the answer is a curator's add to a kind no run offered the place in (#2035), listed here once a run came to list it: a put-back of nothing, since no rule turned it down."
+          },
           "questioned": {
             "type": "boolean",
             "description": "Whether a run no longer agrees with it, and the review queue asks about it (#1367)."
@@ -16426,6 +16531,7 @@
           "answeredAt",
           "note",
           "curatorName",
+          "added",
           "questioned",
           "canHandBack"
         ],
@@ -20198,7 +20304,8 @@
               "identifier_settled",
               "separated",
               "kept_out",
-              "merge_proposal_taken_back"
+              "merge_proposal_taken_back",
+              "kind_added"
             ]
           },
           "region_id": {
@@ -20372,7 +20479,8 @@
               "identifier_settled",
               "separated",
               "kept_out",
-              "merge_proposal_taken_back"
+              "merge_proposal_taken_back",
+              "kind_added"
             ]
           },
           "created_at": {
@@ -26298,6 +26406,34 @@
         "additionalProperties": false,
         "description": "A curator's refusal of a published place from one of its kinds, from the place's own card (#2022)."
       },
+      "KindAddedToPlace": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The membership the add wrote: admitted, published and pinned."
+          },
+          "kindId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "experienceId",
+          "membershipId",
+          "kindId"
+        ],
+        "additionalProperties": false,
+        "description": "A place put into a kind no run offers it in, by a curator from its card (#2035)."
+      },
       "LearnedRule": {
         "type": "object",
         "properties": {
@@ -29354,6 +29490,10 @@
               "null"
             ]
           },
+          "added": {
+            "type": "boolean",
+            "description": "Whether a curator put the place into this kind by hand, no run offering it there (#2035)."
+          },
           "answeredAt": {
             "anyOf": [
               {
@@ -29365,17 +29505,17 @@
                 "type": "null"
               }
             ],
-            "description": "When a curator kept it out."
+            "description": "When a curator kept it out, or added it."
           },
           "note": {
-            "description": "The curator's words on keeping it out.",
+            "description": "The curator's words on keeping it out, or on adding it.",
             "type": [
               "string",
               "null"
             ]
           },
           "curatorName": {
-            "description": "Who kept it out, as they chose to be named; null where they chose nothing or the act lies outside the caller's regions, as in the curation log.",
+            "description": "Who kept it out or added it, as they chose to be named; null where they chose nothing or the act lies outside the caller's regions, as in the curation log.",
             "type": [
               "string",
               "null"
@@ -29393,6 +29533,7 @@
           "type",
           "state",
           "reason",
+          "added",
           "answeredAt",
           "note",
           "curatorName",
@@ -29409,13 +29550,21 @@
             "items": {
               "$ref": "#/components/schemas/PlaceKindStanding"
             }
+          },
+          "addable": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AddableKind"
+            },
+            "description": "The kinds the place has no membership in, World Heritage Sites aside, whose source the caller's scope reaches."
           }
         },
         "required": [
-          "kinds"
+          "kinds",
+          "addable"
         ],
         "additionalProperties": false,
-        "description": "Every kind a place belongs to, for the curator's card (#2022)."
+        "description": "Every kind a place belongs to, for the curator's card (#2022), and the kinds it may be added to."
       },
       "PlaceKindState": {
         "type": "string",

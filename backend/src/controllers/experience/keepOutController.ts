@@ -33,10 +33,11 @@ import { createError, notFound, Refusal } from '../../middleware/errorHandler.js
 import type { idParamSchema, keepOutOfKindBodySchema } from '../../types/index.js';
 import { CURATOR_REFUSAL_REASON } from './curatorRefusalController.js';
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
+import { addableKinds } from './kindAddController.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { refuseOnMembership } from './membershipWriter.js';
 import { queueScopeSql } from './reviewQueueKeys.js';
-import { PINNED_BY } from './reviewQueuePinQuestions.js';
+import { ADDED_BY, ADDED_BY_CURATOR, PINNED_BY } from './reviewQueuePinQuestions.js';
 
 type KeepOut = z.output<typeof keepOutOfKindBodySchema>;
 
@@ -113,7 +114,8 @@ export async function keepOutUnderLock(
 
 /**
  * Every kind of the place and where it stands, with who kept it out and why
- * where a curator did. Read by a curator whose scope reaches the place, as its
+ * where a curator did, or who added it, and the kinds it may still be added to
+ * (`addableKinds`). Read by a curator whose scope reaches the place, as its
  * identifiers and its history are; a kind of it outside that scope is listed,
  * so the card says the whole truth about the place, and marked as one they
  * cannot answer.
@@ -126,14 +128,20 @@ export async function listPlaceKinds(
   const { permitted } = await resolveExperienceScope(caller.id, caller.role, experienceId, 'place');
   if (!permitted) throw createError('You do not have curator permissions for this experience', 403);
   const isAdmin = caller.role === 'admin';
+  // Who answered is said for a curator's refusal, off its latest act, and for a
+  // curator's add, off the add itself: a put-back since does not make it a run's.
+  const keptOut = `m.admission = 'refused' AND ${admissionPinnedSql('m')}`;
+  const added = `m.admission = 'admitted' AND ${admissionPinnedSql('m')} AND ${ADDED_BY_CURATOR}`;
+  const answer = (column: string) => `CASE WHEN ${added} THEN added_by.${column} WHEN ${keptOut} THEN pinned_by.${column} END`;
   // The name of who answered follows the curation log's own rule, as the pins list does.
   const nameVisible = isAdmin
     ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists('m.source_id')} OR pinned_by.region_id IS NULL
-        OR pinned_by.region_id IN (SELECT id FROM curator_scoped_regions))`;
+    : `(${curatorUnrestrictedScopeExists('m.source_id')} OR ${answer('region_id')} IS NULL
+        OR ${answer('region_id')} IN (SELECT id FROM curator_scoped_regions))`;
+  const answered = `((${keptOut}) OR (${added}))`;
   const result = await pool.query<{
     membership_id: number; kind_id: number; kind_name: string; type: string | null;
-    state: 'offered' | 'waiting' | 'kept-out' | 'refused'; reason: string | null;
+    state: 'offered' | 'waiting' | 'kept-out' | 'refused'; reason: string | null; added: boolean;
     answered_at: Date | null; note: string | null; curator_name: string | null; can_answer: boolean;
   }>(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT m.id AS membership_id, kd.id AS kind_id, kd.name AS kind_name, m.type,
@@ -142,18 +150,19 @@ export async function listPlaceKinds(
                 WHEN ${admissionPinnedSql('m')} THEN 'kept-out'
                 ELSE 'refused' END AS state,
            CASE WHEN m.admission = 'refused' THEN m.admission_reason END AS reason,
-           CASE WHEN m.admission = 'refused' AND ${admissionPinnedSql('m')} THEN pinned_by.at END AS answered_at,
+           COALESCE(${added}, FALSE) AS added,
+           ${answer('at')} AS answered_at,
            -- The words stay with the scope, as the pins list keeps a pin out of view outside it.
-           CASE WHEN m.admission = 'refused' AND ${admissionPinnedSql('m')} AND ${queueScopeSql(isAdmin, 'm.source_id')}
-                THEN pinned_by.note END AS note,
-           CASE WHEN m.admission = 'refused' AND ${admissionPinnedSql('m')} AND ${nameVisible}
+           CASE WHEN ${queueScopeSql(isAdmin, 'm.source_id')} THEN ${answer('note')} END AS note,
+           CASE WHEN ${answered} AND ${nameVisible}
                 THEN u.display_name END AS curator_name,
            ${queueScopeSql(isAdmin, 'm.source_id')} AS can_answer
       FROM experiences e
       JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
       JOIN ${KINDS} kd ON kd.id = m.kind_id
       ${PINNED_BY}
-      LEFT JOIN users u ON u.id = pinned_by.curator_id
+      ${ADDED_BY}
+      LEFT JOIN users u ON u.id = ${answer('curator_id')}
      WHERE e.id = $2
      ORDER BY kd.display_priority, kd.name, m.id
   `, [caller.id, experienceId]);
@@ -166,10 +175,12 @@ export async function listPlaceKinds(
       type: row.type,
       state: row.state,
       reason: row.reason,
+      added: row.added,
       answeredAt: row.answered_at?.toISOString() ?? null,
       note: row.note,
       curatorName: row.curator_name,
       canAnswer: row.can_answer,
     })),
+    addable: await addableKinds(experienceId, caller),
   };
 }

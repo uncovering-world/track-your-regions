@@ -14,6 +14,7 @@ import {
   IdentifierSettled,
   VisitQuestionAnswered,
   KeptOutOfKind,
+  KindAddedToPlace,
   PlaceKindStandings,
   AdmissionPins,
   AdmissionPinHandedBack,
@@ -103,6 +104,7 @@ import {
   settlePlaceIdentifier,
   answerVisitQuestion,
   keepOutOfKind,
+  addPlaceToKind,
   listPlaceKinds,
   listAdmissionPins,
   handBackPin,
@@ -146,6 +148,7 @@ import {
   identifierVerdictBodySchema,
   visitQuestionAnswerBodySchema,
   keepOutOfKindBodySchema,
+  addToKindBodySchema,
   admissionPinsQuerySchema,
   handBackPinBodySchema,
   refuseArrivalBodySchema,
@@ -590,6 +593,16 @@ export const experienceCurationRoutes = [
     body: keepOutOfKindBodySchema,
     response: KeptOutOfKind,
     handler: keepOutOfKind,
+  }),
+  // And putting a place into a kind no run offers it in (#2035): a membership
+  // row and a log row in one transaction, limited as the refusal is.
+  defineRoute({
+    method: 'post', path: '/:id/kinds', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Put a place into a kind no run offers it in; take it out again with keep-out',
+    params: idParamSchema,
+    body: addToKindBodySchema,
+    response: KindAddedToPlace,
+    handler: addPlaceToKind,
   }),
   // Hand back a pin with no question asked (#1369): one membership row and one
   // log row in one transaction, limited as the pin's other answers are.
