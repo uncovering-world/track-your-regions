@@ -211,18 +211,30 @@ export function somePointShownSql(place: string, point: string, where: string, j
 }
 
 /**
- * What a reader calls the point `point`: its own name, else the name of the
- * part place it is the point of (#1924). A place another kind brought and a
- * merge made a site's part carries its name on the part row, and its point,
+ * What a reader calls the point `point`: its own name, else what the part
+ * place it is the point of is called (#1924). A place another kind brought and
+ * a merge made a site's part carries its name on the part row, and its point,
  * which that kind placed, none of its own: Etchmiadzin Cathedral's point was
- * listed by its coordinates. A point of no part keeps its null, which the web
- * labels by the reference or the coordinate (`locationLabel`). The curator's
- * reads keep `name` as the source wrote it, since what the source listed is
- * what a curator corrects.
+ * listed by its coordinates. A name that names nothing (`names_nothing()`: the
+ * World Heritage list calls two parts of Tarraco "The ") counts as none (#2065).
+ * A part with no kind of its own lends the title of its point's Wikipedia
+ * article, "Roman villa of Centcelles", rather than its name: where there is no
+ * article that name is the site's with the reference, which beside the site's
+ * other points would repeat both. Any other point keeps its null, which the web
+ * labels by the reference or the coordinate (`locationLabel`): "1708-003" for a
+ * section of the Via Appia. The title is read only off a point that has an
+ * article, since this runs on every row of the world layer's markers. The
+ * curator's reads keep `name` as the source wrote it, since what the source
+ * listed is what a curator corrects.
  */
 export function pointNameSql(point = 'el'): string {
-  return `COALESCE(NULLIF(${point}.name, ''),
-          (SELECT prt_name.name FROM experience_parts pop
+  return `COALESCE(CASE WHEN NOT names_nothing(${point}.name) THEN ${point}.name END,
+          (SELECT CASE WHEN EXISTS (SELECT 1 FROM experience_kind_memberships prt_kind
+                                     WHERE prt_kind.experience_id = pop.part_id)
+                       THEN prt_name.name
+                       WHEN ${point}.metadata ? 'wikipediaUrl'
+                       THEN wikipedia_article_title(${point}.metadata->>'wikipediaUrl') END
+             FROM experience_parts pop
              JOIN experiences prt_name ON prt_name.id = pop.part_id
             WHERE pop.part_id = ${point}.experience_id LIMIT 1))`;
 }
