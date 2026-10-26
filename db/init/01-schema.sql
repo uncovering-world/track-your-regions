@@ -2753,6 +2753,17 @@ BEGIN
     END IF;
 END $$;
 
+-- A kind's own fact is never the place's (ADR-0153): it lives on the kind's
+-- membership (`experience_kind_memberships.facts`), where no other kind's run
+-- writes over it. The readership notes are the keys three runs once kept them
+-- under. db/migrations/178-a-kind-keeps-its-own-facts.sql moves what a
+-- database already holds.
+ALTER TABLE experiences DROP CONSTRAINT IF EXISTS experiences_metadata_holds_no_kind_fact_check;
+ALTER TABLE experiences ADD CONSTRAINT experiences_metadata_holds_no_kind_fact_check
+    CHECK (NOT (metadata ?| ARRAY['year', 'creators', 'wikidataArtwork', 'wikidataClasses', 'artworkCount',
+                                  'totalArtworkSitelinks', 'archaeologyNature', 'wikipediaCategories', 'admissionNote',
+                                  'museumReadershipNote', 'worshipReadershipNote', 'publicArtReadershipNote']));
+
 -- Spatial indexes for experiences
 CREATE INDEX IF NOT EXISTS idx_experiences_location ON experiences USING GIST(location);
 CREATE INDEX IF NOT EXISTS idx_experiences_boundary ON experiences USING GIST(boundary) WHERE boundary IS NOT NULL;
@@ -3036,6 +3047,9 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     -- The label the source sent, before a twin's suffix (#1967).
     reported_label TEXT,
     wikidata_items TEXT[],
+    -- The kind's own facts about the place, written whole by its run every
+    -- pass: a monument's year and makers, the classes its rule read (ADR-0153).
+    facts JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (experience_id, kind_id),
@@ -3062,6 +3076,10 @@ ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_wikipedia_url TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_label TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS wikidata_items TEXT[];
+-- db/migrations/178-a-kind-keeps-its-own-facts.sql for a database whose places
+-- still hold them.
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS facts JSONB NOT NULL DEFAULT '{}'::jsonb;
+COMMENT ON COLUMN experience_kind_memberships.facts IS 'The kind''s own facts about the place (year, creators, wikidataClasses, artworkCount, admissionNote, ...), written whole by the source''s run every pass. No other kind''s run writes them, and a refused membership keeps its own (ADR-0153, #1775).';
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_verdict VARCHAR(10);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_reason TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_question_verdict VARCHAR(10);
