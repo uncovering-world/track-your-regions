@@ -422,17 +422,4 @@ describe('public art in the place pass', () => {
     ]);
     expect(upsertSingleLocation).not.toHaveBeenCalled();
   });
-
-  it('tells two landmarks of one name apart by where the description puts them', async () => {
-    mockedCollect.mockReturnValue({
-      items: [
-        landmark({ qid: 'Q1', label: 'Victoria Memorial', description: 'memorial in London' }),
-        landmark({ qid: 'Q2', label: 'Victoria Memorial', description: 'monument in Kolkata, India' }),
-      ],
-      fetched: 2, filtered: [],
-    });
-    const config = await configOf();
-    const { items } = await config.fetchItems(progress(), []);
-    expect(items.map((i) => i.label)).toEqual(['Victoria Memorial (London)', 'Victoria Memorial (Kolkata)']);
-  });
 });

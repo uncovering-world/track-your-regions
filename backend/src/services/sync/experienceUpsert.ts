@@ -92,6 +92,7 @@ import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockIdentifiedPlace, lockSourcedExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
 import { fieldsKeptAsStored, keptAsStored, reportedArticle } from './sourceView.js';
+import { catalogueName, type NamedRecord } from './nameTwins.js';
 
 export interface ExperienceUpsertParams {
   sourceId: number;
@@ -469,7 +470,12 @@ async function shortMovePasses(
   return Boolean(result.rows[0]?.passes);
 }
 
-async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutcome> {
+/** What a record is named from (#1967). */
+function namedRecord(params: ExperienceUpsertParams): NamedRecord {
+  return { sourceId: params.sourceId, label: params.name, description: params.subtitle };
+}
+
+async function previewUpsert(sent: ExperienceUpsertParams): Promise<UpsertOutcome> {
   // The place the run would write: its own membership's, or else the one an
   // item identifies, as the run finds it (unlocked, since nothing is written).
   const result = await pool.query(
@@ -483,8 +489,10 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
                                             AND kin.kind_id = (SELECT kind_id FROM experience_sources WHERE id = $1))
                        ORDER BY pi.experience_id LIMIT 1)
                      LIMIT 1)`, '$2'),
-    [params.sourceId, params.externalId, identifyingItems(params)],
+    [sent.sourceId, sent.externalId, identifyingItems(sent)],
   );
+  // Named as the run would name it (#1967).
+  const params = { ...sent, name: await catalogueName(pool, namedRecord(sent), result.rows[0]?.id ?? null) };
 
   if (result.rows.length === 0) {
     const incoming = snapshotFromParams(params, await incomingOutline(pool, params, null));
@@ -702,16 +710,19 @@ function fileKeyMove(changeSet: ChangeSetResult, from: string | undefined, to: s
 
 async function writeUnderLock(
   client: PoolClient,
-  params: ExperienceUpsertParams,
+  sent: ExperienceUpsertParams,
   syncLogId: number | null,
 ): Promise<UpsertOutcome> {
   // The lock first, in a statement of its own — the mode every curator write
   // takes on the same row. A place the run has not created yet locks nothing
   // and holds nothing: the insert writes every column.
-  const locked = await lockSourcedExperience(client, params.sourceId, params.externalId)
+  const locked = await lockSourcedExperience(client, sent.sourceId, sent.externalId)
     // No membership of the run's own: the place an item identifies, which the
     // run joins rather than creating a copy (ADR-0143 decision 3).
-    ?? await lockIdentifiedPlace(client, params.sourceId, identifyingItems(params));
+    ?? await lockIdentifiedPlace(client, sent.sourceId, identifyingItems(sent));
+  // The name the record is written under, a twin's suffix decided over the
+  // whole catalogue (#1967); the label as sent is recorded on the membership.
+  const params = { ...sent, name: await catalogueName(client, namedRecord(sent), locked?.id ?? null) };
   const redirectedFrom = await moveMembershipKey(client, locked, params);
   // The row as it stands under that lock, and the hold decided on the same
   // snapshot. A second statement rather than columns of the locking one: a
@@ -921,7 +932,7 @@ async function writeUnderLock(
         experience_id, kind_id, source_id, external_id, type, admitted_for, curation_state, published_at,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at,
         reported_name, reported_subtitle, reported_image_url, reported_location, reported_image_credit,
-        reported_wikipedia_url, wikidata_items
+        reported_wikipedia_url, wikidata_items, reported_label
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
@@ -932,7 +943,7 @@ async function writeUnderLock(
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
              CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END,
              $15, $15, NOW(),
-             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb, $35::text, $27::text[]
+             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb, $35::text, $27::text[], $36::text
         FROM ins
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
@@ -969,6 +980,7 @@ async function writeUnderLock(
         reported_location = EXCLUDED.reported_location,
         reported_image_credit = EXCLUDED.reported_image_credit,
         reported_wikipedia_url = EXCLUDED.reported_wikipedia_url,
+        reported_label = EXCLUDED.reported_label,
         wikidata_items = COALESCE(EXCLUDED.wikidata_items, ${MEMBERSHIPS}.wikidata_items),
         updated_at = NOW()
       RETURNING pending_change_sync_log_id
@@ -1025,6 +1037,9 @@ async function writeUnderLock(
       params.readsExtents ?? false,
       // The article the run reported, the last field of its view (#1975).
       reportedArticle(params),
+      // The label before a twin's suffix, which the next record's twin check
+      // compares (#1967).
+      sent.name,
     ]
   );
 

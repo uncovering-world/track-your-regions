@@ -305,20 +305,6 @@ async function upsertLandmarkExperience(
   };
 }
 
-function disambiguateDuplicateNames(landmarks: WikidataLandmark[]): void {
-  const nameCounts = new Map<string, number>();
-  for (const lm of landmarks) {
-    nameCounts.set(lm.label, (nameCounts.get(lm.label) || 0) + 1);
-  }
-  for (const lm of landmarks) {
-    if ((nameCounts.get(lm.label) || 0) <= 1 || !lm.description) continue;
-    // Extract a short location hint from the description (e.g., "in Berlin-Tiergarten").
-    // Negated class avoids backtracking across stop chars.
-    const match = lm.description.match(/\bin\s+([^,.\n]+)/i);
-    if (match) lm.label = `${lm.label} (${match[1].trim()})`;
-  }
-}
-
 /**
  * Decide from the gather, and ask Commons about the pictures of what was
  * admitted.
@@ -340,8 +326,6 @@ async function fetchLandmarkItems(
 
   const { gathered, sparql } = await gather(progress);
   const { items, fetched, filtered } = await classifier.classify(gathered, admitted, sparql);
-
-  disambiguateDuplicateNames(items);
 
   // After the decision, so the credit pass asks about the rows that will exist
   // rather than every candidate the pool named. Its own patience: the
