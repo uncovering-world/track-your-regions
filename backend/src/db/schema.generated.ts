@@ -374,6 +374,7 @@ export interface ExperienceKindMembershipsRow {
   reported_wikipedia_url: string | null;
   reported_label: string | null;
   wikidata_items: string[] | null;
+  facts: unknown;
   created_at: Date;
   updated_at: Date;
 }
