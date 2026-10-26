@@ -1,7 +1,7 @@
 # ADR-0109: A field belongs to the family of sources that brings it
 
 **Date:** 2026-10-15
-**Status:** Accepted — decisions 1 and 3 narrowed by [ADR-0111](0111-a-shared-field-that-names-a-familys-own-field-goes-with-it.md), decision 2 narrowed by [ADR-0138](0138-unescos-page-about-a-site-is-kept-by-every-other-familys-run.md)
+**Status:** Accepted — decisions 1 and 3 narrowed by [ADR-0111](0111-a-shared-field-that-names-a-familys-own-field-goes-with-it.md), decision 2 narrowed by [ADR-0138](0138-unescos-page-about-a-site-is-kept-by-every-other-familys-run.md), decisions 1 and 2 narrowed by [ADR-0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md)
 **Issue:** [#1534](https://github.com/uncovering-world/track-your-regions/issues/1534)
 **Narrows:** [ADR-0084](0084-a-place-belongs-to-no-source-and-no-kind.md) decision 4, for the fields it left unsaid
 
