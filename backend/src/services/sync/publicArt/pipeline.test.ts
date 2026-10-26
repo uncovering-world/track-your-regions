@@ -6,8 +6,18 @@
  * Wikidata holds and read what the catalogue would make of it.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// The street-art entrance's reads of the database (#2035): no copy of English
+// Wikipedia's categories unless a test names one, and no held street-art place.
+vi.mock('../../dumps/wikipedia/structureTables.js', () => ({ latestStructure: vi.fn(async () => null) }));
+vi.mock('../wikipediaStructure.js', () => ({ structureItemsInCategories: vi.fn(async () => []) }));
+vi.mock('../admission.js', () => ({ admittedExternalIds: vi.fn(async () => new Set()) }));
+
 import { classifyPublicArt, openArtworkDoor, PUBLIC_ART_KIND, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
+import type { StreetArtReading } from './streetArtPlaces.js';
+import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
+import { structureItemsInCategories } from '../wikipediaStructure.js';
 import { artworkDoorNote, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
 import { gatherPlaces, shareOf } from '../places/gather.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './kindRules.js';
@@ -33,6 +43,8 @@ interface Fixture {
   /** `P195`: whose collection it is in. */
   collections?: string[];
   creators?: string[];
+  /** `P136`: the genres it is filed under. */
+  genres?: string[];
 }
 
 /** A cast of a group of casts: its item, where it stands, its classes (#880). */
@@ -128,6 +140,10 @@ function doorTo(world: World, asked: CacheDescriptor['kind'][] = []): QueryRunne
     if (query.startsWith('SELECT ?e ?cls')) return Promise.resolve(factsOf(world, query));
     if (query.startsWith('SELECT ?g ?cast')) return Promise.resolve(castsOf(world, query));
     if (query.startsWith('SELECT ?c ?cLabel')) return Promise.resolve(containersOf(world, query));
+    if (query.includes('wdt:P136 ?g')) {
+      const genres = new Set(named(query));
+      return Promise.resolve(world.entities.filter((f) => f.genres?.some((g) => genres.has(g))).map((f) => ({ e: ref(f.qid) })));
+    }
     return Promise.resolve(poolOf(world, query));
   };
   return { sparql, phase: () => {}, step: () => Promise.resolve() };
@@ -624,5 +640,101 @@ describe('the readership door (#2033)', () => {
     expect(asked[0].held).toBe(admitted);
     // No door while the source's gate is off: the run admits by its line alone.
     expect(await openArtworkDoor(undefined, gathered, admitted, PUBLIC_ART_RULE)).toBeNull();
+  });
+});
+
+describe('the street-art places (#2035)', () => {
+  const WALL = 'Q42948';
+  const ROAD = 'Q34442';
+  const STREET_ART = 'Q17516';
+  const LENNON_WALL = 'Q1630131';
+  const HOSIER_LANE = 'Q5908090';
+  const world: World = {
+    worshipTree: [CATHEDRAL],
+    entities: [
+      // Filed under a graffiti category, typed a wall: no class of the kind names it.
+      { qid: LENNON_WALL, label: 'Lennon Wall', under: '', sitelinks: 25, coord: 'Point(14.4067 50.0864)', classes: [WALL] },
+      // Filed under the genre street art, typed a road.
+      { qid: HOSIER_LANE, label: 'Hosier Lane', under: '', sitelinks: 4, coord: 'Point(144.9691 -37.8166)', classes: [ROAD], genres: [STREET_ART] },
+      // A cathedral a category files for its graffiti.
+      { qid: 'Q9', label: 'A painted cathedral', under: '', sitelinks: 30, classes: [CATHEDRAL] },
+      // A sculpture a category files too: the kind's own.
+      { qid: 'Q8', label: 'A sculpture with a tag on it', under: SCULPTURE, sitelinks: ENTER_SITELINKS, classes: [SCULPTURE] },
+      // A monument the kind's classes name, filed under a category, with no mark.
+      { qid: 'Q7', label: 'A sprayed monument', under: MONUMENT, sitelinks: 5, classes: [MONUMENT] },
+      // Named by the category alone, with one mark.
+      { qid: 'Q6', label: 'A local underpass', under: '', sitelinks: 2, classes: [WALL] },
+    ],
+  };
+  const reading = (over: Partial<StreetArtReading> = {}): StreetArtReading => ({
+    marks: new Map([
+      [LENNON_WALL, { atlasObscura: true, ended: false }],
+      [HOSIER_LANE, { atlasObscura: true, ended: false }],
+      ['Q9', { atlasObscura: true, ended: false }],
+      ['Q6', { atlasObscura: true, ended: false }],
+    ]),
+    guided: new Set([LENNON_WALL, 'Q9']),
+    readers: new Map([[LENNON_WALL, 120_000], [HOSIER_LANE, 40_000], ['Q9', 50_000], ['Q6', 900]]),
+    roots: new Map(),
+    ...over,
+  });
+  const withCopy = () => {
+    vi.mocked(latestStructure).mockResolvedValueOnce({ dumpDate: '2026-10-01', swappedAt: new Date(), needs: {} as never });
+    vi.mocked(structureItemsInCategories).mockResolvedValueOnce([LENNON_WALL, 'Q9', 'Q8', 'Q7', 'Q6']);
+  };
+
+  it('brings in what a category or the genre files, and tells apart what only the entrance named', async () => {
+    withCopy();
+    const gathered = await gatherPublicArt(doorTo(world), new Set());
+    expect([...gathered.entered].sort()).toEqual([HOSIER_LANE, LENNON_WALL, 'Q6', 'Q7', 'Q8', 'Q9'].sort());
+    expect([...gathered.enteredOnly].sort()).toEqual([HOSIER_LANE, LENNON_WALL, 'Q6', 'Q9'].sort());
+  });
+
+  it('admits a street-art place by its marks, refuses another kind\'s place by name, and leaves the tail unsaid', async () => {
+    withCopy();
+    const gathered = await gatherPublicArt(doorTo(world), new Set());
+    const { items, filtered } = classifyPublicArt(gathered, PUBLIC_ART_RULE, new Set(), undefined, null, reading());
+
+    expect(items.map((i) => [i.qid, i.type, i.artwork])).toEqual([
+      [LENNON_WALL, 'street-art', true],
+      ['Q8', 'sculpture', true],
+      [HOSIER_LANE, 'street-art', true],
+    ]);
+    expect(filtered).toEqual([
+      { externalId: 'Q9', name: 'A painted cathedral', reason: 'a place of worship: not a street-art place' },
+      // Named by a class of the kind too: it keeps the kind's reason.
+      { externalId: 'Q7', name: 'A sprayed monument', reason: 'no public-art class' },
+    ]);
+  });
+
+  it('keeps a held street-art place on one mark, and refuses it by the line below that', async () => {
+    withCopy();
+    const held = new Set([LENNON_WALL]);
+    const gathered = await gatherPublicArt(doorTo(world), held);
+    const kept = classifyPublicArt(gathered, PUBLIC_ART_RULE, held, undefined, null, reading({ guided: new Set() }));
+    expect(kept.items.map((i) => i.qid)).toContain(LENNON_WALL);
+
+    const fell = classifyPublicArt(gathered, PUBLIC_ART_RULE, held, undefined, null, reading({
+      marks: new Map(), guided: new Set(), readers: new Map([[LENNON_WALL, 3_000]]),
+    }));
+    expect(fell.items.map((i) => i.qid)).not.toContain(LENNON_WALL);
+    expect(fell.filtered).toContainEqual(expect.objectContaining({
+      externalId: LENNON_WALL, type: 'street-art', reason: expect.stringContaining('below the street-art line'),
+    }));
+  });
+
+  it('is not Monuments & memorials\' to decide: what only the entrance named is skipped there', async () => {
+    withCopy();
+    const gathered = await gatherPublicArt(doorTo(world), new Set());
+    const { items, filtered } = classifyPublicArt(gathered, MONUMENTS_RULE, new Set());
+    const ids = [...items, ...filtered].map((row) => 'qid' in row ? row.qid : row.externalId);
+    expect(ids).not.toContain(LENNON_WALL);
+    expect(ids).not.toContain(HOSIER_LANE);
+    expect(ids).not.toContain('Q9');
+  });
+
+  it('reads the genre alone when no copy of the categories is built', async () => {
+    const gathered = await gatherPublicArt(doorTo(world), new Set());
+    expect([...gathered.entered]).toEqual([HOSIER_LANE]);
   });
 });

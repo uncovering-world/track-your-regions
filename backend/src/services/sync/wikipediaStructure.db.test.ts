@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
-import { structureCategories, structureCategoryReads } from './wikipediaStructure.js';
+import { structureCategories, structureCategoryReads, structureItemsInCategories } from './wikipediaStructure.js';
+import { NOT_A_PLACE_CATEGORY, STREET_ART_CATEGORY } from './publicArt/streetArtTest.js';
 
 /**
  * English Wikipedia's categories read from the copy of its structure (#1440),
@@ -9,6 +10,7 @@ import { structureCategories, structureCategoryReads } from './wikipediaStructur
  * fixture tree: a root, a country category the walk follows, a regional one
  * under it, a sibling of another kind it does not follow, and an unfollowed
  * museum category whose eponymous article the walk takes with its shelf.
+ * Beside it, the street-art categories (#2035): one of places, one of people.
  */
 
 const pages: Array<[number, 0 | 14, string]> = [
@@ -22,16 +24,19 @@ const pages: Array<[number, 0 | 14, string]> = [
   [102, 0, 'Fixture_Byzantine_Museum'],
   [103, 0, 'Fixture_National_Museum'],
   [104, 0, 'Fixture_Itemless_Museum'],
+  [105, 0, 'Fixture_Lennon_Wall'],
+  [106, 0, 'Fixture_Street_Artist'],
 ];
-const items: Array<[number, string]> = [[100, 'Q98461'], [101, 'Q98462'], [102, 'Q98463'], [103, 'Q98464']];
+const items: Array<[number, string]> = [[100, 'Q98461'], [101, 'Q98462'], [102, 'Q98463'], [103, 'Q98464'], [105, 'Q98465'], [106, 'Q98466']];
 const categories: Array<[number, string]> = [
   [1, 'Fixture_archaeological_museums'], [2, 'Fixture_archaeological_museums_in_Atlantis'],
   [3, 'Fixture_archaeological_museums_in_North_Atlantis'], [4, 'Fixture_byzantine_museums_in_Atlantis'], [5, 'Fixture_National_Museum'],
-  [6, 'Museums_in_Atlantis'],
+  [6, 'Museums_in_Atlantis'], [7, 'Graffiti_in_Atlantis'], [8, 'Street_artists_from_Atlantis'],
 ];
 const links: Array<[number, number, boolean]> = [
   [11, 1, true], [12, 2, true], [13, 2, true], [14, 2, true],
   [100, 2, false], [100, 6, false], [101, 3, false], [102, 4, false], [104, 2, false],
+  [105, 7, false], [106, 8, false],
 ];
 
 const ROOT = 'Category:Fixture archaeological museums';
@@ -92,5 +97,12 @@ describe("English Wikipedia's categories, read from the copy (#1440)", () => {
       { title: 'Fixture Itemless Museum', item: null },
       { title: 'Fixture Museum of Atlantis', item: 'Q98461' },
     ]);
+  });
+
+  it('names the items of the articles filed directly under the categories a title rule matches', async () => {
+    expect(await structureItemsInCategories('archaeological_museums', 'north')).toEqual(['Q98461']);
+    expect(await structureItemsInCategories('ARCHAEOLOGICAL_MUSEUMS', '^$')).toEqual(['Q98461', 'Q98462']);
+    expect(await structureItemsInCategories(STREET_ART_CATEGORY, NOT_A_PLACE_CATEGORY)).toEqual(['Q98465']);
+    expect(await structureItemsInCategories('street_art', '^$')).toEqual(['Q98466']);
   });
 });

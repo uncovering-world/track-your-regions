@@ -38,6 +38,8 @@ describe('classifySquares', () => {
     facts: new Map(rows.map(([e, classes]) => [e.qid, { classes }])) as never,
     containers: emptyContainment(),
     subjects: new Map(),
+    entered: new Set(),
+    enteredOnly: new Set(),
   });
 
   it('admits on readers or on a guide, and refuses what the rule refuses', async () => {

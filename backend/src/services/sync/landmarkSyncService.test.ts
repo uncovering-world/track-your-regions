@@ -37,7 +37,10 @@ vi.mock('./publicArt/pipeline.js', () => ({
   PUBLIC_ART_KIND: { name: 'public art' },
   ENTER_SITELINKS: 22,
   openArtworkDoor: vi.fn(),
+  streetArtCandidates: vi.fn(),
 }));
+// What the street-art rule reads (#2035); its own spec is streetArtPlaces.test.ts.
+vi.mock('./publicArt/streetArtPlaces.js', () => ({ readStreetArt: vi.fn() }));
 // The readership door reads the year and the source's gate (#2033); its own spec is readershipDoor.test.ts.
 vi.mock('./readershipDoor.js', () => ({ artworkReadershipDoorFor: vi.fn() }));
 vi.mock('./worship/places.js', () => ({ WORSHIP_KIND: { name: 'places of worship' } }));
@@ -114,7 +117,8 @@ import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { writeExperienceLocations } from './locationWriter.js';
 import { withCache } from './wikidataCache.js';
-import { classifyPublicArt, openArtworkDoor, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
+import { classifyPublicArt, openArtworkDoor, PUBLIC_ART_KIND, streetArtCandidates } from './publicArt/pipeline.js';
+import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { artworkReadershipDoorFor } from './readershipDoor.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { ARCHAEOLOGY_SITE_KIND } from './archaeology/sites.js';
@@ -138,6 +142,10 @@ const GATHERED = {
     [PUBLIC_ART_KIND, SHARE], [WORSHIP_KIND, SHARE], [ARCHAEOLOGY_SITE_KIND, SHARE], [TOWERS_KIND, SHARE], [BRIDGES_KIND, SHARE], [SQUARES_KIND, SHARE],
   ]),
   pooled: 0,
+};
+/** What the street-art rule read of its candidates: the Lennon Wall in Prague, with an Atlas Obscura entry. */
+const STREET_ART_READ = {
+  marks: new Map([['Q1630131', { atlasObscura: true, ended: false }]]), guided: new Set<string>(), readers: null, roots: new Map(),
 };
 const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
 const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
@@ -168,6 +176,8 @@ beforeEach(() => {
   mockedCollect.mockReturnValue({ items: [landmark()], fetched: 1, filtered: [] });
   vi.mocked(artworkReadershipDoorFor).mockResolvedValue(undefined);
   vi.mocked(openArtworkDoor).mockResolvedValue(null);
+  vi.mocked(streetArtCandidates).mockReturnValue(['Q1630131']);
+  vi.mocked(readStreetArt).mockResolvedValue(STREET_ART_READ);
   mockedUpsert.mockResolvedValue({
     experienceId: 7, changeSet: { changeType: 'unchanged' }, nameSnapshot: 'Freedom Monument', returnedFromMissing: false,
   });
@@ -213,6 +223,11 @@ describe('public art in the place pass', () => {
     expect(vi.mocked(artworkReadershipDoorFor)).toHaveBeenCalledWith(3, 22, '[Landmark Sync]');
     expect(vi.mocked(openArtworkDoor)).toHaveBeenCalledWith(undefined, SHARE, new Set(['Q337179']), PUBLIC_ART_RULE, new Set(['Q19675']));
     expect(mockedCollect.mock.calls[0][4]).toBeNull();
+    // And what the street-art rule reads of the candidates it decides (#2035),
+    // asked through the gather's own door.
+    expect(vi.mocked(streetArtCandidates)).toHaveBeenCalledWith(SHARE, PUBLIC_ART_RULE);
+    expect(vi.mocked(readStreetArt)).toHaveBeenCalledWith(expect.any(Function), ['Q1630131'], SHARE.facts);
+    expect(mockedCollect.mock.calls[0][5]).toBe(STREET_ART_READ);
     expect(fetched.fetchedCount).toBe(5);
     expect(fetched.filtered).toEqual([refusal]);
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q337179']);
@@ -227,8 +242,11 @@ describe('public art in the place pass', () => {
     await monuments.fetchItems(progress(), []);
     expect(mockedAdmitted).toHaveBeenCalledWith(6);
     expect(mockedCollect.mock.calls[0][1]).toBe(MONUMENTS_RULE);
-    // Monuments & memorials opens no readership door (#2033).
+    // Monuments & memorials opens no readership door (#2033), and holds no
+    // street-art place (#2035).
     expect(vi.mocked(artworkReadershipDoorFor)).not.toHaveBeenCalled();
+    expect(vi.mocked(readStreetArt)).not.toHaveBeenCalled();
+    expect(mockedCollect.mock.calls[0][5]).toBeNull();
     expect(vi.mocked(openArtworkDoor)).toHaveBeenCalledWith(undefined, SHARE, new Set(), MONUMENTS_RULE, expect.any(Set));
     // A place its sibling offers is not another kind's (#1444).
     expect(vi.mocked(placesOtherSourcesOffer)).toHaveBeenCalledWith([3, 6]);

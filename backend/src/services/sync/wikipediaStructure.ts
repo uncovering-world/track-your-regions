@@ -71,6 +71,25 @@ export async function structureCategories(titles: string[]): Promise<Map<string,
   return categories;
 }
 
+/**
+ * The Wikidata item of every article filed directly under a category whose
+ * title matches `match` and not `except` (case-insensitive POSIX regular
+ * expressions over the title as the dump writes it, underscores for spaces).
+ */
+export async function structureItemsInCategories(match: string, except: string): Promise<string[]> {
+  const result = await pool.query<{ item: string }>(
+    `SELECT DISTINCT i.item
+       FROM enwiki_categories c
+       JOIN enwiki_category_links l ON l.category = c.id AND NOT l.subcat
+       JOIN enwiki_pages p ON p.id = l.page AND p.namespace = 0
+       JOIN enwiki_page_items i ON i.page = p.id
+      WHERE c.title ~* $1 AND c.title !~* $2
+      ORDER BY i.item`,
+    [match, except],
+  );
+  return result.rows.map(row => row.item);
+}
+
 /** The walk's reads asked of the copy: a statement each, no request and no pause. */
 export function structureCategoryReads(): CategoryReads {
   return {
