@@ -8,7 +8,11 @@
  * review page read it. Handing one back takes the claim off and leaves the row
  * to the next run of its source (`handBackAdmissionPin`). A curator's own
  * refusal of an arrival is not handed back: it answered no rule, and its way
- * back is the put-back.
+ * back is the put-back. Nor is a curator's add to a kind no run offers the
+ * place in (`ADDED_BY_CURATOR`), which is not listed either while it stands,
+ * however often it was taken out and put back: no rule turned the place down,
+ * a run that never lists it would refuse it once the pin was gone, and its
+ * way back is the Kinds row's *Take out…*.
  *
  * GET  /api/experiences/review/pins?experienceId=
  * POST /api/experiences/:id/admission-pin/hand-back   { membershipId, note? }
@@ -28,7 +32,7 @@ import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { handBackAdmissionPin } from './membershipWriter.js';
 import { queueScopeSql } from './reviewQueueKeys.js';
-import { PINNED_BY } from './reviewQueuePinQuestions.js';
+import { ADDED_BY, ADDED_BY_CURATOR, PINNED_BY } from './reviewQueuePinQuestions.js';
 
 /** More pins than a curator reads in one list; the answer says when it was cut. */
 const PINS_SHOWN = 500;
@@ -46,21 +50,24 @@ export async function listAdmissionPins(
   const result = await pool.query<{
     experience_id: number; name: string; membership_id: number; kind_name: string;
     answer: 'admitted' | 'refused'; answered_reason: string | null; answered_at: Date | null;
-    note: string | null; curator_name: string | null; questioned: boolean; can_hand_back: boolean;
+    note: string | null; curator_name: string | null; added: boolean; questioned: boolean; can_hand_back: boolean;
   }>(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id AS experience_id, e.name, m.id AS membership_id, kd.name AS kind_name,
            m.admission AS answer, m.admission_pin_reason AS answered_reason,
            COALESCE(pinned_by.at, e.state_decided_at) AS answered_at,
            CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.note ELSE e.state_note END AS note,
            CASE WHEN ${nameVisible} THEN u.display_name END AS curator_name,
+           pinned_by.action IS NOT DISTINCT FROM 'kind_added' AS added,
            m.admission_questioned_at IS NOT NULL AS questioned,
            NOT (m.admission = 'refused' AND m.admission_pin_verdict IS NOT DISTINCT FROM 'admitted') AS can_hand_back
       FROM experiences e
       JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
       JOIN ${KINDS} kd ON kd.id = m.kind_id
       ${PINNED_BY}
+      ${ADDED_BY}
       LEFT JOIN users u ON u.id = pinned_by.curator_id
      WHERE ${admissionPinnedSql('m')}
+       AND NOT (m.admission = 'admitted' AND ${ADDED_BY_CURATOR})
        AND ${queueScopeSql(isAdmin, 'm.source_id')}
        AND ($2::int IS NULL OR e.id = $2)
      ORDER BY kd.display_priority, kd.name, e.name, m.id
@@ -79,6 +86,7 @@ export async function listAdmissionPins(
       answeredAt: row.answered_at?.toISOString() ?? null,
       note: row.note,
       curatorName: row.curator_name,
+      added: row.added,
       questioned: row.questioned,
       canHandBack: row.can_hand_back,
     })),
@@ -126,10 +134,15 @@ export async function handBackPinUnderLock(
     // In a statement after the lock's, so the row read is the one the lock holds (`db/locks.ts`).
     const read = await client.query<{
       admission: 'admitted' | 'refused'; verdict: 'admitted' | 'refused' | null; reason: string | null; kind: string;
+      added: boolean;
     }>(
-      `SELECT m.admission, m.admission_pin_verdict AS verdict, m.admission_pin_reason AS reason, kd.name AS kind
-         FROM ${MEMBERSHIPS} m JOIN ${KINDS} kd ON kd.id = m.kind_id
-        WHERE m.id = $1 AND m.experience_id = $2 AND ${admissionPinnedSql('m')}`,
+      `SELECT m.admission, m.admission_pin_verdict AS verdict, m.admission_pin_reason AS reason, kd.name AS kind,
+              ${ADDED_BY_CURATOR} AS added
+         FROM experiences e
+         JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+         JOIN ${KINDS} kd ON kd.id = m.kind_id
+         ${ADDED_BY}
+        WHERE m.id = $1 AND e.id = $2 AND ${admissionPinnedSql('m')}`,
       [membershipId, experienceId],
     );
     const pin = read.rows[0];
@@ -141,6 +154,12 @@ export async function handBackPinUnderLock(
       return await refuse({
         status: 409,
         error: 'This is a curator’s own refusal, not an answer to a rule — put it back from the kept-out list instead',
+      });
+    }
+    if (pin.added) {
+      return await refuse({
+        status: 409,
+        error: `A curator added this place to ${pin.kind}, and no run lists it there — take it out from its Kinds row instead`,
       });
     }
 

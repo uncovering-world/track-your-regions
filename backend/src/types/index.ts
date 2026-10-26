@@ -735,6 +735,14 @@ export const keepOutOfKindBodySchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+/** A place put into a kind no run offers it in, from its card (#2035): the kind, its type, the curator's words. */
+export const addToKindBodySchema = z.object({
+  kindId: bodyRowIdSchema,
+  type: z.string().max(COLUMN_WIDTHS.experience_kind_memberships.type).optional()
+    .describe('The type within the kind, from its vocabulary; absent for a kind that has none.'),
+  note: z.string().max(1000).optional(),
+});
+
 /**
  * A selection of review rows and one answer for all of them (#852).
  *

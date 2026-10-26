@@ -30,17 +30,18 @@ export interface PinQuestionContext {
  * The curator's act the pin stands on: the latest answer on the membership the
  * log records — a put-back, a confirmation, a refusal of an arrival, a pin
  * kept, a listing verdict that took the place out of the kind, a place with
- * nothing to see refused — and, for an answer logged before memberships were
- * named, the place's.
+ * nothing to see refused, a place added to a kind no run offers it in — and,
+ * for an answer logged before memberships were named, the place's.
  * Over the place `e` and the membership `m`, as `pinned_by`: when, the note,
- * who, and the region the act was logged under, which decides whether a
+ * who, the act, and the region it was logged under, which decides whether a
  * scoped curator may read the name (`getCurationLog`'s rule).
  */
 export const PINNED_BY = `LEFT JOIN LATERAL (
-      SELECT cl.created_at AS at, cl.details->>'note' AS note, cl.curator_id, cl.region_id
+      SELECT cl.created_at AS at, cl.details->>'note' AS note, cl.curator_id, cl.region_id, cl.action
         FROM experience_curation_log cl
        WHERE cl.experience_id = e.id
-         AND (cl.action IN ('admission_overridden', 'admission_confirmed', 'arrival_refused', 'admission_pin_kept', 'kept_out')
+         AND (cl.action IN ('admission_overridden', 'admission_confirmed', 'arrival_refused', 'admission_pin_kept', 'kept_out',
+                            'kind_added')
               -- The listing verdict that took the place out of the kind pins it too.
               OR (cl.action IN ('marked_former', 'missing_dismissed') AND cl.details->>'takenOutOfKind' = 'true')
               -- And a refusal answering a run's question about a place with nothing to see (#1770).
@@ -49,6 +50,32 @@ export const PINNED_BY = `LEFT JOIN LATERAL (
        ORDER BY cl.created_at DESC, cl.id DESC
        LIMIT 1
     ) pinned_by ON TRUE`;
+
+/**
+ * The curator's add that put the place into this kind, when one did (#2035):
+ * when, the note, who, and the region it was logged under. Read off the add
+ * itself, never off the latest act, since a take-out and a put-back later in
+ * its history leave it what it was: a membership no run offers.
+ */
+export const ADDED_BY = `LEFT JOIN LATERAL (
+      SELECT cl.created_at AS at, cl.details->>'note' AS note, cl.curator_id, cl.region_id
+        FROM experience_curation_log cl
+       WHERE cl.experience_id = e.id
+         AND cl.action = 'kind_added'
+         AND (cl.details->>'membershipId')::int = m.id
+       ORDER BY cl.created_at DESC, cl.id DESC
+       LIMIT 1
+    ) added_by ON TRUE`;
+
+/**
+ * Whether the membership `ADDED_BY` read is a curator's add that no run has
+ * listed yet. Admitted, it answers no rule, so it is neither listed among the
+ * pins against one nor handed back to a run: its way back is *Take out…*. The
+ * add is keyed by the place's Wikidata item so that a run which comes to list
+ * the place upserts this same membership; from then on its pin is a pin like
+ * any other, and handing it back leaves the place to that run.
+ */
+export const ADDED_BY_CURATOR = 'added_by.at IS NOT NULL AND m.last_seen_at IS NULL';
 
 export async function queryPinQuestions(ids: number[], ctx: PinQuestionContext): Promise<QueryResult> {
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
