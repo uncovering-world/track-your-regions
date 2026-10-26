@@ -18137,7 +18137,8 @@
                     "name",
                     "subtitle",
                     "imageUrl",
-                    "location"
+                    "location",
+                    "wikipediaUrl"
                   ]
                 },
                 "membershipId": {
@@ -30491,7 +30492,8 @@
               "name",
               "subtitle",
               "imageUrl",
-              "location"
+              "location",
+              "wikipediaUrl"
             ]
           },
           "why": {
@@ -34080,7 +34082,7 @@
             "type": "string"
           },
           "value": {
-            "description": "The name or description as the source reports it; null for a picture or a point.",
+            "description": "The name, subtitle or Wikipedia article as the source reports it; null for a picture or a point.",
             "type": [
               "string",
               "null"
@@ -34142,7 +34144,8 @@
               "name",
               "subtitle",
               "imageUrl",
-              "location"
+              "location",
+              "wikipediaUrl"
             ]
           },
           "views": {
@@ -36140,7 +36143,8 @@
                     "name",
                     "subtitle",
                     "imageUrl",
-                    "location"
+                    "location",
+                    "wikipediaUrl"
                   ]
                 },
                 "membershipId": {
@@ -36204,7 +36208,8 @@
                 "name",
                 "subtitle",
                 "imageUrl",
-                "location"
+                "location",
+                "wikipediaUrl"
               ]
             },
             "description": "The fields answered."
@@ -36217,7 +36222,8 @@
                 "name",
                 "subtitle",
                 "imageUrl",
-                "location"
+                "location",
+                "wikipediaUrl"
               ]
             },
             "description": "The fields whose value the place now shows differently."

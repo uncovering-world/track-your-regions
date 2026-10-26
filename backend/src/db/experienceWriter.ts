@@ -496,12 +496,17 @@ export async function insertSeparatedExperience(
            CASE WHEN m.source_id = $3 AND NOT (COALESCE(e.curated_fields, '[]'::jsonb) ? 'description' AND e.metadata->>'descriptionAdaptedFrom' IS NULL) THEN e.description END, e.tags, COALESCE(m.reported_location, e.location),
            e.country_codes, e.country_names,
            CASE WHEN m.reported_name IS NULL THEN e.image_url ELSE m.reported_image_url END,
-           -- What OpenStreetMap said goes only with the outline it is about.
-           (COALESCE(e.metadata, '{}'::jsonb) - 'imageCredit'
+           -- What OpenStreetMap said goes only with the outline it is about;
+           -- the picture's credit and the article are the view's (#1975). The
+           -- article is read on its own column: a view can hold one without
+           -- having recorded a name.
+           (COALESCE(e.metadata, '{}'::jsonb) - 'imageCredit' - 'wikipediaUrl'
               - CASE WHEN e.boundary_source_id IS NOT DISTINCT FROM m.source_id THEN '' ELSE 'osm' END
               - CASE WHEN m.source_id = $3 THEN '{}'::text[] ELSE ARRAY['unesco', 'descriptionAdaptedFrom'] END)
-             || CASE WHEN m.reported_name IS NULL THEN jsonb_strip_nulls(jsonb_build_object('imageCredit', e.metadata -> 'imageCredit'))
-                     ELSE jsonb_strip_nulls(jsonb_build_object('imageCredit', m.reported_image_credit)) END,
+             || jsonb_strip_nulls(jsonb_build_object(
+                  'imageCredit', CASE WHEN m.reported_name IS NULL THEN e.metadata -> 'imageCredit' ELSE m.reported_image_credit END,
+                  'wikipediaUrl', CASE WHEN m.reported_name IS NULL AND m.reported_wikipedia_url IS NULL
+                                       THEN e.metadata -> 'wikipediaUrl' ELSE to_jsonb(m.reported_wikipedia_url) END)),
            e.status,
            CASE WHEN e.boundary_source_id = m.source_id THEN e.boundary END,
            CASE WHEN e.boundary_source_id = m.source_id THEN e.area_km2 END,

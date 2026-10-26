@@ -10,7 +10,7 @@
  * family writes it as the place holds it, so it proposes nothing about it,
  * while that family has a standing membership on the place, and UNESCO's page
  * about a site whatever memberships stand (ADR-0138). A field listed for no family follows the gate and
- * the claims as before, and the name, subtitle, picture and coordinate
+ * the claims as before, and the fields of a source's view (`VIEW_FIELDS`)
  * follow the source views (`sourceView.ts`, ADR-0084).
  */
 
@@ -44,7 +44,8 @@ export interface FamilyFields {
  * (`unescoUrl`, #1538), and so is the run's mark of what it took from UNESCO's
  * dataset (`unesco`, ADR-0149). The country names both families write, but they name
  * UNESCO's codes, so they go with them (ADR-0111, #1553). The Wikipedia
- * article is written by both families and listed for neither.
+ * article is no family's: each source's view of the place holds its own
+ * (`VIEW_FIELDS`, #1975).
  */
 export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
   unesco: {

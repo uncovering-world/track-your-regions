@@ -170,6 +170,26 @@ describe('two sources that describe one place differently (#1246)', () => {
     expect(await open()).toEqual(['name', 'imageUrl']);
   });
 
+  it('asks which Wikipedia article the place links, and links the chosen one (#1975)', async () => {
+    const site = 'https://en.wikipedia.org/wiki/Rila_Monastery';
+    const saint = 'https://en.wikipedia.org/wiki/Monastery_of_Saint_John_of_Rila';
+    await pool.query(`UPDATE experiences SET metadata = jsonb_build_object('wikipediaUrl', $2::text) WHERE id = $1`, [RILA, site]);
+    await pool.query('UPDATE experience_kind_memberships SET reported_wikipedia_url = $2 WHERE id = $1', [unescoView, site]);
+    await pool.query('UPDATE experience_kind_memberships SET reported_wikipedia_url = $2 WHERE id = $1', [wikidataView, saint]);
+    expect(await open()).toEqual(['name', 'imageUrl', 'wikipediaUrl']);
+
+    const outcome = await chooseViewsUnderLock(
+      RILA, curatorId, null, [{ field: 'wikipediaUrl', membershipId: wikidataView }], await sources(),
+    );
+
+    expect(outcome.result?.changed).toEqual(['wikipediaUrl']);
+    const article = await pool.query<{ article: string }>(
+      `SELECT metadata->>'wikipediaUrl' AS article FROM experiences WHERE id = $1`, [RILA],
+    );
+    expect(article.rows[0].article).toBe(saint);
+    expect(await open()).toEqual(['name', 'imageUrl']);
+  });
+
   it('asks nothing of two views under one id, which read one Wikidata item (ADR-0085)', async () => {
     // Both memberships under one Wikidata item: the ADR's case, read one item.
     await pool.query(`UPDATE experience_kind_memberships SET external_id = 'Q207945' WHERE id = $1`, [unescoView]);

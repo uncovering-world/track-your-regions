@@ -246,13 +246,15 @@ async function creditsForNewPictures(
  * Read from the rows rather than remembered from the last run, and keyed the way
  * the index is keyed, so `transformRecord` needs no second path: a site's
  * stored picture and article are offered back as its facts, and the upsert
- * reports nothing changed. A picture stored in a form a run may not write is
+ * reports nothing changed. The article is the one UNESCO's view last reported,
+ * never the place's: on a place whose article another source's view gave it,
+ * the place's would be recorded as UNESCO's and close the question (#1975). A picture stored in a form a run may not write is
  * not offered back — the writer would refuse it anyway, and the refusal is the
  * right answer for it (ADR-0043).
  */
 export async function indexOfWhatIsStored(): Promise<WorldHeritageIndex> {
   const stored = await pool.query(
-    `SELECT sm.external_id, e.image_url, e.metadata->>'wikipediaUrl' AS article
+    `SELECT sm.external_id, e.image_url, sm.reported_wikipedia_url AS article
        FROM ${sourcePlacesSql('e', 'sm')} WHERE sm.source_id = $1`,
     [UNESCO_SOURCE_ID],
   );

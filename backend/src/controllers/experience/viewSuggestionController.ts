@@ -59,6 +59,9 @@ const INSTRUCTIONS: Record<ViewField, string> = {
     + 'deciding whether to go: the place itself, recognisable, as a visitor sees it? Judge from the file name.',
   location: 'Two sources put this place at different points. Which point marks it better for a traveller: on the '
     + 'place itself, at its centre or main entrance, rather than beside it?',
+  wikipediaUrl: 'Two sources link this place to different Wikipedia articles. Which article is about the place a '
+    + 'traveller visits: the object itself where they come to see one object, the wider site where they come to see '
+    + 'the whole? Judge from the article titles.',
 };
 
 const fileName = (url: string): string => {
@@ -77,6 +80,7 @@ function optionOf(field: ViewField, view: ViewRow): string {
     return `The photograph "${fileName(view.value)}"${by} — ${whose}`;
   }
   if (field === 'location') return `The point ${view.lat}, ${view.lon} — ${whose}`;
+  if (field === 'wikipediaUrl' && view.value) return `The article "${fileName(view.value).replaceAll('_', ' ')}" — ${whose}`;
   return `"${view.value}" — ${whose}`;
 }
 

@@ -1,7 +1,8 @@
 /**
  * A source's view of a place, and when two views disagree (ADR-0084, #1246).
  *
- * No source owns a place's name, subtitle, picture or coordinate. Each
+ * No source owns a place's name, subtitle, picture, coordinate or Wikipedia
+ * article (#1975). Each
  * membership records what its source last reported of them (`reported_*`), and
  * where two sources of one place report different values the place keeps the
  * one it holds. The rule for "different" is stated here once, as SQL over two
@@ -21,7 +22,7 @@ import { MEMBERSHIPS } from './membership.js';
  * queue's other cards use for them; `claimKeyFor` (`changeSet.ts`) names the
  * place's column and the claim on it.
  */
-export const VIEW_FIELDS = ['name', 'subtitle', 'imageUrl', 'location'] as const;
+export const VIEW_FIELDS = ['name', 'subtitle', 'imageUrl', 'location', 'wikipediaUrl'] as const;
 export type ViewField = (typeof VIEW_FIELDS)[number];
 
 /** One side of the comparison: an SQL expression per field. */
@@ -31,6 +32,7 @@ export interface ViewSql {
   imageUrl: string;
   /** A `geometry(Point, 4326)` expression. */
   location: string;
+  wikipediaUrl: string;
 }
 
 /** A membership's stored view, under `alias`. */
@@ -40,6 +42,7 @@ export function membershipViewSql(alias = 'm'): ViewSql {
     subtitle: `${alias}.reported_subtitle`,
     imageUrl: `${alias}.reported_image_url`,
     location: `${alias}.reported_location`,
+    wikipediaUrl: `${alias}.reported_wikipedia_url`,
   };
 }
 
@@ -74,7 +77,8 @@ export function viewDisagreementsSql(a: ViewSql, b: ViewSql, metres: number): st
       ${text('imageUrl', a.imageUrl, b.imageUrl)},
       CASE WHEN ${a.location} IS NOT NULL AND ${b.location} IS NOT NULL
                 AND NOT ST_DWithin(${a.location}::geography, ${b.location}::geography, ${metres})
-           THEN 'location' END
+           THEN 'location' END,
+      ${text('wikipediaUrl', a.wikipediaUrl, b.wikipediaUrl)}
     ]::text[], NULL)`;
 }
 
@@ -94,7 +98,8 @@ export function viewSilencesSql(a: ViewSql, b: ViewSql): string {
       ${text('name', a.name, b.name)},
       ${text('subtitle', a.subtitle, b.subtitle)},
       ${text('imageUrl', a.imageUrl, b.imageUrl)},
-      CASE WHEN ${a.location} IS NULL AND ${b.location} IS NOT NULL THEN 'location' END
+      CASE WHEN ${a.location} IS NULL AND ${b.location} IS NOT NULL THEN 'location' END,
+      ${text('wikipediaUrl', a.wikipediaUrl, b.wikipediaUrl)}
     ]::text[], NULL)`;
 }
 
@@ -109,6 +114,7 @@ export function viewValueSql(fieldExpr: string, alias = 'm'): string {
             WHEN 'subtitle' THEN ${alias}.reported_subtitle
             WHEN 'imageUrl' THEN ${alias}.reported_image_url
             WHEN 'location' THEN ST_AsText(${alias}.reported_location)
+            WHEN 'wikipediaUrl' THEN ${alias}.reported_wikipedia_url
           END`;
 }
 
@@ -166,5 +172,6 @@ export function placeViewValueSql(fieldExpr: string, alias = 'e'): string {
             WHEN 'subtitle' THEN ${alias}.subtitle
             WHEN 'imageUrl' THEN ${alias}.image_url
             WHEN 'location' THEN ST_AsText(${alias}.location)
+            WHEN 'wikipediaUrl' THEN ${alias}.metadata->>'wikipediaUrl'
           END`;
 }
