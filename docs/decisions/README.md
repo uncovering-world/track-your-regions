@@ -146,7 +146,7 @@ and accepted by it.
 | [0124](0124-the-dump-built-tables-live-in-a-workbench-schema-and-every-table-declares-its-tier.md) | The dump-built tables live in a workbench schema, and every table declares its tier | Accepted | 2026-10-19 |
 | [0125](0125-a-type-answer-is-the-kinds.md) | A held answer to a kind's type is the kind's, and every other is the place's | Accepted | 2026-10-19 |
 | [0126](0126-the-two-tiers-differ-by-source-and-weigh-the-same.md) | The two tiers of a kind differ by source and weigh the same | Accepted | 2026-10-19 |
-| [0127](0127-a-site-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A site the world reads opens a second door to the world tier | Accepted — decision 1 narrowed by [0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md) | 2026-10-20 |
+| [0127](0127-a-site-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A site the world reads opens a second door to the world tier | Accepted — decision 1 narrowed by [0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md); decision 3 narrowed by [0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md) | 2026-10-20 |
 | [0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md) | A place is one a visitor goes to when two independent witnesses say so | Accepted | 2026-10-20 |
 | [0129](0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md) | A Wikidata item a place holds none of passes the gate | Accepted | 2026-10-21 |
 | [0130](0130-a-place-keeps-a-picture-its-item-still-carries.md) | A place keeps a picture its item still carries | Accepted | 2026-10-21 |
@@ -170,6 +170,7 @@ and accepted by it.
 | [0149](0149-what-the-catalogue-takes-from-unescos-dataset-it-keeps-separable-credits-and-offers-under-cc-by-sa.md) | What the catalogue takes from UNESCO's dataset it keeps separable, credits, and offers under CC BY-SA | Accepted | 2026-10-25 |
 | [0150](0150-wikidatas-part-of-answers-a-near-pair.md) | Wikidata's part-of answers a near pair | Accepted | 2026-10-25 |
 | [0151](0151-a-credit-a-place-holds-none-of-passes-the-gate.md) | A credit for the picture a place shows passes the gate where it holds none | Accepted | 2026-10-26 |
+| [0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md) | The site door reads the sites under the pool's floor the world reads | Accepted | 2026-10-26 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

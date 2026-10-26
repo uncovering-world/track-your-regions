@@ -1,7 +1,7 @@
 # ADR-0127: A site the world reads opens a second door to the world tier
 
 **Date:** 2026-10-20
-**Status:** Accepted — decision 1 narrowed by [ADR-0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md)
+**Status:** Accepted — decision 1 narrowed by [ADR-0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md); decision 3 narrowed by [ADR-0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md)
 
 ---
 
