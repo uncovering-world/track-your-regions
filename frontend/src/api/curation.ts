@@ -437,7 +437,7 @@ export async function editExperience(
 }
 
 /**
- * Which source's name, subtitle, picture or point a place shows, where two
+ * Which source's name, subtitle, picture, point or article a place shows, where two
  * data sources describe it differently (#1246): per field, a membership, or
  * null to keep what the place shows.
  */

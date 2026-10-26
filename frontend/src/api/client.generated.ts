@@ -3675,6 +3675,7 @@ export const SourceViewFieldField = {
   subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
+  wikipediaUrl: 'wikipediaUrl',
 } as const;
 
 /**
@@ -3689,7 +3690,7 @@ export interface SourceView {
   kind_name: string;
   source_name: string;
   /**
-     * The name or description as the source reports it; null for a picture or a point.
+     * The name, subtitle or Wikipedia article as the source reports it; null for a picture or a point.
      * @nullable
      */
   value: string | null;
@@ -3720,6 +3721,7 @@ export const QuietFieldField = {
   subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
+  wikipediaUrl: 'wikipediaUrl',
 } as const;
 
 /**
@@ -5647,6 +5649,7 @@ export const ChooseViewsBodyChoicesItemField = {
   subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
+  wikipediaUrl: 'wikipediaUrl',
 } as const;
 
 export type ChooseViewsBodyChoicesItem = {
@@ -5670,6 +5673,7 @@ export const ViewsChosenFieldsItem = {
   subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
+  wikipediaUrl: 'wikipediaUrl',
 } as const;
 
 export type ViewsChosenChangedItem = typeof ViewsChosenChangedItem[keyof typeof ViewsChosenChangedItem];
@@ -5680,6 +5684,7 @@ export const ViewsChosenChangedItem = {
   subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
+  wikipediaUrl: 'wikipediaUrl',
 } as const;
 
 /**
@@ -5869,6 +5874,7 @@ export const ViewSuggestionsSuggestionsItemField = {
   subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
+  wikipediaUrl: 'wikipediaUrl',
 } as const;
 
 export type ViewSuggestionsSuggestionsItem = {

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { wikidataItemUrl, wikipediaArticleUrl } from './wikidataLinks';
+import { wikidataItemUrl, wikipediaArticleTitle, wikipediaArticleUrl } from './wikidataLinks';
 
 describe('wikidataItemUrl', () => {
   it('opens the item for a QID', () => {
@@ -44,5 +44,18 @@ describe('wikipediaArticleUrl', () => {
     // become one, so a value that is not one answers nothing rather than a broken address.
     expect(wikipediaArticleUrl('Q1662392', 'en/../')).toBeNull();
     expect(wikipediaArticleUrl('Q1662392', '')).toBeNull();
+  });
+});
+
+describe('wikipediaArticleTitle', () => {
+  it('reads the title a reader names the article by (#1975)', () => {
+    expect(wikipediaArticleTitle('https://en.wikipedia.org/wiki/Statue_of_Liberty')).toBe('Statue of Liberty');
+    expect(wikipediaArticleTitle('https://en.wikipedia.org/wiki/Cavernas_do_Perua%C3%A7u_Environmental_Protection_Area'))
+      .toBe('Cavernas do Peruaçu Environmental Protection Area');
+  });
+
+  it('gives back an address that names no article as it is', () => {
+    expect(wikipediaArticleTitle('https://en.wikipedia.org/w/index.php?curid=1')).toBe('https://en.wikipedia.org/w/index.php?curid=1');
+    expect(wikipediaArticleTitle('not a url')).toBe('not a url');
   });
 });

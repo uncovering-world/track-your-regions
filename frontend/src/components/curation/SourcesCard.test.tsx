@@ -46,10 +46,26 @@ const RILA = {
   ],
 } as unknown as ReviewQueueItem;
 
-function renderCard(onDone = vi.fn()) {
+/**
+ * The Statue of Liberty (#1975): the World Heritage list resolves its site to
+ * Liberty Island, Public art reads the statue, and each links its own article.
+ */
+const LIBERTY = {
+  ...RILA, id: 382, external_id: '307', name: 'Statue of Liberty',
+  source_views: [{
+    field: 'wikipediaUrl',
+    views: [
+      { ...UNESCO, membership_id: 327, value: 'https://en.wikipedia.org/wiki/Liberty_Island', image_url: null, image_credit: null, shown: true },
+      { ...WIKIDATA, kind_name: 'Public art', source_name: 'Public art', membership_id: 542, value: 'https://en.wikipedia.org/wiki/Statue_of_Liberty', image_url: null, image_credit: null, shown: false },
+    ],
+  }],
+  quiet_fields: [],
+} as unknown as ReviewQueueItem;
+
+function renderCard(onDone = vi.fn(), item = RILA) {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <SourcesCard item={RILA} onDone={onDone} />
+      <SourcesCard item={item} onDone={onDone} />
     </QueryClientProvider>,
   );
   return onDone;
@@ -93,5 +109,19 @@ describe('a place two sources describe differently', () => {
     expect(await screen.findByText('Jev suggests this · 96 %')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Monastery of Saint John of Rila/ }).getAttribute('aria-pressed')).toBe('false');
     expect(screen.getByRole('button', { name: 'Keep what readers see' })).toBeTruthy();
+  });
+
+  it('offers the article each source links, by its title, with a way to read each (#1975)', async () => {
+    mockedChoose.mockResolvedValue({ experienceId: 382, fields: ['wikipediaUrl'], changed: ['wikipediaUrl'] });
+    renderCard(vi.fn(), LIBERTY);
+
+    expect(screen.getByText('Wikipedia article')).toBeTruthy();
+    const statue = screen.getByRole('link', { name: 'read Statue of Liberty' });
+    expect(statue.getAttribute('href')).toBe('https://en.wikipedia.org/wiki/Statue_of_Liberty');
+    expect(screen.getByRole('link', { name: 'read Liberty Island' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Statue of Liberty/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish 1 change' }));
+    await waitFor(() => expect(mockedChoose).toHaveBeenCalledWith(382, [{ field: 'wikipediaUrl', membershipId: 542 }]));
   });
 });
