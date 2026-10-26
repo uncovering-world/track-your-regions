@@ -1,9 +1,9 @@
 /**
  * The casts of a group of casts, read from the local Wikidata subset (#880,
  * ADR-0145 decision 2b): the group's parts (`P527`) and the items that name the
- * group as what they are part of (`P361`) or based on (`P144`), each with a
- * coordinate of its own and a placement that has not ended. The live reader's
- * twin is `fetchCastItems` in `publicArt/castGroups.ts`; the two answer alike.
+ * group as what they are part of (`P361`) or based on (`P144`, only with the
+ * group's creator: `NAMES_AS_CAST`), each with a coordinate of its own and a
+ * placement that has not ended. The live reader's twin is `fetchCastItems` in `publicArt/castGroups.ts`; the two answer alike.
  */
 
 import { pool } from '../../../db/index.js';
@@ -26,13 +26,25 @@ export interface CastItemReading {
   placements: string[];
 }
 
-/** The items naming each of `groups` by `P361` or `P144`, by group. */
+/**
+ * Whether the claim `ref` names its group as a cast does: as what it is part
+ * of, or as what it is based on by the group's own creator. A work based on
+ * *The Thinker* by no one, or by someone else — the parody in Greenwich — is
+ * another work (#2092, ADR-0155). The live reader's twin is `castPattern`.
+ */
+const NAMES_AS_CAST = `(ref.property = 'P361' OR (ref.property = 'P144' AND EXISTS (
+  SELECT 1 FROM wikidata_claims made
+    JOIN wikidata_claims maker ON maker.value_item = made.value_item AND maker.subject = ref.value_item
+     AND maker.property = 'P170' AND maker.rank >= 0 AND ${BEST('maker')}
+   WHERE made.subject = ref.subject AND made.property = 'P170' AND made.rank >= 0 AND ${BEST('made')})))`;
+
+/** The items naming each of `groups` as their casts do, by group. */
 async function referrersOf(groups: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   if (!groups.length) return out;
   const result = await pool.query<{ subject: string; value_item: string }>(
-    `SELECT c.subject, c.value_item FROM wikidata_claims c
-      WHERE c.property IN ('P361', 'P144') AND c.value_item = ANY($1::text[]) AND c.rank >= 0 AND ${BEST('c')}`,
+    `SELECT ref.subject, ref.value_item FROM wikidata_claims ref
+      WHERE ${NAMES_AS_CAST} AND ref.value_item = ANY($1::text[]) AND ref.rank >= 0 AND ${BEST('ref')}`,
     [groups],
   );
   for (const row of result.rows) out.set(row.value_item, [...(out.get(row.value_item) ?? []), row.subject]);
@@ -115,7 +127,7 @@ export async function subsetCastGroupIds(castGroup: string, minSitelinks: number
           OR EXISTS (SELECT 1 FROM wikidata_claims ref
                        JOIN wikidata_claims at ON at.subject = ref.subject AND at.property = 'P625' AND at.value ? 'latitude'
                          AND at.rank >= 0 AND ${BEST('at')}
-                      WHERE ref.property IN ('P361', 'P144') AND ref.value_item = c.subject AND ref.rank >= 0 AND ${BEST('ref')}))`,
+                      WHERE ${NAMES_AS_CAST} AND ref.value_item = c.subject AND ref.rank >= 0 AND ${BEST('ref')}))`,
     [castGroup, minSitelinks],
   );
   return result.rows.map(row => row.subject);
