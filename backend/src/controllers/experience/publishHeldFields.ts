@@ -17,8 +17,9 @@
  */
 
 import {
-  CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, NAME_LOCAL_CLAIM_PREFIX, claimKeyFor, claimedMetadataKeys, METADATA_SET_KEYS,
+  CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, NAME_LOCAL_CLAIM_PREFIX, claimKeyFor, claimedMetadataKeys,
 } from '../../services/sync/changeSet.js';
+import { KIND_FACT_KEYS, isKindFact } from '../../services/sync/kindFacts.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
 import {
   answeredHeldRows, heldRowKey, type HeldAnswer, type HeldRowRef,
@@ -391,7 +392,12 @@ function nextMetadata(
   claimed: string[],
   pin: CreditPin,
 ): Record<string, unknown> | null {
-  const entries = published.filter(field => isMetadataField(field.field));
+  // A kind's own fact is not the place's (ADR-0153): its run writes it onto
+  // the kind's membership every pass, so a card filed while it lived on the
+  // place publishes nothing about it there, neither as its own entry nor
+  // inside a catch-all's object (stripped after the merge below).
+  const entries = published.filter(field => isMetadataField(field.field)
+    && !isKindFact(field.field.slice(METADATA_CLAIM_PREFIX.length)));
   const storedCredit = creditOf(stored);
   // A pin can force a write with no metadata entry selected at all: publishing
   // the picture alone has to carry the credit the run fetched for it.
@@ -401,6 +407,7 @@ function nextMetadata(
 
   const left = (stored ?? {}) as Record<string, unknown>;
   const next = mergedFromEntries(left, entries, 'metadata', METADATA_CLAIM_PREFIX);
+  for (const key of KIND_FACT_KEYS) delete next[key];
 
   // The credit, where and only where leaving it to the entries would make it
   // describe a picture the row does not show (#722). The picture and the credit
@@ -427,17 +434,6 @@ function nextMetadata(
   // The keys are the ones a run would put back for the same row
   // (`claimedMetadataKeys`), so publishing and the run honour one list.
   for (const key of claimedMetadataKeys(claimed, left)) next[key] = left[key];
-  // The set-valued lists that hold people's names -- public art's `creators`
-  // -- as a person would type them (#835), for the reason `nextNameLocal`
-  // tidies: a proposal recorded before the writers tidied must not put a run
-  // of spaces back into a list migration 047 cleaned. Last, so a claimed key
-  // restored above is tidied too, and only the strings of a list.
-  for (const key of METADATA_SET_KEYS) {
-    const names = next[key];
-    if (Array.isArray(names)) {
-      next[key] = names.map(name => (typeof name === 'string' ? tidyLabel(name) : name));
-    }
-  }
   return next;
 }
 

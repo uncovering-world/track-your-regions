@@ -301,14 +301,6 @@ const REMAINS_SHOWN = qidArray(Object.keys(REMAINS_ON_SHOW));
 const REFUSED_UNLESS_ARTWORK = qidArray(Object.keys(VETO_CLASSES));
 const BURIAL = qidArray(Object.keys(BURIAL_CLASSES));
 
-/** An admitted membership of `source` the rule decided, a curator's pin aside. */
-const admittedBy = (source: string) => `EXISTS (
-                 SELECT 1 FROM ${MEMBERSHIPS} m
-                  WHERE m.experience_id = e.id AND m.source_id IN (${source})
-                    AND m.admission = 'admitted'
-                    AND NOT ${admissionPinnedSql('m')}
-               )`;
-
 /**
  * A public-art row admitted with a class the rule refuses.
  *
@@ -319,7 +311,8 @@ const admittedBy = (source: string) => `EXISTS (
  * kind's classes answer it — an artwork class, and for Monuments & memorials a
  * memorial too — and a tomb unless, for Monuments & memorials, a commemorative
  * form stands with it (#1832). It runs on every candidate every
- * run, and it stores what it read on the row (`metadata.wikidataClasses`).
+ * run, and it stores what it read on the kind's membership
+ * (`facts.wikidataClasses`, ADR-0153).
  * This asks the stored rows the same question, for the rows the rule never
  * reached: the 205 created before it existed (eleven Spanish cathedrals among
  * them, typed `Catholic cathedral, monument`), or any a later path admits
@@ -336,10 +329,9 @@ const admittedBy = (source: string) => `EXISTS (
  * (`REMAINS_ON_SHOW`); a museum class the veto would catch is
  * not, so a museum typed only by a class outside these lists is the rule's to
  * find, not this check's. Whether an artwork class answered a building's veto
- * is not approximated at all: the rule stores its own answer on the row
- * (`metadata.wikidataArtwork`, written by whichever of the two kinds' runs
- * wrote the place last — both answer yes for a veto they admitted past),
- * which is what a check that cannot hold the
+ * is not approximated at all: each kind's rule stores its own answer on its
+ * membership (`facts.wikidataArtwork`), which is what a check that cannot
+ * hold the
  * closures reads — a holy well built into a building is in the fountain
  * closure, and no constant here could say so. A row written before that key
  * existed reads as no answer, which is the conservative reading.
@@ -365,43 +357,48 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                (SELECT string_agg(c, ', ' ORDER BY c)
-                  FROM jsonb_array_elements_text(e.metadata->'wikidataClasses') c
+                  FROM jsonb_array_elements_text(m.facts->'wikidataClasses') c
                  WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK}) OR c = ANY(${BURIAL})
                     OR (c = ANY(${REFUSED_AS_LOST}) AND NOT e.external_id = ANY(${REMAINS_SHOWN}))) AS classes
           FROM experiences e
-          -- A membership of the pass's sources (#822, ADR-0132): the classes
-          -- were written by their runs and the admission is their rule's. Once
-          -- per place, however many of the two kinds admit it.
-         WHERE ${admittedBy('3, 6')}
-           AND e.is_manual = FALSE
-           -- A row the run never wrote classes onto is a row the rule never
-           -- reached, and the question has no answer yet rather than a clean
-           -- one: it is counted by its absence from every run, not here.
-           AND jsonb_typeof(e.metadata->'wikidataClasses') = 'array'
-           AND (
-             e.metadata->'wikidataClasses' ?| ${REFUSED_OUTRIGHT}
-             OR (
-               e.metadata->'wikidataClasses' ?| ${REFUSED_AS_LOST}
-               AND NOT e.external_id = ANY(${REMAINS_SHOWN})
-             )
-             OR (
-               e.metadata->'wikidataClasses' ?| ${REFUSED_UNLESS_ARTWORK}
-               -- The rule's own answer to whether an artwork class lifted the
-               -- veto; a row written before the key existed has none, and is
-               -- read as if none did.
-               AND NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE)
-             )
-             OR (
-               -- A burial class: Public art never lifts it, and Monuments &
-               -- memorials only where a form stands with it, which the stored
-               -- answer says.
-               e.metadata->'wikidataClasses' ?| ${BURIAL}
+          -- The first admitting membership of the pass's sources (#822,
+          -- ADR-0132) whose rule's reading trips: the classes and the artwork
+          -- answer are that kind's own (ADR-0153), and the admission is its
+          -- rule's. Once per place, however many of the two kinds admit it.
+          CROSS JOIN LATERAL (
+            SELECT m.facts FROM ${MEMBERSHIPS} m
+             WHERE m.experience_id = e.id AND m.source_id IN (3, 6)
+               AND m.admission = 'admitted'
+               AND NOT ${admissionPinnedSql('m')}
+               -- A row the run never wrote classes onto is a row the rule never
+               -- reached, and the question has no answer yet rather than a clean
+               -- one: it is counted by its absence from every run, not here.
+               AND jsonb_typeof(m.facts->'wikidataClasses') = 'array'
                AND (
-                 ${admittedBy('3')}
-                 OR (${admittedBy('6')} AND NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE))
+                 m.facts->'wikidataClasses' ?| ${REFUSED_OUTRIGHT}
+                 OR (
+                   m.facts->'wikidataClasses' ?| ${REFUSED_AS_LOST}
+                   AND NOT e.external_id = ANY(${REMAINS_SHOWN})
+                 )
+                 OR (
+                   m.facts->'wikidataClasses' ?| ${REFUSED_UNLESS_ARTWORK}
+                   -- The rule's own answer to whether an artwork class lifted the
+                   -- veto; a row written before the key existed has none, and is
+                   -- read as if none did.
+                   AND NOT COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE)
+                 )
+                 OR (
+                   -- A burial class: Public art never lifts it, and Monuments &
+                   -- memorials only where a form stands with it, which its
+                   -- stored answer says.
+                   m.facts->'wikidataClasses' ?| ${BURIAL}
+                   AND (m.source_id = 3 OR NOT COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE))
+                 )
                )
-             )
-           )
+             ORDER BY m.source_id
+             LIMIT 1
+          ) m
+         WHERE e.is_manual = FALSE
          ORDER BY e.name`,
   describe: row => {
     // The lists carry the labels; the row carries the ids. Said in words, as
@@ -697,10 +694,11 @@ const nameCarriesWhitespaceNobodyTyped: CatalogueAssertion = {
              WHERE jsonb_typeof(kv.value) = 'string'
                AND ${untidy("(kv.value #>> '{}')")}
             UNION ALL
-            SELECT 'place', e.id, e.name, 'metadata.creators'
+            SELECT DISTINCT 'place', e.id, e.name, 'creators'
               FROM experiences e
-             WHERE jsonb_typeof(e.metadata->'creators') = 'array'
-               AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.metadata->'creators') c
+              JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+             WHERE jsonb_typeof(m.facts->'creators') = 'array'
+               AND EXISTS (SELECT 1 FROM jsonb_array_elements(m.facts->'creators') c
                             WHERE jsonb_typeof(c.value) = 'string'
                               AND ${untidy("(c.value #>> '{}')")})
             UNION ALL

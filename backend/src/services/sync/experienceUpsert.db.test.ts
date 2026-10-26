@@ -4,6 +4,7 @@ import { upsertExperienceRecord, type ExperienceUpsertParams } from './experienc
 import { markNotAdmitted } from './admission.js';
 import { countSeenAmongActive, flagMissingExperiences } from './missingDetection.js';
 import { lockSourcedExperience } from '../../db/experienceWriter.js';
+import { KIND_FACT_KEYS } from './kindFacts.js';
 
 /**
  * A run finds its place through its own membership (#1244, ADR-0084), executed
@@ -490,7 +491,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     const state = async () => (await pool.query<{
       description: string; ar: string; year: number; pointer: number | null; state: string;
     }>(
-      `SELECT e.description, e.name_local ->> 'ar' AS ar, (e.metadata ->> 'year')::int AS year,
+      `SELECT e.description, e.name_local ->> 'ar' AS ar, (m.facts ->> 'year')::int AS year,
               m.pending_change_sync_log_id AS pointer, m.curation_state AS state
          FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
         WHERE e.id = $1`,
@@ -510,13 +511,15 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       expect(held.changeSet.heldFields.map(f => f.field)).toEqual(['description']);
       expect(await state()).toEqual({ description: straight, ar: 'newer', year: 1945, pointer: log, state: 'verified' });
 
-      // A year the record no longer carries is a removal the held row does not
-      // take, and is asked.
+      // A year the record no longer carries is the kind's fact gone: its facts
+      // are written whole onto its membership, and nothing is asked (ADR-0153).
       const removed = await upsertExperienceRecord(
         { ...record(straight, { ar: 'newer' }, 1945), metadata: { ...stored } }, { syncLogId: log },
       );
-      expect(removed.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.year']);
-      expect((await state()).year).toBe(1945);
+      expect(removed.changeSet.heldFields).toEqual([]);
+      expect(removed.changeSet.changedFields.map(f => [f.field, f.passedTheGate]))
+        .toContainEqual(['metadata.year', 'unseen']);
+      expect((await state()).year).toBeNull();
 
       // A curator's claim keeps the local names.
       await pool.query(
@@ -631,15 +634,22 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
       `INSERT INTO experiences (id, source_id, external_id, name, name_local, description, country_codes, country_names, metadata, location)
        VALUES ($1, $2, $3, 'Acropolis, Athens', $4, $5, '{GR}', '{Greece}', $6, ST_SetSRID(ST_MakePoint(23.7262, 37.9715), 4326))`,
       [ACROPOLIS, unesco.id, ACROPOLIS_WHC, JSON.stringify(UNESCO_NAMES), UNESCO_TEXT,
-        JSON.stringify({ ...UNESCO_FACTS, wikidataQid: ACROPOLIS_QID, wikidataClasses: ['Q570116'] })],
+        JSON.stringify({ ...UNESCO_FACTS, wikidataQid: ACROPOLIS_QID })],
     );
     await pool.query(
       `INSERT INTO experience_kind_memberships
-         (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       VALUES ($1, $2, $3, $4, 'auto', NOW()), ($1, $5, $6, $7, 'auto', NOW())`,
-      [ACROPOLIS, unesco.kind_id, unesco.id, ACROPOLIS_WHC, arch.kind_id, arch.id, ACROPOLIS_QID],
+         (experience_id, kind_id, source_id, external_id, curation_state, published_at, facts)
+       VALUES ($1, $2, $3, $4, 'auto', NOW(), '{}'), ($1, $5, $6, $7, 'auto', NOW(), $8)`,
+      [ACROPOLIS, unesco.kind_id, unesco.id, ACROPOLIS_WHC, arch.kind_id, arch.id, ACROPOLIS_QID,
+        JSON.stringify({ wikidataClasses: ['Q570116'] })],
     );
   });
+
+  // The classes are Archaeology's own fact, kept on its membership (ADR-0153).
+  const archaeologyClasses = async () => (await pool.query<{ classes: string[] | null }>(
+    `SELECT facts -> 'wikidataClasses' AS classes FROM experience_kind_memberships
+      WHERE experience_id = $1 AND external_id = $2`, [ACROPOLIS, ACROPOLIS_QID],
+  )).rows[0].classes;
 
   const stored = async () => (await pool.query<{
     name_local: Record<string, string>; description: string | null; country_codes: string[];
@@ -660,8 +670,9 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
 
     expect(await stored()).toMatchObject({
       name_local: UNESCO_NAMES, description: UNESCO_TEXT, country_codes: ['GR'], country_names: ['Greece'],
-      metadata: { ...UNESCO_FACTS, wikidataClasses: ['Q570116', 'Q839954'] },
+      metadata: UNESCO_FACTS,
     });
+    expect(await archaeologyClasses()).toEqual(['Q570116', 'Q839954']);
     expect(proposed(outcome)).not.toEqual(expect.arrayContaining(['nameLocal.fr']));
     // The Archaeology record names the country 'France' (the fixture's default): UNESCO's 'Greece' stands (#1553).
     for (const field of ['description', 'countryCodes', 'countryNames', 'metadata.dateInscribed', 'metadata.inDanger', 'metadata.criteria', 'metadata.region']) {
@@ -681,7 +692,8 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
       metadata: { ...UNESCO_FACTS, dateInscribed: '1987' },
     });
 
-    expect((await stored()).metadata).toMatchObject({ wikidataQid: ACROPOLIS_QID, wikidataClasses: ['Q570116'] });
+    expect((await stored()).metadata).toMatchObject({ wikidataQid: ACROPOLIS_QID });
+    expect(await archaeologyClasses()).toEqual(['Q570116']);
   });
 
   it('follows the run again, through the gate, once the other family no longer lists the place', async () => {
@@ -850,5 +862,43 @@ describe("a place's outline belongs to the source that drew it (ADR-0146, #1968)
     const created = await upsertExperienceRecord({ ...params(archaeology, NEW_SITE_QID, 'A new site'), boundaryWkt: DRAWN, readsExtents: true });
     const row = (await pool.query<{ owner: number | null }>('SELECT boundary_source_id AS owner FROM experiences WHERE id = $1', [created.experienceId])).rows[0];
     expect(row.owner).toBe(archaeology);
+  });
+});
+
+describe("a kind's own fact, on its membership (ADR-0153, #1775)", () => {
+  const factsOf = async (sourceId: number) => (await pool.query<{ facts: Record<string, unknown> }>(
+    'SELECT facts FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $2', [LOUVRE, sourceId],
+  )).rows[0].facts;
+
+  it('is written on the run\'s membership and left off the place', async () => {
+    await upsertExperienceRecord({
+      ...params(artMuseums, LOUVRE_QID, 'Louvre Museum'),
+      metadata: { wikidataQid: LOUVRE_QID, website: 'https://www.louvre.fr/', artworkCount: 12, admissionNote: null },
+    });
+
+    const place = (await pool.query<{ metadata: Record<string, unknown> }>(
+      'SELECT metadata FROM experiences WHERE id = $1', [LOUVRE],
+    )).rows[0].metadata;
+    expect(place).toMatchObject({ website: 'https://www.louvre.fr/' });
+    expect(place).not.toHaveProperty('artworkCount');
+    expect(await factsOf(artMuseums)).toEqual({ artworkCount: 12, admissionNote: null });
+    // The other kind's membership of the place holds none of it.
+    expect(await factsOf(archaeology)).toEqual({});
+
+    // The run's facts are compared with its own membership's: the same pass again changes nothing.
+    const again = await upsertExperienceRecord({
+      ...params(artMuseums, LOUVRE_QID, 'Louvre Museum'),
+      metadata: { wikidataQid: LOUVRE_QID, website: 'https://www.louvre.fr/', artworkCount: 12, admissionNote: null },
+    });
+    expect(again.changeSet.changedFields.map(f => f.field)).not.toContain('metadata.artworkCount');
+  });
+
+  it('is refused on the place by the database, every key of it', async () => {
+    for (const key of KIND_FACT_KEYS) {
+      await expect(pool.query(
+        `UPDATE experiences SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object($2::text, 1) WHERE id = $1`,
+        [LOUVRE, key],
+      )).rejects.toMatchObject({ code: '23514' });
+    }
   });
 });

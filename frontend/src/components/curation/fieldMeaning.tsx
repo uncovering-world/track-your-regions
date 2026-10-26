@@ -27,7 +27,7 @@
 import type { ReactNode } from 'react';
 import { Chip, Link, Stack, Tooltip } from '@mui/material';
 import { isEmptyValue } from '@tyr/shared/equality';
-import { placeFieldUnseen } from '@tyr/shared/readerFields';
+import { placeFieldUnseen } from '@tyr/shared/placeFields';
 import type { ImageCredit } from '../../api/experiences';
 import type { ChangedField } from '../../api/reviewQueue';
 import { parseCriteria } from '../../utils/unescoCriteria';
@@ -699,7 +699,7 @@ export function meaningOf(field: string, ...samples: unknown[]): FieldMeaning {
     if (vocabulary) return { ...MEANINGS.type, what: vocabulary.what, whenItChanges: vocabulary.whenItChanges };
   }
   const known = MEANINGS[field];
-  // Whether readers see a field is its mark (`@tyr/shared/readerFields`), the
+  // Whether readers see a field is its mark (`@tyr/shared/placeFields`), the
   // one the gate passes an unseen rewrite by: a card must not say "nothing
   // readers see changes" from the *kind* of a change, since a picture arriving
   // is a fact appearing, and readers see it.

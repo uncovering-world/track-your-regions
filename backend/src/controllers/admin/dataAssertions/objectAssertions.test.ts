@@ -143,8 +143,9 @@ describe('an admitted public-art row typed as a building', () => {
     // The memberships Public art and Monuments & memorials brought (#822,
     // ADR-0132): their classes and their admission are those sources',
     // whatever else the place belongs to, and a place both admit is one row.
-    expect(sql).toContain('WHERE EXISTS ( SELECT 1 FROM experience_kind_memberships m');
+    expect(sql).toContain('CROSS JOIN LATERAL ( SELECT m.facts FROM experience_kind_memberships m');
     expect(sql).toContain('m.experience_id = e.id AND m.source_id IN (3, 6)');
+    expect(sql).toContain('ORDER BY m.source_id LIMIT 1 ) m');
     expect(sql).toContain("m.admission = 'admitted'");
     expect(sql).toContain('e.is_manual = FALSE');
     expect(assertion.kind).toBe('invariant');
@@ -155,7 +156,10 @@ describe('an admitted public-art row typed as a building', () => {
     // data-assertions doc warns about: what this catches is a row the rule
     // never reached — created before the test, or admitted by a path without
     // it — not a wrong rule, which no check reading its output could see.
-    expect(sql).toContain("e.metadata->'wikidataClasses'");
+    // Each kind's own reading, off its membership (ADR-0153): the place's
+    // metadata holds none of it.
+    expect(sql).toContain("m.facts->'wikidataClasses'");
+    expect(sql).not.toContain('e.metadata');
     for (const qid of [...Object.keys(KILL_CLASSES), ...Object.keys(WORSHIP_CLASSES)]) {
       expect(sql).toContain(`'${qid}'`);
     }
@@ -173,9 +177,7 @@ describe('an admitted public-art row typed as a building', () => {
     expect(sql).toContain(`?| ${array([...Object.keys(WORSHIP_CLASSES), ...outright])} OR`);
     expect(sql).toContain(`?| ${array(Object.keys(VETO_CLASSES))} -- The rule's own answer`);
     const burial = sql.slice(sql.indexOf(`?| ${array(Object.keys(BURIAL_CLASSES))} AND (`));
-    expect(burial).toMatch(/^\?\| ARRAY\[[^\]]*\] AND \( EXISTS \( SELECT 1 FROM experience_kind_memberships m WHERE m\.experience_id = e\.id AND m\.source_id IN \(3\) /);
-    expect(burial).toContain("m.source_id IN (6) AND m.admission = 'admitted'");
-    expect(burial).toContain("AND NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE)) ) )");
+    expect(burial).toMatch(/^\?\| ARRAY\[[^\]]*\] AND \(m\.source_id = 3 OR NOT COALESCE\(\(m\.facts->>'wikidataArtwork'\)::boolean, FALSE\)\) \) \)/);
     expect(Object.keys(BURIAL_CLASSES)).toContain('Q162875');
   });
 
@@ -196,7 +198,7 @@ describe('an admitted public-art row typed as a building', () => {
     // and the check reads that rather than the row's type or a pinned list,
     // which cannot hold the closures the rule reads at run time. COALESCE,
     // because a row the run wrote before the key existed carries none.
-    expect(sql).toContain("NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE)");
+    expect(sql).toContain("NOT COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE)");
     expect(sql).not.toContain("e.type IS DISTINCT FROM");
     expect(sql).not.toContain("e.type <>");
     for (const qid of [...Object.keys(COMMEMORATIVE_FORMS), ...Object.keys(SCULPTURAL_CLASSES), FOUNTAIN_ROOT]) {
@@ -372,7 +374,10 @@ describe('the name a filter cannot find', () => {
     expect(sql).toContain(collapse(`(kv.value #>> '{}') <> ${tidyLabelSql("(kv.value #>> '{}')")}`));
     // The strings of the list only: a non-string element is not a name, and
     // read as text it would be asked a question about a value it is not.
-    expect(sql).toContain("jsonb_array_elements(e.metadata->'creators') c WHERE jsonb_typeof(c.value) = 'string'");
+    // The makers are a kind's reading (ADR-0153), so they are read off each
+    // membership, and a place two kinds name the makers of is one row.
+    expect(sql).toContain("SELECT DISTINCT 'place', e.id, e.name, 'creators' FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id");
+    expect(sql).toContain("jsonb_array_elements(m.facts->'creators') c WHERE jsonb_typeof(c.value) = 'string'");
     expect(sql).toContain(collapse(`el.name <> ${tidyLabelSql('el.name')}`));
     expect(sql).toContain(collapse(`t.name <> ${tidyLabelSql('t.name')}`));
     expect(sql).toContain('unnest(t.artists)');

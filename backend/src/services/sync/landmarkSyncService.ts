@@ -73,20 +73,12 @@ export interface PlaceClassifier {
   }>;
   types: readonly string[];
   tag: string;
-  /**
-   * The metadata key a classifier that asks a curator something writes its
-   * question under (`readershipNote`), one per source (`SOURCE_OWN_METADATA`).
-   */
-  noteKey?: string;
   /** What the kind's places hold, where its places hold works: Public art's street-art places (#2055). */
   contents?: PlaceContents;
 }
 
-/**
- * The readership door a public-art source opens each run (#2033), and the key
- * its question is written under.
- */
-interface ArtworkDoor { open: () => Promise<PlaceDoor | undefined>; noteKey: string }
+/** The readership door a public-art source opens each run (#2033). */
+interface ArtworkDoor { open: () => Promise<PlaceDoor | undefined> }
 
 /**
  * Public art's and Monuments & memorials' classifier: their kind's rule over
@@ -108,7 +100,6 @@ function publicArtClassifier(rule: KindRule, door?: ArtworkDoor, streetArt = fal
     },
     types: rule.types,
     tag: 'outdoor',
-    ...(door ? { noteKey: door.noteKey } : {}),
     ...(streetArt ? { contents: streetArtContents(LANDMARK_SOURCE_ID, LOG_PREFIX) } : {}),
   };
 }
@@ -119,7 +110,6 @@ const PUBLIC_ART_CLASSIFIERS: Readonly<Record<number, PlaceClassifier>> = {
   // measured for it.
   [LANDMARK_SOURCE_ID]: publicArtClassifier(PUBLIC_ART_RULE, {
     open: () => artworkReadershipDoorFor(LANDMARK_SOURCE_ID, ENTER_SITELINKS, LOG_PREFIX),
-    noteKey: 'publicArtReadershipNote',
   }, true),
   6: publicArtClassifier(MONUMENTS_RULE),
 };
@@ -213,8 +203,8 @@ async function upsertLandmarkExperience(
   const metadata = {
     wikidataQid: landmark.qid,
     // Every class the rule read, and whether an artwork class answered it, for
-    // the check that asks what an admitted row is typed as. The run's own
-    // notes, not fields (`SYNC_OWNED_METADATA_KEYS`).
+    // the check that asks what an admitted row is typed as, and the monument's
+    // year and makers: the kind's own, on its membership (`kindFacts.ts`).
     wikidataClasses: landmark.classes,
     wikidataArtwork: landmark.artwork,
     creators: landmark.creators,
@@ -226,9 +216,10 @@ async function upsertLandmarkExperience(
     // key from the stored rows.
     wikipediaUrl: landmark.articleUrl || null,
     website: landmark.website || null,
-    // The source's question to a curator, written every pass, null when it asks
-    // nothing, as the other doors' are.
-    ...(classifier.noteKey ? { [classifier.noteKey]: landmark.readershipNote ?? null } : {}),
+    // The source's question to a curator, where it asks one. The kind's facts
+    // are written whole every pass (`kindFacts.ts`), so a note the door no
+    // longer asks leaves with the pass that stops sending it.
+    ...(landmark.readershipNote ? { admissionNote: landmark.readershipNote } : {}),
     // `creator` is who made the sculpture; this is who photographed it. Two
     // different people, and only one of them has ever been named on the card.
     //

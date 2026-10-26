@@ -91,6 +91,7 @@ import { shortMovePassesSql } from '../../db/shortMove.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockIdentifiedPlace, lockSourcedExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
+import { splitKindFacts, withOwnFacts } from './kindFacts.js';
 import { fieldsKeptAsStored, keptAsStored, reportedArticle } from './sourceView.js';
 import { catalogueName, type NamedRecord } from './nameTwins.js';
 
@@ -266,11 +267,12 @@ const MEMBERSHIP_TYPE_SELECT = `sm.type, sm.curated_fields ? 'type' AS type_clai
  * by. The run's own membership is joined where it has one; a place the run
  * joins by its identifier (ADR-0143 decision 3) has none yet, and is read as
  * the place another source's run left it, the state the run's second visit
- * would find after a merge.
+ * would find after a merge. The kind's facts are the membership's too
+ * (`kindFacts.ts`, ADR-0153).
  */
 function storedPlaceSql(place: string, externalId: string): string {
   return `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
-         ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT},
+         ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT}, sm.facts AS own_facts,
          ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
          ${PLACE_HELD} AS was_held
     FROM experiences e
@@ -411,7 +413,12 @@ function snapshotFromRow(row: Record<string, unknown>): ExperienceSnapshot {
     countryCodes: (row.country_codes as string[] | null) ?? null,
     countryNames: (row.country_names as string[] | null) ?? null,
     imageUrl: (row.image_url as string | null) ?? null,
-    metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+    // The run's own kind's facts beside the place's metadata, as its record
+    // names them (`withOwnFacts`).
+    metadata: withOwnFacts(
+      (row.metadata as Record<string, unknown> | null) ?? null,
+      (row.own_facts as Record<string, unknown> | null | undefined) ?? null,
+    ),
   };
 }
 
@@ -697,7 +704,7 @@ async function moveMembershipKey(
  * membership's key is no field of the place a reader is shown, so the move
  * neither retires a curator's pass nor raises a card (`wroteContent` below
  * leaves out a change that passed the gate). It carries the pass itself
- * rather than a mark in `PLACE_FIELD_MARKS`, which names the place's fields
+ * rather than an entry in `PLACE_FIELDS`, which names the place's fields
  * `computeChangeSet` can file, and this is not one of them.
  */
 function fileKeyMove(changeSet: ChangeSetResult, from: string | undefined, to: string): void {
@@ -747,6 +754,10 @@ async function writeUnderLock(
     ), stored);
 
   const shortMove = stored !== null && await shortMovePasses(client, stored.id as number, stored, written, held);
+  // The kind's own facts go to the run's membership, written every pass: no
+  // other run writes them there, and none is a field a reader is shown
+  // (`placeFields.test.ts`), so neither the gate nor a claim holds them.
+  const { place: placeMetadata, facts } = splitKindFacts(written.metadata);
 
   const result = await client.query(
     `WITH gate AS (
@@ -932,7 +943,7 @@ async function writeUnderLock(
         experience_id, kind_id, source_id, external_id, type, admitted_for, curation_state, published_at,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at,
         reported_name, reported_subtitle, reported_image_url, reported_location, reported_image_credit,
-        reported_wikipedia_url, wikidata_items, reported_label
+        reported_wikipedia_url, wikidata_items, reported_label, facts
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
@@ -943,7 +954,8 @@ async function writeUnderLock(
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
              CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END,
              $15, $15, NOW(),
-             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb, $35::text, $27::text[], $36::text
+             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb, $35::text, $27::text[], $36::text,
+             $37::jsonb
         FROM ins
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
@@ -981,6 +993,7 @@ async function writeUnderLock(
         reported_image_credit = EXCLUDED.reported_image_credit,
         reported_wikipedia_url = EXCLUDED.reported_wikipedia_url,
         reported_label = EXCLUDED.reported_label,
+        facts = EXCLUDED.facts,
         wikidata_items = COALESCE(EXCLUDED.wikidata_items, ${MEMBERSHIPS}.wikidata_items),
         updated_at = NOW()
       RETURNING pending_change_sync_log_id
@@ -1001,7 +1014,7 @@ async function writeUnderLock(
       written.countryCodes,
       written.countryNames,
       written.imageUrl,
-      JSON.stringify(written.metadata),
+      JSON.stringify(placeMetadata),
       syncLogId,
       // The key list the refusing metadata arm merges, bound. A text[] rather
       // than a literal built into the statement, so the constant in
@@ -1026,7 +1039,7 @@ async function writeUnderLock(
       params.wikidataItems ?? null,
       params.locationIsAnchor ?? false,
       held && stored
-        ? passingMetadataKeys(stored.metadata, written.metadata, stored.curated_fields ?? [], stored.image_url === written.imageUrl)
+        ? passingMetadataKeys(stored.metadata, placeMetadata, stored.curated_fields ?? [], stored.image_url === written.imageUrl)
         : [],
       // The metadata keys the claims hold, off the locked row: the declaration
       // the diff below reads too (ADR-0077 decision 2).
@@ -1040,6 +1053,7 @@ async function writeUnderLock(
       // The label before a twin's suffix, which the next record's twin check
       // compares (#1967).
       sent.name,
+      JSON.stringify(facts),
     ]
   );
 
