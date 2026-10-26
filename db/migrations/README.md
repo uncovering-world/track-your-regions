@@ -84,13 +84,15 @@ which baselines it itself, and Docker Compose, which mounts `db/init/` into
 if you brought the stack up another way.
 
 Getting this wrong is the failure worth naming. An unbaselined database of that
-kind stands at 40 pending files it must not run: `015-museum-clean-slate.sql`
+kind stands with every file here pending and none it may run: `015-museum-clean-slate.sql`
 deletes catalogue rows by volume rather than by whether it has run before, so
 applying it after an import takes the freshly imported rows with it — its own
 header says it is a one-time manual action, not a repeatable step. So an empty
 ledger never means "apply everything": `db:status` says to baseline, and
-`db:migrate` refuses outright on a database that holds a catalogue and has
-recorded nothing.
+`db:migrate` refuses outright on a database that has recorded nothing and either
+already has a table one of these files creates — any database built from the
+canonical schema, empty or not (#2073) — or holds a catalogue. Replaying them
+there would also cost hours for nothing.
 
 Re-applying `01-schema.sql` to an existing database is the other half of the
 workflow: it is how new tables and columns arrive between migrations. That is
