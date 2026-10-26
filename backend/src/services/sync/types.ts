@@ -318,8 +318,8 @@ export interface WikidataLandmark {
   /** The type within the kind the run fills, in that kind's own vocabulary. */
   type: PublicArtType | MonumentType | TowerType | BridgeType | SquareType;
   /**
-   * Every `P31` the entity carries, as the rule read them. Stored with the row
-   * (`metadata.wikidataClasses`) so that Catalogue Checks can ask, of what is
+   * Every `P31` the entity carries, as the rule read them. Stored on the run's
+   * membership (`facts.wikidataClasses`) so that Catalogue Checks can ask, of what is
    * admitted, whether a class the rule refuses is among them.
    */
   classes: string[];
@@ -327,7 +327,7 @@ export interface WikidataLandmark {
    * Whether an artwork class answered the rule — the sculptural and fountain
    * closures or a pinned structure, what lifts a building's veto — or the
    * street-art rule admitted the place for the art painted on it (#2035).
-   * Stored as `metadata.wikidataArtwork`, so the check reads the rule's own
+   * Stored as the membership's `facts.wikidataArtwork`, so the check reads the rule's own
    * answer.
    */
   artwork: boolean;

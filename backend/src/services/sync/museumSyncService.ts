@@ -390,12 +390,9 @@ async function upsertMuseumExperience(
     // changed — never the one from a different photograph. See `creditToWrite`.
     ...creditPatch(museum.qid, details.imageUrl),
     // The question a museum the readership door alone admitted puts to a
-    // curator (ADR-0056). Null otherwise: the upsert writes only the keys a run
-    // sends, so a note left out would stand on a museum the line now admits.
-    // A key of this kind's own: the place is shared, and another source's
-    // run writes it as the place holds it, as this run writes Archaeology's
-    // admissionNote and the worship door's note (`fieldFamilies.ts`).
-    museumReadershipNote: museum.readershipNote ?? null,
+    // curator (ADR-0056), null where it asks none. The kind's own, kept on its
+    // membership beside the counts above (`kindFacts.ts`).
+    admissionNote: museum.readershipNote ?? null,
   };
 
   // Store remote Wikimedia URL directly (thumbnailing handled by frontend)

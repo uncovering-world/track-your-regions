@@ -12,9 +12,10 @@
 
 import { isEmptyValue, jsonEquals } from '@tyr/shared/equality';
 import { sameLabelSet } from './labelFold.js';
+import { isKindFact } from './kindFacts.js';
 import { sameTypography } from '@tyr/shared/labels';
 import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS, SHORT_MOVE_METERS } from '@tyr/shared/moves';
-import { placeFieldUnseen } from '@tyr/shared/readerFields';
+import { placeFieldUnseen } from '@tyr/shared/placeFields';
 
 /**
  * The outline a row holds, as the diff compares it: a hash of the geometry the
@@ -89,7 +90,7 @@ export type FieldSignificance = 'major' | 'minor';
  * has (`type-outside-vocabulary`, ADR-0135): a value its kind has no word for
  * answers no filter of the kind, so it is no reader's fact to keep. Those
  * two are the classes a visitor sees. A field no reader is shown
- * (`unseen`, ADR-0139: its mark in `@tyr/shared/readerFields`), and a text
+ * (`unseen`, ADR-0139: its mark in `@tyr/shared/placeFields`), and a text
  * rewritten only in its typesetting (`typography`, ADR-0139: `sameTypography`)
  * pass too, and so does a coordinate moved a short way (`short-move`, ADR-0140).
  * Every other rewrite is held as before (ADR-0099).
@@ -155,10 +156,18 @@ export function metadataPassesTheGate(key: string, old: unknown, next: unknown, 
       && Math.abs(next - old) / old < REMEASURED_SHARE) {
     return 'remeasured';
   }
+  return metadataKeyPassesUnseen(key, next) ? 'unseen' : null;
+}
+
+/** Whether a rewrite of a metadata key no reader is shown passes the gate. */
+function metadataKeyPassesUnseen(key: string, next: unknown): boolean {
+  // A kind's own fact is written whole onto its membership every pass, a
+  // removal with the rest, and none is shown (`kindFacts.ts`, ADR-0153).
+  if (isKindFact(key)) return true;
   // A key the incoming record lacks is no rewrite the held row can take: the
   // upsert merges only the keys the record carries (`PASSING_SLICE`), so a
   // removal stays a question. A key sent as null is written.
-  return next !== undefined && passesAsUnseen(`${METADATA_CLAIM_PREFIX}${key}`) ? 'unseen' : null;
+  return next !== undefined && passesAsUnseen(`${METADATA_CLAIM_PREFIX}${key}`);
 }
 
 export interface FieldChange {
@@ -278,12 +287,11 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
 export const SYNC_OWNED_METADATA_KEYS = [
   'artworkCount', 'totalArtworkSitelinks', 'sitelinksCount',
   'wikidataClasses', 'wikidataArtwork',
+  // The question a kind's run asks a curator about the place's admission:
+  // Archaeology's rule, or a readership door on a place it alone admitted
+  // (ADR-0056). On the kind's own membership (`kindFacts.ts`), so a place two
+  // kinds hold carries both kinds' questions.
   'archaeologyNature', 'admissionNote', 'wikipediaCategories',
-  // The readership door's question on a place it alone admitted (ADR-0056),
-  // one key per kind that opens the door, since a place two kinds hold would
-  // otherwise carry whichever run's sentence came last. Re-derived every pass,
-  // as admissionNote is.
-  'museumReadershipNote', 'worshipReadershipNote', 'publicArtReadershipNote',
   // What OpenStreetMap said about a site, and when (ADR-0059 decision 2). The
   // run's own reading, re-derived every pass and stamped with the date it was
   // read: a curator cannot be right about which object carried the tag, and a
@@ -781,7 +789,7 @@ function collectDifferences(
   // value the source disagrees with is therefore kept and not reported either
   // -- there is no decision in it, since nobody reads the outcome (#570).
 
-  // A place's countries are shown to no reader (#1579, `@tyr/shared/readerFields`):
+  // A place's countries are shown to no reader (#1579, `@tyr/shared/placeFields`):
   // written past the gate as `unseen`, as the upsert writes them.
   for (const field of ['countryCodes', 'countryNames'] as const) {
     if (!setEquals(before[field], incoming[field])) {

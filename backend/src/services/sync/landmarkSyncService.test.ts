@@ -369,7 +369,7 @@ describe('public art in the place pass', () => {
     expect(placeContents.write).not.toHaveBeenCalled();
   });
 
-  it('writes the readership door\'s question under Public art\'s own key, and Monuments & memorials writes none (#2033)', async () => {
+  it('writes the readership door\'s question for Public art\'s membership, and none where the line admits (#2033)', async () => {
     const context: SyncRunContext = {
       dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
     };
@@ -378,13 +378,14 @@ describe('public art in the place pass', () => {
     const kelpies = landmark({ qid: 'Q16988858', label: 'The Kelpies', sitelinks: 17, readershipNote: note });
 
     await (await configOf()).processItem(kelpies, progress(), context);
-    expect(mockedUpsert.mock.calls[0][0].metadata.publicArtReadershipNote).toBe(note);
-    // Written null where the line admitted the work, so a question answered once does not linger.
+    expect(mockedUpsert.mock.calls[0][0].metadata.admissionNote).toBe(note);
+    // Absent where the line admitted the work: the kind's facts are written
+    // whole (`kindFacts.ts`), so a question answered once does not linger.
     await (await configOf()).processItem(landmark(), progress(), context);
-    expect(mockedUpsert.mock.calls[1][0].metadata).toHaveProperty('publicArtReadershipNote', null);
-
-    await (await configOf({}, 6)).processItem(kelpies, progress(), context);
-    expect(mockedUpsert.mock.calls[2][0].metadata).not.toHaveProperty('publicArtReadershipNote');
+    expect(mockedUpsert.mock.calls[1][0].metadata).not.toHaveProperty('admissionNote');
+    // Monuments & memorials opens no door, so its rule sets no question on its
+    // items; and what it writes lands on its own membership, never on Public
+    // art's, so it could not clear Public art's question either.
   });
 
   it('writes an edition as one place with a point at every cast, told to be at the most central one (#880)', async () => {

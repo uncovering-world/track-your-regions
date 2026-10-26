@@ -90,9 +90,13 @@ describe('a field no reader is shown (#1834)', () => {
   });
 
   it('holds a key the incoming record lacks, which the held row would not take', () => {
-    // A museum's run sends no year; the held metadata arm merges only the keys sent.
-    expect(metadataPassesTheGate('year', 1915, undefined, true)).toBeNull();
-    expect(passingMetadataKeys({ year: 1915 }, {}, [], true)).toEqual([]);
+    // UNESCO's run sends no criteria; the held metadata arm merges only the keys sent.
+    expect(metadataPassesTheGate('criteria', '(ii)(iv)', undefined, true)).toBeNull();
+    expect(passingMetadataKeys({ criteria: '(ii)(iv)' }, {}, [], true)).toEqual([]);
+  });
+
+  it('passes a kind\'s own fact the record no longer carries: its facts are written whole (ADR-0153)', () => {
+    expect(metadataPassesTheGate('year', 1915, undefined, true)).toBe('unseen');
   });
 
   it('holds a key a reader is shown, and a key with no mark', () => {

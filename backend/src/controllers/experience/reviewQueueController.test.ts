@@ -382,7 +382,10 @@ describe('getReviewQueue', () => {
     // to prevent.
     for (const kind of ["'arrival' AS kind", "'held' AS kind", "'contents' AS kind"]) {
       const [sql] = callMatching(kind);
-      expect(sql).toMatch(/metadata->>'admissionNote',\s*\S+\.metadata->>'museumReadershipNote',\s*\S+\.metadata->>'worshipReadershipNote',\s*\S+\.metadata->>'publicArtReadershipNote'\), ''\) AS admission_note/);
+      // Every kind's question off its own membership (ADR-0153), so a place two
+      // kinds doubt carries both, and only off a membership its source still
+      // lists, whose run can still take the question back.
+      expect(sql).toMatch(/string_agg\(note_m\.facts->>'admissionNote', ' ' ORDER BY note_m\.source_id\), ''\)\s+FROM experience_kind_memberships note_m\s+WHERE note_m\.experience_id = \S+\.id AND note_m\.missing_since IS NULL AND note_m\.source_membership = 'present'\) AS admission_note/);
     }
   });
 

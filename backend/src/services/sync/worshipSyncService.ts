@@ -305,9 +305,9 @@ async function processPlace(
     // never the one from a different photograph. See `creditToWrite`.
     ...creditPatch(place.qid, place.imageUrl),
     // The question a place the readership door alone admitted puts to a curator
-    // (ADR-0056). Null otherwise: the upsert writes only the keys a run sends.
-    // A key of this kind's own, as the museum door's is: the place is shared.
-    worshipReadershipNote: place.readershipNote ?? null,
+    // (ADR-0056), null where it asks none. The kind's own, kept on its
+    // membership (`kindFacts.ts`).
+    admissionNote: place.readershipNote ?? null,
   };
 
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({

@@ -10,9 +10,10 @@
  */
 
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
-import { descriptionAdaptedSql, descriptionSourceSql } from '../../db/membership.js';
+import { descriptionAdaptedSql, descriptionSourceSql, MEMBERSHIPS } from '../../db/membership.js';
 import { dangerSelectSql } from './experienceDanger.js';
 import { pointsShownSql } from '../../db/placePoints.js';
+import { viewStandsSql } from '../../db/sourceViews.js';
 
 /**
  * How many items a queue page holds by default.
@@ -94,15 +95,15 @@ export function objectContextSelectSql(alias = 'e'): string {
           -- writes down what it saw and holds the row. On the card, because
           -- this is where the answer is given -- and where a batch answer can dispose of the row without
           -- the object ever being opened (#852). Null on every row no run
-          -- asked anything about, which is nearly all of them. The readership
-          -- door asks under a key per kind (ADR-0056), since a place two kinds
-          -- hold must not lose one run's question to the other's, and the card
-          -- reads every question there is, one after another.
-          NULLIF(concat_ws(' ',
-            ${alias}.metadata->>'admissionNote',
-            ${alias}.metadata->>'museumReadershipNote',
-            ${alias}.metadata->>'worshipReadershipNote',
-            ${alias}.metadata->>'publicArtReadershipNote'), '') AS admission_note,
+          -- asked anything about, which is nearly all of them. Each kind's run
+          -- asks on its own membership (ADR-0153), since a place two kinds hold
+          -- must not lose one run's question to the other's, and the card reads
+          -- every question there is, one after another. A membership its source
+          -- no longer lists is never run again, so its question would stand for
+          -- good: only a standing one asks.
+          (SELECT NULLIF(string_agg(note_m.facts->>'admissionNote', ' ' ORDER BY note_m.source_id), '')
+             FROM ${MEMBERSHIPS} note_m
+            WHERE note_m.experience_id = ${alias}.id AND ${viewStandsSql('note_m')}) AS admission_note,
           (SELECT jsonb_agg(r.name ORDER BY r.name)
              FROM experience_regions er
              JOIN regions r ON r.id = er.region_id

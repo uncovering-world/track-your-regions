@@ -688,9 +688,9 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // the columns a held row takes (`passingColumns`, #1834), casts, unsaid (ADR-0145),
     // whether the source reads extents, unsaid (ADR-0146), and the article the
     // run reports, its view's (#1975), and the label it sent, before a twin's
-    // suffix (#1967).
-    expect(params).toHaveLength(36);
-    expect(params.slice(31)).toEqual([[], null, false, null, PARAMS.name]);
+    // suffix (#1967), and the kind's own facts for its membership (ADR-0153).
+    expect(params).toHaveLength(37);
+    expect(params.slice(31)).toEqual([[], null, false, null, PARAMS.name, '{}']);
     expect(sql).not.toContain("'artworkCount'");
   });
 

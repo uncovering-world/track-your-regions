@@ -110,24 +110,38 @@ describe('the metadata column, which no single entry describes', () => {
       .not.toContain('pending_change_sync_log_id = NULL');
   });
 
-  it('writes a monument\'s makers as a person would type them, however the run recorded them', async () => {
+  it('publishes nothing onto the place about a monument\'s makers, which are its kind\'s (ADR-0153)', async () => {
     grantScope();
-    // A record written before the writers tidied (#835): the makers carry the
-    // runs the run saw, and publishing must not put them back into the list
-    // migration 047 cleaned. Only the strings: anything else keeps its type.
+    // A card filed while the makers lived on the place: the Statue of
+    // Liberty's, held for a list the run read. The kind's run writes them onto
+    // its membership every pass, so publishing writes the place's own keys only.
     const { client, queries } = makeClient({
       row: {
         curation_state: 'auto', pending_change_sync_log_id: 53,
-        metadata: { creators: ['Auguste  Bartholdi'] },
+        metadata: { sitelinksCount: 120 },
       },
       proposal: [
-        { field: 'metadata.creators', old: ['Auguste  Bartholdi'], new: [' Auguste  Bartholdi ', 'Gustave  Eiffel', 7], held: true },
+        { field: 'metadata.creators', old: [], new: ['Auguste  Bartholdi'], held: true },
+        { field: 'metadata.website', old: null, new: 'https://example.org', held: true },
       ],
     });
 
-    await publish({ heldFields: ['metadata.creators'], expectedSyncLogId: 53 }, client);
+    await publish({ heldFields: ['metadata.creators', 'metadata.website'], expectedSyncLogId: 53 }, client);
 
-    expect(written(queries)).toEqual({ creators: ['Auguste Bartholdi', 'Gustave Eiffel', 7] });
+    expect(written(queries)).toEqual({ sitelinksCount: 120, website: 'https://example.org' });
+  });
+
+  it('publishes a catch-all card without the kind facts inside it (ADR-0153)', async () => {
+    grantScope();
+    // A card filed before ADR-0039 split the catch-all: Charminar's, carrying
+    // Monuments & memorials' year beside a key of the place. The year belongs to
+    // the kind's membership now, and the place refuses it, so the publish
+    // writes the rest of the object only.
+    const { client, queries } = heldMetadata({}, { website: 'https://example.org', year: 1591 }, { metadata: {} });
+
+    await publish({ heldFields: ['metadata'], expectedSyncLogId: 53 }, client);
+
+    expect(written(queries)).toEqual({ website: 'https://example.org' });
   });
 
   it('writes a credit the run fetched for the picture the row already shows', async () => {

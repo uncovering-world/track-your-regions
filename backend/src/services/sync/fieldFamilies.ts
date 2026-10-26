@@ -12,6 +12,12 @@
  * about a site whatever memberships stand (ADR-0138). A field listed for no family follows the gate and
  * the claims as before, and the fields of a source's view (`VIEW_FIELDS`)
  * follow the source views (`sourceView.ts`, ADR-0084).
+ *
+ * A kind's own field needs none of this: it lives on the kind's membership
+ * (`kindFacts.ts`, ADR-0153), where no other run writes. What is left here are
+ * the place's fields one family brings, and UNESCO's facts about an
+ * inscription, which are the World Heritage kind's and still stored on the
+ * place until they move to its membership (#1775).
  */
 
 import type { PoolClient } from 'pg';
@@ -39,8 +45,8 @@ export interface FamilyFields {
  * The fields each family brings and no other does, read off the places one
  * source holds alone on 2026-10-15. UNESCO's official names in its six
  * languages, its own text, the states party's codes and the facts of the
- * inscription. Wikidata's item, the place's own website, its classes, fame and
- * the counts a run makes of it. UNESCO's page about a site is its own key
+ * inscription. Wikidata's item, the place's own website, its fame and what
+ * OpenStreetMap said about its outline. UNESCO's page about a site is its own key
  * (`unescoUrl`, #1538), and so is the run's mark of what it took from UNESCO's
  * dataset (`unesco`, ADR-0149). The country names both families write, but they name
  * UNESCO's codes, so they go with them (ADR-0111, #1553). The Wikipedia
@@ -54,11 +60,7 @@ export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
   },
   wikidata: {
     columns: [],
-    metadata: [
-      'website', 'wikidataQid', 'sitelinksCount', 'wikidataClasses', 'wikidataArtwork', 'year', 'creators', 'creator', 'type',
-      'artworkCount', 'totalArtworkSitelinks', 'admissionNote', 'osm', 'archaeologyNature', 'wikipediaCategories',
-      'museumReadershipNote', 'worshipReadershipNote', 'publicArtReadershipNote',
-    ],
+    metadata: ['website', 'wikidataQid', 'sitelinksCount', 'osm'],
   },
 };
 
@@ -78,68 +80,11 @@ const KEPT_BY_EVERY_OTHER_FAMILY: Readonly<Record<SourceFamily, readonly string[
 };
 
 /**
- * The metadata keys only some sources of a family write, by source. A run
- * writes its own every pass, null when it has nothing to say, and keeps
- * another source's as the place holds it while that source's membership
- * stands, as `keptKeysOf` decides: without this list one Wikidata kind's run would file another's key, which it
- * never reads, as removed.
- * - The question each source's run asks a curator about a place: a museum run
- *   on the Israel Museum would otherwise write its record without
- *   Archaeology's question, and a worship run would take the museum door's away.
- * - A monument's year and makers, which the place kinds write
- *   (`upsertLandmarkExperience`) and Art Museums, Places of worship and
- *   Archaeology never read: a worship run would otherwise propose removing
- *   Charminar's 1591 on every pass (#1879).
- */
-const PLACE_FACTS = ['year', 'creators'] as const;
-const SOURCE_OWN_METADATA: Readonly<Record<number, readonly string[]>> = {
-  2: ['museumReadershipNote'],
-  3: [...PLACE_FACTS, 'publicArtReadershipNote'],
-  4: ['worshipReadershipNote'],
-  5: ['admissionNote'],
-  6: PLACE_FACTS,
-  7: PLACE_FACTS,
-  8: PLACE_FACTS,
-  9: PLACE_FACTS,
-};
-
-/**
- * The keys of `SOURCE_OWN_METADATA` a source writes empty every pass, never
- * reading them: Towers, Bridges & engineering marvels and Squares & streets
- * write no makers (`placeLandmark`). Such a run keeps another source's value of
- * the key as the place holds it rather than writing its empty one over the
- * makers Monuments & memorials read, and a source that reads none keeps the
- * empty one, so neither asks about it.
- */
-const WRITTEN_EMPTY_METADATA: Readonly<Record<number, readonly string[]>> = {
-  7: ['creators'],
-  8: ['creators'],
-  9: ['creators'],
-};
-
-/** Whether the run of `sourceId` writes `key`, empty or not. */
-const writesKey = (sourceId: number, key: string): boolean => (SOURCE_OWN_METADATA[sourceId] ?? []).includes(key);
-
-/** Whether the run of `sourceId` writes `key` with a value of its own. */
-const readsOwnKey = (sourceId: number, key: string): boolean =>
-  writesKey(sourceId, key) && !(WRITTEN_EMPTY_METADATA[sourceId] ?? []).includes(key);
-
-/**
- * The keys of `otherId` the run of `sourceId` keeps: those the other reads,
- * and those it writes empty where the run writes none of them. Two kinds that
- * both write makers empty keep neither's, so makers no standing source reads
- * leave the place on the next run of either.
- */
-const keptKeysOf = (sourceId: number, otherId: number): string[] =>
-  (SOURCE_OWN_METADATA[otherId] ?? [])
-    .filter(key => !readsOwnKey(sourceId, key) && (readsOwnKey(otherId, key) || !writesKey(sourceId, key)));
-
-/**
  * The fields of the place that another family's standing membership brings
- * and the run's own family does not, and the keys of another source of the
- * place that `keptKeysOf` keeps: those the run writes as the place holds them. On a place no other source holds, only the
- * fields another family alone writes (`KEPT_BY_EVERY_OTHER_FAMILY`, ADR-0138);
- * none for a source in no family.
+ * and the run's own family does not: those the run writes as the place holds
+ * them. On a place no other source holds, only the fields another family alone
+ * writes (`KEPT_BY_EVERY_OTHER_FAMILY`, ADR-0138); none for a source in no
+ * family.
  */
 export async function otherFamiliesFields(
   query: Pick<PoolClient, 'query'>,
@@ -157,9 +102,8 @@ export async function otherFamiliesFields(
 
 /**
  * What the run of `sourceId` writes as the place holds it, given the other
- * sources with a standing membership on it: their families' fields, and the
- * keys of each one that `keptKeysOf` keeps. Split from the read so
- * the sequence of runs can be stated without a database.
+ * sources with a standing membership on it: their families' fields. Split from
+ * the read so the sequence of runs can be stated without a database.
  */
 export function fieldsOfOthers(sourceId: number, otherSourceIds: readonly number[]): FamilyFields {
   const own = familyOf(sourceId);
@@ -171,7 +115,6 @@ export function fieldsOfOthers(sourceId: number, otherSourceIds: readonly number
       ...[...others].flatMap(family => FAMILY_FIELDS[family].metadata),
       ...(Object.keys(KEPT_BY_EVERY_OTHER_FAMILY) as SourceFamily[])
         .filter(family => family !== own).flatMap(family => KEPT_BY_EVERY_OTHER_FAMILY[family]),
-      ...otherSourceIds.filter(id => id !== sourceId).flatMap(id => keptKeysOf(sourceId, id)),
     ])],
   };
 }

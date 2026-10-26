@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { PLACE_FIELD_MARKS, placeFieldMark } from '@tyr/shared/readerFields';
+import { PLACE_FIELDS, placeFieldMark } from '@tyr/shared/placeFields';
 import { computeChangeSet, SYNC_OWNED_METADATA_KEYS, type ExperienceSnapshot } from './changeSet.js';
 import { FAMILY_FIELDS } from './fieldFamilies.js';
+import { KIND_FACT_KEYS } from './kindFacts.js';
 
 /**
  * Every field a run writes carries a mark saying whether a reader is shown it
- * (#1834, ADR-0139), so the gate never decides one by default.
+ * (#1834, ADR-0139), so the gate never decides one by default, and says whose
+ * it is, the place's or one kind's (ADR-0153).
  */
 
 const EVERY_FIELD: ExperienceSnapshot = {
@@ -20,14 +22,14 @@ const OTHER_VALUES: ExperienceSnapshot = {
 };
 
 /**
- * The metadata keys the runs write: each family's own (`FAMILY_FIELDS`, read
- * off the stored places), the keys a run computes about its pass, and the two
- * both families write and neither owns, the Wikipedia article and the
- * picture's credit.
+ * The metadata keys the runs write: each family's own on the place
+ * (`FAMILY_FIELDS`), the keys a kind's run keeps on its membership, the keys a
+ * run computes about its pass, and the two both families write and neither
+ * owns, the Wikipedia article and the picture's credit.
  */
 const METADATA_KEYS = [...new Set([
-  ...FAMILY_FIELDS.unesco.metadata, ...FAMILY_FIELDS.wikidata.metadata, ...SYNC_OWNED_METADATA_KEYS,
-  'wikipediaUrl', 'imageCredit',
+  ...FAMILY_FIELDS.unesco.metadata, ...FAMILY_FIELDS.wikidata.metadata, ...KIND_FACT_KEYS,
+  ...SYNC_OWNED_METADATA_KEYS, 'wikipediaUrl', 'imageCredit',
 ])];
 
 describe('the reader mark of every field a run writes', () => {
@@ -50,6 +52,27 @@ describe('the reader mark of every field a run writes', () => {
       'tags',
       ...METADATA_KEYS.map(key => `metadata.${key}`),
     ]);
-    expect(Object.keys(PLACE_FIELD_MARKS).filter(field => !written.has(field))).toEqual([]);
+    expect(Object.keys(PLACE_FIELDS).filter(field => !written.has(field))).toEqual([]);
+  });
+});
+
+describe('whose each field is', () => {
+  it('keeps no kind\'s field among the keys a family stores on the place, UNESCO\'s inscription aside', () => {
+    // A kind's field on the place is written over by every other kind's run
+    // of it (ADR-0153): Charminar kept Monuments & memorials' year under
+    // Places of worship. The inscription moves to its membership next (#1775).
+    const onThePlace = FAMILY_FIELDS.wikidata.metadata.filter(key => PLACE_FIELDS[`metadata.${key}`]?.owner === 'kind');
+    expect(onThePlace).toEqual([]);
+    for (const key of FAMILY_FIELDS.unesco.metadata) {
+      expect([key, PLACE_FIELDS[`metadata.${key}`]?.owner]).not.toEqual([key, undefined]);
+    }
+  });
+
+  it('marks unseen every field a membership stores, since its write passes no gate', () => {
+    // The membership's facts are written as the run read them, held or not:
+    // a field a reader is shown would have to be asked of a curator first.
+    for (const key of KIND_FACT_KEYS) expect([key, placeFieldMark(`metadata.${key}`)]).toEqual([key, 'unseen']);
+    expect(KIND_FACT_KEYS).toEqual(expect.arrayContaining(['year', 'creators', 'admissionNote', 'wikidataClasses']));
+    expect(KIND_FACT_KEYS).not.toContain('dateInscribed');
   });
 });
