@@ -66,6 +66,7 @@ import {
   sourcesOpenSql, visitQuestionOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
+import { placeViewSourcesSql } from '../../db/sourceViews.js';
 
 /**
  * The class order: what a curator works down when they sort by question rather
@@ -368,8 +369,10 @@ function missingKeysSql(scopeFilter: string, membershipScopeFilter: string): str
 /**
  * A place two data sources describe differently, with a field nobody has
  * answered as the views stand (#1246, `sourcesOpenSql`). A question about every
- * source the place's views come from, so it is in a curator's scope only where
- * every membership of the place is. Dated by the newest first run among its
+ * source the place's views come from — its memberships' and a serial site's
+ * whose component it is (`placeViewSourcesSql`, #2063) — so it is in a
+ * curator's scope only where every one of those sources is, as the answer asks
+ * (`resolveEverySourceScope`). Dated by the newest first run among its
  * memberships — the merge or the arrival that made the disagreement possible —
  * and by no run of its own, so it cannot be set aside with a run's batch.
  */
@@ -378,14 +381,14 @@ function sourcesKeysSql(membershipScopeFilter: string): string {
     SELECT 'sources', ${KIND_RANK.sources}, e.id, e.name, g.source_ids, NULL, g.asked_at, ARRAY[]::text[]
     FROM experiences e
     CROSS JOIN LATERAL (
-      SELECT array_agg(DISTINCT m.source_id) AS source_ids,
-             max(COALESCE(l.completed_at, m.created_at)) AS asked_at
-      FROM ${MEMBERSHIPS} m
-      LEFT JOIN experience_sync_logs l ON l.id = m.first_seen_sync_log_id
-      WHERE m.experience_id = e.id
+      SELECT ${placeViewSourcesSql('e.id')} AS source_ids,
+             (SELECT max(COALESCE(l.completed_at, m.created_at))
+                FROM ${MEMBERSHIPS} m
+                LEFT JOIN experience_sync_logs l ON l.id = m.first_seen_sync_log_id
+               WHERE m.experience_id = e.id) AS asked_at
     ) g
     WHERE ${sourcesOpenSql('e')}
-      AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND NOT ${membershipScopeFilter})`;
+      AND NOT EXISTS (SELECT 1 FROM unnest(g.source_ids) AS m(source_id) WHERE NOT ${membershipScopeFilter})`;
 }
 
 /**

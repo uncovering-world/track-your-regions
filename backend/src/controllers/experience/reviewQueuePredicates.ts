@@ -213,14 +213,18 @@ export function claimKeySql(field: string, keyMapParam: string, familyParam: str
  * Two data sources describe the place differently and a curator has not
  * answered as their views stand (#1246): some field two standing views under
  * different ids contradict (`openViewFieldsSql`). The pair test first, which an
- * index on the membership's place answers, so the field comparison runs only
- * for a place two sources hold. A place a merge folded holds no membership and
- * is never asked.
+ * index on the membership's place and one on the part answer, so the field
+ * comparison runs only for a place two sources hold, or a part of a serial
+ * site that holds a kind of its own (#2063), the site's view of the component
+ * being the second. A place a merge folded holds no membership and is never
+ * asked.
  */
 export function sourcesOpenSql(e = 'e'): string {
-  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} a JOIN ${MEMBERSHIPS} b
-                    ON b.experience_id = a.experience_id AND a.external_id <> b.external_id
-                   WHERE a.experience_id = ${e}.id)
+  return `(EXISTS (SELECT 1 FROM ${MEMBERSHIPS} a JOIN ${MEMBERSHIPS} b
+                     ON b.experience_id = a.experience_id AND a.external_id <> b.external_id
+                    WHERE a.experience_id = ${e}.id)
+           OR (EXISTS (SELECT 1 FROM ${MEMBERSHIPS} a WHERE a.experience_id = ${e}.id)
+               AND EXISTS (SELECT 1 FROM experience_parts p WHERE p.part_id = ${e}.id AND p.reason = 'component')))
           AND cardinality(${openViewFieldsSql(e + '.id')}) > 0`;
 }
 

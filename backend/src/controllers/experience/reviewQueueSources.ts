@@ -17,19 +17,23 @@
 
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, rowKindJoinSql } from '../../db/membership.js';
+import { KINDS, rowKindJoinSql } from '../../db/membership.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import {
-  contestedViewFieldsSql, openViewFieldsSql, placeViewValueSql, viewStandsSql, viewValueSql, VIEW_FIELDS,
+  contestedViewFieldsSql, openViewFieldsSql, placeViewsSql, placeViewValueSql, viewValueSql, VIEW_FIELDS,
 } from '../../db/sourceViews.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { sourcesOpenSql } from './reviewQueuePredicates.js';
 
 const FIELD_ORDER = `ARRAY[${VIEW_FIELDS.map(field => "'" + field + "'").join(', ')}]::text[]`;
 
-/** Every standing, non-empty view of field `f` of place `e`, as a jsonb array. */
+/**
+ * Every standing, non-empty view of field `f` of place `e`, as a jsonb array;
+ * on a part of a serial site, the site's view of the component among them,
+ * under the site's membership (`placeViewsSql`).
+ */
 const VIEWS_OF_FIELD = `(SELECT jsonb_agg(jsonb_build_object(
-           'membership_id', m.id,
+           'membership_id', m.membership_id,
            'kind_name', k.name,
            'source_name', s.name,
            'value', CASE WHEN f IN ('name', 'subtitle', 'wikipediaUrl') THEN ${viewValueSql('f', 'm')} END,
@@ -38,12 +42,11 @@ const VIEWS_OF_FIELD = `(SELECT jsonb_agg(jsonb_build_object(
            'latitude', CASE WHEN f = 'location' THEN ST_Y(m.reported_location) END,
            'longitude', CASE WHEN f = 'location' THEN ST_X(m.reported_location) END,
            'shown', ${viewValueSql('f', 'm')} IS NOT DISTINCT FROM ${placeViewValueSql('f')})
-         ORDER BY k.display_priority, m.id)
-       FROM ${MEMBERSHIPS} m
+         ORDER BY k.display_priority, m.membership_id)
+       FROM ${placeViewsSql('e.id', 'm')}
        JOIN ${KINDS} k ON k.id = m.kind_id
        JOIN experience_sources s ON s.id = m.source_id
-      WHERE m.experience_id = e.id AND ${viewStandsSql('m')}
-        AND NULLIF(${viewValueSql('f', 'm')}, '') IS NOT NULL)`;
+      WHERE NULLIF(${viewValueSql('f', 'm')}, '') IS NOT NULL)`;
 
 /** How many standing views report field `f`, and for a point how far apart the two farthest stand. */
 const QUIET_FIELDS = `(SELECT jsonb_agg(jsonb_build_object(
@@ -55,13 +58,12 @@ const QUIET_FIELDS = `(SELECT jsonb_agg(jsonb_build_object(
          ORDER BY array_position(${FIELD_ORDER}, q.f))
        FROM (
          SELECT f,
-                (SELECT count(*) FROM ${MEMBERSHIPS} m
-                  WHERE m.experience_id = e.id AND ${viewStandsSql('m')}
-                    AND NULLIF(${viewValueSql('f', 'm')}, '') IS NOT NULL)::int AS reporting,
+                (SELECT count(*) FROM ${placeViewsSql('e.id', 'm')}
+                  WHERE NULLIF(${viewValueSql('f', 'm')}, '') IS NOT NULL)::int AS reporting,
                 CASE WHEN f = 'location' THEN (
+                  WITH v AS (SELECT * FROM ${placeViewsSql('e.id', 'pv')})
                   SELECT round(max(ST_Distance(a.reported_location::geography, b.reported_location::geography)))::int
-                    FROM ${MEMBERSHIPS} a JOIN ${MEMBERSHIPS} b ON b.experience_id = a.experience_id AND a.id < b.id
-                   WHERE a.experience_id = e.id AND ${viewStandsSql('a')} AND ${viewStandsSql('b')}) END AS metres
+                    FROM v a JOIN v b ON a.membership_id < b.membership_id) END AS metres
            FROM unnest(${FIELD_ORDER}) AS f
           WHERE NOT f = ANY(${openViewFieldsSql('e.id')}::text[])
        ) q
