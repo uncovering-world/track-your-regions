@@ -70,11 +70,12 @@ const VISIT_READING_SHORT: Record<NonNullable<ReviewQueueItem['visit_question']>
 };
 
 /** A field two sources disagree on (#1246), in the words the card's rows use. */
-export const VIEW_FIELD_WORD: Record<'name' | 'subtitle' | 'imageUrl' | 'location', string> = {
+export const VIEW_FIELD_WORD: Record<'name' | 'subtitle' | 'imageUrl' | 'location' | 'wikipediaUrl', string> = {
   name: 'name',
   subtitle: 'subtitle',
   imageUrl: 'picture',
   location: 'where it is',
+  wikipediaUrl: 'Wikipedia article',
 };
 
 /**

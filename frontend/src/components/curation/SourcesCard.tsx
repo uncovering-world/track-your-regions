@@ -18,6 +18,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { chooseSourceViews, suggestSourceViews } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
+import { safeHref } from '../../utils/safeHref';
+import { wikipediaArticleTitle } from '../../utils/wikidataLinks';
 import { PictureWithCredit } from '../shared/PictureWithCredit';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { VIEW_FIELD_WORD } from './feed/rowSpecific';
@@ -32,6 +34,7 @@ const FIELD_LABEL: Record<SourceViewField['field'], string> = {
   subtitle: 'Subtitle',
   imageUrl: 'Picture',
   location: 'Where it is',
+  wikipediaUrl: 'Wikipedia article',
 };
 
 /** The columns: every source with a view of some asked field, in the order the server gave them. */
@@ -63,7 +66,31 @@ function ViewValue({ field, view }: { field: SourceViewField['field']; view: Sou
     return <PictureWithCredit url={view.image_url} credit={view.image_credit} alt={`${view.kind_name}’s picture`} width={330} />;
   }
   if (field === 'location') return <Typography variant="body2">{coordinates(view)}</Typography>;
+  // The title is what a curator weighs; the links to read them sit beside the row (`ArticleLinks`).
+  if (field === 'wikipediaUrl') {
+    return <Typography variant="body1">{view.value ? wikipediaArticleTitle(view.value) : ''}</Typography>;
+  }
   return <Typography variant="body1" sx={{ fontWeight: field === 'name' ? 600 : 400 }}>{view.value}</Typography>;
+}
+
+/**
+ * The article row's way to the articles (#1975), one link per view: outside the
+ * tiles, which are buttons and cannot hold a link. The views disagree, so each
+ * title names its link.
+ */
+function ArticleLinks({ views }: { views: readonly SourceView[] }) {
+  return (
+    <>
+      {views.map(view => {
+        const href = safeHref(view.value);
+        return href && (
+          <Link key={view.membership_id} href={href} target="_blank" rel="noopener noreferrer" variant="body2">
+            read {wikipediaArticleTitle(href)}
+          </Link>
+        );
+      })}
+    </>
+  );
 }
 
 /** The location row's way to the map: both points, readers' one first. */
@@ -197,6 +224,7 @@ export function SourcesCard({ item, onDone }: {
               <Stack sx={{ pt: 1.5 }} spacing={0.5}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>{FIELD_LABEL[field.field]}</Typography>
                 {field.field === 'location' && <BothPoints name={item.name} views={field.views} />}
+                {field.field === 'wikipediaUrl' && <ArticleLinks views={field.views} />}
               </Stack>
               {columns.map(column => {
                 // Two sources can fill one kind: a column is a kind and a source.

@@ -50,3 +50,18 @@ export function wikipediaArticleUrl(id: unknown, lang = 'en'): string | null {
   if (typeof id !== 'string' || !QID.test(id) || !LANGUAGE_CODE.test(lang)) return null;
   return `https://www.wikidata.org/wiki/Special:GoToLinkedPage/${lang}wiki/${id}`;
 }
+
+/**
+ * A Wikipedia article's title out of its address, as a reader names it:
+ * `https://en.wikipedia.org/wiki/Statue_of_Liberty` is "Statue of Liberty". The
+ * address itself where it names no article.
+ */
+export function wikipediaArticleTitle(url: string): string {
+  try {
+    const { pathname } = new URL(url);
+    if (!pathname.startsWith('/wiki/') || pathname.length === '/wiki/'.length) return url;
+    return decodeURIComponent(pathname.slice('/wiki/'.length)).replaceAll('_', ' ');
+  } catch {
+    return url;
+  }
+}
