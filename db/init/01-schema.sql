@@ -3033,6 +3033,8 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     reported_location geometry(Point, 4326),
     reported_image_credit JSONB,
     reported_wikipedia_url TEXT,
+    -- The label the source sent, before a twin's suffix (#1967).
+    reported_label TEXT,
     wikidata_items TEXT[],
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -3058,6 +3060,7 @@ ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_location geometry(Point, 4326);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_credit JSONB;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_wikipedia_url TEXT;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_label TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS wikidata_items TEXT[];
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_verdict VARCHAR(10);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_reason TEXT;
@@ -3099,6 +3102,7 @@ COMMENT ON COLUMN experience_kind_memberships.reported_image_url IS 'The picture
 COMMENT ON COLUMN experience_kind_memberships.wikidata_items IS 'The Wikidata items a source that knows the place by another id resolves it to (#1248): for a World Heritage membership, the items its site resolves to through P757 (siteItems, ADR-0088 as narrowed by ADR-0094), leaving out an item whose every such statement is deprecated. NULL for a Wikidata source, whose external_id is the item. One item and one point make the place that item''s, for the catalogue''s merge on an equal item (sharedItemsSql).';
 COMMENT ON COLUMN experience_kind_memberships.reported_image_credit IS 'The credit of reported_image_url as the run resolved it from Commons ({author, license, licenseUrl, detailsUrl}, the shape of metadata.imageCredit): shown beside the picture wherever a curator is asked to choose it, and written with it to the place when chosen (#1246).';
 COMMENT ON COLUMN experience_kind_memberships.reported_wikipedia_url IS 'The Wikipedia article this membership''s source last reported for the place, the shape of metadata.wikipediaUrl (its view, #1975): two sources of one place under different ids that link different articles are asked about, as for the picture.';
+COMMENT ON COLUMN experience_kind_memberships.reported_label IS 'The label this membership''s source last sent for the place, before a twin''s suffix (#1967): a label another standing place of the catalogue carries is named apart, so every source of one item names it alike.';
 COMMENT ON COLUMN experience_kind_memberships.reported_location IS 'The coordinate this membership''s source last reported for the place (its view, #1246). Two views within ten metres agree (ADR-0027).';
 COMMENT ON COLUMN experience_kind_memberships.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
 COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
@@ -3121,6 +3125,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_source ON experience_
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_pending ON experience_kind_memberships(experience_id) WHERE curation_state = 'pending';
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_held ON experience_kind_memberships(experience_id) WHERE pending_change_sync_log_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_iconic ON experience_kind_memberships(kind_id) WHERE is_iconic;
+CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_label ON experience_kind_memberships(reported_label);
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_missing ON experience_kind_memberships(source_id) WHERE missing_since IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_first_seen ON experience_kind_memberships(first_seen_sync_log_id);
 
