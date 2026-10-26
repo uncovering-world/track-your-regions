@@ -92,14 +92,18 @@ describe('the fields another source contradicts', () => {
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     // Not a view of the same item, the run's own included (#1246), and not a
     // source that stopped listing the place.
-    expect(sql).toMatch(/m\.external_id <> \$2/);
+    expect(sql).toMatch(/v\.external_id <> \$2/);
     expect(sql).toMatch(/m\.missing_since IS NULL AND m\.source_membership = 'present'/);
+    // And a serial site's view of the component a part stands for, unless the
+    // run is the site's own (#2061).
+    expect(sql).toMatch(/p\.part_id = \$1 AND p\.reason = 'component'/);
+    expect(sql).toMatch(/NOT \(v\.component AND v\.source_id = \$9\)/);
     // A field the run leaves empty where another view has one is kept too.
     expect(sql).toMatch(/NULLIF\(\$5::text, ''\) IS NULL AND NULLIF\(m\.reported_image_url, ''\) IS NOT NULL/);
     expect(sql).toMatch(/NULLIF\(\$8::text, ''\) IS NOT NULL AND NULLIF\(m\.reported_wikipedia_url, ''\) IS NOT NULL/);
     expect(params).toEqual([
       9480, 'Q9480', RECORD.name, RECORD.subtitle, RECORD.imageUrl, RECORD.lon, RECORD.lat,
-      'https://en.wikipedia.org/wiki/Dome_of_the_Rock',
+      'https://en.wikipedia.org/wiki/Dome_of_the_Rock', RECORD.sourceId,
     ]);
   });
 

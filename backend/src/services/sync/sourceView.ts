@@ -19,9 +19,8 @@
 
 import type { PoolClient } from 'pg';
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
-import { MEMBERSHIPS } from '../../db/membership.js';
 import {
-  membershipViewSql, viewDisagreementsSql, viewSilencesSql, viewStandsSql, VIEW_FIELDS, type ViewField,
+  membershipViewSql, otherViewsSql, viewDisagreementsSql, viewSilencesSql, VIEW_FIELDS, type ViewField,
 } from '../../db/sourceViews.js';
 
 /**
@@ -71,7 +70,8 @@ export function reportedArticle(params: Pick<ViewRecord, 'metadata'>): string | 
  * views differ one of them read the item before an edit the other has seen:
  * the newer reading is written, and nobody is asked (#1246). The question is
  * for sources that are different data — a World Heritage id beside a Wikidata
- * item.
+ * item, or a serial site's component beside the item its point is tied to
+ * (`otherViewsSql`, #2061).
  * `placeId` is the place the run's lock found; a place the run is creating has
  * no other view and is not asked.
  */
@@ -91,12 +91,9 @@ export async function contestedFields(
     `SELECT DISTINCT unnest(
               ${viewDisagreementsSql(incoming, membershipViewSql('m'), LOCATION_UNCHANGED_METERS)}
               || ${viewSilencesSql(incoming, membershipViewSql('m'))}) AS field
-       FROM ${MEMBERSHIPS} m
-      WHERE m.experience_id = $1
-        AND m.external_id <> $2
-        AND ${viewStandsSql('m')}`,
+       FROM ${otherViewsSql('$1', '$2', '$9')}`,
     [placeId, params.externalId, params.name, params.subtitle, params.imageUrl, params.lon, params.lat,
-      reportedArticle(params)],
+      reportedArticle(params), params.sourceId],
   );
   const contested = new Set(result.rows.map(row => row.field));
   // An anchor is the run's, not the place's coordinate (ADR-0095): there is no

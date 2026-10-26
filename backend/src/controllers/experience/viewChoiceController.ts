@@ -21,7 +21,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience, updateExperienceColumns, type LockedExperience } from '../../db/experienceWriter.js';
 import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import {
-  openViewFieldsSql, placeViewValueSql, viewStandsSql, viewValueSql, type ViewField,
+  openViewFieldsSql, placeViewSourcesSql, placeViewsSql, placeViewValueSql, viewValueSql, type ViewField,
 } from '../../db/sourceViews.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { chooseViewsBodySchema, idParamSchema } from '../../types/index.js';
@@ -39,9 +39,14 @@ interface ChoiceRefusal {
   error: string;
 }
 
-/** What writing a membership's view of a field to the place sets, `$N` naming the membership. */
+/**
+ * What writing a view of a field to the place sets, `$N` naming the
+ * membership that holds the view: the place's own, or the site's on a
+ * component (`placeViewsSql`). `$1` is the place.
+ */
 function assignmentOf(field: ViewField, membershipParam: string, creditParam: string): string {
-  const from = (column: string) => `(SELECT ${column} FROM ${MEMBERSHIPS} WHERE id = ${membershipParam})`;
+  const from = (column: string) =>
+    `(SELECT ${column} FROM ${placeViewsSql('$1', 'v')} WHERE v.membership_id = ${membershipParam})`;
   if (field === 'name') return `name = ${from('reported_name')}`;
   if (field === 'subtitle') return `subtitle = ${from('reported_subtitle')}`;
   if (field === 'location') return `location = ${from('reported_location')}`;
@@ -92,10 +97,9 @@ export interface PictureCredit {
 export async function keepingChoices(experienceId: number): Promise<ViewChoice[]> {
   const result = await pool.query<{ field: ViewField; membership_id: number | null }>(
     `SELECT f AS field,
-            (SELECT m.id FROM ${MEMBERSHIPS} m
-              WHERE m.experience_id = e.id AND ${viewStandsSql('m')}
-                AND ${viewValueSql('f', 'm')} = ${placeViewValueSql('f')}
-              ORDER BY m.id LIMIT 1) AS membership_id
+            (SELECT m.membership_id FROM ${placeViewsSql('e.id', 'm')}
+              WHERE ${viewValueSql('f', 'm')} = ${placeViewValueSql('f')}
+              ORDER BY m.membership_id LIMIT 1) AS membership_id
        FROM experiences e, unnest(${openViewFieldsSql('e.id')}) AS f
       WHERE e.id = $1`,
     [experienceId],
@@ -118,14 +122,14 @@ async function applyChoice(
   const view = await client.query<{
     differs: boolean; kind_name: string; source_name: string; value: string | null; credited: boolean; url: string | null;
   }>(
-    `SELECT ${viewValueSql('$3::text', 'm')} IS DISTINCT FROM (SELECT ${placeViewValueSql('$3::text')} FROM experiences e WHERE e.id = m.experience_id) AS differs,
+    `SELECT ${viewValueSql('$3::text', 'm')} IS DISTINCT FROM (SELECT ${placeViewValueSql('$3::text')} FROM experiences e WHERE e.id = $1) AS differs,
             m.reported_image_credit IS NOT NULL AS credited, m.reported_image_url AS url,
             k.name AS kind_name, s.name AS source_name,
             CASE WHEN $3::text = 'location' THEN NULL ELSE ${viewValueSql('$3::text', 'm')} END AS value
-       FROM ${MEMBERSHIPS} m
+       FROM ${placeViewsSql('$1::int', 'm')}
        JOIN ${KINDS} k ON k.id = m.kind_id
        JOIN experience_sources s ON s.id = m.source_id
-      WHERE m.id = $2 AND m.experience_id = $1 AND ${viewStandsSql('m')}
+      WHERE m.membership_id = $2
         AND NULLIF(${viewValueSql('$3::text', 'm')}, '') IS NOT NULL`,
     [lock.id, choice.membershipId, choice.field],
   );
@@ -191,10 +195,10 @@ export async function chooseViewsUnderLock(
     const openFields = new Set(open.rows[0]?.fields ?? []);
     // The curator was found in scope for the place's sources before the lock;
     // a merge since may have brought one more, which nobody checked.
-    const held = await client.query<{ source_id: number }>(
-      `SELECT DISTINCT source_id FROM ${MEMBERSHIPS} WHERE experience_id = $1 ORDER BY source_id`, [experienceId],
+    const held = await client.query<{ source_ids: number[] }>(
+      `SELECT ${placeViewSourcesSql('$1::int')} AS source_ids`, [experienceId],
     );
-    if (held.rows.map(row => row.source_id).join(',') !== [...scopedSourceIds].sort((a, b) => a - b).join(',')) {
+    if (held.rows[0].source_ids.join(',') !== [...scopedSourceIds].sort((a, b) => a - b).join(',')) {
       return await refuse(409, 'The place changed while you answered — reload to see where it stands');
     }
     const changed: ViewField[] = [];

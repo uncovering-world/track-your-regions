@@ -19,9 +19,9 @@ import type { z } from 'zod/v4';
 import type { ViewSuggestions } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
-import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
+import { KINDS } from '../../db/membership.js';
 import {
-  openViewFieldsSql, viewStandsSql, viewValueSql, viewsOfFieldSql, type ViewField,
+  openViewFieldsSql, placeViewSourcesSql, placeViewsSql, viewValueSql, viewsOfFieldSql, type ViewField,
 } from '../../db/sourceViews.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import {
@@ -101,21 +101,19 @@ async function openFields(
     name: string; countries: string[] | null; source_ids: number[] | null; fields: FieldRow[] | null;
   }>(
     `SELECT e.name, e.country_names AS countries,
-            (SELECT array_agg(DISTINCT m.source_id ORDER BY m.source_id) FROM ${MEMBERSHIPS} m
-              WHERE m.experience_id = e.id) AS source_ids,
+            ${placeViewSourcesSql('e.id')} AS source_ids,
             (SELECT jsonb_agg(jsonb_build_object(
                       'field', f,
                       'snapshot', ${viewsOfFieldSql('e.id', 'f')},
                       'views', (SELECT jsonb_agg(jsonb_build_object(
-                                         'membership_id', m.id, 'kind', k.name, 'source', s.name,
+                                         'membership_id', m.membership_id, 'kind', k.name, 'source', s.name,
                                          'value', ${viewValueSql('f', 'm')}, 'credit', m.reported_image_credit,
                                          'lat', round(ST_Y(m.reported_location)::numeric, 5),
-                                         'lon', round(ST_X(m.reported_location)::numeric, 5)) ORDER BY m.id)
-                                  FROM ${MEMBERSHIPS} m
+                                         'lon', round(ST_X(m.reported_location)::numeric, 5)) ORDER BY m.membership_id)
+                                  FROM ${placeViewsSql('e.id', 'm')}
                                   JOIN ${KINDS} k ON k.id = m.kind_id
                                   JOIN experience_sources s ON s.id = m.source_id
-                                 WHERE m.experience_id = e.id AND ${viewStandsSql('m')}
-                                   AND NULLIF(${viewValueSql('f', 'm')}, '') IS NOT NULL),
+                                 WHERE NULLIF(${viewValueSql('f', 'm')}, '') IS NOT NULL),
                       'stored', (SELECT jsonb_build_object('membership_id', g.suggested_membership_id,
                                                            'confidence', g.confidence)
                                    FROM experience_view_suggestions g

@@ -175,6 +175,17 @@ describe('queryQueueKeys', () => {
     expect(waiting).toMatch(/GROUP BY id, name\s/);
   });
 
+  it("asks a sources question in scope by every source the place's views come from, a serial site's included (#2063)", async () => {
+    await queryQueueKeys(base);
+    const [sql] = lastCall();
+    const sources = sql.slice(sql.indexOf("SELECT 'sources'"), sql.indexOf("SELECT 'waiting'"));
+    // Köln-Praetorium holds only an Archaeology membership, yet its card asks
+    // about UNESCO's view too: an Archaeology-only curator could not answer it.
+    expect(sources).toContain("p.reason = 'component'");
+    expect(sources).toContain('FROM unnest(g.source_ids) AS m(source_id) WHERE NOT');
+    expect(sources).toContain('ca.source_id = m.source_id');
+  });
+
   it('asks whether a conflict is still open of the newest changeset row, not of any row', async () => {
     await queryQueueKeys(base);
     const [sql] = lastCall();
