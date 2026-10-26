@@ -28,7 +28,8 @@ import { invalidateExperiences } from '../../utils/queryInvalidation';
 /** What the answer did, and who gave it. */
 function answeredLine(pin: AdmissionPin): string {
   const who = displayNameOf(pin.curatorName) ?? 'A curator';
-  const what = pin.answer === 'admitted' ? `put it back in ${pin.kindName}` : `kept it out of ${pin.kindName}`;
+  const putBack = pin.added ? `added it to ${pin.kindName}` : `put it back in ${pin.kindName}`;
+  const what = pin.answer === 'admitted' ? putBack : `kept it out of ${pin.kindName}`;
   const when = pin.answeredAt ? ` on ${formatDateTime(pin.answeredAt)}` : '';
   const note = pin.note ? ` — “${pin.note}”` : '';
   return `${who} ${what}${when}${note}`;

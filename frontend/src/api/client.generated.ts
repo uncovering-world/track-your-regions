@@ -3023,6 +3023,7 @@ export const CurationLogEntryAction = {
   separated: 'separated',
   kept_out: 'kept_out',
   merge_proposal_taken_back: 'merge_proposal_taken_back',
+  kind_added: 'kind_added',
 } as const;
 
 /**
@@ -3130,6 +3131,8 @@ export interface AdmissionPin {
      * @nullable
      */
   curatorName: string | null;
+  /** Whether the answer is a curator's add to a kind no run offered the place in (#2035), listed here once a run came to list it: a put-back of nothing, since no rule turned it down. */
+  added: boolean;
   /** Whether a run no longer agrees with it, and the review queue asks about it (#1367). */
   questioned: boolean;
   /** Whether the pin can be handed back to the next run; false for a curator's own refusal of an arrival, which a source publishing a list would never take back by itself, and whose way back is the put-back. */
@@ -5361,15 +5364,17 @@ export interface PlaceKindStanding {
      * @nullable
      */
   reason: string | null;
-  /** When a curator kept it out. */
+  /** Whether a curator put the place into this kind by hand, no run offering it there (#2035). */
+  added: boolean;
+  /** When a curator kept it out, or added it. */
   answeredAt: string | null;
   /**
-     * The curator's words on keeping it out.
+     * The curator's words on keeping it out, or on adding it.
      * @nullable
      */
   note: string | null;
   /**
-     * Who kept it out, as they chose to be named; null where they chose nothing or the act lies outside the caller's regions, as in the curation log.
+     * Who kept it out or added it, as they chose to be named; null where they chose nothing or the act lies outside the caller's regions, as in the curation log.
      * @nullable
      */
   curatorName: string | null;
@@ -5378,10 +5383,61 @@ export interface PlaceKindStanding {
 }
 
 /**
- * Every kind a place belongs to, for the curator's card (#2022).
+ * A kind the caller may put the place into (#2035).
+ */
+export interface AddableKind {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kindId: number;
+  kindName: string;
+}
+
+/**
+ * Every kind a place belongs to, for the curator's card (#2022), and the kinds it may be added to.
  */
 export interface PlaceKindStandings {
   kinds: PlaceKindStanding[];
+  /** The kinds the place has no membership in, World Heritage Sites aside, whose source the caller's scope reaches. */
+  addable: AddableKind[];
+}
+
+export interface AddToKindBody {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  kindId: number;
+  /**
+     * The type within the kind, from its vocabulary; absent for a kind that has none.
+     * @maxLength 100
+     */
+  type?: string;
+  /** @maxLength 1000 */
+  note?: string;
+}
+
+/**
+ * A place put into a kind no run offers it in, by a curator from its card (#2035).
+ */
+export interface KindAddedToPlace {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /**
+     * The membership the add wrote: admitted, published and pinned.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kindId: number;
 }
 
 export interface KeepOutOfKindBody {
@@ -10917,6 +10973,46 @@ export const getExperiencesByIdKinds = async (id: number, options?: Parameters<t
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export const getPostExperiencesByIdKindsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/kinds`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Put a place into a kind no run offers it in; take it out again with keep-out
+ */
+export const postExperiencesByIdKinds = async (id: number,
+    addToKindBody: AddToKindBody, options?: Parameters<typeof apiFetch>[1]): Promise<KindAddedToPlace> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<KindAddedToPlace>(getPostExperiencesByIdKindsUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(addToKindBody)
   }
 );}
 

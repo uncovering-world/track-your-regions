@@ -9,7 +9,9 @@
  * an offered one can be taken out, with a note, after a step that says what
  * readers lose; a kept-out one says who kept it out and why, and is put back
  * with the override every pinned refusal has. An arrival and a rule's refusal
- * are answered on the review page, and say so.
+ * are answered on the review page, and say so. A kind no run offers the place
+ * in is added at the foot (`PlaceKindAdd`, #2035), and an added one says who
+ * added it.
  */
 
 import { useState } from 'react';
@@ -24,6 +26,7 @@ import { formatDateTime } from '../../utils/dateFormat';
 import { displayNameOf } from '../../utils/displayName';
 import { typeLabelFor } from '../../utils/experienceTypes';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
+import { PlaceKindAdd } from './PlaceKindAdd';
 
 /** The line under a kind's name: its type, then where it stands. */
 function standingLine(kind: PlaceKindStanding): string {
@@ -36,17 +39,29 @@ function standingLine(kind: PlaceKindStanding): string {
   }
 }
 
-/** Who kept it out and when, as the pins list says it. */
-function keptOutBy(kind: PlaceKindStanding): string {
+/** Who kept it out or added it, and when, as the pins list says it. */
+function answeredBy(kind: PlaceKindStanding, act: 'kept out' | 'added'): string {
   const who = displayNameOf(kind.curatorName) ?? 'a curator';
   const when = kind.answeredAt ? formatDateTime(kind.answeredAt) : null;
-  return [`kept out by ${who}`, when].filter(Boolean).join(' · ');
+  return [`${act} by ${who}`, when].filter(Boolean).join(' · ');
 }
 
 /** The row's ground: tinted while it asks, greyed once kept out. */
 function rowGround(theme: Theme, asking: boolean, keptOut: boolean): string | undefined {
   if (asking) return alpha(theme.palette.error.main, 0.05);
   return keptOut ? theme.palette.action.hover : undefined;
+}
+
+/** What a kind's answer moves: the card, the pins, the queue, the history and the reader's lists. */
+function useKindSettled(experienceId: number, regionId: number | null): () => void {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.curation.placeKinds(experienceId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.curation.admissionPinsAll });
+    queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll });
+    queryClient.invalidateQueries({ queryKey: queryKeys.experience.curationLogAll });
+    invalidateExperiences(queryClient, { regionId, experienceId });
+  };
 }
 
 function KindRow({ experienceId, kind, onlyOffered, regionId }: {
@@ -56,16 +71,9 @@ function KindRow({ experienceId, kind, onlyOffered, regionId }: {
   onlyOffered: boolean;
   regionId: number | null;
 }) {
-  const queryClient = useQueryClient();
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState('');
-  const settled = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.curation.placeKinds(experienceId) });
-    queryClient.invalidateQueries({ queryKey: queryKeys.curation.admissionPinsAll });
-    queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll });
-    queryClient.invalidateQueries({ queryKey: queryKeys.experience.curationLogAll });
-    invalidateExperiences(queryClient, { regionId, experienceId });
-  };
+  const settled = useKindSettled(experienceId, regionId);
   const takeOut = useMutation({
     mutationFn: () => keepOutOfKind(experienceId, { membershipId: kind.membershipId, note: note.trim() || undefined }),
     onSuccess: () => { setAsking(false); setNote(''); settled(); },
@@ -90,9 +98,17 @@ function KindRow({ experienceId, kind, onlyOffered, regionId }: {
             {kind.kindName}
           </Typography>
           <Typography variant="caption" color="text.secondary" display="block">{standingLine(kind)}</Typography>
+          {kind.added && !keptOut && (
+            <Chip size="small" color="success" variant="outlined" label={answeredBy(kind, 'added')} sx={{ mt: 0.5 }} />
+          )}
+          {kind.added && !keptOut && kind.note && (
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ fontStyle: 'italic', mt: 0.5 }}>
+              “{kind.note}”
+            </Typography>
+          )}
           {keptOut && (
             <>
-              <Chip size="small" color="warning" variant="outlined" label={keptOutBy(kind)} sx={{ mt: 0.5 }} />
+              <Chip size="small" color="warning" variant="outlined" label={answeredBy(kind, 'kept out')} sx={{ mt: 0.5 }} />
               {kind.note && (
                 <Typography variant="caption" color="text.secondary" display="block" sx={{ fontStyle: 'italic', mt: 0.5 }}>
                   “{kind.note}”
@@ -159,8 +175,10 @@ export function PlaceKinds({ experienceId, regionId }: { experienceId: number; r
     // offering an action on a standing that has moved would only earn a 409.
     staleTime: 0,
   });
+  const settled = useKindSettled(experienceId, regionId);
   const list = kinds.data?.kinds ?? [];
-  if (list.length === 0) return null;
+  const addable = kinds.data?.addable ?? [];
+  if (list.length === 0 && addable.length === 0) return null;
   const offered = list.filter(kind => kind.state === 'offered').length;
 
   return (
@@ -179,6 +197,11 @@ export function PlaceKinds({ experienceId, regionId }: { experienceId: number; r
             regionId={regionId}
           />
         ))}
+        {addable.length > 0 && (
+          <Box sx={{ borderTop: list.length > 0 ? 1 : 0, borderColor: 'divider' }}>
+            <PlaceKindAdd experienceId={experienceId} addable={addable} onAdded={settled} />
+          </Box>
+        )}
       </Box>
     </Box>
   );

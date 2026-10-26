@@ -21,7 +21,7 @@ const mockedHandBack = handBackAdmissionPin as unknown as ReturnType<typeof vi.f
 const FARNESINA: AdmissionPin = {
   experienceId: 6287, name: 'Villa Farnesina', membershipId: 6260, kindName: 'Art Museums', answer: 'admitted',
   answeredReason: 'probe: site class villa', answeredAt: '2026-08-08T18:29:09Z', note: 'Raphael’s frescoes',
-  curatorName: 'Ada', questioned: false, canHandBack: true,
+  curatorName: 'Ada', added: false, questioned: false, canHandBack: true,
 };
 const BRITISH: AdmissionPin = {
   ...FARNESINA, experienceId: 6205, name: 'British Museum', membershipId: 6178, answer: 'refused',
@@ -46,6 +46,16 @@ describe('admission pins', () => {
     expect(await screen.findByText(/Ada put it back in Art Museums on .* — “Raphael’s frescoes”/)).toBeTruthy();
     expect(screen.getByText(/stays in Art Museums until the next run; a run that still turns it down asks you again/)).toBeTruthy();
     expect(mockedPins).toHaveBeenCalledWith(6287);
+  });
+
+  it('says a curator added a place no rule turned down, once a run lists it', async () => {
+    mockedPins.mockResolvedValue({ pins: [{
+      ...FARNESINA, experienceId: 6285, name: 'East Side Gallery', membershipId: 41450, kindName: 'Public art',
+      answeredReason: null, note: 'A mile of murals on the Berlin Wall', added: true,
+    }], more: false });
+    show(<PlacePins experienceId={6285} regionId={5} />);
+
+    expect(await screen.findByText(/Ada added it to Public art on .* — “A mile of murals on the Berlin Wall”/)).toBeTruthy();
   });
 
   it('hands a pin back for the membership it is on', async () => {

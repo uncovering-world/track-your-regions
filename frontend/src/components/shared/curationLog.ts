@@ -32,6 +32,7 @@ import { POINT_VERDICT_ACTIONS, type CurationLogAction } from '@tyr/shared/curat
 import { fieldLabel } from '../curation/fieldMeaning';
 import { plural } from '../../utils/plural';
 import { creators } from '../../utils/creatorList';
+import { typeLabelFor } from '../../utils/experienceTypes';
 import { creditSentence } from './ImageCreditLine';
 import type { ImageCredit } from '../../api/experiences';
 import type { CurationLogEntry } from '../../api/curation';
@@ -137,6 +138,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // A published place taken out of one kind from its own card, with no
   // question asked (#2022): red like the other refusals, named for the kind.
   kept_out: { label: 'Taken out of a kind', color: RED },
+  // And the other way (#2035): a place put into a kind no run offers it in,
+  // green like a put-back, named for the kind.
+  kind_added: { label: 'Added to a kind', color: GREEN },
   // A pin released, with the rule's verdict written in its place: one an
   // unread batch answer made (#1365, ADR-0096), or one a curator let the rule
   // decide once a run asked about it again (#1367). Red like a kept-out row,
@@ -513,6 +517,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   merge_proposal_taken_back: d => formatMergeProposalTakenBack(d),
   visit_question_answered: d => formatVisitQuestionAnswered(d),
   kept_out: d => formatKeptOut(d),
+  kind_added: d => formatKindAdded(d),
   identifier_settled: d => formatIdentifierSettled(d),
 };
 
@@ -677,6 +682,16 @@ function formatKeptOut(d: Record<string, unknown>): string | null {
   const kind = typeof d.kind === 'string' ? d.kind : 'its kind';
   return [`Out of ${kind}`, typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null]
     .filter(Boolean).join(' — ');
+}
+
+function formatKindAdded(d: Record<string, unknown>): string | null {
+  const kind = typeof d.kind === 'string' ? d.kind : 'a kind';
+  const type = typeof d.type === 'string' && typeof d.kindId === 'number'
+    ? typeLabelFor(d.kindId, d.type).toLowerCase() : null;
+  return [
+    [`Into ${kind}`, type].filter(Boolean).join(' · '),
+    typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null,
+  ].filter(Boolean).join(' — ');
 }
 
 /** A place a merge row names: by the name it had at the act, and its id, which tells two of one name apart. */

@@ -1990,6 +1990,7 @@ export const CuratorActivityEntryAction = {
   separated: 'separated',
   kept_out: 'kept_out',
   merge_proposal_taken_back: 'merge_proposal_taken_back',
+  kind_added: 'kind_added',
 } as const;
 
 /**
@@ -5985,6 +5986,7 @@ export const GetAdminCuratorsByUserIdActivityAction = {
   separated: 'separated',
   kept_out: 'kept_out',
   merge_proposal_taken_back: 'merge_proposal_taken_back',
+  kind_added: 'kind_added',
 } as const;
 
 export type GetAdminCurationActivityParams = {
@@ -6062,6 +6064,7 @@ export const GetAdminCurationActivityAction = {
   separated: 'separated',
   kept_out: 'kept_out',
   merge_proposal_taken_back: 'merge_proposal_taken_back',
+  kind_added: 'kind_added',
 } as const;
 
 export type GetAdminUsersSearchParams = {
