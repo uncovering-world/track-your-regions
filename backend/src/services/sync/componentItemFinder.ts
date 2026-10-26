@@ -477,12 +477,21 @@ async function writeProposals(
   }
 }
 
+/**
+ * The subset the finder reads, or null where there is none to read. The
+ * subset's tables are unlogged: a database crash empties them while the
+ * build's record stands, and a pass over empty tables would clear every open
+ * proposal.
+ */
+export async function heldSubset(): Promise<{ dumpDate: string } | null> {
+  const subset = await latestSubset();
+  return subset && await entitiesAreHeld() ? subset : null;
+}
+
 export async function findComponentItems(options: FinderOptions): Promise<{ report: ComponentItemReport; matches: ComponentMatch[] }> {
   const { hooks, onStep } = options;
-  // The subset's tables are unlogged: a database crash empties them while the
-  // build's record stands, and a pass over empty tables would clear every open proposal.
-  const subset = await latestSubset();
-  if (!subset || !(await entitiesAreHeld())) {
+  const subset = await heldSubset();
+  if (!subset) {
     throw new Error('The local Wikidata subset is not built (or a database crash emptied it): build it under Public Dumps before finding component items');
   }
   let queries = 0;

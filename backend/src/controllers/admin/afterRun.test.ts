@@ -14,11 +14,16 @@ vi.mock('../../services/sync/mergeProposalFinder.js', async (importOriginal) => 
   ...(await importOriginal<typeof import('../../services/sync/mergeProposalFinder.js')>()),
   drainPairing: vi.fn(async () => ({ places: 2, wholeCatalogue: false, open: 1, fromWikidata: 0 })),
 }));
+vi.mock('../../services/sync/componentItemFinder.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/sync/componentItemFinder.js')>()),
+  heldSubset: vi.fn(async () => ({ dumpDate: '2026-10-05' })),
+}));
 vi.mock('../experience/equalItemMerges.js', () => ({
   joinPlacesClaimingOneItem: vi.fn(async () => ({ merged: [], refused: [] })),
 }));
 
 import { pool } from '../../db/index.js';
+import { heldSubset } from '../../services/sync/componentItemFinder.js';
 import { runComponentItemSearch } from '../../services/sync/componentItemJob.js';
 import { drainPairing } from '../../services/sync/mergeProposalFinder.js';
 import { runningSyncs, type SyncProgress } from '../../services/sync/types.js';
@@ -139,15 +144,42 @@ describe('the steps after a run', () => {
     expect(partial.status).toBe('partial');
   });
 
-  it('restores the verdict and says so when a step fails', async () => {
+  it('names a failed step, still runs the steps after it, and restores the verdict', async () => {
     const run = ended(401);
     runningSyncs.set(4, run);
     vi.mocked(joinPlacesClaimingOneItem).mockRejectedValueOnce(new Error('the database went away'));
 
     await afterRun(4, [4], accept);
 
+    expect(drainPairing).toHaveBeenCalledTimes(1);
     expect(run.status).toBe('complete');
-    expect(run.statusMessage).toBe('Sync completed: 401; the steps after the run failed; the server log has the cause');
+    expect(run.statusMessage).toBe('Sync completed: 401; the joining of places claiming one item failed; the server log has the cause; 2 changed places paired again with near places, 1 near pair open among them');
     expect(run.continues).toBe(false);
+  });
+
+  it('pairs the changed places when the search fails', async () => {
+    const run = ended(402);
+    runningSyncs.set(1, run);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5001 }] });
+    vi.mocked(runComponentItemSearch).mockRejectedValueOnce(new Error('Wikidata went away'));
+
+    await afterRun(1, [1], accept);
+
+    expect(drainPairing).toHaveBeenCalledTimes(1);
+    expect(run.statusMessage).toBe('Sync completed: 402; the search for the new components\' items failed; the server log has the cause; 2 changed places paired again with near places, 1 near pair open among them');
+  });
+
+  it('skips the search with its reason where the local Wikidata subset is not built, and still pairs', async () => {
+    const run = ended(403);
+    runningSyncs.set(1, run);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5001 }, { id: 5002 }] });
+    vi.mocked(heldSubset).mockResolvedValueOnce(null);
+
+    await afterRun(1, [1], accept);
+
+    expect(runComponentItemSearch).not.toHaveBeenCalled();
+    expect(drainPairing).toHaveBeenCalledTimes(1);
+    expect(run.status).toBe('complete');
+    expect(run.statusMessage).toBe('Sync completed: 403; 2 new components left without an item, since the local Wikidata subset is not built: build it under Public Dumps, then Find component items; 2 changed places paired again with near places, 1 near pair open among them');
   });
 });
