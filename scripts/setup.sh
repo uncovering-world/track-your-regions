@@ -87,13 +87,13 @@ fi
 
 # Compose builds this database from db/init/01-schema.sql, so it already carries
 # every structural change db/migrations/ holds and their backfills have no rows
-# to repair. Record that, or it stands at 40 pending files it must not run:
-# 015 deletes rows by volume and would take a freshly imported catalogue with it
-# (#435, ADR-0041).
+# to repair. Record that, or it stands at every file in db/migrations/ pending,
+# none of which it may run: 015 deletes rows by volume and would take a freshly
+# imported catalogue with it (#435, ADR-0041), and db:migrate refuses them.
 #
 # --only-if-empty, because this script is documented as safe to re-run: after a
-# 041 has landed and not yet been applied, an unconditional baseline would write
-# it down as applied without running it. And the database is named from .env
+# new migration has landed and not yet been applied, an unconditional baseline
+# would write it down as applied without running it. And the database is named from .env
 # rather than left to .active-db, since the one Compose built is the one .env
 # names (POSTGRES_DB) -- not whichever a developer last switched to.
 SETUP_DB="$(grep -E '^DB_NAME=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" || true)"
