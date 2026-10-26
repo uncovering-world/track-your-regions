@@ -75,6 +75,8 @@ describe('classifyTowers', () => {
     facts: new Map(rows.map(([e, classes]) => [e.qid, { classes }])) as never,
     containers: emptyContainment(),
     subjects: new Map(),
+    entered: new Set(),
+    enteredOnly: new Set(),
   });
 
   it('admits by the rule and the line, refuses what the rule refuses, and names a fallen tower', async () => {

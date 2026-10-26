@@ -32,7 +32,9 @@ import {
 import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
 import { artworkDoorNote, type PlaceDoor, type ReadershipDoor } from '../readershipDoor.js';
 import { publicArtVerdict } from './publicArtTest.js';
-import type { KindRule } from './kindRules.js';
+import { streetArtVerdict } from './streetArtTest.js';
+import { enterStreetArtPlaces, type StreetArtReading } from './streetArtPlaces.js';
+import type { KindFacts, KindRule } from './kindRules.js';
 import { CAST_GROUP, emptyFacts, fetchCastGroupPool, type PoolEntity, type EntityFacts } from './queries.js';
 import { attachCasts, fetchCastItems } from './castGroups.js';
 import type { PlaceKind } from '../places/gather.js';
@@ -94,6 +96,10 @@ export interface GatheredPublicArt {
   containers: Containment;
   /** What the candidates depict, by item id. */
   subjects: Map<string, SubjectFacts>;
+  /** The candidates the street-art entrance named (`enterStreetArtPlaces`). */
+  entered: ReadonlySet<string>;
+  /** The ones of those no class question named and no source of the pass admits. */
+  enteredOnly: ReadonlySet<string>;
 }
 
 async function collectTrees(run: QueryRunner): Promise<PublicArtTrees> {
@@ -153,6 +159,9 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
     enter: fetchCastGroupPool,
     attach: readCastGroups,
   },
+  // The street-art places no class names (#2035): Public art decides them by
+  // their own rule, Monuments & memorials skips the ones it does not admit.
+  entrance: enterStreetArtPlaces,
 };
 
 /**
@@ -197,6 +206,47 @@ function landmarkOf(
   };
 }
 
+/** What a kind's `admits` and `type` read of a candidate. */
+function kindFactsOf(known: EntityFacts, subjects: Map<string, SubjectFacts>): KindFacts {
+  return {
+    classes: known.classes,
+    commemorates: known.commemorates,
+    genres: known.genres,
+    subjects: known.depicts.flatMap((qid) => subjects.get(qid) ?? []),
+  };
+}
+
+/**
+ * The candidates the street-art rule decides rather than the kind's own: the
+ * ones the entrance named that no class of the kind admits. A sculpture a
+ * graffiti category also files stays the kind's.
+ */
+export function streetArtCandidates(gathered: GatheredPublicArt, rule: KindRule): string[] {
+  return [...gathered.entered].filter((qid) => {
+    const known = gathered.facts.get(qid) ?? emptyFacts();
+    return !rule.admits(kindFactsOf(known, gathered.subjects), gathered.trees);
+  });
+}
+
+/** The street-art rule's verdict on one candidate, read off the gather and the reading. */
+function streetArtVerdictOf(entity: PoolEntity, gathered: GatheredPublicArt, reading: StreetArtReading, held: boolean) {
+  const known = gathered.facts.get(entity.qid) ?? emptyFacts();
+  const marks = reading.marks.get(entity.qid);
+  return streetArtVerdict({
+    qid: entity.qid,
+    classes: known.classes,
+    excludedRoots: [...new Set(known.classes.flatMap((c) => reading.roots.get(c) ?? []))],
+    atlasObscura: marks?.atlasObscura ?? false,
+    guided: reading.guided.has(entity.qid),
+    readers: reading.readers === null ? null : reading.readers.get(entity.qid) ?? 0,
+    ended: marks?.ended ?? false,
+    admitted: held,
+    onEarth: entity.onEarth,
+    lat: entity.lat,
+    lon: entity.lon,
+  }, gathered.trees);
+}
+
 /** The kind's verdict on one candidate of the share, read off the gathered facts. */
 function verdictOf(
   entity: PoolEntity,
@@ -238,6 +288,74 @@ function lineOrDoor(
   return standing;
 }
 
+/** What a candidate comes to: an item admitted, a refusal with its reason, or null when it is never in. */
+type Decision = { item: WikidataLandmark } | { refused: FilteredEntity } | null;
+
+/**
+ * The street-art rule's decision on a candidate it decides, or undefined where
+ * the kind's own rule decides it: the street-art rule decides what it admits,
+ * what the source holds and what only its entrance brought, so a newcomer a
+ * class of the kind also named and the street-art rule does not admit keeps
+ * the kind's reason.
+ */
+function streetArtDecision(
+  entity: PoolEntity, gathered: GatheredPublicArt, reading: StreetArtReading, held: boolean,
+): Decision | undefined {
+  const says = streetArtVerdictOf(entity, gathered, reading, held);
+  if (!says.pass && !held && !gathered.enteredOnly.has(entity.qid)) return undefined;
+  if (says.pass) {
+    // The verdict refused anything placeless; this narrows the type. The
+    // street-art reading is what answered the kind here, as an artwork class
+    // answers a building's veto: the catalogue check reads this answer rather
+    // than the classes, which name a wall or a road.
+    if (entity.lat === null || entity.lon === null) return null;
+    const known = gathered.facts.get(entity.qid) ?? emptyFacts();
+    return { item: landmarkOf(entity, entity.lat, entity.lon, known, { type: says.type, artwork: true }) };
+  }
+  if (says.quiet) return null;
+  return { refused: { externalId: entity.qid, name: entity.label, reason: says.reason, ...(held ? { type: 'street-art' } : {}) } };
+}
+
+/**
+ * The kind's own decision on a candidate: its verdict, then the fame line or
+ * the readership door. A candidate only the street-art entrance named is not
+ * the kind's: the gather leaves every row a source of the pass holds out of
+ * `enteredOnly`.
+ */
+function kindDecision(
+  entity: PoolEntity,
+  gathered: GatheredPublicArt,
+  rule: KindRule,
+  held: boolean,
+  offered: ReadonlySet<string> | undefined,
+  door: ReadershipDoor | null,
+): Decision {
+  // A candidate the entrance alone brought is the street-art rule's or nobody's.
+  if (gathered.enteredOnly.has(entity.qid)) return null;
+  const known = gathered.facts.get(entity.qid) ?? emptyFacts();
+  // On a refusal of a row the source admits, the type the classes read: a
+  // curator may have put it back, and a put-back is filed under it too
+  // (`filePutBackTypes`, ADR-0135).
+  const type = held ? { type: rule.type(kindFactsOf(known, gathered.subjects), gathered.trees) } : {};
+  const verdict = verdictOf(entity, gathered, rule, offered);
+  if (!verdict.pass) {
+    return { refused: {
+      externalId: entity.qid, name: entity.label, reason: verdict.reason, ...type,
+      // Where it is held, for the kind that holds that place to take it (ADR-0102).
+      ...(verdict.heldIn ? { heldIn: verdict.heldIn } : {}),
+    } };
+  }
+  // The verdict refused anything placeless above; this narrows the type,
+  // it cannot fire.
+  if (entity.lat === null || entity.lon === null) return null;
+  const entry = lineOrDoor(entity, held, door);
+  if (entry === 'out') return null;
+  if (entry === 'fell') {
+    return { refused: { externalId: entity.qid, name: entity.label, reason: belowLineReason(entity.sitelinks, LINE), ...type } };
+  }
+  return { item: { ...landmarkOf(entity, entity.lat, entity.lon, known, verdict), ...entry } };
+}
+
 /**
  * Decide what of the gather is of the kind `rule` names: the candidates that
  * pass it and clear the fame line, and every candidate it refused, with the
@@ -248,7 +366,10 @@ function lineOrDoor(
  * reader, which decides whether a work outdoors on a venue's grounds is
  * stranded there (#1444). `door` is the readership door over the share
  * (`openArtworkDoor`): a work it opened for stands in as one at the line does,
- * and carries the curator's question. Items come back most famous first, which
+ * and carries the curator's question. `streetArt` is what the street-art rule
+ * reads of the candidates it decides (`streetArtCandidates`), for the kind that
+ * holds them; without it, a candidate only the street-art entrance named is not
+ * this kind's and is skipped. Items come back most famous first, which
  * is the order the run writes them in and the order a person watching it
  * reads.
  */
@@ -258,44 +379,20 @@ export function classifyPublicArt(
   admitted: ReadonlySet<string>,
   offered?: ReadonlySet<string>,
   door: ReadershipDoor | null = null,
+  streetArt: StreetArtReading | null = null,
 ): CollectedPublicArt {
-  const { trees, pool, facts, subjects } = gathered;
+  const { pool } = gathered;
   const items: WikidataLandmark[] = [];
   const filtered: FilteredEntity[] = [];
+  const decidedAsStreetArt = new Set(streetArt ? streetArtCandidates(gathered, rule) : []);
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
   for (const entity of candidates) {
-    const known = facts.get(entity.qid) ?? emptyFacts();
-    // On a refusal of a row the source admits, the type the classes read: a
-    // curator may have put it back, and a put-back is filed under it too
-    // (`filePutBackTypes`, ADR-0135).
-    const depicted = known.depicts.flatMap((qid) => subjects.get(qid) ?? []);
-    const type = admitted.has(entity.qid)
-      ? { type: rule.type({ classes: known.classes, commemorates: known.commemorates, genres: known.genres, subjects: depicted }, trees) }
-      : {};
-    const verdict = verdictOf(entity, gathered, rule, offered);
-    if (!verdict.pass) {
-      filtered.push({
-        externalId: entity.qid, name: entity.label, reason: verdict.reason, ...type,
-        // Where it is held, for the kind that holds that place to take it (ADR-0102).
-        ...(verdict.heldIn ? { heldIn: verdict.heldIn } : {}),
-      });
-      continue;
-    }
-    // The verdict refused anything placeless above; this narrows the type,
-    // it cannot fire.
-    if (entity.lat === null || entity.lon === null) continue;
-    const entry = lineOrDoor(entity, admitted.has(entity.qid), door);
-    if (entry === 'out') continue;
-    if (entry === 'fell') {
-      filtered.push({
-        externalId: entity.qid,
-        name: entity.label,
-        reason: belowLineReason(entity.sitelinks, LINE),
-        ...type,
-      });
-      continue;
-    }
-    items.push({ ...landmarkOf(entity, entity.lat, entity.lon, known, verdict), ...entry });
+    const held = admitted.has(entity.qid);
+    const streetArtSays = streetArt && decidedAsStreetArt.has(entity.qid)
+      ? streetArtDecision(entity, gathered, streetArt, held) : undefined;
+    const decision = streetArtSays === undefined ? kindDecision(entity, gathered, rule, held, offered, door) : streetArtSays;
+    if (decision && 'item' in decision) items.push(decision.item);
+    else if (decision) filtered.push(decision.refused);
   }
 
   const byDoor = items.filter((item) => item.readershipNote).map((item) => item.label);
@@ -323,8 +420,11 @@ export async function openArtworkDoor(
   offered?: ReadonlySet<string>,
 ): Promise<ReadershipDoor | null> {
   if (!openDoor) return null;
+  // A candidate the entrance alone brought is the street-art rule's: it neither
+  // sets the door's bar nor walks through it.
   return openDoor(
     [...gathered.pool.values()]
+      .filter((entity) => !gathered.enteredOnly.has(entity.qid))
       .filter((entity) => entity.sitelinks < ENTER_SITELINKS
         || (admitted.has(entity.qid) && verdictOf(entity, gathered, rule, offered).pass))
       .map((entity) => ({ qid: entity.qid, sitelinks: entity.sitelinks })),

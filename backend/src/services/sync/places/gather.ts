@@ -74,6 +74,13 @@ export interface PlaceKind<Trees> {
    * and the kind's own line for them decides. Only this kind sees them.
    */
   belowFloor?(trees: Trees): { classes: readonly string[]; floor: number };
+  /**
+   * Candidates named by what they are filed under rather than by a class
+   * (#2035): a street-art place is typed a wall, a road or a tunnel, and the
+   * category or genre it is filed under is what names it. Only this kind sees
+   * the ones no class question named, and its classifier decides them.
+   */
+  entrance?(run: QueryRunner): Promise<string[]>;
 }
 
 /** A kind's share of the gather: its trees, and its candidates with what is known of them. */
@@ -91,6 +98,13 @@ export interface KindShare<Trees> {
   containers: Containment;
   /** What its candidates depict, by item id; empty for a kind that reads none. */
   subjects: Map<string, SubjectFacts>;
+  /** The rows of `pool` its entrance named (`entrance`); empty for a kind that has none. */
+  entered: Set<string>;
+  /**
+   * The rows of `entered` that are candidates by the entrance alone: no class
+   * question of the kind named them and the kind does not admit them.
+   */
+  enteredOnly: Set<string>;
 }
 
 /** The kinds a gather was asked for, with what each of them admits before the run. */
@@ -144,16 +158,12 @@ async function collectPool(
   return pool;
 }
 
-/**
- * The rows the kinds admit that no class question named — fallen below the
- * pool floor, or retyped by Wikidata — asked for by id, so that every admitted
- * row gets its kind's own reason rather than the sweep's.
- */
-async function collectAdmitted(run: QueryRunner, missing: string[]): Promise<Map<string, PoolEntity>> {
+/** The rows `missing` names that no class question named, asked for by id; `what` names them in the phase. */
+async function collectById(run: QueryRunner, missing: string[], what: string): Promise<Map<string, PoolEntity>> {
   const found = new Map<string, PoolEntity>();
   const batches = chunk(missing, FACT_BATCH);
   for (let i = 0; i < batches.length; i++) {
-    run.phase(`Asking after admitted rows the pool did not name (batch ${i + 1}/${batches.length})...`);
+    run.phase(`Asking after ${what} the pool did not name (batch ${i + 1}/${batches.length})...`);
     await run.step();
     for (const entity of await fetchEntitiesByIds(run, batches[i])) found.set(entity.qid, entity);
   }
@@ -189,18 +199,20 @@ async function askedClasses(run: QueryRunner, requests: GatherRequest[]) {
 
 /**
  * A kind's candidates: what the pool named by one of the kind's classes, the
- * entity's own, and every row the kind admits.
+ * entity's own, every row the kind admits, and every row its entrance named.
  */
 function candidatesOf(
   classes: ReadonlySet<string>,
   admitted: ReadonlySet<string>,
+  named: ReadonlySet<string>,
   pooled: Map<string, PoolEntity>,
   byId: Map<string, PoolEntity>,
   facts: Map<string, EntityFacts>,
-): { pool: Map<string, PoolEntity>; byId: Set<string>; facts: Map<string, EntityFacts> } {
+): { pool: Map<string, PoolEntity>; byId: Set<string>; facts: Map<string, EntityFacts>; entered: Set<string>; enteredOnly: Set<string> } {
   const byClass = (qid: string) => (facts.get(qid)?.classes ?? []).some((c) => classes.has(c));
-  const pool = new Map([...pooled].filter(([qid]) => admitted.has(qid) || byClass(qid)));
-  for (const [qid, entity] of byId) if (admitted.has(qid)) pool.set(qid, entity);
+  const wanted = (qid: string) => admitted.has(qid) || named.has(qid);
+  const pool = new Map([...pooled].filter(([qid]) => wanted(qid) || byClass(qid)));
+  for (const [qid, entity] of byId) if (wanted(qid)) pool.set(qid, entity);
   // A row the kind admits that none of its own classes names is one it has by
   // id, whichever question fetched it: another kind's class question may name
   // a site Archaeology admits, and that vouches for nothing of the site's.
@@ -210,7 +222,9 @@ function candidatesOf(
     const entry = facts.get(qid);
     if (entry) known.set(qid, entry);
   }
-  return { pool, byId: askedById, facts: known };
+  const entered = new Set([...pool.keys()].filter((qid) => named.has(qid)));
+  const enteredOnly = new Set([...entered].filter((qid) => !admitted.has(qid) && !byClass(qid)));
+  return { pool, byId: askedById, facts: known, entered, enteredOnly };
 }
 
 /**
@@ -239,6 +253,18 @@ async function collectBelowFloor(
   return out;
 }
 
+/** The ids each kind's entrance names (`entrance`), by kind. */
+async function collectEntrances(run: QueryRunner, requests: GatherRequest[]): Promise<Map<PlaceKind<unknown>, Set<string>>> {
+  const out = new Map<PlaceKind<unknown>, Set<string>>();
+  for (const { kind } of requests) {
+    if (!kind.entrance) continue;
+    run.phase(`Reading what names ${kind.name} beside its classes...`);
+    await run.step();
+    out.set(kind, new Set(await kind.entrance(run)));
+  }
+  return out;
+}
+
 /** The pool as one kind sees it: the shared pool and what it asked below the floor. */
 function withOwn(pooled: Map<string, PoolEntity>, own: Map<string, PoolEntity> | undefined): Map<string, PoolEntity> {
   return own ? new Map([...own, ...pooled]) : pooled;
@@ -253,7 +279,14 @@ export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]
     for (const entity of await edition.enter(run)) if (!pooled.has(entity.qid)) pooled.set(entity.qid, entity);
   }
   const admitted = new Set(requests.flatMap(({ admitted: ids }) => [...ids]));
-  const byId = await collectAdmitted(run, [...admitted].filter((qid) => !pooled.has(qid)));
+  // An admitted row fallen below the pool floor, or retyped by Wikidata, gets
+  // its kind's own reason rather than the sweep's.
+  const byId = await collectById(run, [...admitted].filter((qid) => !pooled.has(qid)), 'admitted rows');
+  const named = await collectEntrances(run, requests);
+  const namedIds = new Set([...named.values()].flatMap((ids) => [...ids]));
+  for (const [qid, entity] of await collectById(run, [...namedIds].filter((qid) => !pooled.has(qid) && !byId.has(qid)), 'the places an entrance named')) {
+    byId.set(qid, entity);
+  }
   const low = await collectBelowFloor(run, requests, trees, pooled);
   const lowIds = [...low.values()].flatMap((own) => [...own.keys()]);
   const facts = await collectFacts(run, [...new Set([...pooled.keys(), ...byId.keys(), ...lowIds])]);
@@ -261,7 +294,7 @@ export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]
 
   const shares = new Map<PlaceKind<unknown>, KindShare<unknown>>();
   for (const { kind, admitted: ids } of requests) {
-    const share = candidatesOf(classesOf.get(kind)!, ids, withOwn(pooled, low.get(kind)), byId, facts);
+    const share = candidatesOf(classesOf.get(kind)!, ids, named.get(kind) ?? new Set(), withOwn(pooled, low.get(kind)), byId, facts);
     shares.set(kind, { trees: trees.get(kind), ...share, containers: emptyContainment(), subjects: new Map() });
   }
 

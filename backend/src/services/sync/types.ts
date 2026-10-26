@@ -325,8 +325,10 @@ export interface WikidataLandmark {
   classes: string[];
   /**
    * Whether an artwork class answered the rule — the sculptural and fountain
-   * closures or a pinned structure, what lifts a building's veto. Stored as
-   * `metadata.wikidataArtwork`, so the check reads the rule's own answer.
+   * closures or a pinned structure, what lifts a building's veto — or the
+   * street-art rule admitted the place for the art painted on it (#2035).
+   * Stored as `metadata.wikidataArtwork`, so the check reads the rule's own
+   * answer.
    */
   artwork: boolean;
   articleUrl: string | null;
