@@ -241,28 +241,49 @@ async function creditsForNewPictures(
 
 /**
  * What the rows already hold, in the shape Wikidata's answer takes, for a run
- * Wikidata did not answer.
+ * Wikidata did not answer, with the credits of the pictures it offers.
  *
  * Read from the rows rather than remembered from the last run, and keyed the way
  * the index is keyed, so `transformRecord` needs no second path: a site's
  * stored picture and article are offered back as its facts, and the upsert
- * reports nothing changed. The article is the one UNESCO's view last reported,
- * never the place's: on a place whose article another source's view gave it,
- * the place's would be recorded as UNESCO's and close the question (#1975). A picture stored in a form a run may not write is
- * not offered back — the writer would refuse it anyway, and the refusal is the
- * right answer for it (ADR-0043).
+ * reports nothing changed. Both are the ones UNESCO's view last reported, never
+ * the place's: on a place whose picture or article a curator or another
+ * source's view gave it, the place's would be recorded as UNESCO's and close
+ * the question (#1975, #2049). The place's own picture rides along as another
+ * picture of the item, as an answered run sends it, so `keepsItsPicture` keeps
+ * it on the card; and the view's picture carries the credit the view recorded,
+ * so the run neither swaps the place's picture nor wipes the view's credit. A
+ * picture stored in a form a run may not write is not offered back — the
+ * writer would refuse it anyway, and the refusal is the right answer for it
+ * (ADR-0043).
  */
-export async function indexOfWhatIsStored(): Promise<WorldHeritageIndex> {
-  const stored = await pool.query(
-    `SELECT sm.external_id, e.image_url, sm.reported_wikipedia_url AS article
+export async function indexOfWhatIsStored(): Promise<{ facts: WorldHeritageIndex; credits: Map<string, ImageCredit> }> {
+  const stored = await pool.query<StoredFactsRow>(
+    `SELECT sm.external_id, sm.reported_image_url AS image_url, sm.reported_image_credit AS image_credit,
+            e.image_url AS place_image_url, sm.reported_wikipedia_url AS article
        FROM ${sourcePlacesSql('e', 'sm')} WHERE sm.source_id = $1`,
     [UNESCO_SOURCE_ID],
   );
-  return indexWorldHeritageFacts(stored.rows.map((row: { external_id: string; image_url: string | null; article: string | null }) => ({
-    whc: { value: row.external_id },
-    ...(row.article ? { article: { value: row.article } } : {}),
-    ...(row.image_url && isCommonsPictureUrl(row.image_url) ? { image: { value: row.image_url } } : {}),
-  })));
+  const credits = new Map<string, ImageCredit>();
+  const facts = indexWorldHeritageFacts(stored.rows.map((row) => {
+    const picture = row.image_url && isCommonsPictureUrl(row.image_url) ? row.image_url : null;
+    if (picture && row.image_credit) credits.set(picture, row.image_credit);
+    const pictures = [picture, row.place_image_url].filter((url): url is string => url !== null && isCommonsPictureUrl(url));
+    return {
+      whc: { value: row.external_id },
+      ...(row.article ? { article: { value: row.article } } : {}),
+      ...(picture ? { image: { value: picture }, images: { value: pictures.join(' ') } } : {}),
+    };
+  }));
+  return { facts, credits };
+}
+
+interface StoredFactsRow {
+  external_id: string;
+  image_url: string | null;
+  image_credit: ImageCredit | null;
+  place_image_url: string | null;
+  article: string | null;
 }
 
 const NAME_LOCALE_FIELDS: Array<[keyof UnescoApiRecord, string]> = [
@@ -622,8 +643,7 @@ export function syncUnescoSites(
         // empty index would offer every record no picture and no article, and
         // a fixture run against a dev database — the documented way to exercise
         // delisting against real rows — would propose stripping all of them.
-        facts = await indexOfWhatIsStored();
-        credits = new Map();
+        ({ facts, credits } = await indexOfWhatIsStored());
         // Read for the fixture too: the delisting tests run against real rows,
         // and a stale map from a previous run would decide who owns their
         // pictures.
@@ -647,13 +667,14 @@ export function syncUnescoSites(
       // service had a bad afternoon.
       progress.statusMessage = 'Asking Wikidata about the properties...';
       const answered = await fetchWorldHeritageFacts(progress, budget);
-      facts = answered ?? await indexOfWhatIsStored();
       factsAnswered = answered !== null;
-      if (!answered) console.warn('[UNESCO Sync] Keeping the stored pictures and articles for this run');
-
-      credits = answered
-        ? await creditsForNewPictures(records, facts, progress, budget)
-        : new Map();
+      if (answered) {
+        facts = answered;
+        credits = await creditsForNewPictures(records, facts, progress, budget);
+      } else {
+        console.warn('[UNESCO Sync] Keeping the stored pictures and articles for this run');
+        ({ facts, credits } = await indexOfWhatIsStored());
+      }
 
       return { items: records, fetchedCount: records.length };
     },
