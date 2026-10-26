@@ -337,9 +337,9 @@ function ExperienceExpandedDetailsComponent({
       <DescriptionText text={description} source={experience.description_source} adapted={experience.description_adapted} />
 
       {/* Date inscribed */}
-      {details?.metadata?.dateInscribed != null && (
+      {details?.date_inscribed != null && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-          Inscribed: {String(details.metadata.dateInscribed as string | number)}
+          Inscribed: {details.date_inscribed}
         </Typography>
       )}
 

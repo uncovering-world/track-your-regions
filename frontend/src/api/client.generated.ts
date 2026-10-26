@@ -2547,6 +2547,11 @@ export interface ExperienceDetail {
   image_url: string | null;
   /** The source's metadata, as an open record until #574 settles its model. */
   metadata: ExperienceDetailMetadata;
+  /**
+     * The year UNESCO inscribed the site, off its World Heritage membership: null for a site no membership holds, one a curator judged former (delisted), or one refused (#2068).
+     * @nullable
+     */
+  date_inscribed: string | null;
   created_at: string | null;
   updated_at: string | null;
   source_membership: ExperienceDetailSourceMembership;
