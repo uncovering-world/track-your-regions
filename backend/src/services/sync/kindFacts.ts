@@ -13,20 +13,24 @@
  * a refusal leaves them with the refused membership.
  *
  * Whose a field is is its entry in `@tyr/shared/placeFields`. UNESCO's facts
- * about an inscription are the World Heritage kind's too and are still on the
- * place, kept by `fieldFamilies.ts`, until they move to its membership.
+ * about an inscription are the World Heritage kind's (#2068): Liverpool's
+ * inscription year and danger listing went with its membership when the site
+ * was delisted.
+ *
+ * Most facts no reader is shown, and a run writes them whole past the gate.
+ * Three of the inscription's are shown (the year, the danger flag and its
+ * listing), so a held place's membership keeps them until a curator publishes
+ * the run's proposal (`heldFacts`), as the place keeps its own shown fields.
  */
 
-import { PLACE_FIELDS } from '@tyr/shared/placeFields';
-import { FAMILY_FIELDS } from './fieldFamilies.js';
+import { PLACE_FIELDS, placeFieldUnseen } from '@tyr/shared/placeFields';
 
 const METADATA_PREFIX = 'metadata.';
 
 /** The keys of a run's record its own membership stores. */
 export const KIND_FACT_KEYS: readonly string[] = Object.entries(PLACE_FIELDS)
   .filter(([field, { owner }]) => owner === 'kind' && field.startsWith(METADATA_PREFIX))
-  .map(([field]) => field.slice(METADATA_PREFIX.length))
-  .filter(key => !FAMILY_FIELDS.unesco.metadata.includes(key));
+  .map(([field]) => field.slice(METADATA_PREFIX.length));
 
 /** Whether a key of a run's record is its kind's own, stored on its membership. */
 export const isKindFact = (key: string): boolean => KIND_FACT_KEYS.includes(key);
@@ -41,6 +45,27 @@ export function splitKindFacts(metadata: Record<string, unknown>): {
     place: Object.fromEntries(entries.filter(([key]) => !isKindFact(key))),
     facts: Object.fromEntries(entries.filter(([key]) => isKindFact(key))),
   };
+}
+
+/**
+ * The facts a held place's membership takes from its run: the ones it holds,
+ * with the run's value of every fact no reader is shown and of each shown one
+ * whose rewrite passes the gate (`passing`, the keys `passingMetadataKeys`
+ * names), a removal included. So only a shown fact, such as the danger flag,
+ * waits for a curator. `stored` is null on a membership the run is making.
+ */
+export function heldFacts(
+  stored: Record<string, unknown> | null,
+  incoming: Record<string, unknown>,
+  passing: readonly string[],
+): Record<string, unknown> {
+  const next = { ...(stored ?? {}) };
+  for (const key of new Set([...Object.keys(next), ...Object.keys(incoming)])) {
+    if (!placeFieldUnseen(`${METADATA_PREFIX}${key}`) && !passing.includes(key)) continue;
+    if (Object.hasOwn(incoming, key)) next[key] = incoming[key];
+    else delete next[key];
+  }
+  return next;
 }
 
 /**

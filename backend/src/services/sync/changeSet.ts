@@ -161,9 +161,10 @@ export function metadataPassesTheGate(key: string, old: unknown, next: unknown, 
 
 /** Whether a rewrite of a metadata key no reader is shown passes the gate. */
 function metadataKeyPassesUnseen(key: string, next: unknown): boolean {
-  // A kind's own fact is written whole onto its membership every pass, a
-  // removal with the rest, and none is shown (`kindFacts.ts`, ADR-0153).
-  if (isKindFact(key)) return true;
+  // A kind's own fact no reader is shown is written whole onto its membership
+  // every pass, a removal with the rest (`kindFacts.ts`, ADR-0153). A shown one,
+  // such as the danger listing, is held like a field of the place.
+  if (isKindFact(key) && passesAsUnseen(`${METADATA_CLAIM_PREFIX}${key}`)) return true;
   // A key the incoming record lacks is no rewrite the held row can take: the
   // upsert merges only the keys the record carries (`PASSING_SLICE`), so a
   // removal stays a question. A key sent as null is written.

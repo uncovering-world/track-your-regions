@@ -91,7 +91,7 @@ import { shortMovePassesSql } from '../../db/shortMove.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockIdentifiedPlace, lockSourcedExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
-import { splitKindFacts, withOwnFacts } from './kindFacts.js';
+import { heldFacts, isKindFact, splitKindFacts, withOwnFacts } from './kindFacts.js';
 import { fieldsKeptAsStored, keptAsStored, reportedArticle } from './sourceView.js';
 import { catalogueName, type NamedRecord } from './nameTwins.js';
 
@@ -715,6 +715,34 @@ function fileKeyMove(changeSet: ChangeSetResult, from: string | undefined, to: s
   if (changeSet.changeType === 'unchanged') changeSet.changeType = 'updated';
 }
 
+/** What `metadataToWrite` reads of the place as it stood under the lock. */
+interface HeldMetadata {
+  metadata: Record<string, unknown> | null;
+  own_facts?: Record<string, unknown> | null;
+  curated_fields: string[] | null;
+  image_url: string | null;
+}
+
+/**
+ * The run's metadata split for its write. The kind's own facts go to the run's
+ * membership, where no other run writes them: a new membership takes them
+ * whole (`facts`), and a held place's keeps a shown fact, the danger flag say,
+ * until a curator publishes the run's proposal (`factsKept`, `heldFacts`). The
+ * keys whose rewrite passes the gate are read over the place's metadata and
+ * the membership's facts together, as the diff files them. `held` is the
+ * stored place when the gate holds it, null otherwise.
+ */
+function metadataToWrite(written: ExperienceUpsertParams, held: HeldMetadata | null) {
+  const { place, facts } = splitKindFacts(written.metadata);
+  if (held === null) return { place, facts, factsKept: facts, passing: [] as string[] };
+  const storedFacts = held.own_facts ?? null;
+  const passing = passingMetadataKeys(
+    withOwnFacts(held.metadata, storedFacts), withOwnFacts(place, facts),
+    held.curated_fields ?? [], held.image_url === written.imageUrl,
+  );
+  return { place, facts, factsKept: heldFacts(storedFacts, facts, passing), passing };
+}
+
 async function writeUnderLock(
   client: PoolClient,
   sent: ExperienceUpsertParams,
@@ -754,10 +782,7 @@ async function writeUnderLock(
     ), stored);
 
   const shortMove = stored !== null && await shortMovePasses(client, stored.id as number, stored, written, held);
-  // The kind's own facts go to the run's membership, written every pass: no
-  // other run writes them there, and none is a field a reader is shown
-  // (`placeFields.test.ts`), so neither the gate nor a claim holds them.
-  const { place: placeMetadata, facts } = splitKindFacts(written.metadata);
+  const { place: placeMetadata, facts, factsKept, passing } = metadataToWrite(written, held ? stored : null);
 
   const result = await client.query(
     `WITH gate AS (
@@ -818,8 +843,8 @@ async function writeUnderLock(
         -- not a measurement the run can be right about. computeChangeSet
         -- reports tags nowhere, so nothing written here waits on anybody.
         -- One consequence is owned rather than hidden: the in_danger tag now
-        -- moves ahead of the metadata flag it mirrors while that flag is
-        -- held, and the Catalogue Check comparing the two leaves out a row
+        -- moves ahead of the World Heritage membership's flag it mirrors while
+        -- that flag is held, and the Catalogue Check comparing the two leaves out a row
         -- whose held proposal holds the flag itself.
         tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
         -- A place of several points has no coordinate of its own (ADR-0095):
@@ -836,7 +861,7 @@ async function writeUnderLock(
                              THEN experiences.country_names ELSE EXCLUDED.country_names END,
         image_url = CASE WHEN experiences.curated_fields ? 'image_url' OR ${HELD} THEN experiences.image_url ELSE EXCLUDED.image_url END,
         -- A claim on this column is always per key -- 'metadata.website',
-        -- 'metadata.inDanger' -- and re-applies just that key over whatever the
+        -- 'metadata.wikipediaUrl' -- and re-applies just that key over whatever the
         -- source sent, so an unclaimed key still updates (#488). No claim holds
         -- the whole column: the bare name is refused by a CHECK on
         -- curated_fields, so a protected key is always one a curator can be
@@ -993,7 +1018,7 @@ async function writeUnderLock(
         reported_image_credit = EXCLUDED.reported_image_credit,
         reported_wikipedia_url = EXCLUDED.reported_wikipedia_url,
         reported_label = EXCLUDED.reported_label,
-        facts = EXCLUDED.facts,
+        facts = $38::jsonb,
         wikidata_items = COALESCE(EXCLUDED.wikidata_items, ${MEMBERSHIPS}.wikidata_items),
         updated_at = NOW()
       RETURNING pending_change_sync_log_id
@@ -1038,9 +1063,7 @@ async function writeUnderLock(
       reportedCreditOf(params, stored?.curated_fields),
       params.wikidataItems ?? null,
       params.locationIsAnchor ?? false,
-      held && stored
-        ? passingMetadataKeys(stored.metadata, placeMetadata, stored.curated_fields ?? [], stored.image_url === written.imageUrl)
-        : [],
+      passing.filter(key => !isKindFact(key)),
       // The metadata keys the claims hold, off the locked row: the declaration
       // the diff below reads too (ADR-0077 decision 2).
       claimedMetadataKeys(stored?.curated_fields ?? [], stored?.metadata ?? null),
@@ -1054,6 +1077,7 @@ async function writeUnderLock(
       // compares (#1967).
       sent.name,
       JSON.stringify(facts),
+      JSON.stringify(factsKept),
     ]
   );
 

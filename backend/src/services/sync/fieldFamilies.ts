@@ -14,10 +14,9 @@
  * follow the source views (`sourceView.ts`, ADR-0084).
  *
  * A kind's own field needs none of this: it lives on the kind's membership
- * (`kindFacts.ts`, ADR-0153), where no other run writes. What is left here are
- * the place's fields one family brings, and UNESCO's facts about an
- * inscription, which are the World Heritage kind's and still stored on the
- * place until they move to its membership (#1775).
+ * (`kindFacts.ts`, ADR-0153), where no other run writes, and UNESCO's facts
+ * about an inscription are one (#2068). What is left here are the place's
+ * fields one family brings.
  */
 
 import type { PoolClient } from 'pg';
@@ -44,8 +43,7 @@ export interface FamilyFields {
 /**
  * The fields each family brings and no other does, read off the places one
  * source holds alone on 2026-10-15. UNESCO's official names in its six
- * languages, its own text, the states party's codes and the facts of the
- * inscription. Wikidata's item, the place's own website, its fame and what
+ * languages, its own text and the states party's codes. Wikidata's item, the place's own website, its fame and what
  * OpenStreetMap said about its outline. UNESCO's page about a site is its own key
  * (`unescoUrl`, #1538), and so is the run's mark of what it took from UNESCO's
  * dataset (`unesco`, ADR-0149). The country names both families write, but they name
@@ -56,7 +54,7 @@ export interface FamilyFields {
 export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
   unesco: {
     columns: ['nameLocal', 'description', 'countryCodes', 'countryNames'],
-    metadata: ['dateInscribed', 'inDanger', 'dangerList', 'criteria', 'region', 'transboundary', 'areaHectares', 'unescoUrl', 'unesco'],
+    metadata: ['unescoUrl', 'unesco'],
   },
   wikidata: {
     columns: [],

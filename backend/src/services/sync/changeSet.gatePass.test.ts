@@ -90,9 +90,9 @@ describe('a field no reader is shown (#1834)', () => {
   });
 
   it('holds a key the incoming record lacks, which the held row would not take', () => {
-    // UNESCO's run sends no criteria; the held metadata arm merges only the keys sent.
-    expect(metadataPassesTheGate('criteria', '(ii)(iv)', undefined, true)).toBeNull();
-    expect(passingMetadataKeys({ criteria: '(ii)(iv)' }, {}, [], true)).toEqual([]);
+    // A run that sends no count; the held metadata arm merges only the keys sent.
+    expect(metadataPassesTheGate('sitelinksCount', 40, undefined, true)).toBeNull();
+    expect(passingMetadataKeys({ sitelinksCount: 40 }, {}, [], true)).toEqual([]);
   });
 
   it('passes a kind\'s own fact the record no longer carries: its facts are written whole (ADR-0153)', () => {

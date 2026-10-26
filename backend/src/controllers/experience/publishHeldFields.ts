@@ -392,12 +392,11 @@ function nextMetadata(
   claimed: string[],
   pin: CreditPin,
 ): Record<string, unknown> | null {
-  // A kind's own fact is not the place's (ADR-0153): its run writes it onto
-  // the kind's membership every pass, so a card filed while it lived on the
-  // place publishes nothing about it there, neither as its own entry nor
-  // inside a catch-all's object (stripped after the merge below).
-  const entries = published.filter(field => isMetadataField(field.field)
-    && !isKindFact(field.field.slice(METADATA_CLAIM_PREFIX.length)));
+  // A kind's own fact is not the place's (ADR-0153): its entry is published
+  // onto the kind's membership (`nextFacts`), and never onto the place, neither
+  // as its own entry nor inside a catch-all's object (stripped after the merge
+  // below).
+  const entries = published.filter(field => isMetadataField(field.field) && !isKindFactField(field.field));
   const storedCredit = creditOf(stored);
   // A pin can force a write with no metadata entry selected at all: publishing
   // the picture alone has to carry the credit the run fetched for it.
@@ -435,6 +434,25 @@ function nextMetadata(
   // (`claimedMetadataKeys`), so publishing and the run honour one list.
   for (const key of claimedMetadataKeys(claimed, left)) next[key] = left[key];
   return next;
+}
+
+/** Whether a proposal's entry is one of a kind's own facts, `metadata.<fact>`. */
+function isKindFactField(field: string): boolean {
+  return field.startsWith(METADATA_CLAIM_PREFIX) && isKindFact(field.slice(METADATA_CLAIM_PREFIX.length));
+}
+
+/**
+ * The facts to store on the membership being published, or null when the
+ * proposal says nothing about them (ADR-0153, #2068). A held fact is a shown
+ * one, the danger flag or the inscription year: its entry decides its own key
+ * over the facts the membership holds, as a metadata entry does over the
+ * place's metadata. A catch-all `metadata` entry filed before ADR-0039 carries
+ * none to the membership; the run writes the rest on its next pass.
+ */
+function nextFacts(stored: unknown, published: ProposedField[]): Record<string, unknown> | null {
+  const entries = published.filter(field => isKindFactField(field.field));
+  if (entries.length === 0) return null;
+  return mergedFromEntries((stored ?? {}) as Record<string, unknown>, entries, 'metadata', METADATA_CLAIM_PREFIX);
 }
 
 /**
@@ -486,6 +504,11 @@ export interface HeldFieldWrites {
    * within a kind is the membership's (ADR-0084).
    */
   membershipType?: { value: unknown };
+  /**
+   * The membership's facts, where this call publishes one of them (`nextFacts`):
+   * a kind's own fact lives on its membership (ADR-0153).
+   */
+  membershipFacts?: { value: Record<string, unknown> };
   /** `$1` is the experience id; the rest is whatever the assignments bound. */
   params: unknown[];
   applied: string[];
@@ -567,7 +590,7 @@ export async function heldFieldWrites(
   client: PoolClient,
   experienceId: number,
   pointer: number | null,
-  before: { metadata?: unknown; image_url?: unknown; name_local?: unknown },
+  before: { metadata?: unknown; image_url?: unknown; name_local?: unknown; membership_facts?: unknown },
   claimed: string[],
   selection: HeldSelection | null = null,
 ): Promise<HeldFieldWrites> {
@@ -677,7 +700,13 @@ export async function heldFieldWrites(
   const metadata = nextMetadata(before.metadata, writable, claimed, pin);
   if (metadata !== null) {
     writes.assignments.push(`metadata = ${bind(JSON.stringify(metadata))}::jsonb`);
-    writes.applied.push(...writable.filter(field => isMetadataField(field.field)).map(f => f.field));
+    writes.applied.push(...writable.filter(field => isMetadataField(field.field) && !isKindFactField(field.field))
+      .map(f => f.field));
+  }
+  const facts = nextFacts(before.membership_facts, writable);
+  if (facts !== null) {
+    writes.membershipFacts = { value: facts };
+    writes.applied.push(...writable.filter(field => isKindFactField(field.field)).map(f => f.field));
   }
   // The other column an entry cannot assign (#728). Unlike metadata's, this one
   // is decided by its entries alone, so an empty selection leaves it alone —

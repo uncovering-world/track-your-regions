@@ -51,7 +51,9 @@ import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
 import { lockExperience, updateExperienceColumns, type LockedExperience } from '../../db/experienceWriter.js';
 import { lockWorksToPublish, type WorksToPublish } from './workWriter.js';
-import { clearAnsweredHeldPointers, publishMembership, publishTypeOnMembership } from './membershipWriter.js';
+import {
+  clearAnsweredHeldPointers, publishFactsOnMembership, publishMembership, publishTypeOnMembership,
+} from './membershipWriter.js';
 import { drainPairing } from '../../services/sync/mergeProposalFinder.js';
 
 /**
@@ -351,7 +353,7 @@ async function planHeldAnswer(
   lock: LockedExperience,
   pendingWorks: WorksToPublish['pending'],
   pointer: number | null,
-  before: { metadata?: unknown; image_url?: unknown; name_local?: unknown },
+  before: { metadata?: unknown; image_url?: unknown; name_local?: unknown; membership_facts?: unknown },
   claimed: string[],
   selection: HeldSelection | null,
   expectedSyncLogId: number | undefined,
@@ -520,6 +522,9 @@ export async function publishUnderLock(
       // map as it stands under this lock rather than assigning the run's whole
       // map over the five languages nobody answered.
       //
+      // `m.facts` for the same reason: a held fact of the kind, the danger flag
+      // say, merges onto the facts the membership holds (#2068).
+      //
       // The state, the verdict and the pointer are the membership's (#822),
       // read beside the place in the statement after the place's lock — the
       // lock every writer of the membership takes, so nothing moves it between
@@ -527,7 +532,7 @@ export async function publishUnderLock(
       // named (#1264), or the one `membershipToAnswerSql` picks where it named
       // none.
       `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url,
-              m.id AS membership_id, m.curation_state, m.admission,
+              m.id AS membership_id, m.curation_state, m.admission, m.facts AS membership_facts,
               m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
@@ -620,6 +625,7 @@ export async function publishUnderLock(
       // `write.params` binds the id as `$1`; the writer binds it itself.
       await updateExperienceColumns(client, locked.lock, write.assignments, write.params.slice(1));
       await publishTypeOnMembership(client, locked.lock, membershipId, write.membershipType);
+      await publishFactsOnMembership(client, locked.lock, membershipId, write.membershipFacts);
       await publishMembership(client, locked.lock, membershipId, publicationAssignments(before, heldLeftOpen));
 
       // The parts, after the object and in the same transaction: a held

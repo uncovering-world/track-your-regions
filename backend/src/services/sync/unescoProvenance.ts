@@ -25,9 +25,10 @@ import { TEXT_CREDITS } from '@tyr/shared/textCredits';
 export const UNESCO_DATASET = 'whc001';
 
 /**
- * The facts the run takes from the dataset, as the row stores them: a column,
- * or `metadata.<key>`. `location` is the place's point and `locations` its
- * components.
+ * The facts the run takes from the dataset, as the run's record names them: a
+ * column, or `metadata.<key>`. `location` is the place's point and `locations`
+ * its components. The inscription's facts are stored on the World Heritage
+ * membership (`kindFacts.ts`, #2068) under the same keys.
  */
 export const UNESCO_FACT_FIELDS = [
   'name', 'nameLocal', 'type', 'tags', 'location', 'locations', 'countryCodes', 'countryNames',

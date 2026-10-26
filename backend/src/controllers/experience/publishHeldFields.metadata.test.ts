@@ -47,6 +47,10 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
   assignRegionsForExperiences: vi.fn(async () => 3),
 }));
 
+/** A place-owned key beside the credit, and the run's rewrite of it. */
+const U1 = 'https://whc.unesco.org/en/list/1264';
+const U2 = 'https://whc.unesco.org/en/list/1264/';
+
 import {
   grantScope, makeClient, mockedConnect, mockedQuery, none, only, publish,
 } from './publishController.fixtures.js';
@@ -81,15 +85,21 @@ describe('the metadata column, which no single entry describes', () => {
     return JSON.parse(String(update.params[index]));
   };
 
+  /** The facts this call wrote onto the run's membership. */
+  const facts = (queries: Array<{ sql: string; params: unknown[] }>) =>
+    JSON.parse(String(only(queries, 'SET facts = ').params[2]));
+
   it('answers one metadata key and leaves the catch-all open', async () => {
     grantScope();
     // Bamiyan's real card: run 68 holds `metadata.inDanger` on its own row and
     // the criteria and the picture credit inside the catch-all, so the table
-    // draws two answer cells and a curator can take the flag alone.
+    // draws two answer cells and a curator can take the flag alone. The flag is
+    // the World Heritage membership's (#2068), so it lands among its facts.
     const { client, queries } = makeClient({
       row: {
         curation_state: 'auto', pending_change_sync_log_id: 53,
-        metadata: { inDanger: false, criteria: '(i)' },
+        metadata: { unescoUrl: U1 },
+        membership_facts: { inDanger: false, criteria: '(i)' },
       },
       proposal: [
         { field: 'metadata.inDanger', old: false, new: true, held: true },
@@ -100,14 +110,15 @@ describe('the metadata column, which no single entry describes', () => {
     const res = await publish({ heldFields: ['metadata.inDanger'], expectedSyncLogId: 53 }, client);
 
     // The key this call names, and the catch-all's own keys left exactly as the
-    // row holds them — `nextMetadata` sees no catch-all entry, so it starts from
-    // what is stored rather than from what the run proposed for the rest.
-    expect(written(queries)).toEqual({ inDanger: true, criteria: '(i)' });
+    // membership holds them — `nextFacts` sees no catch-all entry, so it starts
+    // from what is stored rather than from what the run proposed for the rest.
+    expect(facts(queries)).toEqual({ inDanger: true, criteria: '(i)' });
+    // And nothing of the place's: its own metadata is not written at all.
+    expect(queries.some(q => q.sql.includes('UPDATE experiences') && /metadata = \$/.test(q.sql))).toBe(false);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: ['metadata.inDanger'], heldLeftOpen: 1,
     }));
-    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
-      .not.toContain('pending_change_sync_log_id = NULL');
+    expect(none(queries, 'pending_change_sync_log_id = NULL')).toBe(true);
   });
 
   it('publishes nothing onto the place about a monument\'s makers, which are its kind\'s (ADR-0153)', async () => {
@@ -156,12 +167,12 @@ describe('the metadata column, which no single entry describes', () => {
       row: {
         curation_state: 'auto', pending_change_sync_log_id: 53,
         image_url: 'https://whc.unesco.org/document/141884',
-        metadata: { criteria: '(x)' },
+        metadata: { unescoUrl: U1 },
       },
       proposal: [{
         field: 'metadata',
-        old: { criteria: '(x)' },
-        new: { criteria: '(x)', imageCredit: { author: 'JUNG Mi-gyeong' } },
+        old: { unescoUrl: U1 },
+        new: { unescoUrl: U1, imageCredit: { author: 'JUNG Mi-gyeong' } },
         held: true,
       }],
     });
@@ -169,7 +180,7 @@ describe('the metadata column, which no single entry describes', () => {
     await publish({ expectedSyncLogId: 53 }, client);
 
     expect(written(queries)).toEqual({
-      criteria: '(x)', imageCredit: { author: 'JUNG Mi-gyeong' },
+      unescoUrl: U1, imageCredit: { author: 'JUNG Mi-gyeong' },
     });
   });
 
@@ -289,14 +300,14 @@ describe('the metadata column, which no single entry describes', () => {
       row: {
         curation_state: 'auto', pending_change_sync_log_id: 53,
         image_url: 'https://whc.unesco.org/document/141884',
-        metadata: { criteria: '(x)', imageCredit: { author: 'The old photograph’s' } },
+        metadata: { unescoUrl: U1, imageCredit: { author: 'The old photograph’s' } },
       },
       proposal: [
         { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         {
           field: 'metadata',
-          old: { criteria: '(x)', imageCredit: { author: 'The old photograph’s' } },
-          new: { criteria: '(ix)(x)', imageCredit: { author: 'JUNG Mi-gyeong' } },
+          old: { unescoUrl: U1, imageCredit: { author: 'The old photograph’s' } },
+          new: { unescoUrl: U2, imageCredit: { author: 'JUNG Mi-gyeong' } },
           held: true,
         },
       ],
@@ -305,12 +316,12 @@ describe('the metadata column, which no single entry describes', () => {
 
     await publish({ heldFields: ['imageUrl'], expectedSyncLogId: 53 }, client);
 
-    // The picture lands and its credit lands with it. The criteria are the
+    // The picture lands and its credit lands with it. The page link is the
     // catch-all's and are not written here: that row is answered, so only the
     // one key the pin speaks for moves.
     expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg');
     expect(written(queries)).toEqual({
-      criteria: '(x)', imageCredit: { author: 'JUNG Mi-gyeong' },
+      unescoUrl: U1, imageCredit: { author: 'JUNG Mi-gyeong' },
     });
   });
 
@@ -323,14 +334,14 @@ describe('the metadata column, which no single entry describes', () => {
     const { client, queries } = makeClient({
       row: {
         curation_state: 'auto', pending_change_sync_log_id: 53,
-        metadata: { criteria: '(x)', imageCredit: { author: 'Someone Else' } },
+        metadata: { unescoUrl: U1, imageCredit: { author: 'Someone Else' } },
       },
       proposal: [
         { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         {
           field: 'metadata',
-          old: { criteria: '(x)', imageCredit: { author: 'Someone Else' } },
-          new: { criteria: '(ix)(x)', imageCredit: { author: 'JUNG Mi-gyeong' } },
+          old: { unescoUrl: U1, imageCredit: { author: 'Someone Else' } },
+          new: { unescoUrl: U2, imageCredit: { author: 'JUNG Mi-gyeong' } },
           held: true,
         },
       ],
@@ -338,11 +349,11 @@ describe('the metadata column, which no single entry describes', () => {
 
     const res = await publish({ heldFields: ['imageUrl'], expectedSyncLogId: 53 }, client);
 
-    // The picture, and the credit that belongs to it — but not the criteria,
-    // which are a different fact and were not answered.
+    // The picture, and the credit that belongs to it — but not the page link,
+    // which is a different fact and were not answered.
     expect(picture(queries)).toBe('http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg');
     expect(written(queries)).toEqual({
-      criteria: '(x)', imageCredit: { author: 'JUNG Mi-gyeong' },
+      unescoUrl: U1, imageCredit: { author: 'JUNG Mi-gyeong' },
     });
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: ['imageUrl'], heldLeftOpen: 1,
@@ -354,14 +365,14 @@ describe('the metadata column, which no single entry describes', () => {
     const { client, queries } = makeClient({
       row: {
         curation_state: 'auto', pending_change_sync_log_id: 53,
-        metadata: { criteria: '(x)', imageCredit: { author: 'Someone Else' } },
+        metadata: { unescoUrl: U1, imageCredit: { author: 'Someone Else' } },
       },
       proposal: [
         { field: 'imageUrl', new: 'http://commons.wikimedia.org/wiki/Special:FilePath/Bam%20citadel.jpg', held: true },
         {
           field: 'metadata',
-          old: { criteria: '(x)', imageCredit: { author: 'Someone Else' } },
-          new: { criteria: '(ix)(x)', imageCredit: { author: 'JUNG Mi-gyeong' } },
+          old: { unescoUrl: U1, imageCredit: { author: 'Someone Else' } },
+          new: { unescoUrl: U2, imageCredit: { author: 'JUNG Mi-gyeong' } },
           held: true,
         },
       ],
@@ -373,7 +384,7 @@ describe('the metadata column, which no single entry describes', () => {
     // naming the photographer of a picture nobody is shown is a false statement
     // about a real person.
     expect(written(queries)).toEqual({
-      criteria: '(ix)(x)', imageCredit: { author: 'Someone Else' },
+      unescoUrl: U2, imageCredit: { author: 'Someone Else' },
     });
   });
 
@@ -413,16 +424,23 @@ describe('the metadata column, which no single entry describes', () => {
     expect(written(queries)).toEqual({ a: 1 });
   });
 
-  it('keeps a key the diff reported on its own', async () => {
+  it('leaves the danger flag, which is its membership\'s, out of a catch-all', async () => {
     grantScope();
-    const { client, queries } = heldMetadata({ a: 1 }, { a: 2 }, { metadata: { inDanger: true, a: 1 } });
+    const { client, queries } = makeClient({
+      row: {
+        curation_state: 'auto', pending_change_sync_log_id: 53,
+        metadata: { a: 1 }, membership_facts: { inDanger: true },
+      },
+      proposal: [{ field: 'metadata', old: { a: 1 }, new: { a: 2 }, held: true }],
+    });
 
     await publish({ expectedSyncLogId: 53 }, client);
 
-    // `computeChangeSet` strips `inDanger` out of both sides before diffing the
-    // rest, so the catch-all is not speaking for it — and assigning the
-    // catch-all's `new` would delete a UNESCO site's danger listing.
-    expect(written(queries)).toEqual({ inDanger: true, a: 2 });
+    // The catch-all speaks for the place's own keys only: a UNESCO site's
+    // danger listing is on its World Heritage membership (#2068), which a
+    // catch-all card never writes.
+    expect(written(queries)).toEqual({ a: 2 });
+    expect(none(queries, 'SET facts = ')).toBe(true);
   });
 
   it('gives a per-key claim back to the curator', async () => {
@@ -454,7 +472,7 @@ describe('the metadata column, which no single entry describes', () => {
       // publishing reports the danger flag as the curator's rather than
       // applying the source's over it.
       const { client } = perKey(
-        { metadata: { inDanger: true }, curated_fields: ['metadata.inDanger'] },
+        { membership_facts: { inDanger: true }, curated_fields: ['metadata.inDanger'] },
         [{ field: 'metadata.inDanger', old: true, new: false, held: true }],
       );
 
