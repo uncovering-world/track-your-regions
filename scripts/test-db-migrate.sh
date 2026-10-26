@@ -162,6 +162,26 @@ check_contains "$out" "pending: 3" "three fixture migrations are pending"
 check_contains "$out" "001-first-table.sql" "and they are listed by name"
 
 echo ""
+echo "an empty ledger on a schema that already has what the files create is refused"
+# The shape a fresh build is in when it skips setup.sh (#2073): built from the
+# canonical schema, which already creates every table the migrations do, and
+# holding no row yet -- so replaying them would take hours for nothing.
+cat > "$FIXTURES/004-a-canonical-table.sql" <<'SQL'
+BEGIN;
+CREATE TABLE IF NOT EXISTS curator_assignments (id INTEGER PRIMARY KEY);
+COMMIT;
+SQL
+if out="$(run_migrate apply < /dev/null)"; then
+    fail "apply refuses an empty ledger over a schema past the files" "it exited 0"
+else
+    check_contains "$out" "has no ledger entries at all" "apply refuses an empty ledger over a schema past the files"
+    check_contains "$out" "npm run db:baseline" "and it names the answer"
+fi
+check_eq "0" "$(q "SELECT count(*) FROM schema_migrations")" "nothing was recorded"
+check_eq "f" "$(q "SELECT to_regclass('public.migrate_test_first') IS NOT NULL")" "and nothing was applied"
+rm "$FIXTURES/004-a-canonical-table.sql"
+
+echo ""
 echo "apply runs them in order and records each one"
 out="$(run_migrate apply)" || fail "apply exits 0" "$out"
 check_eq "3" "$(q "SELECT count(*) FROM schema_migrations")" "three rows recorded"

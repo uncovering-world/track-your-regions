@@ -231,7 +231,7 @@ cmd_create() {
 
     # A database built from the canonical schema already has every structural
     # change the migrations carry, and their backfills have no rows to repair,
-    # so it starts level rather than 40 files behind.
+    # so it starts level rather than every file of db/migrations/ behind.
     #
     # After the switch, not before: this is the last step, and a database that
     # is created but not pointed at is a worse thing to leave behind than one

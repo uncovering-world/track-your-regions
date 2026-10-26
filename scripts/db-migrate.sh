@@ -29,7 +29,7 @@
 # Two things this runner deliberately does not do:
 #
 #   * It does not wrap a migration in a transaction. Each file decides its own,
-#     and 34 of the 40 open one. psql --single-transaction over such a file
+#     and most open one. psql --single-transaction over such a file
 #     warns that a transaction is already in progress, and then the file's own
 #     COMMIT ends psql's outer one, so everything after it runs unwrapped --
 #     the option looks like atomicity and is not, which is worse than not
@@ -55,7 +55,7 @@ source "$SCRIPT_DIR/lib/db-env.sh"
 # db/migrations/ in every real use. The override exists for the runner's own
 # test (scripts/test-db-migrate.sh), which drives it over a handful of fixture
 # files -- including one written to fail -- rather than over the catalogue's
-# forty.
+# own.
 MIGRATIONS_DIR="${DB_MIGRATIONS_DIR:-$PROJECT_ROOT/db/migrations}"
 
 # A migration filename is three digits, a dash, a lowercase slug, and .sql.
@@ -237,6 +237,41 @@ database_holds_catalogue() {
     [[ "$rows" == "t" ]]
 }
 
+# The tables the migration files create, one lowercase name per line, qualified
+# where the file qualifies it (workbench.wikidata_claims).
+#
+# Read off the files with a pattern rather than parsed: a name it misses only
+# narrows the question schema_has_migrated_tables asks, and the names it keeps
+# are held to an unquoted identifier, so they are safe to embed in SQL there.
+created_tables() {
+    local base
+    while read -r base; do
+        [[ -n "$base" ]] || continue
+        # A line comment's prose ("CREATE TABLE above and ...") is no table.
+        sed 's/--.*//' "$MIGRATIONS_DIR/$base" \
+            | grep -oiE 'CREATE[[:space:]]+(UNLOGGED[[:space:]]+)?TABLE[[:space:]]+(IF[[:space:]]+NOT[[:space:]]+EXISTS[[:space:]]+)?([a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*' \
+            || true
+    done < <(migration_files) | awk '{ print tolower($NF) }' | sort -u
+}
+
+# Does this database already have a table one of the migration files creates?
+#
+# On an empty ledger that says the schema is past those files rather than
+# before them: db/init/01-schema.sql creates every table the migrations do, so a
+# database built from it -- by db:create, by Compose on first start, by a fresh
+# build that skipped setup.sh -- answers yes before it holds a single row.
+schema_has_migrated_tables() {
+    local list held
+    local -a names=()
+    mapfile -t names < <(created_tables)
+    [[ ${#names[@]} -gt 0 ]] || return 1
+    list="$(printf "'%s'," "${names[@]}")"
+    held="$(db_psql -d "$DB" -tAc \
+        "SELECT EXISTS (SELECT 1 FROM unnest(ARRAY[${list%,}]::text[]) AS t(name) WHERE to_regclass(name) IS NOT NULL)" \
+        | tr -d '[:space:]')"
+    [[ "$held" == "t" ]]
+}
+
 # Fills PENDING with the migrations this database has no record of.
 collect_pending() {
     local base
@@ -306,7 +341,7 @@ cmd_status() {
         # Both already hold what these files do, and 015 deletes rows by volume,
         # so it would take a freshly imported catalogue with it.
         echo -e "  ${YELLOW}This database has no ledger entries at all,${NC}"
-        echo -e "  ${YELLOW}so it has not said what it carries rather than being 40 files behind.${NC}"
+        echo -e "  ${YELLOW}so it has not said what it carries rather than being ${#PENDING[@]} files behind.${NC}"
         echo -e "  Record what it already has with ${BLUE}npm run db:baseline${NC}"
     else
         echo -e "  Apply them with ${BLUE}npm run db:migrate${NC}"
@@ -325,21 +360,24 @@ cmd_apply() {
         return 0
     fi
 
-    # Nothing recorded, on a database that already holds a catalogue, is the
-    # shape that must not be walked past. It was built from the canonical schema
-    # or predates the ledger, so it already carries what these files do -- while
-    # 015 deletes rows by volume and would take a freshly imported catalogue
-    # with it, its own header saying it is a one-time manual action rather than
-    # a repeatable step. The answer is db:baseline; confirmed the way db-cli.sh
-    # confirms a drop, and refused outright where nobody is there to confirm.
+    # Nothing recorded, on a database whose schema already has what these files
+    # create or that already holds a catalogue, is the shape that must not be
+    # walked past. It was built from the canonical schema or predates the
+    # ledger, so it already carries what these files do -- while replaying them
+    # takes hours, and 015 deletes rows by volume and would take
+    # a freshly imported catalogue with it, its own header saying it is a
+    # one-time manual action rather than a repeatable step. The answer is
+    # db:baseline; confirmed the way db-cli.sh confirms a drop, and refused
+    # outright where nobody is there to confirm.
     #
-    # An empty database with an empty ledger is the harmless half of the same
-    # shape -- there is nothing for a backfill to damage -- and is left alone.
-    if [[ ${#RECORDED_CHECKSUM[@]} -eq 0 ]] && database_holds_catalogue; then
+    # An empty ledger on a schema none of the files has touched is the one the
+    # files are written for, and is applied.
+    if [[ ${#RECORDED_CHECKSUM[@]} -eq 0 ]] && { schema_has_migrated_tables || database_holds_catalogue; }; then
         echo -e "${YELLOW}'$DB' has no ledger entries at all, so it has not said what it carries.${NC}" >&2
         echo -e "${YELLOW}A database built from db/init/01-schema.sql -- by db:create, or by Compose${NC}" >&2
-        echo -e "${YELLOW}on first start -- already holds every change these files make, and 015${NC}" >&2
-        echo -e "${YELLOW}deletes rows by volume. Record what it has with 'npm run db:baseline'.${NC}" >&2
+        echo -e "${YELLOW}on first start -- already holds every change these files make; replaying${NC}" >&2
+        echo -e "${YELLOW}them takes hours, and 015 deletes rows by volume. Record what it has with${NC}" >&2
+        echo -e "${YELLOW}'npm run db:baseline' ('npm run db:create' records it for a database it creates).${NC}" >&2
         if [[ ! -t 0 ]]; then
             die "Refusing to apply ${#PENDING[@]} migration(s) to a database with an empty ledger."
         fi
