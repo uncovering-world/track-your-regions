@@ -371,6 +371,7 @@ export interface ExperienceKindMembershipsRow {
   reported_image_url: string | null;
   reported_location: string | null;
   reported_image_credit: unknown | null;
+  reported_wikipedia_url: string | null;
   wikidata_items: string[] | null;
   created_at: Date;
   updated_at: Date;
@@ -1724,10 +1725,10 @@ export const CHECK_VALUES = {
     curation_state: ["pending", "auto", "verified"],
   },
   experience_view_choices: {
-    field: ["name", "subtitle", "imageUrl", "location"],
+    field: ["name", "subtitle", "imageUrl", "location", "wikipediaUrl"],
   },
   experience_view_suggestions: {
-    field: ["name", "subtitle", "imageUrl", "location"],
+    field: ["name", "subtitle", "imageUrl", "location", "wikipediaUrl"],
   },
   experience_visit_questions: {
     answer: ["kept", "refused"],
