@@ -2739,8 +2739,8 @@ COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "
 COMMENT ON COLUMN experiences.location IS 'Required point location for the experience';
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
-COMMENT ON COLUMN experiences.metadata IS 'Source-specific data (UNESCO: date_inscribed, danger, criteria, etc.)';
-COMMENT ON COLUMN experiences.curated_fields IS 'What a curator has claimed on this place, so every run keeps the stored value: column names (name, subtitle, description, image_url, ...) and, for metadata, one entry per key (metadata.website, metadata.inDanger). Never the bare name metadata (ADR-0077 decision 3): a claim is in the grain the run records, so every key it protects is a key a curator can be asked about.';
+COMMENT ON COLUMN experiences.metadata IS 'The place''s own source data (website, Wikipedia article, picture credit, UNESCO page); a kind''s facts are on its membership (ADR-0153)';
+COMMENT ON COLUMN experiences.curated_fields IS 'What a curator has claimed on this place, so every run keeps the stored value: column names (name, subtitle, description, image_url, ...) and, for metadata, one entry per key (metadata.website, metadata.wikipediaUrl). Never the bare name metadata (ADR-0077 decision 3): a claim is in the grain the run records, so every key it protects is a key a curator can be asked about.';
 
 -- A claim on metadata names its key (ADR-0077 decision 3, #729): the bare
 -- column name would protect every key while matching none of the names the
@@ -2756,13 +2756,17 @@ END $$;
 -- A kind's own fact is never the place's (ADR-0153): it lives on the kind's
 -- membership (`experience_kind_memberships.facts`), where no other kind's run
 -- writes over it. The readership notes are the keys three runs once kept them
--- under. db/migrations/178-a-kind-keeps-its-own-facts.sql moves what a
--- database already holds.
+-- under. UNESCO's facts about an inscription are the World Heritage kind's
+-- (#2068). db/migrations/178-a-kind-keeps-its-own-facts.sql and
+-- 180-the-inscription-is-the-world-heritage-kinds.sql move what a database
+-- already holds.
 ALTER TABLE experiences DROP CONSTRAINT IF EXISTS experiences_metadata_holds_no_kind_fact_check;
 ALTER TABLE experiences ADD CONSTRAINT experiences_metadata_holds_no_kind_fact_check
     CHECK (NOT (metadata ?| ARRAY['year', 'creators', 'wikidataArtwork', 'wikidataClasses', 'artworkCount',
                                   'totalArtworkSitelinks', 'archaeologyNature', 'wikipediaCategories', 'admissionNote',
-                                  'museumReadershipNote', 'worshipReadershipNote', 'publicArtReadershipNote']));
+                                  'museumReadershipNote', 'worshipReadershipNote', 'publicArtReadershipNote',
+                                  'dateInscribed', 'inDanger', 'dangerList', 'criteria', 'region', 'transboundary',
+                                  'areaHectares']));
 
 -- Spatial indexes for experiences
 CREATE INDEX IF NOT EXISTS idx_experiences_location ON experiences USING GIST(location);
@@ -3047,8 +3051,9 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     -- The label the source sent, before a twin's suffix (#1967).
     reported_label TEXT,
     wikidata_items TEXT[],
-    -- The kind's own facts about the place, written whole by its run every
-    -- pass: a monument's year and makers, the classes its rule read (ADR-0153).
+    -- The kind's own facts about the place, written by its run every pass: a
+    -- monument's year and makers, the classes its rule read, a World Heritage
+    -- Site's inscription (ADR-0153). A shown one waits behind the gate.
     facts JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -3079,7 +3084,7 @@ ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS wikidata_items 
 -- db/migrations/178-a-kind-keeps-its-own-facts.sql for a database whose places
 -- still hold them.
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS facts JSONB NOT NULL DEFAULT '{}'::jsonb;
-COMMENT ON COLUMN experience_kind_memberships.facts IS 'The kind''s own facts about the place (year, creators, wikidataClasses, artworkCount, admissionNote, ...), written whole by the source''s run every pass. No other kind''s run writes them, and a refused membership keeps its own (ADR-0153, #1775).';
+COMMENT ON COLUMN experience_kind_memberships.facts IS 'The kind''s own facts about the place (year, creators, wikidataClasses, artworkCount, admissionNote, a World Heritage Site''s dateInscribed, inDanger, dangerList, criteria, areaHectares, ...), written by the source''s run every pass; one a reader is shown (the inscription year, the danger flag and its listing) waits behind the gate on a held place. No other kind''s run writes them, and a refused membership keeps its own (ADR-0153, ADR-0154, #1775, #2068).';
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_verdict VARCHAR(10);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_reason TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_question_verdict VARCHAR(10);
@@ -4616,9 +4621,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- The inputs the pass reads (candidatePairsSql): a place's names and reach,
--- whether it is folded into another; a membership's name, kind and whether it
--- offers the place; a point's position and whether it is offered; the parts;
+-- The inputs the pass reads (candidatePairsSql): a place's names, whether it
+-- is folded into another; a membership's name, kind, whether it offers the
+-- place and the reach its inscribed area gives; a point's position and whether it is offered; the parts;
 -- the separations. Only a change of one of them marks.
 DROP TRIGGER IF EXISTS pairing_due_experience_insert ON experiences;
 CREATE TRIGGER pairing_due_experience_insert AFTER INSERT ON experiences
@@ -4627,7 +4632,6 @@ DROP TRIGGER IF EXISTS pairing_due_experience_update ON experiences;
 CREATE TRIGGER pairing_due_experience_update AFTER UPDATE ON experiences
   FOR EACH ROW WHEN (OLD.name IS DISTINCT FROM NEW.name
                      OR OLD.name_local IS DISTINCT FROM NEW.name_local
-                     OR OLD.metadata->'areaHectares' IS DISTINCT FROM NEW.metadata->'areaHectares'
                      OR OLD.merged_into_id IS DISTINCT FROM NEW.merged_into_id)
   EXECUTE FUNCTION mark_pairing_due();
 
@@ -4640,7 +4644,8 @@ CREATE TRIGGER pairing_due_membership_update AFTER UPDATE ON experience_kind_mem
                      OR OLD.reported_name IS DISTINCT FROM NEW.reported_name
                      OR OLD.kind_id IS DISTINCT FROM NEW.kind_id
                      OR OLD.admission IS DISTINCT FROM NEW.admission
-                     OR OLD.curation_state IS DISTINCT FROM NEW.curation_state)
+                     OR OLD.curation_state IS DISTINCT FROM NEW.curation_state
+                     OR OLD.facts->'areaHectares' IS DISTINCT FROM NEW.facts->'areaHectares')
   EXECUTE FUNCTION mark_pairing_due();
 
 DROP TRIGGER IF EXISTS pairing_due_location ON experience_locations;
