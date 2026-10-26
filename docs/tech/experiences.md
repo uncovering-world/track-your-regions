@@ -5987,7 +5987,11 @@ of its two; no kind declares a reach of its own yet. The pass (`writeProposals`)
 writes each pair it finds to `experience_merge_proposals` in id order with its distance,
 similarity, reach and whether it is *exact* (one and the same folded name within fifty metres),
 forgets the open pairs it no longer finds and refreshes the open ones, and leaves an answered pair
-as it is: that is what keeps a refused pair from being proposed again (decision 4). A pair in one
+as it is: that is what keeps a refused pair from being proposed again (decision 4). Every merge
+writes the folded place's `merged_into_id`, which marks both places (`pairing_due_experience_update`),
+so the next drain forgets an open pair between them, whoever merged them; the undo marks them again
+and the pair is proposed again (#1933): the check never lists a question about a folded place. A
+pair the card answered *one place* keeps its answer, and the undo reopens it (`reopenMergedPair`). A pair in one
 kind is not proposed, since one place cannot hold a kind twice (ADR-0086 decision 4). A place that has parts or is one is left out — a serial site is never
 merged as a whole with a part's twin (ADR-0100 decision 6), and a part's twin is #1250's — and so
 is a place no reader sees yet, which is its own arrival card. Measured on the development
