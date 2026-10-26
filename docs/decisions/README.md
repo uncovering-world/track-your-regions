@@ -171,7 +171,8 @@ and accepted by it.
 | [0150](0150-wikidatas-part-of-answers-a-near-pair.md) | Wikidata's part-of answers a near pair | Accepted | 2026-10-25 |
 | [0151](0151-a-credit-a-place-holds-none-of-passes-the-gate.md) | A credit for the picture a place shows passes the gate where it holds none | Accepted | 2026-10-26 |
 | [0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md) | The site door reads the sites under the pool's floor the world reads | Accepted | 2026-10-26 |
-| [0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md) | A field belongs to the place or to one kind, by what it means | Accepted | 2026-10-26 |
+| [0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md) | A field belongs to the place or to one kind, by what it means | Accepted — decision 2 narrowed by [0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md) | 2026-10-26 |
+| [0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md) | A kind's fact a reader is shown waits for a curator | Accepted | 2026-10-26 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

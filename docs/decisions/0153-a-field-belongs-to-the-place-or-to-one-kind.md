@@ -1,7 +1,7 @@
 # ADR-0153: A field belongs to the place or to one kind, by what it means
 
 **Date:** 2026-10-26
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md)
 **Issue:** [#1775](https://github.com/uncovering-world/track-your-regions/issues/1775)
 **Narrows:** [ADR-0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) decisions 1 and 2
 
