@@ -1,7 +1,7 @@
 # ADR-0145: An edition is one place with a point at every cast
 
 **Date:** 2026-10-23
-**Status:** Accepted
+**Status:** Accepted — decision 2(b) narrowed by [ADR-0155](0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md)
 **Issue:** [#880](https://github.com/uncovering-world/track-your-regions/issues/880)
 **Narrows:** [ADR-0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md), the coordinate fold, for an edition's qualified coordinates
 

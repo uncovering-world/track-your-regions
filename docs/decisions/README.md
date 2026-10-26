@@ -163,7 +163,7 @@ and accepted by it.
 | [0141](0141-the-catalogue-accepts-a-component-candidate-of-the-points-own-name-at-the-point.md) | The catalogue accepts a component candidate of the point's own name at the point | Accepted | 2026-10-23 |
 | [0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md) | A place is found by its identifiers before a run creates one | Accepted | 2026-10-23 |
 | [0144](0144-a-curator-separates-one-kinds-membership-into-a-place-of-its-own.md) | A curator separates one kind's membership of a place into a place of its own | Accepted | 2026-10-24 |
-| [0145](0145-an-edition-is-one-place-with-a-point-at-every-cast.md) | An edition is one place with a point at every cast | Accepted | 2026-10-23 |
+| [0145](0145-an-edition-is-one-place-with-a-point-at-every-cast.md) | An edition is one place with a point at every cast | Accepted — decision 2(b) narrowed by [0155](0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md) | 2026-10-23 |
 | [0146](0146-a-places-outline-belongs-to-the-source-that-drew-it.md) | A place's outline belongs to the source that drew it | Accepted | 2026-10-25 |
 | [0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md) | The World Heritage list's typesetting defects are mended on reading, and the mend passes the gate | Accepted | 2026-10-25 |
 | [0148](0148-a-documented-api-is-used-under-its-operators-rules-and-page-reading-under-robots-txt.md) | A documented API is used under its operator's rules, and page reading under robots.txt | Accepted | 2026-10-25 |
@@ -173,6 +173,7 @@ and accepted by it.
 | [0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md) | The site door reads the sites under the pool's floor the world reads | Accepted | 2026-10-26 |
 | [0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md) | A field belongs to the place or to one kind, by what it means | Accepted — decision 2 narrowed by [0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md) | 2026-10-26 |
 | [0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md) | A kind's fact a reader is shown waits for a curator | Accepted | 2026-10-26 |
+| [0155](0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md) | A work based on a group of casts is its cast only by the group's creator | Accepted | 2026-10-26 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
