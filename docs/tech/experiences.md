@@ -786,7 +786,7 @@ A Wikidata kind is filled by a source of its own, and sources whose kinds are dr
 - **One Start Sync does every step a current catalogue needs** (#1805, `controllers/admin/afterRun.ts`). Once a run's items are written — however the run ended — `startSync` hands the pass to `afterRun`, which goes on in the entry the card is still following — the pass's last run's, since on a pass of several sources the first source's run ends minutes before the pass does and its card has stopped asking by then (`PassCard.tsx`); on a source of its own, the one run there is: the join of the places claiming one Wikidata item (`joinPlacesClaimingOneItem`), for the World Heritage source the items of the components this run created without one (`runComponentItemSearch` on `FinderOptions.pointIds`, the finder the card's *Find component items* runs over every component, then `acceptExactCandidates`; a run that created none skips the search, the ordinary case, since a full search costs eight minutes and three hundred requests to Wikidata), and the near-places pairing of the places the runs changed (`drainPairing`, #1950), each a step of the run on its card (`Operation`, #1356). Every entry of the pass is kept while the steps go (`SyncProgress.continues`, which both `releaseLater`s respect), the followed one's status `processing`, and back to the run's verdict at the end with the closing line extended by what the steps did; a Cancel pressed meanwhile is accepted (`isCancellable` reads `continues`) and stops the search between its requests, or the pairing before it starts, leaving its marks to the next drain, the closing line saying so; the counts stay the run's — the candidates a search proposes are counted as created only on the card's own *Find component items* job — and the steps release the entries a while after they end, as a writer would. The run's modes — a preview, a run without the cache, a run that asks again about pins — are options of that one button on the card (`SourceRunActions.tsx`); the single-purpose actions sit under *More actions*, each with the sentence saying when it is needed: *Fix pictures* stays a repair, since it writes past the gate where a run proposes, and *Find component items* over every site or one is for after a rule of the search changes. The near-places pairing has no button: it pairs again every place whose inputs change, and the whole catalogue after a rule changes (§ Near places with similar names).
 - **The gather reads Wikidata under the pass's first source**: its subset door and its cache key (ADR-0132 decision 5). Everything else a source asks goes through its own door: its visit witnesses; for Places of worship, its works and the second door they open; for Archaeology, its museum door, its finds, and what its site door asks of OpenStreetMap, the Wikipedias and the readership door. #1821 gathers the works and #1822 makes the pipeline one build (Epic #1445). #1819 is the one resolver of where a work lies.
 
-**A place kind is a classifier over the place gather** (#1820, `places/gather.ts`). A kind is declared as a `PlaceKind`: the class trees its rule reads (`trees`), the classes its candidates are asked by (`poolClasses`: broad roots in fame bands, every other class whole), and whether its rule reads what holds and owns a candidate (`readsContainers`). A kind may also name classes it asks below the pool's floor of 15 editions, with the floor it asks them at (`belowFloor`, #1947): a canal's lock is read in few languages, and those candidates are that kind's alone, so no other kind meets one under its floor. `gatherPlaces` walks every kind's trees, asks the pool once over the union of their classes (a root two kinds ask by is asked once), asks for every kind's admitted rows the pool did not name by id, and reads the facts of every entity once and the containers once, for the kinds that read them. It hands each kind its **share** (`shareOf`): the entities the pool named by a class of that kind (a pool question names an entity by a class it carries itself, best rank, on the live service and on the subset alike), and the rows that kind admits. Public art therefore never sees the churches only Places of worship asked for, and refuses none of them. The kind's classifier decides from its share alone: `classifyPublicArt` per rule for Public art and Monuments & memorials (`PUBLIC_ART_KIND`), `classifyPlacesByFame` for Places of worship's door one (`WORSHIP_KIND`), `collectSitesByFame` for Archaeology's site door (`ARCHAEOLOGY_SITE_KIND`), whose kind also hands its trees to the museum door, `classifyTowers` for Towers (`TOWERS_KIND`), `classifyBridges` for Bridges & engineering marvels (`BRIDGES_KIND`) and `classifySquares` for Squares & streets (`SQUARES_KIND`). A share names the admitted rows no class question named (`byId`): the site door first lets OpenStreetMap's entrance name them, so a dig the map names is vouched for by the map and only the rest by id, as before.
+**A place kind is a classifier over the place gather** (#1820, `places/gather.ts`). A kind is declared as a `PlaceKind`: the class trees its rule reads (`trees`), the classes its candidates are asked by (`poolClasses`: broad roots in fame bands, every other class whole), and whether its rule reads what holds and owns a candidate (`readsContainers`). A kind may also name classes it asks below the pool's floor of 15 editions, with the floor it asks them at (`belowFloor`, #1947): a canal's lock is read in few languages, and those candidates are that kind's alone, so no other kind meets one under its floor. `gatherPlaces` walks every kind's trees, asks the pool once over the union of their classes (a root two kinds ask by is asked once), asks for every kind's admitted rows the pool did not name by id, and reads the facts of every entity once and the containers once, for the kinds that read them. It hands each kind its **share** (`shareOf`): the entities the pool named by a class of that kind (a pool question names an entity by a class it carries itself, best rank, on the live service and on the subset alike), and the rows that kind admits. Public art therefore never sees the churches only Places of worship asked for, and refuses none of them. The kind's classifier decides from its share alone: `classifyPublicArt` per rule for Public art and Monuments & memorials (`PUBLIC_ART_KIND`), `classifyPlacesByFame` for Places of worship's door one (`WORSHIP_KIND`), `collectSitesByFame` for Archaeology's site door (`ARCHAEOLOGY_SITE_KIND`), whose kind also hands its trees to the museum door, `classifyTowers` for Towers (`TOWERS_KIND`), `classifyBridges` for Bridges & engineering marvels (`BRIDGES_KIND`) and `classifySquares` for Squares & streets (`SQUARES_KIND`). A kind may also declare an **entrance** (`entrance`, #2035): items it names by something other than a class, which `gatherPlaces` fetches by id when the pool did not name them and hands that kind alone as `entered` (Public art's street-art places, § Public art and Monuments & memorials). A share names the admitted rows no class question named (`byId`): the site door first lets OpenStreetMap's entrance name them, so a dig the map names is vouched for by the map and only the rest by id, as before.
 
 Adding a place kind is a declaration and its seed: a `PlaceKind` with its trees and pool classes, its classifier (the verdict, the fame line, the type), its source row and kind row, and its member in `places/placePass.ts` and `PLACE_PASS`. It has no fetchers, run or service of its own. Towers was the first kind added that way, then Bridges & engineering marvels and Squares & streets: their members are `placeSource(7, gather, TOWERS_CLASSIFIER)`, `placeSource(8, gather, BRIDGES_CLASSIFIER)` and `placeSource(9, gather, SQUARES_CLASSIFIER)`, the run Public art and Monuments & memorials have, over a `PlaceClassifier` of its own (`landmarkSyncService.ts`), which names its types and its tag. The source is then registered where every Wikidata source is: the run registry (`syncController.ts`), the field families (`fieldFamilies.ts`), the subset's ready sources (`SUBSET_READY_SOURCES`), the visit questions (`ASKING_SOURCES`), its cache kinds (`CACHED_KINDS_BY_SOURCE`) and, on the web, its colour (`kindColors.ts`) and its types (`experienceTypes.ts`).
 
@@ -2243,10 +2243,10 @@ traveller browses apart (#1807). **Public art** (kind and source 3) is what was 
 at: a sculpture, a statue, a fountain, a mural — the Little Mermaid, the Trevi Fountain, Cloud
 Gate, the Fraternal Kiss on the East Side Gallery — and a wall or district known for its street
 art, taken whole as one place, since its works are repainted while the place stays (the East Side
-Gallery, the Wynwood Walls; #1994). The run files such a place under the `street-art` type when it
-finds one, and how it should find them is #1992. Today the run admits a panel on such a wall on its
-own (the Fraternal Kiss) and does not find the wall. A traveller visits the two as one place, so
-how the kind holds a wall and its panels together is #1992's too. **Monuments & memorials** (kind and source 6)
+Gallery, the Wynwood Walls; #1994). The run finds such a place through the street-art entrance
+and rule (#2035, **Street-art places** below) and files it under the `street-art` type. The run
+still admits a panel on such a wall on its own (the Fraternal Kiss); a traveller visits the two as
+one place, so how the kind holds a wall and its panels together is #1992's. **Monuments & memorials** (kind and source 6)
 is what was raised to remember: a memorial, a triumphal arch, a column, an obelisk, a monument —
 the Arc de Triomphe, Nelson's Column, the Lincoln Memorial, the Memorial to the Murdered Jews of
 Europe. One place may be both: the Motherland Calls is a statue and a memorial, Nelson's Column a
@@ -2526,7 +2526,7 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    rest of the rule is unchanged: a work the door opened for that stands inside a church is refused
    by name. It reads the pool the gather already asks for, from its floor of 15 sitelinks, so a
    work arrives through it at 15 or over; a held work fallen below that floor is asked for by id,
-   as every admitted row is (`collectAdmitted` in `places/gather.ts`), and the door keeps it or the
+   as every admitted row is (`collectById` in `places/gather.ts`), and the door keeps it or the
    line refuses it by name. It is
    shut while the source's curator gate is off and while the year is not folded with the redirects
    in place, so every work it admits arrives for a curator, with the question under Public art's own
@@ -2548,6 +2548,45 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    the casts' centroid (`medoidOf`, `anchorPoint.ts`, shared with the World Heritage run's
    `resolveMainPoint`), written past the gate as any anchor is (ADR-0095, `locationIsAnchor`), and
    its countries are every cast's. A work standing in one place keeps its one point as before.
+
+**Street-art places** (#2035, `publicArt/streetArtPlaces.ts`, `publicArt/streetArtTest.ts`). No
+class names a place a traveller goes to for the art painted on it: Wikidata types the Lennon Wall
+in Prague a wall, Hosier Lane in Melbourne a road and the Freedom Tunnel in New York a railway
+tunnel, and asking the pool by those classes would bring every wall, road and tunnel. So Public
+art's kind declares an **entrance** (`PlaceKind.entrance`, read by `gatherPlaces`): every article
+filed directly under an English Wikipedia category whose title names street art, graffiti or
+urban art (`STREET_ART_CATEGORY`), less the categories that file people, works and media
+(`NOT_A_PLACE_CATEGORY`: `Street artists from Brazil`), read from the copy of the category
+structure (ADR-0121, `structureItemsInCategories`); every item filed under the genre street art
+or graffiti (`P136`, `STREET_ART_GENRES`); and every place the source already holds as
+`street-art`, so a place a category stops naming is judged by this rule and not refused for its
+lack of a sculpture class. Without the copy the run reads the other two and says so in its log.
+The share names what the entrance brought (`entered`), and which of those no class question
+named and no source of the pass admits (`enteredOnly`); an entrance item the pool did not name is
+fetched by id, as an admitted row is. Public art decides every entered candidate its kind's own
+rule does not admit by the street-art rule (`streetArtCandidates`, `streetArtVerdict`); a
+sculpture a graffiti category also files stays the kind's. Monuments & memorials reads no
+street-art rule, and skips a candidate only the entrance brought, which no source of the pass holds.
+
+The line is fame read three ways at once, since a lane is read in few languages: an Atlas Obscura
+entry (`P7772`, the only way the catalogue reads Atlas Obscura), a Wikivoyage guide naming it
+(`guidedOf`) and 10,000 readers a year (`yearlyReaders`). A newcomer needs two of the three, a
+place the source holds keeps its place on one, and readers that cannot be read admit nothing new
+and keep a held place. A newcomer below the line is out quietly, before anything else is asked,
+so a category's long tail reaches no changeset. Then the rule refuses, by name: a place of worship
+or a lost work (the kind's trees), a burial or kill class, a candidate whose class is a kind of a
+place or work of another kind (`NOT_A_STREET_ART_PLACE`, read through the class tree: a
+settlement, a palace, a cave, a painting, a mural, a sculpture, a monument, a school…), one
+Wikidata says was demolished or dissolved (`P576`: 5 Pointz in New York, whitewashed in 2013 and
+demolished), one with no coordinate, and one on another globe. A museum and a castle are not
+refused: the East Side Gallery is typed an art museum, and a castle wall painted over is still a
+wall. What passes is written as every Public art place is, under the `street-art` type, with
+`metadata.wikidataArtwork` true, since the street-art reading answered the kind. Measured on the
+development subset on 2026-10-25, the rule admits the Lennon Wall, Leake Street, Beco do Batman,
+Djerbahood, Flower Thrower, the Tsoi Wall, the Freedom Tunnel, Hosier Lane, Clarion Alley and the
+Chalfont Viaduct (the measurement is on #2035). A place known only in its own language, such as
+Haus Schwarzenberg in Berlin, filed under no English category and no genre, is the regional
+tier's to find.
 
 **The cap decision.** The 200 the source used to cut at is gone: the world tier is a **threshold on
 the world's own signal, global, not a count and not per region** — ADR-0045 decision 2's "the
