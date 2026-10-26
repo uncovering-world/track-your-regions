@@ -2337,8 +2337,12 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    root, so the kind asks for the class itself (`poolClasses`) and, for a group with no point of its
    own, `fetchCastGroupPool` names it placeless (`PlaceKind.editions.enter`); after the facts are read,
    `readCastGroups` fetches each group's casts (`fetchCastItems` live, `subsetCastItems` off the
-   subset: a part or an item naming the group by `P361`/`P144`, with a coordinate of its own and a
-   placement that has not ended — a part with no coordinate, the study of one figure, is no cast)
+   subset: a part, an item naming the group by `P361`, or one naming it by `P144` that has the
+   group's creator (`castPattern` live, `NAMES_AS_CAST` on the subset), with a coordinate of its own
+   and a placement that has not ended — a part with no coordinate, the study of one figure, is no
+   cast, and neither is a work based on the group by no one or by someone else: the parody in
+   Greenwich based on *The Thinker* names no creator and stands for no cast of it, #2092,
+   [ADR-0155](../decisions/0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md))
    and `attachCasts` writes them onto the group: its `casts`, the casts' classes onto its facts (the
    rule reads the Burghers as the sculptures its casts are), and the first cast's point and country
    where it had no point. Casts follow numeric item order, so an equal-distance anchor stays the same
