@@ -2353,6 +2353,31 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    group's. The subset keeps and derives P144 links (`scope.PLACE_PROPERTIES`,
    `subsetTables.CLAIM_PROPERTIES`); an older copy asks for a rebuild before P144-only groups
    can be read. The group carries the fame, the casts carry the points.
+   **A group with cast items is judged at each cast** (#2036): every cast is the whole work
+   (ADR-0145 decision 5), so the group's own containers and owners say nothing — Wikidata
+   places *The Thinker* in Musée Rodin, Strasbourg's museum of modern art and Buenos Aires at
+   once. Each cast item carries the placements that still hold (`CastItem.placements`, both
+   readers, onto `PoolCast.placements`); the gather asks what holds them with the candidates'
+   containers, and the verdict (`castsJudged` in `pipeline.ts`, `castsStanding` in
+   `publicArtTest.ts`) judges each cast by where it stands as it would a work in one place — a
+   museum, a place of worship, a room or a site, a stranded colossal statue excepted, read off
+   the cast item's own classes (`PoolCast.classes`), since the group's carry every cast's —
+   without reading a cast's collection. The group is refused only when every cast is held, and the
+   reason names each holder (`every cast is held — inside Musée Rodin: …; inside Kyoto National
+   Museum: …`, one cast's reason as it is). Its `heldIn` lists every cast's holders, then the
+   places the group's own statements name, so the museum Wikidata places the group in still
+   takes it as its work (ADR-0102): Musée Rodin keeps *The Thinker* while the one cast item
+   Wikidata keeps stands at the Kyoto National Museum. A cast placed nowhere
+   stands where its point is. An admitted group is shown only at the casts a passer-by can walk
+   up to: the verdict names them (`openCasts`) and the row carries no point at a held cast. The
+   held casts are handed over all the same (`handOver` on the verdict, `CollectedPublicArt.handOvers`,
+   `FetchResult.handOvers`), to their holders and then to the places the group's own statements
+   name, so the museum keeps the work as its own while the casts outdoors stay public art: neither
+   kind's reading of *The Thinker* takes it from the other. The museum's changeset shows the
+   hand-over's reason, so `kindDecision` words it by what the line decided: a group the kind admits
+   reads `taken as public art at its other casts; a cast inside Musée Rodin: …`, and a group below
+   the line, handed over all the same, carries the cast's own reason. An edition read off one item's qualified coordinates, and a
+   group with no cast item, is judged at its own containers as before.
 3. **Facts** — per 50 candidates, one `UNION` question: every `P31`; `P276`, `P361` and `P195`,
    each read statement by statement as what still holds (the shared kit's `standing`, `wikidataQueries.ts`: best-ranked,
    what `wdt:` would answer, and carrying no `pq:P582` end time — the end-time rule the museum
@@ -2767,7 +2792,10 @@ beside it or not):
   the places, item ids nearest first — the Cornaro chapel, then Santa Maria della Vittoria). The
   orchestrator writes it beside the refusals (`recordHandOvers`, `services/sync/handOvers.ts`) from
   what the run filtered (Public Art's verdict carries `heldIn`), whether or not the source ever held
-  the work as a row, and a complete run replaces its source's set. Each works kind's run reads the
+  the work as a row, and a complete run replaces its source's set. A work part of which a museum
+  holds is handed over too although the run did not refuse it as the museum's
+  (`FetchResult.handOvers`, #2036): the casts in a museum of a group of casts that passed the rule,
+  whether the line then admitted the group or not. Each works kind's run reads the
   other sources' hand-overs once (`readHandOvers`). The venue-side read keeps an object its class rule refuses — or the pool's
   own keep refused — when it finds it held at one of the places the refusal named
   (`handOverAt`): the read's own venue, never one the other kind merely said — and asks again about
