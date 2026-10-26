@@ -17,8 +17,10 @@ import type { FilteredEntity } from './syncContract.js';
 import type { HandOver } from './museum/venueSide.js';
 
 /**
- * Record what this run refused as another place's (ADR-0102), replacing the
- * source's set: called once the run's fetch has answered whole, so a work it
+ * Record what this run refused as another place's (ADR-0102), and the works
+ * part of which another place holds although it did not refuse them as that
+ * place's (`FetchResult.handOvers`, #2036),
+ * replacing the source's set: called once the run's fetch has answered whole, so a work it
  * no longer refuses this way leaves the set. Nothing on a dry run.
  */
 export async function recordHandOvers(

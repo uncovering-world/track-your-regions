@@ -36,10 +36,10 @@ describe('fetchCastItems', () => {
     const casts = await fetchCastItems(async () => rows, [BURGHERS]);
     expect([...casts.keys()]).toEqual([BURGHERS]);
     expect(casts.get(BURGHERS)).toEqual([
-      { qid: 'Q29273401', lat: 50.9523, lon: 1.8535, name: 'Calais', countryLabel: 'France', classes: ['Q2293362'] },
-      { qid: 'Q25338408', lat: 51.4975, lon: -0.1249, name: 'Victoria Tower Gardens', countryLabel: 'United Kingdom', classes: ['Q2293362', 'Q3331189'] },
-      { qid: 'Q47522991', lat: 37.428, lon: -122.1699, name: 'Stanford University', countryLabel: 'United States', classes: ['Q2293362'] },
-      { qid: 'Q900002', lat: 35.71, lon: 139.76, name: 'The Burghers of Calais (Tokyo)', countryLabel: null, classes: ['Q2293362'] },
+      { qid: 'Q29273401', lat: 50.9523, lon: 1.8535, name: 'Calais', countryLabel: 'France', classes: ['Q2293362'], placements: ['Q6454'] },
+      { qid: 'Q25338408', lat: 51.4975, lon: -0.1249, name: 'Victoria Tower Gardens', countryLabel: 'United Kingdom', classes: ['Q2293362', 'Q3331189'], placements: ['Q2485117'] },
+      { qid: 'Q47522991', lat: 37.428, lon: -122.1699, name: 'Stanford University', countryLabel: 'United States', classes: ['Q2293362'], placements: ['Q41506'] },
+      { qid: 'Q900002', lat: 35.71, lon: 139.76, name: 'The Burghers of Calais (Tokyo)', countryLabel: null, classes: ['Q2293362'], placements: [] },
     ]);
   });
 
@@ -57,7 +57,7 @@ describe('fetchCastItems', () => {
     const ended = { ...standing, ended: { value: '2001-01-01T00:00:00Z' } };
     const casts = await fetchCastItems(async () => reversed ? [standing, ended] : [ended, standing], [BURGHERS]);
     expect(casts.get(BURGHERS)).toEqual([
-      { qid: 'Q29273401', lat: 50.9523, lon: 1.8535, name: 'Calais', countryLabel: 'France', classes: ['Q2293362'] },
+      { qid: 'Q29273401', lat: 50.9523, lon: 1.8535, name: 'Calais', countryLabel: 'France', classes: ['Q2293362'], placements: ['Q6454'] },
     ]);
   });
 
@@ -68,7 +68,7 @@ describe('fetchCastItems', () => {
     const labelledCountry = { ...unlabelled, country: ref('Q30'), countryLabel: { value: 'United States' } };
     const casts = await fetchCastItems(async () => [unlabelled, labelledCountry], [BURGHERS]);
     expect(casts.get(BURGHERS)).toEqual([
-      { qid: 'Q47522991', lat: 37.428, lon: -122.1699, name: 'The Burghers of Calais, Stanford', countryLabel: 'United States', classes: ['Q2293362'] },
+      { qid: 'Q47522991', lat: 37.428, lon: -122.1699, name: 'The Burghers of Calais, Stanford', countryLabel: 'United States', classes: ['Q2293362'], placements: ['Q41506'] },
     ]);
   });
 
@@ -77,7 +77,7 @@ describe('fetchCastItems', () => {
       cast('Q900120', 'Cast with no named placement', 'Point(2 1)', { at }),
     ], [BURGHERS]);
     expect(casts.get(BURGHERS)).toEqual([
-      { qid: 'Q900120', lat: 1, lon: 2, name: 'Cast with no named placement', countryLabel: null, classes: ['Q2293362'] },
+      { qid: 'Q900120', lat: 1, lon: 2, name: 'Cast with no named placement', countryLabel: null, classes: ['Q2293362'], placements: [] },
     ]);
   });
 });
@@ -88,8 +88,8 @@ describe('attachCasts', () => {
     imageUrl: null, itemPictures: [], sitelinks: 30, countryLabel: 'France', articleUrl: null, website: null, year: 1889, ...over,
   });
   const casts = [
-    { qid: 'Q29273401', lat: 50.9523, lon: 1.8535, name: 'Calais', countryLabel: 'France', classes: ['Q2293362'] },
-    { qid: 'Q47522991', lat: 37.428, lon: -122.1699, name: 'Stanford University', countryLabel: 'United States', classes: ['Q2293362', 'Q1232589'] },
+    { qid: 'Q29273401', lat: 50.9523, lon: 1.8535, name: 'Calais', countryLabel: 'France', classes: ['Q2293362'], placements: ['Q6454'] },
+    { qid: 'Q47522991', lat: 37.428, lon: -122.1699, name: 'Stanford University', countryLabel: 'United States', classes: ['Q2293362', 'Q1232589'], placements: ['Q41506'] },
   ];
 
   it("writes the casts onto the group and the casts' classes onto its facts, keeping the group's own point", () => {
@@ -97,8 +97,8 @@ describe('attachCasts', () => {
     const facts = { ...emptyFacts(), classes: ['Q28890616'] };
     attachCasts(group, facts, casts);
     expect(group.casts).toEqual([
-      { lat: 50.9523, lon: 1.8535, placeQid: 'Q29273401', placeLabel: 'Calais', countryLabel: 'France' },
-      { lat: 37.428, lon: -122.1699, placeQid: 'Q47522991', placeLabel: 'Stanford University', countryLabel: 'United States' },
+      { lat: 50.9523, lon: 1.8535, placeQid: 'Q29273401', placeLabel: 'Calais', countryLabel: 'France', placements: ['Q6454'], classes: ['Q2293362'] },
+      { lat: 37.428, lon: -122.1699, placeQid: 'Q47522991', placeLabel: 'Stanford University', countryLabel: 'United States', placements: ['Q41506'], classes: ['Q2293362', 'Q1232589'] },
     ]);
     expect([group.lat, group.lon]).toEqual([50.9524, 1.8533]);
     expect(facts.classes).toEqual(['Q28890616', 'Q2293362', 'Q1232589']);

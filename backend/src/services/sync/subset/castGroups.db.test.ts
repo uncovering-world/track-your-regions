@@ -134,14 +134,14 @@ describe('groups of casts read from the subset (#880)', () => {
     const casts = await subsetCastItems([BURGHERS, THINKER, 'Q999999']);
     expect([...casts.keys()].sort()).toEqual([THINKER, BURGHERS].sort());
     expect(casts.get(BURGHERS)).toEqual([
-      { qid: CALAIS_CAST, wkt: 'Point(1.8535 50.9523)', name: 'Calais', countryLabel: 'France', classes: [GROUP_OF_SCULPTURES] },
-      { qid: LONDON_CAST, wkt: 'Point(-0.1249 51.4975)', name: 'Victoria Tower Gardens', countryLabel: 'United Kingdom', classes: [GROUP_OF_SCULPTURES, 'Q3331189'] },
-      { qid: STANFORD_CAST, wkt: 'Point(-122.1699 37.428)', name: 'Stanford University', countryLabel: 'United States of America', classes: [GROUP_OF_SCULPTURES] },
-      { qid: NO_PLACEMENT_CAST, wkt: 'Point(2 1)', name: 'Cast with no named placement', countryLabel: null, classes: [] },
-      { qid: UNKNOWN_PLACEMENT_CAST, wkt: 'Point(4 3)', name: 'Cast with unknown placement', countryLabel: null, classes: [] },
+      { qid: CALAIS_CAST, wkt: 'Point(1.8535 50.9523)', name: 'Calais', countryLabel: 'France', classes: [GROUP_OF_SCULPTURES], placements: ['Q6454'] },
+      { qid: LONDON_CAST, wkt: 'Point(-0.1249 51.4975)', name: 'Victoria Tower Gardens', countryLabel: 'United Kingdom', classes: [GROUP_OF_SCULPTURES, 'Q3331189'], placements: ['Q2485117'] },
+      { qid: STANFORD_CAST, wkt: 'Point(-122.1699 37.428)', name: 'Stanford University', countryLabel: 'United States of America', classes: [GROUP_OF_SCULPTURES], placements: ['Q41506'] },
+      { qid: NO_PLACEMENT_CAST, wkt: 'Point(2 1)', name: 'Cast with no named placement', countryLabel: null, classes: [], placements: [] },
+      { qid: UNKNOWN_PLACEMENT_CAST, wkt: 'Point(4 3)', name: 'Cast with unknown placement', countryLabel: null, classes: [], placements: [] },
     ]);
     expect(casts.get(THINKER)).toEqual([
-      { qid: KYOTO_CAST, wkt: 'Point(135.7723 34.99)', name: 'Kyoto National Museum', countryLabel: 'Japan', classes: [SCULPTURE, 'Q3331189'] },
+      { qid: KYOTO_CAST, wkt: 'Point(135.7723 34.99)', name: 'Kyoto National Museum', countryLabel: 'Japan', classes: [SCULPTURE, 'Q3331189'], placements: ['Q147286'] },
     ]);
   });
 });

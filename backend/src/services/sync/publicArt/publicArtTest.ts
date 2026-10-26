@@ -56,6 +56,14 @@ export interface PublicArtFacts {
   genres: string[];
   /** What each item it depicts is, for the ones that were read. */
   subjects: SubjectFacts[];
+  /**
+   * The casts of a group of casts, each with what it stands in (#2036): where
+   * given, the group is judged at its casts rather than at its own containers
+   * and owners. Absent for everything else, a group with no cast item included.
+   * A cast's own classes, where read, decide its venue exception; the group's
+   * classes stand in otherwise.
+   */
+  casts?: { containers: ContainerFact[]; classes?: string[] }[];
   /** Whether `P625` is on this planet — Fallen Astronaut's is not. */
   onEarth: boolean;
   lat: number | null;
@@ -73,6 +81,19 @@ export type PublicArtResult =
      * approximate closures it cannot hold.
      */
     artwork: boolean;
+    /**
+     * For a group of casts judged at its casts, the positions of the casts a
+     * traveller can walk up to (#2036): the kind shows only those. A cast in a
+     * museum is the museum's to show, not a public-art point.
+     */
+    openCasts?: number[];
+    /**
+     * For such a group, where its held casts stand, nearest first, then the
+     * places the group's own statements name (#2036): recorded as a hand-over
+     * (ADR-0102), so the museum that holds a cast takes the work although
+     * another cast makes it public art.
+     */
+    handOver?: { reason: string; heldIn: string[] };
   }
   | {
     pass: false;
@@ -283,22 +304,85 @@ function unreadLink(links: ContainerFact[], what: 'where it stands' | 'whose it 
 }
 
 /**
- * The place or owner that makes the entity somebody else's work, or nothing:
- * where it stands decides, and whose it is only when nothing says where it
- * stands.
+ * The place that makes a work standing in `places` somebody else's, or
+ * nothing: a venue, a room or a site, or a link nobody could read.
+ */
+function placedElsewhere(
+  places: ContainerFact[], classes: string[], trees: PublicArtTrees, noun: string, offered?: ReadonlySet<string>,
+): HeldElsewhere | null {
+  const venue = heldElsewhere(places, trees, noun);
+  // The room and the site are still asked of a work stranded outdoors: a
+  // colossal statue in a museum's hall is the hall's.
+  if (venue && offered && strandedOutdoors(venue, classes, offered)) return heldElsewhere(places, trees, noun, false);
+  return venue ?? unreadLink(places, 'where it stands', noun);
+}
+
+/** What holds each cast of a group of casts, by where it stands; null for a cast a traveller can walk up to. */
+function castHolders(
+  casts: { containers: ContainerFact[]; classes?: string[] }[], classes: string[], trees: PublicArtTrees, noun: string, offered?: ReadonlySet<string>,
+): (HeldElsewhere | null)[] {
+  // Each cast by its own classes: the group's carry every cast's, and one cast
+  // being a colossal statue must not keep another off a museum's grounds.
+  return casts.map((cast) => placedElsewhere(placesAndOwners(cast.containers, trees).places, cast.classes ?? classes, trees, noun, offered));
+}
+
+/**
+ * The place or owner that makes a work in one place somebody else's, or
+ * nothing: where it stands decides, and whose it is only when nothing says
+ * where it stands.
+ */
+function heldAsOne(
+  e: PublicArtFacts, trees: PublicArtTrees, noun: string, offered?: ReadonlySet<string>,
+): HeldElsewhere | null {
+  const { places, owners } = placesAndOwners(e.containers, trees);
+  if (places.length) return placedElsewhere(places, e.classes, trees, noun, offered);
+  const allOwners = [...owners, ...e.collections];
+  return ownedElsewhere(allOwners, trees, noun) ?? unreadLink(allOwners, 'whose it is', noun);
+}
+
+/**
+ * How a group of casts stands at its casts (#2036): each cast is the whole work
+ * (ADR-0145 decision 5), so the group's own containers say nothing — Wikidata
+ * places *The Thinker* in Musée Rodin, Strasbourg's museum and Buenos Aires at
+ * once. A cast is judged by where it stands, as a work in one place is; whose
+ * collection a cast is in is not read. The casts a passer-by can walk up to are
+ * the kind's (`open`, by position); the held ones are handed to their holders
+ * (`held`), and then to the places the group's own statements name, so the
+ * museum Wikidata places the group in takes it as its work (ADR-0102) whether
+ * or not another cast makes it public art.
+ */
+function castsStanding(
+  e: PublicArtFacts & { casts: NonNullable<PublicArtFacts['casts']> },
+  trees: PublicArtTrees, noun: string, offered?: ReadonlySet<string>,
+): { open: number[]; held: HeldElsewhere | null } {
+  const holders = castHolders(e.casts, e.classes, trees, noun, offered);
+  const open = holders.flatMap((at, i) => (at ? [] : [i]));
+  const held = holders.filter((at): at is HeldElsewhere => at !== null);
+  if (!held.length) return { open, held: null };
+  const own = heldAsOne(e, trees, noun, offered);
+  return {
+    open,
+    held: {
+      reason: held.length === 1 ? held[0].reason : held.map((h) => h.reason).join('; '),
+      heldIn: [...new Set([...held.flatMap((h) => h.heldIn), ...(own?.heldIn ?? [])])],
+    },
+  };
+}
+
+/**
+ * The place or owner that makes the entity somebody else's work, or nothing.
+ * A group of casts is somebody else's only when every cast is held, and the
+ * refusal names every holder: Musée Rodin, where Wikidata places *The Thinker*,
+ * takes it as its work even while the one cast item Wikidata keeps stands at the
+ * Kyoto National Museum.
  */
 function anothersWork(
   e: PublicArtFacts, trees: PublicArtTrees, noun: string, offered?: ReadonlySet<string>,
 ): HeldElsewhere | null {
-  const { places, owners } = placesAndOwners(e.containers, trees);
-  const venue = heldElsewhere(places, trees, noun);
-  // The room and the site are still asked of a work stranded outdoors: a
-  // colossal statue in a museum's hall is the hall's.
-  if (venue && offered && strandedOutdoors(venue, e.classes, offered)) return heldElsewhere(places, trees, noun, false);
-  if (venue) return venue;
-  if (places.length) return unreadLink(places, 'where it stands', noun);
-  const allOwners = [...owners, ...e.collections];
-  return ownedElsewhere(allOwners, trees, noun) ?? unreadLink(allOwners, 'whose it is', noun);
+  if (!e.casts?.length) return heldAsOne(e, trees, noun, offered);
+  const { open, held } = castsStanding({ ...e, casts: e.casts }, trees, noun, offered);
+  if (open.length || !held) return null;
+  return e.casts.length === 1 ? held : { ...held, reason: `every cast is held — ${held.reason}` };
 }
 
 /**
@@ -314,6 +398,18 @@ function anothersWork(
 function strandedOutdoors(held: HeldElsewhere, classes: string[], offered: ReadonlySet<string>): boolean {
   if (!held.venue || held.heldIn.some((qid) => offered.has(qid))) return false;
   return classes.some((c) => OUTDOOR_CLASSES[c]);
+}
+
+/** What an admitted group of casts shows and hands over (#2036): nothing for any other work. */
+function castsShown(
+  e: PublicArtFacts, trees: PublicArtTrees, noun: string, offered?: ReadonlySet<string>,
+): { openCasts?: number[]; handOver?: { reason: string; heldIn: string[] } } {
+  if (!e.casts?.length) return {};
+  const { open, held } = castsStanding({ ...e, casts: e.casts }, trees, noun, offered);
+  // The held casts' own reason: whether the kind then admits the work is the
+  // fame line's to say, and the decision words the hand-over by it.
+  const handOver = held && { reason: held.reason, heldIn: held.heldIn };
+  return { openCasts: open, ...(handOver ? { handOver } : {}) };
 }
 
 /**
@@ -382,5 +478,5 @@ export function publicArtVerdict(
     return { pass: false, reason: 'no coordinates of its own (P625)' };
   }
 
-  return { pass: true, type: rule.type(e, trees), artwork };
+  return { pass: true, type: rule.type(e, trees), artwork, ...castsShown(e, trees, rule.noun, offered) };
 }

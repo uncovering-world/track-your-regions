@@ -425,7 +425,7 @@ describe('a cast group reached only through P144 (#880)', () => {
     const { subsetCastGroupIds, subsetCastItems } = await import('../../sync/subset/castGroups.js');
     expect(await subsetCastGroupIds('Q28890616', 1)).toEqual(['Q18003128']);
     expect((await subsetCastItems(['Q18003128'])).get('Q18003128')).toEqual([{
-      qid: 'Q130544842', wkt: 'Point(135.7723 34.99)', name: 'The Thinker, Kyoto', countryLabel: null, classes: [],
+      qid: 'Q130544842', wkt: 'Point(135.7723 34.99)', name: 'The Thinker, Kyoto', countryLabel: null, classes: [], placements: [],
     }]);
   });
 });

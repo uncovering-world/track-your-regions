@@ -244,9 +244,10 @@ export async function orchestrateSync<T>(
     // What a curator put back stays admitted through the refusal, and the run
     // writes nothing else of it, so its type is filed here (ADR-0135).
     recordPutBackTypes(await filePutBackTypes(sourceId, filtered ?? [], fetched.typeVocabulary, dryRun), progress, changes);
-    // What the run refused as another place's, for the kind that holds that
-    // place (ADR-0102): the fetch answered whole, so the set is replaced.
-    await recordHandOvers(sourceId, filtered ?? [], progress.logId, dryRun);
+    // What the run refused as another place's, and what it admits that one
+    // also holds, for the kind that holds that place (ADR-0102): the fetch
+    // answered whole, so the set is replaced.
+    await recordHandOvers(sourceId, [...(filtered ?? []), ...(fetched.handOvers ?? [])], progress.logId, dryRun);
     recordFilteredEntities(filtered ?? [], progress, changes, refusedRows);
     // An object a row holds is reported the same way and marked nowhere: it
     // is not a row of this source, whatever id it shares with one. And named

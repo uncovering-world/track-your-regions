@@ -11,7 +11,8 @@
  * a coordinate of its own and a placement that has not ended: a part with no
  * coordinate — the study of one figure — is no cast, and a cast whose every
  * `P276` carries an end time has left. It is called by where it stands, the
- * placement that holds, else by its own label.
+ * placement that holds, else by its own label, and judged by where it stands
+ * (`placements`): the group is somebody else's only when every cast is (#2036).
  *
  * `fetchCastItems` is the live reader; `subsetCastItems` (`subset/castGroups.ts`)
  * the dump's; `attachCasts` writes what either read onto the pool entity.
@@ -34,6 +35,8 @@ export interface CastItem {
   countryLabel: string | null;
   /** The cast's classes — what the group is read as, since its own say only "group of casts". */
   classes: string[];
+  /** Where the cast stands (`P276`, the placements that hold): what the rule judges it by (#2036). */
+  placements: string[];
 }
 
 interface CastReading {
@@ -58,13 +61,16 @@ function castOf(qid: string, reading: CastReading): CastItem | null {
     name: (place ? reading.placements.get(place)?.label : undefined) ?? reading.label,
     countryLabel: [...reading.countries].sort((a, b) => a.localeCompare(b))[0] ?? null,
     classes: [...reading.classes],
+    placements: standing,
   };
 }
 
 /** A subset reading as the live reader answers it: the point parsed, the rest as read. */
 function castFromSubset(reading: CastItemReading): CastItem | null {
   const at = parseWktPoint(reading.wkt);
-  return at ? { qid: reading.qid, lat: at.lat, lon: at.lon, name: reading.name, countryLabel: reading.countryLabel, classes: reading.classes } : null;
+  if (!at) return null;
+  const { qid, name, countryLabel, classes, placements } = reading;
+  return { qid, lat: at.lat, lon: at.lon, name, countryLabel, classes, placements };
 }
 
 /** One more row of the casts question folded into what is read of its cast. */
@@ -144,6 +150,7 @@ export function attachCasts(entity: PoolEntity, facts: EntityFacts | undefined, 
   const ordered = [...casts].sort((a, b) => Number(a.qid.slice(1)) - Number(b.qid.slice(1)));
   entity.casts = ordered.map(cast => ({
     lat: cast.lat, lon: cast.lon, placeQid: cast.qid, placeLabel: cast.name, countryLabel: cast.countryLabel,
+    placements: cast.placements, classes: cast.classes,
   }));
   if (entity.lat === null || entity.lon === null) {
     entity.lat = ordered[0].lat;
