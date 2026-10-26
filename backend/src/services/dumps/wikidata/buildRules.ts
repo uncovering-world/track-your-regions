@@ -16,7 +16,7 @@ import { SCOPE_VERSION } from './scopeFile.js';
  * labels and sitelinks `deriveFromEntities` makes, the class closure
  * `deriveClassClosure` walks, and the indexes they carry.
  */
-export const DERIVE_VERSION = 2;
+export const DERIVE_VERSION = 3;
 
 export interface BuildRules {
   /** What the first pass keeps: its version and its rules written whole. */
