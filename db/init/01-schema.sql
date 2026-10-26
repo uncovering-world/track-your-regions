@@ -3032,6 +3032,7 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     reported_image_url TEXT,
     reported_location geometry(Point, 4326),
     reported_image_credit JSONB,
+    reported_wikipedia_url TEXT,
     wikidata_items TEXT[],
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -3056,6 +3057,7 @@ ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_subtit
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_url TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_location geometry(Point, 4326);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_credit JSONB;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_wikipedia_url TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS wikidata_items TEXT[];
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_verdict VARCHAR(10);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_reason TEXT;
@@ -3096,6 +3098,7 @@ COMMENT ON COLUMN experience_kind_memberships.reported_subtitle IS 'The subtitle
 COMMENT ON COLUMN experience_kind_memberships.reported_image_url IS 'The picture this membership''s source last reported for the place, after the run''s picture rule (its view, #1246). Its credit is reported_image_credit.';
 COMMENT ON COLUMN experience_kind_memberships.wikidata_items IS 'The Wikidata items a source that knows the place by another id resolves it to (#1248): for a World Heritage membership, the items its site resolves to through P757 (siteItems, ADR-0088 as narrowed by ADR-0094), leaving out an item whose every such statement is deprecated. NULL for a Wikidata source, whose external_id is the item. One item and one point make the place that item''s, for the catalogue''s merge on an equal item (sharedItemsSql).';
 COMMENT ON COLUMN experience_kind_memberships.reported_image_credit IS 'The credit of reported_image_url as the run resolved it from Commons ({author, license, licenseUrl, detailsUrl}, the shape of metadata.imageCredit): shown beside the picture wherever a curator is asked to choose it, and written with it to the place when chosen (#1246).';
+COMMENT ON COLUMN experience_kind_memberships.reported_wikipedia_url IS 'The Wikipedia article this membership''s source last reported for the place, the shape of metadata.wikipediaUrl (its view, #1975): two sources of one place under different ids that link different articles are asked about, as for the picture.';
 COMMENT ON COLUMN experience_kind_memberships.reported_location IS 'The coordinate this membership''s source last reported for the place (its view, #1246). Two views within ten metres agree (ADR-0027).';
 COMMENT ON COLUMN experience_kind_memberships.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
 COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
@@ -5187,7 +5190,7 @@ COMMENT ON TABLE experience_conflict_decisions IS 'Source proposals a curator re
 CREATE TABLE IF NOT EXISTS experience_view_choices (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'subtitle', 'imageUrl', 'location')),
+    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'subtitle', 'imageUrl', 'location', 'wikipediaUrl')),
     chosen_membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE SET NULL,
     views JSONB NOT NULL,
     decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -5205,7 +5208,7 @@ COMMENT ON COLUMN experience_view_choices.views IS 'The standing views of the fi
 CREATE TABLE IF NOT EXISTS experience_view_suggestions (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'subtitle', 'imageUrl', 'location')),
+    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'subtitle', 'imageUrl', 'location', 'wikipediaUrl')),
     views JSONB NOT NULL,
     suggested_membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE SET NULL,
     confidence NUMERIC(4, 3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
