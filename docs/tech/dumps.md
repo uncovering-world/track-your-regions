@@ -5,10 +5,11 @@ The shared pipeline every bulk read goes through
 it finds the newest complete file of a public dump, reads it line by line
 into a consumer, and lets the consumer keep what it built only once the file
 is verified. It holds no data of its own. A build that keeps something is a
-builder plugged into it: the local Wikidata subset (§ The local Wikidata
-subset, ADR-0105), readership (§ Readership, ADR-0055) and English
-Wikipedia's structure (§ English Wikipedia's structure, ADR-0121) are the
-three today. The counting consumer
+builder plugged into it, listed in `KEEPERS` (`keepers.ts`), and each has a
+section below, from the local Wikidata subset (§ The local Wikidata subset,
+ADR-0105), readership (§ Readership, ADR-0055) and English Wikipedia's
+structure (§ English Wikipedia's structure, ADR-0121) to the OpenStreetMap
+layer. The counting consumer
 keeps nothing, which is what the admin panel's *Verify newest* runs.
 
 Code: `backend/src/services/dumps/` — `catalog.ts` (which dumps exist and how
@@ -41,6 +42,7 @@ indexes onto its copy.
 | `wikipedia-redirects` | `enwiki/<date>/enwiki-<date>-redirect.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{redirect,page}.sql.gz` of every counted edition | the sha1 and size each edition's `dumpstatus.json` gives (`wikipediaTableFile`) |
 | `wikidata-redirects` | `wikidatawiki/<date>/wikidatawiki-<date>-redirect.sql.gz`, and its build reads `wikidatawiki-<date>-page.sql.gz` of the same run | the sha1 and size the run's `dumpstatus.json` gives (`wikipediaTableFile`) |
 | `wikivoyage-usage` | `enwikivoyage/<date>/enwikivoyage-<date>-wbc_entity_usage.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{wbc_entity_usage,page}.sql.gz` of every Wikivoyage edition, English Wikivoyage's page table included | the sha1 and size each edition's `dumpstatus.json` gives its `wbcentityusagetable` job (`wikiRunFile`) |
+| `wikivoyage-pages` | `enwikivoyage/<date>/enwikivoyage-<date>-pages-articles.xml.bz2`, and its build reads `enwikivoyage-<date>-page_props.sql.gz` of the same run | the sha1 and size the run's `dumpstatus.json` gives its `articlesdump` and `pagepropstable` jobs (`wikiRunFile`) |
 | `osm-planet` | `planet.openstreetmap.org/pbf/planet-<yymmdd>.osm.pbf`, the weekly planet named by its Monday | the md5 in `planet-<yymmdd>.osm.pbf.md5` beside it, and the host's `Content-Length` |
 
 Each descriptor's `resolve()` reads the host's own listing (for the planet,
@@ -764,6 +766,45 @@ transaction (`swapIn`, `usageTables.ts`), as the redirects are. A file that
 fails its check, or a cancel, drops the copy. Both tables are `UNLOGGED`, so a
 crash empties them and the panel asks for a build (`latestUsage` answers
 none). There is no trial build.
+
+## English Wikivoyage's articles
+
+Code: `backend/src/services/dumps/wikivoyage/`. A keeping build of
+`wikivoyage-pages` (`buildPages`, `pageBuild.ts`) keeps every page of English
+Wikivoyage's namespace 0 in `wikivoyage_pages`: an article with its wikitext,
+a redirect with the title it points to, and the Wikidata item its page
+properties name. It is kept for the world-view extraction (#2089), which
+reads English Wikivoyage through the live Action API, and two runs a few
+days apart built different trees.
+
+The build first finds the same run's `page_props` table, verified by the sha1
+and size its `pagepropstable` job gives, and reads it from the host as a
+stream, about 1.6 MB on 2026-10-01: each page's `wikibase_item`, kept only
+where it is an item id (`Q…`). A run that has not finished it fails the build
+and the pages in place stay. Then it reads the run's `pages-articles` XML, the
+build's own file, about 132 MB of bzip2 on 2026-10-01, a line at a time
+(`PageReader`, `pageLine.ts`):
+
+- a page is `<page>` … `</page>`, and its id is the first `<id>`, before its
+  revision's and its contributor's;
+- a redirect's target is its `<redirect title="…"/>`, without the section it
+  points into (`Alger` → `Algiers`);
+- a text runs over as many lines as the wikitext has, and is kept unescaped;
+  the dump escapes every `<` inside it, so no line of a text opens or closes
+  an element;
+- a page of another namespace, a template or a project page, is passed over,
+  and so is its text.
+
+A file that ends inside a text is a damaged file. The pages go to a `_next`
+copy, 500 to a write, given the live table's key once the file is read, and
+swapped in with the build's row in `wikivoyage_pages_builds` (the dump date
+and how many articles, redirects and items it kept) in one transaction
+(`swapIn`, `pageTables.ts`), as the item usage is. A file that fails its check,
+a build that kept no article, or a cancel, drops the copy. Both tables are
+`UNLOGGED`, so a crash empties them and the panel asks for a build
+(`latestPages` answers none). The build always reads the newest run, since an
+older run's page properties may be gone from the host; there is no trial
+build.
 
 ## The OpenStreetMap layer
 
