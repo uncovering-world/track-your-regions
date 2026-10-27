@@ -3,10 +3,10 @@
  */
 
 import type {
-  ExtractionAnswer, ExtractionCancelled, ExtractionStarted, ExtractionStatus, WikivoyageCacheDeleted,
+  ExtractionAnswer, ExtractionCancelled, ExtractionStarted, ExtractionStatus,
 } from '../adminClient.generated';
 import {
-  deleteAdminWvExtractCachesByName, getAdminWvExtractStatus, postAdminWvExtractAnswer, postAdminWvExtractCancel,
+  getAdminWvExtractStatus, postAdminWvExtractAnswer, postAdminWvExtractCancel,
   postAdminWvExtractStart,
 } from '../adminClient.generated';
 
@@ -15,22 +15,16 @@ import {
 // imports a call's answer from the module of the call.
 export type {
   ExtractionAnswer, ExtractionCancelled, ExtractionStarted, ExtractionStatus, ImportedWorldView, InterviewQuestion,
-  PendingQuestion, RegionPreview, WikivoyageCache, WikivoyageCacheDeleted,
+  PendingQuestion, RegionPreview, WikivoyageCopy,
 } from '../adminClient.generated';
 
 // =============================================================================
 // API calls
 // =============================================================================
 
-/**
- * Start a Wikivoyage extraction.
- * @param cacheFile - Name of cache file to use, 'none' for clean fetch, or undefined for default
- */
-export async function startWikivoyageExtraction(
-  name: string,
-  cacheFile?: string | null,
-): Promise<ExtractionStarted> {
-  return postAdminWvExtractStart({ name, cacheFile });
+/** Start a Wikivoyage extraction, which reads English Wikivoyage's kept copy; refused while none is kept. */
+export async function startWikivoyageExtraction(name: string): Promise<ExtractionStarted> {
+  return postAdminWvExtractStart({ name });
 }
 
 /** Poll extraction status */
@@ -58,9 +52,4 @@ export async function answerExtractionQuestion(
   ruleId?: number,
 ): Promise<ExtractionAnswer> {
   return postAdminWvExtractAnswer({ questionId, action, answer, ruleId });
-}
-
-/** Delete a cache file */
-export async function deleteCacheFile(name: string): Promise<WikivoyageCacheDeleted> {
-  return deleteAdminWvExtractCachesByName(name);
 }
