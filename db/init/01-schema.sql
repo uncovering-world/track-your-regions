@@ -5650,12 +5650,16 @@ COMMENT ON COLUMN region_match_suggestions.rejected IS 'True if admin rejected t
 CREATE TABLE IF NOT EXISTS workbench.region_map_images (
     id SERIAL PRIMARY KEY,
     region_id INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
-    image_url TEXT NOT NULL
+    image_url TEXT NOT NULL,
+    -- Null until a dialog that draws the file has asked Commons (#2087).
+    image_credit JSONB
 );
 
 CREATE INDEX IF NOT EXISTS idx_rmi_region ON workbench.region_map_images(region_id);
 
 COMMENT ON TABLE workbench.region_map_images IS 'Candidate map images for imported regions (from Wikimedia Commons etc.)';
+COMMENT ON COLUMN workbench.region_map_images.image_credit IS
+    'Who the file is credited to, from Commons extmetadata (author, license, licenseUrl, detailsUrl); null until a dialog that draws it has asked';
 
 -- The reference map an admin lays under a region in the Create Subregions dialog
 -- (#595, ADR-0113): one per region, calibrated by its four corners. Working
@@ -5672,13 +5676,16 @@ CREATE TABLE IF NOT EXISTS region_image_overlays (
     corners JSONB NOT NULL CHECK (jsonb_typeof(corners) = 'array' AND jsonb_array_length(corners) = 4),
     opacity REAL NOT NULL CHECK (opacity >= 0 AND opacity <= 1),
     updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- The region map it was loaded from, whose credit it carries (#2087).
+    source_url TEXT CHECK (source_url IS NULL OR source_url ~ '^https?://')
 );
 
 COMMENT ON TABLE region_image_overlays IS 'The reference map an admin calibrates under a region in the Create Subregions dialog (#595, ADR-0113): one per region, admin-only working material, never shown to a visitor.';
 COMMENT ON COLUMN region_image_overlays.image IS 'The image''s bytes: PNG, JPEG or WebP (image_type), checked by their signature on write, at most 10 MB.';
 COMMENT ON COLUMN region_image_overlays.corners IS 'Where the image''s corners lie on the map, as four [lng, lat] pairs in MapLibre''s image-source order: top left, top right, bottom right, bottom left.';
 COMMENT ON COLUMN region_image_overlays.opacity IS 'How opaque the image is drawn over the map, 0 to 1.';
+COMMENT ON COLUMN region_image_overlays.source_url IS 'The region map address the image was loaded from, whose credit it carries; null for an uploaded file';
 
 -- The groups an admin sorts a region's members into in the same dialog, and
 -- which group each member is in (#595): working material of the world view
