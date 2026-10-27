@@ -435,6 +435,13 @@ server allows. Both are put back before the client returns to the pool, and a
 client whose settings cannot be put back is closed (`cancellable`). An index
 that fails cancels the others and starts no more.
 
+**Every copy is analyzed once its indexes stand** (#1520), in the same lanes.
+A copy holds no statistics until it is, so the class tree walk that reads the
+claims copy, and every reader after the swap, would plan blind until
+autovacuum came round to it. Measured on a fresh copy of the subset's 9 million
+`P31` and `P279` claims (2026-10-27), the walk took 2 min 2 s unanalyzed
+against 26 s analyzed.
+
 **The derived tables can be made again without the dump** (#1526). A change
 to how the claims, labels, sitelinks or class closure are derived from the
 entities needs the derivation, not the two passes over the file: a
@@ -513,9 +520,9 @@ and each says what it is doing while it does it (#1519):
   every five seconds ("2 of 6 indexes built; building
   idx_wikidata_claims_subject (building index: scanning table, 45 %),
   wikidata_labels_pkey (building index: loading tuples in tree, 12 %)",
-  `indexNextTables`). The class tree's indexes are reported the same way under
-  *Walking the class tree*.
-- **Walking the class tree** is one statement, with no measure of its own. It reads the subclass edges once, into a materialized CTE, and walks those (`deriveClassClosure`, #1520): joined to the claims table directly, every level of the recursion hashed a fresh scan of all of it. On re-derive 22 (2026-10-18) the walk and its two indexes took 6 min, half the run; the walk alone now takes 30 s on the same subset and gives the same rows.
+  `indexNextTables`), then that it is analyzing the copies. The class tree's
+  indexes are reported the same way under *Walking the class tree*.
+- **Walking the class tree** is one statement, with no measure of its own. It reads the subclass edges once, into a materialized CTE, and walks those (`deriveClassClosure`, #1520): joined to the claims table directly, every level of the recursion hashed a fresh scan of all of it. Its session runs with `CLASS_WALK_SESSION`, 512 MB of `work_mem`, so the edges' hash (about 320 MB for the 5.2 million edges of the 2026-10-19 subset) fits in one batch and is built once: under the server's default 4 MB it was cut into 64 batches and built again at each of the walk's 26 levels. On full build 31 (2026-10-26) the step took 7 min 8 s, the longest after the passes; measured on the live tables, the walk alone took 8 s with the setting against 26 s without, and on a fresh, unanalyzed copy of its claims 20 s against 2 min 2 s.
 
 Every step shows when it started, so a step with no measure still reads as
 alive. The worker beats every five seconds whatever step it is in: the panel
