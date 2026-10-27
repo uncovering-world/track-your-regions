@@ -4847,8 +4847,9 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 -- Wikipedia article ("Roman villa of Centcelles" for Tarraco's "The "); where
 -- the point has none either, the site's name with the component's reference
 -- ("Via Appia. Regina Viarum (1708-003)"), so a part never reads as a bare
--- reference or an article. part_site_components names a part by it and
--- part_follows_point keeps the part named by it.
+-- reference or an article. part_site_components names a part by it, and so
+-- does every writer of what a part is named for (followTheirPoints,
+-- partFieldsWriter.ts).
 CREATE OR REPLACE FUNCTION component_part_name(point_name TEXT, article_url TEXT, point_ref TEXT, site_name TEXT)
 RETURNS TEXT AS $$
   SELECT CASE WHEN NOT names_nothing(point_name) THEN point_name
@@ -4870,7 +4871,8 @@ $$ LANGUAGE sql IMMUTABLE;
 -- placements, regions, claims and candidates follow it. A traveller's visit
 -- to the component becomes a visit to the part (ADR-0100 decision 5), the
 -- record a merge reconciles with another kind's visits to the same place.
--- Its name is the point's (component_part_name) and so is its coordinate; its
+-- It is named for its point (component_part_name) and stands where its point
+-- does, both written by the writers of the point (followTheirPoints); its
 -- picture, subtitle and article are the part row's (ADR-0156). A part with no kind of
 -- its own has no regions of its own: lists find it through its site. A
 -- component that stands for its whole site (stands_for_whole_site) is not
@@ -5345,106 +5347,6 @@ CREATE UNLOGGED TABLE IF NOT EXISTS workbench.readership_staging (
     daily INTEGER[]
 );
 COMMENT ON TABLE workbench.readership_staging IS 'A month being read (#1436): its titles over the floor, staged by the build that reads it, summed and joined to items once the file is verified, then cleared.';
-
--- A component part's name, coordinate and reference are its point's
--- (ADR-0100): whoever renames, moves or renumbers the point - the run, a
--- curator, a publish - the part and its relation follow, so the two never
--- disagree. The name is component_part_name's, as part_site_components names
--- a part, so a point named "The " with an English article names its part by
--- the article, and one whose article arrives later renames it then (#2065).
--- A part that holds a kind of its own names itself (ADR-0100 decision 2,
--- #1250): the Karnak Temple Complex, once the Temple of Karnak is merged into
--- it, keeps its own name, anchor and relation however its point is written.
--- part_follows_point is the rule, for one point: the trigger applies it on
--- every write, and the undo of a merge applies it to the points it gives a
--- part back, which a run may have renamed while the merge stood. See
--- db/migrations/124 and 179.
-CREATE OR REPLACE FUNCTION part_follows_point(point_id INTEGER)
-RETURNS VOID AS $$
-  UPDATE experiences part
-     SET name = COALESCE(point.name, part.name), location = point.location,
-         -- Stamped as every writer of the table stamps it (ADR-0069).
-         updated_at = NOW()
-    FROM (SELECT el.experience_id, el.location,
-                 component_part_name(el.name,
-                   (SELECT own.metadata->>'wikipediaUrl' FROM experiences own WHERE own.id = el.experience_id),
-                   el.external_ref,
-                   (SELECT whole.name FROM experience_parts p JOIN experiences whole ON whole.id = p.whole_id
-                     WHERE p.part_id = el.experience_id AND p.reason = 'component'
-                     ORDER BY p.whole_id LIMIT 1)) AS name
-            FROM experience_locations el WHERE el.id = point_id) point
-   WHERE part.id = point.experience_id
-     AND EXISTS (SELECT 1 FROM experience_parts p WHERE p.part_id = point.experience_id AND p.reason = 'component')
-     AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = point.experience_id
-                       AND m.kind_id NOT IN (SELECT k.id FROM experience_kinds k WHERE k.is_virtual))
-     AND (part.name IS DISTINCT FROM COALESCE(point.name, part.name)
-          OR part.location IS DISTINCT FROM point.location);
-  UPDATE experience_parts p SET external_ref = el.external_ref
-    FROM experience_locations el
-   WHERE el.id = point_id AND p.part_id = el.experience_id AND p.reason = 'component'
-     AND p.external_ref IS DISTINCT FROM el.external_ref
-     AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = el.experience_id
-                       AND m.kind_id NOT IN (SELECT k.id FROM experience_kinds k WHERE k.is_virtual));
-$$ LANGUAGE sql;
-
-CREATE OR REPLACE FUNCTION follow_component_point()
-RETURNS TRIGGER AS $$
-BEGIN
-  PERFORM part_follows_point(NEW.id);
-  RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_follow_component_point ON experience_locations;
-CREATE TRIGGER trg_follow_component_point
-  AFTER UPDATE OF name, location, external_ref ON experience_locations
-  FOR EACH ROW
-  WHEN (OLD.name IS DISTINCT FROM NEW.name OR OLD.location IS DISTINCT FROM NEW.location
-        OR OLD.external_ref IS DISTINCT FROM NEW.external_ref)
-  EXECUTE FUNCTION follow_component_point();
-
--- A part's article is its own row's (ADR-0156 decision 3), so a part whose
--- point names nothing is named by the article it is given (component_part_name,
--- #2065), whoever writes it.
-CREATE OR REPLACE FUNCTION follow_part_article()
-RETURNS TRIGGER AS $$
-BEGIN
-  PERFORM part_follows_point(el.id)
-     FROM experience_locations el
-    WHERE el.experience_id = NEW.id AND names_nothing(el.name)
-      AND EXISTS (SELECT 1 FROM experience_parts p WHERE p.part_id = NEW.id AND p.reason = 'component');
-  RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_follow_part_article ON experiences;
-CREATE TRIGGER trg_follow_part_article
-  AFTER UPDATE OF metadata ON experiences
-  FOR EACH ROW
-  WHEN (OLD.metadata->>'wikipediaUrl' IS DISTINCT FROM NEW.metadata->>'wikipediaUrl')
-  EXECUTE FUNCTION follow_part_article();
-
--- A part whose point names nothing and has no article is named by its site's
--- name and its reference (component_part_name), so a renamed site renames it
--- too: "Via Appia. Regina Viarum (1708-003)" follows the site's new name. A
--- part has no parts of its own, so its rename finds no point and stops (#2065).
-CREATE OR REPLACE FUNCTION follow_component_site()
-RETURNS TRIGGER AS $$
-BEGIN
-  PERFORM part_follows_point(el.id)
-     FROM experience_parts p
-     JOIN experience_locations el ON el.experience_id = p.part_id
-    WHERE p.whole_id = NEW.id AND p.reason = 'component' AND names_nothing(el.name);
-  RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_follow_component_site ON experiences;
-CREATE TRIGGER trg_follow_component_site
-  AFTER UPDATE OF name ON experiences
-  FOR EACH ROW
-  WHEN (OLD.name IS DISTINCT FROM NEW.name)
-  EXECUTE FUNCTION follow_component_site();
 
 -- The proposals a curator has refused, so the queue stops asking about them.
 --
