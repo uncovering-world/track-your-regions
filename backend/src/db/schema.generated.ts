@@ -385,6 +385,7 @@ export interface ExperienceKindsRow {
   name: string;
   display_priority: number;
   created_at: Date | null;
+  is_virtual: boolean;
 }
 
 /** The table `experience_location_placements`. */

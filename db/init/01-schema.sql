@@ -2589,6 +2589,21 @@ INSERT INTO experience_kinds (id, name, display_priority) VALUES
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
 
+-- A virtual kind records how a source knows a place and offers none
+-- (ADR-0156 decision 1): no list, count, filter, map or chip reads it, and a
+-- place is offered only by its other memberships. backend/src/db/membership.ts
+-- states the exclusion for every read (realKindSql, kindIsRealSql).
+ALTER TABLE experience_kinds ADD COLUMN IF NOT EXISTS is_virtual BOOLEAN NOT NULL DEFAULT FALSE;
+COMMENT ON COLUMN experience_kinds.is_virtual IS 'The kind records how a source knows a place and offers none (ADR-0156): no reader, curator or admin surface lists, counts or offers a place by it.';
+
+-- The tenth kind, virtual: each part of a serial World Heritage site holds a
+-- membership in it, the record of how the World Heritage list knows that
+-- part (ADR-0156 decision 2). Never browsed.
+INSERT INTO experience_kinds (id, name, display_priority, is_virtual) VALUES
+    (10, 'World Heritage components', 10, TRUE)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
+
 -- =============================================================================
 -- Sources (ADR-0045 decision 3)
 -- =============================================================================
@@ -3159,7 +3174,9 @@ CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_first_seen ON experie
 -- owns a region's geometry for every member writer (ADR-0068): the run, missing
 -- detection and a curator's verdict write the membership, and none of them
 -- writes the place's copy. A membership moving between places (a merge, #1247)
--- recomputes both. A place with no membership reads as listed.
+-- recomputes both. A place with no membership reads as listed. A membership of
+-- a virtual kind lists nothing (ADR-0156): a serial site's part is listed by
+-- its point and its site, as before it held one.
 CREATE OR REPLACE FUNCTION recompute_place_listing(place_id INTEGER) RETURNS void AS $$
 BEGIN
     UPDATE experiences e
@@ -3168,7 +3185,8 @@ BEGIN
       FROM (SELECT CASE WHEN bool_and(m.missing_since IS NOT NULL) THEN max(m.missing_since) END AS missing_since,
                    CASE WHEN bool_and(m.source_membership = 'former') THEN 'former' ELSE 'present' END AS source_membership
               FROM experience_kind_memberships m
-             WHERE m.experience_id = place_id) d
+             WHERE m.experience_id = place_id
+               AND m.kind_id NOT IN (SELECT k.id FROM experience_kinds k WHERE k.is_virtual)) d
      WHERE e.id = place_id
        AND (e.missing_since IS DISTINCT FROM d.missing_since
             OR e.source_membership IS DISTINCT FROM d.source_membership);
@@ -3651,6 +3669,24 @@ VALUES (
     9,
     true,
     (SELECT id FROM experience_kinds WHERE name = 'Squares & streets')
+)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
+
+-- World Heritage components' one source: the World Heritage list's own
+-- components, written by the World Heritage run when it parts a site
+-- (part_site_components). It has no run of its own and no gate: a membership
+-- of a virtual kind offers nothing to hold back (ADR-0156 decision 4).
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+VALUES (
+    10,
+    'World Heritage components',
+    'The components of serial World Heritage sites, as the World Heritage list knows each part, written by the UNESCO run',
+    NULL,
+    '{}'::jsonb,
+    10,
+    false,
+    (SELECT id FROM experience_kinds WHERE name = 'World Heritage components')
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
@@ -4596,6 +4632,7 @@ COMMENT ON TABLE experience_pairing_rule IS 'The version of the near-places pair
 CREATE OR REPLACE FUNCTION mark_pairing_due() RETURNS TRIGGER AS $$
 DECLARE
   ids INTEGER[];
+  row_kind INTEGER;
 BEGIN
   IF TG_TABLE_NAME = 'experiences' THEN
     ids := ARRAY[CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE NEW.id END,
@@ -4605,6 +4642,20 @@ BEGIN
   ELSIF TG_TABLE_NAME = 'experience_separations' THEN
     ids := ARRAY[NEW.original_id, NEW.separated_id];
   ELSE
+    -- A membership of a virtual kind changes nothing the pairing reads
+    -- (ADR-0156): the part it records was marked when it was parted. Its own
+    -- IF, since an AND would not keep the other tables' rows from being asked
+    -- for a kind_id they do not have.
+    IF TG_TABLE_NAME = 'experience_kind_memberships' THEN
+      IF TG_OP = 'DELETE' THEN
+        row_kind := OLD.kind_id;
+      ELSE
+        row_kind := NEW.kind_id;
+      END IF;
+      IF row_kind IN (SELECT k.id FROM experience_kinds k WHERE k.is_virtual) THEN
+        RETURN NULL;
+      END IF;
+    END IF;
     -- experience_kind_memberships and experience_locations: the row's place, and
     -- the place it left where it moved.
     ids := ARRAY[CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE NEW.experience_id END,
@@ -4852,6 +4903,8 @@ BEGIN
       RETURNING id INTO part;
     END IF;
 
+    -- The relation's trigger writes the part's record in World Heritage
+    -- components (component_record_follows_relation).
     INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
     VALUES (site, part, 'component', site_membership, component.external_ref);
 
@@ -4868,6 +4921,60 @@ BEGIN
   RETURN parted;
 END;
 $$ LANGUAGE plpgsql;
+
+-- A part's record in World Heritage components is its relation's (ADR-0156
+-- decision 2): written when a component becomes a part, moved when a merge or
+-- its undo moves the relation to another place, gone with the relation. Keyed
+-- by the relation, since the list's own reference is not unique (Western
+-- Tien-Shan renumbers, Phong Nha-Ke Bang and Hin Nam No share 951ter-001). A
+-- place holds one record however many sites it is a component of, keyed by its
+-- earliest relation: refresh_component_record is the rule for one place.
+CREATE OR REPLACE FUNCTION refresh_component_record(place INTEGER) RETURNS void AS $$
+DECLARE
+  owner INTEGER;
+BEGIN
+  SELECT min(p.id) INTO owner FROM experience_parts p WHERE p.part_id = place AND p.reason = 'component';
+  IF owner IS NULL THEN
+    DELETE FROM experience_kind_memberships WHERE experience_id = place AND kind_id = 10;
+  ELSE
+    UPDATE experience_kind_memberships SET external_id = 'component:' || owner, updated_at = NOW()
+     WHERE experience_id = place AND kind_id = 10 AND external_id <> 'component:' || owner;
+    INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id)
+    VALUES (place, 10, 10, 'component:' || owner)
+    ON CONFLICT (experience_id, kind_id) DO NOTHING;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION component_record_follows_relation() RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    -- The record itself moves with the relation, so a merge's undo, which
+    -- moves both back, finds the row it moved.
+    UPDATE experience_kind_memberships SET experience_id = NEW.part_id, updated_at = NOW()
+     WHERE kind_id = 10 AND external_id = 'component:' || NEW.id AND experience_id = OLD.part_id
+       AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships held
+                        WHERE held.experience_id = NEW.part_id AND held.kind_id = 10);
+  END IF;
+  IF TG_OP <> 'INSERT' THEN
+    PERFORM refresh_component_record(OLD.part_id);
+  END IF;
+  IF TG_OP <> 'DELETE' THEN
+    PERFORM refresh_component_record(NEW.part_id);
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_component_record_follows_relation ON experience_parts;
+CREATE TRIGGER trg_component_record_follows_relation
+  AFTER INSERT OR DELETE ON experience_parts
+  FOR EACH ROW EXECUTE FUNCTION component_record_follows_relation();
+DROP TRIGGER IF EXISTS trg_component_record_follows_relation_move ON experience_parts;
+CREATE TRIGGER trg_component_record_follows_relation_move
+  AFTER UPDATE OF part_id ON experience_parts
+  FOR EACH ROW WHEN (OLD.part_id IS DISTINCT FROM NEW.part_id)
+  EXECUTE FUNCTION component_record_follows_relation();
 
 -- One row per build of a public dump (ADR-0101 decision 3): which dump, which
 -- file of which date, how it was read, whether it was verified, and what the
@@ -5208,14 +5315,16 @@ RETURNS VOID AS $$
             FROM experience_locations el WHERE el.id = point_id) point
    WHERE part.id = point.experience_id
      AND EXISTS (SELECT 1 FROM experience_parts p WHERE p.part_id = point.experience_id AND p.reason = 'component')
-     AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = point.experience_id)
+     AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = point.experience_id
+                       AND m.kind_id NOT IN (SELECT k.id FROM experience_kinds k WHERE k.is_virtual))
      AND (part.name IS DISTINCT FROM COALESCE(point.name, part.name)
           OR part.location IS DISTINCT FROM point.location);
   UPDATE experience_parts p SET external_ref = el.external_ref
     FROM experience_locations el
    WHERE el.id = point_id AND p.part_id = el.experience_id AND p.reason = 'component'
      AND p.external_ref IS DISTINCT FROM el.external_ref
-     AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = el.experience_id);
+     AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = el.experience_id
+                       AND m.kind_id NOT IN (SELECT k.id FROM experience_kinds k WHERE k.is_virtual));
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION follow_component_point()
