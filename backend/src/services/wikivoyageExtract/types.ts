@@ -78,8 +78,6 @@ export interface ExtractionProgress {
   regionsFetched: number;
   estimatedTotal: number;
   currentPage: string;
-  apiRequests: number;
-  cacheHits: number;
   startedAt: number;
   // Forwarded from ImportProgress during import/matching phases
   createdRegions: number;
@@ -114,7 +112,6 @@ export interface ExtractionProgress {
 export interface ExtractionConfig {
   name: string; // WorldView name, default "Wikivoyage Regions"
   maxDepth: number; // Default 10
-  cachePath: string; // Default 'data/cache/wikivoyage-cache.json' (persistent)
 }
 
 export function createInitialExtractionProgress(): ExtractionProgress {
@@ -125,8 +122,6 @@ export function createInitialExtractionProgress(): ExtractionProgress {
     regionsFetched: 0,
     estimatedTotal: 5700,
     currentPage: '',
-    apiRequests: 0,
-    cacheHits: 0,
     startedAt: Date.now(),
     createdRegions: 0,
     totalRegions: 0,
@@ -198,11 +193,8 @@ export interface MapshapeEntry {
   commonsFile?: string;
 }
 
-/** Section info from the MediaWiki parse API */
+/** A section as the MediaWiki parse API lists it, and as `articleSections` reads it off the wikitext */
 export interface WikiSection {
   index: string;
   line: string;
 }
-
-/** MediaWiki API cache entry key-value store */
-export type CacheStore = Record<string, unknown>;

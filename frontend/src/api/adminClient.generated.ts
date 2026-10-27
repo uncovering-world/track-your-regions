@@ -2439,7 +2439,6 @@ export interface WvExtractStartBody {
      * @maxLength 255
      */
   name?: string;
-  cacheFile?: string | null;
 }
 
 /**
@@ -2539,21 +2538,15 @@ export interface ImportedWorldView {
 }
 
 /**
- * A saved copy of the pages an extraction fetched, which a later one can start from.
+ * The copy of English Wikivoyage's articles an extraction reads, kept from the monthly dump.
  */
-export interface WikivoyageCache {
-  name: string;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  sizeBytes: number;
-  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
-  modifiedAt: string;
+export interface WikivoyageCopy {
+  /** The monthly dump the copy was kept from, as YYYY-MM-DD. */
+  dumpDate: string;
 }
 
 /**
- * The latest extraction as it stands, with the world views imported and the caches kept. Only `running` and the two lists are sent while no extraction is known since the server started.
+ * The latest extraction as it stands, with the world views imported and the copy of English Wikivoyage the next one reads. Only `running`, the list and the copy are sent while no extraction is known since the server started.
  */
 export interface ExtractionStatus {
   running: boolean;
@@ -2571,16 +2564,6 @@ export interface ExtractionStatus {
      */
   estimatedTotal?: number;
   currentPage?: string;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  apiRequests?: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  cacheHits?: number;
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
@@ -2639,8 +2622,8 @@ export interface ExtractionStatus {
   operation?: OperationProgressAnswer;
   /** Newest first. */
   importedWorldViews: ImportedWorldView[];
-  /** Newest first. */
-  caches: WikivoyageCache[];
+  /** Null while no copy is kept, when an extraction is refused. */
+  copy: WikivoyageCopy | null;
 }
 
 /**
@@ -2699,14 +2682,6 @@ export interface ExtractionAnswer {
      */
   ruleId?: number;
 }
-
-/**
- * A saved copy of the pages, deleted.
- */
-export const WikivoyageCacheDeletedValue = {
-  deleted: true,
-} as const;
-export type WikivoyageCacheDeleted = typeof WikivoyageCacheDeletedValue;
 
 export type WvImportBodyMatchingPolicy = typeof WvImportBodyMatchingPolicy[keyof typeof WvImportBodyMatchingPolicy];
 
@@ -7676,7 +7651,7 @@ export const getPostAdminWvExtractStartUrl = () => {
 
 /**
  * Requires an admin.
- * @summary Start extracting the region tree of a world view from Wikivoyage in the background
+ * @summary Start extracting the region tree of a world view from English Wikivoyage's kept copy in the background (409 while none is kept)
  */
 export const postAdminWvExtractStart = async (wvExtractStartBody: WvExtractStartBody, options?: Parameters<typeof apiFetch>[1]): Promise<ExtractionStarted> => {
 
@@ -7715,7 +7690,7 @@ export const getGetAdminWvExtractStatusUrl = () => {
 
 /**
  * Requires an admin.
- * @summary Report Wikivoyage extraction progress, pending questions, imported world views and caches
+ * @summary Report Wikivoyage extraction progress, pending questions, imported world views and the copy of English Wikivoyage it reads
  */
 export const getAdminWvExtractStatus = async ( options?: Parameters<typeof apiFetch>[1]): Promise<ExtractionStatus> => {
 
@@ -7789,31 +7764,6 @@ return apiFetch<ExtractionAnswer>(getPostAdminWvExtractAnswerUrl(),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(wvExtractAnswerBody)
-  }
-);}
-
-
-
-export const getDeleteAdminWvExtractCachesByNameUrl = (name: string,) => {
-
-
-
-
-  return `/api/admin/wv-extract/caches/${encodeURIComponent(String(name))}`
-}
-
-/**
- * Requires an admin.
- * @summary Delete a saved Wikivoyage page cache file
- */
-export const deleteAdminWvExtractCachesByName = async (name: string, options?: Parameters<typeof apiFetch>[1]): Promise<WikivoyageCacheDeleted> => {
-
-  return apiFetch<WikivoyageCacheDeleted>(getDeleteAdminWvExtractCachesByNameUrl(name),
-  {
-    ...options,
-    method: 'DELETE'
-
-
   }
 );}
 

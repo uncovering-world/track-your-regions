@@ -1,13 +1,14 @@
 /**
- * Recursive tree builder — uses fetcher + parser to build region hierarchy
+ * Recursive tree builder — reads English Wikivoyage's copy + parser to build region hierarchy
  *
  * Ported from Python build_tree() + get_page_data().
  * Per-branch ancestor tracking (not global visited set) so the same region
  * can appear under multiple parents (e.g. Caucasus under both Asia and Europe).
  */
 
-import type { TreeNode, PageData, ExtractionProgress, WikiSection, RegionPreview, PendingAIQuestion, InterviewQuestion, CountryContext } from './types.js';
-import type { WikivoyageFetcher } from './fetcher.js';
+import type { TreeNode, PageData, ExtractionProgress, RegionPreview, PendingAIQuestion, InterviewQuestion, CountryContext } from './types.js';
+import type { WikivoyagePages } from './pageCopy.js';
+import { articleSections } from './sections.js';
 import {
   findRegionsSection,
   parseRegionlist,
@@ -66,21 +67,6 @@ function populateFromRegionSection(result: PageData, wikitext: string): void {
   }));
 }
 
-/** Fetch the Regions section wikitext for a page and return the string (empty when missing). */
-async function fetchRegionSectionWikitext(
-  fetcher: WikivoyageFetcher,
-  resolved: string,
-  sectionIdx: string,
-): Promise<string> {
-  const data = await fetcher.apiGet({
-    action: 'parse', page: resolved, prop: 'wikitext',
-    section: sectionIdx,
-  }) as Record<string, unknown>;
-  if ('error' in data) return '';
-  const parse = data['parse'] as Record<string, unknown>;
-  return (parse['wikitext'] as Record<string, string>)?.['*'] ?? '';
-}
-
 /** Merge image candidate URLs into result, preserving order and skipping duplicates. */
 function mergeImageCandidates(result: PageData, additional: string[]): void {
   const existing = new Set(result.mapImageCandidates);
@@ -110,61 +96,42 @@ function applyFullPageFallback(result: PageData, fullWt: string): boolean {
   return false;
 }
 
-/** Fetch full-page wikitext (used as map-image fallback source). Returns '' if unavailable. */
-async function fetchFullPageWikitext(fetcher: WikivoyageFetcher, resolved: string): Promise<string> {
-  const data = await fetcher.apiGet({
-    action: 'parse', page: resolved, prop: 'wikitext',
-  }) as Record<string, unknown>;
-  if ('error' in data) return '';
-  const parse = data['parse'] as Record<string, unknown>;
-  return (parse['wikitext'] as Record<string, string>)?.['*'] ?? '';
-}
-
 /**
- * Fetch and parse a single Wikivoyage page.
+ * Read and parse a single Wikivoyage page from the copy.
  * Returns structured page data including regions and map images.
  */
 export async function getPageData(
-  fetcher: WikivoyageFetcher,
+  wiki: WikivoyagePages,
   title: string,
 ): Promise<PageData> {
-  // Step 1: Get sections
-  const data = await fetcher.apiGet({
-    action: 'parse', page: title, prop: 'sections', redirects: '1',
-  }) as Record<string, unknown>;
-
-  if ('error' in data) {
+  const article = await wiki.article(title);
+  if (!article) {
     return {
       resolved: title, exists: false, mapImage: null,
       mapImageCandidates: [], regions: [],
     };
   }
 
-  const parseResult = data['parse'] as Record<string, unknown>;
-  const resolved = (parseResult['title'] as string) ?? title;
-  const sections = (parseResult['sections'] as WikiSection[]) ?? [];
-
   const result: PageData = {
-    resolved,
+    resolved: article.title,
     exists: true,
     mapImage: null,
     mapImageCandidates: [],
     regions: [],
   };
 
+  const sections = articleSections(article.wikitext);
   if (sections.length === 0) return result;
 
-  // Step 2: Parse Regions section
+  // Step 1: Parse Regions section
   const sectionIdx = findRegionsSection(sections);
   if (sectionIdx !== null) {
-    const wikitext = await fetchRegionSectionWikitext(fetcher, resolved, sectionIdx);
-    populateFromRegionSection(result, wikitext);
+    populateFromRegionSection(result, sections.find(section => section.index === sectionIdx)!.text);
   }
 
-  // Step 3: Fallback map image from full page wikitext
+  // Step 2: Fallback map image from full page wikitext
   if (!result.mapImage || result.mapImageCandidates.length === 0) {
-    const fullWt = await fetchFullPageWikitext(fetcher, resolved);
-    const earlyExit = applyFullPageFallback(result, fullWt);
+    const earlyExit = applyFullPageFallback(result, article.wikitext);
     if (earlyExit) return result;
   }
 
@@ -183,8 +150,7 @@ function logProgressTick(progress: ExtractionProgress): void {
   const rate = progress.regionsFetched / (Date.now() - progress.startedAt) * 1000;
   console.log(
     `[WV Extract] Progress: ${progress.regionsFetched} regions, ` +
-    `${rate.toFixed(1)} regions/s, ${elapsed}s elapsed, ` +
-    `API=${progress.apiRequests}, cache=${progress.cacheHits}`,
+    `${rate.toFixed(1)} regions/s, ${elapsed}s elapsed`,
   );
 }
 
@@ -297,7 +263,7 @@ function logAiDecision(
 
 /** Backfill page existence for AI-suggested names we haven't checked yet. */
 async function backfillPageExistence(
-  fetcher: WikivoyageFetcher,
+  wiki: WikivoyagePages,
   resolved: string,
   page: PageData,
   pageExistence: Map<string, boolean>,
@@ -305,7 +271,7 @@ async function backfillPageExistence(
   const aiNames = page.regions.flatMap(r => r.hasLink ? [r.name] : r.items);
   const newNames = aiNames.filter(n => !pageExistence.has(n));
   if (newNames.length === 0) return;
-  const extra = await fetcher.checkPagesExist(newNames, resolved);
+  const extra = await wiki.checkPagesExist(newNames, resolved);
   for (const [k, v] of extra) pageExistence.set(k, v);
 }
 
@@ -357,11 +323,11 @@ function makePendingQuestion(args: {
   wikitext: string;
   aiContext: AIContext;
   progress: ExtractionProgress;
-  fetcher: WikivoyageFetcher;
+  wiki: WikivoyagePages;
   pageExistenceSnapshot: Map<string, boolean>;
   capturedRegions: RegionPreview[];
 }): PendingAIQuestion {
-  const { resolved, aiQuestions, wikitext, aiContext, progress: prog, fetcher: fetcherRef, pageExistenceSnapshot: existenceSnapshot, capturedRegions, questionId } = args;
+  const { resolved, aiQuestions, wikitext, aiContext, progress: prog, wiki: wikiRef, pageExistenceSnapshot: existenceSnapshot, capturedRegions, questionId } = args;
   const openai = aiContext.openai;
   const acc = aiContext.accumulator;
 
@@ -383,7 +349,7 @@ function makePendingQuestion(args: {
       const retryNames = retryResult.regions.flatMap(r => r.hasLink ? [r.name] : r.items);
       const unknownNames = retryNames.filter(n => !existenceSnapshot.has(n));
       if (unknownNames.length > 0) {
-        const checked = await fetcherRef.checkPagesExist(unknownNames, resolved);
+        const checked = await wikiRef.checkPagesExist(unknownNames, resolved);
         for (const [k, v] of checked) existenceSnapshot.set(k, v);
       }
       return {
@@ -414,7 +380,7 @@ function queueAdminQuestion(
   pageExistence: Map<string, boolean>,
   aiContext: AIContext,
   progress: ExtractionProgress,
-  fetcher: WikivoyageFetcher,
+  wiki: WikivoyagePages,
 ): void {
   const questionId = progress.nextQuestionId++;
   const wikitext = page.rawWikitext!;
@@ -423,7 +389,7 @@ function queueAdminQuestion(
 
   const pendingQ = makePendingQuestion({
     questionId, resolved, aiQuestions, wikitext, aiContext,
-    progress, fetcher, pageExistenceSnapshot: existenceSnapshot, capturedRegions,
+    progress, wiki, pageExistenceSnapshot: existenceSnapshot, capturedRegions,
   });
 
   console.log(`[WV Extract] Queued AI question #${questionId} for "${resolved}": ${aiQuestions.join(' | ')}`);
@@ -455,7 +421,7 @@ function queueAdminQuestion(
 async function resolveAmbiguousWithAI(
   page: PageData,
   resolved: string,
-  fetcher: WikivoyageFetcher,
+  wiki: WikivoyagePages,
   aiContext: AIContext,
   progress: ExtractionProgress,
 ): Promise<void> {
@@ -466,7 +432,7 @@ async function resolveAmbiguousWithAI(
     const allNames = page.regions.flatMap(r => [r.name, ...r.items]);
     const uniqueNames = [...new Set(allNames)];
     const pageExistence = uniqueNames.length > 0
-      ? await fetcher.checkPagesExist(uniqueNames, resolved)
+      ? await wiki.checkPagesExist(uniqueNames, resolved)
       : new Map<string, boolean>();
 
     dropDeadEnds(page, resolved, pageExistence, progress);
@@ -488,11 +454,11 @@ async function resolveAmbiguousWithAI(
     }
 
     logAiDecision(progress, resolved, aiResult.regions.length, aiQuestions.length);
-    await backfillPageExistence(fetcher, resolved, page, pageExistence);
+    await backfillPageExistence(wiki, resolved, page, pageExistence);
     aiQuestions = maybeApplyCoverageGate(page, resolved, pageExistence, aiQuestions, progress);
 
     if (aiQuestions.length > 0) {
-      queueAdminQuestion(resolved, aiQuestions, page, pageExistence, aiContext, progress, fetcher);
+      queueAdminQuestion(resolved, aiQuestions, page, pageExistence, aiContext, progress, wiki);
     }
   } catch (err) {
     console.warn('[WV Extract] AI extraction failed for "%s":', resolved, err instanceof Error ? err.message : err);
@@ -576,7 +542,7 @@ async function deriveCountryContext(
 async function buildChildren(
   node: TreeNode,
   childRegions: PageData['regions'],
-  fetcher: WikivoyageFetcher,
+  wiki: WikivoyagePages,
   maxDepth: number,
   progress: ExtractionProgress,
   currentDepth: number,
@@ -590,7 +556,7 @@ async function buildChildren(
 
     if (region.hasLink) {
       const child = await buildTree(
-        fetcher, region.name, maxDepth, progress,
+        wiki, region.name, maxDepth, progress,
         currentDepth + 1, branchAncestors, aiContext,
         nextCountryContext, cache,
       );
@@ -598,7 +564,7 @@ async function buildChildren(
       if (processed) node.children.push(processed);
     } else {
       const grouping = await buildGroupingNode(
-        fetcher, region.name, region.items, maxDepth, progress,
+        wiki, region.name, region.items, maxDepth, progress,
         currentDepth + 1, branchAncestors, aiContext,
         nextCountryContext, cache,
       );
@@ -642,7 +608,7 @@ function checkEarlyExit(
  * Returns TreeNode, 'self_ref', or 'missing'.
  */
 export async function buildTree(
-  fetcher: WikivoyageFetcher,
+  wiki: WikivoyagePages,
   title: string,
   maxDepth: number,
   progress: ExtractionProgress,
@@ -658,7 +624,7 @@ export async function buildTree(
   logProgressTick(progress);
   progress.currentPage = title;
 
-  const page = await getPageData(fetcher, title);
+  const page = await getPageData(wiki, title);
   const resolved = page.resolved;
 
   applyDistrictShortcut(page, resolved, progress);
@@ -685,7 +651,7 @@ export async function buildTree(
   } else if (settled) {
     page.regions = settled;
   } else if (page.needsAI && page.rawWikitext && aiContext && isOpenAIAvailable()) {
-    await resolveAmbiguousWithAI(page, resolved, fetcher, aiContext, progress);
+    await resolveAmbiguousWithAI(page, resolved, wiki, aiContext, progress);
     progress.modelRegions.set(resolved, page.regions);
   } else if (page.needsAI) {
     console.log(`[WV Extract] AI needed for "${resolved}" but unavailable (aiContext=${!!aiContext}, openai=${isOpenAIAvailable()})`);
@@ -704,7 +670,7 @@ export async function buildTree(
   const node = buildNodeShell(title, page);
   const cache = classificationCache ?? new Map();
   const fill = (childRegions: PageData['regions']) => fillChildren(node, resolved, childRegions, {
-    fetcher, maxDepth, progress, currentDepth, ancestors, branchAncestors, aiContext, countryContext, cache,
+    wiki, maxDepth, progress, currentDepth, ancestors, branchAncestors, aiContext, countryContext, cache,
   });
 
   // A question queued for this page waits on the admin while the walk goes on,
@@ -727,7 +693,7 @@ export async function buildTree(
 
 /** What a node's children are built under: everything `buildTree` received for the node. */
 interface ChildContext {
-  fetcher: WikivoyageFetcher;
+  wiki: WikivoyagePages;
   maxDepth: number;
   progress: ExtractionProgress;
   currentDepth: number;
@@ -762,7 +728,7 @@ async function fillChildren(
     : undefined;
 
   await buildChildren(
-    node, childRegions, ctx.fetcher, ctx.maxDepth, ctx.progress,
+    node, childRegions, ctx.wiki, ctx.maxDepth, ctx.progress,
     ctx.currentDepth, ctx.branchAncestors, ctx.aiContext, nextCountryContext, ctx.cache,
   );
 
@@ -790,7 +756,7 @@ function processLinked(
 
 /** Build a grouping node for a plain-text region name */
 async function buildGroupingNode(
-  fetcher: WikivoyageFetcher,
+  wiki: WikivoyagePages,
   name: string,
   items: string[],
   maxDepth: number,
@@ -807,7 +773,7 @@ async function buildGroupingNode(
     if (progress.cancel) break;
 
     const itemChild = await buildTree(
-      fetcher, itemName, maxDepth, progress,
+      wiki, itemName, maxDepth, progress,
       depth, ancestors, aiContext,
       countryContext, classificationCache,
     );
