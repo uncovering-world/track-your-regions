@@ -23,7 +23,7 @@ import {
 } from '@mui/material';
 import { fetchDivisionGeometry } from '../../api/divisions';
 import { GeomComputationAlert, useWorldViewGeometryCompute } from './WorldViewGeometryCompute';
-import { DivisionPreviewDialog } from '../WorldViewEditor/components/dialogs/DivisionPreviewDialog';
+import { DivisionPreviewDialog, type TransferPreviewCollection } from '../WorldViewEditor/components/dialogs/DivisionPreviewDialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getMatchStats,
@@ -298,7 +298,8 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
     try {
       // Fetch preview for each donor group and merge
       const fcs = await Promise.all(groups.map(g => getTransferPreview(worldViewId, g.donorDivisionId, g.divisionIds, wikidataId)));
-      const merged: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: fcs.flatMap(fc => fc.features) };
+      const credits = fcs.flatMap(fc => fc.credits).filter((c, i, all) => all.findIndex(o => o.url === c.url) === i);
+      const merged: TransferPreviewCollection = { type: 'FeatureCollection', features: fcs.flatMap(fc => fc.features), credits };
       // Deduplicate target_outline (same geoshape repeated per group)
       const seen = new Set<string>();
       merged.features = merged.features.filter(f => {

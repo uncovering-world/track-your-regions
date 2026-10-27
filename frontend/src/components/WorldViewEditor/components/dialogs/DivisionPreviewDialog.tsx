@@ -21,6 +21,8 @@ import { getChildrenRegionGeometry } from '../../../../api/admin/worldViewImport
 import { frameGeoJson } from '../../../../utils/mapUtils';
 import { extractImageUrl, toThumbnailUrl } from '../../../../utils/imageUrl';
 import { RegionMapPicture } from '../../../admin/RegionMapPicture';
+import { ShapeCreditLine } from '../../../admin/ShapeCreditLine';
+import type { ShapeCredit } from '../../../../api/admin/worldViewImport';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const CHILD_COLORS = ['#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd', '#aa3366', '#55bb88', '#8866cc', '#dd5555', '#44bbaa', '#7766bb', '#bb8844'];
@@ -100,6 +102,9 @@ function classifyDivision(
   if (aiUnclearIds.has(divId)) return 'unclear';
   return null;
 }
+
+/** A transfer preview's features, carrying the credit of the target outline among them with them (#2085). */
+export type TransferPreviewCollection = GeoJSON.FeatureCollection & { credits?: readonly ShapeCredit[] };
 
 interface DivisionPreviewDialogProps {
   division: PreviewDivision | null;
@@ -367,6 +372,7 @@ export function DivisionPreviewDialog({
       donor: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'donor') },
       moving: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'moving') },
       outline: { type: 'FeatureCollection' as const, features: fc.features.filter(f => f.properties?.role === 'target_outline') },
+      credits: (geometry as TransferPreviewCollection).credits,
       all: fc,
     };
   }, [isTransferPreview, geometry]);
@@ -459,6 +465,11 @@ export function DivisionPreviewDialog({
                 <Typography variant="caption">Target geoshape</Typography>
               </Box>
             </Box>
+            {transferData.outline.features.length > 0 && (
+              <Box sx={{ px: 2, textAlign: 'center' }}>
+                <ShapeCreditLine credits={transferData.credits} />
+              </Box>
+            )}
           </Box>
         )}
         {/* Fixed toggle strip between title and maps */}

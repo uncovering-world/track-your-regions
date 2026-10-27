@@ -17,6 +17,8 @@ import {
 import { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import { getChildrenRegionGeometry } from '../../api/admin/worldViewImport';
 import { COVERAGE_MAP_STYLE } from './GapAnalysis';
+import { ShapeCreditLine } from './ShapeCreditLine';
+import type { ShapeCredit } from '../../api/admin/worldViewImport';
 import { frameGeoJson } from '../../utils/mapUtils';
 
 const CHILD_COLORS = ['#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd', '#aa3366', '#55bb88', '#8866cc', '#dd5555', '#44bbaa', '#7766bb', '#bb8844'];
@@ -153,6 +155,7 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
     parentGeometry: GeoJSON.Geometry | null;
     childrenGeometry: GeoJSON.Geometry | null;
     geoshapeGeometry?: GeoJSON.Geometry | null;
+    geoshapeCredit?: ShapeCredit | null;
   } | null;
   onClose: () => void;
   onAnalyzeGaps?: (regionId: number) => void;
@@ -161,6 +164,8 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
 
   const hasGeoshape = data?.geoshapeGeometry != null;
   const hasChildren = data?.childrenGeometry != null;
+  // The shape is drawn over the assigned divisions beside the children, or on its own where there are none.
+  const drawsGeoshape = hasGeoshape && (hasChildren ? data?.parentGeometry != null : true);
 
   // Fit both maps to the combined extent
   const allGeometries = [data?.parentGeometry, data?.childrenGeometry, data?.geoshapeGeometry].filter(Boolean) as GeoJSON.Geometry[];
@@ -223,6 +228,9 @@ export function CoverageCompareDialog({ data, onClose, onAnalyzeGaps }: {
               <CoverageRightPanel data={data} fitToAll={fitToAll} />
             )}
           </Box>
+        )}
+        {!data?.loading && drawsGeoshape && (
+          <ShapeCreditLine credits={data?.geoshapeCredit ? [data.geoshapeCredit] : null} />
         )}
       </DialogContent>
       <DialogActions>

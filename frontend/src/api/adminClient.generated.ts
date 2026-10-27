@@ -3300,11 +3300,30 @@ export type TransferPreviewFeaturesItem = {
 };
 
 /**
+ * Whose work a drawn region shape is, and under which licence (#2085): shown with the shape wherever it is drawn.
+ */
+export interface ShapeCredit {
+  /** The source the shape was read from, as its credit names it: a Commons map data file's page title. */
+  label: string;
+  /** Its page. */
+  url: string;
+  /** The licence the source declares, as it spells it (`ODbL-1.0`). */
+  licence: string;
+  /**
+     * What the source says the shape was drawn from; null when it says nothing.
+     * @nullable
+     */
+  attribution: string | null;
+}
+
+/**
  * What a transfer would do, drawn: the donor's division, the divisions that would move, and the target's outline (ADR-0012).
  */
 export interface TransferPreview {
   type: 'FeatureCollection';
   features: TransferPreviewFeaturesItem[];
+  /** The credit of the target's outline, where one is drawn. */
+  credits: ShapeCredit[];
 }
 
 export interface WvImportUnionGeometryBody {
@@ -3629,6 +3648,8 @@ export type MapshapesFoundGeoPreview = {
 export type MapshapesFoundWikivoyagePreview = {
   type: 'FeatureCollection';
   features: WikivoyageShapeFeature[];
+  /** The credit of each stored shape the features are drawn from. */
+  credits: ShapeCredit[];
 };
 
 export type MapshapesFoundStats = {
@@ -4943,6 +4964,8 @@ export interface CoverageGeometry {
   childrenGeometry: AreaGeometry | null;
   /** Its Wikidata geoshape, where one is cached. */
   geoshapeGeometry: AreaGeometry | null;
+  /** The credit of that shape; null where none is drawn. */
+  geoshapeCredit: ShapeCredit | null;
 }
 
 /**

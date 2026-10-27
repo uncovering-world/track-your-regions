@@ -24,6 +24,7 @@ import {
   type MatchTreeNode,
   type ClusterReviewCluster,
   type ClusterGeoInfo,
+  type ShapeCredit,
 } from '../../api/admin/worldViewImport';
 import type { SpatialAnomaly } from '../../api/admin/wvImportTreeOps';
 import type { AdjacencyEdge, BorderPath } from '../../api/admin/wvImportCvMatch';
@@ -53,8 +54,8 @@ export interface CvMatchDialogState {
     featureCollection: GeoJSON.FeatureCollection;
     clusterInfos: ClusterGeoInfo[];
   };
-  /** Wikivoyage mapshape geoshape boundaries for side-by-side comparison */
-  wikivoyagePreview?: GeoJSON.FeatureCollection;
+  /** Wikivoyage mapshape geoshape boundaries for side-by-side comparison, with the credit of each shape drawn */
+  wikivoyagePreview?: GeoJSON.FeatureCollection & { credits?: readonly ShapeCredit[] };
   spatialAnomalies?: SpatialAnomaly[];
   adjacencyEdges?: AdjacencyEdge[];
   /** Interactive water review — pipeline paused waiting for user response */
