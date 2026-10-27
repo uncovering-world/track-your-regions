@@ -432,6 +432,9 @@ export async function deriveFromEntities(
       WHERE ${at}`, say('sitelinks'));
 }
 
+/** What the class tree walk's session may use: sort and hash memory enough for its edges' hash in one batch. */
+export const CLASS_WALK_SESSION: readonly (readonly [string, string])[] = [['work_mem', '512MB']];
+
 /**
  * For every class a kept item is an instance of, the class and every class
  * above it through subclass of; a deprecated statement is not followed.
@@ -442,6 +445,13 @@ export async function deriveFromEntities(
  * edges, once per level of the tree. Read once, the walk took 30 s on the
  * subset of 2026-10-05 where it had taken about five minutes (#1520), and
  * gave the same 4,583,879 rows.
+ *
+ * The edges' hash, some 320 MB for the 5.2 million edges of the subset of
+ * 2026-10-19, is reused from one level to the next only when it fits in one
+ * batch. Under the server's default 4 MB of `work_mem` it was cut into 64
+ * batches and built again at each of the walk's 26 levels; with
+ * `CLASS_WALK_SESSION` it is built once: the walk over the live tables took
+ * 8 s against 26 s.
  */
 export async function deriveClassClosure(signal: AbortSignal): Promise<void> {
   await cancellable(
@@ -458,6 +468,7 @@ export async function deriveClassClosure(signal: AbortSignal): Promise<void> {
        SELECT up.class, e.value_item FROM up JOIN edges e ON e.subject = up.ancestor
      )
      SELECT class, ancestor FROM up`,
+    [], undefined, CLASS_WALK_SESSION,
   );
 }
 
@@ -634,6 +645,20 @@ export async function indexNextTables(signal: AbortSignal, only: readonly Subset
   }
   try {
     await inLanes(INDEX_LANES, tasks);
+    // A copy holds no statistics until it is analyzed, so the class tree walk
+    // and every reader after the swap would plan blind until autovacuum came
+    // round to it (#1520): on the class tree, 2 min instead of 26 s.
+    const copies = only.length === 1 ? 'the copy' : `the ${only.length} copies`;
+    report?.(`${built} of ${statements.length} indexes built; analyzing ${copies}`);
+    // A failed analyze cancels the others, as a failed index does.
+    await inLanes(INDEX_LANES, only.map(table => async () => {
+      try {
+        await cancellable(local.signal, `ANALYZE ${next(table)}`);
+      } catch (error) {
+        local.abort(error);
+        throw error;
+      }
+    }));
   } finally {
     signal.removeEventListener('abort', follow);
     if (poll) clearInterval(poll);

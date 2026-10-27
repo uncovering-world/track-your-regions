@@ -14,6 +14,8 @@ let mostAtOnce = 0;
 let failOn: string | null = null;
 let nextPid = 100;
 let clock = 0;
+/** Statements that take longer than the usual 5 ms, by a pattern of their text. */
+let slow: [RegExp, number][] = [];
 
 /** The live tables' indexes, as `indexesOf` reads them. */
 const LIVE: Record<string, { name: string; constraint: 'p' | null; index_def: string; constraint_def: string | null }[]> = {
@@ -47,7 +49,7 @@ function fakeClient() {
       const start = ++clock;
       running += 1;
       mostAtOnce = Math.max(mostAtOnce, running);
-      await new Promise(resolve => setTimeout(resolve, 5));
+      await new Promise(resolve => setTimeout(resolve, slow.find(([pattern]) => pattern.test(sql))?.[1] ?? 5));
       running -= 1;
       ran.push({ pid, sql, start, end: ++clock });
       if (failOn && sql.includes(failOn)) throw new Error(`could not create unique index "${failOn}"`);
@@ -63,7 +65,8 @@ vi.mock('../../../db/index.js', () => ({
   },
 }));
 
-const { indexNextTables, INDEX_LANES, INDEX_SESSION } = await import('./subsetTables.js');
+const { pool } = await import('../../../db/index.js');
+const { CLASS_WALK_SESSION, deriveClassClosure, indexNextTables, INDEX_LANES, INDEX_SESSION } = await import('./subsetTables.js');
 
 const TABLES = ['wikidata_entities', 'wikidata_claims', 'wikidata_labels', 'wikidata_sitelinks'] as const;
 const indexing = () => ran.filter(r => /CREATE INDEX|ADD CONSTRAINT/.test(r.sql));
@@ -75,6 +78,7 @@ beforeEach(() => {
   mostAtOnce = 0;
   failOn = null;
   clock = 0;
+  slow = [];
 });
 
 describe('indexNextTables', () => {
@@ -109,6 +113,15 @@ describe('indexNextTables', () => {
     expect(onClient.findIndex(sql => sql.includes('reset_val'))).toBeGreaterThan(index);
   });
 
+  it('analyzes every copy once all its indexes stand, so nothing that reads it plans without statistics', async () => {
+    await indexNextTables(new AbortController().signal, TABLES);
+
+    const analyzed = ran.filter(r => r.sql.startsWith('ANALYZE'));
+    expect(analyzed.map(r => r.sql).sort()).toEqual(TABLES.map(table => `ANALYZE workbench.${table}_next`).sort());
+    const lastIndex = Math.max(...indexing().map(r => r.end));
+    for (const analyze of analyzed) expect(analyze.start).toBeGreaterThan(lastIndex);
+  });
+
   it('fails with the first index that fails, and starts nothing after it', async () => {
     failOn = 'wikidata_entities_pkey_next';
 
@@ -116,6 +129,19 @@ describe('indexNextTables', () => {
 
     const failedAt = of('wikidata_entities_pkey').end;
     expect(indexing().filter(r => r.start > failedAt)).toEqual([]);
+    expect(ran.filter(r => r.sql.startsWith('ANALYZE'))).toEqual([]);
+  });
+
+  it('cancels the other copies\' analyze when one fails, as a failed index cancels the other indexes', async () => {
+    failOn = 'ANALYZE workbench.wikidata_entities_next';
+    slow = [[/^ANALYZE (?!workbench\.wikidata_entities_next)/, 50]];
+
+    await expect(indexNextTables(new AbortController().signal, TABLES)).rejects.toThrow('wikidata_entities_next');
+
+    const cancelled = vi.mocked(pool.query).mock.calls.filter(([sql]) => String(sql).includes('pg_cancel_backend'));
+    const analyzing = ran.filter(r => r.sql.startsWith('ANALYZE') && !r.sql.includes('wikidata_entities')).map(r => r.pid);
+    expect(analyzing).toHaveLength(3);
+    for (const pid of analyzing) expect(cancelled.some(([, params]) => (params as unknown[])[0] === pid)).toBe(true);
   });
 
   it('starts nothing once cancelled', async () => {
@@ -124,5 +150,18 @@ describe('indexNextTables', () => {
 
     await expect(indexNextTables(stop.signal, TABLES)).rejects.toThrow();
     expect(indexing()).toEqual([]);
+  });
+});
+
+describe('deriveClassClosure', () => {
+  it('walks the class tree under its session settings, so the edges hash once, and puts them back after', async () => {
+    await deriveClassClosure(new AbortController().signal);
+
+    const walk = ran.find(r => r.sql.includes('INSERT INTO workbench.wikidata_class_closure_next'))!;
+    const onClient = ran.filter(r => r.pid === walk.pid).map(r => r.sql);
+    for (const [name, value] of CLASS_WALK_SESSION) {
+      expect(onClient.indexOf(`SELECT set_config($1, $2, false) ${JSON.stringify([name, value])}`)).toBeGreaterThanOrEqual(0);
+      expect(onClient.findIndex(sql => sql.includes('reset_val') && sql.includes(JSON.stringify([name])))).toBeGreaterThan(onClient.indexOf(walk.sql));
+    }
   });
 });
