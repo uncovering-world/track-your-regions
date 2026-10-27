@@ -222,9 +222,9 @@ membership carries no gate: it is never pending and opens no card. Nothing reads
 - Two parts are refused as one place: a merge moves the folded place's memberships before its
   relations, and one place holds one membership per kind.
 
-The component's item, UNESCO's view of the part and the part's own picture and description move
-onto the membership and the part row in the next slices of #1426. Until then they stay on the point
-as described below.
+The part's picture, credit, subtitle and article are its row's (§ A component carries its own
+picture, credit and subtitle, on its part). The component's item and UNESCO's view of the part move
+onto the membership in the next slices of #1426. Until then they stay on the point.
 
 A reader calls a part's point by its own name, else by the part place's where the part holds a kind
 (`pointNameSql`, `placePoints.ts`, #1924): a place another kind brought and a merge made a site's part carries its name
@@ -1191,8 +1191,8 @@ visible work's attribution or a visible place's name on the spot — 73 such cha
 22 of them attributions, *The Wine Glass* moved from Johannes Vermeer to a namesake with nobody asked —
 while the same run's change to the museum's own name waited on a card. The location writer's keeping
 arm and the treasures upsert now carry the object's guard one level down: a visible point keeps its
-`name` — and its own picture, credit and description once they hold a value, which the point content
-writer holds the same way, filling an empty one ([ADR-0089](../decisions/0089-a-parts-empty-field-is-filled-without-a-hold.md), #1270) — a visible work keeps `name`, `artists`, `year`, `image_url` and, with the picture, its credit.
+`name` — and its part's own picture, credit and subtitle on the part row once they hold a value
+(ADR-0156), which the point content writer holds the same way, filling an empty one ([ADR-0089](../decisions/0089-a-parts-empty-field-is-filled-without-a-hold.md), #1270) — a visible work keeps `name`, `artists`, `year`, `image_url` and, with the picture, its credit.
 Each statement reads the gate as it already read it for the row it inserts, evaluates the guard on the
 row it locked, and returns the guard's own answer (`was_held`) so the record cannot disagree with the
 write; `pointChanges` and `workChanges` take that answer as their fourth argument and file each
@@ -1511,13 +1511,12 @@ site. Should the point stop standing for the site (a renamed site, a renumbered 
 becomes a place named and placed as its point, and the
 point keeps its id, so its placements, regions, claims, candidates and held decisions follow it, and a
 traveller's visit to the component becomes a visit to the part place (§ A part reads as a place);
-its picture, credit, description and item stay on the point. Where the point holds no picture, a
-reader is served the part place's own picture and credit (`pointPictureSql`, #1946). That is the case
-for a part that holds a kind of its own: the kind's place keeps its picture on the place row, and its
-point carries none. A part's name, coordinate and reference are its point's — the name unless it
+its picture, credit, subtitle and article are the part row's (ADR-0156 decision 3, § A component
+carries its own picture, credit and subtitle, on its part), while its item stays on the point until
+#1426 moves it onto the part's record in World Heritage components. A part's name, coordinate and reference are its point's — the name unless it
 names nothing (§ A site's components are the entries of `components_list`): the trigger
-`follow_component_point()` carries a rename, a move, a renumbering or a new article of the point to
-the part and its relation, and `follow_component_site()` a rename of the site to a part its name and
+`follow_component_point()` carries a rename, a move or a renumbering of the point to
+the part and its relation, `follow_part_article()` a new article of the part to its name, and `follow_component_site()` a rename of the site to a part its name and
 reference name, whoever writes it — the run, a curator, a publish — except on a part that holds a kind of
 its own, which names itself (`part_follows_point`, migration 124, #1250). Naming itself is not
 being renamed by the kind's run, though: the component point is UNESCO's view of the part, and a
@@ -1646,43 +1645,62 @@ path needs.
   from the `afterItems` hook of the sync contract): how many component points resolved, counted
   per point, the ambiguous references, the sites whose components could not be recorded this run,
   and the fifty sites with most left without an item, which the run's details in the admin panel show (`ComponentItemsSummary`).
-- **A component carries its own picture, credit and description** (#1270, `pointContentWriter.ts`).
-  The item a component resolves to gives the point its picture (P18, the first by its Commons URL,
-  ADR-0085's rule) and its English description (`componentContents`, read off the same query); a
-  component with no item gets neither, so a point that lost its item loses what the item gave it.
-  The run writes them after the points (`writePointContents`, called from `resolveSiteComponents`),
-  under the object's lock, on the points it answers for, through the gate as a field of a part
-  (ADR-0037, narrowed by ADR-0089): on a point a reader can see, under a gated source, a value a
-  reader sees stands and the run records its change to `image_url`, `metadata.imageCredit` or
-  `description` as held in its contents record, for the card to publish (`writeHeldPointFields`),
-  while a field that held nothing is filled — measured on 2026-10-08, holding the first fill too
-  would have put 3 828 visible points on 353 cards; the credit is held with its picture, and on
-  its own only where it replaces one; a claim (`image_url` or `description` in the
-  point's `curated_fields`) is never written over. Only a Commons file is written. The credit is
-  the one the run fetched from Commons for that file — asked together with the sites' own pictures,
-  only for files no point holds a credit for (`componentPicturesToCredit`) — or one a point already
-  holds for the same file, since a credit is the file's, never one of another photograph. The reads serve the point's
-  `image_url` and `image_credit` on every point — its own, else its part place's, the credit from the row
-  the picture comes from (`pointPictureSql` in `db/placePoints.ts`, #1946); the object's own read also says
-  `image_of_part`, so the curator's correction form (`CurationPlaces`) keeps editing the point's own empty picture — and its `description` and `wikidata_item` (#1271, the part's card links to it) on the object's own read
-  only, which keeps the region feed light; the map's hover card shows a point's own picture and,
-  for a part without one, its site's, saying so beside the credit (`pointPicture`,
-  `docs/tech/experience-map-ui.md`).
+- **A component carries its own picture, credit and subtitle, on its part** (#1270, `pointContentWriter.ts`,
+  ADR-0156 decision 3). The item a component resolves to gives its part a picture (P18, the first by
+  its Commons URL, ADR-0085's rule) and its English description (`componentContents`, read off the
+  same query), the one line under a name that every place keeps as its subtitle (#1795); a
+  component with no item gets neither, so a part that lost its item loses what the item gave it.
+  The run writes them on the part row after the points (`writePointContents`, called from
+  `resolveSiteComponents`), under the site's lock, for the points it answers for, through the gate
+  as a field of a part (ADR-0037, narrowed by ADR-0089): on a point a reader can see, under a gated
+  source, a value a reader sees stands and the run records its change to `image_url`,
+  `metadata.imageCredit` or `subtitle` as held in the site's contents record, for the site's card to
+  publish (`writeHeldPointFields`), while a field that held nothing is filled — measured on
+  2026-10-08, holding the first fill too would have put 3 828 visible points on 353 cards; the
+  credit is held with its picture, and on its own only where it replaces one; a claim on the part
+  (`image_url` or `subtitle` in its `curated_fields`) is never written over. A part that holds a
+  kind of its own keeps what its kind brought and is only filled where it holds nothing, the credit
+  of a picture it does not take included. A point that is no part — a site of one component, a
+  component standing for its whole site — is given nothing: the site shows its own. Only a Commons
+  file is written. The credit is the one the run fetched from Commons for that file — asked
+  together with the sites' own pictures, only for files no place holds a credit for
+  (`componentPicturesToCredit`) — or one a place already holds for the same file, since a credit is
+  the file's, never one of another photograph. Every write of these fields — the run's, a
+  curator's correction of the part's point (`editLocation`), a confirmed or taken-back component
+  item (`claimPointItem`, `releasePointItem`) and a published held proposal — goes through
+  `writePartFields` (`db/partFieldsWriter.ts`), the fields' one writer, which names the part by its
+  point and refuses a point the locked place does not show. A confirmed item only fills a part that
+  holds a kind of its own, and its take-back takes nothing off that part's row, since its kind
+  writes the same fields. A held proposal recorded about a point that is no part publishes on the
+  point itself. The reads serve a point's `image_url`
+  and `image_credit` — a part's off its row, any other point's own, the credit from the row the
+  picture comes from (`pointPictureSql` in `db/placePoints.ts`, #1946) — and, on the object's own
+  read only, which keeps the region feed light, its line as `description` (`pointSubtitleSql`) and
+  its `wikidata_item` (#1271, the part's card links to it); a point's `curated_fields` name a
+  part's claims on its row the same way, the subtitle's as `description` (`pointClaimsSql`). The
+  map's hover card shows a part's picture and, for a part without one, its site's, saying so beside
+  the credit (`pointPicture`, `docs/tech/experience-map-ui.md`). Migration 186 moved what the
+  parts' points held onto their rows: 2,248 parts with a picture and its credit, 4,003 with a
+  subtitle and 1,182 with an article on the development catalogue on 2026-10-27, where a part that
+  holds a kind kept its kind's values and the component's filled only what it lacked, unless a
+  curator claimed the point's value and the part's was unclaimed, which the curator's then replaced.
 - **A component carries its own English article** (#1963). The item a component resolves to gives
-  the point its English Wikipedia article too (`componentContents`, read off the same query as the
-  picture), stored on the point as `metadata.wikipediaUrl`, where a place keeps its own. The run
-  writes it with the picture and the description (`writePointContents`), through the same gate: a
-  point that showed none is filled, a change to the article a reader sees — the point's own, else its
-  part place's — is held for the card
+  its part its English Wikipedia article too (`componentContents`, read off the same query as the
+  picture), stored on the part row as `metadata.wikipediaUrl`, where every place keeps its own. The run
+  writes it with the picture and the subtitle (`writePointContents`), through the same gate: a
+  part that showed none is filled, a change to the article a reader sees is held for the card
   (`metadata.wikipediaUrl` in `HELD_POINT_FIELDS`), a claim is never written over, and a value that
   is no web address is no article. An item with no English article takes the stored one away from a
-  point nobody has passed. A curator who confirms a component's item writes its article with its
-  picture and description (`claimPointItem`, read with them by `contentsOf`), since the run leaves
-  such a point alone, and taking the item back takes the article off unless a curator claimed it
-  (`releasePointItem`, reported as `metadata.wikipediaUrl` in what came off). The site keeps its own
+  part nobody has passed. A curator who confirms a component's item writes its article on its part
+  with its picture and subtitle (`claimPointItem`, read with them by `contentsOf`), since the run
+  leaves such a point alone, and taking the item back takes the article off unless a curator
+  claimed it (`releasePointItem`, reported as `metadata.wikipediaUrl` in what came off). A part that
+  holds a kind of its own is only filled by the confirmation, and the take-back takes nothing off it. The site keeps its own
   item's article (`factsForSite`): a part's article is never the site's, and the site's is never a
-  part's. Every point read serves `wikipedia_url` (`pointArticleSql` in `db/placePoints.ts`): the
-  point's own, else its part place's, which another kind brought with the place. The region feed
+  part's. Every point read serves `wikipedia_url` (`pointArticleSql` in `db/placePoints.ts`): a part's
+  point the part's own, off its row and nowhere else, and a point of any other place its own. A part whose point names nothing is named by its own
+  article (`component_part_name`), which `follow_part_article()` reads again whenever the article
+  changes. The region feed
   carries it too, since a part's row links it (`PointArticleLink`, on Map mode's and Discover's
   rows). The part's card links the stored article, and Wikidata's redirect for a point with an
   item and none stored yet: one the next run has not reached, or one a curator confirmed before
@@ -5001,7 +5019,7 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 | POST | `/api/experiences/:id/merge-proposals` | `{ answers: [{ proposalId, answer: 'one' \| 'two' \| 'part_of', partId? }] (1–100, each pair once; partId with part_of and only then) }` — a curator's answer to the pairs of near places with similar names the pass proposed with this place as the lower id (#1249, `mergeProposalController.ts`). Admitted to a curator of any source of either place of an open pair (`mergeProposalsScope`), as the queue admits the row, and then held pair by pair: each pair is checked against the sources of its own two places (`answerLockedPair`), and one neither place of which is in a source the caller curates is refused with nothing written. Each pair is its own act: *one place* runs `mergePlaces` with this place as the survivor and `reason: 'curator'` — its own transaction and both places' locks — and then records the answer with the merge's id; *two places* records the answer, and the pair is never proposed again; *part of* records which place is the part and merges nothing. The answer is written under both places' locks (`mergeProposalAnswers.ts`) and is one log row (`merge_proposal_answered`) on this place, beside the `merged` row the merge writes. A pair answered meanwhile, a part that is neither place, or a merge the catalogue refuses (both places in one kind) is reported in `refused` with why while the other pairs stand; a request every pair of which was refused is 409 with the first reason. Answers `MergeProposalsAnswered`: `{ experienceId, merged: [{ proposalId, mergeId }], two, partOf, refused: [{ proposalId, error }] }`. `authenticatedLimiter` |
 | POST | `/api/experiences/:id/merge-proposal-suggestions` | Jev's judgement of this place's open pairs of near places (#1249, `mergeProposalSuggestionController.ts`), in the same scope as the answer (`mergeProposalsScope`). For each open pair, the stored judgement made for the pair as it stands (`askedPairSql`: both names, the distance, the similarity, whether the pair is exact), or a new one: the pairs not yet judged go to Jev in **one call**, a `choice` question per pair — *one*, the two are one place; *two*, neighbours that stand apart; *part_of*, one lies within the other — and every answer is recorded in `experience_merge_suggestions` with its confidence, one row per question carrying its share of the call's input tokens, a refused answer with no judgement so the pair is not paid for again. Answers `MergeProposalSuggestions`: `{ configured, suggestions: [{ proposalId, judgement, confidence }] }`; `configured: false` and no suggestions on a deployment without `JEV_API_KEY`; a failed call answers the stored judgements alone. Never applied: the card shows it beside the pair and a curator decides. `authenticatedLimiter` |
 | POST | `/api/experiences/:id/visit-suggestion` | Jev's reading of what a visitor finds at an arriving place (#1768, `visitSuggestionController.ts`), in the scope of an arriving membership's source (`resolveExperienceScope`). The stored reading made for the place as it stands (`askedSql`: name, countries, the kinds it is admitted to, the map's tag, the article), or a new one: the lead of the place's English Wikipedia article is read (`articleLead`), Jev is asked one `choice` over six readings — *visit*, *part*, *object*, *nothing*, *not-a-place*, *other-kind* — and the answer is recorded in `experience_visit_suggestions` with its confidence, the lead and what it cost, a refused answer with no reading so the place is not paid for again. Answers `VisitSuggestion`: `{ configured, suggestion: { reading, confidence } \| null }`; `configured: false` on a deployment without `JEV_API_KEY`; no suggestion for a place with no open arrival, a place on the World Heritage list (nothing asked or stored, #1926), a lead that could not be read (nothing asked or recorded), a failed call, or an answer about a place a run changed, or a curator answered, meanwhile. Never applied: the arrival's card shows it and a curator decides. `authenticatedLimiter` |
-| POST | `/api/experiences/locations/:locationId/take-back-item` | The way back from a confirmed component item (#1317, `pointItemTakeBackController.ts`), in the confirmation's scope (any source whose membership places the point, the object's first source where none does), the body naming the item the history showed (`{ item }`). Under the object's lock: the item and its claim come off the point (`releasePointItem`), with the picture, its credit and the description where no curator has claimed the field — a point with no item has no run-written picture or description, so an unclaimed one is the confirmation's — the candidate's row is open again and marked `taken_back_at` (`reopenConfirmed`, #1336), so the card asks about the point with that candidate at once — a no or a second yes there is the answer on record, while neither batch confirmation (every exact match, every candidate Jev is sure of) takes it a second time: the batch's accept (`openCandidates`, `exact`) and the card's two buttons skip a marked candidate, which the card shows with a *taken back* chip, and the finder's next pass rewrites a marked candidate it finds again with its measures, mark kept, and drops one it no longer finds — while that pass searches the point again, and the act is one log row (`component_item_taken_back`, naming the point, the item and what came off). A point with no item, one whose item a run recorded off the component's reference (no claim), and one holding a different item than the body names — a history read before another curator took that item back and confirmed another — are 409 with nothing written. Answers `PointItemTakenBack`: `{ locationId, item, cleared }`. Offered from the place's curation history, on the row that confirmed the item (`takeableItems`, `curationLog.ts`), as a merge's undo is. `authenticatedLimiter` |
+| POST | `/api/experiences/locations/:locationId/take-back-item` | The way back from a confirmed component item (#1317, `pointItemTakeBackController.ts`), in the confirmation's scope (any source whose membership places the point, the object's first source where none does), the body naming the item the history showed (`{ item }`). Under the object's lock: the item and its claim come off the point (`releasePointItem`), with what the item gave its part where no curator has claimed the field — the picture, its credit, the subtitle and the article off the part row, since a part with no kind of its own has no other writer of them, while a part that holds a kind of its own loses nothing, its kind writing the same fields (ADR-0156) — the candidate's row is open again and marked `taken_back_at` (`reopenConfirmed`, #1336), so the card asks about the point with that candidate at once — a no or a second yes there is the answer on record, while neither batch confirmation (every exact match, every candidate Jev is sure of) takes it a second time: the batch's accept (`openCandidates`, `exact`) and the card's two buttons skip a marked candidate, which the card shows with a *taken back* chip, and the finder's next pass rewrites a marked candidate it finds again with its measures, mark kept, and drops one it no longer finds — while that pass searches the point again, and the act is one log row (`component_item_taken_back`, naming the point, the item and what came off). A point with no item, one whose item a run recorded off the component's reference (no claim), and one holding a different item than the body names — a history read before another curator took that item back and confirmed another — are 409 with nothing written. Answers `PointItemTakenBack`: `{ locationId, item, cleared }`. Offered from the place's curation history, on the row that confirmed the item (`takeableItems`, `curationLog.ts`), as a merge's undo is. `authenticatedLimiter` |
 | POST | `/api/experiences/new-badges/seen` | `{ experienceIds: number[] }` — records that these chips were shown to the caller. Rate-limited (`authenticatedLimiter`), unlike the curator routes beside it: this is an ordinary authenticated action and the only one here a client sends on its own initiative. Only the first impression per experience is kept; a stale id is ignored rather than failing the call, and the response names what was actually recorded |
 
 ### Geocoding (public + admin)
@@ -5866,8 +5884,9 @@ WebGL context per card would pass the browser's cap of about a dozen and blank t
 `accepted` or `refused`, one request for the card. A confirmed candidate's item is written on
 the point as the curator's choice — `wikidata_item` with a claim on it (`claimPointItem`,
 `experienceLocationWriter.ts`), which no run overrides and the next pass reads as answered —
-together with what the item gives the point: its picture with the credit and its English
-description, read before the lock from Wikidata's API (`contentsOf`, `componentItemQueries.ts`,
+together with what the item gives its part (ADR-0156): its picture with the credit and its
+English description as the part's subtitle, filling only what a part that holds a kind of its own
+lacks, read before the lock from Wikidata's API (`contentsOf`, `componentItemQueries.ts`,
 the same `wbgetentities` the labels come from) and from Commons (`fetchCommonsCredits`), since
 the run's index knows only the items that carry a World Heritage reference; a picture nobody
 could credit is not written (ADR-0043), and a read that fails gives the point its identity and
