@@ -50,7 +50,7 @@ function place(over: Partial<ExperienceLocationWithState> = {}): ExperienceLocat
   return {
     id: 9001, experience_id: 6205, name: null, external_ref: null, ordinal: 0,
     latitude: 51.5194, longitude: -0.127, created_at: '2026-08-01T00:00:00Z',
-    approximate: null, curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null, image_of_part: false,
+    approximate: null, curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null,
     image_url: null, image_credit: null, description: null, wikidata_item: null, wikipedia_url: null,
     ...over,
   };
@@ -106,13 +106,13 @@ describe('CurationPlaces', () => {
     expect(await screen.findByText('fixed 9001 of British Museum in region 4')).toBeInTheDocument();
   });
 
-  it("hands the form the point's own picture, not one its part place lends it (#1946)", async () => {
+  it("hands the form the picture the point shows, a part's own being its row's (ADR-0156)", async () => {
     const church = 'http://commons.wikimedia.org/wiki/Special:FilePath/Church%20fixture.jpg';
-    answer(place({ image_url: church, image_of_part: true }));
+    answer(place({ image_url: church }));
     renderPlaces();
     fireEvent.click(await screen.findByRole('button', { name: 'Move or rename British Museum' }));
-    // The point's own column is empty, which is what the form edits and offers nearby files for.
-    expect(screen.getByText('picture=null')).toBeInTheDocument();
+    // The correction writes the part's own picture, so the form starts from it.
+    expect(screen.getByText(`picture=${church}`)).toBeInTheDocument();
   });
 
   it('says on the field when the one place has been corrected', async () => {

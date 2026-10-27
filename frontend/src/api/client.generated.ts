@@ -2674,8 +2674,6 @@ export interface ExperienceLocationWithState {
      * @nullable
      */
   wikidata_item: string | null;
-  /** True where `image_url` is the part place's picture rather than the point's own (#1946): the point's own column is empty, which is what a curator correcting the point edits. */
-  image_of_part: boolean;
 }
 
 /**
