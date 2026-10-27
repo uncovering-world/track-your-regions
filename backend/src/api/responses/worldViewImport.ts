@@ -285,7 +285,7 @@ export const TransferAccepted = z.strictObject({
 export type TransferAccepted = z.infer<typeof TransferAccepted>;
 
 export const ShapeCredit = z.strictObject({
-  label: z.string().describe('The source the shape was read from, as its credit names it: a Commons map data file\'s page title.'),
+  label: z.string().describe('The source the shape was read from, as its credit names it: a Commons map data file\'s page title, or `© OpenStreetMap contributors` for a shape cut from the OpenStreetMap layer.'),
   url: z.string().describe('Its page.'),
   licence: z.string().describe('The licence the source declares, as it spells it (`ODbL-1.0`).'),
   attribution: z.string().nullable().describe('What the source says the shape was drawn from; null when it says nothing.'),

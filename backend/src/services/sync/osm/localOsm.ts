@@ -100,9 +100,10 @@ function objectOf(row: LayerRow, currentTo: string): OsmObject {
 /**
  * What the layer maps carrying each item's `wikidata` tag, with its geometry
  * and the geometry's type where the keep rule draws one. The layer keeps a
- * full geometry only for what a kind draws and a point for the rest
- * (ADR-0136), so it answers no type for an object the rule does not draw:
- * its point says where the object is, not what shape it has.
+ * point for most objects (ADR-0136), and a full geometry for what a kind
+ * draws and for the objects of the items a world-view import names
+ * (ADR-0157), so it answers no type for an object the rule does not draw,
+ * whatever the layer kept of it: its point or outline is not this kind's.
  */
 async function layerObjects(qids: string[], keep: KeepWkt, currentTo: string): Promise<Map<string, OsmObject[]>> {
   const result = await pool.query<LayerRow>(

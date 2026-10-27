@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 const query = vi.fn();
 vi.mock('../../../db/index.js', () => ({ pool: { query: (...args: unknown[]) => query(...args) } }));
 
-const { drawnFile, getidOf, LAYER_DRAWN, LAYER_SELECTION, layerDraws, pinnedObjects, selectionFile } = await import('./layerSelection.js');
+const { drawnFile, drawnItems, getidOf, LAYER_DRAWN, LAYER_SELECTION, layerDraws, pinnedObjects, selectionFile } = await import('./layerSelection.js');
 
 describe('the layer selection', () => {
   it('writes one osmium expression a line, for nodes, ways and relations', () => {
@@ -58,5 +58,13 @@ describe('the layer selection', () => {
     const [sql] = query.mock.calls[0] as [string];
     expect(sql).toMatch(/metadata->'osm'->>'object'/);
     expect(sql).toMatch(/metadata->'osm'->>'extentFrom'/);
+  });
+
+  it('draws whole the objects of each item a world-view import names, by its QID only (ADR-0157)', async () => {
+    query.mockResolvedValueOnce({ rows: [{ item: 'Q1000001' }, { item: 'Q1000002' }] });
+    expect(await drawnItems()).toEqual(['Q1000001', 'Q1000002']);
+    const [sql] = query.mock.calls.at(-1) as [string];
+    expect(sql).toMatch(/FROM region_import_state/);
+    expect(sql).toMatch(/source_external_id ~ '\^Q\[1-9\]\[0-9\]\*\$'/);
   });
 });

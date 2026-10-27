@@ -40,10 +40,12 @@ export async function acquireFetchSlot(): Promise<void> {
 }
 
 /**
- * Whether the store holds a shape for a Wikidata item. Nothing is fetched: Wikimedia Maps (`maps.wikimedia.org`) draws
- * an item's shape, and its Maps Terms of Use do not allow third-party services
- * to use it (#2084). A region whose item has no shape here is matched by its
- * points instead.
+ * Whether the store holds a shape for a Wikidata item. Nothing is fetched: an
+ * item's shape is cut from the OpenStreetMap layer each time a build is
+ * swapped in (`refillRegionShapes`, ADR-0157), and Wikimedia Maps
+ * (`maps.wikimedia.org`), which draws one too, does not allow third-party
+ * services to use it (#2084). A region whose item has no shape here is
+ * matched by its points instead.
  */
 export async function geoshapeHeld(wikidataId: string): Promise<boolean> {
   const held = await pool.query<{ held: boolean }>(

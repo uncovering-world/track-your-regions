@@ -1,14 +1,15 @@
 -- The OpenStreetMap layer's flex style (ADR-0134): which objects of the cut
 -- become rows of the layer, with every tag, and the full geometry of the
--- objects a kind draws and a point for the rest (ADR-0136).
+-- objects a kind draws and of the objects that carry an item a world-view
+-- import names, and a point for the rest (ADR-0136, ADR-0157).
 --
 -- The cut osm2pgsql reads holds the selected objects, the objects the
 -- catalogue names, and what those are drawn from: a kept way's nodes and a
 -- kept relation's members. Only the first two become rows. The selection is
 -- the same expression file `osmium tags-filter` cut with (layerSelection.ts),
 -- and the named objects are the file `osmium getid` read, so the rows and the
--- cut cannot disagree. The drawn rule is layerSelection.ts's too. layerBuild.ts
--- names the four through the environment.
+-- cut cannot disagree. The drawn rule and the drawn items are layerSelection.ts's
+-- too. layerBuild.ts names the five through the environment.
 
 local function required(name)
   local value = os.getenv(name)
@@ -49,6 +50,13 @@ end
 local pinned = {}
 for line in io.lines(required('OSM_LAYER_PINS')) do
   if line ~= '' then pinned[line] = true end
+end
+
+-- 'Q123': the items whose objects are kept whole, a region a world-view
+-- import matches by its shape.
+local drawnItems = {}
+for line in io.lines(required('OSM_LAYER_DRAWN_ITEMS')) do
+  if line ~= '' then drawnItems[line] = true end
 end
 
 local objects = osm2pgsql.define_table({
@@ -117,7 +125,7 @@ local function keep(object, kind, geometry)
     tags = object.tags,
     wikidata = object.tags.wikidata,
     wikipedia = object.tags.wikipedia,
-    geom = draws(object.tags) and geometry or locator(geometry),
+    geom = (draws(object.tags) or drawnItems[object.tags.wikidata]) and geometry or locator(geometry),
   })
 end
 

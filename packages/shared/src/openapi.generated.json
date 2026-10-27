@@ -27192,7 +27192,7 @@
                 "items": {
                   "$ref": "#/components/schemas/ShapeCredit"
                 },
-                "description": "The credit of each stored shape the features are drawn from."
+                "description": "The credits of the stored shapes the features are drawn from: one per Commons map file, and one for all the shapes cut from the OpenStreetMap layer."
               }
             },
             "required": [
@@ -33806,7 +33806,7 @@
         "properties": {
           "label": {
             "type": "string",
-            "description": "The source the shape was read from, as its credit names it: a Commons map data file's page title."
+            "description": "The source the shape was read from, as its credit names it: a Commons map data file's page title, or `© OpenStreetMap contributors` for a shape cut from the OpenStreetMap layer."
           },
           "url": {
             "type": "string",
