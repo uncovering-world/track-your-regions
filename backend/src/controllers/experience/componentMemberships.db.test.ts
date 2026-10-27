@@ -176,3 +176,78 @@ describe('a part holds a membership of the virtual kind World Heritage component
     expect(due.rowCount).toBe(0);
   });
 });
+
+describe("what the site's list says of a component, on the part's record (ADR-0156 decision 2)", () => {
+  const views = async () => (await pool.query<{ ref: string; name: string | null; lon: number | null }>(
+    `SELECT p.external_ref AS ref, rec.reported_name AS name, ST_X(rec.reported_location) AS lon
+       FROM experience_parts p
+       JOIN experience_kind_memberships rec ON rec.experience_id = p.part_id AND rec.kind_id = $2
+      WHERE p.whole_id = $1 ORDER BY p.external_ref`, [BELFRIES, COMPONENTS_KIND],
+  )).rows;
+
+  it('is written by the run as the list gives it, whatever a curator made of the point', async () => {
+    expect(await views()).toEqual([
+      { ref: BRUGES.externalRef, name: BRUGES.name, lon: BRUGES.lon },
+      { ref: MONS.externalRef, name: MONS.name, lon: MONS.lon },
+    ]);
+    const [, mons] = await partsOf(BELFRIES);
+    await pool.query(
+      `UPDATE experience_locations SET name = 'Belfry of Mons', curated_fields = '["name"]' WHERE id = $1`, [mons.location_id],
+    );
+    // The list renames Mons's belfry: the point keeps the curator's name, the record what the list says.
+    await writeExperienceLocations(BELFRIES, [{ ...MONS, name: 'Beffroi de Mons (Hainaut)' }, BRUGES], run);
+    expect((await views())[1]).toEqual({ ref: MONS.externalRef, name: 'Beffroi de Mons (Hainaut)', lon: MONS.lon });
+    const point = await pool.query<{ name: string }>('SELECT name FROM experience_locations WHERE id = $1', [mons.location_id]);
+    expect(point.rows[0].name).toBe('Belfry of Mons');
+  });
+
+  it('is written by a run that changes no point, where the record holds another', async () => {
+    await pool.query(
+      'UPDATE experience_kind_memberships SET reported_name = NULL, reported_location = NULL WHERE kind_id = $1 AND experience_id IN (SELECT part_id FROM experience_parts WHERE whole_id = $2)',
+      [COMPONENTS_KIND, BELFRIES],
+    );
+    await writeExperienceLocations(BELFRIES, [MONS, BRUGES], run);
+    expect((await views()).map(view => view.name)).toEqual([BRUGES.name, MONS.name]);
+  });
+
+  it('is gone once the list drops the component, and back once it lists it again', async () => {
+    await writeExperienceLocations(BELFRIES, [MONS], run);
+    expect(await views()).toEqual([
+      { ref: BRUGES.externalRef, name: null, lon: null },
+      { ref: MONS.externalRef, name: MONS.name, lon: MONS.lon },
+    ]);
+    await writeExperienceLocations(BELFRIES, [MONS, BRUGES], run);
+    expect((await views())[0]).toEqual({ ref: BRUGES.externalRef, name: BRUGES.name, lon: BRUGES.lon });
+  });
+
+  it("is dropped when the record changes owner, since it is the next site's to write", async () => {
+    const [, mons] = await partsOf(BELFRIES);
+    const record = async () => (await pool.query<{ external_id: string; name: string | null; lon: number | null }>(
+      `SELECT external_id, reported_name AS name, ST_X(reported_location) AS lon
+         FROM experience_kind_memberships WHERE kind_id = $1 AND experience_id = $2`,
+      [COMPONENTS_KIND, mons.part_id],
+    )).rows;
+    const other = (await pool.query<{ id: number }>(
+      `INSERT INTO experiences (source_id, external_id, name, location)
+       VALUES ($1, '9560-other', 'Another serial site (fixture)', ST_SetSRID(ST_MakePoint(3.9, 50.4), 4326))
+       RETURNING id`,
+      [run.sourceId],
+    )).rows[0].id;
+
+    try {
+      const second = (await pool.query<{ id: number }>(
+        `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
+         SELECT $1, part_id, 'component', membership_id, '9560-other-1' FROM experience_parts WHERE id = $2
+         RETURNING id`,
+        [other, mons.link_id],
+      )).rows[0].id;
+      // A second site's relation keys nothing anew: the Belfries' list still speaks for the record.
+      expect(await record()).toEqual([{ external_id: `component:${mons.link_id}`, name: MONS.name, lon: MONS.lon }]);
+
+      await pool.query('DELETE FROM experience_parts WHERE id = $1', [mons.link_id]);
+      expect(await record()).toEqual([{ external_id: `component:${second}`, name: null, lon: null }]);
+    } finally {
+      await pool.query('DELETE FROM experiences WHERE id = $1', [other]);
+    }
+  });
+});

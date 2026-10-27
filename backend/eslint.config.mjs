@@ -284,8 +284,8 @@ const SYNC_CHANGE_WRITE_RULES = spelledWriteRules('experience_sync_changes', SYN
  * `LockedExperience` token; the run's upsert (`experienceUpsert.ts`, which
  * writes the place and its membership in one statement), the admission sweep
  * (`admission.ts`) and its questions about a curator's pin (`pinQuestion.ts`),
- * a serial site's part's item on its record (`src/db/partFieldsWriter.ts`,
- * ADR-0156), the verified pass a new content retires
+ * a serial site's part's item and the site's view of it on its record
+ * (`src/db/partFieldsWriter.ts`, ADR-0156), the verified pass a new content retires
  * (`curationDecay.ts`) and the held proposal's pointer
  * (`heldProposalPointer.ts`); and the seed.
  *

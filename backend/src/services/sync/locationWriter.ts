@@ -116,7 +116,8 @@ import { lockExperience } from '../../db/experienceWriter.js';
 import { COMPONENTS_KIND_ID, MEMBERSHIPS } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
 import { foldedPointsSql, pointItemClaimedSql, pointItemSql, pointOfPartSql, shownBySql } from '../../db/placePoints.js';
-import { writePartItems } from '../../db/partFieldsWriter.js';
+import { writePartItems, writePartListings } from '../../db/partFieldsWriter.js';
+import { COMPONENT_LISTINGS, listingsDrift } from './componentListings.js';
 import { completePairing } from './locationMatching.js';
 
 
@@ -551,7 +552,8 @@ export async function writeExperienceLocations(
     { adopted?: string; stored: string; matched: string; ids: number[] | null };
 
   if (Number(stored) === incoming.length && Number(matched) + Number(adopted ?? 0) === incoming.length
-      && !(run.components && await approximateDrifts(experienceId, incoming, run.sourceId))) {
+      && !(run.components && (await approximateDrifts(experienceId, incoming, run.sourceId)
+                              || await listingsDrift(experienceId, incoming)))) {
     return { unchanged: ids ?? [], needsAssignment: [], unoffered: 0, delta: NO_CHANGE };
   }
 
@@ -572,7 +574,7 @@ export async function writeExperienceLocations(
     // Taken in the same mode for the same reason: it self-conflicts, so a run and a
     // curator on one object serialise, and it does not conflict with the key share
     // this transaction's own insert needs.
-    await lockExperience(client, experienceId);
+    const locked = await lockExperience(client, experienceId);
 
     // `ordinal` is the order a reader sees the points in, written by every run
     // that places them; two sources' lists may both start at 1, so it is not
@@ -1236,6 +1238,15 @@ export async function writeExperienceLocations(
         `SELECT part_site_components($1, (SELECT id FROM ${MEMBERSHIPS} WHERE experience_id = $1 AND source_id = $2))`,
         [experienceId, run.sourceId],
       );
+      // What the list says of each component, on the part's record (ADR-0156
+      // decision 2), once a component that arrived is a part with one.
+      const listings = await client.query<{ record_id: number; name: string | null; lon: number; lat: number }>(
+        `WITH ${cte} ${COMPONENT_LISTINGS}`, params,
+      );
+      if (locked) {
+        await writePartListings(client, locked.lock, listings.rows.map(row => (
+          { recordId: row.record_id, name: row.name, lon: row.lon, lat: row.lat })));
+      }
     }
 
     await client.query('COMMIT');
