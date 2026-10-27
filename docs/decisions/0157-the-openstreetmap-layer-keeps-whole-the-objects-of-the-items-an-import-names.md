@@ -1,7 +1,7 @@
 # ADR-0157: The OpenStreetMap layer keeps whole the objects of the items a world-view import names
 
 **Date:** 2026-10-27
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md)
 **Issue:** [#2085](https://github.com/uncovering-world/track-your-regions/issues/2085)
 **Narrows:** [ADR-0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md) decision 1 (a full geometry only where a kind's keep rule draws it)
 
