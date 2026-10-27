@@ -12,7 +12,8 @@ import {
   worldViewRegionIdParamSchema, wvCacheNameParamSchema, wvExtractAnswerSchema, wvExtractStartSchema,
   wvImportAcceptBatchSchema, wvImportAcceptMatchSchema, wvImportAcceptTransferSchema, wvImportAddChildSchema,
   wvImportAiSuggestClustersSchema, wvImportApproveCoverageSchema, wvImportBodySchema, wvImportDecideBatchSchema,
-  wvImportGeoshapeMatchSchema, wvImportMarkManualFixSchema, wvImportOverlapChildrenSchema, wvImportRegionIdSchema,
+  wvImportGeoshapeMatchSchema, wvImportMapCreditsSchema, wvImportMarkManualFixSchema, wvImportOverlapChildrenSchema,
+  wvImportRegionIdSchema,
   wvImportRematchBodySchema, wvImportRemoveRegionSchema, wvImportRenameRegionSchema, wvImportReparentRegionSchema,
   wvImportResolveOverlapSchema, wvImportSelectMapImageSchema, wvImportSmartSimplifyApplySchema,
   wvImportSmartSimplifySchema, wvImportSplitDeeperSchema, wvImportTransferPreviewSchema, wvImportUnionGeometrySchema,
@@ -30,7 +31,8 @@ import {
 import {
   AutoResolvePreview, ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenCollapsed, ChildrenDismissed,
   ChildrenGrouped, ChildrenReviewed, ChildrenSimplified, DescendantsPruned, DivisionOverlaps, FlattenPreviewResult,
-  HierarchySimplified, HierarchyWarningsDismissed, ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone,
+  HierarchySimplified, HierarchyWarningsDismissed, ManualFixMarked, MapImageCredits, MapImageSelected, MembersCleared,
+  OperationUndone,
   OverlapChildren, OverlapResolved, RegionRemoved, RegionRenamed, RegionReparented, SelectionAccepted,
   SelectionRejected, SmartFlattenResult, SmartSimplifyApplied, SmartSimplifyMoves,
 } from '../api/responses/wvImportTreeOps.js';
@@ -53,6 +55,7 @@ import {
   rejectMatch, rejectRemaining, selectMapImage,
 } from '../controllers/admin/wvImportMatchController.js';
 import { acceptBatchAndRejectRest, rejectBatchSuggestions } from '../controllers/admin/wvImportMatchDecisions.js';
+import { getMapImageCredits } from '../controllers/admin/wvImportMapCredits.js';
 import { acceptWithTransfer, getTransferPreview } from '../controllers/admin/wvImportMatchTransfer.js';
 import {
   getUnionGeometry, splitDivisionsDeeper, visionMatchDivisions,
@@ -452,6 +455,15 @@ export const adminImportRoutes = [
     body: wvImportSelectMapImageSchema,
     response: MapImageSelected,
     handler: selectMapImage,
+  }),
+  // Who each map a dialog draws is credited to, read from Commons on first draw
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/wv-import/matches/:worldViewId/map-credits',
+    summary: 'The credits of region map images a dialog draws, asking Commons for the ones not read yet',
+    params: worldViewIdParamSchema,
+    body: wvImportMapCreditsSchema,
+    response: MapImageCredits,
+    handler: getMapImageCredits,
   }),
   // Mark/unmark region as needing manual fixes
   defineRoute({

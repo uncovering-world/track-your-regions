@@ -9630,6 +9630,66 @@
         }
       }
     },
+    "/api/admin/wv-import/matches/{worldViewId}/map-credits": {
+      "post": {
+        "operationId": "postAdminWvImportMatchesByWorldViewIdMapCredits",
+        "summary": "The credits of region map images a dialog draws, asking Commons for the ones not read yet",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worldViewId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WvImportMapCreditsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapImageCredits"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/wv-import/matches/{worldViewId}/mark-manual-fix": {
       "post": {
         "operationId": "postAdminWvImportMatchesByWorldViewIdMarkManualFix",
@@ -26864,6 +26924,45 @@
         "additionalProperties": false,
         "description": "A region marked as needing a manual fix, or unmarked."
       },
+      "MapImageCredits": {
+        "type": "object",
+        "properties": {
+          "credits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "description": "A map image as the request named it."
+                },
+                "credit": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ImageCredit"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Null where Commons did not answer in time: the dialog draws no line, and the next draw asks again."
+                }
+              },
+              "required": [
+                "url",
+                "credit"
+              ],
+              "additionalProperties": false
+            },
+            "description": "One entry per requested url that a region of the world view holds as a map image; any other url is left out."
+          }
+        },
+        "required": [
+          "credits"
+        ],
+        "additionalProperties": false,
+        "description": "Who each region map image is credited to (ADR-0043), read from Commons the first time a dialog draws the file and kept on its rows."
+      },
       "MapImageSelected": {
         "type": "object",
         "properties": {
@@ -31483,6 +31582,13 @@
           "updatedAt": {
             "type": "string",
             "description": "When it was last saved, ISO 8601."
+          },
+          "sourceUrl": {
+            "description": "The region map address the image was loaded from, whose credit it carries; null for an uploaded file.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -31493,7 +31599,8 @@
           "imageHeight",
           "corners",
           "opacity",
-          "updatedAt"
+          "updatedAt",
+          "sourceUrl"
         ],
         "additionalProperties": false,
         "description": "A region's reference map in the Create Subregions dialog (#595): an admin's working material, never shown to a visitor."
@@ -31605,6 +31712,17 @@
             "type": "number",
             "minimum": 0,
             "maximum": 1
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -37935,6 +38053,23 @@
         },
         "required": [
           "action"
+        ]
+      },
+      "WvImportMapCreditsBody": {
+        "type": "object",
+        "properties": {
+          "urls": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          }
+        },
+        "required": [
+          "urls"
         ]
       },
       "WvImportMarkManualFixBody": {

@@ -250,6 +250,24 @@ export const wvImportSelectMapImageSchema = z.object({
     .nullable(),
 });
 
+/**
+ * At most what one dialog draws at once. The extraction keeps up to 15
+ * candidates from a page's Regions section and 15 from the whole page, plus
+ * the map it picked, so a region can hold 31; Commons answers 50 files in one
+ * request.
+ */
+export const MAP_CREDITS_MAX_URLS = 50;
+
+export const wvImportMapCreditsSchema = z.object({
+  // The maps a dialog draws, in their stored spelling, judged like a pick and
+  // not rewritten: the controller answers only for a url some region of the
+  // world view holds among its map images, so this never asks Commons about a
+  // file the import did not read.
+  urls: z.array(
+    z.string().trim().max(2000).refine(isStorableHttpUrl, { message: STORABLE_HTTP_URL_MESSAGE }),
+  ).min(1).max(MAP_CREDITS_MAX_URLS),
+});
+
 export const wvImportAddChildSchema = z.object({
   parentRegionId: bodyRowIdSchema,
   // Inserted verbatim as the new child's regions.name.

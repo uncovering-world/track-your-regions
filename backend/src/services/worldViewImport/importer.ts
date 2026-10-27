@@ -215,14 +215,16 @@ export async function insertRegion(
       [regionId, importRunId, sourceUrl, node.wikidataId || null, node.regionMapUrl || null, hierarchyWarningsFor(node, hasSourcePages)],
     );
 
-    // Insert map image candidates
-    if (node.mapImageCandidates?.length) {
-      for (const imageUrl of node.mapImageCandidates) {
-        await client.query(
-          `INSERT INTO region_map_images (region_id, image_url) VALUES ($1, $2)`,
-          [regionId, imageUrl],
-        );
-      }
+    // Insert map image candidates. The region's own map is one of them even
+    // where a file's tree does not list it: a map is drawn with its credit,
+    // and the credits are held on these rows (#2087).
+    const candidates = new Set(node.mapImageCandidates ?? []);
+    if (node.regionMapUrl) candidates.add(node.regionMapUrl);
+    for (const imageUrl of candidates) {
+      await client.query(
+        `INSERT INTO region_map_images (region_id, image_url) VALUES ($1, $2)`,
+        [regionId, imageUrl],
+      );
     }
 
     progress.createdRegions++;

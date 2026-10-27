@@ -88,6 +88,20 @@ describe("a region's reference map (#595)", () => {
     expect(rows.rows).toEqual([{ n: '1', updated_by: adminId }]);
   });
 
+  it('keeps the region map it was loaded from, and an uploaded file in its place keeps none (#2087)', async () => {
+    // The map Wikivoyage's Belgium article draws, as the development import holds it.
+    const BELGIUM_MAP = 'https://commons.wikimedia.org/wiki/Special:FilePath/be-map.png';
+    await answerRoute(putRoute, { params, body: { ...overlay(0.7), sourceUrl: BELGIUM_MAP }, user: { id: adminId, role: 'admin' } as Express.User }, res());
+    const loaded = res();
+    await answerRoute(getRoute, { params, user: { id: adminId, role: 'admin' } as Express.User }, loaded);
+    expect(loaded.body).toMatchObject({ sourceUrl: BELGIUM_MAP });
+
+    await answerRoute(putRoute, { params, body: overlay(0.7, 'Flanders, redrawn.png'), user: { id: adminId, role: 'admin' } as Express.User }, res());
+    const uploaded = res();
+    await answerRoute(getRoute, { params, user: { id: adminId, role: 'admin' } as Express.User }, uploaded);
+    expect(uploaded.body).toMatchObject({ imageName: 'Flanders, redrawn.png', sourceUrl: null });
+  });
+
   it('refuses a region that does not exist, writing nothing', async () => {
     const missing = res();
     await answerRoute(putRoute, { params: { regionId: String(FLANDERS_ID + 99) }, body: overlay(0.7), user: { id: adminId, role: 'admin' } as Express.User }, missing);
