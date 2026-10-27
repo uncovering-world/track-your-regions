@@ -5673,7 +5673,8 @@ CREATE TABLE IF NOT EXISTS import_runs (
     data_path TEXT,  -- filesystem path to raw JSON (/data/imports/{id}.json)
     stats JSONB,
     started_at TIMESTAMPTZ DEFAULT NOW(),
-    completed_at TIMESTAMPTZ
+    completed_at TIMESTAMPTZ,
+    source_dump_date DATE  -- the copy of English Wikivoyage the extraction read (#2089)
 );
 COMMENT ON COLUMN import_runs.status IS 'Import run status: running, matching, reviewing, failed (CHECK; @tyr/shared/runStatuses)';
 
@@ -5720,6 +5721,7 @@ CREATE INDEX IF NOT EXISTS idx_import_runs_wv ON import_runs(world_view_id);
 COMMENT ON TABLE import_runs IS 'Tracks WorldView import operations from external sources';
 COMMENT ON COLUMN import_runs.source_type IS 'Import source identifier: wikivoyage, osm, natural_earth, etc.';
 COMMENT ON COLUMN import_runs.data_path IS 'Filesystem path to the raw import JSON file';
+COMMENT ON COLUMN import_runs.source_dump_date IS 'The monthly dump of English Wikivoyage the extraction read its pages from; null for a run that read no copy';
 
 -- Region import state (1:1 with region, only for imported regions)
 CREATE TABLE IF NOT EXISTS region_import_state (

@@ -774,6 +774,7 @@ export interface ImportRunsRow {
   stats: unknown | null;
   started_at: Date | null;
   completed_at: Date | null;
+  source_dump_date: Date | null;
 }
 
 /** The table `osm_layer_builds`. */
