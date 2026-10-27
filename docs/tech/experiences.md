@@ -223,8 +223,13 @@ membership carries no gate: it is never pending and opens no card. Nothing reads
   relations, and one place holds one membership per kind.
 
 The part's picture, credit, subtitle and article are its row's (§ A component carries its own
-picture, credit and subtitle, on its part). The component's item and UNESCO's view of the part move
-onto the membership in the next slices of #1426. Until then they stay on the point.
+picture, credit and subtitle, on its part), and the component's Wikidata item is the record's
+`wikidata_items`, with a curator's claim on it among the record's claims (§ Component items). A
+migration (189) moved the 4,120 items the parts' points carried on the development catalogue on
+2026-10-27, a curator's choice first, and changed no place's identity: a part's registry row names
+the basis `component-item` where it named `point`. UNESCO's view of
+the part (its name and coordinate as the list gives them) moves onto the record in the last slice
+of #1426; until then it is read off the point.
 
 A reader calls a part's point by its own name, else by the part place's where the part holds a kind
 (`pointNameSql`, `placePoints.ts`, #1924): a place another kind brought and a merge made a site's part carries its name
@@ -1630,12 +1635,18 @@ path needs.
   included, since an extension can renumber the parts: Wikidata's `1591-004` is Boseong's tidal
   flat and the list's `1591bis-004` is Gochang's, so a reference under another variant is a
   candidate for a curator through the finder's part-of door, never an identity (#1344) — and the run records it on
-  the point (`experience_locations.wikidata_item`, written by `recordComponentItems` in the run's
-  location writer, under the place's lock, on the points the run answers for). A reference no item
+  the part's record in World Heritage components (`wikidata_items`, ADR-0156 decision 2, through
+  `writePartItems`), or on a point that is no part's itself (`experience_locations.wikidata_item`),
+  written by `recordComponentItems` in the run's location writer, under the place's lock, for the
+  points the run answers for. Every read of a point's item asks `pointItemSql` and
+  `pointItemClaimedSql` (`db/placePoints.ts`), and whether some component already is an item
+  `itemHeldSql`; the identifier registry gives a part's record an arm of its own
+  (`component-item`), under the rule a point's item had: the part's unless another live place
+  carries the same item too. A reference no item
   carries leaves the point without one; one that more than one item carries — 39 on 2026-10-08,
   such as `1187-023` on two sibling items — resolves to none, since choosing would be guessing
-  which place is meant. A claim on the item (`wikidata_item` in the point's `curated_fields`) is
-  never overridden; the component-items card's confirmation writes one and its take-back clears it
+  which place is meant. A claim on the item (`wikidata_items` among a part's record's claims, `wikidata_item`
+  in any other point's `curated_fields`) is never overridden; the component-items card's confirmation writes one and its take-back clears it
   (§ Component items). Only from an index Wikidata answered: a run whose query
   failed resolves nothing and clears nothing. Measured on 2026-10-08 over the 6 354 component
   points of the development catalogue: 3 948 resolve — Qhapaq Ñan 137 of 137, Rock Art of the
@@ -5766,7 +5777,9 @@ table anywhere but its writers:
   `publishMembership`, `clearHeldPointer` and `insertManualMembership`; the run's upsert
   (`experienceUpsert.ts`, whose one statement writes the place and its membership), its
   admission sweep (`admission.ts`) and its questions about a pin (`pinQuestion.ts`), `curationDecay.ts`
-  and `heldProposalPointer.ts`; and the seed. The code names the table through `MEMBERSHIPS`
+  and `heldProposalPointer.ts`; a part's item on its World Heritage components record
+  (`writePartItems`, `db/partFieldsWriter.ts`, ADR-0156) and the record itself, which a trigger on
+  `experience_parts` keeps with its relation; and the seed. The code names the table through `MEMBERSHIPS`
   (`db/membership.ts`) more often than it spells it, so the rule also reads a verb that ends the
   literal part before that interpolation; a row lock (`FOR UPDATE`, `FOR NO KEY UPDATE`) and an
   upsert's `DO UPDATE` end the same way and pass.
@@ -5881,9 +5894,10 @@ Dacian frontier has dozens of components and the row a curator reads is far belo
 the card is near the screen (`useNearViewport`): a page holds up to 25 of these cards, and a
 WebGL context per card would pass the browser's cap of about a dozen and blank the earliest. The answer is
 `POST /api/experiences/:id/component-items` (`componentItemController.ts`), per candidate
-`accepted` or `refused`, one request for the card. A confirmed candidate's item is written on
-the point as the curator's choice — `wikidata_item` with a claim on it (`claimPointItem`,
-`experienceLocationWriter.ts`), which no run overrides and the next pass reads as answered —
+`accepted` or `refused`, one request for the card. A confirmed candidate's item is written as the curator's choice
+on the part's record in World Heritage components (`wikidata_items` with a claim on it, ADR-0156),
+or on a point that is no part's itself (`claimPointItem`, `experienceLocationWriter.ts`), which no
+run overrides and the next pass reads as answered —
 together with what the item gives its part (ADR-0156): its picture with the credit and its
 English description as the part's subtitle, filling only what a part that holds a kind of its own
 lacks, read before the lock from Wikidata's API (`contentsOf`, `componentItemQueries.ts`,
