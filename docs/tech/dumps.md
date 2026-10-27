@@ -931,9 +931,15 @@ command line.
    and ways that carry it, a relation before a way, simplified to about
    100 m (0.001°) and made valid, kept under its QID with the licence
    `ODbL-1.0`. A shape under a QID that no object draws any more goes; the
-   store's Commons map shapes (`commons:<file>`) are left. The build's
-   summary says how many of the items the imports name have a shape, and
-   apart from them how many of the other items the mapshapes list. A refill that
+   store's Commons map shapes (`commons:<file>`) are left. In the same
+   transaction, a region whose item then holds no shape, and every one of
+   whose child regions holds one from the layer, is given their union
+   (`composite_of`, ADR-0159). The passes repeat on the last pass's
+   composites, up to `COMPOSITE_PASSES`, so a region of composites gets one
+   too, and a region with a child that holds none gets none. The build's
+   summary says how many of the items the imports name have a shape, apart
+   from them how many of the other items the mapshapes list, how many more
+   have a composite, and how many with child regions have none. A refill that
    fails leaves the layer and the last build's shapes in place and is a note
    on the build, not a failure. An item an import names or a page lists for the first time
    has its shape from the next build.

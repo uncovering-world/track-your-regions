@@ -177,6 +177,7 @@ and accepted by it.
 | [0156](0156-a-virtual-kind-holds-how-a-source-knows-a-part.md) | A virtual kind holds how a source knows a part | Accepted | 2026-10-27 |
 | [0157](0157-the-openstreetmap-layer-keeps-whole-the-objects-of-the-items-an-import-names.md) | The OpenStreetMap layer keeps whole the objects of the items a world-view import names | Accepted — decision 1 narrowed by [0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md) | 2026-10-27 |
 | [0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md) | The OpenStreetMap layer also keeps whole the items the mapshapes of imported pages list | Accepted | 2026-10-27 |
+| [0159](0159-a-region-no-object-draws-takes-the-union-of-its-child-regions-shapes.md) | A region no object draws takes the union of its child regions' shapes | Accepted | 2026-10-27 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
