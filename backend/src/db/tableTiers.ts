@@ -125,6 +125,8 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   wikidata_subset_builds: 'workbench',
   wikipedia_redirect_builds: 'workbench',
   wikipedia_redirects: 'workbench',
+  wikivoyage_pages: 'workbench',
+  wikivoyage_pages_builds: 'workbench',
   wikivoyage_usage: 'workbench',
   wikivoyage_usage_builds: 'workbench',
   world_views: 'serving',
