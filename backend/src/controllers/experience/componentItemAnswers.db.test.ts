@@ -252,7 +252,7 @@ describe("a site's candidate component items (#1272)", () => {
       content(PICTURE, CREDIT));
     // The run resolves Bologa's reference to no item and offers it nothing.
     const changed = await writePointContents(SITE, [
-      { ref: '9850-001', imageUrl: null, imageCredit: null, description: null, articleUrl: null },
+      { ref: '9850-001', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: null },
     ], { syncLogId: null, sourceId: 1 });
 
     expect(changed).toEqual([]);

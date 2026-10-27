@@ -61,8 +61,9 @@ export async function componentPicturesToCredit(
     }
   }
   if (offered.size === 0) return [];
+  // A part's picture and its credit are its own row's (ADR-0156 decision 3).
   const credited = await pool.query<{ image_url: string }>(
-    `SELECT DISTINCT image_url FROM experience_locations
+    `SELECT DISTINCT image_url FROM experiences
       WHERE image_url = ANY($1::text[]) AND metadata ? 'imageCredit'`,
     [[...offered]],
   );
@@ -73,8 +74,8 @@ export async function componentPicturesToCredit(
 /**
  * Resolve a serial site's components to their Wikidata items and record them
  * on the points (#1269), counting what resolved for the run's log, then write
- * what each item says about its component — picture, credit, description — on
- * the point (#1270). Answers what that write changed or held, for the run's
+ * what each item says about its component — picture, credit, subtitle, article —
+ * on its part (#1270, ADR-0156). Answers what that write changed or held, for the run's
  * contents record. A site of one point has no component reference and nothing
  * to resolve.
  */
@@ -98,7 +99,7 @@ export async function resolveSiteComponents(
       ref: one.ref,
       imageUrl: one.image,
       imageCredit: (one.image && credits.get(one.image)) || null,
-      description: one.description,
+      subtitle: one.description,
       articleUrl: one.article,
     })), run);
   } catch (error) {

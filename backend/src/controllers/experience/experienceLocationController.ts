@@ -13,7 +13,9 @@ import {
   type RegionExperienceLocation,
 } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
-import { overPlacePoints, placePointsSql, pointArticleSql, pointNameSql, pointPictureSql } from '../../db/placePoints.js';
+import {
+  overPlacePoints, placePointsSql, pointArticleSql, pointClaimsSql, pointNameSql, pointPictureSql, pointSubtitleSql,
+} from '../../db/placePoints.js';
 import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
   hideLostSql,
@@ -136,7 +138,7 @@ export async function getRegionExperienceLocations(
         ST_X(el.location) as longitude,
         ST_Y(el.location) as latitude,
         el.created_at,
-        el.curated_fields,
+        ${pointClaimsSql('el')} AS curated_fields,
         ${pointPictureSql('el')},
         ${pointArticleSql('el')},
         EXISTS(
@@ -192,7 +194,7 @@ export async function getRegionExperienceLocations(
         ST_X(el.location) as longitude,
         ST_Y(el.location) as latitude,
         el.created_at,
-        el.curated_fields,
+        ${pointClaimsSql('el')} AS curated_fields,
         ${pointPictureSql('el')},
         ${pointArticleSql('el')},
         EXISTS(
@@ -289,7 +291,7 @@ export async function getExperienceLocations(
   const maySeeUnreadIdx = params.length + 1;
   params.push(maySeeUnread);
 
-  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'description' | 'wikidata_item'> & { image_of_part: boolean } & {
+  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'description' | 'wikidata_item'> & {
     curation_state: CheckValue<'experience_locations', 'curation_state'>;
   }>(`
     SELECT
@@ -306,7 +308,7 @@ export async function getExperienceLocations(
       el.created_at,
       -- Which of its fields a curator has claimed (migration 027), so a row can
       -- say it is corrected rather than letting a moved pin read as the source's.
-      el.curated_fields,
+      ${pointClaimsSql('el')} AS curated_fields,
       -- Whether a reader sees the place yet. A curator is served the unread rows
       -- (the relaxation below), and the screen that corrects one has to say that
       -- a moved pin is still shown to nobody until it is published (#583).
@@ -317,9 +319,9 @@ export async function getExperienceLocations(
       -- which the publish refuses, since it composes unreadPointSql and that
       -- carries the mark. The mark is what tells the two apart (#859).
       el.refused_at,
-      ${pointPictureSql('el', { tellingOfPart: true })},
+      ${pointPictureSql('el')},
       ${pointArticleSql('el')},
-      el.description,
+      ${pointSubtitleSql('el')},
       el.wikidata_item,
       ${regionId ? `EXISTS(
         SELECT 1 FROM experience_location_regions elr
@@ -339,7 +341,6 @@ export async function getExperienceLocations(
     refused_at: row.refused_at?.toISOString() ?? null,
     description: row.description,
     wikidata_item: row.wikidata_item,
-    image_of_part: row.image_of_part,
   }));
 
   return {
