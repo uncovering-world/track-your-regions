@@ -5235,6 +5235,26 @@ CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_usage (
 );
 COMMENT ON TABLE workbench.wikivoyage_usage IS 'A Wikidata item some article of one Wikivoyage edition uses (#1768, decided on #1718), from the edition''s wbc_entity_usage and page dump tables, with the edition''s database name (enwikivoyage): namespace 0, no redirect, no heritage register''s list. An article uses the item of a place it lists, so this is the travel-guide witness of whether a place is one a visitor goes to.';
 
+-- English Wikivoyage's pages (#2089). See db/migrations/184.
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_pages_builds (
+    build_id INTEGER PRIMARY KEY REFERENCES workbench.dump_builds(id),
+    dump_date DATE NOT NULL,
+    articles INTEGER NOT NULL,
+    redirects INTEGER NOT NULL,
+    items INTEGER NOT NULL,
+    swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+COMMENT ON TABLE workbench.wikivoyage_pages_builds IS 'Each build of English Wikivoyage''s pages (#2089) that was swapped in: the dump build that read it, the dump date of the run, and how many articles, redirects and pages with a Wikidata item it kept. The newest row is what wikivoyage_pages holds and the date a world-view extraction records; unlogged like it, so a crash empties the record with the table and the panel asks for a build.';
+
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_pages (
+    title TEXT PRIMARY KEY,
+    page_id INTEGER NOT NULL,
+    redirect_to TEXT,
+    wikitext TEXT NOT NULL,
+    wikidata_id TEXT CHECK (wikidata_id ~ '^Q[0-9]+$')
+);
+COMMENT ON TABLE workbench.wikivoyage_pages IS 'A page of English Wikivoyage''s namespace 0 (#2089), from the run''s pages-articles dump: its title as the wiki writes it, its page id, the title it redirects to (null for an article, the target''s section dropped), its wikitext, and the Wikidata item its page properties name. The world-view extraction reads a region''s page, its Regions section and whether a linked page exists from here, so two extractions of one copy build the same tree.';
+
 -- The OpenStreetMap layer (#1437, ADR-0134). See db/migrations/145.
 CREATE TABLE IF NOT EXISTS workbench.osm_layer_builds (
     build_id INTEGER PRIMARY KEY REFERENCES workbench.dump_builds(id),
