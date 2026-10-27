@@ -15,8 +15,7 @@
  */
 
 import { SHORT_MOVE_METERS } from '@tyr/shared/moves';
-import { MEMBERSHIPS, realKindSql } from './membership.js';
-import { foldedPointsSql } from './placePoints.js';
+import { COMPONENTS_KIND_ID, MEMBERSHIPS, realKindSql } from './membership.js';
 
 /**
  * The fields a view holds, in the words a run's change set and the review
@@ -50,21 +49,23 @@ export function membershipViewSql(alias = 'm'): ViewSql {
 /**
  * Every standing view of a place, as rows under `alias`: each membership's
  * (`reported_*`), and, on a part of a serial site, the view the site's source
- * holds of the component (#2061, #2063), read off the point under the
- * relation's reference: the part's own, or the one a merge folded into a
- * point the part shows (`foldedPointsSql`), which the site's run keeps
- * pairing and writing — Karnak's "Temple of Karnak" is that, folded into the
- * Archaeology point of the temple.
+ * holds of the component (#2061, #2063): the name and coordinate the list gives
+ * it, on the part's record in World Heritage components (ADR-0156 decision 2),
+ * which the site's run writes (`writePartListings`) and a merge carries to the
+ * place it keeps — Karnak's "Temple of Karnak" stands on the Karnak Temple
+ * Complex beside Archaeology's view of it.
  *
- * A part carries no membership for its site's kind (ADR-0100 decision 2), so
- * the component view is keyed by the membership of the site that placed the
- * part: `membership_id` names the membership whose source holds the view, the
- * part's own or its site's, and a curator's choice, a suggestion and the
- * snapshot of a field's views (`viewsOfFieldSql`) all name a view by it. Only
- * the name and the coordinate of a component are the site's source's: the
- * point's picture and article are read from its Wikidata item, which a run of
- * that item reads itself (ADR-0085). `external_id` is the id the source knows
- * the place by, the component's reference for a component view.
+ * The record is a membership of a virtual kind, which offers nothing, so the
+ * component view reads as the site's source's: `kind_id` and `source_id` are
+ * the site membership's, which the sources card names it by and a run of the
+ * site's own source is never compared with (`otherViewsSql`). `membership_id`
+ * names the row the view is on, a membership or a record, and a curator's
+ * choice, a suggestion and the snapshot of a field's views (`viewsOfFieldSql`)
+ * all name a view by it. Only the name and the coordinate of a component are
+ * the site's source's: the part's picture and article are read from its
+ * Wikidata item, which a run of that item reads itself (ADR-0085).
+ * `external_id` is the id the source knows the place by, the component's
+ * reference for a component view.
  */
 export function placeViewsSql(placeExpr: string, alias = 'v'): string {
   return `(SELECT m.id AS membership_id, m.kind_id, m.source_id, m.external_id::text AS external_id,
@@ -73,24 +74,14 @@ export function placeViewsSql(placeExpr: string, alias = 'v'): string {
              FROM ${MEMBERSHIPS} m
             WHERE m.experience_id = ${placeExpr} AND ${viewStandsSql('m')} AND ${realKindSql('m')}
            UNION ALL
-           SELECT w.id, w.kind_id, w.source_id, p.external_ref, true, pt.name::text, NULL::text, NULL::text,
-                  NULL::jsonb, pt.location, NULL::text
-             FROM experience_parts p
+           SELECT rec.id, w.kind_id, w.source_id, p.external_ref, true, rec.reported_name, NULL::text, NULL::text,
+                  NULL::jsonb, rec.reported_location, NULL::text
+             FROM ${MEMBERSHIPS} rec
+             JOIN experience_parts p ON p.part_id = rec.experience_id AND rec.external_id = 'component:' || p.id
              JOIN ${MEMBERSHIPS} w ON w.id = p.membership_id
-            CROSS JOIN LATERAL (
-              SELECT c.name, c.location FROM (
-                SELECT own.id, own.name, own.location, own.missing_since, own.source_membership, false AS folded
-                  FROM experience_locations own
-                 WHERE own.experience_id = p.part_id AND own.external_ref = p.external_ref
-                   AND own.merged_into_id IS NULL
-                UNION ALL
-                SELECT f.id, f.name, f.location, f.missing_since, f.source_membership, true
-                  FROM experience_locations f
-                 WHERE f.id = ANY(ARRAY(SELECT ff.id FROM ${foldedPointsSql('ARRAY[p.part_id]')} ff))
-                   AND f.external_ref = p.external_ref) c
-               WHERE ${viewStandsSql('c')}
-               ORDER BY c.folded, c.id LIMIT 1) pt
-            WHERE p.part_id = ${placeExpr} AND p.reason = 'component' AND ${viewStandsSql('w')}) AS ${alias}`;
+            WHERE rec.experience_id = ${placeExpr} AND rec.kind_id = ${COMPONENTS_KIND_ID}
+              AND (rec.reported_name IS NOT NULL OR rec.reported_location IS NOT NULL)
+              AND ${viewStandsSql('w')}) AS ${alias}`;
 }
 
 /**
@@ -128,9 +119,11 @@ export function otherViewsSql(
 }
 
 /**
- * A view counts while its row, a membership or a component point, is still
- * listed by its source. A source that stopped listing it has stopped saying
- * anything about it, and a view left from then contradicts nobody.
+ * A view counts while its membership is still listed by its source. A source
+ * that stopped listing it has stopped saying anything about it, and a view
+ * left from then contradicts nobody. A component's record holds no listing of
+ * its own: the site's run clears its view once the list drops the component
+ * (`writePartListings`).
  */
 export function viewStandsSql(alias = 'm'): string {
   return `${alias}.missing_since IS NULL AND ${alias}.source_membership = 'present'`;

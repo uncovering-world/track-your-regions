@@ -10,7 +10,8 @@ import { chooseViewsUnderLock } from './viewChoiceController.js';
  * A curator's choice between a serial site's view of one of its parts and
  * another source's (#2063), against PostgreSQL: the part holds no membership
  * of its site's kind (ADR-0100 decision 2), so the site's view is read off the
- * component's point and named by the site's membership.
+ * part's record in World Heritage components, which the site's run writes
+ * (ADR-0156 decision 2), and named by that record.
  *
  * The fixture is the Roman Cologne components of the Frontiers of the Roman
  * Empire as `sourceView.part.db.test.ts` builds them: the Praetorium's point
@@ -28,7 +29,7 @@ const DEUTZ = { name: 'Köln-Deutz', externalRef: '9491-077', lon: 6.9709, lat: 
 
 let heritage = 0;
 let archaeology = 0;
-let siteMembership = 0;
+let componentRecord = 0;
 let curatorId = 0;
 
 const record = (): ExperienceUpsertParams => ({
@@ -93,12 +94,18 @@ beforeEach(async () => {
      VALUES ($1, $2, '9491-fixture', 'Frontiers of the Roman Empire (fixture)', ST_SetSRID(ST_MakePoint(6.96, 50.94), 4326))`,
     [SITE, heritage],
   );
-  siteMembership = (await pool.query<{ id: number }>(
+  await pool.query(
     `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     VALUES ($1, $2, $3, '9491-fixture', 'auto', NOW()) RETURNING id`,
+     VALUES ($1, $2, $3, '9491-fixture', 'auto', NOW())`,
     [SITE, unesco.kind_id, heritage],
-  )).rows[0].id;
+  );
   await writeExperienceLocations(SITE, [PRAETORIUM, DEUTZ], { syncLogId: null, sourceId: heritage, components: true });
+  componentRecord = (await pool.query<{ id: number }>(
+    `SELECT rec.id FROM experience_parts p
+       JOIN experience_kind_memberships rec ON rec.experience_id = p.part_id AND rec.kind_id = 10
+      WHERE p.whole_id = $1 AND p.external_ref = $2`,
+    [SITE, PRAETORIUM.externalRef],
+  )).rows[0].id;
   await pool.query(
     'UPDATE experience_locations SET wikidata_item = $3 WHERE experience_id = (SELECT part_id FROM experience_parts WHERE whole_id = $1 AND external_ref = $2)',
     [SITE, PRAETORIUM.externalRef, ITEM],
@@ -117,7 +124,7 @@ describe("the curator is asked which view a serial site's part shows (#2063)", (
 
     expect(await open(part.id)).toEqual(['name', 'location']);
     expect(await viewsOfName(part.id)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ membership_id: siteMembership, value: 'Köln-Praetorium', shown: true }),
+      expect.objectContaining({ membership_id: componentRecord, value: 'Köln-Praetorium', shown: true }),
       expect.objectContaining({ value: 'Colonia Claudia Ara Agrippinensium', shown: false }),
     ]));
     expect(await sourcesOf(part.id)).toEqual([heritage, archaeology].sort((a, b) => a - b));
@@ -131,7 +138,7 @@ describe("the curator is asked which view a serial site's part shows (#2063)", (
 
     const outcome = await chooseViewsUnderLock(part.id, curatorId, null, [
       { field: 'name', membershipId: theRun },
-      { field: 'location', membershipId: siteMembership },
+      { field: 'location', membershipId: componentRecord },
     ], await sourcesOf(part.id));
 
     expect(outcome.refusal).toBeUndefined();
@@ -142,7 +149,7 @@ describe("the curator is asked which view a serial site's part shows (#2063)", (
     expect(await open(part.id)).toEqual([]);
   });
 
-  it("reads the site's view off a point a merge folded into another the part shows", async () => {
+  it("keeps the site's view on the record when a merge folds the component's point into another", async () => {
     const part = await praetorium();
     // As Karnak's "Temple of Karnak" was folded into the temple's Archaeology point.
     const kept = (await pool.query<{ id: number }>(
@@ -156,7 +163,7 @@ describe("the curator is asked which view a serial site's part shows (#2063)", (
     );
 
     expect(await viewsOfName(part.id)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ membership_id: siteMembership, value: 'Köln-Praetorium' }),
+      expect.objectContaining({ membership_id: componentRecord, value: 'Köln-Praetorium' }),
     ]));
   });
 });

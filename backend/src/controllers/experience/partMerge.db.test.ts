@@ -135,6 +135,17 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
     expect((await parts()).map(p => [p.external_ref, p.part_id === COMPLEX])).toEqual([['87-001', true], ['87-002', false]]);
   });
 
+  it("writes what the site's list says of the component on the record the merge carried, through the folded point", async () => {
+    await mergeKarnak();
+    await writeExperienceLocations(THEBES, [{ ...KARNAK, name: 'Temple of Amun-Ra at Karnak', lon: KARNAK.lon + 0.0001 }, LUXOR], run);
+
+    const record = await pool.query<{ name: string; lon: number }>(
+      `SELECT reported_name AS name, ST_X(reported_location) AS lon FROM experience_kind_memberships
+        WHERE experience_id = $1 AND kind_id = 10`, [COMPLEX],
+    );
+    expect(record.rows).toEqual([{ name: 'Temple of Amun-Ra at Karnak', lon: KARNAK.lon + 0.0001 }]);
+  });
+
   it('keeps the place its own name, anchor and the relation its reference when its own point is written', async () => {
     await mergeKarnak();
     const before = await complex();

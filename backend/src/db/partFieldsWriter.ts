@@ -5,15 +5,18 @@
  * this module is their one writer: the World Heritage run's content writer, a
  * curator's correction of the part's point, a confirmed or taken-back
  * component item and a published held proposal all write through it. The
- * component's Wikidata item itself is the part's record in World Heritage
- * components (ADR-0156 decision 2), which this module writes too
- * (`writePartItems`).
+ * component's Wikidata item and what the site's list says of the component
+ * are the part's record in World Heritage components (ADR-0156 decision 2),
+ * which this module writes too (`writePartItems`, `writePartListings`).
  *
- * Every write names the part by its point and is refused for a point the
- * locked place does not show: a part is answered for under its site's lock, or
- * under its own where it holds a kind of its own (`answeringPlaceSql`), and the
- * writer takes either. A point whose place is no part writes nothing here: its
- * own content stays the point's (`experienceLocationWriter.ts`).
+ * Every write but the site's view names the part by its point and is refused
+ * for a point the locked place does not show: a part is answered for under its
+ * site's lock, or under its own where it holds a kind of its own
+ * (`answeringPlaceSql`), and the writer takes either. A point whose place is no
+ * part writes nothing here: its own content stays the point's
+ * (`experienceLocationWriter.ts`). The site's view (`writePartListings`) names
+ * a part by its record and writes only the records of the locked site's
+ * parts.
  */
 
 import type { PoolClient } from 'pg';
@@ -135,4 +138,64 @@ export async function writePartItems(
     [lock.id, JSON.stringify(rows)],
   );
   return result.rows.map(row => row.point_id);
+}
+
+/** What the site's list gives one component: its name and coordinate, for the record they are written on. */
+export interface PartListing {
+  recordId: number;
+  name: string | null;
+  lon: number;
+  lat: number;
+}
+
+/**
+ * The records of the site `$1`'s parts whose view the listings `listed` change,
+ * as rows `(id, name, location)` of what each is to hold: the name and
+ * coordinate of its listing, or none for a record no listing names.
+ * `listed` is a relation of `(record_id, name, lon, lat)`. The one statement of
+ * what the site's run changes on the records (`writePartListings`), and of
+ * whether it has anything to change (the run's fast path, `locationWriter.ts`).
+ */
+export function partListingChangesSql(listed: string): string {
+  return `SELECT rec.id, l.name,
+                 CASE WHEN l.record_id IS NOT NULL THEN ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326) END AS location
+            FROM experience_parts p
+            JOIN ${MEMBERSHIPS} rec ON rec.experience_id = p.part_id AND rec.kind_id = ${COMPONENTS_KIND_ID}
+                                   AND rec.external_id = 'component:' || p.id
+            LEFT JOIN ${listed} l ON l.record_id = rec.id
+           WHERE p.whole_id = $1 AND p.reason = 'component'
+             AND (rec.reported_name IS DISTINCT FROM l.name
+                  OR (rec.reported_location IS NULL) <> (l.record_id IS NULL)
+                  OR NOT ST_Equals(rec.reported_location, ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326)))`;
+}
+
+/**
+ * Write the site's source's view of each of its components on the part's
+ * record in World Heritage components (`reported_name`, `reported_location`,
+ * ADR-0156 decision 2), under the site's lock: the name and coordinate its
+ * list gives the component, as the list gives them, whatever a curator made
+ * of the part's point. The record of a component the list no longer gives
+ * loses its view, since a source that stopped listing a component says nothing
+ * of it (`viewStandsSql`). Only the records of the parts whose relation names
+ * the locked site are written, so a part merged into another kind's place
+ * keeps its view under its site's run. Answers how many records changed.
+ */
+export async function writePartListings(
+  client: PoolClient,
+  lock: LockedExperience,
+  listings: readonly PartListing[],
+): Promise<number> {
+  const rows = listings.map(listing => ({ record_id: listing.recordId, name: listing.name, lon: listing.lon, lat: listing.lat }));
+  const result = await client.query(
+    `WITH listed AS (
+       SELECT * FROM jsonb_to_recordset($2::jsonb) AS l(record_id int, name text, lon float8, lat float8)
+     ),
+     view AS (${partListingChangesSql('listed')})
+     UPDATE ${MEMBERSHIPS} rec
+        SET reported_name = view.name, reported_location = view.location, updated_at = NOW()
+       FROM view
+      WHERE rec.id = view.id`,
+    [lock.id, JSON.stringify(rows)],
+  );
+  return result.rowCount ?? 0;
 }
