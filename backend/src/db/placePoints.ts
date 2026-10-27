@@ -145,6 +145,16 @@ export function wholeOfSql(place: string): string {
 }
 
 /**
+ * The name of the serial site the place `place` (an id expression) is a part
+ * of, or NULL: what a part is read by where it is in no kind of its own, on
+ * the near-places card and its catalogue check (#1250). The same whole as
+ * `wholeOfSql`.
+ */
+export function partOfNameSql(place: string): string {
+  return `(SELECT whole_name.name FROM experiences whole_name WHERE whole_name.id = ${wholeOfSql(place)})`;
+}
+
+/**
  * The place a curator answers for a point under, as an expression over the
  * point `point`: the site that shows it when the point's own place is one of
  * its parts and holds no kind of its own (ADR-0100), and its own place

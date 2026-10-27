@@ -18,7 +18,7 @@ import { pool } from '../../db/index.js';
 import { queryQueueKeys, encodeCursor, decodeCursor, KIND_RANK } from './reviewQueueKeys.js';
 import {
   missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql,
-  conflictChangeOpenSql, mergeProposalOpenSql, visitQuestionOpenSql,
+  conflictChangeOpenSql, mergeProposalOpenSql, pairMembershipSql, visitQuestionOpenSql,
 } from './reviewQueuePredicates.js';
 import { contentsWaitingSql } from './waitingCounts.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
@@ -114,7 +114,8 @@ describe('queryQueueKeys', () => {
     expect(pairs).toContain('max(p.proposed_at)');
     expect(pairs).toContain('array_agg(DISTINCT m.source_id), NULL');
     expect(pairs).toContain('JOIN experiences e ON e.id = p.place_a');
-    expect(pairs).toContain('m.experience_id IN (p.place_a, p.place_b)');
+    // Either place's sources, a part's through its site (#1250).
+    expect(pairs).toContain(pairMembershipSql('p', 'm'));
     expect(pairs).toContain(mergeProposalOpenSql('p', 'e', 'b'));
   });
 

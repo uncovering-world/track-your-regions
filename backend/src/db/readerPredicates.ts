@@ -250,7 +250,7 @@ export function lifecycleSelectSql(alias = 'e'): string {
  */
 export function readableByIdSql(maySeeExpr: string, alias = 'e'): string {
   const admitted = `(${placeAdmittedSql(alias)} OR ${partOfSql(alias, placeAdmittedSql, offeredLocationSql)})`;
-  return `((${maySeeExpr} AND ${admitted}) OR ${placeOffered(alias)})`;
+  return `((${maySeeExpr} AND ${admitted}) OR ${placeOrPartOfferedSql(alias)})`;
 }
 
 /**
@@ -281,8 +281,11 @@ export function partOfferedSql(alias = 'e'): string {
   return partOfSql(alias, placeOfferedSql, el => `${offeredLocationSql(el)} AND ${publishedContentSql(el)}`);
 }
 
-/** Offered in a kind of its own, or as a part of a place that is. */
-function placeOffered(alias: string): string {
+/**
+ * Offered in a kind of its own, or as a part of a place that is: a place a
+ * reader is shown, a serial site's part through its site (ADR-0100).
+ */
+export function placeOrPartOfferedSql(alias = 'e'): string {
   return `(${placeOfferedSql(alias)} OR ${partOfferedSql(alias)})`;
 }
 
@@ -293,7 +296,7 @@ function placeOffered(alias: string): string {
  * traveller's own record of the part (ADR-0100 decision 5).
  */
 export function claimablePlaceSql(alias = 'e'): string {
-  return placeOffered(alias);
+  return placeOrPartOfferedSql(alias);
 }
 
 /**

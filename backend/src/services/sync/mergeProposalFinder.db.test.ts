@@ -13,9 +13,10 @@ import { PAIRING_RULE_VERSION, drainPairing } from './mergeProposalFinder.js';
  * second site named like the first a kilometre off, within no reach; two
  * churches in one kind twenty metres apart under one name; a World Heritage
  * property of 700 hectares (a reach of 1.5 km) with a differently cased
- * archaeological twin 900 m away; a part place and its whole; and a place
- * nobody has published yet. Ids are the fixture's own, deleted before and
- * after.
+ * archaeological twin 900 m away; a part place and its whole, and a part of
+ * the same whole with no kind of its own beside a church of its name (#1250);
+ * and a place nobody has published yet. Ids are the fixture's own, deleted
+ * before and after.
  */
 
 const ISLAND = { lat: -1.0, lon: -170.0 };
@@ -24,7 +25,7 @@ const P = {
   property: 9725, propertyTwin: 9726, whole: 9727, part: 9728, partTwin: 9729, pending: 9730,
   westOfTheLine: 9731, eastOfTheLine: 9732, monastery: 9733, monasteryTwin: 9734, oldTown: 9735, townMuseum: 9736,
   fort: 9737, fortTwin: 9738, windmill: 9739, windmillArrival: 9740, well: 9741, wellRefused: 9742,
-  gate: 9743, gateTwin: 9744, signalTower: 9745, signalTowerTwin: 9746,
+  gate: 9743, gateTwin: 9744, signalTower: 9745, signalTowerTwin: 9746, belfry: 9747, belfryTwin: 9748,
 } as const;
 const ALL = Object.values(P);
 
@@ -103,6 +104,24 @@ beforeAll(async () => {
      SELECT $1, $2, 'component', m.id FROM experience_kind_memberships m WHERE m.experience_id = $1`,
     [P.whole, P.part],
   );
+  // A part as the World Heritage run parts a component: no kind of its own, offered through its whole.
+  await pool.query(
+    `INSERT INTO experiences (id, source_id, external_id, name, location)
+     SELECT $1, s.id, $2, 'Fixture Belfry', ST_SetSRID(ST_MakePoint($3, $4), 4326)
+       FROM experience_sources s WHERE s.name = 'UNESCO World Heritage Sites'`,
+    [P.belfry, `part:fixture-${P.belfry}`, east(20500), ISLAND.lat],
+  );
+  await pool.query(
+    `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
+     VALUES ($1, 'Fixture Belfry', 'fixture-whole-002', ST_SetSRID(ST_MakePoint($2, $3), 4326), 'auto')`,
+    [P.belfry, east(20500), ISLAND.lat],
+  );
+  await pool.query(
+    `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
+     SELECT $1, $2, 'component', m.id, 'fixture-whole-002' FROM experience_kind_memberships m WHERE m.experience_id = $1`,
+    [P.whole, P.belfry],
+  );
+  await place({ id: P.belfryTwin, name: 'Fixture Belfry', source: 'Places of worship', lon: east(20520) });
   await place({ id: P.pending, name: 'Church of St Fixture', source: 'Archaeology', lon: east(30), state: 'pending' });
   // Astride the antimeridian: 0.0005 degrees either side of 180, 111 m apart on the equator.
   await place({ id: P.westOfTheLine, name: 'Fixture Lighthouse', source: 'Places of worship', lon: 179.9995 });
@@ -136,23 +155,26 @@ describe('the pass over near places with similar names', () => {
     expect(pairs.map(p => [p.place_a, p.place_b, p.exact, p.found_by])).toEqual([
       [P.church, P.site, true, 'similar'],
       [P.property, P.propertyTwin, false, 'similar'],
+      // A serial site's part is paired like any place (#1250): one holding a kind, one offered through its whole.
+      [P.part, P.partTwin, true, 'similar'],
       [P.westOfTheLine, P.eastOfTheLine, false, 'similar'],
       // Unlike by trigrams; asked because every word of "Fixturegard" stands in the title. The
       // generic-only pair (Old Town / Town Museum) shares no word the rule reads and is not asked.
       [P.monastery, P.monasteryTwin, false, 'words'],
+      [P.belfry, P.belfryTwin, true, 'similar'],
     ]);
     expect(pairs[0].distance_m).toBe(40);
     expect(pairs[1].reach_m).toBe(1493);
     expect(pairs[1].distance_m).toBe(900);
     // Across the antimeridian: found through the twin, measured on the geography.
-    expect(pairs[2].distance_m).toBe(111);
+    expect(pairs[3].distance_m).toBe(111);
   });
 
-  it('leaves a pair in one kind apart, and proposes nothing for a whole of parts, a part, or a place nobody has published', async () => {
+  it('leaves a pair in one kind apart, and proposes nothing for a whole of parts or a place nobody has published', async () => {
     await drainPairing();
     const pairs = await fixturePairs();
     const involved = new Set(pairs.flatMap(p => [p.place_a, p.place_b]));
-    for (const id of [P.chapelA, P.chapelB, P.whole, P.part, P.partTwin, P.pending, P.farSite]) {
+    for (const id of [P.chapelA, P.chapelB, P.whole, P.pending, P.farSite]) {
       expect(involved.has(id)).toBe(false);
     }
   });
@@ -173,8 +195,10 @@ describe('the pass over near places with similar names', () => {
     const pairs = await fixturePairs();
     expect(pairs.map(p => [p.place_a, p.place_b, p.answer, p.distance_m])).toEqual([
       [P.church, P.site, 'two', 1],
+      [P.part, P.partTwin, null, 10],
       [P.westOfTheLine, P.eastOfTheLine, null, 111],
       [P.monastery, P.monasteryTwin, null, 7],
+      [P.belfry, P.belfryTwin, null, 20],
     ]);
   });
 
@@ -227,6 +251,22 @@ describe('pairing a place again when what the rule reads changes (#1950)', () =>
     await drainPairing();
 
     expect(await pairOf(P.well)).toMatchObject({ place_b: P.wellRefused, exact: true });
+  });
+
+  it("pairs a site's parts again when the site's own standing changes, which marks only the site (#1250)", async () => {
+    await drainPairing();
+    expect(await pairOf(P.belfry)).toMatchObject({ place_b: P.belfryTwin });
+
+    // The site refused: its part is no longer offered, and its pair is forgotten.
+    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE experience_id = $1`, [P.whole]);
+    expect(await marked([P.belfry])).toEqual([]);
+    await drainPairing();
+    expect(await pairOf(P.belfry)).toBeUndefined();
+
+    // The refusal taken back: the part is paired again.
+    await pool.query(`UPDATE experience_kind_memberships SET admission = 'admitted' WHERE experience_id = $1`, [P.whole]);
+    await drainPairing();
+    expect(await pairOf(P.belfry)).toMatchObject({ place_b: P.belfryTwin });
   });
 
   it('leaves a mark an uncommitted writer holds to the next drain, which pairs the place as the writer left it', async () => {

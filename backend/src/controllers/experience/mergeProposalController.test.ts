@@ -13,7 +13,7 @@ vi.mock('./experienceScope.js', () => ({ resolveExperienceScope: vi.fn() }));
 import { pool } from '../../db/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { mergeProposalSourceIds, mergeProposalsScope, openPairs } from './mergeProposalController.js';
-import { mergeProposalOpenSql } from './reviewQueuePredicates.js';
+import { mergeProposalOpenSql, pairMembershipSql } from './reviewQueuePredicates.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedScope = resolveExperienceScope as unknown as ReturnType<typeof vi.fn>;
@@ -51,7 +51,8 @@ describe("the scope of a place's pairs", () => {
     mockedQuery.mockResolvedValue({ rows: [{ source_ids: [1, 4] }] });
     expect(await mergeProposalSourceIds(1225)).toEqual([1, 4]);
     const [sql] = mockedQuery.mock.calls[0] as [string];
-    expect(sql).toContain('m.experience_id IN (p.place_a, p.place_b)');
+    // Either place's sources, a part's through its site (#1250).
+    expect(sql).toContain(pairMembershipSql('p', 'm'));
     expect(collapse(sql)).toContain(collapse(mergeProposalOpenSql('p', 'a', 'b')));
   });
 

@@ -20,7 +20,8 @@
 import type { QueryResult } from 'pg';
 import type { MergePair } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, kindIsRealSql, realKindSql, rowKindJoinSql } from '../../db/membership.js';
+import { COMPONENTS_KIND_ID, KINDS, MEMBERSHIPS, kindIsRealSql, realKindSql, rowKindJoinSql } from '../../db/membership.js';
+import { answeringPlaceOfSql, partOfNameSql } from '../../db/placePoints.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { termsOf } from '../../services/sync/subset/entities.js';
@@ -46,8 +47,9 @@ export function kindNamesSql(place: string): string {
  * a place whose point was never written is not yet the place its item names. A
  * point its source withdrew is not one of the place's points (#1360). The
  * registry's `site-items` claim states the same rule (`place_identifier_claims()`),
- * over a real kind's memberships: a part's record in World Heritage components
- * (ADR-0156) is the registry's `component-item`, which no merge card names.
+ * over a real kind's memberships. A part's record in World Heritage components
+ * (ADR-0156) is the registry's `component-item`, read by `itemSql` for a part
+ * no real kind gives an item.
  */
 function membershipItemSql(membership: string, place: string): string {
   return `CASE WHEN ${membership}.external_id ~ '^Q[0-9]+$' THEN ${membership}.external_id
@@ -58,11 +60,26 @@ function membershipItemSql(membership: string, place: string): string {
                THEN ${membership}.wikidata_items[1] END`;
 }
 
-/** The Wikidata item a place's memberships make it, or null (`membershipItemSql`); read by the card and by Jev's question alike. */
+/**
+ * The Wikidata item a place's memberships make it (`membershipItemSql`), or,
+ * for a serial site's part none of them names, the component's item on its
+ * record in World Heritage components (ADR-0156 decision 2, #1250): the
+ * Svetitskhoveli Cathedral the Historical Monuments of Mtskheta list. Null
+ * otherwise. Read by the card and by Jev's question alike.
+ */
 export function itemSql(place: string): string {
-  return `(SELECT ${membershipItemSql('km', place)} FROM ${MEMBERSHIPS} km
-            WHERE km.experience_id = ${place}.id AND ${realKindSql('km')} AND ${membershipItemSql('km', place)} IS NOT NULL
-            ORDER BY km.id LIMIT 1)`;
+  return `COALESCE(
+           (SELECT ${membershipItemSql('km', place)} FROM ${MEMBERSHIPS} km
+             WHERE km.experience_id = ${place}.id AND ${realKindSql('km')} AND ${membershipItemSql('km', place)} IS NOT NULL
+             ORDER BY km.id LIMIT 1),
+           (SELECT rec.wikidata_items[1] FROM ${MEMBERSHIPS} rec
+             WHERE rec.experience_id = ${place}.id AND rec.kind_id = ${COMPONENTS_KIND_ID}
+               AND cardinality(rec.wikidata_items) = 1))`;
+}
+
+/** The serial site a place is a part of, by name, or null (`partOfNameSql`); read by the card and by Jev's question alike. */
+export function partOfSql(place: string): string {
+  return partOfNameSql(`${place}.id`);
 }
 
 /** Every open pair of the anchor, as a jsonb array, the most alike first. */
@@ -78,6 +95,8 @@ const PAIRS = `(SELECT jsonb_agg(jsonb_build_object(
            'otherWikidataItem', ${itemSql('b')},
            'anchorWikidataItem', ${itemSql('e')},
            'anchorKinds', ${kindNamesSql('e')},
+           'otherPartOf', ${partOfSql('b')},
+           'anchorPartOf', ${partOfSql('e')},
            'distanceM', p.distance_m,
            'nameSimilarity', p.name_similarity,
            'exact', p.exact,
@@ -89,8 +108,14 @@ const PAIRS = `(SELECT jsonb_agg(jsonb_build_object(
        JOIN experiences b ON b.id = p.place_b
       WHERE p.place_a = e.id AND ${mergeProposalOpenSql('p', 'e', 'b')})`;
 
-/** The anchor's first membership: whose source a batch answer names, as the keys phase scoped the row. */
-const ANCHOR_MEMBERSHIP = `(SELECT m.id FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND ${realKindSql('m')} ORDER BY m.id LIMIT 1)`;
+/**
+ * The anchor's first membership, or its site's for a part with no kind of its
+ * own (`answeringPlaceOfSql`): whose source a batch answer names, as the keys
+ * phase scoped the row.
+ */
+const ANCHOR_MEMBERSHIP = `(SELECT m.id FROM ${MEMBERSHIPS} m
+                             WHERE m.experience_id = ${answeringPlaceOfSql('e.id')} AND ${realKindSql('m')}
+                             ORDER BY m.id LIMIT 1)`;
 
 /** A pair as the statement builds it, before its items' terms are read. */
 type BarePair = Omit<MergePair, 'otherWikidataLabel' | 'otherWikidataDescription' | 'anchorWikidataLabel' | 'anchorWikidataDescription'>;
