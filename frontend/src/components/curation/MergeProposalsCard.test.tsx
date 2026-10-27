@@ -101,6 +101,24 @@ describe('two near places with similar names', () => {
     expect(screen.getByRole('link', { name: 'Q100329356' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q100329356');
   });
 
+  it("names a serial site's part by the site it is part of, which is in no kind of its own (#1250)", () => {
+    // Mtskheta on dev, 2026-10-27: the Places of worship row and the site's part, 62 m apart.
+    const svetitskhoveli = {
+      ...BABYLON, id: 13221, name: 'Svetitskhoveli Cathedral', kind_name: 'Places of worship',
+      merge_pairs: [{
+        ...BABYLON.merge_pairs![0], proposalId: 51, otherId: 37310, otherName: 'Svetitskhoveli Cathedral', otherKinds: [],
+        otherPartOf: 'Historical Monuments of Mtskheta', anchorPartOf: null, anchorKinds: ['Places of worship'],
+        otherWikidataItem: 'Q1152972', anchorWikidataItem: 'Q42587240',
+        otherWikidataLabel: null, otherWikidataDescription: null, anchorWikidataLabel: null, anchorWikidataDescription: null,
+        distanceM: 62,
+      }],
+    } as unknown as ReviewQueueItem;
+    renderCard(vi.fn(), svetitskhoveli);
+    expect(screen.getByText('Part of Historical Monuments of Mtskheta')).toBeTruthy();
+    expect(screen.getByText(/Svetitskhoveli Cathedral \(part of Historical Monuments of Mtskheta\):/)).toBeTruthy();
+    expect(screen.queryByText(/This place is part of/)).toBeNull();
+  });
+
   it('says which place has no item when only one resolves to one', () => {
     const [pair] = BABYLON.merge_pairs!;
     renderCard(vi.fn(), { ...BABYLON, merge_pairs: [{ ...pair, anchorWikidataItem: null, anchorWikidataLabel: null, anchorWikidataDescription: null }] });
