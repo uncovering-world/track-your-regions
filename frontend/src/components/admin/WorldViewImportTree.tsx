@@ -567,6 +567,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       {mapPickerState && (
         <MapImagePickerDialog
           open
+          worldViewId={worldViewId}
           regionName={mapPickerState.regionName}
           candidates={mapPickerState.candidates}
           currentSelection={mapPickerState.currentSelection}
@@ -649,6 +650,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
       />
       <SmartFlattenPreviewDialog
         open={dialogs.flattenPreview != null}
+        worldViewId={worldViewId}
         regionName={dialogs.flattenPreview?.regionName ?? ''}
         geometry={dialogs.flattenPreview?.geometry ?? null}
         regionMapUrl={dialogs.flattenPreview?.regionMapUrl ?? null}

@@ -31,7 +31,8 @@ import { isWebGLAvailable } from '../../../../../utils/webgl';
 import type * as maplibregl from 'maplibre-gl';
 import { MAP_STYLE } from '../../../../../constants/mapStyles';
 import { CalibrationView } from './CalibrationView';
-import { fetchImageViaProxy } from '../../../../../api/admin';
+import { RegionMapCreditLine } from '../../../../admin/RegionMapPicture';
+import { useRemoteImageLoad, type RemoteImage } from './useRemoteImageLoad';
 
 // Component that renders image overlay and updates coordinates in real-time
 function ImageOverlaySource({
@@ -85,6 +86,8 @@ function ImageOverlaySource({
 export interface ImageOverlaySettings {
   imageUrl: string;
   imageName: string;
+  /** The region map address the image was loaded from, whose credit it carries (#2087); none for an upload. */
+  sourceUrl?: string | null;
   // Geographic bounds: [[west, south], [east, north]] or corner coordinates
   coordinates: [[number, number], [number, number], [number, number], [number, number]];
   opacity: number;
@@ -102,6 +105,8 @@ interface ImageOverlayDialogProps {
   regionGeometries?: GeoJSON.FeatureCollection | null; // Geometries of the divisions for auto-calibration
   /** Region map URL (from metadata) for one-click loading */
   regionMapUrl?: string | null;
+  /** The world view whose import holds the region map, asked for its credit. */
+  worldViewId: number;
 }
 
 export function ImageOverlayDialog({
@@ -113,6 +118,7 @@ export function ImageOverlayDialog({
   existingSettings,
   regionGeometries,
   regionMapUrl,
+  worldViewId,
 }: ImageOverlayDialogProps) {
   const mapRef = useRef<MapRef>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,8 +126,11 @@ export function ImageOverlayDialog({
   // Image state
   const [imageUrl, setImageUrl] = useState<string | null>(existingSettings?.imageUrl || null);
   const [imageName, setImageName] = useState<string>(existingSettings?.imageName || '');
+  // The region map the image was loaded from, whose credit it carries (#2087); none for an upload.
+  const [sourceUrl, setSourceUrl] = useState<string | null>(existingSettings?.sourceUrl ?? null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
-  const [loadingRemoteImage, setLoadingRemoteImage] = useState(false);
+  // Which image failed to draw in the preview: its credit goes with it.
+  const [previewFailedFor, setPreviewFailedFor] = useState<string | null>(null);
 
   // Drag state for repositioning image on map
   const [isDragging, setIsDragging] = useState(false);
@@ -148,6 +157,7 @@ export function ImageOverlayDialog({
       if (existingSettings) {
         setImageUrl(existingSettings.imageUrl);
         setImageName(existingSettings.imageName);
+        setSourceUrl(existingSettings.sourceUrl ?? null);
         setOpacity(existingSettings.opacity);
         // Calculate center and scale from existing coordinates
         const coords = existingSettings.coordinates;
@@ -216,6 +226,7 @@ export function ImageOverlayDialog({
       const dataUrl = e.target?.result as string;
       setImageUrl(dataUrl);
       setImageName(file.name);
+      setSourceUrl(null);
 
       // Get image dimensions
       const img = new Image();
@@ -232,78 +243,13 @@ export function ImageOverlayDialog({
     reader.readAsDataURL(file);
   }, []);
 
-  // Convert an image element to a data URL via canvas
-  const imageToDataUrl = (img: HTMLImageElement): string | null => {
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        return canvas.toDataURL('image/png');
-      }
-    } catch { /* tainted canvas */ }
-    return null;
-  };
-
-  // Fetch image through backend proxy to bypass CORS (for Wikimedia URLs)
-  const loadViaProxy = useCallback(async (url: string, name: string) => {
-    try {
-      const blob = await fetchImageViaProxy(url);
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        const img = new Image();
-        img.onload = () => {
-          setImageUrl(dataUrl);
-          setImageName(name);
-          setImageSize({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
-          setLoadingRemoteImage(false);
-        };
-        img.onerror = () => {
-          console.warn('Failed to load proxied image');
-          setLoadingRemoteImage(false);
-        };
-        img.src = dataUrl;
-      };
-      reader.readAsDataURL(blob);
-    } catch (err) {
-      console.warn('Image proxy failed, using URL directly:', err);
-      // Last resort: use URL directly (works for <img> but not MapLibre overlay)
-      setImageUrl(url);
-      setImageName(name);
-      setImageSize({ width: 800, height: 600 });
-      setLoadingRemoteImage(false);
-    }
+  const showRemoteImage = useCallback((image: RemoteImage) => {
+    setImageUrl(image.imageUrl);
+    setImageName(image.imageName);
+    setSourceUrl(image.sourceUrl);
+    setImageSize(image.imageSize);
   }, []);
-
-  // Load image from a remote URL (e.g., region map)
-  // Tries direct CORS load first, then falls back to backend proxy for Wikimedia URLs
-  const handleLoadFromUrl = useCallback((url: string, name: string) => {
-    setLoadingRemoteImage(true);
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const dataUrl = imageToDataUrl(img);
-      if (dataUrl) {
-        setImageUrl(dataUrl);
-        setImageName(name);
-        setImageSize({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
-      } else {
-        // Canvas tainted — shouldn't happen if crossOrigin worked, but fallback via proxy
-        loadViaProxy(url, name);
-        return;
-      }
-      setLoadingRemoteImage(false);
-    };
-    img.onerror = () => {
-      // CORS blocked — try backend proxy for Wikimedia URLs
-      loadViaProxy(url, name);
-    };
-    img.src = url;
-  }, [loadViaProxy]);
+  const { loadFromUrl: handleLoadFromUrl, loading: loadingRemoteImage } = useRemoteImageLoad(showRemoteImage);
 
   // Calculate corner coordinates for the image overlay
   const calculateCoordinates = useCallback((): [[number, number], [number, number], [number, number], [number, number]] => {
@@ -454,12 +400,13 @@ export function ImageOverlayDialog({
     onApply({
       imageUrl,
       imageName,
+      sourceUrl,
       coordinates: calculateCoordinates(),
       opacity,
       imageSize: imageSize ?? undefined,
     });
     onClose();
-  }, [imageUrl, imageName, calculateCoordinates, opacity, imageSize, onApply, onClose]);
+  }, [imageUrl, imageName, sourceUrl, calculateCoordinates, opacity, imageSize, onApply, onClose]);
 
   // Handle reset
   const handleReset = useCallback(() => {
@@ -475,6 +422,7 @@ export function ImageOverlayDialog({
   const handleRemoveImage = useCallback(() => {
     setImageUrl(null);
     setImageName('');
+    setSourceUrl(null);
     setImageSize(null);
   }, []);
 
@@ -541,6 +489,7 @@ export function ImageOverlayDialog({
                   <Box
                     component="img"
                     src={imageUrl}
+                    onError={() => setPreviewFailedFor(imageUrl)}
                     sx={{
                       width: '100%',
                       height: 100,
@@ -551,6 +500,7 @@ export function ImageOverlayDialog({
                       mb: 1,
                     }}
                   />
+                  {previewFailedFor !== imageUrl && <RegionMapCreditLine worldViewId={worldViewId} url={sourceUrl} />}
                   <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
                     {imageName}
                   </Typography>

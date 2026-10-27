@@ -19,6 +19,7 @@ import { findNodeById } from './importTreeUtils';
 import { mergeGeometries, mergeGeomsIntoSibling } from './CvMatchMap';
 import { type MatchTreeNode } from '../../api/admin/worldViewImport';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { RegionMapPicture } from './RegionMapPicture';
 
 /** Scrollable gap list content — inline helper split out of GapAnalysisDialog for complexity/nesting compliance */
 function GapDialogContent({ effectiveState, gapMapSelectedRegionId, subtreeRegions, worldViewId, highlightedGapId, setHighlightedGapId, isMutating, setLastMutatedRegionId, acceptAllMutation, addChildMutation, localModified, setLocalState }: {
@@ -191,9 +192,10 @@ export function GapAnalysisDialog({ state, tree, worldViewId, highlightedGapId, 
       <Box sx={{ display: 'flex', gap: 1, px: 3, pb: 1, flexShrink: 0, minHeight: 0 }}>
         {mapSrc && (
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Box
-              component="img"
-              src={mapSrc}
+            <RegionMapPicture
+              worldViewId={worldViewId}
+              url={effectiveState.regionMapUrl ?? ''}
+              width={800}
               alt={`${effectiveState.regionName} region map`}
               sx={{ width: '100%', maxHeight: 300, objectFit: 'contain', borderRadius: 1, border: 1, borderColor: 'divider' }}
             />

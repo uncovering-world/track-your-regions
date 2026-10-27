@@ -7,22 +7,41 @@
  * may draw is not a map to choose.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MapImagePickerDialog } from './MapImagePickerDialog';
 
+const { getMapImageCredits } = vi.hoisted(() => ({ getMapImageCredits: vi.fn() }));
+vi.mock('../../api/admin/worldViewImport', () => ({ getMapImageCredits }));
+
 const COMMONS_MAP = 'https://commons.wikimedia.org/wiki/Special:FilePath/Algeria_regions_map.png';
+// What Commons' extmetadata gives the Algeria map: a Wikivoyage mapmaker's work.
+const FITZGERALD = {
+  author: 'Peter Fitzgerald',
+  license: 'CC BY-SA 4.0',
+  licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0',
+  detailsUrl: 'https://commons.wikimedia.org/wiki/File:Algeria_regions_map.png',
+};
+
+beforeEach(() => {
+  getMapImageCredits.mockReset();
+  getMapImageCredits.mockResolvedValue({ credits: [] });
+});
 
 function renderPicker(candidates: string[], currentSelection: string | null = null) {
   render(
-    <MapImagePickerDialog
-      open
-      regionName="Algeria"
-      candidates={candidates}
-      currentSelection={currentSelection}
-      onSelect={vi.fn()}
-      onClose={vi.fn()}
-    />,
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MapImagePickerDialog
+        open
+        worldViewId={2}
+        regionName="Algeria"
+        candidates={candidates}
+        currentSelection={currentSelection}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />
+    </QueryClientProvider>,
   );
 }
 
@@ -59,6 +78,37 @@ describe('MapImagePickerDialog', () => {
     // re-posted as a pick just because it was the selection on the way in.
     renderPicker(['javascript:alert(1)', COMMONS_MAP], 'javascript:alert(1)');
     expect(screen.getByRole('button', { name: 'Confirm Selection' })).toBeDisabled();
+  });
+
+  it('names the author under each map it draws, asking only for the maps it draws (#2087)', async () => {
+    getMapImageCredits.mockResolvedValue({ credits: [{ url: COMMONS_MAP, credit: FITZGERALD }] });
+    renderPicker(['javascript:alert(1)', COMMONS_MAP]);
+
+    expect(await screen.findByText('Peter Fitzgerald')).toBeInTheDocument();
+    expect(screen.getByText('CC BY-SA 4.0')).toBeInTheDocument();
+    expect(getMapImageCredits).toHaveBeenCalledWith(2, [COMMONS_MAP]);
+  });
+
+  it('takes the credit away with a map that failed to load', async () => {
+    getMapImageCredits.mockResolvedValue({ credits: [{ url: COMMONS_MAP, credit: FITZGERALD }] });
+    renderPicker([COMMONS_MAP]);
+    await screen.findByText('Peter Fitzgerald');
+
+    fireEvent.error(document.querySelector('img')!);
+
+    expect(screen.queryByText('Peter Fitzgerald')).not.toBeInTheDocument();
+  });
+
+  it('keeps the other maps\' credits when one fails to load, without asking again', async () => {
+    const mauritania = 'https://commons.wikimedia.org/wiki/Special:FilePath/Mauritania_Regions_map.png';
+    getMapImageCredits.mockResolvedValue({ credits: [{ url: COMMONS_MAP, credit: FITZGERALD }] });
+    renderPicker([mauritania, COMMONS_MAP]);
+    await screen.findByText('Peter Fitzgerald');
+
+    fireEvent.error(document.querySelector(`img[src^="${mauritania}"]`)!);
+
+    expect(screen.getByText('Peter Fitzgerald')).toBeInTheDocument();
+    expect(getMapImageCredits).toHaveBeenCalledTimes(1);
   });
 
   it('confirms a current selection it does draw', () => {

@@ -21,6 +21,7 @@ export function settingsOf(overlay: RegionImageOverlay): ImageOverlaySettings {
     coordinates: overlay.corners,
     opacity: overlay.opacity,
     imageSize: { width: overlay.imageWidth, height: overlay.imageHeight },
+    sourceUrl: overlay.sourceUrl,
   };
 }
 
@@ -62,6 +63,7 @@ export async function overlayBodyOf(settings: ImageOverlaySettings): Promise<Reg
     imageHeight: Math.max(1, Math.round(stored.height ?? 600)),
     corners: settings.coordinates,
     opacity: Math.min(1, Math.max(0, settings.opacity)),
+    sourceUrl: settings.sourceUrl ?? null,
   };
 }
 

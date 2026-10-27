@@ -9,7 +9,7 @@
 import type {
   ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenCollapsed, ChildrenDismissed, ChildrenGrouped,
   ChildrenReviewed, ChildrenSimplified, DescendantsPruned, DivisionOverlaps, FlattenPreviewResult, HierarchySimplified,
-  HierarchyWarningsDismissed, ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone, OverlapChildren,
+  HierarchyWarningsDismissed, ManualFixMarked, MapImageCredits, MapImageSelected, MembersCleared, OperationUndone, OverlapChildren,
   OverlapResolved, RegionRemoved, RegionRenamed, RegionReparented, SelectionAccepted, SelectionRejected,
   SmartFlattenResult, SmartSimplifyApplied, SmartSimplifyMoves,
 } from '../adminClient.generated';
@@ -20,7 +20,8 @@ import {
   postAdminWvImportMatchesByWorldViewIdClearMembers, postAdminWvImportMatchesByWorldViewIdCollapseToParent,
   postAdminWvImportMatchesByWorldViewIdDismissChildren,
   postAdminWvImportMatchesByWorldViewIdDismissHierarchyWarnings,
-  postAdminWvImportMatchesByWorldViewIdHandleAsGrouping, postAdminWvImportMatchesByWorldViewIdMarkManualFix,
+  postAdminWvImportMatchesByWorldViewIdHandleAsGrouping, postAdminWvImportMatchesByWorldViewIdMapCredits,
+  postAdminWvImportMatchesByWorldViewIdMarkManualFix,
   postAdminWvImportMatchesByWorldViewIdMergeChild, postAdminWvImportMatchesByWorldViewIdOverlapChildren,
   postAdminWvImportMatchesByWorldViewIdPruneToLeaves, postAdminWvImportMatchesByWorldViewIdRejectBatch,
   postAdminWvImportMatchesByWorldViewIdRemoveRegion, postAdminWvImportMatchesByWorldViewIdRenameRegion,
@@ -40,7 +41,7 @@ export type {
   ChildAction, ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenCollapsed, ChildrenDismissed,
   ChildrenGrouped, ChildrenReviewed, ChildrenSimplified, DescendantsPruned, DivisionOverlap, DivisionOverlaps,
   FlattenBlocked, FlattenDone, FlattenPreview, FlattenPreviewResult, HierarchySimplified, HierarchyWarningsDismissed,
-  ManualFixMarked, MapImageSelected, MembersCleared, OperationUndone, OverlapChildren, OverlapGadmChild, OverlapKept,
+  ManualFixMarked, MapImageCredits, MapImageSelected, MembersCleared, OperationUndone, OverlapChildren, OverlapGadmChild, OverlapKept,
   OverlapResolved, OverlapSplit, RegionRemoved, RegionRemovedKeepingChildren, RegionRemovedWithBranch, RegionRenamed,
   RegionReparented, SelectionAccepted, SelectionRejected, SimplifyReplacement, SmartFlattenResult, SmartSimplifyApplied,
   SmartSimplifyMove, SmartSimplifyMoves, SpatialAnomaly, SpatialAnomalyDivision, UndoOperation,
@@ -163,6 +164,15 @@ export async function selectMapImage(
   imageUrl: string | null,
 ): Promise<MapImageSelected> {
   return postAdminWvImportMatchesByWorldViewIdSelectMapImage(worldViewId, { regionId, imageUrl });
+}
+
+/**
+ * Who the map images a dialog draws are credited to (#2087). Read from Commons
+ * the first time a file is drawn and kept; a url the world view does not hold
+ * is left out of the answer.
+ */
+export async function getMapImageCredits(worldViewId: number, urls: string[]): Promise<MapImageCredits> {
+  return postAdminWvImportMatchesByWorldViewIdMapCredits(worldViewId, { urls });
 }
 
 // =============================================================================
