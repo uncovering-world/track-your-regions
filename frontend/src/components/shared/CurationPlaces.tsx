@@ -203,10 +203,10 @@ export function CurationPlaces({
               longitude: open.longitude,
               unseen: unseenReason(open, objectMissingSince),
               regionId,
-              // The point's own picture, which the form edits: one served from
-              // its part place is not the point's (#1946).
-              imageUrl: open.image_of_part ? null : open.image_url,
-              imageCredit: open.image_of_part ? null : open.image_credit,
+              // The picture the form edits: a part's is its own row's, which
+              // the correction writes (ADR-0156).
+              imageUrl: open.image_url,
+              imageCredit: open.image_credit,
               description: open.description,
             },
             onDone: setNotice,
