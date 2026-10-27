@@ -3376,7 +3376,7 @@ planet (`docs/tech/dumps.md` § The OpenStreetMap layer):
   with the tags `OSM_TAG_KEYS` names and a geometry only where the kind's keep rule draws one: the
   five clauses `overpassBatchQuery` spells, in SQL. An object the layer finds is the answer,
   whatever the layer's age. The layer keeps a point for most objects (ADR-0136), and a full
-  geometry for those a kind draws and for the objects of the items a world-view import names
+  geometry for those a kind draws and for the objects of the items `drawnItems` lists
   (ADR-0157), so the read answers no shape (`geometryType` null) for any object its rule does not
   draw, whatever the layer kept of it.
   A closed way is answered as its area, as both live doors draw it, even where its ring crosses

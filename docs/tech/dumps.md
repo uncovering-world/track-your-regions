@@ -813,8 +813,8 @@ build.
 Code: `backend/src/services/dumps/osm/`. A keeping build of `osm-planet`
 (`buildLayer`, `layerBuild.ts`) cuts the objects of the planet the
 catalogue asks about into `osm_objects`, with every tag, the full geometry
-of what a kind draws and of the objects that carry an item a world-view
-import names, and a point for everything else (ADR-0134, ADR-0136,
+of what a kind draws and of the objects that carry an item `drawnItems`
+lists, and a point for everything else (ADR-0134, ADR-0136,
 ADR-0157), and refills the store of region shapes from it. It runs in the dump worker, whose image carries osmium
 and osm2pgsql (`tools.ts`: each runs as a child process with its arguments as
 a list, by its absolute path, killed on a cancel). The database password
@@ -882,9 +882,12 @@ command line.
    cannot disagree. **The full geometry** is kept only for an object a kind's
    keep rule draws (`LAYER_DRAWN`, written as `drawn.txt`; today
    Archaeology's: a ruin, a dig, a protected area), and for an object whose
-   `wikidata` tag is an item a world-view import names (`drawnItems`: the
-   items `region_import_state` holds regions under, written as
-   `drawn-items.txt`, ADR-0157): a point for a node; a
+   `wikidata` tag is an item `drawnItems` lists (the items the world-view
+   imports name, which `region_import_state` holds regions under, and the other items each
+   `{{mapshape|wikidata=…}}` on those regions' Wikivoyage pages lists, read
+   with the mapshape match's own parser from the kept copy of English
+   Wikivoyage, none while no copy is kept; written as `drawn-items.txt`,
+   ADR-0157, ADR-0158): a point for a node; a
    closed way's area, or its line where the area is not valid; an open way's
    line; an area relation's multipolygon; any other relation's collection of
    members. **Every other object keeps one point** (ADR-0136): a node its own;
@@ -922,9 +925,10 @@ command line.
    100 m (0.001°) and made valid, kept under its QID with the licence
    `ODbL-1.0`. A shape under a QID that no object draws any more goes; the
    store's Commons map shapes (`commons:<file>`) are left. The build's
-   summary says how many of the named items have a shape. A refill that
+   summary says how many of the items the imports name have a shape, and
+   apart from them how many of the other items the mapshapes list. A refill that
    fails leaves the layer and the last build's shapes in place and is a note
-   on the build, not a failure. An item an import names for the first time
+   on the build, not a failure. An item an import names or a page lists for the first time
    has its shape from the next build.
 
 **The schedule** (`layerSchedule.ts`, ADR-0134 decision 6). The dump worker

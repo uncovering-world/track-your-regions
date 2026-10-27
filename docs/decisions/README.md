@@ -175,7 +175,8 @@ and accepted by it.
 | [0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md) | A kind's fact a reader is shown waits for a curator | Accepted | 2026-10-26 |
 | [0155](0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md) | A work based on a group of casts is its cast only by the group's creator | Accepted | 2026-10-26 |
 | [0156](0156-a-virtual-kind-holds-how-a-source-knows-a-part.md) | A virtual kind holds how a source knows a part | Accepted | 2026-10-27 |
-| [0157](0157-the-openstreetmap-layer-keeps-whole-the-objects-of-the-items-an-import-names.md) | The OpenStreetMap layer keeps whole the objects of the items a world-view import names | Accepted | 2026-10-27 |
+| [0157](0157-the-openstreetmap-layer-keeps-whole-the-objects-of-the-items-an-import-names.md) | The OpenStreetMap layer keeps whole the objects of the items a world-view import names | Accepted — decision 1 narrowed by [0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md) | 2026-10-27 |
+| [0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md) | The OpenStreetMap layer also keeps whole the items the mapshapes of imported pages list | Accepted | 2026-10-27 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
