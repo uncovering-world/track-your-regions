@@ -30,7 +30,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 
 **Every reader says which of the two it means** (#819). A reader that means the kind reads the membership's `kind_id` — through `rowKindJoinSql` / `rowKindSelectSql` (`backend/src/db/membership.ts`), which join the membership the place is shown under (`shownMembershipSql`: the first of its kinds in display order, an offered one first, ADR-0143 decision 6; per row, and once for every place where a read covers the whole catalogue, the world map's first screen, `catalogueKindJoinSql`) and the kind it names, so a list row, a search result, a review card and the counts all carry `kind_id`, `kind_name` and `kind_priority`, and a kind filter asks every kind of the place (below); the kinds are listed by `GET /api/experiences/kinds`. A reader that means the source reads the source row under its own name: migration 055 renamed `experience_categories` to `experience_sources` and every `category_id` that pointed at it to `source_id` (on `experiences`, `experience_sync_logs`, `curator_assignments`, `wikidata_query_cache`, `wikidata_cache_policy`), and the curator scope that names one is `'source'`. The word *category* is gone from the schema and the code, apart from the guards that remember the `experiences.category` column #814 retired; in the sections below *kind* is what a reader browses by, counts, admits and refuses, and *source* is a run, its gate, its cache, its log, its scope. The vision documents use the same words ([`EXPERIENCE-TYPE-AND-SIGNIFICANCE.md`](../vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md), [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md)).
 
-**What the code holds today** is three tables for the two words (#822, ADR-0045 decision 4). `experience_kinds` is what a traveller browses by, nine rows seeded under the ids of the sources that fill them — `World Heritage Sites` (1), `Art Museums` (2), `Public art` (3), `Places of worship` (4), `Archaeology` (5), `Monuments & memorials` (6), `Towers` (7), `Bridges & engineering marvels` (8), `Squares & streets` (9) — so a reader keyed on those ids reads the same colour and order either way and switching it (#819) is a join, not a renumbering. `experience_sources` is the source table — one row per sync service, with its endpoint, its config, its gate (`requires_curation`, ADR-0025), its `display_priority` (lower first) and the kind it fills (`kind_id`) — and it is what a run, its gate, its cache, its log, the curator scopes and the admin routes key on; what a reader browses by — the groups of the map-mode list, the Discover pills, the pin colour, the chip on a review card — reads the kind off the row's membership (#819). Nine rows exist, each the only source of one kind:
+**What the code holds today** is three tables for the two words (#822, ADR-0045 decision 4). `experience_kinds` is what a traveller browses by, seeded under the ids of the sources that fill them — `World Heritage Sites` (1), `Art Museums` (2), `Public art` (3), `Places of worship` (4), `Archaeology` (5), `Monuments & memorials` (6), `Towers` (7), `Bridges & engineering marvels` (8), `Squares & streets` (9), and the virtual `World Heritage components` (10), which no reader browses (§ A part's record in World Heritage components) — so a reader keyed on those ids reads the same colour and order either way and switching it (#819) is a join, not a renumbering. `experience_sources` is the source table — one row per sync service, with its endpoint, its config, its gate (`requires_curation`, ADR-0025), its `display_priority` (lower first) and the kind it fills (`kind_id`) — and it is what a run, its gate, its cache, its log, the curator scopes and the admin routes key on; what a reader browses by — the groups of the map-mode list, the Discover pills, the pin colour, the chip on a review card — reads the kind off the row's membership (#819). Each row is the only source of one kind:
 
 - `UNESCO World Heritage Sites` (priority `1`) — fills World Heritage Sites
 - `Art Museums` (priority `2`) — fills Art Museums with the works-first selection (ADR-0023); the row read "Top Art Museums", the selection rule's name, until migration 045 gave it the reader's (ADR-0045 §8, #818)
@@ -41,6 +41,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 - `Towers` (priority `7`) — fills Towers from the same gather, in the same pass (#1854). Seeded gated by migration 148, with its line in code: it reads a year's readers beside the editions (§ Towers below)
 - `Bridges & engineering marvels` (priority `8`) — fills the kind from the same gather, in the same pass (#1860). Seeded gated by migration 150, with its lines in code: it reads a year's readers and whether a Wikivoyage guide names the work, and holds a canal's locks and lifts to a line of their own (§ Bridges & engineering marvels below)
 - `Squares & streets` (priority `9`) — fills the kind from the same gather, in the same pass (#1867). Seeded gated by migration 151, with its line in code (§ Squares & streets below)
+- `World Heritage components` (priority `10`) — fills the virtual kind of the same name: the World Heritage run writes it with a serial site's part relation, and it has no run, gate or admin card of its own (ADR-0156, § A part's record in World Heritage components). Seeded by migration 181
 
 `experience_kind_memberships.type` is the **type within a kind** (the place's own `experiences.type` until ADR-0084 moved it onto the membership, #1253; #814; the column was called `category` until then, the word the rest of the code used for the kind and its source until #819): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, `cathedral` / `church` / `chapel` / `monastery` / `mosque` / `temple` / `shrine` / `synagogue` for a place of worship, `site` / `museum` for Archaeology, and **NULL for an art museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1), while `museum` as an Archaeology type says which of that kind's two things this one is, the excavation or the museum of its finds (ADR-0058 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A place is one row of `experiences` and each of its memberships in a kind is a row of `experience_kind_memberships` (below); a monument that is also a World Heritage point is still two places today — the Statue of Liberty is ids 382 and 11565 — and becomes one place with two memberships by #755's merge. Refusal as a curator-confirmed withdrawal of one membership (ADR-0045 decision 6) lands with #755 as well; today a refusal is the run's write on the membership, and the curator confirms or overrides it.
 
@@ -194,6 +195,36 @@ Temple of Karnak's own card: shown under Ancient Thebes' kind, with `part_of` na
 part's point, the id the site's card opens it at; a curator's scope over a part is asked through its
 whole (`maySeeUnreadExperience`, `wholeOfSql` in `placePoints.ts`). The web follows a part's address
 to the site's card opened at that point (`useFoldedCard`, `docs/tech/addresses.md`).
+
+**A part's record in World Heritage components** (ADR-0156, #1426). A kind may be virtual
+(`experience_kinds.is_virtual`): it records how a source knows a place and offers none. World
+Heritage components (kind and source 10) is the one virtual kind, and every part of a serial site
+holds one membership in it. It is its relation's: `component_record_follows_relation()`, a trigger
+on `experience_parts`, writes it when a component becomes a part, moves it when a merge or its undo
+moves the relation to another place, and drops it with the relation. A place holds one record however
+many sites it is a component of, keyed by its earliest relation (`refresh_component_record()`). It
+is keyed by the relation (`component:<experience_parts.id>`), since the list's own reference is not
+unique: Western Tien-Shan renumbers its components, and Phong Nha-Ke Bang and Hin Nam No share
+`951ter-001`. Migration 181 wrote one for every part the catalogue held. The
+membership carries no gate: it is never pending and opens no card. Nothing reads it as a kind:
+- `backend/src/db/membership.ts` states the exclusion: `realKindSql` over a membership or a source,
+  `kindIsRealSql` over a joined kind. `realKindSql` is composed into `membershipOfferedSql`, the place-level forms, the kind a row is shown under, a place's
+  sources and `placeHoldsRealKindSql`, which is what "a part that holds a kind of its own" asks
+  everywhere (`answeringPlaceOfSql`, `pointNameSql`, the region placement's listed places, the
+  equal-item merge, a curator's scope over a place's views).
+- It is never composed into `membershipAdmittedSql` or `membershipVisibleSql`, which a reader negates
+  to find a refused or an unread membership.
+- The kinds a traveller browses (`listKinds`), the admin panel's sources, the review queue's source
+  chips, *Add to a kind…*, a curator's new place and the coverage register leave the virtual kind out.
+- The database functions that read a place's memberships leave it out too: the listing a place
+  derives (`recompute_place_listing`), the pairing marks (`mark_pairing_due`) and the part following
+  its point (`part_follows_point`).
+- Two parts are refused as one place: a merge moves the folded place's memberships before its
+  relations, and one place holds one membership per kind.
+
+The component's item, UNESCO's view of the part and the part's own picture and description move
+onto the membership and the part row in the next slices of #1426. Until then they stay on the point
+as described below.
 
 A reader calls a part's point by its own name, else by the part place's where the part holds a kind
 (`pointNameSql`, `placePoints.ts`, #1924): a place another kind brought and a merge made a site's part carries its name
