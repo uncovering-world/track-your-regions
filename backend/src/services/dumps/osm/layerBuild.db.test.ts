@@ -126,7 +126,11 @@ const build = () => buildLayer(planet, options());
 const update = () => updateLayer(options());
 const rows = async (sql: string) => (await pool.query(sql)).rows;
 
+/** A world view of the composites' fixture (#2113), deleted before and after. */
+const WORLD_VIEW = 9810;
+
 async function clear(): Promise<void> {
+  await pool.query('DELETE FROM world_views WHERE id = $1', [WORLD_VIEW]);
   await pool.query('TRUNCATE osm_layer_builds, osm_objects');
   await pool.query('DROP TABLE IF EXISTS workbench.osm_objects_next, workbench.osm2pgsql_properties');
   await pool.query("DELETE FROM dump_builds WHERE dump = 'osm-planet'");
@@ -279,13 +283,54 @@ describe('buildLayer (#1437)', () => {
     const result = await build();
 
     expect(result.summary).toMatch(
-      /; 1 of the 2 items the world-view imports name have a region shape, and 1 of the 2 other items their pages' mapshapes list$/,
+      /; 1 of the 2 items the world-view imports name have a region shape, and 1 of the 2 other items their pages' mapshapes list; \d+ more /,
     );
     expect(await rows(`SELECT wikidata_id, licence, round(ST_Area(geom)::numeric, 2)::float AS area FROM wikidata_geoshapes
       WHERE wikidata_id LIKE 'Q100000_' OR wikidata_id = 'commons:Test_region.map' ORDER BY wikidata_id COLLATE "C"`)).toEqual([
       { wikidata_id: 'Q1000001', licence: 'ODbL-1.0', area: 1 },
       { wikidata_id: 'Q1000004', licence: 'ODbL-1.0', area: 1 },
       { wikidata_id: 'commons:Test_region.map', licence: 'CC0-1.0', area: 1 },
+    ]);
+  });
+
+  it('gives a region no object draws the union of its child regions\' shapes, a region of such regions too, and none where a child has no shape (#2113)', async () => {
+    // Fixture items, not real ones. A coast drawn by no object whose two
+    // children are drawn; a province of that coast alone; and a heath one of
+    // whose children the layer holds only as a point.
+    drawnItems = { named: ['Q1000001', 'Q1000002', 'Q1000004', 'Q1000006', 'Q1000007', 'Q1000008'], listed: [] };
+    rowsLoaded = [STONEHENGE, REGION, REGION_POINT, DISTRICT];
+    await pool.query(`INSERT INTO world_views (id, name, is_default) VALUES ($1, 'Composite fixture', false)`, [WORLD_VIEW]);
+    await pool.query(
+      `INSERT INTO regions (id, world_view_id, name, parent_region_id) VALUES
+         (9811, $1, 'Province', NULL), (9812, $1, 'Coast', 9811), (9813, $1, 'Bay', 9812), (9814, $1, 'Dunes', 9812),
+         (9815, $1, 'Heath', NULL), (9816, $1, 'Moor', 9815), (9817, $1, 'Village', 9815)`,
+      [WORLD_VIEW],
+    );
+    await pool.query(
+      `INSERT INTO region_import_state (region_id, source_external_id) VALUES
+         (9811, 'Q1000008'), (9812, 'Q1000006'), (9813, 'Q1000001'), (9814, 'Q1000004'),
+         (9815, 'Q1000007'), (9816, 'Q1000001'), (9817, 'Q1000002')`,
+    );
+
+    const result = await build();
+
+    expect(result.summary).toMatch(/; \d+ more have the union of their child regions' shapes, and \d+ with child regions have none, since a child has no shape$/);
+    expect(await rows(`SELECT wikidata_id, licence, composite_of, round(ST_Area(geom)::numeric, 2)::float AS area FROM wikidata_geoshapes
+      WHERE wikidata_id IN ('Q1000006', 'Q1000007', 'Q1000008') ORDER BY wikidata_id`)).toEqual([
+      { wikidata_id: 'Q1000006', licence: 'ODbL-1.0', composite_of: 2, area: 2 },
+      { wikidata_id: 'Q1000008', licence: 'ODbL-1.0', composite_of: 1, area: 2 },
+    ]);
+
+    // The next build draws the coast itself: its own shape replaces the composite.
+    rowsLoaded = [STONEHENGE, REGION, REGION_POINT, DISTRICT,
+      ['R', 34, '{"natural":"coastline","wikidata":"Q1000006"}', 'Q1000006', 'MULTIPOLYGON(((10 10,10 13,13 13,13 10,10 10)))']];
+    await pool.query("UPDATE dump_builds SET status = 'success' WHERE id = $1", [buildId]);
+    buildId = await newBuild();
+    await build();
+    expect(await rows(`SELECT wikidata_id, composite_of, round(ST_Area(geom)::numeric, 2)::float AS area FROM wikidata_geoshapes
+      WHERE wikidata_id IN ('Q1000006', 'Q1000008') ORDER BY wikidata_id`)).toEqual([
+      { wikidata_id: 'Q1000006', composite_of: null, area: 9 },
+      { wikidata_id: 'Q1000008', composite_of: 1, area: 9 },
     ]);
   });
 

@@ -209,10 +209,13 @@ type LayerResult = { bytes: number; lines: number; checksumActual: string | null
 async function regionShapesFrom(items: DrawnItems, options: LayerBuildOptions): Promise<string> {
   options.onPhase('Keeping the region shapes of the items the layer keeps whole...');
   try {
-    const held = new Set((await refillRegionShapes([...items.named, ...items.listed])).held);
+    const refilled = await refillRegionShapes([...items.named, ...items.listed]);
+    const held = new Set(refilled.held);
     const said = (list: string[]) => `${list.filter(item => held.has(item)).length.toLocaleString('en')} of the ${list.length.toLocaleString('en')}`;
     return `; ${said(items.named)} items the world-view imports name have a region shape, `
-      + `and ${said(items.listed)} other items their pages' mapshapes list`;
+      + `and ${said(items.listed)} other items their pages' mapshapes list; `
+      + `${refilled.composed.length.toLocaleString('en')} more have the union of their child regions' shapes, `
+      + `and ${refilled.uncomposed.toLocaleString('en')} with child regions have none, since a child has no shape`;
   } catch (error) {
     options.onNote?.(`the region shapes were not refreshed from this layer, and the store keeps the last build's: ${error instanceof Error ? error.message : String(error)}`);
     return '';
