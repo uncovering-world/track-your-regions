@@ -3,12 +3,15 @@
  * for the part's record in World Heritage components (ADR-0156 decision 2):
  * which incoming point is the component's, and whether a record holds another
  * view than the list gives. `writePartListings` (`db/partFieldsWriter.ts`)
- * writes it, inside the run's write of the site's points (`locationWriter.ts`).
+ * writes it, inside the run's write of the site's points (`locationWriter.ts`),
+ * which then names each part for its point (`writeParts`).
  */
 
+import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
+import type { LockedExperience } from '../../db/experienceWriter.js';
 import { COMPONENTS_KIND_ID, MEMBERSHIPS } from '../../db/membership.js';
-import { partListingChangesSql } from '../../db/partFieldsWriter.js';
+import { followTheirPoints, partListingChangesSql, partsBehindSql, writePartListings } from '../../db/partFieldsWriter.js';
 import { foldedPointsSql } from '../../db/placePoints.js';
 import { bindParams, incomingCte, type IncomingLocation } from './locationIncoming.js';
 
@@ -46,4 +49,39 @@ export async function listingsDrift(experienceId: number, incoming: IncomingLoca
     bindParams(experienceId, incoming),
   );
   return (drift.rowCount ?? 0) > 0;
+}
+
+/**
+ * Whether a part of the site is not what its point makes it (`partsBehindSql`):
+ * its site renamed by a curator since the run named a part by it, say. The
+ * fast path then gives way to the write, which names the part under the
+ * site's lock.
+ */
+export async function partsBehind(experienceId: number): Promise<boolean> {
+  const behind = await pool.query(`${partsBehindSql()} LIMIT 1`, [experienceId]);
+  return (behind.rowCount ?? 0) > 0;
+}
+
+/**
+ * The site's parts as the run left their points, under the site's lock: what
+ * the list says of each component, on the part's record (ADR-0156 decision 2),
+ * once a component that arrived is a part with one; and each part named,
+ * placed and numbered for its point (`followTheirPoints`), whichever source's
+ * run wrote the point.
+ */
+export async function writeParts(
+  client: PoolClient,
+  lock: LockedExperience,
+  run: { components?: boolean },
+  cte: string,
+  params: unknown[],
+): Promise<void> {
+  if (run.components) {
+    const listings = await client.query<{ record_id: number; name: string | null; lon: number; lat: number }>(
+      `WITH ${cte} ${COMPONENT_LISTINGS}`, params,
+    );
+    await writePartListings(client, lock, listings.rows.map(row => (
+      { recordId: row.record_id, name: row.name, lon: row.lon, lat: row.lat })));
+  }
+  await followTheirPoints(client, lock, null);
 }

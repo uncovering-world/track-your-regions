@@ -102,8 +102,9 @@ const READER_PREDICATE_RULES = [
  * The table's writers are a closed list: the curator's writes in
  * `src/db/experienceWriter.ts`, under the object lock's token; the run's upsert
  * (`src/services/sync/experienceUpsert.ts`), whose one statement writes the
- * place and its membership together; the fields of a serial site's part
- * (`src/db/partFieldsWriter.ts`, ADR-0156), under the site's token; missing
+ * place and its membership together; the fields of a serial site's part, its
+ * name and coordinate among them (`src/db/partFieldsWriter.ts`, ADR-0156),
+ * under the site's token; missing
  * detection's mark and the picture repair, each a single-purpose module of its
  * own; and the seed. Read in a
  * string's text or a template's literal parts, as the reader-predicate rule is.

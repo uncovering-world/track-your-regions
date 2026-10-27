@@ -61,13 +61,3 @@ export async function arePartAndWhole(client: PoolClient, a: LockedExperience, b
   );
   return (found.rowCount ?? 0) > 0;
 }
-
-/**
- * Bring a part's name and coordinate back in step with its point
- * (`part_follows_point`, the component trigger's rule) once an undo has made
- * it a part again: while the merge stood, the site's run may have renamed or
- * moved the point it had folded, and a part no relation named did not follow.
- */
-export async function followItsPoints(client: PoolClient, part: LockedExperience): Promise<void> {
-  await client.query('SELECT part_follows_point(el.id) FROM experience_locations el WHERE el.experience_id = $1', [part.id]);
-}

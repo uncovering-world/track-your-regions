@@ -16,6 +16,7 @@
  * rule that has no counterpart on an object — the anchor, below.
  */
 
+import type { PoolClient } from 'pg';
 import type { z } from 'zod/v4';
 import type { LocationEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
@@ -24,11 +25,12 @@ import type { editLocationBodySchema, locationIdParamSchema } from '../../types/
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
-import { lockExperience, anchorToItsPoint } from '../../db/experienceWriter.js';
+import { lockExperience, anchorToItsPoint, type LockedExperience } from '../../db/experienceWriter.js';
 import { correctPoint } from './experienceLocationWriter.js';
 import { userAgent } from '../../config/userAgent.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
 import { answeringPlaceSql, pointOfPartSql } from '../../db/placePoints.js';
+import { placeHoldsRealKindSql } from '../../db/membership.js';
 import { writePartFields, type PartWrite } from '../../db/partFieldsWriter.js';
 
 /** What a curator may claim on a point — see `db/migrations/027`, and #1270 for the picture and description. */
@@ -60,13 +62,15 @@ function claimsOf(edit: PointEdit): Claim[] {
 }
 
 /**
- * The edit's picture and text as the part's own fields, with the claims that
- * make them survive the next run (ADR-0156 decision 3): the text is the part's
- * subtitle.
+ * The edit's name, picture and text as the part's own fields, with the claims
+ * that make them survive the next run (ADR-0156 decision 3): the name is the
+ * part's, never its point's, which keeps what the list calls the component,
+ * and the text is the part's subtitle.
  */
 function partWriteOf(pointId: number, edit: PointEdit, credit: ImageCredit | null): PartWrite {
   const fields: PartWrite['fields'] = {};
   const addClaims: string[] = [];
+  if (edit.name !== undefined) addClaims.push('name');
   if (edit.picture !== undefined) {
     fields.image_url = edit.picture;
     fields['metadata.imageCredit'] = edit.picture && credit ? credit : null;
@@ -76,7 +80,36 @@ function partWriteOf(pointId: number, edit: PointEdit, credit: ImageCredit | nul
     fields.subtitle = edit.text;
     addClaims.push('subtitle');
   }
-  return { pointId, fields, addClaims };
+  return { pointId, fields, name: edit.name, addClaims };
+}
+
+/**
+ * A curator's correction of a serial site's part's point: the coordinate on
+ * the point, the picture and text on the part (ADR-0156 decision 3), and the
+ * name on the part where the point is called by it. A part that holds a kind
+ * of its own names itself, and its point keeps its own name and claim
+ * (`pointNameSql`).
+ */
+async function correctPartPoint(
+  client: PoolClient,
+  lock: LockedExperience,
+  locationId: number,
+  before: { curated_fields: string[] | null; names_part: boolean },
+  edit: PointEdit,
+  credit: ImageCredit | null,
+): Promise<void> {
+  const pointName = before.names_part ? undefined : edit.name;
+  // A name moving onto the part takes an older claim on the point's name with
+  // it, or the run would keep the point's name against the list for ever.
+  const kept = before.names_part && edit.name !== undefined
+    ? (before.curated_fields ?? []).filter(claim => claim !== 'name')
+    : before.curated_fields ?? [];
+  await correctPoint(client, lock, locationId, {
+    name: pointName ?? null, movesPoint: edit.move !== undefined,
+    longitude: edit.move?.lon ?? null, latitude: edit.move?.lat ?? null,
+    curatedFields: withClaims(kept, claimsOf({ name: pointName, move: edit.move, picture: undefined, text: undefined })),
+  });
+  await writePartFields(client, lock, [partWriteOf(locationId, { ...edit, name: before.names_part ? edit.name : undefined }, credit)]);
 }
 
 /**
@@ -172,8 +205,13 @@ export async function editLocation(
     // columns only adds.
     // A part's picture and text are its own row's (ADR-0156 decision 3), read
     // there; the site's lock, held above, is what every writer of them takes.
+    // So is its name, unless the part holds a kind of its own: such a place
+    // names itself, and its point is called by its own name (`pointNameSql`).
     const locked = await client.query(
-      `SELECT el.name, el.curated_fields, ${pointOfPartSql('el')} AS of_part,
+      `SELECT CASE WHEN ${pointOfPartSql('el')} AND NOT ${placeHoldsRealKindSql('part.id')}
+                   THEN part.name ELSE el.name END AS name,
+              ${pointOfPartSql('el')} AND NOT ${placeHoldsRealKindSql('part.id')} AS names_part,
+              el.curated_fields, ${pointOfPartSql('el')} AS of_part,
               CASE WHEN ${pointOfPartSql('el')} THEN part.image_url ELSE el.image_url END AS image_url,
               CASE WHEN ${pointOfPartSql('el')} THEN part.subtitle ELSE el.description END AS description,
               ST_Y(el.location::geometry) AS lat, ST_X(el.location::geometry) AS lon
@@ -183,19 +221,14 @@ export async function editLocation(
     );
     const before = locked.rows[0] as {
       name: string | null; curated_fields: string[]; lat: number; lon: number;
-      image_url: string | null; description: string | null; of_part: boolean;
+      image_url: string | null; description: string | null; of_part: boolean; names_part: boolean;
     } | undefined;
     // The object going takes its points with it, so a missing object is the
     // same 404 as a missing point. The catch below rolls the transaction back.
     if (!before || !object) throw notFound('Location not found');
 
     if (before.of_part) {
-      const pointClaims = claimsOf({ ...pointEdit, picture: undefined, text: undefined });
-      await correctPoint(client, object.lock, locationId, {
-        name: name ?? null, movesPoint, longitude: longitude ?? null, latitude: latitude ?? null,
-        curatedFields: withClaims(before.curated_fields ?? [], pointClaims),
-      });
-      await writePartFields(client, object.lock, [partWriteOf(locationId, pointEdit, credit)]);
+      await correctPartPoint(client, object.lock, locationId, before, pointEdit, credit);
     } else {
       await correctPoint(client, object.lock, locationId, {
         name: name ?? null, movesPoint, longitude: longitude ?? null, latitude: latitude ?? null,

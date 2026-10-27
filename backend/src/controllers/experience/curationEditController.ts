@@ -17,6 +17,7 @@ import {
   isStorableHttpUrl, isDisplayablePictureUrl, STORABLE_HTTP_URL_MESSAGE, DISPLAYABLE_PICTURE_URL_MESSAGE,
 } from '../../types/urlSafety.js';
 import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
+import { followTheirPoints } from '../../db/partFieldsWriter.js';
 import { MEMBERSHIPS, shownMembershipSql } from '../../db/membership.js';
 import { setTypeOnSourceMembership, typeClaimedBy } from './membershipWriter.js';
 import { refusalFor } from './curatedUrlRefusal.js';
@@ -337,6 +338,9 @@ export async function editExperience(
     newCurated = built.newCurated;
     if (placePayload.updates.length > 0 || metadataPatchOf(placePayload) !== null) {
       await updateExperienceColumns(client, locked.lock, built.assignments, built.values);
+      // A part named for its article, or a site's part named for the site, is
+      // named anew with what the edit changed (`followTheirPoints`).
+      await followTheirPoints(client, locked.lock, null);
     }
     if ((typeEdit && shownSource !== undefined)
         || (shownSource !== undefined && await typeClaimedBy(client, locked.lock, shownSource))) {

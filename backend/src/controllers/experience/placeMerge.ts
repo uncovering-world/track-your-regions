@@ -27,7 +27,8 @@ import { moveConflictDecisions } from './conflictDecisions.js';
 import { foldPoints, movePoints, unfoldPoints, type FoldedPoints } from './experienceLocationWriter.js';
 import { moveHeldDecisions } from './heldDecisions.js';
 import { moveMemberships } from './membershipWriter.js';
-import { arePartAndWhole, followItsPoints, moveParts } from './partWriter.js';
+import { arePartAndWhole, moveParts } from './partWriter.js';
+import { followTheirPoints } from '../../db/partFieldsWriter.js';
 import { reopenMergedPair } from './mergeProposalAnswers.js';
 import { reopenSeparationsUndoneBy } from './separationReopening.js';
 import { placeAfterRelease } from './publishContents.js';
@@ -439,9 +440,11 @@ async function moveEverythingBack(
   await moveManualAssignments(client, survivor.id, folded.id, record.assignments ?? []);
   await moveViewChoices(client, survivor, folded, record.viewChoices ?? []);
   await moveParts(client, survivor, folded, record.parts ?? []);
-  // Whichever of the two is a component part again follows its point.
-  await followItsPoints(client, folded);
-  await followItsPoints(client, survivor);
+  // Whichever of the two is a component part again is named and placed for its
+  // point: while the merge stood, the site's run may have renamed or moved the
+  // point it had folded, and a place no relation named did not follow.
+  await followTheirPoints(client, folded, null);
+  await followTheirPoints(client, survivor, null);
 }
 
 /**

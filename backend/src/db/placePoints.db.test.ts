@@ -4,6 +4,7 @@ import { anchorToItsPoint, lockExperience } from './experienceWriter.js';
 import { setPointVerdict } from '../controllers/experience/experienceLocationWriter.js';
 import { pointsShownSql, someoneVisitedPointSql } from './placePoints.js';
 import { getExperienceLocations, getRegionExperienceLocations } from '../controllers/experience/experienceLocationController.js';
+import { editLocation } from '../controllers/experience/locationEditController.js';
 import {
   getExperienceVisitedStatus, getVisitedLocationIds, markAllLocationsVisited, markLocationVisited,
   unmarkAllLocationsVisited, unmarkLocationVisited,
@@ -149,7 +150,8 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     const own = await getExperienceLocations({
       params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
     });
-    expect(own.locations.map(l => l.name)).toEqual(['Temple of Karnak', 'Luxor Temple']);
+    // The part's point is called what the part is (ADR-0156), whatever the list calls the point.
+    expect(own.locations.map(l => l.name)).toEqual(['Temple of Karnak (parts fixture)', 'Luxor Temple']);
 
     const list = await getExperiencesByRegion({
       params: { regionId }, query: experiencesByRegionQuerySchema.parse({ includeChildren: 'false' }), caller: undefined,
@@ -400,8 +402,8 @@ describe("a part's point with no name of its own (#1924)", () => {
     // Etchmiadzin Cathedral's shape: a place of worship, holding its kind of its
     // own, which became the site's part 1011-001 when the two were found to be
     // one place; its point, which that kind placed, carries no name. A part
-    // that holds a kind names itself (`part_follows_point`), so the point's
-    // emptied name does not rename the part.
+    // that holds a kind names itself (`followTheirPoints` skips it), so the
+    // point's emptied name does not rename the part.
     await pool.query(
       `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
@@ -438,6 +440,33 @@ describe("a part's point with no name of its own (#1924)", () => {
     );
     const card = (await queryComponentItems([SITE])).rows[0];
     expect(card.component_items.find((c: { locationId: number }) => c.locationId === karnakPoint)?.pointName).toBeNull();
+  });
+
+  it("keeps a curator's name for the point on the point, and the part its own name", async () => {
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
+      [KARNAK, `${KARNAK}-worship`],
+    );
+    await editLocation({
+      params: { locationId: karnakPoint },
+      body: { name: 'Great Temple of Amun' },
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    } as never);
+
+    const named = await pool.query<{ point: string; claims: string[]; part: string; part_claims: string[] | null }>(
+      `SELECT el.name AS point, el.curated_fields AS claims, e.name AS part, e.curated_fields AS part_claims
+         FROM experience_locations el JOIN experiences e ON e.id = el.experience_id WHERE el.id = $1`,
+      [karnakPoint],
+    );
+    expect(named.rows[0]).toMatchObject({ point: 'Great Temple of Amun', part: 'Temple of Karnak (parts fixture)' });
+    expect(named.rows[0].claims).toContain('name');
+    expect(named.rows[0].part_claims ?? []).not.toContain('name');
+
+    const own = await getExperienceLocations({
+      params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    expect(own.locations.find(l => l.id === karnakPoint)?.name).toBe('Great Temple of Amun');
   });
 });
 
