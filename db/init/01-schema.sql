@@ -3304,9 +3304,9 @@ COMMENT ON COLUMN experience_locations.wikidata_item IS 'The Wikidata item this 
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
-COMMENT ON COLUMN experience_locations.image_url IS 'The point''s own picture, a Wikimedia Commons file or, where a curator chose one, an /images/ path we host (ADR-0043): for a World Heritage component, its Wikidata item''s P18, written by the run through the gate as a field of a part (ADR-0037, ADR-0089) unless a curator claimed it. NULL = the point shows its object''s picture, and says so (#1270).';
-COMMENT ON COLUMN experience_locations.description IS 'The point''s own short description: for a World Heritage component, its Wikidata item''s English description, written like image_url (#1270).';
-COMMENT ON COLUMN experience_locations.metadata IS 'Facts about the point that are not columns: imageCredit, the credit of image_url, captured from Commons when the picture is written (#1270).';
+COMMENT ON COLUMN experience_locations.image_url IS 'The point''s own picture, a Wikimedia Commons file or, where a curator chose one, an /images/ path we host (ADR-0043), for a point whose place is not a serial site''s part: a part''s picture is its own row''s (ADR-0156 decision 3). NULL = the point shows its object''s picture, and says so (#1270).';
+COMMENT ON COLUMN experience_locations.description IS 'The point''s own one-line description, for a point whose place is not a serial site''s part: a part''s is its own row''s subtitle (ADR-0156 decision 3).';
+COMMENT ON COLUMN experience_locations.metadata IS 'Facts about the point that are not columns: imageCredit, the credit of image_url, for a point whose place is not a serial site''s part (ADR-0156 decision 3).';
 
 -- A candidate Wikidata item for a component no item records the reference of
 -- (#1272): a proposal for a curator, never a fact (ADR-0046). See
@@ -4837,8 +4837,8 @@ $$ LANGUAGE sql IMMUTABLE;
 -- placements, regions, claims and candidates follow it. A traveller's visit
 -- to the component becomes a visit to the part (ADR-0100 decision 5), the
 -- record a merge reconciles with another kind's visits to the same place.
--- Its name is the point's (component_part_name) and so is its coordinate; the rest of its content stays on
--- the point until the part's card reads the place. A part with no kind of
+-- Its name is the point's (component_part_name) and so is its coordinate; its
+-- picture, subtitle and article are the part row's (ADR-0156). A part with no kind of
 -- its own has no regions of its own: lists find it through its site. A
 -- component that stands for its whole site (stands_for_whole_site) is not
 -- parted: it stays the site's own point, since a part named like the site
@@ -4869,7 +4869,7 @@ BEGIN
   END IF;
 
   FOR component IN
-    SELECT el.id, el.name, el.external_ref, el.location, el.metadata->>'wikipediaUrl' AS article
+    SELECT el.id, el.name, el.external_ref, el.location
       FROM experience_locations el
      WHERE el.experience_id = site AND el.merged_into_id IS NULL
        AND (EXISTS (SELECT 1 FROM experience_location_placements pl
@@ -4891,13 +4891,14 @@ BEGIN
     IF part IS NOT NULL THEN
       UPDATE experiences
          SET merged_into_id = NULL, location = component.location, updated_at = NOW(),
-             name = component_part_name(component.name, component.article, component.external_ref,
+             -- The revived part keeps its own article (ADR-0156 decision 3).
+             name = component_part_name(component.name, metadata->>'wikipediaUrl', component.external_ref,
                                         (SELECT whole.name FROM experiences whole WHERE whole.id = site))
        WHERE id = part;
     ELSE
       INSERT INTO experiences (source_id, external_id, name, location)
       SELECT whole.source_id, 'part:' || component.id,
-             component_part_name(component.name, component.article, component.external_ref, whole.name),
+             component_part_name(component.name, NULL, component.external_ref, whole.name),
              component.location
         FROM experiences whole WHERE whole.id = site
       RETURNING id INTO part;
@@ -5328,7 +5329,9 @@ RETURNS VOID AS $$
          -- Stamped as every writer of the table stamps it (ADR-0069).
          updated_at = NOW()
     FROM (SELECT el.experience_id, el.location,
-                 component_part_name(el.name, el.metadata->>'wikipediaUrl', el.external_ref,
+                 component_part_name(el.name,
+                   (SELECT own.metadata->>'wikipediaUrl' FROM experiences own WHERE own.id = el.experience_id),
+                   el.external_ref,
                    (SELECT whole.name FROM experience_parts p JOIN experiences whole ON whole.id = p.whole_id
                      WHERE p.part_id = el.experience_id AND p.reason = 'component'
                      ORDER BY p.whole_id LIMIT 1)) AS name
@@ -5357,12 +5360,32 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_follow_component_point ON experience_locations;
 CREATE TRIGGER trg_follow_component_point
-  AFTER UPDATE OF name, location, external_ref, metadata ON experience_locations
+  AFTER UPDATE OF name, location, external_ref ON experience_locations
   FOR EACH ROW
   WHEN (OLD.name IS DISTINCT FROM NEW.name OR OLD.location IS DISTINCT FROM NEW.location
-        OR OLD.external_ref IS DISTINCT FROM NEW.external_ref
-        OR OLD.metadata->>'wikipediaUrl' IS DISTINCT FROM NEW.metadata->>'wikipediaUrl')
+        OR OLD.external_ref IS DISTINCT FROM NEW.external_ref)
   EXECUTE FUNCTION follow_component_point();
+
+-- A part's article is its own row's (ADR-0156 decision 3), so a part whose
+-- point names nothing is named by the article it is given (component_part_name,
+-- #2065), whoever writes it.
+CREATE OR REPLACE FUNCTION follow_part_article()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM part_follows_point(el.id)
+     FROM experience_locations el
+    WHERE el.experience_id = NEW.id AND names_nothing(el.name)
+      AND EXISTS (SELECT 1 FROM experience_parts p WHERE p.part_id = NEW.id AND p.reason = 'component');
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_follow_part_article ON experiences;
+CREATE TRIGGER trg_follow_part_article
+  AFTER UPDATE OF metadata ON experiences
+  FOR EACH ROW
+  WHEN (OLD.metadata->>'wikipediaUrl' IS DISTINCT FROM NEW.metadata->>'wikipediaUrl')
+  EXECUTE FUNCTION follow_part_article();
 
 -- A part whose point names nothing and has no article is named by its site's
 -- name and its reference (component_part_name), so a renamed site renames it
