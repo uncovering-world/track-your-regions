@@ -38,8 +38,8 @@ export type {
   AIMatchOneResult, AssignedDivision, CoveringMatchResult, DbSearchResult, FoundSuggestion, GeocodeMatchResult,
   ImportCancelled, ImportStarted, ImportStatus, InstancesSynced, MarkerPoint, MatchAccepted,
   MatchAcceptedRestRejected, MatchesAccepted, MatchReset, MatchStats, MatchStatus, MatchSuggestion, MatchTree,
-  MatchTreeNode, RematchCancelled, RematchStarted, RematchStatus, RemainingRejected, SuggestionConflict, SuggestionRejected,
-  TransferAccepted, TransferPreview,
+  MatchTreeNode, RematchCancelled, RematchStarted, RematchStatus, RemainingRejected, ShapeCredit, SuggestionConflict,
+  SuggestionRejected, TransferAccepted, TransferPreview,
 } from '../adminClient.generated';
 
 

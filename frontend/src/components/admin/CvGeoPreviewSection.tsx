@@ -19,6 +19,7 @@ import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import * as turf from '@turf/turf';
 import { acceptBatchMatches, type ColorMatchCluster } from '../../api/admin/worldViewImport';
 import { CvMatchMap, CV_MAP_STYLE } from './CvMatchMap';
+import { ShapeCreditLine } from './ShapeCreditLine';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 import { detectSpatialAnomaliesClient } from '../../utils/spatialAnomalyDetector';
 import type {
@@ -298,6 +299,8 @@ export function CvGeoPreviewSection({ cvMatchDialog, setCVMatchDialog, highlight
         {wvPreview && wvPreview.features.length > 0 && (
           <Box sx={{ flex: '1 1 48%', minWidth: 250, height: 400 }}>
             <Typography variant="caption" color="text.secondary">Wikivoyage map (Kartographer regions)</Typography>
+            {/* Above the map, not under it: the strip clips what overflows, and the credit is read without scrolling. */}
+            <ShapeCreditLine credits={wvPreview.credits} />
             <MapGL
               initialViewState={{ longitude: 0, latitude: 0, zoom: 1 }}
               style={{ width: '100%', height: '100%', borderRadius: 4 }}

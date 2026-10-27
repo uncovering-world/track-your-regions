@@ -15,6 +15,7 @@ import {
   type MatchTreeNode,
   type ChildrenReviewed,
   type CoverageGapDivision,
+  type ShapeCredit,
 } from '../../api/admin/worldViewImport';
 import { searchDivisions } from '../../api/divisions';
 import { runHierarchyReview } from '../../api/admin/ai';
@@ -56,6 +57,7 @@ export interface CoverageCompareState {
   parentGeometry: GeoJSON.Geometry | null;
   childrenGeometry: GeoJSON.Geometry | null;
   geoshapeGeometry?: GeoJSON.Geometry | null;
+  geoshapeCredit?: ShapeCredit | null;
 }
 
 export interface GapAnalysisState {
