@@ -890,6 +890,7 @@ export interface RegionImageOverlaysRow {
   opacity: number;
   updated_by: number | null;
   updated_at: Date;
+  source_url: string | null;
 }
 
 /** The table `region_import_state`. */
@@ -914,6 +915,7 @@ export interface RegionMapImagesRow {
   id: number;
   region_id: number;
   image_url: string;
+  image_credit: unknown | null;
 }
 
 /** The table `region_match_suggestions`. */
