@@ -10,6 +10,7 @@
  */
 
 import type { QueueFacets } from '../../api/responses/reviewQueue.js';
+import { realKindSql } from '../../db/membership.js';
 
 /**
  * The filters as predicates over `scoped k`, bound by the keys module: each
@@ -108,6 +109,7 @@ export function facetsSql(f: FacetFilters, userId: string, pickedScope: string):
       WHERE ${f.kind} AND ${f.region} AND ${f.run}
       GROUP BY s.source_id
     ) counted ON counted.source_id = cat.id
+    WHERE ${realKindSql('cat')}
   )
 , facet_region AS (
     -- Counted through the root's own assignment row rather than by walking the

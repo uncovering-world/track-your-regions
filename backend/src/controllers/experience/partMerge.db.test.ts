@@ -236,10 +236,15 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
       // The site keeps its part under the same reference, and the part now holds
       // the arrival, still waiting for a curator: the resolver's state (ADR-0143).
       expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: templeId });
+      // Beside its record in World Heritage components, which it keeps (ADR-0156).
       const held = await pool.query<{ curation_state: string; external_id: string }>(
-        'SELECT curation_state, external_id FROM experience_kind_memberships WHERE experience_id = $1', [templeId],
+        `SELECT curation_state, external_id FROM experience_kind_memberships
+          WHERE experience_id = $1 ORDER BY kind_id`, [templeId],
       );
-      expect(held.rows).toEqual([{ curation_state: 'pending', external_id: ITEM }]);
+      expect(held.rows).toEqual([
+        { curation_state: 'pending', external_id: ITEM },
+        { curation_state: 'auto', external_id: expect.stringMatching(/^component:\d+$/) },
+      ]);
     });
 
     it('takes an item two components hold for their ensemble\'s, and merges neither', async () => {

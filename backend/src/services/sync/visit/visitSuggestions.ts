@@ -13,7 +13,7 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../../db/experienceWriter.js';
-import { KINDS, MEMBERSHIPS, membershipAdmittedSql } from '../../../db/membership.js';
+import { KINDS, MEMBERSHIPS, kindIsRealSql, membershipAdmittedSql } from '../../../db/membership.js';
 import type { VisitReading } from './visitReading.js';
 
 /**
@@ -28,7 +28,7 @@ export function askedSql(e = 'e'): string {
             'countries', to_jsonb(COALESCE(${e}.country_names, '{}'::text[])),
             'kinds', COALESCE((SELECT jsonb_agg(k.name ORDER BY k.id)
                                  FROM ${KINDS} k
-                                WHERE EXISTS (SELECT 1 FROM ${MEMBERSHIPS} km
+                                WHERE ${kindIsRealSql('k')} AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} km
                                                WHERE km.experience_id = ${e}.id AND km.kind_id = k.id
                                                  AND ${membershipAdmittedSql('km')})), '[]'::jsonb),
             'map', ${e}.metadata->'osm'->>'tag',

@@ -14,7 +14,7 @@
 
 import { heldFieldAnsweredSql } from '../../experience/heldDecisions.js';
 import {
-  MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql, membershipAdmittedSql,
+  MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql, membershipAdmittedSql, realKindSql,
 } from '../../../db/membership.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 import { WORLD_HERITAGE_KIND_ID } from '../../../db/inscription.js';
@@ -559,6 +559,7 @@ const placeListingDisagreesWithMemberships: CatalogueAssertion = {
                        CASE WHEN bool_and(m.missing_since IS NOT NULL) THEN max(m.missing_since) END AS missing,
                        CASE WHEN bool_and(m.source_membership = 'former') THEN 'former' ELSE 'present' END AS listing
                   FROM ${MEMBERSHIPS} m
+                 WHERE ${realKindSql('m')}
                  GROUP BY m.experience_id) d ON d.experience_id = e.id
          WHERE e.missing_since IS DISTINCT FROM d.missing
             OR e.source_membership IS DISTINCT FROM d.listing

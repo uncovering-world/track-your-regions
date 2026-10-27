@@ -8,7 +8,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipToAnswerSql, placeHoldsRealKindSql } from '../../db/membership.js';
 import { answeringPlaceOfSql } from '../../db/placePoints.js';
 import { placeViewSourcesSql } from '../../db/sourceViews.js';
 import { contentsMembershipToAnswerSql } from './waitingCounts.js';
@@ -184,7 +184,7 @@ export async function resolveEverySourceScope(
 ): Promise<{ permitted: boolean; logRegionId: number | null; sourceIds: number[] }> {
   const sources = await pool.query<{ source_ids: number[]; holds: boolean }>(
     `SELECT ${placeViewSourcesSql('$1::int')} AS source_ids,
-            EXISTS (SELECT 1 FROM ${MEMBERSHIPS} WHERE experience_id = $1) AS holds`, [experienceId],
+            ${placeHoldsRealKindSql('$1::int')} AS holds`, [experienceId],
   );
   const sourceIds = sources.rows[0].source_ids;
   if (!sources.rows[0].holds) return { permitted: false, logRegionId: null, sourceIds };

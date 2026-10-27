@@ -21,7 +21,7 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockTwoExperiences, markFolded, type LockedExperience } from '../../db/experienceWriter.js';
-import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, kindIsRealSql } from '../../db/membership.js';
 import { moveChangesOfPlace } from '../../services/sync/changeRecorder.js';
 import { moveConflictDecisions } from './conflictDecisions.js';
 import { foldPoints, movePoints, unfoldPoints, type FoldedPoints } from './experienceLocationWriter.js';
@@ -114,11 +114,18 @@ export async function mergePlaces(
     if (survivor.mergedInto !== null || folded.mergedInto !== null) {
       return await refuse({ status: 409, error: 'One of the two places has already been merged into another' });
     }
-    const shared = await client.query<{ kind_id: number }>(
-      `SELECT f.kind_id FROM ${MEMBERSHIPS} f JOIN ${MEMBERSHIPS} s ON s.kind_id = f.kind_id
+    const shared = await client.query<{ kind_id: number; is_virtual: boolean }>(
+      `SELECT f.kind_id, NOT ${kindIsRealSql('k')} AS is_virtual FROM ${MEMBERSHIPS} f JOIN ${MEMBERSHIPS} s ON s.kind_id = f.kind_id
+         JOIN ${KINDS} k ON k.id = f.kind_id
         WHERE f.experience_id = $1 AND s.experience_id = $2`,
       [foldedId, survivorId],
     );
+    if (shared.rows.some(row => row.is_virtual)) {
+      // Each is a serial site's part with its record in World Heritage
+      // components (ADR-0156): the merge moves the folded place's memberships
+      // before its relations, and one place holds one membership per kind.
+      return await refuse({ status: 409, error: 'Both places are components of World Heritage sites, which one place cannot be twice' });
+    }
     if (shared.rows.length > 0) {
       // ADR-0086 decision 4: one place holds one membership per kind.
       return await refuse({ status: 409, error: 'Both places belong to the same kind, which one place cannot hold twice' });
@@ -302,7 +309,7 @@ async function logOnBoth(
   const named = await client.query<{ survivor_name: string; folded_name: string; kinds: string[] }>(
     `SELECT (SELECT name FROM experiences WHERE id = $1) AS survivor_name,
             (SELECT name FROM experiences WHERE id = $2) AS folded_name,
-            array(SELECT k.name FROM ${MEMBERSHIPS} m JOIN ${KINDS} k ON k.id = m.kind_id
+            array(SELECT k.name FROM ${MEMBERSHIPS} m JOIN ${KINDS} k ON k.id = m.kind_id AND ${kindIsRealSql('k')}
                    WHERE m.id = ANY($3::int[]) ORDER BY k.display_priority, k.id) AS kinds`,
     [survivorId, foldedId, memberships],
   );

@@ -260,7 +260,7 @@ describe('getReviewQueue', () => {
       user: ADMIN, query: { q: '100%', source: '1', region: 6737, run: 98 },
     } as never, makeRes() as never);
 
-    for (const [anchor, source] of [["'kept-out' AS kind", 'm.source_id = ANY($'], ["'withdrawn-answered' AS kind", 'ps.experience_id = e.id ORDER BY 1) && $']]) {
+    for (const [anchor, source] of [["'kept-out' AS kind", 'm.source_id = ANY($'], ["'withdrawn-answered' AS kind", 'real_kind.is_virtual) ORDER BY 1) && $']]) {
       const [sql, params] = callMatching(anchor);
       expect(sql).toContain('e.name ILIKE $');
       expect(sql).toContain("ESCAPE '\\'");

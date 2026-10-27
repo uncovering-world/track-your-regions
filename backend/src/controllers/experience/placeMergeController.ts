@@ -15,6 +15,7 @@ import { pool } from '../../db/index.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { mergeIdParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
+import { realKindSql } from '../../db/membership.js';
 import { undoMerge } from './placeMerge.js';
 
 export async function undoPlaceMerge(
@@ -23,7 +24,8 @@ export async function undoPlaceMerge(
   const found = await pool.query<{ survivor_id: number; source_ids: number[] }>(
     `SELECT m.survivor_id,
             array(SELECT DISTINCT km.source_id FROM experience_kind_memberships km
-                   WHERE km.id IN (SELECT jsonb_array_elements_text(m.moved->'memberships')::int)) AS source_ids
+                   WHERE km.id IN (SELECT jsonb_array_elements_text(m.moved->'memberships')::int)
+                     AND ${realKindSql('km')}) AS source_ids
        FROM experience_merges m
       WHERE m.id = $1`,
     [mergeId],

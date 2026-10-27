@@ -36,7 +36,7 @@
  * it is the point of (ADR-0100 decision 5).
  */
 
-import { MEMBERSHIPS } from './membership.js';
+import { placeHoldsRealKindSql } from './membership.js';
 
 /** One way a place shows a point: the tables it is read from, and the place it is shown by. */
 export interface PlacePointArm {
@@ -166,7 +166,7 @@ export function answeringPlaceSql(point = 'el'): string {
  * asked through, as a write on its point is.
  */
 export function answeringPlaceOfSql(place: string): string {
-  return `COALESCE(CASE WHEN NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} kinded WHERE kinded.experience_id = ${place})
+  return `COALESCE(CASE WHEN NOT ${placeHoldsRealKindSql(place)}
                         THEN ${wholeOfSql(place)} END, ${place})`;
 }
 
@@ -229,8 +229,7 @@ export function somePointShownSql(place: string, point: string, where: string, j
  */
 export function pointNameSql(point = 'el'): string {
   return `COALESCE(CASE WHEN NOT names_nothing(${point}.name) THEN ${point}.name END,
-          (SELECT CASE WHEN EXISTS (SELECT 1 FROM experience_kind_memberships prt_kind
-                                     WHERE prt_kind.experience_id = pop.part_id)
+          (SELECT CASE WHEN ${placeHoldsRealKindSql('pop.part_id')}
                        THEN prt_name.name
                        WHEN ${point}.metadata ? 'wikipediaUrl'
                        THEN wikipedia_article_title(${point}.metadata->>'wikipediaUrl') END

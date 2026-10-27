@@ -20,6 +20,7 @@
 import { approximatePointOpenSql } from '../../services/sync/pointHints.js';
 import {
   MEMBERSHIPS, admissionAnsweredSql, admissionPinnedSql, membershipAdmittedSql, membershipOfferedSql,
+  placeHoldsRealKindSql, realKindSql,
 } from '../../db/membership.js';
 import { openViewFieldsSql } from '../../db/sourceViews.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
@@ -222,8 +223,8 @@ export function claimKeySql(field: string, keyMapParam: string, familyParam: str
 export function sourcesOpenSql(e = 'e'): string {
   return `(EXISTS (SELECT 1 FROM ${MEMBERSHIPS} a JOIN ${MEMBERSHIPS} b
                      ON b.experience_id = a.experience_id AND a.external_id <> b.external_id
-                    WHERE a.experience_id = ${e}.id)
-           OR (EXISTS (SELECT 1 FROM ${MEMBERSHIPS} a WHERE a.experience_id = ${e}.id)
+                    WHERE a.experience_id = ${e}.id AND ${realKindSql('a')} AND ${realKindSql('b')})
+           OR (${placeHoldsRealKindSql(`${e}.id`)}
                AND EXISTS (SELECT 1 FROM experience_parts p WHERE p.part_id = ${e}.id AND p.reason = 'component')))
           AND cardinality(${openViewFieldsSql(e + '.id')}) > 0`;
 }

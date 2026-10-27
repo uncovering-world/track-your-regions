@@ -84,7 +84,7 @@ describe('getSiteFinds', () => {
     // find must not say "shown at Naples and Naples".
     expect(sql).toMatch(/SELECT DISTINCT ON \(sv\.external_id\) sv\.id, sv\.name, svk\.id AS kind_id/);
     // A building sharing a kind with the site first, not one of its first source (#1893).
-    expect(sql.replace(/\s+/g, ' ')).toContain('WHERE venue_kind.experience_id = sv.id AND site_kind.experience_id = e.id) DESC, sv.id');
+    expect(sql.replace(/\s+/g, ' ')).toContain('WHERE venue_kind.experience_id = sv.id AND site_kind.experience_id = e.id AND venue_kind.kind_id IN (SELECT real_kind.id');
   });
 
   it('sends each museum the regions that name it to a reader, the way the search read does', async () => {
