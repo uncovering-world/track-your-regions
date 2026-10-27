@@ -61,6 +61,11 @@ opens the same for every admin, is saved whenever the image dialog applies it, a
 *Remove the reference map* button takes it away, after asking, since the map is every admin's. `docs/tech/STATE-MANAGEMENT.md` says where the
 rest of the dialog's state lives.
 
+A map loaded from the region's map keeps that address (`source_url`), and its author and licence
+are shown under the map tab while the image is on screen, laid over the map or beside it
+(`RegionMapCreditLine`; `docs/tech/world-view-import.md` § Map image credits). An uploaded file
+keeps no address and carries no line, as does every map saved before the address was kept.
+
 ## Eyedropper color picker
 
 Extracted into `useImageColorPicker.ts`. Lets admins sample pixel colors from the reference image to color-code subdivision groups:

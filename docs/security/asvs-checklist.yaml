@@ -151,7 +151,7 @@ chapters:
       desc: "Content validation of an uploaded reference map (#595)"
       level: 2
       status: pass
-      notes: "PUT /api/world-views/regions/:regionId/image-overlay (admin only) takes the image as a data URL of PNG, JPEG or WebP; decodeOverlayImage (controllers/worldView/regionImageOverlay.ts) checks the bytes against the declared type's signature and caps them at 10 MB, and the table's CHECKs hold the same types and cap. SVG, which can carry script, is refused; the dialog rasterizes it to PNG first. Stored as bytea in region_image_overlays (ADR-0113), never on disk, and read back by admins only. Added 2026-10-16."
+      notes: "PUT /api/world-views/regions/:regionId/image-overlay (admin only) takes the image as a data URL of PNG, JPEG or WebP; decodeOverlayImage (controllers/worldView/regionImageOverlay.ts) checks the bytes against the declared type's signature and caps them at 10 MB, and the table's CHECKs hold the same types and cap. SVG, which can carry script, is refused; the dialog rasterizes it to PNG first. Stored as bytea in region_image_overlays (ADR-0113), never on disk, and read back by admins only. The body's sourceUrl, the region map the image was loaded from (#2087), is held to an absolute http(s) address by isStorableHttpUrl and by the region_image_overlays.source_url CHECK, and is never fetched. Added 2026-10-16."
     V5.3.1:
       desc: "Downloaded files not executable server-side"
       level: 1
