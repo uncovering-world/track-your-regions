@@ -675,8 +675,8 @@ Suppressions hide real issues over time. Treat each one as a deliberate exceptio
 
 ```typescript
 // ✅ GOOD — inline, single rule, with reason
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath validated by safeCachePath: must match wikivoyage-cache*.json under CACHE_DIR
-unlinkSync(filePath);
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- directory comes from an operator-set env var that is refused in production, and fileName is validated above as a bare name
+const contents = await readFile(`${directory}/${fileName}`, 'utf8');
 
 // ✅ GOOD — TypeScript suppression with reason, prefer @ts-expect-error
 // @ts-expect-error -- passport-apple types are incomplete; module ships without callback typings
@@ -725,7 +725,7 @@ The reason should answer "why is this safe right now?" Not just restate the rule
 | `-- ignore` | ❌ Useless |
 | `-- needed for OpenCV.js` | ⚠️ Vague — *why* is OpenCV.js different? |
 | `-- OpenCV.js (cv / cv.Mat) has no TypeScript types` | ✅ Specific and actionable |
-| `-- filePath validated by safeCachePath: must match wikivoyage-cache*.json under CACHE_DIR` | ✅ Names the upstream guard that makes the call safe |
+| `-- fileName is validated above as a bare name` | ✅ Names the upstream guard that makes the call safe |
 | `-- bounded character classes between literal anchors; no nested quantifiers, so no catastrophic backtracking` | ✅ Explains the regex-safety reasoning the rule missed |
 | `# nosec B603 -- subprocess input is hard-coded path, not user input` | ✅ Names the upstream guarantee that defuses the rule |
 | `# type: ignore[no-untyped-call] -- pyproj.Transformer.from_crs has no stubs in pyproj 3.7` | ✅ Specific lib + version, points to a fixable future state |

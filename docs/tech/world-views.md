@@ -225,7 +225,7 @@ Every world view import — Wikivoyage, JSON file, or base layer — starts from
 
 The three sources today:
 
-- **Wikivoyage** (`WikivoyageSource.tsx`) — fetches and enriches the full Wikivoyage region hierarchy (extraction → enrichment → import → matching), with a persistent on-disk cache.
+- **Wikivoyage** (`WikivoyageSource.tsx`) — builds and enriches the full Wikivoyage region hierarchy (extraction → enrichment → import → matching) from English Wikivoyage's copy kept from the monthly dump (`wikivoyage_pages`); see `docs/tech/world-view-import.md` § The copy the extraction reads.
 - **JSON file** (`FileSource.tsx`) — uploads a pre-generated JSON region tree for any other external source, with a matching-policy dropdown.
 - **Administrative base layer** (`BaseLayerSource.tsx`) — see Base Layer Import above.
 
