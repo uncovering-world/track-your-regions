@@ -8,6 +8,7 @@
 import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
 import { computeMultiDivisionCoverage } from '../../services/worldViewImport/geoshapeCoverage.js';
+import { shapeCredit } from '../../services/worldViewImport/shapeCredit.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import type {
   ChildRegionGeometries, ChildrenCoverage, CoverageGapAnalysis, CoverageGeometry,
@@ -488,7 +489,7 @@ export async function getCoverageGeometry(
 
     // 3. Get the Wikidata geoshape if available
     const geoshapeQuery = pool.query(`
-      SELECT ST_AsGeoJSON(wg.geom) AS geojson
+      SELECT ST_AsGeoJSON(wg.geom) AS geojson, wg.wikidata_id, wg.licence, wg.attribution
       FROM wikidata_geoshapes wg
       JOIN region_import_state ris ON ris.source_external_id = wg.wikidata_id
       WHERE ris.region_id = $1 AND wg.not_available = FALSE AND wg.geom IS NOT NULL
@@ -523,11 +524,13 @@ export async function getCoverageGeometry(
     const childrenGeometry = childrenGeo?.rows[0]?.geojson
       ? JSON.parse(childrenGeo.rows[0].geojson as string) as AreaGeometry
       : null;
-    const geoshapeGeometry = geoshapeGeo?.rows[0]?.geojson
-      ? JSON.parse(geoshapeGeo.rows[0].geojson as string) as AreaGeometry
+    const geoshapeRow = geoshapeGeo.rows[0];
+    const geoshapeGeometry = geoshapeRow?.geojson
+      ? JSON.parse(geoshapeRow.geojson as string) as AreaGeometry
       : null;
+    const geoshapeCredit = geoshapeGeometry ? shapeCredit(geoshapeRow) : null;
 
-    return { parentGeometry, childrenGeometry, geoshapeGeometry };
+    return { parentGeometry, childrenGeometry, geoshapeGeometry, geoshapeCredit };
   } catch (err) {
     console.error('[WV Import] Coverage geometry failed:', err);
     throw failure('Coverage geometry failed', 500);

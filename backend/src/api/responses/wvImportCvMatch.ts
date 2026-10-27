@@ -17,6 +17,7 @@
 
 import { z } from 'zod/v4';
 import { AreaGeometry } from './regions.js';
+import { ShapeCredit } from './worldViewImport.js';
 
 // ---------------------------------------------------------------------------
 // A reviewer's answer to a paused run
@@ -115,6 +116,7 @@ export const MapshapesFound = z.strictObject({
   wikivoyagePreview: z.strictObject({
     type: z.literal('FeatureCollection'),
     features: z.array(WikivoyageShapeFeature),
+    credits: z.array(ShapeCredit).describe('The credit of each stored shape the features are drawn from.'),
   }),
   stats: z.strictObject({
     totalMapshapes: z.number().int(),

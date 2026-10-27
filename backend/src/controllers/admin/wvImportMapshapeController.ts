@@ -9,6 +9,7 @@
 import { pool } from '../../db/index.js';
 import { parseMapshapes } from '../../services/wikivoyageExtract/parser.js';
 import { getOrFetchCommonsMapGeoshape } from '../../services/worldViewImport/geoshapeCache.js';
+import { shapeCreditsFor } from '../../services/worldViewImport/shapeCredit.js';
 import { userAgent } from '../../config/userAgent.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';
 import {
@@ -479,6 +480,7 @@ async function buildWikivoyagePreview(
   msIndexToGroupIndex: Map<number, number>,
 ): Promise<MapshapesFound['wikivoyagePreview']> {
   const features: WikivoyageShapeFeature[] = [];
+  const drawnKeys: string[] = [];
   for (let i = 0; i < resolvedMapshapes.length; i++) {
     const ms = resolvedMapshapes[i];
     const validIds = ms.wikidataIds.filter(id => availableIds.has(id));
@@ -493,6 +495,7 @@ async function buildWikivoyagePreview(
     `, [validIds]);
 
     if (unionResult.rows.length > 0 && unionResult.rows[0].geojson) {
+      drawnKeys.push(...validIds);
       features.push({
         type: 'Feature',
         geometry: JSON.parse(unionResult.rows[0].geojson as string) as AreaGeometry,
@@ -504,7 +507,7 @@ async function buildWikivoyagePreview(
       });
     }
   }
-  return { type: 'FeatureCollection', features };
+  return { type: 'FeatureCollection', features, credits: await shapeCreditsFor(drawnKeys) };
 }
 
 /**

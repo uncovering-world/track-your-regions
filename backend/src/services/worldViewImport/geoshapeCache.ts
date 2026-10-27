@@ -63,12 +63,59 @@ export interface CommonsMapMeta {
   color?: string;
 }
 
+const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
+/** A credit line, not the file's prose: a longer `sources` text is cut here. */
+const ATTRIBUTION_MAX = 300;
+
+/** The parts of a Commons map data file (content model `Map.JsonConfig`) the store reads. */
+interface CommonsMapData {
+  license?: unknown;
+  sources?: unknown;
+  data?: { features?: Array<{ geometry?: unknown; properties?: Record<string, string> }> };
+}
+
+/** Wikitext as plain text: a wikilink `[[target|label]]` shown by its target. */
+function plainWikitext(text: string): string {
+  // eslint-disable-next-line security/detect-unsafe-regex, sonarjs/slow-regex -- pattern matches wikilinks [[target|label]]; negated classes are bounded by ']' which prevents exponential backtracking
+  return text.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The file's content as the Action API answers it, or null where the page is
+ * missing or holds none. The API answers most of its refusals (`ratelimited`,
+ * `maxlag`) with HTTP 200 and an `error` body, which says nothing about the
+ * file: that answer is `'refused'`, so it is asked again, as a 429 is.
+ */
+async function readCommonsMapData(response: Response): Promise<CommonsMapData | null | 'refused'> {
+  const answer = await response.json() as {
+    error?: unknown;
+    query?: { pages?: Array<{ revisions?: Array<{ slots?: { main?: { content?: unknown } } }> }> };
+  };
+  if (answer.error !== undefined) return 'refused';
+  const content = answer.query?.pages?.[0]?.revisions?.[0]?.slots?.main?.content;
+  return typeof content === 'string' ? JSON.parse(content) as CommonsMapData : null;
+}
+
+async function markCommonsMapUnavailable(cacheKey: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
+     ON CONFLICT (wikidata_id) DO NOTHING`,
+    [cacheKey],
+  );
+}
+
 /**
  * Fetch and cache a Wikimedia Commons map data file (e.g. "North_Sea_Coast_region.map").
  *
  * These files contain GeoJSON FeatureCollections with polygon geometries, fill colors,
  * and titles. Used by Wikivoyage pages that reference `wikicommons=` in {{mapshape}}
  * templates instead of `wikidata=`.
+ *
+ * The file is read through Commons' Action API, which answers its content with
+ * the licence the file declares (`license`, ODbL for a map drawn from
+ * OpenStreetMap) and what it was drawn from (`sources`). A shape is drawn on the
+ * admin's import dialogs with that credit (`shapeCredit.ts`, #2085), so it is
+ * kept with them, and a file that declares no licence is kept as no shape.
  *
  * Stores geometry in wikidata_geoshapes using "commons:{filename}" as the key.
  */
@@ -87,8 +134,17 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
   await acquireFetchSlot();
 
   try {
-    const url = `https://commons.wikimedia.org/wiki/Data:${encodeURIComponent(commonsFile)}?action=raw`;
-    await assertRobotsAllow(url);
+    const url = new URL(COMMONS_API);
+    url.search = new URLSearchParams({
+      action: 'query',
+      prop: 'revisions',
+      rvprop: 'content',
+      rvslots: 'main',
+      titles: `Data:${commonsFile}`,
+      format: 'json',
+      formatversion: '2',
+    }).toString();
+    await assertRobotsAllow(url.toString());
     const response = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(15000),
@@ -98,35 +154,28 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
       console.warn(`[GeoshapeCache] Commons HTTP ${response.status} for ${commonsFile}`);
       // Don't poison the cache for transient errors (429 rate limit, 5xx server errors).
       const transient = response.status === 429 || response.status >= 500;
-      if (!transient) {
-        await pool.query(
-          `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
-           ON CONFLICT (wikidata_id) DO NOTHING`,
-          [cacheKey],
-        );
-      }
+      if (!transient) await markCommonsMapUnavailable(cacheKey);
       return { available: false };
     }
 
-    const data = await response.json() as {
-      data?: { features?: Array<{ geometry?: unknown; properties?: Record<string, string> }> };
-    };
-
-    const features = data?.data?.features;
-    if (!features || features.length === 0 || !features[0]?.geometry) {
-      await pool.query(
-        `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
-         ON CONFLICT (wikidata_id) DO NOTHING`,
-        [cacheKey],
-      );
+    const map = await readCommonsMapData(response);
+    if (map === 'refused') {
+      console.warn(`[GeoshapeCache] Commons refused the read of ${commonsFile}`);
       return { available: false };
     }
+    const features = map?.data?.features;
+    const licence = typeof map?.license === 'string' ? map.license.trim() : '';
+    if (!features || features.length === 0 || !features[0]?.geometry || !licence) {
+      await markCommonsMapUnavailable(cacheKey);
+      return { available: false };
+    }
+    const attribution = typeof map?.sources === 'string'
+      ? plainWikitext(map.sources).slice(0, ATTRIBUTION_MAX) || null
+      : null;
 
     // Extract metadata from first feature's properties
     const props = features[0].properties ?? {};
-    const rawTitle = props['title'] ?? '';
-    // eslint-disable-next-line security/detect-unsafe-regex, sonarjs/slow-regex -- pattern matches wikilinks [[target|label]]; negated classes are bounded by ']' which prevents exponential backtracking
-    const title = rawTitle.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1').trim();
+    const title = plainWikitext(props['title'] ?? '');
     const color = props['fill'] ?? '';
 
     // Store geometry — pipeline for hand-drawn Commons shapes:
@@ -137,11 +186,12 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
     const geomJson = JSON.stringify(features[0].geometry);
     if (features.length === 1) {
       await pool.query(
-        `INSERT INTO wikidata_geoshapes (wikidata_id, geom)
+        `INSERT INTO wikidata_geoshapes (wikidata_id, geom, licence, attribution)
          VALUES ($1, ST_Multi(ST_CollectionExtract(
-           ST_Buffer(ST_Buffer(ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON($2), 4326)), 0.00001), -0.00001), 3)))
-         ON CONFLICT (wikidata_id) DO UPDATE SET geom = EXCLUDED.geom, not_available = FALSE`,
-        [cacheKey, geomJson],
+           ST_Buffer(ST_Buffer(ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON($2), 4326)), 0.00001), -0.00001), 3)), $3, $4)
+         ON CONFLICT (wikidata_id) DO UPDATE SET geom = EXCLUDED.geom, not_available = FALSE,
+           licence = EXCLUDED.licence, attribution = EXCLUDED.attribution`,
+        [cacheKey, geomJson, licence, attribution],
       );
     } else {
       // Multiple features — buffer each feature BEFORE union to fix per-feature
@@ -150,13 +200,14 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
         .map(f => f.geometry ? JSON.stringify(f.geometry) : null)
         .filter(Boolean) as string[];
       await pool.query(
-        `INSERT INTO wikidata_geoshapes (wikidata_id, geom)
+        `INSERT INTO wikidata_geoshapes (wikidata_id, geom, licence, attribution)
          VALUES ($1, ST_Multi(ST_CollectionExtract(
            (SELECT ST_Union(
              ST_Buffer(ST_Buffer(ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON(g), 4326)), 0.00001), -0.00001)
-           ) FROM unnest($2::text[]) AS g), 3)))
-         ON CONFLICT (wikidata_id) DO UPDATE SET geom = EXCLUDED.geom, not_available = FALSE`,
-        [cacheKey, geomJsons],
+           ) FROM unnest($2::text[]) AS g), 3)), $3, $4)
+         ON CONFLICT (wikidata_id) DO UPDATE SET geom = EXCLUDED.geom, not_available = FALSE,
+           licence = EXCLUDED.licence, attribution = EXCLUDED.attribution`,
+        [cacheKey, geomJsons, licence, attribution],
       );
     }
 
@@ -165,11 +216,7 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
     console.error('[GeoshapeCache] Failed to fetch Commons map %s:', commonsFile, err);
     // A host's refusal says nothing about the map, and is asked again next time.
     if (err instanceof RobotsRefusal) return { available: false };
-    await pool.query(
-      `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
-       ON CONFLICT (wikidata_id) DO NOTHING`,
-      [cacheKey],
-    );
+    await markCommonsMapUnavailable(cacheKey);
     return { available: false };
   }
 }

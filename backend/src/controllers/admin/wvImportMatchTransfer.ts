@@ -12,6 +12,7 @@ import type { AreaGeometry } from '../../api/responses/regions.js';
 import { TransferAccepted, TransferPreview } from '../../api/responses/worldViewImport.js';
 import type { z } from 'zod/v4';
 import { createError, notFound } from '../../middleware/errorHandler.js';
+import { shapeCreditsFor } from '../../services/worldViewImport/shapeCredit.js';
 import type { worldViewIdParamSchema, wvImportAcceptTransferSchema, wvImportTransferPreviewSchema } from '../../types/index.js';
 
 interface TransferRequestBody {
@@ -229,5 +230,6 @@ export async function getTransferPreview(
       geometry: r.geometry as AreaGeometry,
     }));
 
-  return { type: 'FeatureCollection', features };
+  const credits = features.some(f => f.properties.role === 'target_outline') ? await shapeCreditsFor([wikidataId]) : [];
+  return { type: 'FeatureCollection', features, credits };
 }

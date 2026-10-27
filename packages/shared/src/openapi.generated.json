@@ -19798,12 +19798,24 @@
               }
             ],
             "description": "Its Wikidata geoshape, where one is cached."
+          },
+          "geoshapeCredit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShapeCredit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The credit of that shape; null where none is drawn."
           }
         },
         "required": [
           "parentGeometry",
           "childrenGeometry",
-          "geoshapeGeometry"
+          "geoshapeGeometry",
+          "geoshapeCredit"
         ],
         "additionalProperties": false,
         "description": "A region's own outline beside its descendants' and its geoshape, to compare."
@@ -27179,11 +27191,19 @@
                 "items": {
                   "$ref": "#/components/schemas/WikivoyageShapeFeature"
                 }
+              },
+              "credits": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ShapeCredit"
+                },
+                "description": "The credit of each stored shape the features are drawn from."
               }
             },
             "required": [
               "type",
-              "features"
+              "features",
+              "credits"
             ],
             "additionalProperties": false
           },
@@ -33786,6 +33806,38 @@
           "modelId"
         ]
       },
+      "ShapeCredit": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "The source the shape was read from, as its credit names it: a Commons map data file's page title."
+          },
+          "url": {
+            "type": "string",
+            "description": "Its page."
+          },
+          "licence": {
+            "type": "string",
+            "description": "The licence the source declares, as it spells it (`ODbL-1.0`)."
+          },
+          "attribution": {
+            "description": "What the source says the shape was drawn from; null when it says nothing.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "label",
+          "url",
+          "licence",
+          "attribution"
+        ],
+        "additionalProperties": false,
+        "description": "Whose work a drawn region shape is, and under which licence (#2085): shown with the shape wherever it is drawn."
+      },
       "SiblingRegionGeometry": {
         "type": "object",
         "properties": {
@@ -35952,11 +36004,19 @@
               ],
               "additionalProperties": false
             }
+          },
+          "credits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShapeCredit"
+            },
+            "description": "The credit of the target's outline, where one is drawn."
           }
         },
         "required": [
           "type",
-          "features"
+          "features",
+          "credits"
         ],
         "additionalProperties": false,
         "description": "What a transfer would do, drawn: the donor's division, the divisions that would move, and the target's outline (ADR-0012)."
