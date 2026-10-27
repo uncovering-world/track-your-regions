@@ -94,6 +94,14 @@ function ItemText({ item, label, description }: { item: string; label: string | 
 }
 
 /**
+ * What a place is, in words: the kinds it is in, and for a serial site's part,
+ * which is in no kind of its own, the site it is part of (#1250).
+ */
+function whatItIs(kinds: readonly string[], partOf: string | null): string[] {
+  return partOf ? [...kinds, `part of ${partOf}`] : [...kinds];
+}
+
+/**
  * The two places' Wikidata items (#1970). One item they share is one link.
  * Two items are each named beside the place that carries it, with the label
  * and description that tell them apart: Babylon's city, Q5684, from the item
@@ -112,8 +120,9 @@ function PairItems({ item, pair }: { item: ReviewQueueItem; pair: Pair }) {
       </Typography>
     );
   }
-  const anchorPlace = `${item.name} (${['this card', ...pair.anchorKinds].join(', ')})`;
-  const otherPlace = pair.otherKinds.length ? `${pair.otherName} (${pair.otherKinds.join(', ')})` : pair.otherName;
+  const anchorPlace = `${item.name} (${['this card', ...whatItIs(pair.anchorKinds, pair.anchorPartOf)].join(', ')})`;
+  const otherWhat = whatItIs(pair.otherKinds, pair.otherPartOf);
+  const otherPlace = otherWhat.length ? `${pair.otherName} (${otherWhat.join(', ')})` : pair.otherName;
   return (
     <Box sx={{ mt: 0.25 }}>
       <Typography variant="body2" color="text.secondary">
@@ -158,6 +167,7 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Typography variant="body1" sx={{ fontWeight: 600 }}>{pair.otherName}</Typography>
             {pair.otherKinds.map(kind => <Chip key={kind} label={kind} size="small" variant="outlined" />)}
+            {pair.otherPartOf && <Chip label={`Part of ${pair.otherPartOf}`} size="small" variant="outlined" />}
             {pair.exact && <Chip label="same name, same spot" size="small" color="success" variant="outlined" />}
           </Stack>
           <Typography variant="body2" color="text.secondary">
@@ -307,6 +317,11 @@ export function MergeProposalsCard({ item, onDone }: {
     <Card variant="outlined">
       <CardContent>
         <ItemHeader item={item} />
+        {pairs[0]?.anchorPartOf && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            This place is part of {pairs[0].anchorPartOf}.
+          </Typography>
+        )}
         <Typography variant="body2" sx={{ my: 2 }}>
           {plural(pairs.length, 'place')} within reach of this one {pairs.length === 1 ? 'carries' : 'carry'} a name
           alike. For each, say whether the two are one place, two places, or one part of the other. One place keeps

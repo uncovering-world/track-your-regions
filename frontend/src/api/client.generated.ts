@@ -3980,6 +3980,16 @@ export interface MergePair {
   /** The names of the kinds the card's own place is in, the same way, to name it beside its item. */
   anchorKinds: string[];
   /**
+     * The serial World Heritage site the other place is a part of, by name, where it is one (#1250).
+     * @nullable
+     */
+  otherPartOf: string | null;
+  /**
+     * The site the card's own place is a part of, the same way.
+     * @nullable
+     */
+  anchorPartOf: string | null;
+  /**
      * The other place's item's label in the local Wikidata subset, English first (#1970).
      * @nullable
      */
