@@ -37,6 +37,31 @@ export function normaliseTitle(title: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
+/** The site the copy keeps, and the only one whose article URLs name a page of it. */
+const WIKIVOYAGE_HOST = 'en.wikivoyage.org';
+
+/**
+ * The page title an English Wikivoyage article URL names, as written in the
+ * URL; null when it names none. An import may hold any http(s) page as a
+ * region's source, and a Wikipedia article's title is not this site's page.
+ */
+export function pageNameFromUrl(sourceUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return null;
+  }
+  if (url.hostname !== WIKIVOYAGE_HOST || !url.pathname.startsWith('/wiki/')) return null;
+  const rest = url.pathname.slice('/wiki/'.length);
+  if (!rest) return null;
+  try {
+    return decodeURIComponent(rest);
+  } catch {
+    return null;
+  }
+}
+
 /** Why the extraction cannot read the copy: none is kept, or a build replaced it mid-run. The admin reads `sentence`. */
 export class CopyRefusal extends Error {
   constructor(readonly sentence: string) {

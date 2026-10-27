@@ -9,6 +9,22 @@ import { describe, expect, it, vi } from 'vitest';
 const query = vi.fn();
 vi.mock('../../../db/index.js', () => ({ pool: { query: (...args: unknown[]) => query(...args) } }));
 
+// The kept copy of English Wikivoyage, as the build reads it: null while none is kept.
+const pages = vi.hoisted(() => ({ wikitext: new Map<string, string>() as Map<string, string> | null }));
+vi.mock('../../wikivoyageExtract/pageCopy.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../wikivoyageExtract/pageCopy.js')>();
+  return {
+    ...actual,
+    PageCopy: {
+      open: async () => {
+        const kept = pages.wikitext;
+        if (!kept) throw new actual.CopyRefusal('not kept');
+        return { article: async (title: string) => (kept.has(title) ? { title, wikitext: kept.get(title)! } : null) };
+      },
+    },
+  };
+});
+
 const { drawnFile, drawnItems, getidOf, LAYER_DRAWN, LAYER_SELECTION, layerDraws, pinnedObjects, selectionFile } = await import('./layerSelection.js');
 
 describe('the layer selection', () => {
@@ -61,10 +77,37 @@ describe('the layer selection', () => {
   });
 
   it('draws whole the objects of each item a world-view import names, by its QID only (ADR-0157)', async () => {
-    query.mockResolvedValueOnce({ rows: [{ item: 'Q1000001' }, { item: 'Q1000002' }] });
-    expect(await drawnItems()).toEqual(['Q1000001', 'Q1000002']);
+    pages.wikitext = new Map();
+    query.mockResolvedValueOnce({ rows: [
+      { item: 'Q1000002', source_url: null },
+      { item: 'Q1000001', source_url: null },
+      { item: 'commons:Test_region.map', source_url: null },
+      { item: null, source_url: null },
+    ] });
+    expect(await drawnItems()).toEqual({ named: ['Q1000001', 'Q1000002'], listed: [] });
     const [sql] = query.mock.calls.at(-1) as [string];
     expect(sql).toMatch(/FROM region_import_state/);
-    expect(sql).toMatch(/source_external_id ~ '\^Q\[1-9\]\[0-9\]\*\$'/);
+  });
+
+  it("also draws the items each mapshape on an imported region's page lists, read from the kept copy (#2105)", async () => {
+    // Fixture items, not real ones: a region whose page draws two child regions from four districts.
+    pages.wikitext = new Map([[
+      'Test_Land',
+      '{{mapshape|type=geoshape|fill=#cfd48c|title=Coast|wikidata=Q1000003, Q1000004}}\n'
+        + '{{mapshape|type=geoshape|fill=#d5dc76|title=Heath|wikidata=Q1000005,q1000006,Q1000001}}\n'
+        + '{{mapshape|type=geoshape|title=Hills|wikicommons=Test_region.map}}',
+    ]]);
+    query.mockResolvedValueOnce({ rows: [
+      { item: 'Q1000001', source_url: 'https://en.wikivoyage.org/wiki/Test_Land' },
+      { item: 'Q1000002', source_url: 'https://en.wikivoyage.org/wiki/No_such_page' },
+    ] });
+    // Q1000001 is listed too, and counted once, as the item an import names.
+    expect(await drawnItems()).toEqual({ named: ['Q1000001', 'Q1000002'], listed: ['Q1000003', 'Q1000004', 'Q1000005'] });
+  });
+
+  it('draws the regions by their own items while no copy of Wikivoyage is kept', async () => {
+    pages.wikitext = null;
+    query.mockResolvedValueOnce({ rows: [{ item: 'Q1000001', source_url: 'https://en.wikivoyage.org/wiki/Test_Land' }] });
+    expect(await drawnItems()).toEqual({ named: ['Q1000001'], listed: [] });
   });
 });

@@ -18,7 +18,7 @@
  * 4. indexes the copy and swaps it in with the planet's replication timestamp,
  *    which every answer read from the layer carries (decision 5).
  * 5. fills the store of region shapes the world-view match reads from the
- *    objects it kept whole for the items the imports name (`layerShapes.ts`,
+ *    objects it kept whole for the items `drawnItems` lists (`layerShapes.ts`,
  *    ADR-0157).
  *
  * An object the catalogue names may since have been deleted from OSM or
@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url';
 import type { DumpFile, TextReader } from '../catalog.js';
 import { fetchText } from '../fetch.js';
 import { holdVerifiedCopy, type ReadOptions, type ReadResult } from '../read.js';
-import { drawnFile, drawnItems, LAYER_DRAWN, pinnedObjects, selectionFile } from './layerSelection.js';
+import { drawnFile, drawnItems, type DrawnItems, LAYER_DRAWN, pinnedObjects, selectionFile } from './layerSelection.js';
 import { refillRegionShapes } from './layerShapes.js';
 import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
 import { bringForward, CURRENT_PLANET, dailyState, dropCurrent, firstDiffAfter, readCurrent, type BroughtForward } from './planetCurrent.js';
@@ -92,8 +92,8 @@ async function weeklyInstant(planet: string, file: DumpFile, signal: AbortSignal
 interface Cut {
   cut: string;
   pins: string;
-  /** The items the world-view imports name, whose objects the layer keeps whole. */
-  items: string[];
+  /** The items whose objects the layer keeps whole. */
+  items: DrawnItems;
   /** How many objects the catalogue names, and how many of them the planet no longer holds. */
   pinned: number;
   gone: number;
@@ -108,7 +108,8 @@ async function cutLayer(planet: string, work: string, options: LayerBuildOptions
   const items = await drawnItems();
   await writeFile(selection, selectionFile());
   await writeFile(join(work, 'drawn.txt'), drawnFile());
-  await writeFile(join(work, 'drawn-items.txt'), items.length > 0 ? `${items.join('\n')}\n` : '');
+  const drawn = [...items.named, ...items.listed];
+  await writeFile(join(work, 'drawn-items.txt'), drawn.length > 0 ? `${drawn.join('\n')}\n` : '');
   await writeFile(pins, named.length > 0 ? `${named.join('\n')}\n` : '');
 
   const selected = join(work, 'selected.osm.pbf');
@@ -205,11 +206,13 @@ type LayerResult = { bytes: number; lines: number; checksumActual: string | null
  * what it holds. The layer stands whether or not this succeeds: a store left
  * as it was is a note on the build, and the next build fills it again.
  */
-async function regionShapesFrom(items: string[], options: LayerBuildOptions): Promise<string> {
-  options.onPhase('Keeping the shapes of the regions the world-view imports name...');
+async function regionShapesFrom(items: DrawnItems, options: LayerBuildOptions): Promise<string> {
+  options.onPhase('Keeping the region shapes of the items the layer keeps whole...');
   try {
-    const { held } = await refillRegionShapes(items);
-    return `; ${held.toLocaleString('en')} of the ${items.length.toLocaleString('en')} items the world-view imports name have a region shape`;
+    const held = new Set((await refillRegionShapes([...items.named, ...items.listed])).held);
+    const said = (list: string[]) => `${list.filter(item => held.has(item)).length.toLocaleString('en')} of the ${list.length.toLocaleString('en')}`;
+    return `; ${said(items.named)} items the world-view imports name have a region shape, `
+      + `and ${said(items.listed)} other items their pages' mapshapes list`;
   } catch (error) {
     options.onNote?.(`the region shapes were not refreshed from this layer, and the store keeps the last build's: ${error instanceof Error ? error.message : String(error)}`);
     return '';

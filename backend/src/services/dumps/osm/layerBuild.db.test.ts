@@ -33,8 +33,8 @@ let loadFails = false;
 /** What `osmium getid` answers: every named object found, or some gone, or an error it does not explain. */
 let getid: { code: number; stderr: string } = { code: 0, stderr: '' };
 let rowsLoaded: Array<[string, number, string, string | null, string]> = [];
-/** The items the world-view imports name (fixture QIDs, not real ones). */
-let drawnItems: string[] = [];
+/** The items the layer keeps whole (fixture QIDs, not real ones). */
+let drawnItems: { named: string[]; listed: string[] } = { named: [], listed: [] };
 
 vi.mock('../fetch.js', () => ({
   fetchText: vi.fn(async (url: string) => {
@@ -112,6 +112,9 @@ const REGION_WAY: [string, number, string, string | null, string] = ['W', 31, '{
   'POLYGON((10 10,10 12,12 12,12 10,10 10))'];
 /** A region an import names that the layer holds only as a point. */
 const REGION_POINT: [string, number, string, string | null, string] = ['N', 32, '{"place":"region","wikidata":"Q1000002"}', 'Q1000002', 'POINT(20 20)'];
+/** A district a mapshape on an imported region's page lists, which no import names (#2105). */
+const DISTRICT: [string, number, string, string | null, string] = ['R', 33, '{"boundary":"administrative","wikidata":"Q1000004"}', 'Q1000004',
+  'MULTIPOLYGON(((12 10,12 11,13 11,13 10,12 10)))'];
 
 let buildId = 0;
 const newBuild = async () => (await pool.query<{ id: number }>(
@@ -141,7 +144,7 @@ beforeEach(async () => {
   loadFails = false;
   getid = { code: 0, stderr: '' };
   rowsLoaded = [STONEHENGE, POMPEII, BAKERY];
-  drawnItems = [];
+  drawnItems = { named: [], listed: [] };
   refillFails = false;
   await clear();
   buildId = await newBuild();
@@ -266,25 +269,28 @@ describe('buildLayer (#1437)', () => {
     expect(await latestLayer()).toBeNull();
   });
 
-  it('keeps the shape of each region an import names, a relation before a way, and leaves the Commons shapes (#2085)', async () => {
-    drawnItems = ['Q1000001', 'Q1000002'];
-    rowsLoaded = [STONEHENGE, REGION, REGION_WAY, REGION_POINT];
+  it('keeps the shape of each region an import names and each item a mapshape lists, a relation before a way, and leaves the Commons shapes (#2085, #2105)', async () => {
+    drawnItems = { named: ['Q1000001', 'Q1000002'], listed: ['Q1000004', 'Q1000005'] };
+    rowsLoaded = [STONEHENGE, REGION, REGION_WAY, REGION_POINT, DISTRICT];
     await pool.query(`INSERT INTO wikidata_geoshapes (wikidata_id, geom, licence) VALUES
       ('Q1000003', ST_GeomFromText('MULTIPOLYGON(((0 0,0 1,1 1,1 0,0 0)))', 4326), 'ODbL-1.0'),
       ('commons:Test_region.map', ST_GeomFromText('MULTIPOLYGON(((0 0,0 1,1 1,1 0,0 0)))', 4326), 'CC0-1.0')`);
 
     const result = await build();
 
-    expect(result.summary).toMatch(/; 1 of the 2 items the world-view imports name have a region shape$/);
+    expect(result.summary).toMatch(
+      /; 1 of the 2 items the world-view imports name have a region shape, and 1 of the 2 other items their pages' mapshapes list$/,
+    );
     expect(await rows(`SELECT wikidata_id, licence, round(ST_Area(geom)::numeric, 2)::float AS area FROM wikidata_geoshapes
       WHERE wikidata_id LIKE 'Q100000_' OR wikidata_id = 'commons:Test_region.map' ORDER BY wikidata_id COLLATE "C"`)).toEqual([
       { wikidata_id: 'Q1000001', licence: 'ODbL-1.0', area: 1 },
+      { wikidata_id: 'Q1000004', licence: 'ODbL-1.0', area: 1 },
       { wikidata_id: 'commons:Test_region.map', licence: 'CC0-1.0', area: 1 },
     ]);
   });
 
   it('keeps the layer it swapped in when the region shapes cannot be kept, and says so', async () => {
-    drawnItems = ['Q1000001'];
+    drawnItems = { named: ['Q1000001'], listed: [] };
     rowsLoaded = [STONEHENGE, REGION];
     refillFails = true;
 

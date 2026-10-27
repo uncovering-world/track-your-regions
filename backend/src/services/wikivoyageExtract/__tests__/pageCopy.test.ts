@@ -17,7 +17,7 @@ vi.mock('../../dumps/wikivoyage/pageTables.js', () => ({
   latestPages: async () => (copy.dumpDate ? { dumpDate: copy.dumpDate, swappedAt: new Date(), needs: 'nothing' } : null),
 }));
 
-const { CopyRefusal, PageCopy, normaliseTitle } = await import('../pageCopy.js');
+const { CopyRefusal, PageCopy, normaliseTitle, pageNameFromUrl } = await import('../pageCopy.js');
 
 const article = (title: string, wikitext: string, wikidataId: string | null = null): Row =>
   ({ title, redirect_to: null, wikidata_id: wikidataId, wikitext });
@@ -41,6 +41,25 @@ describe('normaliseTitle', () => {
   it('stores a title as MediaWiki does', () => {
     expect(normaliseTitle('saint_Petersburg#Districts')).toBe('Saint Petersburg');
     expect(normaliseTitle('  Northwestern   Russia ')).toBe('Northwestern Russia');
+  });
+});
+
+describe('pageNameFromUrl', () => {
+  it('reads the title an article URL names, without its section', () => {
+    expect(pageNameFromUrl('https://en.wikivoyage.org/wiki/Lower_Saxony#Regions')).toBe('Lower_Saxony');
+    expect(pageNameFromUrl('https://en.wikivoyage.org/wiki/S%C3%A3o_Paulo')).toBe('São_Paulo');
+  });
+
+  it('names no page for a URL with no article path or a broken escape', () => {
+    expect(pageNameFromUrl('https://en.wikivoyage.org/')).toBeNull();
+    expect(pageNameFromUrl('https://en.wikivoyage.org/wiki/')).toBeNull();
+    expect(pageNameFromUrl('https://en.wikivoyage.org/wiki/Bad%E0%A4')).toBeNull();
+  });
+
+  it('names no page for another site, whose article is not the Wikivoyage page of that title', () => {
+    expect(pageNameFromUrl('https://en.wikipedia.org/wiki/Paris')).toBeNull();
+    expect(pageNameFromUrl('https://de.wikivoyage.org/wiki/Niedersachsen')).toBeNull();
+    expect(pageNameFromUrl('not a url /wiki/Paris')).toBeNull();
   });
 });
 

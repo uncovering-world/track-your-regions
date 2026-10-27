@@ -101,7 +101,7 @@ function objectOf(row: LayerRow, currentTo: string): OsmObject {
  * What the layer maps carrying each item's `wikidata` tag, with its geometry
  * and the geometry's type where the keep rule draws one. The layer keeps a
  * point for most objects (ADR-0136), and a full geometry for what a kind
- * draws and for the objects of the items a world-view import names
+ * draws and for the objects of the items `drawnItems` lists
  * (ADR-0157), so it answers no type for an object the rule does not draw,
  * whatever the layer kept of it: its point or outline is not this kind's.
  */
