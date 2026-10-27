@@ -14,14 +14,20 @@ describe('the reference map, between the dialog and the database (#595)', () => 
   it('sends a raster data URL as it is, with its size, corners and opacity', async () => {
     expect(await overlayBodyOf(SETTINGS)).toEqual({
       imageDataUrl: PNG_URL, imageName: 'Provinces of Flanders.png', imageWidth: 1200, imageHeight: 800, corners: CORNERS, opacity: 0.7,
+      sourceUrl: null,
     });
+  });
+
+  it('keeps the region map it was loaded from, whose credit it carries (#2087)', async () => {
+    const BELGIUM_MAP = 'https://commons.wikimedia.org/wiki/Special:FilePath/be-map.png';
+    expect(await overlayBodyOf({ ...SETTINGS, sourceUrl: BELGIUM_MAP })).toMatchObject({ sourceUrl: BELGIUM_MAP });
   });
 
   it('reads back what it saved as the settings the dialog draws', () => {
     expect(settingsOf({
       regionId: 9311, imageDataUrl: PNG_URL, imageName: 'Provinces of Flanders.png', imageWidth: 1200, imageHeight: 800,
-      corners: CORNERS, opacity: 0.7, updatedAt: '2026-10-16T12:00:00.000Z',
-    })).toEqual(SETTINGS);
+      corners: CORNERS, opacity: 0.7, updatedAt: '2026-10-16T12:00:00.000Z', sourceUrl: null,
+    })).toEqual({ ...SETTINGS, sourceUrl: null });
   });
 });
 

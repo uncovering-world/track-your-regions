@@ -20,11 +20,12 @@ import {
   respondToClusterReview,
   fetchClusterHighlight,
 } from '../../api/admin/worldViewImport';
-import { toThumbnailUrl } from '../../utils/imageUrl';
 import { AuthImage } from '../shared/AuthImage';
+import { RegionMapPicture } from './RegionMapPicture';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 
 export interface CvClusterReviewSectionProps {
+  worldViewId: number;
   cvMatchDialog: CvMatchDialogState;
   setCVMatchDialog: React.Dispatch<React.SetStateAction<CvMatchDialogState | null>>;
 }
@@ -61,11 +62,8 @@ function applyHighlightOverlay(
   };
 }
 
-export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvClusterReviewSectionProps) {
+export function CvClusterReviewSection({ worldViewId, cvMatchDialog, setCVMatchDialog }: CvClusterReviewSectionProps) {
   const cr = cvMatchDialog.clusterReview!;
-  // The stored map is wiki content: drawn only as toThumbnailUrl allows (#694),
-  // at the largest size Commons keeps cached, since clusters are read off it.
-  const mapSrc = cvMatchDialog.regionMapUrl ? toThumbnailUrl(cvMatchDialog.regionMapUrl, 1280) : '';
   const sorted = [...cr.clusters].sort((a, b) => b.pct - a.pct);
   // Targets for "merge into" = any non-excluded cluster
   // Merge targets: only clusters that are "kept" (not excluded or merged into something else)
@@ -106,10 +104,18 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
       </Typography>
       {/* Side-by-side: region map + cluster preview — sticky, max 40vh so cluster list is always visible */}
       <Box sx={{ display: 'flex', gap: 1, mb: 1.5, position: 'sticky', top: 0, zIndex: 10, bgcolor: 'info.50', pb: 1 }}>
-        {mapSrc && (
+        {cvMatchDialog.regionMapUrl && (
           <Box sx={{ flex: '1 1 45%', textAlign: 'center', display: 'flex', flexDirection: 'column' }}>
             <Typography variant="caption" color="text.secondary">Region map</Typography>
-            <img src={mapSrc} style={{ maxWidth: '100%', maxHeight: '35vh', objectFit: 'contain', borderRadius: 4 }} />
+            {/* The stored map is wiki content: drawn only as toThumbnailUrl allows (#694),
+                at the largest size Commons keeps cached, since clusters are read off it. */}
+            <RegionMapPicture
+              worldViewId={worldViewId}
+              url={cvMatchDialog.regionMapUrl}
+              width={1280}
+              alt="Region map"
+              sx={{ maxWidth: '100%', maxHeight: '35vh', objectFit: 'contain', borderRadius: '4px' }}
+            />
           </Box>
         )}
         {cr.previewImage && (

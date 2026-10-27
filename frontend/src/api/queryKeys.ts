@@ -195,6 +195,7 @@ export const queryKeys = {
       childrenCoverage: (worldViewId: Id) => ['admin', 'wvImport', 'childrenCoverage', worldViewId] as const,
       rematchStatusAll: ['admin', 'wvImport', 'rematchStatus'] as const,
       rematchStatus: (worldViewId: Id) => ['admin', 'wvImport', 'rematchStatus', worldViewId] as const,
+      mapCredits: (worldViewId: Id, urls: readonly string[]) => ['admin', 'wvImport', 'mapCredits', worldViewId, urls] as const,
     },
   },
 } as const;

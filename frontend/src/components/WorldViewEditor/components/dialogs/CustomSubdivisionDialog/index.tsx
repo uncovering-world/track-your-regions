@@ -682,6 +682,7 @@ export function CustomSubdivisionDialog({
               onApplyImageOverlay={overlay.apply}
               onRemoveImageOverlay={overlay.remove}
               regionMapUrl={selectedRegion?.regionMapUrl}
+              worldViewId={worldViewId}
             />
           )}
 

@@ -52,6 +52,7 @@ import { useDivisionOperations } from './useDivisionOperations';
 import { useSubdivisionMapHover } from './useSubdivisionMapHover';
 import { SubdivisionMapLayers } from './SubdivisionMapLayers';
 import { useImageColorPicker } from './useImageColorPicker';
+import { RegionMapCreditLine } from '../../../../admin/RegionMapPicture';
 
 interface MapViewTabProps {
   selectedRegion: Region | null;
@@ -69,6 +70,8 @@ interface MapViewTabProps {
   onRemoveImageOverlay: () => unknown;
   /** Region map URL for one-click overlay loading */
   regionMapUrl?: string | null;
+  /** The world view being edited, asked for the reference map's credit. */
+  worldViewId: number;
 }
 
 export function MapViewTab({
@@ -84,6 +87,7 @@ export function MapViewTab({
   onApplyImageOverlay,
   onRemoveImageOverlay,
   regionMapUrl,
+  worldViewId,
 }: MapViewTabProps) {
   const mapRef = useRef<MapRef>(null);
   // The stored map is wiki content, and the overlay wants it at full size, so it
@@ -97,6 +101,8 @@ export function MapViewTab({
   // Image overlay state
   const [imageOverlayDialogOpen, setImageOverlayDialogOpen] = useState(false);
   const [imageDisplayMode, setImageDisplayMode] = useState<'overlay' | 'sideBySide'>('overlay');
+  // Which reference map failed to draw beside the map: its credit goes with it.
+  const [sideImageFailedFor, setSideImageFailedFor] = useState<string | null>(null);
 
   // Side-by-side image panel container ref
   const imgContainerRef = useRef<HTMLDivElement>(null);
@@ -633,6 +639,7 @@ export function MapViewTab({
             <img
               ref={sideImageRef}
               src={imageOverlaySettings.imageUrl}
+              onError={() => setSideImageFailedFor(imageOverlaySettings.imageUrl)}
               onClick={handleSideImageClick}
               style={{
                 maxWidth: '100%',
@@ -644,6 +651,11 @@ export function MapViewTab({
           </Paper>
         )}
       </Box>
+      {/* The reference map is drawn over the map or beside it, and either way it
+          is a region map's picture when it was loaded from one (#2087). */}
+      {imageOverlaySettings && !(imageDisplayMode === 'sideBySide' && sideImageFailedFor === imageOverlaySettings.imageUrl) && (
+        <RegionMapCreditLine worldViewId={worldViewId} url={imageOverlaySettings.sourceUrl} />
+      )}
 
       {/* Image Overlay Dialog */}
       <ImageOverlayDialog
@@ -655,6 +667,7 @@ export function MapViewTab({
         existingSettings={imageOverlaySettings}
         regionGeometries={mapGeometries}
         regionMapUrl={regionMapSrc}
+        worldViewId={worldViewId}
       />
 
       {/* Cut Division Dialog */}

@@ -913,6 +913,11 @@ export interface RegionImageOverlay {
   opacity: number;
   /** When it was last saved, ISO 8601. */
   updatedAt: string;
+  /**
+     * The region map address the image was loaded from, whose credit it carries; null for an uploaded file.
+     * @nullable
+     */
+  sourceUrl: string | null;
 }
 
 export interface RegionImageOverlayBody {
@@ -946,6 +951,7 @@ export interface RegionImageOverlayBody {
      * @maximum 1
      */
   opacity: number;
+  sourceUrl?: string | null;
 }
 
 export type RegionSubdivisionGroupsGroupsItem = {

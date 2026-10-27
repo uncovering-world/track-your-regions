@@ -42,6 +42,7 @@ import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { RegionMapPicture } from './RegionMapPicture';
 import { plural } from '../../utils/plural';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
@@ -412,9 +413,10 @@ export function SmartSimplifyDialog({
                   <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
                     Region map
                   </Typography>
-                  <Box
-                    component="img"
-                    src={mapSrc}
+                  <RegionMapPicture
+                    worldViewId={worldViewId}
+                    url={regionMapUrl ?? ''}
+                    width={500}
                     alt="Region map"
                     sx={{
                       maxWidth: '100%',

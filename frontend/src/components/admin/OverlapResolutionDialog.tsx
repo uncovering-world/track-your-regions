@@ -40,6 +40,7 @@ import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { RegionMapPicture } from './RegionMapPicture';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -473,11 +474,13 @@ export function OverlapResolutionDialog({
             <Box sx={{ display: 'flex', gap: 1.5, flex: '1 1 60%', minHeight: 0 }}>
               {/* Left: static region map */}
               {mapSrc && (
-                <Box sx={{ flex: '0 0 42%', border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <img
-                    src={mapSrc}
+                <Box sx={{ flex: '0 0 42%', border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden', bgcolor: '#f5f5f5', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 0.5 }}>
+                  <RegionMapPicture
+                    worldViewId={worldViewId}
+                    url={regionMapUrl ?? ''}
+                    width={500}
                     alt={parentRegionName}
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                    sx={{ maxWidth: '100%', minHeight: 0, flex: '0 1 auto', objectFit: 'contain' }}
                   />
                 </Box>
               )}

@@ -4176,6 +4176,53 @@ export const MapImageSelectedValue = {
 } as const;
 export type MapImageSelected = typeof MapImageSelectedValue;
 
+export interface WvImportMapCreditsBody {
+  /**
+     * @minItems 1
+     * @maxItems 50
+     * @items.maxLength 2000
+     */
+  urls: string[];
+}
+
+/**
+ * Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043).
+ */
+export interface ImageCredit {
+  /**
+     * The photographer or uploader, as plain text.
+     * @nullable
+     */
+  author: string | null;
+  /**
+     * The licence in the words its own name uses: "CC BY-SA 3.0", "Public domain".
+     * @nullable
+     */
+  license: string | null;
+  /** @nullable */
+  licenseUrl: string | null;
+  /**
+     * The file page or the site's own page for the object: where the full terms are.
+     * @nullable
+     */
+  detailsUrl: string | null;
+}
+
+export type MapImageCreditsCreditsItem = {
+  /** A map image as the request named it. */
+  url: string;
+  /** Null where Commons did not answer in time: the dialog draws no line, and the next draw asks again. */
+  credit: ImageCredit | null;
+};
+
+/**
+ * Who each region map image is credited to (ADR-0043), read from Commons the first time a dialog draws the file and kept on its rows.
+ */
+export interface MapImageCredits {
+  /** One entry per requested url that a region of the world view holds as a map image; any other url is left out. */
+  credits: MapImageCreditsCreditsItem[];
+}
+
 export interface WvImportMarkManualFixBody {
   /**
      * @maximum 2147483647
@@ -9178,6 +9225,46 @@ return apiFetch<MapImageSelected>(getPostAdminWvImportMatchesByWorldViewIdSelect
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(wvImportSelectMapImageBody)
+  }
+);}
+
+
+
+export const getPostAdminWvImportMatchesByWorldViewIdMapCreditsUrl = (worldViewId: number,) => {
+
+
+
+
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/map-credits`
+}
+
+/**
+ * Requires an admin.
+ * @summary The credits of region map images a dialog draws, asking Commons for the ones not read yet
+ */
+export const postAdminWvImportMatchesByWorldViewIdMapCredits = async (worldViewId: number,
+    wvImportMapCreditsBody: WvImportMapCreditsBody, options?: Parameters<typeof apiFetch>[1]): Promise<MapImageCredits> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<MapImageCredits>(getPostAdminWvImportMatchesByWorldViewIdMapCreditsUrl(worldViewId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(wvImportMapCreditsBody)
   }
 );}
 

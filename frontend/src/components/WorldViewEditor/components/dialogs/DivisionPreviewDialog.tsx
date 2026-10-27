@@ -20,6 +20,7 @@ import type * as maplibregl from 'maplibre-gl';
 import { getChildrenRegionGeometry } from '../../../../api/admin/worldViewImport';
 import { frameGeoJson } from '../../../../utils/mapUtils';
 import { extractImageUrl, toThumbnailUrl } from '../../../../utils/imageUrl';
+import { RegionMapPicture } from '../../../admin/RegionMapPicture';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const CHILD_COLORS = ['#3388ff', '#33aa55', '#9955cc', '#cc7733', '#5599dd', '#aa3366', '#55bb88', '#8866cc', '#dd5555', '#44bbaa', '#7766bb', '#bb8844'];
@@ -496,13 +497,14 @@ export function DivisionPreviewDialog({
               bgcolor: 'grey.50',
               p: 1,
             }}>
-              <Box
-                component="img"
-                src={mapSrc}
+              <RegionMapPicture
+                worldViewId={worldViewId}
+                url={regionMapUrl ?? ''}
+                width={500}
                 alt="Region map"
                 sx={{
                   maxWidth: '100%',
-                  maxHeight: 360,
+                  maxHeight: 340,
                   objectFit: 'contain',
                 }}
               />

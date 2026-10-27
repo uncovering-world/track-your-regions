@@ -16,12 +16,14 @@ import { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre'
 import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { RegionMapPicture } from './RegionMapPicture';
 import { plural } from '../../utils/plural';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
 interface SmartFlattenPreviewDialogProps {
   open: boolean;
+  worldViewId: number;
   regionName: string;
   geometry: GeoJSON.Geometry | null;
   regionMapUrl: string | null;
@@ -34,6 +36,7 @@ interface SmartFlattenPreviewDialogProps {
 
 export function SmartFlattenPreviewDialog({
   open,
+  worldViewId,
   regionName,
   geometry,
   regionMapUrl,
@@ -86,9 +89,10 @@ export function SmartFlattenPreviewDialog({
               <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
                 Region map
               </Typography>
-              <Box
-                component="img"
-                src={mapSrc}
+              <RegionMapPicture
+                worldViewId={worldViewId}
+                url={regionMapUrl ?? ''}
+                width={500}
                 alt="Region map"
                 sx={{
                   maxWidth: '100%',

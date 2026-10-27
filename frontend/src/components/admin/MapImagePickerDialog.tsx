@@ -2,7 +2,9 @@
  * Map Image Picker Dialog
  *
  * Shows a grid of image candidates for an imported region and lets
- * the admin select the correct map image (or mark "none are maps").
+ * the admin select the correct map image (or mark "none are maps"). Each
+ * candidate drawn carries its credit (#2087): the maps are Commons files, most
+ * often CC BY-SA.
  */
 
 import { useState, useCallback } from 'react';
@@ -21,9 +23,13 @@ import {
 import CheckIcon from '@mui/icons-material/Check';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
+import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { useRegionMapCredits } from './RegionMapPicture';
 
 interface MapImagePickerDialogProps {
   open: boolean;
+  /** The world view whose import holds the candidates, asked for their credits. */
+  worldViewId: number;
   regionName: string;
   candidates: string[];
   currentSelection: string | null;
@@ -34,6 +40,7 @@ interface MapImagePickerDialogProps {
 
 export function MapImagePickerDialog({
   open,
+  worldViewId,
   regionName,
   candidates,
   currentSelection,
@@ -59,13 +66,17 @@ export function MapImagePickerDialog({
   // A candidate is wiki content, drawn only as toThumbnailUrl allows (#694): one
   // it refuses is not offered, since a picture no <img> may draw is not a map
   // to choose.
-  const visibleCandidates = candidates
+  const drawableCandidates = candidates
     .map(url => ({ url, src: toThumbnailUrl(url, 300) }))
-    .filter(({ url, src }) => src && !failedImages.has(url));
+    .filter(({ src }) => src);
+  const visibleCandidates = drawableCandidates.filter(({ url }) => !failedImages.has(url));
   // `selected` is seeded from the region's current map, which may be a value
   // stored before the rule and refused now. A pick has to be one of the
   // candidates on screen, or the dialog would re-post what it will not draw.
   const selectionDrawable = visibleCandidates.some(({ url }) => url === selected);
+  // Asked for every drawable candidate, not only the ones still on screen: a
+  // failed load hides its tile, and must not change the question and send it again.
+  const credits = useRegionMapCredits(worldViewId, drawableCandidates.map(({ url }) => url));
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -112,6 +123,8 @@ export function MapImagePickerDialog({
                       background: '#f5f5f5',
                     }}
                   />
+                  {/* A candidate that failed to load is not drawn, and neither is its credit. */}
+                  <ImageCreditLine credit={credits.get(url)} />
                   {isSelected && (
                     <Box
                       sx={{

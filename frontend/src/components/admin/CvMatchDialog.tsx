@@ -99,7 +99,7 @@ export function CvMatchDialog({
             {/* Interactive per-component water review — pipeline paused waiting for user approval */}
             {cvMatchDialog.waterReview && <CvWaterReviewSection cvMatchDialog={cvMatchDialog} setCVMatchDialog={setCVMatchDialog} />}
             {cvMatchDialog.clusterReview && (
-              <CvClusterReviewSection cvMatchDialog={cvMatchDialog} setCVMatchDialog={setCVMatchDialog} />
+              <CvClusterReviewSection worldViewId={worldViewId} cvMatchDialog={cvMatchDialog} setCVMatchDialog={setCVMatchDialog} />
             )}
             {cvMatchDialog.icpAdjustment && (
               <CvIcpAdjustmentSection
