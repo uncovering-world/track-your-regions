@@ -104,7 +104,7 @@ Uploading a JSON file needs none of this: it is the existing `imported` source, 
 
 | Source | Tree comes from |
 |--------|------------------|
-| Wikivoyage | The `wikivoyageExtract` service crawls the MediaWiki API and enriches with Wikidata IDs — see `docs/tech/world-view-import.md` |
+| Wikivoyage | The `wikivoyageExtract` service reads English Wikivoyage's kept copy of the monthly dump and takes each page's Wikidata ID from it — see `docs/tech/world-view-import.md` |
 | JSON file upload | Whatever the admin uploads, validated against the format above |
 | Administrative base layer | `buildBaseLayerTree()` reads `administrative_divisions` down to a chosen depth and emits names and hierarchy only — see "Base Layer Import" in `docs/tech/world-views.md` |
 

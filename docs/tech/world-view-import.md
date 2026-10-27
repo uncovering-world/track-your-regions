@@ -10,7 +10,7 @@ The WorldView import feature lets admins create a WorldView from a region hierar
 2. Matches regions to administrative divisions (with optional subdivision drill-down)
 3. Provides a match review interface for manual corrections
 
-Wikivoyage is the only source with an extraction step of its own: a TypeScript backend service (`backend/src/services/wikivoyageExtract/`) crawls the MediaWiki API to build the region hierarchy (~4,500 regions) before handing it to the same import pipeline.
+Wikivoyage is the only source with an extraction step of its own: a TypeScript backend service (`backend/src/services/wikivoyageExtract/`) reads the region hierarchy from English Wikivoyage's copy kept from the monthly dump (#2089) before handing it to the same import pipeline.
 
 ## Architecture
 
@@ -137,9 +137,13 @@ Additional limits enforced in the controller:
 - **Max 15 levels deep** — prevents stack overflow
 - **50 MB body size limit** — prevents oversized payloads
 
-## Persistent Cache
+## The copy the extraction reads
 
-Wikivoyage API responses are cached to `data/cache/wikivoyage-cache.json` (persistent across server restarts); each successful run also saves a timestamped snapshot (`wikivoyage-cache-<timestamp>.json`) so earlier fetches stay available for reuse. The UI (`WikivoyageSource.tsx`) offers an "API Cache" dropdown listing the active cache plus every snapshot with its date and size, a "Clean fetch (no cache)" entry that deletes the active cache file before starting, and a delete button per snapshot.
+The extraction reads English Wikivoyage from the copy kept from the monthly dump (`wikivoyage_pages`, `docs/tech/dumps.md` § English Wikivoyage's articles), never from the live wiki (#2089). Two extractions of one copy read the same pages, so they build the same tree, where the live Action API's answers moved between two runs; and a run asks the wiki nothing, so it has no rate limit to wait on and nothing to cache. `PageCopy` (`pageCopy.ts`) is what the tree builder and the enrichment read through (`WikivoyagePages`): an article's wikitext, whether a title names a page, and the Wikidata item a page names. It looks a title up as MediaWiki stores it (`normaliseTitle`) and follows it through its redirects as `redirects=1` did, up to ten, a cycle naming nothing; a title that redirects to the page being read is only an alias of it, so it counts as no page of its own. An article's sections are read from its wikitext (`articleSections`, `sections.ts`) as the API's `parse` listed them, so the parser reads the same section text it was handed before.
+
+No copy, no extraction: *Fetch from Wikivoyage* stays disabled and says to build *English Wikivoyage's articles* under Public Dumps, and the start route refuses with 409. A build that swaps in a newer copy while an extraction reads the old one fails that extraction before its import, rather than importing a tree read from two months (`PageCopy.unchanged`). The import run names the copy it was read from (`import_runs.source_dump_date`, migration 185).
+
+The AI review of one region's children (`wvImportAIController.ts`) still reads that region's live page through `WikivoyageFetcher` (`fetcher.ts`): it audits a region against its article as it stands now, one page at a time.
 
 ## Startup Cleanup
 
@@ -151,7 +155,7 @@ On server start, orphaned `import_runs` with status `running` or `matching` are 
 - **An import killed in phase 2** leaves the world view and its regions, every region at the `no_candidates` it was created with, since a matching policy writes its results in one transaction at its end; the startup sweep marks the `import_runs` row `failed`. The review lists the world view as an import under review (it reads `world_views.source_type`, not the run's status), and **Re-match** is the remedy. No screen reads `import_runs.status`, so the sweep's `failed` is a record rather than something the admin is shown.
 - **A re-match** resets the world view in a transaction of its own first — every region member and suggestion deleted, every region back to `no_candidates`, the dismissed coverage gaps cleared — and matches after it. Killed after that reset, it leaves the world view with no members, and so no computed geometry, until **Re-match** is run again.
 - **The AI match** (no screen starts it; the routes remain for a direct call) applies its answers as it goes, a batch of 25 leaves at a time in a transaction each (`applyAIResults`), so what it applied stays. A run again takes every leaf still `needs_review` or `no_candidates` — the ones the killed run suggested for without assigning among them, since a suggestion leaves a leaf `needs_review` — so it spends those model calls again rather than resuming.
-- **The Wikivoyage extraction** keeps what it fetched in its cache file, which it saves every 200 writes (`cache.ts`), so a run started again with the cache skips what was already fetched. It creates its `import_runs` row only in its import phase, through the importer, so a restart before that leaves no row at all, and one after it the import's own cases above.
+- **The Wikivoyage extraction** writes nothing before its import phase: it reads the kept copy, so a run started again reads the same pages. It creates its `import_runs` row only in its import phase, through the importer, so a restart before that leaves no row at all, and one after it the import's own cases above.
 
 An import run's `status` is never NULL and walks one way: `running` → `matching` → `reviewing`, or `failed` from either of the first two. A trigger, `guard_run_status_move()`, refuses every other move, so a run in `reviewing` or `failed` never reopens; the moves are `RUN_STATUS_MOVES` in `@tyr/shared/runStatuses`, and `runStatusMoves.db.test.ts` walks every pair against it. A region's `match_status` has no such list: every move between its six values is some admin action — accept, reject, reset, flatten, undo, or the copy of one region's match onto another with the same source page — so a list would refuse nothing.
 
@@ -350,25 +354,26 @@ Cost: ~$0.05-0.20 for all unresolved leaves in a typical import.
 
 ## Wikivoyage Extraction Service
 
-`backend/src/services/wikivoyageExtract/` — TypeScript service that crawls Wikivoyage via MediaWiki API, enriches with Wikidata IDs, then imports and matches via the worldViewImport service.
+`backend/src/services/wikivoyageExtract/` — TypeScript service that reads the Wikivoyage region hierarchy from the kept copy of English Wikivoyage, enriches it with Wikidata IDs, then imports and matches via the worldViewImport service.
 
 ### Service Architecture
 
 ```
 backend/src/services/wikivoyageExtract/
 ├── types.ts              — ExtractionProgress, ExtractionConfig, TreeNode, PageData
-├── cache.ts              — File-based JSON cache (atomic write via tmp + rename)
-├── fetcher.ts            — WikivoyageFetcher: HTTP + rate limiting + retry + cache
+├── pageCopy.ts           — PageCopy: the kept copy of English Wikivoyage, titles normalised and redirects followed
+├── sections.ts           — An article's sections, read from its wikitext
+├── fetcher.ts            — WikivoyageFetcher: one region's live page, for the AI review of its children
 ├── parser.ts             — Pure wikitext parsing (Regionlist, map images, bullet links)
-├── treeBuilder.ts        — Recursive tree builder using fetcher + parser
-├── wikidataEnricher.ts   — Batch Wikidata ID fetch + tree enrichment
+├── treeBuilder.ts        — Recursive tree builder over the copy + parser
+├── wikidataEnricher.ts   — Wikidata IDs from the copy onto the tree
 └── index.ts              — Service entry: start/status/cancel + full pipeline
 ```
 
 ### Pipeline Phases
 
-1. **Extraction** (`status='extracting'`) — recursive tree build from `en.wikivoyage.org` API. Rate-limited (350ms between requests), cached to disk, retries with exponential backoff
-2. **Enrichment** (`status='enriching'`) — batch Wikidata ID fetch (`action=query&prop=pageprops`) in groups of 50 titles, with redirect/normalization chain handling (5-hop). IDs stored as `wikidataId` on each node
+1. **Extraction** (`status='extracting'`) — recursive tree build from the kept copy of English Wikivoyage (§ The copy the extraction reads)
+2. **Enrichment** (`status='enriching'`) — each node's Wikidata item, the one the copy keeps for the page its title names through its redirects (`wikibase_item`). IDs stored as `wikidataId` on each node
 3. **Import** (`status='importing'`) — calls `importTree()` directly from `worldViewImport/importer.ts`
 4. **Matching** (`status='matching'`) — goes through `runMatchingPolicy(defaultMatchingPolicy('wikivoyage'), …)` from `worldViewImport/index.ts`, like every other path; it does not name a matcher of its own
 
@@ -464,11 +469,10 @@ All require admin auth: each route is declared `admin` in `backend/src/routes/ad
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/start` | Start Wikivoyage extraction + import pipeline |
-| GET | `/status` | Poll extraction progress (includes importedWorldViews), with `operation` (`OperationProgressAnswer`, #1356): six steps, reading the hierarchy (against the estimated region count), waiting for the answers to the AI questions (a person answers them), reading the Wikidata ids, creating the regions, then the import's two match steps as steps 5 and 6 (`runMatchingPolicy`'s `steps`) |
+| POST | `/start` | Start Wikivoyage extraction + import pipeline; 409 while one runs or while no copy of English Wikivoyage is kept |
+| GET | `/status` | Poll extraction progress (includes importedWorldViews, and `copy`, the date of the copy the next extraction reads, null while none is kept), with `operation` (`OperationProgressAnswer`, #1356): six steps, reading the hierarchy (against the estimated region count), waiting for the answers to the AI questions (a person answers them), reading the Wikidata ids, creating the regions, then the import's two match steps as steps 5 and 6 (`runMatchingPolicy`'s `steps`) |
 | POST | `/cancel` | Cancel running extraction |
 | POST | `/answer` | Answer, accept or skip a page's pending question, or delete a rule it leaned on |
-| DELETE | `/caches/:name` | Delete a saved copy of the fetched pages |
 
 Every call `frontend/src/api/admin/wikivoyageExtract.ts` makes answers through a schema in `backend/src/api/responses/wikivoyageExtract.ts` (ADR-0066). A pending question and the regions extracted from its page are read key by key in the controller (`interviewQuestionOf`, `regionPreviewOf`), so what a model or the service adds to them stays on the server. `InterviewQuestion` and `RegionPreview` are the schemas' types in the service too (`services/wikivoyageExtract/types.ts`).
 
@@ -605,11 +609,12 @@ A verdict on suggestions has one writer per rule, whether it is given for one di
 ```
 backend/src/services/wikivoyageExtract/
 ├── types.ts              — ExtractionProgress, ExtractionConfig, TreeNode, PageData
-├── cache.ts              — File-based JSON cache (atomic write)
-├── fetcher.ts            — WikivoyageFetcher: HTTP + rate limiting + retry + cache
+├── pageCopy.ts           — PageCopy: the kept copy of English Wikivoyage, titles normalised and redirects followed
+├── sections.ts           — An article's sections, read from its wikitext
+├── fetcher.ts            — WikivoyageFetcher: one region's live page, for the AI review of its children
 ├── parser.ts             — Pure wikitext parsing (Regionlist, map images, bullet links)
-├── treeBuilder.ts        — Recursive tree builder using fetcher + parser
-├── wikidataEnricher.ts   — Batch Wikidata ID fetch + tree enrichment
+├── treeBuilder.ts        — Recursive tree builder over the copy + parser
+├── wikidataEnricher.ts   — Wikidata IDs from the copy onto the tree
 └── index.ts              — Service entry: start/status/cancel + full pipeline
 
 backend/src/services/worldViewImport/
@@ -673,7 +678,7 @@ backend/src/controllers/admin/baseLayerImportController.ts   — Base layer impo
 
 Admin panel section "WorldView Import" (`WorldViewImportPanel.tsx`) with these views:
 
-1. **Source selection** (`ImportSourcePanel.tsx`) — one source selector (Wikivoyage, JSON file, administrative base layer) plus a shared WorldView name field; only the selected source's form is mounted. See "Import Sources" in `docs/tech/world-views.md` for the source registry. The Wikivoyage form runs the full extraction → enrichment → import → matching pipeline, with multi-phase progress UI (extraction counts, API requests/cache hits, import progress, matching progress) and an "API Cache" dropdown (active cache plus snapshots with date/size, or a "Clean fetch (no cache)" entry) to reuse a previous fetch or force a clean one. The JSON file form has a matching policy dropdown (country-based or none). The base layer form has a provider label field and a depth selector (1-3, default 2); it matches under the `hierarchical` policy, which its source type selects
+1. **Source selection** (`ImportSourcePanel.tsx`) — one source selector (Wikivoyage, JSON file, administrative base layer) plus a shared WorldView name field; only the selected source's form is mounted. See "Import Sources" in `docs/tech/world-views.md` for the source registry. The Wikivoyage form runs the full extraction → enrichment → import → matching pipeline, with multi-phase progress UI (extraction counts, import progress, matching progress), and names the copy of English Wikivoyage it reads, or, with none kept, says to build one under Public Dumps and stays disabled. The JSON file form has a matching policy dropdown (country-based or none). The base layer form has a provider label field and a depth selector (1-3, default 2); it matches under the `hierarchical` policy, which its source type selects
 2. **Existing WorldViews** — if imported world views exist in DB, shows a source type badge (`wikivoyage`, `imported`, or `base_layer` — always the bare form: the chip strips any `_done` suffix via `.replace('_done', '')`, even after finalize, though the stored `world_views.source_type` column itself does gain that suffix, e.g. `wikivoyage_done`), a "Review Matches" button for active reviews, and a separate "Review complete" badge that carries the finalized signal instead (persists across sessions/relogins)
 3. **Match review** (`WorldViewImportReview.tsx`) — two view modes:
    - **Table view** — filterable/paginated table, accept/reject suggestions, map preview per suggestion
@@ -688,7 +693,7 @@ Admin panel section "WorldView Import" (`WorldViewImportPanel.tsx`) with these v
 
 1. Open Admin Panel → WorldView Import — "Wikivoyage" is the default source
 2. Confirm or edit the WorldView name (default: "Wikivoyage Regions")
-3. Optionally choose a cache from the "API Cache" dropdown — defaults to the latest cache when one exists, or select "Clean fetch (no cache)" to force a fresh fetch
+3. The form names the copy of English Wikivoyage the extraction reads; with none kept, build *English Wikivoyage's articles* under Public Dumps first
 4. Click "Fetch from Wikivoyage" — the extraction pipeline runs automatically (20-40 min). Always uses country-based matching
 5. After all phases complete, click "Review Matches"
 6. Accept auto-matches in bulk, review suggestions individually

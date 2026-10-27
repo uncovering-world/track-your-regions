@@ -773,9 +773,11 @@ Code: `backend/src/services/dumps/wikivoyage/`. A keeping build of
 `wikivoyage-pages` (`buildPages`, `pageBuild.ts`) keeps every page of English
 Wikivoyage's namespace 0 in `wikivoyage_pages`: an article with its wikitext,
 a redirect with the title it points to, and the Wikidata item its page
-properties name. It is kept for the world-view extraction (#2089), which
-reads English Wikivoyage through the live Action API, and two runs a few
-days apart built different trees.
+properties name. The world-view extraction reads English Wikivoyage from it
+and from nothing else (#2089), so two extractions of one copy build the same
+tree, where two runs a few days apart against the live Action API built
+different ones (`docs/tech/world-view-import.md` § The copy the extraction
+reads).
 
 The build first finds the same run's `page_props` table, verified by the sha1
 and size its `pagepropstable` job gives, and reads it from the host as a
