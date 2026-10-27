@@ -37,6 +37,7 @@
  * which release them a while after they end, as the writer would have.
  */
 
+import { pointItemClaimedSql, pointItemSql } from '../../db/placePoints.js';
 import { pool } from '../../db/index.js';
 import { Operation } from '../../services/operationProgress.js';
 import { FINDER_STEPS, heldSubset } from '../../services/sync/componentItemFinder.js';
@@ -69,8 +70,8 @@ async function newItemlessComponents(logId: number): Promise<number[]> {
        JOIN experience_parts prt ON prt.part_id = el.experience_id AND prt.reason = 'component'
        JOIN experience_sync_logs run ON run.id = $1
       WHERE el.created_at >= run.started_at
-        AND el.wikidata_item IS NULL AND el.merged_into_id IS NULL AND el.missing_since IS NULL
-        AND NOT (COALESCE(el.curated_fields, '[]'::jsonb) ? 'wikidata_item')
+        AND ${pointItemSql('el')} IS NULL AND el.merged_into_id IS NULL AND el.missing_since IS NULL
+        AND NOT ${pointItemClaimedSql('el')}
       ORDER BY el.id`,
     [logId],
   );

@@ -25,7 +25,7 @@ import { userAgent } from '../../config/userAgent.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
-import { pointsShownSql, shownBySql } from '../../db/placePoints.js';
+import { itemHeldSql, pointItemClaimedSql, pointItemSql, pointsShownSql, shownBySql } from '../../db/placePoints.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import { contentsOf } from '../../services/sync/componentItemQueries.js';
 import { fetchCommonsCredits, type ImageCredit } from '../../services/sync/imageCredit.js';
@@ -116,8 +116,8 @@ async function namedCandidates(client: PoolClient, lock: LockedExperience, ids: 
   const result = await client.query<NamedCandidate>(
     `SELECT p.id, p.location_id, p.wikidata_item, p.item_label, el.name AS point_name,
             (${openProposalSql('p', 'el')}) AS open,
-            (el.wikidata_item IS NOT NULL OR el.curated_fields ? 'wikidata_item') AS has_item,
-            EXISTS (SELECT 1 FROM experience_locations taken WHERE taken.wikidata_item = p.wikidata_item) AS taken
+            (${pointItemSql('el')} IS NOT NULL OR ${pointItemClaimedSql('el')}) AS has_item,
+            ${itemHeldSql('p.wikidata_item')} AS taken
        FROM experience_component_item_proposals p
        JOIN experience_locations el ON el.id = p.location_id
       WHERE p.id = ANY($2::int[]) AND ${shownBySql('el', 'ARRAY[$1::int]')}`,

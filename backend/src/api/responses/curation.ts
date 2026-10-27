@@ -229,7 +229,7 @@ export const PlaceIdentifier = z.strictObject({
   value: z.string(),
   identifies: z.boolean().describe('Whether a run finds this place by the value: it names this place and no other live one.'),
   claimsIdentity: z.boolean().describe('Whether some column, or the curator, says the value is this place; false where it only refers to it.'),
-  basis: z.array(z.string()).describe('The columns that carry the value for this place: membership, site-items, point, component, curator.'),
+  basis: z.array(z.string()).describe('The columns that carry the value for this place: membership, site-items, component-item (the record of a serial site part, ADR-0156), point, component, curator.'),
   verdict: IdentifierVerdict.nullable().describe("The curator's word standing on it, or null where the sources decide."),
   note: z.string().nullable(),
   others: z.array(z.strictObject({

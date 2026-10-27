@@ -12,7 +12,7 @@
  */
 
 import { pool } from '../../../db/index.js';
-import { MEMBERSHIPS } from '../../../db/membership.js';
+import { MEMBERSHIPS, realKindSql } from '../../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import type {
   CoverageCalibrationEntriesRow, CoverageCalibrationSourcesRow, CoverageExpectationsRow, CoverageJudgementsRow, CoverageKindsRow,
@@ -142,9 +142,10 @@ const EXPECTATIONS_SQL = `
 const KNOWN_AS_SQL = `
     SELECT e.id AS experience_id, e.external_id AS id, true AS own FROM experiences e
     UNION
-    SELECT m.experience_id, m.external_id, false FROM ${MEMBERSHIPS} m
+    SELECT m.experience_id, m.external_id, false FROM ${MEMBERSHIPS} m WHERE ${realKindSql('m')}
     UNION
-    SELECT m.experience_id, item, false FROM ${MEMBERSHIPS} m CROSS JOIN LATERAL unnest(m.wikidata_items) AS item`;
+    SELECT m.experience_id, item, false FROM ${MEMBERSHIPS} m CROSS JOIN LATERAL unnest(m.wikidata_items) AS item
+     WHERE ${realKindSql('m')}`;
 
 /**
  * By identifier and never by name. An entry's identifiers are its Wikidata id,

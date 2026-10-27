@@ -29303,7 +29303,7 @@
             "items": {
               "type": "string"
             },
-            "description": "The columns that carry the value for this place: membership, site-items, point, component, curator."
+            "description": "The columns that carry the value for this place: membership, site-items, component-item (the record of a serial site part, ADR-0156), point, component, curator."
           },
           "verdict": {
             "anyOf": [

@@ -4,7 +4,10 @@
  * decision 3, #1426). They are the part row's own, as every place's are, and
  * this module is their one writer: the World Heritage run's content writer, a
  * curator's correction of the part's point, a confirmed or taken-back
- * component item and a published held proposal all write through it.
+ * component item and a published held proposal all write through it. The
+ * component's Wikidata item itself is the part's record in World Heritage
+ * components (ADR-0156 decision 2), which this module writes too
+ * (`writePartItems`).
  *
  * Every write names the part by its point and is refused for a point the
  * locked place does not show: a part is answered for under its site's lock, or
@@ -15,6 +18,7 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from './experienceWriter.js';
+import { COMPONENTS_KIND_ID, MEMBERSHIPS } from './membership.js';
 import { pointOfPartSql, shownBySql } from './placePoints.js';
 
 /** A field of a part this module writes, named as a place's claim and a held proposal name it. */
@@ -82,6 +86,49 @@ export async function writePartFields(
             updated_at = NOW()
        FROM w JOIN experience_locations el ON el.id = w.point_id
       WHERE e.id = el.experience_id
+        AND ${pointOfPartSql('el')}
+        AND ${shownBySql('el', 'ARRAY[$1::int]')}
+      RETURNING w.point_id`,
+    [lock.id, JSON.stringify(rows)],
+  );
+  return result.rows.map(row => row.point_id);
+}
+
+/** One part's item: the item (null takes it off) and what becomes of a curator's claim on it. */
+export interface PartItemWrite {
+  pointId: number;
+  item: string | null;
+  claim?: 'add' | 'drop';
+}
+
+/**
+ * Write the component's Wikidata item on the record of the parts the points
+ * name (`wikidata_items` of its World Heritage components membership), with a
+ * curator's claim on it (`wikidata_items` in the record's `curated_fields`),
+ * under the lock of the place that shows them. Answers the points whose
+ * record was written; a point that is no part's has none.
+ */
+export async function writePartItems(
+  client: PoolClient,
+  lock: LockedExperience,
+  writes: readonly PartItemWrite[],
+): Promise<number[]> {
+  if (writes.length === 0) return [];
+  const rows = writes.map(write => ({ point_id: write.pointId, item: write.item, claim: write.claim ?? null }));
+  const result = await client.query<{ point_id: number }>(
+    `WITH w AS (
+       SELECT * FROM jsonb_to_recordset($2::jsonb) AS w(point_id int, item text, claim text)
+     )
+     UPDATE ${MEMBERSHIPS} rec
+        SET wikidata_items = CASE WHEN w.item IS NULL THEN NULL ELSE ARRAY[w.item] END,
+            curated_fields = CASE w.claim
+                               WHEN 'add' THEN CASE WHEN rec.curated_fields ? 'wikidata_items' THEN rec.curated_fields
+                                                    ELSE rec.curated_fields || '["wikidata_items"]'::jsonb END
+                               WHEN 'drop' THEN rec.curated_fields - 'wikidata_items'
+                               ELSE rec.curated_fields END,
+            updated_at = NOW()
+       FROM w JOIN experience_locations el ON el.id = w.point_id
+      WHERE rec.experience_id = el.experience_id AND rec.kind_id = ${COMPONENTS_KIND_ID}
         AND ${pointOfPartSql('el')}
         AND ${shownBySql('el', 'ARRAY[$1::int]')}
       RETURNING w.point_id`,

@@ -41,7 +41,7 @@ import { pointHeldProposalAt } from './heldProposalPointer.js';
 import type { ImageCredit } from './imageCredit.js';
 import type { LocationWriteRun } from './locationWriter.js';
 import type { ContentItemChange } from './types.js';
-import { pointOfPartSql, shownBySql } from '../../db/placePoints.js';
+import { pointItemClaimedSql, pointOfPartSql, shownBySql } from '../../db/placePoints.js';
 
 /** What the source offers one component: a picture, the credit fetched for it, a subtitle and an article. */
 export interface PointContent {
@@ -186,7 +186,7 @@ export async function writePointContents(
           -- read off the items its index resolves, which never include that
           -- one, and would take the picture away as a reference that resolved
           -- to nothing.
-          AND NOT (el.curated_fields ? 'wikidata_item')
+          AND NOT ${pointItemClaimedSql('el')}
           AND (EXISTS (SELECT 1 FROM experience_location_placements mine
                          JOIN ${MEMBERSHIPS} m ON m.id = mine.membership_id
                         WHERE mine.location_id = el.id AND m.experience_id = $1 AND m.source_id = $6)

@@ -36,7 +36,7 @@
  * it is the point of (ADR-0100 decision 5).
  */
 
-import { placeHoldsRealKindSql } from './membership.js';
+import { COMPONENTS_KIND_ID, MEMBERSHIPS, placeHoldsRealKindSql } from './membership.js';
 
 /** One way a place shows a point: the tables it is read from, and the place it is shown by. */
 export interface PlacePointArm {
@@ -297,6 +297,40 @@ export function pointClaimsSql(point = 'el'): string {
                               WHERE prt_own.id = ${point}.experience_id
                                 AND prt_claim IN ('image_url', 'subtitle', 'metadata.wikipediaUrl')) claims)
                ELSE ${point}.curated_fields END`;
+}
+
+/**
+ * The Wikidata item the point `point` is, as an SQL expression: a serial
+ * site's part's off its record in World Heritage components (ADR-0156
+ * decision 2), any other point's its own.
+ */
+export function pointItemSql(point = 'el'): string {
+  return `CASE WHEN ${pointOfPartSql(point)}
+               THEN (SELECT pi_rec.wikidata_items[1] FROM ${MEMBERSHIPS} pi_rec
+                      WHERE pi_rec.experience_id = ${point}.experience_id AND pi_rec.kind_id = ${COMPONENTS_KIND_ID})
+               ELSE ${point}.wikidata_item END`;
+}
+
+/**
+ * A curator chose the item of the point `point` (#1272): on a part's record
+ * (`wikidata_items` among its claims), else on the point itself.
+ */
+export function pointItemClaimedSql(point = 'el'): string {
+  return `CASE WHEN ${pointOfPartSql(point)}
+               THEN COALESCE((SELECT pc_rec.curated_fields ? 'wikidata_items' FROM ${MEMBERSHIPS} pc_rec
+                               WHERE pc_rec.experience_id = ${point}.experience_id AND pc_rec.kind_id = ${COMPONENTS_KIND_ID}), false)
+               ELSE COALESCE(${point}.curated_fields ? 'wikidata_item', false) END`;
+}
+
+/**
+ * Some component already is the item `item` (an SQL expression): a part's
+ * record or a point carries it, since a component is one item and an item one
+ * component.
+ */
+export function itemHeldSql(item: string): string {
+  return `(EXISTS (SELECT 1 FROM experience_locations held_point WHERE held_point.wikidata_item = ${item})
+           OR EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held_rec
+                       WHERE held_rec.kind_id = ${COMPONENTS_KIND_ID} AND held_rec.wikidata_items @> ARRAY[(${item})::text]))`;
 }
 
 /**

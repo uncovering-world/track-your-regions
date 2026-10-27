@@ -14,7 +14,7 @@ import {
 } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import {
-  overPlacePoints, placePointsSql, pointArticleSql, pointClaimsSql, pointNameSql, pointPictureSql, pointSubtitleSql,
+  overPlacePoints, placePointsSql, pointArticleSql, pointClaimsSql, pointItemSql, pointNameSql, pointPictureSql, pointSubtitleSql,
 } from '../../db/placePoints.js';
 import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
@@ -322,7 +322,7 @@ export async function getExperienceLocations(
       ${pointPictureSql('el')},
       ${pointArticleSql('el')},
       ${pointSubtitleSql('el')},
-      el.wikidata_item,
+      ${pointItemSql('el')} AS wikidata_item,
       ${regionId ? `EXISTS(
         SELECT 1 FROM experience_location_regions elr
         WHERE elr.location_id = el.id AND elr.region_id = $2

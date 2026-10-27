@@ -5200,7 +5200,7 @@ export interface PlaceIdentifier {
   identifies: boolean;
   /** Whether some column, or the curator, says the value is this place; false where it only refers to it. */
   claimsIdentity: boolean;
-  /** The columns that carry the value for this place: membership, site-items, point, component, curator. */
+  /** The columns that carry the value for this place: membership, site-items, component-item (the record of a serial site part, ADR-0156), point, component, curator. */
   basis: string[];
   /** The curator's word standing on it, or null where the sources decide. */
   verdict: IdentifierVerdict | null;
