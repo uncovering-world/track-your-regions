@@ -1,6 +1,8 @@
 /**
  * A curator's correction to one point: what it is called, where it is, its own
- * picture and its description (#1270).
+ * picture and its description (#1270). A serial site's part keeps its picture
+ * and its line under the name on its own row, as its subtitle (ADR-0156
+ * decision 3): correcting its point writes them there, with the claims.
  *
  * The gate's third answer. Holding a coordinate for review while offering only
  * "take the source's point" and "keep the source's point" leaves a curator who
@@ -26,7 +28,8 @@ import { lockExperience, anchorToItsPoint } from '../../db/experienceWriter.js';
 import { correctPoint } from './experienceLocationWriter.js';
 import { userAgent } from '../../config/userAgent.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
-import { answeringPlaceSql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointOfPartSql } from '../../db/placePoints.js';
+import { writePartFields, type PartWrite } from '../../db/partFieldsWriter.js';
 
 /** What a curator may claim on a point — see `db/migrations/027`, and #1270 for the picture and description. */
 type Claim = 'name' | 'location' | 'image_url' | 'description';
@@ -57,6 +60,26 @@ function claimsOf(edit: PointEdit): Claim[] {
 }
 
 /**
+ * The edit's picture and text as the part's own fields, with the claims that
+ * make them survive the next run (ADR-0156 decision 3): the text is the part's
+ * subtitle.
+ */
+function partWriteOf(pointId: number, edit: PointEdit, credit: ImageCredit | null): PartWrite {
+  const fields: PartWrite['fields'] = {};
+  const addClaims: string[] = [];
+  if (edit.picture !== undefined) {
+    fields.image_url = edit.picture;
+    fields['metadata.imageCredit'] = edit.picture && credit ? credit : null;
+    addClaims.push('image_url');
+  }
+  if (edit.text !== undefined) {
+    fields.subtitle = edit.text;
+    addClaims.push('subtitle');
+  }
+  return { pointId, fields, addClaims };
+}
+
+/**
  * The log entry's changes: only the keys this edit actually changed, each under
  * its column's name. The queue's claim attribution asks `details ? '<column>'`
  * to find who claimed a field, so a key present and null would make a rename
@@ -64,14 +87,14 @@ function claimsOf(edit: PointEdit): Claim[] {
  * touched it.
  */
 function editDetails(
-  before: { name: string | null; lon: number; lat: number; image_url: string | null; description: string | null },
+  before: { name: string | null; lon: number; lat: number; image_url: string | null; description: string | null; of_part: boolean },
   edit: PointEdit,
 ): Record<string, unknown> {
   return {
     ...(edit.name === undefined ? {} : { name: { old: before.name, new: edit.name } }),
     ...(edit.move ? { location: { old: { lon: before.lon, lat: before.lat }, new: edit.move } } : {}),
     ...(edit.picture === undefined ? {} : { image_url: { old: before.image_url, new: edit.picture } }),
-    ...(edit.text === undefined ? {} : { description: { old: before.description, new: edit.text } }),
+    ...(edit.text === undefined ? {} : { [before.of_part ? 'subtitle' : 'description']: { old: before.description, new: edit.text } }),
   };
 }
 
@@ -147,27 +170,39 @@ export async function editLocation(
     // this write would be undone by the rewrite below, re-claiming a coordinate
     // whose curator had just handed it back. Everything else that writes these
     // columns only adds.
+    // A part's picture and text are its own row's (ADR-0156 decision 3), read
+    // there; the site's lock, held above, is what every writer of them takes.
     const locked = await client.query(
-      `SELECT name, curated_fields, image_url, description,
-              ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon
-         FROM experience_locations WHERE id = $1 FOR UPDATE`,
+      `SELECT el.name, el.curated_fields, ${pointOfPartSql('el')} AS of_part,
+              CASE WHEN ${pointOfPartSql('el')} THEN part.image_url ELSE el.image_url END AS image_url,
+              CASE WHEN ${pointOfPartSql('el')} THEN part.subtitle ELSE el.description END AS description,
+              ST_Y(el.location::geometry) AS lat, ST_X(el.location::geometry) AS lon
+         FROM experience_locations el JOIN experiences part ON part.id = el.experience_id
+        WHERE el.id = $1 FOR UPDATE OF el`,
       [locationId],
     );
     const before = locked.rows[0] as {
       name: string | null; curated_fields: string[]; lat: number; lon: number;
-      image_url: string | null; description: string | null;
+      image_url: string | null; description: string | null; of_part: boolean;
     } | undefined;
     // The object going takes its points with it, so a missing object is the
     // same 404 as a missing point. The catch below rolls the transaction back.
     if (!before || !object) throw notFound('Location not found');
 
-    const claims = claimsOf(pointEdit);
-
-    await correctPoint(client, object.lock, locationId, {
-      name: name ?? null, movesPoint, longitude: longitude ?? null, latitude: latitude ?? null,
-      picture, credit, description: text,
-      curatedFields: withClaims(before.curated_fields ?? [], claims),
-    });
+    if (before.of_part) {
+      const pointClaims = claimsOf({ ...pointEdit, picture: undefined, text: undefined });
+      await correctPoint(client, object.lock, locationId, {
+        name: name ?? null, movesPoint, longitude: longitude ?? null, latitude: latitude ?? null,
+        curatedFields: withClaims(before.curated_fields ?? [], pointClaims),
+      });
+      await writePartFields(client, object.lock, [partWriteOf(locationId, pointEdit, credit)]);
+    } else {
+      await correctPoint(client, object.lock, locationId, {
+        name: name ?? null, movesPoint, longitude: longitude ?? null, latitude: latitude ?? null,
+        picture, credit, description: text,
+        curatedFields: withClaims(before.curated_fields ?? [], claimsOf(pointEdit)),
+      });
+    }
 
     // **The anchor goes with the point, where there is only one point.**
     //

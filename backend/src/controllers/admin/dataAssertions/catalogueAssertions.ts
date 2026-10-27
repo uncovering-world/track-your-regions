@@ -59,8 +59,10 @@ import {
   offeredToReaderSql,
   publishedContentSql,
 } from '../../../db/readerPredicates.js';
-import { MEMBERSHIPS } from '../../../db/membership.js';
-import { answeringPlaceSql, placePointsSql, pointsShownSql, pointVisitsSql } from '../../../db/placePoints.js';
+import { MEMBERSHIPS, placeHoldsRealKindSql } from '../../../db/membership.js';
+import {
+  answeringPlaceSql, placePointsSql, pointOfPartSql, pointsShownSql, pointVisitsSql,
+} from '../../../db/placePoints.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { heldFieldRefusedSql, heldPartRefusedSql } from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
@@ -479,6 +481,11 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
            -- photograph on show needing a photographer (ADR-0043).
            AND ${drawableHostSql('e.image_url')}
            AND e.metadata->>'imageCredit' IS NULL
+           -- A serial site's part with no kind of its own is reported through
+           -- its point below, whose credit waits on its site's card (ADR-0156).
+           AND (${placeHoldsRealKindSql('e.id')}
+                OR NOT EXISTS (SELECT 1 FROM experience_parts own_part
+                                WHERE own_part.part_id = e.id AND own_part.reason = 'component'))
          UNION ALL
         SELECT 'work', t.id, t.name,
                split_part(split_part(t.image_url, '//', 2), '/', 1),
@@ -508,10 +515,11 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
            AND ${drawableHostSql('t.image_url')}
            AND t.metadata->>'imageCredit' IS NULL
          UNION ALL
-        -- A component's own picture (#1270), whose held credit rides in its
-        -- object's contents record the way a work's does in its museum's.
+        -- A component's own picture (#1270), on its part's row (ADR-0156),
+        -- whose held credit rides in its site's contents record the way a
+        -- work's does in its museum's; any other point's own.
         SELECT 'point', el.id, COALESCE(el.name, el.external_ref),
-               split_part(split_part(el.image_url, '//', 2), '/', 1),
+               split_part(split_part(shown.image_url, '//', 2), '/', 1),
                EXISTS (SELECT 1
                          FROM experiences e
                          JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
@@ -528,9 +536,14 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                           AND NOT ${heldPartRefusedSql('e.id', "'locations'")}
                           AND jsonb_typeof(f -> 'new') = 'object') AS credit_waiting
           FROM experience_locations el
-         WHERE el.image_url IS NOT NULL AND el.image_url <> '' AND el.merged_into_id IS NULL
-           AND ${drawableHostSql('el.image_url')}
-           AND el.metadata->>'imageCredit' IS NULL
+          CROSS JOIN LATERAL (
+            SELECT CASE WHEN ${pointOfPartSql('el')} THEN part.image_url ELSE el.image_url END AS image_url,
+                   CASE WHEN ${pointOfPartSql('el')} THEN part.metadata ELSE el.metadata END AS metadata
+              FROM experiences part WHERE part.id = el.experience_id) shown
+         WHERE shown.image_url IS NOT NULL AND shown.image_url <> '' AND el.merged_into_id IS NULL
+           AND NOT (${pointOfPartSql('el')} AND ${placeHoldsRealKindSql('el.experience_id')})
+           AND ${drawableHostSql('shown.image_url')}
+           AND shown.metadata->>'imageCredit' IS NULL
          ORDER BY 1, 3`,
   describe: row => {
     const waiting = row.credit_waiting === true

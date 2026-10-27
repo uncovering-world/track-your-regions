@@ -260,13 +260,14 @@ describe('a component the list names nothing is named for what it is (#2065)', (
     ]);
   });
 
-  it("renames the part by its point's article once the run records one, the point keeping the list's name", async () => {
+  it("renames the part by its own article once the run records one, the point keeping the list's name", async () => {
     await writeExperienceLocations(THEBES, [KARNAK, unnamed], run);
     const part = (await parts(THEBES)).find(p => p.external_ref === '87-004')!;
 
+    // The article is the part row's own (ADR-0156), as the content writer records it.
     await pool.query(
-      `UPDATE experience_locations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
-      [part.location_id, JSON.stringify({ wikipediaUrl: 'https://en.wikipedia.org/wiki/Mortuary_Temple_of_Hatshepsut' })],
+      `UPDATE experiences SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
+      [part.part_id, JSON.stringify({ wikipediaUrl: 'https://en.wikipedia.org/wiki/Mortuary_Temple_of_Hatshepsut' })],
     );
 
     expect((await parts(THEBES)).find(p => p.external_ref === '87-004')?.name).toBe('Mortuary Temple of Hatshepsut');

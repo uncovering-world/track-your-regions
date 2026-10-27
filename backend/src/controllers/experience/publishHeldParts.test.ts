@@ -124,7 +124,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     expect(write.params).toEqual([9972, 5, 'Geoagiu / Drumul Romanilor (Germisara)']);
   });
 
-  it("writes a held component's own picture, its credit, its description (#1270) and its article (#1963)", async () => {
+  it("writes a held component's own picture, its credit, its subtitle (#1270) and its article (#1963) on its part", async () => {
     grantScope();
     const riesi = 'http://commons.wikimedia.org/wiki/Special:FilePath/Riesi%20Pfahlbau.jpg';
     const credit = { author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null };
@@ -136,7 +136,7 @@ describe('publishing the held fields of an object\'s parts', () => {
         fields: [
           { field: 'image_url', old: null, new: riesi, held: true },
           { field: 'metadata.imageCredit', old: null, new: credit, held: true },
-          { field: 'description', old: null, new: 'prehistoric pile dwelling in Switzerland', held: true },
+          { field: 'subtitle', old: null, new: 'prehistoric pile dwelling in Switzerland', held: true },
           { field: 'metadata.wikipediaUrl', old: null, new: article, held: true },
         ],
       }] } },
@@ -145,20 +145,45 @@ describe('publishing the held fields of an object\'s parts', () => {
 
     const res = await publish({ expectedSyncLogId: 64 }, client);
 
-    const write = only(queries, 'UPDATE experience_locations SET image_url');
-    // Both metadata keys in one assignment: a column is assigned once.
-    expect(write.sql).toContain(
-      "metadata = ((metadata || jsonb_build_object('imageCredit', $4::jsonb)) || jsonb_build_object('wikipediaUrl', $6::jsonb))",
-    );
-    expect(write.sql).toContain('description = $5');
-    expect(write.params).toEqual([
-      9203, 5, riesi, JSON.stringify(credit), 'prehistoric pile dwelling in Switzerland', JSON.stringify(article),
-    ]);
+    // A part's own fields, on its row (ADR-0156 decision 3), through its one writer.
+    const write = only(queries, 'UPDATE experiences e');
+    expect(write.params[0]).toBe(5);
+    expect(JSON.parse(write.params[1] as string)).toEqual([{
+      point_id: 9203,
+      fields: {
+        image_url: riesi, 'metadata.imageCredit': credit,
+        subtitle: 'prehistoric pile dwelling in Switzerland', 'metadata.wikipediaUrl': article,
+      },
+      add_claims: [], drop_claims: [],
+    }]);
+    expect(none(queries, 'UPDATE experience_locations SET image_url')).toBe(true);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{
-        kind: 'locations', name: 'Riesi', fields: ['image_url', 'metadata.imageCredit', 'description', 'metadata.wikipediaUrl'], claimedFieldsSkipped: [],
+        kind: 'locations', name: 'Riesi', fields: ['image_url', 'metadata.imageCredit', 'subtitle', 'metadata.wikipediaUrl'], claimedFieldsSkipped: [],
       }],
     }));
+  });
+
+  it("writes a held picture on a point that is no part's on the point itself, its line as its description", async () => {
+    grantScope();
+    const see = 'http://commons.wikimedia.org/wiki/Special:FilePath/See%20Pfahlbau.jpg';
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { locations: { changed: [{
+        item: { name: 'See', ref: '1363-061' },
+        fields: [
+          { field: 'image_url', old: null, new: see, held: true },
+          { field: 'subtitle', old: null, new: 'pile dwelling', held: true },
+        ],
+      }] } },
+      parts: { location: { ...MONTSEGUR_ROW, id: 9204, name: 'See', part_claims: null } },
+    });
+
+    await publish({ expectedSyncLogId: 64 }, client);
+
+    const write = only(queries, 'UPDATE experience_locations SET image_url');
+    expect(write.sql).toContain('description = $4');
+    expect(write.params).toEqual([9204, 5, see, 'pile dwelling']);
   });
 
   it('writes a held work\'s title and makers as a person would type them', async () => {

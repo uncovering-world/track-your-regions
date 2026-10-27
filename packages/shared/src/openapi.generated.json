@@ -23499,10 +23499,6 @@
               "string",
               "null"
             ]
-          },
-          "image_of_part": {
-            "type": "boolean",
-            "description": "True where `image_url` is the part place's picture rather than the point's own (#1946): the point's own column is empty, which is what a curator correcting the point edits."
           }
         },
         "required": [
@@ -23523,8 +23519,7 @@
           "curation_state",
           "refused_at",
           "description",
-          "wikidata_item",
-          "image_of_part"
+          "wikidata_item"
         ],
         "additionalProperties": false,
         "description": "One point as its object's own read serves it, with where it stands at the gate."

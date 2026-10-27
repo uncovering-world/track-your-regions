@@ -62,7 +62,7 @@
 
 import { venueCountSql, venuesSql } from '../../db/readerPredicates.js';
 import { tidyLabelSql } from '../../services/sync/labelFold.js';
-import { pointsShownSql } from '../../db/placePoints.js';
+import { pointsShownSql, pointClaimsSql } from '../../db/placePoints.js';
 
 /**
  * The stored point a record entry names, as a query body: `SELECT … FROM
@@ -90,7 +90,9 @@ import { pointsShownSql } from '../../db/placePoints.js';
 export function recordedLocationSql(
   { experienceId, ref, name }: { experienceId: string; ref: string; name: string },
 ): string {
-  return `SELECT el.id, el.name, el.ordinal, el.curated_fields,
+  // The claims as a point's read names them, a part's own row's included
+  // (ADR-0156 decision 3).
+  return `SELECT el.id, el.name, el.ordinal, ${pointClaimsSql('el')} AS curated_fields,
                  ST_Y(el.location) AS latitude, ST_X(el.location) AS longitude,
                  pick.identified
             FROM (SELECT w.id,

@@ -217,12 +217,12 @@ export function somePointShownSql(place: string, point: string, where: string, j
  * which that kind placed, none of its own: Etchmiadzin Cathedral's point was
  * listed by its coordinates. A name that names nothing (`names_nothing()`: the
  * World Heritage list calls two parts of Tarraco "The ") counts as none (#2065).
- * A part with no kind of its own lends the title of its point's Wikipedia
- * article, "Roman villa of Centcelles", rather than its name: where there is no
+ * A part with no kind of its own lends the title of its own Wikipedia article
+ * (ADR-0156), "Roman villa of Centcelles", rather than its name: where there is no
  * article that name is the site's with the reference, which beside the site's
  * other points would repeat both. Any other point keeps its null, which the web
  * labels by the reference or the coordinate (`locationLabel`): "1708-003" for a
- * section of the Via Appia. The title is read only off a point that has an
+ * section of the Via Appia. The title is read only off a part that has an
  * article, since this runs on every row of the world layer's markers. The
  * curator's reads keep `name` as the source wrote it, since what the source
  * listed is what a curator corrects.
@@ -231,8 +231,8 @@ export function pointNameSql(point = 'el'): string {
   return `COALESCE(CASE WHEN NOT names_nothing(${point}.name) THEN ${point}.name END,
           (SELECT CASE WHEN ${placeHoldsRealKindSql('pop.part_id')}
                        THEN prt_name.name
-                       WHEN ${point}.metadata ? 'wikipediaUrl'
-                       THEN wikipedia_article_title(${point}.metadata->>'wikipediaUrl') END
+                       WHEN prt_name.metadata ? 'wikipediaUrl'
+                       THEN wikipedia_article_title(prt_name.metadata->>'wikipediaUrl') END
              FROM experience_parts pop
              JOIN experiences prt_name ON prt_name.id = pop.part_id
             WHERE pop.part_id = ${point}.experience_id LIMIT 1))`;
@@ -240,55 +240,72 @@ export function pointNameSql(point = 'el'): string {
 
 /**
  * The picture a reader sees on the point `point`, as two select-list columns
- * `image_url` and `image_credit`: its own, else the picture of the part place
- * it is the point of (ADR-0100 decision 3, #1946). A place another kind
- * brought holds its picture on the place row, and its point none: once a merge
- * makes it a site's part, the component's point that carried the picture is
- * folded into that empty one, and the Church of the Intercession on the Nerl
- * showed its site's montage. The credit is taken from the row the picture is,
- * never one from each. A point of no part keeps its null, which the web fills
- * with the site's picture and says so (`pointPicture`). `tellingOfPart` adds
- * `image_of_part`, true where the picture served is the part place's, for the
- * object's own read a curator corrects the point from.
+ * `image_url` and `image_credit`: a serial site's part's own, off the part row
+ * (ADR-0156 decision 3), and the point's own for a point of any other place. A
+ * part another kind brought holds its picture there as every place does: the
+ * Church of the Intercession on the Nerl shows its own, not its site's montage
+ * (#1946). The credit is taken from the row the picture is. A point with no
+ * picture keeps its null, which the web fills with the site's picture and says
+ * so (`pointPicture`).
  */
-export function pointPictureSql(point = 'el', options: { tellingOfPart?: boolean } = {}): string {
-  const own = `NULLIF(${point}.image_url, '') IS NOT NULL`;
-  const ofPart = (column: string) => `(SELECT ${column} FROM experiences prt_pic
-            WHERE prt_pic.id = ${point}.experience_id AND NULLIF(prt_pic.image_url, '') IS NOT NULL
-              AND EXISTS (SELECT 1 FROM experience_parts pop WHERE pop.part_id = prt_pic.id))`;
-  // Where a curator corrects the point, the picture served has to be told
-  // from the point's own: the form edits the point's column, which is empty.
-  const tell = options.tellingOfPart
-    ? `,
-          (NOT ${own} AND ${ofPart('prt_pic.image_url')} IS NOT NULL) AS image_of_part`
-    : '';
-  return `CASE WHEN ${own} THEN ${point}.image_url ELSE ${ofPart('prt_pic.image_url')} END AS image_url,
-          CASE WHEN ${own} THEN ${point}.metadata -> 'imageCredit'
-               ELSE ${ofPart("prt_pic.metadata -> 'imageCredit'")} END AS image_credit${tell}`;
+export function pointPictureSql(point = 'el'): string {
+  const ofPart = (column: string) => `(SELECT ${column} FROM experiences prt_pic WHERE prt_pic.id = ${point}.experience_id)`;
+  return `CASE WHEN ${pointOfPartSql(point)} THEN ${ofPart("NULLIF(prt_pic.image_url, '')")} ELSE NULLIF(${point}.image_url, '') END AS image_url,
+          CASE WHEN ${pointOfPartSql(point)} THEN ${ofPart("prt_pic.metadata -> 'imageCredit'")}
+               ELSE ${point}.metadata -> 'imageCredit' END AS image_credit`;
 }
 
 /**
  * The English Wikipedia article a reader follows from the point `point`, as
- * the select-list column `wikipedia_url` (#1963): its own, which a World
- * Heritage run reads off the component's item, else the article of the part
- * place it is the point of, which another kind brought with the place (ADR-0100
- * decision 3), as `pointPictureSql` reads the picture. Never the site's: a
- * part's article is the part's. Null where neither holds one.
+ * the select-list column `wikipedia_url` (#1963): a serial site's part's own,
+ * off the part row (ADR-0156 decision 3), else the point's own, as
+ * `pointPictureSql` reads the picture. Never the site's: a part's article is
+ * the part's. Null where it holds none.
  */
 export function pointArticleSql(point = 'el'): string {
-  return `COALESCE(NULLIF(${point}.metadata ->> 'wikipediaUrl', ''), ${partPlaceArticleSql(point)}) AS wikipedia_url`;
+  return `CASE WHEN ${pointOfPartSql(point)}
+               THEN (SELECT NULLIF(prt_art.metadata ->> 'wikipediaUrl', '') FROM experiences prt_art
+                      WHERE prt_art.id = ${point}.experience_id)
+               ELSE NULLIF(${point}.metadata ->> 'wikipediaUrl', '') END AS wikipedia_url`;
 }
 
 /**
- * The article of the part place the point `point` is the point of, which a
- * reader is shown where the point holds none (`pointArticleSql`); NULL where
- * its place is no part or holds none. The run's content writer asks it too, so
- * a gated run holds a change to the article a reader actually sees.
+ * The line under a point's name (#1270): a serial site's part's subtitle, off
+ * the part row (ADR-0156 decision 3), else the point's own description, as
+ * the select-list column `description`.
  */
-export function partPlaceArticleSql(point = 'el'): string {
-  return `(SELECT NULLIF(prt_art.metadata ->> 'wikipediaUrl', '') FROM experiences prt_art
-            WHERE prt_art.id = ${point}.experience_id
-              AND EXISTS (SELECT 1 FROM experience_parts pop WHERE pop.part_id = prt_art.id))`;
+export function pointSubtitleSql(point = 'el'): string {
+  return `CASE WHEN ${pointOfPartSql(point)}
+               THEN (SELECT NULLIF(prt_sub.subtitle, '') FROM experiences prt_sub WHERE prt_sub.id = ${point}.experience_id)
+               ELSE NULLIF(${point}.description, '') END AS description`;
+}
+
+/**
+ * What a curator has claimed on the point `point`, as a point's read names it:
+ * the point's own claims, and for a serial site's part the claims on its row's
+ * picture, subtitle and article (ADR-0156 decision 3), the subtitle's under the
+ * name a point's read gives the line, `description`.
+ */
+export function pointClaimsSql(point = 'el'): string {
+  return `CASE WHEN ${pointOfPartSql(point)}
+               THEN (SELECT COALESCE(jsonb_agg(DISTINCT claim), '[]'::jsonb)
+                       FROM (SELECT jsonb_array_elements_text(${point}.curated_fields) AS claim
+                             UNION
+                             SELECT CASE prt_claim WHEN 'subtitle' THEN 'description' ELSE prt_claim END
+                               FROM experiences prt_own,
+                                    jsonb_array_elements_text(COALESCE(prt_own.curated_fields, '[]'::jsonb)) AS prt_claim
+                              WHERE prt_own.id = ${point}.experience_id
+                                AND prt_claim IN ('image_url', 'subtitle', 'metadata.wikipediaUrl')) claims)
+               ELSE ${point}.curated_fields END`;
+}
+
+/**
+ * The point `point` is the point of a serial site's part, whose own row holds
+ * its picture, subtitle and article (ADR-0156 decision 3): what a reader shows
+ * and a writer writes for such a point is the part row's, never the point's.
+ */
+export function pointOfPartSql(point = 'el'): string {
+  return `EXISTS (SELECT 1 FROM experience_parts pop WHERE pop.part_id = ${point}.experience_id AND pop.reason = 'component')`;
 }
 
 /**

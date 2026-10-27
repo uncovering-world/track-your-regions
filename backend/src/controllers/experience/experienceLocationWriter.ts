@@ -23,11 +23,12 @@
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import type { ImageCredit } from '../../services/sync/imageCredit.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, placeHoldsRealKindSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 import { pointAnsweredBySql, unreadPointSql } from './waitingCounts.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { pointOfPartSql, shownBySql } from '../../db/placePoints.js';
+import { isPartField, writePartFields, type PartField, type PartWrite } from '../../db/partFieldsWriter.js';
 
 /** `AND id = ANY($2)` where the caller named points, nothing where it meant all of them. */
 /**
@@ -379,22 +380,56 @@ export async function claimPointItem(
 ): Promise<{ pictured: boolean }> {
   const picture = content.imageUrl !== null && content.credit !== null && isCommonsPictureUrl(content.imageUrl);
   const article = content.articleUrl !== null && isStorableHttpUrl(content.articleUrl) ? content.articleUrl : null;
-  const result = await client.query<{ pictured: boolean }>(
+  const point = await client.query<{
+    of_part: boolean; part_claims: string[] | null; kinded: boolean;
+    part_image: string | null; part_subtitle: string | null; part_article: string | null;
+  }>(
     `UPDATE experience_locations
         SET wikidata_item = $3,
             curated_fields = CASE WHEN curated_fields ? 'wikidata_item' THEN curated_fields
-                                  ELSE curated_fields || '["wikidata_item"]'::jsonb END,
-            image_url = CASE WHEN $4::boolean AND NOT curated_fields ? 'image_url' THEN $5 ELSE image_url END,
-            metadata = CASE WHEN $4::boolean AND NOT curated_fields ? 'image_url'
-                            THEN metadata || jsonb_build_object('imageCredit', $6::jsonb)
-                            ELSE metadata END
-                       || CASE WHEN $9::text IS NOT NULL AND NOT curated_fields ? 'metadata.wikipediaUrl'
-                               THEN jsonb_build_object('wikipediaUrl', $9::text) ELSE '{}'::jsonb END,
-            description = CASE WHEN $7::boolean AND NOT curated_fields ? 'description' THEN $8 ELSE description END
+                                  ELSE curated_fields || '["wikidata_item"]'::jsonb END
       WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
-      RETURNING ($4::boolean AND image_url = $5) AS pictured`,
+      RETURNING ${pointOfPartSql('experience_locations')} AS of_part,
+                ${placeHoldsRealKindSql('experience_locations.experience_id')} AS kinded,
+                (SELECT part.curated_fields FROM experiences part WHERE part.id = experience_locations.experience_id) AS part_claims,
+                (SELECT NULLIF(part.image_url, '') FROM experiences part WHERE part.id = experience_locations.experience_id) AS part_image,
+                (SELECT NULLIF(part.subtitle, '') FROM experiences part WHERE part.id = experience_locations.experience_id) AS part_subtitle,
+                (SELECT NULLIF(part.metadata ->> 'wikipediaUrl', '') FROM experiences part
+                  WHERE part.id = experience_locations.experience_id) AS part_article`,
+    [locationId, lock.id, item],
+  );
+  const row = point.rows[0];
+  if (!row) return { pictured: false };
+  if (row.of_part) {
+    // A part's picture, subtitle and article are its own row's (ADR-0156
+    // decision 3), written where the part holds no claim on the field. A part
+    // that holds a kind of its own keeps what its kind brought and is only
+    // filled, as the run fills it.
+    const claims = new Set(row.part_claims ?? []);
+    const open = (claim: string, held: string | null) => !claims.has(claim) && !(row.kinded && held !== null);
+    const fields: PartWrite['fields'] = {};
+    if (picture && open('image_url', row.part_image)) {
+      fields.image_url = content.imageUrl;
+      fields['metadata.imageCredit'] = content.credit;
+    }
+    if (content.description !== null && open('subtitle', row.part_subtitle)) fields.subtitle = content.description;
+    if (article !== null && open('metadata.wikipediaUrl', row.part_article)) fields['metadata.wikipediaUrl'] = article;
+    await writePartFields(client, lock, [{ pointId: locationId, fields }]);
+    return { pictured: fields.image_url !== undefined };
+  }
+  const result = await client.query<{ pictured: boolean }>(
+    `UPDATE experience_locations
+        SET image_url = CASE WHEN $3::boolean AND NOT curated_fields ? 'image_url' THEN $4 ELSE image_url END,
+            metadata = CASE WHEN $3::boolean AND NOT curated_fields ? 'image_url'
+                            THEN metadata || jsonb_build_object('imageCredit', $5::jsonb)
+                            ELSE metadata END
+                       || CASE WHEN $8::text IS NOT NULL AND NOT curated_fields ? 'metadata.wikipediaUrl'
+                               THEN jsonb_build_object('wikipediaUrl', $8::text) ELSE '{}'::jsonb END,
+            description = CASE WHEN $6::boolean AND NOT curated_fields ? 'description' THEN $7 ELSE description END
+      WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
+      RETURNING ($3::boolean AND image_url = $4) AS pictured`,
     [
-      locationId, lock.id, item,
+      locationId, lock.id,
       picture, content.imageUrl, picture ? JSON.stringify(content.credit) : null,
       content.description !== null, content.description,
       article,
@@ -403,30 +438,79 @@ export async function claimPointItem(
   return { pictured: result.rows[0]?.pictured === true };
 }
 
-/** A field a take-back clears beside the item: what the confirmation wrote with it. */
+/**
+ * A field a take-back clears beside the item: what the confirmation wrote with
+ * it, named as a point's read names it — a part's subtitle is its point's
+ * `description` there (`pointClaimsSql`).
+ */
 export type ReleasedField = 'image_url' | 'description' | 'metadata.wikipediaUrl';
+
+/** The take-back's half on a part with no kind of its own: what came off its row, unclaimed. */
+async function releasePartFields(
+  client: PoolClient,
+  lock: LockedExperience,
+  locationId: number,
+): Promise<ReleasedField[]> {
+  const part = await client.query<{ image_url: string | null; subtitle: string | null; article: string | null; claims: string[] | null }>(
+    `SELECT part.image_url, part.subtitle, part.metadata ->> 'wikipediaUrl' AS article, part.curated_fields AS claims
+       FROM experience_locations el JOIN experiences part ON part.id = el.experience_id
+      WHERE el.id = $1`,
+    [locationId],
+  );
+  const row = part.rows[0];
+  const claims = new Set(row?.claims ?? []);
+  const fields: PartWrite['fields'] = {};
+  const cleared: ReleasedField[] = [];
+  if (row?.image_url && !claims.has('image_url')) {
+    fields.image_url = null;
+    cleared.push('image_url');
+  }
+  if (row?.subtitle && !claims.has('subtitle')) {
+    fields.subtitle = null;
+    cleared.push('description');
+  }
+  if (row?.article && !claims.has('metadata.wikipediaUrl')) {
+    fields['metadata.wikipediaUrl'] = null;
+    cleared.push('metadata.wikipediaUrl');
+  }
+  await writePartFields(client, lock, [{ pointId: locationId, fields }]);
+  return cleared;
+}
 
 /**
  * Take the confirmed item off a point (#1317): the item and the claim on it
  * go, and the picture with its credit, the description and the article
  * (#1963) go where no curator has claimed the field — a point with no item has
  * no run-written picture, description or article, so an unclaimed one is what
- * the confirmation wrote. Answers which of them came off.
+ * the confirmation wrote. A part's are its own row's, its description as its
+ * subtitle (ADR-0156 decision 3); a part that holds a kind of its own keeps
+ * them, since its kind writes them too. Answers which of them came off.
  */
 export async function releasePointItem(
   client: PoolClient,
   lock: LockedExperience,
   locationId: number,
 ): Promise<ReleasedField[]> {
+  const point = await client.query<{ of_part: boolean; kinded: boolean }>(
+    `UPDATE experience_locations
+        SET wikidata_item = NULL, curated_fields = curated_fields - 'wikidata_item'
+      WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
+      RETURNING ${pointOfPartSql('experience_locations')} AS of_part,
+                ${placeHoldsRealKindSql('experience_locations.experience_id')} AS kinded`,
+    [locationId, lock.id],
+  );
+  if (!point.rows[0]) return [];
+  // A part that holds a kind of its own keeps every value on its row: its kind
+  // writes them too, so none of them is known to be the confirmation's.
+  if (point.rows[0].of_part && point.rows[0].kinded) return [];
+  if (point.rows[0].of_part) return releasePartFields(client, lock, locationId);
   const result = await client.query<{ picture_cleared: boolean; description_cleared: boolean; article_cleared: boolean }>(
     `WITH before AS (
        SELECT id, image_url, description, metadata ->> 'wikipediaUrl' AS article, curated_fields FROM experience_locations
         WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
      )
      UPDATE experience_locations el
-        SET wikidata_item = NULL,
-            curated_fields = el.curated_fields - 'wikidata_item',
-            image_url = CASE WHEN el.curated_fields ? 'image_url' THEN el.image_url ELSE NULL END,
+        SET image_url = CASE WHEN el.curated_fields ? 'image_url' THEN el.image_url ELSE NULL END,
             metadata = CASE WHEN el.curated_fields ? 'image_url' THEN el.metadata ELSE el.metadata - 'imageCredit' END
                        - CASE WHEN el.curated_fields ? 'metadata.wikipediaUrl' THEN '' ELSE 'wikipediaUrl' END,
             description = CASE WHEN el.curated_fields ? 'description' THEN el.description ELSE NULL END
@@ -485,24 +569,21 @@ export async function movePointTo(
   );
 }
 
-/** A point field a held proposal can carry, and so the only ones a published held point writes. */
-export type HeldPointField = 'name' | 'image_url' | 'metadata.imageCredit' | 'description' | 'metadata.wikipediaUrl';
+/**
+ * A field a held proposal about a point can carry, and so the only ones a
+ * published held point writes: its name, which is the point's, and the
+ * picture, its credit, the subtitle and the article, which are its part's own
+ * (#1270, #1963, ADR-0156 decision 3).
+ */
+export type HeldPointField = 'name' | PartField;
 
 /**
  * The same list as a set: what the held-part plan accepts on a point
- * (`publishHeldParts.ts`) is what this writer can write, stated once. The
- * picture, its credit and the description are a component's own (#1270), and
- * so is its English article (#1963).
+ * (`publishHeldParts.ts`) is what this writer can write, stated once.
  */
 export const HELD_POINT_FIELDS: ReadonlySet<string> = new Set<HeldPointField>(
-  ['name', 'image_url', 'metadata.imageCredit', 'description', 'metadata.wikipediaUrl'],
+  ['name', 'image_url', 'metadata.imageCredit', 'subtitle', 'metadata.wikipediaUrl'],
 );
-
-/** The `metadata` key each held metadata field of a point is kept under. */
-const METADATA_KEY: Partial<Record<HeldPointField, string>> = {
-  'metadata.imageCredit': 'imageCredit',
-  'metadata.wikipediaUrl': 'wikipediaUrl',
-};
 
 export function isHeldPointField(field: string): field is HeldPointField {
   return HELD_POINT_FIELDS.has(field);
@@ -510,9 +591,10 @@ export function isHeldPointField(field: string): field is HeldPointField {
 
 /**
  * Write the held fields of one point a gated run recorded rather than wrote
- * (ADR-0037), as `publishHeldParts.ts` planned them. The values arrive as
- * data; the assignments are built from the closed list, and anything else is
- * refused rather than put into the statement.
+ * (ADR-0037), as `publishHeldParts.ts` planned them: the name on the point, the
+ * rest on its part (`writePartFields`), or on the point itself where it is no
+ * part's. The values arrive as data; anything outside the closed list is
+ * refused rather than put into a statement.
  */
 export async function writeHeldPointFields(
   client: PoolClient,
@@ -520,22 +602,46 @@ export async function writeHeldPointFields(
   locationId: number,
   fields: ReadonlyArray<{ field: HeldPointField; value: unknown }>,
 ): Promise<void> {
-  if (fields.length === 0) return;
-  const params: unknown[] = [locationId, lock.id];
-  const bind = (value: unknown) => `$${params.push(value)}`;
-  // The metadata keys fold into one assignment, since a column is assigned once.
-  let metadata = 'metadata';
-  const assignments: string[] = [];
+  const ofPart: PartWrite['fields'] = {};
   for (const { field, value } of fields) {
     if (!isHeldPointField(field)) throw new Error(`A held point field this writer does not know: ${String(field)}`);
-    const key = METADATA_KEY[field];
-    if (key) {
-      // Absent and null are one case, as for a work's credit: the key goes.
+    if (field === 'name') {
+      await client.query(
+        `UPDATE experience_locations SET name = $3 WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}`,
+        [locationId, lock.id, value],
+      );
+    } else if (isPartField(field)) {
+      ofPart[field] = value;
+    }
+  }
+  if (Object.keys(ofPart).length === 0) return;
+  const written = await writePartFields(client, lock, [{ pointId: locationId, fields: ofPart }]);
+  if (written.length === 0) await writeOwnPointFields(client, lock, locationId, ofPart);
+}
+
+/**
+ * The held fields of a point that is no part's, written on the point itself,
+ * its line as its description: a proposal recorded about it publishes there,
+ * never nowhere.
+ */
+async function writeOwnPointFields(
+  client: PoolClient,
+  lock: LockedExperience,
+  locationId: number,
+  ofPart: PartWrite['fields'],
+): Promise<void> {
+  const params: unknown[] = [locationId, lock.id];
+  const bind = (value: unknown) => `$${params.push(value)}`;
+  let metadata = 'metadata';
+  const assignments: string[] = [];
+  for (const [field, value] of Object.entries(ofPart)) {
+    if (field === 'image_url') assignments.push(`image_url = ${bind(value)}`);
+    else if (field === 'subtitle') assignments.push(`description = ${bind(value)}`);
+    else {
+      const key = field === 'metadata.imageCredit' ? 'imageCredit' : 'wikipediaUrl';
       metadata = value == null
         ? `(${metadata} - '${key}')`
         : `(${metadata} || jsonb_build_object('${key}', ${bind(JSON.stringify(value))}::jsonb))`;
-    } else {
-      assignments.push(`${field} = ${bind(value)}`);
     }
   }
   if (metadata !== 'metadata') assignments.push(`metadata = ${metadata}`);

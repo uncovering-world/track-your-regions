@@ -159,13 +159,32 @@ function proposalRow(opts: ClientOptions) {
  * answering a column production never asked for would keep the tests green
  * while production read `undefined` and called every place ambiguous.
  */
-function partStatement(sql: string, opts: ClientOptions): { rows: unknown[] } | null {
+function partStatement(sql: string, opts: ClientOptions, params: unknown[]): { rows: unknown[] } | null {
   if (sql.includes('JOIN experience_locations el ON el.id = pick.id') && sql.includes('FOR UPDATE OF el')) {
     const identified = sql.includes('pick.identified') ? { identified: true } : {};
     return { rows: opts.parts?.location ? [{ ...identified, ...opts.parts.location }] : [] };
   }
   if (sql.includes('FROM treasures t') && sql.includes('FOR UPDATE')) {
     return { rows: opts.parts?.treasure ? [opts.parts.treasure] : [] };
+  }
+  return heldPointStatement(sql, opts, params);
+}
+
+/**
+ * A held point's claims, its part's and its own, and the part writer's
+ * answer (ADR-0156): the fixture's point is a part's, whose row holds no
+ * claims unless the test gives some, and no part's where the test says its
+ * part's claims are null, which the part writer then writes nothing for.
+ */
+function heldPointStatement(sql: string, opts: ClientOptions, params: unknown[]): { rows: unknown[] } | null {
+  const location = opts.parts?.location as { curated_fields?: string[]; part_claims?: string[] | null } | undefined;
+  if (sql.includes('AS own_claims')) {
+    if (!location) return { rows: [] };
+    return { rows: [{ claims: location.part_claims === undefined ? [] : location.part_claims, own_claims: location.curated_fields ?? [] }] };
+  }
+  if (sql.includes('AS w(point_id int, fields jsonb')) {
+    if (location?.part_claims === null) return { rows: [] };
+    return { rows: (JSON.parse(String(params[1])) as { point_id: number }[]).map(row => ({ point_id: row.point_id })) };
   }
   return null;
 }
@@ -199,7 +218,7 @@ function answer(sql: string, opts: ClientOptions, params: unknown[]): { rows: un
     // that omits it is describing the case with something to decide.
     return { rows: (opts.answered ?? []).map(row => ({ answer: 'refused', ...row })) };
   }
-  const part = partStatement(sql, opts);
+  const part = partStatement(sql, opts, params);
   if (part) return part;
   const locked = lockedStatement(sql, opts);
   if (locked) return locked;
