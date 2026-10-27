@@ -5024,6 +5024,7 @@
                 "wikipedia-redirects",
                 "wikidata-redirects",
                 "wikivoyage-usage",
+                "wikivoyage-pages",
                 "osm-planet"
               ]
             },
@@ -5096,6 +5097,7 @@
                 "wikipedia-redirects",
                 "wikidata-redirects",
                 "wikivoyage-usage",
+                "wikivoyage-pages",
                 "osm-planet"
               ]
             },
@@ -5168,6 +5170,7 @@
                 "wikipedia-redirects",
                 "wikidata-redirects",
                 "wikivoyage-usage",
+                "wikivoyage-pages",
                 "osm-planet"
               ]
             },
@@ -5230,6 +5233,7 @@
                 "wikipedia-redirects",
                 "wikidata-redirects",
                 "wikivoyage-usage",
+                "wikivoyage-pages",
                 "osm-planet"
               ]
             },
@@ -5292,6 +5296,7 @@
                 "wikipedia-redirects",
                 "wikidata-redirects",
                 "wikivoyage-usage",
+                "wikivoyage-pages",
                 "osm-planet"
               ]
             },
@@ -5354,6 +5359,7 @@
                 "wikipedia-redirects",
                 "wikidata-redirects",
                 "wikivoyage-usage",
+                "wikivoyage-pages",
                 "osm-planet"
               ]
             },
@@ -5426,6 +5432,7 @@
                 "wikipedia-redirects",
                 "wikidata-redirects",
                 "wikivoyage-usage",
+                "wikivoyage-pages",
                 "osm-planet"
               ]
             },
@@ -22093,6 +22100,7 @@
               "wikipedia-redirects",
               "wikidata-redirects",
               "wikivoyage-usage",
+              "wikivoyage-pages",
               "osm-planet"
             ]
           },
@@ -22347,6 +22355,7 @@
                     "wikipedia-redirects",
                     "wikidata-redirects",
                     "wikivoyage-usage",
+                    "wikivoyage-pages",
                     "osm-planet"
                   ]
                 },

@@ -25,7 +25,8 @@ export const OSM_PLANET = 'https://planet.openstreetmap.org';
 /** Every dump the catalog knows, by key: what a route accepts and a build is named by. */
 export const DUMP_KEYS = [
   'wikidata-entities', 'wikidata-lexemes', 'enwiki-page', 'enwiki-page-props', 'enwiki-linktarget', 'enwiki-categorylinks',
-  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects', 'wikidata-redirects', 'wikivoyage-usage', 'osm-planet',
+  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects', 'wikidata-redirects', 'wikivoyage-usage', 'wikivoyage-pages',
+  'osm-planet',
 ] as const;
 export type DumpKey = typeof DUMP_KEYS[number];
 
@@ -206,6 +207,37 @@ const wikivoyageUsage: DumpDescriptor = {
   },
 };
 
+/** The job of a wiki's run that writes its articles' current text, and the file it writes. */
+export const ARTICLES_JOB = 'articlesdump';
+export const ARTICLES_SUFFIX = 'pages-articles.xml.bz2';
+/** The job that writes a wiki's page properties, among them each page's Wikidata item. */
+export const PAGE_PROPS_JOB = 'pagepropstable';
+
+/**
+ * English Wikivoyage's articles, the build's own file: a build reads it and
+ * the same run's page properties, and keeps every article's text and item,
+ * which the world-view extraction reads instead of the live wiki (#2089).
+ */
+const wikivoyagePages: DumpDescriptor = {
+  key: 'wikivoyage-pages',
+  source: 'Wikivoyage editions',
+  title: 'English Wikivoyage\'s articles',
+  datedBy: 'day',
+  about: 'Every article of English Wikivoyage with its current text, and every redirect with its target. A build reads this '
+    + 'and the same run\'s page properties, and keeps each page with its Wikidata item: the copy the world-view extraction '
+    + 'reads a region\'s page from, so two extractions of one copy agree (#2089).',
+  isFileName: datedName('enwikivoyage-', 8, `-${ARTICLES_SUFFIX}`),
+  async resolve(read, _size, only) {
+    const base = `${WIKIMEDIA_DUMPS}/enwikivoyage`;
+    for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
+      if (only && !only(`enwikivoyage-${dir}-${ARTICLES_SUFFIX}`)) continue;
+      const file = await wikiRunFile(read, 'wikivoyage-pages', 'enwikivoyage', dir, ARTICLES_JOB, ARTICLES_SUFFIX, 'bzip2');
+      if (file) return file;
+    }
+    return null;
+  },
+};
+
 /** One table of a wiki's run, found in the newest run that has written it. */
 function wikiTable(wiki: string, key: DumpKey, job: string, table: string, title: string, about: string, source: string): DumpDescriptor {
   const base = `${WIKIMEDIA_DUMPS}/${wiki}`;
@@ -303,7 +335,7 @@ export const DUMPS: readonly DumpDescriptor[] = [
   wikidataJson('wikidata-lexemes', 'lexemes', 'Lexemes',
     'The same JSON format at a size that verifies the pipeline in minutes.'),
   enwikiTable('enwiki-page', 'pagetable', 'page', 'Pages', 'every page with its title, namespace, length and redirect flag (#1440).'),
-  enwikiTable('enwiki-page-props', 'pagepropstable', 'page_props', 'Page properties', 'among them the Wikidata item of each article.'),
+  enwikiTable('enwiki-page-props', PAGE_PROPS_JOB, 'page_props', 'Page properties', 'among them the Wikidata item of each article.'),
   enwikiTable('enwiki-linktarget', 'linktargettable', 'linktarget', 'Link targets', 'the namespace and title each category link names by id (#1440).'),
   enwikiTable('enwiki-categorylinks', 'categorylinkstable', 'categorylinks', 'Category links', 'which category each page is in, named by its link target (#1440).'),
   enwikiTable('enwiki-langlinks', 'langlinkstable', 'langlinks', 'Language links', 'each article\'s articles in other editions.'),
@@ -315,6 +347,7 @@ export const DUMPS: readonly DumpDescriptor[] = [
     'Wikidata'),
   pageviews,
   wikivoyageUsage,
+  wikivoyagePages,
   planet,
 ];
 

@@ -76,6 +76,26 @@ describe('the dump catalog', () => {
     expect(usage.isFileName('dewikivoyage-20261001-wbc_entity_usage.sql.gz')).toBe(false);
   });
 
+  it("takes English Wikivoyage's articles from the newest run that has finished them, read as bzip2 (#2089)", async () => {
+    const base = 'https://dumps.wikimedia.org/enwikivoyage';
+    const status = (state: string) => JSON.stringify({ jobs: { articlesdump: { status: state, files: {
+      'enwikivoyage-20261001-pages-articles.xml.bz2': { size: 131539958, sha1: SHA },
+    } } } });
+    const read = pages({
+      [`${base}/`]: '<a href="20260920/">a</a><a href="20261001/">b</a>',
+      [`${base}/20261001/dumpstatus.json`]: status('done'),
+    });
+    const articles = dumpNamed('wikivoyage-pages')!;
+    expect(await articles.resolve(read, noSize)).toMatchObject({
+      key: 'wikivoyage-pages', fileName: 'enwikivoyage-20261001-pages-articles.xml.bz2', date: '2026-10-01',
+      expectedBytes: 131539958, checksum: { kind: 'sha1', value: SHA }, compression: 'bzip2',
+    });
+    const running = pages({ [`${base}/`]: '<a href="20261001/">b</a>', [`${base}/20261001/dumpstatus.json`]: status('in-progress') });
+    expect(await articles.resolve(running, noSize)).toBeNull();
+    expect(articles.isFileName('enwikivoyage-20261001-pages-articles.xml.bz2')).toBe(true);
+    expect(articles.isFileName('enwikivoyage-20261001-pages-meta-current.xml.bz2')).toBe(false);
+  });
+
   it('refuses a wiki name that is not a database name before building a URL from it', async () => {
     await expect(wikiRunFile(pages({}), 'wikivoyage-usage', '../enwikivoyage', '20261001', 'wbcentityusagetable', 'wbc_entity_usage.sql.gz', 'gzip'))
       .rejects.toThrow('Refusing');
