@@ -116,7 +116,7 @@ export const MapshapesFound = z.strictObject({
   wikivoyagePreview: z.strictObject({
     type: z.literal('FeatureCollection'),
     features: z.array(WikivoyageShapeFeature),
-    credits: z.array(ShapeCredit).describe('The credit of each stored shape the features are drawn from.'),
+    credits: z.array(ShapeCredit).describe('The credits of the stored shapes the features are drawn from: one per Commons map file, and one for all the shapes cut from the OpenStreetMap layer.'),
   }),
   stats: z.strictObject({
     totalMapshapes: z.number().int(),

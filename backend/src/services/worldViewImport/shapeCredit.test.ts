@@ -19,9 +19,19 @@ describe('shapeCredit (#2085)', () => {
     });
   });
 
+  it('credits an item\'s shape to OpenStreetMap\'s contributors', () => {
+    expect(shapeCredit({ wikidata_id: 'Q1000001', licence: 'ODbL-1.0', attribution: null })).toEqual({
+      label: '© OpenStreetMap contributors',
+      url: 'https://www.openstreetmap.org/copyright',
+      licence: 'ODbL-1.0',
+      attribution: null,
+    });
+  });
+
   it('gives no credit for a shape with no licence', () => {
     expect(shapeCredit({ wikidata_id: 'commons:North_Sea_Coast_region.map', licence: null, attribution: null })).toBeNull();
   });
+
 });
 
 describe('shapeCreditsFor (#2085)', () => {
@@ -43,5 +53,18 @@ describe('shapeCreditsFor (#2085)', () => {
     const [[sql, params]] = poolQuery.mock.calls;
     expect(String(sql)).toMatch(/NOT not_available/);
     expect(params).toEqual([['commons:A.map']]);
+  });
+
+  it('credits the OpenStreetMap shapes of a map once', async () => {
+    poolQuery.mockResolvedValue({ rows: [
+      { wikidata_id: 'Q1000001', licence: 'ODbL-1.0', attribution: null },
+      { wikidata_id: 'commons:A.map', licence: 'CC0-1.0', attribution: null },
+      { wikidata_id: 'Q1000002', licence: 'ODbL-1.0', attribution: null },
+    ] });
+
+    expect((await shapeCreditsFor(['Q1000001', 'commons:A.map', 'Q1000002'])).map((c) => c.label)).toEqual([
+      '© OpenStreetMap contributors',
+      'Data:A.map',
+    ]);
   });
 });

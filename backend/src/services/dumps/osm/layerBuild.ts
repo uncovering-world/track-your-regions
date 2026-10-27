@@ -17,6 +17,9 @@
  *    with osm2pgsql's node store in the database and dropped after the load;
  * 4. indexes the copy and swaps it in with the planet's replication timestamp,
  *    which every answer read from the layer carries (decision 5).
+ * 5. fills the store of region shapes the world-view match reads from the
+ *    objects it kept whole for the items the imports name (`layerShapes.ts`,
+ *    ADR-0157).
  *
  * An object the catalogue names may since have been deleted from OSM or
  * redrawn under another id. `osmium getid` then exits 1 and names it; the
@@ -38,7 +41,8 @@ import { fileURLToPath } from 'node:url';
 import type { DumpFile, TextReader } from '../catalog.js';
 import { fetchText } from '../fetch.js';
 import { holdVerifiedCopy, type ReadOptions, type ReadResult } from '../read.js';
-import { drawnFile, LAYER_DRAWN, pinnedObjects, selectionFile } from './layerSelection.js';
+import { drawnFile, drawnItems, LAYER_DRAWN, pinnedObjects, selectionFile } from './layerSelection.js';
+import { refillRegionShapes } from './layerShapes.js';
 import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
 import { bringForward, CURRENT_PLANET, dailyState, dropCurrent, firstDiffAfter, readCurrent, type BroughtForward } from './planetCurrent.js';
 import { databaseEnv, OSM2PGSQL, OSM2PGSQL_INPUT, OSMIUM, OSMIUM_OUTPUT, runTool, sideBySide } from './tools.js';
@@ -88,6 +92,8 @@ async function weeklyInstant(planet: string, file: DumpFile, signal: AbortSignal
 interface Cut {
   cut: string;
   pins: string;
+  /** The items the world-view imports name, whose objects the layer keeps whole. */
+  items: string[];
   /** How many objects the catalogue names, and how many of them the planet no longer holds. */
   pinned: number;
   gone: number;
@@ -99,8 +105,10 @@ async function cutLayer(planet: string, work: string, options: LayerBuildOptions
   const selection = join(work, 'selection.txt');
   const pins = join(work, 'pins.txt');
   const named = await pinnedObjects();
+  const items = await drawnItems();
   await writeFile(selection, selectionFile());
   await writeFile(join(work, 'drawn.txt'), drawnFile());
+  await writeFile(join(work, 'drawn-items.txt'), items.length > 0 ? `${items.join('\n')}\n` : '');
   await writeFile(pins, named.length > 0 ? `${named.join('\n')}\n` : '');
 
   const selected = join(work, 'selected.osm.pbf');
@@ -109,7 +117,7 @@ async function cutLayer(planet: string, work: string, options: LayerBuildOptions
   if (named.length === 0) {
     options.onPhase('Cutting the selected objects from the planet...');
     await runTool(OSMIUM, tagsFilter, { signal });
-    return { cut: selected, pins, pinned: 0, gone: 0 };
+    return { cut: selected, pins, items, pinned: 0, gone: 0 };
   }
 
   const linked = join(work, 'linked.osm.pbf');
@@ -132,7 +140,7 @@ async function cutLayer(planet: string, work: string, options: LayerBuildOptions
     options.onNote?.(`${gone.count.toLocaleString('en')} objects the catalogue names are no longer in the planet${which}`);
   }
   await runTool(OSMIUM, ['merge', selected, linked, '-o', cut, OSM2PGSQL_INPUT, '--overwrite'], { signal });
-  return { cut, pins, pinned: named.length, gone: gone.count };
+  return { cut, pins, items, pinned: named.length, gone: gone.count };
 }
 
 /** Load the cut through the flex style into the `_next` copy. */
@@ -145,7 +153,7 @@ async function loadLayer(cut: string, work: string, pins: string, signal: AbortS
     signal,
     env: {
       ...databaseEnv(), OSM_LAYER_TABLE: NEXT_TABLE, OSM_LAYER_SELECTION: join(work, 'selection.txt'),
-      OSM_LAYER_DRAWN: join(work, 'drawn.txt'), OSM_LAYER_PINS: pins,
+      OSM_LAYER_DRAWN: join(work, 'drawn.txt'), OSM_LAYER_DRAWN_ITEMS: join(work, 'drawn-items.txt'), OSM_LAYER_PINS: pins,
     },
   });
   await dropImportProperties();
@@ -192,6 +200,22 @@ export async function hasCurrentPlanet(): Promise<boolean> {
 
 type LayerResult = { bytes: number; lines: number; checksumActual: string | null; summary?: string };
 
+/**
+ * Fill the store of region shapes from the layer just swapped in, and say
+ * what it holds. The layer stands whether or not this succeeds: a store left
+ * as it was is a note on the build, and the next build fills it again.
+ */
+async function regionShapesFrom(items: string[], options: LayerBuildOptions): Promise<string> {
+  options.onPhase('Keeping the shapes of the regions the world-view imports name...');
+  try {
+    const { held } = await refillRegionShapes(items);
+    return `; ${held.toLocaleString('en')} of the ${items.length.toLocaleString('en')} items the world-view imports name have a region shape`;
+  } catch (error) {
+    options.onNote?.(`the region shapes were not refreshed from this layer, and the store keeps the last build's: ${error instanceof Error ? error.message : String(error)}`);
+    return '';
+  }
+}
+
 /** Cut the layer from the planet `planetOf` makes ready in the cut's directory, and swap it in. */
 async function cutAndSwap(
   options: LayerBuildOptions, planetOf: (dir: string, work: string) => Promise<Planet>,
@@ -207,7 +231,7 @@ async function cutAndSwap(
   try {
     const planet = await planetOf(options.dumpsDir, work);
     const current = planet.state.timestamp;
-    const { cut, pins, pinned, gone } = await cutLayer(planet.path, work, options);
+    const { cut, pins, items, pinned, gone } = await cutLayer(planet.path, work, options);
     options.onPhase('Loading the layer into the database...');
     await loadLayer(cut, work, pins, signal);
     const objects = await nextTableCount();
@@ -220,12 +244,13 @@ async function cutAndSwap(
       buildId: options.buildId, planetFile: planet.state.base, dumpDate: current.slice(0, 10), replicatedAt: current, objects, pinned, pinnedGone: gone,
       drawn: LAYER_DRAWN,
     }, signal);
+    const shapesSaid = await regionShapesFrom(items, options);
     const goneSaid = gone > 0 ? ` (${gone.toLocaleString('en')} of them no longer in the planet)` : '';
     return {
       bytes: planet.held?.bytes ?? planet.bytes, lines: 0, checksumActual: planet.held?.checksumActual ?? null,
       summary: `kept ${objects.toLocaleString('en')} OpenStreetMap objects from ${planet.state.base} brought forward with `
         + `${planet.applied} daily diffs to diff ${planet.state.sequence}, current to ${current}, `
-        + `with the ${pinned.toLocaleString('en')} objects the catalogue names cut in whatever their tags${goneSaid}`,
+        + `with the ${pinned.toLocaleString('en')} objects the catalogue names cut in whatever their tags${goneSaid}${shapesSaid}`,
     };
   } catch (error) {
     await dropNextTable().catch(() => undefined);

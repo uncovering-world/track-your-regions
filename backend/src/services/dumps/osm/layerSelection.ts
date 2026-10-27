@@ -45,7 +45,9 @@ export function selectionFile(): string {
 /**
  * The objects whose full geometry the layer keeps (ADR-0136): those a kind's
  * keep rule draws, which today is Archaeology's alone — a ruin, a dig, or the
- * protected area drawn around one. Every other object keeps a point.
+ * protected area drawn around one. The objects that carry an item a
+ * world-view import names are kept whole too (`drawnItems`, ADR-0157). Every
+ * other object keeps a point.
  */
 export const LAYER_DRAWN: KeepWkt = OSM_KEEP_WKT;
 
@@ -75,6 +77,21 @@ export function layerDraws(drawn: KeepWkt | null, keep: KeepWkt): boolean {
   if (drawn === null) return true;
   const within = (asked: string[], kept: string[]) => asked.every(value => kept.includes(value));
   return within(keep.historic, drawn.historic) && within(keep.manMade, drawn.manMade) && within(keep.boundary, drawn.boundary);
+}
+
+/**
+ * The Wikidata items the world-view imports name (#2085, ADR-0157), whose
+ * objects the layer also keeps whole: a region is matched by its shape, and
+ * the store of region shapes is filled from the layer once a build is swapped
+ * in (`layerShapes.ts`). An import that names a new item has it drawn from
+ * the next build; until then the region is matched by its markers.
+ */
+export async function drawnItems(): Promise<string[]> {
+  const result = await pool.query<{ item: string }>(
+    `SELECT DISTINCT source_external_id AS item FROM region_import_state
+      WHERE source_external_id ~ '^Q[1-9][0-9]*$' ORDER BY 1`,
+  );
+  return result.rows.map(row => row.item);
 }
 
 const OSM_REF = /^(node|way|relation)\/([1-9]\d*)$/;

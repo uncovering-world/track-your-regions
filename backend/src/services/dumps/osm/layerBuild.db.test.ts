@@ -33,6 +33,8 @@ let loadFails = false;
 /** What `osmium getid` answers: every named object found, or some gone, or an error it does not explain. */
 let getid: { code: number; stderr: string } = { code: 0, stderr: '' };
 let rowsLoaded: Array<[string, number, string, string | null, string]> = [];
+/** The items the world-view imports name (fixture QIDs, not real ones). */
+let drawnItems: string[] = [];
 
 vi.mock('../fetch.js', () => ({
   fetchText: vi.fn(async (url: string) => {
@@ -52,7 +54,19 @@ vi.mock('../read.js', () => ({
 vi.mock('./layerSelection.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('./layerSelection.js')>(),
   pinnedObjects: vi.fn(async () => ['n20']),
+  drawnItems: vi.fn(async () => drawnItems),
 }));
+let refillFails = false;
+vi.mock('./layerShapes.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./layerShapes.js')>();
+  return {
+    ...real,
+    refillRegionShapes: vi.fn(async (items: readonly string[]) => {
+      if (refillFails) throw new Error('store refused');
+      return real.refillRegionShapes(items);
+    }),
+  };
+});
 vi.mock('./tools.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('./tools.js')>();
   return {
@@ -91,6 +105,13 @@ const STONEHENGE: [string, number, string, string | null, string] = ['N', 1, '{"
 const POMPEII: [string, number, string, string | null, string] = ['W', 10, '{"historic":"archaeological_site","addr:city":"Pompei"}', null,
   'POLYGON((14.485 40.75,14.485 40.751,14.487 40.751,14.487 40.75,14.485 40.75))'];
 const BAKERY: [string, number, string, string | null, string] = ['N', 20, '{"shop":"bakery"}', null, 'POINT(2.2945 48.8584)'];
+/** A region an import names, drawn by its boundary relation and, larger, by a way that carries the same item. */
+const REGION: [string, number, string, string | null, string] = ['R', 30, '{"boundary":"administrative","wikidata":"Q1000001"}', 'Q1000001',
+  'MULTIPOLYGON(((10 10,10 11,11 11,11 10,10 10)))'];
+const REGION_WAY: [string, number, string, string | null, string] = ['W', 31, '{"place":"region","wikidata":"Q1000001"}', 'Q1000001',
+  'POLYGON((10 10,10 12,12 12,12 10,10 10))'];
+/** A region an import names that the layer holds only as a point. */
+const REGION_POINT: [string, number, string, string | null, string] = ['N', 32, '{"place":"region","wikidata":"Q1000002"}', 'Q1000002', 'POINT(20 20)'];
 
 let buildId = 0;
 const newBuild = async () => (await pool.query<{ id: number }>(
@@ -106,6 +127,7 @@ async function clear(): Promise<void> {
   await pool.query('TRUNCATE osm_layer_builds, osm_objects');
   await pool.query('DROP TABLE IF EXISTS workbench.osm_objects_next, workbench.osm2pgsql_properties');
   await pool.query("DELETE FROM dump_builds WHERE dump = 'osm-planet'");
+  await pool.query("DELETE FROM wikidata_geoshapes WHERE wikidata_id LIKE 'Q100000_' OR wikidata_id = 'commons:Test_region.map'");
 }
 
 beforeEach(async () => {
@@ -119,6 +141,8 @@ beforeEach(async () => {
   loadFails = false;
   getid = { code: 0, stderr: '' };
   rowsLoaded = [STONEHENGE, POMPEII, BAKERY];
+  drawnItems = [];
+  refillFails = false;
   await clear();
   buildId = await newBuild();
 });
@@ -240,6 +264,36 @@ describe('buildLayer (#1437)', () => {
     rowsLoaded = [];
     await expect(build()).rejects.toThrow('The cut kept no object, so the layer in place stays');
     expect(await latestLayer()).toBeNull();
+  });
+
+  it('keeps the shape of each region an import names, a relation before a way, and leaves the Commons shapes (#2085)', async () => {
+    drawnItems = ['Q1000001', 'Q1000002'];
+    rowsLoaded = [STONEHENGE, REGION, REGION_WAY, REGION_POINT];
+    await pool.query(`INSERT INTO wikidata_geoshapes (wikidata_id, geom, licence) VALUES
+      ('Q1000003', ST_GeomFromText('MULTIPOLYGON(((0 0,0 1,1 1,1 0,0 0)))', 4326), 'ODbL-1.0'),
+      ('commons:Test_region.map', ST_GeomFromText('MULTIPOLYGON(((0 0,0 1,1 1,1 0,0 0)))', 4326), 'CC0-1.0')`);
+
+    const result = await build();
+
+    expect(result.summary).toMatch(/; 1 of the 2 items the world-view imports name have a region shape$/);
+    expect(await rows(`SELECT wikidata_id, licence, round(ST_Area(geom)::numeric, 2)::float AS area FROM wikidata_geoshapes
+      WHERE wikidata_id LIKE 'Q100000_' OR wikidata_id = 'commons:Test_region.map' ORDER BY wikidata_id COLLATE "C"`)).toEqual([
+      { wikidata_id: 'Q1000001', licence: 'ODbL-1.0', area: 1 },
+      { wikidata_id: 'commons:Test_region.map', licence: 'CC0-1.0', area: 1 },
+    ]);
+  });
+
+  it('keeps the layer it swapped in when the region shapes cannot be kept, and says so', async () => {
+    drawnItems = ['Q1000001'];
+    rowsLoaded = [STONEHENGE, REGION];
+    refillFails = true;
+
+    const result = await build();
+
+    expect(result.summary).not.toMatch(/region shape/);
+    expect(notes).toContain("the region shapes were not refreshed from this layer, and the store keeps the last build's: store refused");
+    expect(await rows('SELECT count(*)::int AS n FROM osm_objects')).toEqual([{ n: 2 }]);
+    expect(await rows("SELECT 1 FROM wikidata_geoshapes WHERE wikidata_id = 'Q1000001'")).toEqual([]);
   });
 
   it('reads the objects the catalogue names from the places as they are stored', async () => {
