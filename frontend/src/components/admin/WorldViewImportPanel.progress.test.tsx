@@ -59,12 +59,12 @@ describe('a running import (#1356)', () => {
 });
 
 describe('a running extraction (#1356)', () => {
-  it('says the step it is on, of the six, and keeps only its request counts', async () => {
+  it('says the step it is on, of the six, in place of the extracting line', async () => {
     mockedStatus.mockResolvedValue({ running: false, importedWorldViews: [] });
     (getExtractionStatus as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       running: true, status: 'extracting', statusMessage: 'Extracting Africa...',
-      regionsFetched: 1200, estimatedTotal: 5700, apiRequests: 40, cacheHits: 1160,
-      importedWorldViews: [], caches: [],
+      regionsFetched: 1200, estimatedTotal: 5700,
+      importedWorldViews: [], copy: { dumpDate: '2026-10-01' },
       operation: {
         elapsedSeconds: 120, cancelling: false,
         step: { index: 1, count: 6, sentence: 'Reading the region hierarchy from Wikivoyage', done: 1200, total: 5700, elapsedSeconds: 120 },
@@ -74,7 +74,6 @@ describe('a running extraction (#1356)', () => {
     renderPanel();
 
     expect(await screen.findByText('Step 1 of 6')).toBeInTheDocument();
-    expect(screen.getByText(/API requests: 40 \| Cache hits: 1160/)).toBeInTheDocument();
     expect(screen.queryByText(/Extracting regions:/)).not.toBeInTheDocument();
   });
 });

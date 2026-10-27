@@ -740,9 +740,10 @@ function ExtractionPhaseProgress({ status }: { status: ExtractionStatus }) {
         </>
       )}
       <Typography variant="caption" color="text.secondary">
-        API requests: {status.apiRequests ?? 0} | Cache hits: {status.cacheHits ?? 0}
-        {rate > 0 ? ` | ${rate.toFixed(1)} regions/s` : ''}
-        {(status.aiApiCalls ?? 0) > 0 && ` | AI: ${status.aiApiCalls} calls ($${(status.aiTotalCost ?? 0).toFixed(2)})`}
+        {[
+          rate > 0 ? `${rate.toFixed(1)} regions/s` : null,
+          (status.aiApiCalls ?? 0) > 0 ? `AI: ${status.aiApiCalls} calls ($${(status.aiTotalCost ?? 0).toFixed(2)})` : null,
+        ].filter(Boolean).join(' | ')}
       </Typography>
     </Box>
   );

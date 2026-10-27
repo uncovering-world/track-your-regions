@@ -1,42 +1,31 @@
 /**
  * Wikivoyage import source.
  *
- * Fetches the full Wikivoyage region hierarchy, enriches it with Wikidata IDs,
- * then imports and matches countries to administrative divisions. Extraction
- * progress (and the shared "existing world views" list) is polled by the
- * parent panel under the same query key this form reads its cache list from —
- * the two subscribe to the same cache rather than duplicating a fetch.
+ * Reads the Wikivoyage region hierarchy from English Wikivoyage's copy kept
+ * from the monthly dump (#2089), enriches it with Wikidata IDs, then imports
+ * and matches countries to administrative divisions. Extraction progress (and
+ * the shared "existing world views" list) is polled by the parent panel under
+ * the same query key this form reads the copy's date from — the two subscribe
+ * to the same cache rather than duplicating a fetch.
  */
 
-import { useState } from 'react';
 import {
   Alert,
-  Box,
   Button,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import LanguageIcon from '@mui/icons-material/Language';
-import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   startWikivoyageExtraction,
   getExtractionStatus,
-  deleteCacheFile,
 } from '../../../api/admin/wikivoyageExtract';
-import type { WikivoyageCache } from '../../../api/admin/wikivoyageExtract';
 import type { ImportSourceFormProps } from './types';
 import { queryKeys } from '../../../api/queryKeys';
 
 export function WikivoyageForm({ worldViewName }: ImportSourceFormProps) {
   const queryClient = useQueryClient();
-  const [selectedCache, setSelectedCache] = useState<string | undefined>(undefined); // undefined = default, 'none' = clean
 
   // Poll extraction status (primary)
   const { data: extractStatus } = useQuery({
@@ -49,17 +38,11 @@ export function WikivoyageForm({ worldViewName }: ImportSourceFormProps) {
     },
   });
 
-  const caches: WikivoyageCache[] = extractStatus?.caches ?? [];
+  // Undefined until the status has answered; null when no copy is kept.
+  const copy = extractStatus?.copy;
 
   const extractMutation = useMutation({
-    mutationFn: () => startWikivoyageExtraction(worldViewName, selectedCache),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
-    },
-  });
-
-  const deleteCacheMutation = useMutation({
-    mutationFn: deleteCacheFile,
+    mutationFn: () => startWikivoyageExtraction(worldViewName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvExtractStatus });
     },
@@ -71,71 +54,29 @@ export function WikivoyageForm({ worldViewName }: ImportSourceFormProps) {
         <Alert severity="error">{(extractMutation.error as Error).message}</Alert>
       )}
 
+      {copy === null && (
+        <Alert severity="info">
+          English Wikivoyage&apos;s articles are not kept yet. Build them under Public Dumps
+          (<em>English Wikivoyage&apos;s articles</em>), then fetch from here.
+        </Alert>
+      )}
+
       <Button
         variant="contained"
         startIcon={<LanguageIcon />}
         onClick={() => extractMutation.mutate()}
-        disabled={!worldViewName.trim() || extractMutation.isPending}
+        disabled={!worldViewName.trim() || !copy || extractMutation.isPending}
         size="large"
       >
         Fetch from Wikivoyage
       </Button>
 
-      <FormControl size="small" fullWidth>
-        <InputLabel>API Cache</InputLabel>
-        <Select
-          value={selectedCache ?? (caches.length > 0 ? '' : 'none')}
-          label="API Cache"
-          onChange={(e) => setSelectedCache(e.target.value === 'none' ? 'none' : e.target.value || undefined)}
-          renderValue={(val) => {
-            if (!val) return `Use latest cache (${caches.length} available)`;
-            if (val === 'none') return 'Clean fetch (no cache)';
-            const c = caches.find(c => c.name === val);
-            if (!c) return val;
-            return `${new Date(c.modifiedAt).toLocaleDateString()} — ${(c.sizeBytes / 1024 / 1024).toFixed(1)} MB`;
-          }}
-        >
-          {caches.length > 0 && (
-            <MenuItem value="">
-              <em>Use latest cache</em>
-            </MenuItem>
-          )}
-          <MenuItem value="none">
-            <em>Clean fetch (no cache)</em>
-          </MenuItem>
-          {caches.map(c => (
-            <MenuItem key={c.name} value={c.name}>
-              <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 1 }}>
-                <Typography variant="body2" sx={{ flex: 1 }}>
-                  {c.name === 'wikivoyage-cache.json' ? '(active) ' : ''}
-                  {new Date(c.modifiedAt).toLocaleDateString()} {new Date(c.modifiedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  {' — '}
-                  {(c.sizeBytes / 1024 / 1024).toFixed(1)} MB
-                </Typography>
-                {c.name !== 'wikivoyage-cache.json' && (
-                  <Tooltip title="Delete this cache">
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteCacheMutation.mutate(c.name);
-                        if (selectedCache === c.name) setSelectedCache(undefined);
-                      }}
-                      sx={{ p: 0.25 }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                )}
-              </Box>
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
       <Typography variant="caption" color="text.secondary">
-        Extracts ~5,700 regions from English Wikivoyage, enriches with Wikidata IDs,
-        then imports and matches countries to GADM divisions.
+        {copy
+          ? <>Reads the region hierarchy from the <strong>{copy.dumpDate}</strong> copy of English Wikivoyage, </>
+          : <>Reads the region hierarchy from the kept copy of English Wikivoyage, </>}
+        enriches it with Wikidata IDs, then imports and matches countries to GADM divisions.
+        Two fetches from one copy build the same tree.
       </Typography>
     </Stack>
   );
