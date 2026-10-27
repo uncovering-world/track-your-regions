@@ -813,7 +813,9 @@ build.
 Code: `backend/src/services/dumps/osm/`. A keeping build of `osm-planet`
 (`buildLayer`, `layerBuild.ts`) cuts the objects of the planet the
 catalogue asks about into `osm_objects`, with every tag, the full geometry
-of what a kind draws and a point for everything else (ADR-0134, ADR-0136). It runs in the dump worker, whose image carries osmium
+of what a kind draws and of the objects that carry an item a world-view
+import names, and a point for everything else (ADR-0134, ADR-0136,
+ADR-0157), and refills the store of region shapes from it. It runs in the dump worker, whose image carries osmium
 and osm2pgsql (`tools.ts`: each runs as a child process with its arguments as
 a list, by its absolute path, killed on a cancel). The database password
 reaches osm2pgsql through libpq's environment (`databaseEnv`), never its
@@ -879,7 +881,10 @@ command line.
    never for a node or member that only draws one: the cut and the rows
    cannot disagree. **The full geometry** is kept only for an object a kind's
    keep rule draws (`LAYER_DRAWN`, written as `drawn.txt`; today
-   Archaeology's: a ruin, a dig, a protected area): a point for a node; a
+   Archaeology's: a ruin, a dig, a protected area), and for an object whose
+   `wikidata` tag is an item a world-view import names (`drawnItems`: the
+   items `region_import_state` holds regions under, written as
+   `drawn-items.txt`, ADR-0157): a point for a node; a
    closed way's area, or its line where the area is not valid; an open way's
    line; an area relation's multipolygon; any other relation's collection of
    members. **Every other object keeps one point** (ADR-0136): a node its own;
@@ -908,6 +913,19 @@ command line.
    instant's day, so a newer weekly planet is not offered as newer than a
    layer already brought past it. A failed tool, a cut that kept nothing, or a cancel
    drops the copy and leaves the layer in place.
+6. **The region shapes** (`refillRegionShapes`, `layerShapes.ts`, ADR-0157).
+   Once the layer is swapped in, the store a world-view match reads its
+   regions' outlines from (`workbench.wikidata_geoshapes`,
+   `docs/tech/world-view-import.md` § Geoshape Match) is refilled from it in
+   one statement: an item's shape is the largest area among the relations
+   and ways that carry it, a relation before a way, simplified to about
+   100 m (0.001°) and made valid, kept under its QID with the licence
+   `ODbL-1.0`. A shape under a QID that no object draws any more goes; the
+   store's Commons map shapes (`commons:<file>`) are left. The build's
+   summary says how many of the named items have a shape. A refill that
+   fails leaves the layer and the last build's shapes in place and is a note
+   on the build, not a failure. An item an import names for the first time
+   has its shape from the next build.
 
 **The schedule** (`layerSchedule.ts`, ADR-0134 decision 6). The dump worker
 brings the layer forward by itself. Between builds, at most every ten minutes

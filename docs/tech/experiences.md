@@ -3362,8 +3362,10 @@ planet (`docs/tech/dumps.md` § The OpenStreetMap layer):
 - **The per-item read** (`localOsmReader`) reads the objects carrying each item's `wikidata` tag,
   with the tags `OSM_TAG_KEYS` names and a geometry only where the kind's keep rule draws one: the
   five clauses `overpassBatchQuery` spells, in SQL. An object the layer finds is the answer,
-  whatever the layer's age. The layer keeps a full geometry only for what that rule draws and a
-  point for every other object (ADR-0136), so it answers no shape for those (`geometryType` null).
+  whatever the layer's age. The layer keeps a point for most objects (ADR-0136), and a full
+  geometry for those a kind draws and for the objects of the items a world-view import names
+  (ADR-0157), so the read answers no shape (`geometryType` null) for any object its rule does not
+  draw, whatever the layer kept of it.
   A closed way is answered as its area, as both live doors draw it, even where its ring crosses
   itself and osm2pgsql kept it as a line (Viminacium's outline).
   A read whose keep rule asks for outlines the layer in place was cut without (`layerDraws`
