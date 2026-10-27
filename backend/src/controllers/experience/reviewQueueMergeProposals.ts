@@ -20,7 +20,7 @@
 import type { QueryResult } from 'pg';
 import type { MergePair } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, rowKindJoinSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, kindIsRealSql, realKindSql, rowKindJoinSql } from '../../db/membership.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { termsOf } from '../../services/sync/subset/entities.js';
@@ -33,7 +33,7 @@ import { mergeProposalOpenSql } from './reviewQueuePredicates.js';
  */
 export function kindNamesSql(place: string): string {
   return `(SELECT COALESCE(jsonb_agg(k.name ORDER BY k.display_priority, k.id), '[]'::jsonb)
-             FROM ${MEMBERSHIPS} km JOIN ${KINDS} k ON k.id = km.kind_id
+             FROM ${MEMBERSHIPS} km JOIN ${KINDS} k ON k.id = km.kind_id AND ${kindIsRealSql('k')}
             WHERE km.experience_id = ${place}.id)`;
 }
 
@@ -88,7 +88,7 @@ const PAIRS = `(SELECT jsonb_agg(jsonb_build_object(
       WHERE p.place_a = e.id AND ${mergeProposalOpenSql('p', 'e', 'b')})`;
 
 /** The anchor's first membership: whose source a batch answer names, as the keys phase scoped the row. */
-const ANCHOR_MEMBERSHIP = `(SELECT m.id FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id ORDER BY m.id LIMIT 1)`;
+const ANCHOR_MEMBERSHIP = `(SELECT m.id FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND ${realKindSql('m')} ORDER BY m.id LIMIT 1)`;
 
 /** A pair as the statement builds it, before its items' terms are read. */
 type BarePair = Omit<MergePair, 'otherWikidataLabel' | 'otherWikidataDescription' | 'anchorWikidataLabel' | 'anchorWikidataDescription'>;

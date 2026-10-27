@@ -15,7 +15,7 @@
  */
 
 import { SHORT_MOVE_METERS } from '@tyr/shared/moves';
-import { MEMBERSHIPS } from './membership.js';
+import { MEMBERSHIPS, realKindSql } from './membership.js';
 import { foldedPointsSql } from './placePoints.js';
 
 /**
@@ -71,7 +71,7 @@ export function placeViewsSql(placeExpr: string, alias = 'v'): string {
                   false AS component, m.reported_name, m.reported_subtitle, m.reported_image_url,
                   m.reported_image_credit, m.reported_location, m.reported_wikipedia_url
              FROM ${MEMBERSHIPS} m
-            WHERE m.experience_id = ${placeExpr} AND ${viewStandsSql('m')}
+            WHERE m.experience_id = ${placeExpr} AND ${viewStandsSql('m')} AND ${realKindSql('m')}
            UNION ALL
            SELECT w.id, w.kind_id, w.source_id, p.external_ref, true, pt.name::text, NULL::text, NULL::text,
                   NULL::jsonb, pt.location, NULL::text
@@ -101,7 +101,8 @@ export function placeViewsSql(placeExpr: string, alias = 'v'): string {
  */
 export function placeViewSourcesSql(placeExpr: string): string {
   return `(SELECT COALESCE(array_agg(DISTINCT s.source_id ORDER BY s.source_id), '{}'::int[])
-             FROM (SELECT m.source_id FROM ${MEMBERSHIPS} m WHERE m.experience_id = ${placeExpr}
+             FROM (SELECT m.source_id FROM ${MEMBERSHIPS} m
+                    WHERE m.experience_id = ${placeExpr} AND ${realKindSql('m')}
                    UNION ALL
                    SELECT v.source_id FROM ${placeViewsSql(placeExpr)} WHERE v.component) s)`;
 }

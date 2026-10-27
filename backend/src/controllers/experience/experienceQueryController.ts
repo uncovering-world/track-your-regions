@@ -20,7 +20,7 @@ import {
   readerRegionMembershipSql,
 } from '../../db/readerPredicates.js';
 import { includeLost } from './includeLost.js';
-import { descriptionAdaptedSql, descriptionSourceSql, KINDS, MEMBERSHIPS, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
+import { descriptionAdaptedSql, descriptionSourceSql, KINDS, kindIsRealSql, MEMBERSHIPS, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { wholeOfSql } from '../../db/placePoints.js';
 import { inscriptionFactsSql } from '../../db/inscription.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
@@ -306,6 +306,7 @@ export async function listKinds(): Promise<ExperienceKinds> {
       ${kindCountSql('k.id')} as experience_count
     FROM ${KINDS} k
     WHERE EXISTS (SELECT 1 FROM experience_sources s WHERE s.kind_id = k.id AND s.is_active = true)
+      AND ${kindIsRealSql('k')}
     ORDER BY k.display_priority, k.name
   `);
 

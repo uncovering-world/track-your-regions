@@ -23,7 +23,7 @@ import type { z } from 'zod/v4';
 import type { KindAddedToPlace } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
-import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, kindIsRealSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import { badRequest, createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { addToKindBodySchema, idParamSchema } from '../../types/index.js';
@@ -92,7 +92,7 @@ export async function addUnderLock(
       `SELECT kd.name AS kind,
               EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = $2 AND m.kind_id = kd.id) AS held
          FROM ${KINDS} kd
-        WHERE kd.id = $1`,
+        WHERE kd.id = $1 AND ${kindIsRealSql('kd')}`,
       [kindId, experienceId],
     );
     const kind = read.rows[0];
@@ -142,7 +142,7 @@ export async function addableKinds(
   const result = await pool.query<{ kind_id: number; kind_name: string }>(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT kd.id AS kind_id, kd.name AS kind_name
       FROM experiences e
-      JOIN ${KINDS} kd ON kd.id <> ${INSCRIBED_KIND_ID}
+      JOIN ${KINDS} kd ON kd.id <> ${INSCRIBED_KIND_ID} AND ${kindIsRealSql('kd')}
       -- Aliased as a membership's source, which is what the scope reads.
       JOIN LATERAL (SELECT ${kindSourceSql('kd.id')} AS source_id) m ON m.source_id IS NOT NULL
      WHERE e.id = $2

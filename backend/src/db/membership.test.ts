@@ -15,6 +15,7 @@ import {
   placeAdmittedSql,
   placeOfferedSql,
   placeVisibleSql,
+  realKindSql,
 } from './membership.js';
 
 const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
@@ -27,8 +28,16 @@ describe('the membership-level predicates', () => {
     expect(membershipVisibleSql('x')).toBe("x.curation_state <> 'pending'");
   });
 
-  it('compose the offered one from the two, on the same alias', () => {
-    expect(membershipOfferedSql('x')).toBe(`${membershipAdmittedSql('x')} AND ${membershipVisibleSql('x')}`);
+  it('compose the offered one from the two, on the same alias, in a real kind', () => {
+    expect(membershipOfferedSql('x')).toBe(`${membershipAdmittedSql('x')} AND ${membershipVisibleSql('x')} AND ${realKindSql('x')}`);
+  });
+
+  it('leave a virtual kind out of the offered one only, since a reader negates the other two (ADR-0156)', () => {
+    // NOT admitted reads as refused and NOT visible as unread: a membership of
+    // World Heritage components is neither, so neither may say it is.
+    expect(membershipAdmittedSql('x')).not.toContain('is_virtual');
+    expect(membershipVisibleSql('x')).not.toContain('is_virtual');
+    expect(realKindSql('x')).toBe('x.kind_id IN (SELECT real_kind.id FROM experience_kinds real_kind WHERE NOT real_kind.is_virtual)');
   });
 });
 
@@ -40,6 +49,12 @@ describe('the place-level predicates', () => {
       expect(sql.match(/EXISTS/g)).toHaveLength(1);
     }
     expect(MEMBERSHIPS).toBe('experience_kind_memberships');
+  });
+
+  it('ask it of a real kind, once, so a part offers nothing by its record in World Heritage components (ADR-0156)', () => {
+    for (const fragment of [placeAdmittedSql('e'), placeVisibleSql('e'), placeOfferedSql('e')]) {
+      expect(collapse(fragment).split(realKindSql('km'))).toHaveLength(2);
+    }
   });
 
   it('take the experiences alias, and give the membership one of its own', () => {

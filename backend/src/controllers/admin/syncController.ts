@@ -44,6 +44,7 @@ import { readLatestSyncLog } from '../../services/sync/syncUtils.js';
 import { findUnescoComponentItems } from '../../services/sync/componentItemJob.js';
 import { acceptExactCandidates } from '../experience/exactCandidates.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { realKindSql } from '../../db/membership.js';
 import { waitingCountsBySource } from '../experience/waitingCounts.js';
 import {
   syncUnescoSites,
@@ -683,6 +684,9 @@ export async function getSources(): Promise<ExperienceSources> {
       (api_config->>'findStaySitelinks')::int AS find_stay_sitelinks
     FROM experience_sources
     WHERE is_active = true
+      -- A virtual kind's source has no run of its own: the World Heritage run
+      -- writes it (ADR-0156), so it gets no card.
+      AND ${realKindSql('experience_sources')}
     ORDER BY display_priority, id
   `);
 

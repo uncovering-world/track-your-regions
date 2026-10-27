@@ -26,7 +26,7 @@ import type { z } from 'zod/v4';
 import type { MergeProposalsAnswered } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockTwoExperiences } from '../../db/experienceWriter.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, realKindSql } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { answerMergeProposalsBodySchema, idParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
@@ -62,7 +62,7 @@ async function openPair(client: PoolClient, anchorId: number, proposalId: number
   const result = await client.query<OpenPair>(
     `SELECT p.id, p.place_a, p.place_b, b.name AS other_name,
             (SELECT array_agg(DISTINCT m.source_id) FROM ${MEMBERSHIPS} m
-              WHERE m.experience_id IN (p.place_a, p.place_b)) AS source_ids
+              WHERE m.experience_id IN (p.place_a, p.place_b) AND ${realKindSql('m')}) AS source_ids
        FROM experience_merge_proposals p
        JOIN experiences a ON a.id = p.place_a
        JOIN experiences b ON b.id = p.place_b
@@ -246,7 +246,7 @@ export async function mergeProposalSourceIds(anchorId: number): Promise<(number 
                FROM experience_merge_proposals p
                JOIN experiences a ON a.id = p.place_a
                JOIN experiences b ON b.id = p.place_b
-               JOIN ${MEMBERSHIPS} m ON m.experience_id IN (p.place_a, p.place_b)
+               JOIN ${MEMBERSHIPS} m ON m.experience_id IN (p.place_a, p.place_b) AND ${realKindSql('m')}
               WHERE p.place_a = e.id AND ${mergeProposalOpenSql('p', 'a', 'b')}) AS source_ids
        FROM experiences e WHERE e.id = $1`,
     [anchorId],

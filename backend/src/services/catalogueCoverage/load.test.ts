@@ -85,7 +85,7 @@ describe('replaceCoverage', () => {
     const order = statements(client).map(sql => sql.split(' (')[0].split(' SELECT')[0]);
     expect(order).toEqual([
       'BEGIN',
-      'SELECT id, name FROM experience_kinds ORDER BY id',
+      'SELECT id, name FROM experience_kinds WHERE NOT experience_kinds.is_virtual ORDER BY id',
       'DELETE FROM coverage_calibration_entry_sources',
       'DELETE FROM coverage_calibration_entries',
       'DELETE FROM coverage_calibration_sources',

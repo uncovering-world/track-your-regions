@@ -30,7 +30,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, placeOfferedSql } from '../../db/membership.js';
+import { placeHoldsRealKindSql, placeOfferedSql } from '../../db/membership.js';
 import { mergePlaces } from './placeMerge.js';
 
 /** What a join did: the places merged, and the ones left apart with the reason. */
@@ -63,7 +63,7 @@ function sharedItemsSql(onlyParam: string): string {
                          min(held.place_id)) AS survivor_id
            FROM (
              SELECT pi.value AS qid, e.id AS place_id, e.name,
-                    EXISTS (SELECT 1 FROM ${MEMBERSHIPS} own WHERE own.experience_id = e.id) AS kinded,
+                    ${placeHoldsRealKindSql('e.id')} AS kinded,
                     ${placeOfferedSql('e')} AS offered
                FROM place_identifiers pi
                JOIN experiences e ON e.id = pi.experience_id
