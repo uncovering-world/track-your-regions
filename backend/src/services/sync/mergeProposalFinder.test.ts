@@ -5,8 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { inscribedAreaSql } from '../../db/inscription.js';
-import { placeOfferedSql } from '../../db/membership.js';
-import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { offeredLocationSql, placeOrPartOfferedSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { BASE_REACH_M, EXACT_DISTANCE_M, MIN_SIMILARITY, PROPOSAL_ROWS_SQL, WIDEST_REACH_M, candidatePairsSql, foldedNamesSql, reachSql, GENERIC_NAME_WORDS, MIN_WORD_LENGTH, pairingSentence } from './mergeProposalFinder.js';
 
 const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
@@ -14,10 +13,11 @@ const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
 describe('the pairs the rule finds', () => {
   const sql = collapse(candidatePairsSql());
 
-  it('is made of places readers see, not folded, neither a whole of parts nor a part', () => {
+  it('is made of places readers see, a part through its site, not folded and no whole of parts (#1250)', () => {
     expect(sql).toContain('e.merged_into_id IS NULL');
-    expect(sql).toContain(collapse(placeOfferedSql('e')));
-    expect(sql).toContain('NOT EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.whole_id = e.id OR prt.part_id = e.id)');
+    expect(sql).toContain(collapse(placeOrPartOfferedSql('e')));
+    expect(sql).toContain('NOT EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.whole_id = e.id)');
+    expect(sql).not.toContain('prt.part_id = e.id');
   });
 
   it('measures between the places\' offered, published points', () => {

@@ -343,6 +343,8 @@ export const MergePair = z.strictObject({
   otherWikidataItem: z.string().nullable().describe("The Wikidata item the other place's memberships make it, where one does."),
   anchorWikidataItem: z.string().nullable().describe("The card's own place's item, the same way; two different items on a pair is worth a look."),
   anchorKinds: z.array(z.string()).describe("The names of the kinds the card's own place is in, the same way, to name it beside its item."),
+  otherPartOf: z.string().nullable().describe('The serial World Heritage site the other place is a part of, by name, where it is one (#1250).'),
+  anchorPartOf: z.string().nullable().describe("The site the card's own place is a part of, the same way."),
   otherWikidataLabel: z.string().nullable().describe("The other place's item's label in the local Wikidata subset, English first (#1970)."),
   otherWikidataDescription: z.string().nullable().describe("Its description there, which tells a city from the listing of its ruins."),
   anchorWikidataLabel: z.string().nullable().describe("The card's own place's item's label, the same way."),

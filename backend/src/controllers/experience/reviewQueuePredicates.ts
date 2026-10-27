@@ -27,12 +27,15 @@ import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
   experienceOfferedToReaderSql,
   offeredLocationSql,
+  placeOrPartOfferedSql,
   publishedContentSql,
 } from '../../db/readerPredicates.js';
 import {
   heldFieldExistsSql, heldPartExistsSql,
 } from './waitingCounts.js';
-import { itemHeldSql, pointItemClaimedSql, pointItemSql, somePointShownSql } from '../../db/placePoints.js';
+import {
+  answeringPlaceOfSql, itemHeldSql, pointItemClaimedSql, pointItemSql, somePointShownSql,
+} from '../../db/placePoints.js';
 import { COPIED_COORDINATE_M } from '../../services/sync/componentItemMatching.js';
 
 /**
@@ -313,15 +316,29 @@ export function componentItemsOpenSql(e = 'e'): string {
  * `merge-proposals`: a pair of near places with similar names nobody has
  * answered (#1249, ADR-0046 decision 2), on a proposal `p` whose places are
  * `a` (the lower id, which stays) and `b`. Open while unanswered and while
- * both places are still offered and unmerged: a pair one side of which a
- * run took away, or an equal-item merge already made one, asks nothing. The
- * keys phase, the hydration (`reviewQueueMergeProposals.ts`) and the answer
+ * both places are still offered — a serial site's part through its site
+ * (#1250) — and unmerged: a pair one side of which a run took away, or an
+ * equal-item merge already made one, asks nothing. The keys phase, the
+ * hydration (`reviewQueueMergeProposals.ts`) and the answer
  * (`mergeProposalController.ts`) read it alike.
  */
 export function mergeProposalOpenSql(p = 'p', a = 'a', b = 'b'): string {
   return `${p}.answer IS NULL
     AND ${a}.merged_into_id IS NULL AND ${b}.merged_into_id IS NULL
-    AND ${experienceOfferedToReaderSql(a)} AND ${experienceOfferedToReaderSql(b)}`;
+    AND ${placeOrPartOfferedSql(a)} AND ${placeOrPartOfferedSql(b)}`;
+}
+
+/**
+ * The memberships whose sources a pair `p` is in scope by, over the membership
+ * alias `m`: every real kind of either place, and of the site a serial site's
+ * part with no kind of its own is answered for under (`answeringPlaceOfSql`,
+ * #1250), as a write on its point is. The keys phase, the card's scope and the
+ * answer (`mergeProposalController.ts`) read it alike.
+ */
+export function pairMembershipSql(p = 'p', m = 'm'): string {
+  const a = answeringPlaceOfSql(p + '.place_a');
+  const b = answeringPlaceOfSql(p + '.place_b');
+  return `${m}.experience_id IN (${a}, ${b}) AND ${realKindSql(m)}`;
 }
 
 /**

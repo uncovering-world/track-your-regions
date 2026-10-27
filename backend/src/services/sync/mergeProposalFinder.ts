@@ -31,11 +31,16 @@
  * is found under the larger reach of its two places. No kind declares a reach
  * of its own yet.
  *
- * Left out, on purpose: a place that has parts or is one — a serial site is
- * never merged as a whole with one of its parts' twins (ADR-0100 decision 6),
- * and a part's twin is #1250's, once the merge moves the part relations; a
- * pair in one kind, which one place cannot hold twice (ADR-0086 decision 4),
- * found and not proposed; and a place no reader sees yet, which has an arrival card of its own.
+ * A serial site's part is a place like any other (ADR-0100, #1250), offered
+ * through its site, and is paired by the same rule: Svetitskhoveli Cathedral,
+ * a part of the Historical Monuments of Mtskheta, 62 m from the Places of
+ * worship row of the same name; the merge moves the part's relations onto the
+ * place that stays. Left out, on purpose: a place that has parts — a serial
+ * site is never merged as a whole with one of its parts' twins (ADR-0100
+ * decision 6); a pair in one kind, which one place cannot hold twice (ADR-0086
+ * decision 4), found and not proposed, two parts among them, since each holds
+ * its record in World Heritage components (ADR-0156); and a place no reader
+ * sees yet, which has an arrival card of its own.
  *
  * Nobody runs the pass (#1950). A trigger on every table the rule reads marks
  * a place whose inputs change (`mark_pairing_due()`), and the backend drains
@@ -49,9 +54,10 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, kindIsRealSql, placeOfferedSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, kindIsRealSql } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
-import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { offeredLocationSql, placeOrPartOfferedSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { partOfNameSql } from '../../db/placePoints.js';
 import { BEST } from './subset/entities.js';
 
 /** The reach every place has. */
@@ -149,17 +155,18 @@ export function foldedNamesSql(e = 'e'): string {
 }
 
 /**
- * The places a pair may be made of: offered to readers, not folded into
- * another, neither a whole of parts nor a part (ADR-0100), with the kinds
- * every membership gives them, their folded names and their reach.
+ * The places a pair may be made of: offered to readers, a serial site's part
+ * through its site, not folded into another and no whole of parts (ADR-0100),
+ * with the kinds every membership gives them, their folded names and their
+ * reach.
  */
 const PLACES_SQL = `
   SELECT e.id, e.name, ${reachSql('e')} AS reach_m, ${foldedNamesSql('e')} AS names,
          ARRAY(SELECT DISTINCT km.kind_id FROM ${MEMBERSHIPS} km WHERE km.experience_id = e.id) AS kind_ids
     FROM experiences e
    WHERE e.merged_into_id IS NULL
-     AND ${placeOfferedSql('e')}
-     AND NOT EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.whole_id = e.id OR prt.part_id = e.id)`;
+     AND ${placeOrPartOfferedSql('e')}
+     AND NOT EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.whole_id = e.id)`;
 
 /**
  * The pairs within reach of each other, by their nearest offered points, with
@@ -227,8 +234,8 @@ export function candidatePairsSql(): string {
 /** A proposal as the check lists it, with both places named; the drain writes these rows (`writeProposals`). */
 export const PROPOSAL_ROWS_SQL = `
   SELECT p.id, p.distance_m, p.name_similarity, p.exact, p.reach_m, p.found_by, p.proposed_at, p.answer,
-         a.id AS a_id, a.name AS a_name, ${kindNamesSql('a')} AS a_kinds,
-         b.id AS b_id, b.name AS b_name, ${kindNamesSql('b')} AS b_kinds
+         a.id AS a_id, a.name AS a_name, ${kindNamesSql('a')} AS a_kinds, ${partOfNameSql('a.id')} AS a_part_of,
+         b.id AS b_id, b.name AS b_name, ${kindNamesSql('b')} AS b_kinds, ${partOfNameSql('b.id')} AS b_part_of
     FROM experience_merge_proposals p
     JOIN experiences a ON a.id = p.place_a
     JOIN experiences b ON b.id = p.place_b`;
@@ -345,9 +352,10 @@ async function answerFromWikidata(client: PoolClient, among: readonly number[] |
  * database records the version its proposals were found under
  * (`experience_pairing_rule`). 1 is the trigram rule of #1249; 2 adds one
  * name's words standing in the other's (ADR-0120); 3 answers "part of"
- * from Wikidata (ADR-0150).
+ * from Wikidata (ADR-0150); 4 pairs a serial site's part like any place
+ * (#1250).
  */
-export const PAIRING_RULE_VERSION = 3;
+export const PAIRING_RULE_VERSION = 4;
 
 /**
  * What one drain did: how many marked places it paired again, whether it ran
@@ -390,7 +398,15 @@ export async function drainPairing(): Promise<PairingDrain | null> {
         WHERE d.experience_id IN (SELECT experience_id FROM experience_pairing_due FOR UPDATE SKIP LOCKED)
        RETURNING d.experience_id`,
     );
-    const places = marked.rows.map(row => row.experience_id);
+    // A part is paired while its whole is offered (`placeOrPartOfferedSql`, any
+    // relation), so a whole marked for a change of its own state is paired with
+    // its parts: published, refused or taken back, the whole itself is in no
+    // pair (#1250).
+    const parts = await client.query<{ part_id: number }>(
+      `SELECT DISTINCT part_id FROM experience_parts WHERE whole_id = ANY($1::int[])`,
+      [marked.rows.map(row => row.experience_id)],
+    );
+    const places = [...new Set([...marked.rows.map(row => row.experience_id), ...parts.rows.map(row => row.part_id)])];
     if (!wholeCatalogue && places.length === 0) {
       await client.query('COMMIT');
       return { places: 0, wholeCatalogue, open: 0, fromWikidata: 0 };

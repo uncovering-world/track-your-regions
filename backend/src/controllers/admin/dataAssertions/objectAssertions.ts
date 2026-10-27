@@ -877,9 +877,14 @@ const nearPlacesUnanswered: CatalogueAssertion = {
         WHERE p.answer IS NULL
         ORDER BY p.name_similarity DESC, p.distance_m, a.name`,
   describe: row => {
-    const list = (key: string) => (Array.isArray(row[key]) ? (row[key] as unknown[]).map(String) : []);
-    return `${text(row, 'a_name')} (${list('a_kinds').join(', ')}) and ${text(row, 'b_name')} `
-      + `(${list('b_kinds').join(', ')}): ${count(row, 'distance_m')} m apart, names alike at `
+    // A serial site's part is in no kind of its own, and is named by its site (#1250).
+    const what = (side: 'a' | 'b') => {
+      const kinds = Array.isArray(row[`${side}_kinds`]) ? (row[`${side}_kinds`] as unknown[]).map(String) : [];
+      const partOf = row[`${side}_part_of`];
+      return typeof partOf === 'string' ? [...kinds, `part of ${partOf}`] : kinds;
+    };
+    return `${text(row, 'a_name')} (${what('a').join(', ')}) and ${text(row, 'b_name')} `
+      + `(${what('b').join(', ')}): ${count(row, 'distance_m')} m apart, names alike at `
       + `${Math.round(count(row, 'name_similarity') * 100)} %`;
   },
 };

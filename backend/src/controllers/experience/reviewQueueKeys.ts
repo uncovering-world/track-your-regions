@@ -62,7 +62,8 @@ import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/c
 import {
   approximatePointAskedSql, approximatePointsOpenSql, arrivalOpenSql, claimKeySql, componentItemsOpenSql,
   conflictChangeOpenSql, heldOpenSql,
-  membershipMissingOpenSql, mergeProposalOpenSql, missingOpenSql, openProposalSql, pinQuestionOpenSql, refusedOpenSql,
+  membershipMissingOpenSql, mergeProposalOpenSql, missingOpenSql, openProposalSql, pairMembershipSql, pinQuestionOpenSql,
+  refusedOpenSql,
   sourcesOpenSql, visitQuestionOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
@@ -443,7 +444,8 @@ function approximatePointsKeysSql(membershipScopeFilter: string, hinted: boolean
  * `mergeProposalOpenSql`): one row per place that stays if the two are made
  * one — the lower id, `place_a`, which anchors the card and a batch's row — in
  * scope by the source of any membership of either place, since a curator of
- * either may say what the two are, and dated by the newest proposal; the pass
+ * either may say what the two are, a serial site's part by its site's
+ * (`pairMembershipSql`, #1250), and dated by the newest proposal; the pass
  * is an admin's and names no run, so the row is never set aside with a batch.
  */
 function mergeProposalsKeysSql(membershipScopeFilter: string): string {
@@ -453,7 +455,7 @@ function mergeProposalsKeysSql(membershipScopeFilter: string): string {
     FROM experience_merge_proposals p
     JOIN experiences e ON e.id = p.place_a
     JOIN experiences b ON b.id = p.place_b
-    JOIN ${MEMBERSHIPS} m ON m.experience_id IN (p.place_a, p.place_b) AND ${realKindSql('m')}
+    JOIN ${MEMBERSHIPS} m ON ${pairMembershipSql('p', 'm')}
     WHERE ${mergeProposalOpenSql('p', 'e', 'b')}
       AND ${membershipScopeFilter}
     GROUP BY e.id, e.name`;

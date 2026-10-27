@@ -28,7 +28,7 @@ import { mergeProposalsScope } from './mergeProposalController.js';
 import {
   askedPairSql, recordMergeSuggestions, type MergeSuggestion, type PairJudgement,
 } from './mergeProposalSuggestions.js';
-import { itemSql, kindNamesSql } from './reviewQueueMergeProposals.js';
+import { itemSql, kindNamesSql, partOfSql } from './reviewQueueMergeProposals.js';
 import { mergeProposalOpenSql } from './reviewQueuePredicates.js';
 
 interface PairRow {
@@ -36,6 +36,8 @@ interface PairRow {
   otherId: number;
   otherName: string;
   otherKinds: string[];
+  /** The serial site the other place is a part of, where it is one (#1250). */
+  otherPartOf: string | null;
   otherItem: string | null;
   otherCountries: string[];
   distanceM: number;
@@ -51,6 +53,7 @@ interface PairRow {
 interface Anchor {
   name: string;
   kinds: string[];
+  partOf: string | null;
   item: string | null;
   countries: string[];
   pairs: PairRow[];
@@ -69,6 +72,16 @@ const CRITERIA: Record<PairJudgement, string> = {
 };
 
 const words = (list: readonly string[], none: string): string => (list.length > 0 ? list.join(', ') : none);
+/**
+ * What a place is, as the question says it: the kinds it is in, and for a
+ * serial site's part, which is in no kind of its own, the site it is a
+ * component of (#1250), said as what the place is, never as where it lies.
+ */
+const whatItIs = (kinds: readonly string[], partOf: string | null): string => {
+  if (partOf === null) return `is in ${words(kinds, 'no kind')}`;
+  const component = `is a component of the World Heritage site "${partOf}"`;
+  return kinds.length > 0 ? `${component} and is in ${kinds.join(', ')}` : component;
+};
 const itemWords = (item: string | null): string => (item ? `Wikidata item ${item}` : 'no Wikidata item');
 
 /** The question for one pair: both places as data, how they stand to each other, and what to decide. */
@@ -80,8 +93,8 @@ export function questionFor(anchor: Anchor, pair: PairRow): JevChoiceAsked {
   // A short name inside a long title reads as unlike by trigrams: say why the pair was asked (#1652).
   const within = pair.foundBy === 'words' ? 'Every significant word of one name stands in the other\'s. ' : '';
   return {
-    instructions: `The place "${anchor.name}" is in ${words(anchor.kinds, 'no kind')} and has ${itemWords(anchor.item)}. `
-      + `Within ${pair.reachM} m of it, the place "${pair.otherName}" is in ${words(pair.otherKinds, 'no kind')}, in `
+    instructions: `The place "${anchor.name}" ${whatItIs(anchor.kinds, anchor.partOf)} and has ${itemWords(anchor.item)}. `
+      + `Within ${pair.reachM} m of it, the place "${pair.otherName}" ${whatItIs(pair.otherKinds, pair.otherPartOf)}, in `
       + `${words(pair.otherCountries, 'no named country')}, and has ${itemWords(pair.otherItem)}; the two stand `
       + `${pair.distanceM} m apart and their names are `
       + `${Math.round(pair.similarity * 100)} % alike. ${sameName}${within}${items}Each kind lists what it covers under its own `
@@ -92,10 +105,13 @@ export function questionFor(anchor: Anchor, pair: PairRow): JevChoiceAsked {
 }
 
 async function openPairsOf(anchorId: number): Promise<Anchor | null> {
-  const result = await pool.query<{ name: string; kinds: string[]; item: string | null; countries: string[] | null; pairs: PairRow[] | null }>(
-    `SELECT a.name, ${kindNamesSql('a')} AS kinds, ${itemSql('a')} AS item, a.country_names AS countries,
+  const result = await pool.query<{
+    name: string; kinds: string[]; part_of: string | null; item: string | null; countries: string[] | null; pairs: PairRow[] | null;
+  }>(
+    `SELECT a.name, ${kindNamesSql('a')} AS kinds, ${partOfSql('a')} AS part_of, ${itemSql('a')} AS item, a.country_names AS countries,
             (SELECT jsonb_agg(jsonb_build_object(
                       'proposalId', p.id, 'otherId', b.id, 'otherName', b.name, 'otherKinds', ${kindNamesSql('b')},
+                      'otherPartOf', ${partOfSql('b')},
                       'otherItem', ${itemSql('b')}, 'otherCountries', COALESCE(b.country_names, '{}'),
                       'distanceM', p.distance_m, 'similarity', p.name_similarity, 'exact', p.exact, 'reachM', p.reach_m, 'foundBy', p.found_by,
                       'asked', ${askedPairSql('p', 'a', 'b')},
@@ -111,7 +127,9 @@ async function openPairsOf(anchorId: number): Promise<Anchor | null> {
     [anchorId],
   );
   const row = result.rows[0];
-  return row ? { name: row.name, kinds: row.kinds, item: row.item, countries: row.countries ?? [], pairs: row.pairs ?? [] } : null;
+  return row
+    ? { name: row.name, kinds: row.kinds, partOf: row.part_of, item: row.item, countries: row.countries ?? [], pairs: row.pairs ?? [] }
+    : null;
 }
 
 /** Record one call's judgements under the anchor's lock. */
