@@ -5,7 +5,8 @@
  * page table's dump and the three of the same date (#1440), and the redirects
  * readership folds from the redirect and page tables of every edition a door
  * counts (#1650), the Wikidata items every Wikivoyage edition uses, the
- * travel-guide witness of a place a visitor goes to (#1768), and the
+ * travel-guide witness of a place a visitor goes to (#1768), English
+ * Wikivoyage's articles the world-view extraction reads (#2089), and the
  * OpenStreetMap layer cut from the planet (#1437, ADR-0134).
  */
 
@@ -24,6 +25,8 @@ import { latestStructure } from './wikipedia/structureTables.js';
 import { buildSubset, rederiveSubset, type RederiveOptions } from './wikidata/subsetBuild.js';
 import type { CopyNeeds } from './wikidata/buildRules.js';
 import { latestSubset } from './wikidata/subsetTables.js';
+import { buildPages } from './wikivoyage/pageBuild.js';
+import { latestPages } from './wikivoyage/pageTables.js';
 import { buildUsage } from './wikivoyage/usageBuild.js';
 import { latestUsage } from './wikivoyage/usageTables.js';
 
@@ -98,6 +101,9 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   },
   'wikivoyage-usage': {
     title: 'The items Wikivoyage\'s pages use', build: buildUsage, latest: latestUsage, samples: false, fromCopy: false,
+  },
+  'wikivoyage-pages': {
+    title: 'English Wikivoyage\'s articles', build: buildPages, latest: latestPages, samples: false, fromCopy: false,
   },
   // A build from the newest brings the kept current planet forward; a build
   // from a weekly copy on disk starts the current planet again from it.

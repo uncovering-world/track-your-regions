@@ -23,11 +23,12 @@ export type TableBuildOptions = ReadOptions & {
 export class Batches<Row> {
   private rows: Row[] = [];
   written = 0;
-  constructor(private readonly write: (rows: Row[]) => Promise<void>) {}
+  /** `size` rows to a write: fewer where a row is large, as an article's text is. */
+  constructor(private readonly write: (rows: Row[]) => Promise<void>, private readonly size = BATCH) {}
 
   async add(row: Row): Promise<void> {
     this.rows.push(row);
-    if (this.rows.length >= BATCH) await this.flush();
+    if (this.rows.length >= this.size) await this.flush();
   }
 
   async flush(): Promise<void> {
