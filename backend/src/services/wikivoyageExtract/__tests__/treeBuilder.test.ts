@@ -17,40 +17,22 @@ vi.mock('../../ai/openaiService.js', async (importOriginal) => ({
   isOpenAIAvailable: () => true,
 }));
 
-// ─── Mock fetcher ───────────────────────────────────────────────────────────
+// ─── English Wikivoyage, as a few pages ─────────────────────────────────────
 
-/** Create a mock fetcher that returns pre-recorded API responses */
-function createMockFetcher(responses: Record<string, Record<string, unknown>>) {
+/** The pages a spec reads, each title's wikitext; a title not listed has no page. */
+function fakeWiki(pages: Record<string, string>) {
   return {
-    apiGet: vi.fn(async (params: Record<string, string | number>) => {
-      const key = JSON.stringify(params, Object.keys(params).sort());
-
-      return responses[key] ?? { error: { code: 'not_found' } };
-    }),
-    save: vi.fn(),
-    apiRequestCount: 0,
-    cacheSize: 0,
+    article: vi.fn(async (title: string) => (Object.hasOwn(pages, title) ? { title, wikitext: pages[title] } : null)),
+    checkPagesExist: vi.fn(async (titles: string[]) => new Map(titles.map(title => [title, Object.hasOwn(pages, title)]))),
+    wikidataIds: vi.fn(async () => new Map<string, string>()),
   };
 }
 
-/** Build a cache key like FileCache.buildKey */
-function key(params: Record<string, string | number>): string {
-  return JSON.stringify(params, Object.keys(params).sort());
-}
+/** An article whose Regions section holds a Regionlist of `regions`, its parameters one per line. */
+const withRegions = (regions: string, rest = '') => `== Regions ==\n{{Regionlist\n${regions}\n}}\n${rest}`;
 
-/** Build a sections response */
-function sectionsResponse(title: string, sections: Array<{ index: string; line: string }>) {
-  return {
-    parse: { title, sections },
-  };
-}
-
-/** Build a wikitext response */
-function wikitextResponse(title: string, wikitext: string) {
-  return {
-    parse: { title, wikitext: { '*': wikitext } },
-  };
-}
+/** A leaf's article: it has sections, none of them Regions. */
+const LEAF = '== Understand ==\nA place.';
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
@@ -62,43 +44,16 @@ describe('buildTree', () => {
   });
 
   it('builds a simple 2-level tree', async () => {
-    // Europe has 2 regions: France and Germany
-    // France and Germany are leaf pages (no Regions section)
-    const responses: Record<string, Record<string, unknown>> = {
-      // Europe sections
-      [key({ action: 'parse', page: 'Europe', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('Europe', [{ index: '1', line: 'Regions' }, { index: '2', line: 'Cities' }]),
-      // Europe regions wikitext
-      [key({ action: 'parse', page: 'Europe', prop: 'wikitext', section: '1' })]:
-        wikitextResponse('Europe', `{{Regionlist
-| regionmap=Europe_map.svg
-| region1name=[[France]]
-| region1items=
-| region2name=[[Germany]]
-| region2items=
-}}`),
-      // Europe full page (for fallback map)
-      [key({ action: 'parse', page: 'Europe', prop: 'wikitext' })]:
-        wikitextResponse('Europe', '[[File:Europe_map.svg|300px]]'),
-
-      // France sections (no Regions section)
-      [key({ action: 'parse', page: 'France', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('France', [{ index: '1', line: 'Understand' }]),
-      [key({ action: 'parse', page: 'France', prop: 'wikitext' })]:
-        wikitextResponse('France', ''),
-
-      // Germany sections (no Regions section)
-      [key({ action: 'parse', page: 'Germany', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('Germany', [{ index: '1', line: 'Understand' }]),
-      [key({ action: 'parse', page: 'Germany', prop: 'wikitext' })]:
-        wikitextResponse('Germany', ''),
-    };
-
-    const fetcher = createMockFetcher(responses);
-    const result = await buildTree(
-      fetcher as unknown as Parameters<typeof buildTree>[0],
-      'Europe', 3, progress,
-    );
+    // Europe has 2 regions: France and Germany, both leaf pages (no Regions section)
+    const wiki = fakeWiki({
+      Europe: withRegions(
+        '| regionmap=Europe_map.svg\n| region1name=[[France]]\n| region1items=\n| region2name=[[Germany]]\n| region2items=',
+        '== Cities ==\n[[File:Europe_map.svg|300px]]',
+      ),
+      France: LEAF,
+      Germany: LEAF,
+    });
+    const result = await buildTree(wiki, 'Europe', 3, progress);
 
     expect(result).not.toBe('self_ref');
     expect(result).not.toBe('missing');
@@ -110,32 +65,29 @@ describe('buildTree', () => {
     expect(tree.regionMapUrl).toContain('Europe_map.svg');
   });
 
+  it('reads the Regions section alone, to the next heading of its level', async () => {
+    // A link under Cities is not a region of Europe, and a subheading inside
+    // Regions does not end it.
+    const wiki = fakeWiki({
+      Europe: '== Regions ==\n{{Regionlist\n| region1name=[[France]]\n| region1items=\n}}\n'
+        + '=== More ===\n{{Regionlist\n| region1name=[[Germany]]\n| region1items=\n}}\n'
+        + '== Cities ==\n{{Regionlist\n| region1name=[[Paris]]\n| region1items=\n}}',
+      France: LEAF,
+      Germany: LEAF,
+      Paris: LEAF,
+    });
+    const tree = await buildTree(wiki, 'Europe', 3, progress) as TreeNode;
+
+    expect(tree.children.map(child => child.name)).toEqual(['France', 'Germany']);
+  });
+
   it('handles self-reference', async () => {
     // Page links to itself
-    const responses: Record<string, Record<string, unknown>> = {
-      [key({ action: 'parse', page: 'A', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('A', [{ index: '1', line: 'Regions' }]),
-      [key({ action: 'parse', page: 'A', prop: 'wikitext', section: '1' })]:
-        wikitextResponse('A', `{{Regionlist
-| region1name=[[A]]
-| region1items=
-| region2name=[[B]]
-| region2items=
-}}`),
-      [key({ action: 'parse', page: 'A', prop: 'wikitext' })]:
-        wikitextResponse('A', ''),
-      // B is a leaf
-      [key({ action: 'parse', page: 'B', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('B', []),
-      [key({ action: 'parse', page: 'B', prop: 'wikitext' })]:
-        wikitextResponse('B', ''),
-    };
-
-    const fetcher = createMockFetcher(responses);
-    const result = await buildTree(
-      fetcher as unknown as Parameters<typeof buildTree>[0],
-      'A', 5, progress,
-    );
+    const wiki = fakeWiki({
+      A: withRegions('| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items='),
+      B: '',
+    });
+    const result = await buildTree(wiki, 'A', 5, progress);
 
     const tree = result as TreeNode;
     expect(tree.name).toBe('A');
@@ -147,33 +99,11 @@ describe('buildTree', () => {
   });
 
   it('handles missing pages', async () => {
-    const responses: Record<string, Record<string, unknown>> = {
-      [key({ action: 'parse', page: 'Root', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('Root', [{ index: '1', line: 'Regions' }]),
-      [key({ action: 'parse', page: 'Root', prop: 'wikitext', section: '1' })]:
-        wikitextResponse('Root', `{{Regionlist
-| region1name=[[Exists]]
-| region1items=
-| region2name=[[Missing]]
-| region2items=
-}}`),
-      [key({ action: 'parse', page: 'Root', prop: 'wikitext' })]:
-        wikitextResponse('Root', ''),
-      // Exists is a leaf
-      [key({ action: 'parse', page: 'Exists', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('Exists', []),
-      [key({ action: 'parse', page: 'Exists', prop: 'wikitext' })]:
-        wikitextResponse('Exists', ''),
-      // Missing returns error
-      [key({ action: 'parse', page: 'Missing', prop: 'sections', redirects: '1' })]:
-        { error: { code: 'missingtitle' } },
-    };
-
-    const fetcher = createMockFetcher(responses);
-    const result = await buildTree(
-      fetcher as unknown as Parameters<typeof buildTree>[0],
-      'Root', 5, progress,
-    );
+    const wiki = fakeWiki({
+      Root: withRegions('| region1name=[[Exists]]\n| region1items=\n| region2name=[[Missing]]\n| region2items='),
+      Exists: '',
+    });
+    const result = await buildTree(wiki, 'Root', 5, progress);
 
     const tree = result as TreeNode;
     // Missing page is skipped. Only "Exists" (a leaf) remains, so the
@@ -183,63 +113,29 @@ describe('buildTree', () => {
 
   it('respects maxDepth', async () => {
     // Need 2+ children to avoid single-subregion leaf optimization
-    const responses: Record<string, Record<string, unknown>> = {
-      [key({ action: 'parse', page: 'A', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('A', [{ index: '1', line: 'Regions' }]),
-      [key({ action: 'parse', page: 'A', prop: 'wikitext', section: '1' })]:
-        wikitextResponse('A', `{{Regionlist
-| region1name=[[B]]
-| region1items=
-| region2name=[[C]]
-| region2items=
-}}`),
-      [key({ action: 'parse', page: 'A', prop: 'wikitext' })]:
-        wikitextResponse('A', ''),
-    };
-
-    const fetcher = createMockFetcher(responses);
-    const result = await buildTree(
-      fetcher as unknown as Parameters<typeof buildTree>[0],
-      'A', 1, progress,
-    );
+    const wiki = fakeWiki({
+      A: withRegions('| region1name=[[B]]\n| region1items=\n| region2name=[[C]]\n| region2items='),
+    });
+    const result = await buildTree(wiki, 'A', 1, progress);
 
     const tree = result as TreeNode;
     expect(tree.name).toBe('A');
-    // B and C reached maxDepth so they're leaves with no further fetching
+    // B and C reached maxDepth so they're leaves with no further reading
     expect(tree.children).toHaveLength(2);
     expect(tree.children[0].name).toBe('B');
     expect(tree.children[0].children).toHaveLength(0);
     expect(tree.children[1].name).toBe('C');
     expect(tree.children[1].children).toHaveLength(0);
+    expect(wiki.article.mock.calls.map(([title]) => title)).toEqual(['A']);
   });
 
   it('handles grouping nodes', async () => {
-    const responses: Record<string, Record<string, unknown>> = {
-      [key({ action: 'parse', page: 'Root', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('Root', [{ index: '1', line: 'Regions' }]),
-      [key({ action: 'parse', page: 'Root', prop: 'wikitext', section: '1' })]:
-        wikitextResponse('Root', `{{Regionlist
-| region1name=Island Group
-| region1items=[[IslandA]], [[IslandB]]
-}}`),
-      [key({ action: 'parse', page: 'Root', prop: 'wikitext' })]:
-        wikitextResponse('Root', ''),
-      // IslandA and IslandB are leaves
-      [key({ action: 'parse', page: 'IslandA', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('IslandA', []),
-      [key({ action: 'parse', page: 'IslandA', prop: 'wikitext' })]:
-        wikitextResponse('IslandA', ''),
-      [key({ action: 'parse', page: 'IslandB', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('IslandB', []),
-      [key({ action: 'parse', page: 'IslandB', prop: 'wikitext' })]:
-        wikitextResponse('IslandB', ''),
-    };
-
-    const fetcher = createMockFetcher(responses);
-    const result = await buildTree(
-      fetcher as unknown as Parameters<typeof buildTree>[0],
-      'Root', 5, progress,
-    );
+    const wiki = fakeWiki({
+      Root: withRegions('| region1name=Island Group\n| region1items=[[IslandA]], [[IslandB]]'),
+      IslandA: '',
+      IslandB: '',
+    });
+    const result = await buildTree(wiki, 'Root', 5, progress);
 
     const tree = result as TreeNode;
     expect(tree.children).toHaveLength(1);
@@ -251,43 +147,40 @@ describe('buildTree', () => {
   });
 
   it('cancellation stops tree building', async () => {
-    const responses: Record<string, Record<string, unknown>> = {
-      [key({ action: 'parse', page: 'Root', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('Root', [{ index: '1', line: 'Regions' }]),
-      [key({ action: 'parse', page: 'Root', prop: 'wikitext', section: '1' })]:
-        wikitextResponse('Root', `{{Regionlist
-| region1name=[[A]]
-| region1items=
-| region2name=[[B]]
-| region2items=
-}}`),
-      [key({ action: 'parse', page: 'Root', prop: 'wikitext' })]:
-        wikitextResponse('Root', ''),
-      [key({ action: 'parse', page: 'A', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('A', []),
-      [key({ action: 'parse', page: 'A', prop: 'wikitext' })]:
-        wikitextResponse('A', ''),
-    };
-
-    const fetcher = createMockFetcher(responses);
-
-    // Cancel after first region fetch
-    const origApiGet = fetcher.apiGet;
-    let callCount = 0;
-    fetcher.apiGet = vi.fn(async (params) => {
-      callCount++;
-      if (callCount > 3) progress.cancel = true; // Cancel after Root's sections + wikitext + fullpage
-      return origApiGet(params);
+    const wiki = fakeWiki({
+      Root: withRegions('| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items='),
+      A: '',
     });
 
-    const result = await buildTree(
-      fetcher as unknown as Parameters<typeof buildTree>[0],
-      'Root', 5, progress,
-    );
+    // Cancel once Root's page has been read
+    const readPage = wiki.article.getMockImplementation()!;
+    wiki.article.mockImplementation(async (title) => {
+      const page = await readPage(title);
+      progress.cancel = true;
+      return page;
+    });
+
+    const result = await buildTree(wiki, 'Root', 5, progress);
 
     const tree = result as TreeNode;
     // Tree should be incomplete (cancelled before processing children)
     expect(tree.name).toBe('Root');
+    expect(wiki.article).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds the same tree from the same pages twice', async () => {
+    // The extraction reads a kept copy rather than the live wiki (#2089), so
+    // two runs of one copy agree.
+    const pages = {
+      Europe: withRegions('| region1name=[[France]]\n| region1items=\n| region2name=Benelux\n| region2items=[[Belgium]], [[Netherlands]]'),
+      France: withRegions('| region1name=[[Brittany]]\n| region1items=\n| region2name=[[Normandy]]\n| region2items='),
+      Brittany: LEAF, Normandy: LEAF, Belgium: LEAF, Netherlands: LEAF,
+    };
+    const first = await buildTree(fakeWiki(pages), 'Europe', 5, progress);
+    const second = await buildTree(fakeWiki(pages), 'Europe', 5, createInitialExtractionProgress());
+
+    expect(second).toEqual(first);
+    expect(countNodes(first as TreeNode)).toBe(7);
   });
 });
 
@@ -304,25 +197,10 @@ describe('decision logging', () => {
   });
 
   it('logs city_districts decision when page has district subpages', async () => {
-    const responses: Record<string, Record<string, unknown>> = {
-      [key({ action: 'parse', page: 'CityX', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('CityX', [{ index: '1', line: 'Regions' }]),
-      [key({ action: 'parse', page: 'CityX', prop: 'wikitext', section: '1' })]:
-        wikitextResponse('CityX', `{{Regionlist
-| region1name=[[CityX/Central]]
-| region1items=
-| region2name=[[CityX/North]]
-| region2items=
-}}`),
-      [key({ action: 'parse', page: 'CityX', prop: 'wikitext' })]:
-        wikitextResponse('CityX', ''),
-    };
-
-    const fetcher = createMockFetcher(responses);
-    const result = await buildTree(
-      fetcher as unknown as Parameters<typeof buildTree>[0],
-      'CityX', 3, progress,
-    );
+    const wiki = fakeWiki({
+      CityX: withRegions('| region1name=[[CityX/Central]]\n| region1items=\n| region2name=[[CityX/North]]\n| region2items='),
+    });
+    const result = await buildTree(wiki, 'CityX', 3, progress);
 
     expect(result).not.toBe('missing');
     const tree = result as TreeNode;
@@ -361,37 +239,22 @@ describe('applyAnsweredRegions', () => {
   let progress: ExtractionProgress;
 
   /** Pages for a Regionlist on Root and a leaf page for each name. */
-  function pages(rootRegions: string, leaves: string[]): Record<string, Record<string, unknown>> {
-    const responses: Record<string, Record<string, unknown>> = {
-      [key({ action: 'parse', page: 'Root', prop: 'sections', redirects: '1' })]:
-        sectionsResponse('Root', [{ index: '1', line: 'Regions' }]),
-      [key({ action: 'parse', page: 'Root', prop: 'wikitext', section: '1' })]:
-        wikitextResponse('Root', `{{Regionlist\n${rootRegions}\n}}`),
-      [key({ action: 'parse', page: 'Root', prop: 'wikitext' })]: wikitextResponse('Root', ''),
-    };
-    for (const leaf of leaves) {
-      responses[key({ action: 'parse', page: leaf, prop: 'sections', redirects: '1' })] = sectionsResponse(leaf, []);
-      responses[key({ action: 'parse', page: leaf, prop: 'wikitext' })] = wikitextResponse(leaf, '');
-    }
-    return responses;
+  function pages(rootRegions: string, leaves: string[]): Record<string, string> {
+    return { Root: withRegions(rootRegions), ...Object.fromEntries(leaves.map(leaf => [leaf, ''])) };
   }
 
   const linked = (name: string): RegionPreview => ({ name, isLink: true, children: [] });
 
   /** Root over A and B, each over its own 1 and 2, with a page for each 3 an answer can add. */
-  function siblingPages(): Record<string, Record<string, unknown>> {
-    const responses = pages(
+  function siblingPages(): Record<string, string> {
+    const wiki = pages(
       '| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=',
       ['A1', 'A2', 'A3', 'B1', 'B2', 'B3'],
     );
     for (const parent of ['A', 'B']) {
-      responses[key({ action: 'parse', page: parent, prop: 'sections', redirects: '1' })] =
-        sectionsResponse(parent, [{ index: '1', line: 'Regions' }]);
-      responses[key({ action: 'parse', page: parent, prop: 'wikitext', section: '1' })] =
-        wikitextResponse(parent, `{{Regionlist\n| region1name=[[${parent}1]]\n| region1items=\n| region2name=[[${parent}2]]\n| region2items=\n}}`);
-      responses[key({ action: 'parse', page: parent, prop: 'wikitext' })] = wikitextResponse(parent, '');
+      wiki[parent] = withRegions(`| region1name=[[${parent}1]]\n| region1items=\n| region2name=[[${parent}2]]\n| region2items=`);
     }
-    return responses;
+    return wiki;
   }
 
   /** A question queued for Root with the regions its page was extracted with. */
@@ -403,11 +266,11 @@ describe('applyAnsweredRegions', () => {
     } as PendingAIQuestion;
   }
 
-  async function built(question: PendingAIQuestion, responses: Record<string, Record<string, unknown>>) {
+  async function built(question: PendingAIQuestion, articles: Record<string, string>) {
     progress.pendingQuestions.push(question);
-    const fetcher = createMockFetcher(responses);
-    const tree = await buildTree(fetcher as unknown as Parameters<typeof buildTree>[0], 'Root', 5, progress) as TreeNode;
-    return { tree, fetcher };
+    const wiki = fakeWiki(articles);
+    const tree = await buildTree(wiki, 'Root', 5, progress) as TreeNode;
+    return { tree, wiki };
   }
 
   beforeEach(() => {
@@ -435,19 +298,19 @@ describe('applyAnsweredRegions', () => {
   it('leaves the node alone when the answer kept the regions it was built from', async () => {
     const queued = [linked('North'), linked('South')];
     const question = questionFor('Root', queued);
-    const { tree, fetcher } = await built(question, pages(
+    const { tree, wiki } = await built(question, pages(
       '| region1name=[[North]]\n| region1items=\n| region2name=[[South]]\n| region2items=',
       ['North', 'South'],
     ));
     const before = tree.children;
-    const calls = fetcher.apiGet.mock.calls.length;
+    const calls = wiki.article.mock.calls.length;
 
     question.extractedRegions = queued.map(region => ({ ...region }));
     question.resolved = true;
     await applyAnsweredRegions(progress, { name: 'World', children: [tree] });
 
     expect(tree.children).toBe(before);
-    expect(fetcher.apiGet.mock.calls.length).toBe(calls);
+    expect(wiki.article.mock.calls.length).toBe(calls);
   });
 
   it('makes the node a leaf when the answer left it no regions', async () => {
@@ -490,11 +353,7 @@ describe('applyAnsweredRegions', () => {
       '| region1name=[[North]]\n| region1items=\n| region2name=[[South]]\n| region2items=',
       ['South', 'Centre', 'A', 'B', 'Lowland', 'Highland'],
     );
-    responses[key({ action: 'parse', page: 'North', prop: 'sections', redirects: '1' })] =
-      sectionsResponse('North', [{ index: '1', line: 'Regions' }]);
-    responses[key({ action: 'parse', page: 'North', prop: 'wikitext', section: '1' })] =
-      wikitextResponse('North', '{{Regionlist\n| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=\n}}');
-    responses[key({ action: 'parse', page: 'North', prop: 'wikitext' })] = wikitextResponse('North', '');
+    responses.North = withRegions('| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=');
     const { tree } = await built(rootQuestion, responses);
     expect(tree.children[0].children.map(child => child.name)).toEqual(['A', 'B']);
 
@@ -521,15 +380,15 @@ describe('applyAnsweredRegions', () => {
     const aQuestion = questionFor('A', [linked('A1'), linked('A2')]);
     const bQuestion = questionFor('B', [linked('B1'), linked('B2')]);
     progress.pendingQuestions.push(aQuestion);
-    const { tree, fetcher } = await built(bQuestion, siblingPages());
+    const { tree, wiki } = await built(bQuestion, siblingPages());
     const [a, b] = tree.children;
-    const answerFromPage = fetcher.apiGet.getMockImplementation()!;
-    fetcher.apiGet.mockImplementation(async (params) => {
-      if (params.page === 'B3' && !aQuestion.resolved) {
+    const readPage = wiki.article.getMockImplementation()!;
+    wiki.article.mockImplementation(async (title) => {
+      if (title === 'B3' && !aQuestion.resolved) {
         aQuestion.extractedRegions = [linked('A1'), linked('A2'), linked('A3')];
         aQuestion.resolved = true;
       }
-      return answerFromPage(params);
+      return readPage(title);
     });
 
     bQuestion.extractedRegions = [linked('B1'), linked('B2'), linked('B3')];
@@ -551,14 +410,14 @@ describe('applyAnsweredRegions', () => {
     const aQuestion = questionFor('A', [linked('A1'), linked('A2')]);
     const bQuestion = questionFor('B', [linked('B1'), linked('B2')]);
     progress.pendingQuestions.push(aQuestion);
-    const { tree, fetcher } = await built(bQuestion, siblingPages());
-    const answerFromPage = fetcher.apiGet.getMockImplementation()!;
-    fetcher.apiGet.mockImplementation(async (params) => {
-      if (params.page === 'B3' && !aQuestion.resolved) {
+    const { tree, wiki } = await built(bQuestion, siblingPages());
+    const readPage = wiki.article.getMockImplementation()!;
+    wiki.article.mockImplementation(async (title) => {
+      if (title === 'B3' && !aQuestion.resolved) {
         aQuestion.extractedRegions = [linked('A1'), linked('A2'), linked('A3')];
         aQuestion.resolved = true;
       }
-      return answerFromPage(params);
+      return readPage(title);
     });
 
     bQuestion.extractedRegions = [linked('B1'), linked('B2'), linked('B3')];
@@ -594,11 +453,7 @@ describe('applyAnsweredRegions', () => {
       '| region1name=[[North]]\n| region1items=\n| region2name=[[South]]\n| region2items=',
       ['South', 'Centre', 'A', 'B', 'Lowland', 'Highland'],
     );
-    responses[key({ action: 'parse', page: 'North', prop: 'sections', redirects: '1' })] =
-      sectionsResponse('North', [{ index: '1', line: 'Regions' }]);
-    responses[key({ action: 'parse', page: 'North', prop: 'wikitext', section: '1' })] =
-      wikitextResponse('North', '{{Regionlist\n| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=\n}}');
-    responses[key({ action: 'parse', page: 'North', prop: 'wikitext' })] = wikitextResponse('North', '');
+    responses.North = withRegions('| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=');
     const { tree } = await built(rootQuestion, responses);
 
     rootQuestion.extractedRegions = [linked('North'), linked('South'), linked('Centre')];
@@ -620,14 +475,8 @@ describe('applyAnsweredRegions', () => {
       { name: 'Highland', hasLink: true, items: [] },
     ]);
     const responses = pages('', ['Lowland', 'Highland', 'A', 'B']);
-    responses[key({ action: 'parse', page: 'North', prop: 'sections', redirects: '1' })] =
-      sectionsResponse('North', [{ index: '1', line: 'Regions' }]);
-    responses[key({ action: 'parse', page: 'North', prop: 'wikitext', section: '1' })] =
-      wikitextResponse('North', '{{Regionlist\n| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=\n}}');
-    responses[key({ action: 'parse', page: 'North', prop: 'wikitext' })] = wikitextResponse('North', '');
-    const fetcher = createMockFetcher(responses);
-
-    const north = await buildTree(fetcher as unknown as Parameters<typeof buildTree>[0], 'North', 5, progress) as TreeNode;
+    responses.North = withRegions('| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=');
+    const north = await buildTree(fakeWiki(responses), 'North', 5, progress) as TreeNode;
 
     expect(north.children.map(child => child.name)).toEqual(['Lowland', 'Highland']);
   });
@@ -646,23 +495,13 @@ describe('applyAnsweredRegions', () => {
     });
     const rootQuestion = questionFor('Root', [linked('North'), linked('South')]);
     const responses = pages('', ['South', 'Centre', 'A', 'B', 'Lowland', 'Highland']);
-    responses[key({ action: 'parse', page: 'North', prop: 'sections', redirects: '1' })] =
-      sectionsResponse('North', [{ index: '1', line: 'Regions' }]);
-    responses[key({ action: 'parse', page: 'North', prop: 'wikitext', section: '1' })] =
-      wikitextResponse('North', '{{Regionlist\n| region1name=Mountains\n| region1items=[[A]], [[B]]\n}}');
-    responses[key({ action: 'parse', page: 'North', prop: 'wikitext' })] = wikitextResponse('North', '');
+    responses.North = withRegions('| region1name=Mountains\n| region1items=[[A]], [[B]]');
     progress.pendingQuestions.push(rootQuestion);
-    const fetcher = {
-      ...createMockFetcher(responses),
-      checkPagesExist: vi.fn(async (names: string[]) => new Map(names.map(name => [name, true]))),
-    };
     const aiContext = {
       openai: null as never,
       accumulator: { apiCalls: 0, promptTokens: 0, completionTokens: 0, totalCost: 0 },
     };
-    const tree = await buildTree(
-      fetcher as unknown as Parameters<typeof buildTree>[0], 'Root', 5, progress, 0, new Set(), aiContext,
-    ) as TreeNode;
+    const tree = await buildTree(fakeWiki(responses), 'Root', 5, progress, 0, new Set(), aiContext) as TreeNode;
     expect(tree.children[0].children.map(child => child.name)).toEqual(['Lowland', 'Highland']);
 
     rootQuestion.extractedRegions = [linked('North'), linked('South'), linked('Centre')];

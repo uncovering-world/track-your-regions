@@ -1,8 +1,8 @@
 /**
  * What the Wikivoyage extraction answers (ADR-0066): the success bodies of the
  * endpoints `frontend/src/api/admin/wikivoyageExtract.ts` calls, declared once.
- * That is an extraction started, followed and cancelled, the page caches it
- * can start from, and the interview a model holds with the admin about a page
+ * That is an extraction started, followed and cancelled, the copy of English
+ * Wikivoyage it reads (#2089), and the interview a model holds with the admin about a page
  * it could not read on its own.
  *
  * An interview question and the regions extracted from a page come from a
@@ -29,17 +29,10 @@ export const ExtractionCancelled = z.strictObject({
 }).describe('A stop asked of the extraction.');
 export type ExtractionCancelled = z.infer<typeof ExtractionCancelled>;
 
-export const WikivoyageCache = z.strictObject({
-  name: z.string(),
-  sizeBytes: z.number().int(),
-  modifiedAt: z.iso.datetime({ offset: true }),
-}).describe('A saved copy of the pages an extraction fetched, which a later one can start from.');
-export type WikivoyageCache = z.infer<typeof WikivoyageCache>;
-
-export const WikivoyageCacheDeleted = z.strictObject({
-  deleted: z.literal(true),
-}).describe('A saved copy of the pages, deleted.');
-export type WikivoyageCacheDeleted = z.infer<typeof WikivoyageCacheDeleted>;
+export const WikivoyageCopy = z.strictObject({
+  dumpDate: z.string().describe('The monthly dump the copy was kept from, as YYYY-MM-DD.'),
+}).describe("The copy of English Wikivoyage's articles an extraction reads, kept from the monthly dump.");
+export type WikivoyageCopy = z.infer<typeof WikivoyageCopy>;
 
 export const RegionPreview = z.strictObject({
   name: z.string(),
@@ -84,8 +77,6 @@ export const ExtractionStatus = z.strictObject({
   regionsFetched: z.number().int().optional(),
   estimatedTotal: z.number().int().optional(),
   currentPage: z.string().optional(),
-  apiRequests: z.number().int().optional(),
-  cacheHits: z.number().int().optional(),
   createdRegions: z.number().int().optional(),
   totalRegions: z.number().int().optional(),
   countriesMatched: z.number().int().optional(),
@@ -101,8 +92,8 @@ export const ExtractionStatus = z.strictObject({
   pendingQuestions: z.array(PendingQuestion).optional(),
   operation: OperationProgressAnswer.optional().describe('The step the extraction is on, of the six, and how far through it (#1356).'),
   importedWorldViews: z.array(ImportedWorldView).describe('Newest first.'),
-  caches: z.array(WikivoyageCache).describe('Newest first.'),
-}).describe('The latest extraction as it stands, with the world views imported and the caches kept. Only `running` and the two lists are sent while no extraction is known since the server started.');
+  copy: WikivoyageCopy.nullable().describe('Null while no copy is kept, when an extraction is refused.'),
+}).describe('The latest extraction as it stands, with the world views imported and the copy of English Wikivoyage the next one reads. Only `running`, the list and the copy are sent while no extraction is known since the server started.');
 export type ExtractionStatus = z.infer<typeof ExtractionStatus>;
 
 export const ExtractionAnswer = z.strictObject({

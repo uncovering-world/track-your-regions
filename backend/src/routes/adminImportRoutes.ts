@@ -9,7 +9,7 @@ import { defineRoute } from '../api/route.js';
 import { expensiveAdminLimiter } from '../middleware/rateLimiter.js';
 import {
   baseLayerImportBodySchema, childrenCoverageQuerySchema, divisionIdBodySchema, worldViewIdParamSchema,
-  worldViewRegionIdParamSchema, wvCacheNameParamSchema, wvExtractAnswerSchema, wvExtractStartSchema,
+  worldViewRegionIdParamSchema, wvExtractAnswerSchema, wvExtractStartSchema,
   wvImportAcceptBatchSchema, wvImportAcceptMatchSchema, wvImportAcceptTransferSchema, wvImportAddChildSchema,
   wvImportAiSuggestClustersSchema, wvImportApproveCoverageSchema, wvImportBodySchema, wvImportDecideBatchSchema,
   wvImportGeoshapeMatchSchema, wvImportMapCreditsSchema, wvImportMarkManualFixSchema, wvImportOverlapChildrenSchema,
@@ -20,7 +20,7 @@ import {
   wvImportVisionMatchSchema,
 } from '../types/index.js';
 import {
-  ExtractionAnswer, ExtractionCancelled, ExtractionStarted, ExtractionStatus, WikivoyageCacheDeleted,
+  ExtractionAnswer, ExtractionCancelled, ExtractionStarted, ExtractionStatus,
 } from '../api/responses/wikivoyageExtract.js';
 import {
   AIMatchCancelled, AIMatchOneResult, AIMatchStarted, AIMatchStatus, CoveringMatchResult, DbSearchResult,
@@ -43,7 +43,7 @@ import {
 } from '../api/responses/wvImportCoverage.js';
 import { ClusterRegionSuggestions, MapshapeMatchResult } from '../api/responses/wvImportCvMatch.js';
 import {
-  answerExtractionQuestion, cancelWikivoyageExtraction, deleteCacheFile, getWikivoyageExtractionStatus,
+  answerExtractionQuestion, cancelWikivoyageExtraction, getWikivoyageExtractionStatus,
   startWikivoyageExtraction,
 } from '../controllers/admin/wikivoyageExtractController.js';
 import {
@@ -99,7 +99,7 @@ export const adminImportRoutes = [
   // Start extraction from Wikivoyage
   defineRoute({
     ...ADMIN, method: 'post', path: '/wv-extract/start',
-    summary: 'Start extracting the region tree of a world view from Wikivoyage in the background',
+    summary: "Start extracting the region tree of a world view from English Wikivoyage's kept copy in the background (409 while none is kept)",
     body: wvExtractStartSchema,
     response: ExtractionStarted,
     handler: startWikivoyageExtraction,
@@ -107,7 +107,7 @@ export const adminImportRoutes = [
   // Poll extraction progress
   defineRoute({
     ...ADMIN, method: 'get', path: '/wv-extract/status',
-    summary: 'Report Wikivoyage extraction progress, pending questions, imported world views and caches',
+    summary: "Report Wikivoyage extraction progress, pending questions, imported world views and the copy of English Wikivoyage it reads",
     response: ExtractionStatus,
     handler: getWikivoyageExtractionStatus,
   }),
@@ -125,14 +125,6 @@ export const adminImportRoutes = [
     body: wvExtractAnswerSchema,
     response: ExtractionAnswer,
     handler: answerExtractionQuestion,
-  }),
-  // Delete a cache file
-  defineRoute({
-    ...ADMIN, method: 'delete', path: '/wv-extract/caches/:name',
-    summary: 'Delete a saved Wikivoyage page cache file',
-    params: wvCacheNameParamSchema,
-    response: WikivoyageCacheDeleted,
-    handler: deleteCacheFile,
   }),
   // ===========================================================================
   // World view import

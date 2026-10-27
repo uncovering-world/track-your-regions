@@ -7248,7 +7248,7 @@
     "/api/admin/wv-extract/start": {
       "post": {
         "operationId": "postAdminWvExtractStart",
-        "summary": "Start extracting the region tree of a world view from Wikivoyage in the background",
+        "summary": "Start extracting the region tree of a world view from English Wikivoyage's kept copy in the background (409 while none is kept)",
         "tags": [
           "admin"
         ],
@@ -7297,7 +7297,7 @@
     "/api/admin/wv-extract/status": {
       "get": {
         "operationId": "getAdminWvExtractStatus",
-        "summary": "Report Wikivoyage extraction progress, pending questions, imported world views and caches",
+        "summary": "Report Wikivoyage extraction progress, pending questions, imported world views and the copy of English Wikivoyage it reads",
         "tags": [
           "admin"
         ],
@@ -7404,56 +7404,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExtractionAnswer"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/admin/wv-extract/caches/{name}": {
-      "delete": {
-        "operationId": "deleteAdminWvExtractCachesByName",
-        "summary": "Delete a saved Wikivoyage page cache file",
-        "tags": [
-          "admin"
-        ],
-        "description": "Requires an admin.",
-        "x-access": "admin",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "name",
-            "schema": {
-              "type": "string",
-              "maxLength": 128,
-              "pattern": "^wikivoyage-cache(-[A-Za-z0-9_-]+)?\\.json$"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The answer.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WikivoyageCacheDeleted"
                 }
               }
             }
@@ -24556,16 +24506,6 @@
           "currentPage": {
             "type": "string"
           },
-          "apiRequests": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "cacheHits": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
           "createdRegions": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -24649,21 +24589,25 @@
             },
             "description": "Newest first."
           },
-          "caches": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WikivoyageCache"
-            },
-            "description": "Newest first."
+          "copy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WikivoyageCopy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while no copy is kept, when an extraction is refused."
           }
         },
         "required": [
           "running",
           "importedWorldViews",
-          "caches"
+          "copy"
         ],
         "additionalProperties": false,
-        "description": "The latest extraction as it stands, with the world views imported and the caches kept. Only `running` and the two lists are sent while no extraction is known since the server started."
+        "description": "The latest extraction as it stands, with the world views imported and the copy of English Wikivoyage the next one reads. Only `running`, the list and the copy are sent while no extraction is known since the server started."
       },
       "FieldClaim": {
         "type": "object",
@@ -37140,44 +37084,19 @@
         "additionalProperties": false,
         "description": "Which Wikidata a source's runs read, switched."
       },
-      "WikivoyageCache": {
+      "WikivoyageCopy": {
         "type": "object",
         "properties": {
-          "name": {
-            "type": "string"
-          },
-          "sizeBytes": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "modifiedAt": {
+          "dumpDate": {
             "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            "description": "The monthly dump the copy was kept from, as YYYY-MM-DD."
           }
         },
         "required": [
-          "name",
-          "sizeBytes",
-          "modifiedAt"
+          "dumpDate"
         ],
         "additionalProperties": false,
-        "description": "A saved copy of the pages an extraction fetched, which a later one can start from."
-      },
-      "WikivoyageCacheDeleted": {
-        "type": "object",
-        "properties": {
-          "deleted": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": [
-          "deleted"
-        ],
-        "additionalProperties": false,
-        "description": "A saved copy of the pages, deleted."
+        "description": "The copy of English Wikivoyage's articles an extraction reads, kept from the monthly dump."
       },
       "WikivoyageShapeFeature": {
         "type": "object",
@@ -37619,18 +37538,6 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 255
-          },
-          "cacheFile": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 128,
-                "pattern": "^(none|wikivoyage-cache(-[A-Za-z0-9_-]+)?\\.json)$"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         }
       },

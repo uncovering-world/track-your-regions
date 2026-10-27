@@ -1,22 +1,19 @@
 /**
  * Wikivoyage Extraction Service
  *
- * Full pipeline: extract tree from Wikivoyage API → enrich with Wikidata IDs
- * → import into WorldView → match countries to GADM.
+ * Full pipeline: extract tree from English Wikivoyage's copy (`pageCopy.ts`)
+ * → enrich with Wikidata IDs → import into WorldView → match countries to GADM.
  *
  * Follows the same fire-and-forget pattern as worldViewImport/index.ts.
  */
 
-import path from 'path';
-import { existsSync, unlinkSync, statSync, readdirSync, copyFileSync } from 'fs';
-import type { WikivoyageCache } from '../../api/responses/wikivoyageExtract.js';
 import { pool } from '../../db/index.js';
 import type { ExtractionProgress, ExtractionConfig, TreeNode } from './types.js';
 import { createInitialExtractionProgress } from './types.js';
-import { WikivoyageFetcher } from './fetcher.js';
+import { CopyRefusal, PageCopy } from './pageCopy.js';
 import { applyUntilSettled, buildTree, countNodes, CONTINENTS } from './treeBuilder.js';
 import { type ClassificationCache } from './aiClassifier.js';
-import { collectPageTitles, fetchWikidataIds, enrichWikidataIds } from './wikidataEnricher.js';
+import { collectPageTitles, enrichWikidataIds } from './wikidataEnricher.js';
 import { importTree } from '../worldViewImport/importer.js';
 import { runMatchingPolicy } from '../worldViewImport/index.js';
 import { spatialSentence, type SpatialPassSummary } from '../worldViewImport/spatialPass.js';
@@ -32,81 +29,6 @@ import { createExtractionAccumulator, preloadLearnedRules } from './aiRegionPars
 
 export type { ExtractionProgress, ExtractionConfig } from './types.js';
 
-/** Cache directory and default file */
-const CACHE_DIR = path.join(process.cwd(), 'data', 'cache');
-const DEFAULT_CACHE_FILE = 'wikivoyage-cache.json';
-const DEFAULT_CACHE_PATH = path.join(CACHE_DIR, DEFAULT_CACHE_FILE);
-
-
-/** List all cache files with metadata */
-export function listCaches(): WikivoyageCache[] {
-  try {
-
-    if (!existsSync(CACHE_DIR)) return [];
-
-    return readdirSync(CACHE_DIR)
-      .filter(f => f.startsWith('wikivoyage-cache') && f.endsWith('.json'))
-      .map(f => {
-        // eslint-disable-next-line security/detect-non-literal-fs-filename -- f comes from readdirSync of CACHE_DIR; joined with the same constant dir
-        const stats = statSync(path.join(CACHE_DIR, f)); // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- f is a filename readdirSync returned for CACHE_DIR itself, not request data
-        return { name: f, sizeBytes: stats.size, modifiedAt: stats.mtime.toISOString() };
-      })
-      .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
-  } catch { return []; }
-}
-
-/**
- * Validate that a user-supplied cache name resolves to a file inside CACHE_DIR.
- * Returns the safe absolute path or null if validation fails.
- * Defense in depth on top of Zod regex at the route layer.
- */
-function safeCachePath(name: string): string | null {
-  if (!name.startsWith('wikivoyage-cache') || !name.endsWith('.json') || name.includes('/') || name.includes('\\') || name.includes('..')) {
-    return null;
-  }
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- name is rejected above unless it matches wikivoyage-cache*.json and contains no separator or '..'; the dirname check below re-verifies containment
-  const resolved = path.resolve(CACHE_DIR, name);
-  if (path.dirname(resolved) !== path.resolve(CACHE_DIR)) {
-    return null;
-  }
-  return resolved;
-}
-
-/** Delete a specific cache file (name must match wikivoyage-cache*.json pattern) */
-export function deleteCache(name: string): boolean {
-  const filePath = safeCachePath(name);
-  if (filePath === null) return false;
-  try {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath validated by safeCachePath: must match wikivoyage-cache*.json under CACHE_DIR
-    if (existsSync(filePath)) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- filePath validated by safeCachePath
-      unlinkSync(filePath);
-      return true;
-    }
-  } catch { /* ignore */ }
-  return false;
-}
-
-/** Snapshot the current cache with a timestamped name */
-function snapshotCache(): void {
-  try {
-
-    if (!existsSync(DEFAULT_CACHE_PATH)) return;
-    const now = new Date();
-    const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 16); // 2026-02-26T15-30
-    const snapshotName = `wikivoyage-cache-${ts}.json`;
-    const snapshotPath = path.join(CACHE_DIR, snapshotName);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- snapshotPath built from CACHE_DIR + literal prefix + ISO timestamp
-    if (!existsSync(snapshotPath)) {
-
-      copyFileSync(DEFAULT_CACHE_PATH, snapshotPath);
-      console.log(`[WV Cache] Snapshot saved: ${snapshotName}`);
-    }
-  } catch (err) {
-    console.warn('[WV Cache] Failed to create snapshot:', err);
-  }
-}
-
 /** In-memory progress map, keyed by operation ID */
 const runningExtractions = new Map<string, ExtractionProgress>();
 
@@ -116,43 +38,11 @@ let nextOpId = 1;
 /**
  * Start a Wikivoyage extraction (background operation).
  * Returns immediately with an operation ID for progress polling.
- *
- * @param config.cacheFile - Cache file to use: name of an existing cache, 'none' for clean fetch,
- *                           or undefined to use the default cache (if it exists)
  */
-export function startExtraction(config: Partial<ExtractionConfig> & { cacheFile?: string | null } = {}): string {
-  const cachePath = config.cachePath ?? DEFAULT_CACHE_PATH;
-
-  if (config.cacheFile === 'none') {
-    // Clean fetch: delete default cache
-    try {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- cachePath defaults to DEFAULT_CACHE_PATH constant; if overridden, comes from internal config, not user input
-      if (existsSync(cachePath)) {
-        // eslint-disable-next-line security/detect-non-literal-fs-filename -- same as above
-        unlinkSync(cachePath);
-        console.log(`[WV Extract] Deleted cache at ${cachePath} (clean fetch)`);
-      }
-    } catch (err) {
-      console.warn(`[WV Extract] Failed to delete cache:`, err);
-    }
-  } else if (config.cacheFile && config.cacheFile !== DEFAULT_CACHE_FILE) {
-    // Load a specific snapshot into the default cache path. Fail fast — a
-    // silent fallback would run extraction against the wrong cache while
-    // reporting a successful start to the admin.
-    const sourcePath = safeCachePath(config.cacheFile);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- sourcePath validated by safeCachePath (matches wikivoyage-cache*.json under CACHE_DIR)
-    if (sourcePath === null || !existsSync(sourcePath)) {
-      throw new Error(`Cache snapshot not found or invalid: ${config.cacheFile}`);
-    }
-
-    copyFileSync(sourcePath, cachePath);
-    console.log(`[WV Extract] Loaded cache from snapshot: ${config.cacheFile}`);
-  }
-
+export function startExtraction(config: Partial<ExtractionConfig> = {}): string {
   const fullConfig: ExtractionConfig = {
     name: config.name ?? 'Wikivoyage Regions',
     maxDepth: config.maxDepth ?? 10,
-    cachePath,
   };
 
   const opId = `wv-extract-${nextOpId++}`;
@@ -259,7 +149,7 @@ async function initAiContext(): Promise<AiContext | undefined> {
 
 /** Build per-continent trees, respecting cancellation. Returns null if cancelled. */
 async function extractContinentTrees(
-  fetcher: WikivoyageFetcher,
+  wiki: PageCopy,
   config: ExtractionConfig,
   progress: ExtractionProgress,
   aiContext: AiContext | undefined,
@@ -269,7 +159,7 @@ async function extractContinentTrees(
   for (const continent of CONTINENTS) {
     if (progress.cancel) break;
     progress.statusMessage = `Extracting ${continent}...`;
-    const tree = await buildTree(fetcher, continent, config.maxDepth, progress, 0, new Set(), aiContext, undefined, classificationCache);
+    const tree = await buildTree(wiki, continent, config.maxDepth, progress, 0, new Set(), aiContext, undefined, classificationCache);
     if (tree !== 'self_ref' && tree !== 'missing') {
       trees.push(tree);
     }
@@ -322,10 +212,10 @@ async function runExtractPhase(
   opId: string,
   config: ExtractionConfig,
   progress: ExtractionProgress,
-  fetcher: WikivoyageFetcher,
+  wiki: PageCopy,
 ): Promise<{ rootTree: TreeNode; totalNodes: number } | null> {
   progress.status = 'extracting';
-  progress.statusMessage = 'Fetching region hierarchy from Wikivoyage...';
+  progress.statusMessage = "Reading the region hierarchy from English Wikivoyage's copy...";
 
   await loadEstimatedRegionCount(progress);
   // Measured against an estimate of the region count, never below what is done.
@@ -334,7 +224,7 @@ async function runExtractPhase(
   const aiContext = await initAiContext();
   console.log(`[WV Extract] ${opId} AI extraction: ${aiContext ? 'enabled' : 'DISABLED (no OpenAI key)'}`);
 
-  const trees = await extractContinentTrees(fetcher, config, progress, aiContext);
+  const trees = await extractContinentTrees(wiki, config, progress, aiContext);
   if (trees === null) {
     progress.status = 'cancelled';
     progress.statusMessage = 'Extraction cancelled';
@@ -343,7 +233,7 @@ async function runExtractPhase(
   }
 
   const rootTree: TreeNode = { name: 'World', children: trees };
-  progress.operation?.note(`${countNodes(rootTree) - 1} regions read (API=${progress.apiRequests}, cache=${progress.cacheHits})`);
+  progress.operation?.note(`${countNodes(rootTree) - 1} regions read from the ${wiki.dumpDate} copy of English Wikivoyage`);
 
   if (progress.decisions.length > 0) {
     const { formatDecisionSummary } = await import('./decisionSummary.js');
@@ -360,7 +250,7 @@ async function runExtractPhase(
 /** Enrich the tree with Wikidata IDs; returns false if cancelled. */
 async function runEnrichPhase(
   progress: ExtractionProgress,
-  fetcher: WikivoyageFetcher,
+  wiki: PageCopy,
   rootTree: TreeNode,
 ): Promise<boolean> {
   progress.status = 'enriching';
@@ -368,7 +258,7 @@ async function runEnrichPhase(
 
   const allTitles = collectPageTitles(rootTree);
   progress.operation?.step(EXTRACT_STEPS.enrich, `Reading the Wikidata ids of ${allTitles.size} pages`);
-  const wikidataMap = await fetchWikidataIds(fetcher, allTitles, progress);
+  const wikidataMap = await wiki.wikidataIds(allTitles);
   enrichWikidataIds(rootTree, wikidataMap);
 
   if (progress.cancel) {
@@ -380,18 +270,21 @@ async function runEnrichPhase(
 
   progress.operation?.advance(wikidataMap.size);
   progress.operation?.note(`${wikidataMap.size} of ${allTitles.size} pages have a Wikidata id`);
-
-  fetcher.save();
   return true;
 }
 
 /** Import the enriched tree into a new world view; returns null on cancel. */
 async function runImportPhase(
+  wiki: PageCopy,
   config: ExtractionConfig,
   progress: ExtractionProgress,
   rootTree: TreeNode,
   totalNodes: number,
 ): Promise<{ worldViewId: number; importProgress: ReturnType<typeof createImportProgress> } | null> {
+  // Every page the tree was built from comes from one copy, the one the run records.
+  if (!await wiki.unchanged()) {
+    throw new CopyRefusal(`English Wikivoyage's copy of ${wiki.dumpDate} was replaced while the extraction read it; start the extraction again`);
+  }
   progress.status = 'importing';
   progress.statusMessage = 'Importing into WorldView...';
 
@@ -401,6 +294,7 @@ async function runImportPhase(
   const worldViewId = await importTree(rootTree, config.name, importProgress, {
     sourceType: 'wikivoyage',
     source: 'English Wikivoyage',
+    sourceDumpDate: wiki.dumpDate,
     description: `Imported from Wikivoyage region hierarchy (${totalNodes} regions)`,
   });
 
@@ -480,7 +374,6 @@ async function runMatchPhase(
     [worldViewId],
   );
 
-  snapshotCache();
   return { spatial };
 }
 
@@ -492,17 +385,17 @@ async function runExtraction(
 ): Promise<void> {
   const thisProgress = progress;
   const startTime = Date.now();
-  const fetcher = new WikivoyageFetcher(config.cachePath, progress);
 
   try {
-    const extractResult = await runExtractPhase(opId, config, progress, fetcher);
+    const wiki = await PageCopy.open();
+    const extractResult = await runExtractPhase(opId, config, progress, wiki);
     if (!extractResult) return;
     const { rootTree, totalNodes } = extractResult;
 
-    const enriched = await runEnrichPhase(progress, fetcher, rootTree);
+    const enriched = await runEnrichPhase(progress, wiki, rootTree);
     if (!enriched) return;
 
-    const importResult = await runImportPhase(config, progress, rootTree, totalNodes);
+    const importResult = await runImportPhase(wiki, config, progress, rootTree, totalNodes);
     if (!importResult) return;
     const { worldViewId, importProgress } = importResult;
 
@@ -519,12 +412,11 @@ async function runExtraction(
     progress.operation?.finish(progress.statusMessage);
   } catch (err) {
     progress.status = 'failed';
-    progress.statusMessage = 'Extraction failed; the server log has the cause.';
+    progress.statusMessage = err instanceof CopyRefusal ? err.sentence : 'Extraction failed; the server log has the cause.';
     progress.operation?.finish('failed');
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-extract-<counter> and the elapsed time is a number
     console.error(`[WV Extract] ${opId} failed after ${((Date.now() - startTime) / 1000).toFixed(1)}s:`, err);
   } finally {
-    fetcher.save();
     // Clean up after 5 minutes
     setTimeout(() => {
       if (runningExtractions.get(opId) === thisProgress) {

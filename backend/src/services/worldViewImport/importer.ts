@@ -87,6 +87,7 @@ export interface ImportTreeOptions {
   sourceType?: string;   // default: 'imported'
   source?: string;       // default: 'File upload'
   description?: string;  // default: auto-generated from region count
+  sourceDumpDate?: string;  // YYYY-MM-DD of the English Wikivoyage copy the tree was read from (#2089)
 }
 
 /**
@@ -136,9 +137,9 @@ export async function importTree(
 
     // Create import run record
     const importRunResult = await client.query(
-      `INSERT INTO import_runs (world_view_id, source_type, status)
-       VALUES ($1, $2, 'running') RETURNING id`,
-      [worldViewId, sourceType],
+      `INSERT INTO import_runs (world_view_id, source_type, status, source_dump_date)
+       VALUES ($1, $2, 'running', $3) RETURNING id`,
+      [worldViewId, sourceType, options.sourceDumpDate ?? null],
     );
     const importRunId = importRunResult.rows[0].id as number;
     console.log(`[WV Importer] Created import_run id=${importRunId}`);

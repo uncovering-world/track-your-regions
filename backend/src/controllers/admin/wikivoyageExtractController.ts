@@ -12,20 +12,18 @@ import type {
   ExtractionCancelled,
   ExtractionStarted,
   ExtractionStatus,
-  WikivoyageCacheDeleted,
   InterviewQuestion,
   RegionPreview,
 } from '../../api/responses/wikivoyageExtract.js';
-import type { wvCacheNameParamSchema, wvExtractAnswerSchema, wvExtractStartSchema } from '../../types/index.js';
+import type { wvExtractAnswerSchema, wvExtractStartSchema } from '../../types/index.js';
 import type { WorldViewsRow } from '../../db/schema.generated.js';
 import {
   startExtraction,
   getLatestExtractionStatus,
   cancelExtraction,
   findPendingQuestion,
-  listCaches,
-  deleteCache,
 } from '../../services/wikivoyageExtract/index.js';
+import { latestPages } from '../../services/dumps/wikivoyage/pageTables.js';
 import { addRule, deleteRule } from '../../services/ai/learnedRulesService.js';
 import { WIKIVOYAGE_ELIGIBLE_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
 import { operationAnswer } from '../../services/operationProgress.js';
@@ -61,7 +59,7 @@ function regionPreviewOf(region: RegionPreview): RegionPreview {
  * POST /api/admin/wv-extract/start
  */
 export async function startWikivoyageExtraction(
-  { body: { name, cacheFile } }: { body: z.output<typeof wvExtractStartSchema> },
+  { body: { name } }: { body: z.output<typeof wvExtractStartSchema> },
 ): Promise<ExtractionStarted> {
   // Check nothing is currently running
   const existing = getLatestExtractionStatus();
@@ -69,12 +67,17 @@ export async function startWikivoyageExtraction(
     throw new Refusal(409, { error: 'An extraction is already running', operationId: existing.opId });
   }
 
-  const opId = startExtraction({ name, cacheFile: cacheFile ?? undefined });
+  // The extraction reads English Wikivoyage's copy and nothing else (#2089).
+  if (!await latestPages()) {
+    throw new Refusal(409, { error: "English Wikivoyage's articles are not kept yet: build them under Public Dumps first" });
+  }
+
+  const opId = startExtraction({ name });
   return { started: true, operationId: opId };
 }
 
 /**
- * Get extraction status (also returns existing imported world views and cache list).
+ * Get extraction status (also returns existing imported world views and the copy the next extraction reads).
  * GET /api/admin/wv-extract/status
  */
 export async function getWikivoyageExtractionStatus(): Promise<ExtractionStatus> {
@@ -95,9 +98,10 @@ export async function getWikivoyageExtractionStatus(): Promise<ExtractionStatus>
     reviewComplete: (row.source_type ?? '').endsWith('_done'),
   }));
 
-  const caches = listCaches();
+  const pages = await latestPages();
+  const copy = pages ? { dumpDate: pages.dumpDate } : null;
 
-  if (!latest) return { running: false, importedWorldViews, caches };
+  if (!latest) return { running: false, importedWorldViews, copy };
 
   const { progress } = latest;
   const running = !isTerminal(progress.status);
@@ -121,8 +125,6 @@ export async function getWikivoyageExtractionStatus(): Promise<ExtractionStatus>
     regionsFetched: progress.regionsFetched,
     estimatedTotal: progress.estimatedTotal,
     currentPage: progress.currentPage,
-    apiRequests: progress.apiRequests,
-    cacheHits: progress.cacheHits,
     createdRegions: progress.createdRegions,
     totalRegions: progress.totalRegions,
     countriesMatched: progress.countriesMatched,
@@ -138,7 +140,7 @@ export async function getWikivoyageExtractionStatus(): Promise<ExtractionStatus>
     pendingQuestions,
     ...(progress.operation ? { operation: operationAnswer(progress.operation.progress) } : {}),
     importedWorldViews,
-    caches,
+    copy,
   };
 }
 
@@ -148,17 +150,6 @@ export async function getWikivoyageExtractionStatus(): Promise<ExtractionStatus>
  */
 export async function cancelWikivoyageExtraction(): Promise<ExtractionCancelled> {
   return { cancelled: cancelExtraction() };
-}
-
-/**
- * Delete a cache file.
- * DELETE /api/admin/wv-extract/caches/:name
- */
-export async function deleteCacheFile(
-  { params: { name } }: { params: z.output<typeof wvCacheNameParamSchema> },
-): Promise<WikivoyageCacheDeleted> {
-  if (!deleteCache(name)) throw notFound('Cache file not found');
-  return { deleted: true };
 }
 
 type PendingQuestionLike = NonNullable<ReturnType<typeof findPendingQuestion>>;

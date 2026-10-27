@@ -17,23 +17,6 @@ import { optionalSafeUrlSchema, requiredSafeUrlSchema, safeUrlSchema } from './u
 
 export const wvExtractStartSchema = z.object({
   name: z.string().min(1).max(COLUMN_WIDTHS.world_views.name).default('Wikivoyage Regions'),
-  /** 'none' for clean fetch, or a wikivoyage-cache*.json basename. No path separators allowed. */
-  cacheFile: z
-    .string()
-    .max(128)
-    // eslint-disable-next-line security/detect-unsafe-regex -- anchored at both ends; inner [A-Za-z0-9_-]+ is non-overlapping with the literal `.json` suffix, so no catastrophic backtracking
-    .regex(/^(none|wikivoyage-cache(-[A-Za-z0-9_-]+)?\.json)$/)
-    .nullable()
-    .optional(),
-});
-
-/** Path param schema for DELETE /wv-extract/caches/:name — guards against path traversal. */
-export const wvCacheNameParamSchema = z.object({
-  name: z
-    .string()
-    .max(128)
-    // eslint-disable-next-line security/detect-unsafe-regex -- anchored; inner [A-Za-z0-9_-]+ is non-overlapping with the literal `.json` suffix, so no catastrophic backtracking
-    .regex(/^wikivoyage-cache(-[A-Za-z0-9_-]+)?\.json$/),
 });
 
 export const wvExtractAnswerSchema = z.object({

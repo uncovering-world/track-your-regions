@@ -39,7 +39,7 @@ import { chatCompletion } from '../../services/ai/chatCompletion.js';
 import { logAIUsage } from '../../services/ai/aiUsageLogger.js';
 import { WikivoyageFetcher } from '../../services/wikivoyageExtract/fetcher.js';
 import { findRegionsSection } from '../../services/wikivoyageExtract/parser.js';
-import { createInitialExtractionProgress, type WikiSection } from '../../services/wikivoyageExtract/types.js';
+import type { WikiSection } from '../../services/wikivoyageExtract/types.js';
 import { geoshapeMatchRegion } from '../../services/worldViewImport/geoshapeCoverage.js';
 import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
 import { computeGeoSimilarityIfNeeded } from '../../services/worldViewImport/geoshapeCache.js';
@@ -445,7 +445,6 @@ async function fetchRegionsSectionWikitext(
 
   const regionsSectionIdx = findRegionsSection(sections);
   if (!regionsSectionIdx) {
-    fetcher.save();
     return null;
   }
 
@@ -454,7 +453,6 @@ async function fetchRegionsSectionWikitext(
     section: regionsSectionIdx, format: 'json',
   });
   const wikitext = ((wikitextData.parse as { wikitext: Record<string, string> })?.wikitext?.['*']) ?? '';
-  fetcher.save();
 
   return wikitext.length === 0 ? null : wikitext;
 }
@@ -581,7 +579,6 @@ async function verifyBatch(
       ppprop: 'wikibase_item',
       format: 'json',
     });
-    fetcher.save();
 
     const pages = (verifyData.query as { pages?: Record<string, { title: string; missing?: string; pageprops?: { wikibase_item?: string } }> })?.pages ?? {};
     for (const page of Object.values(pages)) {
@@ -643,7 +640,7 @@ function buildEnrichedActions(
 async function reviewRegionChildren(worldViewId: number, regionId: number): Promise<ChildrenReviewed> {
   const { regionName, pageTitle, existingChildren } = await fetchRegionContext(worldViewId, regionId);
 
-  const fetcher = new WikivoyageFetcher('data/cache/wikivoyage-cache.json', createInitialExtractionProgress());
+  const fetcher = new WikivoyageFetcher();
 
   const wikitext = await fetchRegionsSectionWikitext(fetcher, pageTitle);
   if (wikitext == null) {
