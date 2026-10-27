@@ -1,7 +1,7 @@
 # ADR-0136: The OpenStreetMap layer keeps a full geometry only for what a kind draws
 
 **Date:** 2026-10-22
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0157](0157-the-openstreetmap-layer-keeps-whole-the-objects-of-the-items-an-import-names.md)
 **Issue:** [#1437](https://github.com/uncovering-world/track-your-regions/issues/1437)
 **Narrows:** [ADR-0134](0134-openstreetmap-is-read-from-a-layer-cut-from-the-planet-and-a-miss-the-layer-cannot-vouch-for-is-asked-live.md) decision 2 (every object with its full geometry) and decision 1 (at most three connections to the planet's host)
 
