@@ -1165,6 +1165,8 @@ export interface WikidataGeoshapesRow {
   geom: string | null;
   not_available: boolean;
   composite_of: number | null;
+  licence: string | null;
+  attribution: string | null;
 }
 
 /** The table `wikidata_labels`. */

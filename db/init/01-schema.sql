@@ -5857,17 +5857,23 @@ CREATE TABLE IF NOT EXISTS workbench.wikidata_geoshapes (
     geom geometry(MultiPolygon, 4326),       -- NULL when not_available; SRID 4326
     not_available BOOLEAN NOT NULL DEFAULT FALSE,  -- TRUE = no geoshape exists (negative cache)
     composite_of INTEGER CHECK (composite_of > 0),  -- parts a composite is the union of; NULL for a shape held whole
+    licence TEXT,                            -- the licence its source declares (a Commons map file's license); NULL only when not_available
+    attribution TEXT,                        -- what the source says it was drawn from (a Commons map file's sources line)
     -- Negative-cache invariant: a row is either a real geoshape or a not_available
     -- marker. Stops a NULL geom with not_available=FALSE from reaching PostGIS calls
     -- (e.g. geoshapeCoverage.ts) and blocks a degenerate shape from overwriting
     -- a valid cached geom with NULL via ON CONFLICT DO UPDATE.
-    CONSTRAINT wikidata_geoshapes_geom_presence CHECK (not_available OR geom IS NOT NULL)
+    CONSTRAINT wikidata_geoshapes_geom_presence CHECK (not_available OR geom IS NOT NULL),
+    -- A shape is drawn on the admin's import dialogs with its credit (#2085), so none is kept without its licence.
+    CONSTRAINT wikidata_geoshapes_credit_presence CHECK (not_available OR licence IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS idx_wikidata_geoshapes_geom ON workbench.wikidata_geoshapes USING GIST (geom);
 
-COMMENT ON TABLE workbench.wikidata_geoshapes IS 'Commons map shapes for WorldView Import geoshape matching, keyed commons:{file}; nothing from maps.wikimedia.org and no composite unions (#2084), so no row is keyed by a Wikidata QID until #2085';
+COMMENT ON TABLE workbench.wikidata_geoshapes IS 'Commons map shapes for WorldView Import geoshape matching, keyed commons:{file}, each with the licence its file declares; nothing from maps.wikimedia.org and no composite unions (#2084), so no row is keyed by a Wikidata QID until #2085';
 COMMENT ON COLUMN workbench.wikidata_geoshapes.not_available IS 'Negative cache: TRUE means a geoshape lookup confirmed none exists';
+COMMENT ON COLUMN workbench.wikidata_geoshapes.licence IS 'The licence the shape is under, as its source declares it (a Commons map file''s license, e.g. ODbL-1.0); null only on a not_available row';
+COMMENT ON COLUMN workbench.wikidata_geoshapes.attribution IS 'What the source says the shape was drawn from (a Commons map file''s sources line, e.g. Based on OpenStreetMap data); null when it says nothing';
 COMMENT ON COLUMN workbench.wikidata_geoshapes.composite_of IS 'How many parts a composite geoshape is the union of, every part the item names (#1628); NULL for a shape held whole. No composite is built since #2084';
 
 -- =============================================================================
