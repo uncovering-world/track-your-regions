@@ -4962,7 +4962,10 @@ $$ LANGUAGE plpgsql;
 -- by the relation, since the list's own reference is not unique (Western
 -- Tien-Shan renumbers, Phong Nha-Ke Bang and Hin Nam No share 951ter-001). A
 -- place holds one record however many sites it is a component of, keyed by its
--- earliest relation: refresh_component_record is the rule for one place.
+-- earliest relation: refresh_component_record is the rule for one place. A
+-- record keyed to another relation drops the view the previous site's list
+-- wrote (reported_name, reported_location): it is the new site's to write,
+-- and its next run does.
 CREATE OR REPLACE FUNCTION refresh_component_record(place INTEGER) RETURNS void AS $$
 DECLARE
   owner INTEGER;
@@ -4971,7 +4974,8 @@ BEGIN
   IF owner IS NULL THEN
     DELETE FROM experience_kind_memberships WHERE experience_id = place AND kind_id = 10;
   ELSE
-    UPDATE experience_kind_memberships SET external_id = 'component:' || owner, updated_at = NOW()
+    UPDATE experience_kind_memberships
+       SET external_id = 'component:' || owner, reported_name = NULL, reported_location = NULL, updated_at = NOW()
      WHERE experience_id = place AND kind_id = 10 AND external_id <> 'component:' || owner;
     INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id)
     VALUES (place, 10, 10, 'component:' || owner)
