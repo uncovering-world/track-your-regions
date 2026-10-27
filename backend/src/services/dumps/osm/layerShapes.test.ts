@@ -16,9 +16,9 @@ describe('refillRegionShapes', () => {
   beforeEach(() => query.mockReset());
 
   it('keeps the items the layer draws as areas, under ODbL, and answers what it held and dropped', async () => {
-    query.mockResolvedValueOnce({ rows: [{ held: 1, dropped: 2 }] });
+    query.mockResolvedValueOnce({ rows: [{ held: ['Q1000001'], dropped: 2 }] });
 
-    expect(await refillRegionShapes(['Q1000001', 'Q1000002'])).toEqual({ held: 1, dropped: 2 });
+    expect(await refillRegionShapes(['Q1000001', 'Q1000002'])).toEqual({ held: ['Q1000001'], dropped: 2 });
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(params).toEqual([['Q1000001', 'Q1000002'], 0.001, OSM_SHAPE_LICENCE]);
     expect(OSM_SHAPE_LICENCE).toBe('ODbL-1.0');
@@ -28,7 +28,7 @@ describe('refillRegionShapes', () => {
   });
 
   it('drops only the item-keyed shapes the layer no longer draws, never a Commons map shape', async () => {
-    query.mockResolvedValueOnce({ rows: [{ held: 0, dropped: 0 }] });
+    query.mockResolvedValueOnce({ rows: [{ held: [], dropped: 0 }] });
 
     await refillRegionShapes([]);
     const [sql] = query.mock.calls[0] as [string];

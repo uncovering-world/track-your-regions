@@ -1,7 +1,7 @@
 -- The OpenStreetMap layer's flex style (ADR-0134): which objects of the cut
 -- become rows of the layer, with every tag, and the full geometry of the
--- objects a kind draws and of the objects that carry an item a world-view
--- import names, and a point for the rest (ADR-0136, ADR-0157).
+-- objects a kind draws and of the objects that carry an item `drawnItems`
+-- lists, and a point for the rest (ADR-0136, ADR-0157).
 --
 -- The cut osm2pgsql reads holds the selected objects, the objects the
 -- catalogue names, and what those are drawn from: a kept way's nodes and a
@@ -52,8 +52,8 @@ for line in io.lines(required('OSM_LAYER_PINS')) do
   if line ~= '' then pinned[line] = true end
 end
 
--- 'Q123': the items whose objects are kept whole, a region a world-view
--- import matches by its shape.
+-- 'Q123': the items whose objects are kept whole, which a world-view import
+-- matches a region by: its own, and those its page's mapshapes list (ADR-0158).
 local drawnItems = {}
 for line in io.lines(required('OSM_LAYER_DRAWN_ITEMS')) do
   if line ~= '' then drawnItems[line] = true end

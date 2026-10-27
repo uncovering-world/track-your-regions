@@ -8,6 +8,7 @@
 
 import { pool } from '../../db/index.js';
 import { parseMapshapes } from '../../services/wikivoyageExtract/parser.js';
+import { pageNameFromUrl } from '../../services/wikivoyageExtract/pageCopy.js';
 import { getOrFetchCommonsMapGeoshape } from '../../services/worldViewImport/geoshapeCache.js';
 import { shapeCreditsFor } from '../../services/worldViewImport/shapeCredit.js';
 import { userAgent } from '../../config/userAgent.js';
@@ -58,14 +59,6 @@ async function fetchWikitext(pageTitle: string): Promise<string | null> {
   const revisions = page['revisions'] as Array<Record<string, unknown>> | undefined;
   const slots = revisions?.[0]?.['slots'] as Record<string, Record<string, unknown>> | undefined;
   return (slots?.['main']?.['*'] as string) ?? null;
-}
-
-/** Extract page title from Wikivoyage URL */
-function pageNameFromUrl(sourceUrl: string): string | null {
-  const idx = sourceUrl.indexOf('/wiki/');
-  if (idx < 0) return null;
-  const rest = sourceUrl.slice(idx + 6).split('#')[0];
-  return rest ? decodeURIComponent(rest) : null;
 }
 
 // =============================================================================

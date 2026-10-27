@@ -14,6 +14,8 @@
 import { pool } from '../../../db/index.js';
 import { OSM_KEEP_WKT } from '../../sync/archaeology/siteClasses.js';
 import type { KeepWkt } from '../../sync/osm/types.js';
+import { CopyRefusal, pageNameFromUrl, PageCopy } from '../../wikivoyageExtract/pageCopy.js';
+import { parseMapshapes } from '../../wikivoyageExtract/parser.js';
 
 /**
  * The selection, one `osmium tags-filter` expression per entry: a key on its
@@ -45,8 +47,8 @@ export function selectionFile(): string {
 /**
  * The objects whose full geometry the layer keeps (ADR-0136): those a kind's
  * keep rule draws, which today is Archaeology's alone — a ruin, a dig, or the
- * protected area drawn around one. The objects that carry an item a
- * world-view import names are kept whole too (`drawnItems`, ADR-0157). Every
+ * protected area drawn around one. The objects that carry an item
+ * `drawnItems` lists are kept whole too (ADR-0157). Every
  * other object keeps a point.
  */
 export const LAYER_DRAWN: KeepWkt = OSM_KEEP_WKT;
@@ -79,19 +81,57 @@ export function layerDraws(drawn: KeepWkt | null, keep: KeepWkt): boolean {
   return within(keep.historic, drawn.historic) && within(keep.manMade, drawn.manMade) && within(keep.boundary, drawn.boundary);
 }
 
+/** A Wikidata item as the store of region shapes keys it, never a Commons map file. */
+const ITEM = /^Q[1-9]\d*$/;
+
+/** The items whose objects the layer keeps whole, in the two lists a build counts apart. */
+export interface DrawnItems {
+  /** The items the world-view imports name: each region's own. */
+  named: string[];
+  /** The other items the `{{mapshape}}`s on those regions' Wikivoyage pages list. */
+  listed: string[];
+}
+
 /**
- * The Wikidata items the world-view imports name (#2085, ADR-0157), whose
- * objects the layer also keeps whole: a region is matched by its shape, and
- * the store of region shapes is filled from the layer once a build is swapped
- * in (`layerShapes.ts`). An import that names a new item has it drawn from
- * the next build; until then the region is matched by its markers.
+ * The Wikidata items whose objects the layer also keeps whole (ADR-0157,
+ * ADR-0158): a region is matched by its shape, and the store of region shapes
+ * is filled from the layer once a build is swapped in (`layerShapes.ts`).
+ * They are the items the world-view imports name, each region's own, and the
+ * items each `{{mapshape}}` on a region's Wikivoyage page lists (#2105): the
+ * mapshape match draws a child region as the union of those outlines, most
+ * often districts no import names. An item an import names or a page lists
+ * for the first time is drawn from the next build; until then the region is
+ * matched by its markers.
  */
-export async function drawnItems(): Promise<string[]> {
-  const result = await pool.query<{ item: string }>(
-    `SELECT DISTINCT source_external_id AS item FROM region_import_state
-      WHERE source_external_id ~ '^Q[1-9][0-9]*$' ORDER BY 1`,
+export async function drawnItems(): Promise<DrawnItems> {
+  const result = await pool.query<{ item: string | null; source_url: string | null }>(
+    'SELECT DISTINCT source_external_id AS item, source_url FROM region_import_state',
   );
-  return result.rows.map(row => row.item);
+  const named = new Set(result.rows.map(row => row.item).filter((item): item is string => item !== null && ITEM.test(item)));
+  const titles = result.rows.map(row => (row.source_url ? pageNameFromUrl(row.source_url) : null));
+  const listed = new Set(await mapshapeItems(titles.filter((title): title is string => title !== null)));
+  return { named: [...named].sort(), listed: [...listed].filter(item => !named.has(item)).sort() };
+}
+
+/**
+ * The items the mapshapes of the pages `titles` list, read from the kept copy
+ * of English Wikivoyage (#2089), so a build asks the live site nothing; none
+ * while no copy is kept, and the regions are then drawn by their own items.
+ */
+async function mapshapeItems(titles: string[]): Promise<string[]> {
+  let copy: PageCopy;
+  try {
+    copy = await PageCopy.open();
+  } catch (error) {
+    if (error instanceof CopyRefusal) return [];
+    throw error;
+  }
+  const items: string[] = [];
+  for (const title of new Set(titles)) {
+    const page = await copy.article(title);
+    if (page) items.push(...parseMapshapes(page.wikitext).flatMap(shape => shape.wikidataIds).filter(item => ITEM.test(item)));
+  }
+  return items;
 }
 
 const OSM_REF = /^(node|way|relation)\/([1-9]\d*)$/;
