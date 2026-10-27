@@ -48,7 +48,9 @@ database holds groups, the entry's are forgotten unread.
 `useRegionImageOverlay.ts` reads the region's map when the dialog opens, saves it whenever the
 image dialog applies one, and deletes it from the map tab's *Remove the reference map* button, which
 asks first since the map is every admin's (`/api/world-views/regions/:regionId/image-overlay`,
-admin-only; a save is answered with no body). The table takes PNG, JPEG or WebP
+admin-only; a save is answered with no body). A save also carries the region-map address the image
+was loaded from (`sourceUrl`, an absolute http(s) address or null for an upload), which is what the
+map's credit is read by. The table takes PNG, JPEG or WebP
 of at most 10 MB, checked by signature; `overlayBodyOf` (`overlayStorage.ts`) draws anything else
 — an SVG, a GIF, a map loaded by address — onto a canvas and sends the PNG.
 
