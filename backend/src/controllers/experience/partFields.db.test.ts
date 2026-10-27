@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { writeExperienceLocations, type LocationWriteRun } from '../../services/sync/locationWriter.js';
+import { recordComponentItems, writeExperienceLocations, type LocationWriteRun } from '../../services/sync/locationWriter.js';
 import { writePointContents } from '../../services/sync/pointContentWriter.js';
 import { getExperienceLocations } from './experienceLocationController.js';
 import { editLocation } from './locationEditController.js';
@@ -133,5 +133,58 @@ describe('a component item confirmed or taken back on a part that holds a kind o
       again.release();
     }
     expect(await row()).toEqual({ image_url: kinds, subtitle: 'ancient Egyptian temple' });
+  });
+});
+
+describe("a part's item, on its record in World Heritage components (ADR-0156 decision 2)", () => {
+  const record = async (partId: number) => (await pool.query<{ items: string[] | null; claims: string[] }>(
+    `SELECT wikidata_items AS items, curated_fields AS claims FROM experience_kind_memberships
+      WHERE experience_id = $1 AND kind_id = 10`, [partId],
+  )).rows[0];
+
+  it("is recorded by the run there, never on the point, and the registry reads it as the part's", async () => {
+    const before = await luxor();
+    expect(await recordComponentItems(THEBES, [{ ref: LUXOR.externalRef, item: 'Q9970001' }], run.sourceId)).toBe(1);
+
+    expect((await record(before.part_id)).items).toEqual(['Q9970001']);
+    const point = await pool.query<{ wikidata_item: string | null }>('SELECT wikidata_item FROM experience_locations WHERE id = $1', [before.point_id]);
+    expect(point.rows[0].wikidata_item).toBeNull();
+    const registry = await pool.query<{ identifies: boolean; basis: string[] }>(
+      `SELECT identifies, basis FROM place_identifiers WHERE experience_id = $1 AND scheme = 'wikidata' AND value = 'Q9970001'`,
+      [before.part_id],
+    );
+    expect(registry.rows).toEqual([{ identifies: true, basis: ['component-item'] }]);
+  });
+
+  it("keeps a curator's item against the run, and takes it off with the claim", async () => {
+    const before = await luxor();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await lockExperience(client, THEBES);
+      await claimPointItem(client, locked!.lock, before.point_id, 'Q9970002', {
+        imageUrl: null, credit: null, description: null, articleUrl: null,
+      });
+      await client.query('COMMIT');
+    } finally {
+      client.release();
+    }
+    expect(await record(before.part_id)).toMatchObject({ items: ['Q9970002'], claims: expect.arrayContaining(['wikidata_items']) });
+
+    expect(await recordComponentItems(THEBES, [{ ref: LUXOR.externalRef, item: 'Q9970001' }], run.sourceId)).toBe(0);
+    expect((await record(before.part_id)).items).toEqual(['Q9970002']);
+
+    const again = await pool.connect();
+    try {
+      await again.query('BEGIN');
+      const locked = await lockExperience(again, THEBES);
+      await releasePointItem(again, locked!.lock, before.point_id);
+      await again.query('COMMIT');
+    } finally {
+      again.release();
+    }
+    const after = await record(before.part_id);
+    expect(after.items).toBeNull();
+    expect(after.claims).not.toContain('wikidata_items');
   });
 });

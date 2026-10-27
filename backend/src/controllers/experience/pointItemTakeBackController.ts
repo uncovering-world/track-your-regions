@@ -34,7 +34,7 @@ import type { locationIdParamSchema, takeBackPointItemBodySchema } from '../../t
 import { reopenConfirmed } from './componentItemAnswers.js';
 import { releasePointItem } from './experienceLocationWriter.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { answeringPlaceSql, shownBySql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointItemClaimedSql, pointItemSql, shownBySql } from '../../db/placePoints.js';
 
 interface TakeBackRefusal {
   status: number;
@@ -74,9 +74,9 @@ export async function takeBackPointItemUnderLock(
     const { lock } = locked;
 
     const found = await client.query<ConfirmedPoint>(
-      `SELECT el.name, el.wikidata_item, (el.curated_fields ? 'wikidata_item') AS claimed,
+      `SELECT el.name, ${pointItemSql('el')} AS wikidata_item, ${pointItemClaimedSql('el')} AS claimed,
               (SELECT p.item_label FROM experience_component_item_proposals p
-                WHERE p.location_id = el.id AND p.wikidata_item = el.wikidata_item
+                WHERE p.location_id = el.id AND p.wikidata_item = ${pointItemSql('el')}
                 ORDER BY p.id DESC LIMIT 1) AS label
          FROM experience_locations el
         WHERE el.id = $1 AND ${shownBySql('el', 'ARRAY[$2::int]')}`,

@@ -40,6 +40,13 @@
 export const MEMBERSHIPS = 'experience_kind_memberships';
 export const KINDS = 'experience_kinds';
 
+/**
+ * World Heritage components, the virtual kind each serial site's part holds
+ * its record in (ADR-0156 decision 2): seeded under this id by migration 181,
+ * which the schema's triggers name too.
+ */
+export const COMPONENTS_KIND_ID = 10;
+
 const INNER = 'km';
 
 /**

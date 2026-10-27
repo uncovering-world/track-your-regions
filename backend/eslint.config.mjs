@@ -284,7 +284,8 @@ const SYNC_CHANGE_WRITE_RULES = spelledWriteRules('experience_sync_changes', SYN
  * `LockedExperience` token; the run's upsert (`experienceUpsert.ts`, which
  * writes the place and its membership in one statement), the admission sweep
  * (`admission.ts`) and its questions about a curator's pin (`pinQuestion.ts`),
- * the verified pass a new content retires
+ * a serial site's part's item on its record (`src/db/partFieldsWriter.ts`,
+ * ADR-0156), the verified pass a new content retires
  * (`curationDecay.ts`) and the held proposal's pointer
  * (`heldProposalPointer.ts`); and the seed.
  *
@@ -591,11 +592,18 @@ export default [
   {
     files: [
       'src/db/experienceWriter.ts',
-      'src/db/partFieldsWriter.ts',
       'src/services/sync/pictureRepair.ts',
     ],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(EXPERIENCE_WRITE_RULES),
+    },
+  },
+  // A serial site's part's own fields and its record's item (ADR-0156), whose
+  // writer names both tables.
+  {
+    files: ['src/db/partFieldsWriter.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(EXPERIENCE_WRITE_RULES, MEMBERSHIP_WRITE_RULES),
     },
   },
   // The run's upsert, whose one statement writes the place and its membership

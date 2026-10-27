@@ -45,7 +45,9 @@ export function kindNamesSql(place: string): string {
  * a serial site's items name its parts and wait for identity per location, and
  * a place whose point was never written is not yet the place its item names. A
  * point its source withdrew is not one of the place's points (#1360). The
- * registry's `site-items` claim states the same rule (`place_identifier_claims()`).
+ * registry's `site-items` claim states the same rule (`place_identifier_claims()`),
+ * over a real kind's memberships: a part's record in World Heritage components
+ * (ADR-0156) is the registry's `component-item`, which no merge card names.
  */
 function membershipItemSql(membership: string, place: string): string {
   return `CASE WHEN ${membership}.external_id ~ '^Q[0-9]+$' THEN ${membership}.external_id
@@ -59,7 +61,7 @@ function membershipItemSql(membership: string, place: string): string {
 /** The Wikidata item a place's memberships make it, or null (`membershipItemSql`); read by the card and by Jev's question alike. */
 export function itemSql(place: string): string {
   return `(SELECT ${membershipItemSql('km', place)} FROM ${MEMBERSHIPS} km
-            WHERE km.experience_id = ${place}.id AND ${membershipItemSql('km', place)} IS NOT NULL
+            WHERE km.experience_id = ${place}.id AND ${realKindSql('km')} AND ${membershipItemSql('km', place)} IS NOT NULL
             ORDER BY km.id LIMIT 1)`;
 }
 

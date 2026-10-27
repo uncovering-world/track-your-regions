@@ -113,9 +113,10 @@ import {
 } from './locationPairing.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { lockExperience } from '../../db/experienceWriter.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { COMPONENTS_KIND_ID, MEMBERSHIPS } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
-import { foldedPointsSql, shownBySql } from '../../db/placePoints.js';
+import { foldedPointsSql, pointItemClaimedSql, pointItemSql, pointOfPartSql, shownBySql } from '../../db/placePoints.js';
+import { writePartItems } from '../../db/partFieldsWriter.js';
 import { completePairing } from './locationMatching.js';
 
 
@@ -1300,10 +1301,10 @@ export interface ComponentItem {
  * Record each component point's Wikidata item (#1269), every run: the item
  * whose World Heritage Site ID equals the point's reference, or none where no
  * item or more than one carries it. A point is matched by its reference, case
- * folded, among the points this run answers for; a claim on the item
- * ('wikidata_item' in the point's `curated_fields`), which the component-items
- * card's confirmation writes and its take-back clears (#1317), is never
- * overridden.
+ * folded, among the points this run answers for, and written on a part's
+ * record in World Heritage components (ADR-0156 decision 2) or on any other
+ * point itself; a curator's claim on the item, which the component-items card's
+ * confirmation writes and its take-back clears (#1317), is never overridden.
  * Answers how many points changed.
  */
 export async function recordComponentItems(
@@ -1316,24 +1317,40 @@ export async function recordComponentItems(
   let unusable: Error | undefined;
   try {
     await client.query('BEGIN');
-    await lockExperience(client, experienceId);
-    const updated = await client.query(
-      `UPDATE experience_locations el
-          SET wikidata_item = r.item
-         FROM unnest($2::text[], $3::text[]) AS r(ref, item)
+    const locked = await lockExperience(client, experienceId);
+    if (!locked) {
+      await client.query('ROLLBACK');
+      return 0;
+    }
+    // The points this run answers for, matched by reference, whose item is
+    // not a curator's and differs: a part's is on its record (ADR-0156
+    // decision 2), any other point's on the point.
+    const answered = `unnest($2::text[], $3::text[]) AS r(ref, item)
         WHERE ${ownPointSql('el')}
           AND lower(el.external_ref) = lower(r.ref)
-          AND NOT (COALESCE(el.curated_fields, '[]'::jsonb) ? 'wikidata_item')
-          AND el.wikidata_item IS DISTINCT FROM r.item
+          AND NOT ${pointItemClaimedSql('el')}
+          AND ${pointItemSql('el')} IS DISTINCT FROM r.item
           AND (EXISTS (SELECT 1 FROM experience_location_placements mine
                          JOIN ${MEMBERSHIPS} m ON m.id = mine.membership_id
                         WHERE mine.location_id = el.id AND m.experience_id = $1 AND m.source_id = $4)
                OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement
-                               WHERE any_placement.location_id = el.id))`,
-      [experienceId, items.map(one => one.ref), items.map(one => one.item), sourceId],
+                               WHERE any_placement.location_id = el.id))`;
+    const params = [experienceId, items.map(one => one.ref), items.map(one => one.item), sourceId];
+    // A part of two sites holds one record, keyed by its earliest relation:
+    // only the point under that relation's reference writes it, or each site's
+    // run would put back its own item in turn.
+    const ofParts = await client.query<{ id: number; item: string }>(
+      `SELECT el.id, r.item FROM experience_locations el, ${answered} AND ${pointOfPartSql('el')}
+          AND EXISTS (SELECT 1 FROM experience_parts owner
+                        JOIN ${MEMBERSHIPS} rec ON rec.external_id = 'component:' || owner.id AND rec.kind_id = ${COMPONENTS_KIND_ID}
+                       WHERE owner.part_id = el.experience_id AND lower(owner.external_ref) = lower(r.ref))`, params,
+    );
+    const onParts = await writePartItems(client, locked.lock, ofParts.rows.map(row => ({ pointId: row.id, item: row.item })));
+    const onPoints = await client.query(
+      `UPDATE experience_locations el SET wikidata_item = r.item FROM ${answered} AND NOT ${pointOfPartSql('el')}`, params,
     );
     await client.query('COMMIT');
-    return updated.rowCount ?? 0;
+    return onParts.length + (onPoints.rowCount ?? 0);
   } catch (error) {
     unusable = await rollbackQuietly(client);
     throw error;

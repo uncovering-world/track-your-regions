@@ -9,6 +9,7 @@
  * and the module's own doc comment records what it measured.
  */
 
+import { itemHeldSql, pointItemClaimedSql } from '../../db/placePoints.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn() } }));
@@ -157,8 +158,8 @@ describe('queryQueueKeys', () => {
     expect(items).toContain('array_agg(DISTINCT m.source_id), NULL');
     // The site's own lifecycle guards and the open-candidate rule, both from
     // the predicates module the card reads.
-    expect(items).toContain("NOT (el.curated_fields ? 'wikidata_item')");
-    expect(items).toContain('taken.wikidata_item = p.wikidata_item');
+    expect(items).toContain(`NOT ${pointItemClaimedSql('el')}`);
+    expect(items).toContain(itemHeldSql('p.wikidata_item'));
   });
 
   it('asks a waiting question of every membership of a place, in scope by its own source (#1264)', async () => {

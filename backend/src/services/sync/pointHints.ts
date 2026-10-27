@@ -22,7 +22,7 @@
 
 import { pool } from '../../db/index.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { pointItemSql, shownBySql } from '../../db/placePoints.js';
 import { COPIED_COORDINATE_M } from './componentItemMatching.js';
 
 /** How far an OpenStreetMap object named like the component may stand to be offered: a whole minute's cell. */
@@ -47,11 +47,11 @@ export function approximatePointOpenSql(el = 'el'): string {
 
 /** Every hint for the point `el`, before its distance is worked out. */
 const HINTS = `
-  SELECT 'item' AS source, el.wikidata_item AS ref, NULL::text AS label,
+  SELECT 'item' AS source, ${pointItemSql('el')} AS ref, NULL::text AS label,
          ST_SetSRID(ST_MakePoint((c.value->>'longitude')::float8, (c.value->>'latitude')::float8), 4326) AS at,
          NULL::jsonb AS tags
     FROM (SELECT c.value FROM wikidata_claims c
-           WHERE c.subject = el.wikidata_item AND c.property = 'P625' AND c.rank >= 0 AND c.value ? 'latitude'
+           WHERE c.subject = ${pointItemSql('el')} AND c.property = 'P625' AND c.rank >= 0 AND c.value ? 'latitude'
            ORDER BY c.rank DESC LIMIT 1) c
   UNION ALL
   SELECT 'osm-ref', o.osm_type || o.osm_id, COALESCE(o.tags->>'name:en', o.tags->>'name'), ST_PointOnSurface(o.geom), o.tags

@@ -32,7 +32,7 @@ import {
 import {
   heldFieldExistsSql, heldPartExistsSql,
 } from './waitingCounts.js';
-import { somePointShownSql } from '../../db/placePoints.js';
+import { itemHeldSql, pointItemClaimedSql, pointItemSql, somePointShownSql } from '../../db/placePoints.js';
 import { COPIED_COORDINATE_M } from '../../services/sync/componentItemMatching.js';
 
 /**
@@ -240,11 +240,11 @@ export function sourcesOpenSql(e = 'e'): string {
  */
 export function openProposalSql(p = 'p', el = 'el'): string {
   return `${p}.answer IS NULL
-    AND ${el}.wikidata_item IS NULL
-    AND NOT (${el}.curated_fields ? 'wikidata_item')
+    AND ${pointItemSql(el)} IS NULL
+    AND NOT ${pointItemClaimedSql(el)}
     AND ${offeredLocationSql(el)}
     AND ${publishedContentSql(el)}
-    AND NOT EXISTS (SELECT 1 FROM experience_locations taken WHERE taken.wikidata_item = ${p}.wikidata_item)`;
+    AND NOT ${itemHeldSql(p + '.wikidata_item')}`;
 }
 
 

@@ -28,7 +28,7 @@ import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicat
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 import { pointAnsweredBySql, unreadPointSql } from './waitingCounts.js';
 import { pointOfPartSql, shownBySql } from '../../db/placePoints.js';
-import { isPartField, writePartFields, type PartField, type PartWrite } from '../../db/partFieldsWriter.js';
+import { isPartField, writePartFields, writePartItems, type PartField, type PartWrite } from '../../db/partFieldsWriter.js';
 
 /** `AND id = ANY($2)` where the caller named points, nothing where it meant all of them. */
 /**
@@ -384,23 +384,19 @@ export async function claimPointItem(
     of_part: boolean; part_claims: string[] | null; kinded: boolean;
     part_image: string | null; part_subtitle: string | null; part_article: string | null;
   }>(
-    `UPDATE experience_locations
-        SET wikidata_item = $3,
-            curated_fields = CASE WHEN curated_fields ? 'wikidata_item' THEN curated_fields
-                                  ELSE curated_fields || '["wikidata_item"]'::jsonb END
-      WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
-      RETURNING ${pointOfPartSql('experience_locations')} AS of_part,
-                ${placeHoldsRealKindSql('experience_locations.experience_id')} AS kinded,
-                (SELECT part.curated_fields FROM experiences part WHERE part.id = experience_locations.experience_id) AS part_claims,
-                (SELECT NULLIF(part.image_url, '') FROM experiences part WHERE part.id = experience_locations.experience_id) AS part_image,
-                (SELECT NULLIF(part.subtitle, '') FROM experiences part WHERE part.id = experience_locations.experience_id) AS part_subtitle,
-                (SELECT NULLIF(part.metadata ->> 'wikipediaUrl', '') FROM experiences part
-                  WHERE part.id = experience_locations.experience_id) AS part_article`,
-    [locationId, lock.id, item],
+    `SELECT ${pointOfPartSql('el')} AS of_part, ${placeHoldsRealKindSql('el.experience_id')} AS kinded,
+            part.curated_fields AS part_claims, NULLIF(part.image_url, '') AS part_image,
+            NULLIF(part.subtitle, '') AS part_subtitle, NULLIF(part.metadata ->> 'wikipediaUrl', '') AS part_article
+       FROM experience_locations el JOIN experiences part ON part.id = el.experience_id
+      WHERE el.id = $1 AND ${shownBySql('el', 'ARRAY[$2::int]')}`,
+    [locationId, lock.id],
   );
   const row = point.rows[0];
   if (!row) return { pictured: false };
   if (row.of_part) {
+    // The item, and the curator's claim on it, are the part's record's
+    // (ADR-0156 decision 2).
+    await writePartItems(client, lock, [{ pointId: locationId, item, claim: 'add' }]);
     // A part's picture, subtitle and article are its own row's (ADR-0156
     // decision 3), written where the part holds no claim on the field. A part
     // that holds a kind of its own keeps what its kind brought and is only
@@ -419,7 +415,10 @@ export async function claimPointItem(
   }
   const result = await client.query<{ pictured: boolean }>(
     `UPDATE experience_locations
-        SET image_url = CASE WHEN $3::boolean AND NOT curated_fields ? 'image_url' THEN $4 ELSE image_url END,
+        SET wikidata_item = $9,
+            curated_fields = CASE WHEN curated_fields ? 'wikidata_item' THEN curated_fields
+                                  ELSE curated_fields || '["wikidata_item"]'::jsonb END,
+            image_url = CASE WHEN $3::boolean AND NOT curated_fields ? 'image_url' THEN $4 ELSE image_url END,
             metadata = CASE WHEN $3::boolean AND NOT curated_fields ? 'image_url'
                             THEN metadata || jsonb_build_object('imageCredit', $5::jsonb)
                             ELSE metadata END
@@ -432,7 +431,7 @@ export async function claimPointItem(
       locationId, lock.id,
       picture, content.imageUrl, picture ? JSON.stringify(content.credit) : null,
       content.description !== null, content.description,
-      article,
+      article, item,
     ],
   );
   return { pictured: result.rows[0]?.pictured === true };
@@ -492,14 +491,22 @@ export async function releasePointItem(
   locationId: number,
 ): Promise<ReleasedField[]> {
   const point = await client.query<{ of_part: boolean; kinded: boolean }>(
-    `UPDATE experience_locations
-        SET wikidata_item = NULL, curated_fields = curated_fields - 'wikidata_item'
-      WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
-      RETURNING ${pointOfPartSql('experience_locations')} AS of_part,
-                ${placeHoldsRealKindSql('experience_locations.experience_id')} AS kinded`,
+    `SELECT ${pointOfPartSql('el')} AS of_part, ${placeHoldsRealKindSql('el.experience_id')} AS kinded
+       FROM experience_locations el WHERE el.id = $1 AND ${shownBySql('el', 'ARRAY[$2::int]')}`,
     [locationId, lock.id],
   );
   if (!point.rows[0]) return [];
+  // The item and the claim on it go: off a part's record (ADR-0156 decision
+  // 2), off any other point itself.
+  if (point.rows[0].of_part) {
+    await writePartItems(client, lock, [{ pointId: locationId, item: null, claim: 'drop' }]);
+  } else {
+    await client.query(
+      `UPDATE experience_locations SET wikidata_item = NULL, curated_fields = curated_fields - 'wikidata_item'
+        WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}`,
+      [locationId, lock.id],
+    );
+  }
   // A part that holds a kind of its own keeps every value on its row: its kind
   // writes them too, so none of them is known to be the confirmation's.
   if (point.rows[0].of_part && point.rows[0].kinded) return [];

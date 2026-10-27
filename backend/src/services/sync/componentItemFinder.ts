@@ -38,7 +38,9 @@ import {
 } from './subset/componentItems.js';
 import { entitiesAreHeld, latestSubset } from '../dumps/wikidata/subsetTables.js';
 import { withRegisterCodes } from './componentItemRegisters.js';
-import { overPlacePoints, type PlacePointArm, placePointsSql, pointsShownSql } from '../../db/placePoints.js';
+import {
+  overPlacePoints, placePointsSql, pointItemClaimedSql, pointItemSql, pointsShownSql, type PlacePointArm,
+} from '../../db/placePoints.js';
 
 const UNESCO_SOURCE_ID = 1;
 /** Points are asked about in cells of this many degrees: one box per cell. */
@@ -149,11 +151,11 @@ function sitePointsArm({ from, placeId }: PlacePointArm): string {
                 WHERE s.missing_since IS NULL AND s.merged_into_id IS NULL AND ${listsPoint('s')})) AS whole_site
        FROM ${from}
        JOIN experience_kind_memberships m ON m.experience_id = ${placeId} AND m.source_id = $1
-      WHERE el.wikidata_item IS NULL
+      WHERE ${pointItemSql('el')} IS NULL
         AND el.external_ref IS NOT NULL
         AND el.missing_since IS NULL
         AND el.merged_into_id IS NULL
-        AND NOT el.curated_fields ? 'wikidata_item'`;
+        AND NOT ${pointItemClaimedSql('el')}`;
 }
 
 /**
@@ -191,10 +193,10 @@ async function readPoints(siteId?: number, pointIds?: readonly number[]): Promis
 async function readResolved(): Promise<Map<number, string[]>> {
   const result = await pool.query<{ experience_id: number; wikidata_item: string }>(
     // Under every place that shows the point, so a part's item is its site's too (ADR-0100).
-    `SELECT pp.place_id AS experience_id, el.wikidata_item
+    `SELECT pp.place_id AS experience_id, ${pointItemSql('el')} AS wikidata_item
        FROM ${placePointsSql()} pp
        JOIN experience_locations el ON el.id = pp.location_id
-      WHERE el.wikidata_item IS NOT NULL AND el.merged_into_id IS NULL`,
+      WHERE ${pointItemSql('el')} IS NOT NULL AND el.merged_into_id IS NULL`,
   );
   const bySite = new Map<number, string[]>();
   for (const row of result.rows) bySite.set(row.experience_id, [...(bySite.get(row.experience_id) ?? []), row.wikidata_item]);
