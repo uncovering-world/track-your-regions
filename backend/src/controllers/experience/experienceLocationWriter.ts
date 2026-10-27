@@ -28,7 +28,9 @@ import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicat
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 import { pointAnsweredBySql, unreadPointSql } from './waitingCounts.js';
 import { pointOfPartSql, shownBySql } from '../../db/placePoints.js';
-import { isPartField, writePartFields, writePartItems, type PartField, type PartWrite } from '../../db/partFieldsWriter.js';
+import {
+  followTheirPoints, isPartField, writePartFields, writePartItems, type PartField, type PartWrite,
+} from '../../db/partFieldsWriter.js';
 
 /** `AND id = ANY($2)` where the caller named points, nothing where it meant all of them. */
 /**
@@ -310,7 +312,9 @@ export async function setPointVerdict(
  * builds the claim set from the one it re-read under the lock. `picture` and
  * `description` are `undefined` where the edit leaves them alone and `null`
  * where it clears them; a credit belongs to one photograph, so a new picture
- * with no credit drops the old one's.
+ * with no credit drops the old one's. A part's point moved moves its part
+ * (`followTheirPoints`); a part's name is the part's own, which the caller
+ * writes there (`writePartFields`).
  */
 export async function correctPoint(
   client: PoolClient,
@@ -348,6 +352,7 @@ export async function correctPoint(
       correction.picture && correction.credit ? JSON.stringify(correction.credit) : null,
       correction.description !== undefined, correction.description ?? null],
   );
+  await followTheirPoints(client, lock, [locationId]);
 }
 
 /** What a confirmed item gives its point: the item's picture with the credit read for it, and its description. */
@@ -560,7 +565,7 @@ export async function releaseAnchorPointClaim(
   return released.rows;
 }
 
-/** Put one point where its source says it is: an accepted source coordinate. */
+/** Put one point where its source says it is: an accepted source coordinate, its part with it. */
 export async function movePointTo(
   client: PoolClient,
   lock: LockedExperience,
@@ -574,6 +579,7 @@ export async function movePointTo(
       WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$4::int]')}`,
     [locationId, longitude, latitude, lock.id],
   );
+  await followTheirPoints(client, lock, [locationId]);
 }
 
 /**
@@ -617,6 +623,8 @@ export async function writeHeldPointFields(
         `UPDATE experience_locations SET name = $3 WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}`,
         [locationId, lock.id, value],
       );
+      // A part is named for the name its point now holds, as the run would have named it.
+      await followTheirPoints(client, lock, [locationId]);
     } else if (isPartField(field)) {
       ofPart[field] = value;
     }

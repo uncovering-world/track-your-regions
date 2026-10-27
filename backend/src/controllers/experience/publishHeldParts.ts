@@ -148,9 +148,12 @@ async function lockPart(
   if (!row) return 'withdrawn';
   if (kind === 'locations' && row.identified !== true) return 'ambiguous';
   if (kind === 'locations') {
-    // A point's name is claimed on the point, the rest on its part's own row
-    // (ADR-0156 decision 3), which the site's lock this transaction holds
-    // guards for every writer of it.
+    // A held name is written on the point, the run's record of what the list
+    // calls the component, so only the point's own claim on it counts; a
+    // curator's name for the part is a claim on the part's row, which the part
+    // keeps however the point is renamed (`followTheirPoints`). The rest is
+    // claimed on the part's own row (ADR-0156 decision 3), which the site's lock
+    // this transaction holds guards for every writer of it.
     const part = await client.query<{ claims: string[] | null; own_claims: string[] }>(
       `SELECT CASE WHEN ${pointOfPartSql('el')} THEN part.curated_fields END AS claims, el.curated_fields AS own_claims
          FROM experience_locations el JOIN experiences part ON part.id = el.experience_id
@@ -163,7 +166,7 @@ async function lockPart(
       return { id: row.id, curated_fields: (found?.own_claims ?? []).map(claim => (claim === 'description' ? 'subtitle' : claim)) };
     }
     const pointClaims = (row.curated_fields ?? []).filter(claim => claim === 'name');
-    return { id: row.id, curated_fields: [...pointClaims, ...found.claims] };
+    return { id: row.id, curated_fields: [...pointClaims, ...found.claims.filter(claim => claim !== 'name')] };
   }
   return { id: row.id, curated_fields: row.curated_fields ?? [] };
 }

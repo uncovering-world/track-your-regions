@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
+import { lockExperience } from '../../db/experienceWriter.js';
+import { writePartFields } from '../../db/partFieldsWriter.js';
 import { pointNameSql } from '../../db/placePoints.js';
 import { writeExperienceLocations, type LocationWriteRun } from './locationWriter.js';
 
@@ -249,10 +251,12 @@ describe('a component the list names nothing is named for what it is (#2065)', (
     expect(await readerName(parted[1].location_id)).toBeNull();
   });
 
-  it("renames a part named by its site when the site's name changes, and leaves a named part alone", async () => {
+  it("renames a part named by its site at the run after the site's rename, and leaves a named part alone", async () => {
     await writeExperienceLocations(THEBES, [KARNAK, nameless], run);
 
     await pool.query(`UPDATE experiences SET name = 'Thebes and its Necropolis (parts fixture)' WHERE id = $1`, [THEBES]);
+    // The list is the same, so only the part being behind its site sends the run past its fast path.
+    await writeExperienceLocations(THEBES, [KARNAK, nameless], run);
 
     expect((await parts(THEBES)).map(p => [p.external_ref, p.name])).toEqual([
       ['87-001', 'Temple of Karnak'],
@@ -264,11 +268,19 @@ describe('a component the list names nothing is named for what it is (#2065)', (
     await writeExperienceLocations(THEBES, [KARNAK, unnamed], run);
     const part = (await parts(THEBES)).find(p => p.external_ref === '87-004')!;
 
-    // The article is the part row's own (ADR-0156), as the content writer records it.
-    await pool.query(
-      `UPDATE experiences SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
-      [part.part_id, JSON.stringify({ wikipediaUrl: 'https://en.wikipedia.org/wiki/Mortuary_Temple_of_Hatshepsut' })],
-    );
+    // The article is the part row's own (ADR-0156), written as the content writer writes it.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await lockExperience(client, THEBES);
+      await writePartFields(client, locked!.lock, [{
+        pointId: part.location_id,
+        fields: { 'metadata.wikipediaUrl': 'https://en.wikipedia.org/wiki/Mortuary_Temple_of_Hatshepsut' },
+      }]);
+      await client.query('COMMIT');
+    } finally {
+      client.release();
+    }
 
     expect((await parts(THEBES)).find(p => p.external_ref === '87-004')?.name).toBe('Mortuary Temple of Hatshepsut');
     expect(await readerName(part.location_id)).toBe('Mortuary Temple of Hatshepsut');

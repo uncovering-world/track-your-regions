@@ -211,31 +211,28 @@ export function somePointShownSql(place: string, point: string, where: string, j
 }
 
 /**
- * What a reader calls the point `point`: its own name, else what the part
- * place it is the point of is called (#1924). A place another kind brought and
- * a merge made a site's part carries its name on the part row, and its point,
- * which that kind placed, none of its own: Etchmiadzin Cathedral's point was
- * listed by its coordinates. A name that names nothing (`names_nothing()`: the
- * World Heritage list calls two parts of Tarraco "The ") counts as none (#2065).
- * A part with no kind of its own lends the title of its own Wikipedia article
- * (ADR-0156), "Roman villa of Centcelles", rather than its name: where there is no
- * article that name is the site's with the reference, which beside the site's
- * other points would repeat both. Any other point keeps its null, which the web
- * labels by the reference or the coordinate (`locationLabel`): "1708-003" for a
- * section of the Via Appia. The title is read only off a part that has an
- * article, since this runs on every row of the world layer's markers. The
- * curator's reads keep `name` as the source wrote it, since what the source
- * listed is what a curator corrects.
+ * What a reader calls the point `point`. A serial site's part is a place, and
+ * its point is called what the part is (ADR-0156): Beffroi de Mons, or the
+ * name a curator gave the part. Where the list names the component nothing
+ * (`names_nothing()`: it calls two parts of Tarraco "The ") the part is named
+ * for its own Wikipedia article, "Roman villa of Centcelles", and where it has
+ * none for its site with the reference, which beside the site's other points
+ * would repeat both, so the point keeps a null, which the web labels by the
+ * reference or the coordinate (`locationLabel`): "1708-003" for a section of
+ * the Via Appia. A part another kind brought and a merge made a site's part
+ * names itself (#1250), and its point is called by its own name where it has
+ * one and the part's otherwise (#1924): Etchmiadzin Cathedral's point was
+ * listed by its coordinates. Any other point is called by its own name.
  */
 export function pointNameSql(point = 'el'): string {
-  return `COALESCE(CASE WHEN NOT names_nothing(${point}.name) THEN ${point}.name END,
-          (SELECT CASE WHEN ${placeHoldsRealKindSql('pop.part_id')}
-                       THEN prt_name.name
-                       WHEN prt_name.metadata ? 'wikipediaUrl'
-                       THEN wikipedia_article_title(prt_name.metadata->>'wikipediaUrl') END
-             FROM experience_parts pop
-             JOIN experiences prt_name ON prt_name.id = pop.part_id
-            WHERE pop.part_id = ${point}.experience_id LIMIT 1))`;
+  const own = `CASE WHEN NOT names_nothing(${point}.name) THEN ${point}.name END`;
+  return `CASE WHEN ${pointOfPartSql(point)}
+               THEN (SELECT CASE WHEN ${placeHoldsRealKindSql('prt_name.id')} THEN COALESCE(${own}, prt_name.name)
+                                 WHEN NOT names_nothing(${point}.name) OR prt_name.curated_fields ? 'name'
+                                      OR prt_name.metadata ? 'wikipediaUrl'
+                                 THEN prt_name.name END
+                       FROM experiences prt_name WHERE prt_name.id = ${point}.experience_id)
+               ELSE ${own} END`;
 }
 
 /**
@@ -284,7 +281,9 @@ export function pointSubtitleSql(point = 'el'): string {
  * What a curator has claimed on the point `point`, as a point's read names it:
  * the point's own claims, and for a serial site's part the claims on its row's
  * picture, subtitle and article (ADR-0156 decision 3), the subtitle's under the
- * name a point's read gives the line, `description`.
+ * name a point's read gives the line, `description`, and on its name where the
+ * point is called by it: a part that holds a kind of its own names itself, and
+ * its point keeps its own name and claim (`pointNameSql`).
  */
 export function pointClaimsSql(point = 'el'): string {
   return `CASE WHEN ${pointOfPartSql(point)}
@@ -295,7 +294,8 @@ export function pointClaimsSql(point = 'el'): string {
                                FROM experiences prt_own,
                                     jsonb_array_elements_text(COALESCE(prt_own.curated_fields, '[]'::jsonb)) AS prt_claim
                               WHERE prt_own.id = ${point}.experience_id
-                                AND prt_claim IN ('image_url', 'subtitle', 'metadata.wikipediaUrl')) claims)
+                                AND (prt_claim IN ('image_url', 'subtitle', 'metadata.wikipediaUrl')
+                                     OR (prt_claim = 'name' AND NOT ${placeHoldsRealKindSql('prt_own.id')}))) claims)
                ELSE ${point}.curated_fields END`;
 }
 

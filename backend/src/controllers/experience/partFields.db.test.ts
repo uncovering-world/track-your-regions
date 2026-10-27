@@ -4,9 +4,10 @@ import { recordComponentItems, writeExperienceLocations, type LocationWriteRun }
 import { writePointContents } from '../../services/sync/pointContentWriter.js';
 import { getExperienceLocations } from './experienceLocationController.js';
 import { editLocation } from './locationEditController.js';
+import { editExperience } from './curationEditController.js';
 import { claimPointItem, releasePointItem } from './experienceLocationWriter.js';
 import { lockExperience } from '../../db/experienceWriter.js';
-import { experienceLocationsQuerySchema } from '../../types/index.js';
+import { editExperienceBodySchema, experienceLocationsQuerySchema } from '../../types/index.js';
 
 /**
  * A curator's correction of a serial site's part's point writes the part's own
@@ -90,6 +91,70 @@ describe("a curator's correction of a part's point (ADR-0156)", () => {
     expect(read.locations.find(point => point.id === before.point_id)).toMatchObject({
       description: 'Temple of Amun, Mut and Khonsu', curated_fields: expect.arrayContaining(['description']),
     });
+  });
+
+  it("names the part, claimed there, the point keeping the list's name, and the next run keeps the part's", async () => {
+    const before = await luxor();
+    await editLocation({
+      params: { locationId: before.point_id },
+      body: { name: 'Temple of Luxor', latitude: 25.6996, longitude: 32.6391 },
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    } as never);
+
+    const named = async () => (await pool.query<{ part: string; point: string; lon: number; part_lon: number }>(
+      `SELECT e.name AS part, el.name AS point, ST_X(el.location) AS lon, ST_X(e.location) AS part_lon
+         FROM experiences e JOIN experience_locations el ON el.experience_id = e.id WHERE e.id = $1`,
+      [before.part_id],
+    )).rows[0];
+    expect(await named()).toEqual({ part: 'Temple of Luxor', point: LUXOR.name, lon: 32.6391, part_lon: 32.6391 });
+    expect((await luxor()).claims).toContain('name');
+
+    // The list renames the component: the point takes the list's name, the part keeps the curator's.
+    await writeExperienceLocations(THEBES, [KARNAK, { ...LUXOR, name: 'Luxor Temple (Ipet-resyt)' }], run);
+    expect(await named()).toMatchObject({ part: 'Temple of Luxor', point: 'Luxor Temple (Ipet-resyt)' });
+
+    const read = await getExperienceLocations({
+      params: { id: THEBES }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    expect(read.locations.find(point => point.id === before.point_id)).toMatchObject({
+      name: 'Temple of Luxor', curated_fields: expect.arrayContaining(['name', 'location']),
+    });
+  });
+
+  it("takes an older claim on the point's name onto the part, so the list renames the point again", async () => {
+    const before = await luxor();
+    await pool.query(`UPDATE experience_locations SET curated_fields = '["name"]' WHERE id = $1`, [before.point_id]);
+    await editLocation({
+      params: { locationId: before.point_id },
+      body: { name: 'Temple of Luxor' },
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    } as never);
+    const point = await pool.query<{ claims: string[] }>('SELECT curated_fields AS claims FROM experience_locations WHERE id = $1', [before.point_id]);
+    expect(point.rows[0].claims).not.toContain('name');
+    expect((await luxor()).claims).toContain('name');
+  });
+
+  it("renames a part named for its site as soon as a curator renames the site", async () => {
+    // A section the list names nothing, as it names two of Via Appia's.
+    const nameless = { name: '', externalRef: '87-005', lon: 32.6125, lat: 25.7208 };
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR, nameless], run);
+    await editExperience({
+      params: { id: THEBES },
+      body: editExperienceBodySchema.parse({ name: 'Thebes and its Necropolis (part fields fixture)' }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+    const part = await pool.query<{ name: string }>(
+      `SELECT e.name FROM experience_parts p JOIN experiences e ON e.id = p.part_id
+        WHERE p.whole_id = $1 AND p.external_ref = $2`, [THEBES, nameless.externalRef],
+    );
+    expect(part.rows[0].name).toBe('Thebes and its Necropolis (part fields fixture) (87-005)');
+  });
+
+  it('renames a part the curator did not name when the list renames its component', async () => {
+    const before = await luxor();
+    await writeExperienceLocations(THEBES, [KARNAK, { ...LUXOR, name: 'Luxor Temple (Ipet-resyt)' }], run);
+    const part = await pool.query<{ name: string }>('SELECT name FROM experiences WHERE id = $1', [before.part_id]);
+    expect(part.rows[0].name).toBe('Luxor Temple (Ipet-resyt)');
   });
 });
 
