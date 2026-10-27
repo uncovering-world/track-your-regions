@@ -284,6 +284,14 @@ export const TransferAccepted = z.strictObject({
 }).describe('Divisions moved from their donor region to the target, in one transaction (ADR-0012).');
 export type TransferAccepted = z.infer<typeof TransferAccepted>;
 
+export const ShapeCredit = z.strictObject({
+  label: z.string().describe('The source the shape was read from, as its credit names it: a Commons map data file\'s page title.'),
+  url: z.string().describe('Its page.'),
+  licence: z.string().describe('The licence the source declares, as it spells it (`ODbL-1.0`).'),
+  attribution: z.string().nullable().describe('What the source says the shape was drawn from; null when it says nothing.'),
+}).describe('Whose work a drawn region shape is, and under which licence (#2085): shown with the shape wherever it is drawn.');
+export type ShapeCredit = z.infer<typeof ShapeCredit>;
+
 export const TransferPreview = z.strictObject({
   type: z.literal('FeatureCollection'),
   features: z.array(z.strictObject({
@@ -294,5 +302,6 @@ export const TransferPreview = z.strictObject({
     }),
     geometry: AreaGeometry,
   })),
+  credits: z.array(ShapeCredit).describe('The credit of the target\'s outline, where one is drawn.'),
 }).describe('What a transfer would do, drawn: the donor\'s division, the divisions that would move, and the target\'s outline (ADR-0012).');
 export type TransferPreview = z.infer<typeof TransferPreview>;

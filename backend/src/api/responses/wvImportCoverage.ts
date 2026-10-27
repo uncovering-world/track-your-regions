@@ -18,6 +18,7 @@
 
 import { z } from 'zod/v4';
 import { AreaGeometry } from './regions.js';
+import { ShapeCredit } from './worldViewImport.js';
 
 // ---------------------------------------------------------------------------
 // The coverage check
@@ -152,6 +153,7 @@ export const CoverageGeometry = z.strictObject({
   parentGeometry: AreaGeometry.nullable().describe('The divisions the region holds itself, unified; null where it holds none.'),
   childrenGeometry: AreaGeometry.nullable().describe('Its descendants\' divisions, unified.'),
   geoshapeGeometry: AreaGeometry.nullable().describe('Its Wikidata geoshape, where one is cached.'),
+  geoshapeCredit: ShapeCredit.nullable().describe('The credit of that shape; null where none is drawn.'),
 }).describe('A region\'s own outline beside its descendants\' and its geoshape, to compare.');
 export type CoverageGeometry = z.infer<typeof CoverageGeometry>;
 
