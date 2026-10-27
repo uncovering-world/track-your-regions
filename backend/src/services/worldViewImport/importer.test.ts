@@ -172,3 +172,28 @@ describe('insertRegion hierarchy warnings', () => {
     expect(state!.params.some((p) => Array.isArray(p) && p.some((w: string) => w.includes('Grouping')))).toBe(true);
   });
 });
+
+describe('insertRegion map image candidates (#2087)', () => {
+  const ALGERIA = 'https://commons.wikimedia.org/wiki/Special:FilePath/Algeria_regions_map.png';
+  const OVERVIEW = 'https://commons.wikimedia.org/wiki/Special:FilePath/Algeria_overview_map.png';
+  const candidateRows = (calls: Array<{ sql: string; params: unknown[] }>) =>
+    calls.filter((c) => c.sql.includes('INSERT INTO region_map_images')).map((c) => c.params[1]);
+
+  it('keeps the region\'s own map as a candidate when the tree does not list it, so its credit has a row', async () => {
+    const { client, calls } = collectingClient();
+    const tree: ImportTreeNode = { name: 'Algeria', regionMapUrl: ALGERIA, mapImageCandidates: [OVERVIEW], children: [] };
+
+    await insertRegion(client, tree, 1, null, 99, makeProgress(), true);
+
+    expect(candidateRows(calls)).toEqual([OVERVIEW, ALGERIA]);
+  });
+
+  it('writes a listed map once', async () => {
+    const { client, calls } = collectingClient();
+    const tree: ImportTreeNode = { name: 'Algeria', regionMapUrl: ALGERIA, mapImageCandidates: [ALGERIA, OVERVIEW], children: [] };
+
+    await insertRegion(client, tree, 1, null, 99, makeProgress(), true);
+
+    expect(candidateRows(calls)).toEqual([ALGERIA, OVERVIEW]);
+  });
+});

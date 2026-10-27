@@ -15,6 +15,7 @@
  */
 
 import { z } from 'zod/v4';
+import { ImageCredit } from './experiences.js';
 import { AreaGeometry } from './regions.js';
 import { SpatialAnomaly } from './wvImportCvMatch.js';
 
@@ -193,6 +194,14 @@ export const MapImageSelected = z.strictObject({
   selected: z.literal(true),
 }).describe('One of a region\'s map image candidates chosen as its map, or the choice cleared.');
 export type MapImageSelected = z.infer<typeof MapImageSelected>;
+
+export const MapImageCredits = z.strictObject({
+  credits: z.array(z.strictObject({
+    url: z.string().describe('A map image as the request named it.'),
+    credit: ImageCredit.nullable().describe('Null where Commons did not answer in time: the dialog draws no line, and the next draw asks again.'),
+  })).describe('One entry per requested url that a region of the world view holds as a map image; any other url is left out.'),
+}).describe('Who each region map image is credited to (ADR-0043), read from Commons the first time a dialog draws the file and kept on its rows.');
+export type MapImageCredits = z.infer<typeof MapImageCredits>;
 
 export const ManualFixMarked = z.strictObject({
   updated: z.literal(true),

@@ -49,7 +49,8 @@ export function decodeOverlayImage(dataUrl: string): { bytes: Buffer; type: Over
 }
 
 type OverlayRow = Pick<RegionImageOverlaysRow,
-  'region_id' | 'image' | 'image_type' | 'image_name' | 'image_width' | 'image_height' | 'corners' | 'opacity' | 'updated_at'>;
+  'region_id' | 'image' | 'image_type' | 'image_name' | 'image_width' | 'image_height' | 'corners' | 'opacity' | 'updated_at'
+  | 'source_url'>;
 
 function overlayOf(row: OverlayRow): RegionImageOverlay {
   return {
@@ -61,10 +62,11 @@ function overlayOf(row: OverlayRow): RegionImageOverlay {
     corners: row.corners as RegionImageOverlay['corners'],
     opacity: row.opacity,
     updatedAt: row.updated_at.toISOString(),
+    sourceUrl: row.source_url,
   };
 }
 
-const OVERLAY_COLUMNS = 'region_id, image, image_type, image_name, image_width, image_height, corners, opacity, updated_at';
+const OVERLAY_COLUMNS = 'region_id, image, image_type, image_name, image_width, image_height, corners, opacity, updated_at, source_url';
 
 /** A region's reference map, or none (204) where it has not been given one. */
 export async function getRegionImageOverlay(
@@ -88,14 +90,16 @@ export async function saveRegionImageOverlay(
   // writes nothing rather than failing on its foreign key.
   const result = await pool.query(
     `INSERT INTO region_image_overlays
-       (region_id, image, image_type, image_name, image_width, image_height, corners, opacity, updated_by, updated_at)
-     SELECT r.id, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, NOW() FROM regions r WHERE r.id = $1
+       (region_id, image, image_type, image_name, image_width, image_height, corners, opacity, updated_by, updated_at,
+        source_url)
+     SELECT r.id, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, NOW(), $10 FROM regions r WHERE r.id = $1
      ON CONFLICT (region_id) DO UPDATE SET
        image = EXCLUDED.image, image_type = EXCLUDED.image_type, image_name = EXCLUDED.image_name,
        image_width = EXCLUDED.image_width, image_height = EXCLUDED.image_height, corners = EXCLUDED.corners,
-       opacity = EXCLUDED.opacity, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at`,
+       opacity = EXCLUDED.opacity, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at,
+       source_url = EXCLUDED.source_url`,
     [regionId, bytes, type, body.imageName, body.imageWidth, body.imageHeight,
-      JSON.stringify(body.corners), body.opacity, caller.id],
+      JSON.stringify(body.corners), body.opacity, caller.id, body.sourceUrl ?? null],
   );
   if (result.rowCount === 0) throw notFound('Region not found');
   return NO_CONTENT;

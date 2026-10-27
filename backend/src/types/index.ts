@@ -14,7 +14,7 @@ import { foldLabel, tidyLabel } from '@tyr/shared/labels';
 import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
-import { pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE } from './urlSafety.js';
+import { isStorableHttpUrl, pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE, STORABLE_HTTP_URL_MESSAGE } from './urlSafety.js';
 import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
 import { QUEUE_KINDS } from '../controllers/experience/reviewQueueVocabulary.js';
 import { DUMP_KEYS } from '../services/dumps/catalog.js';
@@ -1264,6 +1264,9 @@ export const regionImageOverlayBodySchema = z.object({
   imageHeight: z.number().int().min(1).max(100000),
   corners: z.tuple([overlayCornerSchema, overlayCornerSchema, overlayCornerSchema, overlayCornerSchema]),
   opacity: z.number().min(0).max(1),
+  // The region map it was loaded from, whose credit it carries (#2087); none for an upload.
+  sourceUrl: z.string().trim().max(2000).refine(isStorableHttpUrl, { message: STORABLE_HTTP_URL_MESSAGE })
+    .nullable().optional(),
 });
 
 /**

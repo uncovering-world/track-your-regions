@@ -235,6 +235,8 @@ export const RegionImageOverlay = z.strictObject({
   ]).describe("Where the image's corners lie, [lng, lat] each: top left, top right, bottom right, bottom left."),
   opacity: z.number(),
   updatedAt: z.string().describe('When it was last saved, ISO 8601.'),
+  sourceUrl: z.string().nullable()
+    .describe('The region map address the image was loaded from, whose credit it carries; null for an uploaded file.'),
 }).describe("A region's reference map in the Create Subregions dialog (#595): an admin's working material, never shown to a visitor.");
 export type RegionImageOverlay = z.infer<typeof RegionImageOverlay>;
 
