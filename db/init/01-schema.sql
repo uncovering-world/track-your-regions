@@ -5807,18 +5807,19 @@ COMMENT ON COLUMN region_subdivision_groups.color IS 'The colour picked for the 
 COMMENT ON TABLE region_member_group_assignments IS 'Which group of the Create Subregions dialog a region member is in (#595): at most one, and gone with the member or the group. A member no longer in the group''s region is not read as assigned.';
 
 -- Wikidata geoshape store (geometry for geoshape-based GADM matching)
--- Holds the shapes of Commons maps an admin's review fetched, keyed
--- "commons:{filename}". Nothing is fetched from maps.wikimedia.org, whose terms
--- do not allow a third-party service, and no composite union is built from it
--- (#2084): until the import holds shapes from a source it may use (#2085), no
--- row is keyed by a Wikidata QID, and a region is matched by its Wikivoyage
--- markers.
--- See backend/src/services/worldViewImport/geoshapeCache.ts.
+-- Holds an item's shape, keyed by its QID, cut from the OpenStreetMap layer
+-- with each build (ADR-0157, ADR-0158), or the union of its region's child
+-- regions' shapes where no object draws it (ADR-0159); and the shapes of
+-- Commons maps an admin's review fetched, keyed "commons:{filename}". Nothing
+-- is fetched from maps.wikimedia.org, whose terms do not allow a third-party
+-- service (#2084).
+-- See backend/src/services/dumps/osm/layerShapes.ts and
+-- backend/src/services/worldViewImport/geoshapeCache.ts.
 CREATE TABLE IF NOT EXISTS workbench.wikidata_geoshapes (
     wikidata_id TEXT PRIMARY KEY,            -- Wikidata QID or "commons:{filename}"
     geom geometry(MultiPolygon, 4326),       -- NULL when not_available; SRID 4326
     not_available BOOLEAN NOT NULL DEFAULT FALSE,  -- TRUE = no geoshape exists (negative cache)
-    composite_of INTEGER CHECK (composite_of > 0),  -- parts a composite is the union of; NULL for a shape held whole
+    composite_of INTEGER CHECK (composite_of > 0),  -- child shapes a composite is the union of (ADR-0159); NULL for a shape held whole
     licence TEXT,                            -- the licence its source declares (a Commons map file's license); NULL only when not_available
     attribution TEXT,                        -- what the source says it was drawn from (a Commons map file's sources line)
     -- Negative-cache invariant: a row is either a real geoshape or a not_available
@@ -5832,11 +5833,11 @@ CREATE TABLE IF NOT EXISTS workbench.wikidata_geoshapes (
 
 CREATE INDEX IF NOT EXISTS idx_wikidata_geoshapes_geom ON workbench.wikidata_geoshapes USING GIST (geom);
 
-COMMENT ON TABLE workbench.wikidata_geoshapes IS 'Region shapes for WorldView Import geoshape matching: a Commons map file''s, keyed commons:{file}, with the licence its file declares, and an item''s, keyed by its QID, cut from the OpenStreetMap layer each time a build is swapped in (ADR-0157) under ODbL; nothing from maps.wikimedia.org and no composite unions (#2084)';
+COMMENT ON TABLE workbench.wikidata_geoshapes IS 'Region shapes for WorldView Import geoshape matching: a Commons map file''s, keyed commons:{file}, with the licence its file declares, and an item''s, keyed by its QID, cut from the OpenStreetMap layer each time a build is swapped in (ADR-0157) under ODbL, or the union of its region''s child regions'' shapes where no object draws it (ADR-0159); nothing from maps.wikimedia.org (#2084)';
 COMMENT ON COLUMN workbench.wikidata_geoshapes.not_available IS 'Negative cache: TRUE means a geoshape lookup confirmed none exists';
 COMMENT ON COLUMN workbench.wikidata_geoshapes.licence IS 'The licence the shape is under, as its source declares it (a Commons map file''s license, e.g. ODbL-1.0; ODbL-1.0 for a shape cut from the OpenStreetMap layer); null only on a not_available row';
 COMMENT ON COLUMN workbench.wikidata_geoshapes.attribution IS 'What the source says the shape was drawn from (a Commons map file''s sources line, e.g. Based on OpenStreetMap data); null when it says nothing';
-COMMENT ON COLUMN workbench.wikidata_geoshapes.composite_of IS 'How many parts a composite geoshape is the union of, every part the item names (#1628); NULL for a shape held whole. No composite is built since #2084';
+COMMENT ON COLUMN workbench.wikidata_geoshapes.composite_of IS 'How many shapes a composite is the union of: those of the child regions of a region no OpenStreetMap object draws, built with each refill from the layer (ADR-0159); NULL for a shape held whole';
 
 -- =============================================================================
 -- AI Settings
