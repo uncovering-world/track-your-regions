@@ -24,7 +24,8 @@ vi.mock('../shared/PointPreviewDialog', () => ({
 }));
 
 import { editLocation, suggestPointHints } from '../../api/curation';
-import { ApproximatePointsCard, hintHref, hintsInOrder, minuteCell, reasonWords, type ApproximatePoint } from './ApproximatePointsCard';
+import { ApproximatePointsCard, hintHref, hintsInOrder, reasonWords, type ApproximatePoint } from './ApproximatePointsCard';
+import { minuteCell } from './minuteCell';
 
 const mockedEdit = editLocation as unknown as ReturnType<typeof vi.fn>;
 const mockedSuggest = suggestPointHints as unknown as ReturnType<typeof vi.fn>;

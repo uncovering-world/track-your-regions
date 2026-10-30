@@ -14,10 +14,38 @@
  * added, not this sentence to renumber. It imports from here like the rest.
  */
 
-import { Box, Typography, Stack, Chip } from '@mui/material';
+import { Box, Typography, Stack, Chip, Link } from '@mui/material';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
+import { safeHref } from '../../utils/safeHref';
 import { ObjectContext } from './ObjectContext';
 import { SourceId } from './SourceId';
+
+/**
+ * How a part is named before its whole, on every card that names one: by the
+ * reference the World Heritage list gives the component ("Component 1209-002
+ * of …"), and as a part where it has none ("Part of …") (#1250, #2158).
+ */
+export function partOfLead(componentRef?: string | null): string {
+  return componentRef ? `Component ${componentRef} of ` : 'Part of ';
+}
+
+/**
+ * The serial site the object is a component of, linked to its page on the
+ * World Heritage list, which maps where each component lies (#2158). A
+ * component's own name ("Zona nucleo 02, …") does not say it is one part of a
+ * property.
+ */
+function PartOfLine({ partOf }: { partOf: NonNullable<ReviewQueueItem['part_of']> }) {
+  const href = safeHref(partOf.unesco_url);
+  return (
+    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+      {partOfLead(partOf.component_ref)}
+      {href ? (
+        <Link href={href} target="_blank" rel="noopener noreferrer">{partOf.name}</Link>
+      ) : partOf.name}
+    </Typography>
+  );
+}
 
 /**
  * Which object a card is about, in the words a curator can judge it by.
@@ -38,6 +66,7 @@ export function ItemHeader({ item, kinds = [item.kind_name] }: {
         <SourceId id={item.external_id} kind={item.kind_name} sourcePage={item.unesco_url ?? item.website_url} />
         {kinds.map(kind => <Chip key={kind} label={kind} size="small" variant="outlined" />)}
       </Stack>
+      {item.part_of && <PartOfLine partOf={item.part_of} />}
       <ObjectContext item={item} />
     </>
   );
