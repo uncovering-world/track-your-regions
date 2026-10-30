@@ -24,9 +24,10 @@ describe('typeOptionsFor', () => {
     expect(typeOptionsFor(MONUMENTS).map(o => o.value)).toEqual(['memorial', 'arch', 'column', 'obelisk', 'monument']);
   });
 
-  it('offers a place of worship its eight types', () => {
+  it('offers a place of worship its building types, then its holy mountains and holy sites', () => {
     expect(typeOptionsFor(PLACES_OF_WORSHIP).map(o => o.value)).toEqual(
-      ['cathedral', 'church', 'chapel', 'monastery', 'mosque', 'temple', 'shrine', 'synagogue'],
+      ['cathedral', 'church', 'chapel', 'monastery', 'mosque', 'temple', 'shrine', 'synagogue',
+        'sacred mountain', 'holy site'],
     );
   });
 

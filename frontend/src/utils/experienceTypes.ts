@@ -5,7 +5,8 @@
  * together (ADR-0045): a World Heritage site is cultural, natural or mixed; a
  * piece of public art is a sculpture, a fountain, street art or a clock; a monument is a
  * memorial, an arch, a column, an obelisk or a monument; a place of worship is a
- * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue; a
+ * cathedral, church, chapel, monastery, mosque, temple, shrine, synagogue, sacred
+ * mountain or holy site; a
  * tower is a pagoda, a minaret, a clock tower, a bell tower, an observation tower, a
  * fortified tower or a tower; an engineering work is an aqueduct, a bridge, a
  * dam, an inclined plane, a boat lift, a flight of locks, a lock or a tunnel; a
@@ -79,6 +80,8 @@ const PLACES_OF_WORSHIP: TypeVocabulary = {
     { value: 'temple', label: 'Temple' },
     { value: 'shrine', label: 'Shrine' },
     { value: 'synagogue', label: 'Synagogue' },
+    { value: 'sacred mountain', label: 'Sacred mountain' },
+    { value: 'holy site', label: 'Holy site' },
   ],
   what: 'What kind of place of worship it is, read from Wikidata’s classes: a cathedral before a church, a monastery that is also a cathedral is a cathedral.',
   whenItChanges: 'Retyped on Wikidata. The same place either way; the filter chip it answers to changes.',
