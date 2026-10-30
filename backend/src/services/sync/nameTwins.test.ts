@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { catalogueName, namedApart, twinHint } from './nameTwins.js';
+import { catalogueName, namedApart, twinHint, twinLabels } from './nameTwins.js';
 
 describe('the hint a description gives a twin (#1967)', () => {
   it('reads the place after "in", up to a comma', () => {
@@ -27,6 +27,16 @@ describe('the hint a description gives a twin (#1967)', () => {
   });
 });
 
+describe('the labels a twin may hold (#2137)', () => {
+  it('asks the label before its first capital too, which a source that has not run since still holds', () => {
+    // Place de la République, a square of Paris and of many French towns.
+    expect(twinLabels('Place de la République')).toEqual(['Place de la République', 'place de la République']);
+    expect(twinLabels('Soviet War Memorial')).toEqual(['Soviet War Memorial', 'soviet War Memorial']);
+    expect(twinLabels('al-Azhar Mosque')).toEqual(['al-Azhar Mosque']);
+    expect(twinLabels('Al-Azhar Mosque')).toEqual(['Al-Azhar Mosque']);
+  });
+});
+
 describe('the name a record is written under (#1967)', () => {
   const answer = (twin: boolean, others: { sourceId: number; description: string | null }[] = []) =>
     ({ query: vi.fn().mockResolvedValue({ rows: [{ twin, others }] }) });
@@ -38,7 +48,7 @@ describe('the name a record is written under (#1967)', () => {
     const twin = answer(true);
     expect(await catalogueName(twin, record(6, subtitle), 1480)).toBe("Soviet War Memorial (Berlin's Treptower Park)");
     expect(await catalogueName(answer(false), record(6, subtitle), 1480)).toBe('Soviet War Memorial');
-    expect(twin.query).toHaveBeenCalledWith(expect.any(String), ['Soviet War Memorial', 1480, 6]);
+    expect(twin.query).toHaveBeenCalledWith(expect.any(String), [['Soviet War Memorial', 'soviet War Memorial'], 1480, 6]);
   });
 
   it('takes the hint of the place, so a source that gives none or another names it alike', async () => {

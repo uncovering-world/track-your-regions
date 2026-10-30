@@ -11,7 +11,7 @@ import {
   type LocationWriteRun,
 } from './locationWriter.js';
 import type { IncomingLocation } from './locationIncoming.js';
-import { untypeset } from '@tyr/shared/labels';
+import { capitalizedName, untypeset } from '@tyr/shared/labels';
 import { feedText } from './unescoText.js';
 import { recordComponentItemsReport, upsertExperienceRecord } from './syncUtils.js';
 import {
@@ -90,13 +90,15 @@ function componentName(entry: string): string | null {
 }
 
 /**
- * A component's name as text: read once, the feed's markup read, and the
- * list's typesetting defects mended (`untypeset`, #1965, ADR-0147). Mended here
- * and not in `feedText`, which a site's own name goes through as well: the
- * source's view of a site (`reported_*`) keeps what the list says.
+ * A component's name as text: read once, the feed's markup read, the list's
+ * typesetting defects mended (`untypeset`, #1965, ADR-0147) and its first
+ * letter a capital (`capitalizedName`, ADR-0160): the list names the rock-art
+ * shelters of the Mediterranean Basin *mas de Torres* and *marmalo I*. Mended
+ * here and not in `feedText`, which a site's own name goes through as well:
+ * the source's view of a site (`reported_*`) keeps what the list says.
  */
 function componentText(name: string): string {
-  return untypeset(feedText(readOnce(name)));
+  return capitalizedName(untypeset(feedText(readOnce(name))));
 }
 
 /**

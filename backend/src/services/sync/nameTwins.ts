@@ -16,7 +16,7 @@
  */
 
 import type { PoolClient } from 'pg';
-import { tidyLabel } from '@tyr/shared/labels';
+import { capitalizedName, tidyLabel } from '@tyr/shared/labels';
 import { MEMBERSHIPS, membershipAdmittedSql } from '../../db/membership.js';
 import { viewStandsSql } from '../../db/sourceViews.js';
 
@@ -55,6 +55,19 @@ interface SourceDescription { sourceId: number; description: string | null }
 export interface NamedRecord { sourceId: number; label: string; description: string | null }
 
 /**
+ * The labels a twin's membership may hold for `label`: the label, and the
+ * label before the run gave it its first capital (`capitalizedName`,
+ * ADR-0160), which a source that has not run since still holds: the first run
+ * after the rule would otherwise find no twin of *Place de la République* in a
+ * stored *place de la République*, drop the suffix, and set it back once the
+ * twin's source runs.
+ */
+export function twinLabels(label: string): string[] {
+  const lowered = label.replace(/^([^\p{L}\p{N}]*)(\p{Lu})/u, (_, lead: string, letter: string) => lead + letter.toLowerCase());
+  return lowered !== label && capitalizedName(lowered) === label ? [label, lowered] : [label];
+}
+
+/**
  * Whether another place of the catalogue carries the record's label: one with
  * a membership standing in the catalogue, whether a curator has passed it yet
  * or not, so an arrival is told apart from its twin before it is published.
@@ -68,7 +81,7 @@ async function twinAndDescriptions(
   const result = await query.query<{ twin: boolean; others: SourceDescription[] }>(
     `SELECT EXISTS (
        SELECT 1 FROM ${MEMBERSHIPS} m JOIN experiences e ON e.id = m.experience_id
-        WHERE m.reported_label = $1 AND e.id IS DISTINCT FROM $2::int AND e.merged_into_id IS NULL
+        WHERE m.reported_label = ANY($1::text[]) AND e.id IS DISTINCT FROM $2::int AND e.merged_into_id IS NULL
           AND ${standing('m')}
      ) AS twin,
      COALESCE((
@@ -76,7 +89,7 @@ async function twinAndDescriptions(
          FROM ${MEMBERSHIPS} o
         WHERE o.experience_id = $2::int AND o.source_id <> $3 AND ${standing('o')}
      ), '[]'::json) AS others`,
-    [record.label, placeId, record.sourceId],
+    [twinLabels(record.label), placeId, record.sourceId],
   );
   return { twin: Boolean(result.rows[0]?.twin), others: result.rows[0]?.others ?? [] };
 }

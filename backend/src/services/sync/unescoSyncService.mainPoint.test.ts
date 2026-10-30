@@ -377,6 +377,19 @@ describe("a site's components (#1803)", () => {
     ]);
   });
 
+  it("gives a component's name a capital first letter, unless its first word carries one (#2137)", () => {
+    // Components of the Rock Art of the Mediterranean Basin (874) and of
+    // Samarra Archaeological City (276rev), as the list writes them.
+    const site = transformRecord(record({
+      components_list: components(
+        { name: 'mas de Torres', ref: '874-264', latitude: 41.4129, longitude: 0.0471 },
+        { name: 'al-Huwaysilat Upper', ref: '276rev-009', latitude: 34.2945, longitude: 43.7888 },
+      ),
+    }));
+
+    expect(site?.locations.map(location => location.name)).toEqual(['Mas de Torres', 'al-Huwaysilat Upper']);
+  });
+
   it('fails a site whose list is in neither form, rather than read it as no components', () => {
     expect(() => transformRecord(record({ components_list: 'Carnuntum; Enns' }))).toThrow('Components list is not JSON');
     expect(() => transformRecord(record({ components_list: '{"name": "Carnuntum"}' }))).toThrow('not a list');
