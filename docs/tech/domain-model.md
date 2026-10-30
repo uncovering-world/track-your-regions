@@ -131,7 +131,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' /
     'natural' / 'mixed' for a World Heritage site, 'monument' / 'sculpture' for public art,
     'cathedral' / 'church' / 'chapel' / 'monastery' / 'mosque' / 'temple' / 'shrine' /
-    'synagogue' for a place of worship, 'site' / 'museum' for archaeology — and NULL for an
+    'synagogue' / 'sacred mountain' / 'holy site' for a place of worship, 'site' / 'museum' for archaeology — and NULL for an
     art museum, whose kind has no types (ADR-0045, #814; on the membership since ADR-0084, #1253)
   - `MissingSince` / `SourceMembership`: Whether the membership's source still lists the
     place (ADR-0020's first axis, per source since #1251); the place's copy is derived

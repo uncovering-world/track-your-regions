@@ -71,7 +71,7 @@ and accepted by it.
 | [0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md) | A curator writes a work's picture only with its credit | Accepted | 2026-09-06 |
 | [0050](0050-a-renamed-component-is-found-by-its-claim.md) | A renamed component is found by its claim, and a tie the name does not decide is nobody | Accepted | 2026-09-07 |
 | [0051](0051-the-review-queue-is-one-list-of-dated-questions.md) | The review queue is one list of dated questions, filtered and set aside per curator | Accepted | 2026-09-07 |
-| [0052](0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) | A place of worship is admitted for itself or for what it holds | Accepted | 2026-09-08 |
+| [0052](0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) | A place of worship is admitted for itself or for what it holds | Accepted — decisions 1 and 2 narrowed by [0161](0161-a-holy-place-is-a-place-of-worship-and-a-year-of-readers-opens-a-door.md) | 2026-09-08 |
 | [0053](0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md) | A curator's no is a verdict on an arrival and a mark on a part | Accepted — decision 2 narrowed by ADR-0083, decision 3 narrowed by ADR-0067 | 2026-09-09 |
 | [0054](0054-placement-reads-leaves-through-their-pieces.md) | Placement reads the leaves through their pieces, and asks a non-leaf only about what no leaf holds | Accepted | 2026-09-10 |
 | [0055](0055-readership-is-read-from-monthly-dumps-and-an-unseen-country-is-unobserved.md) | Readership is read from Wikimedia's monthly dumps, and a country the data does not show is unobserved, not unread | Draft | 2026-09-11 |
@@ -179,6 +179,7 @@ and accepted by it.
 | [0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md) | The OpenStreetMap layer also keeps whole the items the mapshapes of imported pages list | Accepted | 2026-10-27 |
 | [0159](0159-a-region-no-object-draws-takes-the-union-of-its-child-regions-shapes.md) | A region no object draws takes the union of its child regions' shapes | Accepted | 2026-10-27 |
 | [0160](0160-a-places-name-starts-with-a-capital-unless-its-first-word-is-spelled-otherwise.md) | A place's name starts with a capital unless its first word is spelled otherwise, and the capital passes the gate | Accepted | 2026-10-30 |
+| [0161](0161-a-holy-place-is-a-place-of-worship-and-a-year-of-readers-opens-a-door.md) | A holy place is a place of worship, and a year of readers opens a door under the line | Accepted | 2026-10-30 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
