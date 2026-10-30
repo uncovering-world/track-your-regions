@@ -81,7 +81,9 @@ import {
 import type { OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 import type { SourceLine } from '../sourceLine.js';
-import { collectArchaeology, type CollectedArchaeology, type CollectedArchaeologyMuseum } from './pipeline.js';
+import {
+  collectArchaeology, type ArchaeologyPipelineDeps, type CollectedArchaeology, type CollectedArchaeologyMuseum,
+} from './pipeline.js';
 import { ARCHAEOLOGY_SITE_KIND } from './sites.js';
 import { gatherPlaces, shareOf, type PlaceKind } from '../places/gather.js';
 import type { QueryRunner } from '../wikidataQueries.js';
@@ -930,6 +932,7 @@ export const LINE: SourceLine = {
 export function collect(w: World, opts: {
   line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
   shownElsewhere?: Iterable<string>;
+  openFindsDoor?: ArchaeologyPipelineDeps['openFindsDoor'];
 } = {}): Promise<CollectedArchaeology> {
   const door = categoryDoor(w);
   return collectArchaeology({
@@ -945,6 +948,7 @@ export function collect(w: World, opts: {
     osm: osmDoor(w).read,
     osmDigs: osmDoor(w).digs,
     resolveArticles: osmDoor(w).resolveArticles,
+    openFindsDoor: opts.openFindsDoor,
   });
 }
 

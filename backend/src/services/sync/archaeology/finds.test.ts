@@ -48,6 +48,19 @@ describe('findReason', () => {
     expect(findReason(work({ qid: 'Q1514294', label: 'Sue', year: null, type: 'skeleton', typeQid: 'Q7881' }),
       { classes: ['Q7881', 'Q26401003'], discoveryPlace: { qid: 'Q3025052', label: 'Cheyenne River Indian Reservation' } }, trees)).toBeNull();
   });
+  it('the London Hammer and a handscroll: pseudo-archaeology and painting are no finds (#1999)', () => {
+    // Q3295124, typed `out-of-place artifact` and `hammer`, read 152,397 times a
+    // year: a readership door would otherwise admit the Creation Evidence
+    // Museum for it. The `hammer` class is in the artefact tree here, so the
+    // veto is what refuses it.
+    const withHammer = buildArchaeologyTrees({ museum: [], park: [], naturalHistory: [], artefact: ['Q25294'] });
+    expect(findReason(work({ qid: 'Q3295124', label: 'London Hammer', type: 'out-of-place artifact', typeQid: 'Q1069160' }),
+      { classes: ['Q1069160', 'Q25294'], discoveryPlace: null }, withHammer)).toBeNull();
+    // Q736832, the Chōjū-jinbutsu-giga, typed `emakimono`, made in the 12th century,
+    // given Kyoto (Q34600) as a find spot so that the way in is there and the veto is read first.
+    expect(findReason(work({ qid: 'Q736832', label: 'Chōjū-jinbutsu-giga', year: 1150, type: 'emakimono', typeQid: 'Q1190781' }),
+      { classes: ['Q1190781'], discoveryPlace: { qid: 'Q34600', label: 'Kyoto' } }, trees)).toBeNull();
+  });
   it('a find class on the pool row alone is enough when the facts did not arrive', () => {
     expect(findReason(work({ qid: 'Q5', type: 'hoard', typeQid: 'Q164099' }), undefined, trees)).toBe('hoard');
   });

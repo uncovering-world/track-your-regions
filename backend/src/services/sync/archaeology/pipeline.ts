@@ -108,7 +108,7 @@ import {
 } from './museumVerdict.js';
 export type { CollectedArchaeologyMuseum } from './museumVerdict.js';
 import { collectSitesByFame, type OsmReader, type SiteEntrance } from './sites.js';
-import type { PlaceDoor, UnderFloorReader } from '../readershipDoor.js';
+import type { DoorWork, PlaceDoor, ReadershipDoor, UnderFloorReader } from '../readershipDoor.js';
 import type { VisitWitnessReader } from '../visit/visitWitnesses.js';
 import { reportProposal, uniteDoors, type CollectedArchaeologySite } from './proposal.js';
 import { contentsLine, type SourceLine } from '../sourceLine.js';
@@ -226,6 +226,11 @@ export interface ArchaeologyPipelineDeps {
    * (ADR-0152), or none: the door is shut, or a test asks no readership.
    */
   underFloorSites?: UnderFloorReader;
+  /**
+   * The readership door over the finds pool (ADR-0164), or none: the source's
+   * curator gate is off, or a test asks no readership.
+   */
+  openFindsDoor?: (works: DoorWork[]) => Promise<ReadershipDoor | null>;
   onPhase?: (message: string) => void;
   /** Throws to abandon the run; called before every query. */
   checkCancel?: () => void;
@@ -390,6 +395,11 @@ export async function collectArchaeology(
   const collected = await collectWorks(run, options);
 
   const findLine = contentsLine(deps.line);
+  // A find under the finds' line the world reads counts as one at it (ADR-0164).
+  run.phase('Reading what the world reads of the finds below the line...');
+  const findsDoor = deps.openFindsDoor
+    ? await deps.openFindsDoor([...collected.pool.values()].map((find) => ({ qid: find.qid, sitelinks: find.sitelinks })))
+    : null;
   const members = await readMembers(run, named.values(), pool, collected.graph);
   const candidates = candidatesOf(pool, collected, members.judged);
   const rows = rowsOf(candidates, pool, collected.graph);
@@ -416,6 +426,7 @@ export async function collectArchaeology(
     shownElsewhere: deps.shownElsewhere ?? new Set(),
     line: deps.line,
     findLine,
+    findsDoor,
   };
 
   // A fold may only hand a museum's finds to a museum this kind admits — asked

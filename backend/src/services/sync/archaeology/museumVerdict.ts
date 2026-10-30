@@ -14,7 +14,8 @@
  * module composes those answers with what each museum holds.
  */
 
-import { heldBy, toContent, type WorksCollection } from '../museum/worksCollector.js';
+import { heldBy, type WorksCollection } from '../museum/worksCollector.js';
+import { doorNote, readContent, type ReadershipDoor } from '../readershipDoor.js';
 import type { PoolWork } from '../museum/queries.js';
 import { findJudged, findsHeldBy, placementOf, type MuseumRow } from './museums.js';
 import {
@@ -108,9 +109,12 @@ function admittedNatureOf(
   return { nature: 'find', why: `find: ${find?.label ?? 'a famous find'}` };
 }
 
-/** A find as this kind stores it: the museum import's treasure, saying where it was dug up. */
-const treasureOf = (find: PoolWork, facts: Map<string, FindFacts>): ProcessedContent => ({
-  ...toContent(find),
+/**
+ * A find as this kind stores it: the museum import's treasure, saying where it
+ * was dug up, and badged by its readers where the door opened for it (ADR-0164).
+ */
+const treasureOf = (find: PoolWork, facts: Map<string, FindFacts>, door: ReadershipDoor | null): ProcessedContent => ({
+  ...readContent(find, door),
   foundAt: facts.get(find.qid)?.discoveryPlace ?? null,
 });
 
@@ -149,6 +153,8 @@ export interface MuseumJudging {
   shownElsewhere: ReadonlySet<string>;
   line: SourceLine;
   findLine: LinePair;
+  /** The finds under the finds' line their readers carry (ADR-0164), or null with no door. */
+  findsDoor: ReadershipDoor | null;
 }
 
 /**
@@ -179,8 +185,9 @@ function itemOf(input: {
   findsAboveLine: number;
   admittedFor: PoolWork | undefined;
   findFacts: Map<string, FindFacts>;
+  findsDoor: ReadershipDoor | null;
 }): CollectedArchaeologyMuseum {
-  const { qid, row, at, facts, nature, note, finds, findsAboveLine, admittedFor, findFacts } = input;
+  const { qid, row, at, facts, nature, note, finds, findsAboveLine, admittedFor, findFacts, findsDoor } = input;
   return {
     qid,
     label: row.label,
@@ -199,10 +206,22 @@ function itemOf(input: {
     nature: nature.nature,
     natureWhy: nature.why,
     admissionNote: note,
-    treasures: finds.map((find) => treasureOf(find, findFacts)),
+    treasures: finds.map((find) => treasureOf(find, findFacts, findsDoor)),
     findsAboveLine,
     admittedFor: admittedFor ? { qid: admittedFor.qid, label: admittedFor.label } : undefined,
   };
+}
+
+/**
+ * What the curator reads beside an arrival: the verdict's own question, and,
+ * where a find its readers alone admit carried the museum in, that find's
+ * reading against the bar, as a venue the works door admits says (ADR-0164).
+ */
+function admissionNoteOf(held: string | null, admittedFor: PoolWork | undefined, ctx: Judging): string | null {
+  const opened = admittedFor && admittedFor.sitelinks < ctx.findLine.enterSitelinks
+    ? ctx.findsDoor?.opened.get(admittedFor.qid) : undefined;
+  const read = opened && admittedFor && ctx.findsDoor ? doorNote(admittedFor.label, opened, ctx.findsDoor) : null;
+  return [held, read].filter((part) => part !== null).join(' ') || null;
 }
 
 /**
@@ -256,7 +275,10 @@ function judgeOne(
   // its find while the find is above the finds' *stay* line, so Delphi does not
   // fall out the first time the Charioteer slips from 18 articles to 17.
   const above = ctx.admitted.has(qid) ? ctx.findLine.staySitelinks : ctx.findLine.enterSitelinks;
-  const famous = credited.filter((find) => find.sitelinks >= above);
+  // A find its readers carry under the line counts as one at it, for the door
+  // and for the badge alike, as the treasure writer badges it (ADR-0164).
+  const read = (find: PoolWork) => !!ctx.findsDoor?.opened.has(find.qid);
+  const famous = credited.filter((find) => find.sitelinks >= above || read(find));
   // And the badge counts at the *enter* line, hysteresis or none. Two
   // questions, two numbers: whether the museum stays is the door's, and it
   // forgives a slip; whether it wears the must-see badge is the masterpiece's,
@@ -272,7 +294,7 @@ function judgeOne(
   // find. That way round misses a badge; the other claims one the catalogue
   // cannot show.
   const aboveEnter = credited.filter(
-    (find) => find.sitelinks >= ctx.findLine.enterSitelinks,
+    (find) => find.sitelinks >= ctx.findLine.enterSitelinks || read(find),
   ).length;
 
   // What a museum of no nature would be held for: the famous finds no other
@@ -295,6 +317,8 @@ function judgeOne(
   // Unreachable: `museumVerdict` refuses a veto and a `none` without a find. The
   // check is how the compiler learns what the verdict already decided.
   if (admittedNature === null) return null;
+  const admittedFor = admittedForOf(byFind, row.sitelinks >= ctx.line.enterSitelinks, famous[0], unshown[0]);
+  const note = admissionNoteOf(verdict.held ? verdict.note : null, admittedFor, ctx);
 
   return {
     item: itemOf({
@@ -303,7 +327,7 @@ function judgeOne(
       at,
       facts,
       nature: admittedNature,
-      note: verdict.held ? verdict.note : null,
+      note,
       finds,
       // The badge's count, not the door's: the verdict above was taken on the
       // hysteretic one, and this is the one the treasure writer will read of
@@ -330,8 +354,9 @@ function judgeOne(
       // what keeps it.
       // Held for a find (ADR-0103), the find no other kind shows is what got
       // it in, whatever the museum's own fame.
-      admittedFor: admittedForOf(byFind, row.sitelinks >= ctx.line.enterSitelinks, famous[0], unshown[0]),
+      admittedFor,
       findFacts: ctx.findFacts,
+      findsDoor: ctx.findsDoor,
     }),
   };
 }
@@ -358,7 +383,8 @@ export function judgeAllMuseums(
   const judged = [
     ...new Set([
       ...context.named,
-      ...findJudged(works, works.afterFolds, context.findLine, context.admitted),
+      ...findJudged(works, works.afterFolds, context.findLine, context.admitted,
+        (find) => !!context.findsDoor?.opened.has(find)),
     ]),
   ].sort((a, b) => (ctx.rows.get(b)?.sitelinks ?? 0) - (ctx.rows.get(a)?.sitelinks ?? 0));
 

@@ -104,11 +104,14 @@ export function findHolders(
   works: WorksCollection,
   placements: Record<string, string[]>,
   threshold: number,
+  read: (qid: string) => boolean = () => false,
 ): Set<string> {
+  // A find the readership door opened for is held at any threshold (ADR-0164).
   const tier = selectTier1([...works.pool.values()].map((find) => ({
     qid: find.qid,
     sitelinks: find.sitelinks,
     venues: placements[find.qid] ?? [],
+    read: read(find.qid),
   })), { threshold });
 
   const holders = new Set<string>();
@@ -135,9 +138,10 @@ export function findJudged(
   placements: Record<string, string[]>,
   findLine: LinePair,
   admitted: ReadonlySet<string>,
+  read: (qid: string) => boolean = () => false,
 ): Set<string> {
-  const holders = findHolders(works, placements, findLine.enterSitelinks);
-  for (const qid of findHolders(works, placements, findLine.staySitelinks)) {
+  const holders = findHolders(works, placements, findLine.enterSitelinks, read);
+  for (const qid of findHolders(works, placements, findLine.staySitelinks, read)) {
     if (admitted.has(qid)) holders.add(qid);
   }
   return holders;

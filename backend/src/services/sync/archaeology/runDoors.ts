@@ -52,6 +52,15 @@ export const LOG_PREFIX = '[Archaeology Sync]';
 export const ARCHAEOLOGY_GUIDED_DOOR = { enter: 0.12, stay: 0.08 } as const;
 
 /**
+ * ADR-0164: a find under the finds' line enters by its readers at the 12th
+ * percentile of the finds at the line and stays at the 8th, as Art Museums'
+ * works do (ADR-0162). On the subset of 2026-10-30 the bar reads 27,180 a year
+ * and brings the Flying Horse of Gansu, the Boxer at Rest, the Bull-Leaping
+ * Fresco and the Sutton Hoo helmet (#1999).
+ */
+export const ARCHAEOLOGY_FINDS_DOOR = { enter: 0.12, stay: 0.08 } as const;
+
+/**
  * The run's door to Wikidata, with the answers kept.
  *
  * The museum collector's shape (ADR-0030): one wait budget for the whole

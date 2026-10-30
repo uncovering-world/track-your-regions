@@ -17,8 +17,9 @@
  *    ancient sculpture and mosaics the art museums' own roots already hold and
  *    that carry no discovery place of their own.
  *
- * Against all four stands one veto: natural history (`NOT_A_FIND`, walked as
- * trees since #890 — the Bendegó meteorite is an `iron meteorite`). The Hope
+ * Against all four stands one veto: no find whatever else it carries
+ * (`NOT_A_FIND`): natural history, walked as trees since #890 — the Bendegó
+ * meteorite is an `iron meteorite` — and pseudo-archaeology and handscrolls. The Hope
  * Diamond and Sue the tyrannosaur both come in through a discovery place and
  * neither was dug up by an archaeologist, so the veto is read first and
  * refuses the row whatever else it carries. And before any road, an item with
