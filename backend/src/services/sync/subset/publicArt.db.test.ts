@@ -17,6 +17,9 @@ import { subsetOnlyDoor } from './reader.js';
 const door = subsetOnlyDoor();
 const LOUVRE = 'Q19675';
 const MONA_LISA = 'Q12418';
+const KAILASH = 'Q229107';
+const MOUNTAIN = 'Q8502';
+const HINDUISM = 'Q9089';
 const LISA_DEL_GIOCONDO = 'Q153032';
 const PORTRAIT = 'Q134307';
 const LEONARDO = 'Q762';
@@ -91,6 +94,8 @@ const ENTITIES: Array<[string, number, Record<string, unknown>]> = [
     sitelinks: { enwiki: 'Mona Lisa' },
   }],
   [ROOM_325, 0, { claims: { P276: [statement('R1', SULLY_WING)] }, sitelinks: {} }],
+  // The faiths a holy mountain is holy to (#1978).
+  [KAILASH, 85, { claims: { P31: [statement('K1', MOUNTAIN)], P140: [statement('K2', HINDUISM), statement('K3', BUDDHISM)] }, sitelinks: {} }],
   [MAMAN, 30, {
     claims: {
       P625: [
@@ -268,6 +273,12 @@ describe('Public Art read from the subset (#1459)', () => {
       classes: [PAINTING], locations: [LOUVRE], parents: [], collections: [], creators: ['Leonardo da Vinci'],
       commemorates: [], depicts: [LISA_DEL_GIOCONDO], genres: [PORTRAIT],
     });
+  });
+
+  it('reads the faiths a holy place is holy to, and leaves them absent where none is named', async () => {
+    const facts = await fetchEntityFacts(door, [KAILASH, MONA_LISA]);
+    expect(facts.get(KAILASH)?.religions).toEqual([HINDUISM, BUDDHISM]);
+    expect(facts.get(MONA_LISA)).not.toHaveProperty('religions');
   });
 
   it('reads what a depicted subject is, and nothing of one the subset did not keep', async () => {

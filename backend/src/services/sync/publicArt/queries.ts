@@ -483,6 +483,8 @@ export interface EntityFacts {
    * monumental sculpture and filed as an equestrian statue (#1832).
    */
   genres: string[];
+  /** `P140`: the faiths it is holy to, which tells a holy mountain people worship at from a peak (#1978). */
+  religions?: string[];
 }
 
 export const emptyFacts = (): EntityFacts => ({
@@ -525,7 +527,7 @@ export async function fetchEntityFacts(
   // has left says nothing about where it is today — the Horses of Saint Mark
   // carry nine ended locations and one collection that stands.
   const rows = await sparql(`
-    SELECT ?e ?cls ?loc ?parent ?coll ?creator ?creatorLabel ?commemorates ?depicts ?genre WHERE {
+    SELECT ?e ?cls ?loc ?parent ?coll ?creator ?creatorLabel ?commemorates ?depicts ?genre ?religion WHERE {
       VALUES ?e { ${values(qids)} }
       { ?e wdt:P31 ?cls } UNION {
         ${standing('?e', 'P276', '?loc')}
@@ -541,9 +543,11 @@ export async function fetchEntityFacts(
         ?e wdt:P180 ?depicts
       } UNION {
         ?e wdt:P136 ?genre
+      } UNION {
+        ?e wdt:P140 ?religion
       }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
-    }`, { kind: 'edges', label: `classes, containers, owners, makers, subjects and genres of ${qids.length} entities` });
+    }`, { kind: 'edges', label: `classes, containers, owners, makers, subjects, genres and faiths of ${qids.length} entities` });
 
   for (const row of rows) {
     const qid = extractQid(row.e?.value ?? '');
@@ -556,6 +560,10 @@ export async function fetchEntityFacts(
     pushEntity(facts.commemorates, row.commemorates);
     pushEntity(facts.depicts, row.depicts);
     pushEntity(facts.genres, row.genre);
+    if (row.religion) {
+      facts.religions ??= [];
+      pushEntity(facts.religions, row.religion);
+    }
     if (row.creatorLabel) {
       let seen = seenCreators.get(qid);
       if (!seen) { seen = new Set(); seenCreators.set(qid, seen); }
