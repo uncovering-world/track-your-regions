@@ -227,10 +227,10 @@ export function refusalHelp(reason: string | null | undefined): string | null {
   }
   if (reason.includes(OTHER_PURPOSE)) {
     return 'A venue Wikidata already calls an art museum is let in whatever it holds. This one it '
-      + 'does not, and it calls it something with another purpose: a military museum, a library or '
-      + 'an archive. Paintings hang in all three, and none of them is where a traveller goes to see '
-      + 'art, so the rule refuses it before weighing what it holds. A palace or a castle with a '
-      + 'picture gallery is not among them.'
+      + 'does not, and it calls it something with another purpose: a military museum, a natural '
+      + 'history museum, a library or an archive. Each may hold a painting or a jewel, and none of '
+      + 'them is where a traveller goes to see art, so the rule refuses it before weighing what it '
+      + 'holds. A palace or a castle with a picture gallery is not among them.'
       + `\n\nThe rule’s own words: “${reason}”.`;
   }
   if (reason.includes(NOTHING_TO_JUDGE)) {
