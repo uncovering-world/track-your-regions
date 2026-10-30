@@ -50,6 +50,14 @@ describe('a text rewritten only in its typesetting', () => {
     expect(filed(corrupted)).toEqual({ written: [], held: ['description'] });
   });
 
+  it('passes a name given its first capital, and holds a capital taken away (#2137, ADR-0160)', () => {
+    // Paris's Place de la Concorde, which Wikidata's English label writes in French style.
+    const capitalized = computeChangeSet(snapshot({ name: 'place de la Concorde' }), snapshot({ name: 'Place de la Concorde' }), [], HELD);
+    expect(filed(capitalized)).toEqual({ written: [['name', 'typography']], held: [] });
+    const lowered = computeChangeSet(snapshot({ name: 'Place de la Concorde' }), snapshot({ name: 'place de la Concorde' }), [], HELD);
+    expect(filed(lowered)).toEqual({ written: [], held: ['name'] });
+  });
+
   it('is filed as any change on a row the gate does not hold', () => {
     const result = computeChangeSet(snapshot(), snapshot({ description: GONDWANA.replace('’', "'") }), [], false);
     expect(filed(result)).toEqual({ written: [['description', undefined]], held: [] });

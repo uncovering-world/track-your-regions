@@ -84,7 +84,7 @@ import {
   claimedMetadataKeys, computeChangeSet, METADATA_SET_KEYS, passesAsUnseen, passingColumns, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS,
   type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
-import { tidyLabel } from '@tyr/shared/labels';
+import { capitalizedName, tidyLabel } from '@tyr/shared/labels';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 import { distanceMeters, LOCATION_UNCHANGED_METERS, SHORT_MOVE_METERS } from '@tyr/shared/moves';
 import { shortMovePassesSql } from '../../db/shortMove.js';
@@ -603,7 +603,9 @@ function withShowablePicture(params: ExperienceUpsertParams): ExperienceUpsertPa
 }
 
 /**
- * The names a run offers, as a person would type them (`tidyLabel`, #835).
+ * The names a run offers, as a person would type them (`tidyLabel`, #835), the
+ * place's own name starting with a capital (`capitalizedName`, ADR-0160):
+ * Wikidata's English labels lowercase a common noun, *place de la Concorde*.
  *
  * Here rather than in each collector, for the reason the picture rule is: three
  * sources write a name, every one of them reads it off a label service that
@@ -625,7 +627,7 @@ function withTidyNames(params: ExperienceUpsertParams): ExperienceUpsertParams {
       metadata[key] = names.map(name => (typeof name === 'string' ? tidyLabel(name) : name));
     }
   }
-  return { ...params, name: tidyLabel(params.name), nameLocal, metadata };
+  return { ...params, name: capitalizedName(tidyLabel(params.name)), nameLocal, metadata };
 }
 
 /**

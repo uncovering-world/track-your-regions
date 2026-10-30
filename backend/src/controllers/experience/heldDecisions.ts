@@ -48,7 +48,7 @@ import type { LockedExperience } from '../../db/experienceWriter.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { ContentKind } from '../../services/sync/types.js';
 import { tidyLabel } from '@tyr/shared/labels';
-import { tidyLabelSql } from '../../services/sync/labelFold.js';
+import { sameTypographySql, tidyLabelSql } from '../../services/sync/labelFold.js';
 
 /** The two answers a curator can give one held row — the column's own CHECK list. */
 export type HeldAnswer = CheckValue<'experience_held_decisions', 'answer'>;
@@ -179,7 +179,10 @@ export function heldPartRefusedSql(
  * reading the row migration 047 tidied — records one. Compared raw, a refused
  * move of such a point would come back on the card after one run, publishable
  * by the next "publish all": the contract above broken across exactly one run.
- * The same rule `recordedLocationSql` identifies the part by.
+ * A name the run since rewrote in typography alone, its first capital included
+ * (`sameTypographySql`, ADR-0160), still names the part the answer was given
+ * to: an answer to *mas de Torres* stands against a record naming *Mas de
+ * Torres*. The same rule `recordedLocationSql` identifies the part by.
  */
 function heldPartMatchSql(
   experience: string, kind: string, item: string, entry: string, verdict?: HeldAnswer,
@@ -190,11 +193,17 @@ function heldPartMatchSql(
        WHERE d.experience_id = ${experience}
          AND d.part_kind = ${kind}
          AND d.part_ref IS NOT DISTINCT FROM (${item}->'item'->>'ref')
-         AND ${tidyLabelSql('d.part_name')}
-             IS NOT DISTINCT FROM ${tidyLabelSql(`(${item}->'item'->>'name')`)}
+         AND ${partNamedSql(item)}
          AND d.field = ${entry}->>'field'
          AND d.value = COALESCE(${entry}->'new', 'null'::jsonb)
          ${verdictClause})`;
+}
+
+/** Whether a decision's part name names the record's item, by the rule above. */
+function partNamedSql(item: string): string {
+  const named = `(${item}->'item'->>'name')`;
+  return `(${tidyLabelSql('d.part_name')} IS NOT DISTINCT FROM ${tidyLabelSql(named)}
+           OR ${sameTypographySql('d.part_name', named)})`;
 }
 
 /**
@@ -217,7 +226,11 @@ function answerOfSql(experience: string, syncLog: string, entry = 'f'): string {
             ORDER BY d.source_id NULLS LAST LIMIT 1)`;
 }
 
-/** The same, for a field of a part. */
+/**
+ * The same, for a field of a part: the latest answer, since a part's name
+ * rewritten in typography alone can match two answers, given before and after
+ * the rewrite (`partNamedSql`), and the later one is the one that holds.
+ */
 function answerOfPartSql(
   experience: string, kind: string, item = 'c', entry = 'f',
 ): string {
@@ -225,10 +238,10 @@ function answerOfPartSql(
             WHERE d.experience_id = ${experience}
               AND d.part_kind = ${kind}
               AND d.part_ref IS NOT DISTINCT FROM (${item}->'item'->>'ref')
-              AND ${tidyLabelSql('d.part_name')}
-                  IS NOT DISTINCT FROM ${tidyLabelSql(`(${item}->'item'->>'name')`)}
+              AND ${partNamedSql(item)}
               AND d.field = ${entry}->>'field'
-              AND d.value = COALESCE(${entry}->'new', 'null'::jsonb))`;
+              AND d.value = COALESCE(${entry}->'new', 'null'::jsonb)
+            ORDER BY d.decided_at DESC, d.id DESC LIMIT 1)`;
 }
 
 /**
@@ -327,8 +340,9 @@ export async function recordHeldAnswers(
     // name (`tidyLabel`, #835): a record filed before the writers tidied names
     // its part with the run of spaces the run saw, and an answer keyed by that
     // would not meet the tidied record the next run files. Tidied at the
-    // write, the unique key above is a key on the tidied form, which is what
-    // keeps `answerOfPartSql` a single row.
+    // write, the unique key above is a key on the tidied form; a name the run
+    // rewrote in typography alone can still meet two answers, of which
+    // `answerOfPartSql` reads the latest.
     // A kind's field is answered for the source of the run that proposed it (ADR-0125).
     const forTheKind = row.kind === null && KIND_FIELDS.has(row.field);
     await client.query(

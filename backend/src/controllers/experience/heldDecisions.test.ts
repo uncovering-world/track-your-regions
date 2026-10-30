@@ -6,13 +6,15 @@
  * the writers tidied names its part with the run of spaces the run saw; an
  * answer keyed by that would not meet the tidied record the next run files,
  * and a refusal would come back on the card. Tidied at the write, the unique
- * key on `part_name` is a key on the tidied form, which is what keeps the
- * scalar `answerOfPartSql` a single row.
+ * key on `part_name` is a key on the tidied form; a name rewritten in
+ * typography alone can still meet two answers, and the scalar
+ * `answerOfPartSql` reads the latest.
  */
 
 import { describe, it, expect, vi } from 'vitest';
 import type { PoolClient } from 'pg';
-import { recordHeldAnswers } from './heldDecisions.js';
+import { heldPartAnsweredSql, heldPartRefusedSql, recordHeldAnswers } from './heldDecisions.js';
+import { sameTypographySql } from '../../services/sync/labelFold.js';
 
 function fakeClient() {
   const query = vi.fn(async (_sql: string, _params: unknown[]) => ({ rows: [], rowCount: 1 }));
@@ -61,5 +63,14 @@ describe('recordHeldAnswers', () => {
 
     const bound = query.mock.calls.map(call => call[1]);
     expect(bound.map(params => [params[8], params[9]])).toEqual([[true, 170], [false, 170], [false, 170]]);
+  });
+});
+
+describe('an answer to a held part, after the run gave its name a capital (#2137)', () => {
+  it('still stands against the record that names the part with the capital', () => {
+    // The answer was given to *mas de Torres*; the next record names *Mas de Torres*.
+    const term = sameTypographySql('d.part_name', "(c->'item'->>'name')");
+    expect(heldPartRefusedSql('$1', '$2', 'c', 'f')).toContain(term);
+    expect(heldPartAnsweredSql('$1', '$2', 'c', 'f')).toContain(term);
   });
 });

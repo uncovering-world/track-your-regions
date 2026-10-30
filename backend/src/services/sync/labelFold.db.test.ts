@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { foldTypography, sameTypography, untypeset } from '@tyr/shared/labels';
+import { capitalizedName, foldTypography, sameTypography, untypeset } from '@tyr/shared/labels';
 import { pool } from '../../db/index.js';
-import { sameTypographySql, typographyFoldSql, untypesetSql } from './labelFold.js';
+import { capitalizedNameSql, sameTypographySql, typographyFoldSql, untypesetSql } from './labelFold.js';
 
 /**
  * The typography fold spelled for Postgres answers as the TypeScript rule does
@@ -47,6 +47,19 @@ const SAMPLES = [
   'Barrel 12"',
   'the \u201cGolden" Gate',
   'Kamchatka\u201d Park',
+  'mortuary temple of Hatshepsut',
+  'place de la Concorde',
+  '\u00eele de la Cit\u00e9',
+  '[main complex of Mahabalipuram]',
+  'al-Azhar Mosque',
+  'iSimangaliso Wetland Park',
+  "'s-Hertogenbosch",
+  '1st Avenue',
+  ' mas de Torres',
+  'mas\u00a0Torres',
+  '\u{1044F}x',
+  '\u00dfe street',
+  '\u0149n',
   '',
 ];
 
@@ -66,6 +79,16 @@ describe("the list's defects mended in SQL (#1965)", () => {
   });
 });
 
+describe('the first capital in SQL (#2137)', () => {
+  it('capitalizes every sample as capitalizedName does', async () => {
+    const result = await pool.query<{ capitalized: string }>(
+      `SELECT ${capitalizedNameSql('v')} AS capitalized FROM unnest($1::text[]) WITH ORDINALITY AS t(v, n) ORDER BY n`,
+      [SAMPLES],
+    );
+    expect(result.rows.map(row => row.capitalized)).toEqual(SAMPLES.map(capitalizedName));
+  });
+});
+
 describe('the typography fold in SQL', () => {
   it('folds every sample as foldTypography does', async () => {
     const result = await pool.query<{ folded: string }>(
@@ -75,7 +98,7 @@ describe('the typography fold in SQL', () => {
     expect(result.rows.map(row => row.folded)).toEqual(SAMPLES.map(foldTypography));
   });
 
-  it('answers a rewrite as sameTypography does, one way for the escape', async () => {
+  it('answers a rewrite as sameTypography does, one way for the escape and the first capital', async () => {
     const pairs: [string, string][] = [
       ['Maltepe Tumulus\\t', 'Maltepe Tumulus'],
       ['Maltepe Tumulus', 'Maltepe Tumulus\\t'],
@@ -91,6 +114,9 @@ describe('the typography fold in SQL', () => {
       ['Fort Ross,California \u201cthe fort\u201d', 'Fort Ross,California "the fort"'],
       ['the \u201cGolden" Gate', 'the \u201cGolden\u201d Gate'],
       ['Park', 'Park\u201d'],
+      ['place de la Concorde', 'Place de la Concorde'],
+      ['Place de la Concorde', 'place de la Concorde'],
+      ['al-Azhar Mosque', 'Al-Azhar Mosque'],
     ];
     const result = await pool.query<{ same: boolean }>(
       `SELECT ${sameTypographySql('s', 'i')} AS same
@@ -98,6 +124,6 @@ describe('the typography fold in SQL', () => {
       [pairs.map(([stored]) => stored), pairs.map(([, incoming]) => incoming)],
     );
     expect(result.rows.map(row => row.same)).toEqual(pairs.map(([stored, incoming]) => sameTypography(stored, incoming)));
-    expect(result.rows.map(row => row.same)).toEqual([true, false, false, true, false, false, false, true, false, true, false, true, true, false]);
+    expect(result.rows.map(row => row.same)).toEqual([true, false, false, true, false, false, false, true, false, true, false, true, true, false, true, false, false]);
   });
 });

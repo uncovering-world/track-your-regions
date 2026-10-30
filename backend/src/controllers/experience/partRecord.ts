@@ -61,7 +61,7 @@
  */
 
 import { venueCountSql, venuesSql } from '../../db/readerPredicates.js';
-import { tidyLabelSql } from '../../services/sync/labelFold.js';
+import { sameTypographySql, tidyLabelSql } from '../../services/sync/labelFold.js';
 import { pointsShownSql, pointClaimsSql } from '../../db/placePoints.js';
 
 /**
@@ -85,7 +85,10 @@ import { pointsShownSql, pointClaimsSql } from '../../db/placePoints.js';
  * writers tidied saw *marmalo  IV* with two spaces where the row now holds one
  * — migration 047 rewrote the rows and left the records alone, so an open
  * proposal on such a point would otherwise score `named` false for ever, and
- * where its reference admits siblings go unidentified.
+ * where its reference admits siblings go unidentified. A record also names a
+ * point by what it was called before a run rewrote its name in typography
+ * alone, its first capital included (`sameTypographySql`, ADR-0139, ADR-0160):
+ * the record holds *mas de Torres* where the row now holds *Mas de Torres*.
  */
 export function recordedLocationSql(
   { experienceId, ref, name }: { experienceId: string; ref: string; name: string },
@@ -101,8 +104,8 @@ export function recordedLocationSql(
                                  count(*) OVER () AS candidates,
                                  count(*) FILTER (WHERE cand.renamed) OVER () AS renamed_rows
                             FROM (SELECT el.id,
-                                         ${tidyLabelSql('el.name')}
-                                           IS NOT DISTINCT FROM ${tidyLabelSql(name)} AS named,
+                                         (${tidyLabelSql('el.name')} IS NOT DISTINCT FROM ${tidyLabelSql(name)}
+                                           OR ${sameTypographySql(name, 'el.name')}) AS named,
                                          el.curated_fields ? 'name' AS renamed
                                     FROM ${pointsShownSql(`${experienceId}`, 'el')}
                                    WHERE el.external_ref IS NOT DISTINCT FROM ${ref}

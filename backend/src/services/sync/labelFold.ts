@@ -111,6 +111,34 @@ export const typographyFoldSql = (expression: string): string => {
       '${quotes}', '''', 'g'), '${dashes}', '-', 'g')`);
 };
 
+/**
+ * The lowercase letters whose capital is more than one letter in JavaScript
+ * (*ß*, *ŉ*, the ligatures), which `capitalizedName` keeps: read off
+ * JavaScript's own mapping, so the SQL keeps exactly those, whatever
+ * Postgres's `upper` would make of them (glibc gives *ß* the single *ẞ*).
+ */
+const TWO_LETTER_CAPITALS: readonly number[] = Array.from({ length: 0x10000 }, (_, cp) => cp)
+  .filter(cp => /\p{Ll}/u.test(String.fromCodePoint(cp)) && [...String.fromCodePoint(cp).toUpperCase()].length > 1);
+
+/**
+ * `capitalizedName` (`@tyr/shared/labels`) as SQL over a text expression: the
+ * first letter a capital, after whatever punctuation opens the name, unless
+ * the first word carries a capital of its own (#2137, ADR-0160). The first word
+ * ends at JavaScript's whitespace (`SQL_WHITESPACE_ALTERNATION`), the no-break
+ * space included, which Postgres's `\S` does not stop at. A first letter whose
+ * capital is more than one letter is kept (`TWO_LETTER_CAPITALS`). Pinned to
+ * the TypeScript rule by `labelFold.db.test.ts`.
+ */
+export const capitalizedNameSql = (expression: string): string =>
+  `(SELECT CASE WHEN cap.t ~ '^[^[:alpha:][:digit:]]*[[:lower:]]'
+                     AND cap.t !~ '^((?!${SQL_WHITESPACE_ALTERNATION}).)*[[:upper:]]'
+                     AND cap.t !~ '^[^[:alpha:][:digit:]]*${alternation(TWO_LETTER_CAPITALS)}'
+                THEN substring(cap.t from '^[^[:alpha:][:digit:]]*')
+                     || upper(substring(cap.t from '^[^[:alpha:][:digit:]]*(.)'))
+                     || substring(cap.t from '^[^[:alpha:][:digit:]]*.(.*)$')
+                ELSE cap.t END
+      FROM (SELECT ${expression} AS t) cap)`;
+
 /** Whether a text holds one of the list's defects, its double quote shapes read straight. */
 const defectiveSql = (expression: string): string =>
   `(${untypesetSql(straightDoubleQuotesSql(expression))} <> ${straightDoubleQuotesSql(expression)})`;
@@ -118,11 +146,12 @@ const defectiveSql = (expression: string): string =>
 /**
  * `sameTypography` as SQL: an incoming text that differs from the stored one,
  * ends in no literal escape, brings none of the list's defects into a stored
- * text clear of them, and folds to the same text. Null on either side is no
- * rewrite.
+ * text clear of them, and folds to the same text, or to the stored text with
+ * its first letter capitalized (`capitalizedNameSql`, ADR-0160). Null on
+ * either side is no rewrite.
  */
 export const sameTypographySql = (stored: string, incoming: string): string =>
   `COALESCE(${stored} <> ${incoming}
      AND ${incoming} !~ '\\\\[tn]${SQL_WHITESPACE_ALTERNATION}*$'
      AND NOT (${defectiveSql(incoming)} AND NOT ${defectiveSql(stored)})
-     AND ${typographyFoldSql(stored)} = ${typographyFoldSql(incoming)}, false)`;
+     AND ${typographyFoldSql(incoming)} IN (${typographyFoldSql(stored)}, ${typographyFoldSql(capitalizedNameSql(stored))}), false)`;
