@@ -536,13 +536,13 @@ describe('publicArtVerdict — a public clock with a show (#2136)', () => {
   const ATHENS_MUSEUM = inside('Q637187', 'National Archaeological Museum of Athens', [MUSEUM]);
   const nothingOffered = new Set<string>();
 
-  it('admits the Prague Astronomical Clock, filed as a bell tower, on a town hall Wikidata also types a museum', () => {
+  it('admits the Prague Astronomical Clock as a clock, filed as a bell tower, on a town hall Wikidata also types a museum', () => {
     const v = publicArtVerdict(facts({
       qid: 'Q729370',
       classes: [ASTRONOMICAL_CLOCK, BELL_TOWER],
       containers: [inside('Q421678', 'Old Town Square', [SQUARE]), OLD_TOWN_HALL],
     }), trees, art, nothingOffered);
-    expect(v).toMatchObject({ pass: true, type: 'sculpture' });
+    expect(v).toMatchObject({ pass: true, type: 'clock' });
   });
 
   it('leaves the Strasbourg astronomical clock to the cathedral it stands in, which Places of worship offers', () => {

@@ -28,7 +28,7 @@ import {
 import type { SubjectFacts } from './subjects.js';
 
 /** The types the two kinds file a row under, disjoint so a value names its kind (`experienceTypes.ts`). */
-const PUBLIC_ART_TYPES = ['sculpture', 'fountain', 'street-art'] as const;
+const PUBLIC_ART_TYPES = ['sculpture', 'fountain', 'street-art', 'clock'] as const;
 const MONUMENT_TYPES = ['memorial', 'monument', 'arch', 'column', 'obelisk'] as const;
 export type PublicArtType = (typeof PUBLIC_ART_TYPES)[number];
 export type MonumentType = (typeof MONUMENT_TYPES)[number];
@@ -85,8 +85,8 @@ export const formsOf = (e: KindFacts): string[] => [...e.classes, ...e.genres];
  * Public art: a sculpture, a statue, a fountain, a mural, a public clock with
  * a show (`PUBLIC_CLOCK_CLASSES`). A fountain before a sculpture, since the
  * Trevi Fountain is typed both and is visited as the fountain; street art
- * before either. A public clock has no type of its own yet and is filed as a
- * sculpture.
+ * before either. A public clock is filed as a clock, before anything else it
+ * is: the Zytglogge is a gate tower too (#2140).
  */
 export const PUBLIC_ART_RULE: KindRule = {
   noun: 'public art',
@@ -98,6 +98,7 @@ export const PUBLIC_ART_RULE: KindRule = {
   memorialLifts: false,
   types: PUBLIC_ART_TYPES,
   type: (e, trees) => {
+    if (has(e.classes, PUBLIC_CLOCK_CLASSES)) return 'clock';
     if (has(e.classes, STREET_ART_CLASSES)) return 'street-art';
     if (has(e.classes, trees.fountain)) return 'fountain';
     return 'sculpture';

@@ -26,10 +26,13 @@ import type { FetchResult, FilteredEntity, ProcessItemResult, SyncRunContext, Sy
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { classifyPublicArt, ENTER_SITELINKS, openArtworkDoor, PUBLIC_ART_KIND, streetArtCandidates } from './publicArt/pipeline.js';
+import { isPublicClock } from './publicArt/clockLine.js';
+import { yearlyReaders } from './places/candidates.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
 import { artworkReadershipDoorFor, type PlaceDoor } from './readershipDoor.js';
-import { shareOf, type GatheredPlaces, type PlaceGather } from './places/gather.js';
+import { shareOf, type GatheredPlaces, type KindShare, type PlaceGather } from './places/gather.js';
+import type { PublicArtTrees } from './publicArt/classes.js';
 import type { SparqlFn } from './wikidataQueries.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './publicArt/kindRules.js';
 import { PUBLIC_ART_SOURCES } from './passes.js';
@@ -84,9 +87,10 @@ interface ArtworkDoor { open: () => Promise<PlaceDoor | undefined> }
  * Public art's and Monuments & memorials' classifier: their kind's rule over
  * the public-art share. `streetArt` says the kind holds the street-art places
  * its entrance names (#2035), reads what their rule asks, and writes the works
- * they hold (#2055).
+ * they hold (#2055). `clocks` says the kind holds a public clock below its line
+ * to the clocks' own (`CLOCK_LINE`, #2140), with the year's readers it reads.
  */
-function publicArtClassifier(rule: KindRule, door?: ArtworkDoor, streetArt = false): PlaceClassifier {
+function publicArtClassifier(rule: KindRule, door?: ArtworkDoor, streetArt = false, clocks = false): PlaceClassifier {
   return {
     // The places a kind outside these two offers a reader, so a work outdoors
     // on a venue no such kind offers stays public art rather than being
@@ -96,7 +100,8 @@ function publicArtClassifier(rule: KindRule, door?: ArtworkDoor, streetArt = fal
       const offered = await placesOtherSourcesOffer(PUBLIC_ART_SOURCES);
       const read = await openArtworkDoor(await door?.open(), share, admitted, rule, offered);
       const streetArtRead = streetArt ? await readStreetArt(sparql, streetArtCandidates(share, rule), share.facts) : null;
-      return classifyPublicArt(share, rule, admitted, offered, read, streetArtRead);
+      const clockReaders = clocks ? await publicClockReaders(share) : undefined;
+      return classifyPublicArt(share, rule, admitted, offered, read, streetArtRead, clockReaders);
     },
     types: rule.types,
     tag: 'outdoor',
@@ -104,13 +109,19 @@ function publicArtClassifier(rule: KindRule, door?: ArtworkDoor, streetArt = fal
   };
 }
 
+/** A year's readers of the public clocks among the candidates, for the line they are held to (#2140). */
+async function publicClockReaders(share: KindShare<PublicArtTrees>): Promise<Map<string, number> | null> {
+  const clocks = [...share.pool.keys()].filter((qid) => isPublicClock(share.facts.get(qid)?.classes ?? []));
+  return clocks.length ? yearlyReaders(clocks, LOG_PREFIX) : new Map<string, number>();
+}
+
 /** The classifier each public-art source decides by. */
 const PUBLIC_ART_CLASSIFIERS: Readonly<Record<number, PlaceClassifier>> = {
-  // Public art alone opens the readership door: Monuments & memorials was not
-  // measured for it.
+  // Public art alone opens the readership door and holds the public clocks to
+  // their own line: Monuments & memorials was measured for neither.
   [LANDMARK_SOURCE_ID]: publicArtClassifier(PUBLIC_ART_RULE, {
     open: () => artworkReadershipDoorFor(LANDMARK_SOURCE_ID, ENTER_SITELINKS, LOG_PREFIX),
-  }, true),
+  }, true, true),
   6: publicArtClassifier(MONUMENTS_RULE),
 };
 
