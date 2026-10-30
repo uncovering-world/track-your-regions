@@ -158,7 +158,7 @@ and accepted by it.
 | [0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md) | The OpenStreetMap layer keeps a full geometry only for what a kind draws | Accepted — decision 1 narrowed by [0157](0157-the-openstreetmap-layer-keeps-whole-the-objects-of-the-items-an-import-names.md) | 2026-10-22 |
 | [0137](0137-a-point-a-reader-sees-is-another-sources-point-within-ten-metres.md) | A point a reader sees is another source's point within ten metres | Accepted — decision 1 narrowed by [0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md) | 2026-10-23 |
 | [0138](0138-unescos-page-about-a-site-is-kept-by-every-other-familys-run.md) | UNESCO's page about a site is kept by every other family's run | Accepted | 2026-10-23 |
-| [0139](0139-a-field-no-reader-sees-and-a-typographic-rewrite-pass-the-gate.md) | A field no reader sees, and a typographic rewrite, pass the gate | Accepted — decision 2 narrowed by [0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md) | 2026-10-23 |
+| [0139](0139-a-field-no-reader-sees-and-a-typographic-rewrite-pass-the-gate.md) | A field no reader sees, and a typographic rewrite, pass the gate | Accepted — decision 2 narrowed by [0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md) and [0160](0160-a-places-name-starts-with-a-capital-unless-its-first-word-is-spelled-otherwise.md) | 2026-10-23 |
 | [0140](0140-a-short-move-passes-the-gate.md) | A short move passes the gate | Accepted | 2026-10-23 |
 | [0141](0141-the-catalogue-accepts-a-component-candidate-of-the-points-own-name-at-the-point.md) | The catalogue accepts a component candidate of the point's own name at the point | Accepted | 2026-10-23 |
 | [0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md) | A place is found by its identifiers before a run creates one | Accepted | 2026-10-23 |
@@ -178,6 +178,7 @@ and accepted by it.
 | [0157](0157-the-openstreetmap-layer-keeps-whole-the-objects-of-the-items-an-import-names.md) | The OpenStreetMap layer keeps whole the objects of the items a world-view import names | Accepted — decision 1 narrowed by [0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md) | 2026-10-27 |
 | [0158](0158-the-openstreetmap-layer-also-keeps-whole-the-items-the-mapshapes-of-imported-pages-list.md) | The OpenStreetMap layer also keeps whole the items the mapshapes of imported pages list | Accepted | 2026-10-27 |
 | [0159](0159-a-region-no-object-draws-takes-the-union-of-its-child-regions-shapes.md) | A region no object draws takes the union of its child regions' shapes | Accepted | 2026-10-27 |
+| [0160](0160-a-places-name-starts-with-a-capital-unless-its-first-word-is-spelled-otherwise.md) | A place's name starts with a capital unless its first word is spelled otherwise, and the capital passes the gate | Accepted | 2026-10-30 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

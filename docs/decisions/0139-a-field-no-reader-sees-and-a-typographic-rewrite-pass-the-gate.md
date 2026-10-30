@@ -1,7 +1,7 @@
 # ADR-0139: A field no reader sees, and a typographic rewrite, pass the gate
 
 **Date:** 2026-10-23
-**Status:** Accepted — decision 2 narrowed by [ADR-0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md)
+**Status:** Accepted — decision 2 narrowed by [ADR-0147](0147-the-world-heritage-lists-typesetting-defects-are-mended-on-reading.md) and [ADR-0160](0160-a-places-name-starts-with-a-capital-unless-its-first-word-is-spelled-otherwise.md)
 **Issue:** [#1834](https://github.com/uncovering-world/track-your-regions/issues/1834)
 **Narrows:** [ADR-0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) decision 1
 
