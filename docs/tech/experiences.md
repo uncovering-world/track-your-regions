@@ -2352,7 +2352,7 @@ traveller browses apart (#1807). **Public art** (kind and source 3) is what was 
 at: a sculpture, a statue, a fountain, a mural — the Little Mermaid, the Trevi Fountain, Cloud
 Gate, the Fraternal Kiss on the East Side Gallery — a public clock with a show, an astronomical
 clock or a Glockenspiel (`PUBLIC_CLOCK_CLASSES`, #2136: the Prague Astronomical Clock, the
-Zytglogge), filed as a sculpture until the kind has a type for it, and a wall or district known for its street
+Zytglogge), filed under the `clock` type (#2140), and a wall or district known for its street
 art, taken whole as one place, since its works are repainted while the place stays (the East Side
 Gallery, the Wynwood Walls; #1994). The run finds such a place through the street-art entrance
 and rule (#2035, **Street-art places** below) and files it under the `street-art` type. The run
@@ -2653,6 +2653,17 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    row that fell below 18 is refused by name — `17 Wikipedia editions: below the world tier's line (22 to
    enter, 18 to stay)` — and a candidate below the line that was never in is simply out, and
    nothing is said about it: a refusal names a rule, and none ran on it.
+   **A public clock with a show has a line of its own** (#2140, `CLOCK_LINE` in
+   `publicArt/clockLine.ts`): it is read in few languages, Munich's Rathaus-Glockenspiel in 7
+   editions and the Olomouc Astronomical Clock in 7, so the kind asks for the clock classes below
+   the pool's floor down to 4 editions (`belowFloor` on `PUBLIC_ART_KIND`), and a clock the kind's
+   line does not keep enters with 5 editions **and** 15,000 readers in the latest year
+   (`yearlyReaders`), and stays with 4 and 10,000. Chosen on the dev subset on 2026-10-30 over
+   every astronomical clock and Glockenspiel: Munich (65,572 readers), Messina (22,206) and Olomouc
+   (16,331) enter, and the Gdańsk clock (7,997) and Besançon's (5,949) do not. With no year read,
+   no clock enters, and a held one keeps its place on the stay line's editions; one that falls is
+   refused with both measures named (`belowGuidedLine`). A clock kept in a church or a museum
+   some kind offers is still that venue's (the Strasbourg clock), whatever it reads.
    **A work the world reads opens a second door to Public art** (#2033, `openArtworkDoor` in the
    pipeline, `artworkReadershipDoorFor` in `readershipDoor.ts`). It is Archaeology's place door
    (ADR-0127) over the share: the run reads the year of readership of every candidate below the
