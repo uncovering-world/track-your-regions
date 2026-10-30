@@ -26,6 +26,8 @@ const PAINTING_SHARE = /painting-share:\s*(\d+)\s+painting\(s\)\s+vs\s+(\d+)\s+s
 const SITE_NOT_VENUE = 'site, not a venue:';
 
 const NOTHING_TO_JUDGE = 'no famous holding to judge by';
+/** `not an art museum — another purpose: military museum` — the art test's `OTHER_PURPOSE_CLASSES`. */
+const OTHER_PURPOSE = 'another purpose:';
 const BY_HAND = 'editorial exclusion:';
 const KILL_LIST = 'kill-list:';
 const NOT_A_MUSEUM = 'not a museum class';
@@ -156,6 +158,11 @@ export function refusalSummary(reason: string | null | undefined, name?: string)
   const share = PAINTING_SHARE.exec(reason);
   if (share) return paintingShareLine(Number(share[1]), Number(share[1]) + Number(share[2]));
 
+  if (reason.includes(OTHER_PURPOSE)) {
+    const purpose = reason.slice(reason.indexOf(OTHER_PURPOSE) + OTHER_PURPOSE.length).trim();
+    return { text: `${openingFor(purpose)}, not an art museum — kept out whatever paintings it holds.` };
+  }
+
   if (reason.includes(NOTHING_TO_JUDGE)) {
     return { text: 'Wikidata lists no famous work here, so there was nothing to judge it by.' };
   }
@@ -216,6 +223,14 @@ export function refusalHelp(reason: string | null | undefined): string | null {
       + `does not, so the rule weighed what is kept there: ${plural(Number(share[1]), 'painting')} `
       + `against ${others}. It stays only if at least half are paintings.`
       + `\n\n${WHERE_THE_WORKS_COME_FROM}`
+      + `\n\nThe rule’s own words: “${reason}”.`;
+  }
+  if (reason.includes(OTHER_PURPOSE)) {
+    return 'A venue Wikidata already calls an art museum is let in whatever it holds. This one it '
+      + 'does not, and it calls it something with another purpose: a military museum, a library or '
+      + 'an archive. Paintings hang in all three, and none of them is where a traveller goes to see '
+      + 'art, so the rule refuses it before weighing what it holds. A palace or a castle with a '
+      + 'picture gallery is not among them.'
       + `\n\nThe rule’s own words: “${reason}”.`;
   }
   if (reason.includes(NOTHING_TO_JUDGE)) {
