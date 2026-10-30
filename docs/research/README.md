@@ -27,3 +27,4 @@ and says so in its first lines.
 | [2026-10-25 — How public art could enter the catalogue past its editions line](2026-10-25-how-public-art-enters-the-catalogue.md) | #1992, #2033, #2034, #2035, #2036, #2037 |
 | [2026-10-26 — What a visitor finds at a serial World Heritage site's component points](2026-10-26-what-a-visitor-finds-at-serial-component-points.md) | #2058 |
 | [2026-10-27 — How Wikivoyage's IsPartOf hierarchy agrees with its Regions sections](2026-10-27-how-wikivoyages-hierarchy-agrees-with-its-regions-sections.md) | #2088, #2090 |
+| [2026-10-30 — What signals other than Wikipedia editions find under a kind's line](2026-10-30-what-other-signals-find-under-a-kinds-editions-line.md) | #1997 |
