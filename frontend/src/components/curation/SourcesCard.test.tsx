@@ -18,8 +18,14 @@ import { SourcesCard } from './SourcesCard';
 const mockedChoose = chooseSourceViews as unknown as ReturnType<typeof vi.fn>;
 const mockedSuggest = suggestSourceViews as unknown as ReturnType<typeof vi.fn>;
 
-const UNESCO = { kind_name: 'World Heritage Sites', source_name: 'UNESCO World Heritage Sites', latitude: null, longitude: null };
-const WIKIDATA = { kind_name: 'Places of worship', source_name: 'Places of worship', latitude: null, longitude: null };
+const UNESCO = {
+  kind_name: 'World Heritage Sites', source_name: 'UNESCO World Heritage Sites', latitude: null, longitude: null,
+  external_id: '216', component: false, source_page: 'https://whc.unesco.org/en/list/216',
+};
+const WIKIDATA = {
+  kind_name: 'Places of worship', source_name: 'Places of worship', latitude: null, longitude: null,
+  external_id: 'Q207945', component: false, source_page: 'https://whc.unesco.org/en/list/216',
+};
 
 const RILA = {
   id: 450, external_id: '216', name: 'Rila Monastery', kind_id: 1, kind_name: 'World Heritage Sites',
@@ -55,8 +61,39 @@ const LIBERTY = {
   source_views: [{
     field: 'wikipediaUrl',
     views: [
-      { ...UNESCO, membership_id: 327, value: 'https://en.wikipedia.org/wiki/Liberty_Island', image_url: null, image_credit: null, shown: true },
-      { ...WIKIDATA, kind_name: 'Public art', source_name: 'Public art', membership_id: 542, value: 'https://en.wikipedia.org/wiki/Statue_of_Liberty', image_url: null, image_credit: null, shown: false },
+      { ...UNESCO, external_id: '307', source_page: 'https://whc.unesco.org/en/list/307', membership_id: 327, value: 'https://en.wikipedia.org/wiki/Liberty_Island', image_url: null, image_credit: null, shown: true },
+      { ...WIKIDATA, external_id: 'Q9202', source_page: 'https://whc.unesco.org/en/list/307', kind_name: 'Public art', source_name: 'Public art', membership_id: 542, value: 'https://en.wikipedia.org/wiki/Statue_of_Liberty', image_url: null, image_credit: null, shown: false },
+    ],
+  }],
+  quiet_fields: [],
+} as unknown as ReviewQueueItem;
+
+/**
+ * Component 1209-002 of the Tequila landscape (#2158), on dev 2026-10-30: the
+ * World Heritage list's record names it "Zona nucleo 02, …" and gives its
+ * point to the whole minute, written 20.6833305556; Archaeology reads
+ * Guachimontones' item 2,377 m away.
+ */
+const GUACHIMONTONES = {
+  ...RILA, id: 35451, external_id: 'part:7546', name: 'Zona nucleo 02, Zona arqueológica Los Guachimontones de Teuchitlán',
+  part_of: {
+    name: 'Agave Landscape and Ancient Industrial Facilities of Tequila', unesco_id: '1209',
+    unesco_url: 'https://whc.unesco.org/en/list/1209', component_ref: '1209-002',
+  },
+  source_views: [{
+    field: 'location',
+    metres: 2377,
+    views: [
+      {
+        ...UNESCO, external_id: '1209-002', component: true, source_page: 'https://whc.unesco.org/en/list/1209',
+        membership_id: 119240, value: null, image_url: null, image_credit: null,
+        latitude: 20.6833305556, longitude: -103.816666667, shown: true,
+      },
+      {
+        ...WIKIDATA, kind_name: 'Archaeology', source_name: 'Archaeology', external_id: 'Q2989048', source_page: null,
+        membership_id: 124564, value: null, image_url: null, image_credit: null,
+        latitude: 20.6951491, longitude: -103.8357192, shown: false,
+      },
     ],
   }],
   quiet_fields: [],
@@ -85,6 +122,34 @@ describe('a place two sources describe differently', () => {
     expect(screen.getAllByRole('button', { name: /Readers see this · keeping it/ })).toHaveLength(2);
     expect(screen.getByText('Not asked: subtitle (only one source has it), where it is (the points are 8 m apart).')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Keep what readers see' })).toBeTruthy();
+  });
+
+  it("links each column's record: the item a Wikidata kind reads and the site's page (#2158)", () => {
+    renderCard();
+
+    expect(screen.getByRole('link', { name: 'Q207945' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q207945');
+    expect(screen.getByRole('link', { name: '216' })).toHaveAttribute('href', 'https://whc.unesco.org/en/list/216');
+  });
+
+  it("names the property a component belongs to and tells its record from the property's (#2158)", () => {
+    renderCard(vi.fn(), GUACHIMONTONES);
+
+    const property = screen.getByRole('link', { name: 'Agave Landscape and Ancient Industrial Facilities of Tequila' });
+    expect(property).toHaveAttribute('href', 'https://whc.unesco.org/en/list/1209');
+    expect(property.parentElement?.textContent).toBe('Component 1209-002 of Agave Landscape and Ancient Industrial Facilities of Tequila');
+    const record = screen.getByRole('link', { name: 'component 1209-002' });
+    expect(record).toHaveAttribute('href', 'https://whc.unesco.org/en/list/1209');
+    expect(record.parentElement?.textContent).toMatch(/^The list's record of component 1209-002,\s+not of the whole property$/);
+    expect(screen.getByRole('link', { name: 'Q2989048' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q2989048');
+  });
+
+  it('says how far apart the points stand and which one is given only to the whole minute (#2158)', () => {
+    renderCard(vi.fn(), GUACHIMONTONES);
+
+    expect(screen.getByText('2.4 km apart')).toBeTruthy();
+    const rough = screen.getAllByText(/^Given only to the whole minute: anywhere in a cell of about 1\.7 × 1\.9 km$/);
+    expect(rough).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /20\.68333, -103\.81667/ })).toContainElement(rough[0]);
   });
 
   it("publishes Wikidata's name and keeps UNESCO's picture", async () => {

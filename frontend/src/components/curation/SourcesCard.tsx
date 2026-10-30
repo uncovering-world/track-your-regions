@@ -10,20 +10,28 @@
  * and says what it will change. The facts the sources agree on, or that only
  * one of them reports, are named under the table rather than asked. A choice
  * stands until one of the two sources sends something different.
+ *
+ * Each column links the record its views come from, and the point's row says
+ * how far apart the points stand and which one a source gave only to the
+ * whole minute (#2158).
  */
 
 import { useState } from 'react';
 import { Box, Button, Card, CardContent, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { onWholeMinute } from '@tyr/shared/precision';
 import { chooseSourceViews, suggestSourceViews } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
+import { distanceLabel } from '../../utils/moveDescription';
 import { safeHref } from '../../utils/safeHref';
 import { wikipediaArticleTitle } from '../../utils/wikidataLinks';
 import { PictureWithCredit } from '../shared/PictureWithCredit';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { VIEW_FIELD_WORD } from './feed/rowSpecific';
+import { minuteCellSize } from './minuteCell';
 import { ItemHeader, messageFor } from './queueCard';
+import { SourceId } from './SourceId';
 
 type SourceViewField = NonNullable<ReviewQueueItem['source_views']>[number];
 type SourceView = SourceViewField['views'][number];
@@ -37,16 +45,41 @@ const FIELD_LABEL: Record<SourceViewField['field'], string> = {
   wikipediaUrl: 'Wikipedia article',
 };
 
-/** The columns: every source with a view of some asked field, in the order the server gave them. */
-function sourceColumns(fields: readonly SourceViewField[]): { key: string; kind: string; source: string }[] {
-  const seen = new Map<string, { key: string; kind: string; source: string }>();
+type Column = { key: string; kind: string; source: string; record: SourceView };
+
+/**
+ * The columns: every source with a view of some asked field, in the order the
+ * server gave them, each with the view whose record it names.
+ */
+function sourceColumns(fields: readonly SourceViewField[]): Column[] {
+  const seen = new Map<string, Column>();
   for (const field of fields) {
     for (const view of field.views) {
       const key = `${view.kind_name}|${view.source_name}`;
-      if (!seen.has(key)) seen.set(key, { key, kind: view.kind_name, source: view.source_name });
+      if (!seen.has(key)) seen.set(key, { key, kind: view.kind_name, source: view.source_name, record: view });
     }
   }
   return [...seen.values()];
+}
+
+/**
+ * The source's own record of the place, as a way to open it (#2158): the
+ * Wikidata item a Wikidata-filled kind reads, the place's page on the World
+ * Heritage list. A serial site's view of one of its components is read off
+ * the component's record, so the column says that it is the component's and
+ * not the property's, and links the property's page, which maps where each
+ * component lies.
+ */
+function ColumnRecord({ view }: { view: SourceView }) {
+  if (!view.component) return <SourceId id={view.external_id} kind={view.kind_name} sourcePage={view.source_page} />;
+  const href = safeHref(view.source_page);
+  const ref = `component ${view.external_id}`;
+  return (
+    <Typography variant="caption" color="text.secondary">
+      The list's record of {href ? <Link href={href} target="_blank" rel="noopener noreferrer">{ref}</Link> : ref},
+      not of the whole property
+    </Typography>
+  );
 }
 
 const coordinates = (view: SourceView) => (view.latitude == null || view.longitude == null
@@ -57,7 +90,7 @@ function quietWords(quiet: QuietField): string {
   const word = VIEW_FIELD_WORD[quiet.field];
   if (quiet.why === 'answered') return `${word} (a curator chose)`;
   if (quiet.why === 'one_source') return `${word} (only one source has it)`;
-  if (quiet.field === 'location' && quiet.metres != null) return `${word} (the points are ${quiet.metres} m apart)`;
+  if (quiet.field === 'location' && quiet.metres != null) return `${word} (the points are ${distanceLabel(quiet.metres)} apart)`;
   return `${word} (the same in both)`;
 }
 
@@ -65,7 +98,21 @@ function ViewValue({ field, view }: { field: SourceViewField['field']; view: Sou
   if (field === 'imageUrl' && view.image_url) {
     return <PictureWithCredit url={view.image_url} credit={view.image_credit} alt={`${view.kind_name}’s picture`} width={330} />;
   }
-  if (field === 'location') return <Typography variant="body2">{coordinates(view)}</Typography>;
+  if (field === 'location') {
+    // A point given to the whole minute may stand a kilometre or more off (#1853): said on its tile (#2158).
+    const { latitude, longitude } = view;
+    const rough = latitude != null && longitude != null && onWholeMinute(longitude, latitude);
+    return (
+      <>
+        <Typography variant="body2">{coordinates(view)}</Typography>
+        {rough && (
+          <Typography variant="caption" color="text.secondary">
+            Given only to the whole minute: anywhere in a cell of about {minuteCellSize(latitude)}
+          </Typography>
+        )}
+      </>
+    );
+  }
   // The title is what a curator weighs; the links to read them sit beside the row (`ArticleLinks`).
   if (field === 'wikipediaUrl') {
     return <Typography variant="body1">{view.value ? wikipediaArticleTitle(view.value) : ''}</Typography>;
@@ -214,15 +261,21 @@ export function SourcesCard({ item, onDone }: {
         <Box sx={{ display: 'grid', gridTemplateColumns: grid, columnGap: 2, rowGap: 1.5, alignItems: 'stretch' }}>
           <Box />
           {columns.map(column => (
-            <Typography key={column.key} variant="caption" sx={{ fontWeight: 600, letterSpacing: '0.04em' }}>
-              {column.kind.toUpperCase()}
-              <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}> · {column.source}</Box>
-            </Typography>
+            <Stack key={column.key} spacing={0.25}>
+              <Typography variant="caption" sx={{ fontWeight: 600, letterSpacing: '0.04em' }}>
+                {column.kind.toUpperCase()}
+                <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}> · {column.source}</Box>
+              </Typography>
+              <ColumnRecord view={column.record} />
+            </Stack>
           ))}
           {fields.map(field => (
             <Box key={field.field} sx={{ display: 'contents' }}>
               <Stack sx={{ pt: 1.5 }} spacing={0.5}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>{FIELD_LABEL[field.field]}</Typography>
+                {field.field === 'location' && field.metres != null && (
+                  <Typography variant="body2" color="text.secondary">{distanceLabel(field.metres)} apart</Typography>
+                )}
                 {field.field === 'location' && <BothPoints name={item.name} views={field.views} />}
                 {field.field === 'wikipediaUrl' && <ArticleLinks views={field.views} />}
               </Stack>

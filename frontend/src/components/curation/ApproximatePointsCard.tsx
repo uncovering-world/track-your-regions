@@ -27,7 +27,8 @@ import { distanceLabel } from '../../utils/moveDescription';
 import { safeHref } from '../../utils/safeHref';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
-import { ComponentItemsMap, type MapFocus, type MinuteCell } from './ComponentItemsMap';
+import { ComponentItemsMap, type MapFocus } from './ComponentItemsMap';
+import { minuteCell, minuteCellSize } from './minuteCell';
 import { ItemHeader, messageFor } from './queueCard';
 import { JEV_SURE, judgementWords } from './ComponentItemsCard';
 
@@ -52,26 +53,12 @@ export function hintsInOrder(point: ApproximatePoint, judgementOf: (key: string)
   return [...point.hints.filter(hint => !surelyElsewhere(hint)), ...point.hints.filter(surelyElsewhere)];
 }
 
-/** Half a minute of arc, in degrees: the cell around a point given to the whole minute. */
-const HALF_MINUTE = 0.5 / 60;
-/** A minute of latitude, in kilometres. */
-const MINUTE_KM = 1.852;
-
-/** The whole minute a point was given to, as the box the component may stand anywhere in. */
-export function minuteCell(point: { latitude: number; longitude: number }): MinuteCell {
-  return {
-    west: point.longitude - HALF_MINUTE, east: point.longitude + HALF_MINUTE,
-    south: point.latitude - HALF_MINUTE, north: point.latitude + HALF_MINUTE,
-  };
-}
-
 /** Why the list's point says only roughly where the component is. */
 export function reasonWords(point: ApproximatePoint): string {
   if (point.reason === 'shared') {
     return 'The list puts it on the same point as another component of the site, so the point stands for neither.';
   }
-  const wide = MINUTE_KM * Math.cos((point.latitude * Math.PI) / 180);
-  return `The list gives it to the whole minute: it may stand anywhere in a cell of about ${wide.toFixed(1)} × ${MINUTE_KM.toFixed(1)} km around this point.`;
+  return `The list gives it to the whole minute: it may stand anywhere in a cell of about ${minuteCellSize(point.latitude)} around this point.`;
 }
 
 /** Where a hint comes from, in the curator's words. */

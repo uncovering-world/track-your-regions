@@ -31,7 +31,7 @@ import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { JEV_SURE } from './ComponentItemsCard';
-import { ItemHeader, messageFor } from './queueCard';
+import { ItemHeader, messageFor, partOfLead } from './queueCard';
 
 type Pair = NonNullable<ReviewQueueItem['merge_pairs']>[number];
 type Answer = AnswerMergeProposalsBody['answers'][number]['answer'];
@@ -167,7 +167,7 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Typography variant="body1" sx={{ fontWeight: 600 }}>{pair.otherName}</Typography>
             {pair.otherKinds.map(kind => <Chip key={kind} label={kind} size="small" variant="outlined" />)}
-            {pair.otherPartOf && <Chip label={`Part of ${pair.otherPartOf}`} size="small" variant="outlined" />}
+            {pair.otherPartOf && <Chip label={`${partOfLead()}${pair.otherPartOf}`} size="small" variant="outlined" />}
             {pair.exact && <Chip label="same name, same spot" size="small" color="success" variant="outlined" />}
           </Stack>
           <Typography variant="body2" color="text.secondary">
@@ -317,11 +317,6 @@ export function MergeProposalsCard({ item, onDone }: {
     <Card variant="outlined">
       <CardContent>
         <ItemHeader item={item} />
-        {pairs[0]?.anchorPartOf && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            This place is part of {pairs[0].anchorPartOf}.
-          </Typography>
-        )}
         <Typography variant="body2" sx={{ my: 2 }}>
           {plural(pairs.length, 'place')} within reach of this one {pairs.length === 1 ? 'carries' : 'carry'} a name
           alike. For each, say whether the two are one place, two places, or one part of the other. One place keeps
