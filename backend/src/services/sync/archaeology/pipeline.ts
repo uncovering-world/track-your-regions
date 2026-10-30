@@ -78,15 +78,16 @@ import {
   type WorksCollectorOptions,
 } from '../museum/worksCollector.js';
 import { holdingReason, keptElsewhere, refusedHoldingReason, type HandOver } from '../museum/venueSide.js';
+import { fetchWorksByIds } from '../museum/venueSideQueries.js';
 // The verdict and the fold decision to a fixed point, and the venue-side read
 // asked of what it admits until nothing is new: the museum door's second half
 // (`museumHoldings.ts`, split out at the seam the review of #890 named).
 import { judgeToAFixedPoint, readAdmittedHoldings } from './museumHoldings.js';
 import { chunk, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import { isQid } from '../wikidataUtils.js';
-import { collectMuseumPool, fetchFindFacts } from './queries.js';
+import { collectMuseumPool, fetchFindFacts, fetchFindsAmong } from './queries.js';
 import type { KindShare } from '../places/gather.js';
-import type { ArchaeologyTrees } from './classes.js';
+import { ANCIENT_ART_ROOTS, ANCIENT_ART_WHOLE, FIND_CLASSES, type ArchaeologyTrees } from './classes.js';
 import { findsCollectorOptions, type FindFacts } from './finds.js';
 import {
   candidatesOf,
@@ -231,6 +232,11 @@ export interface ArchaeologyPipelineDeps {
    * curator gate is off, or a test asks no readership.
    */
   openFindsDoor?: (works: DoorWork[]) => Promise<ReadershipDoor | null>;
+  /**
+   * The finds under the pool's floor the year reads at the finds door's bar
+   * (ADR-0165), or none: the door is shut, or a test asks no readership.
+   */
+  underFloorFinds?: UnderFloorReader;
   onPhase?: (message: string) => void;
   /** Throws to abandon the run; called before every query. */
   checkCancel?: () => void;
@@ -280,6 +286,15 @@ function findFactsReader(): {
   return { workFacts, facts };
 }
 
+/** Every class a find of this kind may carry as its own: what the pool asks by, and the artefact tree. */
+function findClassesOf(trees: ArchaeologyTrees): ReadonlySet<string> {
+  return new Set([
+    ...trees.artefact,
+    ...Object.keys(FIND_CLASSES),
+    ...[...ANCIENT_ART_ROOTS, ...ANCIENT_ART_WHOLE].map((root) => root.qid),
+  ]);
+}
+
 /**
  * The collector options the finds are collected with, and the venue-side read
  * is judged by (#890): the museum import's stages under this kind's rule. The
@@ -291,8 +306,26 @@ function findsOptions(
   deps: ArchaeologyPipelineDeps,
   options: Omit<Parameters<typeof findsCollectorOptions>[0], 'logPrefix'>,
 ): WorksCollectorOptions {
+  const { underFloorFinds } = deps;
   return {
-    ...findsCollectorOptions({ ...options, logPrefix: LOG_PREFIX }),
+    ...findsCollectorOptions({
+      ...options,
+      logPrefix: LOG_PREFIX,
+      underFloor: underFloorFinds && (async (run, pool) => {
+        const read = await underFloorFinds([...pool.values()].map((find) => ({ qid: find.qid, sitelinks: find.sitelinks })));
+        const named = read.filter((qid) => !pool.has(qid));
+        if (!named.length) return [];
+        // Only what the find rule's class roads could keep is read in full: the
+        // year names tens of thousands of items at the bar, most of them nothing
+        // anyone dug up (ADR-0165).
+        run.phase(`Asking which of ${named.length} items the world reads are finds...`);
+        const finds = await fetchFindsAmong(run, named, findClassesOf(options.trees));
+        if (!finds.length) return [];
+        run.phase(`Reading the ${finds.length} finds under the pool\'s floor the world reads...`);
+        await run.step();
+        return [...(await fetchWorksByIds(run, finds)).values()].map(({ work }) => work);
+      }),
+    }),
     closure: deps.closure,
   };
 }

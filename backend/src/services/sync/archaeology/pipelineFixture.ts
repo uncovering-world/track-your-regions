@@ -412,6 +412,20 @@ const WORLD: World = {
       discovery: { qid: 'Q6585', label: 'Irkutsk Oblast' },
       statements: [{ property: 'P195', venue: 'Q132783' }],
     },
+    // Under the works pool's floor of 10 editions (5 on the subset of 2026-10-30,
+    // 40,238 readers a year): no class question ever names it, and only the
+    // under-floor read can (ADR-0165).
+    Q19726392: {
+      label: 'Omphalos of Delphi', sitelinks: 5, cls: STELE, clsLabel: 'stele', classes: [STELE],
+      statements: [{ property: 'P195', venue: 'Q636928' }],
+    },
+    // This fixture's own: a statue of 1850 under the floor, which the year
+    // reads and the find rule refuses, so it answers as a statue to the class
+    // question and is read in full, and then goes out as any pool work does.
+    Q900830: {
+      label: 'Statue of 1850', sitelinks: 4, cls: STATUE, clsLabel: 'statue', classes: [STATUE], year: 1850,
+      statements: [{ property: 'P195', venue: 'Q636928' }],
+    },
     Q1230882: {
       label: 'Charioteer of Delphi', sitelinks: 26, cls: STATUE, clsLabel: 'statue',
       broadRoot: STATUE, year: -470, classes: [STATUE],
@@ -844,6 +858,12 @@ export function answer(w: World, sent: string): SparqlBinding[] {
   // statements question, which the same `p:P195` is in — and what each object
   // found that way is, by id.
   if (query.includes('VALUES ?venue')) return holdingRows(w, asked, bandOf(query).min);
+  // Which items the world reads under the floor are finds (ADR-0165): each
+  // find's own class, with no floor on the editions.
+  if (query.includes('SELECT ?e ?class')) {
+    return asked.filter((qid) => w.finds[qid]?.cls !== undefined)
+      .map((qid) => ({ e: uri(qid), class: uri(w.finds[qid].cls as string) }));
+  }
   if (query.includes('OPTIONAL { ?w wdt:P31 ?cls }')) return findByIdRows(w, asked);
   if (query.includes('p:P195')) return statementRows(w, asked);
   if (query.includes('SELECT ?e ?cls ?parent ?loc')) return edgeRows(w, asked);
@@ -933,6 +953,7 @@ export function collect(w: World, opts: {
   line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
   shownElsewhere?: Iterable<string>;
   openFindsDoor?: ArchaeologyPipelineDeps['openFindsDoor'];
+  underFloorFinds?: ArchaeologyPipelineDeps['underFloorFinds'];
 } = {}): Promise<CollectedArchaeology> {
   const door = categoryDoor(w);
   return collectArchaeology({
@@ -949,6 +970,7 @@ export function collect(w: World, opts: {
     osmDigs: osmDoor(w).digs,
     resolveArticles: osmDoor(w).resolveArticles,
     openFindsDoor: opts.openFindsDoor,
+    underFloorFinds: opts.underFloorFinds,
   });
 }
 

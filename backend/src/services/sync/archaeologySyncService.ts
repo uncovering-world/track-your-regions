@@ -85,6 +85,7 @@ import { readHandOvers } from './handOvers.js';
 import { wikipediaStructureFor } from './wikipediaStructure.js';
 import { placeReadershipDoorFor, readershipDoorFor, readUnderFloor, type UnderFloorReader } from './readershipDoor.js';
 import { POOL_MIN_SITELINKS } from './publicArt/queries.js';
+import { POOL_MIN_SITELINKS as WORKS_POOL_FLOOR } from './museum/queries.js';
 
 // =============================================================================
 // Fetch
@@ -128,6 +129,10 @@ async function fetchArchaeologyItems(
     && ((places) => readUnderFloor(places, line.enterSitelinks, POOL_MIN_SITELINKS, ARCHAEOLOGY_GUIDED_DOOR));
   // A find under the finds' line the world reads counts as one at it (ADR-0164).
   const openFindsDoor = await readershipDoorFor(ARCHAEOLOGY_SOURCE_ID, findsLine.enterSitelinks, LOG_PREFIX, ARCHAEOLOGY_FINDS_DOOR);
+  // And asks about the finds under the works pool's floor the year reads at
+  // that door's bar, only while the door is open (ADR-0165).
+  const underFloorFinds: UnderFloorReader | undefined = openFindsDoor
+    && ((finds) => readUnderFloor(finds, findsLine.enterSitelinks, WORKS_POOL_FLOOR, undefined, ARCHAEOLOGY_FINDS_DOOR));
 
   // The collection, read through the OpenStreetMap door the environment names
   // (`osm/oneDoorPerRun.ts`): unset, the layer while a fresh one is in place
@@ -167,6 +172,7 @@ async function fetchArchaeologyItems(
           openSiteDoor,
           underFloorSites,
           openFindsDoor,
+          underFloorFinds,
           onPhase: (message) => { progress.statusMessage = message; },
           checkCancel: () => {
             if (progress.cancel) throw new Error('Sync cancelled');

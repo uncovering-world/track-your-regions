@@ -108,7 +108,10 @@ export async function readAtLeast(year: ReadershipYear, views: number, belowEdit
       WHERE site = ANY($1::text[]) AND month = ANY($2::date[])
       GROUP BY item
      HAVING sum(views) >= $3 AND count(DISTINCT site) < $4`,
-    [year.editions, year.months, views, belowEditions],
+    // A door's bar sits between two works' readings and is no whole number;
+    // views are. Postgres refuses a fraction for a bigint, and a sum at least
+    // the bar is a sum at least the next whole number.
+    [year.editions, year.months, Math.ceil(views), belowEditions],
   );
   return result.rows.map(row => row.item);
 }

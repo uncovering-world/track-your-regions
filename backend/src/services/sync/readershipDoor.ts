@@ -172,21 +172,25 @@ export async function openPlaceDoor(
 }
 
 /**
- * The places under a pool's floor the place door may open for (ADR-0152): the
- * bar read over `places` as `openPlaceDoor` reads it, then every item the year
- * reads at that bar in fewer than `floor` editions. None where the door is
- * shut — no Wikivoyage usage built for its witnesses (`placeReadershipDoorFor`),
- * no year to read, or an empty tier — since it then opens for nothing.
+ * The items under a pool's floor a readership door may open for: the bar read
+ * over `items` as the door reads it, then every item the year reads at that
+ * bar in fewer than `floor` editions. The place door's (ADR-0152), with the
+ * guide's lower bar where it has one, and the finds door's (ADR-0165), at the
+ * door's own percentiles. None where the door is shut — no year to read, an
+ * empty tier, or, for a guided door, no Wikivoyage usage built — since it
+ * then opens for nothing. Each caller opens its door first and passes this
+ * read only while it is open.
  */
 export async function readUnderFloor(
-  places: readonly DoorWork[], line: number, floor: number, guided?: DoorPercentiles,
+  items: readonly DoorWork[], line: number, floor: number, guided?: DoorPercentiles,
+  percentiles: DoorPercentiles = DOOR_PERCENTILES,
 ): Promise<string[]> {
-  if (!await latestUsage()) return [];
+  if (guided && !await latestUsage()) return [];
   const year = await readershipYear();
   if (!year) return [];
-  const { views } = await readWorks(year, places.map(place => place.qid));
+  const { views } = await readWorks(year, items.map(item => item.qid));
   const { bar, guidedBar } = doorOf(
-    places, views, line, new Set(), new Set(), DOOR_PERCENTILES, guided && { items: new Set(), percentiles: guided },
+    items, views, line, new Set(), new Set(), percentiles, guided && { items: new Set(), percentiles: guided },
   );
   if (!Number.isFinite(bar)) return [];
   if (guidedBar === undefined) return readAtLeast(year, bar, floor);
@@ -196,8 +200,8 @@ export async function readUnderFloor(
   return read.filter(qid => (theirs.get(qid) ?? 0) >= bar || guide.has(qid));
 }
 
-/** The places under the pool's floor a run's place door may open for (`readUnderFloor`), over the places it holds. */
-export type UnderFloorReader = (places: DoorWork[]) => Promise<string[]>;
+/** The items under the pool's floor a run's door may open for (`readUnderFloor`), over the items the pool holds. */
+export type UnderFloorReader = (items: DoorWork[]) => Promise<string[]>;
 
 /** The year's reading of the items, the door it opens, and the burst flag on what it opened for. */
 async function readDoor(

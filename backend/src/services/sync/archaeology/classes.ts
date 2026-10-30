@@ -146,6 +146,12 @@ export const NATURAL_HISTORY_ROOT = 'Q1970365';
 export const FIND_CLASSES: Record<string, string> = {
   Q1640824: 'inscription',
   Q178743: 'stele',
+  // China's ritual bronzes, dug up at Anyang and Baoji: the Houmuwu ding is a
+  // fangding, typed by nothing else on Wikidata (#2159). Art Museums takes the
+  // ding tree whole as well (`MUSEUM_WHOLE_ROOTS`); here the two classes are
+  // the find's own word.
+  Q1204499: 'ding',
+  Q15120950: 'fangding',
   Q1066288: 'figurine',
   Q248726: 'Venus figurine',
   Q40555: 'death mask',

@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  collectMuseumPool, fetchArchaeologyTrees, fetchFindFacts, fetchSiteFacts, fetchSitelinksByIds, fetchSitesAmong,
+  collectMuseumPool, fetchArchaeologyTrees, fetchFindFacts, fetchFindsAmong, fetchSiteFacts, fetchSitelinksByIds, fetchSitesAmong,
   SITELINKS_BATCH,
 } from './queries.js';
 import {
@@ -312,6 +312,32 @@ describe('fetchSiteFacts', () => {
     const sparql: SparqlFn = () => { asked += 1; return Promise.resolve([]); };
     expect(await fetchSiteFacts(sparql, [])).toEqual(new Map());
     expect(asked).toBe(0);
+  });
+});
+
+describe('fetchFindsAmong', () => {
+  it('keeps the items the readership names that carry a find class, with no floor and no point asked (ADR-0165)', async () => {
+    // The Houmuwu ding answers as a fangding and the Omphalos of Delphi as a
+    // stele; Mr Blobby, a blobfish in the Australian Museum, answers with a
+    // class none of the finds' are; the Berlin Gold Hat stands for an item the
+    // question did not answer at all.
+    const { run, sent, stepsBefore } = runnerOver(() => [
+      { e: ref('Q19726392'), class: ref('Q178743') },
+      { e: ref('Q10917916'), class: ref('Q15120950') },
+      { e: ref('Q127415758'), class: ref('Q26401003') },
+    ]);
+    const finds = await fetchFindsAmong(run, ['Q10917916', 'Q127415758', 'Q19726392', 'Q318813'], new Set(['Q178743', 'Q15120950']));
+    expect(finds).toEqual(['Q10917916', 'Q19726392']);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toContain('wdt:P625');
+    expect(sent[0]).not.toContain('sitelinks');
+    expect(stepsBefore).toEqual([1]);
+  });
+
+  it('asks nothing where there is nothing to ask about', async () => {
+    const { run, sent } = runnerOver(() => []);
+    expect(await fetchFindsAmong(run, [], new Set(['Q178743']))).toEqual([]);
+    expect(sent).toHaveLength(0);
   });
 });
 

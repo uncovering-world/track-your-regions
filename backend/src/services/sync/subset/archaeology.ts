@@ -71,6 +71,18 @@ export async function subsetSitesAmong(qids: string[], classes: string[]): Promi
   return qids.filter(qid => sites.has(qid));
 }
 
+/** `fetchFindsAmong` on the subset: which of `qids` carry one of `classes` as their own, floor and coordinate aside. */
+export async function subsetFindsAmong(qids: string[], classes: string[]): Promise<string[]> {
+  if (!qids.length || !classes.length) return [];
+  const result = await pool.query<{ subject: string }>(
+    `SELECT DISTINCT c.subject FROM wikidata_claims c
+      WHERE c.property = 'P31' AND c.subject = ANY($1::text[]) AND c.value_item = ANY($2::text[]) AND c.rank >= 0 AND ${BEST('c')}`,
+    [qids, classes],
+  );
+  const finds = new Set(result.rows.map(row => row.subject));
+  return qids.filter(qid => finds.has(qid));
+}
+
 /** Which of `qids` the subset keeps: an item outside its scope has no answer there, which is not "none". */
 export async function subsetKeeps(qids: string[]): Promise<Set<string>> {
   if (!qids.length) return new Set();
