@@ -1,7 +1,8 @@
 /**
  * What Towers admits and what it leaves to another kind (#1854), asked on real
- * entities with the classes Wikidata gave them on 2026-10-22, so a rule that
- * passes here has been tried on the places a traveller would name.
+ * entities with the classes Wikidata gave them on 2026-10-22 (the clocks and
+ * the building complexes on 2026-10-30, #2136), so a rule that passes here has
+ * been tried on the places a traveller would name.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -34,6 +35,10 @@ const MINOR_BASILICA = 'Q120560';
 const ARCHAEOLOGICAL_SITE = 'Q839954';
 const MONUMENT = 'Q4989906';
 const LANDMARK = 'Q2319498';
+const BUILDING_COMPLEX = 'Q1497364';
+const ASTRONOMICAL_CLOCK = 'Q5275';
+const CARILLON = 'Q505174';
+const TWIN_TOWERS = 'Q118896406';
 
 const none = new Set<string>();
 const MAUSOLEUM = 'Q162875';
@@ -84,12 +89,22 @@ describe('towerVerdict', () => {
   });
 
   it.each([
+    ['Bologna\'s Two Towers, a complex of inclined towers', [INCLINED_TOWER, BUILDING_COMPLEX], 'tower'],
+    ['the Kharaqan Towers, twin tower tombs', [MAUSOLEUM, TOWER, TWIN_TOWERS], 'tower'],
+    ['an astronomical clock that is a clock tower', [ASTRONOMICAL_CLOCK, CARILLON, CLOCK_TOWER], 'clock-tower'],
+  ])('admits %s, which a building complex or a public clock class does not refuse', (_name, classes, type) => {
+    expect(towerVerdict(at(classes), trees)).toEqual({ pass: true, type });
+  });
+
+  it.each([
     ['the Warsaw radio mast, collapsed in 1991', [TOWER, GUYED_MAST, DESTROYED], 'destroyed or demolished'],
     ['the Tower of Hercules, a lighthouse', [ANCIENT_LIGHTHOUSE, MONUMENT, FORTIFIED_TOWER, LIGHTHOUSE], 'a lighthouse, not a tower'],
     ['the Burj Khalifa, a skyscraper', [SKYSCRAPER, LANDMARK], 'a skyscraper, not a tower'],
     ['Hagia Sophia, a mosque with minarets', [MINOR_BASILICA, MOSQUE, MUSEUM, CHURCH_BUILDING, MINARET], 'a place of worship with a tower, not a tower'],
     ['Su Nuraxi, a nuraghe', [ARCHAEOLOGICAL_SITE, NURAGHE, MUSEUM], 'an archaeological site, not a tower'],
     ['a monument no tower class names', [MONUMENT], 'no tower class'],
+    ['Cœur Défense, a complex of office towers', [TOWER, BUILDING_COMPLEX], 'a building complex, not a tower'],
+    ['the Prague Astronomical Clock, filed as a bell tower for its bells', [ASTRONOMICAL_CLOCK, BELL_TOWER], 'a public clock, which Public art offers, not a tower'],
   ])('refuses %s', (_name, classes, reason) => {
     expect(towerVerdict(at(classes), trees)).toEqual({ pass: false, reason });
   });

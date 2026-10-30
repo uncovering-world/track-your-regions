@@ -65,6 +65,17 @@ export const KILLS: Readonly<Record<string, { root: string; reason: string }>> =
   ruins: { root: 'Q109607', reason: 'ruins: an archaeological site, not a tower' },
 };
 
+/**
+ * A building complex (Q1497364), the class alone and not its tree: Wikidata
+ * files Cœur Défense, a complex of office towers, as a building complex and a
+ * tower. The tree holds twin towers, monasteries and convents, and Kharaqan's
+ * twin tower tombs are towers a traveller visits (#2136).
+ */
+export const BUILDING_COMPLEX = 'Q1497364';
+
+/** The plain `tower` class, which names a complex's towers by their height alone. */
+export const PLAIN_TOWER = 'Q12518';
+
 /** A place of worship (Q1370598), whose tower classes may name only its part. */
 const WORSHIP_ROOT = 'Q1370598';
 
