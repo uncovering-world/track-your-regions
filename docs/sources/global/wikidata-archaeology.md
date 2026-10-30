@@ -511,7 +511,10 @@ City's National Museum of Anthropology. All six are typed archaeological and sta
 places' line on their own fame, and the kind offers all six (2026-10-24, after run 287). The
 canon holds no finds, so it does not calibrate the finds' line (18 and 15). The finds' line is
 checked against a canon of its own: the finds a traveller goes to a museum to see, Notable works'
-list in `db/catalogue-coverage/calibration/notable-works.jsonl` (#1988).
+list in `db/catalogue-coverage/calibration/notable-works.jsonl` (#1988). Read against it on
+2026-10-30 (#1999), the line misses finds read widely in few languages, so a find under the line
+whose year of readers reaches the 12th percentile of the finds at the line counts as one at it
+(ADR-0164): the Flying Horse of Gansu, the Boxer at Rest and the Bull-Leaping Fresco among them.
 
 **Dry runs 131–137 are the second entrance's** (#895, 2026-09-15). Four died on the way to the
 first that finished, each for a reason now written into the code: 131 to a restart of the dev

@@ -3797,6 +3797,21 @@ placement through the venue graph, which already holds its row and classes. The 
   line, so Delphi does not fall out the first time the Charioteer slips from 18 articles to 17. No
   `multipleMedium` cap is offered — the cap exists for the editions a print or a cast comes in, and
   nothing that was dug up exists in an edition.
+- **A find under the finds' line its readers carry counts as one at it** (ADR-0164,
+  `ARCHAEOLOGY_FINDS_DOOR`, #1999).
+  - The run opens the readership door over the whole finds pool (`openFindsDoor`, through
+    `readershipDoorFor`, shut while the source's gate is off). It enters at the 12th percentile of
+    the finds at the line and stays at the 8th: 27,180 readers a year to enter and 20,576 to stay on
+    the dump of 2026-10-19, which opens for 78 finds.
+  - A find it opens for counts for the holders (`findHolders`), for the museum's verdict and for its
+    badge, and the treasure writer badges it by its readers (`readIconic`).
+  - A museum such a find alone carries in names the find's reading to the curator in its admission
+    note (`doorNote`): the Flying Horse of Gansu (44,327 a year, 10 editions) carries in the Gansu
+    Provincial Museum.
+  - The door reads only what the class pool holds, which is finds of 10 editions or more. The
+    Houmuwu ding and the Muisca raft, under that floor, are #2159. An object the venue-side read
+    keeps at an admitted museum is judged by the line alone: it is read only at a museum already
+    in, so the door would add its badge and no museum.
 - **The museums English Wikipedia files under `Archaeological museums in|of …`**
   (`wikipediaCategoryMembers.ts`, `readMembers`). The category is the second signal of the nature,
   and it is a **door** and not only a test: a museum Wikidata types bare `museum` is in no class
@@ -4032,8 +4047,11 @@ own and makes Naples and the Vatican worth an archaeology traveller's day — th
 Laocoön, the Alexander Mosaic — and for the two classes no other root reaches, the Bull-leaping
 fresco at Heraklion and the François Vase in Florence. Against all four stands one veto, `NOT_A_FIND`: fossil, skeleton,
 individual animal, mineral, diamond, meteorite, coprolite, gemstone — six of them walked as trees and
-two matched flat, for the reasons the venue-side read paragraph below gives (#890) — and before any
-road is asked, an item with no class at all is no find. **The pool is class-driven**:
+two matched flat, for the reasons the venue-side read paragraph below gives (#890) — and, matched
+flat as well, an out-of-place artifact (pseudo-archaeology: the London Hammer would admit the
+Creation Evidence Museum) and an emakimono (a painted handscroll, not something dug up), the two
+readers' favourites the finds door would let in (ADR-0164). Before any road is asked, an item with
+no class at all is no find. **The pool is class-driven**:
 it is the shared works collector's (`museum/worksCollector.ts`) under this kind's roots and extra
 classes, with the rule above as its `keep`, so a diamond or a tyrannosaur reaches the rule through a
 class that collected it and is then refused by name — the discovery place is a reason to keep a
