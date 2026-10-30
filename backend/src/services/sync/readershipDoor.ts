@@ -1,9 +1,12 @@
 /**
  * ADR-0056: a work the world reads opens a second door to the world tier. A
  * work below a kind's sitelinks line whose year of readership (ADR-0055)
- * reaches the median of the works at or over the line is Iconic and admits its
- * holder, as a work at the line does; a work it admitted stays while it reads
- * at the 35th percentile. The bar is a percentile of the tier, never a number.
+ * reaches a percentile of the works at or over the line is Iconic and admits
+ * its holder, as a work at the line does; a work it admitted stays while it
+ * reads at a lower one. The percentiles are the median and the 35th
+ * (`DOOR_PERCENTILES`) unless a source states its own: Art Museums enters at
+ * the 12th and stays at the 8th (ADR-0162, `ART_MUSEUM_DOOR`). The bar is a
+ * percentile of the tier, never a number.
  *
  * Two things keep it shut. A work another kind already shows a reader opens
  * nothing (#1574): the Uffizi's works never bring in a second venue. And the
@@ -42,6 +45,10 @@ import type { ProcessedContent } from './types.js';
 export const DOOR_ENTER_PERCENTILE = 0.5;
 /** ADR-0056 decision 2: a work the door admitted leaves below the tier's 35th percentile. */
 export const DOOR_STAY_PERCENTILE = 0.35;
+
+/** Where in the world tier's reading a work door enters and stays: ADR-0056's, unless a source states its own. */
+export interface DoorPercentiles { enter: number; stay: number }
+export const DOOR_PERCENTILES: DoorPercentiles = { enter: DOOR_ENTER_PERCENTILE, stay: DOOR_STAY_PERCENTILE };
 
 /** A work or a place the door is asked about: its item and its sitelinks. */
 export interface DoorWork { qid: string; sitelinks: number }
@@ -85,14 +92,15 @@ export function doorOf(
   line: number,
   iconicNow: ReadonlySet<string>,
   shown: ReadonlySet<string>,
+  percentiles: DoorPercentiles = DOOR_PERCENTILES,
 ): { opened: Map<string, number>; bar: number; exit: number } {
   const tier = works
     .filter(work => work.sitelinks >= line)
     .map(work => views.get(work.qid) ?? 0)
     .filter(read => read > 0)
     .sort((a, b) => a - b);
-  const bar = percentile(tier, DOOR_ENTER_PERCENTILE);
-  const exit = percentile(tier, DOOR_STAY_PERCENTILE);
+  const bar = percentile(tier, percentiles.enter);
+  const exit = percentile(tier, percentiles.stay);
   const opened = new Map<string, number>();
   for (const work of works) {
     if (work.sitelinks >= line || shown.has(work.qid)) continue;
@@ -120,9 +128,10 @@ export async function openReadershipDoor(
   sourceId: number,
   works: readonly DoorWork[],
   line: number,
+  percentiles: DoorPercentiles = DOOR_PERCENTILES,
 ): Promise<ReadershipDoor | null> {
   return readDoor(works, async (views, items) => (
-    doorOf(works, views, line, await iconicNow(items), await worksShownByOtherSources(sourceId))
+    doorOf(works, views, line, await iconicNow(items), await worksShownByOtherSources(sourceId), percentiles)
   ));
 }
 
@@ -199,10 +208,11 @@ export async function readershipDoorFor(
   sourceId: number,
   line: number,
   logPrefix: string,
+  percentiles: DoorPercentiles = DOOR_PERCENTILES,
 ): Promise<((works: DoorWork[]) => Promise<ReadershipDoor | null>) | undefined> {
   if (!await gateIsOn(sourceId, logPrefix)) return undefined;
   return async (works) => {
-    const door = await openReadershipDoor(sourceId, works, line);
+    const door = await openReadershipDoor(sourceId, works, line, percentiles);
     if (door) {
       console.log(`${logPrefix} The readership door opened for ${door.opened.size} works below the line `
         + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)})`);
@@ -294,7 +304,7 @@ const BURST_CLAUSE = '; its year is a burst (a quarter in one week, or months th
 /** The curator's question on a venue the door alone admitted: the work, its year and the bar. */
 export function doorNote(label: string, work: OpenedWork, door: ReadershipDoor): string {
   return `Admitted for ${label}, below the sitelinks line but read ${roundViews(work.views)} times this year `
-    + `in every counted edition (the world tier's median is ${roundViews(door.bar)})${work.burst ? BURST_CLAUSE : ''}. `
+    + `in every counted edition (the readership door's bar is ${roundViews(door.bar)})${work.burst ? BURST_CLAUSE : ''}. `
     + 'Can a visitor see it there now?';
 }
 

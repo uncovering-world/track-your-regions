@@ -24,6 +24,15 @@ export interface TierWork {
 }
 
 export const ICONIC_SITELINKS = 22;
+
+/**
+ * ADR-0162: where Art Museums' readership door enters and stays, read over the
+ * works at the line. At the 12th percentile (48,323 readers a year on the dump
+ * of 2026-10-19) it admits 74 more museums, among them 9 of the canon's tops
+ * the line misses: the Thyssen-Bornemisza, the Albertina, the Guggenheims,
+ * SFMOMA, the Barnes. At ADR-0056's median it admitted 8 and no top (#1985).
+ */
+export const ART_MUSEUM_DOOR = { enter: 0.12, stay: 0.08 } as const;
 /**
  * How many venues may hold one *unique* work before it admits none of them.
  *

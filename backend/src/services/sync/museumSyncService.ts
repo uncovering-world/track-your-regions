@@ -49,7 +49,7 @@ import {
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
 import { readershipDoorFor } from './readershipDoor.js';
-import { ICONIC_SITELINKS } from './museum/tier1.js';
+import { ART_MUSEUM_DOOR, ICONIC_SITELINKS } from './museum/tier1.js';
 import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 // Museums use remote Wikimedia URLs, no local image storage
@@ -271,7 +271,7 @@ async function fetchMuseumItems(
     // What other kinds refused as held at a museum (ADR-0102).
     handOvers: await readHandOvers(MUSEUM_SOURCE_ID),
     // A work below the line the world reads (ADR-0056), while the gate is on.
-    openDoor: await readershipDoorFor(MUSEUM_SOURCE_ID, ICONIC_SITELINKS, LOG_PREFIX),
+    openDoor: await readershipDoorFor(MUSEUM_SOURCE_ID, ICONIC_SITELINKS, LOG_PREFIX, ART_MUSEUM_DOOR),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');
