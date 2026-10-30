@@ -368,10 +368,9 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
             adapted={form.values.descriptionAdapted}
             onAdapted={adapted => form.set('descriptionAdapted', adapted)}
           />
-          {/* The kind's own types and nothing else — cultural / natural / mixed for a
-              World Heritage site, monument / sculpture for public art, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue
-              for a place of worship — and no control
-              at all for a museum, which is a kind without types (ADR-0045, #814). */}
+          {/* The kind's own types and nothing else, as `experienceTypes.ts` lists them
+              for each kind — and no control at all for a museum, which is a kind
+              without types (ADR-0045, #814). */}
           {typeOptions.length > 0 && (
             <FormControl fullWidth size="small" error={!!form.errors.type}>
               <InputLabel>Type</InputLabel>
