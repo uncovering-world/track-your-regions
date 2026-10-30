@@ -2149,7 +2149,7 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   `museum` (Q33506), coordinates of its own (`P625`), not dissolved (`P576`), and not on a
   kill-list of curatorial departments, art/private collections, museum networks and never-built
   structures. A class that describes a place rather than an institution (a church building or
-  cathedral, an archaeological park or Roman ruins, a villa — `SITE_CLASSES` in `venueTest.ts`)
+  cathedral or minor basilica (Santa Maria Novella, which Places of worship shows), an archaeological park or Roman ruins, a villa — `SITE_CLASSES` in `venueTest.ts`)
   is vetoed the same way, unless the entity also carries an art class: the Uffizi is typed
   `palace, art museum`, and the palace must not disqualify it. A building among those classes (a
   church, a cathedral, a villa) is also not vetoed when Wikidata types it the museum of its own
@@ -2204,7 +2204,13 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   history museums as kinds of their own, starting from the rows the art test expelled. Thirteen
   Wikidata classes (art museum, national gallery, kunsthalle, pinacotheca, glyptotheque, sculpture
   museum and others — `ART_CLASSES`) admit a venue outright, whatever else it is typed or holds.
-  Without one, the venue's own held works decide by painting-to-sculpture share — a work counts as
+  Without one, a class naming another purpose refuses it whatever paintings it holds
+  (`OTHER_PURPOSE_CLASSES`: military museum, library, archives — the Imperial War Museum, the
+  Musée de l'Armée, the Harry Ransom Center). A palace or a castle with a picture gallery is not
+  among them: Windsor's State Apartments and Weißenstein's gallery are where a traveller goes to
+  see paintings, and the art-museum rankings that leave palaces out (The Art Newspaper's) count
+  visitors, not what a gallery holds. Otherwise the venue's own held works decide by
+  painting-to-sculpture share — a work counts as
   sculptural by the shape of its class label (`isSculptural`: statue, bust, relief, cast, figurine,
   torso, stele, monument) — which is what keeps the Hermitage (typed bare `museum`, mostly
   paintings) while dropping a museum whose famous holding is a figurine or a sculpture, and drops a
