@@ -62,14 +62,18 @@ function currentValues(statements: VenueStatement[], property: VenueStatement['p
  *   sameInstitution and mostSpecific both walk it as one hop. A branch two or more organisations
  *   below the venue an owner or location names is still that institution; a direct-parents-only
  *   implementation stops one hop short and can hand the work to the wrong building.
+ * @param keptBack A location that keeps its works where they are (`VenueRule.readingRooms`).
  */
 export function placeArtwork(
   statements: VenueStatement[],
   resolve: (qid: string) => string | null,
   ancestorsOf: (qid: string) => ReadonlySet<string>,
+  keptBack: (qid: string) => boolean = () => false,
 ): string[] {
   const owners = currentValues(statements, 'P195', resolve);
   const places = currentValues(statements, 'P276', resolve);
+  // A work located in a reading room is read there, so no owner elsewhere is where it is shown.
+  if (places.some(keptBack)) return [];
 
   const sameInstitution = (a: string, b: string) =>
     a === b || ancestorsOf(a).has(b) || ancestorsOf(b).has(a);

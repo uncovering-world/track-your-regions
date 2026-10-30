@@ -38,18 +38,32 @@ export const ART_CLASSES: Record<string, string> = {
 };
 
 /**
+ * A library or an archive is a reading room, not a gallery: what it holds is read by
+ * appointment, not shown. Places of worship reads it too, so the codices of the Laurentian
+ * Library are not counted as shown in San Lorenzo, whose cloister the library stands in.
+ */
+export const READING_ROOM_CLASSES: Record<string, string> = {
+  Q7075: 'library',
+  Q166118: 'archives',
+};
+
+/**
  * Classes that name a purpose other than art, refusing a venue that carries no `ART_CLASSES`
- * member whatever paintings it holds: the product keeps military museums out of this kind
- * (2026-08-05, above), and a library or an archive is a reading room, not a gallery. The
- * painting share alone let in the Imperial War Museum (Sargent's *Gassed*), the Musée de l'Armée
- * and the Harry Ransom Center once Art Museums' readership door opened lower (ADR-0162). A palace
+ * member whatever paintings it holds. The product keeps military museums out of this kind
+ * (2026-08-05, above). A natural history museum's jewels and jade are minerals: the painting
+ * share counts them as paintings, since they are not sculpture (#2150). The painting share alone
+ * let in the Imperial War Museum (Sargent's *Gassed*), the Musée de l'Armée and the Harry Ransom
+ * Center once Art Museums' readership door opened lower (ADR-0162). A mixed museum that is also
+ * typed an art museum is admitted by rule 1 first (National Museum Cardiff, Maidstone). A palace
  * or a castle with a picture gallery is not here: Windsor's State Apartments and Weißenstein's
  * gallery are where a traveller goes to see paintings.
  */
 export const OTHER_PURPOSE_CLASSES: Record<string, string> = {
   Q2772772: 'military museum',
-  Q7075: 'library',
-  Q166118: 'archives',
+  Q1970365: 'natural history museum',
+  // A subclass of the one above, matched on its own since a venue's classes are read as stated.
+  Q26958726: 'geological museum',
+  ...READING_ROOM_CLASSES,
 };
 
 /**

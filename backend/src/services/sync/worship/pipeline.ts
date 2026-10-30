@@ -337,7 +337,10 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
 
   // The veto that keeps a church from being called a museum is off: here the
   // church is the venue, and the noun is what a refusal will be named with.
-  const rule: VenueRule = { classes: trees.worship, siteVeto: false, noun: 'place of worship' };
+  // A library's codex is not shown in the church the library is part of (#2150).
+  const rule: VenueRule = {
+    classes: trees.worship, siteVeto: false, noun: 'place of worship', readingRooms: trees.readingRooms,
+  };
   const options: WorksCollectorOptions = {
     broadRoots: MUSEUM_BROAD_ROOTS,
     wholeRoots: MUSEUM_WHOLE_ROOTS,

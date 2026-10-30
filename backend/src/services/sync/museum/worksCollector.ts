@@ -53,12 +53,21 @@ export const MUSEUM_BROAD_ROOTS = [
 ];
 
 /**
- * Four more roots, narrow enough to take whole.
+ * More roots, narrow enough to take whole.
  *
  * No closure reaches them from the three above — a print is not a kind of painting — so leaving
  * them out removes whole traditions rather than trimming a tail. Without them the catalogue
  * holds **zero** prints, engravings, drawings, mosaics and tapestries, and Japanese printmaking
  * is absent as a class. That is not a boundary anyone drew.
+ *
+ * The last five are what Asian and Islamic collections and treasuries are known for, which no
+ * root above reaches (#2150): jade, ritual bronzes (`ding`), illuminated manuscripts, carpets
+ * and jewels (`brilliant`). They bring the Green Vault (the Dresden Green Diamond) and the
+ * National Museum of Bosnia and Herzegovina (the Sarajevo Haggadah), and on the subset of
+ * 2026-10-30 no venue a traveller would not call a museum. The art test counts each as a work
+ * that is not sculptural. Places of worship reads the same roots: they admit no new place
+ * there, and add the Lichfield Gospels to Lichfield Cathedral, where they are shown. A library's
+ * codices stay in the library (`readingRooms`).
  *
  * Taken whole in one query each batch, because they are narrow enough to scan directly — no
  * bands, and no ownership requirement: losing a work on the way in is worse than deciding later
@@ -69,6 +78,11 @@ export const MUSEUM_WHOLE_ROOTS = [
   { qid: 'Q11060274', type: 'print' },
   { qid: 'Q133067', type: 'mosaic' },
   { qid: 'Q184296', type: 'tapestry' },
+  { qid: 'Q60733799', type: 'jade object' },
+  { qid: 'Q48498', type: 'illuminated manuscript' },
+  { qid: 'Q1204499', type: 'ding' },
+  { qid: 'Q163446', type: 'carpet' },
+  { qid: 'Q429571', type: 'brilliant' },
 ];
 
 /**
@@ -229,7 +243,7 @@ export interface WorksCollection {
   statements: Map<string, RawStatement[]>;
   graph: VenueGraph;
   editionClasses: ReadonlySet<string>;
-  resolver: { resolve: (qid: string) => string | null; resolution: (qid: string) => Resolution };
+  resolver: { resolve: (qid: string) => string | null; resolution: (qid: string) => Resolution; keptBack: (qid: string) => boolean };
   /**
    * placeArtwork over every work of the pool with the resolver above — except
    * a work that cannot be seen, which is placed nowhere (`unseen`).
@@ -453,12 +467,13 @@ function placeWorks(
   lost: ReadonlyMap<string, string>,
   resolve: (qid: string) => string | null,
   ancestors: (qid: string) => ReadonlySet<string>,
+  keptBack: (qid: string) => boolean,
 ): { placed: Record<string, string[]>; unseen: Record<string, UnseenWork> } {
   const placed: Record<string, string[]> = {};
   const unseen: Record<string, UnseenWork> = {};
   for (const qid of pool.keys()) {
     const own = statements.get(qid) ?? [];
-    const venues = placeArtwork(own, resolve, ancestors);
+    const venues = placeArtwork(own, resolve, ancestors, keptBack);
     const reason = unseenReason(qid, own, lost);
     if (reason === null) {
       placed[qid] = venues;
@@ -548,7 +563,7 @@ export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions
   const graph = await loadVenueGraph(run, seeds, opts.rule);
   const resolver = makeResolver(graph, opts.rule);
   run.phase('Placing works in the venues that hold them...');
-  const { placed, unseen } = placeWorks(pool, statements, lost, resolver.resolve, graph.ancestors);
+  const { placed, unseen } = placeWorks(pool, statements, lost, resolver.resolve, graph.ancestors, resolver.keptBack);
   const unseenCount = Object.keys(unseen).length;
   const lostCount = Object.values(unseen).filter((u) => u.reason !== WHEREABOUTS_UNKNOWN).length;
   console.log(

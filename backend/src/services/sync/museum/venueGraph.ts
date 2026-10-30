@@ -279,7 +279,12 @@ export function makeResolver(graph: VenueGraph, rule: VenueRule) {
     const found = resolution(qid);
     return 'venue' in found ? found.venue : null;
   };
-  return { resolve, resolution };
+  /** Whether a work located here stays here, unplaced (`VenueRule.readingRooms`). */
+  const keptBack = (qid: string): boolean => {
+    const found = resolution(qid);
+    return 'readingRoom' in found && found.readingRoom === true;
+  };
+  return { resolve, resolution, keptBack };
 }
 
 /**
