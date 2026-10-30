@@ -227,7 +227,8 @@ export const ANCIENT_ART_WHOLE: { qid: string; type: string }[] = [
 export const ANCIENT_CUTOFF_YEAR = 500;
 
 /**
- * Not a find whatever else it carries: natural history.
+ * Not a find whatever else it carries: natural history, and two classes that
+ * are no natural history either (below).
  *
  * The discovery-place door is the loosest of the three, and these are what it
  * lets in. The Hope Diamond and Sue the tyrannosaur both reach the pool
@@ -240,7 +241,14 @@ export const ANCIENT_CUTOFF_YEAR = 500;
  * uses: a diamond in a museum case is still a diamond, and the vault it sits
  * in is not an archaeology museum for holding it.
  *
- * **Six of the eight are walked as trees** (#890, `NOT_A_FIND_WALKED`). The
+ * Two more are no find either, and the readership door would let them in
+ * (#1999). An `out-of-place artifact` is pseudo-archaeology: the London Hammer
+ * reads 152,397 a year and would admit the Creation Evidence Museum. An
+ * `emakimono` is a painted handscroll, not something dug up: the
+ * *Chōjū-jinbutsu-giga* belongs to the art museums. Both are matched as a
+ * row's own class, since neither is natural history.
+ *
+ * **The six natural-history roots are walked as trees** (#890, `NOT_A_FIND_WALKED`). The
  * pool never met a subclass, because the pool is collected by this kind's
  * own classes; the venue-side read meets whatever a museum's statements name,
  * and the Bendegó meteorite is typed `iron meteorite` (Q827989, a subclass of
@@ -267,11 +275,19 @@ export const NOT_A_FIND: Record<string, string> = {
   Q60186: 'meteorite',
   Q544041: 'coprolite',
   Q83437: 'gemstone',
+  Q1069160: 'out-of-place artifact',
+  Q1190781: 'emakimono',
 };
 
-/** The roots of `NOT_A_FIND` whose trees are walked: the objects, never the two Wikidata files a mummy under. */
+/**
+ * The roots of `NOT_A_FIND` matched as a row's own class and never walked: the
+ * two Wikidata files a mummy under, and the two that are no natural history.
+ */
+const NOT_A_FIND_FLAT = new Set(['Q7881', 'Q26401003', 'Q1069160', 'Q1190781']);
+
+/** The roots of `NOT_A_FIND` whose trees are walked: the natural-history objects. */
 export const NOT_A_FIND_WALKED: Record<string, string> = Object.fromEntries(
-  Object.entries(NOT_A_FIND).filter(([qid]) => qid !== 'Q7881' && qid !== 'Q26401003'),
+  Object.entries(NOT_A_FIND).filter(([qid]) => !NOT_A_FIND_FLAT.has(qid)),
 );
 
 /**
@@ -409,7 +425,7 @@ export interface ArchaeologyTrees {
   naturalHistory: ReadonlySet<string>;
   /** Every class that makes an object something dug up (`ARTEFACT_ROOT`). */
   artefact: ReadonlySet<string>;
-  /** Every class that makes an object natural history and no find (`NOT_A_FIND`, walked). */
+  /** Every class that makes an object no find (`NOT_A_FIND`, its natural-history roots walked). */
   notAFind: ReadonlySet<string>;
   /** Every class under `archaeological site`: the site pool's own tree (`SITE_ROOT`). */
   site: ReadonlySet<string>;

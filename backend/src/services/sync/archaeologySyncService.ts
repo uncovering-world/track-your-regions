@@ -55,7 +55,9 @@ import { readThroughOneDoor } from './osm/oneDoorPerRun.js';
 // Every door a pass asks through, built the same way for the mirror's pass and
 // for Overpass's (`archaeology/runDoors.ts`).
 import { subsetRunDoor, unreadOnSubset } from './subset/runDoor.js';
-import { ARCHAEOLOGY_GUIDED_DOOR, ARCHAEOLOGY_SOURCE_ID, doorsForAPass, LOG_PREFIX } from './archaeology/runDoors.js';
+import {
+  ARCHAEOLOGY_FINDS_DOOR, ARCHAEOLOGY_GUIDED_DOOR, ARCHAEOLOGY_SOURCE_ID, doorsForAPass, LOG_PREFIX,
+} from './archaeology/runDoors.js';
 // One item at a time, once the run has decided: the writers and what they were
 // told about this pass (`archaeology/writer.ts`).
 import { processItem, rememberRun } from './archaeology/writer.js';
@@ -81,7 +83,7 @@ import {
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
 import { wikipediaStructureFor } from './wikipediaStructure.js';
-import { placeReadershipDoorFor, readUnderFloor, type UnderFloorReader } from './readershipDoor.js';
+import { placeReadershipDoorFor, readershipDoorFor, readUnderFloor, type UnderFloorReader } from './readershipDoor.js';
 import { POOL_MIN_SITELINKS } from './publicArt/queries.js';
 
 // =============================================================================
@@ -124,6 +126,8 @@ async function fetchArchaeologyItems(
   // (ADR-0152), only while the door is open.
   const underFloorSites: UnderFloorReader | undefined = openSiteDoor
     && ((places) => readUnderFloor(places, line.enterSitelinks, POOL_MIN_SITELINKS, ARCHAEOLOGY_GUIDED_DOOR));
+  // A find under the finds' line the world reads counts as one at it (ADR-0164).
+  const openFindsDoor = await readershipDoorFor(ARCHAEOLOGY_SOURCE_ID, findsLine.enterSitelinks, LOG_PREFIX, ARCHAEOLOGY_FINDS_DOOR);
 
   // The collection, read through the OpenStreetMap door the environment names
   // (`osm/oneDoorPerRun.ts`): unset, the layer while a fresh one is in place
@@ -162,6 +166,7 @@ async function fetchArchaeologyItems(
           handOvers,
           openSiteDoor,
           underFloorSites,
+          openFindsDoor,
           onPhase: (message) => { progress.statusMessage = message; },
           checkCancel: () => {
             if (progress.cancel) throw new Error('Sync cancelled');
