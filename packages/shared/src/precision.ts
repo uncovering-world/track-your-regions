@@ -16,8 +16,14 @@
  * draws the minute cell around a rounded one, so both sides read this.
  */
 
-/** How close to a whole minute a coordinate must be, in degrees. */
-export const WHOLE_MINUTE_TOLERANCE_DEG = 1e-6;
+/**
+ * How close to a whole minute a coordinate must be, in degrees: 0.036″, about
+ * a metre. The list writes some whole minutes in decimal degrees cut to five
+ * places, up to about 6.7e-6° off the minute (Novgorod's 58.53333, Guachimontones'
+ * 20.6833305556, #2158), while the nearest point given to the second stands
+ * 0.17″ from one (Glovers Reef's 16.799952, measured on 2026-10-30).
+ */
+export const WHOLE_MINUTE_TOLERANCE_DEG = 1e-5;
 
 /** Why a point is approximate: given to the whole minute, or shared with another component. */
 export type ApproximateReason = 'whole-minute' | 'shared';
