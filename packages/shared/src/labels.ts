@@ -67,6 +67,33 @@ export function tidyLabel(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * A name with a capital first letter, unless its first word is spelled
+ * lowercase on purpose (#2137, ADR-0160). Wikidata's English labels follow its
+ * sentence-case style, which lowercases a common noun: *mortuary temple of
+ * Hatshepsut*, *iron pillar of Delhi*, *place de la Concorde*. A reader
+ * expects a name to start with a capital, and English writes these with one.
+ * A first word that carries a capital of its own is spelled that way on
+ * purpose and is kept: the particle of *al-Azhar Mosque*, the prefixes of
+ * *iSimangaliso Wetland Park* and *uKhahlamba Drakensberg Park*,
+ * *'s-Hertogenbosch*. Only the first letter changes, after whatever
+ * punctuation opens the name (*[main complex of Mahabalipuram]*), and a name
+ * that opens with a digit, or with a letter whose capital is two letters (ß, a
+ * ligature), is kept: *1st Avenue*.
+ *
+ * Read off the word itself rather than a list or another language's label:
+ * German writes *via Condotti*, and Wikipedia's titles start with a capital
+ * whatever the name, *Al-Azhar Mosque* among them. Spelled for SQL in
+ * `backend/src/services/sync/labelFold.ts` (`capitalizedNameSql`), pinned to
+ * this one by `labelFold.db.test.ts`.
+ */
+export function capitalizedName(value: string): string {
+  if (/^\S*\p{Lu}/u.test(value)) return value;
+  // A letter whose capital is two letters (ß, a ligature) is kept, as Postgres's `upper` keeps it.
+  return value.replace(/^([^\p{L}\p{N}]*)(\p{Ll})/u, (whole, lead: string, letter: string) =>
+    ([...letter.toUpperCase()].length === 1 ? lead + letter.toUpperCase() : whole));
+}
+
 /** The Latin ligatures Unicode encodes, U+FB00–U+FB06. */
 const LIGATURE = /[\uFB00-\uFB06]/g;
 
@@ -163,15 +190,18 @@ function withoutTrailingEscapes(value: string): string {
 
 /**
  * Whether `incoming` rewrites `stored` only in its typesetting (`foldTypography`).
- * One way only for the escape and the list's defects: a rewrite that drops a
- * trailing literal `\t` or mends a defect is the source's correction, and one
- * that adds either to a text clear of it would write the garbage this rule
- * exists to clear. A text that held a defect and still does, rewritten in its
- * quote shapes alone, passes as it did before.
+ * One way only for the escape, the list's defects and the first capital: a
+ * rewrite that drops a trailing literal `\t`, mends a defect or capitalizes a
+ * name's first letter (`capitalizedName`, ADR-0160) is the source's correction,
+ * and one that adds an escape or a defect to a text clear of it, or lowercases
+ * a capital, would write what this rule exists to clear. A text that held a
+ * defect and still does, rewritten in its quote shapes alone, passes as it did
+ * before.
  */
 export function sameTypography(stored: string | null | undefined, incoming: string | null | undefined): boolean {
   return typeof stored === 'string' && typeof incoming === 'string' && stored !== incoming
     && withoutTrailingEscapes(incoming) === incoming.trimEnd()
     && !addsDefect(stored, incoming)
-    && foldTypography(stored) === foldTypography(incoming);
+    && (foldTypography(stored) === foldTypography(incoming)
+      || foldTypography(capitalizedName(stored)) === foldTypography(incoming));
 }

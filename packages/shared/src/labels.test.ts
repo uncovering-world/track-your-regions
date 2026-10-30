@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { foldLabel, foldTypography, sameLabel, sameTypography, tidyLabel, untypeset } from './labels.js';
+import { capitalizedName, foldLabel, foldTypography, sameLabel, sameTypography, tidyLabel, untypeset } from './labels.js';
 
 describe('the fold both sides use', () => {
   it('folds what a source varies in typesetting, and nothing further', () => {
@@ -126,5 +126,48 @@ describe("the World Heritage list's typesetting defects (#1965)", () => {
   it('still holds a space put or taken inside a word, and a comma between digits', () => {
     expect(sameTypography('Tombs No. 1,2,3', 'Tombs No. 1, 2, 3')).toBe(false);
     expect(sameTypography('Shoal Tower, Kingston', 'Shoal Tower,  Kings ton')).toBe(false);
+  });
+});
+
+describe('a name starts with a capital (#2137)', () => {
+  it.each([
+    // Wikidata's sentence-case English labels, as the dev catalogue held them on 2026-10-30.
+    ['mortuary temple of Hatshepsut', 'Mortuary temple of Hatshepsut'],
+    ['iron pillar of Delhi', 'Iron pillar of Delhi'],
+    ['tunnel of Eupalinos', 'Tunnel of Eupalinos'],
+    ['monastic community of Mount Athos', 'Monastic community of Mount Athos'],
+    ['arc de triomphe du Carrousel', 'Arc de triomphe du Carrousel'],
+    ['place de la Concorde', 'Place de la Concorde'],
+    ['piazza del Campo', 'Piazza del Campo'],
+    ['île de la Cité', 'Île de la Cité'],
+    // A World Heritage component, and one whose name opens with a bracket.
+    ['mas de Torres', 'Mas de Torres'],
+    ['[main complex of Mahabalipuram]', '[Main complex of Mahabalipuram]'],
+    // A Deseret letter, whose capital is one letter in two UTF-16 code units.
+    ['\u{1044F}x', '\u{10427}x'],
+  ])('capitalizes %s', (name, capitalized) => {
+    expect(capitalizedName(name)).toBe(capitalized);
+  });
+
+  it.each([
+    ['al-Azhar Mosque'],
+    ['iSimangaliso Wetland Park'],
+    ['uKhahlamba Drakensberg Park'],
+    ["'s-Hertogenbosch"],
+    ['1st Avenue'],
+    ['\ufb00\ufb01 ligatures'],
+    ['Piazza Navona'],
+    [''],
+  ])('keeps %s, whose first word is spelled so on purpose or needs nothing', (name) => {
+    expect(capitalizedName(name)).toBe(name);
+  });
+
+  it('passes the gate one way, as a correction of the stored name', () => {
+    expect(sameTypography('place de la Concorde', 'Place de la Concorde')).toBe(true);
+    expect(sameTypography('mas  de Torres', 'Mas de Torres')).toBe(true);
+    expect(sameTypography('place de la Concorde', 'place de la  Concorde')).toBe(true);
+    expect(sameTypography('Place de la Concorde', 'place de la Concorde')).toBe(false);
+    expect(sameTypography('al-Azhar Mosque', 'Al-Azhar Mosque')).toBe(false);
+    expect(sameTypography('place de la Concorde', 'Place De La Concorde')).toBe(false);
   });
 });
