@@ -207,6 +207,19 @@ export const SCULPTURAL_CLASSES: Record<string, string> = {
   Q17516: 'street art',
 };
 
+/**
+ * A public clock with a show, made to be watched from the street: the Prague
+ * Astronomical Clock, the Zytglogge, Munich's Rathaus-Glockenspiel (#2136).
+ * Wikidata files an astronomical clock under works of art, and Public art
+ * offers one; Towers refuses one that no clock-tower class names. Pinned
+ * rather than walked: the clock tree holds watches, stopwatches and Fabergé
+ * eggs.
+ */
+export const PUBLIC_CLOCK_CLASSES: Record<string, string> = {
+  Q5275: 'astronomical clock',
+  Q20826189: 'Glockenspiel',
+};
+
 /** What a Public art type `street-art` names. */
 export const STREET_ART_CLASSES: Record<string, string> = {
   Q219423: 'mural',
@@ -296,7 +309,10 @@ export const WORSHIP_DESIGNATIONS: Record<string, string> = {
  * it decides whether the work stands on the grounds — the Mother Ukraine
  * Monument on the war museum's hill, the Philae obelisk in Kingston Lacy's
  * garden — or in a hall, like the Veiled Christ in the Cappella Sansevero,
- * which is a `sculpture` and nothing more.
+ * which is a `sculpture` and nothing more. A public clock (`PUBLIC_CLOCK_CLASSES`)
+ * is read the same way: the Prague Astronomical Clock is on the Old Town Hall,
+ * which Wikidata types a museum too and no kind offers, while Strasbourg's
+ * stands in the cathedral that Places of worship offers.
  */
 export const OUTDOOR_CLASSES: Record<string, string> = {
   Q1779653: 'colossal statue',
@@ -522,7 +538,7 @@ export interface PublicArtTrees {
   sculptural: ReadonlySet<string>;
   /** The fountain closure: a Public art row carrying one is typed `fountain`. */
   fountain: ReadonlySet<string>;
-  /** Everything that lifts a veto: sculptural, fountains, and the commemorative forms. */
+  /** Everything that lifts a veto: sculptural, fountains, public clocks and the commemorative forms. */
   artwork: ReadonlySet<string>;
   /**
    * The commemorative closures and the pinned memorial classes: what admits,
@@ -561,7 +577,7 @@ export function buildTrees(fetched: {
 }): PublicArtTrees {
   const sculptural = new Set([...fetched.sculptural, ...Object.keys(SCULPTURAL_CLASSES)]);
   const fountain = new Set(fetched.fountain);
-  const artwork = new Set([...sculptural, ...fountain, ...Object.keys(COMMEMORATIVE_FORMS)]);
+  const artwork = new Set([...sculptural, ...fountain, ...Object.keys(PUBLIC_CLOCK_CLASSES), ...Object.keys(COMMEMORATIVE_FORMS)]);
   const commemorative = new Set([...fetched.commemorative, ...Object.keys(MEMORIAL_CLASSES)]);
   const admitting = new Set([...artwork, ...commemorative, ...Object.keys(HERITAGE_SENSE_CLASSES)]);
   const worship = new Set([...fetched.worship, ...Object.keys(WORSHIP_CLASSES)]);

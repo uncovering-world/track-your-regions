@@ -348,8 +348,9 @@ export const TYPE_OVERRIDES: Record<string, WorshipType> = {
  * of this kind, as an artwork is the museum's.
  *
  * A relic and its reliquary are what pilgrims came for; a tomb or a crypt is
- * whose church it is; an astronomical clock (Strasbourg, Prague) is what the
- * queue is for.
+ * whose church it is; an astronomical clock in a church (Strasbourg) is what
+ * the queue is for. One on a town hall, as Prague's is, is Public art's
+ * (`PUBLIC_CLOCK_CLASSES`).
  *
  * **No tower is here.** Nobody walks into the church to see its campanile: the
  * Leaning Tower, the Giralda and St Mark's are visits of their own, of a kind

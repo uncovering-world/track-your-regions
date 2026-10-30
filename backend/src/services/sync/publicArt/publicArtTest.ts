@@ -24,6 +24,7 @@ import {
   VETO_CLASSES,
   INDOOR_CLASSES,
   OUTDOOR_CLASSES,
+  PUBLIC_CLOCK_CLASSES,
   SITE_CLASSES,
   OTHER_PLACE_CLASSES,
   MEMORIAL_LIFTS,
@@ -392,12 +393,13 @@ function anothersWork(
  * the catalogue holds in no kind. Where any place of the chain is offered, the
  * refusal stands and the kind that offers it takes the work (ADR-0102). What
  * stands outdoors by what it is is a colossal statue or an obelisk
- * (`OUTDOOR_CLASSES`): a sculpture may be in a hall, and the Veiled Christ is;
- * a memorial may be a plaque in a nave.
+ * (`OUTDOOR_CLASSES`), and a public clock is shown to the street: a sculpture
+ * may be in a hall, and the Veiled Christ is; a memorial may be a plaque in a
+ * nave.
  */
 function strandedOutdoors(held: HeldElsewhere, classes: string[], offered: ReadonlySet<string>): boolean {
   if (!held.venue || held.heldIn.some((qid) => offered.has(qid))) return false;
-  return classes.some((c) => OUTDOOR_CLASSES[c]);
+  return classes.some((c) => OUTDOOR_CLASSES[c] || PUBLIC_CLOCK_CLASSES[c]);
 }
 
 /** What an admitted group of casts shows and hands over (#2036): nothing for any other work. */

@@ -21,6 +21,7 @@ import {
   OBELISK_CLASSES,
   PERSON_CLASS,
   PUBLIC_ART_GENRE,
+  PUBLIC_CLOCK_CLASSES,
   STREET_ART_CLASSES,
   type PublicArtTrees,
 } from './classes.js';
@@ -81,15 +82,18 @@ const raisedTo = (subject: SubjectFacts): boolean =>
 export const formsOf = (e: KindFacts): string[] => [...e.classes, ...e.genres];
 
 /**
- * Public art: a sculpture, a statue, a fountain, a mural. A fountain before a
- * sculpture, since the Trevi Fountain is typed both and is visited as the
- * fountain; street art before either.
+ * Public art: a sculpture, a statue, a fountain, a mural, a public clock with
+ * a show (`PUBLIC_CLOCK_CLASSES`). A fountain before a sculpture, since the
+ * Trevi Fountain is typed both and is visited as the fountain; street art
+ * before either. A public clock has no type of its own yet and is filed as a
+ * sculpture.
  */
 export const PUBLIC_ART_RULE: KindRule = {
   noun: 'public art',
   noClass: 'no public-art class',
   unanswered: 'not an artwork',
-  admits: (e, trees) => has(e.classes, trees.sculptural) || has(e.classes, trees.fountain),
+  admits: (e, trees) => has(e.classes, trees.sculptural) || has(e.classes, trees.fountain)
+    || has(e.classes, PUBLIC_CLOCK_CLASSES),
   answersVeto: (e, trees) => has(e.classes, trees.artwork),
   memorialLifts: false,
   types: PUBLIC_ART_TYPES,
