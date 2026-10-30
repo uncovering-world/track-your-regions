@@ -32,8 +32,9 @@ export const KILL_CLASSES: Record<string, string> = {
 };
 
 /**
- * Classes that describe a place rather than an institution: a church building or cathedral
- * (Antwerp Cathedral, the Church of Our Lady in Bruges), an archaeological park, Roman
+ * Classes that describe a place rather than an institution: a church building, minor basilica or
+ * cathedral (Antwerp Cathedral, the Church of Our Lady in Bruges, Santa Maria Novella, which
+ * Places of worship shows with Masaccio's *Trinity*), an archaeological park, Roman
  * archaeological site or Roman ruins (the Roman Forum and the Palatine), a villa. Wikidata also
  * types every one of them `museum` directly, so they clear the class check below and need a veto
  * of their own — one that must not fire on an entity that also carries an `ART_CLASSES` member,
@@ -42,6 +43,7 @@ export const KILL_CLASSES: Record<string, string> = {
  */
 export const SITE_CLASSES: Record<string, string> = {
   Q16970: 'church building',
+  Q120560: 'minor basilica',
   Q56242215: 'Catholic cathedral',
   Q3363945: 'archaeological park',
   Q21752084: 'Roman archaeological site',
@@ -53,7 +55,7 @@ export const SITE_CLASSES: Record<string, string> = {
  * The place classes that are buildings, as against the grounds of a dig or a park: a building
  * Wikidata also types a museum of its own building (`HOUSE_MUSEUM_CLASSES`) is that museum.
  */
-const BUILDING_SITE_CLASSES: ReadonlySet<string> = new Set(['Q16970', 'Q56242215', 'Q3950']);
+const BUILDING_SITE_CLASSES: ReadonlySet<string> = new Set(['Q16970', 'Q120560', 'Q56242215', 'Q3950']);
 
 /**
  * Museum classes that say the building itself is the museum: a palazzo museum, a historic house

@@ -26,6 +26,20 @@ describe('artVerdict', () => {
     expect(artVerdict(['Q33506'], []).art).toBe(false);
   });
 
+  it('drops a military museum, a library or an archive without an art class, whatever paintings it holds', () => {
+    // Imperial War Museum London (Q749808): military museum; national museum. Sargent's Gassed is a painting.
+    expect(artVerdict(['Q2772772', 'Q17431399'], [painting, painting])).toEqual({ art: false, why: 'another purpose: military museum' });
+    // Harry Ransom Center (Q5671855): archives; library; museum.
+    expect(artVerdict(['Q166118', 'Q7075', 'Q33506'], [painting]).art).toBe(false);
+    // An art class still wins: the National Museum in Warsaw is an art museum and a history museum.
+    expect(artVerdict(['Q207694', 'Q2772772'], []).art).toBe(true);
+  });
+
+  it('keeps a palace with a picture gallery, which no purpose class names', () => {
+    // Windsor Castle (Q42646): castle; royal palace; historic house museum. Van Dyck's Charles I hangs in its State Apartments.
+    expect(artVerdict(['Q23413', 'Q53536964', 'Q2087181'], [painting, painting]).art).toBe(true);
+  });
+
   it('treats an equal split as art, not against it', () => {
     expect(artVerdict(['Q33506'], [painting, sculpture]).art).toBe(true);
   });
