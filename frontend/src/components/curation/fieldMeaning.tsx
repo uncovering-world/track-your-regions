@@ -379,7 +379,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
   // that word is the chip beside the object's name — the kind — and this row is not it.
   type: {
     label: 'type',
-    what: 'The type within its kind, in the kind’s own vocabulary — cultural, natural or mixed for a World Heritage site; sculpture, fountain or street art for public art; memorial, arch, column, obelisk or monument for a monument; cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue for a place of worship; pagoda, minaret, clock tower, bell tower, observation tower, fortified tower or tower for a tower; aqueduct, bridge, dam, inclined plane, boat lift, flight of locks, lock or tunnel for an engineering work; stairway, square, promenade or street for a square or a street. A museum has none.',
+    what: 'The type within its kind, in the kind’s own vocabulary — cultural, natural or mixed for a World Heritage site; sculpture, fountain, street art or clock for public art; memorial, arch, column, obelisk or monument for a monument; cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue for a place of worship; pagoda, minaret, clock tower, bell tower, observation tower, fortified tower or tower for a tower; aqueduct, bridge, dam, inclined plane, boat lift, flight of locks, lock or tunnel for an engineering work; stairway, square, promenade or street for a square or a street. A museum has none.',
     whenItChanges: 'Reclassified by the source.',
   },
   tags: {

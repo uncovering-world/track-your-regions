@@ -18,9 +18,9 @@ const ARCHAEOLOGY = 5;
 const MONUMENTS = 6;
 
 describe('typeOptionsFor', () => {
-  it('offers a World Heritage site its three, public art its three and a monument its five', () => {
+  it('offers a World Heritage site, public art and a monument the types of their own kind', () => {
     expect(typeOptionsFor(WORLD_HERITAGE).map(o => o.value)).toEqual(['cultural', 'natural', 'mixed']);
-    expect(typeOptionsFor(PUBLIC_ART).map(o => o.value)).toEqual(['sculpture', 'fountain', 'street-art']);
+    expect(typeOptionsFor(PUBLIC_ART).map(o => o.value)).toEqual(['sculpture', 'fountain', 'street-art', 'clock']);
     expect(typeOptionsFor(MONUMENTS).map(o => o.value)).toEqual(['memorial', 'arch', 'column', 'obelisk', 'monument']);
   });
 
