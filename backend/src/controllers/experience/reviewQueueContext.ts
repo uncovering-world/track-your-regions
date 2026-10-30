@@ -12,7 +12,7 @@
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { descriptionAdaptedSql, descriptionSourceSql, MEMBERSHIPS } from '../../db/membership.js';
 import { dangerSelectSql } from './experienceDanger.js';
-import { pointsShownSql } from '../../db/placePoints.js';
+import { partOfFactsSql, pointsShownSql } from '../../db/placePoints.js';
 import { viewStandsSql } from '../../db/sourceViews.js';
 
 /**
@@ -108,6 +108,11 @@ export function objectContextSelectSql(alias = 'e'): string {
              FROM experience_regions er
              JOIN regions r ON r.id = er.region_id
             WHERE er.experience_id = ${alias}.id) AS region_names,
+          -- The serial site the object is a component of, where it is one: a
+          -- component's own name ("Zona nucleo 02") does not say it is one
+          -- part of a property, and the property's page is where UNESCO maps
+          -- its components (#2158).
+          ${partOfFactsSql(`${alias}.id`)} AS part_of,
           -- How much the object holds, which is part of what it *is* and what every
           -- card here was missing: a text diff about one component of a serial site
           -- read as a diff about the site. UNESCO 1239 is the case — the source

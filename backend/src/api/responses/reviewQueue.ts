@@ -247,6 +247,15 @@ export const SourceView = z.strictObject({
   membership_id: z.number().int(),
   kind_name: z.string(),
   source_name: z.string(),
+  external_id: z.string().describe(
+    "The id the source knows the place by: a Wikidata item, a World Heritage id, or a component's reference in the"
+    + ' list ("1209-002") (#2158).',
+  ),
+  component: z.boolean().describe("Whether this is a serial site's view of the place as one of its components, read off the component's record (ADR-0156)."),
+  source_page: z.string().nullable().describe(
+    "The page the source's record lives on: the property's page on the World Heritage list for a component, else the"
+    + " place's own World Heritage page or website (#2158).",
+  ),
   value: z.string().nullable().describe('The name, subtitle or Wikipedia article as the source reports it; null for a picture or a point.'),
   image_url: z.string().nullable(),
   image_credit: ImageCredit.nullable(),
@@ -258,6 +267,7 @@ export const SourceView = z.strictObject({
 export const SourceViewField = z.strictObject({
   field: ViewFieldWord,
   views: z.array(SourceView),
+  metres: z.number().int().nullable().describe('For the point: how far apart the farthest two views stand (#2158).'),
 }).describe('A field two data sources contradict, with every standing view of it.');
 export type SourceViewField = z.infer<typeof SourceViewField>;
 
@@ -383,6 +393,14 @@ export const VisitQuestion = z.strictObject({
 }).describe('An offered place few witnesses vouch for and Jev reads as nothing to see (#1770): the suggested answer is to refuse it from the kind.');
 export type VisitQuestion = z.infer<typeof VisitQuestion>;
 
+export const PartOf = z.strictObject({
+  name: z.string(),
+  unesco_id: z.string().nullable().describe("The World Heritage id the site's run knows the property by."),
+  unesco_url: z.string().nullable().describe("The property's page on the World Heritage list."),
+  component_ref: z.string().nullable().describe('The reference the list gives the component ("1209-002").'),
+}).describe('The serial World Heritage site a place is a component of (#2158), the whole the near-places card names too (#1250).');
+export type PartOf = z.infer<typeof PartOf>;
+
 export const ReviewQueueItem = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
@@ -411,6 +429,7 @@ export const ReviewQueueItem = z.strictObject({
   object_description_source: DescriptionSource.optional(),
   object_description_adapted: z.boolean().optional(),
   region_names: z.array(z.string()).nullable().optional(),
+  part_of: PartOf.nullable().optional(),
   seen_in: z.array(z.string()).optional().describe(
     'On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in,'
     + ' through another membership (#1264). Empty where the membership asked about is the whole place. An open refusal'
