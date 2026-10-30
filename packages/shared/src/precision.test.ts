@@ -7,6 +7,12 @@ describe('an approximate World Heritage point (#1853)', () => {
     expect(onWholeMinute(112.4666667, 34.46666667)).toBe(true);
     expect(onWholeMinute(134.7, 34.83333333)).toBe(true);
     expect(onWholeMinute(23, 37)).toBe(true);
+    // Whole minutes the list cut to five decimal places (#2158): Novgorod's
+    // 58°32′ N 31°17′ E and Guachimontones' 20°41′ N 103°49′ W.
+    expect(onWholeMinute(31.28333, 58.53333)).toBe(true);
+    expect(onWholeMinute(-103.816666667, 20.6833305556)).toBe(true);
+    // Given to the second, 0.17″ from the minute: Glovers Reef.
+    expect(onWholeMinute(-87.783316, 16.799952)).toBe(false);
     // Given to the second: the Mother Cathedral of Echmiatsin.
     expect(onWholeMinute(44.2951388889, 40.1593055556)).toBe(false);
     // One axis rounded is not enough.
