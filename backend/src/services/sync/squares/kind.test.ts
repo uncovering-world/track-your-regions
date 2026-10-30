@@ -23,7 +23,7 @@ describe('classifySquares', () => {
     types: { stairway: none, square: new Set([SQUARE]), promenade: none, street: none },
     kills: { destroyed: none, proposed: none, underConstruction: none },
     others: {
-      worship: none, palace: none, bridge: none, archaeologicalSite: none, bullring: new Set([BULLRING]),
+      worship: none, palace: none, bridge: none, archaeologicalSite: none, agora: none, bullring: new Set([BULLRING]),
       railwayLine: none, motorway: none, river: none,
     },
   };

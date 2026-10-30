@@ -59,13 +59,16 @@ export const KILLS: Readonly<Record<string, { root: string; reason: string }>> =
  * What another kind offers, or no square or street a visitor walks, with the
  * sentence a refusal names it by. Wikidata files Al-Aqsa as a square for its
  * esplanade, Nymphenburg Palace as a street, the Charles Bridge as a street and
- * the Roman Forum as a square.
+ * the Roman Forum as a square. A Roman forum is an archaeological site to
+ * Wikidata, and an agora is not: the Roman Agora of Athens is a square and an
+ * agora, the ancient Greek public space, and Archaeology's to offer (#2136).
  */
 export const OTHER_KINDS: Readonly<Record<string, { root: string; reason: string }>> = {
   worship: { root: 'Q1370598', reason: 'a place of worship, not a square' },
   palace: { root: 'Q16560', reason: 'a palace, not a square' },
   bridge: { root: 'Q12280', reason: 'a bridge, not a street' },
   archaeologicalSite: { root: 'Q839954', reason: 'an archaeological site, not a square' },
+  agora: { root: 'Q187909', reason: 'an ancient agora: an archaeological site, not a square' },
   // A bullring is a plaza de toros to Wikidata.
   bullring: { root: 'Q1193438', reason: 'a bullring, not a square' },
   railwayLine: { root: 'Q728937', reason: 'a railway line, not a street' },

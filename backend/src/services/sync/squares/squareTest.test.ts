@@ -22,6 +22,7 @@ const NEIGHBOURHOOD = 'Q123705';
 const STONE_BRIDGE = 'Q3397526';
 const MOSQUE = 'Q32815';
 const ARCHAEOLOGICAL_SITE = 'Q839954';
+const AGORA = 'Q187909';
 const BULLRING = 'Q1193438';
 const MOTORWAY = 'Q2154027';
 const DESTROYED = 'Q19860854';
@@ -37,7 +38,7 @@ const trees: SquareTrees = {
   kills: { destroyed: new Set([DESTROYED]), proposed: none, underConstruction: none },
   others: {
     worship: new Set([MOSQUE]), palace: none, bridge: new Set([STONE_BRIDGE]),
-    archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]), bullring: new Set([BULLRING]),
+    archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]), agora: new Set([AGORA]), bullring: new Set([BULLRING]),
     railwayLine: none, motorway: new Set([MOTORWAY]), river: none,
   },
 };
@@ -63,6 +64,7 @@ describe('squareVerdict', () => {
     ['the Charles Bridge, which Prague files as a street', [STONE_BRIDGE, STREET], 'a bridge, not a street'],
     ['Al-Aqsa, a mosque Wikidata files under squares', [MOSQUE], 'a place of worship, not a square'],
     ['the Roman Forum', [SQUARE, ARCHAEOLOGICAL_SITE], 'an archaeological site, not a square'],
+    ['the Roman Agora of Athens, a square and an agora', [SQUARE, AGORA], 'an ancient agora: an archaeological site, not a square'],
     ['Las Ventas, a plaza de toros', [BULLRING], 'a bullring, not a square'],
     ['the M25', [MOTORWAY], 'a motorway, not a street a visitor walks'],
     ['a road no class of the kind names', [ROAD], 'no square or street class'],
