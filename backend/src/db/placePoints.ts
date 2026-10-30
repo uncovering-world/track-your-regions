@@ -155,6 +155,25 @@ export function partOfNameSql(place: string): string {
 }
 
 /**
+ * The same whole as `partOfNameSql`, as a jsonb object a queue card names it
+ * by (#2158), or NULL: its name, the World Heritage id its site's run knows it
+ * by and its page on the World Heritage list, and the reference the list gives
+ * the part ("1209-002"). A part found through Wikidata's "part of" or named by
+ * a curator carries no reference and no site membership, so those are null.
+ */
+export function partOfFactsSql(place: string): string {
+  return `(SELECT jsonb_build_object(
+             'name', whole_facts.name,
+             'unesco_id', site_facts.external_id,
+             'unesco_url', whole_facts.metadata->>'unescoUrl',
+             'component_ref', part_facts.external_ref)
+           FROM experience_parts part_facts
+           JOIN experiences whole_facts ON whole_facts.id = part_facts.whole_id
+           LEFT JOIN ${MEMBERSHIPS} site_facts ON site_facts.id = part_facts.membership_id
+          WHERE part_facts.part_id = ${place} AND part_facts.whole_id = ${wholeOfSql(place)})`;
+}
+
+/**
  * The place a curator answers for a point under, as an expression over the
  * point `point`: the site that shows it when the point's own place is one of
  * its parts and holds no kind of its own (ADR-0100), and its own place

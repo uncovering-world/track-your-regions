@@ -9,7 +9,8 @@
  * readers see now (`shown`), so the card preselects what the place holds. The
  * fields not asked are named with why — the sources agree, only one source
  * reports the field, or a curator already chose — so the card can say what it
- * is not asking.
+ * is not asking. A view names the record it comes from, and the point, asked
+ * or not, says how far apart its views stand (#2158).
  *
  * Hydrated by the page's ids alone: the keys phase decided scope, which for
  * this kind is every source the place's views come from.
@@ -36,6 +37,13 @@ const VIEWS_OF_FIELD = `(SELECT jsonb_agg(jsonb_build_object(
            'membership_id', m.membership_id,
            'kind_name', k.name,
            'source_name', s.name,
+           'external_id', m.external_id,
+           'component', m.component,
+           -- Where the record lives: a component's on its property's page, which
+           -- maps every component, and a membership's on the place's own.
+           'source_page', CASE WHEN m.component
+                               THEN (SELECT site.metadata->>'unescoUrl' FROM experiences site WHERE site.id = m.site_id)
+                               ELSE COALESCE(e.metadata->>'unescoUrl', e.metadata->>'website') END,
            'value', CASE WHEN f IN ('name', 'subtitle', 'wikipediaUrl') THEN ${viewValueSql('f', 'm')} END,
            'image_url', CASE WHEN f = 'imageUrl' THEN m.reported_image_url END,
            'image_credit', CASE WHEN f = 'imageUrl' THEN m.reported_image_credit END,
@@ -47,6 +55,11 @@ const VIEWS_OF_FIELD = `(SELECT jsonb_agg(jsonb_build_object(
        JOIN ${KINDS} k ON k.id = m.kind_id
        JOIN experience_sources s ON s.id = m.source_id
       WHERE NULLIF(${viewValueSql('f', 'm')}, '') IS NOT NULL)`;
+
+/** How far apart the two farthest standing views of the place's point stand, in whole metres. */
+const POINTS_APART = `(WITH v AS (SELECT * FROM ${placeViewsSql('e.id', 'pv')})
+  SELECT round(max(ST_Distance(a.reported_location::geography, b.reported_location::geography)))::int
+    FROM v a JOIN v b ON a.membership_id < b.membership_id)`;
 
 /** How many standing views report field `f`, and for a point how far apart the two farthest stand. */
 const QUIET_FIELDS = `(SELECT jsonb_agg(jsonb_build_object(
@@ -60,10 +73,7 @@ const QUIET_FIELDS = `(SELECT jsonb_agg(jsonb_build_object(
          SELECT f,
                 (SELECT count(*) FROM ${placeViewsSql('e.id', 'm')}
                   WHERE NULLIF(${viewValueSql('f', 'm')}, '') IS NOT NULL)::int AS reporting,
-                CASE WHEN f = 'location' THEN (
-                  WITH v AS (SELECT * FROM ${placeViewsSql('e.id', 'pv')})
-                  SELECT round(max(ST_Distance(a.reported_location::geography, b.reported_location::geography)))::int
-                    FROM v a JOIN v b ON a.membership_id < b.membership_id) END AS metres
+                CASE WHEN f = 'location' THEN ${POINTS_APART} END AS metres
            FROM unnest(${FIELD_ORDER}) AS f
           WHERE NOT f = ANY(${openViewFieldsSql('e.id')}::text[])
        ) q
@@ -74,7 +84,8 @@ export async function querySources(ids: number[]): Promise<QueryResult> {
     SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'sources' AS kind, NULL::jsonb AS proposed,
-           (SELECT jsonb_agg(jsonb_build_object('field', f, 'views', ${VIEWS_OF_FIELD})
+           (SELECT jsonb_agg(jsonb_build_object('field', f, 'views', ${VIEWS_OF_FIELD},
+                                                'metres', CASE WHEN f = 'location' THEN ${POINTS_APART} END)
                     ORDER BY array_position(${FIELD_ORDER}, f))
               FROM unnest(${openViewFieldsSql('e.id')}) AS f) AS source_views,
            COALESCE(${QUIET_FIELDS}, '[]'::jsonb) AS quiet_fields

@@ -3268,6 +3268,28 @@ export const ReviewQueueItemKind = {
   'approximate-unhinted': 'approximate-unhinted',
 } as const;
 
+/**
+ * The serial World Heritage site a place is a component of (#2158), the whole the near-places card names too (#1250).
+ */
+export interface PartOf {
+  name: string;
+  /**
+     * The World Heritage id the site's run knows the property by.
+     * @nullable
+     */
+  unesco_id: string | null;
+  /**
+     * The property's page on the World Heritage list.
+     * @nullable
+     */
+  unesco_url: string | null;
+  /**
+     * The reference the list gives the component ("1209-002").
+     * @nullable
+     */
+  component_ref: string | null;
+}
+
 export type ProposedFieldSignificance = typeof ProposedFieldSignificance[keyof typeof ProposedFieldSignificance];
 
 
@@ -3701,6 +3723,15 @@ export interface SourceView {
   membership_id: number;
   kind_name: string;
   source_name: string;
+  /** The id the source knows the place by: a Wikidata item, a World Heritage id, or a component's reference in the list ("1209-002") (#2158). */
+  external_id: string;
+  /** Whether this is a serial site's view of the place as one of its components, read off the component's record (ADR-0156). */
+  component: boolean;
+  /**
+     * The page the source's record lives on: the property's page on the World Heritage list for a component, else the place's own World Heritage page or website (#2158).
+     * @nullable
+     */
+  source_page: string | null;
   /**
      * The name, subtitle or Wikipedia article as the source reports it; null for a picture or a point.
      * @nullable
@@ -3723,6 +3754,8 @@ export interface SourceView {
 export interface SourceViewField {
   field: SourceViewFieldField;
   views: SourceView[];
+  /** For the point: how far apart the farthest two views stand (#2158). */
+  metres: number | null;
 }
 
 export type QuietFieldField = typeof QuietFieldField[keyof typeof QuietFieldField];
@@ -4186,6 +4219,7 @@ export interface ReviewQueueItem {
   object_description_source?: DescriptionSource | null;
   object_description_adapted?: boolean;
   region_names?: string[] | null;
+  part_of?: PartOf | null;
   /** On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. An open refusal carries none, since it is asked only where no other kind offers the place (#1838). */
   seen_in?: string[];
   /** On a kind its source stopped listing (#1264): whether that kind keeps a delisted place, marked former, rather than letting it go. Absent on every other card. */

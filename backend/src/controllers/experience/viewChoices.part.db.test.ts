@@ -90,8 +90,9 @@ beforeEach(async () => {
     `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'curator') RETURNING id`, [CURATOR],
   )).rows[0].id;
   await pool.query(
-    `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, '9491-fixture', 'Frontiers of the Roman Empire (fixture)', ST_SetSRID(ST_MakePoint(6.96, 50.94), 4326))`,
+    `INSERT INTO experiences (id, source_id, external_id, name, location, metadata)
+     VALUES ($1, $2, '9491-fixture', 'Frontiers of the Roman Empire (fixture)', ST_SetSRID(ST_MakePoint(6.96, 50.94), 4326),
+             '{"unescoUrl": "https://whc.unesco.org/en/list/9491-fixture"}')`,
     [SITE, heritage],
   );
   await pool.query(
@@ -128,6 +129,26 @@ describe("the curator is asked which view a serial site's part shows (#2063)", (
       expect.objectContaining({ value: 'Colonia Claudia Ara Agrippinensium', shown: false }),
     ]));
     expect(await sourcesOf(part.id)).toEqual([heritage, archaeology].sort((a, b) => a - b));
+  });
+
+  it("names the site the part is a component of, each view's record, and how far apart the points stand (#2158)", async () => {
+    const part = await praetorium();
+    const [card] = (await querySources([part.id])).rows;
+
+    expect(card.part_of).toEqual({
+      name: 'Frontiers of the Roman Empire (fixture)', unesco_id: '9491-fixture',
+      unesco_url: 'https://whc.unesco.org/en/list/9491-fixture', component_ref: PRAETORIUM.externalRef,
+    });
+    const location = card.source_views.find((row: { field: string }) => row.field === 'location');
+    expect(location.metres).toBeGreaterThan(250);
+    expect(location.views).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        membership_id: componentRecord, component: true, external_id: PRAETORIUM.externalRef,
+        source_page: 'https://whc.unesco.org/en/list/9491-fixture',
+      }),
+      expect.objectContaining({ component: false, external_id: ITEM }),
+    ]));
+    expect(card.source_views.find((row: { field: string }) => row.field === 'name').metres).toBeNull();
   });
 
   it('writes the chosen view to the part and stands answered', async () => {

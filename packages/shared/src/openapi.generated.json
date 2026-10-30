@@ -28835,6 +28835,43 @@
         "additionalProperties": false,
         "description": "A part the held proposal names that publishing could not write to. Nothing readers see changed."
       },
+      "PartOf": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "unesco_id": {
+            "description": "The World Heritage id the site's run knows the property by.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unesco_url": {
+            "description": "The property's page on the World Heritage list.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "component_ref": {
+            "description": "The reference the list gives the component (\"1209-002\").",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "unesco_id",
+          "unesco_url",
+          "component_ref"
+        ],
+        "additionalProperties": false,
+        "description": "The serial World Heritage site a place is a component of (#2158), the whole the near-places card names too (#1250)."
+      },
       "PasswordChanged": {
         "type": "object",
         "properties": {
@@ -33139,6 +33176,16 @@
               }
             ]
           },
+          "part_of": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartOf"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "seen_in": {
             "description": "On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. An open refusal carries none, since it is asked only where no other kind offers the place (#1838).",
             "type": "array",
@@ -34279,6 +34326,21 @@
           "source_name": {
             "type": "string"
           },
+          "external_id": {
+            "type": "string",
+            "description": "The id the source knows the place by: a Wikidata item, a World Heritage id, or a component's reference in the list (\"1209-002\") (#2158)."
+          },
+          "component": {
+            "type": "boolean",
+            "description": "Whether this is a serial site's view of the place as one of its components, read off the component's record (ADR-0156)."
+          },
+          "source_page": {
+            "description": "The page the source's record lives on: the property's page on the World Heritage list for a component, else the place's own World Heritage page or website (#2158).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "value": {
             "description": "The name, subtitle or Wikipedia article as the source reports it; null for a picture or a point.",
             "type": [
@@ -34323,6 +34385,9 @@
           "membership_id",
           "kind_name",
           "source_name",
+          "external_id",
+          "component",
+          "source_page",
           "value",
           "image_url",
           "image_credit",
@@ -34351,11 +34416,25 @@
             "items": {
               "$ref": "#/components/schemas/SourceView"
             }
+          },
+          "metres": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For the point: how far apart the farthest two views stand (#2158)."
           }
         },
         "required": [
           "field",
-          "views"
+          "views",
+          "metres"
         ],
         "additionalProperties": false,
         "description": "A field two data sources contradict, with every standing view of it."
