@@ -3125,9 +3125,9 @@ COMMENT ON COLUMN experience_kind_memberships.source_id IS 'The source that brou
 COMMENT ON COLUMN experience_kind_memberships.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item -- unique per source (ADR-0084 decision 2). A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
 COMMENT ON COLUMN experience_kind_memberships.type IS
   'The type within this membership''s kind, where the kind has types a traveller still browses together '
-  '(ADR-0045): ''cultural''/''natural''/''mixed'' for World Heritage, ''monument''/''sculpture'' '
-  'for public art, ''cathedral''/''church''/''chapel''/''monastery''/''mosque''/''temple''/''shrine''/''synagogue'' '
-  'for a place of worship, ''site''/''museum'' for archaeology. NULL for an art museum. One vocabulary per kind (#814), '
+  '(ADR-0045): ''cultural''/''natural''/''mixed'' for World Heritage, ''cathedral'', ''holy site'' and the rest '
+  'for a place of worship, ''site''/''museum'' for archaeology; every kind''s list is frontend/src/utils/experienceTypes.ts. '
+  'NULL for an art museum. One vocabulary per kind (#814), '
   'and the membership''s rather than the place''s, since a place in two kinds has a type in each (ADR-0084). '
   'A curator''s claim on it is ''type'' in this row''s curated_fields.';
 COMMENT ON COLUMN experience_kind_memberships.missing_since IS 'When a clean run of this membership''s source, an authoritative one, first failed to list the place. A machine observation, not a verdict (ADR-0020); the source''s own, since another source may still list the place (ADR-0084).';
