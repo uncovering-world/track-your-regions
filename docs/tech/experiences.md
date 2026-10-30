@@ -5975,6 +5975,22 @@ nothing to pin. The batch answer can only keep (`answerSources`); which source t
 on the card. The curator answers for every source of the place, in the keys phase and on the
 endpoint; a merge moves the folded place's choices with it.
 
+What the card shows of the records it chooses between (#2158). Each view names the id its source
+knows the place by and the page that record lives on (`external_id`, `source_page`): a Wikidata
+item opens on Wikidata and a World Heritage id on the site's page (`SourceId`), while a
+component's view, read off its record (`component`, `site_id` on `placeViewsSql`), says it is the
+list's record of that component and not of the property, and links the property's page, which
+maps every component. The point's row says how far apart the two farthest views stand, asked or
+not (`metres` on the field, the same `POINTS_APART` as the quiet line), and a point given to the
+whole minute (`onWholeMinute`, `@tyr/shared/precision`) says so on its tile with the cell it may
+stand in. Component 1209-002 of the Tequila landscape, *Zona nucleo 02*, is the case: Archaeology
+reads Guachimontones' item 2.4 km from the list's point, which the list gives to the whole minute.
+Every queue card about a place that is a part of a serial site names the property under its name,
+linked to the property's page — *Component 1209-002 of Agave Landscape and Ancient Industrial
+Facilities of Tequila* (`part_of`, `partOfFactsSql` in `db/placePoints.ts`, selected by
+`objectContextSelectSql`): the same whole the near-places card names (`partOfNameSql`), and the
+same words for it (`partOfLead`, `queueCard.tsx`).
+
 **Jev's suggestion on the sources card** (#1260, Epic #929, [ADR-0087](../decisions/0087-jev-suggests-an-answer-on-a-curator-card-and-a-curator-decides.md)). Where `JEV_API_KEY` is set, the
 card asks `POST /api/experiences/:id/view-suggestions` (`viewSuggestionController.ts`) when it
 opens: for each field it asks about, the newest stored suggestion made for the views as they
@@ -6096,7 +6112,9 @@ conditions; curators had accepted every exact candidate they answered.
 run records on each point it writes why the list's coordinate only says roughly where the component
 is (`experience_locations.approximate`, from `approximateReasons` in `@tyr/shared/precision`):
 `whole-minute`, both coordinates within `WHOLE_MINUTE_TOLERANCE_DEG` of a whole minute (the Longmen
-Grottoes' 34°28′0″ N 112°28′0″ E, about 10 km from the caves), or `shared`, a point another
+Grottoes' 34°28′0″ N 112°28′0″ E, about 10 km from the caves) — 1e-5°, since the list writes some
+whole minutes in decimals cut to five places (Novgorod's 58.53333, Guachimontones' 20.6833305556),
+while the nearest point given to the second stands 0.17″ off one (#2158) — or `shared`, a point another
 component of the property under another reference stands on too (Echmiatsin's cathedral, church and
 cemetery on the property's own point). A point a curator placed is not approximate, and neither is
 one that stands for its whole site (`stands_for_whole_site()`) of an area at least ten times its
