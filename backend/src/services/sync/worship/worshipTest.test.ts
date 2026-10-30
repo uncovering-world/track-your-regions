@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { worshipVerdict, typeOf, type WorshipFacts } from './worshipTest.js';
 import {
-  buildWorshipTrees, RUIN_CLASSES, TYPE_OVERRIDES,
+  buildWorshipTrees, RUIN_CLASSES, TYPE_OVERRIDES, TYPE_ROOTS,
   WORSHIP_KILL_CLASSES, WORSHIP_PART_CLASSES, WORSHIP_TREASURE_CLASSES,
 } from './classes.js';
 
@@ -57,6 +57,17 @@ const PAPAL_PALACE = 'Q83400038';
 const CIVIL_BASILICA = 'Q2887138';
 const AUBERGE = 'Q21584825';
 const HUMAN_SETTLEMENT = 'Q486972';
+const MOUNTAIN = 'Q8502';
+const SACRED_PLACE = 'Q4588528';
+const SACRED_MOUNTAIN = 'Q1595289';
+const COMPOUND = 'Q5156823';
+const RIVER = 'Q4022';
+const SACRED_RIVER = 'Q131748586';
+const SHINTAISAN = 'Q11588709';
+const HINDUISM = 'Q9089';
+const CITY = 'Q515';
+const VALLEY = 'Q39816';
+const OLD_TOWN = 'Q676050';
 
 // A wat is a temple whatever the class graph files it under; a Tibetan
 // Buddhist monastery is not.
@@ -102,7 +113,10 @@ const trees = buildWorshipTrees({
   worship: [CHURCH, CATHEDRAL, CATHOLIC_CATHEDRAL, BASILICA, CHAPEL, MOSQUE, TEMPLE,
     BUDDHIST_TEMPLE, HINDU_TEMPLE, ANCIENT_GREEK_TEMPLE, PILGRIMAGE_SITE,
     BELL_TOWER, CHURCH_TOWER, MINARET],
+  sacred: [SACRED_MOUNTAIN, SACRED_RIVER],
   typeTrees: {
+    'sacred mountain': [SACRED_MOUNTAIN],
+    'holy site': [SACRED_PLACE, SACRED_MOUNTAIN, SACRED_RIVER],
     cathedral: [CATHEDRAL, CATHOLIC_CATHEDRAL],
     // `Tibetan Buddhist monastery` is under both `vihāra` and `monastery`,
     // which is what makes Sera the negative case for the wat override.
@@ -230,7 +244,7 @@ describe('worshipVerdict — what it admits', () => {
 
   it('admits a place of worship no type root reaches, with no type', () => {
     // `religious building` — the floor `WORSHIP_CLASSES` pins, which the
-    // fetched tree above does not list. Nothing says which of the eight types
+    // fetched tree above does not list. Nothing says which of the types
     // it is, and a place with no type is still a place.
     expect(worshipVerdict(facts([RELIGIOUS_BUILDING]), trees)).toEqual({ pass: true, type: null });
   });
@@ -244,12 +258,12 @@ describe('worshipVerdict — what it refuses', () => {
       .toBe('not a place to visit: destroyed building or structure');
   });
 
-  it('refuses the Temple Mount: a hill, whatever else stands on it', () => {
+  it('refuses the Temple Mount as a neighbourhood, whatever else stands on it', () => {
     // Q193163: `hill, sacred mountain, compound, mosque, neighborhood`. The
     // mosque class does not save it: a kill class refuses whatever else the
-    // row carries, and the thing named is the hill, not the Dome of the Rock.
-    expect(reasonOf(worshipVerdict(facts([HILL, 'Q1595289', 'Q5156823', MOSQUE, NEIGHBORHOOD]), trees)))
-      .toBe('not a place to visit: hill; neighborhood');
+    // row carries. The holy class lifts the hill and nothing else.
+    expect(reasonOf(worshipVerdict(facts([HILL, SACRED_MOUNTAIN, COMPOUND, MOSQUE, NEIGHBORHOOD]), trees)))
+      .toBe('not a place to visit: neighborhood');
   });
 
   it('refuses the Leaning Tower of Pisa: a tower, not a place of worship', () => {
@@ -353,6 +367,7 @@ describe('worshipVerdict — what it refuses', () => {
 
   it('refuses exactly these, and names each one', () => {
     expect(Object.values(WORSHIP_KILL_CLASSES)).toEqual([
+      'river', 'term', 'mythical location', 'relic', 'Christian relic', 'relic associated with Jesus',
       'destroyed building or structure', 'hill', 'mountain', 'neighborhood',
       'ancient city', 'polis', 'tell', 'Jewish cemetery',
       'Latin Rite Catholic cemetery', 'Holy Trinity column', 'palace of the Popes',
@@ -371,6 +386,64 @@ describe('worshipVerdict — what it refuses', () => {
     // collection: the Ara Pacis is the only row in the run carrying it.
     expect(reasonOf(worshipVerdict(facts([ARCHAEOLOGICAL_SITE, MUSEUM, 'Q97621821', SHRINE]), trees)))
       .toBe('not a place to visit: arula (altar)');
+  });
+
+  it('admits a holy place the building tree does not reach, as a holy site', () => {
+    // The Western Wall (Q134821): `wall, archaeological site, sacred place`,
+    // located in the Old City of Jerusalem, which is no building.
+    expect(worshipVerdict(facts([ARCHAEOLOGICAL_SITE, SACRED_PLACE],
+      { locatedIn: [{ label: 'Old City of Jerusalem', classes: [OLD_TOWN] }] }), trees))
+      .toEqual({ pass: true, type: 'holy site' });
+  });
+
+  it('lifts the mountain and hill kills on a holy mountain a faith is named for, as a sacred mountain', () => {
+    // Mount Kailash (Q229107): `mountain, sacred mountain, virgin peak`, holy
+    // to Hinduism, Buddhism, Jainism and Bon.
+    expect(worshipVerdict(facts([MOUNTAIN, SACRED_MOUNTAIN], { religions: [HINDUISM] }), trees))
+      .toEqual({ pass: true, type: 'sacred mountain' });
+    // Mount Arafat (Q216894) is `mountain, sacred place`, holy to Islam.
+    expect(worshipVerdict(facts([MOUNTAIN, SACRED_PLACE], { religions: ['Q432'] }), trees))
+      .toEqual({ pass: true, type: 'sacred mountain' });
+    // A holy class the `sacred place` walk missed is still holy where the type tree has it.
+    const shortWalk = buildWorshipTrees({ worship: [], sacred: [], typeTrees: {
+      ...Object.fromEntries(TYPE_ROOTS.map(({ type }) => [type, []])), 'sacred mountain': [SHINTAISAN],
+    } as unknown as Parameters<typeof buildWorshipTrees>[0]['typeTrees'] });
+    expect(worshipVerdict(facts([SHINTAISAN]), shortWalk)).toEqual({ pass: true, type: 'sacred mountain' });
+    // Mount Fuji (Q39231) names no faith but is a kami's mountain (`shintaisan`).
+    expect(worshipVerdict(facts([MOUNTAIN, SACRED_MOUNTAIN, SHINTAISAN]), trees).pass).toBe(true);
+    // A mountain no one holds holy is still a mountain.
+    expect(reasonOf(worshipVerdict(facts([MOUNTAIN]), trees))).toBe('not a place to visit: mountain');
+  });
+
+  it('refuses a holy mountain no faith or pilgrimage is named for', () => {
+    // Kanchenjunga (Q82019): `mountain, sacred mountain`, and nothing more.
+    expect(reasonOf(worshipVerdict(facts([MOUNTAIN, SACRED_MOUNTAIN]), trees)))
+      .toBe('a holy mountain no faith or pilgrimage is named for (P140)');
+    // A holy valley is named as one: Muzdalifah (Q1788735) passes only for its faith.
+    expect(reasonOf(worshipVerdict(facts([VALLEY, SACRED_PLACE]), trees)))
+      .toBe('a holy valley no faith or pilgrimage is named for (P140)');
+  });
+
+  it('refuses a holy object kept inside a building of worship or a museum', () => {
+    // The Black Stone (Q715286) is located in the Masjid al-Haram.
+    expect(reasonOf(worshipVerdict(facts([SACRED_PLACE],
+      { locatedIn: [{ label: 'Al-Masjid Al-Haram', classes: [MOSQUE] }] }), trees)))
+      .toBe('kept inside Al-Masjid Al-Haram, which is the place to visit');
+    // The Pergamon Altar (Q158058) is located in the Pergamon Museum.
+    expect(reasonOf(worshipVerdict(facts([SACRED_PLACE],
+      { locatedIn: [{ label: 'Pergamon Museum', classes: [MUSEUM] }] }), trees)))
+      .toBe('kept inside Pergamon Museum, which is the place to visit');
+  });
+
+  it('refuses a holy city and a holy city wall', () => {
+    // Anuradhapura (Q5724): `sacred place, city, archaeological site`.
+    expect(reasonOf(worshipVerdict(facts([SACRED_PLACE, CITY, ARCHAEOLOGICAL_SITE]), trees)))
+      .toBe('a holy place that is a city, not a place of worship');
+  });
+
+  it('refuses a holy river, a line no traveller stands at', () => {
+    // The Ganges (Q5089): `river, sacred river`.
+    expect(reasonOf(worshipVerdict(facts([RIVER, SACRED_RIVER]), trees))).toBe('not a place to visit: river');
   });
 
   it.each(Object.entries(WORSHIP_KILL_CLASSES))('refuses a row typed only %s (%s)', (qid, label) => {

@@ -19,6 +19,7 @@ import {
   type WorshipTrees,
   type WorshipType,
 } from './classes.js';
+import { MUSEUM_ROOT, SACRED_PLACE_ROOT } from './holyPlaces.js';
 
 /**
  * What a place of worship is, and what a reader filters it by: the tree under
@@ -39,6 +40,12 @@ export async function fetchWorshipTrees(run: QueryRunner): Promise<WorshipTrees>
   run.phase('Reading what a place of worship is...');
   await run.step();
   const worship = await fetchClassTree(run.sparql, WORSHIP_ROOT, 'places of worship');
+  run.phase('Reading what a holy place is...');
+  await run.step();
+  const sacred = await fetchClassTree(run.sparql, SACRED_PLACE_ROOT, 'holy places');
+  run.phase('Reading what a museum is...');
+  await run.step();
+  const museums = await fetchClassTree(run.sparql, MUSEUM_ROOT, 'museums');
 
   const typeTrees = {} as Record<WorshipType, string[]>;
   for (const { type, roots } of TYPE_ROOTS) {
@@ -50,7 +57,7 @@ export async function fetchWorshipTrees(run: QueryRunner): Promise<WorshipTrees>
     }
     typeTrees[type] = classes;
   }
-  return buildWorshipTrees({ worship, typeTrees });
+  return buildWorshipTrees({ worship, sacred, museums, typeTrees });
 }
 
 /**

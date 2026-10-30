@@ -84,7 +84,7 @@ export interface CollectedPlaceOfWorship {
   countryLabel: string | null;
   articleUrl: string | null;
   website: string | null;
-  /** What a reader filters it by, or nothing where none of the eight words fits. */
+  /** What a reader filters it by, or nothing where none of the type words fits. */
   type: WorshipType | null;
   classes: string[];
   /** What it holds that is worth tracking on its own: a relic, a tomb, an altarpiece. */
@@ -122,6 +122,12 @@ export interface WorshipPipelineDeps {
   admitted: ReadonlySet<string>;
   /** The fame line the source row states (`sourceLine.ts`). */
   line: SourceLine;
+  /**
+   * A year of readers of the places, for the door under the editions line
+   * (`WORSHIP_READERS_LINE`); null when no year is folded. Absent, only the
+   * editions line decides.
+   */
+  placeReaders?: (qids: string[]) => Promise<Map<string, number> | null>;
   onPhase?: (message: string) => void;
   /** Throws to abandon the run; called before every query. */
   checkCancel?: () => void;
@@ -181,11 +187,12 @@ function admitVenues(
   tier: Tier1Result,
   graph: VenueGraph,
   trees: WorshipTrees,
+  faithsOf: FaithsOf,
 ): { venues: Map<string, AdmittedVenue>; refused: FilteredEntity[] } {
   const venues = new Map<string, AdmittedVenue>();
   const refused: FilteredEntity[] = [];
   for (const [qid, iconic] of tier.museums) {
-    const verdict = graphVerdict(qid, graph, trees);
+    const verdict = graphVerdict(qid, graph, trees, faithsOf);
     if (!verdict) continue;
     if (!verdict.pass) {
       refused.push({ externalId: qid, name: graph.details.get(qid)?.label ?? qid, reason: verdict.reason });
@@ -196,9 +203,14 @@ function admitVenues(
   return { venues, refused };
 }
 
+/** The faiths a candidate of the place gather is holy to (`P140`); the venue graph does not read them. */
+type FaithsOf = (qid: string) => readonly string[] | undefined;
+
 /**
  * Door one's rule asked of a row the venue graph knows, or nothing where the
- * graph cannot answer — no details row, or no coordinates of its own.
+ * graph cannot answer — no details row, or no coordinates of its own. A holy
+ * place's location is the graph's own (`P276`), and its faiths are the place
+ * gather's, so the rule reads them as door one does.
  *
  * `onEarth` is passed as true for the reason `admitVenues` gives: the graph does
  * not record which globe a coordinate is on, and reaching this rule already
@@ -208,13 +220,18 @@ function graphVerdict(
   qid: string,
   graph: VenueGraph,
   trees: WorshipTrees,
+  faithsOf: FaithsOf,
 ): ReturnType<typeof worshipVerdict> | undefined {
   const row = graph.details.get(qid);
   const facts = graph.facts(qid);
   if (!row || !facts || row.lat === null || row.lon === null) return undefined;
-  return worshipVerdict(
-    { qid, classes: facts.classes, onEarth: true, lat: row.lat, lon: row.lon }, trees,
-  );
+  const locatedIn = graph.locations(qid).map((place) => ({
+    label: graph.details.get(place)?.label ?? place,
+    classes: graph.facts(place)?.classes ?? [],
+  }));
+  return worshipVerdict({
+    qid, classes: facts.classes, onEarth: true, lat: row.lat, lon: row.lon, religions: faithsOf(qid), locatedIn,
+  }, trees);
 }
 
 /**
@@ -245,11 +262,12 @@ function foldsOntoAdmitted(
   works: WorksCollection,
   byFame: ReadonlySet<string>,
   trees: WorshipTrees,
+  faithsOf: FaithsOf,
 ): WorksCollection {
   const folds: Record<string, Fold> = {};
   for (const [qid, fold] of Object.entries(works.folds)) {
     const survivor = survivorOf(works.folds, qid);
-    if (byFame.has(survivor) || graphVerdict(survivor, works.graph, trees)?.pass) {
+    if (byFame.has(survivor) || graphVerdict(survivor, works.graph, trees, faithsOf)?.pass) {
       folds[qid] = fold;
     }
   }
@@ -292,7 +310,9 @@ function itemOf(
     artworks: works.map((work) => readContent(work, readership)),
     admittedFor: admitting ? { qid: admitting.work.qid, label: admitting.work.label } : undefined,
     door,
-    // A place its own fame admits needs no question about a work.
+    // A place its own fame admits needs no question about a work; one its
+    // readers admitted carries their note instead.
+    ...(byFame?.readersNote ? { readershipNote: byFame.readersNote } : {}),
     ...(admitting?.read && readership && !byFame
       ? { readershipNote: doorNote(admitting.work.label, admitting.read, readership) } : {}),
   };
@@ -306,7 +326,9 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   const run = makeRun(deps);
   const share = await deps.places(run);
   const { trees } = share;
-  const byFame = classifyPlacesByFame(share, deps.admitted, deps.line);
+  run.phase('Reading what the world reads of the places...');
+  const readers = deps.placeReaders ? await deps.placeReaders([...share.pool.keys()]) : null;
+  const byFame = classifyPlacesByFame(share, deps.admitted, deps.line, readers);
 
   const extraClasses = await fetchTreasureClasses(run);
   run.phase('Fetching the classes a museum can be...');
@@ -330,7 +352,8 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   };
   const collected = await collectWorks(run, options);
   // A fold may only hand a chapel's works to a place this kind could admit.
-  let works = foldsOntoAdmitted(collected, new Set(byFame.places.keys()), trees);
+  const faithsOf: FaithsOf = (qid) => share.facts.get(qid)?.religions;
+  let works = foldsOntoAdmitted(collected, new Set(byFame.places.keys()), trees, faithsOf);
 
   // The second door (ADR-0056): a work below the line the world reads admits
   // its holder as a work at the line does.
@@ -348,7 +371,7 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
     multipleMedium: work.typeQid !== null && works.editionClasses.has(work.typeQid),
     read: !!readership?.opened.has(work.qid),
   })), { threshold: deps.line.enterSitelinks });
-  const { venues, refused } = admitVenues(tier, works.graph, trees);
+  const { venues, refused } = admitVenues(tier, works.graph, trees, faithsOf);
 
   // What the run will actually write: a work is stored as a treasure of a place
   // this run admits — through either door, since a place admitted for its own

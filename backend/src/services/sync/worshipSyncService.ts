@@ -51,6 +51,7 @@ import {
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
 import { readershipDoorFor } from './readershipDoor.js';
+import { yearlyReaders } from './places/candidates.js';
 import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 import { shareOf, type PlaceGather } from './places/gather.js';
@@ -208,6 +209,8 @@ async function fetchWorshipItems(
     places: async () => shareOf((await gather(progress)).gathered, WORSHIP_KIND),
     // A work below the line the world reads (ADR-0056), while the gate is on.
     openDoor: await readershipDoorFor(WORSHIP_SOURCE_ID, line.enterSitelinks, LOG_PREFIX),
+    // A place under the editions line its readers admit (#1978).
+    placeReaders: (qids) => yearlyReaders(qids, LOG_PREFIX),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');
