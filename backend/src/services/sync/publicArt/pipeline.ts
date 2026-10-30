@@ -25,11 +25,14 @@ import {
   buildTrees,
   COMMEMORATIVE_ROOTS,
   FOUNTAIN_ROOT,
+  PUBLIC_CLOCK_CLASSES,
   SCULPTURAL_ROOTS,
   WORSHIP_ROOT,
   type PublicArtTrees,
 } from './classes.js';
 import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
+import { belowGuidedLine, guidedStanding } from '../places/guidedLine.js';
+import { CLOCK_LINE, isPublicClock } from './clockLine.js';
 import { artworkDoorNote, type PlaceDoor, type ReadershipDoor } from '../readershipDoor.js';
 import { publicArtVerdict, type PublicArtFacts } from './publicArtTest.js';
 import { streetArtVerdict } from './streetArtTest.js';
@@ -168,6 +171,9 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
   // The street-art places no class names (#2035): Public art decides them by
   // their own rule, Monuments & memorials skips the ones it does not admit.
   entrance: enterStreetArtPlaces,
+  // A public clock with a show is read in few languages (#2140): the
+  // Rathaus-Glockenspiel has 7 editions, and its own line decides it.
+  belowFloor: () => ({ classes: Object.keys(PUBLIC_CLOCK_CLASSES), floor: CLOCK_LINE.stay.editions }),
 };
 
 /**
@@ -303,18 +309,27 @@ function castsJudged(entity: PoolEntity, containers: Containment): Pick<PublicAr
  * How a work that passed the rule stands: in by the line, in by the readership
  * door with the curator's question, fallen below the stay line, or never in.
  * The door's question goes only on a work the door alone lets in: one the line
- * keeps is in whatever it reads.
+ * keeps is in whatever it reads. A public clock the line does not keep is held
+ * to its own line when its readers were read (`CLOCK_LINE`, #2140), and the
+ * reason it fell names that line.
  */
 function lineOrDoor(
   entity: PoolEntity,
   held: boolean,
   door: ReadershipDoor | null,
-): { readershipNote?: string } | 'fell' | 'out' {
+  clock: { readers: Map<string, number> | null } | null,
+): { readershipNote?: string } | { fell: string } | 'out' {
   const standing = lineStanding(entity.sitelinks, held, LINE);
   if (standing === 'in') return {};
   const read = door?.opened.get(entity.qid);
   if (read && door) return { readershipNote: artworkDoorNote(read, door) };
-  return standing;
+  if (clock) {
+    const readers = clock.readers === null ? null : clock.readers.get(entity.qid) ?? 0;
+    const own = guidedStanding(CLOCK_LINE, entity.sitelinks, readers, false, held);
+    if (own === 'in') return {};
+    return own === 'out' ? own : { fell: belowGuidedLine(CLOCK_LINE, entity.sitelinks, readers, false) };
+  }
+  return standing === 'out' ? standing : { fell: belowLineReason(entity.sitelinks, LINE) };
 }
 
 /**
@@ -365,6 +380,7 @@ function kindDecision(
   held: boolean,
   offered: ReadonlySet<string> | undefined,
   door: ReadershipDoor | null,
+  clockReaders?: Map<string, number> | null,
 ): Decision {
   // A candidate the entrance alone brought is the street-art rule's or nobody's.
   if (gathered.enteredOnly.has(entity.qid)) return null;
@@ -386,10 +402,11 @@ function kindDecision(
   if (entity.lat === null || entity.lon === null) return null;
   // A cast in a museum is the museum's whatever the line says of the group.
   const handOver = verdict.handOver ? { handOver: { externalId: entity.qid, name: entity.label, ...verdict.handOver } } : null;
-  const entry = lineOrDoor(entity, held, door);
+  const clock = clockReaders !== undefined && isPublicClock(known.classes) ? { readers: clockReaders } : null;
+  const entry = lineOrDoor(entity, held, door, clock);
   if (entry === 'out') return handOver;
-  if (entry === 'fell') {
-    return { refused: { externalId: entity.qid, name: entity.label, reason: belowLineReason(entity.sitelinks, LINE), ...type }, ...handOver };
+  if ('fell' in entry) {
+    return { refused: { externalId: entity.qid, name: entity.label, reason: entry.fell, ...type }, ...handOver };
   }
   // The museum's changeset names the reason, and here this kind admits the
   // work: the reason says so rather than reading as a refusal.
@@ -410,7 +427,10 @@ function kindDecision(
  * and carries the curator's question. `streetArt` is what the street-art rule
  * reads of the candidates it decides (`streetArtCandidates`), for the kind that
  * holds them; without it, a candidate only the street-art entrance named is not
- * this kind's and is skipped. Items come back most famous first, which
+ * this kind's and is skipped. `clockReaders` is a year's readers of the public
+ * clocks among the candidates, null where no year is read, for the line they
+ * are held to (`CLOCK_LINE`); without it, the kind's line decides them as it
+ * decides any work. Items come back most famous first, which
  * is the order the run writes them in and the order a person watching it
  * reads.
  */
@@ -421,6 +441,7 @@ export function classifyPublicArt(
   offered?: ReadonlySet<string>,
   door: ReadershipDoor | null = null,
   streetArt: StreetArtReading | null = null,
+  clockReaders?: Map<string, number> | null,
 ): CollectedPublicArt {
   const { pool } = gathered;
   const items: WikidataLandmark[] = [];
@@ -432,7 +453,7 @@ export function classifyPublicArt(
     const held = admitted.has(entity.qid);
     const streetArtSays = streetArt && decidedAsStreetArt.has(entity.qid)
       ? streetArtDecision(entity, gathered, streetArt, held) : undefined;
-    const decision = streetArtSays === undefined ? kindDecision(entity, gathered, rule, held, offered, door) : streetArtSays;
+    const decision = streetArtSays === undefined ? kindDecision(entity, gathered, rule, held, offered, door, clockReaders) : streetArtSays;
     if (decision && 'item' in decision) items.push(decision.item);
     else if (decision && 'refused' in decision) filtered.push(decision.refused);
     if (decision?.handOver) handOvers.push(decision.handOver);
