@@ -1,7 +1,7 @@
 # ADR-0052: A place of worship is admitted for itself or for what it holds
 
 **Date:** 2026-09-08
-**Status:** Accepted
+**Status:** Accepted — decisions 1 and 2 narrowed by [ADR-0161](0161-a-holy-place-is-a-place-of-worship-and-a-year-of-readers-opens-a-door.md)
 
 ---
 

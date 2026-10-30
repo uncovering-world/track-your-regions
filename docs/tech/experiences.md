@@ -25,7 +25,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 | **Kind** | What a traveller browses by — a World Heritage site, an art museum, an archaeology museum, a monument. Siblings: each its own list, pin colour and count, each with a sync of its own and its own rule of what complete means — a kind's sources are that sync's inputs (ADR-0045 §1, §2, §3) | `experience_kinds` (#822), and a place's membership in it is a row of `experience_kind_memberships`; a reader-facing row carries its kind off that membership (`rowKindJoinSql`, #819) | `kind_id`, `kind_name`, `kind_priority`, `kindId`; `experience_kinds`; the chip beside an object's name on a review card, the Discover pills and `?kind=`, the group headers, `kindColors.ts` |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query — an input of the kind's sync, carrying its own gate (§3, §7); the sync and the rule of completeness are the kind's. A kind may have several; one source may feed several kinds | `experience_sources` — one row per source, the row the sync service is registered under, naming the kind it fills (`kind_id`, #822); named `experience_categories` until migration 055 (#819) | `experience_sources`, `source_id` on `experiences` (the source that first brought the row, provenance only since ADR-0084), on `experience_sync_logs`, on a membership and on the caches, the curator scope `'source'`, `requires_curation`, the admin panel's Sources tab and its routes (`/api/admin/sync/sources/…`) |
 | **Tier** | Which of a kind's two fillings a source belongs to ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md)): the **world tier** — a global source ranks the world on one signal and a line is drawn, the Iconic badge is its (§5) — or the **regional tier** — a source native to its own unit (a country's register, a city's list, a curator) enumerates what the unit holds and the kind's rule cuts within it, no badge. A region's list is both together; the rules, the scorecard and the register of sources looked at are [filling-a-kind.md](filling-a-kind.md) and [`docs/sources/`](../sources/README.md) | Not a column yet: every source that exists — World Heritage, Art Museums, Public art, Places of worship, Archaeology, Monuments & memorials, Towers, Bridges & engineering marvels, Squares & streets — is world tier; the first regional source (#628) records its tier on its `experience_sources` row | — |
-| **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, monument / sculpture, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue, site / museum — and none for an art museum (§1, #814) | `experience_kind_memberships.type` — the membership's, since a place in two kinds has a type in each (ADR-0084, #1253); the vocabularies in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
+| **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, monument / sculpture, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue / sacred mountain / holy site, site / museum — and none for an art museum (§1, #814) | `experience_kind_memberships.type` — the membership's, since a place in two kinds has a type in each (ADR-0084, #1253); the vocabularies in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
 | **Treasure type** | What kind of thing a work is, independent of its venue's kind and type | `treasures.treasure_type` | `treasure_type` |
 
 **Every reader says which of the two it means** (#819). A reader that means the kind reads the membership's `kind_id` — through `rowKindJoinSql` / `rowKindSelectSql` (`backend/src/db/membership.ts`), which join the membership the place is shown under (`shownMembershipSql`: the first of its kinds in display order, an offered one first, ADR-0143 decision 6; per row, and once for every place where a read covers the whole catalogue, the world map's first screen, `catalogueKindJoinSql`) and the kind it names, so a list row, a search result, a review card and the counts all carry `kind_id`, `kind_name` and `kind_priority`, and a kind filter asks every kind of the place (below); the kinds are listed by `GET /api/experiences/kinds`. A reader that means the source reads the source row under its own name: migration 055 renamed `experience_categories` to `experience_sources` and every `category_id` that pointed at it to `source_id` (on `experiences`, `experience_sync_logs`, `curator_assignments`, `wikidata_query_cache`, `wikidata_cache_policy`), and the curator scope that names one is `'source'`. The word *category* is gone from the schema and the code, apart from the guards that remember the `experiences.category` column #814 retired; in the sections below *kind* is what a reader browses by, counts, admits and refuses, and *source* is a run, its gate, its cache, its log, its scope. The vision documents use the same words ([`EXPERIENCE-TYPE-AND-SIGNIFICANCE.md`](../vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md), [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md)).
@@ -43,7 +43,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 - `Squares & streets` (priority `9`) — fills the kind from the same gather, in the same pass (#1867). Seeded gated by migration 151, with its line in code (§ Squares & streets below)
 - `World Heritage components` (priority `10`) — fills the virtual kind of the same name: the World Heritage run writes it with a serial site's part relation, and it has no run, gate or admin card of its own (ADR-0156, § A part's record in World Heritage components). Seeded by migration 181
 
-`experience_kind_memberships.type` is the **type within a kind** (the place's own `experiences.type` until ADR-0084 moved it onto the membership, #1253; #814; the column was called `category` until then, the word the rest of the code used for the kind and its source until #819): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, `cathedral` / `church` / `chapel` / `monastery` / `mosque` / `temple` / `shrine` / `synagogue` for a place of worship, `site` / `museum` for Archaeology, and **NULL for an art museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1), while `museum` as an Archaeology type says which of that kind's two things this one is, the excavation or the museum of its finds (ADR-0058 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A place is one row of `experiences` and each of its memberships in a kind is a row of `experience_kind_memberships` (below); a monument that is also a World Heritage point is still two places today — the Statue of Liberty is ids 382 and 11565 — and becomes one place with two memberships by #755's merge. Refusal as a curator-confirmed withdrawal of one membership (ADR-0045 decision 6) lands with #755 as well; today a refusal is the run's write on the membership, and the curator confirms or overrides it.
+`experience_kind_memberships.type` is the **type within a kind** (the place's own `experiences.type` until ADR-0084 moved it onto the membership, #1253; #814; the column was called `category` until then, the word the rest of the code used for the kind and its source until #819): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, `cathedral` / `church` / `chapel` / `monastery` / `mosque` / `temple` / `shrine` / `synagogue` / `sacred mountain` / `holy site` for a place of worship, `site` / `museum` for Archaeology, and **NULL for an art museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1), while `museum` as an Archaeology type says which of that kind's two things this one is, the excavation or the museum of its finds (ADR-0058 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A place is one row of `experiences` and each of its memberships in a kind is a row of `experience_kind_memberships` (below); a monument that is also a World Heritage point is still two places today — the Statue of Liberty is ids 382 and 11565 — and becomes one place with two memberships by #755's merge. Refusal as a curator-confirmed withdrawal of one membership (ADR-0045 decision 6) lands with #755 as well; today a refusal is the run's write on the membership, and the curator confirms or overrides it.
 
 **"Holds treasures" is derived, never stored** (ADR-0052 decision 8). A place says how many things there are to look at inside it from the offered links themselves: `treasure_count` is counted per row beside the region read (`experienceRegionQuery.ts`), by the same predicates the treasures endpoint uses — `offeredLinkSql` for a link the source still places (ADR-0044) and the published state on both the link and the work (ADR-0025) — and `TreasuresInsideChip` draws it as "3 treasures inside" on the map-mode row, the Discover card and both hover cards. No column and no flag a run has to remember to keep in step. The chip is silent for the kinds whose row lists its holdings already — art museums (`kind_id` 2) and Archaeology (5), whose museums hold finds the row lists the same way — where the count is the point of the card rather than a side note; every other kind that links treasures gets it wherever the count is above zero. A church admitted for its own fame counts zero, one admitted for its *Pietà* counts it.
 
@@ -2855,7 +2855,9 @@ stored rows the rule's question, for the rows the rule never reached.
 ### Places of worship (`worshipSyncService.ts`, `worship/*.ts`)
 
 **What the kind is for.** A building a traveller walks into: a cathedral, a mosque, a temple, a
-shrine — the Hagia Sophia, Angkor Wat, Notre-Dame de Paris, the Sagrada Família — and what stands
+shrine — the Hagia Sophia, Angkor Wat, Notre-Dame de Paris, the Sagrada Família — or a holy place
+that is no building, where the place itself is what is venerated: the Western Wall, Mount Kailash,
+Mount Kōya (#1978). And what stands
 inside it and is worth looking at on its own. Michelangelo's *Pietà* is St Peter's, the *Last
 Supper* is Santa Maria delle Grazie's, the Shroud of Turin is Turin Cathedral's, and the Iron Crown
 is Monza's. Those works had nowhere to
@@ -2880,7 +2882,8 @@ St Peter's, at 129 sitelinks, would enter on its own fame and still names the *P
 holding nothing of ours names nothing.
 
 **Door one — the place** (`worship/places.ts`). A classifier over the kind's share of the place gather (`WORSHIP_KIND`, `classifyPlacesByFame`, #1820): the public-art shape over the worship tree. The
-tree is `P279*` under `structure of worship`, floored with the `WORSHIP_CLASSES` the public-art
+tree is `P279*` under `structure of worship` and under `sacred place` (`SACRED_PLACE_ROOT`,
+`worship/holyPlaces.ts`), floored with the `WORSHIP_CLASSES` the public-art
 import already pins and with every root the type rule walks — so that what the rule can name, the
 rule admits — less the `WORSHIP_DESIGNATIONS` that are not buildings at all (`pilgrimage site`,
 which is why Christ the Redeemer never reaches this rule) and less the part classes. The pool is
@@ -2891,9 +2894,10 @@ all are asked for by id afterwards (`fetchEntitiesByIds`), so every one of them 
 its own. The part classes are asked for too, though the rule refuses every one: a bell tower
 Wikidata types nothing else should be seen refused by name — the Leaning Tower, the Giralda, St
 Mark's Campanile — rather than silently absent. Then one facts pass per 50 candidates for every
-`P31` the rows carry, and the verdict, `worshipVerdict` in `worshipTest.ts`, pure and given every
-fact it reads (a row's own classes and nothing else — a tower is a tower whether a cathedral stands
-beside it or not):
+`P31` the rows carry and the faiths they are holy to (`P140`), the containers their locations
+name (`WORSHIP_KIND.readsContainers`), and the verdict, `worshipVerdict` in `worshipTest.ts`, pure
+and given every fact it reads (a row's own classes — a tower is a tower whether a cathedral stands
+beside it or not — and, for a holy place that is no building, its faiths and where it is kept):
 
 - **A work another kind handed over is kept** (ADR-0102, #1444). Kinds pass works between them:
   Public Art refuses the Horses of Saint Mark as "in the collection of St Mark's Basilica: a work of a
@@ -2929,7 +2933,9 @@ beside it or not):
   entry is conditional: `destroyed building or structure` is lifted by a standing-ruin class
   (`RUIN_CLASSES` — `religious building ruin`, `monastery ruins`), because Fountains Abbey and St
   Augustine's Abbey are World Heritage Sites with a ticket office, while the Second Temple and the
-  Basilica Aemilia carry no ruin class and stay refused.
+  Basilica Aemilia carry no ruin class and stay refused. And a holy place lifts the landform kills
+(`LANDFORM_CLASSES`): Kailash is a mountain, and the mountain is what pilgrims walk round, while
+the Temple Mount is still refused as a neighbourhood.
 - **A tower is not a place of worship.** A row whose only worship class is a `bell tower`,
   `campanile`, `church tower`, `minaret` or `steeple` is refused (`WORSHIP_PART_CLASSES`), and
   offered to nobody: a traveller does not enter Pisa Cathedral to see the Leaning Tower, and does
@@ -2942,12 +2948,26 @@ beside it or not):
   the Minaret of Jam, the Qutb Minar and Big Ben all read alike. A row carrying a proper worship
   class beside its tower is the place: the Ivan the Great Bell Tower is a church you walk into, and
   the Hagia Sophia is typed `minaret` among nine other classes.
+- **A holy place that is no building** (no class of the building tree, `holyPlaceRefusal`) is
+  refused when it is a city or a city's walls (`HOLY_SITE_KILL_CLASSES`: Anuradhapura, the Walls of
+  Jerusalem); when its location (`P276`, never `part of`) is a building of worship or a museum, since
+  the object is that place's — the Black Stone and the Kaaba are Al-Masjid Al-Haram's, the Pergamon
+  Altar the Pergamon Museum's, while the Western Wall stands in the Old City; and when it is a
+  mountain no faith (`P140`) or pilgrimage (`WORSHIP_EVIDENCE_CLASSES`: pilgrimage site,
+  shintaisan, sangō, religious complex) is named for. Kailash, Arafat and Kōya name their faiths and
+  Fuji is a kami's mountain; Kanchenjunga, Gangkhar Puensum, Rainier and Shiprock name none.
 - **Somewhere to stand**: a coordinate, and on Earth.
 
-The line is asked after the verdict, not inside it: `lineVerdict` in `places.ts` reads the source
+The line is asked after the verdict, not inside it: `standingOf` in `places.ts` reads the source
 row's two numbers rather than a constant, admits what clears the enter line, refuses by name — with
 its count — an admitted row that has fallen below the stay line, and says nothing at all about a
-candidate that was never in.
+candidate that was never in. Under the editions line a year of readers is a second door
+(`WORSHIP_READERS_LINE`, #1978): 25,000 readers admit a place and 18,000 keep it, read by
+`yearlyReaders` through the pipeline's `placeReaders`, and the arrival carries the note a curator
+reads ("19 Wikipedia editions, under the line, and 181,451 readers a year: in by its readers").
+Measured in #1997, it brings all seven tops of the kind's list under the line — Mont-Saint-Michel
+Abbey, the Sanctuary of Fátima, the Virupaksha Temple — where a Wikivoyage guide would miss Fátima
+and Virupaksha. With no year of readers read, the editions line alone decides.
 
 **Door two — a work it holds** (`worship/pipeline.ts`). The museum import's works collector
 (`museum/worksCollector.ts`), run with this kind's own rule: a `VenueRule` whose classes are the
@@ -3028,9 +3048,12 @@ and never a row this run admits, the rule `filtered` keeps for the places: a cha
 basilica whose `P276` names it carries a worship class the vocabulary refuses, and is a row the
 run writes, not an object it turned down. The class list that would keep the objects is #891's.
 
-**Types.** Eight words a reader filters by, read from the class trees in the precedence of
+**Types.** Ten words a reader filters by, read from the class trees in the precedence of
 `TYPE_ROOTS` — `cathedral`, `monastery`, `mosque`, `synagogue`, `chapel`, `church`, `shrine`,
-`temple` — the first tree a row's classes reach winning. The Hagia Sophia is a **mosque** because
+`temple`, then `sacred mountain` and `holy site` for a holy place no building word fits — the
+first tree a row's classes reach winning. A holy site that is a mountain, hill, range or volcano
+(`MOUNTAIN_FORMS`) is a sacred mountain whichever holy class it carries: Mount Arafat is
+`mountain, sacred place`. The Hagia Sophia is a **mosque** because
 `mosque` precedes `church`, and St Peter's is a **church**: Wikidata gives it `parish church`
 beside its three basilica titles and no cathedral class, which is also the traveller's answer,
 since Rome's cathedral is the Lateran. The two generic roots are matched **only as the row's own
@@ -3107,12 +3130,12 @@ the row of its name are proposed as one place like any near pair (§ near places
 
 **Known misses**, each named so the next reader does not go looking:
 
-- **The Western Wall and the Kaaba** carry no class under the worship tree at all, and no list
-  change reaches them: the only class that would, `sacred place`, holds 30 rows at the line of
-  which 25 are landscape — the Ganges, Fuji, Kailash, the Holy Land as a *term*. A traveller in
-  Mecca is covered by Al-Masjid Al-Haram, which is admitted; one at the Western Wall is covered by
-  nothing, since the Temple Mount above it is refused as a hill. Both wait for a curator, as the
-  Black Stone does — a real object with no Wikidata class to carry it.
+- **Holy places Wikidata types by their form alone**: Meteora (`monastic community, rock
+  formation`), Shah-i-Zinda (`necropolis`), the Batu Caves (`cave`) and Uluru (`inselberg`) carry
+  no class of either tree; their reach is #2146's.
+- **Holy mountains of regional fame that name no faith on Wikidata** — Ontake, the Three
+  Mountains of Dewa, Ōmine — are refused with Kanchenjunga and Rainier (ADR-0161); the regional
+  tier is where they belong.
 - **Six visitable rows refused as destroyed buildings**, because Wikidata types them so and types
   them no ruin: Champmol, Port-Royal-des-Champs, the Temple of Antoninus and Faustina, the
   Bibi-Heybat Mosque (destroyed in 1936 and rebuilt in 1999), the Abbey of St Victor and the

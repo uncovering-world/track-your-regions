@@ -153,16 +153,17 @@ class list that would keep the objects is #891's.
 
 ## What this source cannot reach
 
-- **The Western Wall (84 sitelinks) and the Kaaba (133)** carry no class under the worship tree:
-  the Wall is `wall, archaeological site, sacred place` and the Kaaba `sacred place` alone. The
-  only class that would admit them, `sacred place` (Q4588528), holds 30 rows at the line of
-  which 25 are landscape — the Ganges, the Jordan, Fuji, Kailash, the Holy Land as a *term* — so
-  opening it would cost six new kill classes to gain four rows. A traveller in Mecca is covered
-  by Al-Masjid Al-Haram, which is admitted; the Western Wall is covered by nothing, since the
-  Temple Mount above it is refused as a hill.
-- **Sacred objects with no class at all**: the Black Stone (66, typed `stone, heirloom`), the
-  kiswah (30, `parament`), the Zamzam Well (67), the Immovable Ladder (17). A curator adds these
-  by hand.
+- **Holy places Wikidata types by their form alone**: Meteora (`monastic community, rock
+  formation`), Shah-i-Zinda (`necropolis`), the Batu Caves (`cave, architectural landmark`) and
+  Uluru (`inselberg`) carry no class of either tree. Every class reach is #2146's.
+- **Holy mountains of regional fame that name no faith or pilgrimage on Wikidata**: Ontake, the
+  Three Mountains of Dewa, Ōmine, Osore and Kawagarbo are refused with Kanchenjunga and Rainier
+  (2026-10-30, #1978): the rule cannot tell them apart, and the regional tier is where they
+  belong.
+- **Sacred objects** the rule cannot tell from a place: the Station of Ibrahim (28 sitelinks,
+  `sacred place` with no location) is admitted for a curator; the kiswah (30, `parament`), the
+  Zamzam Well (67) and the Immovable Ladder (17) carry no holy class. A curator answers these by
+  hand.
 - **Six visitable rows Wikidata types `destroyed building or structure` and types no ruin**:
   Champmol, Port-Royal-des-Champs, the Temple of Antoninus and Faustina, the Bibi-Heybat Mosque
   (destroyed in 1936, rebuilt in 1999), the Abbey of St Victor and the Ospedale della Pietà. The
@@ -188,6 +189,37 @@ class list that would keep the objects is #891's.
   worship**: Pena Palace and Lambeth Palace are admitted beside the Potala Palace and the Yonghe
   Temple, and Loarre Castle beside Takht-e Soleyman and Ananuri — Loarre and Ananuri carry the same
   two classes (`castle`, `monastery`) and only one of them is the visit. A curator's hand.
+
+## Holy places and a year of readers (2026-10-30, #1978)
+
+The kind is holy places, not only buildings (`kinds.jsonl`), so the run reads the `sacred place`
+tree beside the building tree, and a year of readers is a second door under the editions line.
+Measured on the development catalogue on the subset of the dump of 2026-10-19, read-only, the run
+would bring 498 places the kind does not offer. Every one of them reaches a curator.
+
+- **485 come by their readers** (25,000 a year to enter). Among them are all seven tops of the
+  kind's list under the line: the Dilwara Temples, Mont-Saint-Michel Abbey, the Jade Buddha
+  Temple, Wat Xieng Thong, the Salt Cathedral of Zipaquirá, the Sanctuary of Fátima and the
+  Virupaksha Temple.
+- **13 are holy places that are no building**:
+  - holy sites: the Western Wall, Muzdalifah, Yamunotri, Ahu Tongariki, Brauron and the Station
+    of Ibrahim;
+  - sacred mountains: Fuji, Kailash, Arafat, Kōya, Hiei, Nantai and Tsukuba.
+- **What the `sacred place` tree brought and the rule refuses:**
+  - rivers (the Ganges, the Jordan), a term (the Holy Land), a place of myth (Mount Meru) and
+    relics (the Shroud of Turin);
+  - a city and a city's walls (Anuradhapura, the Walls of Jerusalem);
+  - objects kept in a building of worship or a museum (the Black Stone, the Kaaba, the Pergamon
+    Altar);
+  - mountains no faith or pilgrimage is named for (Kanchenjunga, Gangkhar Puensum, Machhapuchhre,
+    Rainier, Baekdu, Shiprock, the Black Hills).
+- **Three places the kind already offered gain a type**: the Delphic Oracle, Nemea and the Kii
+  pilgrimage routes become holy sites.
+- **What the location test costs**: the gather now reads the containers of the kind's pool
+  (`readsContainers`, 1,310 of them for a pool of 2,272). On the subset the kind's gather took
+  44 seconds against 42 without them.
+
+The rule is ADR-0161's.
 
 ## Terms
 
