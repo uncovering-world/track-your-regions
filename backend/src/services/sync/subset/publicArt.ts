@@ -195,6 +195,7 @@ export async function subsetEntityFacts(ids: string[]): Promise<Map<string, Enti
       seen.add(foldLabel(label));
       creators.push(label);
     }
+    const religions = itemsOf(bestStatements(claims.P140));
     out.set(id, {
       classes: itemsOf(bestStatements(claims.P31)),
       locations: itemsOf(standingStatements(claims.P276)),
@@ -204,6 +205,8 @@ export async function subsetEntityFacts(ids: string[]): Promise<Map<string, Enti
       commemorates: itemsOf(bestStatements(claims.P547)),
       depicts: itemsOf(bestStatements(claims.P180)),
       genres: itemsOf(bestStatements(claims.P136)),
+      // Absent rather than empty, as the live reader leaves it (`fetchEntityFacts`).
+      ...(religions.length ? { religions } : {}),
     });
   }
   return out;
