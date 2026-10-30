@@ -45,6 +45,17 @@ const u = (property: 'P195' | 'P276', rank: 'preferred' | 'normal' = 'normal'): 
   ({ venue: null, property, rank });
 
 describe('placeArtwork', () => {
+  it('leaves a work located in a reading room there, whoever owns it (#2150)', () => {
+    // A cathedral chapter's codex kept in the chapter's library: the owner resolves to the
+    // church, but the codex is read in the library, not shown in the church.
+    const keptBack = (q: string) => q === 'chapterLibrary';
+    const owned = [s('cathedral', 'P195'), s('chapterLibrary', 'P276')];
+    const resolveChurch = (q: string) => (q === 'cathedral' ? 'cathedral' : null);
+    expect(placeArtwork(owned, resolveChurch, ancestorsOf, keptBack)).toEqual([]);
+    // Without the stop the owner wins, as for any museum.
+    expect(placeArtwork(owned, resolveChurch, ancestorsOf)).toEqual(['cathedral']);
+  });
+
   it('drops a location the owner contradicts (Las Meninas)', () => {
     // P276 names the Royal Palace of Madrid, where they hung before 1819 and where Wikidata
     // never closed the statement. Agreement on the Prado wins.

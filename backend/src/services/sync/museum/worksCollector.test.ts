@@ -54,6 +54,20 @@ describe('collectWorks', () => {
     expect(out.pool.get('Q216141')?.type).toBe('relic');
   });
 
+  it('takes a manuscript whole and places it at the museum that holds it (#2150)', async () => {
+    // No painting or sculpture root reaches an illuminated manuscript, so without its own root
+    // the Sarajevo Haggadah, the one work its museum is known for, is never asked about.
+    const run = { sparql: makeSparql(), phase: () => {}, step: async () => {} };
+    const out = await collectWorks(run, {
+      broadRoots: MUSEUM_BROAD_ROOTS, wholeRoots: MUSEUM_WHOLE_ROOTS, pinned: MUSEUM_PINNED_CLASSES,
+      pinnedEditionClasses: MUSEUM_PINNED_EDITION_CLASSES, editionRoot: EDITION_ROOT,
+      noun: { work: 'work of art', works: 'artworks' },
+      rule: museumRule(MUSEUM_CLASSES), logPrefix: '[test]',
+    });
+    expect(out.pool.get('Q1268253')?.type).toBe('illuminated manuscript');
+    expect(out.afterFolds.Q1268253).toEqual(['Q568938']);
+  });
+
   it('keeps only the works a kind wants, and asks no statements about the rest', async () => {
     // Archaeology collects the art pool and keeps the finds in it: a sculpture of
     // 1510 with no discovery place is nobody's find, and reading its venues would

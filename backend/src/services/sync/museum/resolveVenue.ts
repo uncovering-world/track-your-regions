@@ -9,7 +9,10 @@ import { nearest } from '../places/nearest.js';
  * nobody could read ('no facts'); an ancestor nobody fetched is no place, since the subset keeps
  * a container's container only when the chain reaches a coordinate (`places/containment.ts`).
  */
-export type Resolution = { venue: string; hops: number } | { unresolved: string };
+export type Resolution = { venue: string; hops: number } | { unresolved: string; readingRoom?: true };
+
+/** Why a work kept in a reading room is placed nowhere (`VenueRule.readingRooms`). */
+export const READING_ROOM_REASON = 'kept in a library or an archive, not shown in what it is part of';
 
 export function resolveVenue(
   start: string,
@@ -20,14 +23,24 @@ export function resolveVenue(
 ): Resolution {
   const own = facts(start);
   if (own && venueVerdict(own, rule).pass) return { venue: start, hops: 0 };
+  const isReadingRoom = (qid: string) => facts(qid)?.classes.some((c) => rule.readingRooms?.has(c)) ?? false;
+  if (isReadingRoom(start)) return { unresolved: READING_ROOM_REASON, readingRoom: true };
+  // A department or a fonds of a reading room stops there too: the walk does not climb past one.
+  let stoppedAtRoom = false;
+  const climb = (qid: string) => {
+    if (!isReadingRoom(qid)) return parents(qid);
+    stoppedAtRoom = true;
+    return [];
+  };
 
   const isVenue = (qid: string) => {
     const known = facts(qid);
     return known !== undefined && venueVerdict(known, rule).pass;
   };
-  const found = nearest(start, parents, isVenue, maxHops);
+  const found = nearest(start, climb, isVenue, maxHops);
   if ('at' in found) return { venue: found.at, hops: found.hops };
   if (found.why === 'ambiguous') return { unresolved: found.unresolved };
+  if (stoppedAtRoom) return { unresolved: READING_ROOM_REASON, readingRoom: true };
   // Nothing up the chain qualifies: the start's own reason, which is what a
   // curator reads beside an unplaced work.
   if (!own) return { unresolved: 'no facts' };

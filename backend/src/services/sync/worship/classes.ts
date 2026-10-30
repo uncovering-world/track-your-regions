@@ -22,6 +22,7 @@ import {
   WORSHIP_DESIGNATIONS,
 } from '../publicArt/classes.js';
 import { MUSEUM_ROOT, SACRED_MOUNTAIN_ROOT, SACRED_PLACE_ROOT } from './holyPlaces.js';
+import { READING_ROOM_CLASSES } from '../museum/artTest.js';
 
 /** `P279*` under structure of worship (Q1370598): 1267 classes (measured 2026-09-09; 1265 on 2026-09-04). */
 export { WORSHIP_ROOT } from '../publicArt/classes.js';
@@ -393,6 +394,8 @@ export interface WorshipTrees {
   buildings: ReadonlySet<string>;
   /** The `museum` tree, where a holy object kept in one is the museum's. */
   museums: ReadonlySet<string>;
+  /** The library and archives trees: a work kept in one is not shown in the church it is part of. */
+  readingRooms: ReadonlySet<string>;
   /** One set per type, in no order — `TYPE_ROOTS` holds the precedence. */
   types: Map<WorshipType, ReadonlySet<string>>;
 }
@@ -418,6 +421,7 @@ export function buildWorshipTrees(fetched: {
   worship: Iterable<string>;
   sacred: Iterable<string>;
   museums?: Iterable<string>;
+  readingRooms?: Iterable<string>;
   typeTrees: Record<WorshipType, Iterable<string>>;
 }): WorshipTrees {
   const parts = new Set(Object.keys(WORSHIP_PART_CLASSES));
@@ -446,5 +450,8 @@ export function buildWorshipTrees(fetched: {
   for (const { type, roots, direct } of TYPE_ROOTS) {
     types.set(type, new Set([...fetched.typeTrees[type], ...roots, ...(direct ?? [])]));
   }
-  return { worship, parts, sacred, buildings, museums: new Set([...(fetched.museums ?? []), MUSEUM_ROOT]), types };
+  return {
+    worship, parts, sacred, buildings, museums: new Set([...(fetched.museums ?? []), MUSEUM_ROOT]), types,
+    readingRooms: new Set([...(fetched.readingRooms ?? []), ...Object.keys(READING_ROOM_CLASSES)]),
+  };
 }

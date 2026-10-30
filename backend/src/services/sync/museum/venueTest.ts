@@ -83,6 +83,14 @@ export interface VenueRule {
   siteVeto: boolean;
   /** The word in the reason: `not a museum class`. */
   noun: string;
+  /**
+   * The library and archives trees: a work whose location is a reading room, or a department of
+   * one, stays there. It is not placed at what the room is `part of`, nor at an owner its other
+   * statements name, since it is read there by appointment, not shown. Places of worship sets
+   * it: the Laurentian Library is part of San Lorenzo's complex, and a visitor to the basilica
+   * sees none of its codices (#2150).
+   */
+  readingRooms?: ReadonlySet<string>;
 }
 
 export function museumRule(classes: ReadonlySet<string>): VenueRule {

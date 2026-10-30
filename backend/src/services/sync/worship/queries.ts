@@ -20,6 +20,7 @@ import {
   type WorshipType,
 } from './classes.js';
 import { MUSEUM_ROOT, SACRED_PLACE_ROOT } from './holyPlaces.js';
+import { READING_ROOM_CLASSES } from '../museum/artTest.js';
 
 /**
  * What a place of worship is, and what a reader filters it by: the tree under
@@ -46,6 +47,12 @@ export async function fetchWorshipTrees(run: QueryRunner): Promise<WorshipTrees>
   run.phase('Reading what a museum is...');
   await run.step();
   const museums = await fetchClassTree(run.sparql, MUSEUM_ROOT, 'museums');
+  run.phase('Reading what a library or an archive is...');
+  const readingRooms: string[] = [];
+  for (const root of Object.keys(READING_ROOM_CLASSES)) {
+    await run.step();
+    readingRooms.push(...(await fetchClassTree(run.sparql, root, 'reading rooms')));
+  }
 
   const typeTrees = {} as Record<WorshipType, string[]>;
   for (const { type, roots } of TYPE_ROOTS) {
@@ -57,7 +64,7 @@ export async function fetchWorshipTrees(run: QueryRunner): Promise<WorshipTrees>
     }
     typeTrees[type] = classes;
   }
-  return buildWorshipTrees({ worship, sacred, museums, typeTrees });
+  return buildWorshipTrees({ worship, sacred, museums, readingRooms, typeTrees });
 }
 
 /**

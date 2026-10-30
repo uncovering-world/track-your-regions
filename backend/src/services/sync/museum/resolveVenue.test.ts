@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveVenue } from './resolveVenue.js';
+import { resolveVenue, READING_ROOM_REASON } from './resolveVenue.js';
 import { museumRule, type VenueFacts } from './venueTest.js';
 
 const MUSEUM_CLASSES = new Set(['Q207694']); // art museum
@@ -22,6 +22,10 @@ const world: Record<string, VenueFacts & { parents: string[] }> = {
   Q950001: { qid: 'Q950001', classes: ['Q7328910'], lat: null, lon: null, dissolved: null, parents: ['Q950002'] },
   Q950002: { qid: 'Q950002', classes: ['Q207694'], lat: 35.0, lon: 20.0, dissolved: null, parents: [] },
   Q950003: { qid: 'Q950003', classes: ['Q207694'], lat: 40.0, lon: 25.0, dissolved: null, parents: [] },
+  // The Laurentian Library, part of San Lorenzo, and a fonds of the library (#2150).
+  Q573881: { qid: 'Q573881', classes: ['Q120560'], lat: 43.7749, lon: 11.2537, dissolved: null, parents: [] },
+  Q856419: { qid: 'Q856419', classes: ['Q7075'], lat: 43.7746, lon: 11.2539, dissolved: null, parents: ['Q573881'] },
+  Q960000: { qid: 'Q960000', classes: ['Q7328910'], lat: null, lon: null, dissolved: null, parents: ['Q856419'] },
 };
 const facts = (q: string) => world[q];
 const parents = (q: string) => world[q]?.parents ?? [];
@@ -65,5 +69,15 @@ describe('resolveVenue', () => {
     // Deep branch listed first to ensure breadth-first (not depth-first) returns the nearest
     const r = resolveVenue('Q950000', facts, parents, museumRule(MUSEUM_CLASSES));
     expect(r).toEqual({ venue: 'Q950003', hops: 1 });
+  });
+
+  it('never climbs past a reading room, from the room itself or from a fonds inside it (#2150)', () => {
+    const worship = { classes: new Set(['Q120560']), siteVeto: false, noun: 'place of worship', readingRooms: new Set(['Q7075']) };
+    const kept = { unresolved: READING_ROOM_REASON, readingRoom: true };
+    expect(resolveVenue('Q856419', facts, parents, worship)).toEqual(kept);
+    expect(resolveVenue('Q960000', facts, parents, worship)).toEqual(kept);
+    // Without the stop the same fonds climbs through the library to the basilica.
+    expect(resolveVenue('Q960000', facts, parents, { ...worship, readingRooms: undefined }))
+      .toEqual({ venue: 'Q573881', hops: 2 });
   });
 });

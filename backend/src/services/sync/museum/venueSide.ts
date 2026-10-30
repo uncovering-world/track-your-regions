@@ -389,7 +389,7 @@ export async function readVenueSide(
   const arrived: Record<string, string[]> = {};
   for (const [qid, work] of kept) {
     const ownStatements = statements.get(qid) ?? [];
-    const placedAt = placeArtwork(ownStatements, resolver.resolve, graph.ancestors);
+    const placedAt = placeArtwork(ownStatements, resolver.resolve, graph.ancestors, resolver.keptBack);
     // A handed-over work goes only to a place the refusal named (ADR-0102):
     // another admitted venue its statements reach refused it by its own rule.
     // A venue folded into one the refusal named is that venue: the Galleria Palatina is Palazzo Pitti's.

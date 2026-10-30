@@ -97,6 +97,8 @@ const ENTITIES: Record<string, FixtureEntity> = {
   Q900401: { label: 'Print Museum A', classes: [ART_MUSEUM], lat: 35.7, lon: 139.7, parents: [] },
   Q900402: { label: 'Print Museum B', classes: [ART_MUSEUM], lat: 21.3, lon: -157.8, parents: [] },
   Q900403: { label: 'Print Museum C', classes: [ART_MUSEUM], lat: 48.2, lon: 16.3, parents: [] },
+  // A museum known for one manuscript, which only a whole root reaches (#2150).
+  Q568938: { label: 'National Museum of Bosnia and Herzegovina', classes: [MUSEUM], lat: 43.855, lon: 18.399, parents: [] },
   // A church: a place a work hangs that no walk can turn into a museum.
   Q1876: { label: 'Santa Maria delle Grazie', classes: ['Q16970'], lat: 45.4659, lon: 9.1709, parents: [] },
 
@@ -266,6 +268,12 @@ export const WORKS: Record<string, FixtureWork> = {
       { property: 'P195', venue: 'Q900302' },
       { property: 'P195', venue: 'Q900303' },
     ],
+  },
+  // Under `illuminated manuscript`, a whole root no other root reaches (#2150): its collection,
+  // as the subset holds it on 2026-10-30.
+  Q1268253: {
+    label: 'Sarajevo Haggadah', sitelinks: 23, cls: 'Q48498', clsLabel: 'illuminated manuscript',
+    statements: [{ property: 'P195', venue: 'Q568938' }],
   },
   // Held whole under an extra class no closure reaches (relic), by a church — which fails the
   // museum venue rule, so this work stays homeless under `MUSEUM_CLASSES` (#753's own kind reads

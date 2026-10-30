@@ -35,6 +35,16 @@ describe('artVerdict', () => {
     expect(artVerdict(['Q207694', 'Q2772772'], []).art).toBe(true);
   });
 
+  it('drops a natural history museum whose one famous holding is a jewel, and keeps a mixed one typed art museum (#2150)', () => {
+    // A jewel is not sculpture, so the painting share alone would read one cut stone as 1 painting vs 0.
+    const jewel = { sculptural: false };
+    expect(artVerdict(['Q1970365'], [jewel])).toEqual({ art: false, why: 'another purpose: natural history museum' });
+    // National Museum Cardiff (Q1321874): national museum, art museum, natural history museum.
+    expect(artVerdict(['Q24699794', 'Q17431399', 'Q207694', 'Q1970365'], []).art).toBe(true);
+    // The Green Vault (Q707407) is typed bare museum, and its brilliant counts toward the share.
+    expect(artVerdict(['Q33506'], [jewel]).art).toBe(true);
+  });
+
   it('keeps a palace with a picture gallery, which no purpose class names', () => {
     // Windsor Castle (Q42646): castle; royal palace; historic house museum. Van Dyck's Charles I hangs in its State Apartments.
     expect(artVerdict(['Q23413', 'Q53536964', 'Q2087181'], [painting, painting]).art).toBe(true);

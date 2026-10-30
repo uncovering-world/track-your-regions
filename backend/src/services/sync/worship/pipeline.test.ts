@@ -60,6 +60,8 @@ const RELIC_OF_JESUS = 'Q1087471'; // relic associated with Jesus
 const TOMB = 'Q381885'; // tomb
 const SHRINE = 'Q697295'; // shrine
 const PAPAL_PALACE = 'Q83400038'; // palace of the Popes
+const LIBRARY = 'Q7075'; // library
+const ILLUMINATED_MANUSCRIPT = 'Q48498'; // illuminated manuscript
 const CONCLAVE = 'Q186431'; // conclave — what the Sistine Chapel's `P276` names most (#890)
 /** This fixture's own: a class no treasure root reaches, so a work typed by it is in no pool (#890). */
 const SACRED_OBJECT = 'Q900991';
@@ -157,6 +159,16 @@ const WORLD: World = {
       label: 'Apostolic Palace', classes: [PAPAL_PALACE], sitelinks: 59,
       lat: 41.90390, lon: 12.45570,
     },
+    // A library that is part of a basilica's complex, 40 m from it (#2150): the
+    // subset's rows, the library `part of` the basilica.
+    Q573881: {
+      label: 'Basilica of San Lorenzo', classes: [MINOR_BASILICA, CHURCH], sitelinks: 35,
+      lat: 43.77490, lon: 11.25370,
+    },
+    Q856419: {
+      label: 'Laurentian Library', classes: [LIBRARY], sitelinks: 38,
+      lat: 43.77460, lon: 11.25390, parents: ['Q573881'],
+    },
     // 20 sitelinks here; the real row has 35. The case needs a church the fame
     // line leaves out, so that what admits it is the Caravaggio it holds.
     Q869513: {
@@ -213,6 +225,12 @@ const WORLD: World = {
       label: 'Conversion on the Way to Damascus', sitelinks: 23, cls: PAINTING, clsLabel: 'painting',
       broadRoot: PAINTING, artists: ['Caravaggio'],
       statements: [{ property: 'P195', venue: 'Q869513' }],
+    },
+    // The library's codex, under `illuminated manuscript`, a root taken whole.
+    // 23 sitelinks here, so that it clears the line and the case is the fold's.
+    Q2567818: {
+      label: 'Codex Amiatinus', sitelinks: 23, cls: ILLUMINATED_MANUSCRIPT, clsLabel: 'illuminated manuscript',
+      statements: [{ property: 'P195', venue: 'Q856419' }, { property: 'P276', venue: 'Q856419' }],
     },
     // Michelangelo's last fresco, in the Cappella Paolina. 22 sitelinks here
     // against 16 on the real row, so that the chapel is admitted for it and the
@@ -559,6 +577,16 @@ describe('collectPlacesOfWorship', () => {
     expect(reason(out, 'Q1034868')).toBeUndefined();
   });
 
+  it('does not show a library’s codex in the basilica the library is part of (#2150)', async () => {
+    const out = await collect(world());
+
+    // The Laurentian Library has its own entrance from San Lorenzo's cloister,
+    // and its codices are read by appointment: a visitor to the basilica sees
+    // neither. The basilica stands on its own fame and holds nothing of the library's.
+    expect(item(out, 'Q573881')).toMatchObject({ door: 'place' });
+    expect(worksOf(out, 'Q573881')).not.toContain('Q2567818');
+  });
+
   it('keeps a fold onto a place the rule admits and only the line leaves out', async () => {
     // The Temple of Amun at Karnak's shape on log 102: it folded into the
     // Precinct of Amun-Re, which the run never admits — not because the rule
@@ -661,12 +689,12 @@ describe('collectPlacesOfWorship', () => {
     expect(item(out, 'Q204200')).toMatchObject({ door: 'place', type: 'mosque' });
     expect(item(out, 'Q172077')).toMatchObject({ door: 'place' });
     expect(worksOf(out, 'Q172077')).toEqual([]);
-    // And a row both pools named is one entity fetched: 14 places at the pool's
-    // floor and 9 works, of which only the Cavern is in both — plus the four
+    // And a row both pools named is one entity fetched: 15 places at the pool's
+    // floor and 10 works, of which only the Cavern is in both — plus the four
     // objects the admitted places hold that no class asked for (#890): the
     // conclave refused, the relic kept, the relic the museum wins and the
     // chapel tomb that is a place, each fetched all the same.
-    expect(out.fetched).toBe(26);
+    expect(out.fetched).toBe(28);
   });
 
   it('admits the Parthenon, which Wikidata also calls an archaeological site', async () => {
