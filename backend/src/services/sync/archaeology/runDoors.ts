@@ -43,6 +43,15 @@ export const ARCHAEOLOGY_SOURCE_ID = 5;
 export const LOG_PREFIX = '[Archaeology Sync]';
 
 /**
+ * ADR-0163: a site a Wikivoyage guide uses enters by its readers at the 12th
+ * percentile of the sites at the line (24,756 readers a year on the dump of
+ * 2026-10-19) and stays at the 8th; every other site at ADR-0127's median.
+ * The Roman Agora of Athens, one of the seven sites of the city's combined
+ * ticket, reads 47,207 under a median of 75,419 (#1982).
+ */
+export const ARCHAEOLOGY_GUIDED_DOOR = { enter: 0.12, stay: 0.08 } as const;
+
+/**
  * The run's door to Wikidata, with the answers kept.
  *
  * The museum collector's shape (ADR-0030): one wait budget for the whole

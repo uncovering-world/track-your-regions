@@ -34,7 +34,7 @@
 
 import { pool } from '../../db/index.js';
 import { burstsAmong, readAtLeast, readershipYear, readWorks } from '../dumps/readership/workReadership.js';
-import { latestUsage } from '../dumps/wikivoyage/usageTables.js';
+import { latestUsage, usedByAGuide } from '../dumps/wikivoyage/usageTables.js';
 import { WITNESSES, WITNESSES_NEEDED, witnessWords, type Witness } from './visit/witnesses.js';
 import { toContent } from './museum/worksCollector.js';
 import type { PoolWork } from './museum/queries.js';
@@ -50,11 +50,19 @@ export const DOOR_STAY_PERCENTILE = 0.35;
 export interface DoorPercentiles { enter: number; stay: number }
 export const DOOR_PERCENTILES: DoorPercentiles = { enter: DOOR_ENTER_PERCENTILE, stay: DOOR_STAY_PERCENTILE };
 
+/**
+ * A lower bar for the items a Wikivoyage guide uses (ADR-0163): a guide's word
+ * is the sign that a place read by fewer, or overshadowed by its town's item,
+ * is a visit of its own. The Roman Agora of Athens (19 editions, 47,207
+ * readers) is under Archaeology's median and over its 12th percentile.
+ */
+export interface GuidedDoor { items: ReadonlySet<string>; percentiles: DoorPercentiles }
+
 /** A work or a place the door is asked about: its item and its sitelinks. */
 export interface DoorWork { qid: string; sitelinks: number }
 
-/** What the door read of a work it opened for. */
-export interface OpenedWork { views: number; burst: boolean }
+/** What the door read of a work it opened for, and whether a Wikivoyage guide uses it (`GuidedDoor`). */
+export interface OpenedWork { views: number; burst: boolean; guided?: boolean }
 
 export interface ReadershipDoor {
   /** The works below the line it opened for, by item. */
@@ -62,6 +70,9 @@ export interface ReadershipDoor {
   /** This year's bar and exit, in views, for the run's log and the curator's note. */
   bar: number;
   exit: number;
+  /** The bar and exit for an item a Wikivoyage guide uses, where the door has one (`GuidedDoor`). */
+  guidedBar?: number;
+  guidedExit?: number;
 }
 
 /**
@@ -93,7 +104,8 @@ export function doorOf(
   iconicNow: ReadonlySet<string>,
   shown: ReadonlySet<string>,
   percentiles: DoorPercentiles = DOOR_PERCENTILES,
-): { opened: Map<string, number>; bar: number; exit: number } {
+  guided?: GuidedDoor,
+): { opened: Map<string, number>; bar: number; exit: number; guidedBar?: number; guidedExit?: number; guided?: ReadonlySet<string> } {
   const tier = works
     .filter(work => work.sitelinks >= line)
     .map(work => views.get(work.qid) ?? 0)
@@ -101,13 +113,19 @@ export function doorOf(
     .sort((a, b) => a - b);
   const bar = percentile(tier, percentiles.enter);
   const exit = percentile(tier, percentiles.stay);
+  const guidedBar = guided && percentile(tier, guided.percentiles.enter);
+  const guidedExit = guided && percentile(tier, guided.percentiles.stay);
+  const clears = (read: number, held: boolean, enter: number, stay: number) => read >= enter || (held && read >= stay);
   const opened = new Map<string, number>();
   for (const work of works) {
     if (work.sitelinks >= line || shown.has(work.qid)) continue;
     const read = views.get(work.qid) ?? 0;
-    if (read >= bar || (iconicNow.has(work.qid) && read >= exit)) opened.set(work.qid, read);
+    const held = iconicNow.has(work.qid);
+    const byGuide = guidedBar !== undefined && guidedExit !== undefined && guided?.items.has(work.qid)
+      && clears(read, held, guidedBar, guidedExit);
+    if (clears(read, held, bar, exit) || byGuide) opened.set(work.qid, read);
   }
-  return { opened, bar, exit };
+  return { opened, bar, exit, ...(guided ? { guidedBar, guidedExit, guided: guided.items } : {}) };
 }
 
 /** The works among `items` the catalogue marks Iconic now, which the exit applies to. */
@@ -145,8 +163,12 @@ export async function openPlaceDoor(
   places: readonly DoorWork[],
   line: number,
   held: ReadonlySet<string>,
+  guided?: DoorPercentiles,
 ): Promise<ReadershipDoor | null> {
-  return readDoor(places, async (views) => doorOf(places, views, line, held, new Set()));
+  const items = guided ? await usedByAGuide(places.map(place => place.qid)) : undefined;
+  return readDoor(places, async (views) => doorOf(
+    places, views, line, held, new Set(), DOOR_PERCENTILES, guided && items ? { items, percentiles: guided } : undefined,
+  ));
 }
 
 /**
@@ -156,13 +178,22 @@ export async function openPlaceDoor(
  * shut — no Wikivoyage usage built for its witnesses (`placeReadershipDoorFor`),
  * no year to read, or an empty tier — since it then opens for nothing.
  */
-export async function readUnderFloor(places: readonly DoorWork[], line: number, floor: number): Promise<string[]> {
+export async function readUnderFloor(
+  places: readonly DoorWork[], line: number, floor: number, guided?: DoorPercentiles,
+): Promise<string[]> {
   if (!await latestUsage()) return [];
   const year = await readershipYear();
   if (!year) return [];
   const { views } = await readWorks(year, places.map(place => place.qid));
-  const { bar } = doorOf(places, views, line, new Set(), new Set());
-  return Number.isFinite(bar) ? readAtLeast(year, bar, floor) : [];
+  const { bar, guidedBar } = doorOf(
+    places, views, line, new Set(), new Set(), DOOR_PERCENTILES, guided && { items: new Set(), percentiles: guided },
+  );
+  if (!Number.isFinite(bar)) return [];
+  if (guidedBar === undefined) return readAtLeast(year, bar, floor);
+  // Under the lower of the two bars, then kept where the plain bar or a guide speaks for it.
+  const read = await readAtLeast(year, Math.min(bar, guidedBar), floor);
+  const [{ views: theirs }, guide] = await Promise.all([readWorks(year, read), usedByAGuide(read)]);
+  return read.filter(qid => (theirs.get(qid) ?? 0) >= bar || guide.has(qid));
 }
 
 /** The places under the pool's floor a run's place door may open for (`readUnderFloor`), over the places it holds. */
@@ -180,8 +211,10 @@ async function readDoor(
   const door = await open(views, qids);
   const bursts = await burstsAmong(year, [...door.opened.keys()], counted);
   const opened = new Map<string, OpenedWork>();
-  for (const [qid, read] of door.opened) opened.set(qid, { views: read, burst: bursts.has(qid) });
-  return { opened, bar: door.bar, exit: door.exit };
+  for (const [qid, read] of door.opened) {
+    opened.set(qid, { views: read, burst: bursts.has(qid), ...(door.guided?.has(qid) ? { guided: true } : {}) });
+  }
+  return { opened, bar: door.bar, exit: door.exit, guidedBar: door.guidedBar, guidedExit: door.guidedExit };
 }
 
 /** Whether the source's curator gate is on, saying so in the run's log when it is not. */
@@ -233,6 +266,7 @@ export async function placeReadershipDoorFor(
   sourceId: number,
   line: number,
   logPrefix: string,
+  guided?: DoorPercentiles,
 ): Promise<PlaceDoor | undefined> {
   if (!await gateIsOn(sourceId, logPrefix)) return undefined;
   return async (places, held) => {
@@ -240,7 +274,7 @@ export async function placeReadershipDoorFor(
       console.log(`${logPrefix} The readership door is shut: no Wikivoyage usage is built (ADR-0128)`);
       return null;
     }
-    return openLoggedPlaceDoor(places, line, held, logPrefix);
+    return openLoggedPlaceDoor(places, line, held, logPrefix, guided);
   };
 }
 
@@ -264,11 +298,13 @@ async function openLoggedPlaceDoor(
   line: number,
   held: ReadonlySet<string>,
   logPrefix: string,
+  guided?: DoorPercentiles,
 ): Promise<ReadershipDoor | null> {
-  const door = await openPlaceDoor(places, line, held);
+  const door = await openPlaceDoor(places, line, held, guided);
   if (door) {
+    const byGuide = door.guidedBar === undefined ? '' : `; ${Math.round(door.guidedBar)} for a place a guide uses`;
     console.log(`${logPrefix} The readership door opened for ${door.opened.size} places below the line `
-      + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)})`);
+      + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)}${byGuide})`);
   } else shutForYear(logPrefix);
   return door;
 }
@@ -308,11 +344,19 @@ export function doorNote(label: string, work: OpenedWork, door: ReadershipDoor):
     + 'Can a visitor see it there now?';
 }
 
-/** Where a place's reading stands against the door: over the bar, or over the exit that keeps a place held. */
+/**
+ * Where a place's reading stands against the door: over the bar, over the
+ * lower bar of a place a guide uses, or over the exit that keeps a place held.
+ */
 function readingAgainst(place: OpenedWork, door: ReadershipDoor): string {
-  return place.views >= door.bar
-    ? `over the readership door's bar of ${roundViews(door.bar)}`
-    : `over the exit of ${roundViews(door.exit)} that keeps a place the source holds`;
+  if (place.views >= door.bar) return `over the readership door's bar of ${roundViews(door.bar)}`;
+  // Only a place a guide uses is read against the guide's lower bar and exit.
+  const guided = place.guided === true && door.guidedBar !== undefined && door.guidedExit !== undefined;
+  if (guided && place.views >= (door.guidedBar ?? Infinity)) {
+    return `over the bar of ${roundViews(door.guidedBar ?? 0)} for a place a Wikivoyage guide uses`;
+  }
+  const exit = guided ? Math.min(door.exit, door.guidedExit ?? door.exit) : door.exit;
+  return `over the exit of ${roundViews(exit)} that keeps a place the source holds`;
 }
 
 /**
@@ -322,7 +366,7 @@ function readingAgainst(place: OpenedWork, door: ReadershipDoor): string {
 export function placeDoorNote(place: OpenedWork, door: ReadershipDoor, witnesses: readonly Witness[] = []): string {
   const said = witnesses.length > 0 ? ` ${capitalised(witnessWords(witnesses))} say a visitor goes there.` : '';
   return `Admitted below the sitelinks line, read ${roundViews(place.views)} times this year in every counted `
-    + `edition (the median of this kind's places at the line is ${roundViews(door.bar)})`
+    + `edition, ${readingAgainst(place, door)}`
     + `${place.burst ? BURST_CLAUSE : ''}.${said} Is it a place a visitor goes to see?`;
 }
 

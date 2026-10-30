@@ -390,7 +390,7 @@ describe('collectSitesByFame', () => {
     expect(asked[0].qids.sort()).toEqual(['Q1524', 'Q43332']);
     expect([...answer.sites.keys()]).toEqual(['Q43332']);
     expect(answer.sites.get('Q43332')!.note).toBe('Admitted below the sitelinks line, read 2,400,000 times this year in '
-      + "every counted edition (the median of this kind's places at the line is 1,000,000). Is it a place a visitor goes to see?");
+      + "every counted edition, over the readership door's bar of 1,000,000. Is it a place a visitor goes to see?");
   });
 
   it('refuses a row the door alone admits with fewer than two witnesses, and names the witnesses of one it keeps (ADR-0128)', async () => {
