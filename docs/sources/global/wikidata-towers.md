@@ -149,3 +149,21 @@ Maiden's Tower as a lighthouse. And it calls some buildings towers that a travel
 the Ferdowsi and Omar Khayyam mausoleums, the Cœur Défense offices, Antwerp's city hall for its
 belfry, and the Svanetian tower, an item about a kind of tower rather than one. Every arrival
 waits for a curator, who reads these.
+
+## The public clock and the complex (2026-10-30, #2136)
+
+Two side classes let in what a traveller would not climb, and the rule refuses them since:
+
+- a public clock with a show, an astronomical clock or a Glockenspiel, that no clock-tower class
+  names. Wikidata files the Prague Astronomical Clock as a bell tower for its bells; it is the Old
+  Town Hall's clock, and Public art offers it. Big Ben and the Tower of the Winds are clock towers
+  and stay;
+- a building complex that only the plain `tower` class names: Cœur Défense, a complex of office
+  towers. The rule reads the class alone, since its tree holds twin towers, and Kharaqan's twin
+  tower tombs are towers a traveller visits.
+
+Measured on the dev subset over every item a tower class names, the two conditions fire on five
+items: the Prague clock, Fanzago's astronomical clock on Clusone's Palazzo comunale (5 Wikipedia
+editions), Cœur Défense and two complexes with no edition. The Old Town Hall's tower, which a
+visitor climbs, has no item of its own: the hall's item is a town hall and a museum, and
+OpenStreetMap's tower carries the hall's item.

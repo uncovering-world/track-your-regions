@@ -143,3 +143,12 @@ components; and Yerevan's Abovyan Street, with 7,900 readers a year, is a region
 London Docklands), a fairground (the Theresienwiese), the Ho Chi Minh trail and a ladder in the
 Church of the Holy Sepulchre that Wikidata files under stairs. These arrive for a curator, like
 every arrival of this source.
+
+## The agora (2026-10-30, #2136)
+
+Wikidata files a Roman forum under archaeological sites and an agora not, so the Roman Agora of
+Athens, a square and an agora, was admitted as a square. An agora is refused as an archaeological
+site since. Over every item a square or street class names, the condition fires on two: that
+agora and the Agora of the Gods at Cyrene, which has no Wikipedia edition. OpenStreetMap tags the
+Roman Agora as an archaeological site, so it is Archaeology's candidate, decided by that kind's
+line and its readership door.
