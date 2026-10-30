@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  artworkDoorNote, doorOf, doorNote, fewWitnessesReason, percentile, placeDoorNote, type ReadershipDoor,
+  artworkDoorNote, DOOR_PERCENTILES, doorOf, doorNote, fewWitnessesReason, percentile, placeDoorNote, type ReadershipDoor,
 } from './readershipDoor.js';
 import { ART_MUSEUM_DOOR } from './museum/tier1.js';
 
@@ -85,15 +85,38 @@ describe('the readership door (ADR-0056)', () => {
   it('asks the curator of a place the door alone admitted whether a visitor goes to see it (ADR-0127)', () => {
     const door: ReadershipDoor = { opened: new Map(), bar: 75_745, exit: 49_638 };
     expect(placeDoorNote({ views: 100_106, burst: false }, door)).toBe('Admitted below the sitelinks line, read 100,106 '
-      + "times this year in every counted edition (the median of this kind's places at the line is 75,745). "
+      + "times this year in every counted edition, over the readership door's bar of 75,745. "
       + 'Is it a place a visitor goes to see?');
     expect(placeDoorNote({ views: 100_106, burst: true }, door)).toContain('its year is a burst');
   });
+  it('opens for a place a guide uses at its own lower bar, and says so to the curator (ADR-0163)', () => {
+    // The Roman Agora of Athens: 19 editions, 47,207 readers, four Wikivoyage editions use its item.
+    const AGORA = 'Q1435551';
+    const views = new Map([...tierViews, [AGORA, 140_000], ['Q8', 140_000]]);
+    const places = [...tier, { qid: AGORA, sitelinks: 19 }, { qid: 'Q8', sitelinks: 19 }];
+    const door = doorOf(places, views, 22, new Set(), new Set(), DOOR_PERCENTILES,
+      { items: new Set([AGORA]), percentiles: { enter: 0.12, stay: 0.08 } });
+    expect(door.bar).toBe(250_000);
+    expect(door.guidedBar).toBe(136_000);
+    // The place a guide uses is in; the one with the same reading and no guide is not.
+    expect([...door.opened.keys()]).toEqual([AGORA]);
+    expect(placeDoorNote({ views: 140_000, burst: false, guided: true }, { ...door, opened: new Map() }))
+      .toContain('over the bar of 136,000 for a place a Wikivoyage guide uses');
+  });
+
+  it('reads a held place no guide uses against the plain exit, never the guide\'s bar (ADR-0163)', () => {
+    // A held site at 140,000, under the bar of 250,000 and over the exit, that no guide uses.
+    const door: ReadershipDoor = { opened: new Map(), bar: 250_000, exit: 135_000, guidedBar: 136_000, guidedExit: 124_000 };
+    const note = placeDoorNote({ views: 140_000, burst: false }, door);
+    expect(note).toContain('over the exit of 135,000 that keeps a place the source holds');
+    expect(note).not.toContain('Wikivoyage');
+  });
+
   it('names the witnesses a place the door admits has, and why one with fewer stays out (ADR-0128)', () => {
     const door: ReadershipDoor = { opened: new Map(), bar: 75_178, exit: 50_844 };
     expect(placeDoorNote({ views: 175_000, burst: false }, door, ['guide', 'photos', 'formal'])).toBe('Admitted below the '
-      + "sitelinks line, read 175,000 times this year in every counted edition (the median of this kind's places at the "
-      + "line is 75,178). A travel guide, photographs taken there and Wikidata's heritage, hours, visitors or website say "
+      + "sitelinks line, read 175,000 times this year in every counted edition, over the readership door's bar of "
+      + "75,178. A travel guide, photographs taken there and Wikidata's heritage, hours, visitors or website say "
       + 'a visitor goes there. Is it a place a visitor goes to see?');
     expect(fewWitnessesReason({ views: 95_000, burst: false }, door, [])).toBe('Read 95,000 times this year in every '
       + "counted edition, over the readership door's bar of 75,178, but no witness says a visitor goes there; the door "

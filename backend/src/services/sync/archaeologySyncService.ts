@@ -55,7 +55,7 @@ import { readThroughOneDoor } from './osm/oneDoorPerRun.js';
 // Every door a pass asks through, built the same way for the mirror's pass and
 // for Overpass's (`archaeology/runDoors.ts`).
 import { subsetRunDoor, unreadOnSubset } from './subset/runDoor.js';
-import { ARCHAEOLOGY_SOURCE_ID, doorsForAPass, LOG_PREFIX } from './archaeology/runDoors.js';
+import { ARCHAEOLOGY_GUIDED_DOOR, ARCHAEOLOGY_SOURCE_ID, doorsForAPass, LOG_PREFIX } from './archaeology/runDoors.js';
 // One item at a time, once the run has decided: the writers and what they were
 // told about this pass (`archaeology/writer.ts`).
 import { processItem, rememberRun } from './archaeology/writer.js';
@@ -119,11 +119,11 @@ async function fetchArchaeologyItems(
 
   // A site the world reads opens a second door to the world tier (ADR-0127),
   // while the source's curator gate is on.
-  const openSiteDoor = await placeReadershipDoorFor(ARCHAEOLOGY_SOURCE_ID, line.enterSitelinks, LOG_PREFIX);
+  const openSiteDoor = await placeReadershipDoorFor(ARCHAEOLOGY_SOURCE_ID, line.enterSitelinks, LOG_PREFIX, ARCHAEOLOGY_GUIDED_DOOR);
   // And reads the sites under the pool's floor the world reads at its bar
   // (ADR-0152), only while the door is open.
   const underFloorSites: UnderFloorReader | undefined = openSiteDoor
-    && ((places) => readUnderFloor(places, line.enterSitelinks, POOL_MIN_SITELINKS));
+    && ((places) => readUnderFloor(places, line.enterSitelinks, POOL_MIN_SITELINKS, ARCHAEOLOGY_GUIDED_DOOR));
 
   // The collection, read through the OpenStreetMap door the environment names
   // (`osm/oneDoorPerRun.ts`): unset, the layer while a fresh one is in place
