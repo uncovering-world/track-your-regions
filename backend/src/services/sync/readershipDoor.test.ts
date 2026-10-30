@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   artworkDoorNote, doorOf, doorNote, fewWitnessesReason, percentile, placeDoorNote, type ReadershipDoor,
 } from './readershipDoor.js';
+import { ART_MUSEUM_DOOR } from './museum/tier1.js';
 
 /**
  * ADR-0056's door, on the world tier drawn small: four works at the line of
@@ -34,6 +35,17 @@ describe('the readership door (ADR-0056)', () => {
     expect([...door.opened]).toEqual([[VEILED_CHRIST, 276_677]]);
   });
 
+  it("reads a source's own percentiles: Art Museums' 12th and 8th open what the median does not (ADR-0162)", () => {
+    const views = new Map([...tierViews, ['Q5', 140_000], ['Q6', 130_000], ['Q7', 130_000]]);
+    const works = [...tier, { qid: 'Q5', sitelinks: 15 }, { qid: 'Q6', sitelinks: 15 }, { qid: 'Q7', sitelinks: 15 }];
+    expect(doorOf(works, views, 22, new Set(), new Set()).opened.size).toBe(0);
+    const door = doorOf(works, views, 22, new Set(['Q6']), new Set(), ART_MUSEUM_DOOR);
+    expect(door.bar).toBe(136_000);
+    expect(door.exit).toBe(124_000);
+    // Q5 clears the bar; Q6 is Iconic now and holds at the exit; Q7 is new and under the bar.
+    expect([...door.opened.keys()]).toEqual(['Q5', 'Q6']);
+  });
+
   it('keeps a work Iconic now down to the exit, and lets it go below', () => {
     const works = [...tier, { qid: 'Q5', sitelinks: 15 }, { qid: 'Q6', sitelinks: 15 }];
     const views = new Map([...tierViews, ['Q5', 210_000], ['Q6', 200_000]]);
@@ -58,8 +70,16 @@ describe('the readership door (ADR-0056)', () => {
     const door: ReadershipDoor = { opened: new Map(), bar: 133_366, exit: 88_364 };
     const note = doorNote('Veiled Christ', { views: 276_677, burst: false }, door);
     expect(note).toBe('Admitted for Veiled Christ, below the sitelinks line but read 276,677 times this year in every '
-      + "counted edition (the world tier's median is 133,366). Can a visitor see it there now?");
+      + "counted edition (the readership door's bar is 133,366). Can a visitor see it there now?");
     expect(doorNote('Veiled Christ', { views: 276_677, burst: true }, door)).toContain('its year is a burst');
+  });
+
+  it("names a source's own bar as the door's, never as the tier's median (ADR-0162)", () => {
+    // Art Museums' bar is the 12th percentile, 48,323 on the dump of 2026-10-19; the median is 142,750.
+    const door: ReadershipDoor = { opened: new Map(), bar: 48_323, exit: 41_248 };
+    const note = doorNote('Young Hare', { views: 127_000, burst: false }, door);
+    expect(note).toContain("(the readership door's bar is 48,323)");
+    expect(note).not.toContain('median');
   });
 
   it('asks the curator of a place the door alone admitted whether a visitor goes to see it (ADR-0127)', () => {

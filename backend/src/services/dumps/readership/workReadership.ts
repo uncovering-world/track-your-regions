@@ -2,7 +2,7 @@
  * What the world reads of a work (ADR-0055), read back from the year the
  * readership build keeps: the user views over twelve months in every counted
  * edition, English included, which is the measure ADR-0056's door compares
- * against the world tier's median.
+ * against its bar, a percentile of the world tier (ADR-0162 for Art Museums).
  *
  * A (work, edition) pair at 5,000 views a year or more whose phone share is
  * 2.5 or more in log-odds off its edition's yearly share does not count
