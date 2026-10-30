@@ -1,7 +1,7 @@
 # ADR-0056: A work the world reads opens a second door to the world tier
 
 **Date:** 2026-09-11
-**Status:** Accepted
+**Status:** Accepted — decisions 1 and 2 narrowed for Art Museums by [ADR-0162](0162-art-museums-open-the-readership-door-at-the-tiers-12th-percentile.md)
 
 ---
 
