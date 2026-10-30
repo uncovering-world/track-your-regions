@@ -2350,7 +2350,9 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 **What the kinds are for.** A thing a traveller stands in front of, outdoors, in two kinds a
 traveller browses apart (#1807). **Public art** (kind and source 3) is what was made to be looked
 at: a sculpture, a statue, a fountain, a mural — the Little Mermaid, the Trevi Fountain, Cloud
-Gate, the Fraternal Kiss on the East Side Gallery — and a wall or district known for its street
+Gate, the Fraternal Kiss on the East Side Gallery — a public clock with a show, an astronomical
+clock or a Glockenspiel (`PUBLIC_CLOCK_CLASSES`, #2136: the Prague Astronomical Clock, the
+Zytglogge), filed as a sculpture until the kind has a type for it, and a wall or district known for its street
 art, taken whole as one place, since its works are repainted while the place stays (the East Side
 Gallery, the Wynwood Walls; #1994). The run finds such a place through the street-art entrance
 and rule (#2035, **Street-art places** below) and files it under the `street-art` type. The run
@@ -2534,7 +2536,9 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    is one a kind outside the pass offers a reader (`placesOtherSourcesOffer` in
    `services/sync/shownElsewhere.ts`, read once per run) and the work stands outdoors by what it
    is — a colossal statue or an obelisk (`OUTDOOR_CLASSES`; not a memorial, which may be a plaque
-   in a nave). The room and the site are still asked: a colossal statue in a museum's hall is the
+   in a nave) — or is a public clock, shown to the street: the Prague Astronomical Clock is on the
+   Old Town Hall, which Wikidata types a museum too and no kind offers, while Strasbourg's stands
+   in the cathedral Places of worship offers. The room and the site are still asked: a colossal statue in a museum's hall is the
    hall's. Refused, such a work would be on no card:
    the Mother Ukraine Monument stands on the hill of a war museum, and the Philae obelisk in the
    garden of Kingston Lacy, and the catalogue holds neither venue in any kind. Where a place of the
@@ -4335,12 +4339,20 @@ chosen from, is [`docs/sources/global/wikidata-towers.md`](../sources/global/wik
    gate tower (ADR-0131 decision 2), a sculpture, a skyscraper, an office building or a tower
    block, which wait for Skyscrapers (#1857). A TV or observation tower that Wikidata also calls
    a skyscraper stays a tower, as the Oriental Pearl Tower does;
-3. a place of worship whose only tower classes name a part of it (a minaret, a gopuram, a
+3. a public clock (`PUBLIC_CLOCK_CLASSES`: an astronomical clock, a Glockenspiel) that no
+   clock-tower class names is refused, since Public art offers it (#2136): Wikidata files the
+   Prague Astronomical Clock as a bell tower for its bells. Big Ben and the Tower of the Winds are
+   clock towers and stay;
+4. a building complex (`BUILDING_COMPLEX`, the class alone and not its tree) that only the plain
+   `tower` class names is refused (#2136): Cœur Défense, a complex of office towers. Bologna's Two
+   Towers, inclined towers, stay; the tree is not read because it holds twin towers, and
+   Kharaqan's twin tower tombs are towers a traveller visits;
+5. a place of worship whose only tower classes name a part of it (a minaret, a gopuram, a
    steeple: Hagia Sophia, the Meenakshi Temple) is refused, since Places of worship offers it. A
    bell tower with a church in it stays a tower (Ivan the Great);
-4. an archaeological site no type of tower names is refused, since Archaeology offers it: a
+6. an archaeological site no type of tower names is refused, since Archaeology offers it: a
    nuraghe, a broch. The Minaret of Jam, a site that is a minaret, is a tower;
-5. a candidate no tower class names, or with no point on Earth, is refused.
+7. a candidate no tower class names, or with no point on Earth, is refused.
 
 **The type** (`towerType`) is the first of `pagoda`, `minaret`, `clock-tower`, `bell-tower`,
 `observation-tower` and `fortified-tower` its classes name, and `tower` otherwise. A church tower
@@ -4447,8 +4459,10 @@ holds every motorway, railway and bridge (`SQUARE_ROOTS`, `squares/classes.ts`).
 1. what is no place to visit is refused (`KILLS`): destroyed, proposed, under construction;
 2. what another kind offers, or no square or street a visitor walks, is refused (`OTHER_KINDS`):
    a place of worship (Al-Aqsa, filed as a square for its esplanade), a palace, a bridge (the
-   Charles Bridge, filed as a street), an archaeological site (the Roman Forum), a bullring, a
-   railway line, a motorway, a river;
+   Charles Bridge, filed as a street), an archaeological site (the Roman Forum), an ancient agora
+   (the Roman Agora of Athens, a square and an agora to Wikidata, which files a Roman forum
+   under archaeological sites and an agora not, #2136), a bullring, a railway line, a motorway,
+   a river;
 3. a candidate no class of the kind names is refused;
 4. a candidate with no point on Earth is refused.
 
