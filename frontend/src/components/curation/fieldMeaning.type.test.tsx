@@ -28,7 +28,7 @@ describe("a type's meaning", () => {
     const fallback = meaningOf('type', '', null);
     expect(fallback.label).toBe('type');
     expect(fallback.what).toMatch(/cultural, natural or mixed/);
-    expect(fallback.what).toMatch(/sculpture, fountain or street art/);
+    expect(fallback.what).toMatch(/sculpture, fountain, street art or clock/);
     expect(fallback.what).toMatch(/memorial, arch, column, obelisk or monument/);
   });
 

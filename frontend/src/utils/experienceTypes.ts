@@ -3,7 +3,7 @@
  *
  * A type is a distinction inside a kind whose members a traveller still browses
  * together (ADR-0045): a World Heritage site is cultural, natural or mixed; a
- * piece of public art is a sculpture, a fountain or street art; a monument is a
+ * piece of public art is a sculpture, a fountain, street art or a clock; a monument is a
  * memorial, an arch, a column, an obelisk or a monument; a place of worship is a
  * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue; a
  * tower is a pagoda, a minaret, a clock tower, a bell tower, an observation tower, a
@@ -51,8 +51,9 @@ const PUBLIC_ART: TypeVocabulary = {
     { value: 'sculpture', label: 'Sculpture' },
     { value: 'fountain', label: 'Fountain' },
     { value: 'street-art', label: 'Street art' },
+    { value: 'clock', label: 'Clock' },
   ],
-  what: 'What the work is, read from Wikidata’s classes: a fountain before a sculpture, a mural as street art.',
+  what: 'What the work is, read from Wikidata’s classes: a public clock with a show as a clock, a fountain before a sculpture, a mural as street art.',
   whenItChanges: 'Retyped on Wikidata. The same work either way; the filter chip it answers to changes.',
 };
 
