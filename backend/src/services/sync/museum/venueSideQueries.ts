@@ -40,6 +40,8 @@ export interface VenueHolding {
   venue: string;
   property: 'P195' | 'P276';
   sitelinks: number;
+  /** Set where English Wikipedia, not Wikidata, files the work at the venue (ADR-0166). */
+  via?: 'wikipedia';
 }
 
 /**

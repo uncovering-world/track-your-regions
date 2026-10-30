@@ -81,6 +81,8 @@ const RELIC = 'Q187616';
 export const FILM = 'Q11424';
 /** This fixture's own: a class no museum root reaches, so a work typed by it is in no pool (#890). */
 export const SIDE_CLASS = 'Q900990';
+/** `archaeological site`: what Archaeology's place test reads a shelved ruin by (ADR-0166). */
+export const SITE = 'Q839954';
 
 const ENTITIES: Record<string, FixtureEntity> = {
   // The Louvre and the two entities the Mona Lisa actually names: a curatorial department
@@ -395,6 +397,42 @@ export const WORKS: Record<string, FixtureWork> = {
     label: 'Fresco in the Galleria', sitelinks: 20, cls: SIDE_CLASS, clsLabel: 'wall decoration',
     classes: [{ qid: SIDE_CLASS, label: 'wall decoration' }, { qid: FRESCO, label: 'fresco' }],
     statements: [{ property: 'P195', venue: 'Q866498' }],
+  },
+  // Placed by nothing on Wikidata, and filed by English Wikipedia under the
+  // Louvre's collection (ADR-0166): the venue-side read meets it only through
+  // the article holdings a test hands in, and places it by Wikipedia's word.
+  Q900955: {
+    label: 'Tablet Only Wikipedia Places', sitelinks: 24, cls: SIDE_CLASS, clsLabel: 'wall decoration',
+    classes: [{ qid: SIDE_CLASS, label: 'wall decoration' }, { qid: FRESCO, label: 'fresco' }],
+    statements: [],
+  },
+  // A pool work Wikidata places nowhere: a fresco the closure collects, with no
+  // statement, that a shelf files at the Louvre (ADR-0166).
+  Q900957: {
+    label: 'Pool Fresco Only Wikipedia Places', sitelinks: 24, cls: FRESCO, clsLabel: 'fresco',
+    classes: [{ qid: FRESCO, label: 'fresco' }],
+    statements: [],
+  },
+  // A pool work typed a site beside its class, placed nowhere, filed on a shelf:
+  // the kind's place test keeps it out of the shelf's placement too (ADR-0166).
+  Q900959: {
+    label: 'Pool Fresco That Is a Site', sitelinks: 24, cls: FRESCO, clsLabel: 'fresco',
+    classes: [{ qid: FRESCO, label: 'fresco' }, { qid: SITE, label: 'archaeological site' }],
+    statements: [],
+  },
+  // A place a shelf files beside its fragments: typed an archaeological site
+  // beside a class the pool asks for, so the kind's place test keeps it out (ADR-0166).
+  Q900958: {
+    label: 'Ruin Filed on a Shelf', sitelinks: 24, cls: SIDE_CLASS, clsLabel: 'wall decoration',
+    classes: [{ qid: SIDE_CLASS, label: 'wall decoration' }, { qid: FRESCO, label: 'fresco' }, { qid: SITE, label: 'archaeological site' }],
+    statements: [],
+  },
+  // The same, under the pool's floor: a shelf names it with no floor, and the
+  // read holds it to the pool's once its editions are counted.
+  Q900956: {
+    label: 'Minor Tablet Only Wikipedia Places', sitelinks: 6, cls: SIDE_CLASS, clsLabel: 'wall decoration',
+    classes: [{ qid: SIDE_CLASS, label: 'wall decoration' }, { qid: FRESCO, label: 'fresco' }],
+    statements: [],
   },
   // A lost painting the Louvre still lists: kept by its class, placed nowhere.
   Q900953: {

@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
-import { structureCategories, structureCategoryReads, structureItemsInCategories } from './wikipediaStructure.js';
+import {
+  forgetCollectionShelves, structureCategories, structureCategoryReads, structureCollectionItems, structureItemsInCategories,
+} from './wikipediaStructure.js';
 import { NOT_A_PLACE_CATEGORY, STREET_ART_CATEGORY } from './publicArt/streetArtTest.js';
 
 /**
@@ -26,17 +28,30 @@ const pages: Array<[number, 0 | 14, string]> = [
   [104, 0, 'Fixture_Itemless_Museum'],
   [105, 0, 'Fixture_Lennon_Wall'],
   [106, 0, 'Fixture_Street_Artist'],
+  // The National Museum's shelves (ADR-0166): a collection, an object shelf, and its staff.
+  [107, 0, 'Fixture_Tablet'],
+  [108, 0, 'Fixture_Employee'],
+  [109, 0, 'Fixture_Vase'],
+  [110, 0, 'Fixture_Statue'],
 ];
-const items: Array<[number, string]> = [[100, 'Q98461'], [101, 'Q98462'], [102, 'Q98463'], [103, 'Q98464'], [105, 'Q98465'], [106, 'Q98466']];
+const items: Array<[number, string]> = [
+  [100, 'Q98461'], [101, 'Q98462'], [102, 'Q98463'], [103, 'Q98464'], [105, 'Q98465'], [106, 'Q98466'],
+  [107, 'Q98467'], [108, 'Q98468'], [109, 'Q98469'], [110, 'Q98470'],
+];
 const categories: Array<[number, string]> = [
   [1, 'Fixture_archaeological_museums'], [2, 'Fixture_archaeological_museums_in_Atlantis'],
   [3, 'Fixture_archaeological_museums_in_North_Atlantis'], [4, 'Fixture_byzantine_museums_in_Atlantis'], [5, 'Fixture_National_Museum'],
   [6, 'Museums_in_Atlantis'], [7, 'Graffiti_in_Atlantis'], [8, 'Street_artists_from_Atlantis'],
+  [9, 'Collection_of_the_Fixture_National_Museum'], [10, 'Employees_of_the_Fixture_National_Museum'],
+  [11, 'Ancient_objects_in_the_Fixture_National_Museum'],
+  // A shelf whose title opens with the head noun: nothing stands before it.
+  [12, 'Sculptures_in_the_Fixture_National_Museum'],
 ];
 const links: Array<[number, number, boolean]> = [
   [11, 1, true], [12, 2, true], [13, 2, true], [14, 2, true],
   [100, 2, false], [100, 6, false], [101, 3, false], [102, 4, false], [104, 2, false],
   [105, 7, false], [106, 8, false],
+  [107, 9, false], [108, 10, false], [109, 11, false], [108, 5, false], [110, 12, false],
 ];
 
 const ROOT = 'Category:Fixture archaeological museums';
@@ -104,5 +119,16 @@ describe("English Wikipedia's categories, read from the copy (#1440)", () => {
     expect(await structureItemsInCategories('ARCHAEOLOGICAL_MUSEUMS', '^$')).toEqual(['Q98461', 'Q98462']);
     expect(await structureItemsInCategories(STREET_ART_CATEGORY, NOT_A_PLACE_CATEGORY)).toEqual(['Q98465']);
     expect(await structureItemsInCategories('street_art', '^$')).toEqual(['Q98466']);
+  });
+
+  it('names what a museum\'s collection shelves file, and nothing its staff shelf or its own category holds (ADR-0166)', async () => {
+    forgetCollectionShelves();
+    expect(await structureCollectionItems(['Fixture National Museum'])).toEqual([
+      { item: 'Q98467', title: 'Fixture_National_Museum' },
+      { item: 'Q98469', title: 'Fixture_National_Museum' },
+      { item: 'Q98470', title: 'Fixture_National_Museum' },
+    ]);
+    expect(await structureCollectionItems(['Fixture Museum of Atlantis'])).toEqual([]);
+    expect(await structureCollectionItems([])).toEqual([]);
   });
 });

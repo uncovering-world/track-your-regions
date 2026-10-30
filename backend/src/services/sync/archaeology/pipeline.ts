@@ -79,6 +79,7 @@ import {
 } from '../museum/worksCollector.js';
 import { holdingReason, keptElsewhere, refusedHoldingReason, type HandOver } from '../museum/venueSide.js';
 import { fetchWorksByIds } from '../museum/venueSideQueries.js';
+import type { ArticleHoldingsReader } from '../museum/articleHoldings.js';
 // The verdict and the fold decision to a fixed point, and the venue-side read
 // asked of what it admits until nothing is new: the museum door's second half
 // (`museumHoldings.ts`, split out at the seam the review of #890 named).
@@ -166,6 +167,8 @@ export interface ArchaeologyPipelineDeps {
    * (`readHandOvers`); the test passes none.
    */
   handOvers?: ReadonlyMap<string, HandOver>;
+  /** What English Wikipedia files in the admitted venues' collections (ADR-0166), or none without a copy of its structure. */
+  articleHoldings?: ArticleHoldingsReader;
   sparql: SparqlFn;
   /** Where the previous run left each find, so this run can say what it moved. */
   previousPlacements: Record<string, string[]>;
@@ -284,6 +287,12 @@ function findFactsReader(): {
     return facts;
   };
   return { workFacts, facts };
+}
+
+/** Whether a class is one of this kind's places: a site, a settlement, a fortification, a palace or a structure of worship. */
+function isSiteClass(cls: string, trees: ArchaeologyTrees): boolean {
+  return trees.site.has(cls) || trees.settlement.has(cls) || trees.fortification.has(cls)
+    || trees.palace.has(cls) || trees.worship.has(cls);
 }
 
 /** Every class a find of this kind may carry as its own: what the pool asks by, and the artefact tree. */
@@ -502,6 +511,10 @@ export async function collectArchaeology(
     // the Louvre's paintings refused as not finds would bury the real misses.
     reportFloor: findLine.staySitelinks,
     handOvers: deps.handOvers,
+    articleHoldings: deps.articleHoldings,
+    // A shelf files the Mausoleum at Halicarnassus beside its fragments: a
+    // site of this kind is never one of its finds (ADR-0166).
+    shelfPlace: (classes) => [...classes.keys()].some((cls) => isSiteClass(cls, trees)),
   });
 
   // A museum that folded into a survivor this run writes is that survivor's, and

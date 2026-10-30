@@ -48,6 +48,7 @@ import {
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
+import { articleHoldingsReader } from './museum/articleHoldings.js';
 import { readershipDoorFor } from './readershipDoor.js';
 import { ART_MUSEUM_DOOR, ICONIC_SITELINKS } from './museum/tier1.js';
 import { readsSubset } from './subset/reader.js';
@@ -270,6 +271,8 @@ async function fetchMuseumItems(
     previousPlacements,
     // What other kinds refused as held at a museum (ADR-0102).
     handOvers: await readHandOvers(MUSEUM_SOURCE_ID),
+    // What English Wikipedia files in each admitted museum's collection (ADR-0166).
+    articleHoldings: await articleHoldingsReader(LOG_PREFIX),
     // A work below the line the world reads (ADR-0056), while the gate is on.
     openDoor: await readershipDoorFor(MUSEUM_SOURCE_ID, ICONIC_SITELINKS, LOG_PREFIX, ART_MUSEUM_DOOR),
     onPhase: (message) => { progress.statusMessage = message; },

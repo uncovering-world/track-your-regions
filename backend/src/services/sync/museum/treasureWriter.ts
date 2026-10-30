@@ -107,9 +107,10 @@ const HELD_WORK = `((SELECT requires_curation FROM experience_sources WHERE id =
  */
 const INSERTED_METADATA = `NULLIF(CASE
           WHEN $9::jsonb -> 'foundAt' = 'null'::jsonb THEN $9::jsonb - 'foundAt'
-          ELSE $9::jsonb END, '{}'::jsonb)`;
+          ELSE $9::jsonb END
+          - CASE WHEN $9::jsonb -> 'placedBy' = 'null'::jsonb THEN 'placedBy' ELSE '' END, '{}'::jsonb)`;
 
-const metadataWithFindSpot = (base: string): string => `NULLIF(CASE
+const metadataWithFindSpot = (base: string): string => `NULLIF((COALESCE(CASE
           WHEN NOT (COALESCE($9::jsonb, '{}'::jsonb) ? 'foundAt')
             THEN CASE WHEN treasures.metadata ? 'foundAt'
                       THEN COALESCE(${base}, '{}'::jsonb)
@@ -119,7 +120,23 @@ const metadataWithFindSpot = (base: string): string => `NULLIF(CASE
             THEN COALESCE(${base}, '{}'::jsonb) - 'foundAt'
           ELSE COALESCE(${base}, '{}'::jsonb)
                || jsonb_build_object('foundAt', $9::jsonb -> 'foundAt')
-        END, '{}'::jsonb)`;
+        END, '{}'::jsonb) - 'placedBy') ${PLACED_BY_STATES}, '{}'::jsonb)`;
+
+/**
+ * The shelf mark's three states (ADR-0166), the find spot's own, added to the
+ * object the arm builds rather than nested around it, so the statement spells
+ * each arm once. The key is first taken off the base, whichever base the arm
+ * builds from, and the CASE puts back what stands: the stored mark where the
+ * patch is silent, the run's value where it sends one, nothing where it sends
+ * null. Taken off first because \`-\` binds tighter than \`||\`: subtracted after
+ * the CASE, the key would come off the CASE's object and never off the base.
+ */
+const PLACED_BY_STATES = `|| CASE
+          WHEN NOT (COALESCE($9::jsonb, '{}'::jsonb) ? 'placedBy') AND treasures.metadata ? 'placedBy'
+            THEN jsonb_build_object('placedBy', treasures.metadata -> 'placedBy')
+          WHEN COALESCE($9::jsonb, '{}'::jsonb) ? 'placedBy' AND $9::jsonb -> 'placedBy' <> 'null'::jsonb
+            THEN jsonb_build_object('placedBy', $9::jsonb -> 'placedBy')
+          ELSE '{}'::jsonb END`;
 
 /** What a run knows about who took the pictures: what it fetched, and what the rows hold. */
 export interface TreasureCredits {
@@ -220,8 +237,13 @@ export function treasureMetadata(
 function metadataPatch(
   artwork: ProcessedContent,
   credit: { imageCredit?: ImageCredit | null },
-): { imageCredit?: ImageCredit | null; foundAt?: { qid: string; label: string } | null } {
-  return artwork.foundAt === undefined ? credit : { ...credit, foundAt: artwork.foundAt };
+): { imageCredit?: ImageCredit | null; foundAt?: { qid: string; label: string } | null; placedBy?: 'wikipedia' | null } {
+  return {
+    ...credit,
+    ...(artwork.foundAt === undefined ? {} : { foundAt: artwork.foundAt }),
+    // The shelf mark's three states, the find spot's own (ADR-0166).
+    ...(artwork.placedBy === undefined ? {} : { placedBy: artwork.placedBy }),
+  };
 }
 
 /** What the upsert's metadata parameter takes: the object, or `null` where it holds nothing. */
@@ -368,6 +390,20 @@ function rewriteOf(
   if (spot) fields.push(spot);
   if (fields.length === 0) return null;
   return { item: { name: was.name, ref: artwork.externalId }, fields };
+}
+
+/**
+ * A link the changeset names: the work as the row stores it, and who put it
+ * here when not the kind itself — the kind that handed it over (ADR-0102), or
+ * English Wikipedia's shelf where Wikidata placed it nowhere (ADR-0166).
+ */
+function addedLink(name: string, artwork: ProcessedContent): { name: string; ref: string; handed_by?: string; placed_by?: 'wikipedia' } {
+  return {
+    name,
+    ref: artwork.externalId,
+    ...(artwork.handedBy ? { handed_by: artwork.handedBy } : {}),
+    ...(artwork.placedBy ? { placed_by: artwork.placedBy } : {}),
+  };
 }
 
 /**
@@ -689,7 +725,7 @@ export async function upsertVenueTreasures(
     // find.
     if (link.rows.length > 0) {
       // A work another kind handed over says so (ADR-0102).
-      added.push({ name: stored.name, ref: artwork.externalId, ...(artwork.handedBy ? { handed_by: artwork.handedBy } : {}) });
+      added.push(addedLink(stored.name, artwork));
     }
   }
 

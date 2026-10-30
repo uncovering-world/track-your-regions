@@ -15,6 +15,7 @@ import { applyFolds, survivorOf } from '../museum/venueGraph.js';
 import type { Fold } from '../museum/venueFolds.js';
 import type { WorksCollection, WorksCollectorOptions } from '../museum/worksCollector.js';
 import { readVenueSide, type HandOver, type RefusedHolding, type VenueSideRead } from '../museum/venueSide.js';
+import type { ArticleHoldingsReader } from '../museum/articleHoldings.js';
 import type { PoolEntity } from '../publicArt/queries.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import {
@@ -208,6 +209,10 @@ export interface HoldingsContext {
   reportFloor: number;
   /** Works other kinds refused as held at a place (ADR-0102), for every round's read. */
   handOvers?: ReadonlyMap<string, HandOver>;
+  /** What English Wikipedia files in the admitted venues' collections (ADR-0166), or none without a copy of its structure. */
+  articleHoldings?: ArticleHoldingsReader;
+  /** What makes a shelved item a site of this kind rather than a find (`VenueSideOptions.shelfPlace`). */
+  shelfPlace?: (classes: ReadonlyMap<string, string>) => boolean;
 }
 
 /**
@@ -242,6 +247,7 @@ export async function readAdmittedHoldings(
     for (const qid of unread) read.add(qid);
     const round = await readVenueSide(run, works, options, {
       admitted: unread, reportFloor: ctx.reportFloor, skip: refused, handedOver: ctx.handOvers,
+      articleHoldings: ctx.articleHoldings, shelfPlace: ctx.shelfPlace,
     });
     rounds.push(round);
     for (const refusal of round.refused) refused.add(refusal.qid);

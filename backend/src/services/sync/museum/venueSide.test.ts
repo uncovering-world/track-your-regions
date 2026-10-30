@@ -7,12 +7,13 @@
 
 import { describe, it, expect } from 'vitest';
 import { keptElsewhere, readVenueSide, refusedHoldingReason, type HandOver } from './venueSide.js';
+import type { ArticleHoldingsReader } from './articleHoldings.js';
 import {
   collectWorks, MUSEUM_BROAD_ROOTS, MUSEUM_WHOLE_ROOTS, MUSEUM_PINNED_CLASSES,
   MUSEUM_PINNED_EDITION_CLASSES, EDITION_ROOT, type WorksCollectorOptions,
 } from './worksCollector.js';
 import { museumRule } from './venueTest.js';
-import { makeSparql, MUSEUM_CLASSES, FILM, SIDE_CLASS } from './pipelineFixture.js';
+import { makeSparql, MUSEUM_CLASSES, FILM, SIDE_CLASS, SITE } from './pipelineFixture.js';
 
 const ART: WorksCollectorOptions = {
   broadRoots: MUSEUM_BROAD_ROOTS, wholeRoots: MUSEUM_WHOLE_ROOTS, pinned: MUSEUM_PINNED_CLASSES,
@@ -25,14 +26,66 @@ const PITTI = 'Q29286';
 
 async function read(
   opts: WorksCollectorOptions = ART, admitted = [LOUVRE, PITTI], handedOver?: ReadonlyMap<string, HandOver>,
+  articleHoldings?: ArticleHoldingsReader,
 ) {
   const sparql = makeSparql();
   const phases: string[] = [];
   const run = { sparql, phase: (m: string) => phases.push(m), step: async () => {} };
   const collection = await collectWorks(run, opts);
-  const out = await readVenueSide(run, collection, opts, { admitted, handedOver });
+  const shelfPlace = (classes: ReadonlyMap<string, string>) => classes.has(SITE);
+  const out = await readVenueSide(run, collection, opts, { admitted, handedOver, articleHoldings, shelfPlace });
   return { ...out, before: collection, sparql, phases };
 }
+
+describe('readVenueSide, what English Wikipedia files in a venue\'s collection (ADR-0166)', () => {
+  // The Louvre's shelf names the tablet, which Wikidata places nowhere, and the
+  // fresco, which Wikidata already places at the Louvre.
+  const shelf: ArticleHoldingsReader = (_run, venues) => Promise.resolve(
+    venues.some((venue) => venue.qid === LOUVRE)
+      ? ['Q900955', 'Q900956', 'Q900951', 'Q900957', 'Q900958', 'Q900959']
+        .map((work) => ({ work, venue: LOUVRE, property: 'P276' as const, sitelinks: 0, via: 'wikipedia' as const }))
+      : [],
+  );
+
+  it('never meets a work Wikidata places nowhere, without the article holdings, and says nothing of who placed the rest', async () => {
+    const { collection } = await read();
+    expect(collection.pool.has('Q900955')).toBe(false);
+    expect(collection.pool.get('Q12418')?.placedBy).toBeUndefined();
+  });
+
+  it('places the work at the venue by a statement Wikipedia makes, and marks it so', async () => {
+    const asked: string[][] = [];
+    const { collection, kept } = await read(ART, [LOUVRE, PITTI], undefined, (run, venues) => {
+      asked.push(venues.map((venue) => venue.qid));
+      return shelf(run, venues);
+    });
+    // Asked once, of the admitted venues and their fold sources.
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain(LOUVRE);
+    expect(kept.get('Q900955')).toMatchObject({ type: 'fresco' });
+    expect(collection.pool.get('Q900955')?.placedBy).toBe('wikipedia');
+    expect(collection.afterFolds.Q900955).toEqual([LOUVRE]);
+    expect(collection.statements.get('Q900955')).toEqual([
+      { work: 'Q900955', venue: LOUVRE, property: 'P276', rank: 'normal', via: 'wikipedia' },
+    ]);
+    // A shelf names its works with no floor; the read holds them to the pool's.
+    expect(collection.pool.has('Q900956')).toBe(false);
+    // A place a shelf files beside its fragments is no holding: the kind's place test keeps it out.
+    expect(collection.pool.has('Q900958')).toBe(false);
+    // A pool work Wikidata places nowhere is placed by the shelf too, and marked.
+    expect(collection.pool.get('Q900957')?.placedBy).toBe('wikipedia');
+    expect(collection.afterFolds.Q900957).toEqual([LOUVRE]);
+    expect(collection.statements.get('Q900957')?.[0]?.via).toBe('wikipedia');
+    // A pool work the kind calls a place is not placed by the shelf either.
+    expect(collection.pool.get('Q900959')?.placedBy).toBeNull();
+    expect(collection.afterFolds.Q900959 ?? []).toEqual([]);
+    // Where Wikidata places the work, its word stands and the article adds nothing;
+    // the run read the shelves, so it says so, and a stored mark goes.
+    expect(collection.pool.get('Q900951')?.placedBy).toBeNull();
+    expect(collection.pool.get('Q12418')?.placedBy).toBeNull();
+    expect(collection.statements.get('Q900951')?.some((s) => s.via)).toBe(false);
+  });
+});
 
 describe('readVenueSide', () => {
   it('keeps what carries a class the pool asked for, and types it by that class', async () => {
@@ -75,8 +128,8 @@ describe('readVenueSide', () => {
     expect(holdings[0]).not.toContain(`wd:${PITTI}`);
     expect(holdings[0]).toContain('FILTER(?sl >= 10)');
     expect(kept.has('Q900952')).toBe(false);
-    expect(kept.has('Q900954')).toBe(false);
-    expect(refused.map((r) => r.qid)).not.toContain('Q900954');
+    expect(kept.has('Q900955')).toBe(false);
+    expect(refused.map((r) => r.qid)).not.toContain('Q900955');
   });
 
   it('asks nothing again about an object the pool already holds', async () => {

@@ -1425,6 +1425,8 @@ export interface SyncContentItem {
   ref: string | null;
   /** The kind that handed a work to this venue, and its reason (ADR-0102): only on a work the venue gained that way. */
   handed_by?: string;
+  /** Set where only English Wikipedia's collection shelf places the work at this venue, Wikidata naming no holder (ADR-0166). */
+  placed_by?: 'wikipedia';
 }
 
 export type SyncContentsDeltaChangedItem = {

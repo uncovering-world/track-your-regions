@@ -52,7 +52,7 @@ type PendingWork = NonNullable<ReviewQueueItem['pending_works']>[number];
 /** Where a section holds this many rows, its heading offers one no for all of them. */
 export const TURN_ALL_DOWN_FROM = 5;
 
-const STRIPE = { new: 'success.main', elsewhere: 'info.main' } as const;
+const STRIPE = { new: 'success.main', elsewhere: 'info.main', shelf: 'warning.main' } as const;
 
 /** The museum readers already see an unread work in, other than this one — or null. */
 export function shownElsewhere(work: PendingWork, here: number): { name: string; kind: string | null } | null {
@@ -186,6 +186,8 @@ export function ArrivedTable({ group, item, contents, works, points, busy, onPub
                   <TableCell sx={{ borderLeft: '3px solid', borderLeftColor: STRIPE[elsewhere ? 'elsewhere' : 'new'], width: 190 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>{elsewhere ? 'work' : 'new work'}</Typography>
                     <Mark tone={elsewhere ? 'elsewhere' : 'new'}>{elsewhere ? 'already on show elsewhere' : 'new to the catalogue'}</Mark>
+                    {/* Wikidata names no holder: English Wikipedia's shelf put it here (ADR-0166). */}
+                    {work.placedBy === 'wikipedia' && <Mark tone="shelf">placed by Wikipedia's shelf</Mark>}
                   </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={1.25} alignItems="flex-start">

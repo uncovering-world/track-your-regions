@@ -64,3 +64,32 @@ describe("a work's English article", () => {
     expect(sent.sql).toContain('ELSE treasures.wikipedia_read_at END');
   });
 });
+
+describe("a work's shelf mark (ADR-0166)", () => {
+  const metadataSent = (): unknown => {
+    const [, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
+    const metadata = params[8];
+    return typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+  };
+
+  it('is spelled in three states in both arms, as the find spot is', async () => {
+    const { sql } = await articleSent({});
+    const update = sql.slice(sql.indexOf('DO UPDATE SET'));
+    // Kept where the patch carries no key, removed where it carries null, replaced otherwise.
+    expect(update.match(/jsonb_build_object\('placedBy', treasures\.metadata -> 'placedBy'\)/g)).toHaveLength(2);
+    // The key comes off the arm's base before the CASE puts back what stands: `-` binds
+    // tighter than `||`, so subtracted after the CASE it would never leave the base.
+    expect(update.match(/, '\{\}'::jsonb\) - 'placedBy'\) \|\| CASE/g)).toHaveLength(2);
+    expect(update).not.toMatch(/END\s*- CASE WHEN \$9::jsonb -> 'placedBy'/);
+    expect(update.match(/jsonb_build_object\('placedBy', \$9::jsonb -> 'placedBy'\)/g)).toHaveLength(2);
+  });
+
+  it('is sent where English Wikipedia placed the work, sent as null where a run that read the shelves placed it by Wikidata, and left out where the run read none', async () => {
+    await articleSent({ placedBy: 'wikipedia' });
+    expect(metadataSent()).toMatchObject({ placedBy: 'wikipedia' });
+    await articleSent({ placedBy: null });
+    expect(metadataSent()).toMatchObject({ placedBy: null });
+    await articleSent({});
+    expect(metadataSent()).toBeNull();
+  });
+});

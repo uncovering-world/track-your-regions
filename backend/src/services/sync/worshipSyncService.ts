@@ -50,6 +50,7 @@ import {
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
+import { articleHoldingsReader } from './museum/articleHoldings.js';
 import { readershipDoorFor } from './readershipDoor.js';
 import { yearlyReaders } from './places/candidates.js';
 import { readsSubset } from './subset/reader.js';
@@ -204,6 +205,8 @@ async function fetchWorshipItems(
     line,
     // What other kinds refused as held at a place of worship (ADR-0102).
     handOvers: await readHandOvers(WORSHIP_SOURCE_ID),
+    // What English Wikipedia files in each admitted place's collection (ADR-0166).
+    articleHoldings: await articleHoldingsReader(LOG_PREFIX),
     // The places come from the pass's gather (#1820); the works, below, are
     // read through this source's own door.
     places: async () => shareOf((await gather(progress)).gathered, WORSHIP_KIND),

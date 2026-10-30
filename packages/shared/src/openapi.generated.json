@@ -29109,6 +29109,18 @@
               }
             ]
           },
+          "placedBy": {
+            "description": "Set where only English Wikipedia's collection shelf places the work here, Wikidata naming no holder (ADR-0166).",
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "wikipedia"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sitelinks": {
             "description": "How many Wikipedia language editions write about the work (ADR-0082).",
             "anyOf": [
@@ -35074,6 +35086,11 @@
           "handed_by": {
             "description": "The kind that handed a work to this venue, and its reason (ADR-0102): only on a work the venue gained that way.",
             "type": "string"
+          },
+          "placed_by": {
+            "description": "Set where only English Wikipedia's collection shelf places the work at this venue, Wikidata naming no holder (ADR-0166).",
+            "type": "string",
+            "const": "wikipedia"
           }
         },
         "required": [
