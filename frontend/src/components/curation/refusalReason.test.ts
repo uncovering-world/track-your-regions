@@ -18,6 +18,7 @@ const REAL = {
   noPaintings: 'not an art museum — painting-share: 0 painting(s) vs 5 sculptural work(s)',
   somePaintings: 'not an art museum — painting-share: 2 painting(s) vs 9 sculptural work(s)',
   nothingToJudge: 'not an art museum — no famous holding to judge by',
+  otherPurpose: 'not an art museum — another purpose: military museum',
   church: 'site, not a venue: church building; Catholic cathedral — named by The Elevation of the Cross (24 sitelinks)',
   byHand: 'editorial exclusion: British Museum — typed art museum on Wikidata; out by the strict-art '
     + 'boundary of 2026-08-05, returns with the archaeology import',
@@ -148,6 +149,7 @@ describe('refusalSummary', () => {
 
   it('answers every other shape the rules can produce', () => {
     expect(refusalSummary(REAL.nothingToJudge).text).toContain('no famous work here');
+    expect(refusalSummary(REAL.otherPurpose).text).toBe('A military museum, not an art museum — kept out whatever paintings it holds.');
     expect(refusalSummary(REAL.byHand).text).toContain('Kept out by hand');
     expect(refusalSummary(REAL.killList).text).toContain('Not a place you visit');
     expect(refusalSummary(REAL.dissolved).text).toContain('Closed on 1937-06-01');
