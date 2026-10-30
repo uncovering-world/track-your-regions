@@ -3255,7 +3255,14 @@ tail.
 year of readership of every candidate below the line and of every site the source holds at it,
 with the work door's measure (`readWorks`). A candidate below the line read at the median of the
 held sites at the line or over stands in, as one at the line does (`siteStanding`,
-`archaeology/siteTest.ts`). A held site stays while it reads at the 35th percentile. The bar is read
+`archaeology/siteTest.ts`). A held site stays while it reads at the 35th percentile. A site a
+Wikivoyage guide uses has a lower bar (ADR-0163, `ARCHAEOLOGY_GUIDED_DOOR`): the 12th percentile to
+enter and the 8th to stay, 24,756 readers a year on the dump of 2026-10-19. The guide's word is the
+sign that a dig overshadowed by its town's or its neighbour's item is a visit of its own: the Roman
+Agora of Athens (19 editions, 47,207 readers), Epidaurus' Sanctuary of Asclepius and the Pyramids
+of Meroë. The read under the floor uses the same lower bar for a site a guide uses, and the
+curator's note names the bar the site cleared. On the development data it brings 220 sites, few of
+them no dig (Manchester Piccadilly station, Hillsborough Castle). The bar is read
 over the held sites, not over every candidate at the line, where Athens and Istanbul would set it.
 The rest of the rule is unchanged, so a row the door opened for that the map shows to be a living
 town is refused by name. The door reads the pool the site door already asks for, from its floor of

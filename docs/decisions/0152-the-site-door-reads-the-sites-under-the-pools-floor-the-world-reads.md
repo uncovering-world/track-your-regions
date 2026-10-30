@@ -1,7 +1,7 @@
 # ADR-0152: The site door reads the sites under the pool's floor the world reads
 
 **Date:** 2026-10-26
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed for Archaeology by [ADR-0163](0163-a-site-a-wikivoyage-guide-uses-opens-the-readership-door-at-the-12th-percentile.md)
 
 ---
 

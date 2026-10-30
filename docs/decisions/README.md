@@ -146,7 +146,7 @@ and accepted by it.
 | [0124](0124-the-dump-built-tables-live-in-a-workbench-schema-and-every-table-declares-its-tier.md) | The dump-built tables live in a workbench schema, and every table declares its tier | Accepted | 2026-10-19 |
 | [0125](0125-a-type-answer-is-the-kinds.md) | A held answer to a kind's type is the kind's, and every other is the place's | Accepted | 2026-10-19 |
 | [0126](0126-the-two-tiers-differ-by-source-and-weigh-the-same.md) | The two tiers of a kind differ by source and weigh the same | Accepted | 2026-10-19 |
-| [0127](0127-a-site-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A site the world reads opens a second door to the world tier | Accepted — decision 1 narrowed by [0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md); decision 3 narrowed by [0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md) | 2026-10-20 |
+| [0127](0127-a-site-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A site the world reads opens a second door to the world tier | Accepted — decision 1 narrowed by [0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md); decision 3 narrowed by [0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md); decision 2 narrowed for Archaeology by [0163](0163-a-site-a-wikivoyage-guide-uses-opens-the-readership-door-at-the-12th-percentile.md) | 2026-10-20 |
 | [0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md) | A place is one a visitor goes to when two independent witnesses say so | Accepted | 2026-10-20 |
 | [0129](0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md) | A Wikidata item a place holds none of passes the gate | Accepted | 2026-10-21 |
 | [0130](0130-a-place-keeps-a-picture-its-item-still-carries.md) | A place keeps a picture its item still carries | Accepted | 2026-10-21 |
@@ -170,7 +170,7 @@ and accepted by it.
 | [0149](0149-what-the-catalogue-takes-from-unescos-dataset-it-keeps-separable-credits-and-offers-under-cc-by-sa.md) | What the catalogue takes from UNESCO's dataset it keeps separable, credits, and offers under CC BY-SA | Accepted | 2026-10-25 |
 | [0150](0150-wikidatas-part-of-answers-a-near-pair.md) | Wikidata's part-of answers a near pair | Accepted | 2026-10-25 |
 | [0151](0151-a-credit-a-place-holds-none-of-passes-the-gate.md) | A credit for the picture a place shows passes the gate where it holds none | Accepted | 2026-10-26 |
-| [0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md) | The site door reads the sites under the pool's floor the world reads | Accepted | 2026-10-26 |
+| [0152](0152-the-site-door-reads-the-sites-under-the-pools-floor-the-world-reads.md) | The site door reads the sites under the pool's floor the world reads | Accepted — decision 2 narrowed for Archaeology by [0163](0163-a-site-a-wikivoyage-guide-uses-opens-the-readership-door-at-the-12th-percentile.md) | 2026-10-26 |
 | [0153](0153-a-field-belongs-to-the-place-or-to-one-kind.md) | A field belongs to the place or to one kind, by what it means | Accepted — decision 2 narrowed by [0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md) | 2026-10-26 |
 | [0154](0154-a-kind-fact-a-reader-is-shown-waits-for-a-curator.md) | A kind's fact a reader is shown waits for a curator | Accepted | 2026-10-26 |
 | [0155](0155-a-work-based-on-a-group-of-casts-is-its-cast-only-by-the-groups-creator.md) | A work based on a group of casts is its cast only by the group's creator | Accepted | 2026-10-26 |
@@ -181,6 +181,7 @@ and accepted by it.
 | [0160](0160-a-places-name-starts-with-a-capital-unless-its-first-word-is-spelled-otherwise.md) | A place's name starts with a capital unless its first word is spelled otherwise, and the capital passes the gate | Accepted | 2026-10-30 |
 | [0161](0161-a-holy-place-is-a-place-of-worship-and-a-year-of-readers-opens-a-door.md) | A holy place is a place of worship, and a year of readers opens a door under the line | Accepted | 2026-10-30 |
 | [0162](0162-art-museums-open-the-readership-door-at-the-tiers-12th-percentile.md) | Art Museums open the readership door at the tier's 12th percentile | Accepted | 2026-10-30 |
+| [0163](0163-a-site-a-wikivoyage-guide-uses-opens-the-readership-door-at-the-12th-percentile.md) | A site a Wikivoyage guide uses opens the readership door at the 12th percentile | Accepted | 2026-10-30 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
