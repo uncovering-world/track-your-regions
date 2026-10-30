@@ -465,6 +465,14 @@ function answer(w: World, sent: string): SparqlBinding[] {
   if (query.includes('OPTIONAL { ?w wdt:P31 ?cls }')) return workByIdRows(w, asked);
   if (query.includes('p:P195')) return statementRows(w, asked);
   if (query.includes('SELECT ?e ?cls ?parent ?loc')) return edgeRows(w, asked);
+  // What a holy place's location is (`places/containment.ts`): a place this
+  // world holds answers with its classes, anything else is unread.
+  if (query.includes('SELECT ?c ?cLabel ?cls ?up')) {
+    return asked.filter((qid) => w.places[qid]).flatMap((qid) => [
+      { c: uri(qid), cLabel: { value: w.places[qid].label } },
+      ...w.places[qid].classes.map((c) => ({ c: uri(qid), cls: uri(c) })),
+    ]);
+  }
   if (query.includes('?dissolved')) return detailRows(w, asked);
   if (query.includes('SELECT ?w')) return workPoolRows(w, query, asked);
   return placePoolRows(w, query, asked);

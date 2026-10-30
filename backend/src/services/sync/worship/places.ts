@@ -25,6 +25,8 @@ export interface PlaceCandidate {
   /** Every `P31` it carries, as the catalogue stores them. */
   classes: string[];
   type: WorshipType | null;
+  /** Set when a year of readers admitted it under the editions line (`WORSHIP_READERS_LINE`). */
+  readersNote?: string;
 }
 
 export interface PlacesByFame {
@@ -54,29 +56,75 @@ export interface PlacesByFame {
  * the Giralda, St Mark's Campanile — rather than one that silently never
  * arrived. It is 22 rows at the pool's floor, measured on 2026-09-04.
  *
- * The rule reads a row's own classes and nothing else — a tower is a tower
- * whether a cathedral stands beside it or not (`WORSHIP_PART_CLASSES`) — so no
- * container is asked about.
+ * The rule reads a row's own classes — a tower is a tower whether a cathedral
+ * stands beside it or not (`WORSHIP_PART_CLASSES`) — and, for a holy place
+ * that is no building, where its location (`P276`) says it is kept, so the
+ * containers are asked about.
  */
 export const WORSHIP_KIND: PlaceKind<WorshipTrees> = {
   name: 'places of worship',
   trees: fetchWorshipTrees,
   poolClasses: (trees) => ({ broad: BROAD_WORSHIP_ROOTS, narrow: [...trees.worship, ...trees.parts] }),
-  readsContainers: false,
+  // A holy object is the place it is kept in (`worshipVerdict`).
+  readsContainers: true,
 };
+
+/**
+ * ADR-0161 decision 2: a year of readers admits a place under the editions
+ * line, measured in #1997. At 25,000 it brings all seven tops of the kind's list under the line (Mont-Saint-Michel
+ * Abbey, the Sanctuary of Fátima, the Virupaksha Temple) with 484 places; the
+ * Wikivoyage guide would miss Fátima and Virupaksha, whose own items no guide
+ * uses. A place it admitted stays while it reads at `stay`, as a tower does on
+ * Towers' line. The source gates every arrival, so each reaches a curator.
+ * The counts are to follow the year's readership (#2145).
+ */
+export const WORSHIP_READERS_LINE = { enter: 25_000, stay: 18_000 } as const;
+
+/** The curator's note on a place only its readers admitted. */
+export function readersNote(editions: number, readers: number): string {
+  return `${editions} Wikipedia editions, under the line, and ${readers.toLocaleString('en')} readers a year: `
+    + `in by its readers (${WORSHIP_READERS_LINE.enter.toLocaleString('en')} to enter)`;
+}
+
+/**
+ * Where a candidate the rule passed stands: in by its editions, in by its
+ * readers with the note a curator reads, fallen with the reason named, or
+ * simply out. A row the source admits that has slipped is refused by name,
+ * with its numbers; one that was never in and is below both lines is out,
+ * since no rule ran on it. The editions rule and sentence are `sourceLine.ts`'s.
+ */
+function standingOf(
+  entity: PoolEntity, held: boolean, line: SourceLine, readers: ReadonlyMap<string, number> | null,
+): 'out' | { fell: string } | { readersNote?: string } {
+  const byEditions = lineStanding(entity.sitelinks, held, line);
+  if (byEditions === 'in') return {};
+  const read = readers?.get(entity.qid) ?? 0;
+  if (readers !== null && read >= (held ? WORSHIP_READERS_LINE.stay : WORSHIP_READERS_LINE.enter)) {
+    return { readersNote: readersNote(entity.sitelinks, read) };
+  }
+  if (byEditions === 'out') return 'out';
+  return {
+    fell: readers === null ? belowLineReason(entity.sitelinks, line)
+      : `${belowLineReason(entity.sitelinks, line)}, and ${read.toLocaleString('en')} readers a year `
+        + `(${WORSHIP_READERS_LINE.stay.toLocaleString('en')} to stay)`,
+  };
+}
 
 /**
  * The places this run would admit for their own fame, and every candidate the
  * rule refused with the reason it gave.
  *
  * `admitted` is what the source holds as admitted before the run, so the stay
- * line has something to hold. Candidates are judged most famous first, which is
- * the order the refusals are reported in.
+ * line has something to hold. `readers` is a year of readers of each
+ * candidate, or null when no year can be read: then the editions line alone
+ * decides. Candidates are judged most famous first, which is the order the
+ * refusals are reported in.
  */
 export function classifyPlacesByFame(
-  { trees, pool, facts }: KindShare<WorshipTrees>,
+  { trees, pool, facts, containers }: KindShare<WorshipTrees>,
   admitted: ReadonlySet<string>,
   line: SourceLine,
+  readers: ReadonlyMap<string, number> | null = null,
 ): PlacesByFame {
   const classesOf = new Map([...facts].map(([qid, row]) => [qid, row.classes]));
 
@@ -85,34 +133,30 @@ export function classifyPlacesByFame(
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
   for (const entity of candidates) {
     const classes = classesOf.get(entity.qid) ?? [];
+    const row = facts.get(entity.qid);
     const verdict = worshipVerdict({
       qid: entity.qid,
       classes,
       onEarth: entity.onEarth,
       lat: entity.lat,
       lon: entity.lon,
+      religions: row?.religions,
+      locatedIn: (row?.locations ?? []).flatMap((qid) => {
+        const place = containers?.nodes.get(qid);
+        return place ? [{ label: place.label, classes: place.classes }] : [];
+      }),
     }, trees);
     if (!verdict.pass) {
       filtered.push({ externalId: entity.qid, name: entity.label, reason: verdict.reason });
       continue;
     }
-    // Where a candidate that passed the rule stands against the fame line: in,
-    // out, or — for a row the source admits that has fallen below the stay line
-    // — refused by name, with its number. A candidate that was never in and is
-    // below the line is simply out: a refusal names a rule, and none ran on it.
-    // The rule and the sentence are `sourceLine.ts`'s, so every kind gives a
-    // curator the same answer.
-    const stands = lineStanding(entity.sitelinks, admitted.has(entity.qid), line);
+    const stands = standingOf(entity, admitted.has(entity.qid), line, readers);
     if (stands === 'out') continue;
-    if (stands === 'fell') {
-      filtered.push({
-        externalId: entity.qid,
-        name: entity.label,
-        reason: belowLineReason(entity.sitelinks, line),
-      });
+    if ('fell' in stands) {
+      filtered.push({ externalId: entity.qid, name: entity.label, reason: stands.fell });
       continue;
     }
-    places.set(entity.qid, { entity, classes, type: verdict.type });
+    places.set(entity.qid, { entity, classes, type: verdict.type, ...stands });
   }
   return { places, filtered, classesOf };
 }

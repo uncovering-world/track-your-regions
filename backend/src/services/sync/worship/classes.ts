@@ -21,6 +21,7 @@ import {
   WORSHIP_CLASSES,
   WORSHIP_DESIGNATIONS,
 } from '../publicArt/classes.js';
+import { MUSEUM_ROOT, SACRED_MOUNTAIN_ROOT, SACRED_PLACE_ROOT } from './holyPlaces.js';
 
 /** `P279*` under structure of worship (Q1370598): 1267 classes (measured 2026-09-09; 1265 on 2026-09-04). */
 export { WORSHIP_ROOT } from '../publicArt/classes.js';
@@ -135,16 +136,19 @@ export const BROAD_WORSHIP_ROOTS: { qid: string; label: string }[] = [
  *   the run carrying it — as a monastery. The Knights were a religious order;
  *   their inn was never a place anybody went to pray.
  *
- * What no list here can reach, so that the next reader does not try: the
- * **Western Wall** (Q134821, `wall, archaeological site, sacred place`) and the
- * **Kaaba** (Q29466, `sacred place`) carry no class under the worship tree at
- * all, and the only class that would admit them, `sacred place` (Q4588528),
- * holds 30 rows at the line of which 25 are landscape — the Ganges, the Jordan,
- * Fuji, Kailash, the Holy Land as a *term* — so opening it would cost six new
- * kill classes to gain four rows. Both are a curator's hand, as the Black Stone
- * is (ADR-0052).
+ * And the shapes `sacred place` (`SACRED_PLACE_ROOT`) brings that are no place
+ * a traveller stands at, read on the subset (#1978): a river, the Ganges and
+ * the Jordan, a line of a thousand kilometres; a term, the Holy Land; a place
+ * of myth, Mount Meru; and a relic, the Shroud of Turin or the Holy Prepuce,
+ * an object kept in a church that is the place.
  */
 export const WORSHIP_KILL_CLASSES: Record<string, string> = {
+  Q4022: 'river',
+  Q1969448: 'term',
+  Q3238337: 'mythical location',
+  Q187616: 'relic',
+  Q4501454: 'Christian relic',
+  Q1087471: 'relic associated with Jesus',
   Q19860854: 'destroyed building or structure',
   Q54050: 'hill',
   Q8502: 'mountain',
@@ -235,7 +239,8 @@ export const WORSHIP_PART_CLASSES: Record<string, string> = {
 /** What a reader filters a place of worship by. */
 export type WorshipType =
   | 'cathedral' | 'monastery' | 'mosque' | 'synagogue'
-  | 'chapel' | 'church' | 'shrine' | 'temple';
+  | 'chapel' | 'church' | 'shrine' | 'temple'
+  | 'sacred mountain' | 'holy site';
 
 /**
  * The classes each type is read from, in precedence order, and which of them
@@ -315,6 +320,11 @@ export const TYPE_ROOTS: { type: WorshipType; roots: string[]; direct?: string[]
       'Q199451', 'Q180987', 'Q58621988', 'Q618618', 'Q2613100', 'Q1151612'],
     direct: ['Q44539'],
   },
+  // sacred mountain, then sacred place: a holy place no building word fits,
+  // the Western Wall, Ahu Tongariki. Last, so a building always names itself
+  // first: the Al-Aqsa Mosque (`mosque, …, sacred place`) is a mosque.
+  { type: 'sacred mountain', roots: [SACRED_MOUNTAIN_ROOT] },
+  { type: 'holy site', roots: [SACRED_PLACE_ROOT] },
 ];
 
 /**
@@ -377,6 +387,12 @@ export interface WorshipTrees {
   worship: ReadonlySet<string>;
   /** The parts of a place that are not the place (`WORSHIP_PART_CLASSES`). */
   parts: ReadonlySet<string>;
+  /** The `sacred place` tree, which lifts the landform kills (`LANDFORM_CLASSES`); also in `worship`. */
+  sacred: ReadonlySet<string>;
+  /** The building tree alone: `worship` without what only the `sacred place` tree brought. */
+  buildings: ReadonlySet<string>;
+  /** The `museum` tree, where a holy object kept in one is the museum's. */
+  museums: ReadonlySet<string>;
   /** One set per type, in no order — `TYPE_ROOTS` holds the precedence. */
   types: Map<WorshipType, ReadonlySet<string>>;
 }
@@ -400,16 +416,28 @@ export interface WorshipTrees {
  */
 export function buildWorshipTrees(fetched: {
   worship: Iterable<string>;
+  sacred: Iterable<string>;
+  museums?: Iterable<string>;
   typeTrees: Record<WorshipType, Iterable<string>>;
 }): WorshipTrees {
   const parts = new Set(Object.keys(WORSHIP_PART_CLASSES));
-  const worship = new Set([
+  // The holy types' trees too: a holy class the type rule names, the rule
+  // admits, should the `sacred place` walk have stopped short of it.
+  const sacred = new Set([
+    ...fetched.sacred, ...fetched.typeTrees['sacred mountain'], ...fetched.typeTrees['holy site'],
+    SACRED_PLACE_ROOT, SACRED_MOUNTAIN_ROOT,
+  ]);
+  const holyRoots = new Set([SACRED_PLACE_ROOT, SACRED_MOUNTAIN_ROOT]);
+  const buildings = new Set([
     ...fetched.worship,
     ...Object.keys(WORSHIP_CLASSES),
-    ...TYPE_ROOTS.flatMap(({ roots, direct }) => [...roots, ...(direct ?? [])]),
+    ...TYPE_ROOTS.flatMap(({ roots, direct }) => [...roots, ...(direct ?? [])]).filter((c) => !holyRoots.has(c)),
   ]);
-  for (const designation of Object.keys(WORSHIP_DESIGNATIONS)) worship.delete(designation);
-  for (const part of parts) worship.delete(part);
+  const worship = new Set([...buildings, ...sacred]);
+  for (const set of [buildings, worship]) {
+    for (const designation of Object.keys(WORSHIP_DESIGNATIONS)) set.delete(designation);
+    for (const part of parts) set.delete(part);
+  }
 
   // A walked root brings its tree; a `direct` class brings itself alone, which
   // is the whole of the distinction — `typeOf` reads the row's own classes, so
@@ -418,5 +446,5 @@ export function buildWorshipTrees(fetched: {
   for (const { type, roots, direct } of TYPE_ROOTS) {
     types.set(type, new Set([...fetched.typeTrees[type], ...roots, ...(direct ?? [])]));
   }
-  return { worship, parts, types };
+  return { worship, parts, sacred, buildings, museums: new Set([...(fetched.museums ?? []), MUSEUM_ROOT]), types };
 }
