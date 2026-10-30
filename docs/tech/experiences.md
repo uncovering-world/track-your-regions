@@ -2104,7 +2104,14 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   those three roots, asked in batches of 25. Classes no closure reaches, because they hold works
   rather than being one, are pinned (`MUSEUM_PINNED_CLASSES`): a painting series, a group of
   casts, a cycle of frescoes, a group of sculptures, the altarpiece forms — Monet's *Water
-  Lilies*, the Raphael Rooms, the Benin Bronzes. A hop that would multiply the class set (e.g. under
+  Lilies*, the Raphael Rooms, the Benin Bronzes. Roots no closure from the three reaches, and
+  narrow enough to ask with no fame band, are taken whole (`MUSEUM_WHOLE_ROOTS`). Drawing, print,
+  mosaic and tapestry are among them. So, since #2150, are jade objects, illuminated manuscripts,
+  `ding`, carpets and brilliants, which Asian and Islamic collections and treasuries are known
+  for: the Sarajevo Haggadah admits the National Museum of Bosnia and Herzegovina, and the
+  Dresden Green Diamond the Green Vault. The art test counts each as a work that is not
+  sculptural. Places of worship's works door reads the same roots. They admit no new place
+  there, and add the Lichfield Gospels to Lichfield Cathedral, where they are shown. A hop that would multiply the class set (e.g. under
   `sculpture` or `print`) is refused rather than followed. Nothing requires a work to name an
   owner or a location: the ownership anchor the broad roots used to carry was what made their
   query unaffordable, and it cost the catalogue unowned works such as *Sunflowers* and the
@@ -2205,8 +2212,12 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   Wikidata classes (art museum, national gallery, kunsthalle, pinacotheca, glyptotheque, sculpture
   museum and others — `ART_CLASSES`) admit a venue outright, whatever else it is typed or holds.
   Without one, a class naming another purpose refuses it whatever paintings it holds
-  (`OTHER_PURPOSE_CLASSES`: military museum, library, archives — the Imperial War Museum, the
-  Musée de l'Armée, the Harry Ransom Center). A palace or a castle with a picture gallery is not
+  (`OTHER_PURPOSE_CLASSES`: military museum, natural history and geological museum, library,
+  archives — the
+  Imperial War Museum, the Musée de l'Armée, the Harry Ransom Center). A natural history museum
+  is there because its jewels and jade are not sculpture, so the painting share would count them
+  as paintings (#2150). A mixed museum also typed an art museum, such as National Museum Cardiff,
+  is admitted by its art class first. A palace or a castle with a picture gallery is not
   among them: Windsor's State Apartments and Weißenstein's gallery are where a traveller goes to
   see paintings, and the art-museum rankings that leave palaces out (The Art Newspaper's) count
   visitors, not what a gallery holds. Otherwise the venue's own held works decide by
@@ -3023,6 +3034,15 @@ its own place. The test is the rule's and not the line's: a survivor the rule ad
 door two for any iconic work it receives, so a fold onto a row only the *line* leaves out still
 stands (the Temple of Amun at Karnak into the Precinct of Amun-Re, 18 sitelinks; the Santuari vell
 de Meritxell into Our Lady of Meritxell).
+
+**A reading room's holdings stay in it** (`readingRooms` on the kind's `VenueRule`, set to
+the library and archives trees, `READING_ROOM_CLASSES` walked whole, #2150). A work whose location
+is a library or an archive, or a department or fonds of one, is placed nowhere. It is not placed at
+what the reading room is `part of`, since the climb ends at the reading room, nor at an owner its
+collection statement names (`keptBack`, `placement.ts`). It is read there by appointment, not shown in the church. The
+Laurentian Library is part of San Lorenzo's complex and has its own entrance from the cloister, and
+a visitor to the basilica sees neither the Codex Amiatinus nor the Rabbula Gospels. Art Museums
+does not set it: a museum's own library is often where its manuscripts are shown.
 
 The two sets are then unioned:
 `door` on the collected item reads `place`, `work` or `both`, a place admitted for its own fame
