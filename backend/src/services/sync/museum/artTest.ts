@@ -38,6 +38,21 @@ export const ART_CLASSES: Record<string, string> = {
 };
 
 /**
+ * Classes that name a purpose other than art, refusing a venue that carries no `ART_CLASSES`
+ * member whatever paintings it holds: the product keeps military museums out of this kind
+ * (2026-08-05, above), and a library or an archive is a reading room, not a gallery. The
+ * painting share alone let in the Imperial War Museum (Sargent's *Gassed*), the Musée de l'Armée
+ * and the Harry Ransom Center once Art Museums' readership door opened lower (ADR-0162). A palace
+ * or a castle with a picture gallery is not here: Windsor's State Apartments and Weißenstein's
+ * gallery are where a traveller goes to see paintings.
+ */
+export const OTHER_PURPOSE_CLASSES: Record<string, string> = {
+  Q2772772: 'military museum',
+  Q7075: 'library',
+  Q166118: 'archives',
+};
+
+/**
  * Four entities no class rule reaches: each carries an `ART_CLASSES` member of its own — so rule
  * 1 below would otherwise admit every one of them outright — and is kept out by name instead,
  * for the reason given.
@@ -62,7 +77,9 @@ export const isSculptural = (type: string): boolean => SCULPTURAL.test(type);
  * that is also an art museum (the Uffizi) or an archaeological museum that is also an art museum
  * (the Louvre) survives on the strength of the art class alone.
  *
- * Rule 2: without an art class, the painting share of what the venue actually holds decides.
+ * Rule 2: without an art class, a class naming another purpose refuses (`OTHER_PURPOSE_CLASSES`).
+ *
+ * Rule 3: otherwise the painting share of what the venue actually holds decides.
  * This is what keeps the Hermitage — typed bare `museum`, holding 34 works of which 32 are
  * paintings — while dropping the Naturhistorisches Museum, whose only holdings are two Venus
  * figurines. A museum with no famous holding at all has nothing to say for itself on this axis.
@@ -71,6 +88,11 @@ export function artVerdict(classes: string[], works: WorkFact[]): ArtResult {
   const artClass = classes.find((c) => ART_CLASSES[c]);
   if (artClass) {
     return { art: true, why: `art class: ${ART_CLASSES[artClass]}` };
+  }
+
+  const purpose = classes.find((c) => OTHER_PURPOSE_CLASSES[c]);
+  if (purpose) {
+    return { art: false, why: `another purpose: ${OTHER_PURPOSE_CLASSES[purpose]}` };
   }
 
   if (!works.length) {

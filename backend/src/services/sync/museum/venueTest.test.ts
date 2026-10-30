@@ -96,6 +96,9 @@ describe('venueVerdict', () => {
     // The Blue Grotto: sea cave; archaeological park; historic house museum
     const grotto = venueVerdict(facts({ classes: ['Q3363945', 'Q2087181'] }), HOUSE_RULE);
     expect(grotto).toEqual({ pass: false, reason: 'site, not a venue: archaeological park' });
+    // Santa Maria Novella (Q51175): minor basilica; museum; religious museum. Places of worship shows it.
+    const basilica = venueVerdict(facts({ classes: ['Q120560', 'Q33506', 'Q92755865'] }), HOUSE_RULE);
+    expect(basilica).toEqual({ pass: false, reason: 'site, not a venue: minor basilica' });
   });
 
   it('does not veto a site class when an art class is also present', () => {

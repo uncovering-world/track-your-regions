@@ -110,10 +110,11 @@ function candidateVenues(
 }
 
 /**
- * Rules 1, 2 and 4 of the art test (`artTest.ts`): whether a venue that resolution and folding
- * already settled on is an *art* museum, and the four named entities kept out regardless of what
- * their classes say. Rule 3, the site-class veto, already ran inside venue resolution — a site
- * with no art class fails `venueVerdict` itself, so it never reaches this stage at all.
+ * The art test (`artTest.ts`): whether a venue that resolution and folding already settled on is
+ * an *art* museum — its art class, a class naming another purpose, its painting share — and the
+ * four named entities kept out regardless of what their classes say (`EDITORIAL_OUT`). The
+ * site-class veto already ran inside venue resolution: a site with no art class fails
+ * `venueVerdict` itself, so it never reaches this stage at all.
  *
  * Decided after folds, not before: a fold can hand a surviving venue works it never itself had a
  * statement for, and the painting share has to be measured on what a venue actually ends up
