@@ -23,8 +23,8 @@ const carries = (classes: readonly string[], set: ReadonlySet<string>) => classe
  * The verdict, in order:
  * 1. what is no place to visit: destroyed, proposed, under construction;
  * 2. what another kind offers, or no square or street a visitor walks: a
- *    place of worship, a palace, a bridge, an archaeological site, a
- *    bullring, a railway line, a motorway, a river;
+ *    place of worship, a palace, a bridge, an archaeological site or an
+ *    ancient agora, a bullring, a railway line, a motorway, a river;
  * 3. a candidate no class of the kind names;
  * 4. a candidate with no point on this planet.
  *
