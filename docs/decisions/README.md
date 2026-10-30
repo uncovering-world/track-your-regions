@@ -184,6 +184,7 @@ and accepted by it.
 | [0163](0163-a-site-a-wikivoyage-guide-uses-opens-the-readership-door-at-the-12th-percentile.md) | A site a Wikivoyage guide uses opens the readership door at the 12th percentile | Accepted | 2026-10-30 |
 | [0164](0164-a-find-its-readers-carry-counts-as-one-at-the-finds-line.md) | A find its readers carry counts as one at the finds' line | Accepted — decision 1 extended under the pool's floor by [0165](0165-the-finds-door-reads-the-finds-under-the-pools-floor-the-world-reads.md) | 2026-10-30 |
 | [0165](0165-the-finds-door-reads-the-finds-under-the-pools-floor-the-world-reads.md) | The finds door reads the finds under the pool's floor the world reads | Accepted | 2026-10-30 |
+| [0166](0166-a-work-wikipedia-files-in-a-museums-collection-is-the-museums-where-wikidata-says-nothing.md) | A work Wikipedia files in a museum's collection is the museum's where Wikidata says nothing | Accepted | 2026-10-30 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

@@ -2924,6 +2924,34 @@ name (`WORSHIP_KIND.readsContainers`), and the verdict, `worshipVerdict` in `wor
 and given every fact it reads (a row's own classes — a tower is a tower whether a cathedral stands
 beside it or not — and, for a holy place that is no building, its faiths and where it is kept):
 
+- **What English Wikipedia files in an admitted venue's collection is read beside it** (ADR-0166,
+  `museum/articleHoldings.ts`, #2164). Some of the most famous objects name no holder on Wikidata:
+  the Code of Hammurabi is a `law code` with no collection, the Dead Sea Scrolls a whole that names
+  none, so no statement places them and no run offered the Louvre's or the Israel Museum's. Their
+  English articles sit on the museum's shelves: *Near Eastern and Middle Eastern antiquities in the
+  Louvre*, *Collection of the Israel Museum*. The venue-side read asks the copy of Wikipedia's
+  structure (`structureCollectionItems`, `wikipediaStructure.ts`; never the live API, one question
+  per venue per shelf) for the items filed under `Collection(s) of (the) <museum>` and
+  `<object shelf> in/of/at (the) <museum>`, where the shelf's head noun is one of `COLLECTION_HEADS`
+  (*objects*, *antiquities*, *sculptures*, *paintings*, *manuscripts* …): *Members of*, *Prisoners
+  in* and *Employees of* are the commonest shelves under a museum's name, and every one of them is
+  people. The museum's own category is not read (*Hamlet* is filed under Kronborg). What the shelves
+  name goes through the same by-id read and the same `keep` as a Wikidata holding, so the kind's
+  rule still decides. Two things a shelf files are never holdings: an item the kind calls a place
+  (`shelfPlace`; Archaeology reads its site trees, so the Mausoleum at Halicarnassus stays on the
+  Istanbul museums' shelf — a coordinate test would have kept out the Dead Sea Scrolls, which carry
+  Qumran's), and an item under the pool's floor once its editions are counted
+  (`holdShelvesToFloor`). **Wikipedia's word places a work only where Wikidata makes no statement**
+  (`placementOf`, and `shelvedPoolWorks` for a pool work its own statements place nowhere, the
+  Dead Sea Scrolls): a kept work with no current `P195` or `P276` is placed at the venue by a
+  statement Wikipedia makes (`RawStatement.via`), and the work is marked `placedBy: 'wikipedia'`,
+  which the treasure's metadata keeps in the find spot's three states (a run that read the shelves
+  writes `null` on a work it placed by Wikidata, removing a stored mark; one that read none keeps
+  it) and the venue's changeset names (`placed_by`); the review
+  card marks the work *placed by Wikipedia's shelf* on the arrival's row (`PendingWork.placedBy`,
+  `ArrivedTable`) and the run's change list says so beside it (`SyncChangeList`), so a curator
+  tells the two sources apart. Without a copy of the structure the run says so and reads no shelf
+  (`articleHoldingsReader`).
 - **A work another kind handed over is kept** (ADR-0102, #1444). Kinds pass works between them:
   Public Art refuses the Horses of Saint Mark as "in the collection of St Mark's Basilica: a work of a
   place of worship", and the places of worship refuse it as "not a treasure by its classes: group of
