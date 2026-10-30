@@ -224,6 +224,16 @@ export interface WorksCollectorOptions {
    * the places of worship ask for.
    */
   keep?: (work: PoolWork, facts: WorkFacts | undefined) => boolean;
+  /**
+   * Works under the pool's floor the kind wants asked about all the same,
+   * read once the pool is collected and `keep` has run over it: the finds the
+   * year reads at the finds door's bar in fewer editions than the floor
+   * (ADR-0165). The pool handed in is the kept one, the tier the kind's doors
+   * read, and every joiner goes through the same `keep` before it is placed
+   * and counted as any pool work is. Absent, the pool is what the classes
+   * collect.
+   */
+  underFloor?: (run: QueryRunner, pool: ReadonlyMap<string, PoolWork>) => Promise<PoolWork[]>;
 }
 
 /**
@@ -550,10 +560,29 @@ export function toContent(work: PoolWork): ProcessedContent {
   };
 }
 
+/**
+ * The works the kind names under the pool's floor, joining the kept pool
+ * (`underFloor`) through the kind's own `keep`: what it refuses is refused by
+ * name, as a pool work is.
+ */
+async function addUnderFloor(
+  run: QueryRunner, pool: Map<string, PoolWork>, refusedByKeep: Set<string>, opts: WorksCollectorOptions,
+): Promise<void> {
+  if (!opts.underFloor) return;
+  const joining = new Map(
+    (await opts.underFloor(run, pool)).filter((work) => !pool.has(work.qid)).map((work) => [work.qid, work]),
+  );
+  if (!joining.size) return;
+  for (const qid of await keepOurs(run, joining, opts)) refusedByKeep.add(qid);
+  for (const [qid, work] of joining) pool.set(qid, work);
+  console.log(`${opts.logPrefix} Under the pool's floor: ${joining.size} read at the door's bar, joining the pool`);
+}
+
 export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions): Promise<WorksCollection> {
   const classes = await artworkClassesOf(run, opts);
   const pool = await collectPool(run, classes.all, opts);
   const refusedByKeep = await keepOurs(run, pool, opts);
+  await addUnderFloor(run, pool, refusedByKeep, opts);
   const statements = await collectStatements(run, [...pool.keys()]);
   const { lost, tree: lostClasses } = await collectLost(run, pool, opts);
   // An unknown value names no venue to load.

@@ -53,7 +53,7 @@ import {
 } from './classes.js';
 import type { FindFacts } from './finds.js';
 import { readsSubset } from '../subset/reader.js';
-import { subsetFindFacts, subsetSiteFacts, subsetSitesAmong } from '../subset/archaeology.js';
+import { subsetFindFacts, subsetFindsAmong, subsetSiteFacts, subsetSitesAmong } from '../subset/archaeology.js';
 
 const CLASS_BATCH = 25;
 const ID_BATCH = 50;
@@ -323,6 +323,38 @@ export async function fetchSitesAmong(
     }
   }
   return asked.filter((qid) => sites.has(qid));
+}
+
+/**
+ * Which of `qids` carry a class of this kind's finds as their own (`wdt:P31`
+ * in `findClasses`), with no sitelink floor and no coordinate: the finds the
+ * readership names under the pool's floor (ADR-0165), asked by id as
+ * `fetchSitesAmong` asks the sites. The year reads tens of thousands of items
+ * under the floor at the door's bar, and the find rule wants a few hundred of
+ * them: what the rule's class roads would ever keep is what is read in full.
+ */
+export async function fetchFindsAmong(
+  door: Door,
+  qids: string[],
+  findClasses: ReadonlySet<string>,
+): Promise<string[]> {
+  const asked = qids.filter(isQid);
+  if (!asked.length) return [];
+  const { sparql, step } = doorOf(door);
+  if (readsSubset(sparql)) return subsetFindsAmong(asked, [...findClasses]);
+  const finds = new Set<string>();
+  for (const batch of chunk(asked, SITES_AMONG_BATCH)) {
+    await step();
+    const rows = await sparql(`
+      SELECT ?e ?class WHERE {
+        VALUES ?e { ${values(batch)} }
+        ?e wdt:P31 ?class .
+      }`, { kind: 'edges', label: `which of ${batch.length} items the world reads are finds` });
+    for (const row of rows) {
+      if (findClasses.has(extractQid(row.class?.value ?? ''))) finds.add(extractQid(row.e?.value ?? ''));
+    }
+  }
+  return asked.filter((qid) => finds.has(qid));
 }
 
 /** What the site rule reads off the item itself. */

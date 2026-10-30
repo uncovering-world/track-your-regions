@@ -99,6 +99,11 @@ describe('a work read back from the readership year', () => {
     // Read in two editions, it is not under a floor of two.
     expect(await among(20_000, 2)).toEqual([FILLER, SPIKE]);
     expect(await among(100_000, 2)).toEqual([FILLER]);
+    // A door's bar is a percentile between two readings and so a fraction, which
+    // the bigint sum refused outright (#2159): read as the next whole number, so
+    // 23,999.5 still names the work at 24,000 and 24,000.5 no longer does.
+    expect(await among(23_999.5, 3)).toEqual([WORK, FILLER, SPIKE]);
+    expect(await among(24_000.5, 3)).toEqual([FILLER, SPIKE]);
   });
 
   it('reads nothing while a month is not folded with the redirects in place', async () => {

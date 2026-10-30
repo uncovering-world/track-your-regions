@@ -43,10 +43,15 @@ describe('the sites under the floor the readership names (ADR-0152)', () => {
     expect(readership.readAtLeast).toHaveBeenCalledWith(year, 200_000, 15);
   });
 
-  it('names nothing while no Wikivoyage usage is built, since the door is then shut', async () => {
+  it('names nothing for a guided door while no Wikivoyage usage is built, since that door is then shut', async () => {
     usage.latestUsage.mockResolvedValue(null);
-    expect(await readUnderFloor(held, 22, 15)).toEqual([]);
+    expect(await readUnderFloor(held, 22, 15, { enter: 0.12, stay: 0.08 })).toEqual([]);
     expect(readership.readershipYear).not.toHaveBeenCalled();
+  });
+
+  it('reads for a door that asks no guide whether or not a Wikivoyage usage is built (ADR-0165)', async () => {
+    usage.latestUsage.mockResolvedValue(null);
+    expect(await readUnderFloor(held, 22, 15)).toEqual(['Q21705206']);
   });
 
   it('names nothing while the year cannot be read', async () => {

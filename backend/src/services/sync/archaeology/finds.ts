@@ -117,8 +117,9 @@ export function findsCollectorOptions(input: {
   rule: VenueRule;
   logPrefix: string;
   workFacts: WorksCollectorOptions['workFacts'];
+  underFloor?: WorksCollectorOptions['underFloor'];
 }): WorksCollectorOptions {
-  const { trees, rule, logPrefix, workFacts } = input;
+  const { trees, rule, logPrefix, workFacts, underFloor } = input;
   return {
     broadRoots: ANCIENT_ART_ROOTS,
     wholeRoots: ANCIENT_ART_WHOLE,
@@ -134,5 +135,6 @@ export function findsCollectorOptions(input: {
     logPrefix,
     workFacts,
     keep: (work, facts) => findReason(work, facts, trees) !== null,
+    underFloor,
   };
 }
