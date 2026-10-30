@@ -121,5 +121,8 @@
   "devDependencies": {
     "madge": "8.0.0",
     "markdownlint-cli2": "0.24.0"
+  },
+  "overrides": {
+    "katex": "^0.18.2"
   }
 }
