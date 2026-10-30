@@ -240,6 +240,17 @@ export interface ProcessedContent {
   /** The kind that handed the work to this venue, and its reason (ADR-0102); absent on a work the kind kept itself. */
   handedBy?: string;
   /**
+   * Who placed the work (ADR-0166), stored as `metadata.placedBy` so a curator
+   * tells a shelf's word from a statement. Three states, as `foundAt` has:
+   * **`'wikipedia'`** where only English Wikipedia's collection shelf names the
+   * venue; **`null`** where a run that read the shelves placed the work by
+   * Wikidata's statements, which removes a stored mark, since the catalogue
+   * now knows the work's place from Wikidata; **absent** where the run read no
+   * shelves, which keeps the stored mark, since a treasure is global and a kind
+   * that read nothing must not erase what another read.
+   */
+  placedBy?: 'wikipedia' | null;
+  /**
    * The work's English Wikipedia article (#1608), which the card links instead
    * of Wikidata's redirect. **Absent** where the run did not ask, and the row
    * keeps what it holds; **`null`** where the run asked and the work has none;

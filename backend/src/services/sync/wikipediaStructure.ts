@@ -90,6 +90,83 @@ export async function structureItemsInCategories(match: string, except: string):
   return result.rows.map(row => row.item);
 }
 
+/**
+ * The head nouns that make a `… in/of/at the <museum>` category a shelf of
+ * objects rather than of people (ADR-0166): *Middle Eastern objects in the
+ * British Museum*, *Near Eastern antiquities in the Louvre*, *Sculptures in
+ * the Vatican Museums*. *Members of*, *Prisoners in*, *Employees of* and
+ * *Burials at* are the commonest shelves under a museum's name, and every one
+ * of them is people (#2164). Matched on the title's last word before the
+ * museum, as the dump writes it; a non-capturing group, since the query reads
+ * the museum's title as the match's one group.
+ */
+export const COLLECTION_HEADS = '(?:collections?|objects|antiquities|artifacts|artefacts|sculptures|statues|paintings|'
+  + 'drawings|prints|manuscripts|mosaics|frescoes|vases|hoards|inscriptions|mummies|relics|jewelry|jewellery|'
+  + 'tapestries|carpets|ceramics|textiles|coins|arms_and_armou?r|fabergé)';
+
+/**
+ * The collection shelves of the copy, by the museum title each names: every
+ * category whose title is `Collection(s)_of_(the_)<title>` or ends in
+ * `<head>_(in|of|at)_(the_)<title>` with a head of `COLLECTION_HEADS`, cut once
+ * into the tail that could name a museum. Read once per copy and kept: the
+ * two million titles are scanned in one statement of about thirty seconds,
+ * and every kind's run asks the same shelves of its own venues, round after
+ * round. A pattern matched per museum against every title ran for half an
+ * hour (#2164).
+ */
+let shelves: { copy: string; byTitle: Map<string, number[]> } | null = null;
+
+/** Forgets the shelves read, so a test that rebuilt the copy reads them again. */
+export function forgetCollectionShelves(): void {
+  shelves = null;
+}
+
+async function collectionShelves(): Promise<Map<string, number[]>> {
+  const copy = (await latestStructure())?.swappedAt.toISOString() ?? 'none';
+  if (shelves?.copy === copy) return shelves.byTitle;
+  const result = await pool.query<{ id: number; title: string }>(
+    `SELECT c.id, m[1] AS title FROM enwiki_categories c,
+          regexp_match(c.title, '^Collections?_of_(?:the_)?(.+)$') AS m
+      WHERE m IS NOT NULL
+     UNION ALL
+     SELECT c.id, m[1] FROM enwiki_categories c,
+          regexp_matches(c.title, '(?:^|_)${COLLECTION_HEADS}_(?:in|of|at)_(?:the_)?(.+)$', 'ig') AS m`,
+  );
+  const byTitle = new Map<string, number[]>();
+  for (const row of result.rows) byTitle.set(row.title, [...(byTitle.get(row.title) ?? []), row.id]);
+  shelves = { copy, byTitle };
+  return byTitle;
+}
+
+/**
+ * The works English Wikipedia files in a museum's collection categories
+ * (ADR-0166): the items of the articles filed directly under the shelves
+ * naming each of `titles`, as the dump writes them (`collectionShelves`). The
+ * museum's own category is not read: it shelves its staff, its buildings and
+ * the plays set in it beside its works. Answers `{ item, title }` pairs, a
+ * title once per item it files.
+ */
+export async function structureCollectionItems(titles: string[]): Promise<Array<{ item: string; title: string }>> {
+  if (!titles.length) return [];
+  const byTitle = await collectionShelves();
+  const titleOf = new Map<number, string>();
+  for (const title of new Set(titles.map(stored))) {
+    for (const id of byTitle.get(title) ?? []) titleOf.set(id, title);
+  }
+  if (!titleOf.size) return [];
+  const result = await pool.query<{ item: string; category: number }>(
+    `SELECT DISTINCT i.item, l.category
+       FROM enwiki_category_links l
+       JOIN enwiki_pages p ON p.id = l.page AND p.namespace = 0
+       JOIN enwiki_page_items i ON i.page = p.id
+      WHERE l.category = ANY($1::int[]) AND NOT l.subcat`,
+    [[...titleOf.keys()]],
+  );
+  const filed = new Map<string, string>();
+  for (const row of result.rows) filed.set(`${row.item}|${titleOf.get(row.category) ?? ''}`, row.item);
+  return [...filed.keys()].sort().map((key) => ({ item: key.split('|')[0], title: key.split('|')[1] }));
+}
+
 /** The walk's reads asked of the copy: a statement each, no request and no pause. */
 export function structureCategoryReads(): CategoryReads {
   return {

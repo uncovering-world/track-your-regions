@@ -37,7 +37,8 @@
 import { placeArtwork } from './placement.js';
 import { extendVenueGraph, makeResolver, applyFolds, survivorOf } from './venueGraph.js';
 import { fetchVenueStatements, POOL_MIN_SITELINKS, type PoolWork, type RawStatement } from './queries.js';
-import { fetchVenueHoldings, fetchWorksByIds, lowestClass, type WorkDetails } from './venueSideQueries.js';
+import { fetchVenueHoldings, fetchWorksByIds, lowestClass, type VenueHolding, type WorkDetails } from './venueSideQueries.js';
+import type { ArticleHoldingsReader } from './articleHoldings.js';
 import { isQid } from '../wikidataUtils.js';
 import {
   unseenReason,
@@ -124,6 +125,23 @@ export interface VenueSideOptions {
    * refusal named (ADR-0112).
    */
   handedOver?: ReadonlyMap<string, HandOver>;
+  /**
+   * What English Wikipedia files in the admitted venues' collection categories
+   * (ADR-0166, `readArticleHoldings`), read beside what Wikidata's statements
+   * place there, or none: no copy of Wikipedia's structure is built, or a test
+   * asks none. A work it names that Wikidata places nowhere is placed at the
+   * venue by a statement Wikipedia makes (`RawStatement.via`), and marked so.
+   */
+  articleHoldings?: ArticleHoldingsReader;
+  /**
+   * What makes a shelved item a place rather than a holding, by its classes: a
+   * museum's shelf on English Wikipedia files the Mausoleum at Halicarnassus
+   * beside the fragments of it the museum shows, and a kind that knows its
+   * sites says so (Archaeology's site, fortification, palace, worship and
+   * settlement trees). Read of what a shelf alone brought; a kind with no
+   * places to tell leaves it unset.
+   */
+  shelfPlace?: (classes: ReadonlyMap<string, string>) => boolean;
 }
 
 /** The venues to ask about: every admitted survivor, and every venue folded into one. */
@@ -172,26 +190,145 @@ function retyped(
     : { ...details.work, typeQid };
 }
 
+/** What the read found held at the venues: by whom, where, and whether only Wikipedia says so. */
+interface Held { sitelinks: number; heldBy: Set<string>; venues: Set<string>; viaWikipedia: Set<string> }
+
 async function readHoldings(
   run: QueryRunner,
   venues: string[],
   floor: number,
   folds: WorksCollection['folds'],
-): Promise<Map<string, { sitelinks: number; heldBy: Set<string>; venues: Set<string> }>> {
-  const held = new Map<string, { sitelinks: number; heldBy: Set<string>; venues: Set<string> }>();
+): Promise<Map<string, Held>> {
+  const held = new Map<string, Held>();
   const batches = chunk(venues, VENUE_BATCH);
   for (let i = 0; i < batches.length; i++) {
     run.phase(`Reading what each admitted venue holds (batch ${i + 1}/${batches.length})...`);
     await run.step();
-    for (const holding of await fetchVenueHoldings(run, batches[i], floor)) {
-      const entry = held.get(holding.work)
-        ?? { sitelinks: holding.sitelinks, heldBy: new Set<string>(), venues: new Set<string>() };
-      entry.heldBy.add(survivorOf(folds, holding.venue));
-      entry.venues.add(holding.venue);
-      held.set(holding.work, entry);
-    }
+    addHoldings(held, await fetchVenueHoldings(run, batches[i], floor), folds);
   }
   return held;
+}
+
+function addHoldings(held: Map<string, Held>, holdings: VenueHolding[], folds: WorksCollection['folds']): void {
+  for (const holding of holdings) {
+    const entry = held.get(holding.work)
+      ?? { sitelinks: holding.sitelinks, heldBy: new Set<string>(), venues: new Set<string>(), viaWikipedia: new Set<string>() };
+    entry.heldBy.add(survivorOf(folds, holding.venue));
+    entry.venues.add(holding.venue);
+    if (holding.via === 'wikipedia') entry.viaWikipedia.add(holding.venue);
+    held.set(holding.work, entry);
+  }
+}
+
+/**
+ * What English Wikipedia files in the venues' collection categories, added to
+ * what Wikidata placed there (ADR-0166): a work Wikidata already holds at a
+ * venue is Wikidata's, and the article adds nothing to it.
+ */
+async function addArticleHoldings(
+  run: QueryRunner,
+  held: Map<string, Held>,
+  venues: string[],
+  graph: WorksCollection['graph'],
+  folds: WorksCollection['folds'],
+  read: ArticleHoldingsReader | undefined,
+  logPrefix: string,
+): Promise<Map<string, Set<string>>> {
+  const shelved = new Map<string, Set<string>>();
+  if (!read) return shelved;
+  run.phase('Reading what English Wikipedia files in each admitted venue\'s collection...');
+  await run.step();
+  const filed = await read(run, venues.map((qid) => ({ qid, articleUrl: graph.details.get(qid)?.articleUrl ?? null })));
+  for (const holding of filed) shelved.set(holding.work, (shelved.get(holding.work) ?? new Set()).add(holding.venue));
+  const fresh = filed.filter((holding) => !held.has(holding.work));
+  addHoldings(held, fresh, folds);
+  console.log(`${logPrefix} Filed by English Wikipedia at the admitted venues: ${filed.length}, `
+    + `${fresh.length} that Wikidata places at none of them`);
+  return shelved;
+}
+
+/**
+ * The pool's own works that Wikidata places nowhere and a shelf files at an
+ * admitted venue (ADR-0166): the Dead Sea Scrolls, collected by their class,
+ * with a find spot and no holder. Placed by the shelf as a fresh object is, and
+ * marked. A work nobody can see stays unseen, and one Wikidata places anywhere
+ * keeps Wikidata's placement.
+ */
+async function shelvedPoolWorks(
+  run: QueryRunner,
+  collection: WorksCollection,
+  shelved: ReadonlyMap<string, Set<string>>,
+  placed: Readonly<Record<string, string[]>>,
+  unseen: Readonly<Record<string, UnseenWork>>,
+  isPlace: VenueSideOptions['shelfPlace'],
+  place: (statements: RawStatement[]) => string[],
+): Promise<Array<{ qid: string; statements: RawStatement[]; venues: string[] }>> {
+  const homeless = [...shelved].filter(([qid]) => collection.pool.has(qid) && !unseen[qid]
+    && !(placed[qid] ?? []).length && !(collection.statements.get(qid) ?? []).length);
+  if (!homeless.length) return [];
+  // The pool knows a work by the class it was collected under; whether it is a
+  // place of the kind is read off every class it carries, as a fresh object's is.
+  const details = isPlace ? await readDetails(run, homeless.map(([qid]) => qid)) : new Map<string, WorkDetails>();
+  return homeless.flatMap(([qid, shelves]) => {
+    const classes = details.get(qid)?.classes;
+    if (classes && isPlace?.(classes) === true) return [];
+    const statements: RawStatement[] = [...shelves].map((venue) => ({ work: qid, venue, property: 'P276', rank: 'normal', via: 'wikipedia' }));
+    const venues = place(statements);
+    return venues.length ? [{ qid, statements, venues }] : [];
+  });
+}
+
+/**
+ * A shelf names its works with no floor, where Wikidata's holdings were asked
+ * at the pool's: what a shelf alone brought is held to the same floor once its
+ * editions are counted, so no kind writes a work under the floor by this road,
+ * and what the kind calls a place is left out (`shelfPlace`, ADR-0166).
+ */
+function holdShelvesToFloor(
+  details: Map<string, WorkDetails>, held: Map<string, Held>, floor: number,
+  isPlace: VenueSideOptions['shelfPlace'],
+): Map<string, WorkDetails> {
+  for (const [qid, row] of details) {
+    const entry = held.get(qid);
+    const shelfOnly = entry !== undefined && entry.viaWikipedia.size > 0 && entry.venues.size === entry.viaWikipedia.size;
+    // And a place a shelf files beside its fragments is no holding, whatever its editions.
+    if (shelfOnly && (row.work.sitelinks < floor || isPlace?.(row.classes) === true)) details.delete(qid);
+  }
+  return details;
+}
+
+/**
+ * A run that read the shelves says of every work the shelf did not place that
+ * Wikidata placed it, so a mark a shelf once set goes once Wikidata names the
+ * holder; a run that read none says nothing, and the stored mark stays
+ * (ADR-0166, `ProcessedContent.placedBy`).
+ */
+function sayWikidataPlaced(pool: Map<string, PoolWork>, shelvesRead: boolean): void {
+  if (!shelvesRead) return;
+  for (const [qid, work] of pool) {
+    if (work.placedBy === undefined) pool.set(qid, { ...work, placedBy: null });
+  }
+}
+
+/** The pool works a shelf alone placed, named in the run's log as the kept objects are. */
+function nameShelfPlacements(labels: string[], logPrefix: string): void {
+  if (labels.length) console.log(`${logPrefix} Placed by English Wikipedia's shelves alone: ${labels.join(', ')}`);
+}
+
+/**
+ * The statements a kept work is placed by, and the work as it is placed:
+ * Wikidata's statements, or, where it makes none and English Wikipedia files
+ * the work at a venue, that venue as a statement Wikipedia makes (ADR-0166),
+ * with the work marked as placed by Wikipedia.
+ */
+function placementOf(
+  work: PoolWork, wikidata: RawStatement[], held: Held | undefined,
+): { statements: RawStatement[]; work: PoolWork } {
+  if (wikidata.length || !held?.viaWikipedia.size) return { statements: wikidata, work };
+  return {
+    statements: [...held.viaWikipedia].map((venue) => ({ work: work.qid, venue, property: 'P276', rank: 'normal', via: 'wikipedia' })),
+    work: { ...work, placedBy: 'wikipedia' },
+  };
 }
 
 async function readDetails(run: QueryRunner, qids: string[]): Promise<Map<string, WorkDetails>> {
@@ -342,6 +479,14 @@ export async function readVenueSide(
   const floor = venueSide.floor ?? POOL_MIN_SITELINKS;
   const venues = venuesToRead(collection, admitted);
   const held = await readHoldings(run, venues, floor, collection.folds);
+  const byWikidata = held.size;
+  // A venue admitted by its class or its category and holding no pool work is
+  // in no graph yet, and its shelf is named by its article: it is fetched
+  // before the shelves are read, so a round never passes it over unread.
+  const known = await extendVenueGraph(
+    run, collection.graph, venues.filter((qid) => !collection.graph.details.has(qid)), opts.rule,
+  );
+  const shelved = await addArticleHoldings(run, held, venues, known, collection.folds, venueSide.articleHoldings, opts.logPrefix);
 
   // The pool's decision stands, kept or refused: what it holds is placed
   // already, and what its keep turned down would only be fetched again, judged
@@ -356,7 +501,7 @@ export async function readVenueSide(
     (qid) => !collection.pool.has(qid)
       && ((!skip.has(qid) && !collection.refusedByKeep.has(qid)) || handOverHere(qid) !== undefined),
   );
-  const details = await readDetails(run, fresh);
+  const details = holdShelvesToFloor(await readDetails(run, fresh), held, floor, venueSide.shelfPlace);
   const facts = await readFacts(run, details, opts);
   const own = ownClassesOf(opts);
   const keep = opts.keep
@@ -379,7 +524,7 @@ export async function readVenueSide(
     ...[...statements.values()].flat().map((s) => s.venue).filter((v): v is string => v !== null),
     ...[...kept.keys()].flatMap((qid) => [...(held.get(qid)?.venues ?? [])]),
   ]);
-  const graph = await extendVenueGraph(run, collection.graph, seeds, opts.rule);
+  const graph = await extendVenueGraph(run, known, seeds, opts.rule);
   const resolver = makeResolver(graph, opts.rule);
 
   const pool = new Map(collection.pool);
@@ -387,8 +532,8 @@ export async function readVenueSide(
   const placed = { ...collection.placed };
   const unseen: Record<string, UnseenWork> = { ...collection.unseen };
   const arrived: Record<string, string[]> = {};
-  for (const [qid, work] of kept) {
-    const ownStatements = statements.get(qid) ?? [];
+  for (const [qid, kept0] of kept) {
+    const { statements: ownStatements, work } = placementOf(kept0, statements.get(qid) ?? [], held.get(qid));
     const placedAt = placeArtwork(ownStatements, resolver.resolve, graph.ancestors, resolver.keptBack);
     // A handed-over work goes only to a place the refusal named (ADR-0102):
     // another admitted venue its statements reach refused it by its own rule.
@@ -422,14 +567,34 @@ export async function readVenueSide(
     placed[qid] = venues;
     arrived[qid] = venues;
   }
+  const poolShelved = await shelvedPoolWorks(
+    run, collection, shelved, placed, unseen, venueSide.shelfPlace,
+    (statements) => placeArtwork(statements, resolver.resolve, graph.ancestors, resolver.keptBack),
+  );
+  for (const { qid, statements: byShelf, venues: placedAt } of poolShelved) {
+    pool.set(qid, { ...pool.get(qid)!, placedBy: 'wikipedia' });
+    allStatements.set(qid, byShelf);
+    placed[qid] = placedAt;
+    arrived[qid] = placedAt;
+  }
+  nameShelfPlacements(poolShelved.map(({ qid }) => pool.get(qid)?.label ?? qid), opts.logPrefix);
+  sayWikidataPlaced(pool, venueSide.articleHoldings !== undefined);
   const afterFolds = { ...collection.afterFolds, ...applyFolds(arrived, collection.folds) };
 
   const reported = refused.filter((refusal) => refusal.sitelinks >= reportFloor);
+  const byShelfOnly = held.size - byWikidata;
+  // Counted off the set, not by arithmetic: a later round reads venues an
+  // earlier one already merged works from, and a difference of totals then
+  // drifts, or goes negative.
+  const alreadyInPool = [...held].filter(([qid, entry]) => collection.pool.has(qid)
+    && entry.venues.size > entry.viaWikipedia.size).length;
   console.log(
-    `${opts.logPrefix} Venue-side read: ${venues.length} venues hold ${held.size} objects at `
-    + `${floor}+ Wikipedia editions; ${held.size - fresh.length} already in the pool, ${kept.size} kept as `
+    `${opts.logPrefix} Venue-side read: ${venues.length} venues hold ${byWikidata} objects at `
+    + `${floor}+ Wikipedia editions by Wikidata's statements, ${byShelfOnly} more by English Wikipedia's shelves alone; `
+    + `${alreadyInPool} already in the pool, ${kept.size} kept as `
     + `${opts.noun.works} (${handedOver.size} handed over by another kind), `
     + `${poolHandOvers.length} of the pool placed where another kind handed them over, `
+    + `${poolShelved.length} of the pool placed where English Wikipedia files them, `
     + `${refused.length} refused (${reported.length} at ${reportFloor}+ Wikipedia editions, named)`,
   );
   return {
@@ -443,7 +608,7 @@ export async function readVenueSide(
       qid, [...row.classes].map(([cls, label]) => ({ qid: cls, label })),
     ])),
     reportFloor,
-    counts: { venues: venues.length, held: held.size, alreadyInPool: held.size - fresh.length },
+    counts: { venues: venues.length, held: byWikidata, alreadyInPool },
   };
 }
 

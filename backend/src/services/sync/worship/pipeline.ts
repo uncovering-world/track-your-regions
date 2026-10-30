@@ -65,6 +65,7 @@ import { unique, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { ProcessedContent } from '../types.js';
 import { admittingWork, doorNote, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
+import type { ArticleHoldingsReader } from '../museum/articleHoldings.js';
 
 const LOG_PREFIX = '[Worship Sync]';
 
@@ -140,6 +141,8 @@ export interface WorshipPipelineDeps {
    * (`readHandOvers`); the test passes none.
    */
   handOvers?: ReadonlyMap<string, HandOver>;
+  /** What English Wikipedia files in the admitted venues' collections (ADR-0166), or none without a copy of its structure. */
+  articleHoldings?: ArticleHoldingsReader;
   /**
    * The readership door over the pool's works (ADR-0056, `openReadershipDoor`),
    * or nothing while the source's gate is off or the year cannot be read.
@@ -391,6 +394,7 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   const side = await readVenueSide(run, works, options, {
     admitted,
     handedOver: deps.handOvers,
+    articleHoldings: deps.articleHoldings,
     // Named where a treasure of this kind would keep its badge — the line the
     // source states, which `contentsLine` hands the writer too (#883).
     reportFloor: contentsLine(deps.line).staySitelinks,

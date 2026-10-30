@@ -166,6 +166,8 @@ export const PendingWork = z.strictObject({
   curatedFields: z.array(z.string()).nullable().optional(),
   venueCount: z.number().int().nullable().optional(),
   venues: z.array(WorkVenue).nullable().optional().describe('The museums that hang the work, named.'),
+  placedBy: z.literal('wikipedia').nullable().optional()
+    .describe("Set where only English Wikipedia's collection shelf places the work here, Wikidata naming no holder (ADR-0166)."),
   sitelinks: z.number().int().nullable().optional()
     .describe('How many Wikipedia language editions write about the work (ADR-0082).'),
 }).describe('An unread work under a row readers already see.');

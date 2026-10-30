@@ -664,7 +664,7 @@ describe('what a run stores about a work photograph', () => {
     // the credit the curator's picture came with — with only the find spot's
     // own rule applied over it.
     expect(onUpdate).toMatch(
-      /metadata = CASE WHEN treasures\.curated_fields \? 'image_url'[\s\S]*?THEN NULLIF\(CASE[\s\S]*?COALESCE\(treasures\.metadata, '\{\}'::jsonb\)/,
+      /metadata = CASE WHEN treasures\.curated_fields \? 'image_url'[\s\S]*?THEN NULLIF\(\(COALESCE\(CASE[\s\S]*?COALESCE\(treasures\.metadata, '\{\}'::jsonb\)/,
     );
   });
 
@@ -976,7 +976,7 @@ describe('what a run stores about where a find was dug up', () => {
       onUpdate.indexOf('updated_at = NOW()'),
     );
     // The claimed arm rebuilds from the stored object, never from the run's.
-    expect(claimArm).toMatch(/THEN NULLIF\(CASE[\s\S]*?COALESCE\(treasures\.metadata, '\{\}'::jsonb\)/);
+    expect(claimArm).toMatch(/THEN NULLIF\(\(COALESCE\(CASE[\s\S]*?COALESCE\(treasures\.metadata, '\{\}'::jsonb\)/);
     // Both arms strip and replace the one key, and both ask the run's own
     // *parameter* what it said about it — never EXCLUDED, which is the evaluated
     // VALUES row and has had a null key stripped by then (INSERTED_METADATA), so
@@ -1062,7 +1062,7 @@ describe('a visible work under a gated source', () => {
     // it: the credit is the picture's and is held with it, the find spot is the
     // source's and is not (#887 is what is left frozen — today the credit).
     expect(onUpdate).toMatch(
-      /AND treasures\.image_url IS DISTINCT FROM EXCLUDED\.image_url\)\s+THEN NULLIF\(CASE/,
+      /AND treasures\.image_url IS DISTINCT FROM EXCLUDED\.image_url\)\s+THEN NULLIF\(\(COALESCE\(CASE/,
     );
     // The guard's own answer, on the row the statement locked.
     expect(sql).toMatch(/RETURNING id, name,[\s\S]*AS was_held/);

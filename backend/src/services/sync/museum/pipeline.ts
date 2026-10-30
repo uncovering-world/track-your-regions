@@ -39,6 +39,7 @@ import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { CollectedMuseum } from '../types.js';
 import { admittingWork, doorNote, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
+import type { ArticleHoldingsReader } from './articleHoldings.js';
 
 const LOG_PREFIX = '[Museum Sync]';
 
@@ -63,6 +64,8 @@ export interface PipelineDeps {
    * (`readHandOvers`); the test passes none.
    */
   handOvers?: ReadonlyMap<string, HandOver>;
+  /** What English Wikipedia files in the admitted venues' collections (ADR-0166), or none without a copy of its structure. */
+  articleHoldings?: ArticleHoldingsReader;
   /**
    * The readership door over the pool's works (ADR-0056, `openReadershipDoor`),
    * or nothing while the source's gate is off or the year cannot be read. The
@@ -406,6 +409,7 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   const side = await readVenueSide(run, collected, options, {
     admitted,
     handedOver: deps.handOvers,
+    articleHoldings: deps.articleHoldings,
     // Named where a work of this kind would keep its badge: what the museums
     // hold below that is the long tail of every collection on Wikidata.
     reportFloor: ICONIC_RELEASE,
@@ -418,8 +422,12 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   // object read from the venue's side was never put to the art test — its placements are the
   // folded ones — and the same filter keeps it to the museums the test admitted.
   const current: Record<string, string[]> = {};
-  for (const qid of pool.keys()) {
-    const venues = afterArtTest[qid] ?? afterFolds[qid] ?? [];
+  for (const [qid, work] of pool) {
+    // A pool work the art test placed nowhere that the venue-side read then
+    // placed at an admitted museum — by a shelf (ADR-0166) or handed over by
+    // another kind (ADR-0112) — has its placement from the read, not the test.
+    const readPlaced = work.placedBy === 'wikipedia' || work.handedBy !== undefined;
+    const venues = (readPlaced ? afterFolds[qid] : afterArtTest[qid] ?? afterFolds[qid]) ?? [];
     current[qid] = venues.filter((venue) => admitted.has(venue));
   }
 

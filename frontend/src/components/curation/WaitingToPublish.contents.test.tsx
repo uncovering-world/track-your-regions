@@ -185,6 +185,13 @@ describe('the works that arrived', () => {
 
     expect(within(rowOf('The Wine Glass')).getByText(/new to the catalogue/)).toBeInTheDocument();
   });
+
+  it('says when only English Wikipedia\'s shelf put a work here, Wikidata naming no holder (ADR-0166)', () => {
+    renderCard(contents({ ...WINE_GLASS, placedBy: 'wikipedia' }));
+
+    expect(within(rowOf('The Wine Glass')).getByText(/placed by Wikipedia's shelf/)).toBeInTheDocument();
+    expect(within(rowOf('The Wine Glass')).getByText(/new to the catalogue/)).toBeInTheDocument();
+  });
 });
 
 describe('the heading of what arrived', () => {

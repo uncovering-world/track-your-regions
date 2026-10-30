@@ -338,6 +338,8 @@ export const SyncContentItem = z.strictObject({
   ref: z.string().nullable(),
   handed_by: z.string().optional()
     .describe('The kind that handed a work to this venue, and its reason (ADR-0102): only on a work the venue gained that way.'),
+  placed_by: z.literal('wikipedia').optional()
+    .describe("Set where only English Wikipedia's collection shelf places the work at this venue, Wikidata naming no holder (ADR-0166)."),
 }).describe('One thing an object holds, as the record names it: never a database id (ADR-0026).');
 export type SyncContentItem = z.infer<typeof SyncContentItem>;
 

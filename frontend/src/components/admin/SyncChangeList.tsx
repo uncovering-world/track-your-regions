@@ -42,9 +42,15 @@ function itemLabel(item: { name: string | null; ref: string | null }): string {
   return item.name ?? item.ref ?? 'an unnamed one';
 }
 
-/** A thing a run added, and who handed it over where another kind did (ADR-0102). */
-function addedLabel(item: { name: string | null; ref: string | null; handed_by?: string }): string {
-  return item.handed_by ? `${itemLabel(item)} (handed over by ${item.handed_by})` : itemLabel(item);
+/**
+ * A thing a run added, and who put it here when not the kind itself: the kind
+ * that handed it over (ADR-0102), or English Wikipedia's shelf where Wikidata
+ * named no holder (ADR-0166).
+ */
+function addedLabel(item: { name: string | null; ref: string | null; handed_by?: string; placed_by?: 'wikipedia' }): string {
+  if (item.handed_by) return `${itemLabel(item)} (handed over by ${item.handed_by})`;
+  if (item.placed_by) return `${itemLabel(item)} (placed by English Wikipedia's shelf)`;
+  return itemLabel(item);
 }
 
 /**

@@ -173,6 +173,9 @@ function contentItemOf(item: unknown): SyncContentItem {
   return {
     name: typeof record.name === 'string' ? record.name : null,
     ref: typeof record.ref === 'string' ? record.ref : null,
+    // Who put the work here when not the kind itself (ADR-0102, ADR-0166).
+    ...(typeof record.handed_by === 'string' ? { handed_by: record.handed_by } : {}),
+    ...(record.placed_by === 'wikipedia' ? { placed_by: 'wikipedia' as const } : {}),
   };
 }
 

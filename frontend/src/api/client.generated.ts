@@ -3562,6 +3562,8 @@ export interface PendingWork {
   venueCount?: number | null;
   /** The museums that hang the work, named. */
   venues?: WorkVenue[] | null;
+  /** Set where only English Wikipedia's collection shelf places the work here, Wikidata naming no holder (ADR-0166). */
+  placedBy?: 'wikipedia' | null;
   /** How many Wikipedia language editions write about the work (ADR-0082). */
   sitelinks?: number | null;
 }

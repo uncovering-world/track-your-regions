@@ -110,6 +110,12 @@ export interface PoolWork {
    * read kept it because another kind refused it as held here (ADR-0102).
    */
   handedBy?: string;
+  /**
+   * Who placed the work (ADR-0166): `'wikipedia'` where only English Wikipedia's
+   * collection shelf names its venue, `null` where a run that read the shelves
+   * placed it by Wikidata's statements, absent where the run read no shelves.
+   */
+  placedBy?: 'wikipedia' | null;
 }
 
 /**
@@ -383,6 +389,8 @@ export interface RawStatement {
    */
   venue: string | null;
   property: 'P195' | 'P276';
+  /** Set on a statement Wikipedia's collection categories make where Wikidata makes none (ADR-0166). */
+  via?: 'wikipedia';
   rank: 'preferred' | 'normal';
 }
 

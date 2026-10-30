@@ -82,6 +82,7 @@ import {
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
+import { articleHoldingsReader } from './museum/articleHoldings.js';
 import { wikipediaStructureFor } from './wikipediaStructure.js';
 import { placeReadershipDoorFor, readershipDoorFor, readUnderFloor, type UnderFloorReader } from './readershipDoor.js';
 import { POOL_MIN_SITELINKS } from './publicArt/queries.js';
@@ -107,6 +108,8 @@ async function fetchArchaeologyItems(
   const findsLine = contentsLine(line);
   const previousPlacements = await readPreviousPlacements(ARCHAEOLOGY_SOURCE_ID);
   const handOvers = await readHandOvers(ARCHAEOLOGY_SOURCE_ID);
+  // What English Wikipedia files in each admitted museum's collection (ADR-0166).
+  const articleHoldings = await articleHoldingsReader(LOG_PREFIX);
   const storedCredits = await readStoredCredits(ARCHAEOLOGY_SOURCE_ID);
   const storedTreasureCredits = await readStoredTreasureCredits();
   // What the source holds as admitted before the run, so the stay line of the
@@ -169,6 +172,7 @@ async function fetchArchaeologyItems(
           line,
           // What other kinds refused as held at a museum (ADR-0102).
           handOvers,
+          articleHoldings,
           openSiteDoor,
           underFloorSites,
           openFindsDoor,

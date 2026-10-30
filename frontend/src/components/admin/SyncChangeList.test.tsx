@@ -311,6 +311,16 @@ describe('SyncChangeList', () => {
     ]);
   });
 
+  it('says when only English Wikipedia\'s shelf placed a work at the venue (ADR-0166)', () => {
+    const lines = contentsLines({
+      treasures: {
+        added: [{ name: 'Dead Sea Scrolls', ref: 'Q145780', placed_by: 'wikipedia' }],
+        withdrawn: [], returned: [],
+      },
+    });
+    expect(lines).toEqual(['works: gained Dead Sea Scrolls (placed by English Wikipedia\'s shelf)']);
+  });
+
   it('counts a change a curator\'s claim refused apart from the rest', () => {
     // A different event: the source proposed something and did not get it, so the
     // number says how often it is still arguing rather than how often anything moved.

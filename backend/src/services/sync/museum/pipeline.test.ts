@@ -67,8 +67,10 @@ describe('collectTier1Museums', () => {
     // Plus what the admitted museums hold that no class reached (#890): the
     // objects the venue-side read asked about, kept (three frescoes) or refused
     // (the film) — each was fetched, whichever way the rule answered.
+    // A venue-side object is found through a holding Wikidata states; the
+    // tablet only Wikipedia files is met by no run without the article holdings (ADR-0166).
     const venueSide = Object.values(WORKS).filter((w) => w.cls === SIDE_CLASS || w.cls === FILM)
-      .filter((w) => w.sitelinks >= 10);
+      .filter((w) => w.sitelinks >= 10 && w.statements.length > 0);
     expect(out.fetched).toBe(museumReachable.length + venueSide.length);
   });
 
@@ -472,5 +474,43 @@ describe('pool truncation', () => {
     const asked = sparql.mock.calls.filter(call => !isWikipediaEditionsQuery(String(call[0])));
     expect(asked).toHaveLength(1);
     expect(String(asked[0][0])).toContain('VALUES ?cls');
+  });
+});
+
+describe("a work only English Wikipedia's shelf places (ADR-0166)", () => {
+  it('is written as the admitted museum\'s, marked, where the art test placed it nowhere', async () => {
+    const out = await collectTier1Museums({
+      sparql: makeSparql(), previousPlacements: {}, museumClasses: MUSEUM_CLASSES,
+      // The Louvre's shelf names the pool fresco Wikidata places nowhere.
+      articleHoldings: (_run, venues) => Promise.resolve(venues.some((venue) => venue.qid === 'Q19675')
+        ? [{ work: 'Q900957', venue: 'Q19675', property: 'P276' as const, sitelinks: 0, via: 'wikipedia' as const }]
+        : []),
+    });
+    const louvre = out.items.find((item) => item.qid === 'Q19675');
+    const fresco = louvre?.artworks.find((work) => work.externalId === 'Q900957');
+    expect(fresco).toMatchObject({ name: 'Pool Fresco Only Wikipedia Places', placedBy: 'wikipedia' });
+    // The Mona Lisa, which Wikidata places, says so.
+    expect(louvre?.artworks.find((work) => work.externalId === 'Q12418')?.placedBy).toBeNull();
+  });
+
+  it('is written as the admitted museum\'s where another kind handed it over too (ADR-0112)', async () => {
+    // The work below the threshold hangs, by its own statements, only in the Almost
+    // Gallery, which the tier never admits; Public art refused it as inside the Louvre.
+    const out = await collectTier1Museums({
+      sparql: makeSparql(), previousPlacements: {}, museumClasses: MUSEUM_CLASSES,
+      handOvers: new Map([['Q900402', {
+        by: 'Public art', reason: 'inside the Louvre: a work of a museum, not public art', heldIn: ['Q19675'],
+      }]]),
+    });
+    const louvre = out.items.find((item) => item.qid === 'Q19675');
+    expect(louvre?.artworks.find((work) => work.externalId === 'Q900402'))
+      .toMatchObject({ name: 'Work Below the Threshold', handedBy: 'Public art: inside the Louvre: a work of a museum, not public art' });
+  });
+
+  it('is written nowhere without the shelves, and nobody is said to have placed the rest', async () => {
+    const out = await run();
+    const louvre = out.items.find((item) => item.qid === 'Q19675');
+    expect(louvre?.artworks.some((work) => work.externalId === 'Q900957')).toBe(false);
+    expect(louvre?.artworks.find((work) => work.externalId === 'Q12418')?.placedBy).toBeUndefined();
   });
 });

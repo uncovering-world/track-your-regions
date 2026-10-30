@@ -351,6 +351,9 @@ export async function queryContents(
                'venues', venues,
                -- How many Wikipedia editions write about it (ADR-0082): the
                -- number the pool's line held it to, said on its row.
+               -- Who placed it here when not Wikidata: a curator weighs a
+               -- shelf's word differently from a statement (ADR-0166).
+               'placedBy', placed_by,
                'sitelinks', sitelinks_count,
                'iconic', is_iconic,
                -- The source's own id, so the row can open the work where it came
@@ -368,6 +371,7 @@ export async function queryContents(
                t.year, t.image_url, t.is_iconic, t.sitelinks_count, t.external_id,
                t.treasure_type, t.curated_fields,
                t.metadata->'imageCredit' AS image_credit,
+               t.metadata->>'placedBy' AS placed_by,
                ${venueCountSql('t')} AS venue_count,
                ${venuesSql('t')} AS venues,
                -- Whether readers already see the work in another museum: then

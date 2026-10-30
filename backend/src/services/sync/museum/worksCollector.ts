@@ -557,6 +557,7 @@ export function toContent(work: PoolWork): ProcessedContent {
     imageUrl: work.imageUrl,
     sitelinksCount: work.sitelinks,
     ...(work.handedBy ? { handedBy: work.handedBy } : {}),
+    ...(work.placedBy !== undefined ? { placedBy: work.placedBy } : {}),
   };
 }
 
