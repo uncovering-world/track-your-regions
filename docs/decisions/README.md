@@ -75,7 +75,7 @@ and accepted by it.
 | [0053](0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md) | A curator's no is a verdict on an arrival and a mark on a part | Accepted — decision 2 narrowed by ADR-0083, decision 3 narrowed by ADR-0067 | 2026-09-09 |
 | [0054](0054-placement-reads-leaves-through-their-pieces.md) | Placement reads the leaves through their pieces, and asks a non-leaf only about what no leaf holds | Accepted | 2026-09-10 |
 | [0055](0055-readership-is-read-from-monthly-dumps-and-an-unseen-country-is-unobserved.md) | Readership is read from Wikimedia's monthly dumps, and a country the data does not show is unobserved, not unread | Draft | 2026-09-11 |
-| [0056](0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A work the world reads opens a second door to the world tier | Accepted | 2026-09-11 |
+| [0056](0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A work the world reads opens a second door to the world tier | Accepted — decisions 1 and 2 narrowed for Art Museums by [0162](0162-art-museums-open-the-readership-door-at-the-tiers-12th-percentile.md) | 2026-09-11 |
 | [0057](0057-a-work-famous-in-its-own-language-admits-its-museum-where-no-native-source-is-adopted.md) | A work read at home as much as a world masterpiece admits its museum to a regional tier that has no native source | Draft | 2026-09-11 |
 | [0058](0058-archaeology-is-one-kind-of-sites-and-museums.md) | Archaeology is one kind of sites and museums, and a museum joins it for what it is, not for one find | Accepted — decision 4 narrowed by [0060](0060-the-site-pool-has-a-second-entrance-the-map.md) and [0127](0127-a-site-the-world-reads-opens-a-second-door-to-the-world-tier.md); decisions 1 and 2 narrowed by [0103](0103-a-museum-whose-famous-find-no-kind-shows-arrives-in-archaeology-held-for-a-curator.md); decision 2 narrowed by [0104](0104-the-map-is-a-third-signal-of-an-archaeology-museum-and-a-department-in-an-art-museum-is-refused.md) | 2026-09-13 |
 | [0059](0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md) | What the catalogue takes from OpenStreetMap it keeps separable and offers under ODbL | Accepted | 2026-09-13 |
@@ -180,6 +180,7 @@ and accepted by it.
 | [0159](0159-a-region-no-object-draws-takes-the-union-of-its-child-regions-shapes.md) | A region no object draws takes the union of its child regions' shapes | Accepted | 2026-10-27 |
 | [0160](0160-a-places-name-starts-with-a-capital-unless-its-first-word-is-spelled-otherwise.md) | A place's name starts with a capital unless its first word is spelled otherwise, and the capital passes the gate | Accepted | 2026-10-30 |
 | [0161](0161-a-holy-place-is-a-place-of-worship-and-a-year-of-readers-opens-a-door.md) | A holy place is a place of worship, and a year of readers opens a door under the line | Accepted | 2026-10-30 |
+| [0162](0162-art-museums-open-the-readership-door-at-the-tiers-12th-percentile.md) | Art Museums open the readership door at the tier's 12th percentile | Accepted | 2026-10-30 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

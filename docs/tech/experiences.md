@@ -2221,11 +2221,19 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   run against the canon in `db/catalogue-coverage/calibration/art-museums.jsonl` (#1952), compiled
   independently of what the line measures (`docs/tech/catalogue-coverage.md`)
 - **A work the world reads opens a second door** (ADR-0056, #1574, `readershipDoor.ts`). A work
-  below the line whose year of readership reaches the median of the pool's works at or over the
-  line is Iconic. It admits its holder as a work at the line does, and keeps its badge down to the
-  35th percentile while the catalogue marks it Iconic. Below that, a work of 18 to 21 sitelinks
+  below the line whose year of readership reaches a percentile of the pool's works at or over the
+  line is Iconic. It admits its holder as a work at the line does, and keeps its badge down to a
+  lower percentile while the catalogue marks it Iconic. Below that, a work of 18 to 21 sitelinks
   still stays by the line's own stay (`ICONIC_RELEASE`), since no column says which door a badge
-  came through. The year is read back by
+  came through. ADR-0056's percentiles are the median and the 35th (`DOOR_PERCENTILES`). A source
+  may state its own: Art Museums enters at the 12th and stays at the 8th (`ART_MUSEUM_DOOR`,
+  ADR-0162), 48,323 readers a year on the dump of 2026-10-19.
+  - It admits 74 more museums, among them 9 of the canon's tops the line misses: the
+    Thyssen-Bornemisza, the Albertina, the Guggenheims, SFMOMA, the Barnes Foundation.
+  - About one in five of them is no art museum (Versailles, Windsor Castle, the Imperial War
+    Museum), and a curator reads every one.
+  - It marks 240 works Iconic, against 30 at the median.
+  - The curator's note names the door's bar, never the tier's median (`doorNote`). The year is read back by
   `workReadership.ts`: user views over the twelve kept months in every counted edition, with the
   pairs ADR-0055 decision 3 calls automated set aside, and a burst flagged by decision 4. A work
   another source already shows a reader opens nothing (`worksShownByOtherSources`). The door is
