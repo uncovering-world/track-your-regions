@@ -182,7 +182,8 @@ and accepted by it.
 | [0161](0161-a-holy-place-is-a-place-of-worship-and-a-year-of-readers-opens-a-door.md) | A holy place is a place of worship, and a year of readers opens a door under the line | Accepted | 2026-10-30 |
 | [0162](0162-art-museums-open-the-readership-door-at-the-tiers-12th-percentile.md) | Art Museums open the readership door at the tier's 12th percentile | Accepted | 2026-10-30 |
 | [0163](0163-a-site-a-wikivoyage-guide-uses-opens-the-readership-door-at-the-12th-percentile.md) | A site a Wikivoyage guide uses opens the readership door at the 12th percentile | Accepted | 2026-10-30 |
-| [0164](0164-a-find-its-readers-carry-counts-as-one-at-the-finds-line.md) | A find its readers carry counts as one at the finds' line | Accepted | 2026-10-30 |
+| [0164](0164-a-find-its-readers-carry-counts-as-one-at-the-finds-line.md) | A find its readers carry counts as one at the finds' line | Accepted — decision 1 extended under the pool's floor by [0165](0165-the-finds-door-reads-the-finds-under-the-pools-floor-the-world-reads.md) | 2026-10-30 |
+| [0165](0165-the-finds-door-reads-the-finds-under-the-pools-floor-the-world-reads.md) | The finds door reads the finds under the pool's floor the world reads | Accepted | 2026-10-30 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

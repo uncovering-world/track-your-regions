@@ -1,7 +1,7 @@
 # ADR-0164: A find its readers carry counts as one at the finds' line
 
 **Date:** 2026-10-30
-**Status:** Accepted
+**Status:** Accepted — decision 1 extended under the pool's floor by ADR-0165
 
 ---
 

@@ -3808,8 +3808,15 @@ placement through the venue graph, which already holds its row and classes. The 
   - A museum such a find alone carries in names the find's reading to the curator in its admission
     note (`doorNote`): the Flying Horse of Gansu (44,327 a year, 10 editions) carries in the Gansu
     Provincial Museum.
-  - The door reads only what the class pool holds, which is finds of 10 editions or more. The
-    Houmuwu ding and the Muisca raft, under that floor, are #2159. An object the venue-side read
+  - The door reads what the class pool holds, which is finds of 10 editions or more, and the finds
+    under that floor the year reads at its bar (ADR-0165, `underFloorFinds`). Those are named by
+    the readership dump (`readUnderFloor`, read over the same tier as the door), narrowed to the
+    items carrying a find class of their own (`fetchFindsAmong`, as `fetchSitesAmong` narrows the
+    sites: 57,849 named on the subset, a few hundred asked in full), read by id once the pool's
+    find rule has run and passed through the same rule (`underFloor` on the works collector), and
+    then judged, placed and badged as any pool find is: the Houmuwu ding (9 editions, a `fangding`, which joins `FIND_CLASSES`
+    with `ding`), the Berlin Gold Hat, the Omphalos of Delphi. The read happens only while the
+    door is open. An object the venue-side read
     keeps at an admitted museum is judged by the line alone: it is read only at a museum already
     in, so the door would add its badge and no museum.
 - **The museums English Wikipedia files under `Archaeological museums in|of …`**
