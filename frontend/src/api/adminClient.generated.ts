@@ -5845,53 +5845,53 @@ export interface CoverageFailed {
 export type CoverageEvent = CoverageProgress | CoverageComplete | CoverageFailed;
 
 export type PostAdminSyncSourcesBySourceIdFindComponentItemsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-experienceId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  experienceId?: number;
 };
 
 export type DeleteAdminSyncSourcesBySourceIdCacheParams = {
-/**
- * @minLength 1
- * @maxLength 40
- */
-kind?: string;
+  /**
+   * @minLength 1
+   * @maxLength 40
+   */
+  kind?: string;
 };
 
 export type GetAdminSyncLogsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-sourceId?: number;
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
-/**
- * @minimum 0
- * @maximum 9007199254740991
- */
-offset?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  sourceId?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  offset?: number;
 };
 
 export type GetAdminSyncLogsByLogIdChangesParams = {
-type?: GetAdminSyncLogsByLogIdChangesType;
-significance?: GetAdminSyncLogsByLogIdChangesSignificance;
-significantOnly?: GetAdminSyncLogsByLogIdChangesSignificantOnly;
-/**
- * @minimum 1
- * @maximum 200
- */
-limit?: number;
-/**
- * @minimum 0
- * @maximum 9007199254740991
- */
-offset?: number;
+  type?: GetAdminSyncLogsByLogIdChangesType;
+  significance?: GetAdminSyncLogsByLogIdChangesSignificance;
+  significantOnly?: GetAdminSyncLogsByLogIdChangesSignificantOnly;
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  offset?: number;
 };
 
 export type GetAdminSyncLogsByLogIdChangesType = typeof GetAdminSyncLogsByLogIdChangesType[keyof typeof GetAdminSyncLogsByLogIdChangesType];
@@ -5926,51 +5926,47 @@ export const GetAdminSyncLogsByLogIdChangesSignificantOnly = {
 } as const;
 
 export type GetAdminExperiencesAssignRegionsStatusParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-worldViewId: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  worldViewId: number;
 };
 
 export type GetAdminExperiencesCountsByRegionParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-worldViewId: number;
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-sourceId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  worldViewId: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  sourceId?: number;
 };
 
 export type GetAdminCuratorsByUserIdActivityParams = {
-/**
- * @minimum 1
- * @maximum 200
- */
-limit?: number;
-/**
- * @minimum 0
- * @maximum 9007199254740991
- */
-offset?: number;
-action?: GetAdminCuratorsByUserIdActivityAction;
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-regionId?: number;
-/**
- * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
- */
-since?: string;
-/**
- * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
- */
-before?: string;
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  offset?: number;
+  action?: GetAdminCuratorsByUserIdActivityAction;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  regionId?: number;
+  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
+  since?: string;
+  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
+  before?: string;
 };
 
 export type GetAdminCuratorsByUserIdActivityAction = typeof GetAdminCuratorsByUserIdActivityAction[keyof typeof GetAdminCuratorsByUserIdActivityAction];
@@ -6020,35 +6016,31 @@ export const GetAdminCuratorsByUserIdActivityAction = {
 } as const;
 
 export type GetAdminCurationActivityParams = {
-/**
- * @minimum 1
- * @maximum 200
- */
-limit?: number;
-/**
- * @minimum 0
- * @maximum 9007199254740991
- */
-offset?: number;
-action?: GetAdminCurationActivityAction;
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-regionId?: number;
-/**
- * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
- */
-since?: string;
-/**
- * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
- */
-before?: string;
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-curatorId?: number;
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  offset?: number;
+  action?: GetAdminCurationActivityAction;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  regionId?: number;
+  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
+  since?: string;
+  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
+  before?: string;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  curatorId?: number;
 };
 
 export type GetAdminCurationActivityAction = typeof GetAdminCurationActivityAction[keyof typeof GetAdminCurationActivityAction];
@@ -6098,42 +6090,42 @@ export const GetAdminCurationActivityAction = {
 } as const;
 
 export type GetAdminUsersSearchParams = {
-/**
- * @minLength 2
- * @maxLength 255
- * @pattern ^[^\u0000]*$
- */
-q: string;
+  /**
+   * @minLength 2
+   * @maxLength 255
+   * @pattern ^[^\u0000]*$
+   */
+  q: string;
 };
 
 export type GetAdminImageProxyParams = {
-url: string;
+  url: string;
 };
 
 export type GetAdminWvImportMatchesByWorldViewIdChildrenCoverageParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-regionId?: number;
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-onlyId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  regionId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  onlyId?: number;
 };
 
 export type GetAdminWvImportMatchesByWorldViewIdColorMatchStreamParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-regionId: number;
-token?: string;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  regionId: number;
+  token?: string;
 };
 
 export type GetAdminWvImportMatchesByWorldViewIdCoverageStreamParams = {
-token?: string;
+  token?: string;
 };
 
 export const getGetAdminSyncSourcesUrl = () => {

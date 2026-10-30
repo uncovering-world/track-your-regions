@@ -6654,48 +6654,46 @@ export interface ImageSuggestion {
 }
 
 export type GetAuthGoogleParams = {
-/**
- * @maxLength 320
- */
-login_hint?: string;
+  /** @maxLength 320 */
+  login_hint?: string;
 };
 
 export type GetDivisionsSearchParams = {
-/**
- * @minLength 0
- * @maxLength 255
- * @pattern ^[^\u0000]*$
- */
-query?: string;
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-worldViewId?: number;
-/**
- * @minimum 1
- * @maximum 1000
- */
-limit?: number;
+  /**
+   * @minLength 0
+   * @maxLength 255
+   * @pattern ^[^\u0000]*$
+   */
+  query?: string;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  worldViewId?: number;
+  /**
+   * @minimum 1
+   * @maximum 1000
+   */
+  limit?: number;
 };
 
 export type GetDivisionsByDivisionIdSubdivisionsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-worldViewId?: number;
-getAll?: GetDivisionsByDivisionIdSubdivisionsGetAll;
-/**
- * @minimum 1
- * @maximum 1000
- */
-limit?: number;
-/**
- * @minimum 0
- * @maximum 9007199254740991
- */
-offset?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  worldViewId?: number;
+  getAll?: GetDivisionsByDivisionIdSubdivisionsGetAll;
+  /**
+   * @minimum 1
+   * @maximum 1000
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  offset?: number;
 };
 
 export type GetDivisionsByDivisionIdSubdivisionsGetAll = typeof GetDivisionsByDivisionIdSubdivisionsGetAll[keyof typeof GetDivisionsByDivisionIdSubdivisionsGetAll];
@@ -6707,7 +6705,7 @@ export const GetDivisionsByDivisionIdSubdivisionsGetAll = {
 } as const;
 
 export type GetDivisionsByDivisionIdGeometryParams = {
-detail?: GetDivisionsByDivisionIdGeometryDetail;
+  detail?: GetDivisionsByDivisionIdGeometryDetail;
 };
 
 export type GetDivisionsByDivisionIdGeometryDetail = typeof GetDivisionsByDivisionIdGeometryDetail[keyof typeof GetDivisionsByDivisionIdGeometryDetail];
@@ -6720,22 +6718,22 @@ export const GetDivisionsByDivisionIdGeometryDetail = {
 } as const;
 
 export type GetWorldViewsByWorldViewIdRegionsSearchParams = {
-/**
- * @minLength 2
- * @maxLength 255
- * @pattern ^[^\u0000]*$
- */
-query: string;
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
+  /**
+   * @minLength 2
+   * @maxLength 255
+   * @pattern ^[^\u0000]*$
+   */
+  query: string;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
 };
 
 export type PostWorldViewsByWorldViewIdComputeGeometriesParams = {
-force?: PostWorldViewsByWorldViewIdComputeGeometriesForce;
-skipSnapping?: PostWorldViewsByWorldViewIdComputeGeometriesSkipSnapping;
+  force?: PostWorldViewsByWorldViewIdComputeGeometriesForce;
+  skipSnapping?: PostWorldViewsByWorldViewIdComputeGeometriesSkipSnapping;
 };
 
 export type PostWorldViewsByWorldViewIdComputeGeometriesForce = typeof PostWorldViewsByWorldViewIdComputeGeometriesForce[keyof typeof PostWorldViewsByWorldViewIdComputeGeometriesForce];
@@ -6755,15 +6753,15 @@ export const PostWorldViewsByWorldViewIdComputeGeometriesSkipSnapping = {
 } as const;
 
 export type PostWorldViewsByWorldViewIdRegenerateDisplayGeometriesParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-regionId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  regionId?: number;
 };
 
 export type DeleteWorldViewsRegionsByRegionIdParams = {
-moveChildrenToParent?: DeleteWorldViewsRegionsByRegionIdMoveChildrenToParent;
+  moveChildrenToParent?: DeleteWorldViewsRegionsByRegionIdMoveChildrenToParent;
 };
 
 export type DeleteWorldViewsRegionsByRegionIdMoveChildrenToParent = typeof DeleteWorldViewsRegionsByRegionIdMoveChildrenToParent[keyof typeof DeleteWorldViewsRegionsByRegionIdMoveChildrenToParent];
@@ -6775,7 +6773,7 @@ export const DeleteWorldViewsRegionsByRegionIdMoveChildrenToParent = {
 } as const;
 
 export type GetWorldViewsRegionsByRegionIdGeometryParams = {
-detail?: GetWorldViewsRegionsByRegionIdGeometryDetail;
+  detail?: GetWorldViewsRegionsByRegionIdGeometryDetail;
 };
 
 export type GetWorldViewsRegionsByRegionIdGeometryDetail = typeof GetWorldViewsRegionsByRegionIdGeometryDetail[keyof typeof GetWorldViewsRegionsByRegionIdGeometryDetail];
@@ -6787,8 +6785,8 @@ export const GetWorldViewsRegionsByRegionIdGeometryDetail = {
 } as const;
 
 export type GetWorldViewsRegionsByRegionIdGeometryComputeStreamParams = {
-skipSnapping?: GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping;
-token?: string;
+  skipSnapping?: GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping;
+  token?: string;
 };
 
 export type GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping = typeof GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping[keyof typeof GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping];
@@ -6800,71 +6798,69 @@ export const GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping = {
 } as const;
 
 export type GetUsersMeVisitedExperiencesIdsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-kindId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  kindId?: number;
 };
 
 export type GetUsersMeVisitedLocationsIdsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-experienceId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  experienceId?: number;
 };
 
 export type PostUsersMeExperiencesByExperienceIdMarkAllLocationsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-regionId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  regionId?: number;
 };
 
 export type DeleteUsersMeExperiencesByExperienceIdMarkAllLocationsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-regionId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  regionId?: number;
 };
 
 export type GetUsersMeViewedTreasuresIdsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-experienceId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  experienceId?: number;
 };
 
 export type GetExperiencesSearchParams = {
-/**
- * @minLength 2
- * @maxLength 255
- * @pattern ^[^\u0000]*$
- */
-q: string;
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
+  /**
+   * @minLength 2
+   * @maxLength 255
+   * @pattern ^[^\u0000]*$
+   */
+  q: string;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
 };
 
 export type GetExperiencesPointsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-kindId?: number;
-/**
- * @maxLength 100
- */
-bbox?: string;
-detail?: GetExperiencesPointsDetail;
-folded?: GetExperiencesPointsFolded;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  kindId?: number;
+  /** @maxLength 100 */
+  bbox?: string;
+  detail?: GetExperiencesPointsDetail;
+  folded?: GetExperiencesPointsFolded;
 };
 
 export type GetExperiencesPointsDetail = typeof GetExperiencesPointsDetail[keyof typeof GetExperiencesPointsDetail];
@@ -6884,31 +6880,31 @@ export const GetExperiencesPointsFolded = {
 } as const;
 
 export type GetExperiencesRegionCountsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-worldViewId: number;
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-parentRegionId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  worldViewId: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  parentRegionId?: number;
 };
 
 export type GetExperiencesByRegionByRegionIdParams = {
-includeChildren?: GetExperiencesByRegionByRegionIdIncludeChildren;
-includeLost?: GetExperiencesByRegionByRegionIdIncludeLost;
-/**
- * @minimum 1
- * @maximum 5000
- */
-limit?: number;
-/**
- * @minimum 0
- * @maximum 9007199254740991
- */
-offset?: number;
+  includeChildren?: GetExperiencesByRegionByRegionIdIncludeChildren;
+  includeLost?: GetExperiencesByRegionByRegionIdIncludeLost;
+  /**
+   * @minimum 1
+   * @maximum 5000
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  offset?: number;
 };
 
 export type GetExperiencesByRegionByRegionIdIncludeChildren = typeof GetExperiencesByRegionByRegionIdIncludeChildren[keyof typeof GetExperiencesByRegionByRegionIdIncludeChildren];
@@ -6928,8 +6924,8 @@ export const GetExperiencesByRegionByRegionIdIncludeLost = {
 } as const;
 
 export type GetExperiencesByRegionByRegionIdLocationsParams = {
-includeChildren?: GetExperiencesByRegionByRegionIdLocationsIncludeChildren;
-includeLost?: GetExperiencesByRegionByRegionIdLocationsIncludeLost;
+  includeChildren?: GetExperiencesByRegionByRegionIdLocationsIncludeChildren;
+  includeLost?: GetExperiencesByRegionByRegionIdLocationsIncludeLost;
 };
 
 export type GetExperiencesByRegionByRegionIdLocationsIncludeChildren = typeof GetExperiencesByRegionByRegionIdLocationsIncludeChildren[keyof typeof GetExperiencesByRegionByRegionIdLocationsIncludeChildren];
@@ -6949,88 +6945,84 @@ export const GetExperiencesByRegionByRegionIdLocationsIncludeLost = {
 } as const;
 
 export type GetExperiencesByIdLocationsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-regionId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  regionId?: number;
 };
 
 export type GetExperiencesReviewPinsParams = {
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-experienceId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  experienceId?: number;
 };
 
 export type GetExperiencesReviewRegionsSearchParams = {
-/**
- * @minLength 2
- * @maxLength 255
- * @pattern ^[^\u0000]*$
- */
-query: string;
+  /**
+   * @minLength 2
+   * @maxLength 255
+   * @pattern ^[^\u0000]*$
+   */
+  query: string;
 };
 
 export type GetExperiencesReviewQueueParams = {
-/**
- * @minLength 1
- * @maxLength 100
- * @pattern ^[^\u0000]*$
- */
-q?: string;
-/**
- * @maxLength 200
- * @pattern ^\d+(,\d+)*$
- */
-source?: string;
-/**
- * @maxLength 200
- * @pattern ^[a-z]+(-[a-z]+)*(,[a-z]+(-[a-z]+)*)*$
- */
-kind?: string;
-region?: 'none' | number;
-/**
- * @maximum 2147483647
- * @exclusiveMinimum 0
- */
-run?: number;
-aside?: GetExperiencesReviewQueueAside;
-sort?: GetExperiencesReviewQueueSort;
-/**
- * @maxLength 200
- */
-cursor?: string;
-/**
- * @maxLength 60
- * @pattern ^[a-z]+(-[a-z]+)*:\d+$
- */
-row?: string;
-/**
- * @maxLength 200
- */
-from?: string;
-/**
- * @minimum 1
- * @maximum 100
- */
-limit?: number;
-/**
- * @minimum 0
- * @maximum 9007199254740991
- */
-keptOutOffset?: number;
-/**
- * @minimum 0
- * @maximum 9007199254740991
- */
-answeredWithdrawalsOffset?: number;
-/**
- * @minimum 0
- * @maximum 9007199254740991
- */
-refusedPartsOffset?: number;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   * @pattern ^[^\u0000]*$
+   */
+  q?: string;
+  /**
+   * @maxLength 200
+   * @pattern ^\d+(,\d+)*$
+   */
+  source?: string;
+  /**
+   * @maxLength 200
+   * @pattern ^[a-z]+(-[a-z]+)*(,[a-z]+(-[a-z]+)*)*$
+   */
+  kind?: string;
+  region?: 'none' | number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  run?: number;
+  aside?: GetExperiencesReviewQueueAside;
+  sort?: GetExperiencesReviewQueueSort;
+  /** @maxLength 200 */
+  cursor?: string;
+  /**
+   * @maxLength 60
+   * @pattern ^[a-z]+(-[a-z]+)*:\d+$
+   */
+  row?: string;
+  /** @maxLength 200 */
+  from?: string;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  keptOutOffset?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  answeredWithdrawalsOffset?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  refusedPartsOffset?: number;
 };
 
 export type GetExperiencesReviewQueueAside = typeof GetExperiencesReviewQueueAside[keyof typeof GetExperiencesReviewQueueAside];
@@ -7049,38 +7041,34 @@ export const GetExperiencesReviewQueueSort = {
 } as const;
 
 export type GetGeocodeSearchParams = {
-/**
- * @minLength 2
- * @maxLength 255
- * @pattern ^[^\u0000]*$
- */
-q: string;
-/**
- * @minimum 1
- * @maximum 10
- */
-limit?: number;
+  /**
+   * @minLength 2
+   * @maxLength 255
+   * @pattern ^[^\u0000]*$
+   */
+  q: string;
+  /**
+   * @minimum 1
+   * @maximum 10
+   */
+  limit?: number;
 };
 
 export type GetGeocodeSuggestImageParams = {
-/**
- * @maxLength 500
- */
-name?: string;
-/**
- * @minimum -90
- * @maximum 90
- */
-lat?: number;
-/**
- * @minimum -180
- * @maximum 180
- */
-lng?: number;
-/**
- * @maxLength 50
- */
-wikidataId?: string;
+  /** @maxLength 500 */
+  name?: string;
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  lat?: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  lng?: number;
+  /** @maxLength 50 */
+  wikidataId?: string;
 };
 
 export const getGetHealthUrl = () => {
