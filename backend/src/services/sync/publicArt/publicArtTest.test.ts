@@ -527,6 +527,40 @@ describe('publicArtVerdict — a work stranded outdoors on a venue no kind offer
   });
 });
 
+describe('publicArtVerdict — a public clock with a show (#2136)', () => {
+  const ASTRONOMICAL_CLOCK = 'Q5275';
+  const BELL_TOWER = 'Q200334';
+  const TOWN_HALL = 'Q543654';
+  const OLD_TOWN_HALL = inside('Q2332231', 'Old Town Hall', [TOWN_HALL, MUSEUM]);
+  const STRASBOURG_CATHEDRAL = inside('Q745460', 'Cathedral of Our Lady of Strasbourg', [CATHOLIC_CATHEDRAL]);
+  const ATHENS_MUSEUM = inside('Q637187', 'National Archaeological Museum of Athens', [MUSEUM]);
+  const nothingOffered = new Set<string>();
+
+  it('admits the Prague Astronomical Clock, filed as a bell tower, on a town hall Wikidata also types a museum', () => {
+    const v = publicArtVerdict(facts({
+      qid: 'Q729370',
+      classes: [ASTRONOMICAL_CLOCK, BELL_TOWER],
+      containers: [inside('Q421678', 'Old Town Square', [SQUARE]), OLD_TOWN_HALL],
+    }), trees, art, nothingOffered);
+    expect(v).toMatchObject({ pass: true, type: 'sculpture' });
+  });
+
+  it('leaves the Strasbourg astronomical clock to the cathedral it stands in, which Places of worship offers', () => {
+    const v = publicArtVerdict(facts({ qid: 'Q2716513', classes: [ASTRONOMICAL_CLOCK], containers: [STRASBOURG_CATHEDRAL] }), trees, art, new Set(['Q745460']));
+    expect(reasonOf(v)).toBe('inside Cathedral of Our Lady of Strasbourg: a work of a place of worship, not public art');
+  });
+
+  it('leaves the Antikythera mechanism to the museum that offers it', () => {
+    const v = publicArtVerdict(facts({ qid: 'Q182324', classes: [ASTRONOMICAL_CLOCK], containers: [ATHENS_MUSEUM] }), trees, art, new Set(['Q637187']));
+    expect(reasonOf(v)).toBe('inside National Archaeological Museum of Athens: a work of a museum, not public art');
+  });
+
+  it('is no monument by its clock alone', () => {
+    const v = publicArtVerdict(facts({ qid: 'Q729370', classes: [ASTRONOMICAL_CLOCK, BELL_TOWER] }), trees, monuments, nothingOffered);
+    expect(reasonOf(v)).toBe('no monument or memorial class');
+  });
+});
+
 describe('publicArtVerdict — a group of casts is judged at each cast (#2036)', () => {
   // The Thinker as Wikidata places the group: in Musée Rodin, among others.
   const RODIN = inside('Q650519', 'Musée Rodin', [MUSEUM]);
