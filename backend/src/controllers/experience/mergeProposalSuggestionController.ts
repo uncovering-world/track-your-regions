@@ -28,7 +28,7 @@ import { mergeProposalsScope } from './mergeProposalController.js';
 import {
   askedPairSql, recordMergeSuggestions, type MergeSuggestion, type PairJudgement,
 } from './mergeProposalSuggestions.js';
-import { itemSql, kindNamesSql, partOfSql } from './reviewQueueMergeProposals.js';
+import { itemClaimedSql, itemSql, kindNamesSql, partOfSql } from './reviewQueueMergeProposals.js';
 import { mergeProposalOpenSql } from './reviewQueuePredicates.js';
 
 interface PairRow {
@@ -39,11 +39,15 @@ interface PairRow {
   /** The serial site the other place is a part of, where it is one (#1250). */
   otherPartOf: string | null;
   otherItem: string | null;
+  /** Whether the other place claims that item as its own in the registry, or only refers to it (#2194). */
+  otherItemClaimed: boolean;
   otherCountries: string[];
   distanceM: number;
   similarity: number;
   exact: boolean;
   foundBy: 'similar' | 'words';
+  /** The words a containment stood on, for the words rule (#2194); null before they were recorded. */
+  matchedWords: string[] | null;
   reachM: number;
   /** The pair as the question is built from it (`askedPairSql`), read with the pair: what its judgement is recorded for. */
   asked: Record<string, unknown>;
@@ -55,6 +59,8 @@ interface Anchor {
   kinds: string[];
   partOf: string | null;
   item: string | null;
+  /** Whether the anchor claims that item as its own in the registry, or only refers to it (#2194). */
+  itemClaimed: boolean;
   countries: string[];
   pairs: PairRow[];
 }
@@ -84,14 +90,49 @@ const whatItIs = (kinds: readonly string[], partOf: string | null): string => {
 };
 const itemWords = (item: string | null): string => (item ? `Wikidata item ${item}` : 'no Wikidata item');
 
+/**
+ * What the two places' items say. Different items tell apart two things more
+ * often than they split one. One item on both is one place's own where only
+ * that place claims it (#2194): the Saint Stepanos Monastery's item is carried
+ * by each of the ensemble's three components, so the question is whether the
+ * main church is the monastery, or a part of it. Claimed by both, it is the
+ * strongest sign of one place a pair carries.
+ */
+function itemsWords(anchor: Anchor, pair: PairRow): string {
+  if (!anchor.item || !pair.otherItem) return '';
+  if (anchor.item !== pair.otherItem) {
+    return 'The two carry different Wikidata items, which tells apart two things more often than it splits one. ';
+  }
+  if (anchor.itemClaimed && pair.otherItemClaimed) return `Both claim the Wikidata item ${anchor.item} as their own. `;
+  if (!anchor.itemClaimed && !pair.otherItemClaimed) {
+    return `Both carry the Wikidata item ${anchor.item}, neither as its own: several places carry it. `;
+  }
+  const [owner, carrier] = anchor.itemClaimed ? [anchor.name, pair.otherName] : [pair.otherName, anchor.name];
+  return `The Wikidata item ${anchor.item} is "${owner}"'s own; "${carrier}" carries it too, as several places do, `
+    + 'and only refers to it. ';
+}
+
+/**
+ * Why the words rule asked: the words it stood on (#2194), since "every
+ * significant word of one name stands in the other's" overstates a match on
+ * a town's name alone. Said of the places' names, not of the two shown: the
+ * rule reads every name a place is known by (`foldedNamesSql`), and the word
+ * may stand in a source's or a local name the question does not print.
+ */
+function withinWords(matched: string[] | null): string {
+  if (matched === null) return 'Every significant word of one of the places\' names stands in one of the other\'s. ';
+  const quoted = matched.map(word => `"${word}"`).join(', ');
+  return matched.length === 1
+    ? `The one significant word the two places' names share is ${quoted}. `
+    : `Every significant word of one of the places' names stands in one of the other's: ${quoted}. `;
+}
+
 /** The question for one pair: both places as data, how they stand to each other, and what to decide. */
 export function questionFor(anchor: Anchor, pair: PairRow): JevChoiceAsked {
-  const items = anchor.item && pair.otherItem && anchor.item !== pair.otherItem
-    ? 'The two carry different Wikidata items, which tells apart two things more often than it splits one. '
-    : '';
+  const items = itemsWords(anchor, pair);
   const sameName = pair.exact ? 'They carry one and the same name and stand within fifty metres. ' : '';
   // A short name inside a long title reads as unlike by trigrams: say why the pair was asked (#1652).
-  const within = pair.foundBy === 'words' ? 'Every significant word of one name stands in the other\'s. ' : '';
+  const within = pair.foundBy === 'words' ? withinWords(pair.matchedWords) : '';
   return {
     instructions: `The place "${anchor.name}" ${whatItIs(anchor.kinds, anchor.partOf)} and has ${itemWords(anchor.item)}. `
       + `Within ${pair.reachM} m of it, the place "${pair.otherName}" ${whatItIs(pair.otherKinds, pair.otherPartOf)}, in `
@@ -106,14 +147,18 @@ export function questionFor(anchor: Anchor, pair: PairRow): JevChoiceAsked {
 
 async function openPairsOf(anchorId: number): Promise<Anchor | null> {
   const result = await pool.query<{
-    name: string; kinds: string[]; part_of: string | null; item: string | null; countries: string[] | null; pairs: PairRow[] | null;
+    name: string; kinds: string[]; part_of: string | null; item: string | null; item_claimed: boolean; countries: string[] | null;
+    pairs: PairRow[] | null;
   }>(
-    `SELECT a.name, ${kindNamesSql('a')} AS kinds, ${partOfSql('a')} AS part_of, ${itemSql('a')} AS item, a.country_names AS countries,
+    `SELECT a.name, ${kindNamesSql('a')} AS kinds, ${partOfSql('a')} AS part_of, ${itemSql('a')} AS item,
+            ${itemClaimedSql('a')} AS item_claimed, a.country_names AS countries,
             (SELECT jsonb_agg(jsonb_build_object(
                       'proposalId', p.id, 'otherId', b.id, 'otherName', b.name, 'otherKinds', ${kindNamesSql('b')},
                       'otherPartOf', ${partOfSql('b')},
-                      'otherItem', ${itemSql('b')}, 'otherCountries', COALESCE(b.country_names, '{}'),
+                      'otherItem', ${itemSql('b')}, 'otherItemClaimed', ${itemClaimedSql('b')},
+                      'otherCountries', COALESCE(b.country_names, '{}'),
                       'distanceM', p.distance_m, 'similarity', p.name_similarity, 'exact', p.exact, 'reachM', p.reach_m, 'foundBy', p.found_by,
+                      'matchedWords', p.matched_words,
                       'asked', ${askedPairSql('p', 'a', 'b')},
                       'stored', (SELECT jsonb_build_object('judgement', g.judgement, 'confidence', g.confidence)
                                    FROM experience_merge_suggestions g
@@ -128,7 +173,10 @@ async function openPairsOf(anchorId: number): Promise<Anchor | null> {
   );
   const row = result.rows[0];
   return row
-    ? { name: row.name, kinds: row.kinds, partOf: row.part_of, item: row.item, countries: row.countries ?? [], pairs: row.pairs ?? [] }
+    ? {
+        name: row.name, kinds: row.kinds, partOf: row.part_of, item: row.item, itemClaimed: row.item_claimed,
+        countries: row.countries ?? [], pairs: row.pairs ?? [],
+      }
     : null;
 }
 

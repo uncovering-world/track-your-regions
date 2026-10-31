@@ -28016,6 +28016,14 @@
               "null"
             ]
           },
+          "otherItemClaimed": {
+            "type": "boolean",
+            "description": "Whether the other place claims its item as its own in the registry (ADR-0143 decision 2), or only refers to it: a serial site's items, an item several components carry (#2194)."
+          },
+          "anchorItemClaimed": {
+            "type": "boolean",
+            "description": "The same of the card's own place's item."
+          },
           "anchorKinds": {
             "type": "array",
             "items": {
@@ -28093,6 +28101,20 @@
             ],
             "description": "Which rule found the pair: names alike by trigrams, or one name's words all standing in the other's (#1652)."
           },
+          "matchedWords": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a pair the words rule found: the words it stood on, folded as the rule reads them — one, a town's name both carry (\"tallinn\"), or several (#2194). Null for a pair found by similarity, or written before the words were recorded."
+          },
           "proposedAt": {
             "type": "string",
             "format": "date-time",
@@ -28110,6 +28132,8 @@
           "otherLongitude",
           "otherWikidataItem",
           "anchorWikidataItem",
+          "otherItemClaimed",
+          "anchorItemClaimed",
           "anchorKinds",
           "otherPartOf",
           "anchorPartOf",
@@ -28122,6 +28146,7 @@
           "exact",
           "reachM",
           "foundBy",
+          "matchedWords",
           "proposedAt"
         ],
         "additionalProperties": false,

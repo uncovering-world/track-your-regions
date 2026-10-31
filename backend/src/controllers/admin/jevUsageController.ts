@@ -38,7 +38,6 @@ import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { jevConfigured, JEV_USD_PER_MILLION_INPUT_TOKENS } from '../../services/jev/jevClient.js';
 import { askedSql } from '../experience/componentItemSuggestions.js';
-import { askedPairSql } from '../experience/mergeProposalSuggestions.js';
 import { HINT_TAKEN_M } from '../experience/pointHintSuggestions.js';
 
 interface Counted {
@@ -98,10 +97,14 @@ export async function getJevUsage(): Promise<JevUsage> {
       FROM experience_merge_proposals p
       JOIN experiences a ON a.id = p.place_a
       JOIN experiences b ON b.id = p.place_b
+      -- The judgement the curator saw: the newest asked before the answer. Not
+      -- a match on the question's key (askedPairSql), which reads the places as
+      -- they stand now: a *one place* answer folds the other place, whose claim
+      -- on its item then reads false, and the key no longer matches (#2194).
       JOIN LATERAL (
         SELECT s.judgement
           FROM experience_merge_suggestions s
-         WHERE s.place_a = p.place_a AND s.place_b = p.place_b AND s.asked = ${askedPairSql('p', 'a', 'b')}
+         WHERE s.place_a = p.place_a AND s.place_b = p.place_b AND s.asked_at <= p.answered_at
          ORDER BY s.asked_at DESC, s.id DESC LIMIT 1
       ) g ON true
      -- A curator's answers only: a part of read off Wikidata (ADR-0150) is no

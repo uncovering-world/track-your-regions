@@ -6,9 +6,11 @@
  * The table's writers are a closed list the backend lint names
  * (`MERGE_SUGGESTION_WRITE_RULES`): this module alone. A judgement is
  * recorded for the pair as the question was built from it (`askedPairSql`:
- * both names, the distance, the similarity and whether the pair is exact), so
- * it is that pair's and no other: once the pass refreshes the measures or a
- * place is renamed, the question is asked again. One row per question; the
+ * both names, the distance, the similarity, whether the pair is exact, the
+ * words it matched on and whether each place claims its item), so it is that
+ * pair's and no other: once the pass refreshes the measures or the words, a
+ * place is renamed or an item's claim moves, the question is asked again. One
+ * row per question; the
  * input tokens of the call the questions went in are shared out over them,
  * so the rows added up are what the calls cost.
  */
@@ -16,19 +18,29 @@
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import type { CheckValue } from '../../db/schema.generated.js';
+import { itemClaimedSql } from './reviewQueueMergeProposals.js';
 
 /** What Jev can say of a pair: one place, two places, or one part of the other. */
 export type PairJudgement = CheckValue<'experience_merge_suggestions', 'judgement'>;
 
 /**
  * The pair as a question is built from it, off its proposal row `p` and its
- * places `a` and `b`: what a judgement is recorded for, and what the card and
- * the usage count compare a judgement with. Built in SQL on both sides, so the
- * two never differ in how a number is spelled.
+ * places `a` and `b`: what a judgement is recorded for, and what the card
+ * compares a judgement with. Built in SQL on both sides, so the two never
+ * differ in how a number is spelled. Every fact the question's sentences read
+ * is in the key (#2194): the words the pair matched on and whether each place
+ * claims its item, so a pass that fills the words or a claim that moves asks
+ * the question again rather than serving the judgement of a question that
+ * said something else. The usage count (`jevUsageController.ts`) does not
+ * match on it: an answered pair's places have moved on — a *one place* answer
+ * folds one of them — so it takes the newest judgement asked before the
+ * answer, which is the one the curator saw.
  */
 export function askedPairSql(p = 'p', a = 'a', b = 'b'): string {
   return `jsonb_build_object('aName', ${a}.name, 'bName', ${b}.name, 'distanceM', ${p}.distance_m,
-                             'similarity', ${p}.name_similarity, 'exact', ${p}.exact)`;
+                             'similarity', ${p}.name_similarity, 'exact', ${p}.exact,
+                             'matchedWords', ${p}.matched_words,
+                             'aItemClaimed', ${itemClaimedSql(a)}, 'bItemClaimed', ${itemClaimedSql(b)})`;
 }
 
 /** What Jev answered for one pair, by its proposal. */
