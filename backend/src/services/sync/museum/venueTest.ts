@@ -20,16 +20,51 @@ export interface VenueFacts {
   lat: number | null;
   lon: number | null;
   dissolved: string | null;
+  /**
+   * Whether the entity is an organisation of several houses (#798,
+   * `VenueGraph.isOrganisation`): a museum it counts among its parts stands
+   * farther from it than the container radius. Read for a holding that is also
+   * typed a museum (#1617): the Frick Collection is one house and a visit, the
+   * Bavarian State Painting Collections are twenty and an umbrella.
+   */
+  housesApart?: boolean;
 }
 
-export const KILL_CLASSES: Record<string, string> = {
+/**
+ * The holdings: a collection is what someone owns, not a place to buy a
+ * ticket to — the Crozat and Demidov collections, the Cook collection that
+ * once held the Salvator Mundi. Wikidata also types some real museums a
+ * collection, the Frick Collection and the Carnegie Museum of Art among them
+ * (#1617), so a holding that carries a museum class, has coordinates of its
+ * own and is one house rather than an umbrella of several is the museum its
+ * other class says, and the veto below does not fire on it.
+ */
+export const HOLDING_CLASSES: Record<string, string> = {
   Q7328910: 'art collection — a holding, not a place',
   Q768717: 'private collection — a holding, not a place',
-  Q11681271: 'curatorial department of the Louvre',
+};
+
+/**
+ * The umbrellas: a museum network is never a visit — Tate, National Galleries
+ * Scotland, Museum Wales, the Museo Soumaya are each several houses — and the
+ * veto always fires. Where a work names one, the walk stands it for the house
+ * at its own coordinate (`resolveVenue`, `VenueGraph.houseOf`, #1617): the
+ * Soumaya's item sits on Plaza Carso.
+ */
+export const UMBRELLA_CLASSES: Record<string, string> = {
   Q88667167: 'museum network — an umbrella, not a visit',
+};
+
+export const KILL_CLASSES: Record<string, string> = {
+  ...HOLDING_CLASSES,
+  Q11681271: 'curatorial department of the Louvre',
+  ...UMBRELLA_CLASSES,
   Q811683: 'proposed building or structure — the Führermuseum was never built',
   Q13406463: 'Wikimedia list article',
 };
+
+/** Whether the entity is a museum network (`UMBRELLA_CLASSES`). */
+export const isUmbrella = (classes: readonly string[]): boolean => classes.some((c) => UMBRELLA_CLASSES[c]);
 
 /**
  * Classes that describe a place rather than an institution: a church building, minor basilica or
@@ -103,8 +138,22 @@ export function museumRule(classes: ReadonlySet<string>): VenueRule {
  */
 export const DISSOLVED_UNKNOWN = 'unknown';
 
+/**
+ * Whether a holding class is forgiven (#1617): the entity also carries a class
+ * of the rule, stands somewhere of its own and is one house, not an umbrella of
+ * several. The Frick Collection and the Carnegie Museum of Art are museums
+ * Wikidata also calls collections; the Bavarian State Painting Collections are
+ * twenty houses, and stay a holding.
+ */
+function museumDespiteHolding(e: VenueFacts, rule: VenueRule): boolean {
+  return e.classes.some((c) => rule.classes.has(c))
+    && Number.isFinite(e.lat) && Number.isFinite(e.lon)
+    && e.housesApart !== true;
+}
+
 export function venueVerdict(e: VenueFacts, rule: VenueRule): VenueResult {
-  const killed = e.classes.filter((c) => KILL_CLASSES[c]);
+  const forgiven = museumDespiteHolding(e, rule);
+  const killed = e.classes.filter((c) => KILL_CLASSES[c] && !(forgiven && HOLDING_CLASSES[c]));
   if (killed.length) {
     return { pass: false, reason: `kill-list: ${killed.map((c) => KILL_CLASSES[c]).join('; ')}` };
   }

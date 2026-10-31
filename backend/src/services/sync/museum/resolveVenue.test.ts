@@ -81,3 +81,32 @@ describe('resolveVenue', () => {
       .toEqual({ venue: 'Q573881', hops: 2 });
   });
 });
+
+describe('resolveVenue — a museum network stands for the house at its coordinate (#1617)', () => {
+  // The Museo Soumaya: a network of three houses, its coordinate on Plaza Carso; the Plaza Carso
+  // building is an art museum with coordinates of its own. The Tate: a network whose coordinate
+  // sits on no museum part the graph knows.
+  const SOUMAYA = 'Q2097646';
+  const PLAZA_CARSO = 'Q5970021';
+  const TATE = 'Q430682';
+  const networks: Record<string, VenueFacts & { parents: string[] }> = {
+    [SOUMAYA]: { qid: SOUMAYA, classes: ['Q88667167'], lat: 19.4406, lon: -99.2047, dissolved: null, housesApart: true, parents: [] },
+    [PLAZA_CARSO]: { qid: PLAZA_CARSO, classes: ['Q207694'], lat: 19.4406, lon: -99.2048, dissolved: null, parents: [SOUMAYA] },
+    [TATE]: { qid: TATE, classes: ['Q88667167'], lat: 51.4911, lon: -0.1278, dissolved: null, housesApart: true, parents: [] },
+  };
+  const factsOf = (q: string) => networks[q];
+  const parentsOf = (q: string) => networks[q]?.parents ?? [];
+  const houseOf = (q: string) => (q === SOUMAYA ? PLAZA_CARSO : undefined);
+
+  it('resolves the network to its house when the house is a venue', () => {
+    expect(resolveVenue(SOUMAYA, factsOf, parentsOf, museumRule(MUSEUM_CLASSES), 3, houseOf)).toEqual({ venue: PLAZA_CARSO, hops: 1 });
+  });
+
+  it('leaves a network with no house at its coordinate to the kill-list\'s reason', () => {
+    expect(resolveVenue(TATE, factsOf, parentsOf, museumRule(MUSEUM_CLASSES), 3, houseOf))
+      .toEqual({ unresolved: 'kill-list: museum network — an umbrella, not a visit' });
+    // Without a house reader, as before.
+    expect(resolveVenue(SOUMAYA, factsOf, parentsOf, museumRule(MUSEUM_CLASSES)))
+      .toEqual({ unresolved: 'kill-list: museum network — an umbrella, not a visit' });
+  });
+});

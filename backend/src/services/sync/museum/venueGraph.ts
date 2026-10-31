@@ -21,7 +21,9 @@ import { resolveVenue, type Resolution } from './resolveVenue.js';
 import {
   computeFolds, CONTAINER_RADIUS_M, metresBetween, type Fold, type FoldCandidate,
 } from './venueFolds.js';
-import { venueVerdict, type VenueFacts, type VenueRule } from './venueTest.js';
+import {
+  HOLDING_CLASSES, isUmbrella, UMBRELLA_CLASSES, venueVerdict, type VenueFacts, type VenueRule,
+} from './venueTest.js';
 import { EDITORIAL_OUT } from './artTest.js';
 import {
   fetchEntityDetails,
@@ -68,6 +70,12 @@ export interface VenueGraph {
    * houses, and an umbrella is routinely better known than any one branch.
    */
   isOrganisation: (qid: string) => boolean;
+  /**
+   * The house an entity's own coordinate sits on (#1617): the nearest of its
+   * museum parts within the container radius, or none. What a museum network a
+   * work names stands for (`resolveVenue`): the Museo Soumaya for Plaza Carso.
+   */
+  houseOf: (qid: string) => string | undefined;
 }
 
 /**
@@ -132,7 +140,51 @@ export async function loadVenueGraph(
   await walk(run, seeds, rule, details, edges);
   console.log(`${LOG_PREFIX} Venue candidates: ${details.size} entities`);
   await askParts(run, rule, edges, parts);
+  await walkHouses(run, rule, details, edges, parts);
   return graphOver(details, edges, parts);
+}
+
+/**
+ * The houses the networks among the entities stand for (#1617): a work names
+ * the Museo Soumaya, a network of three museums, and the network's own
+ * coordinate sits on Plaza Carso. That house is no seed and no parent of one,
+ * so the walk never fetched it; it is walked here, so that `resolveVenue` can
+ * judge it as it judges any venue.
+ */
+async function walkHouses(
+  run: QueryRunner,
+  rule: VenueRule,
+  details: Map<string, EntityDetails>,
+  edges: Map<string, EntityEdges>,
+  parts: Map<string, MuseumPart[]>,
+): Promise<void> {
+  const house = houseAt(details, parts);
+  const houses = [...edges.entries()]
+    .filter(([, row]) => isUmbrella(row.classes))
+    .map(([qid]) => house(qid))
+    .filter((qid): qid is string => qid !== undefined && !edges.has(qid));
+  if (houses.length) await walk(run, unique(houses), rule, details, edges);
+}
+
+/**
+ * The house an entity's own coordinate sits on: the nearest of its museum
+ * parts within the container radius, or none. An umbrella's item is placed on
+ * one of its houses by Wikidata's editors — the Soumaya's on Plaza Carso, Tate's
+ * on Millbank — and that house is what a visitor who follows the item finds.
+ */
+function houseAt(
+  details: Map<string, EntityDetails>, parts: Map<string, MuseumPart[]>,
+): (qid: string) => string | undefined {
+  return (qid) => {
+    const row = details.get(qid);
+    if (!row || row.lat === null || row.lon === null) return undefined;
+    const at = { qid, lat: row.lat, lon: row.lon, works: 0, sitelinks: 0 };
+    const near = (parts.get(qid) ?? [])
+      .map((part) => ({ qid: part.qid, metres: metresBetween(at, { ...part, works: 0, sitelinks: 0 }) }))
+      .filter((part) => part.metres <= CONTAINER_RADIUS_M)
+      .sort((a, b) => a.metres - b.metres);
+    return near[0]?.qid;
+  };
 }
 
 /**
@@ -163,6 +215,7 @@ export async function extendVenueGraph(
   await walk(run, unique(seeds), rule, graph.details, graph.edges);
   console.log(`${LOG_PREFIX} Venue candidates: ${graph.details.size} entities after the venue-side read`);
   await askParts(run, rule, graph.edges, graph.parts);
+  await walkHouses(run, rule, graph.details, graph.edges, graph.parts);
   return graphOver(graph.details, graph.edges, graph.parts);
 }
 
@@ -179,7 +232,11 @@ async function askParts(
   parts: Map<string, MuseumPart[]>,
 ): Promise<void> {
   const candidates = new Set<string>();
-  for (const row of edges.values()) {
+  for (const [qid, row] of edges.entries()) {
+    // An umbrella or a holding is asked about its own parts (#1617): whether a
+    // collection typed a museum is one house or several (`VenueFacts.housesApart`),
+    // and which house a network's coordinate sits on (`houseOf`).
+    if (!parts.has(qid) && row.classes.some((c) => UMBRELLA_CLASSES[c] || HOLDING_CLASSES[c])) candidates.add(qid);
     if (!row.classes.some((c) => rule.classes.has(c))) continue;
     for (const door of [...row.parents, ...row.locations]) {
       if (!parts.has(door)) candidates.add(door);
@@ -241,6 +298,13 @@ function graphOver(
 ): VenueGraph {
   const parents = (qid: string) => edges.get(qid)?.parents ?? [];
   const locations = (qid: string) => edges.get(qid)?.locations ?? [];
+  const isOrganisation = (qid: string): boolean => {
+    const row = details.get(qid);
+    if (!row || row.lat === null || row.lon === null) return false;
+    const at = { qid, lat: row.lat, lon: row.lon, works: 0, sitelinks: 0 };
+    return (parts.get(qid) ?? []).some((part) =>
+      metresBetween(at, { ...part, works: 0, sitelinks: 0 }) > CONTAINER_RADIUS_M);
+  };
   const facts = (qid: string): VenueFacts | undefined => {
     const row = details.get(qid);
     if (!row) return undefined;
@@ -250,17 +314,12 @@ function graphOver(
       lat: row.lat,
       lon: row.lon,
       dissolved: row.dissolved,
+      housesApart: isOrganisation(qid),
     };
-  };
-  const isOrganisation = (qid: string): boolean => {
-    const row = details.get(qid);
-    if (!row || row.lat === null || row.lon === null) return false;
-    const at = { qid, lat: row.lat, lon: row.lon, works: 0, sitelinks: 0 };
-    return (parts.get(qid) ?? []).some((part) =>
-      metresBetween(at, { ...part, works: 0, sitelinks: 0 }) > CONTAINER_RADIUS_M);
   };
   return {
     details, edges, facts, parents, locations, ancestors: makeAncestors(parents), parts, isOrganisation,
+    houseOf: houseAt(details, parts),
   };
 }
 
@@ -270,7 +329,7 @@ export function makeResolver(graph: VenueGraph, rule: VenueRule) {
   const resolution = (qid: string): Resolution => {
     let found = memo.get(qid);
     if (!found) {
-      found = resolveVenue(qid, graph.facts, graph.parents, rule, VENUE_HOPS);
+      found = resolveVenue(qid, graph.facts, graph.parents, rule, VENUE_HOPS, graph.houseOf);
       memo.set(qid, found);
     }
     return found;

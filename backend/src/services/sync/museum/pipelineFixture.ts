@@ -623,7 +623,7 @@ export function makeSparql() {
     if (query.includes('p:P195')) return statementRows(qids);
     // Which door candidates are organisations (#798): none in this fixture has
     // a museum part, so every door is judged on the site and the name alone.
-    if (query.includes('?e wdt:P527 ?part')) return [];
+    if (query.includes('?part wdt:P31/wdt:P279*')) return [];
     if (query.includes('?e wdt:P31 ?cls')) return edgeRows(qids);
     if (query.includes('?e wdt:P625 ?coord')) return detailRows(qids);
     if (query.includes('VALUES ?cls')) {

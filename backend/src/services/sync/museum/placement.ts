@@ -81,8 +81,19 @@ export function placeArtwork(
   const agreed: string[] = [];
   for (const o of owners) for (const p of places) if (sameInstitution(o, p)) agreed.push(o, p);
 
+  // A named value strictly above another named value that resolves is that
+  // value's umbrella (Tate above Tate Britain), and the branch is where the work
+  // hangs. The umbrella still corroborates the branch above — agreement reads
+  // raw values — but it resolves to nothing here, or a network that stands for
+  // the house at its coordinate (#1617, `resolveVenue`) would add that house
+  // beside the branch the work names. Only above a value that resolves: a
+  // gallery named beside its own collection, which resolves to nothing, is
+  // still where the work hangs.
+  const named = [...owners, ...places];
+  const notUmbrellaOfANamed = (v: string) =>
+    !named.some((o) => o !== v && resolve(o) !== null && strictlyAbove(v, o, ancestorsOf));
   const resolveAll = (qids: string[]) =>
-    [...new Set(qids.map(resolve).filter((v): v is string => !!v))];
+    [...new Set(qids.filter(notUmbrellaOfANamed).map(resolve).filter((v): v is string => !!v))];
 
   // Written as statements, not a ternary chain: sonarjs/no-nested-conditional is an error
   // in this repo, so a nested ternary fails `npm run check`.
@@ -110,7 +121,10 @@ export function placeArtwork(
  * out right without this function having to guess which record is the real one.
  */
 function mostSpecific(venues: string[], ancestorsOf: (qid: string) => ReadonlySet<string>): string[] {
-  const strictlyAbove = (above: string, below: string) =>
-    ancestorsOf(below).has(above) && !ancestorsOf(above).has(below);
-  return venues.filter((v) => !venues.some((o) => o !== v && strictlyAbove(v, o)));
+  return venues.filter((v) => !venues.some((o) => o !== v && strictlyAbove(v, o, ancestorsOf)));
+}
+
+/** Whether `above` is an ancestor of `below` and not the other way round: the strict reading the file header asks for. */
+function strictlyAbove(above: string, below: string, ancestorsOf: (qid: string) => ReadonlySet<string>): boolean {
+  return ancestorsOf(below).has(above) && !ancestorsOf(above).has(below);
 }

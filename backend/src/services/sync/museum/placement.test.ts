@@ -269,3 +269,19 @@ describe('a work filed under a department and a room (the Louvre, 2026)', () => 
     expect(placeArtwork([s('Q19060517', 'P276')], resolveThroughAncestry, ancestryOf)).toEqual(['Q19675']);
   });
 });
+
+describe('placeArtwork — a network that stands for a house (#1617)', () => {
+  // The Tate now resolves to the house at its coordinate, Tate Britain; Ophelia names Tate as its
+  // collection and Tate Britain as its location, Weeping Woman names Tate and Tate Modern.
+  const resolveWithHouse = (q: string) => (q === 'tate' ? 'tateBritain' : resolve(q));
+
+  it('does not add the network\'s house beside the branch the work names', () => {
+    expect(placeArtwork([s('tate', 'P195'), s('tateModern', 'P276')], resolveWithHouse, ancestorsOf)).toEqual(['tateModern']);
+    expect(placeArtwork([s('tate', 'P195'), s('tateBritain', 'P276')], resolveWithHouse, ancestorsOf)).toEqual(['tateBritain']);
+  });
+
+  it('places a work that names the network alone at its house', () => {
+    // The Kiss names the Museo Soumaya as collection and location, and no building.
+    expect(placeArtwork([s('tate', 'P195'), s('tate', 'P276')], resolveWithHouse, ancestorsOf)).toEqual(['tateBritain']);
+  });
+});

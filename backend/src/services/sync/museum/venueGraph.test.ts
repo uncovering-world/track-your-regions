@@ -8,7 +8,7 @@
  * door of the Galleria Palatina, counts only museums inside it.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { foldVenues, loadVenueGraph } from './venueGraph.js';
+import { foldVenues, loadVenueGraph, makeResolver } from './venueGraph.js';
 import { museumRule } from './venueTest.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
@@ -23,9 +23,16 @@ const GRASSI = 'Q876610';
 const PALATINA = 'Q866498';
 const PITTI = 'Q29286';
 const GAM_FLORENCE = 'Q3094628';
+// The Museo Soumaya (#1617): a museum network of three houses whose coordinate sits on Plaza Carso.
+const MUSEUM_NETWORK = 'Q88667167';
+const SOUMAYA = 'Q2097646';
+const PLAZA_CARSO = 'Q5970021';
+const PLAZA_LORETO = 'Q5970023';
 
 interface Entity {
   lat: number; lon: number; sitelinks: number; parents?: string[]; locations?: string[];
+  /** Its classes, where they are not the art museum's alone. */
+  classes?: string[];
   /** Museums it counts among its parts, where they stand. */
   parts?: [string, number, number][];
 }
@@ -41,6 +48,12 @@ const WORLD: Record<string, Entity> = {
     lat: 43.7651, lon: 11.2501, sitelinks: 50,
     parts: [[PALATINA, 43.7651, 11.2500], [GAM_FLORENCE, 43.7652, 11.2504]],
   },
+  [SOUMAYA]: {
+    lat: 19.4406, lon: -99.2047, sitelinks: 28, classes: [MUSEUM_NETWORK],
+    parts: [[PLAZA_CARSO, 19.4406, -99.2048], [PLAZA_LORETO, 19.3625, -99.1986]],
+  },
+  [PLAZA_CARSO]: { lat: 19.4406, lon: -99.2048, sitelinks: 4, parents: [SOUMAYA] },
+  [PLAZA_LORETO]: { lat: 19.3625, lon: -99.1986, sitelinks: 2, parents: [SOUMAYA] },
 };
 
 const uri = (qid: string) => ({ value: `${ENTITY}${qid}` });
@@ -58,7 +71,7 @@ const partRows = (qids: string[]): SparqlBinding[] => qids.flatMap((qid) =>
 
 /** Classes, parents and locations, as `fetchEntityEdges` asks for them. */
 const edgeRows = (qids: string[]): SparqlBinding[] => qids.flatMap((qid) => [
-  { e: uri(qid), cls: uri(ART_MUSEUM) },
+  ...(WORLD[qid].classes ?? [ART_MUSEUM]).map((cls) => ({ e: uri(qid), cls: uri(cls) })),
   ...(WORLD[qid].parents ?? []).map((parent) => ({ e: uri(qid), parent: uri(parent) })),
   ...(WORLD[qid].locations ?? []).map((loc) => ({ e: uri(qid), loc: uri(loc) })),
 ]);
@@ -74,7 +87,7 @@ function world(): { sparql: ReturnType<typeof vi.fn<SparqlFn>>; asked: string[][
   const sparql = vi.fn<SparqlFn>(async (query) => {
     if (isWikipediaEditionsQuery(query)) return wikipediaEditionsRows(query, (q) => WORLD[q]?.sitelinks);
     const qids = askedFor(query).filter((q) => WORLD[q]);
-    if (query.includes('?e wdt:P527 ?part')) {
+    if (query.includes('?part wdt:P31/wdt:P279*')) {
       asked.push(askedFor(query));
       return partRows(qids);
     }
@@ -114,5 +127,30 @@ describe('an umbrella organisation and the door rule', () => {
     expect(folds[KABINETT]).toBeUndefined();
     // The door rule is otherwise untouched: the Galleria Palatina is Palazzo Pitti's.
     expect(folds[PALATINA]).toMatchObject({ into: PITTI, kind: 'door' });
+  });
+});
+
+describe('a museum network and the house at its coordinate (#1617)', () => {
+  async function networkGraph() {
+    const { sparql, asked } = world();
+    const run: QueryRunner = { sparql, phase: () => {}, step: async () => {} };
+    const rule = museumRule(new Set([ART_MUSEUM]));
+    // A work names the Soumaya and nothing else: the network is the only seed.
+    const graph = await loadVenueGraph(run, [SOUMAYA], rule);
+    return { graph, rule, asked };
+  }
+
+  it('asks a network about its parts, reads it as an organisation, and names the house its coordinate sits on', async () => {
+    const { graph, asked } = await networkGraph();
+    expect(asked.flat()).toContain(SOUMAYA);
+    expect(graph.facts(SOUMAYA)?.housesApart).toBe(true);
+    expect(graph.houseOf(SOUMAYA)).toBe(PLAZA_CARSO);
+    expect(graph.houseOf(PLAZA_CARSO)).toBeUndefined();
+  });
+
+  it('walks the house, so a work that names the network resolves to it', async () => {
+    const { graph, rule } = await networkGraph();
+    expect(graph.facts(PLAZA_CARSO)?.classes).toEqual([ART_MUSEUM]);
+    expect(makeResolver(graph, rule).resolve(SOUMAYA)).toBe(PLAZA_CARSO);
   });
 });
