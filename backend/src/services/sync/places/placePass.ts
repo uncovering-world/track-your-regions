@@ -22,7 +22,7 @@ import { collectingSparql, liveSparql, placeSource, publicArtSource } from '../l
 import { TOWERS_CLASSIFIER, TOWERS_KIND, TOWERS_SOURCE_ID } from '../towers/kind.js';
 import { BRIDGES_CLASSIFIER, BRIDGES_KIND, BRIDGES_SOURCE_ID } from '../bridges/kind.js';
 import { SQUARES_CLASSIFIER, SQUARES_KIND, SQUARES_SOURCE_ID } from '../squares/kind.js';
-import { worshipSource, WORSHIP_SOURCE_ID } from '../worshipSyncService.js';
+import { worshipSource, WORSHIP_REGIONAL, WORSHIP_SOURCE_ID } from '../worshipSyncService.js';
 import { archaeologySource } from '../archaeologySyncService.js';
 import { ARCHAEOLOGY_SOURCE_ID } from '../archaeology/runDoors.js';
 import { ARCHAEOLOGY_SITE_KIND } from '../archaeology/sites.js';
@@ -30,12 +30,40 @@ import { PUBLIC_ART_KIND } from '../publicArt/pipeline.js';
 import { WORSHIP_KIND } from '../worship/places.js';
 import { delay, SPARQL_DELAY_MS } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
-import { gatherPlaces, type PlaceGather } from './gather.js';
+import { fetchClassTree, MUSEUM_ROOT, type SparqlFn } from '../wikidataQueries.js';
+import { gatherPlaces, shareOf, type GatheredPlaces, type PlaceGather } from './gather.js';
+import { regionalGroups } from './regionalTier.js';
+import { publicArtRegional } from '../landmarkSyncService.js';
+import { MONUMENTS_RULE, PUBLIC_ART_RULE } from '../publicArt/kindRules.js';
+import { readRegionalPool, type RegionalPool } from './regionalPool.js';
+import { REGIONAL_CUT } from './regionalCut.js';
+import type { SubjectRunner } from '../publicArt/subjects.js';
 
-/** Every row a set of sources admits before the run. */
+/**
+ * The pass's regional pool: every place kind's classes, and the museum tree
+ * beside them. Museums are no kind of the pass, but ADR-0171's measurement
+ * counted them among a place's neighbours, and they set the references: the
+ * Tretyakov Gallery, used by seven Wikivoyage editions, lifts Moscow's guide
+ * median from 4 to 4.5, and a church with one listing then stays under a
+ * quarter of it rather than exactly on it.
+ */
+async function regionalPoolOf(gathered: GatheredPlaces, sparql: SparqlFn, run: SubjectRunner): Promise<RegionalPool> {
+  const museums = await fetchClassTree(sparql, MUSEUM_ROOT, 'museum classes');
+  const groups = REGIONAL_CUT.neighbours === 'all' ? [{ key: 'all', classes: null }] : [
+    ...TOWERS_CLASSIFIER.regional!.groups(gathered, REGIONAL_CUT),
+    ...BRIDGES_CLASSIFIER.regional!.groups(gathered, REGIONAL_CUT),
+    ...SQUARES_CLASSIFIER.regional!.groups(gathered, REGIONAL_CUT),
+    ...regionalGroups(publicArtRegional(PUBLIC_ART_RULE), shareOf(gathered, PUBLIC_ART_KIND).trees, REGIONAL_CUT),
+    ...regionalGroups(publicArtRegional(MONUMENTS_RULE), shareOf(gathered, PUBLIC_ART_KIND).trees, REGIONAL_CUT),
+    ...regionalGroups(WORSHIP_REGIONAL, shareOf(gathered, WORSHIP_KIND).trees, REGIONAL_CUT),
+  ];
+  return readRegionalPool(new Set([...gathered.classes, ...museums]), REGIONAL_CUT, groups, run);
+}
+
+/** Every row a set of sources' world tier admits before the run: the regional tier's rows are its own step's (#2178). */
 async function admittedBy(sourceIds: readonly number[]): Promise<Set<string>> {
   const admitted = new Set<string>();
-  for (const id of sourceIds) for (const qid of await admittedExternalIds(id)) admitted.add(qid);
+  for (const id of sourceIds) for (const qid of await admittedExternalIds(id, undefined, 'world')) admitted.add(qid);
   return admitted;
 }
 
@@ -48,7 +76,7 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
   const lead = PLACE_PASS[0];
   return sharedGather(async (progress) => {
     const sparql = await wikidataRunDoor(lead, progress, () => collectingSparql(lead, progress, refreshCache));
-    const gathered = await gatherPlaces({
+    const run: SubjectRunner = {
       sparql,
       // The bridge a subset run asks what the subset in place does not keep
       // (`publicArt/subjects.ts`), uncached: no cached live answer is read
@@ -61,7 +89,8 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
         // The pause spares the query service; the subset is our own database.
         if (!readsSubset(sparql)) await delay(SPARQL_DELAY_MS);
       },
-    }, [
+    };
+    const gathered = await gatherPlaces(run, [
       { kind: PUBLIC_ART_KIND, admitted: await admittedBy(PUBLIC_ART_SOURCES) },
       { kind: WORSHIP_KIND, admitted: await admittedBy([WORSHIP_SOURCE_ID]) },
       // The sites Archaeology admits, not its museums, which its own museum
@@ -71,7 +100,18 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
       { kind: BRIDGES_KIND, admitted: await admittedBy([BRIDGES_SOURCE_ID]) },
       { kind: SQUARES_KIND, admitted: await admittedBy([SQUARES_SOURCE_ID]) },
     ]);
-    return { gathered, sparql };
+    // The regional tier's pool (ADR-0171, #2178), read once for the pass over
+    // every place kind's classes together — a church is measured against the
+    // digs and towers around it, as the measurement measured it — and only
+    // where the run reads the subset.
+    let regional: Promise<RegionalPool | null> | undefined;
+    return {
+      gathered, sparql, run,
+      regional: () => {
+        regional ??= REGIONAL_CUT.enabled && readsSubset(sparql) ? regionalPoolOf(gathered, sparql, run) : Promise.resolve(null);
+        return regional;
+      },
+    };
   });
 }
 

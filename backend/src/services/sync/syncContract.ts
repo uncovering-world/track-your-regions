@@ -85,6 +85,14 @@ export interface FetchResult<T> {
    * reading "no answer" as "gone".
    */
   unread?: Array<{ externalId: string; name: string }>;
+  /**
+   * A tier of the source's admissions this run did not read (#2178): the
+   * regional tier, when its step is switched off or the run read the live
+   * service. The sweep leaves that tier's admitted memberships as they are —
+   * no answer is not a refusal — and they are no arrival of the world tier
+   * either, so nothing badges them.
+   */
+  spareTier?: 'regional';
 }
 
 

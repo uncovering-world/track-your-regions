@@ -142,17 +142,31 @@ const SOURCE_MEMBERSHIPS = sourcePlacesSql('e', 'm');
  * How many rows the source currently admits. Read before the run writes, so
  * it is the denominator the sweep guard compares against.
  */
-export async function countAdmitted(sourceId: number): Promise<number> {
+export async function countAdmitted(sourceId: number, spareTier?: 'regional'): Promise<number> {
+  // A tier the run did not read is left out of the floor's denominator as the
+  // sweep leaves it out of its refusals (`markNotAdmitted`, #2178): fourteen
+  // thousand regional rows the run never asked about must not make a world
+  // tier of a thousand look like a run that lost half its rows.
   const result = await pool.query(
     `SELECT COUNT(*)::int AS count
      FROM ${SOURCE_MEMBERSHIPS}
      WHERE m.source_id = $1
        AND m.admission = 'admitted'
-       AND e.is_manual = FALSE`,
+       AND e.is_manual = FALSE${spareTier === 'regional' ? "\n       AND coalesce(m.facts->>'tier', 'world') <> 'regional'" : ''}`,
     [sourceId]
   );
   return Number(result.rows[0]?.count ?? 0);
 }
+
+/**
+ * Which tier admitted a row (ADR-0048): the world tier's rows carry no
+ * `tier` fact, the regional tier's carry `facts.tier = 'regional'` (ADR-0171,
+ * #2178). A world classifier asks after its own rows alone, so a row the
+ * regional tier admitted is never held to the world line's stay line — it
+ * would either be promoted to the world tier with the badge, or refused by
+ * the line and readmitted by the cut on every pass.
+ */
+export type AdmittedTier = 'world' | 'regional';
 
 /**
  * Which rows the source currently admits, by the id the source knows them
@@ -161,7 +175,7 @@ export async function countAdmitted(sourceId: number): Promise<number> {
  * who is in. A curator's own row is excluded for the reason `UNPROTECTED`
  * spells out — its key can never appear in a source's answer.
  */
-export async function admittedExternalIds(sourceId: number, type?: string): Promise<Set<string>> {
+export async function admittedExternalIds(sourceId: number, type?: string, tier?: AdmittedTier): Promise<Set<string>> {
   // `type` narrows the set to one type within the kind, for a source whose
   // doors each hold their own rows — the Archaeology kind's museums and its
   // sites. Each door asks after the rows it admitted and no others: a door
@@ -174,8 +188,9 @@ export async function admittedExternalIds(sourceId: number, type?: string): Prom
      WHERE m.source_id = $1
        AND m.admission = 'admitted'
        AND e.is_manual = FALSE
-       AND ($2::text IS NULL OR m.type = $2)`,
-    [sourceId, type ?? null]
+       AND ($2::text IS NULL OR m.type = $2)
+       AND ($3::text IS NULL OR coalesce(m.facts->>'tier', 'world') = $3)`,
+    [sourceId, type ?? null, tier ?? null]
   );
   return new Set(result.rows.map((row: { external_id: string }) => row.external_id));
 }
@@ -505,13 +520,18 @@ export async function markNotAdmitted(
   admittedExternalIds: string[],
   reason: string,
   dryRun: boolean,
+  spareTier?: 'regional',
 ): Promise<AdmissionRow[]> {
   if (admittedExternalIds.length === 0) return [];
 
+  // A tier the run did not read (`FetchResult.spareTier`, #2178) keeps its
+  // admitted memberships: the regional tier switched off is not a refusal of
+  // what it admitted. The one value is a literal of this module's, never input.
+  const spared = spareTier === 'regional' ? "\n      AND coalesce(m.facts->>'tier', 'world') <> 'regional'" : '';
   const predicate = `m.source_id = $1
       AND m.admission = 'admitted'
       AND ${UNPROTECTED}
-      AND m.external_id <> ALL($2::text[])`;
+      AND m.external_id <> ALL($2::text[])${spared}`;
 
   const result = dryRun
     ? await pool.query(

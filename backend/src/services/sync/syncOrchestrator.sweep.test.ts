@@ -211,7 +211,7 @@ describe('orchestrateSync changeset recording', () => {
     // Every id is still swept against, and only the one that passed is badged:
     // an unbadged row is in the kind in full standing.
     expect(markNotAdmitted).toHaveBeenCalledWith(
-      TEST_SOURCE_ID, ['1', '2'], expect.any(String), false,
+      TEST_SOURCE_ID, ['1', '2'], expect.any(String), false, undefined,
     );
     expect(markIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['2'], false);
   });
@@ -247,7 +247,7 @@ describe('orchestrateSync changeset recording', () => {
     await orchestrateSync(makeConfig({ recomputesMembership: true }), 1);
 
     expect(markNotAdmitted).toHaveBeenCalledWith(
-      TEST_SOURCE_ID, ['1', '2'], expect.any(String), false,
+      TEST_SOURCE_ID, ['1', '2'], expect.any(String), false, undefined,
     );
     // Recomputing membership buys the sweep, not the badge: that is a property
     // of the source's admission rule (`badgesAdmitted`), declared on its own.
@@ -378,8 +378,43 @@ describe('orchestrateSync changeset recording', () => {
     }), 1);
 
     expect(flagMissingExperiences).toHaveBeenCalledWith(TEST_SOURCE_ID, 42, false, ['1', '2', 'Q9']);
-    expect(markNotAdmitted).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2', 'Q9'], expect.any(String), false);
+    expect(markNotAdmitted).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2', 'Q9'], expect.any(String), false, undefined);
     expect(restoreAdmission).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2'], false);
+  });
+
+  it('leaves the regional tier\'s admitted rows as they are when the run did not read that tier (#2178)', async () => {
+    // The regional step switched off, or a run on the live service: no answer about the tier is not its refusal.
+    await orchestrateSync(makeConfig({
+      recomputesMembership: true,
+      fetchItems: vi.fn().mockResolvedValue({
+        items: [{ id: '1', name: 'Item 1' }, { id: '2', name: 'Item 2' }],
+        fetchedCount: 2,
+        spareTier: 'regional',
+      }),
+    }), 1);
+
+    expect(markNotAdmitted).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2'], expect.any(String), false, 'regional');
+    // And the floor's denominator leaves the tier out, so a regional majority cannot skip the world tier's sweep.
+    expect(countAdmitted).toHaveBeenCalledWith(TEST_SOURCE_ID, 'regional');
+  });
+
+  it('asks nothing about a pin of a tier the run did not read (#2178)', async () => {
+    // A curator pinned a regional row's admission; this pass skipped the regional step. The sweep spares the
+    // row, and the pin's view is no view at all: nothing refused it, so nothing is asked again.
+    vi.mocked(pinnedRows).mockResolvedValueOnce([{
+      id: 9, externalId: 'Q9', name: 'Hirano Shrine', membershipId: 90,
+      answer: 'admitted', answeredVerdict: 'admitted', answeredReason: null, question: null, tier: 'regional',
+    }]);
+    await orchestrateSync(makeConfig({
+      recomputesMembership: true,
+      fetchItems: vi.fn().mockResolvedValue({
+        items: [{ id: '1', name: 'Item 1' }, { id: '2', name: 'Item 2' }],
+        fetchedCount: 2,
+        spareTier: 'regional',
+      }),
+    }), 1);
+
+    expect(writePinQuestions).toHaveBeenCalledWith([], [], expect.anything(), false);
   });
 
   it('keeps the badge on, and the pin question about, a row it could not read (#1462)', async () => {

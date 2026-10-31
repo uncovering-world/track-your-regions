@@ -32,6 +32,7 @@ import { usedByAGuide } from '../../dumps/wikivoyage/usageTables.js';
 import { fetchTowerTrees, TOWER_ROOTS, TOWER_TYPES, type TowerTrees } from './classes.js';
 import { towerVerdict } from './towerTest.js';
 import { collectTowersUnderFloor } from './underFloor.js';
+import { regionalReader } from '../places/regionalTier.js';
 
 /** The line: Wikipedia editions and a year's readers, to enter and to stay. */
 export interface TowerLine {
@@ -247,4 +248,12 @@ export const TOWERS_CLASSIFIER = {
   },
   types: TOWER_TYPES,
   tag: 'tower',
+  // The regional tier (ADR-0171): every tower-class item measured against its surroundings, the rule over the survivors.
+  regional: regionalReader<TowerTrees>({
+    kind: TOWERS_KIND,
+    classesOf: (trees) => trees.tower,
+    typesOf: (trees) => new Map(Object.entries(trees.types)),
+    verdict: (entity, share) => towerVerdict({ classes: share.facts.get(entity.qid)?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon }, share.trees),
+    logPrefix: LOG_PREFIX,
+  }),
 };

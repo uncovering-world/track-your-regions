@@ -57,10 +57,36 @@ import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 import { shareOf, type PlaceGather } from './places/gather.js';
 import { WORSHIP_KIND } from './worship/places.js';
+import { mergeRegional, regionalArrivals, type RegionalKind } from './places/regionalTier.js';
+import { worshipVerdict } from './worship/worshipTest.js';
+import type { WorshipTrees } from './worship/classes.js';
 
 export const WORSHIP_SOURCE_ID = 4;
 
 const LOG_PREFIX = '[Worship Sync]';
+
+/**
+ * Places of worship in the regional tier (ADR-0171, #2178): every item of the
+ * worship and sacred-place trees measured against its surroundings, and the
+ * kind's own rule over the survivors, with what holds a holy object read by id.
+ */
+export const WORSHIP_REGIONAL: RegionalKind<WorshipTrees> = {
+  kind: WORSHIP_KIND,
+  classesOf: (trees) => trees.worship,
+  typesOf: (trees) => trees.types,
+  verdict: (entity, share) => {
+    const row = share.facts.get(entity.qid);
+    const verdict = worshipVerdict({
+      qid: entity.qid, classes: row?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon, religions: row?.religions,
+      locatedIn: (row?.locations ?? []).flatMap((qid) => {
+        const place = share.containers.nodes.get(qid);
+        return place ? [{ label: place.label, classes: place.classes }] : [];
+      }),
+    }, share.trees);
+    return verdict.pass ? { pass: true, type: verdict.type ?? '' } : verdict;
+  },
+  logPrefix: LOG_PREFIX,
+};
 
 /**
  * The run's door to Wikidata, with the answers kept.
@@ -192,9 +218,10 @@ async function fetchWorshipItems(
   imageCredits = new Map();
   storedCredits = await readStoredCredits(WORSHIP_SOURCE_ID);
   storedTreasureCredits = await readStoredTreasureCredits();
-  // What the source holds as admitted before the run, so the stay line of the
-  // hysteretic tier has something to hold (ADR-0023).
-  const admitted = await admittedExternalIds(WORSHIP_SOURCE_ID);
+  // What the source's world tier holds as admitted before the run, so the stay
+  // line of the hysteretic tier has something to hold (ADR-0023) — and only
+  // what it holds: a row the regional tier admitted is that step's (#2178).
+  const admitted = await admittedExternalIds(WORSHIP_SOURCE_ID, undefined, 'world');
 
   // Or the local subset, where the admin switched the source to it (#1461).
   const sparql = await wikidataRunDoor(WORSHIP_SOURCE_ID, progress, () => collectingSparql(progress, refreshCache));
@@ -221,6 +248,21 @@ async function fetchWorshipItems(
     // The pause spares the query service; the subset is our own database.
     pause: readsSubset(sparql) ? undefined : () => delay(SPARQL_DELAY_MS),
   });
+
+  // The regional tier after the world tier has decided (ADR-0171, #2178): the
+  // places the line and the readers' door left out, measured against their
+  // surroundings, then put to the kind's own rule by id.
+  const { gathered, run, regional: regionalPool } = await gather(progress);
+  const regional = await regionalArrivals(run, sparql, WORSHIP_REGIONAL, shareOf(gathered, WORSHIP_KIND).trees, new Set(items.map((p) => p.qid)),
+    (entity, classes, { type }, note): CollectedPlaceOfWorship => ({
+      qid: entity.qid, label: entity.label, description: entity.description, lat: entity.lat!, lon: entity.lon!,
+      imageUrl: entity.imageUrl, itemPictures: entity.itemPictures, sitelinks: entity.sitelinks, countryLabel: entity.countryLabel,
+      articleUrl: entity.articleUrl, website: entity.website, type: (type || null) as CollectedPlaceOfWorship['type'], classes,
+      artworks: [], door: 'place', readershipNote: note, tier: 'regional',
+    }), await regionalPool(), await admittedExternalIds(WORSHIP_SOURCE_ID, undefined, 'regional'));
+  mergeRegional(items, filtered, regional, (place) => place.qid);
+  // Not read this run (switched off, or the live service): its rows stay as they are.
+  const spareTier = regional.skipped ? 'regional' as const : undefined;
 
   // Whether the run saw enough of what the catalogue holds to be believed about
   // what left it (ADR-0044) — measured here, before a single place is written,
@@ -273,7 +315,7 @@ async function fetchWorshipItems(
   // own: either one on the subset leaves what the subset does not hold unread.
   const { sparql: placesDoor } = await gather(progress);
   const unread = readsSubset(sparql) || readsSubset(placesDoor) ? await unreadOnSubset(WORSHIP_SOURCE_ID) : undefined;
-  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread };
+  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread, ...(spareTier ? { spareTier } : {}) };
 }
 
 // =============================================================================
@@ -314,6 +356,8 @@ async function processPlace(
     // (ADR-0056), null where it asks none. The kind's own, kept on its
     // membership (`kindFacts.ts`).
     admissionNote: place.readershipNote ?? null,
+    // The tier that admitted it, where it is not the world's (ADR-0171).
+    ...(place.tier ? { tier: place.tier } : {}),
   };
 
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
@@ -423,7 +467,8 @@ export function worshipSource(
     // And belonging is the badge: a place enters on its own fame or on a
     // treasure's, and both lines are the world tier (ADR-0045 decision 5) —
     // written once admission is settled, not per place (#760).
-    badgesAdmitted: true,
+    // The world tier's rows alone carry the badge; a regional arrival carries none (ADR-0048).
+    badgesAdmitted: (place) => place.tier !== 'regional',
     // The one place the run's options reach the collection: the cache is a
     // property of *this* run rather than of the source.
     fetchItems: (progress) => fetchWorshipItems(progress, gather, options.refreshCache === true),

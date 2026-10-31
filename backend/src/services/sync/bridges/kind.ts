@@ -19,6 +19,7 @@ import { shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from '..
 import { classifyByGuidedLine, type GuidedLine } from '../places/guidedLine.js';
 import { BRIDGE_ROOTS, BRIDGE_TYPES, WATERWAY_TYPES, fetchBridgeTrees, type BridgeTrees } from './classes.js';
 import { bridgeType, bridgeVerdict } from './bridgeTest.js';
+import { regionalReader } from '../places/regionalTier.js';
 
 /** The source that fills Bridges & engineering marvels, and the kind it fills (migration 150). */
 export const BRIDGES_SOURCE_ID = 8;
@@ -76,4 +77,12 @@ export const BRIDGES_CLASSIFIER = {
   classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>) => classifyBridges(shareOf(gathered, BRIDGES_KIND), admitted),
   types: BRIDGE_TYPES,
   tag: 'engineering',
+  // The regional tier (ADR-0171): every work-class item measured against its surroundings, the rule over the survivors.
+  regional: regionalReader<BridgeTrees>({
+    kind: BRIDGES_KIND,
+    classesOf: (trees) => trees.work,
+    typesOf: (trees) => new Map(Object.entries(trees.types)),
+    verdict: (entity, share) => bridgeVerdict({ classes: share.facts.get(entity.qid)?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon }, share.trees),
+    logPrefix: '[Bridges]',
+  }),
 };

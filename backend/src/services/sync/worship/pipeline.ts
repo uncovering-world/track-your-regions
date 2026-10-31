@@ -98,6 +98,8 @@ export interface CollectedPlaceOfWorship {
    * (ADR-0056): the work, its year, the bar and its burst flag.
    */
   readershipNote?: string;
+  /** The tier that admitted it where it is not the world's: ADR-0171's regional tier (#2178). */
+  tier?: 'regional';
 }
 
 export interface CollectedWorship {
