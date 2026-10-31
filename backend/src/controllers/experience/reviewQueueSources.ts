@@ -39,8 +39,11 @@ const VIEWS_OF_FIELD = `(SELECT jsonb_agg(jsonb_build_object(
            'source_name', s.name,
            'external_id', m.external_id,
            'component', m.component,
-           -- Where the record lives: a component's on its property's page, which
-           -- maps every component, and a membership's on the place's own.
+           -- Where the record lives: a membership's on the place's own page. A
+           -- component's row is in the list's table of its property's parts, which
+           -- the card builds from the reference (worldHeritagePartsHref, #2183);
+           -- this is the property's page, the fallback where the reference gives
+           -- no table.
            'source_page', CASE WHEN m.component
                                THEN (SELECT site.metadata->>'unescoUrl' FROM experiences site WHERE site.id = m.site_id)
                                ELSE COALESCE(e.metadata->>'unescoUrl', e.metadata->>'website') END,

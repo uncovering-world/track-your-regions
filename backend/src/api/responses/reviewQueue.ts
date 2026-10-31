@@ -255,8 +255,9 @@ export const SourceView = z.strictObject({
   ),
   component: z.boolean().describe("Whether this is a serial site's view of the place as one of its components, read off the component's record (ADR-0156)."),
   source_page: z.string().nullable().describe(
-    "The page the source's record lives on: the property's page on the World Heritage list for a component, else the"
-    + " place's own World Heritage page or website (#2158).",
+    "The page the source's record lives on: the property's page on the World Heritage list for a component — the"
+    + ' fallback where the component\'s reference gives no table of parts (#2183) — else the place\'s own World Heritage'
+    + ' page or website (#2158).',
   ),
   value: z.string().nullable().describe('The name, subtitle or Wikipedia article as the source reports it; null for a picture or a point.'),
   image_url: z.string().nullable(),
@@ -494,6 +495,10 @@ export const ReviewQueueItem = z.strictObject({
   pending_works: z.array(PendingWork).optional(),
   curation_state: z.string().optional().describe('Whether anyone has passed the row. `arrival` items only.'),
   offered_locations: z.number().int().optional().describe('How many points the object still offers.'),
+  parts_total: z.number().int().optional().describe(
+    'How many components the object is the whole of (ADR-0100, the parts the World Heritage list numbers): a serial'
+    + " site's, whose table on the World Heritage list the card links (#2183); a place that is no whole counts none.",
+  ),
   withdrawn_points: z.array(WithdrawnPoint).nullable().optional(),
   answered_points: z.array(AnsweredPoint).nullable().optional(),
   answered_points_total: z.number().int().optional(),
