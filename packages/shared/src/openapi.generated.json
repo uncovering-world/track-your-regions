@@ -33256,6 +33256,20 @@
               }
             ]
           },
+          "top_region_names": {
+            "description": "The broadest of those regions, a world view's roots and their children, roots first: what the card shows of a list that runs to dozens before it is unfolded (#2195).",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "part_of": {
             "anyOf": [
               {
@@ -33321,6 +33335,14 @@
             ]
           },
           "state_note": {
+            "description": "The curator's own words with the answer. Kept-out items only.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state_system_note": {
+            "description": "What the system recorded about how the answer came about, where a script answered on the curator's behalf (#2195). Kept-out items only.",
             "type": [
               "string",
               "null"

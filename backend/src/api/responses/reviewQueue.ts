@@ -436,6 +436,10 @@ export const ReviewQueueItem = z.strictObject({
   object_description_source: DescriptionSource.optional(),
   object_description_adapted: z.boolean().optional(),
   region_names: z.array(z.string()).nullable().optional().describe('The regions the object counts in, every world view together.'),
+  top_region_names: z.array(z.string()).nullable().optional().describe(
+    "The broadest of those regions, a world view's roots and their children, roots first: what the card shows of a list"
+    + ' that runs to dozens before it is unfolded (#2195).',
+  ),
   part_of: PartOf.nullable().optional(),
   seen_in: z.array(z.string()).optional().describe(
     'On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in,'
