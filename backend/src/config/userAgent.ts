@@ -125,3 +125,20 @@ export function userAgent({ bot = false, purpose }: UserAgentOptions = {}): stri
   const identity = headerSafe(purpose ? `${contact}; ${purpose}` : contact);
   return `${client}/${VERSION} (${identity})`;
 }
+
+/** The website the contact names, or this instance's own when it names none. */
+function contactWebsite(): string {
+  const configured = headerSafe(process.env.USER_AGENT_CONTACT ?? '');
+  return /https?:\/\/[^\s;,)]+/.exec(configured)?.[0] ?? 'https://uncovering.world';
+}
+
+/**
+ * The `User-Agent` of the website check a curator's card makes (#2165), in the
+ * form link checkers use: `Mozilla/5.0 (compatible; <client>/<version>; +<site>)`.
+ * Many sites answer a request with no browser-like token with a 403, which the
+ * check would have to call unclear. It names the project, never a particular
+ * browser, and carries no `bot` marker: a curator's click starts it.
+ */
+export function linkCheckUserAgent(): string {
+  return `Mozilla/5.0 (compatible; ${CLIENT}/${VERSION}; +${contactWebsite()})`;
+}

@@ -46,6 +46,11 @@ export function isStorableHttpUrl(value: string): boolean {
   }
 }
 
+/** Whether a parsed url is the secure one of the two, which a fetch makes over TLS. */
+export function isHttpsUrl(url: URL): boolean {
+  return url.protocol === 'https:';
+}
+
 /**
  * Which hosts a picture may come from and what names a picture file are the
  * drawing side's rule as much as this side's — a host added here alone stores
