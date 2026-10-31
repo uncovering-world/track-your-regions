@@ -9,9 +9,19 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, cleanup } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { ObjectContext } from './ObjectContext';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
+
+/** The card asks what its pictures are (#2192), so it renders under a query client, as the review page mounts it. */
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const wrap = (element: ReactElement) => <QueryClientProvider client={client}>{element}</QueryClientProvider>;
+  const result = rtlRender(wrap(ui));
+  return { ...result, rerender: (next: ReactElement) => result.rerender(wrap(next)) };
+}
 
 function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
   return {

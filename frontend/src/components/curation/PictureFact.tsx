@@ -23,6 +23,7 @@ import { Box, Link, Typography } from '@mui/material';
 import type { ImageCredit } from '../../api/experiences';
 import { PictureWithCredit } from '../shared/PictureWithCredit';
 import { safeHref } from '../../utils/safeHref';
+import { PictureClassMark } from './PictureClassMark';
 
 /**
  * The last segment of a Commons address, as the file is named: `Special:FilePath/Dona%20i%20Ocell.JPG`
@@ -38,16 +39,21 @@ export function fileNameOf(url: string): string {
   }
 }
 
-export function PictureFact({ url, credit, side }: {
+export function PictureFact({ url, credit, side, experienceId }: {
   url: string;
   /** Whose photograph this side's picture is — the vocabulary reads it off the card. */
   credit: ImageCredit | null;
   side: 'before' | 'after';
+  /** The place the card is about, which the class of each side's picture is asked for (#2192). */
+  experienceId?: number;
 }) {
   const href = safeHref(url);
   return (
     <Box>
       <PictureWithCredit url={url} credit={credit} alt={side === 'after' ? 'Proposed picture' : 'Current picture'} />
+      {/* On both sides: a curator choosing between two pictures reads which is a map or a drawing (#2192).
+          A row drawn with no place to ask about (a dialog's preview) carries no mark. */}
+      {experienceId !== undefined && <PictureClassMark experienceId={experienceId} url={url} />}
       <Typography variant="caption" component="div" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>
         {href
           ? <Link href={href} target="_blank" rel="noopener noreferrer nofollow" underline="hover">{fileNameOf(url)}</Link>

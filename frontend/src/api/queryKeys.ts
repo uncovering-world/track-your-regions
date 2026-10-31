@@ -100,6 +100,8 @@ export const queryKeys = {
     nearbyPictures: (locationId: Id) => ['experience', 'nearby-pictures', locationId] as const,
     /** Whether the official websites a place's review card shows still answer (#2165). */
     websiteChecks: (id: Id) => ['experience', 'website-checks', id] as const,
+    /** What the pictures a place's review card shows are, as Commons states it (#2192). */
+    pictureClasses: (id: Id) => ['experience', 'picture-classes', id] as const,
   },
 
   /** The lists objects appear in, and the points that place them. */
