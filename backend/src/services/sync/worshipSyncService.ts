@@ -58,7 +58,7 @@ import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 import { shareOf, type PlaceGather } from './places/gather.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { mergeRegional, regionalArrivals, type RegionalKind } from './places/regionalTier.js';
-import { worshipVerdict } from './worship/worshipTest.js';
+import { typeOf, worshipVerdict } from './worship/worshipTest.js';
 import type { WorshipTrees } from './worship/classes.js';
 
 export const WORSHIP_SOURCE_ID = 4;
@@ -73,7 +73,7 @@ const LOG_PREFIX = '[Worship Sync]';
 export const WORSHIP_REGIONAL: RegionalKind<WorshipTrees> = {
   kind: WORSHIP_KIND,
   classesOf: (trees) => trees.worship,
-  typesOf: (trees) => trees.types,
+  typeOf: (classes, trees) => typeOf([...classes], trees),
   verdict: (entity, share) => {
     const row = share.facts.get(entity.qid);
     const verdict = worshipVerdict({

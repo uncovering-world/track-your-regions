@@ -30,7 +30,7 @@ import { guideDoorOpen, type GuideDoor } from '../places/guideDoor.js';
 import type { PoolEntity } from '../publicArt/queries.js';
 import { usedByAGuide } from '../../dumps/wikivoyage/usageTables.js';
 import { fetchTowerTrees, TOWER_ROOTS, TOWER_TYPES, type TowerTrees } from './classes.js';
-import { towerVerdict } from './towerTest.js';
+import { towerType, towerVerdict } from './towerTest.js';
 import { collectTowersUnderFloor } from './underFloor.js';
 import { regionalReader } from '../places/regionalTier.js';
 
@@ -252,7 +252,7 @@ export const TOWERS_CLASSIFIER = {
   regional: regionalReader<TowerTrees>({
     kind: TOWERS_KIND,
     classesOf: (trees) => trees.tower,
-    typesOf: (trees) => new Map(Object.entries(trees.types)),
+    typeOf: (classes, trees) => towerType(classes, trees),
     verdict: (entity, share) => towerVerdict({ classes: share.facts.get(entity.qid)?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon }, share.trees),
     logPrefix: LOG_PREFIX,
   }),

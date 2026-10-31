@@ -27,7 +27,8 @@ const trees = { tower: new Set([TOWER, BELL]), types: { 'bell-tower': new Set([B
 const regional: RegionalKind<typeof trees> = {
   kind: kind as never,
   classesOf: (t) => t.tower,
-  typesOf: (t) => new Map(Object.entries(t.types)),
+  // The rule's own type: a bell tower before a plain tower, as towerType files them; a tower of no type is a 'tower'.
+  typeOf: (classes, t) => (classes.some((c) => t.types['bell-tower'].has(c)) ? 'bell-tower' : 'tower'),
   verdict: (e, share) => ((share.facts.get(e.qid)?.classes ?? []).includes(TOWER)
     ? { pass: true, type: 'tower' } : { pass: false, reason: 'not a tower: a mast' }),
   logPrefix: '[test]',
@@ -87,13 +88,17 @@ describe('the regional tier over a kind', () => {
     expect(gatherModule.gatherPlaces).not.toHaveBeenCalled();
   });
 
-  it('names the neighbourhoods the cut reads: the whole pool, the kind, or one group per type', () => {
+  it('names the neighbourhoods the cut reads: the whole pool, the kind, or one group per type the rule files', () => {
     expect(regionalGroups(regional, trees, ON)).toEqual([{ key: 'all', classes: null }]);
     expect(regionalGroups(regional, trees, { ...ON, neighbours: 'kind' })).toEqual([{ key: 'towers', classes: trees.tower }]);
-    expect(regionalGroups(regional, trees, { ...ON, neighbours: 'type' })).toEqual([{ key: 'towers:bell-tower', classes: trees.types['bell-tower'] }]);
-    expect(regionalGroupKey(regional, trees, [BELL], { ...ON, neighbours: 'type' })).toBe('towers:bell-tower');
-    // A tower of no type is measured among nobody when types decide.
-    expect(regionalGroupKey(regional, trees, [TOWER], { ...ON, neighbours: 'type' })).toBeNull();
+    // Each class goes to the type the rule files a place of it under: the plain tower class to 'tower', the bell tower to 'bell-tower'.
+    expect(regionalGroups(regional, trees, { ...ON, neighbours: 'type' })).toEqual([
+      { key: 'towers:tower', classes: new Set([TOWER]) }, { key: 'towers:bell-tower', classes: new Set([BELL]) },
+    ]);
+    // A place of both classes is the rule's: a bell tower, never two groups.
+    expect(regionalGroupKey(regional, trees, [TOWER, BELL], { ...ON, neighbours: 'type' })).toBe('towers:bell-tower');
+    // A tower of no named type is measured among the plain towers, as the rule files it.
+    expect(regionalGroupKey(regional, trees, [TOWER], { ...ON, neighbours: 'type' })).toBe('towers:tower');
     expect(regionalGroupKey(regional, trees, [TOWER], { ...ON, neighbours: 'kind' })).toBe('towers');
   });
 

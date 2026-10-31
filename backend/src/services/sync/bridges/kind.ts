@@ -81,7 +81,7 @@ export const BRIDGES_CLASSIFIER = {
   regional: regionalReader<BridgeTrees>({
     kind: BRIDGES_KIND,
     classesOf: (trees) => trees.work,
-    typesOf: (trees) => new Map(Object.entries(trees.types)),
+    typeOf: (classes, trees) => bridgeType(classes, trees),
     verdict: (entity, share) => bridgeVerdict({ classes: share.facts.get(entity.qid)?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon }, share.trees),
     logPrefix: '[Bridges]',
   }),
