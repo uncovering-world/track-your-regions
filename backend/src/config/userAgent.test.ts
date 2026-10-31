@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { userAgent, isUsableContact } from './userAgent.js';
+import { userAgent, isUsableContact, linkCheckUserAgent } from './userAgent.js';
 
 const PACKAGE_VERSION = (
   JSON.parse(
@@ -21,6 +21,21 @@ beforeEach(() => {
 afterEach(() => {
   if (inheritedContact === undefined) delete process.env.USER_AGENT_CONTACT;
   else process.env.USER_AGENT_CONTACT = inheritedContact;
+});
+
+describe('linkCheckUserAgent', () => {
+  it('is the form link checkers use, naming the project and its site, with no bot marker (#2165)', () => {
+    delete process.env.USER_AGENT_CONTACT;
+    expect(linkCheckUserAgent()).toBe(`Mozilla/5.0 (compatible; TrackYourRegions/${PACKAGE_VERSION}; +https://uncovering.world)`);
+    expect(linkCheckUserAgent().toLowerCase()).not.toContain('bot');
+  });
+
+  it("names the deployment's own website where its contact gives one", () => {
+    process.env.USER_AGENT_CONTACT = 'https://fork.example/about; ops@fork.example';
+    expect(linkCheckUserAgent()).toBe(`Mozilla/5.0 (compatible; TrackYourRegions/${PACKAGE_VERSION}; +https://fork.example/about)`);
+    process.env.USER_AGENT_CONTACT = 'ops@fork.example';
+    expect(linkCheckUserAgent()).toContain('; +https://uncovering.world)');
+  });
 });
 
 describe('userAgent', () => {
