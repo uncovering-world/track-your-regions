@@ -12843,6 +12843,56 @@
         }
       }
     },
+    "/api/experiences/{id}/website-checks": {
+      "get": {
+        "operationId": "getExperiencesByIdWebsiteChecks",
+        "summary": "Check whether the official websites on a place's review card still answer",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebsiteChecks"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/curation-log": {
       "get": {
         "operationId": "getExperiencesByIdCurationLog",
@@ -37028,6 +37078,88 @@
         ],
         "additionalProperties": false,
         "description": "The model a request with web search uses, chosen."
+      },
+      "WebsiteCheckResult": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The website, as the catalogue holds it or a proposal brings it."
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "answers",
+              "dead",
+              "unclear"
+            ],
+            "description": "Whether it still answers: `answers` (the final page answered 2xx or 3xx), `dead` (the domain does not resolve, the connection is refused, the page answers 404 or 410, or a domain-parking host answers), or `unclear` (anything else, which says nothing about what a browser would see)."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "domain-not-found",
+              "connection-refused",
+              "page-not-found",
+              "page-gone",
+              "domain-parked",
+              "refused-by-site",
+              "unexpected-answer",
+              "server-error",
+              "timed-out",
+              "tls-failure",
+              "not-public",
+              "too-many-redirects",
+              "not-checkable",
+              "failed"
+            ],
+            "description": "Why, in a word the card turns into a sentence."
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The final page's HTTP status, where one answered."
+          },
+          "checkedAt": {
+            "type": "string",
+            "description": "When the address was checked; an outcome is kept for a day."
+          }
+        },
+        "required": [
+          "url",
+          "outcome",
+          "reason",
+          "status",
+          "checkedAt"
+        ],
+        "additionalProperties": false,
+        "description": "One official website on a review card, checked (#2165)."
+      },
+      "WebsiteChecks": {
+        "type": "object",
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebsiteCheckResult"
+            },
+            "description": "Every official website the card about this place shows: the place's own and those its open proposals bring."
+          }
+        },
+        "required": [
+          "checks"
+        ],
+        "additionalProperties": false,
+        "description": "The official websites a review card shows, each checked for whether it still answers (#2165)."
       },
       "WikidataCache": {
         "type": "object",

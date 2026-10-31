@@ -38,6 +38,7 @@ import {
   SeparationUndone,
   MergeUndone,
   NearbyPictures,
+  WebsiteChecks,
   ViewsChosen,
   ViewSuggestions,
   PublishResult,
@@ -61,6 +62,7 @@ import { suggestMergeProposals } from '../controllers/experience/mergeProposalSu
 import { suggestVisit } from '../controllers/experience/visitSuggestionController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
+import { getWebsiteChecks } from '../controllers/experience/websiteChecksController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
@@ -342,6 +344,19 @@ export const experienceCurationRoutes = [
     body: editExperienceBodySchema,
     response: ExperienceEditResult,
     handler: editExperience,
+  }),
+
+  // Whether the official websites a review card shows still answer (#2165): an
+  // outbound request per website on the card, so rate-limited as an edit is,
+  // and in the place's curation scope. The request names the place only; the
+  // addresses are the catalogue's own.
+  defineRoute({
+    method: 'get', path: '/:id/website-checks', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: "Check whether the official websites on a place's review card still answer",
+    params: idParamSchema,
+    response: WebsiteChecks,
+    handler: getWebsiteChecks,
   }),
 
   // Get curation log for an experience
