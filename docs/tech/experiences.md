@@ -6201,8 +6201,8 @@ What the card shows of the records it chooses between (#2158). Each view names t
 knows the place by and the page that record lives on (`external_id`, `source_page`): a Wikidata
 item opens on Wikidata and a World Heritage id on the site's page (`SourceId`), while a
 component's view, read off its record (`component`, `site_id` on `placeViewsSql`), says it is the
-list's record of that component and not of the property, and links the property's page, which
-maps every component. The point's row says how far apart the two farthest views stand, asked or
+list's record of that component and not of the property, and links the list's table of the
+property's parts, where the component's row is (#2183). The point's row says how far apart the two farthest views stand, asked or
 not (`metres` on the field, the same `POINTS_APART` as the quiet line), and a point given to the
 whole minute (`onWholeMinute`, `@tyr/shared/precision`) says so on its tile with the cell it may
 stand in. Component 1209-002 of the Tequila landscape, *Zona nucleo 02*, is the case: Archaeology
@@ -6211,7 +6211,18 @@ Every queue card about a place that is a part of a serial site names the propert
 linked to the property's page — *Component 1209-002 of Agave Landscape and Ancient Industrial
 Facilities of Tequila* (`part_of`, `partOfFactsSql` in `db/placePoints.ts`, selected by
 `objectContextSelectSql`): the same whole the near-places card names (`partOfNameSql`), and the
-same words for it (`partOfLead`, `queueCard.tsx`).
+same words for it (`partOfLead`, `queueCard.tsx`). Beside it, and under *UNESCO page* on the card of
+a site that has parts (`parts_total`, the `component` rows of `experience_parts`), *the list of its parts* opens
+the World Heritage list's table of the property's components, `whc.unesco.org/en/list/<id>/maps/`
+(#2183): reference, name, country, coordinates and area of each component and its buffer zone, which
+the property's own page does not show — Western Tien-Shan's names *Mount Chatkal* alone — and which a
+lost-places, candidate-item or placed-roughly question is decided off. The address is built in one
+place, `worldHeritagePartsHref` (`SourceId.tsx`), from a World Heritage number — the property's, a
+component's reference, which carries it with any inscription suffix (*829ter-001*), or the property's
+page on the list, which a row another kind names by its Wikidata item still carries — and from nothing
+else; nothing is copied from the Centre's site (ADR-0043). A component's line says what its row on the
+card is read from: the reference, the name and the point the card shows are the catalogue's, and the
+list's country and area, which the catalogue does not hold, are in the table.
 
 **Whether an official website still answers** (#2165). A card that shows an official website —
 the place's own in its heading (`ObjectContext`) and the `metadata.website` a proposal brings in
