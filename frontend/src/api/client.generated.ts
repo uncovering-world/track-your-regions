@@ -2989,6 +2989,66 @@ export interface ExperienceEditResult {
   curatedFields: string[];
 }
 
+/**
+ * Whether it still answers: `answers` (the final page answered 2xx or 3xx), `dead` (the domain does not resolve, the connection is refused, the page answers 404 or 410, or a domain-parking host answers), or `unclear` (anything else, which says nothing about what a browser would see).
+ */
+export type WebsiteCheckResultOutcome = typeof WebsiteCheckResultOutcome[keyof typeof WebsiteCheckResultOutcome];
+
+
+export const WebsiteCheckResultOutcome = {
+  answers: 'answers',
+  dead: 'dead',
+  unclear: 'unclear',
+} as const;
+
+/**
+ * Why, in a word the card turns into a sentence.
+ */
+export type WebsiteCheckResultReason = typeof WebsiteCheckResultReason[keyof typeof WebsiteCheckResultReason];
+
+
+export const WebsiteCheckResultReason = {
+  answered: 'answered',
+  'domain-not-found': 'domain-not-found',
+  'connection-refused': 'connection-refused',
+  'page-not-found': 'page-not-found',
+  'page-gone': 'page-gone',
+  'domain-parked': 'domain-parked',
+  'refused-by-site': 'refused-by-site',
+  'unexpected-answer': 'unexpected-answer',
+  'server-error': 'server-error',
+  'timed-out': 'timed-out',
+  'tls-failure': 'tls-failure',
+  'not-public': 'not-public',
+  'too-many-redirects': 'too-many-redirects',
+  'not-checkable': 'not-checkable',
+  failed: 'failed',
+} as const;
+
+/**
+ * One official website on a review card, checked (#2165).
+ */
+export interface WebsiteCheckResult {
+  /** The website, as the catalogue holds it or a proposal brings it. */
+  url: string;
+  /** Whether it still answers: `answers` (the final page answered 2xx or 3xx), `dead` (the domain does not resolve, the connection is refused, the page answers 404 or 410, or a domain-parking host answers), or `unclear` (anything else, which says nothing about what a browser would see). */
+  outcome: WebsiteCheckResultOutcome;
+  /** Why, in a word the card turns into a sentence. */
+  reason: WebsiteCheckResultReason;
+  /** The final page's HTTP status, where one answered. */
+  status: number | null;
+  /** When the address was checked; an outcome is kept for a day. */
+  checkedAt: string;
+}
+
+/**
+ * The official websites a review card shows, each checked for whether it still answers (#2165).
+ */
+export interface WebsiteChecks {
+  /** Every official website the card about this place shows: the place's own and those its open proposals bring. */
+  checks: WebsiteCheckResult[];
+}
+
 export type CurationLogEntryAction = typeof CurationLogEntryAction[keyof typeof CurationLogEntryAction];
 
 
@@ -10330,6 +10390,31 @@ return apiFetch<ExperienceEditResult>(getPatchExperiencesByIdEditUrl(id),
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(editExperienceBody)
+  }
+);}
+
+
+
+export const getGetExperiencesByIdWebsiteChecksUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/website-checks`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Check whether the official websites on a place's review card still answer
+ */
+export const getExperiencesByIdWebsiteChecks = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<WebsiteChecks> => {
+
+  return apiFetch<WebsiteChecks>(getGetExperiencesByIdWebsiteChecksUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 

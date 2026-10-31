@@ -19,6 +19,7 @@ import { IDENTIFIER_SCHEMES, IDENTIFIER_VERDICTS, IDENTIFIER_WORDS } from '@tyr/
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
 import { CONTENT_KINDS } from '../../services/sync/types.js';
+import { WEBSITE_OUTCOMES, WEBSITE_REASONS } from '../../services/websiteCheck/checkWebsite.js';
 import { placementTogether } from '../placementTogether.js';
 import { ImageCredit } from './experiences.js';
 
@@ -592,3 +593,23 @@ export const NearbyPictures = z.strictObject({
   pictures: z.array(NearbyPicture).describe('Picture files only, nearest first; a geotag says where the camera stood, not what it shows.'),
 }).describe("The Commons files geotagged near a point, for a curator to pick the point's picture from (#1341).");
 export type NearbyPictures = z.infer<typeof NearbyPictures>;
+
+export const WebsiteCheckResult = z.strictObject({
+  url: z.string().describe('The website, as the catalogue holds it or a proposal brings it.'),
+  outcome: z.enum(WEBSITE_OUTCOMES).describe(
+    'Whether it still answers: `answers` (the final page answered 2xx or 3xx), `dead` (the domain does not resolve, the'
+    + ' connection is refused, the page answers 404 or 410, or a domain-parking host answers), or `unclear` (anything'
+    + ' else, which says nothing about what a browser would see).',
+  ),
+  reason: z.enum(WEBSITE_REASONS).describe('Why, in a word the card turns into a sentence.'),
+  status: z.number().int().nullable().describe("The final page's HTTP status, where one answered."),
+  checkedAt: z.string().describe('When the address was checked; an outcome is kept for a day.'),
+}).describe('One official website on a review card, checked (#2165).');
+export type WebsiteCheckResult = z.infer<typeof WebsiteCheckResult>;
+
+export const WebsiteChecks = z.strictObject({
+  checks: z.array(WebsiteCheckResult).describe(
+    "Every official website the card about this place shows: the place's own and those its open proposals bring.",
+  ),
+}).describe('The official websites a review card shows, each checked for whether it still answers (#2165).');
+export type WebsiteChecks = z.infer<typeof WebsiteChecks>;
