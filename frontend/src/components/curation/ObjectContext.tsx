@@ -27,6 +27,7 @@ import { DescriptionCreditLine } from '../shared/DescriptionText';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { proposedPoint } from './MoveFact';
 import { CheckedWebsite } from './CheckedWebsite';
+import { worldHeritagePartsHref } from './SourceId';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 
 /**
@@ -116,6 +117,14 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const wikipediaHref = safeHref(item.wikipedia_url);
   // UNESCO's page about a World Heritage site, apart from the site's own (#1538).
   const unescoHref = safeHref(item.unesco_url);
+  // The World Heritage list's table of the site's parts, for a site that has
+  // any (#2183): the property's page names no component, and a question about
+  // one is decided off the table. The row's own id is the property's number
+  // on a World Heritage row; a row another kind names, by a Wikidata item,
+  // still carries the property's page, which names the number too.
+  const partsHref = safeHref((item.parts_total ?? 0) > 0
+    ? worldHeritagePartsHref(item.external_id) ?? worldHeritagePartsHref(item.unesco_url)
+    : null);
   // UNESCO's page given as the official website, under any scheme or page of
   // it, is no official site of the place (`isWorldHeritageCentreUrl`, #1851).
   const officialSiteHref = safeHref(item.website_url && !isWorldHeritageCentreUrl(item.website_url) ? item.website_url : null);
@@ -123,7 +132,8 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const madeOf = madeOfLabel(item.offered_locations, item.counted_works_total ?? undefined);
   const description = item.object_description?.trim() || null;
 
-  if (!thumbnail && !description && !hasPoint && !madeOf && regions.length === 0 && !wikipediaHref && !officialSiteHref && !unescoHref) return null;
+  if (!thumbnail && !description && !hasPoint && !madeOf && regions.length === 0 && !wikipediaHref && !officialSiteHref && !unescoHref
+    && !partsHref) return null;
 
   return (
     <Stack direction="row" spacing={1.5} sx={{ mb: 1.5 }} alignItems="flex-start">
@@ -209,7 +219,7 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
             {coordinateLabel(item.latitude as number, item.longitude as number)}
           </Button>
         )}
-        {(wikipediaHref || officialSiteHref || unescoHref) && (
+        {(wikipediaHref || officialSiteHref || unescoHref || partsHref) && (
           // The article first: it is what a curator reads to judge the place; then
           // the place's own site and, for a World Heritage site, UNESCO's page. `rel` on every outbound
           // link: these open a source's own site, and `noopener` is what keeps that
@@ -233,6 +243,11 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
             {unescoHref && (
               <Link href={unescoHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
                 UNESCO page
+              </Link>
+            )}
+            {partsHref && (
+              <Link href={partsHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
+                the list of its parts
               </Link>
             )}
           </Stack>

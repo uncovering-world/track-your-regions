@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { ObjectContext } from './ObjectContext';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
@@ -99,6 +99,26 @@ describe('ObjectContext', () => {
   it('draws no description line for a blank one', () => {
     const { container } = render(<ObjectContext item={item({ object_description: '   ' })} />);
     expect(container.querySelector('p[title]')).toBeNull();
+  });
+
+  it("links the list's table of a serial site's parts, and no table for a place that is no whole (#2183)", () => {
+    // Western Tien-Shan (1490): the property's page names "Mount Chatkal" alone; its
+    // thirteen parts are in the table, which a lost-places question is decided off.
+    render(<ObjectContext item={item({
+      external_id: '1490', name: 'Western Tien-Shan', unesco_url: 'https://whc.unesco.org/en/list/1490', parts_total: 13,
+    })} />);
+    expect(screen.getByRole('link', { name: 'the list of its parts' }))
+      .toHaveAttribute('href', 'https://whc.unesco.org/en/list/1490/maps/');
+    expect(screen.getByRole('link', { name: 'UNESCO page' })).toHaveAttribute('href', 'https://whc.unesco.org/en/list/1490');
+    cleanup();
+    // The row another kind names, by its Wikidata item: the property's page still names the number.
+    render(<ObjectContext item={item({
+      external_id: 'Q5684', kind_id: 5, kind_name: 'Archaeology', unesco_url: 'https://whc.unesco.org/en/list/278', parts_total: 3,
+    })} />);
+    expect(screen.getByRole('link', { name: 'the list of its parts' })).toHaveAttribute('href', 'https://whc.unesco.org/en/list/278/maps/');
+    cleanup();
+    render(<ObjectContext item={item({ external_id: '15', unesco_url: 'https://whc.unesco.org/en/list/15', parts_total: 0 })} />);
+    expect(screen.queryByRole('link', { name: 'the list of its parts' })).not.toBeInTheDocument();
   });
 
   it('offers one link where the official website is UNESCO\'s page (#1538)', () => {

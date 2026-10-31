@@ -18,7 +18,7 @@ import { Box, Typography, Stack, Chip, Link } from '@mui/material';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { safeHref } from '../../utils/safeHref';
 import { ObjectContext } from './ObjectContext';
-import { SourceId } from './SourceId';
+import { SourceId, worldHeritagePartsHref } from './SourceId';
 
 /**
  * How a part is named before its whole, on every card that names one: by the
@@ -31,18 +31,37 @@ export function partOfLead(componentRef?: string | null): string {
 
 /**
  * The serial site the object is a component of, linked to its page on the
- * World Heritage list, which maps where each component lies (#2158). A
- * component's own name ("Zona nucleo 02, …") does not say it is one part of a
- * property.
+ * World Heritage list (#2158), and to the list's table of its parts (#2183),
+ * which the property's page does not show: the table is where a lost place, a
+ * candidate item or a point placed roughly is decided. A component's own name
+ * ("Zona nucleo 02, …") does not say it is one part of a property. Under it,
+ * for a component the list numbers, what its row on the card is read from: the
+ * reference, the name and the point the card shows are the catalogue's; the
+ * table alone has the list's country and area, which the catalogue does not
+ * hold. The point is `ObjectContext`'s, drawn after this line and only where
+ * the object has one, so it is not called "above".
  */
 function PartOfLine({ partOf }: { partOf: NonNullable<ReviewQueueItem['part_of']> }) {
   const href = safeHref(partOf.unesco_url);
+  const partsHref = safeHref(worldHeritagePartsHref(partOf.unesco_id));
   return (
-    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+    <Typography variant="body2" color="text.secondary" component="div" sx={{ mb: 1 }}>
       {partOfLead(partOf.component_ref)}
       {href ? (
         <Link href={href} target="_blank" rel="noopener noreferrer">{partOf.name}</Link>
       ) : partOf.name}
+      {partsHref && (
+        <>
+          {' · '}
+          <Link href={partsHref} target="_blank" rel="noopener noreferrer">the list of its parts</Link>
+        </>
+      )}
+      {partOf.component_ref && (
+        <Typography variant="caption" color="text.secondary" display="block">
+          Reference {partOf.component_ref}, the name and the point the card shows are the catalogue’s;
+          {partsHref ? ' the list’s country and area for it are in the table of parts.' : ' the list’s country and area are not held.'}
+        </Typography>
+      )}
     </Typography>
   );
 }

@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { SourceId, sourceIdHref } from './SourceId';
+import { SourceId, sourceIdHref, worldHeritagePartsHref } from './SourceId';
 
 describe('sourceIdHref', () => {
   it('opens the item for a Wikidata id, whatever the source page is', () => {
@@ -60,6 +60,24 @@ describe('SourceId', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy Q1662392' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('Q1662392'));
+  });
+
+  it("builds the list's table of a property's parts from its number alone (#2183)", () => {
+    // The property's page names no component; the table does. Western Tien-Shan's
+    // front page names "Mount Chatkal" alone, its maps page every part.
+    expect(worldHeritagePartsHref('1490')).toBe('https://whc.unesco.org/en/list/1490/maps/');
+    // A component's reference carries its property's number; an inscription extended or
+    // revised carries a suffix on it (829ter-001), and its table is under the number alone.
+    expect(worldHeritagePartsHref('1209-002')).toBe('https://whc.unesco.org/en/list/1209/maps/');
+    expect(worldHeritagePartsHref('829ter-001')).toBe('https://whc.unesco.org/en/list/829/maps/');
+    expect(worldHeritagePartsHref('1192bis')).toBe('https://whc.unesco.org/en/list/1192/maps/');
+    // The property's page on the list names the number too: what a row whose own id is a
+    // Wikidata item still carries.
+    expect(worldHeritagePartsHref('https://whc.unesco.org/en/list/1209')).toBe('https://whc.unesco.org/en/list/1209/maps/');
+    expect(worldHeritagePartsHref('http://whc.unesco.org/en/list/710/')).toBe('https://whc.unesco.org/en/list/710/maps/');
+    for (const other of ['Q1662392', 'part:7546', '1490/maps', 'https://whc.unesco.org/en/about/', 'https://example.org/en/list/1209', '', null, undefined]) {
+      expect(worldHeritagePartsHref(other)).toBeNull();
+    }
   });
 
   it('links a World Heritage id to its portal page', () => {
