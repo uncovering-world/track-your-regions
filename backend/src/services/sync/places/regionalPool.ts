@@ -35,7 +35,7 @@ export interface RegionalPoolRow {
 
 /** One neighbourhood to read: whose places set the references, by the classes that name them. */
 export interface RegionalGroup {
-  /** `all`, a kind's name, or `<kind>:<type>` (`regionalGroupKey`). */
+  /** `all`, the kind's group (`RegionalKind.group`, else its name), or `<group>:<type>` (`regionalGroupKey`). */
   key: string;
   /** The classes of the group's places; the whole pool for `all`. */
   classes: ReadonlySet<string> | null;

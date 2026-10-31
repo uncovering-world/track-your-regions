@@ -2,8 +2,9 @@
  * The regional tier of a place kind, read from Wikidata by ADR-0171's cut
  * (#2178): what a region holds that a traveller standing there would visit,
  * where no native source is adopted. ADR-0048's second tier — no Iconic
- * badge, through the source's curator gate, the same place as the world
- * tier's where both name it.
+ * badge, its arrivals held for a curator where the source's gate is on (the
+ * step does not ask the gate itself), the same place as the world tier's
+ * where both name it.
  *
  * Cheap before dear: the pass reads one regional pool — every item of every
  * place kind's classes with a point, and each one's surroundings
@@ -42,10 +43,22 @@ export type RegionalPass = Extract<RegionalRuleVerdict, { pass: true }>;
 /** How a kind takes part in the regional tier. */
 export interface RegionalKind<Trees, Context = undefined> {
   kind: PlaceKind<Trees>;
+  /**
+   * The name the kind's neighbourhoods are keyed by, where two sources decide
+   * over one gather kind with classes of their own (Public art and Monuments &
+   * memorials): without it the pass's two groups would share a key and one
+   * would overwrite the other. The gather kind's name when absent.
+   */
+  group?: string;
   /** The classes whose instances are the kind's regional candidates. */
   classesOf(trees: Trees): ReadonlySet<string>;
-  /** The kind's types by the classes that name them, for a cut that measures a place among its type's (`neighbours: 'type'`). */
-  typesOf?(trees: Trees): ReadonlyMap<string, ReadonlySet<string>>;
+  /**
+   * The type the kind's own rule files a place of `classes` under, for a cut
+   * that measures a place among its type's (`neighbours: 'type'`): the rule's
+   * answer, with its precedence (a fountain before a sculpture, a clock before
+   * either), never a second filing that could disagree with it.
+   */
+  typeOf?(classes: readonly string[], trees: Trees): string | null;
   /** What the kind's rule needs beside the share, read once per run (what other kinds offer, say). */
   context?(): Promise<Context>;
   /** The kind's own verdict on a survivor of the cut, read off what the gather asked about it by id. */
@@ -111,23 +124,35 @@ export function mergeRegional<T>(
   items.push(...regional.items);
 }
 
+/** The key a kind's neighbourhoods are read under: its own group name, or its gather kind's. */
+function groupOf(regional: { group?: string; kind: { name: string } }): string {
+  return regional.group ?? regional.kind.name;
+}
+
 /** The key of the group a row of `classes` is measured among, under the cut's `neighbours`; null for a row of no type where types decide. */
 export function regionalGroupKey<Trees>(
   regional: RegionalKind<Trees, unknown>, trees: Trees, classes: readonly string[], cut: RegionalCut,
 ): string | null {
   if (cut.neighbours === 'all') return 'all';
-  if (cut.neighbours === 'kind') return regional.kind.name;
-  for (const [type, set] of regional.typesOf?.(trees) ?? []) {
-    if (classes.some((c) => set.has(c))) return `${regional.kind.name}:${type}`;
-  }
-  return null;
+  if (cut.neighbours === 'kind') return groupOf(regional);
+  const type = regional.typeOf?.(classes, trees) ?? null;
+  return type === null ? null : `${groupOf(regional)}:${type}`;
 }
 
 /** The neighbourhoods the pool reads for a kind under the cut: the whole pool, the kind's places, or one group per type. */
 export function regionalGroups<Trees>(regional: RegionalKind<Trees, unknown>, trees: Trees, cut: RegionalCut): RegionalGroup[] {
   if (cut.neighbours === 'all') return [{ key: 'all', classes: null }];
-  if (cut.neighbours === 'kind') return [{ key: regional.kind.name, classes: regional.classesOf(trees) }];
-  return [...(regional.typesOf?.(trees) ?? [])].map(([type, classes]) => ({ key: `${regional.kind.name}:${type}`, classes }));
+  if (cut.neighbours === 'kind') return [{ key: groupOf(regional), classes: regional.classesOf(trees) }];
+  // Each class of the kind goes to the type the rule files a place of that class
+  // under, so a type's neighbours are the places of the classes the rule types so.
+  const byType = new Map<string, Set<string>>();
+  for (const cls of regional.classesOf(trees)) {
+    const type = regional.typeOf?.([cls], trees) ?? null;
+    if (type === null) continue;
+    if (!byType.has(type)) byType.set(type, new Set());
+    byType.get(type)!.add(cls);
+  }
+  return [...byType].map(([type, classes]) => ({ key: `${groupOf(regional)}:${type}`, classes }));
 }
 
 /** The candidates of the kind's classes the cut admits, with the notes they clear it by. */

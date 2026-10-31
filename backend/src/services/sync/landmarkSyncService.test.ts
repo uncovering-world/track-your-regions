@@ -45,7 +45,7 @@ vi.mock('./publicArt/pipeline.js', () => ({
 vi.mock('./places/guideDoor.js', () => ({ readGuideDoor: vi.fn(async () => new Set<string>()) }));
 // The regional tier is its own module's (`regionalTier.test.ts`); here it brings nothing.
 vi.mock('./places/regionalTier.js', async (importOriginal) => ({
-  mergeRegional: (await importOriginal<typeof import('./places/regionalTier.js')>()).mergeRegional,
+  ...(await importOriginal<typeof import('./places/regionalTier.js')>()),
   regionalReader: vi.fn(() => ({ arrivals: vi.fn(async () => ({ items: [], filtered: [] })) })),
 }));
 vi.mock('./places/regionalPool.js', () => ({ readRegionalPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
@@ -145,10 +145,14 @@ import { gatherPlaces } from './places/gather.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { syncPlacePass } from './places/placePass.js';
+import { publicArtRegional } from './landmarkSyncService.js';
+import { MONUMENTS_RULE, PUBLIC_ART_RULE } from './publicArt/kindRules.js';
+import type { PublicArtTrees } from './publicArt/classes.js';
+import { regionalGroupKey, regionalGroups } from './places/regionalTier.js';
+import { REGIONAL_CUT } from './places/regionalCut.js';
 import { TOWERS_CLASSIFIER, TOWERS_KIND } from './towers/kind.js';
 import { BRIDGES_KIND } from './bridges/kind.js';
 import { SQUARES_KIND } from './squares/kind.js';
-import { MONUMENTS_RULE, PUBLIC_ART_RULE } from './publicArt/kindRules.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
 
 const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
@@ -474,5 +478,47 @@ describe('public art in the place pass', () => {
       { name: 'Stanford University', externalRef: 'Q978987', lon: -122.1699, lat: 37.428 },
     ]);
     expect(upsertSingleLocation).not.toHaveBeenCalled();
+  });
+});
+
+describe('Public art\'s and Monuments\' part in the regional tier (#2178)', () => {
+  const SCULPTURE = 'Q860861';
+  const FOUNTAIN = 'Q483453';
+  const MONUMENT = 'Q4989906';
+  const MEMORIAL = 'Q5003624';
+  const CLOCK = 'Q5275';
+  const trees = {
+    sculptural: new Set([SCULPTURE]), fountain: new Set([FOUNTAIN]), artwork: new Set([SCULPTURE]),
+    commemorative: new Set([MEMORIAL]), admitting: new Set([SCULPTURE, FOUNTAIN, MONUMENT, MEMORIAL]),
+    museum: new Set<string>(), worship: new Set<string>(), lost: new Set<string>(),
+  } as unknown as PublicArtTrees;
+
+  it('reads Public art\'s own classes as candidates, not the heritage senses of monument its rule refuses', () => {
+    const classes = publicArtRegional(PUBLIC_ART_RULE).classesOf(trees);
+    expect(classes.has(SCULPTURE) && classes.has(FOUNTAIN) && classes.has(CLOCK)).toBe(true);
+    expect(classes.has(MONUMENT) || classes.has(MEMORIAL)).toBe(false);
+    // Monuments reads every admitting class: a statue raised to a person is a monument.
+    expect(publicArtRegional(MONUMENTS_RULE).classesOf(trees)).toBe(trees.admitting);
+  });
+
+  it('types a place as the kind\'s rule files it, with the rule\'s precedence', () => {
+    const typeOf = publicArtRegional(PUBLIC_ART_RULE).typeOf!;
+    // The Trevi Fountain is typed a fountain and a sculpture, and visited as the fountain.
+    expect(typeOf([SCULPTURE, FOUNTAIN], trees)).toBe('fountain');
+    // A public clock is a clock before anything else it is.
+    expect(typeOf([CLOCK, SCULPTURE], trees)).toBe('clock');
+    expect(typeOf([SCULPTURE], trees)).toBe('sculpture');
+  });
+
+  it('keeps each rule\'s kind neighbourhood under its own key, though both read one gather kind', () => {
+    // The pass writes every group by its key, so a shared key would let
+    // Monuments' classes overwrite Public art's.
+    const cut = { ...REGIONAL_CUT, enabled: true, neighbours: 'kind' as const };
+    const [art] = regionalGroups(publicArtRegional(PUBLIC_ART_RULE), trees, cut);
+    const [monuments] = regionalGroups(publicArtRegional(MONUMENTS_RULE), trees, cut);
+    expect(art.key).not.toBe(monuments.key);
+    expect(art.classes?.has(MONUMENT)).toBe(false);
+    expect(monuments.classes).toBe(trees.admitting);
+    expect(regionalGroupKey(publicArtRegional(PUBLIC_ART_RULE), trees, [SCULPTURE], cut)).toBe(art.key);
   });
 });

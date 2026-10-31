@@ -38,9 +38,7 @@ import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
 import { artworkReadershipDoorFor, type PlaceDoor } from './readershipDoor.js';
 import { shareOf, type GatheredPlaces, type KindShare, type PlaceGather } from './places/gather.js';
-import {
-  ARCH_CLASSES, COLUMN_CLASSES, MEMORIAL_CLASSES, OBELISK_CLASSES, PUBLIC_CLOCK_CLASSES, STREET_ART_CLASSES, type PublicArtTrees,
-} from './publicArt/classes.js';
+import { PUBLIC_CLOCK_CLASSES, STREET_ART_CLASSES, type PublicArtTrees } from './publicArt/classes.js';
 import type { SparqlFn } from './wikidataQueries.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './publicArt/kindRules.js';
 import { PUBLIC_ART_SOURCES } from './passes.js';
@@ -135,15 +133,18 @@ interface ClassifierOptions {
 export function publicArtRegional(rule: KindRule): RegionalKind<PublicArtTrees, ReadonlySet<string>> {
   return {
     kind: PUBLIC_ART_KIND,
-    classesOf: (trees) => new Set([...trees.admitting, ...Object.keys(PUBLIC_CLOCK_CLASSES), ...Object.keys(STREET_ART_CLASSES)]),
-    // The kind's types by the classes that name them, as the rule files them: a cut that measures a
-    // fountain among fountains reads these; the rule's own type is what the row is written with.
-    typesOf: (trees) => new Map<string, ReadonlySet<string>>(rule === PUBLIC_ART_RULE
-      ? [['sculpture', trees.sculptural], ['fountain', trees.fountain], ['clock', new Set(Object.keys(PUBLIC_CLOCK_CLASSES))],
-        ['street-art', new Set(Object.keys(STREET_ART_CLASSES))]]
-      : [['memorial', new Set(Object.keys(MEMORIAL_CLASSES))], ['arch', new Set(Object.keys(ARCH_CLASSES))],
-        ['column', new Set(Object.keys(COLUMN_CLASSES))], ['obelisk', new Set(Object.keys(OBELISK_CLASSES))],
-        ['monument', trees.commemorative]]),
+    // Each rule's neighbourhood under its own key: both read one gather kind.
+    group: rule.noun,
+    // The kind's own classes: Public art's are the sculptural and fountain trees,
+    // the public clocks and street art — not the heritage senses of "monument",
+    // which its rule refuses and `publicArt/underFloor.ts` leaves out for that
+    // reason (ADR-0169 d2); Monuments' are every admitting class, since a statue
+    // raised to a person is a monument.
+    classesOf: (trees) => (rule === PUBLIC_ART_RULE
+      ? new Set([...trees.sculptural, ...trees.fountain, ...Object.keys(PUBLIC_CLOCK_CLASSES), ...Object.keys(STREET_ART_CLASSES)])
+      : trees.admitting),
+    // The type the rule itself files a place under, from its classes alone.
+    typeOf: (classes, trees) => rule.type({ classes: [...classes], commemorates: [], genres: [], subjects: [] }, trees),
     context: () => placesOtherSourcesOffer(PUBLIC_ART_SOURCES),
     verdict: (entity, share, offered) => {
       const verdict = publicArtVerdictOf(entity, share as GatheredPublicArt, rule, offered);
