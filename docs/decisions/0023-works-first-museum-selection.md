@@ -10,8 +10,11 @@ the only way in; the one line still sets both badges, but a museum admitted by a
 hold no Iconic work, so "a museum's card can never be empty" holds only for works-first
 admissions; decisions 1 and 2 narrowed again by
 [ADR-0056](0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md) — a work below the
-line that the world reads admits its museum and is Iconic, with its own entry and exit; decisions
-3 and 4 stand
+line that the world reads admits its museum and is Iconic, with its own entry and exit; decision 1
+narrowed for Monuments & memorials, which reads the same line, by
+[ADR-0167](0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md) —
+a monument under the line that a Wikivoyage guide uses enters, for a curator; decisions 3 and 4
+stand
 
 ---
 

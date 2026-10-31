@@ -42,7 +42,7 @@ and accepted by it.
 | [0020](0020-experience-lifecycle-and-run-changeset.md) | Record a changeset per sync run, and split an experience's lifecycle into two axes | Accepted — decisions 1 and 2 narrowed by 0021, decision 1 also by 0026, decision 2 also by 0024, decision 3 by 0022 | 2026-08-02 |
 | [0021](0021-source-may-restore-membership.md) | A sync may restore `source_membership`, in one direction only | Accepted | 2026-08-03 |
 | [0022](0022-locations-are-marked-not-deleted.md) | A location is marked, not deleted, and no run may empty a category | Accepted — its deferred verdict columns landed for locations by 0026; decision 2 narrowed by 0027 and by [0090](0090-a-component-renumbered-by-an-extension-is-the-same-point.md) | 2026-08-05 |
-| [0023](0023-works-first-museum-selection.md) | Museum selection is works-first, with no institutional term and no cap | Accepted — decisions 1 and 2 narrowed by [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) and [0056](0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md) | 2026-08-07 |
+| [0023](0023-works-first-museum-selection.md) | Museum selection is works-first, with no institutional term and no cap | Accepted — decisions 1 and 2 narrowed by [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) and [0056](0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md); decision 1 narrowed for Monuments & memorials by [0167](0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md) | 2026-08-07 |
 | [0024](0024-a-category-may-refuse-what-the-source-still-lists.md) | A category may refuse what the source still lists | Accepted — decisions 2 and 4 narrowed by [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | 2026-08-07 |
 | [0025](0025-per-source-curation-gate.md) | A source is trusted or it is not, and the product says which | Accepted — decision 5 narrowed by [0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) | 2026-08-10 |
 | [0026](0026-a-run-records-what-a-container-holds.md) | A run records what a container's contents did, per kind of contents | Accepted — decisions 1 and 2 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md) | 2026-08-15 |
@@ -185,6 +185,7 @@ and accepted by it.
 | [0164](0164-a-find-its-readers-carry-counts-as-one-at-the-finds-line.md) | A find its readers carry counts as one at the finds' line | Accepted — decision 1 extended under the pool's floor by [0165](0165-the-finds-door-reads-the-finds-under-the-pools-floor-the-world-reads.md) | 2026-10-30 |
 | [0165](0165-the-finds-door-reads-the-finds-under-the-pools-floor-the-world-reads.md) | The finds door reads the finds under the pool's floor the world reads | Accepted | 2026-10-30 |
 | [0166](0166-a-work-wikipedia-files-in-a-museums-collection-is-the-museums-where-wikidata-says-nothing.md) | A work Wikipedia files in a museum's collection is the museum's where Wikidata says nothing | Accepted | 2026-10-30 |
+| [0167](0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md) | A monument a Wikivoyage guide uses enters under the editions line, for a curator | Accepted | 2026-10-31 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
