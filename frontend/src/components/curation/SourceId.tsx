@@ -43,6 +43,27 @@ export function sourceIdHref(id: string, sourcePage: string | null | undefined):
   return new URL(page).pathname.split('/').includes(id) ? page : null;
 }
 
+/**
+ * The World Heritage list's table of a property's parts (#2183): reference,
+ * name, country, coordinates and area of each component and its buffer zone,
+ * at `whc.unesco.org/en/list/<id>/maps/`. The property's own page names no
+ * component (Western Tien-Shan's names "Mount Chatkal" alone), so a question
+ * about a component — a lost place, a candidate item, a point placed roughly —
+ * is decided off this table. Built here and nowhere else, and only from a
+ * World Heritage number: the property's ("1209"), a component's reference
+ * ("1209-002", or "829ter-001" — an inscription extended or revised carries
+ * a suffix on the number, and its table is under the number alone), or the
+ * property's page on the list ("https://whc.unesco.org/en/list/1209"), the
+ * one a row whose own id is a Wikidata item still carries. A Wikidata id, a
+ * curator's own id or any other page answers null.
+ */
+export function worldHeritagePartsHref(idOrPage: string | null | undefined): string | null {
+  if (!idOrPage) return null;
+  const property = /^(\d+)[a-z]*(?:-\d+)?$/i.exec(idOrPage)?.[1]
+    ?? /^https?:\/\/whc\.unesco\.org\/en\/list\/(\d+)(?:[a-z]*)(?:\/|$)/i.exec(idOrPage)?.[1];
+  return property ? `https://whc.unesco.org/en/list/${property}/maps/` : null;
+}
+
 export function SourceId({ id, kind, sourcePage }: {
   id: string;
   kind: string;

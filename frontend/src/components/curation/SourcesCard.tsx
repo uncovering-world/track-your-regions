@@ -31,7 +31,7 @@ import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { VIEW_FIELD_WORD } from './feed/rowSpecific';
 import { minuteCellSize } from './minuteCell';
 import { ItemHeader, messageFor } from './queueCard';
-import { SourceId } from './SourceId';
+import { SourceId, worldHeritagePartsHref } from './SourceId';
 
 type SourceViewField = NonNullable<ReviewQueueItem['source_views']>[number];
 type SourceView = SourceViewField['views'][number];
@@ -67,12 +67,14 @@ function sourceColumns(fields: readonly SourceViewField[]): Column[] {
  * Wikidata item a Wikidata-filled kind reads, the place's page on the World
  * Heritage list. A serial site's view of one of its components is read off
  * the component's record, so the column says that it is the component's and
- * not the property's, and links the property's page, which maps where each
- * component lies.
+ * not the property's, and links the list's table of the property's parts,
+ * where the component's row is (#2183); the property's own page names no
+ * component. A reference the builder does not read links the page the view
+ * carries.
  */
 function ColumnRecord({ view }: { view: SourceView }) {
   if (!view.component) return <SourceId id={view.external_id} kind={view.kind_name} sourcePage={view.source_page} />;
-  const href = safeHref(view.source_page);
+  const href = safeHref(worldHeritagePartsHref(view.external_id) ?? view.source_page);
   const ref = `component ${view.external_id}`;
   return (
     <Typography variant="caption" color="text.secondary">

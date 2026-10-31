@@ -136,9 +136,13 @@ describe('a place two sources describe differently', () => {
 
     const property = screen.getByRole('link', { name: 'Agave Landscape and Ancient Industrial Facilities of Tequila' });
     expect(property).toHaveAttribute('href', 'https://whc.unesco.org/en/list/1209');
-    expect(property.parentElement?.textContent).toBe('Component 1209-002 of Agave Landscape and Ancient Industrial Facilities of Tequila');
+    expect(property.parentElement?.textContent).toMatch(/^Component 1209-002 of Agave Landscape and Ancient Industrial Facilities of Tequila · the list of its parts/);
+    // The table of the property's parts, where the component's row is (#2183): the
+    // property's page names no component. The card says what its row is read from.
+    expect(screen.getByRole('link', { name: 'the list of its parts' })).toHaveAttribute('href', 'https://whc.unesco.org/en/list/1209/maps/');
+    expect(screen.getByText(/Reference 1209-002, the name and the point the card shows are the catalogue’s; the list’s country and area for it are in the table of parts\./)).toBeInTheDocument();
     const record = screen.getByRole('link', { name: 'component 1209-002' });
-    expect(record).toHaveAttribute('href', 'https://whc.unesco.org/en/list/1209');
+    expect(record).toHaveAttribute('href', 'https://whc.unesco.org/en/list/1209/maps/');
     expect(record.parentElement?.textContent).toMatch(/^The list's record of component 1209-002,\s+not of the whole property$/);
     expect(screen.getByRole('link', { name: 'Q2989048' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q2989048');
   });
