@@ -3352,7 +3352,7 @@ town is refused by name. The door reads the pool the site door already asks for,
 `readUnderFloor` and `archaeology/underFloor.ts`). The readership names those first: every item
 read at the bar in fewer counted editions than the floor (`readAtLeast`), about 20,000 on
 2026-10-26, of which Wikidata is asked which carry a class under the site tree and a coordinate
-(`fetchSitesAmong`, its subset twin `subsetSitesAmong`). Those few dozen, the Temple of Poseidon at
+(`fetchPlacedAmong`, its subset twin `subsetPlacedAmong`). Those few dozen, the Temple of Poseidon at
 Sounion and the Inca Trail among them, join the pool as a class question's rows and meet the same
 rule and witnesses. It is shut while the source's curator gate is off and while the year is not
 folded with the redirects in place. A site it alone admits carries the curator's question in
@@ -3867,7 +3867,7 @@ placement through the venue graph, which already holds its row and classes. The 
   - The door reads what the class pool holds, which is finds of 10 editions or more, and the finds
     under that floor the year reads at its bar (ADR-0165, `underFloorFinds`). Those are named by
     the readership dump (`readUnderFloor`, read over the same tier as the door), narrowed to the
-    items carrying a find class of their own (`fetchFindsAmong`, as `fetchSitesAmong` narrows the
+    items carrying a find class of their own (`fetchFindsAmong`, as `fetchPlacedAmong` narrows the
     sites: 57,849 named on the subset, a few hundred asked in full), read by id once the pool's
     find rule has run and passed through the same rule (`underFloor` on the works collector), and
     then judged, placed and badged as any pool find is: the Houmuwu ding (9 editions, a `fangding`, which joins `FIND_CLASSES`
@@ -4523,11 +4523,35 @@ its deck is what it is visited for.
 editions of some towers: a tower enters with 15 Wikipedia editions **and** 25,000 readers in the
 latest year of readership folded with its redirects (`readWorks`, the counting Art Museums'
 works door uses), and a tower the source holds stays while it keeps 12 and 18,000. When no year
-is folded, no tower enters, and one the source holds keeps its place on the stay line's editions,
-as the readership door shuts in the same case (`readDoor`, `readershipDoor.ts`); the run says so in its log. A tower that falls
+is folded, no tower enters, and one the source holds keeps its place on the stay line's editions —
+or, whatever its editions, through the guide door while a guide uses it, with a note saying so
+(`keptTowerNote`, `standingWithoutYear`) — as the readership door shuts in the same case (`readDoor`,
+`readershipDoor.ts`); the run says so in its log. A tower that falls
 below the line is refused with both measures named (`belowTowerLine`); a candidate that never
 reached it is not reported. The coverage report reads the editions alone (`CODE_LINES`), since a
 survey entry carries no readers.
+
+**The guide door** ([ADR-0168](../decisions/0168-a-tower-a-wikivoyage-guide-uses-enters-at-15000-readers-a-year-whatever-its-editions.md),
+`TOWER_GUIDE_DOOR` in `towers/kind.ts`) stands beside the line: a tower that passes the rule, that a
+Wikivoyage edition uses and that the year reads 15,000 times or over enters, whatever its count of
+editions, for a curator, with the door's question as its `admissionNote` (`towerDoorNote`: the
+editions, the readers, the guide and the bar). The Asinelli Tower carries 9 editions, the Dom
+Tower of Utrecht 8, the Torrazzo of Cremona 14, and everyone who comes to their towns climbs them.
+A tower the door admitted stays while a guide uses it and the year reads it over 10,800 — the
+line's own ratio of stay to enter — and falls with the guide named (`belowTowerDoor`). The door
+reads the pool and the towers under its floor (`towers/underFloor.ts`, `collectTowersUnderFloor`):
+the readership names every item read at the bar in fewer than 15 editions (`readAtLeast`), the
+guide narrows them (`usedByAGuide`), Wikidata is asked which of those carry a tower class with a
+point (`fetchPlacedAmong`, the question Archaeology asks with its site tree) and then for their
+rows and classes, and they join the share as a class question's rows would. Whether the door is
+open is the shared door's (`places/guideDoor.ts`, `guideDoorOpen`): shut while the source's
+curator gate is off (ADR-0056 decision 5) or no Wikivoyage usage build is in place, and then
+nothing is read under the floor, nothing enters by it, and a held tower under the line keeps its
+place with a note saying so (`keptTowerNote`, which also carries the other case the door cannot be
+asked in: no year of readers read, with a held tower a guide uses kept whatever its editions). The
+bar is a count the maintainer chose on
+2026-10-30 from the #1997 report; #2145 restates every readers' bar as a rule that follows the
+year.
 
 Measured on the development subset on 2026-10-22, read-only in the dev container: the pool named
 174 candidates, and the source would admit 108 and refuse 31. The record has what they are.

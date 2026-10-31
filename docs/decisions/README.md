@@ -186,6 +186,7 @@ and accepted by it.
 | [0165](0165-the-finds-door-reads-the-finds-under-the-pools-floor-the-world-reads.md) | The finds door reads the finds under the pool's floor the world reads | Accepted | 2026-10-30 |
 | [0166](0166-a-work-wikipedia-files-in-a-museums-collection-is-the-museums-where-wikidata-says-nothing.md) | A work Wikipedia files in a museum's collection is the museum's where Wikidata says nothing | Accepted | 2026-10-30 |
 | [0167](0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md) | A monument a Wikivoyage guide uses enters under the editions line, for a curator | Accepted | 2026-10-31 |
+| [0168](0168-a-tower-a-wikivoyage-guide-uses-enters-at-15000-readers-a-year-whatever-its-editions.md) | A tower a Wikivoyage guide uses enters at 15,000 readers a year, whatever its editions | Accepted | 2026-10-31 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
