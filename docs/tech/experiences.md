@@ -5862,7 +5862,7 @@ hides and two curators clicking it reach the same state. `confirm` keeps "alread
 (the curated-fields pin, or a batch's `admission_answered_at`, `admissionAnsweredSql`) as its
 concurrency check, so a stale card cannot silently re-hide a row someone just put back. A batch
 answer (ADR-0067) is turned away from any answered row in either direction, under the same lock,
-so it can never put back over a card's answer and keep that card's pin. The 119 pins the unread batch of 2026-09-14 made were read as a list on 2026-10-12 and released once ([ADR-0096](../decisions/0096-the-unread-batchs-pins-are-released-once-read.md), #1365): 8 were kept as a person's decision (`admission_overridden`), and 111 were released by `releaseAdmissionPin` (`membershipWriter.ts`) with the rule's reason written back, the refusal marked answered and an `admission_pin_released` row in each place's history, from the one-time script `backend/src/scripts/releaseBatchPins.ts`. If the kept-out row was a `pending` arrival nobody had read before it was confirmed,
+so it can never put back over a card's answer and keep that card's pin. The 119 pins the unread batch of 2026-09-14 made were read as a list on 2026-10-12 and released once ([ADR-0096](../decisions/0096-the-unread-batchs-pins-are-released-once-read.md), #1365): 8 were kept as a person's decision (`admission_overridden`), and 111 were released by `releaseAdmissionPin` (`membershipWriter.ts`) with the rule's reason written back, the refusal marked answered and an `admission_pin_released` row in each place's history, from the one-time script `backend/src/scripts/releaseBatchPins.ts`. What the script says of each row is `details.systemNote`, the system's words, never `details.note`, which every screen quotes as the curator's (#2195; migration 196 moved the rows it had written). If the kept-out row was a `pending` arrival nobody had read before it was confirmed,
 putting it back publishes it in the same step (see "Overriding a refusal is the other half"
 under § Publishing) — confirming never changes `curation_state`, so it is still there to answer.
 
@@ -6229,9 +6229,11 @@ is one of three:
 - `unclear`: anything else (401, 403, 429, a timeout, a TLS failure, a 5xx, an address that is not
   public), which says nothing about what a browser would see and is never shown as dead.
 
-The card names a dead link's reason in words (*domain not found*, *page not found (404)*, *domain for
-sale*) and the date, a live one's date with a small check mark that says it answered, never that it is
-safe, and an unclear one as not checked. Nothing else on the card changes. The fetch is held to public
+The card names a dead link *site unreachable*, with the reason in words (*domain not found*, *page not
+found (404)*, *domain for sale*) and the date it was checked; a live one *site responds*, with a small
+check mark and the date, never that it is safe; and an unclear one *site not checked*, with why. Every
+line names the site (#2195): under a card's heading, *answered on 31 Oct* read as the card's own
+question having been answered. Nothing else on the card changes. The fetch is held to public
 addresses at every hop, connected to as checked, and reads the status and headers only
 (`publicAddress.ts`, `guardedLookup`; `docs/security/SECURITY.md`), under `linkCheckUserAgent()`. An
 outcome is kept in memory for a day per address. Measured on the development catalogue on 2026-10-30,
@@ -6657,7 +6659,13 @@ pinned membership, in scope by each membership's source as a refusal is, under t
 and dated by when it was first asked; last in the class order, since the place is as a curator
 left it and the question is whether that answer still stands. The card says what the curator
 answered, when and with which note (the latest answer on the membership the log records), the
-reason it answered, in `RefusalLine`'s words, and what the run says now. Its two answers are
+reason it answered, in `RefusalLine`'s words — *over the rule's objection then* for a put-back
+beside a refusal, *as the rule did then* for a keep-out beside one, since a keep-out that agreed
+with the rule overrode nothing (#2195) — and what the run says now. What a script recorded about
+how the answer came about (`details.systemNote`, the unread batch answer's pins read as a list)
+is said to be the system's, beside the curator's quoted `note`, on the card, in the pins list
+(`AdmissionPins`), on the kept-out card (`state_system_note`, `KeptOutCard`) and in the place's
+history alike. Its two answers are
 `POST /api/experiences/:id/admission-pin` (`pinQuestionController.ts`): `keep` makes the pin
 answer what the run now says (`keepAdmissionPin`, log `admission_pin_kept`), `release` writes the
 run's verdict, admission or refusal, in the pin's place (`releaseAdmissionPin`, log
@@ -7540,7 +7548,11 @@ The card's header is what a curator judges the object by: its picture and credit
 in one line (cut with an ellipsis, whole on hover), how many places and works it is made of, its
 coordinates, its links and the regions it counts in, all read off the queue's own row
 (`objectContextSelectSql`, `ObjectContext.tsx`). An arrival is in no list, no count and on no map,
-so without it the card names an object and offers nothing to judge it by (#1780).
+so without it the card names an object and offers nothing to judge it by (#1780). A list of regions
+past what is read at a glance (`REGIONS_READ_WHOLE`) folds to the broadest of them — a world view's
+roots and their children, `top_region_names`: Europe and its 18 countries for the Beech Forests, which
+count in 68 — with the rest behind *+N regions* (#2195); the place's own `country_names` are not what
+is shown, since those reach no reader and no curator (#1579).
 
 ### Publishing (ADR-0025 § 4.4)
 
