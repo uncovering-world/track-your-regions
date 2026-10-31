@@ -33,11 +33,14 @@ export interface PinQuestionContext {
  * nothing to see refused, a place added to a kind no run offers it in — and,
  * for an answer logged before memberships were named, the place's.
  * Over the place `e` and the membership `m`, as `pinned_by`: when, the note,
- * who, the act, and the region it was logged under, which decides whether a
- * scoped curator may read the name (`getCurationLog`'s rule).
+ * what the system recorded about how the answer came about (`systemNote`, a
+ * script's words, never the curator's, #2195), who, the act, and the region it
+ * was logged under, which decides whether a scoped curator may read the name
+ * (`getCurationLog`'s rule).
  */
 export const PINNED_BY = `LEFT JOIN LATERAL (
-      SELECT cl.created_at AS at, cl.details->>'note' AS note, cl.curator_id, cl.region_id, cl.action
+      SELECT cl.created_at AS at, cl.details->>'note' AS note, cl.details->>'systemNote' AS system_note,
+             cl.curator_id, cl.region_id, cl.action
         FROM experience_curation_log cl
        WHERE cl.experience_id = e.id
          AND (cl.action IN ('admission_overridden', 'admission_confirmed', 'arrival_refused', 'admission_pin_kept', 'kept_out',
@@ -95,7 +98,8 @@ export async function queryPinQuestions(ids: number[], ctx: PinQuestionContext):
              'restated', m.admission_question_verdict IS NOT DISTINCT FROM m.admission_pin_verdict
                          AND ${foldedReasonSql('m.admission_question_reason')} IS NOT DISTINCT FROM ${foldedReasonSql('m.admission_pin_reason')},
              'answeredAt', COALESCE(pinned_by.at, e.state_decided_at),
-             'note', CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.note ELSE e.state_note END
+             'note', CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.note ELSE e.state_note END,
+             'systemNote', CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.system_note END
            ) AS pin_question
     FROM experiences e
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id

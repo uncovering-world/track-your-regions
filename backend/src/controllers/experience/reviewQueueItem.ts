@@ -63,6 +63,8 @@ export interface QueueRow {
   admission_reason?: string | null;
   state_decided_at?: Date | null;
   state_note?: string | null;
+  /** What the system recorded about how the kept-out answer came about (#2195). */
+  state_system_note?: string | null;
   run_completed_at?: Date | null;
   proposed_parts?: StoredPart[] | null;
   counted_works?: CountedWork[] | null;
@@ -196,6 +198,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     admission_reason: row.admission_reason,
     state_decided_at: iso(row.state_decided_at),
     state_note: row.state_note,
+    state_system_note: row.state_system_note,
     proposed: row.proposed?.map(proposedFieldOf) ?? null,
     run_completed_at: iso(row.run_completed_at),
     proposed_parts: row.proposed_parts?.map(heldPartOf),

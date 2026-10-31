@@ -75,9 +75,21 @@ describe("a curator's admission pins", () => {
 
     expect(pins).toEqual([expect.objectContaining({
       experienceId: FARNESINA, membershipId: memberships[FARNESINA], kindName: 'Art Museums', answer: 'admitted',
-      answeredReason: 'probe: site class villa', note: 'Villa Farnesina (pin fixture) note', curatorName: 'Ada',
-      questioned: false,
+      answeredReason: 'probe: site class villa', note: 'Villa Farnesina (pin fixture) note', systemNote: null,
+      curatorName: 'Ada', questioned: false,
     })]);
+  });
+
+  it("lists what the system recorded about an answer apart from the curator's words (#2195)", async () => {
+    await pool.query(
+      `INSERT INTO experience_curation_log (experience_id, curator_id, action, details) VALUES ($1, $2, 'admission_overridden', $3)`,
+      [FARNESINA, adminId, JSON.stringify({
+        membershipId: memberships[FARNESINA], reason: 'probe: site class villa',
+        systemNote: 'kept when the batch answer of 14 September 2026 was read',
+      })],
+    );
+    const { pins } = await listAdmissionPins({ query: { experienceId: FARNESINA }, caller: caller() });
+    expect(pins[0]).toMatchObject({ note: null, systemNote: 'kept when the batch answer of 14 September 2026 was read' });
   });
 
   it('hands back a put-back: the claim off, the place still admitted until a run decides', async () => {

@@ -87,9 +87,30 @@ describe("a run's question about a pin, in the queue", () => {
       id: FARNESINA, membership_id: membershipId,
       pin_question: expect.objectContaining({
         answer: 'admitted', answeredReason: ANSWERED, askedVerdict: 'refused', askedReason: ASKED,
-        note: 'Raphael’s frescoes are the point', restated: false,
+        note: 'Raphael’s frescoes are the point', systemNote: null, restated: false,
       }),
     })]);
+  });
+
+  it("says what the system recorded about an answer apart from the curator's words (#2195)", async () => {
+    // A script answered on the curator's behalf (the unread batch answer's pins, read as a
+    // list, ADR-0096) and recorded how: its sentence is the system's, never the curator's note.
+    await pool.query(
+      `INSERT INTO experience_curation_log (experience_id, curator_id, action, details)
+       VALUES ($1, $2, 'admission_overridden', $3)`,
+      [FARNESINA, adminId, JSON.stringify({
+        membershipId, reason: ANSWERED, systemNote: 'kept when the batch answer of 14 September 2026 was read',
+      })],
+    );
+
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+
+    expect(queue.pinQuestions?.[0]?.pin_question).toMatchObject({
+      note: null, systemNote: 'kept when the batch answer of 14 September 2026 was read',
+    });
   });
 
   it('says when the run asks again in the words the curator answered over (#1370)', async () => {
