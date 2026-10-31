@@ -167,6 +167,17 @@ describe('a verdict on the whole object', () => {
 });
 
 describe('a verdict on a rule’s refusal', () => {
+  it("says what the system recorded about an answer apart from the curator's words (#2195)", () => {
+    // The pins the unread batch answer made were read as a list, and a script recorded
+    // each outcome: its sentence is the system's, never quoted as the curator's.
+    const line = formatLogDetails(entry('admission_pin_released', {
+      reason: '17 Wikipedia editions: below the world tier’s line',
+      systemNote: 'released when the batch answer of 14 September 2026 was read',
+    }));
+
+    expect(line).toBe('The rule said: 17 Wikipedia editions: below the world tier’s line\nRecorded by the system: released when the batch answer of 14 September 2026 was read');
+  });
+
   it('keeps the objection and the curator’s answer to it', () => {
     // Both halves are the point: the rule's own words are how a bad rule is found in a
     // kind's history, and the note is why this curator agreed with it.

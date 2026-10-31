@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
@@ -24,6 +24,7 @@ const FARNESINA = {
     answer: 'admitted', answeredVerdict: 'refused', answeredReason: 'probe: site class villa — put back by the kept-out card',
     askedVerdict: 'refused', askedReason: 'site, not a venue: villa — named by Galatea (25 sitelinks)',
     askedAt: '2026-10-07T09:12:00Z', restated: false, answeredAt: '2026-08-08T14:00:00Z', note: 'Raphael’s frescoes are the point',
+    systemNote: null,
   },
 } as unknown as ReviewQueueItem;
 
@@ -44,6 +45,38 @@ describe('a pin a run no longer agrees with', () => {
     show([FARNESINA]);
     expect(screen.getByText(/You put it back on .* — “Raphael’s frescoes are the point”/)).toBeTruthy();
     expect(screen.getByText(/A run on .* says something else:/)).toBeTruthy();
+  });
+
+  it("says a put-back overrode the rule's objection, and a keep-out agreed with the rule (#2195)", () => {
+    show([FARNESINA]);
+    expect(screen.getByText('over the rule’s objection then:')).toBeTruthy();
+    cleanup();
+    // Karl Marx Monument: kept out of Public art at 17 editions, as the rule said; a
+    // run now admits it. There was no objection to override.
+    show([{
+      ...FARNESINA, name: 'Karl Marx Monument', kind_name: 'Public art',
+      pin_question: {
+        ...FARNESINA.pin_question!, answer: 'refused',
+        answeredReason: "17 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)",
+        askedVerdict: 'admitted', askedReason: null,
+      },
+    } as ReviewQueueItem]);
+    expect(screen.getByText('as the rule did then:')).toBeTruthy();
+    expect(screen.queryByText(/objection/)).toBeNull();
+  });
+
+  it("says what the system recorded about an answer apart from the curator's words (#2195)", () => {
+    // The Equestrian statue of Gattamelata: pinned by the unread batch answer and kept
+    // when the list was read, which a script recorded. Not the curator's words.
+    show([{
+      ...FARNESINA, name: 'Equestrian statue of Gattamelata',
+      pin_question: {
+        ...FARNESINA.pin_question!, note: null,
+        systemNote: 'kept when the batch answer of 14 September 2026 was read',
+      },
+    } as ReviewQueueItem]);
+    expect(screen.getByText('Recorded by the system: kept when the batch answer of 14 September 2026 was read')).toBeTruthy();
+    expect(screen.queryByText(/“/)).toBeNull();
   });
 
   it('keeps the answer, sending the question it showed', async () => {

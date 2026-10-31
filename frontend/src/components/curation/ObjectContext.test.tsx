@@ -59,6 +59,35 @@ describe('ObjectContext', () => {
     expect(screen.getByText('Tigray')).toBeInTheDocument();
   });
 
+  it('folds a long list of regions to the broadest, and unfolds the rest on request (#2195)', () => {
+    // The Beech Forests count in 68 regions — Europe, 18 countries and 49 regions of
+    // theirs — and a wall of chips on every one of the site's cards said nothing a curator
+    // could read. Ten regions here, the smallest list that folds.
+    const regions = ['Austria', 'Bavaria', 'Carinthia', 'Europe', 'Germany', 'Hesse', 'Lower Austria', 'Slovakia', 'Thuringia', 'Ukraine'];
+    render(<ObjectContext item={item({
+      name: 'Ancient and Primeval Beech Forests of the Carpathians and Other Regions of Europe',
+      region_names: regions,
+      top_region_names: ['Europe', 'Austria', 'Germany', 'Slovakia', 'Ukraine'],
+    })} />);
+
+    expect(screen.getByText('Europe')).toBeInTheDocument();
+    expect(screen.getByText('Slovakia')).toBeInTheDocument();
+    expect(screen.queryByText('Bavaria')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '+5 regions' }));
+    expect(screen.getByText('Bavaria')).toBeInTheDocument();
+    expect(screen.getByText('Thuringia')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /regions/ })).not.toBeInTheDocument();
+  });
+
+  it('shows up to nine regions whole, the broadest among them', () => {
+    // Most places count in three; a fold there would hide the one region a curator looks for.
+    render(<ObjectContext item={item({
+      region_names: ['Africa', 'Ethiopia', 'Tigray'], top_region_names: ['Africa', 'Ethiopia'],
+    })} />);
+    expect(screen.getByText('Tigray')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /regions/ })).not.toBeInTheDocument();
+  });
+
   it('says what the object is in one line, whole on hover (#1780)', () => {
     const line = 'museum in Saint Petersburg, Russia';
     render(<ObjectContext item={item({ name: 'Hermitage Museum', object_description: `  ${line} ` })} />);

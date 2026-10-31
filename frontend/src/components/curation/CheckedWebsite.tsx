@@ -6,11 +6,15 @@
  * a domain that no longer resolves, and 18 of the 106 websites held proposals
  * brought on 2026-10-30 were dead. The card says which, beside the link:
  *
- * - dead: a warning that says why in words (*domain not found*, *page not found
- *   (404)*, *domain for sale*) and when it was checked;
- * - answers: a small check mark saying the site answered on that date, and never
- *   that it is safe: an expired domain bought by someone else answers too;
- * - unclear: a neutral note that it could not be checked.
+ * - dead: a warning, *site unreachable*, that says why in words (*domain not
+ *   found*, *page not found (404)*, *domain for sale*) and when it was checked;
+ * - answers: a small check mark, *site responds*, with the date, and never that
+ *   it is safe: an expired domain bought by someone else answers too;
+ * - unclear: a neutral note that the site was not checked, and why.
+ *
+ * Every line names the site: beside *official site* under a card's heading,
+ * "answered on 31 Oct" read as the card's question having been answered (#2195).
+ * The date is day and month; an outcome is kept for a day, so the year is noise.
  *
  * Nothing else on the card changes, and the curator still decides. The check is the
  * backend's (`getWebsiteChecks`), one request per card, asked once the link is near
@@ -47,14 +51,14 @@ const UNCLEAR_WORDS: Partial<Record<WebsiteCheckResult['reason'], string>> = {
   failed: 'the request failed',
 };
 
-const onDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const onDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
 /** The words beside a checked link. */
 export function checkWords(check: Pick<WebsiteCheckResult, 'outcome' | 'reason' | 'checkedAt'>): string {
   const when = onDate(check.checkedAt);
-  if (check.outcome === 'answers') return `answered on ${when}`;
-  if (check.outcome === 'dead') return `dead: ${DEAD_WORDS[check.reason] ?? 'no answer'}, checked ${when}`;
-  return `could not be checked: ${UNCLEAR_WORDS[check.reason] ?? 'no reason given'}`;
+  if (check.outcome === 'answers') return `site responds (checked ${when})`;
+  if (check.outcome === 'dead') return `site unreachable: ${DEAD_WORDS[check.reason] ?? 'no answer'}, checked ${when}`;
+  return `site not checked: ${UNCLEAR_WORDS[check.reason] ?? 'no reason given'}`;
 }
 
 function CheckMark({ check }: { check: WebsiteCheckResult }) {

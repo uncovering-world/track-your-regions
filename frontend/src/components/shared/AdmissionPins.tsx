@@ -32,7 +32,9 @@ function answeredLine(pin: AdmissionPin): string {
   const what = pin.answer === 'admitted' ? putBack : `kept it out of ${pin.kindName}`;
   const when = pin.answeredAt ? ` on ${formatDateTime(pin.answeredAt)}` : '';
   const note = pin.note ? ` — “${pin.note}”` : '';
-  return `${who} ${what}${when}${note}`;
+  // A script's words about how the answer came about: the system's, never quoted (#2195).
+  const recorded = pin.systemNote ? ` — recorded by the system: ${pin.systemNote}` : '';
+  return `${who} ${what}${when}${note}${recorded}`;
 }
 
 /** What handing back leaves to the next run, said on the button's caption. */

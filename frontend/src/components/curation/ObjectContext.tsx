@@ -29,6 +29,15 @@ import { proposedPoint } from './MoveFact';
 import { CheckedWebsite } from './CheckedWebsite';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 
+/**
+ * Up to this many regions are read at a glance and shown whole. Past it the card
+ * shows the broadest ones — a world view's roots and their children — and folds the
+ * rest behind "+N regions" (#2195). Measured on the development catalogue on
+ * 2026-10-31: the median place counts in 3 regions, 22 of 5,419 in more than nine,
+ * and the Beech Forests in 68, which drew a wall of chips on every one of its cards.
+ */
+const REGIONS_READ_WHOLE = 9;
+
 /** Four decimals is about 11 m at the equator — finer than this screen can use. */
 function coordinateLabel(lat: number, lon: number): string {
   return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
@@ -78,6 +87,9 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   // cannot: a different picture is a different key.
   const [cardFailedFor, setCardFailedFor] = useState<string | null>(null);
   const [fullFailedFor, setFullFailedFor] = useState<string | null>(null);
+  // Keyed by the object for the same reason: a click on one card's "+49 regions"
+  // must not unfold the next card's.
+  const [regionsShownFor, setRegionsShownFor] = useState<number | null>(null);
   const image = extractImageUrl(item.image_url ?? null);
   // The thumbnail, not the extracted URL, is what decides whether there is a picture:
   // `extractImageUrl` turns a stored `/images/…` path into one on our own API, whose host
@@ -95,6 +107,9 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const hasPoint = typeof item.latitude === 'number' && typeof item.longitude === 'number'
     && (item.offered_locations ?? 0) <= 1;
   const regions = item.region_names ?? [];
+  const topRegions = item.top_region_names ?? [];
+  const regionsFolded = regions.length > REGIONS_READ_WHOLE && topRegions.length > 0
+    && topRegions.length < regions.length && regionsShownFor !== item.id;
   // Decided where they meet the DOM: a sync writes both through no request schema,
   // so the write-path rule does not hold every stored row. A refused value is not
   // linked, and the card names no link for it.
@@ -229,11 +244,16 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
                 and why this card reached a region-scoped curator at all — and none of that
                 is guessable from three place names in a row. */}
             <Typography variant="caption" color="text.secondary">counts in</Typography>
-            {/* Names rather than ids, and all of them: an object crosses regions.
+            {/* A long list folds to its broadest regions: a serial site across a continent
+                counts in dozens (the Beech Forests in 68: Europe, its 18 countries and 49
+                regions of theirs), and a wall of chips says nothing a curator can read.
+                The rest are one click away, "+49 regions" (#2195). Not the place's
+                country names, which are shown to no reader and asked of no curator (#1579).
+                Names rather than ids, and all of them once unfolded: an object crosses regions.
                 `whiteSpace: normal` because a region can be called "Peloponnese, Western
                 Greece and the Ionian Islands", and a chip that clips mid-word ends on the
                 word "and" — which reads as a bug rather than as a long name. */}
-            {regions.map(region => (
+            {(regionsFolded ? topRegions : regions).map(region => (
               <Chip
                 key={region}
                 label={region}
@@ -242,6 +262,11 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
                 sx={{ height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }}
               />
             ))}
+            {regionsFolded && (
+              <Button size="small" onClick={() => setRegionsShownFor(item.id)} sx={{ p: 0, minWidth: 0, textTransform: 'none' }}>
+                +{plural(regions.length - topRegions.length, 'region')}
+              </Button>
+            )}
           </Stack>
         )}
       </Box>
