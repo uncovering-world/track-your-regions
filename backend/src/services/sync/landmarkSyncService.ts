@@ -26,10 +26,11 @@ import type { FetchResult, FilteredEntity, ProcessItemResult, SyncRunContext, Sy
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import {
-  classifyPublicArt, ENTER_SITELINKS, guideDoorCandidates, openArtworkDoor, PUBLIC_ART_KIND, streetArtCandidates,
+  classifyPublicArt, ENTER_SITELINKS, guideDoorCandidates, openArtworkDoor, PUBLIC_ART_KIND, STAY_SITELINKS, streetArtCandidates,
 } from './publicArt/pipeline.js';
 import { isPublicClock } from './publicArt/clockLine.js';
 import { readGuideDoor } from './places/guideDoor.js';
+import { shareWithMarksDoor } from './publicArt/marksDoor.js';
 import { yearlyReaders } from './places/candidates.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
@@ -60,6 +61,8 @@ import {
 
 const LANDMARK_SOURCE_ID = 3;
 const LOG_PREFIX = '[Landmark Sync]';
+/** The kinds' editions line as the pair the marks door reads it by (`sourceLine.ts`). */
+const PUBLIC_ART_LINE = { enterSitelinks: ENTER_SITELINKS, staySitelinks: STAY_SITELINKS };
 
 /**
  * What a source of the place pass decides by: its classifier over the gather,
@@ -103,6 +106,14 @@ interface ClassifierOptions {
    * source's curator gate is on.
    */
   guide?: number;
+  /**
+   * The source whose marks door the kind opens under its line (ADR-0169): a
+   * candidate a Wikivoyage guide uses or Atlas Obscura lists, read over the
+   * door's bar, enters whatever its editions, for a curator, while that
+   * source's curator gate is on; the works under the pool's floor join the
+   * share first.
+   */
+  marks?: number;
 }
 
 /**
@@ -110,20 +121,24 @@ interface ClassifierOptions {
  * the public-art share, with the doors the kind opens (`ClassifierOptions`).
  */
 function publicArtClassifier(
-  rule: KindRule, { door, streetArt = false, clocks = false, guide }: ClassifierOptions = {},
+  rule: KindRule, { door, streetArt = false, clocks = false, guide, marks }: ClassifierOptions = {},
 ): PlaceClassifier {
   return {
     // The places a kind outside these two offers a reader, so a work outdoors
     // on a venue no such kind offers stays public art rather than being
     // refused onto no card (#1444).
     classify: async (gathered, admitted, sparql) => {
-      const share = shareOf(gathered, PUBLIC_ART_KIND);
+      // The marks door first, since the works it reads under the floor join
+      // the share every other read works on (ADR-0169).
+      const { share, marks: marked } = marks === undefined
+        ? { share: shareOf(gathered, PUBLIC_ART_KIND), marks: undefined }
+        : await shareWithMarksDoor(marks, shareOf(gathered, PUBLIC_ART_KIND), sparql, PUBLIC_ART_LINE, LOG_PREFIX);
       const offered = await placesOtherSourcesOffer(PUBLIC_ART_SOURCES);
       const read = await openArtworkDoor(await door?.open(), share, admitted, rule, offered);
       const streetArtRead = streetArt ? await readStreetArt(sparql, streetArtCandidates(share, rule), share.facts) : null;
       const clockReaders = clocks ? await publicClockReaders(share) : undefined;
       const guided = guide === undefined ? undefined : await readGuideDoor(guide, guideDoorCandidates(share), LOG_PREFIX);
-      return classifyPublicArt(share, rule, admitted, offered, read, streetArtRead, clockReaders, guided);
+      return classifyPublicArt(share, rule, admitted, offered, read, streetArtRead, clockReaders, guided, marked);
     },
     types: rule.types,
     tag: 'outdoor',
@@ -148,6 +163,9 @@ const PUBLIC_ART_CLASSIFIERS: Readonly<Record<number, PlaceClassifier>> = {
     door: { open: () => artworkReadershipDoorFor(LANDMARK_SOURCE_ID, ENTER_SITELINKS, LOG_PREFIX) },
     streetArt: true,
     clocks: true,
+    // And the marks door (ADR-0169): a guide's use or an Atlas Obscura listing
+    // with the year's readers, under the pool's floor too.
+    marks: LANDMARK_SOURCE_ID,
   }),
   6: publicArtClassifier(MONUMENTS_RULE, { guide: 6 }),
 };
