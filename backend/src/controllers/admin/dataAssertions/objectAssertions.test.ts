@@ -9,6 +9,7 @@ import { heldFieldAnsweredSql, heldFieldRefusedSql } from '../../experience/held
 import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
 import {
   BURIAL_CLASSES, KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, COMMEMORATIVE_FORMS, SCULPTURAL_CLASSES, FOUNTAIN_ROOT, LOST_CLASSES,
+  COMMEMORATIVE_FLOOR, MEMORIAL_LIFTED_KILLS,
 } from '../../../services/sync/publicArt/classes.js';
 import { readFileSync } from 'node:fs';
 import { repoFile } from '../../../testSupport/repoFile.js';
@@ -169,19 +170,32 @@ describe('an admitted public-art row typed as a building', () => {
     for (const qid of Object.keys(VETO_CLASSES)) expect(sql).toContain(`'${qid}'`);
   });
 
-  it('refuses a burial class outright for Public art, and asks it of the rule\'s answer for Monuments & memorials', () => {
-    // Monuments & memorials lets a commemorative form lift the burial kill,
-    // read from the genre too (#1832): the Monumento a la Revolución is a
-    // mausoleum inside a triumphal arch. A constant cannot see the genre, so
-    // that kind's admission is asked of the stored answer; Public art never
-    // lifts it, so its admission is refused whatever the answer.
+  it('refuses a lifted kill outright for Public art, and asks it of a commemorative class for Monuments & memorials', () => {
+    // Monuments & memorials lets a commemorative class lift the organisation,
+    // attraction and burial kills (#1989), read off the pinned floor the rule
+    // reads (`COMMEMORATIVE_FLOOR`), and a commemorative form lift the burial
+    // kill too, read from the genre as well (#1832): the Monumento a la
+    // Revolución is a mausoleum inside a triumphal arch. A constant cannot see
+    // the genre, so the form is asked of the stored answer; Public art never
+    // lifts any of them, so its admission is refused whatever stands with it.
     const array = (qids: string[]) => 'ARRAY[' + qids.map((qid) => "'" + qid + "'").join(', ') + ']';
-    const outright = Object.keys(KILL_CLASSES).filter((qid) => !BURIAL_CLASSES[qid]);
+    const outright = Object.keys(KILL_CLASSES).filter((qid) => !MEMORIAL_LIFTED_KILLS[qid]);
     expect(sql).toContain(`?| ${array([...Object.keys(WORSHIP_CLASSES), ...outright])} OR`);
     expect(sql).toContain(`?| ${array(Object.keys(VETO_CLASSES))} -- The rule's own answer`);
-    const burial = sql.slice(sql.indexOf(`?| ${array(Object.keys(BURIAL_CLASSES))} AND (`));
-    expect(burial).toMatch(/^\?\| ARRAY\[[^\]]*\] AND \(m\.source_id = 3 OR NOT COALESCE\(\(m\.facts->>'wikidataArtwork'\)::boolean, FALSE\)\) \) \)/);
+    const lifted = Object.keys(MEMORIAL_LIFTED_KILLS).filter((qid) => !BURIAL_CLASSES[qid]);
+    const floor = array(Object.keys(COMMEMORATIVE_FLOOR));
+    expect(sql).toContain(
+      `?| ${array(lifted)} AND (m.source_id = 3 OR NOT m.facts->'wikidataClasses' ?| ${floor}) )`,
+    );
+    expect(sql).toContain(
+      `?| ${array(Object.keys(BURIAL_CLASSES))} AND (m.source_id = 3 OR NOT ( `
+      + `COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE) OR m.facts->'wikidataClasses' ?| ${floor} )) ) )`,
+    );
     expect(Object.keys(BURIAL_CLASSES)).toContain('Q162875');
+    expect(lifted).toContain('Q166118');
+    // And a row matched by a lifted kill alone names it: Yad Vashem's archives
+    // class is what a curator reads as "typed archives", not an empty field.
+    expect(sql).toContain(`OR c = ANY(${array(lifted)}) OR c = ANY(${array(Object.keys(BURIAL_CLASSES))})`);
   });
 
   it('refuses a lost work but not the one whose remains are on show, as the rule does', () => {

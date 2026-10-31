@@ -19,7 +19,7 @@ import {
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 import { WORLD_HERITAGE_KIND_ID } from '../../../db/inscription.js';
 import {
-  BURIAL_CLASSES, KILL_CLASSES, LOST_CLASSES, VETO_CLASSES, WORSHIP_CLASSES,
+  BURIAL_CLASSES, COMMEMORATIVE_FLOOR, KILL_CLASSES, LOST_CLASSES, MEMORIAL_LIFTED_KILLS, VETO_CLASSES, WORSHIP_CLASSES,
 } from '../../../services/sync/publicArt/classes.js';
 import { REMAINS_ON_SHOW } from '../../../services/sync/museum/worksCollector.js';
 import { tidyLabelSql } from '../../../services/sync/labelFold.js';
@@ -289,14 +289,19 @@ function qidArray(qids: string[]): string {
   return 'ARRAY[' + quoted + ']';
 }
 
-// A burial class is refused outright for Public art, and for Monuments &
-// memorials unless a commemorative form stands with it, which that kind reads
-// from the genre as well (#1832): a constant cannot see the genre, so that
-// kind's admission is asked of the rule's own answer, as a building veto is.
+// A kill a commemorative class lifts for Monuments & memorials (#1989) — an
+// organisation, a hall of fame, a sculpture garden, a burial class — is asked
+// of the stored classes against the same pinned floor the rule reads
+// (`COMMEMORATIVE_FLOOR`); a burial class is lifted by a commemorative form
+// too, which that kind reads from the genre as well (#1832), and a constant
+// cannot see the genre, so that one is asked of the rule's own answer, as a
+// building veto is. Public art lifts none of them.
 const REFUSED_OUTRIGHT = qidArray([
   ...Object.keys(WORSHIP_CLASSES),
-  ...Object.keys(KILL_CLASSES).filter((qid) => !BURIAL_CLASSES[qid]),
+  ...Object.keys(KILL_CLASSES).filter((qid) => !MEMORIAL_LIFTED_KILLS[qid]),
 ]);
+const LIFTED_KILLS = qidArray(Object.keys(MEMORIAL_LIFTED_KILLS).filter((qid) => !BURIAL_CLASSES[qid]));
+const COMMEMORATIVE = qidArray(Object.keys(COMMEMORATIVE_FLOOR));
 // A lost or destroyed work is refused unless it is the one work the rule
 // names as remains on show (`REMAINS_ON_SHOW`, read by `publicArtVerdict`).
 const REFUSED_AS_LOST = qidArray(Object.keys(LOST_CLASSES));
@@ -309,11 +314,12 @@ const BURIAL = qidArray(Object.keys(BURIAL_CLASSES));
  *
  * The rule of Public art and of Monuments & memorials (`publicArtTest.ts`,
  * one gather and two kinds, #1807) reads what Wikidata types an entity and
- * turns down a place of worship, a camp, a stadium, an archaeological site, an
- * organisation, a settlement; and a building, a cemetery or a place unless the
- * kind's classes answer it — an artwork class, and for Monuments & memorials a
- * memorial too — and a tomb unless, for Monuments & memorials, a commemorative
- * form stands with it (#1832). It runs on every candidate every
+ * turns down a place of worship, a camp, a stadium, an archaeological site, a
+ * settlement; an organisation, a hall of fame, a sculpture garden or a tomb
+ * unless, for Monuments & memorials, a commemorative class stands with it
+ * (#1989) — a tomb also where a commemorative form does (#1832); and a
+ * building, a cemetery or a place unless the kind's classes answer it — an
+ * artwork class, and for Monuments & memorials a memorial too. It runs on every candidate every
  * run, and it stores what it read on the kind's membership
  * (`facts.wikidataClasses`, ADR-0153).
  * This asks the stored rows the same question, for the rows the rule never
@@ -361,7 +367,8 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
                e.name AS experience_name,
                (SELECT string_agg(c, ', ' ORDER BY c)
                   FROM jsonb_array_elements_text(m.facts->'wikidataClasses') c
-                 WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK}) OR c = ANY(${BURIAL})
+                 WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK}) OR c = ANY(${LIFTED_KILLS})
+                    OR c = ANY(${BURIAL})
                     OR (c = ANY(${REFUSED_AS_LOST}) AND NOT e.external_id = ANY(${REMAINS_SHOWN}))) AS classes
           FROM experiences e
           -- The first admitting membership of the pass's sources (#822,
@@ -391,11 +398,21 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
                    AND NOT COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE)
                  )
                  OR (
+                   -- An organisation or an attraction: Public art never lifts
+                   -- it, and Monuments & memorials only where a commemorative
+                   -- class stands with it.
+                   m.facts->'wikidataClasses' ?| ${LIFTED_KILLS}
+                   AND (m.source_id = 3 OR NOT m.facts->'wikidataClasses' ?| ${COMMEMORATIVE})
+                 )
+                 OR (
                    -- A burial class: Public art never lifts it, and Monuments &
-                   -- memorials only where a form stands with it, which its
-                   -- stored answer says.
+                   -- memorials only where a commemorative class stands with it,
+                   -- or a form, which its stored answer says.
                    m.facts->'wikidataClasses' ?| ${BURIAL}
-                   AND (m.source_id = 3 OR NOT COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE))
+                   AND (m.source_id = 3 OR NOT (
+                     COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE)
+                     OR m.facts->'wikidataClasses' ?| ${COMMEMORATIVE}
+                   ))
                  )
                )
              ORDER BY m.source_id

@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { publicArtVerdict, type PublicArtFacts } from './publicArtTest.js';
 import type { ContainerFact } from '../places/containment.js';
-import { buildTrees } from './classes.js';
+import { buildTrees, COMMEMORATIVE_FLOOR, KILL_CLASSES, MEMORIAL_LIFTED_KILLS, VETO_CLASSES } from './classes.js';
 import { MONUMENTS_RULE as monuments, PUBLIC_ART_RULE as art } from './kindRules.js';
 
 const SCULPTURE = 'Q860861';
@@ -809,13 +809,63 @@ describe('publicArtVerdict — what it admits', () => {
   });
 
   it('lets a commemorative form lift the burial kill for Monuments & memorials alone', () => {
-    // The Monumento a la Revolución: mausoleum, triumphal arch. The Mausoleum
-    // of Mao Zedong (mausoleum, memorial) has no form, and stays refused.
+    // The Monumento a la Revolución: mausoleum, triumphal arch. A mausoleum
+    // typed nothing commemorative stays what it is.
     const revolucion = facts({ classes: ['Q162875', TRIUMPHAL_ARCH] });
     expect(publicArtVerdict(revolucion, trees, monuments)).toMatchObject({ pass: true, type: 'arch' });
     expect(reasonOf(publicArtVerdict(revolucion, trees, art))).toBe('not public art: mausoleum');
-    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q162875', MEMORIAL] }), trees, monuments)))
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q162875', MONUMENT] }), trees, monuments)))
       .toBe('not a monument or memorial: mausoleum');
+  });
+
+  it('lets a commemorative class lift the organisation, attraction and burial kills for Monuments & memorials (#1989)', () => {
+    // Yad Vashem: research institute, archives, documentation centre,
+    // memorial, production team, publishing house, museum, history museum,
+    // statutory corporation — the memorial a traveller goes to, whatever else
+    // it is. Public art still refuses it, by the organisations it is.
+    const yadVashem = facts({ classes: ['Q31855', 'Q166118', 'Q2945282', MEMORIAL, 'Q7247847', 'Q2085381', MUSEUM, HISTORY_MUSEUM, 'Q699386'] });
+    expect(publicArtVerdict(yadVashem, trees, monuments)).toMatchObject({ pass: true, type: 'memorial' });
+    expect(reasonOf(publicArtVerdict(yadVashem, trees, art))).toMatch(/^not public art: research institute; archives/);
+    // The Australian War Memorial: Government body of Australia, production
+    // company, national museum, military museum, historical cultural heritage
+    // site, cemetery, memorial — the cemetery's veto lifted as before.
+    expect(publicArtVerdict(
+      facts({ classes: ['Q110376455', 'Q11396960', 'Q17431399', MILITARY_MUSEUM, 'Q38048707', 'Q39614', MEMORIAL] }), trees, monuments,
+    )).toMatchObject({ pass: true, type: 'memorial' });
+    // Nagasaki Peace Park: sculpture garden, memorial park. The Walhalla: hall
+    // of fame, memorial. Anıtkabir: mausoleum, national museum, memorial.
+    expect(publicArtVerdict(facts({ classes: ['Q1759852', 'Q12327290'] }), trees, monuments)).toMatchObject({ pass: true, type: 'memorial' });
+    expect(publicArtVerdict(facts({ classes: ['Q1046088', MEMORIAL] }), trees, monuments)).toMatchObject({ pass: true, type: 'memorial' });
+    expect(publicArtVerdict(facts({ classes: ['Q162875', 'Q17431399', MEMORIAL] }), trees, monuments)).toMatchObject({ pass: true, type: 'memorial' });
+    // The Hollywood Walk of Fame (monument, hall of fame, walk of fame): the
+    // heritage sense of monument is no commemorative class, and a walk of fame
+    // is lifted by nothing.
+    expect(reasonOf(publicArtVerdict(facts({ classes: [MONUMENT, 'Q1046088', 'Q47502370'] }), trees, monuments)))
+      .toBe('not a monument or memorial: hall of fame; walk of fame');
+    // Madurodam (amusement park, miniature park, war memorial, sculpture),
+    // Stutthof (Nazi concentration camp, military museum, concentration camp,
+    // memorial, crime scene) and the commune of Le Gua (commune of France,
+    // memorial) are what they are: an attraction, a camp and a town.
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q194195', 'Q974968', WAR_MEMORIAL, SCULPTURE] }), trees, monuments)))
+      .toBe('not a monument or memorial: amusement park; miniature park');
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q328468', MILITARY_MUSEUM, 'Q152081', MEMORIAL, 'Q1194951'] }), trees, monuments)))
+      .toBe('not a monument or memorial: Nazi concentration camp; concentration camp');
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q484170', MEMORIAL] }), trees, monuments)))
+      .toBe('not a monument or memorial: commune of France');
+    // A `P547` statement lifts no kill: a foundation that commemorates someone
+    // is not a place to stand in front of.
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q163740'], commemorates: ['Q23'] }), trees, monuments)))
+      .toBe('not a monument or memorial: nonprofit organization');
+  });
+
+  it('lifts only kills, by classes that are not kills themselves', () => {
+    // The lists compose: a lifted kill is a kill, and the floor that lifts it
+    // is neither a kill nor a veto, or the rule would read a class two ways.
+    for (const qid of Object.keys(MEMORIAL_LIFTED_KILLS)) expect(KILL_CLASSES).toHaveProperty(qid);
+    for (const qid of Object.keys(COMMEMORATIVE_FLOOR)) {
+      expect(KILL_CLASSES).not.toHaveProperty(qid);
+      expect(VETO_CLASSES).not.toHaveProperty(qid);
+    }
   });
 
   it('lets a monumental sculpture lift the veto a war cemetery carries', () => {

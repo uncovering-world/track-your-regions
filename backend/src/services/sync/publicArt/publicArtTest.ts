@@ -19,8 +19,10 @@
 
 import {
   BURIAL_CLASSES,
+  COMMEMORATIVE_FLOOR,
   COMMEMORATIVE_FORMS,
   KILL_CLASSES,
+  MEMORIAL_LIFTED_KILLS,
   VETO_CLASSES,
   INDOOR_CLASSES,
   OUTDOOR_CLASSES,
@@ -273,11 +275,20 @@ function vetoes(e: PublicArtFacts, trees: PublicArtTrees, memorialLifts: boolean
 /**
  * The kill classes the entity carries, named. Where `memorialLifts`, a
  * commemorative form lifts the burial ones: the Monumento a la Revolución is
- * a triumphal arch with a mausoleum in it (#1832).
+ * a triumphal arch with a mausoleum in it (#1832). And a commemorative class
+ * lifts the organisation, attraction and burial kills
+ * (`MEMORIAL_LIFTED_KILLS`, #1989): Yad Vashem is an archive and a research
+ * institute, Anıtkabir a mausoleum, and each is the memorial a traveller goes
+ * to. The class is read off the pinned floor (`COMMEMORATIVE_FLOOR`), not the
+ * walked tree, so the catalogue check reads the same list.
  */
 function kills(e: PublicArtFacts, memorialLifts: boolean): string[] {
   const form = memorialLifts && formsOf(e).some((c) => COMMEMORATIVE_FORMS[c]);
-  return named(e.classes.filter((c) => !(form && BURIAL_CLASSES[c])), KILL_CLASSES);
+  const memorial = memorialLifts && e.classes.some((c) => COMMEMORATIVE_FLOOR[c]);
+  return named(
+    e.classes.filter((c) => !(form && BURIAL_CLASSES[c]) && !(memorial && MEMORIAL_LIFTED_KILLS[c])),
+    KILL_CLASSES,
+  );
 }
 
 /**
