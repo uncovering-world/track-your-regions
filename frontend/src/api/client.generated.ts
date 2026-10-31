@@ -3049,6 +3049,44 @@ export interface WebsiteChecks {
   checks: WebsiteCheckResult[];
 }
 
+/**
+ * What the picture is, as Commons states it: a photograph, a map, a drawing or engraving, or a diagram; null where Commons gave nothing to class it by, or could not be asked.
+ */
+export type PictureClassResultClass = typeof PictureClassResultClass[keyof typeof PictureClassResultClass] | null;
+
+
+export const PictureClassResultClass = {
+  photograph: 'photograph',
+  map: 'map',
+  drawing: 'drawing',
+  diagram: 'diagram',
+} as const;
+
+/**
+ * One picture a review card shows, classed (#2192).
+ */
+export interface PictureClassResult {
+  /** The picture, as the catalogue holds it or a proposal brings it. */
+  url: string;
+  /** What the picture is, as Commons states it: a photograph, a map, a drawing or engraving, or a diagram; null where Commons gave nothing to class it by, or could not be asked. */
+  class: PictureClassResultClass;
+  /**
+     * What decided it: the category or the MIME type, as Commons states it.
+     * @nullable
+     */
+  basis: string | null;
+  /** When Commons was asked; an answer is kept for a day. */
+  checkedAt: string;
+}
+
+/**
+ * The pictures a review card shows, each classed by what Commons states (#2192).
+ */
+export interface PictureClasses {
+  /** Every picture the card about this place shows: the place's own, each source's, its open proposals', its points' and its works'. */
+  classes: PictureClassResult[];
+}
+
 export type CurationLogEntryAction = typeof CurationLogEntryAction[keyof typeof CurationLogEntryAction];
 
 
@@ -10446,6 +10484,31 @@ export const getGetExperiencesByIdWebsiteChecksUrl = (id: number,) => {
 export const getExperiencesByIdWebsiteChecks = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<WebsiteChecks> => {
 
   return apiFetch<WebsiteChecks>(getGetExperiencesByIdWebsiteChecksUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesByIdPictureClassesUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/picture-classes`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Say what the pictures on a place's review card are: photographs, maps, drawings or diagrams
+ */
+export const getExperiencesByIdPictureClasses = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<PictureClasses> => {
+
+  return apiFetch<PictureClasses>(getGetExperiencesByIdPictureClassesUrl(id),
   {
     ...options,
     method: 'GET'

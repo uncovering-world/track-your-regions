@@ -28,9 +28,11 @@ describe('the API contract lane', () => {
     expect(args).toContain('/x-access == "optional"');
   });
 
-  it('keeps the traveller\'s run under the authenticated limit, which the environment cannot raise', () => {
-    const traveller = RUNS.find((run) => run.caller === 'traveller');
-    expect(argumentsFor(traveller, 'http://localhost:5301').join(' ')).toContain('--rate-limit 50/m');
+  it('keeps the traveller\'s and the curator\'s runs under the authenticated limit, which the environment cannot raise', () => {
+    for (const caller of ['traveller', 'curator']) {
+      const run = RUNS.find((one) => one.caller === caller);
+      expect(argumentsFor(run, 'http://localhost:5301').join(' ')).toContain('--rate-limit 50/m');
+    }
   });
 
   it('refuses anything but the test stack\'s own backend on this machine', () => {

@@ -38,7 +38,7 @@ import {
   SeparationUndone,
   MergeUndone,
   NearbyPictures,
-  WebsiteChecks,
+  WebsiteChecks, PictureClasses,
   ViewsChosen,
   ViewSuggestions,
   PublishResult,
@@ -63,6 +63,7 @@ import { suggestVisit } from '../controllers/experience/visitSuggestionControlle
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { getWebsiteChecks } from '../controllers/experience/websiteChecksController.js';
+import { getPictureClasses } from '../controllers/experience/pictureClassesController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
@@ -357,6 +358,19 @@ export const experienceCurationRoutes = [
     params: idParamSchema,
     response: WebsiteChecks,
     handler: getWebsiteChecks,
+  }),
+
+  // What the pictures a review card shows are (#2192): a photograph, a map, a
+  // drawing or a diagram, as Commons states it. One outbound request to Commons
+  // per card, so rate-limited as an edit is, and in the place's curation scope.
+  // The request names the place only; the pictures are the catalogue's own.
+  defineRoute({
+    method: 'get', path: '/:id/picture-classes', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: "Say what the pictures on a place's review card are: photographs, maps, drawings or diagrams",
+    params: idParamSchema,
+    response: PictureClasses,
+    handler: getPictureClasses,
   }),
 
   // Get curation log for an experience
