@@ -6120,6 +6120,31 @@ Facilities of Tequila* (`part_of`, `partOfFactsSql` in `db/placePoints.ts`, sele
 `objectContextSelectSql`): the same whole the near-places card names (`partOfNameSql`), and the
 same words for it (`partOfLead`, `queueCard.tsx`).
 
+**Whether an official website still answers** (#2165). A card that shows an official website —
+the place's own in its heading (`ObjectContext`) and the `metadata.website` a proposal brings in
+its fact table (`fieldMeaning.tsx`, `websiteLabel`) — says beside the link whether the site still
+answers (`CheckedWebsite`). It asks `GET /api/experiences/:id/website-checks`
+(`websiteChecksController.ts`) once the card is near the screen (`useNearViewport`), one request per
+card, never for the queue or the catalogue in bulk. The endpoint takes the place's id only, reads
+the addresses from the catalogue — the place's `metadata.website`, and the `metadata.website` of the
+change set a membership's pending pointer holds and of the change set the conflict card reads, by the
+card's own `conflictChangeOpenSql` — and checks at most six (`services/websiteCheck/checkWebsite.ts`). An outcome
+is one of three:
+- `answers`: the final page answered 2xx or 3xx;
+- `dead`: the domain does not resolve, the connection is refused, the final page answers 404 or 410,
+  or a hop lands on a domain-parking host (`PARKING_HOSTS`, `hugedomains.com` among them);
+- `unclear`: anything else (401, 403, 429, a timeout, a TLS failure, a 5xx, an address that is not
+  public), which says nothing about what a browser would see and is never shown as dead.
+
+The card names a dead link's reason in words (*domain not found*, *page not found (404)*, *domain for
+sale*) and the date, a live one's date with a small check mark that says it answered, never that it is
+safe, and an unclear one as not checked. Nothing else on the card changes. The fetch is held to public
+addresses at every hop, connected to as checked, and reads the status and headers only
+(`publicAddress.ts`, `guardedLookup`; `docs/security/SECURITY.md`), under `linkCheckUserAgent()`. An
+outcome is kept in memory for a day per address. Measured on the development catalogue on 2026-10-30,
+18 of the 106 websites held proposals brought were dead (Villa d'Este's domain, Konârak's,
+Jongmyo's), and in Lourdes's proposal the old address is the dead one.
+
 **Jev's suggestion on the sources card** (#1260, Epic #929, [ADR-0087](../decisions/0087-jev-suggests-an-answer-on-a-curator-card-and-a-curator-decides.md)). Where `JEV_API_KEY` is set, the
 card asks `POST /api/experiences/:id/view-suggestions` (`viewSuggestionController.ts`) when it
 opens: for each field it asks about, the newest stored suggestion made for the views as they
