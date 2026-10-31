@@ -10,13 +10,13 @@ urls:
 family: global
 kinds: [any]
 tier: regional
-unit: { level: any, code: none, name: "any unit, read by country (P17) or by coordinates inside its boundary" }
+unit: { level: any, code: none, name: "the place's own surroundings, everything within 50 km of it (ADR-0171); museums were first measured by country (P17) or by coordinates inside a boundary" }
 row:
   identity: "the item"
   wikidata_link: itself
   coordinates: most
   languages: [all]
-  signal: "sitelinks ranked within the unit; for art museums, the local fame of the works a museum holds — their readership in the unit's languages against the world tier's works in the same language (ADR-0057, in draft)"
+  signal: "Wikivoyage editions that use the place, against a quarter of the median of the 10 best within 50 km, or Wikipedia editions against that signal's median of the 10 best, with an article in two languages (ADR-0171); for art museums, the local fame of the works a museum holds — their readership in the unit's languages against the world tier's works in the same language (ADR-0057, in draft)"
 terms:
   licence: "CC0 1.0"
   database_right: waived
@@ -89,12 +89,29 @@ Burrell Collection. A country's languages are read from `P37` through `P424` unt
 region its own list. The readership of a museum's own article, measured per unit on 2026-09-04
 (`docs/tech/filling-a-kind.md` § 7.4), is a different signal and was not measured over the pool.
 
+**What was measured for places (2026-10-31, #2154; [ADR-0171](../../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md)).** The unit and the signal for the
+places of the eight live kinds, over the 21 coverage surveys
+(`docs/research/2026-10-31-a-places-surroundings-as-the-regional-tiers-unit.md`). A radius of
+50 km around each place, an H3 cell of resolution 4 with its ring and a Wikivoyage region came out
+level. Wikivoyage's use was the most precise signal in every unit. A percentile of sitelinks within
+the country (#761) carried Wikidata's density into the cut: 126–128 places in Berlin against 2–3
+in Dakar.
+
+The rule ADR-0171 chose admits 209 of the 264 places that three sources other than Wikivoyage
+name outside Europe and Oceania, against 93 for the world line. Read in Lalibela, it admits the
+rock-hewn churches and two cave churches nearby, Yemrehana Krestos and Na'akueto La'ab, and nothing
+else.
+
 **Terms.** CC0.
 
-**What decides it.** Adopted *per unit* as the fallback, with § 4's three conditions measured
-— coverage against the unit's canon, the share of rows with an item (all, here), and a floor
-on the group where the cut ranks a unit's museums against each other, as a percentile of sitelinks
-does; the local fame of art museums needs no floor, since its bar is set per language (ADR-0057,
-in draft) — and replaced when a native source arrives. The place
+**What decides it.** Adopted *per unit* as the fallback, with § 4's three conditions measured:
+- coverage against the unit's canon;
+- the share of rows with an item (all, here);
+- a floor on the group where the cut ranks places against each other. For places that is ADR-0171's
+  floor on the places within 50 km. The local fame of art museums needs no floor, since its bar is
+  set per language (ADR-0057, in draft).
+
+A kind adopts [ADR-0171](../../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md)'s rule through its own issue, measured first on its calibration list. The
+source is replaced when a native source arrives. The place
 that shows it: the Georgian Museum of Fine Arts in Tbilisi, 11 sitelinks, a museum no register
 lists because Georgia's is unpublished.

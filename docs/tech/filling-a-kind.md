@@ -72,10 +72,9 @@ this yet" — never as an empty list pretending to be a full one.
 museum the ministry recognises, every listing in the city guide — and the tier's rule then cuts
 *within the unit* to what is worth a traveller's time: by the source's own editorial judgement
 where it has one (the *Musée de France* label; Poland's state register, which admits only a
-museum "of high merit"; a guide's See list), or by a within-unit signal (local-language
-readership, visitors, a percentile of sitelinks within the unit) where the source has none,
-with a floor on the group's size so that a unit with five museums does not make the fifth a
-100th percentile. What the regional tier never does is rank the world and cut lower: a lower
+museum "of high merit"; a guide's See list), or by a within-unit signal (visitors, Wikivoyage's
+use, Wikipedia editions against the unit's best) where the source has none, with a floor on the
+group's size so that a unit with five museums does not make the fifth a 100th percentile. What the regional tier never does is rank the world and cut lower: a lower
 line on the world signal is the rejected alternative of ADR-0023 and the mismeasurement #759
 was closed for — it reaches the museums Wikipedia writes about, not the ones a region holds.
 A curator may add to and remove from the cut.
@@ -174,10 +173,26 @@ regional source.
 **The exception, named: a global source read per unit.** Where no native source exists, or none
 can be read (terms, access, a register the law establishes but nobody publishes — Georgia,
 § 7), a global source read *for the unit* is a regional-tier candidate: Wikidata by class
-within the unit, ranked by a within-unit signal (local-language readership as measured on
-2026-09-04, or a percentile of sitelinks within the unit, #761); Wikivoyage's See listings for
-the unit's articles; OpenStreetMap's `tourism=museum` objects as the enumeration. It is enough
-when three things hold, each measured before adoption: (1) **coverage** — the canon of places a
+within the unit, cut by a within-unit signal; Wikivoyage's See listings for the unit's articles;
+OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the unit and the cut are
+[ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md):
+- the unit is the place's own surroundings, everything within 50 km of it;
+- a place under the world line enters when it has a Wikipedia article in two languages, and
+  either the Wikivoyage editions that use it reach a quarter of the median of the 10 best within
+  50 km by Wikivoyage's use, or its Wikipedia editions reach the median of the 10 best within
+  50 km by Wikipedia editions, among 25 places or more;
+- where fewer than 10 places carry the signal, the reference is the median of those that do;
+- the floor counts the area's places, not the places that carry the signal.
+
+On the 21 coverage surveys this admits 79 % of the places three sources other than Wikivoyage
+name outside Europe and Oceania, against 35 % for the world line
+(`docs/research/2026-10-31-a-places-surroundings-as-the-regional-tiers-unit.md`). Readers in the
+country's languages, the signal measured on 2026-09-04, ranked within two points of all readers
+and below Wikivoyage's use in every unit tried. A percentile of sitelinks within the country
+(#761) carried Wikidata's density into the cut, 126–128 places in Berlin against 2–3 in Dakar.
+A kind adopts the rule through its own issue, after measuring it on its calibration list.
+
+A global source read per unit is enough when three things hold, each measured before adoption: (1) **coverage** — the canon of places a
 person who knows the unit names (its national museum, its art museum, the house museum every
 guide mentions) is found, with the misses listed; (2) **identity** — the share of rows with a
 Wikidata item is known and the rest go through the gate as proposals; (3) **a floor** — the
@@ -512,8 +527,12 @@ on the group for either signal it is the fallback of § 4 and scores 14 for a un
 until #807 measured readership as its signal); the record names the unit it was adopted for. For
 art museums the fallback can also be cut by the *local fame* of the works a museum holds (below),
 whose bar is set per language and needs no floor on the group, because it does not rank the unit's
-museums against each other (ADR-0057, in draft). Verdict: world tier — the source it already is; regional
-tier — **the fallback, per unit, with its coverage measured** (§ 4's three conditions).
+museums against each other (ADR-0057, in draft). For places of the live kinds, the unit and the
+signal were measured on 2026-10-31 over the 21 coverage surveys (ADR-0171): the unit is 50 km
+around each place, and the signals are Wikivoyage's use and Wikipedia editions against the area's
+best, which § 4's exception states. A percentile within the country and local-language readership
+both ranked below them. Verdict: world tier — the source it already is; regional tier — **the
+fallback, per unit, with its coverage measured** (§ 4's three conditions).
 
 Read *by class for the whole world*, rather than within a unit, Wikidata is now the world tier of
 three kinds: art museums through the works they hold (ADR-0023), public art and monuments by the
@@ -701,11 +720,12 @@ Changes are logged here:
 | 2026-09-13 | An editorial **category tree** may be adopted as a world-tier door in its own right, gated by a class and by the line: § 2's "one signal" may be entered as well as tested, and a source that enumerates by shelf rather than by class gets a record of its own (#581, ADR-0058 decision 2) | English Wikipedia's `Archaeological museums by country` names the museums no class names — the Bardo, the National Museum of Iraq, the Museo del Oro, the Pergamon — and dry run 113 admitted 31 museums through it that the classes and the finds pool together could not reach, only 6 of them in an anglophone country. An editorial shelf holds the dig beside the building (27 of the 75 members at or above the place line carry no museum class at all), so a door of this family needs two guards a class door does not: a class test on what walks in, and the kind's own line deciding which refusals are worth naming |
 | 2026-09-13 | Share-alike is no longer an unanswered `hold` for OpenStreetMap: § 5 and § 6.2 now name the terms on which OSM may be read (ADR-0059, #581) | OSM is the only source that says what stands on the ground — Wikidata's site tree cannot tell Athens from Pompeii — and the licence question had been open since ADR-0002. It is answered by keeping what is taken from OSM separable with its provenance, offering that part under ODbL, and showing the credit; the register's OSM record moves from `hold` to a verdict on its merits when a connector is written from it |
 | 2026-10-25 | Share-alike is answered for UNESCO's `whc001` too: § 5 and § 6.2 name it beside OpenStreetMap (ADR-0149, #2010) | The UNESCO run copied every property's CC BY-SA description with no credit and predated the register; the maintainer chose to keep the text, credit it where it is shown and keep the UNESCO part separable, as ADR-0059 does for OSM |
+| 2026-10-31 | § 4's exception names the unit and the cut of Wikidata read per unit: 50 km around each place, Wikivoyage's use or Wikipedia editions against the area's best, a floor on the area's places, and an article in two languages (ADR-0171, #2154) | The country percentile of #761 carried Wikidata's density into the cut, and local-language readership, the signal § 4 named, ranked below Wikivoyage's use in every unit measured |
 
 ## 10. Out of scope
 
 Adopting any source (#628, #581, the public-art regional tier); the list of sources per unit
 (each kind's issue fills the register); thresholds per kind and the exact within-unit signal per
-source (#628's slices, #761); the Pilgrimage badge (#808); which languages a region reads (#809); the curator screen for tier and
+source (#628's slices; for Wikidata's places, ADR-0171 is where each kind's calibration starts); the Pilgrimage badge (#808); which languages a region reads (#809); the curator screen for tier and
 badge (#603 for the badge); any code for the register, which arrives with the first sync that
 reads it.
