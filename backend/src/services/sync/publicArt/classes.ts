@@ -345,9 +345,11 @@ export const INDOOR_CLASSES: Record<string, string> = {
  * Burial: a building around the dead, not a work in a square, and refused as
  * such (`KILL_CLASSES`) — unless, for Monuments & memorials, a commemorative
  * form stands with it: the Monumento a la Revolución is typed mausoleum and
- * triumphal arch, and a traveller visits the arch (#1832). A mausoleum alone
- * stays refused: Anıtkabir and the mausoleums of Mao and Ho Chi Minh are a
- * kind of their own, still proposed.
+ * triumphal arch, and a traveller visits the arch (#1832), and Anıtkabir and
+ * the Ho Chi Minh Mausoleum are typed memorials (`MEMORIAL_LIFTED_KILLS`). A
+ * mausoleum with no commemorative class stays refused in both kinds, and for
+ * Public art every mausoleum does: tombs are a kind of their own, still
+ * proposed.
  */
 export const BURIAL_CLASSES: Record<string, string> = {
   Q381885: 'tomb',

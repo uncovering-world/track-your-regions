@@ -79,8 +79,8 @@ export function worshipVerdict(e: WorshipFacts, trees: WorshipTrees): WorshipRes
   // One reason for every tower, whatever it stands next to. The Leaning Tower
   // over the Duomo and the Minaret of Jam alone in a Ghor river valley are the
   // same answer to a traveller — something you climb, not somewhere you pray —
-  // so the rule does not ask about containers and the refusal names the kind
-  // the catalogue is missing rather than a church to hand the row to.
+  // so the rule does not ask about containers and the refusal names the tower
+  // rather than a church to hand the row to: Towers is the kind that has it.
   if (parts.length && !worship.length) {
     return { pass: false, reason: `a tower, not a place of worship: ${parts.join('; ')}` };
   }

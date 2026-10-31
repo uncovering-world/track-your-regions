@@ -56,7 +56,8 @@ import type { WikidataLandmark } from '../types.js';
  * below 18, so the list does not flap as Wikipedia grows. Belonging to the
  * tier is the Iconic badge (ADR-0045 decision 5); the regional tier, which
  * carries none, is filled from regional sources by the rules of
- * docs/tech/filling-a-kind.md (ADR-0048).
+ * docs/tech/filling-a-kind.md (ADR-0048), or, where none is adopted, by
+ * ADR-0171's within-50-km cut over the place gather (`places/regionalTier.ts`).
  */
 export const ENTER_SITELINKS = 22;
 export const STAY_SITELINKS = 18;
