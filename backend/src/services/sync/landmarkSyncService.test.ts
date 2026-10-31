@@ -38,7 +38,10 @@ vi.mock('./publicArt/pipeline.js', () => ({
   ENTER_SITELINKS: 22,
   openArtworkDoor: vi.fn(),
   streetArtCandidates: vi.fn(),
+  guideDoorCandidates: vi.fn(() => []),
 }));
+// The guide door reads the Wikivoyage usage build (ADR-0167); its own spec is guideDoor.test.ts.
+vi.mock('./publicArt/guideDoor.js', () => ({ readGuideDoor: vi.fn(async () => new Set<string>()) }));
 // What the street-art rule reads (#2035); its own spec is streetArtPlaces.test.ts.
 vi.mock('./publicArt/streetArtPlaces.js', () => ({ readStreetArt: vi.fn() }));
 /** What a street-art place holds (#2055): one reader and writer per run of Public art. */
@@ -383,9 +386,10 @@ describe('public art in the place pass', () => {
     // whole (`kindFacts.ts`), so a question answered once does not linger.
     await (await configOf()).processItem(landmark(), progress(), context);
     expect(mockedUpsert.mock.calls[1][0].metadata).not.toHaveProperty('admissionNote');
-    // Monuments & memorials opens no door, so its rule sets no question on its
-    // items; and what it writes lands on its own membership, never on Public
-    // art's, so it could not clear Public art's question either.
+    // A Monuments & memorials item the line admits carries no door's question
+    // (its guide door asks one only under the line, ADR-0167); and what it
+    // writes lands on its own membership, never on Public art's, so it could
+    // not clear Public art's question either.
   });
 
   it('writes an edition as one place with a point at every cast, told to be at the most central one (#880)', async () => {

@@ -345,9 +345,10 @@ export interface WikidataLandmark {
   articleUrl: string | null;
   website: string | null;
   /**
-   * The curator's question on a work the readership door alone admitted
-   * (#2033): its year's reading against the bar. Absent on a work the line
-   * admits.
+   * The curator's question from the door that alone admitted the row under
+   * the line: the readership door's, a work's year against the bar (#2033),
+   * or the guide door's, that a Wikivoyage guide uses the place (ADR-0167).
+   * Absent on a row the line admits.
    */
   readershipNote?: string;
 }

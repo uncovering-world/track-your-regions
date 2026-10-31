@@ -14,11 +14,14 @@ vi.mock('../../dumps/wikipedia/structureTables.js', () => ({ latestStructure: vi
 vi.mock('../wikipediaStructure.js', () => ({ structureItemsInCategories: vi.fn(async () => []) }));
 vi.mock('../admission.js', () => ({ admittedExternalIds: vi.fn(async () => new Set()) }));
 
-import { classifyPublicArt, openArtworkDoor, PUBLIC_ART_KIND, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
+import {
+  classifyPublicArt, guideDoorCandidates, openArtworkDoor, PUBLIC_ART_KIND, ENTER_SITELINKS, STAY_SITELINKS,
+} from './pipeline.js';
 import type { StreetArtReading } from './streetArtPlaces.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureItemsInCategories } from '../wikipediaStructure.js';
 import { artworkDoorNote, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
+import { belowLineUnguidedReason, guideDoorNote, shutDoorNote } from './guideDoor.js';
 import { gatherPlaces, shareOf } from '../places/gather.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './kindRules.js';
 import { belowLineReason } from '../sourceLine.js';
@@ -805,5 +808,68 @@ describe('the street-art places (#2035)', () => {
   it('reads the genre alone when no copy of the categories is built', async () => {
     const gathered = await gatherPublicArt(doorTo(world), new Set());
     expect([...gathered.entered]).toEqual([HOSIER_LANE]);
+  });
+});
+
+describe('the guide door (ADR-0167)', () => {
+  const MEMORIAL = 'Q5003624';
+  const LINE = { enterSitelinks: ENTER_SITELINKS, staySitelinks: STAY_SITELINKS };
+  const world: World = {
+    entities: [
+      // The Voortrekker Monument: 20 editions, used by a Wikivoyage guide.
+      { qid: 'Q963472', label: 'Voortrekker Monument', under: MEMORIAL, sitelinks: 20, classes: [MEMORIAL] },
+      // A memorial of as many editions no guide uses: never in, and nothing is said.
+      { qid: 'Q2', label: 'Unguided', under: MEMORIAL, sitelinks: 20, classes: [MEMORIAL] },
+      // Two held rows under the stay line: one a guide uses, one none does.
+      { qid: 'Q4', label: 'Fell', under: MEMORIAL, sitelinks: STAY_SITELINKS - 1, classes: [MEMORIAL] },
+      { qid: 'Q5', label: 'Kept', under: MEMORIAL, sitelinks: STAY_SITELINKS - 1, classes: [MEMORIAL] },
+      // A memorial under the pool's floor, as the street-art entrance names one: not the door's.
+      { qid: 'Q6', label: 'Under the floor', under: MEMORIAL, sitelinks: 10, classes: [MEMORIAL] },
+      // A held row fallen under the floor, asked for by id: the line's, open door or shut.
+      { qid: 'Q7', label: 'Held under the floor', under: MEMORIAL, sitelinks: 10, classes: [MEMORIAL] },
+    ],
+  };
+  const held = new Set(['Q4', 'Q5', 'Q7']);
+
+  it('asks about every candidate below the line and at the pool\'s floor or over, the held ones included', async () => {
+    const gathered = await gatherPublicArt(doorTo(world), held);
+    expect(guideDoorCandidates(gathered).sort()).toEqual(['Q2', 'Q4', 'Q5', 'Q963472']);
+  });
+
+  it('admits a candidate under the line a guide uses, for a curator, and keeps or drops a held row by the guide', async () => {
+    const gathered = await gatherPublicArt(doorTo(world), held);
+    const { items, filtered } = classifyPublicArt(gathered, MONUMENTS_RULE, held, undefined, null, null, undefined, new Set(['Q963472', 'Q5']));
+    // The door's question travels as the row's admission note, like the readership door's.
+    expect(items.map((i) => [i.qid, i.type, i.readershipNote])).toEqual([
+      ['Q963472', 'memorial', guideDoorNote(20, LINE)],
+      ['Q5', 'memorial', guideDoorNote(STAY_SITELINKS - 1, LINE)],
+    ]);
+    expect(filtered).toEqual([
+      { externalId: 'Q4', name: 'Fell', reason: belowLineUnguidedReason(STAY_SITELINKS - 1, LINE), type: 'memorial' },
+      // Under the floor the guide is not asked, so the reason names no guide.
+      { externalId: 'Q7', name: 'Held under the floor', reason: belowLineReason(10, LINE), type: 'memorial' },
+    ]);
+  });
+
+  it('shut, lets nothing in and keeps the held rows with a note saying why', async () => {
+    const gathered = await gatherPublicArt(doorTo(world), held);
+    const { items, filtered } = classifyPublicArt(gathered, MONUMENTS_RULE, held, undefined, null, null, undefined, null);
+    expect(items.map((i) => [i.qid, i.readershipNote])).toEqual([
+      ['Q4', shutDoorNote(STAY_SITELINKS - 1, LINE)],
+      ['Q5', shutDoorNote(STAY_SITELINKS - 1, LINE)],
+    ]);
+    // A held row under the floor is the line's, shut door or open.
+    expect(filtered.map((f) => [f.externalId, f.reason])).toEqual([['Q7', belowLineReason(10, LINE)]]);
+  });
+
+  it('is no door of a kind that does not open it: the line alone decides', async () => {
+    const gathered = await gatherPublicArt(doorTo(world), held);
+    const { items, filtered } = classifyPublicArt(gathered, MONUMENTS_RULE, held);
+    expect(items).toEqual([]);
+    expect(filtered.map((f) => [f.externalId, f.reason])).toEqual([
+      ['Q4', belowLineReason(STAY_SITELINKS - 1, LINE)],
+      ['Q5', belowLineReason(STAY_SITELINKS - 1, LINE)],
+      ['Q7', belowLineReason(10, LINE)],
+    ]);
   });
 });

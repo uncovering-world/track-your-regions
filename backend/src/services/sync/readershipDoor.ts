@@ -221,13 +221,23 @@ async function readDoor(
   return { opened, bar: door.bar, exit: door.exit, guidedBar: door.guidedBar, guidedExit: door.guidedExit };
 }
 
-/** Whether the source's curator gate is on, saying so in the run's log when it is not. */
-async function gateIsOn(sourceId: number, logPrefix: string): Promise<boolean> {
+/**
+ * Whether the source's curator gate is on (ADR-0056 decision 5): every door
+ * that admits below a kind's line is the source's only while it is, since each
+ * arrival through one is for a person to read. The guide door asks it too
+ * (`publicArt/guideDoor.ts`).
+ */
+export async function curatorGateOn(sourceId: number): Promise<boolean> {
   const gate = await pool.query<{ requires_curation: boolean }>(
     'SELECT requires_curation FROM experience_sources WHERE id = $1',
     [sourceId],
   );
-  if (gate.rows[0]?.requires_curation) return true;
+  return gate.rows[0]?.requires_curation === true;
+}
+
+/** Whether the source's curator gate is on, saying so in the run's log when it is not. */
+async function gateIsOn(sourceId: number, logPrefix: string): Promise<boolean> {
+  if (await curatorGateOn(sourceId)) return true;
   console.log(`${logPrefix} The readership door is shut: the source's curator gate is off (ADR-0056 decision 5)`);
   return false;
 }
