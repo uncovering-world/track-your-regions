@@ -119,7 +119,33 @@ dumps; what the code reads is in § Calibration.
 
 When no year of readership is folded, editions alone would let in the pagodas the readers are
 there to see through, so no tower enters, and a tower the source holds keeps its place while it
-keeps 12 editions. The run says so in its log.
+keeps 12 editions — or, whatever its editions, while a Wikivoyage guide uses it, since the guide
+door that admitted it cannot be asked without a year (§ The guide door). The run says so in its log.
+
+## The guide door (2026-10-31, #1972, ADR-0168)
+
+The canon (`db/catalogue-coverage/calibration/towers.jsonl`, #1951) showed twelve tops the line
+cannot reach: ten described in fewer than 15 languages — the Asinelli Tower (9 editions), the Dom
+Tower of Utrecht (8), the Torrazzo of Cremona and Kalta Minor (14) — and two in the pool under
+25,000 readers, the Iron Pagoda of Kaifeng and the Songyue Pagoda. The #1997 report measured a
+Wikivoyage guide's use beside a year of readers on them, and the maintainer decided on 2026-10-30:
+a tower a guide uses that the year reads **15,000 times or over enters, whatever its editions, for
+a curator** (`TOWER_GUIDE_DOOR`, `towers/kind.ts`). It stays over 10,800, the line's own ratio of
+stay to enter. The door reads the pool and the towers under its floor (`towers/underFloor.ts`): the
+readership names what is read at the bar in fewer than 15 editions, the guide narrows it, and
+Wikidata is asked which carry a tower class with a point. #2145 restates the count as a rule that
+follows the year.
+
+Measured on the dev subset, read-only, main against the branch by item: the door brings **110**
+towers for a curator, 17 inside the pool and 93 under its floor, and loses none the line admitted.
+Twelve of the canon's sixteen reachable tops are among them (the two pagodas, the Torrazzo, Kalta
+Minor, the Torre dei Lamberti, the Martinitoren, Reunion Tower, the Three Pagodas of Chongsheng
+Temple, the Leaning Tower of Nevyansk, the Asinelli, the Dom Tower and the Garisenda); with them
+Kiek in de Kök, the Kızıl Kule, the Troitskaya Tower, the Gros Horloge, the Guinigi Tower and the
+Watts Towers, and a few a curator refuses — the Laboe Naval Memorial, the Avicenna Mausoleum, the
+Rottweil elevator test tower, the Emley Moor transmitting station. Kuala Lumpur Tower and the
+Torre Latinoamericana (skyscrapers), Beijing's Drum and Bell Towers (a building complex) and the
+Montreal Tower (under the bar) stay out.
 
 ## Calibration (2026-10-22, the dev subset, read-only in the dev container)
 
