@@ -19,7 +19,7 @@ import type { EntityDetails, EntityEdges, MuseumPart, PoolWork, RawStatement } f
 import type { VenueHolding, WorkDetails } from '../museum/venueSideQueries.js';
 import { MUSEUM_ROOT } from '../wikidataQueries.js';
 import { isQid, parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
-import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
+import { BEST, entitiesOf, STANDING, termsOf, type Kept, type Terms } from './entities.js';
 import { subsetClassTree } from './kit.js';
 import { DISSOLVED_UNKNOWN } from '../museum/venueTest.js';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
@@ -195,6 +195,8 @@ export async function subsetMuseumParts(qids: string[]): Promise<Map<string, Mus
   const museumAt = (part: string) => {
     const claims = parts.get(part)?.entity.claims;
     if (!claims || !itemsOf(bestStatements(claims.P31)).some(cls => museums.has(cls))) return null;
+    // A dissolved part is no house any more (#1617): Frick Madison closed in 2024.
+    if (dissolvedOf(claims.P576)) return null;
     const wkt = pointOf(claims.P625);
     return wkt ? parseWktPoint(wkt) : null;
   };
@@ -210,12 +212,13 @@ export async function subsetMuseumParts(qids: string[]): Promise<Map<string, Mus
 /** What each entity lists as its parts (best P527), and what names it as its whole (best P361). */
 async function partCandidates(qids: string[]): Promise<Map<string, Set<string>>> {
   const candidates = new Map<string, Set<string>>(qids.map(qid => [qid, new Set<string>()]));
+  // The parts that stand today (#1617): a listing with an end time is a house the whole has left.
   for (const [id, { entity }] of await entitiesOf(qids)) {
-    for (const part of itemsOf(bestStatements(entity.claims.P527))) candidates.get(id)!.add(part);
+    for (const part of itemsOf(standingStatements(entity.claims.P527))) candidates.get(id)!.add(part);
   }
   const reverse = await pool.query<{ subject: string; value_item: string }>(
     `SELECT c.subject, c.value_item FROM wikidata_claims c
-      WHERE c.property = 'P361' AND c.value_item = ANY($1::text[]) AND c.rank >= 0 AND ${BEST('c')}`,
+      WHERE c.property = 'P361' AND c.value_item = ANY($1::text[]) AND ${STANDING('c')} AND ${BEST('c')}`,
     [qids],
   );
   for (const row of reverse.rows) candidates.get(row.value_item)?.add(row.subject);
@@ -232,10 +235,7 @@ export async function subsetVenueHoldings(venues: string[], floor: number): Prom
   const result = await pool.query<{ work: string; venue: string; property: 'P195' | 'P276'; sitelinks: number }>(
     `SELECT DISTINCT c.subject AS work, c.value_item AS venue, c.property, e.sitelink_count AS sitelinks
        FROM wikidata_claims c JOIN wikidata_entities e ON e.id = c.subject
-      WHERE c.property IN ('P195', 'P276') AND c.value_item = ANY($1::text[]) AND c.rank >= 0
-        AND NOT EXISTS (
-          SELECT 1 FROM jsonb_array_elements(coalesce(c.qualifiers -> 'P582', '[]'::jsonb)) ended
-           WHERE ended <> '{"novalue": true}'::jsonb)
+      WHERE c.property IN ('P195', 'P276') AND c.value_item = ANY($1::text[]) AND ${STANDING('c')}
         AND e.sitelink_count >= $2`,
     [venues, floor],
   );

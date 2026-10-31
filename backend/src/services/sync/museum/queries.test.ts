@@ -181,7 +181,8 @@ describe('the museum parts of a door candidate', () => {
     }, ['Q653002', 'Q29286']);
 
     const flat = sent.replace(/\s+/g, ' ');
-    expect(flat).toContain('{ ?e wdt:P527 ?part } UNION { ?part wdt:P361 ?e }');
+    expect(flat).toContain('ps:P527 ?part . FILTER NOT EXISTS { ?st527 pq:P582 ?ended } } UNION { ?part p:P361');
+    expect(flat).toContain('FILTER NOT EXISTS { ?part wdt:P576 ?gone }');
     expect(flat).toContain('?part wdt:P31/wdt:P279* wd:Q33506 ; wdt:P625 ?coord');
     // Once per part, and an entity asked about with none answers an empty list.
     expect(parts.get('Q653002')).toEqual([{ qid: 'Q876610', lat: 51.3369, lon: 12.3886 }]);
