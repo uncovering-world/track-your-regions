@@ -2155,7 +2155,27 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 - An entity counts as a venue only if it passes a test: a museum-like class under `wdt:P279*` of
   `museum` (Q33506), coordinates of its own (`P625`), not dissolved (`P576`), and not on a
   kill-list of curatorial departments, art/private collections, museum networks and never-built
-  structures. A class that describes a place rather than an institution (a church building or
+  structures (`KILL_CLASSES` in `venueTest.ts`). Two of the kills are read with a second look
+  (#1617). A holding (`HOLDING_CLASSES`: an art or private collection) is forgiven when the entity
+  also carries a museum class, has coordinates of its own and is one house rather than an umbrella
+  of several (`VenueFacts.housesApart`, the graph's `isOrganisation` read over its parts): the
+  Frick Collection and the Carnegie Museum of Art are museums Wikidata also calls collections, and
+  the Bavarian State Painting Collections, twenty houses, stay a holding. A museum network
+  (`UMBRELLA_CLASSES`) is never a visit and is refused as before, but a work that names one is
+  placed at the house the network's own coordinate sits on (`VenueGraph.houseOf`: the nearest of
+  its museum parts within the container radius, walked by `walkHouses` so it has facts;
+  `resolveVenue` stands the network for it when it passes the venue test): the Tate's item sits
+  on Millbank, so *The Lady of Shalott*, which names the Tate and the National Gallery that once
+  owned it, hangs at Tate Britain rather than on Trafalgar Square; the Museo Soumaya's stands for
+  its Plaza Carso house, though the casts of *The Kiss* and *The Gates of Hell* that name it stay
+  where their preferred statements put them, the Musée Rodin and the Orsay. A network that stands
+  above a branch the same work names resolves to nothing (`placeArtwork`, the strict-ancestor read
+  of the raw values), so *Ophelia* still hangs at Tate Britain alone. Measured on the subset
+  against run 387 (2026-10-31, ADR-0170): the kill-list had refused 20 entities a work over the
+  line names, six of them museums typed collections and four networks; the second look admits the
+  Frick with nine works, Palazzo Vecchio with two and Buckingham Palace with three, and moves
+  seven works from the National Gallery to Tate Britain, losing none.
+  A class that describes a place rather than an institution (a church building or
   cathedral or minor basilica (Santa Maria Novella, which Places of worship shows), an archaeological park or Roman ruins, a villa — `SITE_CLASSES` in `venueTest.ts`)
   is vetoed the same way, unless the entity also carries an art class: the Uffizi is typed
   `palace, art museum`, and the palace must not disqualify it. A building among those classes (a
