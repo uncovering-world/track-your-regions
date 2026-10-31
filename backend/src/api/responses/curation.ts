@@ -20,6 +20,7 @@ import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
 import { CONTENT_KINDS } from '../../services/sync/types.js';
 import { WEBSITE_OUTCOMES, WEBSITE_REASONS } from '../../services/websiteCheck/checkWebsite.js';
+import { PICTURE_CLASSES } from '../../services/pictureClass/classifyPicture.js';
 import { placementTogether } from '../placementTogether.js';
 import { ImageCredit } from './experiences.js';
 
@@ -609,6 +610,24 @@ export const WebsiteCheckResult = z.strictObject({
   checkedAt: z.string().describe('When the address was checked; an outcome is kept for a day.'),
 }).describe('One official website on a review card, checked (#2165).');
 export type WebsiteCheckResult = z.infer<typeof WebsiteCheckResult>;
+
+export const PictureClassResult = z.strictObject({
+  url: z.string().describe('The picture, as the catalogue holds it or a proposal brings it.'),
+  class: z.enum(PICTURE_CLASSES).nullable().describe(
+    'What the picture is, as Commons states it: a photograph, a map, a drawing or engraving, or a diagram; null where'
+    + ' Commons gave nothing to class it by, or could not be asked.',
+  ),
+  basis: z.string().nullable().describe('What decided it: the category or the MIME type, as Commons states it.'),
+  checkedAt: z.string().describe('When Commons was asked; an answer is kept for a day.'),
+}).describe('One picture a review card shows, classed (#2192).');
+export type PictureClassResult = z.infer<typeof PictureClassResult>;
+
+export const PictureClasses = z.strictObject({
+  classes: z.array(PictureClassResult).describe(
+    "Every picture the card about this place shows: the place's own, each source's, its open proposals', its points' and its works'.",
+  ),
+}).describe('The pictures a review card shows, each classed by what Commons states (#2192).');
+export type PictureClasses = z.infer<typeof PictureClasses>;
 
 export const WebsiteChecks = z.strictObject({
   checks: z.array(WebsiteCheckResult).describe(

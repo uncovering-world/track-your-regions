@@ -46,6 +46,7 @@ export const EXCLUDED = {
   getAiModels: 'lists OpenAI models when a key is set',
   getAdminImageProxy: 'fetches from Wikimedia Commons',
   getExperiencesByIdWebsiteChecks: 'requests the official websites a place names, anywhere on the internet',
+  getExperiencesByIdPictureClasses: "asks Wikimedia Commons about a place's pictures",
   getAdminDataAssertions: 'runs every catalogue check, and is limited to five calls a minute on purpose',
   getWorldViewsRegionsByRegionIdGeometryComputeStream: 'computes and stores a region geometry',
   getAdminWvImportMatchesByWorldViewIdColorMatchStream: 'starts the colour-match pipeline',
@@ -63,7 +64,11 @@ export const EXCLUDED_CHECKS = ['unsupported_method'];
  * Who each run calls as, which declared access it reads, and how fast. A
  * traveller's routes sit behind `authenticatedLimiter`, which the environment
  * cannot raise (`middleware/rateLimiter.ts`), so that run keeps under it
- * rather than meeting 429 where it probes for 401.
+ * rather than meeting 429 where it probes for 401. The curator's read routes
+ * the lane does call (Jev's suggestions, the pins, the identifiers, the
+ * standings) sit behind the same limiter, and on 2026-10-31 the coverage phase
+ * crossed its sixty a minute from one address (#2192), so that run is paced
+ * the same way: headroom under the limiter for the routes it reads.
  */
 export const RUNS = [
   { caller: 'anonymous', access: ['public', 'optional'] },
@@ -71,7 +76,7 @@ export const RUNS = [
   // minutes: its routes are a traveller's own reads, and the coverage phase
   // still reaches every parameter.
   { caller: 'traveller', access: ['signed-in'], rateLimit: '50/m', maxExamples: 12 },
-  { caller: 'curator', access: ['curator'] },
+  { caller: 'curator', access: ['curator'], rateLimit: '50/m', maxExamples: 12 },
   { caller: 'admin', access: ['admin'] },
 ];
 

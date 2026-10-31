@@ -12893,6 +12893,56 @@
         }
       }
     },
+    "/api/experiences/{id}/picture-classes": {
+      "get": {
+        "operationId": "getExperiencesByIdPictureClasses",
+        "summary": "Say what the pictures on a place's review card are: photographs, maps, drawings or diagrams",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PictureClasses"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/curation-log": {
       "get": {
         "operationId": "getExperiencesByIdCurationLog",
@@ -29230,6 +29280,68 @@
         ],
         "additionalProperties": false,
         "description": "An unread work under a row readers already see."
+      },
+      "PictureClassResult": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The picture, as the catalogue holds it or a proposal brings it."
+          },
+          "class": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "photograph",
+                  "map",
+                  "drawing",
+                  "diagram"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the picture is, as Commons states it: a photograph, a map, a drawing or engraving, or a diagram; null where Commons gave nothing to class it by, or could not be asked."
+          },
+          "basis": {
+            "description": "What decided it: the category or the MIME type, as Commons states it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checkedAt": {
+            "type": "string",
+            "description": "When Commons was asked; an answer is kept for a day."
+          }
+        },
+        "required": [
+          "url",
+          "class",
+          "basis",
+          "checkedAt"
+        ],
+        "additionalProperties": false,
+        "description": "One picture a review card shows, classed (#2192)."
+      },
+      "PictureClasses": {
+        "type": "object",
+        "properties": {
+          "classes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PictureClassResult"
+            },
+            "description": "Every picture the card about this place shows: the place's own, each source's, its open proposals', its points' and its works'."
+          }
+        },
+        "required": [
+          "classes"
+        ],
+        "additionalProperties": false,
+        "description": "The pictures a review card shows, each classed by what Commons states (#2192)."
       },
       "PictureRepairStarted": {
         "type": "object",
