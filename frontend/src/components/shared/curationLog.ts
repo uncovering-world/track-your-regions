@@ -439,6 +439,9 @@ function formatAdmission(d: Record<string, unknown>): string | null {
   const lines: string[] = [];
   if (d.reason) lines.push(`The rule said: ${d.reason}`);
   if (d.note) lines.push(`“${d.note}”`);
+  // A script's words about how the answer came about (the unread batch's pins,
+  // read as a list, ADR-0096): the system's, so never in the curator's quotes (#2195).
+  if (typeof d.systemNote === 'string' && d.systemNote !== '') lines.push(`Recorded by the system: ${d.systemNote}`);
   // Whether later runs keep the answer (#1368): a card's answer chooses, a
   // batch's never pins (ADR-0067). An answer logged before the choice says nothing.
   if (d.pinned === true) lines.push('Remembered on later runs');

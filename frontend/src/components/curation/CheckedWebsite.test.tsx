@@ -24,7 +24,7 @@ import { meaningOf } from './fieldMeaning';
 
 const mockedChecks = getWebsiteChecks as unknown as ReturnType<typeof vi.fn>;
 const CHECKED_AT = '2026-10-31T08:00:00.000Z';
-const ON = new Date(CHECKED_AT).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const ON = new Date(CHECKED_AT).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
 function withQuery(children: ReactNode) {
   return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>;
@@ -42,23 +42,25 @@ describe('a checked official website (#2165)', () => {
     ] });
   });
 
-  it('says why a dead site is dead, and when it was checked', async () => {
+  it('says why a dead site is unreachable, and when it was checked', async () => {
     render(withQuery(<CheckedWebsite experienceId={205} url="http://www.villadestetivoli.info/"><a href="http://www.villadestetivoli.info/">site</a></CheckedWebsite>));
-    expect(await screen.findByText(`dead: domain not found, checked ${ON}`)).toBeInTheDocument();
+    expect(await screen.findByText(`site unreachable: domain not found, checked ${ON}`)).toBeInTheDocument();
     expect(mockedChecks).toHaveBeenCalledWith(205);
   });
 
-  it('says a site answered on a date, and never that it is safe', async () => {
+  it('says a site responds, checked on a date, and never that it is safe', async () => {
     render(withQuery(<CheckedWebsite experienceId={170} url="https://www.lourdes-france.org"><a href="https://www.lourdes-france.org">site</a></CheckedWebsite>));
-    const mark = await screen.findByText(`answered on ${ON}`);
+    // Named as the site's, never "answered on": under a card's heading that read as the
+    // card's own question having been answered (#2195).
+    const mark = await screen.findByText(`site responds (checked ${ON})`);
     expect(mark).toBeInTheDocument();
     expect(mark.textContent).not.toMatch(/safe|valid|correct/i);
   });
 
-  it('calls a parked domain dead, and a refusal only unclear', () => {
-    expect(checkWords({ outcome: 'dead', reason: 'domain-parked', checkedAt: CHECKED_AT })).toBe(`dead: domain for sale, checked ${ON}`);
-    expect(checkWords({ outcome: 'unclear', reason: 'refused-by-site', checkedAt: CHECKED_AT })).toBe('could not be checked: the site refused the check');
-    expect(checkWords({ outcome: 'dead', reason: 'page-not-found', checkedAt: CHECKED_AT })).toBe(`dead: page not found (404), checked ${ON}`);
+  it('calls a parked domain unreachable, and a refusal only not checked', () => {
+    expect(checkWords({ outcome: 'dead', reason: 'domain-parked', checkedAt: CHECKED_AT })).toBe(`site unreachable: domain for sale, checked ${ON}`);
+    expect(checkWords({ outcome: 'unclear', reason: 'refused-by-site', checkedAt: CHECKED_AT })).toBe('site not checked: the site refused the check');
+    expect(checkWords({ outcome: 'dead', reason: 'page-not-found', checkedAt: CHECKED_AT })).toBe(`site unreachable: page not found (404), checked ${ON}`);
   });
 
   it('asks once for a card whose links share a place', async () => {
@@ -68,7 +70,7 @@ describe('a checked official website (#2165)', () => {
         <CheckedWebsite experienceId={205} url="https://www.uffizi.it/"><span>two</span></CheckedWebsite>
       </>,
     ));
-    expect(await screen.findByText('could not be checked: the site refused the check')).toBeInTheDocument();
+    expect(await screen.findByText('site not checked: the site refused the check')).toBeInTheDocument();
     expect(mockedChecks).toHaveBeenCalledTimes(1);
   });
 
@@ -76,7 +78,7 @@ describe('a checked official website (#2165)', () => {
     onScreen = false;
     render(withQuery(<CheckedWebsite experienceId={205} url="http://www.villadestetivoli.info/"><a href="http://www.villadestetivoli.info/">site</a></CheckedWebsite>));
     await waitFor(() => expect(mockedChecks).not.toHaveBeenCalled());
-    expect(screen.queryByText(/dead:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/site unreachable:/)).not.toBeInTheDocument();
   });
 
   it('asks nothing without the place, and shows the link as it is', async () => {
@@ -89,7 +91,7 @@ describe('a checked official website (#2165)', () => {
     const website = meaningOf('metadata.website');
     render(withQuery(<>{website.render?.('http://www.villadestetivoli.info/', { proposed: [], experienceId: 205 }, 'after')}</>));
     expect(screen.getByRole('link', { name: 'http://www.villadestetivoli.info/' })).toBeInTheDocument();
-    expect(await screen.findByText(`dead: domain not found, checked ${ON}`)).toBeInTheDocument();
+    expect(await screen.findByText(`site unreachable: domain not found, checked ${ON}`)).toBeInTheDocument();
     mockedChecks.mockClear();
     render(withQuery(<>{website.render?.('https://www.uffizi.it/', { proposed: [], experienceId: 205, part: true }, 'after')}</>));
     await waitFor(() => expect(mockedChecks).not.toHaveBeenCalled());
@@ -103,6 +105,6 @@ describe('a checked official website (#2165)', () => {
     } as ReviewQueueItem;
     render(withQuery(<ObjectContext item={villa} />));
     expect(screen.getByRole('link', { name: 'official site' })).toHaveAttribute('href', 'http://www.villadestetivoli.info/');
-    expect(await screen.findByText(`dead: domain not found, checked ${ON}`)).toBeInTheDocument();
+    expect(await screen.findByText(`site unreachable: domain not found, checked ${ON}`)).toBeInTheDocument();
   });
 });

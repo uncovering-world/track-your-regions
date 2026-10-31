@@ -54,6 +54,16 @@ function answeredWords(question: PinQuestion): string {
   return question.answer === 'admitted' ? 'You put it back' : 'You kept it out';
 }
 
+/**
+ * How the answer stood to the rule's verdict of the day (#2195). A put-back
+ * beside a refusal overrode it; a keep-out beside one agreed with it, and
+ * "over the rule's objection" there would invent an objection the rule never
+ * raised (Karl Marx Monument: kept out at 17 editions, as the rule said).
+ */
+function ruleThenWords(question: PinQuestion): string {
+  return question.answer === question.answeredVerdict ? 'as the rule did then:' : 'over the rule’s objection then:';
+}
+
 /** The outcome line the page shows once the answer lands. */
 function outcomeFor(item: ReviewQueueItem, result: PinQuestionAnswered): string {
   if (result.pinned) return `${item.name}: your answer stands in ${item.kind_name}`;
@@ -90,9 +100,15 @@ function PinSection({ item, membershipId, question, heading, onDone }: {
         {question.answeredAt ? ` on ${formatDateTime(question.answeredAt)}` : ''}
         {question.note ? ` — “${question.note}”` : ''}
       </Typography>
+      {/* A script's words about how the answer came about (the unread batch's
+          pins, read as a list, ADR-0096): the system's, so said to be and never
+          put in the curator's quotes (#2195). */}
+      {question.systemNote && (
+        <Typography variant="caption" color="text.secondary">Recorded by the system: {question.systemNote}</Typography>
+      )}
       {question.answeredVerdict === 'refused' && question.answeredReason && (
         <Stack sx={{ mb: 1 }}>
-          <Typography variant="caption" color="text.secondary">over the rule’s objection then:</Typography>
+          <Typography variant="caption" color="text.secondary">{ruleThenWords(question)}</Typography>
           <RefusalLine reason={question.answeredReason} name={item.name} />
         </Stack>
       )}
@@ -112,8 +128,8 @@ function PinSection({ item, membershipId, question, heading, onDone }: {
           </Typography>
         )}
       {/* An admission is said either way: for a refused arrival asked again it is
-          the only statement of what the curator kept out, since no "objection
-          then" line precedes it. A refusal's reason, restated, was shown above. */}
+          the only statement of what the curator kept out, since no "rule then"
+          line precedes it. A refusal's reason, restated, was shown above. */}
       {admits && (
         <Typography variant="body2" sx={{ mb: 1 }}>
           The rule would now admit it to {item.kind_name}.

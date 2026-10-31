@@ -98,4 +98,25 @@ describe('a refusal a curator kept out', () => {
     expect(screen.getByText('Readers still see this place under Art Museums; this keeps it out of Archaeology alone.'))
       .toBeInTheDocument();
   });
+
+  it("says what the system recorded about the answer apart from the curator's words (#2195)", () => {
+    // A script released the unread batch answer's pin and recorded how (ADR-0096):
+    // the system's sentence, never put in the curator's quotes.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <KeptOutCard
+          item={refusal({
+            membership_id: 21, admission_reason: 'not an archaeological site', state_decided_at: '2026-10-12T10:00:00Z',
+            state_note: null, state_system_note: 'released when the batch answer of 14 September 2026 was read',
+          })}
+          onDone={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText(/Kept out on .* — recorded by the system: released when the batch answer of 14 September 2026 was read/))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/“/)).not.toBeInTheDocument();
+  });
 });
