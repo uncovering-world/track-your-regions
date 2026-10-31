@@ -28,3 +28,4 @@ and says so in its first lines.
 | [2026-10-26 — What a visitor finds at a serial World Heritage site's component points](2026-10-26-what-a-visitor-finds-at-serial-component-points.md) | #2058 |
 | [2026-10-27 — How Wikivoyage's IsPartOf hierarchy agrees with its Regions sections](2026-10-27-how-wikivoyages-hierarchy-agrees-with-its-regions-sections.md) | #2088, #2090 |
 | [2026-10-30 — What signals other than Wikipedia editions find under a kind's line](2026-10-30-what-other-signals-find-under-a-kinds-editions-line.md) | #1997 |
+| [2026-10-31 — A place measured against its surroundings: the unit and the bar of a global source's regional tier](2026-10-31-a-places-surroundings-as-the-regional-tiers-unit.md) | #2154, ADR-0171 |
