@@ -26,18 +26,18 @@ const DURHAM = {
     {
       proposalId: 41, otherId: 13341, otherName: 'Durham Cathedral', otherKinds: ['Places of worship'],
       otherImageUrl: null, otherImageCredit: null, otherLatitude: 54.7733, otherLongitude: -1.5755,
-      otherWikidataItem: 'Q1250209', anchorWikidataItem: 'Q1250209', anchorKinds: ['World Heritage Sites'],
+      otherWikidataItem: 'Q1250209', anchorWikidataItem: 'Q1250209', otherItemClaimed: true, anchorItemClaimed: true, anchorKinds: ['World Heritage Sites'],
       otherWikidataLabel: null, otherWikidataDescription: null, anchorWikidataLabel: null, anchorWikidataDescription: null,
       distanceM: 139, nameSimilarity: 0.6486,
-      exact: false, reachM: 300, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',
+      exact: false, reachM: 300, foundBy: 'similar', matchedWords: null, proposedAt: '2026-10-17T10:00:00.000Z',
     },
     {
       proposalId: 42, otherId: 11800, otherName: 'Durham Castle and Cathedral', otherKinds: ['Public art'],
       otherImageUrl: null, otherImageCredit: null, otherLatitude: 54.7745, otherLongitude: -1.5760,
-      otherWikidataItem: 'Q5316567', anchorWikidataItem: 'Q1250209', anchorKinds: ['World Heritage Sites'],
+      otherWikidataItem: 'Q5316567', anchorWikidataItem: 'Q1250209', otherItemClaimed: true, anchorItemClaimed: true, anchorKinds: ['World Heritage Sites'],
       otherWikidataLabel: null, otherWikidataDescription: null, anchorWikidataLabel: null, anchorWikidataDescription: null,
       distanceM: 20, nameSimilarity: 1,
-      exact: true, reachM: 300, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',
+      exact: true, reachM: 300, foundBy: 'similar', matchedWords: null, proposedAt: '2026-10-17T10:00:00.000Z',
     },
   ],
 } as unknown as ReviewQueueItem;
@@ -53,10 +53,10 @@ const BABYLON = {
   merge_pairs: [{
     proposalId: 37, otherId: 14711, otherName: 'Babylon', otherKinds: ['Archaeology'],
     otherImageUrl: null, otherImageCredit: null, otherLatitude: 32.5363, otherLongitude: 44.4209,
-    otherWikidataItem: 'Q5684', anchorWikidataItem: 'Q100329356', anchorKinds: ['World Heritage Sites'],
+    otherWikidataItem: 'Q5684', anchorWikidataItem: 'Q100329356', otherItemClaimed: true, anchorItemClaimed: true, anchorKinds: ['World Heritage Sites'],
     otherWikidataLabel: 'Babylon', otherWikidataDescription: 'capital city of Babylonia and an archaeological site in modern-day Iraq',
     anchorWikidataLabel: 'Babylon', anchorWikidataDescription: 'archaeological site of ancient Babylon, Iraq',
-    distanceM: 64, nameSimilarity: 1, exact: false, reachM: 3000, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',
+    distanceM: 64, nameSimilarity: 1, exact: false, reachM: 3000, foundBy: 'similar', matchedWords: null, proposedAt: '2026-10-17T10:00:00.000Z',
   }],
 } as unknown as ReviewQueueItem;
 
@@ -85,7 +85,7 @@ describe('two near places with similar names', () => {
     expect(screen.getByText('same name, same spot')).toBeTruthy();
     // Two different Wikidata items on the public-art pair, and one shared item on the cathedral's.
     expect(screen.getAllByText('Two different Wikidata items:')).toHaveLength(1);
-    expect(screen.getByText(/Both are Wikidata/)).toBeTruthy();
+    expect(screen.getByText(/Both claim Wikidata/)).toBeTruthy();
     expect(screen.getAllByRole('link', { name: 'Q1250209' })[0]).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q1250209');
     expect(screen.getByRole('button', { name: 'Save answers' })).toBeDisabled();
   });
@@ -214,6 +214,55 @@ describe('a pair found because one name stands within the other (#1652)', () => 
     );
     expect(screen.getByText(/7 m apart · one name within the other/)).toBeTruthy();
     expect(screen.queryByText(/17 % alike/)).toBeNull();
+  });
+
+  it("says the words a containment stood on: a town's name alone as one word in common (#2194)", () => {
+    // Tallinn's Old Town beside Freedom Square, 431 m: the one word the two names share is the town's,
+    // and "one name within the other" read as a name match that was not there.
+    const tallinn = {
+      ...DURHAM, id: 54, name: 'Historic Centre (Old Town) of Tallinn',
+      merge_pairs: [
+        {
+          ...(DURHAM.merge_pairs ?? [])[0], proposalId: 115, otherId: 16500, otherName: 'Freedom Square (Tallinn)', distanceM: 431,
+          nameSimilarity: 0.19, exact: false, foundBy: 'words', matchedWords: ['tallinn'],
+        },
+        {
+          ...(DURHAM.merge_pairs ?? [])[0], proposalId: 116, otherId: 16501, otherName: 'Westminster Abbey', distanceM: 40,
+          nameSimilarity: 0.3, exact: false, foundBy: 'words', matchedWords: ['westminster', 'abbey'],
+        },
+      ],
+    } as unknown as ReviewQueueItem;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MergeProposalsCard item={tallinn} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText(/431 m apart · one word in common: “tallinn”/)).toBeTruthy();
+    expect(screen.getByText(/40 m apart · the words “westminster”, “abbey” stand in both places’ names/)).toBeTruthy();
+    expect(screen.queryByText(/one name within the other/)).toBeNull();
+  });
+
+  it("says whose item one shared item is, where only one place claims it as its own (#2194)", () => {
+    // Q957628 is the Saint Stepanos Monastery's own; each of the ensemble's three components carries it too.
+    const stepanos = {
+      ...DURHAM, id: 13548, name: 'Saint Stepanos Monastery', kind_name: 'Places of worship',
+      merge_pairs: [{
+        ...(DURHAM.merge_pairs ?? [])[0], proposalId: 346, otherId: 37659,
+        otherName: 'The main church (Monastery of Saint Stepanos Esemble)', otherKinds: [],
+        otherPartOf: 'Armenian Monastic Ensembles of Iran', anchorKinds: ['Places of worship'],
+        otherWikidataItem: 'Q957628', anchorWikidataItem: 'Q957628', otherItemClaimed: false, anchorItemClaimed: true,
+        anchorWikidataLabel: 'Saint Stepanos Monastery', anchorWikidataDescription: 'Armenian monastery in Iran',
+      }],
+    } as unknown as ReviewQueueItem;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MergeProposalsCard item={stepanos} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    const line = screen.getByText(/is Saint Stepanos Monastery’s own item/);
+    expect(line.textContent).toContain('Wikidata Q957628 — Saint Stepanos Monastery, Armenian monastery in Iran is Saint Stepanos Monastery’s own item; '
+      + 'The main church (Monastery of Saint Stepanos Esemble) carries it too, as several places do, and only refers to it.');
+    expect(screen.queryByText(/Both claim Wikidata/)).toBeNull();
   });
 });
 

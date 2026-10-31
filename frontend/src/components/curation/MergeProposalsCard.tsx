@@ -59,12 +59,23 @@ function judgementWords(judgement: Judgement): string {
 
 /**
  * How alike the names are: the same, a share, or — for a pair found because
- * every word of one name stands in the other's (#1652) — that, since a share
- * of 17 % would read as a reason not to ask.
+ * every word of one name stands in the other's (#1652) — the words that
+ * matched (#2194), since a share of 17 % would read as a reason not to ask,
+ * and the one word two names share is often a town's (Tallinn's Old Town
+ * beside Freedom Square), which "one name within the other" would overstate.
+ * Said of the places' names, not of the two shown: the rule reads every name
+ * a place is known by, and the word may stand in a source's or a local name
+ * the card does not print. A pair written before the words were recorded
+ * says the rule's name.
  */
 function similarityWords(pair: Pair): string {
   if (pair.nameSimilarity >= 1) return 'the same name';
-  if (pair.foundBy === 'words') return 'one name within the other';
+  if (pair.foundBy === 'words') {
+    const words = pair.matchedWords;
+    if (!words || words.length === 0) return 'one name within the other';
+    const quoted = words.map(word => `“${word}”`).join(', ');
+    return words.length === 1 ? `one word in common: ${quoted}` : `the words ${quoted} stand in both places’ names`;
+  }
   return `names ${Math.round(pair.nameSimilarity * 100)} % alike`;
 }
 
@@ -102,24 +113,45 @@ function whatItIs(kinds: readonly string[], partOf: string | null): string[] {
 }
 
 /**
- * The two places' Wikidata items (#1970). One item they share is one link.
+ * The two places' Wikidata items (#1970). One item they share is one link,
+ * and the line says whose it is (`anchorItemClaimed`, `otherItemClaimed`,
+ * ADR-0143 decision 2, #2194): claimed by both, the strongest sign of one
+ * place; one place's own and carried by the other — Q957628 is the Saint
+ * Stepanos Monastery's and each of the ensemble's three components carries
+ * it, so the question is whether the main church is the monastery or a part
+ * of it; or neither's own, as an item several places carry.
  * Two items are each named beside the place that carries it, with the label
  * and description that tell them apart: Babylon's city, Q5684, from the item
  * of its World Heritage listing, Q100329356. A place with no item is said to
  * have none, since a serial site or a place whose point was never written
- * resolves to no item, and silence would read as the same item.
+ * resolves to no item, and silence would read as the same item. `SharedItem`
+ * is the one-item line, on its own so each function reads at a glance.
  */
+function SharedItem({ item, pair }: { item: ReviewQueueItem; pair: Pair }) {
+  const link = <ItemText item={pair.anchorWikidataItem!} label={pair.anchorWikidataLabel} description={pair.anchorWikidataDescription} />;
+  if (pair.anchorItemClaimed && pair.otherItemClaimed) {
+    return <Typography variant="body2" color="text.secondary">Both claim Wikidata {link} as their own item.</Typography>;
+  }
+  if (!pair.anchorItemClaimed && !pair.otherItemClaimed) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        Both carry Wikidata {link}, neither as its own: several places carry it.
+      </Typography>
+    );
+  }
+  const [owner, carrier] = pair.anchorItemClaimed ? [item.name, pair.otherName] : [pair.otherName, item.name];
+  return (
+    <Typography variant="body2" color="text.secondary">
+      Wikidata {link} is {owner}’s own item; {carrier} carries it too, as several places do, and only refers to it.
+    </Typography>
+  );
+}
+
 function PairItems({ item, pair }: { item: ReviewQueueItem; pair: Pair }) {
   const anchor = pair.anchorWikidataItem;
   const other = pair.otherWikidataItem;
   if (!anchor && !other) return null;
-  if (anchor === other) {
-    return (
-      <Typography variant="body2" color="text.secondary">
-        Both are Wikidata <ItemText item={anchor!} label={pair.anchorWikidataLabel} description={pair.anchorWikidataDescription} />
-      </Typography>
-    );
-  }
+  if (anchor === other) return <SharedItem item={item} pair={pair} />;
   const anchorPlace = `${item.name} (${['this card', ...whatItIs(pair.anchorKinds, pair.anchorPartOf)].join(', ')})`;
   const otherWhat = whatItIs(pair.otherKinds, pair.otherPartOf);
   const otherPlace = otherWhat.length ? `${pair.otherName} (${otherWhat.join(', ')})` : pair.otherName;
@@ -275,11 +307,15 @@ export function MergeProposalsCard({ item, onDone }: {
   // Jev's judgement, where this deployment asks Jev (#1249): shown beside each
   // pair, never chosen for the curator. A failed read shows none. Keyed by the
   // pairs as the question is built from them — both names, the distance, the
-  // similarity, whether exact — not by their ids alone: a judgement is about
-  // the pair it was asked for, and a card showing a pair the pass measured
-  // anew, or a place renamed, asks again rather than showing a cached word.
+  // similarity, whether exact, the words matched and whether each place claims
+  // its item (#2194) — not by their ids alone: a judgement is about the pair it
+  // was asked for, and a card showing a pair the pass measured anew, or a place
+  // renamed, asks again rather than showing a cached word.
   const asked = JSON.stringify([
-    item.name, ...pairs.map(pair => [pair.proposalId, pair.otherName, pair.distanceM, pair.nameSimilarity, pair.exact]),
+    item.name, ...pairs.map(pair => [
+      pair.proposalId, pair.otherName, pair.distanceM, pair.nameSimilarity, pair.exact,
+      pair.matchedWords, pair.anchorItemClaimed, pair.otherItemClaimed,
+    ]),
   ]);
   const { data: judged } = useQuery({
     queryKey: queryKeys.experience.mergeProposalSuggestions(item.id, asked),
