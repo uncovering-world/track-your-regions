@@ -86,6 +86,18 @@ export const MEMORIAL_CLASSES: Record<string, string> = {
 };
 
 /**
+ * The commemorative classes a constant can read: the pinned ones and the roots
+ * of the walked closures. What lifts a kill for Monuments & memorials
+ * (`MEMORIAL_LIFTED_KILLS`) is read off this floor rather than off the walked
+ * tree, so the rule and the catalogue check, which cannot walk a tree
+ * (`objectAssertions.ts`), read one list and agree on every row.
+ */
+export const COMMEMORATIVE_FLOOR: Record<string, string> = {
+  ...COMMEMORATIVE_ROOTS,
+  ...MEMORIAL_CLASSES,
+};
+
+/**
  * The heritage sense of "monument": a designation that admits a row to the
  * pool and says nothing about what stands there. Spain's register calls a
  * museum a monument (the Reina Sofía, the Bilbao Fine Arts Museum); a national
@@ -377,9 +389,10 @@ export const KILL_CLASSES: Record<string, string> = {
   Q1066288: 'figurine',
   Q10855061: 'archaeological find',
   Q220659: 'archaeological artefact',
-  // Organisations: Yad Vashem is a research institute, an archive and a
-  // publishing house before it is a memorial; the Australian War Memorial is
-  // a government body.
+  // Organisations: a foundation, an archive, a government body. A memorial
+  // typed one of these as well is still the memorial, for Monuments &
+  // memorials (`MEMORIAL_LIFTED_KILLS`): Yad Vashem is a research institute,
+  // an archive and a publishing house too.
   Q31855: 'research institute',
   Q166118: 'archives',
   Q2945282: 'documentation centre',
@@ -513,6 +526,39 @@ export const MEMORIAL_LIFTS: Record<string, string> = {
   Q811979: 'built structure',
   Q2914427: 'guardhouse',
   Q95652804: 'A-bombed building',
+};
+
+/**
+ * The kills a commemorative class (`COMMEMORATIVE_FLOOR`) lifts for Monuments
+ * & memorials (#1989): the organisations, since a memorial that is also an
+ * archive, a research institute or a government body is still the memorial a
+ * traveller goes to — Yad Vashem, the United States Holocaust Memorial Museum,
+ * the Australian War Memorial; the two attractions a memorial can be filed as
+ * — the Walhalla is a hall of fame, Nagasaki Peace Park a sculpture garden;
+ * and the burial classes, which a commemorative form lifts already
+ * (`BURIAL_CLASSES`, #1832) — Anıtkabir, the Ho Chi Minh Mausoleum and
+ * Mazar-e-Quaid are mausoleums typed memorials, and are the monument of their
+ * country. Measured on the development run of 2026-10-30 (#1989): ten places
+ * enter, every one a monument. A camp, an archaeological site, a settlement,
+ * a park and a landscape stay killed whatever else they carry: Stutthof,
+ * Stonehenge, the commune of Le Gua and Madurodam are what they are. A `P547`
+ * statement lifts none of these — a foundation that commemorates someone is
+ * not a place to stand in front of.
+ */
+export const MEMORIAL_LIFTED_KILLS: Record<string, string> = {
+  Q31855: 'research institute',
+  Q166118: 'archives',
+  Q2945282: 'documentation centre',
+  Q2085381: 'publishing house',
+  Q699386: 'statutory corporation',
+  Q163740: 'nonprofit organization',
+  Q20857065: 'United States federal agency',
+  Q110376455: 'Government body of Australia',
+  Q11396960: 'production company',
+  Q7247847: 'production team',
+  Q1046088: 'hall of fame',
+  Q1759852: 'sculpture garden',
+  ...BURIAL_CLASSES,
 };
 
 // =============================================================================
