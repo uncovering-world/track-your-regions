@@ -50,12 +50,14 @@ export async function listAdmissionPins(
   const result = await pool.query<{
     experience_id: number; name: string; membership_id: number; kind_name: string;
     answer: 'admitted' | 'refused'; answered_reason: string | null; answered_at: Date | null;
-    note: string | null; curator_name: string | null; added: boolean; questioned: boolean; can_hand_back: boolean;
+    note: string | null; system_note: string | null; curator_name: string | null; added: boolean; questioned: boolean;
+    can_hand_back: boolean;
   }>(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id AS experience_id, e.name, m.id AS membership_id, kd.name AS kind_name,
            m.admission AS answer, m.admission_pin_reason AS answered_reason,
            COALESCE(pinned_by.at, e.state_decided_at) AS answered_at,
            CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.note ELSE e.state_note END AS note,
+           CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.system_note END AS system_note,
            CASE WHEN ${nameVisible} THEN u.display_name END AS curator_name,
            pinned_by.action IS NOT DISTINCT FROM 'kind_added' AS added,
            m.admission_questioned_at IS NOT NULL AS questioned,
@@ -85,6 +87,7 @@ export async function listAdmissionPins(
       answeredReason: row.answered_reason,
       answeredAt: row.answered_at?.toISOString() ?? null,
       note: row.note,
+      systemNote: row.system_note,
       curatorName: row.curator_name,
       added: row.added,
       questioned: row.questioned,

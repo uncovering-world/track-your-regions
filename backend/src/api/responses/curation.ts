@@ -120,7 +120,10 @@ export const AdmissionPin = z.strictObject({
     + " with; null where the pin answered the run's admission (a curator's own refusal of an arrival).",
   ),
   answeredAt: z.iso.datetime({ offset: true }).nullable().describe('When the answer was given.'),
-  note: z.string().nullable(),
+  note: z.string().nullable().describe("The curator's own words with the answer."),
+  systemNote: z.string().nullable().describe(
+    "What the system recorded about how the answer came about, where a script answered on the curator's behalf (#2195).",
+  ),
   curatorName: z.string().nullable().describe(
     'Who answered, as they chose to be named; null where they chose nothing or where the act lies outside the'
     + " caller's regions, as in the curation log.",

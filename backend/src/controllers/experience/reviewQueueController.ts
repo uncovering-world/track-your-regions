@@ -379,6 +379,10 @@ export async function getReviewQueue(
            -- one an answer logged before memberships were named carries.
            COALESCE(answer.at, m.admission_answered_at, e.state_decided_at) AS state_decided_at,
            CASE WHEN answer.at IS NOT NULL THEN answer.note ELSE e.state_note END AS state_note,
+           -- What a script recorded about how the answer came about (the unread
+           -- batch's pins, read as a list): the system's words, never the
+           -- curator's (#2195).
+           CASE WHEN answer.at IS NOT NULL THEN answer.system_note END AS state_system_note,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'kept-out' AS kind, ${countedWorksSelectSql()},
            NULL::jsonb AS proposed
@@ -386,7 +390,7 @@ export async function getReviewQueue(
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
     JOIN ${KINDS} kd ON kd.id = m.kind_id
     LEFT JOIN LATERAL (
-      SELECT cl.created_at AS at, cl.details->>'note' AS note
+      SELECT cl.created_at AS at, cl.details->>'note' AS note, cl.details->>'systemNote' AS system_note
         FROM experience_curation_log cl
        WHERE cl.experience_id = e.id AND (cl.action IN ('admission_confirmed', 'arrival_refused', 'kept_out', 'marked_former', 'admission_pin_released', 'admission_pin_kept')
               OR (cl.action = 'visit_question_answered' AND cl.details->>'answer' = 'refused'))

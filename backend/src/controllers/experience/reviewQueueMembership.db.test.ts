@@ -539,6 +539,30 @@ describe('a refusal of each membership (#1264)', () => {
     const noteOf = Object.fromEntries(queue.keptOut.map(item => [item.membership_id, item.state_note]));
     expect(noteOf).toEqual({ [archaeology]: 'no excavated holdings', [art]: 'antiquities only' });
   });
+
+  it("carries what the system recorded about a kept-out answer apart from the curator's words (#2195)", async () => {
+    // A script released the unread batch answer's pin (ADR-0096) and recorded how:
+    // its sentence is the system's, never the curator's note.
+    const archaeology = await refuseArchaeology();
+    await pool.query('UPDATE experience_kind_memberships SET admission_answered_at = NOW() WHERE id = $1', [archaeology]);
+    await pool.query(
+      `INSERT INTO experience_curation_log (experience_id, curator_id, action, details) VALUES ($1, $2, 'admission_pin_released', $3)`,
+      [PLACE, adminId, JSON.stringify({
+        membershipId: archaeology, reason: 'not an archaeological site',
+        systemNote: 'released when the batch answer of 14 September 2026 was read',
+      })],
+    );
+
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+
+    expect(queue.keptOut).toEqual([expect.objectContaining({
+      membership_id: archaeology, state_note: null,
+      state_system_note: 'released when the batch answer of 14 September 2026 was read',
+    })]);
+  });
 });
 
 describe('a kind whose source stopped listing the place (#1264)', () => {

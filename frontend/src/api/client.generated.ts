@@ -3193,8 +3193,16 @@ export interface AdmissionPin {
   answeredReason: string | null;
   /** When the answer was given. */
   answeredAt: string | null;
-  /** @nullable */
+  /**
+     * The curator's own words with the answer.
+     * @nullable
+     */
   note: string | null;
+  /**
+     * What the system recorded about how the answer came about, where a script answered on the curator's behalf (#2195).
+     * @nullable
+     */
+  systemNote: string | null;
   /**
      * Who answered, as they chose to be named; null where they chose nothing or where the act lies outside the caller's regions, as in the curation log.
      * @nullable
@@ -4189,10 +4197,15 @@ export interface PinQuestion {
   /** When the curator gave the answer the pin stands on. */
   answeredAt: string | null;
   /**
-     * The note given with it.
+     * The note given with it: the curator's own words.
      * @nullable
      */
   note: string | null;
+  /**
+     * What the system recorded about how the answer came about, where a script answered on the curator's behalf (the unread batch answer's pins, read as a list, ADR-0096): shown as the system's, never quoted as the curator's (#2195).
+     * @nullable
+     */
+  systemNote: string | null;
 }
 
 export type VisitQuestionWitnessesItem = typeof VisitQuestionWitnessesItem[keyof typeof VisitQuestionWitnessesItem];
@@ -4280,6 +4293,7 @@ export interface ReviewQueueItem {
   object_description?: string | null;
   object_description_source?: DescriptionSource | null;
   object_description_adapted?: boolean;
+  /** The regions the object counts in, every world view together. */
   region_names?: string[] | null;
   part_of?: PartOf | null;
   /** On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. An open refusal carries none, since it is asked only where no other kind offers the place (#1838). */

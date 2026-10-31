@@ -381,7 +381,12 @@ export const PinQuestion = z.strictObject({
   askedAt: timestamp.describe('When a run first asked this question.'),
   restated: z.boolean().describe('The run says what the curator answered over, in the same words: asked again on request after a rule changed (#1370), not because the rule moved.'),
   answeredAt: timestamp.nullable().describe("When the curator gave the answer the pin stands on."),
-  note: z.string().nullable().describe('The note given with it.'),
+  note: z.string().nullable().describe("The note given with it: the curator's own words."),
+  systemNote: z.string().nullable().describe(
+    'What the system recorded about how the answer came about, where a script answered on the curator\'s behalf'
+    + ' (the unread batch answer\'s pins, read as a list, ADR-0096): shown as the system\'s, never quoted as the'
+    + " curator's (#2195).",
+  ),
 }).describe("A curator's admission pin a run no longer agrees with (#1367).");
 export type PinQuestion = z.infer<typeof PinQuestion>;
 
@@ -430,7 +435,7 @@ export const ReviewQueueItem = z.strictObject({
   ),
   object_description_source: DescriptionSource.optional(),
   object_description_adapted: z.boolean().optional(),
-  region_names: z.array(z.string()).nullable().optional(),
+  region_names: z.array(z.string()).nullable().optional().describe('The regions the object counts in, every world view together.'),
   part_of: PartOf.nullable().optional(),
   seen_in: z.array(z.string()).optional().describe(
     'On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in,'
@@ -447,7 +452,10 @@ export const ReviewQueueItem = z.strictObject({
   danger_since: z.number().int().nullable().optional().describe('The year the site was listed in danger.'),
   admission_reason: z.string().nullable().optional().describe("Why this kind turned the row down, in the rule's own words."),
   state_decided_at: timestamp.nullable().optional().describe('When a curator answered. Kept-out items only.'),
-  state_note: z.string().nullable().optional(),
+  state_note: z.string().nullable().optional().describe("The curator's own words with the answer. Kept-out items only."),
+  state_system_note: z.string().nullable().optional().describe(
+    "What the system recorded about how the answer came about, where a script answered on the curator's behalf (#2195). Kept-out items only.",
+  ),
   proposed: z.array(ProposedField).nullable().describe(
     'The fields a run proposed. Null on every kind that carries no proposal, never absent.',
   ),

@@ -24,8 +24,10 @@ import { releaseAdmissionPin } from '../controllers/experience/membershipWriter.
 
 const BATCH_FROM = '2026-09-14T16:33:50Z';
 const BATCH_TO = '2026-09-14T16:34:00Z';
-const NOTE_RELEASED = 'Pinned by the unread batch answer of 2026-09-14; released once read (#1365)';
-const NOTE_KEPT = 'Pinned by the unread batch answer of 2026-09-14; kept once read (#1365)';
+// What the script records about how the answer came about: the system's words,
+// under `systemNote`, never `note`, which every screen quotes as the curator's.
+const NOTE_RELEASED = 'released when the batch answer of 14 September 2026 was read';
+const NOTE_KEPT = 'kept when the batch answer of 14 September 2026 was read';
 
 interface BatchPin {
   placeId: number;
@@ -74,7 +76,7 @@ async function batchPins(): Promise<BatchPin[]> {
 async function keptAlready(client: PoolClient, pin: BatchPin): Promise<boolean> {
   const found = await client.query(
     `SELECT 1 FROM experience_curation_log
-      WHERE experience_id = $1 AND action = 'admission_overridden' AND details->>'note' = $2`,
+      WHERE experience_id = $1 AND action = 'admission_overridden' AND details->>'systemNote' = $2`,
     [pin.placeId, NOTE_KEPT],
   );
   return (found.rowCount ?? 0) > 0;
@@ -97,7 +99,7 @@ async function answer(pin: BatchPin, keep: boolean, curatorId: number): Promise<
       `INSERT INTO experience_curation_log (experience_id, curator_id, action, details)
        VALUES ($1, $2, $3, $4)`,
       [pin.placeId, curatorId, keep ? 'admission_overridden' : 'admission_pin_released',
-        JSON.stringify({ reason: pin.reason, note: keep ? NOTE_KEPT : NOTE_RELEASED, kind: pin.kind, membershipId: pin.membershipId })],
+        JSON.stringify({ reason: pin.reason, systemNote: keep ? NOTE_KEPT : NOTE_RELEASED, kind: pin.kind, membershipId: pin.membershipId })],
     );
     await client.query('COMMIT');
   } catch (error) {

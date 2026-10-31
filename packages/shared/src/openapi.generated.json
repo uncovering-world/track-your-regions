@@ -16514,6 +16514,14 @@
             "description": "When the answer was given."
           },
           "note": {
+            "description": "The curator's own words with the answer.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "systemNote": {
+            "description": "What the system recorded about how the answer came about, where a script answered on the curator's behalf (#2195).",
             "type": [
               "string",
               "null"
@@ -16548,6 +16556,7 @@
           "answeredReason",
           "answeredAt",
           "note",
+          "systemNote",
           "curatorName",
           "added",
           "questioned",
@@ -29287,7 +29296,14 @@
             "description": "When the curator gave the answer the pin stands on."
           },
           "note": {
-            "description": "The note given with it.",
+            "description": "The note given with it: the curator's own words.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "systemNote": {
+            "description": "What the system recorded about how the answer came about, where a script answered on the curator's behalf (the unread batch answer's pins, read as a list, ADR-0096): shown as the system's, never quoted as the curator's (#2195).",
             "type": [
               "string",
               "null"
@@ -29303,7 +29319,8 @@
           "askedAt",
           "restated",
           "answeredAt",
-          "note"
+          "note",
+          "systemNote"
         ],
         "additionalProperties": false,
         "description": "A curator's admission pin a run no longer agrees with (#1367)."
@@ -33226,6 +33243,7 @@
             "type": "boolean"
           },
           "region_names": {
+            "description": "The regions the object counts in, every world view together.",
             "anyOf": [
               {
                 "type": "array",
