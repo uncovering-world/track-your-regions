@@ -41,6 +41,7 @@ import { yearLabel } from '../../utils/yearLabel';
 import { extentLabel } from '../shared/ExtentLine';
 import { PictureFact } from './PictureFact';
 import { MoveFact } from './MoveFact';
+import { CheckedWebsite } from './CheckedWebsite';
 import { TEXT_CREDITS } from '@tyr/shared/textCredits';
 
 /** One field of a proposal, as the queue carries it: the part of its `ChangedField` a rendering reads. */
@@ -66,6 +67,8 @@ export interface ChangeContext {
   imageCredit?: ImageCredit | null;
   /** The rows are a point's or a work's, not the place's own: a point's description is Wikidata's line. */
   part?: boolean;
+  /** The place the card is about, which the website row asks whether a site still answers (#2165). */
+  experienceId?: number;
 }
 
 /** Which column of the table a value is rendered in: what readers see, or what is proposed. */
@@ -163,6 +166,13 @@ function urlLabel(value: unknown): ReactNode {
   if (typeof value !== 'string') return String(value ?? '');
   const href = safeHref(value);
   return href ? <ExternalLink href={href}>{value}</ExternalLink> : value;
+}
+
+/** An official website, with whether it still answers beside it (#2165); a part's row asks nothing. */
+function websiteLabel(value: unknown, context: ChangeContext): ReactNode {
+  const label = urlLabel(value);
+  if (typeof value !== 'string' || !safeHref(value) || context.part) return label;
+  return <CheckedWebsite experienceId={context.experienceId} url={value}>{label}</CheckedWebsite>;
 }
 
 /**
@@ -553,7 +563,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
     label: 'official website',
     what: 'The place’s own website, as Wikidata states it — where a traveller finds opening hours and tickets.',
     whenItChanges: SOURCE_LINK_CHANGE,
-    render: urlLabel,
+    render: websiteLabel,
   },
   'metadata.unescoUrl': {
     label: 'UNESCO page',
