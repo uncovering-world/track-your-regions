@@ -6251,6 +6251,43 @@ outcome is kept in memory for a day per address. Measured on the development cat
 18 of the 106 websites held proposals brought were dead (Villa d'Este's domain, Konârak's,
 Jongmyo's), and in Lourdes's proposal the old address is the dead one.
 
+**What the pictures a card shows are** (#2192). A place's picture is meant to show the place and a
+work's picture the work, and the card drew a map or an engraving as it drew a photograph: Banqiao
+Dam's picture is `Banqiaomap.png`, Larsa's a map of Hammurabi's Babylonia, and a run proposed an
+1865 engraving for the Saqqara Tablet and a vector rendering for the Aztec sun stone. The card now
+says, under a picture that is no photograph and on both sides of a picture question (the picture
+row's `PictureFact`, the sources card's tiles, the card's header, an arrived work's thumbnail),
+*a map, not a photograph*, *a drawing or engraving, not a photograph* or *a diagram, not a
+photograph*, with what Commons decided it by one hover away (`PictureClassMark`). It asks
+`GET /api/experiences/:id/picture-classes` (`pictureClassesController.ts`) once a marked picture is
+near the screen, one request per card. The endpoint takes the place's id only and reads the pictures
+from the catalogue — the place's own, each membership's `reported_image_url`, the `imageUrl` its open
+proposals bring for the place and for its works (the held pointer's change set and the conflict card's,
+`conflictChangeOpenSql`; a work's under `contents.treasures.changed`), its points' and its works' —
+at most fifty, one Commons request, the proposals before the works' own so a question's *after* side is
+never cut, and asks Commons about them (`services/pictureClass/`): the file's MIME type and
+the categories its page is in, through the `imageinfo` call the credits come from, fifty files a
+request, under `userAgent()` and an eight-second deadline, kept for a day per file. The class is
+`classifyPicture`'s, from Commons alone and conservative: a category whose head noun is *maps* makes a
+map (`MAP_WORDS`: *Maps of Oaxaca*, *Old maps of Rome*, never *Paintings of people with maps*); one
+that names a drawing's or a print's technique a drawing (`DRAWING_WORDS`); one that names a plan, a
+diagram or a cross section a diagram (`DIAGRAM_WORDS`); a vector file (SVG) in none of those a
+drawing, since a camera makes no vector; a raster file in none a photograph. Paintings are left
+alone, since a photograph of a painting is the right picture of a work that is one, and a file Commons
+does not know, or could not be asked about, is not classed and gets no mark. What a picture is *of*
+decides whether a category speaks about the picture or about the subject: for a work, the categories
+name the work's own medium — Dürer's *Adam and Eve* sits in *Engravings by Albrecht Dürer* — so a
+category classes a work's picture only where the work's type names an object a drawing can only
+depict, a sculpture, an inscription, a vase (`isObjectType`), which is why the endpoint reads each
+work's `treasure_type` with its picture. Nothing is stored and no run reads the class. Measured on the
+development catalogue on 2026-10-31 over every picture and open proposal (9,146 files): of 7,291
+places' pictures 71 are maps, 20 drawings and 7 diagrams, 1.3 % in all — Larsa's map of Hammurabi's
+Babylonia, the Franco-Cantabrian region, tracings of cave paintings, SketchUp renderings of Roman
+temples; of 1,816 works' pictures one is a vector file and one a photograph of a clay tablet that is a
+map (*Maps in art*); of 39 open proposals two are the same rendering of the Temple of Vesta. So a run
+prefers no picture on its own: at that rate the mark on the card is the whole of the fix, and the
+rule is kept where it is until a run brings maps in numbers (#2192).
+
 **Jev's suggestion on the sources card** (#1260, Epic #929, [ADR-0087](../decisions/0087-jev-suggests-an-answer-on-a-curator-card-and-a-curator-decides.md)). Where `JEV_API_KEY` is set, the
 card asks `POST /api/experiences/:id/view-suggestions` (`viewSuggestionController.ts`) when it
 opens: for each field it asks about, the newest stored suggestion made for the views as they
