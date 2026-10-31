@@ -254,9 +254,12 @@ export function refusalHelp(reason: string | null | undefined): string | null {
     // Every example here is a class the rule actually holds (`KILL_CLASSES`). This is the
     // panel that exists so a curator can check the rule rather than take its word, so it
     // is the one place where an example that sounds right and is not costs something.
-    return 'Some things Wikidata types as museums are not places at all — a private collection, '
-      + 'a curatorial department, a museum network that is an umbrella rather than a visit, a '
-      + 'building that was never built. Those classes are refused outright.'
+    return 'Some things Wikidata types as museums are not places at all — a curatorial '
+      + 'department, a museum network that is an umbrella rather than a visit, a building that '
+      + 'was never built. Those classes are refused outright. An art or private collection is '
+      + 'refused too, unless Wikidata also calls it a museum, it has a coordinate of its own and '
+      + 'it is one house rather than several: the Frick Collection is a museum, the Bavarian '
+      + 'State Painting Collections are twenty.'
       + `\n\nThe rule’s own words: “${reason}”.`;
   }
   if (reason.startsWith(DISSOLVED)) {
