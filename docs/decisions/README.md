@@ -188,6 +188,7 @@ and accepted by it.
 | [0167](0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md) | A monument a Wikivoyage guide uses enters under the editions line, for a curator | Accepted | 2026-10-31 |
 | [0168](0168-a-tower-a-wikivoyage-guide-uses-enters-at-15000-readers-a-year-whatever-its-editions.md) | A tower a Wikivoyage guide uses enters at 15,000 readers a year, whatever its editions | Accepted | 2026-10-31 |
 | [0169](0169-a-work-a-guide-uses-or-atlas-obscura-lists-enters-at-20000-readers-a-year-whatever-its-editions.md) | A work a guide uses or Atlas Obscura lists enters at 20,000 readers a year, whatever its editions | Accepted | 2026-10-31 |
+| [0170](0170-a-collection-with-a-museum-class-is-the-museum-and-a-network-stands-for-the-house-at-its-coordinate.md) | A collection with a museum class is the museum, and a network stands for the house at its coordinate | Accepted | 2026-10-31 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
