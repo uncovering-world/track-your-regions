@@ -56,9 +56,9 @@ export async function subsetSiteFacts(qids: string[]): Promise<Map<string, SiteF
 
 /**
  * Which of `qids` carry a best-rank class among `classes` and a best-rank
- * point, as `fetchSitesAmong` asks the live service.
+ * point, as `fetchPlacedAmong` asks the live service.
  */
-export async function subsetSitesAmong(qids: string[], classes: string[]): Promise<string[]> {
+export async function subsetPlacedAmong(qids: string[], classes: string[]): Promise<string[]> {
   if (!qids.length || !classes.length) return [];
   const result = await pool.query<{ subject: string }>(
     `SELECT DISTINCT c.subject FROM wikidata_claims c

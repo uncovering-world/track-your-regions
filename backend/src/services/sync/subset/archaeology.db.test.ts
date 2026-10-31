@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
-import { fetchFindFacts, fetchSiteFacts, fetchSitesAmong } from '../archaeology/queries.js';
+import { fetchFindFacts, fetchSiteFacts, fetchPlacedAmong } from '../archaeology/queries.js';
 import { subsetKeeps } from './archaeology.js';
 import { subsetOnlyDoor } from './reader.js';
 
@@ -93,7 +93,7 @@ describe('Archaeology read from the subset (#1462)', () => {
 
   it('says which of the items the readership names are sites with a point (ADR-0152)', async () => {
     // Troy is a polis with no point of its own here; the museum is not kept.
-    expect(await fetchSitesAmong(door, [TROY, GERASA, BRITISH_MUSEUM], new Set([ARCHAEOLOGICAL_SITE, POLIS]))).toEqual([GERASA]);
+    expect(await fetchPlacedAmong(door, [TROY, GERASA, BRITISH_MUSEUM], new Set([ARCHAEOLOGICAL_SITE, POLIS]))).toEqual([GERASA]);
   });
 
   it('says which items it keeps, so one outside it is not read as having no articles', async () => {

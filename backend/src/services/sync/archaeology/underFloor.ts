@@ -14,7 +14,7 @@ import { fetchEntitiesByIds, POOL_MIN_SITELINKS, type PoolEntity } from '../publ
 import type { UnderFloorReader } from '../readershipDoor.js';
 import type { SourceLine } from '../sourceLine.js';
 import type { ArchaeologyTrees } from './classes.js';
-import { fetchSitesAmong } from './queries.js';
+import { fetchPlacedAmong } from './queries.js';
 
 const ID_BATCH = 50;
 
@@ -42,7 +42,7 @@ export async function collectUnderFloor(
   const named = (await read(held)).filter((qid) => !pool.has(qid));
   if (!named.length) return [];
   run.phase(`Asking which of ${named.length} items the world reads are sites...`);
-  const sites = await fetchSitesAmong(run, named, trees.site);
+  const sites = await fetchPlacedAmong(run, named, trees.site);
   const found: PoolEntity[] = [];
   for (const batch of chunk(sites, ID_BATCH)) {
     await run.step();

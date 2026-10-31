@@ -29,7 +29,7 @@ import {
   classifyPublicArt, ENTER_SITELINKS, guideDoorCandidates, openArtworkDoor, PUBLIC_ART_KIND, streetArtCandidates,
 } from './publicArt/pipeline.js';
 import { isPublicClock } from './publicArt/clockLine.js';
-import { readGuideDoor } from './publicArt/guideDoor.js';
+import { readGuideDoor } from './places/guideDoor.js';
 import { yearlyReaders } from './places/candidates.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
