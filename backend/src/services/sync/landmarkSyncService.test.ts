@@ -43,6 +43,14 @@ vi.mock('./publicArt/pipeline.js', () => ({
 }));
 // The guide door reads the gate and the Wikivoyage usage build (ADR-0167); its own spec is places/guideDoor.test.ts.
 vi.mock('./places/guideDoor.js', () => ({ readGuideDoor: vi.fn(async () => new Set<string>()) }));
+// The regional tier is its own module's (`regionalTier.test.ts`); here it brings nothing.
+vi.mock('./places/regionalTier.js', async (importOriginal) => ({
+  mergeRegional: (await importOriginal<typeof import('./places/regionalTier.js')>()).mergeRegional,
+  regionalReader: vi.fn(() => ({ arrivals: vi.fn(async () => ({ items: [], filtered: [] })) })),
+}));
+vi.mock('./places/regionalPool.js', () => ({ readRegionalPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
+// The museum tree joins the pool's classes (ADR-0171); the spec asks Wikidata nothing.
+vi.mock('./wikidataQueries.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('./wikidataQueries.js')>()), fetchClassTree: vi.fn(async () => new Set<string>()) }));
 // The marks door reads the gate, the year, the marks and the works under the floor (ADR-0169); its own spec is publicArt/marksDoor.test.ts.
 vi.mock('./publicArt/marksDoor.js', () => ({
   shareWithMarksDoor: vi.fn(async (_source: number, share: unknown) => ({ share, marks: null })),
@@ -152,8 +160,7 @@ const GATHERED = {
   shares: new Map<unknown, unknown>([
     [PUBLIC_ART_KIND, SHARE], [WORSHIP_KIND, SHARE], [ARCHAEOLOGY_SITE_KIND, SHARE], [TOWERS_KIND, SHARE], [BRIDGES_KIND, SHARE], [SQUARES_KIND, SHARE],
   ]),
-  pooled: 0,
-};
+  pooled: 0, classes: new Set<string>() };
 /** What the street-art rule read of its candidates: the Lennon Wall in Prague, with an Atlas Obscura entry. */
 const STREET_ART_READ = {
   marks: new Map([['Q1630131', { atlasObscura: true, ended: false }]]), guided: new Set<string>(), readers: null, roots: new Map(),
@@ -204,7 +211,10 @@ describe('public art in the place pass', () => {
     expect(config.sourceId).toBe(3);
     expect(config.sourceCompleteness).toBe('ranked');
     expect(config.recomputesMembership).toBe(true);
-    expect(config.badgesAdmitted).toBe(true);
+    // Belonging is the badge for the world tier alone: a row the regional tier admits carries none (ADR-0048).
+    const badges = config.badgesAdmitted as (item: { tier?: 'regional' }) => boolean;
+    expect(badges({})).toBe(true);
+    expect(badges({ tier: 'regional' })).toBe(false);
   });
 
   it('hands the collection what the source already admits, and its refusals back', async () => {
@@ -214,7 +224,7 @@ describe('public art in the place pass', () => {
     const config = await configOf();
     const fetched = await config.fetchItems(progress(), []);
 
-    expect(mockedAdmitted).toHaveBeenCalledWith(3);
+    expect(mockedAdmitted).toHaveBeenCalledWith(3, undefined, 'world');
     // Every kind's admitted rows, the pass's other members' too, asked for by id.
     expect(mockedGather.mock.calls[0][1]).toEqual([
       { kind: PUBLIC_ART_KIND, admitted: new Set(['Q337179']) },
@@ -253,7 +263,7 @@ describe('public art in the place pass', () => {
     mockedAdmitted.mockResolvedValue(new Set());
     mockedCollect.mockReturnValue({ items: [], fetched: 0, filtered: [] });
     await monuments.fetchItems(progress(), []);
-    expect(mockedAdmitted).toHaveBeenCalledWith(6);
+    expect(mockedAdmitted).toHaveBeenCalledWith(6, undefined, 'world');
     expect(mockedCollect.mock.calls[0][1]).toBe(MONUMENTS_RULE);
     // Monuments & memorials opens no readership door (#2033), and holds no
     // street-art place (#2035).
@@ -285,7 +295,8 @@ describe('public art in the place pass', () => {
       items: [landmark({ qid: 'Q91274', label: 'Galata Tower', type: 'tower', classes: ['Q12518'] })], fetched: 1, filtered: [],
     });
     const fetched = await towers.fetchItems(progress(), []);
-    expect(mockedAdmitted).toHaveBeenCalledWith(7);
+    // The world tier's rows alone: a regional row is never held to the world line (#2178).
+    expect(mockedAdmitted).toHaveBeenCalledWith(7, undefined, 'world');
     expect(vi.mocked(TOWERS_CLASSIFIER.classify).mock.calls[0][1]).toEqual(new Set(['Q91274']));
     expect(mockedCollect).not.toHaveBeenCalled();
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q91274']);

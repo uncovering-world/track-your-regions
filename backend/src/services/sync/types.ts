@@ -328,6 +328,8 @@ export interface WikidataLandmark {
   countryLabel: string | null;
   /** The type within the kind the run fills, in that kind's own vocabulary. */
   type: PublicArtType | MonumentType | TowerType | BridgeType | SquareType;
+  /** The tier that admitted it where it is not the world's: ADR-0171's regional tier (#2178). */
+  tier?: 'regional';
   /**
    * Every `P31` the entity carries, as the rule read them. Stored on the run's
    * membership (`facts.wikidataClasses`) so that Catalogue Checks can ask, of what is

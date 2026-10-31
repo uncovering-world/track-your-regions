@@ -219,10 +219,10 @@ export async function orchestrateSync<T>(
     await progressWriter.flush(true);
 
     const previousActiveCount = await countActiveExperiences(sourceId);
-    // Read before the run writes, so the sweep's floor compares like with like.
-    const previousAdmittedCount = config.recomputesMembership ? await countAdmitted(sourceId) : 0;
-
     const fetched = await config.fetchItems(progress, errorDetails);
+    // Read before the run writes — the fetch reads only — so the sweep's floor
+    // compares like with like: over the tiers the run read (`spareTier`, #2178).
+    const previousAdmittedCount = config.recomputesMembership ? await countAdmitted(sourceId, fetched.spareTier) : 0;
     const { items, fetchedCount, filtered } = fetched;
     const withdrawalSkippedReason = fetched.withdrawalSkippedReason ?? null;
     skipped.withdrawal = withdrawalSkippedReason;
@@ -294,14 +294,14 @@ export async function orchestrateSync<T>(
     );
 
     const sweep = await applyAdmissionSweep(
-      config, progress, seenExternalIds, previousAdmittedCount, changes, unread,
+      config, progress, seenExternalIds, previousAdmittedCount, changes, unread, fetched.spareTier,
     );
     skipped.admissionSweep = sweep.skipReason;
     if (sweep.skipReason !== null) {
       console.log(`${logPrefix} Admission sweep skipped: ${sweep.skipReason}`);
     }
     await badgeAdmitted(config, progress, seenExternalIds, items, sweep.swept, unread);
-    await questionPins(config, progress, filtered ?? [], seenExternalIds, sweep, unread, options.askAboutPins === true);
+    await questionPins(config, progress, filtered ?? [], seenExternalIds, sweep, unread, options.askAboutPins === true, fetched.spareTier);
 
     changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
 

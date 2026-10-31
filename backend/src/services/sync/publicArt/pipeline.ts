@@ -271,7 +271,7 @@ function streetArtVerdictOf(entity: PoolEntity, gathered: GatheredPublicArt, rea
 }
 
 /** The kind's verdict on one candidate of the share, read off the gathered facts. */
-function verdictOf(
+export function publicArtVerdictOf(
   entity: PoolEntity,
   { trees, facts, containers, subjects }: GatheredPublicArt,
   rule: KindRule,
@@ -446,7 +446,7 @@ function kindDecision(
   // curator may have put it back, and a put-back is filed under it too
   // (`filePutBackTypes`, ADR-0135).
   const type = held ? { type: rule.type(kindFactsOf(known, gathered.subjects), gathered.trees) } : {};
-  const verdict = verdictOf(entity, gathered, rule, offered);
+  const verdict = publicArtVerdictOf(entity, gathered, rule, offered);
   if (!verdict.pass) {
     return { refused: {
       externalId: entity.qid, name: entity.label, reason: verdict.reason, ...type,
@@ -570,7 +570,7 @@ export async function openArtworkDoor(
     [...gathered.pool.values()]
       .filter((entity) => !gathered.enteredOnly.has(entity.qid))
       .filter((entity) => entity.sitelinks < ENTER_SITELINKS
-        || (admitted.has(entity.qid) && verdictOf(entity, gathered, rule, offered).pass))
+        || (admitted.has(entity.qid) && publicArtVerdictOf(entity, gathered, rule, offered).pass))
       .map((entity) => ({ qid: entity.qid, sitelinks: entity.sitelinks })),
     admitted,
   );

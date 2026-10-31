@@ -35,7 +35,13 @@ vi.mock('./wikidataCache.js', () => ({
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
 vi.mock('./worship/pipeline.js', () => ({ collectPlacesOfWorship: vi.fn() }));
 // The places come from the pass's gather, which the mocked pipeline never asks.
-vi.mock('./places/gather.js', () => ({ shareOf: vi.fn() }));
+vi.mock('./places/gather.js', () => ({ shareOf: vi.fn(() => ({ trees: {} })) }));
+// The regional tier is its own module's (`regionalTier.test.ts`); here it brings nothing.
+vi.mock('./places/regionalTier.js', async (importOriginal) => ({
+  mergeRegional: (await importOriginal<typeof import('./places/regionalTier.js')>()).mergeRegional,
+  regionalArrivals: vi.fn(async () => ({ items: [], filtered: [] })),
+}));
+vi.mock('./worship/worshipTest.js', () => ({ worshipVerdict: vi.fn() }));
 vi.mock('./worship/places.js', () => ({ WORSHIP_KIND: { name: 'places of worship' } }));
 vi.mock('./museum/pipeline.js', () => ({ collectTier1Museums: vi.fn() }));
 vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn(), POOL_MIN_SITELINKS: 10 }));
@@ -144,7 +150,8 @@ function lineRow(): { rows: { api_config: unknown }[] } {
  * places through: the live service unless a test says otherwise.
  */
 async function configOf(placesDoor: unknown = vi.fn()): Promise<SyncServiceConfig<CollectedPlaceOfWorship>> {
-  return worshipSource(vi.fn(async () => ({ gathered: {}, sparql: placesDoor })) as never, {});
+  // No regional pool in the spec: the tier is its own module's (`regionalTier.test.ts`).
+  return worshipSource(vi.fn(async () => ({ gathered: {}, sparql: placesDoor, regional: async () => null })) as never, {});
 }
 
 /**
@@ -459,7 +466,10 @@ describe('what the worship run tells the orchestrator', () => {
     expect(config.recomputesMembership).toBe(true);
     // Both doors are the world tier (ADR-0045 decision 5): a place clears the
     // source's own fame line, or holds a treasure that clears it.
-    expect(config.badgesAdmitted).toBe(true);
+    // The world tier's rows alone carry the badge; a regional arrival carries none (ADR-0048).
+    const badges = config.badgesAdmitted as (place: { tier?: 'regional' }) => boolean;
+    expect(badges({})).toBe(true);
+    expect(badges({ tier: 'regional' })).toBe(false);
     expect(config.getItemName(place())).toBe('Cologne Cathedral');
     expect(config.getItemId(place())).toBe(COLOGNE);
   });

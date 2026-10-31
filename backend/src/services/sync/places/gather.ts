@@ -29,6 +29,7 @@ import {
 } from '../publicArt/queries.js';
 import { emptyContainment, loadContainment, type Containment } from './containment.js';
 import { loadSubjects, type SubjectFacts, type SubjectRunner } from '../publicArt/subjects.js';
+import type { RegionalPool } from './regionalPool.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
@@ -119,12 +120,18 @@ export interface GatheredPlaces {
   shares: Map<PlaceKind<unknown>, KindShare<unknown>>;
   /** Distinct entities the pool questions named, the rows asked for by id aside. */
   pooled: number;
+  /** Every class the kinds' pool questions asked by, together: the regional tier's pool is their items (ADR-0171, #2178). */
+  classes: ReadonlySet<string>;
 }
 
 /** What a pass's gather hands each of its sources: the shares, and the door they were read through. */
 export interface PlaceGather {
   gathered: GatheredPlaces;
   sparql: SparqlFn;
+  /** The runner the gather read with, for what a source reads after it through the same door (the regional tier, #2178). */
+  run: SubjectRunner;
+  /** The pass's regional pool (ADR-0171), read once on first ask; null where the run read the live service. */
+  regional: () => Promise<RegionalPool | null>;
 }
 
 /** One kind's share, typed by its declaration. */
@@ -316,5 +323,5 @@ export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]
     const subjects = await loadSubjects(run, depicting.flatMap((share) => [...share.facts.values()].flatMap((f) => f.depicts)));
     for (const share of depicting) share.subjects = subjects;
   }
-  return { shares, pooled: pooled.size };
+  return { shares, pooled: pooled.size, classes: new Set([...classesOf.values()].flatMap((set) => [...set])) };
 }

@@ -18,6 +18,7 @@ import { shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from '..
 import { classifyByGuidedLine, type GuidedLine } from '../places/guidedLine.js';
 import { fetchSquareTrees, SQUARE_ROOTS, SQUARE_TYPES, type SquareTrees } from './classes.js';
 import { squareVerdict } from './squareTest.js';
+import { regionalReader } from '../places/regionalTier.js';
 
 /** The source that fills Squares & streets, and the kind it fills (migration 151). */
 export const SQUARES_SOURCE_ID = 9;
@@ -47,4 +48,12 @@ export const SQUARES_CLASSIFIER = {
   classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>) => classifySquares(shareOf(gathered, SQUARES_KIND), admitted),
   types: SQUARE_TYPES,
   tag: 'square',
+  // The regional tier (ADR-0171): every place-class item measured against its surroundings, the rule over the survivors.
+  regional: regionalReader<SquareTrees>({
+    kind: SQUARES_KIND,
+    classesOf: (trees) => trees.place,
+    typesOf: (trees) => new Map(Object.entries(trees.types)),
+    verdict: (entity, share) => squareVerdict({ classes: share.facts.get(entity.qid)?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon }, share.trees),
+    logPrefix: '[Squares]',
+  }),
 };

@@ -17,7 +17,7 @@ import {
   restoreAdmission,
   unmarkIconic,
 } from './admission.js';
-import { asksAgain, pinnedRows, stillAsks, writePinQuestions, type PinQuestion, type RunView } from './pinQuestion.js';
+import { asksAgain, pinnedRows, stillAsks, writePinQuestions, type PinnedRow, type PinQuestion, type RunView } from './pinQuestion.js';
 import type { SyncServiceConfig } from './syncContract.js';
 import type { PinTally, SyncProgress } from './types.js';
 
@@ -146,6 +146,7 @@ export async function applyAdmissionSweep<T>(
   previousAdmittedCount: number,
   changes: ChangeRecord[],
   unread: string[] = [],
+  spareTier?: 'regional',
 ): Promise<SweepOutcome> {
   if (!config.recomputesMembership || progress.logId === null) return NO_SWEEP;
 
@@ -164,7 +165,7 @@ export async function applyAdmissionSweep<T>(
 
   // A row the run could not read is not one it stopped admitting (`FetchResult.unread`).
   const swept = await markNotAdmitted(
-    config.sourceId, [...admittedExternalIds, ...unread], NOT_ADMITTED_REASON, progress.dryRun,
+    config.sourceId, [...admittedExternalIds, ...unread], NOT_ADMITTED_REASON, progress.dryRun, spareTier,
   );
   for (const row of swept) {
     progress.filtered++;
@@ -181,6 +182,27 @@ export async function applyAdmissionSweep<T>(
     });
   }
   return { swept: true, skipReason: null };
+}
+
+/**
+ * What this run says of a pinned row: admitted, refused with the rule's
+ * reason, refused by the sweep where the sweep decided the rows the run did
+ * not name, or nothing at all — for a row it could not read (#1462) and for a
+ * row of a tier it did not read (#2178), whose pin keeps what was asked before.
+ */
+function runViewOf(
+  refusals: Refusal[], admittedExternalIds: string[], sweep: SweepOutcome, unread: string[], spareTier?: 'regional',
+): (pin: PinnedRow) => RunView | null {
+  const notRead = new Set(unread);
+  const admitted = new Set(admittedExternalIds);
+  const refused = new Map(refusals.map((refusal) => [refusal.externalId, refusal.reason]));
+  return (pin) => {
+    if (notRead.has(pin.externalId) || (spareTier !== undefined && pin.tier === spareTier)) return null;
+    if (admitted.has(pin.externalId)) return { verdict: 'admitted', reason: null };
+    const reason = refused.get(pin.externalId);
+    if (reason !== undefined) return { verdict: 'refused', reason };
+    return sweep.swept ? { verdict: 'refused', reason: NOT_ADMITTED_REASON } : null;
+  };
 }
 
 /**
@@ -209,24 +231,19 @@ export async function questionPins<T>(
   unread: string[] = [],
   /** Ask about every pin the run disagrees with, not only those whose reason changed (#1370). */
   askAll = false,
+  /** A tier the run did not read (`FetchResult.spareTier`, #2178): no view of its pins, as of an unread row's. */
+  spareTier?: 'regional',
 ): Promise<void> {
   if (progress.logId === null) return;
-  const notRead = new Set(unread);
-  const admitted = config.recomputesMembership ? new Set(admittedExternalIds) : new Set<string>();
-  const refused = new Map(refusals.map((refusal) => [refusal.externalId, refusal.reason]));
-  const viewOf = (externalId: string): RunView | null => {
-    if (notRead.has(externalId)) return null;
-    if (admitted.has(externalId)) return { verdict: 'admitted', reason: null };
-    const reason = refused.get(externalId);
-    if (reason !== undefined) return { verdict: 'refused', reason };
-    return sweep.swept ? { verdict: 'refused', reason: NOT_ADMITTED_REASON } : null;
-  };
+  const viewOf = runViewOf(
+    refusals, config.recomputesMembership ? admittedExternalIds : [], sweep, unread, spareTier,
+  );
 
   const asked: PinQuestion[] = [];
   const settled: number[] = [];
   const tally: PinTally = { asked: 0, agreed: 0, standing: 0 };
   for (const pin of await pinnedRows(config.sourceId)) {
-    const now = viewOf(pin.externalId);
+    const now = viewOf(pin);
     if (now === null) continue;
     const answered = pin.answeredVerdict === null ? null : { verdict: pin.answeredVerdict, reason: pin.answeredReason };
     const disagrees = now.verdict !== pin.answer;
