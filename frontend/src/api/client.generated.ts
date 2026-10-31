@@ -4080,6 +4080,10 @@ export interface MergePair {
      * @nullable
      */
   anchorWikidataItem: string | null;
+  /** Whether the other place claims its item as its own in the registry (ADR-0143 decision 2), or only refers to it: a serial site's items, an item several components carry (#2194). */
+  otherItemClaimed: boolean;
+  /** The same of the card's own place's item. */
+  anchorItemClaimed: boolean;
   /** The names of the kinds the card's own place is in, the same way, to name it beside its item. */
   anchorKinds: string[];
   /**
@@ -4130,6 +4134,8 @@ export interface MergePair {
   reachM: number;
   /** Which rule found the pair: names alike by trigrams, or one name's words all standing in the other's (#1652). */
   foundBy: MergePairFoundBy;
+  /** For a pair the words rule found: the words it stood on, folded as the rule reads them — one, a town's name both carry ("tallinn"), or several (#2194). Null for a pair found by similarity, or written before the words were recorded. */
+  matchedWords: string[] | null;
   /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
   proposedAt: string;
 }

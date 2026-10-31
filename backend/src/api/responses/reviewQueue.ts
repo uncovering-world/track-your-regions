@@ -354,6 +354,11 @@ export const MergePair = z.strictObject({
   otherLongitude: z.number().nullable(),
   otherWikidataItem: z.string().nullable().describe("The Wikidata item the other place's memberships make it, where one does."),
   anchorWikidataItem: z.string().nullable().describe("The card's own place's item, the same way; two different items on a pair is worth a look."),
+  otherItemClaimed: z.boolean().describe(
+    "Whether the other place claims its item as its own in the registry (ADR-0143 decision 2), or only refers to it: a"
+    + " serial site's items, an item several components carry (#2194).",
+  ),
+  anchorItemClaimed: z.boolean().describe("The same of the card's own place's item."),
   anchorKinds: z.array(z.string()).describe("The names of the kinds the card's own place is in, the same way, to name it beside its item."),
   otherPartOf: z.string().nullable().describe('The serial World Heritage site the other place is a part of, by name, where it is one (#1250).'),
   anchorPartOf: z.string().nullable().describe("The site the card's own place is a part of, the same way."),
@@ -366,6 +371,10 @@ export const MergePair = z.strictObject({
   exact: z.boolean().describe('One and the same folded name within fifty metres: what a batch accept makes one place.'),
   reachM: z.number().int().describe('The distance the pass found the pair under: 300 m, or a property\'s area radius up to 3 km.'),
   foundBy: z.enum(['similar', 'words']).describe('Which rule found the pair: names alike by trigrams, or one name\'s words all standing in the other\'s (#1652).'),
+  matchedWords: z.array(z.string()).nullable().describe(
+    'For a pair the words rule found: the words it stood on, folded as the rule reads them — one, a town\'s name both carry'
+    + ' ("tallinn"), or several (#2194). Null for a pair found by similarity, or written before the words were recorded.',
+  ),
   proposedAt: timestamp,
 }).describe('Two near places with similar names, proposed as one place (#1249, ADR-0046 decision 2).');
 export type MergePair = z.infer<typeof MergePair>;

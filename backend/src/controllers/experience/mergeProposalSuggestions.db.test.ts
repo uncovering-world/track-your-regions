@@ -42,6 +42,8 @@ const PAIRS = { cathedral: 0, plaque: 0 };
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM experience_merge_proposals WHERE place_a = ANY($1) OR place_b = ANY($1)', [PLACES]);
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = ANY($1)', [PLACES]);
+  // A *one place* answer folds a place and records the merge, which references both places.
+  await pool.query('DELETE FROM experience_merges WHERE survivor_id = ANY($1) OR folded_id = ANY($1)', [PLACES]);
   await pool.query('DELETE FROM experiences WHERE id = ANY($1)', [PLACES]);
   await pool.query('DELETE FROM users WHERE uuid = $1', [CURATOR]);
 }
@@ -250,5 +252,17 @@ describe("Jev's judgement of a place's pairs of near places (#1249)", () => {
     expect(pairs).toMatchObject({ calls: 2, inputTokens: 1001, compared: 2, agreed: 1 });
     expect(usage.calls).toBeGreaterThanOrEqual(2);
     expect(usage.usd).toBeCloseTo(usage.inputTokens * 0.042 / 1_000_000, 6);
+  });
+
+  it("still counts a pair answered one place, whose fold changes the question's key (#2194)", async () => {
+    // The judgement the curator saw is the newest asked before the answer. A match on
+    // the question's key would miss it: *one place* folds the plaque into the site, the
+    // folded place's claim on its item reads false, and the key the pair was asked
+    // under is no longer the key its places give now.
+    await ask();
+    await answerMergeProposalsOneByOne(SITE, curatorId, null, [{ proposalId: PAIRS.plaque, answer: 'one' }], [1, 3, 4]);
+
+    const pairs = (await getJevUsage()).byQuestion.find(q => q.question === 'mergeProposals')!;
+    expect(pairs).toMatchObject({ compared: 1, agreed: 1 });
   });
 });

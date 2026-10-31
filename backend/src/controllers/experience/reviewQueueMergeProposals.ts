@@ -77,6 +77,24 @@ export function itemSql(place: string): string {
                AND cardinality(rec.wikidata_items) = 1))`;
 }
 
+/**
+ * Whether the place claims the item `itemSql` gives it as its own
+ * (`place_identifiers.claims_identity`, ADR-0143 decision 2), or only refers
+ * to it: a serial site's items, an item several components carry. Claimed by
+ * one place of a pair and carried by the other, one item is not one place
+ * (#2194): Q957628 is the Saint Stepanos Monastery's own and is carried by
+ * each of the ensemble's three components, so the join folds nothing and the
+ * card says whose item it is. Claimed by both, it is the strongest sign of one
+ * place a pair carries, and the join leaves such a pair apart only where a
+ * curator took a merge of the two back. `identifies` is not what is read: a
+ * value two places claim identifies neither, which would read two claimants
+ * as a shared reference. Read by the card and by Jev's question alike.
+ */
+export function itemClaimedSql(place: string): string {
+  return `COALESCE((SELECT pi.claims_identity FROM place_identifiers pi
+                     WHERE pi.experience_id = ${place}.id AND pi.scheme = 'wikidata' AND pi.value = ${itemSql(place)}), FALSE)`;
+}
+
 /** The serial site a place is a part of, by name, or null (`partOfNameSql`); read by the card and by Jev's question alike. */
 export function partOfSql(place: string): string {
   return partOfNameSql(`${place}.id`);
@@ -94,6 +112,8 @@ const PAIRS = `(SELECT jsonb_agg(jsonb_build_object(
            'otherLongitude', ST_X(b.location),
            'otherWikidataItem', ${itemSql('b')},
            'anchorWikidataItem', ${itemSql('e')},
+           'otherItemClaimed', ${itemClaimedSql('b')},
+           'anchorItemClaimed', ${itemClaimedSql('e')},
            'anchorKinds', ${kindNamesSql('e')},
            'otherPartOf', ${partOfSql('b')},
            'anchorPartOf', ${partOfSql('e')},
@@ -102,6 +122,7 @@ const PAIRS = `(SELECT jsonb_agg(jsonb_build_object(
            'exact', p.exact,
            'reachM', p.reach_m,
            'foundBy', p.found_by,
+           'matchedWords', p.matched_words,
            'proposedAt', p.proposed_at)
          ORDER BY p.name_similarity DESC, p.distance_m, p.id)
        FROM experience_merge_proposals p
