@@ -25,8 +25,11 @@ import { getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FetchResult, FilteredEntity, ProcessItemResult, SyncRunContext, SyncServiceConfig } from './syncContract.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
-import { classifyPublicArt, ENTER_SITELINKS, openArtworkDoor, PUBLIC_ART_KIND, streetArtCandidates } from './publicArt/pipeline.js';
+import {
+  classifyPublicArt, ENTER_SITELINKS, guideDoorCandidates, openArtworkDoor, PUBLIC_ART_KIND, streetArtCandidates,
+} from './publicArt/pipeline.js';
 import { isPublicClock } from './publicArt/clockLine.js';
+import { readGuideDoor } from './publicArt/guideDoor.js';
 import { yearlyReaders } from './places/candidates.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
@@ -83,14 +86,32 @@ export interface PlaceClassifier {
 /** The readership door a public-art source opens each run (#2033). */
 interface ArtworkDoor { open: () => Promise<PlaceDoor | undefined> }
 
+/** What a kind of the pass reads beside its rule and the line. */
+interface ClassifierOptions {
+  /** The readership door the kind opens over its share (#2033). */
+  door?: ArtworkDoor;
+  /**
+   * The kind holds the street-art places its entrance names (#2035), reads
+   * what their rule asks, and writes the works they hold (#2055).
+   */
+  streetArt?: boolean;
+  /** The kind holds a public clock below its line to the clocks' own (`CLOCK_LINE`, #2140), with the year's readers it reads. */
+  clocks?: boolean;
+  /**
+   * The source whose guide door the kind opens under its line (ADR-0167): a
+   * candidate a Wikivoyage guide uses enters, for a curator, while that
+   * source's curator gate is on.
+   */
+  guide?: number;
+}
+
 /**
  * Public art's and Monuments & memorials' classifier: their kind's rule over
- * the public-art share. `streetArt` says the kind holds the street-art places
- * its entrance names (#2035), reads what their rule asks, and writes the works
- * they hold (#2055). `clocks` says the kind holds a public clock below its line
- * to the clocks' own (`CLOCK_LINE`, #2140), with the year's readers it reads.
+ * the public-art share, with the doors the kind opens (`ClassifierOptions`).
  */
-function publicArtClassifier(rule: KindRule, door?: ArtworkDoor, streetArt = false, clocks = false): PlaceClassifier {
+function publicArtClassifier(
+  rule: KindRule, { door, streetArt = false, clocks = false, guide }: ClassifierOptions = {},
+): PlaceClassifier {
   return {
     // The places a kind outside these two offers a reader, so a work outdoors
     // on a venue no such kind offers stays public art rather than being
@@ -101,7 +122,8 @@ function publicArtClassifier(rule: KindRule, door?: ArtworkDoor, streetArt = fal
       const read = await openArtworkDoor(await door?.open(), share, admitted, rule, offered);
       const streetArtRead = streetArt ? await readStreetArt(sparql, streetArtCandidates(share, rule), share.facts) : null;
       const clockReaders = clocks ? await publicClockReaders(share) : undefined;
-      return classifyPublicArt(share, rule, admitted, offered, read, streetArtRead, clockReaders);
+      const guided = guide === undefined ? undefined : await readGuideDoor(guide, guideDoorCandidates(share), LOG_PREFIX);
+      return classifyPublicArt(share, rule, admitted, offered, read, streetArtRead, clockReaders, guided);
     },
     types: rule.types,
     tag: 'outdoor',
@@ -118,11 +140,16 @@ async function publicClockReaders(share: KindShare<PublicArtTrees>): Promise<Map
 /** The classifier each public-art source decides by. */
 const PUBLIC_ART_CLASSIFIERS: Readonly<Record<number, PlaceClassifier>> = {
   // Public art alone opens the readership door and holds the public clocks to
-  // their own line: Monuments & memorials was measured for neither.
+  // their own line; Monuments & memorials opens the guide door instead
+  // (ADR-0167): under its line a year of readers brings tombs and historic
+  // sites filed as monuments, and a Wikivoyage guide brings the canon's tops
+  // (the #1997 report).
   [LANDMARK_SOURCE_ID]: publicArtClassifier(PUBLIC_ART_RULE, {
-    open: () => artworkReadershipDoorFor(LANDMARK_SOURCE_ID, ENTER_SITELINKS, LOG_PREFIX),
-  }, true, true),
-  6: publicArtClassifier(MONUMENTS_RULE),
+    door: { open: () => artworkReadershipDoorFor(LANDMARK_SOURCE_ID, ENTER_SITELINKS, LOG_PREFIX) },
+    streetArt: true,
+    clocks: true,
+  }),
+  6: publicArtClassifier(MONUMENTS_RULE, { guide: 6 }),
 };
 
 /**

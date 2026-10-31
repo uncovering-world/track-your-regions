@@ -33,12 +33,15 @@ import {
 import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
 import { belowGuidedLine, guidedStanding } from '../places/guidedLine.js';
 import { CLOCK_LINE, isPublicClock } from './clockLine.js';
+import { guideDoorEntry, type GuideDoor } from './guideDoor.js';
 import { artworkDoorNote, type PlaceDoor, type ReadershipDoor } from '../readershipDoor.js';
 import { publicArtVerdict, type PublicArtFacts } from './publicArtTest.js';
 import { streetArtVerdict } from './streetArtTest.js';
 import { enterStreetArtPlaces, type StreetArtReading } from './streetArtPlaces.js';
 import type { KindFacts, KindRule } from './kindRules.js';
-import { CAST_GROUP, emptyFacts, fetchCastGroupPool, type PoolEntity, type EntityFacts } from './queries.js';
+import {
+  CAST_GROUP, emptyFacts, fetchCastGroupPool, POOL_MIN_SITELINKS, type PoolEntity, type EntityFacts,
+} from './queries.js';
 import { attachCasts, fetchCastItems } from './castGroups.js';
 import type { PlaceKind } from '../places/gather.js';
 import { chainOf, ownersOf, type Containment } from '../places/containment.js';
@@ -309,20 +312,30 @@ function castsJudged(entity: PoolEntity, containers: Containment): Pick<PublicAr
  * How a work that passed the rule stands: in by the line, in by the readership
  * door with the curator's question, fallen below the stay line, or never in.
  * The door's question goes only on a work the door alone lets in: one the line
- * keeps is in whatever it reads. A public clock the line does not keep is held
- * to its own line when its readers were read (`CLOCK_LINE`, #2140), and the
- * reason it fell names that line.
+ * keeps is in whatever it reads. Where the kind opens the guide door
+ * (ADR-0167, `guide` given), a candidate a Wikivoyage guide uses stands in
+ * with the door's question, and a held row no guide uses falls with the guide
+ * named. A public clock the line does not keep is held to its own line when
+ * its readers were read (`CLOCK_LINE`, #2140), and the reason it fell names
+ * that line.
  */
 function lineOrDoor(
   entity: PoolEntity,
   held: boolean,
   door: ReadershipDoor | null,
   clock: { readers: Map<string, number> | null } | null,
+  guide?: GuideDoor,
 ): { readershipNote?: string } | { fell: string } | 'out' {
   const standing = lineStanding(entity.sitelinks, held, LINE);
   if (standing === 'in') return {};
   const read = door?.opened.get(entity.qid);
   if (read && door) return { readershipNote: artworkDoorNote(read, door) };
+  // The door reads the pool from its floor and no further (ADR-0167 decision
+  // 2): a held row fallen under the floor, asked for by id, is the line's.
+  if (guide !== undefined && entity.sitelinks >= POOL_MIN_SITELINKS) {
+    const byGuide = guideDoorEntry(guide, entity.qid, entity.sitelinks, standing, LINE);
+    if (byGuide) return byGuide;
+  }
   if (clock) {
     const readers = clock.readers === null ? null : clock.readers.get(entity.qid) ?? 0;
     const own = guidedStanding(CLOCK_LINE, entity.sitelinks, readers, false, held);
@@ -381,6 +394,7 @@ function kindDecision(
   offered: ReadonlySet<string> | undefined,
   door: ReadershipDoor | null,
   clockReaders?: Map<string, number> | null,
+  guide?: GuideDoor,
 ): Decision {
   // A candidate the entrance alone brought is the street-art rule's or nobody's.
   if (gathered.enteredOnly.has(entity.qid)) return null;
@@ -403,7 +417,7 @@ function kindDecision(
   // A cast in a museum is the museum's whatever the line says of the group.
   const handOver = verdict.handOver ? { handOver: { externalId: entity.qid, name: entity.label, ...verdict.handOver } } : null;
   const clock = clockReaders !== undefined && isPublicClock(known.classes) ? { readers: clockReaders } : null;
-  const entry = lineOrDoor(entity, held, door, clock);
+  const entry = lineOrDoor(entity, held, door, clock, guide);
   if (entry === 'out') return handOver;
   if ('fell' in entry) {
     return { refused: { externalId: entity.qid, name: entity.label, reason: entry.fell, ...type }, ...handOver };
@@ -430,9 +444,11 @@ function kindDecision(
  * this kind's and is skipped. `clockReaders` is a year's readers of the public
  * clocks among the candidates, null where no year is read, for the line they
  * are held to (`CLOCK_LINE`); without it, the kind's line decides them as it
- * decides any work. Items come back most famous first, which
- * is the order the run writes them in and the order a person watching it
- * reads.
+ * decides any work. `guide` is the guide door over the candidates under the
+ * line (ADR-0167, `guideDoorCandidates`): the ones a Wikivoyage guide uses, or
+ * null while the door is shut; without it, the kind opens no such door. Items
+ * come back most famous first, which is the order the run writes them in and
+ * the order a person watching it reads.
  */
 export function classifyPublicArt(
   gathered: GatheredPublicArt,
@@ -442,6 +458,7 @@ export function classifyPublicArt(
   door: ReadershipDoor | null = null,
   streetArt: StreetArtReading | null = null,
   clockReaders?: Map<string, number> | null,
+  guide?: GuideDoor,
 ): CollectedPublicArt {
   const { pool } = gathered;
   const items: WikidataLandmark[] = [];
@@ -453,7 +470,8 @@ export function classifyPublicArt(
     const held = admitted.has(entity.qid);
     const streetArtSays = streetArt && decidedAsStreetArt.has(entity.qid)
       ? streetArtDecision(entity, gathered, streetArt, held) : undefined;
-    const decision = streetArtSays === undefined ? kindDecision(entity, gathered, rule, held, offered, door, clockReaders) : streetArtSays;
+    const decision = streetArtSays === undefined
+      ? kindDecision(entity, gathered, rule, held, offered, door, clockReaders, guide) : streetArtSays;
     if (decision && 'item' in decision) items.push(decision.item);
     else if (decision && 'refused' in decision) filtered.push(decision.refused);
     if (decision?.handOver) handOvers.push(decision.handOver);
@@ -463,9 +481,24 @@ export function classifyPublicArt(
   console.log(
     `[Landmark Sync] Pool of ${pool.size} for ${rule.noun}: ${items.length} admitted, ${filtered.length} refused, `
     + `${pool.size - items.length - filtered.length} below the line and never in`
-    + (byDoor.length ? `; the readership door admitted ${byDoor.join(', ')}` : ''),
+    + (byDoor.length ? `; a door admitted ${byDoor.join(', ')}` : ''),
   );
   return { items, fetched: pool.size, filtered, handOvers };
+}
+
+/**
+ * The candidates the guide door is asked about (ADR-0167): every one below the
+ * line and at the pool's floor or over, the held ones included, so a held row
+ * no guide uses any more falls by name. The floor is the door's lower edge:
+ * the street-art entrance names a place in any number of editions (a graffiti
+ * wall in ten, a statue in none), and the door reads the pool, not the
+ * entrance. A candidate the entrance alone brought is the street-art rule's.
+ */
+export function guideDoorCandidates(gathered: GatheredPublicArt): string[] {
+  return [...gathered.pool.values()]
+    .filter((entity) => !gathered.enteredOnly.has(entity.qid)
+      && entity.sitelinks < ENTER_SITELINKS && entity.sitelinks >= POOL_MIN_SITELINKS)
+    .map((entity) => entity.qid);
 }
 
 /**
