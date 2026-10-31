@@ -24,7 +24,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 |---|---|---|---|
 | **Kind** | What a traveller browses by — a World Heritage site, an art museum, an archaeology museum, a monument. Siblings: each its own list, pin colour and count, each with a sync of its own and its own rule of what complete means — a kind's sources are that sync's inputs (ADR-0045 §1, §2, §3) | `experience_kinds` (#822), and a place's membership in it is a row of `experience_kind_memberships`; a reader-facing row carries its kind off that membership (`rowKindJoinSql`, #819) | `kind_id`, `kind_name`, `kind_priority`, `kindId`; `experience_kinds`; the chip beside an object's name on a review card, the Discover pills and `?kind=`, the group headers, `kindColors.ts` |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query — an input of the kind's sync, carrying its own gate (§3, §7); the sync and the rule of completeness are the kind's. A kind may have several; one source may feed several kinds | `experience_sources` — one row per source, the row the sync service is registered under, naming the kind it fills (`kind_id`, #822); named `experience_categories` until migration 055 (#819) | `experience_sources`, `source_id` on `experiences` (the source that first brought the row, provenance only since ADR-0084), on `experience_sync_logs`, on a membership and on the caches, the curator scope `'source'`, `requires_curation`, the admin panel's Sources tab and its routes (`/api/admin/sync/sources/…`) |
-| **Tier** | Which of a kind's two fillings a source belongs to ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md)): the **world tier** — a global source ranks the world on one signal and a line is drawn, the Iconic badge is its (§5) — or the **regional tier** — a source native to its own unit (a country's register, a city's list, a curator) enumerates what the unit holds and the kind's rule cuts within it, no badge. A region's list is both together; the rules, the scorecard and the register of sources looked at are [filling-a-kind.md](filling-a-kind.md) and [`docs/sources/`](../sources/README.md) | Not a column yet: every source that exists — World Heritage, Art Museums, Public art, Places of worship, Archaeology, Monuments & memorials, Towers, Bridges & engineering marvels, Squares & streets — is world tier; the first regional source (#628) records its tier on its `experience_sources` row | — |
+| **Tier** | Which of a kind's two fillings a source belongs to ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md)): the **world tier** — a global source ranks the world on one signal and a line is drawn, the Iconic badge is its (§5) — or the **regional tier** — a source native to its own unit (a country's register, a city's list, a curator) enumerates what the unit holds and the kind's rule cuts within it, no badge. A region's list is both together; the rules, the scorecard and the register of sources looked at are [filling-a-kind.md](filling-a-kind.md) and [`docs/sources/`](../sources/README.md) | Not a column on the source yet: every source that exists is world tier, and the regional tier each place kind reads from Wikidata by ADR-0171 (§ The regional tier from the gather) marks its rows on the membership (`facts.tier = 'regional'`, no badge); the first native regional source (#628) records its tier on its `experience_sources` row | — |
 | **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, monument / sculpture, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue / sacred mountain / holy site, site / museum — and none for an art museum (§1, #814) | `experience_kind_memberships.type` — the membership's, since a place in two kinds has a type in each (ADR-0084, #1253); the vocabularies in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
 | **Treasure type** | What kind of thing a work is, independent of its venue's kind and type | `treasures.treasure_type` | `treasure_type` |
 
@@ -844,6 +844,79 @@ A Wikidata kind is filled by a source of its own, and sources whose kinds are dr
 Adding a place kind is a declaration and its seed: a `PlaceKind` with its trees and pool classes, its classifier (the verdict, the fame line, the type), its source row and kind row, and its member in `places/placePass.ts` and `PLACE_PASS`. It has no fetchers, run or service of its own. Towers was the first kind added that way, then Bridges & engineering marvels and Squares & streets: their members are `placeSource(7, gather, TOWERS_CLASSIFIER)`, `placeSource(8, gather, BRIDGES_CLASSIFIER)` and `placeSource(9, gather, SQUARES_CLASSIFIER)`, the run Public art and Monuments & memorials have, over a `PlaceClassifier` of its own (`landmarkSyncService.ts`), which names its types and its tag. The source is then registered where every Wikidata source is: the run registry (`syncController.ts`), the field families (`fieldFamilies.ts`), the subset's ready sources (`SUBSET_READY_SOURCES`), the visit questions (`ASKING_SOURCES`), its cache kinds (`CACHED_KINDS_BY_SOURCE`) and, on the web, its colour (`kindColors.ts`) and its types (`experienceTypes.ts`).
 
 Measured on the development subset on 2026-10-22, read-only in the dev container: the place gather and main's separate gathers proposed the same places and the same refusals, by item id and reason, for all three kinds (Public art 92 and 404, Monuments & memorials 116 and 358, Places of worship 1,078 and 71). Only the order of equally famous places of worship differed. The pool named 2,722 entities: 554 public-art candidates, 2,229 places-of-worship candidates and 61 shared. The gather took 48 to 73 s over three runs and the two separate gathers 44 to 68 s, so on the subset one gather saves no time while the kinds barely overlap. What it saves is the second set of fetchers.
+
+### The regional tier from the gather ([ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md), #2178)
+
+Where no native source is adopted for a region, a place kind's **regional tier** is read from Wikidata
+by measuring a place against what lies within 50 km of it (ADR-0048 decision 3 as ADR-0171 narrows it).
+It runs after the world tier has decided, in every place source of the pass and in Places of worship's
+own run, and it is the second tier: **no Iconic badge** (`badgesAdmitted` is `item.tier !== 'regional'`
+in `placeSource` and the worship service), every arrival through the source's curator gate, the same
+place as the world tier's where both name it, and the tier on the row's membership facts
+(`metadata.tier`, a kind fact in `@tyr/shared/placeFields`; absent on a world-tier row).
+
+- **One pool for the pass, cheap before dear** (`places/regionalPool.ts`, `readRegionalPool`; the
+  gather hands it on as `PlaceGather.regional`, read once on the first source that asks). The pool is
+  every item of every place kind's classes with a point (`GatheredPlaces.classes`, Archaeology's sites
+  among them) and of the museum tree beside them (`regionalPoolOf` in `places/placePass.ts`: museums
+  are no kind of the pass, but the measurement counted them among a place's neighbours, and they set
+  the references — the Tretyakov Gallery lifts Moscow's guide median from 4 to 4.5, and a church with
+  one Wikivoyage listing then stays under a quarter of it rather than exactly on it), whatever its editions — the group a place is measured among, as ADR-0171's measurement
+  counted it, so a church in Cairo is measured against Giza and Saqqara — in one temporary table built
+  from the subset (`wikidata_claims` P31 and P625, the editions counted as `subsetWikipediaEditions`
+  counts them, the Wikivoyage editions that use the item from `wikivoyage_usage`), with a GiST index
+  on the point; every item with the cut's languages then gets its surroundings in one indexed query
+  (`readSurroundings`: the group within the radius, the best places' editions and guide editions, over
+  the places that carry each signal). Each kind's part (`places/regionalTier.ts`, `regionalArrivals`)
+  takes the rows of its own classes the world tier did not admit, runs the cut, and only the survivors
+  are then asked about by id through the gather
+  (`gatherPlaces` with a kind that has no pool question of its own, so what holds them and what they
+  depict is read as for any candidate) and put to the kind's own rule: a museum's statue or a church's
+  tower is refused there as it is in the pool. Each kind declares its part as a `RegionalKind` — its
+  classes, its verdict over a survivor's share, a context the rule needs (what other kinds offer, for
+  Public art) — on its classifier (`regional`, a `RegionalReader`) or, for Places of worship,
+  `WORSHIP_REGIONAL` in `worshipSyncService.ts`.
+- **The cut** (`places/regionalCut.ts`, `regionalVerdict`): a candidate with at least `minLanguages`
+  Wikipedia editions enters when its editions reach `editionsShare` of the median of the `best`
+  highest within `radiusKm` among the places read in any edition, in a group of at least
+  `editionsGroupFloor` places, or the Wikivoyage editions that use it reach `guideShare` of the median
+  of the `best` highest guide counts among the places a guide uses at all, in a group of at least
+  `guideGroupFloor`. The numbers are one named set, `REGIONAL_CUT` (50 km, 10, 1, ¼, 25 and 5, 2 —
+  ADR-0171's, as its measurement's `final.py` applied them on the dump of 2026-10-19 over the 21
+  coverage surveys), with two more that the review's experiments turn: **`enabled`**, off until the
+  review (#2177) settles the numbers — the pass then reads no pool and every kind's part says so —
+  and **`neighbours`**, whose places set the references: `all` (every place kind's and the museums',
+  the measurement's pool), `kind` (the candidate's own kind's places) or `type` (its type's within
+  the kind, a mosque among mosques, by `RegionalKind.typesOf`); the pool reads one neighbourhood per
+  group (`RegionalGroup`, `regionalGroups`), keyed `all`, the kind's name or `<kind>:<type>`: parameters for the admission
+  review's experiments (#2177), not a reader's or an admin's control, and shaped so a later decision can
+  give a region values of its own. The curator's note carries the numbers: "In the regional tier by the
+  guides: within 50 km, 195 places: the 10 best are read in 38 Wikipedia editions at the median, this
+  place in 7; the best are used by 3.5 Wikivoyage editions at the median, this place by 1 (ADR-0171)".
+- **Measured on the development subset (2026-10-31, #2178):** the pool holds 2,117,643 items of 4,296
+  classes, the surroundings of the 143,383 at two editions or more are read in 29 minutes once per pass,
+  and each kind's part takes seconds. Inside the 21 coverage surveys the cut admits 452 places, 197 of
+  them named by a survey list — Moscow 28, Kyoto 66, Delhi 48, Bali 19, Salvador 15, Dakar 4 — and over
+  the whole world 20,915, 14,700 of them places of worship, every one for a curator; how many a dense
+  region should offer is the admission review's question (#2177).
+- **The two tiers are held apart.** A world classifier is handed its world tier's admitted rows alone
+  (`admittedExternalIds(source, undefined, 'world')`: no `tier` fact), so a regional row is never held
+  to the world line's stay line — it would be promoted to the world tier with the badge, or refused by
+  the line and readmitted by the cut on every pass. The regional step is handed its own
+  (`'regional'`) and refuses one that no longer clears the cut with the cut's reason — one with no
+  surroundings any more included; `mergeRegional` joins the two decisions so a place is never both
+  admitted and refused in one pass. A run that did not read the tier (switched off, or on the live
+  service) says so on its result (`FetchResult.spareTier`), and the sweep (`markNotAdmitted`) leaves
+  that tier's admitted rows as they are: no answer is not a refusal. The sweep's floor counts the tiers
+  the run read alone (`countAdmitted(source, spareTier)`, taken after the fetch, which writes nothing),
+  so fourteen thousand regional rows never make a world tier of a thousand look like a run that lost
+  half of what it held; and a curator's pin on a row of that tier is not asked about again, the run
+  having no view of it (`questionPins`, `PinnedRow.tier`).
+- **Subset only.** The radius is a question over the whole pool, which the local subset answers and
+  the query service cannot; a run on the live door reads no regional tier and says so in its log. A
+  regional row that stops clearing the cut is refused by the next run as a row the line drops is; the
+  cut has no stay line of its own (a parameter for #2177 to consider).
+- Archaeology's sites are not read this way yet: their door asks the map and the witnesses.
 
 ### Where a work lies (#1819)
 

@@ -182,6 +182,9 @@ OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the un
   50 km by Wikivoyage's use, or its Wikipedia editions reach the median of the 10 best within
   50 km by Wikipedia editions, among 25 places or more;
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
+- the place pass reads it after the world tier has decided, for every place kind, from the local subset
+  (`places/regionalTier.ts`, `REGIONAL_CUT` in `places/regionalCut.ts`; experiences.md § The regional tier
+  from the gather, #2178); a row it admits carries `facts.tier = 'regional'` and no badge.
 - the floor counts the area's places, not the places that carry the signal.
 
 On the 21 coverage surveys this admits 79 % of the places three sources other than Wikivoyage
