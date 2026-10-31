@@ -2726,7 +2726,29 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    in place, so every work it admits arrives for a curator, with the question on Public art's own
    membership, its `admissionNote` fact (`artworkDoorNote`): the reading, the bar or the exit,
    the burst flag, and whether a visitor can see it there now. The run's log names every work the
-   door admitted. **Monuments & memorials opens the guide door instead** ([ADR-0167](../decisions/0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md),
+   door admitted. **A guide's use or an Atlas Obscura listing opens a third door to Public art**
+   ([ADR-0169](../decisions/0169-a-work-a-guide-uses-or-atlas-obscura-lists-enters-at-20000-readers-a-year-whatever-its-editions.md),
+   `publicArt/marksDoor.ts`, `PUBLIC_ART_MARKS_DOOR`): a work that passes the rule, that a Wikivoyage
+   edition uses or whose item carries an Atlas Obscura place ID (`P7772`, Wikidata's CC0 statement,
+   read from the subset as the street-art rule reads it — `fetchStreetArtMarks`, never the site) and
+   that the latest year reads 20,000 times or over enters, whatever its count of editions, for a
+   curator, with the door's question as its `admissionNote` (`marksDoorNote`: editions, readers, the
+   marks, the bar). Cadillac Ranch carries 10 editions, the Crown Fountain 13, *The Spirit of
+   Detroit* 2. A work the door admitted stays while a mark stands and the year reads it over 16,400 —
+   the editions line's own ratio of stay to enter — and falls with the marks named
+   (`belowLineUnmarkedReason`). The door reads the pool and the works under its floor
+   (`publicArt/underFloor.ts`, `collectWorksUnderFloor`): the readership names every item read at
+   the bar in fewer than 15 editions (`readAtLeast`), the marks narrow them, Wikidata is asked which
+   carry a class the kind's rule admits by with a point (`fetchPlacedAmong`, with the sculptural and
+   fountain closures and `PUBLIC_CLOCK_CLASSES` — not the pool's whole admitting set, whose heritage
+   senses of monument are Monuments & memorials' candidates) and then
+   for their rows, facts, containers and subjects, and they join the share before any other read
+   (`shareWithMarksDoor`), so the readership door, the street-art reading and the clock line see
+   them too. Shut while the source's curator gate is off (ADR-0056 decision 5) or no year of
+   readership is folded: nothing is read under the floor, nothing enters, and a held work under the
+   stay line keeps its place with a note (`keptMarksNote`); with no Wikivoyage usage build the
+   guide's half is silent and Atlas Obscura's still speaks. The bar is the maintainer's count of
+   2026-10-30; #2145 restates every readers' bar as a rule that follows the year. **Monuments & memorials opens the guide door instead** ([ADR-0167](../decisions/0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md),
    `publicArt/guideDoor.ts`, `guideDoorCandidates` in the pipeline): a candidate under the line
    that passes the rule and that a Wikivoyage edition uses (`usedByAGuide`, the usage build of
    `docs/tech/dumps.md`) stands in, for a curator, with the door's question as its `admissionNote`
