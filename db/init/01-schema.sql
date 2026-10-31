@@ -4636,6 +4636,8 @@ ALTER TABLE experience_merge_proposals
 COMMENT ON COLUMN experience_merge_proposals.answered_by_catalogue IS 'Whether the pairing pass answered this pair from Wikidata rather than a curator (#1991, ADR-0150): part_of, from the statement in answer_statement. answered_by is null then, as it is for a curator since deleted.';
 COMMENT ON COLUMN experience_merge_proposals.answer_statement IS 'The Wikidata statement a catalogue answer rests on: {property, subject, value}, P361 "part of" stated by the part''s item toward the whole''s, or P527 "has part" stated by the whole''s toward the part''s.';
 COMMENT ON COLUMN experience_merge_proposals.taken_back_at IS 'When a curator last took this pair''s answer back (#1991): open again, and never answered by the pass again, only by a curator.';
+ALTER TABLE experience_merge_proposals ADD COLUMN IF NOT EXISTS matched_words TEXT[];
+COMMENT ON COLUMN experience_merge_proposals.matched_words IS 'For a pair found by one name''s words standing in the other''s (found_by = words): those words, folded as the rule reads them, so the card says what matched -- one word, as a town''s name both carry (tallinn), or several (#2194). Null for a pair found by similarity, and on a pair written before the column.';
 
 ALTER TABLE experience_merge_proposals DROP CONSTRAINT IF EXISTS experience_merge_proposals_catalogue_check;
 ALTER TABLE experience_merge_proposals ADD CONSTRAINT experience_merge_proposals_catalogue_check

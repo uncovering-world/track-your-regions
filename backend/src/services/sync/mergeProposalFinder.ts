@@ -50,6 +50,13 @@
  * ways. A change of the rule raises `PAIRING_RULE_VERSION`, and the first
  * drain that finds the database's version different pairs the whole
  * catalogue.
+ *
+ * A proposal records which rule found it (`found_by`) and, for the words rule,
+ * the words that matched (`matched_words`, #2194), so the card says the word
+ * rather than "one name within the other", which overstates a match on a town's
+ * name alone: on the development catalogue on 2026-10-31, 53 of the 56 open
+ * pairs so found stood on one word both names carry — "Historic Centre (Old
+ * Town) of Tallinn" beside "Freedom Square (Tallinn)".
  */
 
 import type { PoolClient } from 'pg';
@@ -109,9 +116,11 @@ const GENERIC_WORDS_SQL = GENERIC_NAME_WORDS.map(word => "'" + word + "'").join(
  * `name` is a folded name (`foldedNamesSql`).
  */
 function wordsSql(name: string): string {
-  return `ARRAY(SELECT DISTINCT w FROM regexp_split_to_table(${name}, '[^[:alnum:]]+') AS w
-                 WHERE length(w) >= ${MIN_WORD_LENGTH}
-                   AND w <> ALL (ARRAY[${GENERIC_WORDS_SQL}]))`;
+  // In the order the name says them, each once: what the card prints as the matched words (#2194).
+  return `ARRAY(SELECT t.w FROM regexp_split_to_table(${name}, '[^[:alnum:]]+') WITH ORDINALITY AS t(w, n)
+                 WHERE length(t.w) >= ${MIN_WORD_LENGTH}
+                   AND t.w <> ALL (ARRAY[${GENERIC_WORDS_SQL}])
+                 GROUP BY t.w ORDER BY min(t.n))`;
 }
 
 /**
@@ -126,6 +135,24 @@ function nameWithinSql(a: string, b: string): string {
                   LATERAL (SELECT ${wordsSql('an')} AS wa, ${wordsSql('bn')} AS wb) AS words
                   WHERE cardinality(words.wa) > 0 AND cardinality(words.wb) > 0
                     AND (words.wa <@ words.wb OR words.wb <@ words.wa))`;
+}
+
+/**
+ * The words the containment stands on (#2194): the contained name's words,
+ * the fewest over every pair of names that matches, so the card says what
+ * matched rather than "one name within the other" — one word where a town's
+ * name is all two names share ("tallinn", 53 of the 56 open pairs so found on
+ * the development catalogue on 2026-10-31), several where a name stands whole
+ * in a title ("westminster", "abbey"). Null where no pair of names matches.
+ */
+function matchedWordsSql(a: string, b: string): string {
+  return `(SELECT CASE WHEN words.wa <@ words.wb THEN words.wa ELSE words.wb END
+             FROM unnest(${a}) AS an, unnest(${b}) AS bn,
+                  LATERAL (SELECT ${wordsSql('an')} AS wa, ${wordsSql('bn')} AS wb) AS words
+            WHERE cardinality(words.wa) > 0 AND cardinality(words.wb) > 0
+              AND (words.wa <@ words.wb OR words.wb <@ words.wa)
+            ORDER BY cardinality(CASE WHEN words.wa <@ words.wb THEN words.wa ELSE words.wb END), 1
+            LIMIT 1)`;
 }
 
 /**
@@ -221,7 +248,8 @@ export function candidatePairsSql(): string {
       JOIN places b ON b.id = n.place_b
   )
   SELECT m.place_a, m.place_b, m.distance_m, m.reach_m, m.name_similarity, m.exact, m.shared_kind,
-         CASE WHEN m.name_similarity >= ${MIN_SIMILARITY} THEN 'similar' ELSE 'words' END AS found_by
+         CASE WHEN m.name_similarity >= ${MIN_SIMILARITY} THEN 'similar' ELSE 'words' END AS found_by,
+         CASE WHEN m.name_similarity >= ${MIN_SIMILARITY} THEN NULL ELSE ${matchedWordsSql('m.a_names', 'm.b_names')} END AS matched_words
     FROM measured m
    WHERE (m.name_similarity >= ${MIN_SIMILARITY} OR ${nameWithinSql('m.a_names', 'm.b_names')})
      -- Two places a curator separated are two places (ADR-0144): never proposed as one.
@@ -233,7 +261,7 @@ export function candidatePairsSql(): string {
 
 /** A proposal as the check lists it, with both places named; the drain writes these rows (`writeProposals`). */
 export const PROPOSAL_ROWS_SQL = `
-  SELECT p.id, p.distance_m, p.name_similarity, p.exact, p.reach_m, p.found_by, p.proposed_at, p.answer,
+  SELECT p.id, p.distance_m, p.name_similarity, p.exact, p.reach_m, p.found_by, p.matched_words, p.proposed_at, p.answer,
          a.id AS a_id, a.name AS a_name, ${kindNamesSql('a')} AS a_kinds, ${partOfNameSql('a.id')} AS a_part_of,
          b.id AS b_id, b.name AS b_name, ${kindNamesSql('b')} AS b_kinds, ${partOfNameSql('b.id')} AS b_part_of
     FROM experience_merge_proposals p
@@ -269,13 +297,14 @@ async function writeProposals(client: PoolClient, among: readonly number[] | nul
     params,
   );
   await client.query(
-    `INSERT INTO experience_merge_proposals AS p (place_a, place_b, distance_m, name_similarity, exact, reach_m, found_by)
-     SELECT f.place_a, f.place_b, f.distance_m, f.name_similarity, f.exact, f.reach_m, f.found_by
+    `INSERT INTO experience_merge_proposals AS p (place_a, place_b, distance_m, name_similarity, exact, reach_m, found_by, matched_words)
+     SELECT f.place_a, f.place_b, f.distance_m, f.name_similarity, f.exact, f.reach_m, f.found_by, f.matched_words
        FROM found f
       WHERE NOT f.shared_kind
      ON CONFLICT (place_a, place_b) DO UPDATE
         SET distance_m = EXCLUDED.distance_m, name_similarity = EXCLUDED.name_similarity,
-            exact = EXCLUDED.exact, reach_m = EXCLUDED.reach_m, found_by = EXCLUDED.found_by, proposed_at = NOW()
+            exact = EXCLUDED.exact, reach_m = EXCLUDED.reach_m, found_by = EXCLUDED.found_by,
+            matched_words = EXCLUDED.matched_words, proposed_at = NOW()
       WHERE p.answer IS NULL`,
   );
 }
@@ -353,9 +382,10 @@ async function answerFromWikidata(client: PoolClient, among: readonly number[] |
  * (`experience_pairing_rule`). 1 is the trigram rule of #1249; 2 adds one
  * name's words standing in the other's (ADR-0120); 3 answers "part of"
  * from Wikidata (ADR-0150); 4 pairs a serial site's part like any place
- * (#1250).
+ * (#1250); 5 records the words a containment stands on (#2194), which pairs
+ * nothing new and fills `matched_words` on every open pair.
  */
-export const PAIRING_RULE_VERSION = 4;
+export const PAIRING_RULE_VERSION = 5;
 
 /**
  * What one drain did: how many marked places it paired again, whether it ran

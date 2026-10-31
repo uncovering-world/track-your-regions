@@ -51,6 +51,12 @@ describe('the pairs the rule finds', () => {
     expect(sql).toContain(`CASE WHEN m.name_similarity >= ${MIN_SIMILARITY} THEN 'similar' ELSE 'words' END AS found_by`);
   });
 
+  it('records the words a containment stands on, the fewest, and none for a pair found by similarity (#2194)', () => {
+    expect(sql).toContain(`CASE WHEN m.name_similarity >= ${MIN_SIMILARITY} THEN NULL ELSE (SELECT CASE WHEN words.wa <@ words.wb THEN words.wa ELSE words.wb END`);
+    expect(sql).toContain('ORDER BY cardinality(CASE WHEN words.wa <@ words.wb THEN words.wa ELSE words.wb END), 1');
+    expect(sql).toContain('LIMIT 1) END AS matched_words');
+  });
+
   it('never proposes two places a curator separated (ADR-0144)', () => {
     expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM experience_separations sep');
     expect(sql).toContain('WHERE sep.undone_at IS NULL');
@@ -61,7 +67,10 @@ describe('the pairs the rule finds', () => {
   it('finds a pair too where every word of one name stands in the other, its generic words left out (#1652)', () => {
     expect(sql).toContain('(words.wa <@ words.wb OR words.wb <@ words.wa)');
     expect(sql).toContain('cardinality(words.wa) > 0 AND cardinality(words.wb) > 0');
-    expect(sql).toContain(`length(w) >= ${MIN_WORD_LENGTH}`);
+    expect(sql).toContain(`length(t.w) >= ${MIN_WORD_LENGTH}`);
+    // In the order the name says them, each once, so the card prints "westminster", "abbey" and never the reverse (#2194).
+    expect(sql).toContain("WITH ORDINALITY AS t(w, n)");
+    expect(sql).toContain("GROUP BY t.w ORDER BY min(t.n))");
     for (const word of ['monastery', 'historic', 'centre', 'saint', 'and']) expect(GENERIC_NAME_WORDS).toContain(word);
     // A word list is fixed literals: none carries a quote that would end the SQL string.
     expect(GENERIC_NAME_WORDS.every(word => /^[a-z]+$/.test(word))).toBe(true);

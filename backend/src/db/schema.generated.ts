@@ -452,6 +452,7 @@ export interface ExperienceMergeProposalsRow {
   answered_by_catalogue: boolean;
   answer_statement: unknown | null;
   taken_back_at: Date | null;
+  matched_words: string[] | null;
 }
 
 /** The table `experience_merge_suggestions`. */

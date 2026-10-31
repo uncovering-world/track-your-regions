@@ -77,8 +77,11 @@ async function place({ id, name, source, lon, state = 'auto', admission = 'admit
 }
 
 const fixturePairs = async () => {
-  const rows = await pool.query<{ place_a: number; place_b: number; exact: boolean; distance_m: number; reach_m: number; answer: string | null; found_by: string }>(
-    `SELECT place_a, place_b, exact, distance_m, reach_m, answer, found_by FROM experience_merge_proposals
+  const rows = await pool.query<{
+    place_a: number; place_b: number; exact: boolean; distance_m: number; reach_m: number; answer: string | null; found_by: string;
+    matched_words: string[] | null;
+  }>(
+    `SELECT place_a, place_b, exact, distance_m, reach_m, answer, found_by, matched_words FROM experience_merge_proposals
       WHERE place_a = ANY($1) ORDER BY place_a, place_b`,
     [ALL],
   );
@@ -164,6 +167,9 @@ describe('the pass over near places with similar names', () => {
       [P.belfry, P.belfryTwin, true, 'similar'],
     ]);
     expect(pairs[0].distance_m).toBe(40);
+    // The words the containment stood on, and none on a pair found by similarity (#2194).
+    expect(pairs[4].matched_words).toEqual(['fixturegard']);
+    expect(pairs[0].matched_words).toBeNull();
     expect(pairs[1].reach_m).toBe(1493);
     expect(pairs[1].distance_m).toBe(900);
     // Across the antimeridian: found through the twin, measured on the geography.
