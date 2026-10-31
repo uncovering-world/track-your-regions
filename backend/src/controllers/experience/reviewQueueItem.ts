@@ -81,6 +81,8 @@ export interface QueueRow {
   pending_works?: PendingWork[];
   curation_state?: string;
   offered_locations?: number;
+  /** How many parts the object is the whole of (#2183). */
+  parts_total?: number;
   withdrawn_points?: WithdrawnPoint[] | null;
   answered_points?: AnsweredPoint[] | null;
   answered_points_total?: number;
@@ -217,6 +219,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     pending_works: row.pending_works,
     curation_state: row.curation_state,
     offered_locations: row.offered_locations,
+    parts_total: row.parts_total,
     withdrawn_points: row.withdrawn_points,
     answered_points: row.answered_points,
     answered_points_total: row.answered_points_total,

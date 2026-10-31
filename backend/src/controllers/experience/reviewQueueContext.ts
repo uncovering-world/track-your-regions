@@ -149,7 +149,16 @@ export function objectContextSelectSql(alias = 'e'): string {
             AS offered_locations,
           (SELECT count(*) FROM experience_treasures et
             WHERE et.experience_id = ${alias}.id
-              AND ${offeredLinkSql('et')})::int AS counted_works_total`;
+              AND ${offeredLinkSql('et')})::int AS counted_works_total,
+          -- How many components the object is the whole of (ADR-0100): a serial
+          -- site's card links the World Heritage list's table of its parts, which
+          -- the property's own page does not show (#2183). The parts the list
+          -- numbers only, since the table is the list's: a part Wikidata or a
+          -- curator names is in no such table. Counted off the relations, not the
+          -- offered points: a site whose components were renumbered keeps its
+          -- parts while their points are withdrawn.
+          (SELECT count(*) FROM experience_parts whole_of
+            WHERE whole_of.whole_id = ${alias}.id AND whole_of.reason = 'component')::int AS parts_total`;
 }
 
 /**

@@ -3798,7 +3798,7 @@ export interface SourceView {
   /** Whether this is a serial site's view of the place as one of its components, read off the component's record (ADR-0156). */
   component: boolean;
   /**
-     * The page the source's record lives on: the property's page on the World Heritage list for a component, else the place's own World Heritage page or website (#2158).
+     * The page the source's record lives on: the property's page on the World Heritage list for a component — the fallback where the component's reference gives no table of parts (#2183) — else the place's own World Heritage page or website (#2158).
      * @nullable
      */
   source_page: string | null;
@@ -4379,6 +4379,12 @@ export interface ReviewQueueItem {
      * @maximum 9007199254740991
      */
   offered_locations?: number;
+  /**
+     * How many components the object is the whole of (ADR-0100, the parts the World Heritage list numbers): a serial site's, whose table on the World Heritage list the card links (#2183); a place that is no whole counts none.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  parts_total?: number;
   withdrawn_points?: WithdrawnPoint[] | null;
   answered_points?: AnsweredPoint[] | null;
   /**
