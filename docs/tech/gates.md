@@ -895,8 +895,10 @@ What the lane holds the API to includes three answers that are not a 500:
 - a NUL byte in text is a 400;
 - Sign in with a provider the server has no credentials for is a 404.
 
-The traveller's run keeps under `authenticatedLimiter`, which, unlike the read limits, the
-environment cannot raise, so its probes meet the 401 they look for rather than a 429. A query
+The traveller's and the curator's runs keep under `authenticatedLimiter`, which, unlike the read limits,
+the environment cannot raise, so their probes meet the 401 they look for rather than a 429 — the
+curator's since 2026-10-31, when its coverage phase crossed sixty a minute from one address (#2192):
+headroom under the limiter for the curator routes the lane reads. A query
 parameter a route does not declare is refused with 400 (#1099, `development-guide.md` § API Layer),
 so the lane's findings are defects and its step fails the job.
 
