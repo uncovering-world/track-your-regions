@@ -44,8 +44,8 @@ scorecard:
   cadence: 2
   total: 12
   verdict: adoptable
-status: looked-at
-issue: 1992
+status: adopted
+issue: 2034
 looked_at: 2026-10-25
 ---
 
@@ -93,3 +93,16 @@ of the kind's classes, wider than the run's
 - Under the line it is on 744 pool items with one edition or more, and 510 with two or more.
 - A sample of 40 of the 510 held about 24 sights, about 8 roadside giants and about 8 items
   that are not public art.
+
+## Adopted (2026-10-31, #2034, ADR-0169)
+
+Public art reads it as one of the two marks of its marks door (`publicArt/marksDoor.ts`): a work
+that passes the kind's rule, that a Wikivoyage edition uses **or** whose item carries an Atlas
+Obscura place ID, and that the latest year reads 20,000 times or over enters, whatever its count of
+Wikipedia editions, for a curator — the maintainer's decision of 2026-10-30 on #2034, sized on the
+#1997 report (20,000 readers reaches 15 of the canon's missing tops in 207 places; 25,000 only 9).
+No `experience_sources` row is written from it: the mark enters Public art's own run (source 3), and
+the arrival names it in the curator's question ("Atlas Obscura lists it"). The statement is read from
+the subset's entity JSON as the street-art rule reads it (`fetchStreetArtMarks`, `subset/streetArt.ts`);
+the site is never called, and nothing of it is shown. With no Wikivoyage usage build the guide's half
+of the door is silent and this mark still speaks.
