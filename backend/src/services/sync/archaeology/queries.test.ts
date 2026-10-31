@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  collectMuseumPool, fetchArchaeologyTrees, fetchFindFacts, fetchFindsAmong, fetchSiteFacts, fetchSitelinksByIds, fetchSitesAmong,
+  collectMuseumPool, fetchArchaeologyTrees, fetchFindFacts, fetchFindsAmong, fetchSiteFacts, fetchSitelinksByIds, fetchPlacedAmong,
   SITELINKS_BATCH,
 } from './queries.js';
 import {
@@ -341,7 +341,7 @@ describe('fetchFindsAmong', () => {
   });
 });
 
-describe('fetchSitesAmong', () => {
+describe('fetchPlacedAmong', () => {
   it('keeps the items the readership names that carry a site class and a point, in the order asked (ADR-0152)', async () => {
     // Watson Brake and the Inca Trail answer with a site class; the wreck of
     // MS Jan Heweliusz answers with none of the classes asked about; the Temple
@@ -353,7 +353,7 @@ describe('fetchSitesAmong', () => {
       { e: ref('Q2552689'), class: ref('Q839954') },
       { e: ref('Q1681845'), class: ref('Q852190') },
     ]);
-    const sites = await fetchSitesAmong(run, ['Q2552689', 'Q1681845', 'Q6014019', 'Q21705206'], new Set(['Q839954', 'Q15661340']));
+    const sites = await fetchPlacedAmong(run, ['Q2552689', 'Q1681845', 'Q6014019', 'Q21705206'], new Set(['Q839954', 'Q15661340']));
     expect(sites).toEqual(['Q2552689', 'Q6014019']);
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain('wdt:P625');
@@ -363,7 +363,7 @@ describe('fetchSitesAmong', () => {
 
   it('asks nothing where there is nothing to ask about', async () => {
     const { run, sent } = runnerOver(() => []);
-    expect(await fetchSitesAmong(run, [], new Set(['Q839954']))).toEqual([]);
+    expect(await fetchPlacedAmong(run, [], new Set(['Q839954']))).toEqual([]);
     expect(sent).toHaveLength(0);
   });
 });

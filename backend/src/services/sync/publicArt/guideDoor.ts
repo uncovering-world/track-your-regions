@@ -18,24 +18,12 @@
  */
 
 import { belowLineReason, type LinePair, type LineStanding } from '../sourceLine.js';
-import { curatorGateOn } from '../readershipDoor.js';
-import { latestUsage, usedByAGuide } from '../../dumps/wikivoyage/usageTables.js';
+import type { GuideDoor } from '../places/guideDoor.js';
 
-/** The candidates a Wikivoyage edition uses; null while the door is shut — the gate off, or no usage build in place. */
-export type GuideDoor = ReadonlySet<string> | null;
-
-/** The door of `sourceId` over the candidates handed in, read from the usage build while the source's gate is on. */
-export async function readGuideDoor(sourceId: number, qids: readonly string[], logPrefix: string): Promise<GuideDoor> {
-  if (!(await curatorGateOn(sourceId))) {
-    console.log(`${logPrefix} The guide door is shut: the source's curator gate is off (ADR-0056 decision 5), and the held keep their place`);
-    return null;
-  }
-  if (!(await latestUsage())) {
-    console.log(`${logPrefix} No Wikivoyage usage is built: the guide door is shut, and the held keep their place`);
-    return null;
-  }
-  return usedByAGuide(qids);
-}
+// Whether the door is open — the gate, the usage build — is the shared door's
+// (`places/guideDoor.ts`); what Monuments & memorials asks of a guided
+// candidate is here.
+export type { GuideDoor } from '../places/guideDoor.js';
 
 /** The curator's question on a row the guide door alone admitted. */
 export function guideDoorNote(sitelinks: number, line: LinePair): string {
