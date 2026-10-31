@@ -14,7 +14,7 @@ import type {
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeProposalTakenBack, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointHintSuggestions, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
-  KeptOutOfKind, KindAddedToPlace, PlaceKindStandings,
+  WebsiteChecks, KeptOutOfKind, KindAddedToPlace, PlaceKindStandings,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -34,6 +34,7 @@ import {
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
   postExperiencesByIdUnrefuseContents, postExperiencesByIdUnreject, postExperiencesLocationsByLocationIdState,
   postExperiencesLocationsByLocationIdTakeBackItem, getExperiencesLocationsByLocationIdNearbyPictures,
+  getExperiencesByIdWebsiteChecks,
   postExperiencesByIdMergeProposalsByProposalIdTakeBack,
   type CreateManualExperienceBody, type DeclineHeldBody, type EditExperienceBody, type EditLocationBody,
   type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type RefuseContentsBody,
@@ -47,7 +48,7 @@ export type {
   ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry, PointHintSuggestions,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPicture,
-  NearbyPictures,
+  NearbyPictures, WebsiteCheckResult, WebsiteChecks,
   AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
   PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PlaceIdentifier, PlaceIdentifiers, IdentifierSettled, IdentifierVerdictBody, PointItemTakenBack, MergeProposalTakenBack, ViewsChosen, ViewSuggestions, VisitQuestionAnswerBody, VisitQuestionAnswered, VisitSuggestion, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
@@ -126,6 +127,15 @@ export async function editLocation(
  */
 export async function getNearbyPictures(locationId: number): Promise<NearbyPictures> {
   return getExperiencesLocationsByLocationIdNearbyPictures(locationId);
+}
+
+/**
+ * Whether the official websites a place's review card shows still answer (#2165):
+ * the place's own and those its open proposals bring, as the catalogue holds
+ * them. The request names the place only.
+ */
+export async function getWebsiteChecks(experienceId: number): Promise<WebsiteChecks> {
+  return getExperiencesByIdWebsiteChecks(experienceId);
 }
 
 /**

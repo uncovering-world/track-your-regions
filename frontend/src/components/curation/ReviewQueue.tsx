@@ -128,6 +128,7 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
   const proposed = item.proposed ?? [];
   const context = {
     proposed, inDanger: item.in_danger, dangerSince: item.danger_since, imageCredit: item.image_credit ?? null,
+    experienceId: item.id,
   };
   const rows = rowsFor(proposed, context);
   // Whose edit the source is proposing over, by name. The queue selects the claimant

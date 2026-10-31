@@ -98,6 +98,8 @@ export const queryKeys = {
     visitSuggestion: (id: Id, place: string) => ['experience', 'visit-suggestion', id, place] as const,
     /** The Commons pictures geotagged near one point (#1341). */
     nearbyPictures: (locationId: Id) => ['experience', 'nearby-pictures', locationId] as const,
+    /** Whether the official websites a place's review card shows still answer (#2165). */
+    websiteChecks: (id: Id) => ['experience', 'website-checks', id] as const,
   },
 
   /** The lists objects appear in, and the points that place them. */

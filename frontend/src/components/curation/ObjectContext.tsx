@@ -26,6 +26,7 @@ import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { DescriptionCreditLine } from '../shared/DescriptionText';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { proposedPoint } from './MoveFact';
+import { CheckedWebsite } from './CheckedWebsite';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 
 /** Four decimals is about 11 m at the equator — finer than this screen can use. */
@@ -205,10 +206,14 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
               </Link>
             )}
             {/* Some items give UNESCO's page as their official website: one link, not two. */}
-            {officialSiteHref && officialSiteHref !== unescoHref && (
-              <Link href={officialSiteHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
-                official site
-              </Link>
+            {officialSiteHref && officialSiteHref !== unescoHref && item.website_url && (
+              // With whether it still answers (#2165): the check is keyed by the
+              // address as the catalogue holds it.
+              <CheckedWebsite experienceId={item.id} url={item.website_url}>
+                <Link href={officialSiteHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
+                  official site
+                </Link>
+              </CheckedWebsite>
             )}
             {unescoHref && (
               <Link href={unescoHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">

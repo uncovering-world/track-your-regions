@@ -89,6 +89,7 @@ export function GatedSection({ group, heading, onDone }: {
   // picture row on a card that proposes a picture and no credit beside it.
   const context = {
     proposed, inDanger: item.in_danger, dangerSince: item.danger_since, imageCredit: item.image_credit ?? null,
+    experienceId: item.id,
   };
   const rows = rowsFor(proposed, context);
   // The held fields of the object's parts, one group per part under the object's
