@@ -36,12 +36,17 @@ vi.mock('./publicArt/pipeline.js', () => ({
   classifyPublicArt: vi.fn(),
   PUBLIC_ART_KIND: { name: 'public art' },
   ENTER_SITELINKS: 22,
+  STAY_SITELINKS: 18,
   openArtworkDoor: vi.fn(),
   streetArtCandidates: vi.fn(),
   guideDoorCandidates: vi.fn(() => []),
 }));
 // The guide door reads the gate and the Wikivoyage usage build (ADR-0167); its own spec is places/guideDoor.test.ts.
 vi.mock('./places/guideDoor.js', () => ({ readGuideDoor: vi.fn(async () => new Set<string>()) }));
+// The marks door reads the gate, the year, the marks and the works under the floor (ADR-0169); its own spec is publicArt/marksDoor.test.ts.
+vi.mock('./publicArt/marksDoor.js', () => ({
+  shareWithMarksDoor: vi.fn(async (_source: number, share: unknown) => ({ share, marks: null })),
+}));
 // What the street-art rule reads (#2035); its own spec is streetArtPlaces.test.ts.
 vi.mock('./publicArt/streetArtPlaces.js', () => ({ readStreetArt: vi.fn() }));
 /** What a street-art place holds (#2055): one reader and writer per run of Public art. */
