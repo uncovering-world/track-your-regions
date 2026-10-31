@@ -10,6 +10,16 @@ import { LABEL_LANGS } from '../wikidataUtils.js';
 
 export const LANGUAGES = LABEL_LANGS.split(',');
 
+/**
+ * A statement still standing: not deprecated, and carrying no end time (`P582`)
+ * but a no-value one. An absent `qualifiers` is SQL NULL on the claims table,
+ * so the test is spelled over an empty array rather than with `?`, which
+ * would make the clause NULL and drop every unqualified statement.
+ */
+export const STANDING = (alias: string) => `${alias}.rank >= 0 AND NOT EXISTS (
+  SELECT 1 FROM jsonb_array_elements(coalesce(${alias}.qualifiers -> 'P582', '[]'::jsonb)) ended
+   WHERE ended <> '{"novalue": true}'::jsonb)`;
+
 /** Claim `c` is one of its subject's best statements of its property: none outranks it. */
 export const BEST = (alias: string) => `NOT EXISTS (
   SELECT 1 FROM wikidata_claims h WHERE h.subject = ${alias}.subject AND h.property = ${alias}.property AND h.rank > ${alias}.rank)`;

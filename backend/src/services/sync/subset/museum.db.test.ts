@@ -16,7 +16,9 @@ import { subsetOnlyDoor } from './reader.js';
  * Louvre's (Q19675) collection and stands in it, once stood in the Louvre
  * Palace (Q1075988) by an ended statement and stands there by one whose end
  * time is no value, and carries a deprecated location and an unknown one;
- * the Louvre is a museum with a point, part of the palace.
+ * the Louvre is a museum with a point, part of the palace; Frick Madison
+ * (Q105979668), an art museum with a point, is part of the Frick Collection
+ * (Q682827) by a statement with no qualifiers and was dissolved in 2024.
  */
 
 const door = subsetOnlyDoor();
@@ -28,6 +30,9 @@ const MUSEUM = 'Q33506';
 const PAINTING = 'Q3305213';
 const PALACE = 'Q1075988';
 const FRANCE = 'Q142';
+const FRICK = 'Q682827';
+const FRICK_MADISON = 'Q105979668';
+const ART_MUSEUM = 'Q207694';
 
 const statement = (id: string, value: unknown, extra: Record<string, unknown> = {}) => ({ id, value, ...extra });
 const point = (latitude: number, longitude: number) => ({
@@ -65,6 +70,16 @@ const ENTITIES: Array<[string, number, Record<string, unknown>]> = [
     sitelinks: { enwiki: 'Mona Lisa' },
   }],
   [PALACE, 60, { claims: {}, sitelinks: {} }],
+  [FRICK, 40, { claims: { P31: [statement('F1', ART_MUSEUM)], P625: [statement('F2', point(40.7711, -73.9672))] }, sitelinks: {} }],
+  [FRICK_MADISON, 1, {
+    claims: {
+      P31: [statement('K1', ART_MUSEUM)],
+      P625: [statement('K2', point(40.7734, -73.9638))],
+      P576: [statement('K3', { time: '+2024-00-00T00:00:00Z', precision: 9 })],
+      P361: [statement('K4', FRICK)],
+    },
+    sitelinks: {},
+  }],
 ];
 
 /** Every Wikipedia edition counted, so each item clears the pool's floor of ten. */
@@ -81,8 +96,11 @@ beforeAll(async () => {
        ($1, 'P31', 'L1', 0, $2, NULL, NULL), ($1, 'P361', 'L6', 0, $3, NULL, NULL),
        ($4, 'P31', 'M1', 0, $5, NULL, NULL), ($4, 'P195', 'M2', 1, $1, NULL, NULL),
        ($4, 'P276', 'M3', 0, $1, NULL, NULL), ($4, 'P276', 'M4', 0, $3, NULL, $6),
-       ($4, 'P276', 'M5', -1, $7, NULL, NULL), ($4, 'P276', 'M11', 0, $3, NULL, $8)`,
-    [LOUVRE, MUSEUM, PALACE, MONA_LISA, PAINTING, JSON.stringify(ENDED), FRANCE, JSON.stringify(OPEN_ENDED)],
+       ($4, 'P276', 'M5', -1, $7, NULL, NULL), ($4, 'P276', 'M11', 0, $3, NULL, $8),
+       ($9, 'P279', 'C1', 0, $2, NULL, NULL), ($10, 'P31', 'F1', 0, $9, NULL, NULL),
+       ($11, 'P31', 'K1', 0, $9, NULL, NULL), ($11, 'P361', 'K4', 0, $10, NULL, NULL)`,
+    [LOUVRE, MUSEUM, PALACE, MONA_LISA, PAINTING, JSON.stringify(ENDED), FRANCE, JSON.stringify(OPEN_ENDED),
+      ART_MUSEUM, FRICK, FRICK_MADISON],
   );
   for (const id of [LOUVRE, MONA_LISA]) {
     for (const language of EDITIONS) {
@@ -134,7 +152,11 @@ describe('Art Museums read from the subset (#1460)', () => {
       dissolved: null,
     });
     expect((await fetchEntityEdges(door, [LOUVRE])).get(LOUVRE)).toEqual({ classes: [MUSEUM], parents: [PALACE], locations: [] });
+    // The Louvre names the palace as its whole by a statement with no qualifiers, which the claims
+    // table stores as NULL: it stands. Frick Madison names the Frick the same way and is dissolved:
+    // a house the whole has closed is no part (#1617).
     expect((await fetchMuseumParts(door, [PALACE])).get(PALACE)).toEqual([{ qid: LOUVRE, lat: 48.861, lon: 2.3358 }]);
+    expect((await fetchMuseumParts(door, [FRICK])).get(FRICK)).toEqual([]);
   });
 
   it('reads what a venue holds by a statement that still holds, and an object asked for by id', async () => {

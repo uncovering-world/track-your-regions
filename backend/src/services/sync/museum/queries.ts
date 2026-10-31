@@ -599,6 +599,12 @@ export interface MuseumPart {
  * organisation, not a building a visitor walks into. The Staatliche
  * Kunstsammlungen Dresden list fifteen museums, the Grassi Museum in Leipzig
  * among them, 99 km away; Palazzo Pitti lists two, both inside it.
+ *
+ * Only the parts that stand today (#1617): a part whose statement has ended,
+ * or that is itself dissolved, is no house of the whole any more. The Frick
+ * Collection listed Frick Madison, its home from 2021 to 2024 while the
+ * mansion was rebuilt; read with it, the Frick was an organisation of two
+ * houses a mile apart, and a holding rather than the museum it is.
  */
 export async function fetchMuseumParts(
   sparql: SparqlFn,
@@ -611,8 +617,9 @@ export async function fetchMuseumParts(
   const rows = await sparql(`
     SELECT ?e ?part ?coord WHERE {
       VALUES ?e { ${values(qids)} }
-      { ?e wdt:P527 ?part } UNION { ?part wdt:P361 ?e }
+      { ${standing('?e', 'P527', '?part')} } UNION { ${standing('?part', 'P361', '?e')} }
       ?part wdt:P31/wdt:P279* wd:${MUSEUM_ROOT} ; wdt:P625 ?coord .
+      FILTER NOT EXISTS { ?part wdt:P576 ?gone }
     }`, { kind: 'edges', label: `museum parts of ${qids.length} entities` });
   for (const row of rows) {
     const parts = out.get(extractQid(row.e?.value ?? ''));

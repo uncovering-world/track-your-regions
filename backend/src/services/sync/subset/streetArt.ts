@@ -7,7 +7,7 @@
  */
 
 import { pool } from '../../../db/index.js';
-import { BEST, entitiesOf } from './entities.js';
+import { BEST, entitiesOf, STANDING } from './entities.js';
 import { bestStatements, isNoValue } from './values.js';
 import type { StreetArtHolding, StreetArtMarks } from '../publicArt/streetArtQueries.js';
 
@@ -68,11 +68,6 @@ export async function subsetRootsOfClasses(classes: string[], roots: readonly st
   for (const row of result.rows) out.set(row.class, [...(out.get(row.class) ?? []), row.ancestor]);
   return out;
 }
-
-/** A statement still standing: not deprecated, and carrying no end time (`P582`) but a no-value one. */
-const STANDING = (alias: string) => `${alias}.rank >= 0 AND NOT EXISTS (
-  SELECT 1 FROM jsonb_array_elements(coalesce(${alias}.qualifiers -> 'P582', '[]'::jsonb)) ended
-   WHERE ended <> '{"novalue": true}'::jsonb)`;
 
 /**
  * What each of `places` holds by a standing statement: a part the place names
