@@ -14,7 +14,7 @@ import type {
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeProposalTakenBack, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointHintSuggestions, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
-  WebsiteChecks, KeptOutOfKind, KindAddedToPlace, PlaceKindStandings,
+  WebsiteChecks, KeptOutOfKind, KindAddedToPlace, PlaceKindStandings, PictureClasses,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -35,6 +35,7 @@ import {
   postExperiencesByIdUnrefuseContents, postExperiencesByIdUnreject, postExperiencesLocationsByLocationIdState,
   postExperiencesLocationsByLocationIdTakeBackItem, getExperiencesLocationsByLocationIdNearbyPictures,
   getExperiencesByIdWebsiteChecks,
+  getExperiencesByIdPictureClasses,
   postExperiencesByIdMergeProposalsByProposalIdTakeBack,
   type CreateManualExperienceBody, type DeclineHeldBody, type EditExperienceBody, type EditLocationBody,
   type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type RefuseContentsBody,
@@ -48,7 +49,7 @@ export type {
   ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry, PointHintSuggestions,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPicture,
-  NearbyPictures, WebsiteCheckResult, WebsiteChecks,
+  NearbyPictures, WebsiteCheckResult, WebsiteChecks, PictureClassResult, PictureClasses,
   AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
   PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PlaceIdentifier, PlaceIdentifiers, IdentifierSettled, IdentifierVerdictBody, PointItemTakenBack, MergeProposalTakenBack, ViewsChosen, ViewSuggestions, VisitQuestionAnswerBody, VisitQuestionAnswered, VisitSuggestion, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
@@ -136,6 +137,16 @@ export async function getNearbyPictures(locationId: number): Promise<NearbyPictu
  */
 export async function getWebsiteChecks(experienceId: number): Promise<WebsiteChecks> {
   return getExperiencesByIdWebsiteChecks(experienceId);
+}
+
+/**
+ * What the pictures a place's review card shows are (#2192): a photograph, a map,
+ * a drawing or engraving, or a diagram, as Commons states it, for the place's own
+ * picture, each source's, its open proposals', its points' and its works'. The
+ * request names the place only.
+ */
+export async function getPictureClasses(experienceId: number): Promise<PictureClasses> {
+  return getExperiencesByIdPictureClasses(experienceId);
 }
 
 /**

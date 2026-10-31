@@ -32,6 +32,7 @@ import { VIEW_FIELD_WORD } from './feed/rowSpecific';
 import { minuteCellSize } from './minuteCell';
 import { ItemHeader, messageFor } from './queueCard';
 import { SourceId, worldHeritagePartsHref } from './SourceId';
+import { PictureClassMark } from './PictureClassMark';
 
 type SourceViewField = NonNullable<ReviewQueueItem['source_views']>[number];
 type SourceView = SourceViewField['views'][number];
@@ -96,9 +97,15 @@ function quietWords(quiet: QuietField): string {
   return `${word} (the same in both)`;
 }
 
-function ViewValue({ field, view }: { field: SourceViewField['field']; view: SourceView }) {
+function ViewValue({ field, view, experienceId }: { field: SourceViewField['field']; view: SourceView; experienceId: number }) {
   if (field === 'imageUrl' && view.image_url) {
-    return <PictureWithCredit url={view.image_url} credit={view.image_credit} alt={`${view.kind_name}’s picture`} width={330} />;
+    return (
+      <>
+        <PictureWithCredit url={view.image_url} credit={view.image_credit} alt={`${view.kind_name}’s picture`} width={330} />
+        {/* A curator choosing between two pictures reads which is a map or a drawing (#2192). */}
+        <PictureClassMark experienceId={experienceId} url={view.image_url} />
+      </>
+    );
   }
   if (field === 'location') {
     // A point given to the whole minute may stand a kilometre or more off (#1853): said on its tile (#2158).
@@ -179,8 +186,8 @@ function saveLabel(changes: number): string {
 }
 
 /** One source's value of one fact, as a choice. */
-function ViewTile({ field, view, on, onPick, suggested }: {
-  field: SourceViewField['field']; view: SourceView; on: boolean; onPick: () => void;
+function ViewTile({ field, view, on, onPick, suggested, experienceId }: {
+  field: SourceViewField['field']; view: SourceView; on: boolean; onPick: () => void; experienceId: number;
   /** Jev's confidence where it suggests this view (#1260); a suggestion, never a choice. */
   suggested?: number;
 }) {
@@ -197,7 +204,7 @@ function ViewTile({ field, view, on, onPick, suggested }: {
         display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start',
       }}
     >
-      <ViewValue field={field} view={view} />
+      <ViewValue field={field} view={view} experienceId={experienceId} />
       {suggested !== undefined && (
         // In grey, apart from the marks about readers: a suggestion is not a state of the place.
         <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
@@ -287,6 +294,7 @@ export function SourcesCard({ item, onDone }: {
                 if (!view) return <Box key={column.key} />;
                 return (
                   <ViewTile
+                  experienceId={item.id}
                     key={column.key}
                     field={field.field}
                     view={view}

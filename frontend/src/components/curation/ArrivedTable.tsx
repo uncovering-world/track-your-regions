@@ -41,6 +41,7 @@ import { yearLabel } from '../../utils/yearLabel';
 import { wikipediaArticleUrl } from '../../utils/wikidataLinks';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { PictureClassMark } from './PictureClassMark';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { WorkPreviewDialog } from '../shared/WorkPreviewDialog';
 import type { WorkToCorrect } from '../shared/WorkCorrection';
@@ -86,7 +87,7 @@ export function RowAnswer({ busy, onPublish, onRefuse }: { busy: boolean; onPubl
   );
 }
 
-function Thumb({ work }: { work: PendingWork }) {
+function Thumb({ work, experienceId }: { work: PendingWork; experienceId: number }) {
   const [failed, setFailed] = useState(false);
   const src = work.imageUrl ? toThumbnailUrl(extractImageUrl(work.imageUrl) ?? '', 120) : '';
   if (!src || failed) return <Box sx={{ width: 44, height: 56, flexShrink: 0 }} />;
@@ -97,6 +98,8 @@ function Thumb({ work }: { work: PendingWork }) {
       {/* Under the picture that is on screen: a dense row, so only where the
           photographer is not the maker the row already names. */}
       <ImageCreditLine credit={work.imageCredit} redundantWith={work.artists} />
+      {/* A work's picture is meant to show the work; a drawn rendering is said to be one (#2192). */}
+      <PictureClassMark experienceId={experienceId} url={work.imageUrl} />
     </Box>
   );
 }
@@ -191,7 +194,7 @@ export function ArrivedTable({ group, item, contents, works, points, busy, onPub
                   </TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={1.25} alignItems="flex-start">
-                      <Thumb work={work} />
+                      <Thumb work={work} experienceId={group.id} />
                       <Box sx={{ minWidth: 0 }}>
                         {/* The one door to a work on this card: its name opens the dialog. */}
                         <Link component="button" type="button" variant="body2" color="inherit" underline="hover"

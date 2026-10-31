@@ -211,7 +211,7 @@ function creditFor(context: ChangeContext, side: FactSide): ImageCredit | null {
  */
 function pictureFact(value: unknown, context: ChangeContext, side?: FactSide): ReactNode {
   if (typeof value !== 'string' || !side) return urlLabel(value);
-  return <PictureFact url={value} credit={creditFor(context, side)} side={side} />;
+  return <PictureFact url={value} credit={creditFor(context, side)} side={side} experienceId={context.experienceId} />;
 }
 
 /**

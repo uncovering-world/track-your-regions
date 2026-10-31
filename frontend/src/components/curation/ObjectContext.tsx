@@ -28,6 +28,7 @@ import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { proposedPoint } from './MoveFact';
 import { CheckedWebsite } from './CheckedWebsite';
 import { worldHeritagePartsHref } from './SourceId';
+import { PictureClassMark } from './PictureClassMark';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 
 /**
@@ -184,6 +185,8 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
             `image_url` is a local path draws no picture here (see above), and a
             photographer named under no photograph credits them for nothing. */}
         {thumbnail && <ImageCreditLine credit={item.image_credit} />}
+        {/* What the picture is, where it is no photograph (#2192): Banqiao Dam's is a map. */}
+        {thumbnail && <PictureClassMark experienceId={item.id} url={image} />}
         {description && (
           // What the object is, in the source's words: "museum in Saint Petersburg,
           // Russia". One line, so a UNESCO site's paragraph does not push the card's
