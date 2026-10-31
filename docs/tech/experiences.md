@@ -820,7 +820,7 @@ cache would be live answers kept past the expiry the cache gives them
 
 The generic sync lifecycle (progress init, already-running check, sync log creation, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`, which holds the order of a run's phases while each phase's writes live in a module beside it (§ Shared modules). Each service provides a `SyncServiceConfig<T>` (`syncContract.ts`, with the shapes it returns) with domain-specific callbacks:
 
-- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, withdrawalSkippedReason?, unread? }`, where `filtered` names entities the source offered that this kind cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `unread` names the source's rows the run could read nothing about (on the local Wikidata subset, an item newer than the dump): missing detection, the admission sweep, the must-see badge's clear and the questions about a curator's pin leave them as they are. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands.
+- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, typeVocabulary?, refusedContents?, handOvers?, withdrawalSkippedReason?, unread?, spareTier? }` (`FetchResult` in `syncContract.ts`), where `filtered` names entities the source offered that this kind cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `unread` names the source's rows the run could read nothing about (on the local Wikidata subset, an item newer than the dump): missing detection, the admission sweep, the must-see badge's clear and the questions about a curator's pin leave them as they are. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands. `typeVocabulary` is the kind's closed list of types where its rule declares one. `refusedContents` names what an admitted row holds that the kind's rule turned down (the venue-side read, #890), reported on the changeset and never marked; `handOvers` names works another kind's place holds part of (ADR-0102, #2036), recorded with the refusals' hand-overs. `spareTier` names a tier of the source's admissions the run did not read — the regional tier, while its step is off or on the live service (#2178) — which the sweep, the stay line and the pin questions leave as they are.
 - **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview, and `onLocationsChanged(experienceId)`, which a service calls **at the location write** to have the run place that experience before it ends. Called there rather than returned on the result on purpose: a service can throw after moving a point — the museum one upserts treasures afterwards — and a returned field would be lost with the throw while the point had already moved on disk. Throw to count as error.
 - **A record the source lists with nothing to place** — the UNESCO dataset's Routes of Santiago de Compostela in France (868), with no point and no component — is thrown from `processItem` as an `UnplaceableRecord` (`itemOutcome.ts`, #1814), before any write. The run records it as `filtered`, with its reason, rather than as an error. It still counts as seen, so its place is not marked missing, and missing detection still runs: a single error would skip it, and two such records in every UNESCO run had kept it from running at all. Any other throw stays an error.
 - **`afterItems(progress, context)`** (optional) — What the run does once every item is processed and before missing detection: a summary only the whole pass can make, such as the World Heritage run's account of its components' Wikidata items (#1269). A failure is logged and the run goes on.
@@ -851,7 +851,8 @@ Where no native source is adopted for a region, a place kind's **regional tier**
 by measuring a place against what lies within 50 km of it (ADR-0048 decision 3 as ADR-0171 narrows it).
 It runs after the world tier has decided, in every place source of the pass and in Places of worship's
 own run, and it is the second tier: **no Iconic badge** (`badgesAdmitted` is `item.tier !== 'regional'`
-in `placeSource` and the worship service), every arrival through the source's curator gate, the same
+in `placeSource` and the worship service), its arrivals held for a curator where the source's gate
+is on, as every arrival is (the step itself does not ask the gate, unlike the readership doors), the same
 place as the world tier's where both name it, and the tier on the row's membership facts
 (`metadata.tier`, a kind fact in `@tyr/shared/placeFields`; absent on a world-tier row).
 
@@ -887,8 +888,12 @@ place as the world tier's where both name it, and the tier on the row's membersh
   review (#2177) settles the numbers — the pass then reads no pool and every kind's part says so —
   and **`neighbours`**, whose places set the references: `all` (every place kind's and the museums',
   the measurement's pool), `kind` (the candidate's own kind's places) or `type` (its type's within
-  the kind, a mosque among mosques, by `RegionalKind.typesOf`); the pool reads one neighbourhood per
-  group (`RegionalGroup`, `regionalGroups`), keyed `all`, the kind's name or `<kind>:<type>`: parameters for the admission
+  the kind, a mosque among mosques, by `RegionalKind.typeOf`: a candidate is measured in the group of the type the kind's own rule
+  gives its classes, and a group's neighbours are the places carrying any of the classes the rule
+  files under that type, so the Trevi Fountain, a sculpture and a fountain, counts among the
+  sculptures' neighbours too); Public art and Monuments & memorials read one gather kind, and each
+  keys its groups by its own rule's name (`RegionalKind.group`); the pool reads one neighbourhood per
+  group (`RegionalGroup`, `regionalGroups`), keyed `all`, the kind's group (its name, or its rule's for the two public-art sources) or `<group>:<type>`: parameters for the admission
   review's experiments (#2177), not a reader's or an admin's control, and shaped so a later decision can
   give a region values of its own. The curator's note carries the numbers: "In the regional tier by the
   guides: within 50 km, 195 places: the 10 best are read in 38 Wikipedia editions at the median, this
@@ -2227,8 +2232,8 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   still remember, up to the same cap the placement diff uses
 - An entity counts as a venue only if it passes a test: a museum-like class under `wdt:P279*` of
   `museum` (Q33506), coordinates of its own (`P625`), not dissolved (`P576`), and not on a
-  kill-list of curatorial departments, art/private collections, museum networks and never-built
-  structures (`KILL_CLASSES` in `venueTest.ts`). Two of the kills are read with a second look
+  kill-list of curatorial departments, art/private collections, museum networks, never-built
+  structures and Wikimedia list articles (`KILL_CLASSES` in `venueTest.ts`). Two of the kills are read with a second look
   (#1617). A holding (`HOLDING_CLASSES`: an art or private collection) is forgiven when the entity
   also carries a museum class, has coordinates of its own and is one house rather than an umbrella
   of several (`VenueFacts.housesApart`, the graph's `isOrganisation` read over its parts): the
@@ -2325,9 +2330,12 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   the run's own log says why
 - One threshold decides both which works are Iconic and which museums are admitted: 22
   Wikipedia-language sitelinks (`ICONIC_SITELINKS`). A museum is in the catalogue only because it
-  holds a work that clears the threshold, and a work held by more than 2 venues (`MAX_HOLDERS`)
-  admits none of them — Hokusai's *Great Wave* survives in on the order of a hundred impressions,
-  and holding one is not what makes a top art museum. What the line admits is checked after every
+  holds a work that clears the threshold, and a unique work held by more than 2 venues
+  (`MAX_HOLDERS`) admits none of them: the run counts it in its log and asks no curator. A work in
+  a medium made in editions — a print, an engraving, a group of casts (`multipleMedium`, read from
+  the class tree under `EDITION_ROOT` and `MUSEUM_PINNED_EDITION_CLASSES`) — is exempt from the cap
+  (`placedUnderCap` in `museum/tier1.ts`, ADR-0023 decision 4), so every venue holding an
+  impression of Hokusai's *Great Wave* is admitted for it. What the line admits is checked after every
   run against the canon in `db/catalogue-coverage/calibration/art-museums.jsonl` (#1952), compiled
   independently of what the line measures (`docs/tech/catalogue-coverage.md`)
 - **A work the world reads opens a second door** (ADR-0056, #1574, `readershipDoor.ts`). A work
@@ -2338,10 +2346,12 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   came through. ADR-0056's percentiles are the median and the 35th (`DOOR_PERCENTILES`). A source
   may state its own: Art Museums enters at the 12th and stays at the 8th (`ART_MUSEUM_DOOR`,
   ADR-0162), 48,323 readers a year on the dump of 2026-10-19.
-  - It admits 74 more museums, among them 9 of the canon's tops the line misses: the
-    Thyssen-Bornemisza, the Albertina, the Guggenheims, SFMOMA, the Barnes Foundation.
-  - About one in five of them is no art museum (Versailles, Windsor Castle, the Imperial War
-    Museum), and a curator reads every one.
+  - It admitted 74 more museums when ADR-0162 measured it, among them 9 of the canon's tops the
+    line misses: the Thyssen-Bornemisza, the Albertina, the Guggenheims, SFMOMA, the Barnes
+    Foundation.
+  - About one in five of those was no art museum (Versailles, Windsor Castle), and a curator reads
+    every one. A military museum such as the Imperial War Museum, among them then, is refused by
+    the art test since #2150 (`OTHER_PURPOSE_CLASSES`).
   - It marks 240 works Iconic, against 30 at the median.
   - The curator's note names the door's bar, never the tier's median (`doorNote`). The year is read back by
   `workReadership.ts`: user views over the twelve kept months in every counted edition, with the
@@ -2487,15 +2497,17 @@ column with a statue on it. Neither kind is a building Wikidata happens to call 
 work that hangs inside one: a cathedral is a place of worship, a museum's sculpture is that
 museum's work, and a Pietà is St Peter's before it is Rome's (#753 is where a work a traveller
 goes to a church to see will live). These sources fill the kinds' **world tier** — what the world
-knows, by the same fame line as the museums' — and nothing else; the regional tier, the monuments
-a region knows and the world's line does not reach, comes from regional sources by the rules of
-[filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799), and carries no badge. What each kind's
+knows, by the same fame line as the museums'. The regional tier, the monuments a region knows and
+the world's line does not reach, comes from regional sources by the rules of
+[filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799) and carries no badge; where none is adopted,
+ADR-0171's within-50-km cut reads it from the same gather (§ The regional tier from the gather,
+built and switched off). What each kind's
 line admits is checked after every run against the kind's own canon, compiled independently of
 what the line measures (`docs/tech/catalogue-coverage.md`): Monuments & memorials' in
 `db/catalogue-coverage/calibration/monuments-and-memorials.jsonl` (#1954), Public art's in
 `db/catalogue-coverage/calibration/public-art.jsonl` (#1953).
 
-**Its run is a member of the place pass** (ADR-0132, § Several kinds from one gather). The place gather reads stages 1 to 3 below (the classes, the pool and the facts) once, as `PUBLIC_ART_KIND` declares them, beside the other place kinds'. The rows either source admits are asked for by id. `classifyPublicArt` takes stages 4 and 5 (the verdict and the line) for each source from the kind's share, with the source's own admitted rows and the places other kinds offer, and asks Wikidata nothing more. Public art and Monuments & memorials (`PUBLIC_ART_SOURCES`, `[3, 6]`) each decide by their kind's rule (`publicArt/kindRules.ts`, `RULE_OF_SOURCE` in `landmarkSyncService.ts`). A place only the other of the two offers is not another kind's (`placesOtherSourcesOffer(PUBLIC_ART_SOURCES)`), while a place of worship is.
+**Its run is a member of the place pass** (ADR-0132, § Several kinds from one gather). The place gather reads stages 1 to 3 below (the classes, the pool and the facts) once, as `PUBLIC_ART_KIND` declares them, beside the other place kinds'. The rows either source admits are asked for by id. `classifyPublicArt` takes stages 4 and 5 (the verdict and the line) for each source from the kind's share, with the source's own admitted rows and the places other kinds offer, and asks Wikidata nothing more. Public art and Monuments & memorials (`PUBLIC_ART_SOURCES`, `[3, 6]`) each decide by their kind's rule (`publicArt/kindRules.ts`, `PUBLIC_ART_CLASSIFIERS` in `landmarkSyncService.ts`). A place only the other of the two offers is not another kind's (`placesOtherSourcesOffer(PUBLIC_ART_SOURCES)`), while a place of worship is.
 
 **The pipeline is the museum import's, one level over** (#754). Five stages, each a cached
 question (ADR-0030), wired in `publicArt/pipeline.ts`:
@@ -2771,10 +2783,11 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    World Heritage holds both), the Fraternal Kiss (a `mural` on the East Side Gallery, which
    Wikidata types an art museum and Art Museums refuses by name: a mural may be in a hall, so it
    is not outdoors by what it is), the Arch of Constantine and Trajan's Column (typed archaeological
-   sites, which World Heritage's Rome holds), Anıtkabir and the mausoleums of Mao and Ho Chi Minh
-   (`mausoleum` is a kill class, and Tombs & mausoleums is a kind of its own still proposed — for
-   Monuments & memorials a commemorative form beside a burial class lifts it, `BURIAL_CLASSES`:
-   the Monumento a la Revolución is typed mausoleum and triumphal arch); and
+   sites, which World Heritage's Rome holds), for Public art Anıtkabir and the mausoleums of Mao
+   and Ho Chi Minh (`mausoleum` is a kill class, and Tombs & mausoleums is a kind of its own still
+   proposed; for Monuments & memorials a commemorative class beside a burial class lifts it,
+   `MEMORIAL_LIFTED_KILLS`, so Anıtkabir and the Ho Chi Minh Mausoleum, typed memorials, are
+   monuments there, as is the Monumento a la Revolución, typed mausoleum and triumphal arch); and
    known false admissions, left to a curator's rejection: a work Wikidata neither places nor gives
    an owner (the Infant Jesus of Prague; the Nestorian Stele, pinned at its find spot rather than
    in the Stele Forest that holds it). Kryptos (`sculpture, fountain, ciphertext`) stands in a
@@ -3035,8 +3048,10 @@ museum rule vetoes a church as a venue. The rule is
 [ADR-0052](../decisions/0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) and
 the source's record is
 [`wikidata-places-of-worship`](../sources/global/wikidata-places-of-worship.md); this source fills
-the kind's **world tier** and nothing else, the regional tier being
-[filling-a-kind.md](filling-a-kind.md)'s (ADR-0048) and carrying no badge.
+the kind's **world tier**; the regional tier is
+[filling-a-kind.md](filling-a-kind.md)'s (ADR-0048), carries no badge, and where no regional source
+is adopted is read from Wikidata by ADR-0171's cut (§ The regional tier from the gather, built and
+switched off).
 
 **One source, two doors, one line.** A place is in the catalogue because the world knows the
 building, or because the building holds a work the world knows. One number cuts both: the source's
@@ -3415,10 +3430,12 @@ traveller browsing museums found no archaeology museum in Egypt, Mexico, Turkey 
 London, art museums without the British Museum (measured for ADR-0058, 2026-09-13). The rule is
 [ADR-0058](../decisions/0058-archaeology-is-one-kind-of-sites-and-museums.md) and the source's
 record is [`wikidata-archaeology`](../sources/global/wikidata-archaeology.md); this source fills the
-kind's **world tier** and nothing else, the regional tier — the state antiquities services that
-enumerate the museums of Greece, Turkey, Egypt, Mexico, Italy and France nearly whole — being
-[filling-a-kind.md](filling-a-kind.md)'s (ADR-0048) and carrying no badge, as it is for every other
-kind.
+kind's **world tier**. The regional tier — the state antiquities services that enumerate the museums
+of Greece, Turkey, Egypt, Mexico, Italy and France nearly whole — is
+[filling-a-kind.md](filling-a-kind.md)'s (ADR-0048) and carries no badge, as it does for every other
+kind. ADR-0171's cut is not wired for Archaeology: its sites are neighbours in the pass's regional
+pool, but no step reads Archaeology's own regional tier from it (§ The regional tier from the
+gather).
 
 **One kind, two types, both doors built.** `Archaeology` is kind 5 and its types are `site` and
 `museum` (ADR-0058 decision 1): a person planning Egypt wants Saqqara and the Egyptian Museum on
@@ -4396,9 +4413,11 @@ purpose: it is what `worship/pipeline.ts` counts, and a kind counting its conten
 make one number mean two things across two source cards (#887).
 
 **Two lines on the source row, not one** (ADR-0058 decision 5). A find carries fewer Wikipedia
-articles than the museum showing it, and the second line is what decides three things: which of a
-museum's works are kept as finds at all, which of them wear the must-see badge, and which museum a
-find can carry over the *place* line — the Archaeological Museum of Delphi enters at 15 sitelinks
+articles than the museum showing it, and the second line decides which of a museum's finds wear the
+must-see badge and which museum a find can carry over the *place* line. Which works are kept as
+finds at all is the keep rule's, over a pool read at the works floor of 10 editions
+(`POOL_MIN_SITELINKS` in `museum/queries.ts`): every find it keeps at an admitted museum is
+written, badged or not. The Archaeological Museum of Delphi enters at 15 sitelinks
 for the Charioteer, Olympia at 17 for the Hermes and Heraklion at 21 for the Phaistos disc, and the
 museums' own line would have lost all three. (The survey counted 56 museums holding a find at 22
 sitelinks and 78 at 18, but on its widest reading of what a find is — the built pool is collected
@@ -4454,13 +4473,14 @@ admission is settled rather than per museum (#760), and the orchestrator hands `
 the admitted ids whose item passes (`badgeAdmitted`). **And takes it back**: a museum that stays
 admitted and stops passing the predicate — its last famous find slipped below the finds' line — has
 the badge cleared by `unmarkIconic` off the same list, since the writers that clear the flag with a
-membership never reach a row that keeps its membership. **A museum held for a curator wears the badge
-from the first run after they publish it** (#887), because the badge reads `admission = 'admitted'` and a held row
-is not admitted until somebody says so — an art museum arriving with "is the exposition substantially
-archaeology?" written on it is badged by the next run once the answer is yes. That is the choice and
-not an oversight: the card a curator answers on lists the finds the badge would be *for*, with their
-names and their sitelink counts, so the thing being granted is on screen before the decision is
-taken, and a badge written ahead of the answer would be a must-see on a row no reader can see.
+membership never reach a row that keeps its membership. **A museum held for a curator is badged in
+the run it arrives in.** A new membership is written `admitted` with `curation_state = 'pending'`,
+and `markIconic` reads `admission`, not the curation state, so an art museum arriving with "is the
+exposition substantially archaeology?" written on it carries the flag before the answer. No reader
+sees it meanwhile, since every reader-facing read hides a pending row, and the card a curator
+answers on lists the finds the badge would be *for*, with their names and their sitelink counts.
+Whether the badge should wait
+for the curator's answer is open in #2177.
 A curator's pin on the badge survives it,
 and so does every badge on a run whose **admission sweep did not run**: the clear speaks about the
 admitted rows the run did not name, which is the sweep's own set, and a run the sweep's guard
