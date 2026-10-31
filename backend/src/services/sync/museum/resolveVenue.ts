@@ -1,4 +1,4 @@
-import { venueVerdict, type VenueFacts, type VenueRule } from './venueTest.js';
+import { isUmbrella, venueVerdict, type VenueFacts, type VenueRule } from './venueTest.js';
 import { nearest } from '../places/nearest.js';
 
 /**
@@ -20,9 +20,20 @@ export function resolveVenue(
   parents: (qid: string) => string[],
   rule: VenueRule,
   maxHops = 3,
+  houseOf: (qid: string) => string | undefined = () => undefined,
 ): Resolution {
   const own = facts(start);
   if (own && venueVerdict(own, rule).pass) return { venue: start, hops: 0 };
+  // A museum network is never a visit, but its item sits on one of its houses
+  // (#1617, `VenueGraph.houseOf`): a work that names the Museo Soumaya hangs at
+  // Plaza Carso, where the network's coordinate is. Only where that house is
+  // itself a venue; a network whose coordinate sits on no museum of its own
+  // stays what the kill-list says of it.
+  if (own && isUmbrella(own.classes)) {
+    const house = houseOf(start);
+    const known = house === undefined ? undefined : facts(house);
+    if (house !== undefined && known && venueVerdict(known, rule).pass) return { venue: house, hops: 1 };
+  }
   const isReadingRoom = (qid: string) => facts(qid)?.classes.some((c) => rule.readingRooms?.has(c)) ?? false;
   if (isReadingRoom(start)) return { unresolved: READING_ROOM_REASON, readingRoom: true };
   // A department or a fonds of a reading room stops there too: the walk does not climb past one.

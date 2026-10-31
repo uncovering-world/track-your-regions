@@ -135,3 +135,32 @@ describe('venueVerdict with a rule', () => {
     expect((v as { reason: string }).reason).toBe('not a place of worship class');
   });
 });
+
+describe('venueVerdict — a holding that is also a museum (#1617)', () => {
+  it('admits a collection Wikidata also types a museum, with coordinates, as one house', () => {
+    // The Frick Collection: art museum, art collection, on Fifth Avenue; the Carnegie Museum of
+    // Art: art museum, art collection, museum.
+    expect(venueVerdict(facts({ classes: ['Q207694', 'Q7328910'], housesApart: false }), museumRule(MUSEUM_CLASSES))).toEqual({ pass: true });
+    expect(venueVerdict(facts({ classes: ['Q207694', 'Q7328910', 'Q33506'] }), museumRule(MUSEUM_CLASSES))).toEqual({ pass: true });
+  });
+
+  it('still refuses a holding with no museum class, no coordinates, or several houses', () => {
+    // The Crozat Collection: an art collection and nothing else.
+    expect(venueVerdict(facts({ classes: ['Q7328910'] }), museumRule(MUSEUM_CLASSES)))
+      .toEqual({ pass: false, reason: 'kill-list: art collection — a holding, not a place' });
+    // A museum-typed collection with no coordinates of its own.
+    expect(venueVerdict(facts({ classes: ['Q207694', 'Q7328910'], lat: null, lon: null }), museumRule(MUSEUM_CLASSES)))
+      .toEqual({ pass: false, reason: 'kill-list: art collection — a holding, not a place' });
+    // The Bavarian State Painting Collections: an art museum by class, twenty houses apart.
+    expect(venueVerdict(facts({ classes: ['Q207694', 'Q7328910'], housesApart: true }), museumRule(MUSEUM_CLASSES)))
+      .toEqual({ pass: false, reason: 'kill-list: art collection — a holding, not a place' });
+  });
+
+  it('refuses a museum network whatever else it carries: the house it stands for is the resolver\'s', () => {
+    // The Museo Soumaya: museum network, three houses, coordinates on Plaza Carso.
+    expect(venueVerdict(facts({ classes: ['Q88667167'], housesApart: true }), museumRule(MUSEUM_CLASSES)))
+      .toEqual({ pass: false, reason: 'kill-list: museum network — an umbrella, not a visit' });
+    expect(venueVerdict(facts({ classes: ['Q88667167', 'Q207694'], housesApart: false }), museumRule(MUSEUM_CLASSES)))
+      .toEqual({ pass: false, reason: 'kill-list: museum network — an umbrella, not a visit' });
+  });
+});
