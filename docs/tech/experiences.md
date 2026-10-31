@@ -2549,7 +2549,19 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    object wherever Wikidata "locates" it, and the Venus of Willendorf is located in Austria —
    organisations, settlements and areas, events and works, amusement parks, walks and halls of
    fame, sculpture gardens, a destroyed building or structure, landscape) is refused whatever
-   else it carries, and so is a lost or destroyed *work* — a class of the `P279*` tree under
+   else it carries — save that, for Monuments & memorials, a commemorative class of the pinned
+   floor (`COMMEMORATIVE_FLOOR`: the memorial classes and the roots of the commemorative
+   closures) lifts the organisation, attraction and burial kills (`MEMORIAL_LIFTED_KILLS`, #1989),
+   since a memorial that is also an archive, a research institute, a government body, a hall of
+   fame, a sculpture garden or a mausoleum is still the memorial a traveller goes to: Yad Vashem,
+   the United States Holocaust Memorial Museum, the Australian War Memorial, the Walhalla,
+   Nagasaki Peace Park, Anıtkabir, the Ho Chi Minh Mausoleum and Mazar-e-Quaid — measured on the
+   development run of 2026-10-30, ten places enter, every one a monument, while a camp, an
+   archaeological site, a settlement, an amusement park and a landscape stay what they are
+   (Stutthof, Stonehenge, the commune of Le Gua, Madurodam), and a `P547` statement lifts no kill,
+   a foundation that commemorates someone being no place to stand in front of; the floor rather
+   than the walked commemorative tree, so the catalogue check (`objectAssertions.ts`) reads the
+   same list — and so is a lost or destroyed *work* — a class of the `P279*` tree under
    `lost artwork` (`LOST_WORK_ROOT`, the tree § Art Museums names under *Lost*, fetched by the
    same `fetchClassTree` and cached per source), "nothing to stand in front of", so a `destroyed
    artwork` without `lost sculpture` beside it is refused here as it is refused there, with the
@@ -2714,7 +2726,23 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    in place, so every work it admits arrives for a curator, with the question on Public art's own
    membership, its `admissionNote` fact (`artworkDoorNote`): the reading, the bar or the exit,
    the burst flag, and whether a visitor can see it there now. The run's log names every work the
-   door admitted. Monuments & memorials opens no door: it was not measured for one. The admitted are written
+   door admitted. **Monuments & memorials opens the guide door instead** ([ADR-0167](../decisions/0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md),
+   `publicArt/guideDoor.ts`, `guideDoorCandidates` in the pipeline): a candidate under the line
+   that passes the rule and that a Wikivoyage edition uses (`usedByAGuide`, the usage build of
+   `docs/tech/dumps.md`) stands in, for a curator, with the door's question as its `admissionNote`
+   (`guideDoorNote`: the editions, the line, and whether it is a monument a visitor goes to see).
+   The door asks the guide and nothing else — no readers' bar: under this kind's line a year of
+   readers brings tombs, national historic sites and kofun filed as monuments, and the guide
+   brings the canon's missing tops with few places that are not monuments (the #1997 report, `docs/research/2026-10-30-what-other-signals-find-under-a-kinds-editions-line.md`).
+   It reads the pool from its floor of 15 editions and no further: under the floor the guide
+   brings few tops and many misfiled places. A held row under the stay line stays while a guide
+   uses it, and falls with the guide named (`belowLineUnguidedReason`) once none does; while the
+   source's curator gate is off (`curatorGateOn` in `readershipDoor.ts`, ADR-0056 decision 5 —
+   every arrival through the door is for a person to read) or no usage build is in place the door
+   is shut, nothing enters by it, and a held row under the stay line keeps its place with a note
+   saying so (`shutDoorNote`), as a place keeps its place while no year of readers can be read.
+   The run's log says when the door is shut, and why. Public art opens no guide door:
+   the report measured the guide as bringing it few tops. The admitted are written
    most famous first, credits asked of
    Commons for them alone; every class the rule read goes onto the kind's
    membership as its `wikidataClasses` fact, and whether the kind answered a building's veto — an artwork

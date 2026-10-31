@@ -500,11 +500,14 @@ something a check reading the list's output could see. It reads the lists a
 constant can hold — the kill classes, the pinned worship floor, the pinned floor
 of the lost tree (`LOST_CLASSES`: a lost sculpture, a destroyed artwork — with the rule's one
 exception by name, `REMAINS_ON_SHOW`, left alone here as the rule leaves it), the buildings
-and cemeteries of the veto list, and the burial classes (`BURIAL_CLASSES`), which Monuments &
-memorials lets a commemorative form lift, read from the genre too (#1832) — and answers a
+and cemeteries of the veto list, the kills a commemorative class lifts for Monuments & memorials
+(`MEMORIAL_LIFTED_KILLS`: an organisation, a hall of fame, a sculpture garden, the burial
+classes, #1989), read against the same pinned floor the rule reads (`COMMEMORATIVE_FLOOR`), and
+the burial classes (`BURIAL_CLASSES`), which Monuments & memorials lets a commemorative form lift
+too, read from the genre (#1832) — and answers a
 building class the way the rule does, by an artwork class, and a burial class by a
-commemorative form, which only Monuments & memorials reads (a Public art admission of a burial
-class is reported whatever the answer): not approximated, but read from the
+commemorative class or a commemorative form, which only Monuments & memorials reads (a Public
+art admission of a lifted kill is reported whatever stands with it): not approximated, but read from the
 rule's own answer, which the run stores beside the classes (`wikidataArtwork`, on each kind's
 own membership; a place both kinds admit is named by the first of the two, Public art's
 before Monuments & memorials', whose reading trips the check)
