@@ -4295,6 +4295,8 @@ export interface ReviewQueueItem {
   object_description_adapted?: boolean;
   /** The regions the object counts in, every world view together. */
   region_names?: string[] | null;
+  /** The broadest of those regions, a world view's roots and their children, roots first: what the card shows of a list that runs to dozens before it is unfolded (#2195). */
+  top_region_names?: string[] | null;
   part_of?: PartOf | null;
   /** On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. An open refusal carries none, since it is asked only where no other kind offers the place (#1838). */
   seen_in?: string[];
@@ -4315,8 +4317,16 @@ export interface ReviewQueueItem {
   admission_reason?: string | null;
   /** When a curator answered. Kept-out items only. */
   state_decided_at?: string | null;
-  /** @nullable */
+  /**
+     * The curator's own words with the answer. Kept-out items only.
+     * @nullable
+     */
   state_note?: string | null;
+  /**
+     * What the system recorded about how the answer came about, where a script answered on the curator's behalf (#2195). Kept-out items only.
+     * @nullable
+     */
+  state_system_note?: string | null;
   /** The fields a run proposed. Null on every kind that carries no proposal, never absent. */
   proposed: ProposedField[] | null;
   /** When the run whose proposal this is finished. Conflicts only. */

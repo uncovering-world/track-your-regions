@@ -55,6 +55,8 @@ export interface QueueRow {
   object_description_source?: TextSource | null;
   object_description_adapted?: boolean;
   region_names?: string[] | null;
+  /** The broadest of those regions: a world view's roots and their children (#2195). */
+  top_region_names?: string[] | null;
   /** The serial site the object is a component of (#2158). */
   part_of?: PartOf | null;
   admission_note?: string | null;
@@ -189,6 +191,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     object_description_source: row.object_description_source,
     object_description_adapted: row.object_description_adapted,
     region_names: row.region_names,
+    top_region_names: row.top_region_names,
     part_of: row.part_of,
     admission_note: row.admission_note,
     seen_in: row.seen_in,

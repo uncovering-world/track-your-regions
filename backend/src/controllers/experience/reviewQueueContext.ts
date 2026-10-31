@@ -108,6 +108,17 @@ export function objectContextSelectSql(alias = 'e'): string {
              FROM experience_regions er
              JOIN regions r ON r.id = er.region_id
             WHERE er.experience_id = ${alias}.id) AS region_names,
+          -- The broadest of them, a world view's roots and their children (Europe
+          -- and its 18 countries for the Beech Forests, which count in 68 regions):
+          -- what the card shows of a long list before it is unfolded (#2195).
+          -- Not the place's country_names: those are shown to no reader and
+          -- asked of no curator (#1579). Roots first, then by name.
+          (SELECT jsonb_agg(r.name ORDER BY r.parent_region_id IS NOT NULL, r.name)
+             FROM experience_regions er
+             JOIN regions r ON r.id = er.region_id
+             LEFT JOIN regions p ON p.id = r.parent_region_id
+            WHERE er.experience_id = ${alias}.id
+              AND (r.parent_region_id IS NULL OR p.parent_region_id IS NULL)) AS top_region_names,
           -- The serial site the object is a component of, where it is one: a
           -- component's own name ("Zona nucleo 02") does not say it is one
           -- part of a property, and the property's page is where UNESCO maps
