@@ -36,7 +36,8 @@ import { useAppAddress } from './useAppAddress';
 import { useFoldedCard, type FoldedInto } from './useFoldedCard';
 import type { AppAddress } from '../utils/appUrl';
 import { queryKeys } from '../api/queryKeys';
-import { kindToOpenIn, shownInKind } from '../utils/placeKinds';
+import { byFame, kindToOpenIn, shownInKind } from '../utils/placeKinds';
+import { useRegionTail, type CrowdedOutCount } from './useRegionTail';
 
 /** The active experience view: region + kind selection */
 export interface ActiveView {
@@ -50,6 +51,42 @@ export interface ActiveView {
 export interface DiscoverBreadcrumb {
   regionId: number | null; // null = root level
   regionName: string;
+}
+
+/**
+ * A crowded city's tail (ADR-0172, #2224): the places of the open kind its
+ * list leaves out, read over the list's own set — the region with its
+ * descendants — so the row counts what this list misses. A card the tail holds
+ * is not missing from the list: it opens there, as in Map mode.
+ */
+function useDiscoverTail(opts: {
+  activeView: ActiveView | null;
+  crowdedOut: readonly CrowdedOutCount[] | undefined;
+  listAnswered: boolean;
+  experiences: Experience[];
+  selectedExperienceId: number | null;
+}) {
+  const { activeView, crowdedOut, listAnswered, experiences, selectedExperienceId } = opts;
+  const regionId = activeView?.regionId ?? null;
+  const kindId = activeView?.kindId ?? null;
+  const listHoldsSelected = selectedExperienceId !== null && experiences.some(e => e.id === selectedExperienceId);
+  const counts = useMemo(
+    () => (listAnswered && kindId !== null ? (crowdedOut ?? []).filter(entry => entry.kindId === kindId) : undefined),
+    [listAnswered, kindId, crowdedOut],
+  );
+  // A card is looked for in the open kind's tail alone: one of another kind is
+  // not this list's, and is dropped as the list's own rule says.
+  const tail = useRegionTail({
+    regionId, counts, selectedExperienceId, listHoldsSelected, includeChildren: true, lookupKindId: kindId,
+  });
+  /** A row of the open kind's list or of its tail, by id. */
+  const findExperience = useCallback(
+    (id: number): Experience | undefined => experiences.find(e => e.id === id) ?? tail.find(id),
+    [experiences, tail],
+  );
+  /** The list lacks the open card and no tail holds it, once the tail has said all it can. */
+  const listLacksSelected = !listHoldsSelected && tail.settled && tail.card === null;
+  return { tail, findExperience, listLacksSelected };
 }
 
 export function useDiscoverExperiences() {
@@ -175,12 +212,15 @@ export function useDiscoverExperiences() {
       if (!activeView) return data;
       // The places offered in the selected kind, by any of their memberships,
       // each shown as that kind sees it (ADR-0084, #1245).
+      // The best known first, by the fame Map mode orders a kind's group by
+      // (`byFame`, ADR-0172, #2224): Rome's places of worship open on the
+      // Pantheon, not on an abbey whose name comes first.
       return {
         ...data,
         experiences: data.experiences.flatMap(e => {
           const shown = shownInKind(e, activeView.kindId);
           return shown ? [shown] : [];
-        }),
+        }).sort(byFame),
       };
     },
   });
@@ -264,8 +304,16 @@ export function useDiscoverExperiences() {
     : shownRows?.find(e => e.id === addressedExperienceId);
   const unkindedMissing = address !== null && addressedExperienceId !== null && kindId === null
     && kinds.length > 0 && experiencesData !== undefined && addressedObject === undefined;
+  const { tail, findExperience, listLacksSelected } = useDiscoverTail({
+    activeView,
+    crowdedOut: experiencesData?.crowdedOut,
+    listAnswered: experiencesData !== undefined,
+    experiences,
+    selectedExperienceId,
+  });
+
   const listMissing = address !== null && selectedExperienceId !== null && experiencesData !== undefined
-    && !experiences.some(e => e.id === selectedExperienceId);
+    && listLacksSelected;
   const foldedInto = useFoldedCard(addressedExperienceId, unkindedMissing || listMissing);
   const moveOrDrop = useCallback((at: AppAddress, into: FoldedInto | null) => go(
     { ...at, experienceId: into?.id ?? null, pointId: into?.pointId ?? null },
@@ -301,7 +349,7 @@ export function useDiscoverExperiences() {
   // brings its own: a deep link carries whatever slug it was made with, or none.
   const openCard = selectedExperienceId === null
     ? undefined
-    : experiences.find(e => e.id === selectedExperienceId);
+    : findExperience(selectedExperienceId);
   useEffect(() => {
     if (address === null || !openCard?.name) return;
     go(address, { replace: true, names: { experience: openCard.name } });
@@ -329,10 +377,10 @@ export function useDiscoverExperiences() {
       }));
     }
     // Fallback to experience's main coordinates
-    const exp = experiences.find(e => e.id === selectedExperienceId);
+    const exp = findExperience(selectedExperienceId);
     if (exp) return [{ lng: exp.longitude, lat: exp.latitude }];
     return null;
-  }, [selectedExperienceId, selectedLocationsData, experiences]);
+  }, [selectedExperienceId, selectedLocationsData, findExperience]);
 
   /** What a row of the current level knows about itself: enough to be selected. */
   const rowRegion = useCallback((regionId: number, regionName: string): Region => ({
@@ -373,9 +421,10 @@ export function useDiscoverExperiences() {
   // Open or close a card: a step the visitor took, so Back undoes it.
   const setSelectedExperienceId = useCallback((id: number | null) => {
     if (address === null) return;
-    const name = id === null ? undefined : experiences.find(e => e.id === id)?.name;
+    // The list's row or the tail's, so a tail's card is written with its slug at once.
+    const name = id === null ? undefined : findExperience(id)?.name;
     go(at => ({ ...at, experienceId: id }), { names: { experience: name } });
-  }, [address, experiences, go]);
+  }, [address, findExperience, go]);
 
   // A part of the open card's object on a card of its own (#1271): opening and
   // closing one are steps, dropping one its object does not hold a correction.
@@ -426,6 +475,8 @@ export function useDiscoverExperiences() {
     openExperienceView,
     closeExperienceView,
     experiences,
+    findExperience,
+    tail,
     placeRowOf,
     curatesRegion,
     experiencesLoading,

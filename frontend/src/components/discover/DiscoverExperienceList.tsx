@@ -11,7 +11,7 @@
  * a pointer move re-renders the row entered and the row left, not the list.
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box, Typography, IconButton, TextField, InputAdornment, Button, List, Chip,
 } from '@mui/material';
@@ -32,6 +32,8 @@ import { VirtualRow } from '../shared/VirtualRow';
 import { NoticeLink } from '../shared/NoticeLink';
 import { HIDE_LOST_LABEL, lostHiddenLabel } from '../shared/lostNotice';
 import { ExperienceCard } from './ExperienceCard';
+import { TailPlace, TailRow } from '../ExperienceList/TailRow';
+import type { TailSection } from '../ExperienceList/tailRows';
 import type { TypeChoice } from '../../utils/typeChoices';
 import { typeLabelFor } from '../../utils/experienceTypes';
 
@@ -86,10 +88,55 @@ export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
   );
 });
 
+const NO_PLACES: readonly Experience[] = [];
+
+/** Every tail place read for one list (`key`), kept while the list is the same one. */
+function useTailRead(places: readonly Experience[], key: string): readonly Experience[] {
+  const [read, setRead] = useState<{ key: string; byId: ReadonlyMap<number, Experience> }>(
+    { key, byId: new Map() },
+  );
+  const current = read.key === key ? read.byId : EMPTY_READ;
+  const missing = places.some(place => !current.has(place.id));
+  useEffect(() => {
+    if (!missing) return;
+    setRead(prev => {
+      const byId = new Map(prev.key === key ? prev.byId : EMPTY_READ);
+      for (const place of places) byId.set(place.id, place);
+      return { key, byId };
+    });
+  }, [missing, places, key]);
+  return useMemo(() => [...current.values()], [current]);
+}
+
+const EMPTY_READ: ReadonlyMap<number, Experience> = new Map();
+
+/** A row of the window: a place of the list, the tail's folded row, or a place in the tail. */
+type ListRow =
+  | { kind: 'place'; exp: Experience }
+  | { kind: 'tail' }
+  | { kind: 'tail-place'; exp: Experience };
+
+function rowKey(row: ListRow | undefined, index: number): string | number {
+  if (!row) return index;
+  if (row.kind === 'place') return row.exp.id;
+  return row.kind === 'tail' ? 'tail' : `tail:${row.exp.id}`;
+}
+
+/** Whether the list says it is empty: always without a tail, and over one only where a typed name matches nothing it shows. */
+function emptyBesideTail(tail: TailSection | null, search: string): boolean {
+  if (!tail) return true;
+  return search.trim() !== '' && !(tail.open && (tail.places?.length ?? 0) > 0);
+}
+
 interface DiscoverExperienceListProps {
   activeView: ActiveView;
   experiences: Experience[];
   filteredExperiences: Experience[];
+  /** The folded row of what a crowded city leaves out of this kind's list, or null where it leaves out nothing (#2224). */
+  tail: TailSection | null;
+  /** The open kind's tail as read, unfiltered: what the new-badge impressions are taken from. */
+  tailPlaces?: readonly Experience[];
+  onTailToggle: (kindId: number) => void;
   isLoading: boolean;
   /** Places of the open kind that no longer exist, held back unless `showLost` (#609). */
   lostInKind: number;
@@ -120,6 +167,9 @@ export function DiscoverExperienceList({
   activeView,
   experiences,
   filteredExperiences,
+  tail,
+  tailPlaces = NO_PLACES,
+  onTailToggle,
   isLoading,
   lostInKind,
   showLost,
@@ -146,22 +196,29 @@ export function DiscoverExperienceList({
   const { user } = useAuth();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // The list's rows, then a crowded city's tail (#2224): its folded row and,
+  // opened, its places. One window over all of them, since a tail read with the
+  // subregions holds every crowded city's places of the kind at once — Italy's
+  // places of worship would mount hundreds of cards unwindowed.
+  const rows = useMemo<ListRow[]>(() => [
+    ...filteredExperiences.map(exp => ({ kind: 'place' as const, exp })),
+    ...(tail ? [{ kind: 'tail' as const }] : []),
+    ...(tail?.places ?? []).map(exp => ({ kind: 'tail-place' as const, exp })),
+  ], [filteredExperiences, tail]);
+
   // A row's identity, not its position: the name filter removes rows above,
   // and a height measured for "row 40" handed to whatever moved into slot 40
   // keeps the scrollbar wrong until each row happens to re-render.
-  const getRowKey = useCallback(
-    (index: number) => filteredExperiences[index]?.id ?? index,
-    [filteredExperiences],
-  );
+  const getRowKey = useCallback((index: number) => rowKey(rows[index], index), [rows]);
 
   const virtualizer = useVirtualizer({
-    count: filteredExperiences.length,
+    count: rows.length,
     getScrollElement: () => scrollContainerRef.current,
     // A card is a fixed-layout strip — 56 px thumbnail, three `noWrap` lines and
     // a fourth where the place has a subtitle, padding — so unlike map mode's
     // rows there is no open state to swallow the estimate. `measureElement`
     // still corrects each row as it mounts.
-    estimateSize: () => 84,
+    estimateSize: (index) => (rows[index]?.kind === 'tail' ? 36 : 84),
     getItemKey: getRowKey,
     overscan: 8,
   });
@@ -215,16 +272,20 @@ export function DiscoverExperienceList({
   // never mounted, stamped as seen (the map-mode list states the same rule).
   const range = virtualizer.range;
   const idsInVisibleRange = !isLoading && range
-    ? filteredExperiences.slice(range.startIndex, range.endIndex + 1).map(e => e.id)
+    ? rows.slice(range.startIndex, range.endIndex + 1).flatMap(row => (row.kind === 'tail' ? [] : [row.exp.id]))
     : [];
   const seenIds = useSeenWindowIds(
     idsInVisibleRange, `${activeView.regionId}:${activeView.kindId}`);
   // `experiences`, deliberately not the filtered rows: membership in `seenIds`
   // already means "this row rendered", and narrowing to what the filter leaves
   // *now* would drop rows the reader did see before typing.
+  // The tail's places too (#2224), as read rather than as filtered, for the
+  // reason above, and kept once read for this list: a tail folded before the
+  // seen ids land must not take back the rows the reader saw in it.
+  const tailRead = useTailRead(tailPlaces, `${activeView.regionId}:${activeView.kindId}`);
   const shownExperiences = useMemo(
-    () => experiences.filter(exp => seenIds.has(exp.id)),
-    [experiences, seenIds],
+    () => [...experiences, ...tailRead].filter(exp => seenIds.has(exp.id)),
+    [experiences, tailRead, seenIds],
   );
   useNewBadgeImpressions(shownExperiences, isAuthenticated, user?.id);
 
@@ -305,8 +366,8 @@ export function DiscoverExperienceList({
             </Box>
           )}
 
-          {/* Search (only for 15+ experiences) */}
-          {experiences.length > 15 && (
+          {/* Search (only for 15+ experiences, or a list a crowded city's tail extends) */}
+          {(experiences.length > 15 || tail !== null) && (
             <Box sx={{ px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
               <TextField
                 size="small"
@@ -340,17 +401,35 @@ export function DiscoverExperienceList({
               per row. */}
           <Box ref={scrollContainerRef} sx={{ flex: 1, overflowY: 'auto' }}>
             {isLoading && <LoadingSpinner size={24} padding="16px 0" />}
-            {!isLoading && filteredExperiences.length === 0 && (
+            {/* Not over a tail that may hold the places, unless a name is typed and the tail,
+                folded or opened without it, shows no place it matches: its row counts the
+                type, never the name. */}
+            {!isLoading && filteredExperiences.length === 0 && emptyBesideTail(tail, search) && (
               <EmptyState message={search || typeFilter ? 'No experiences match your filter.' : 'No experiences found.'} />
             )}
-            {!isLoading && filteredExperiences.length > 0 && (
+            {!isLoading && rows.length > 0 && (
               <List
                 disablePadding
                 sx={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}
               >
                 {virtualItems.map((virtualRow) => {
-                  const exp = filteredExperiences[virtualRow.index];
-                  if (!exp) return null;
+                  const row = rows[virtualRow.index];
+                  if (!row) return null;
+                  const exp = row.kind === 'tail' ? null : row.exp;
+                  const card = exp && (
+                    <DiscoverExperienceRow
+                      experience={exp}
+                      isVisited={visitedIds.has(exp.id)}
+                      isSelected={selectedExperienceId === exp.id}
+                      showCheckbox={isAuthenticated}
+                      canCurate={exp.can_curate === true}
+                      onSelect={onSelectExperience}
+                      onHoverEnter={onCardMouseEnter}
+                      onHoverLeave={onCardMouseLeave}
+                      onVisitedToggle={onVisitedToggle}
+                      onCurate={onCurate}
+                    />
+                  );
                   return (
                     <VirtualRow
                       key={virtualRow.key}
@@ -358,18 +437,12 @@ export function DiscoverExperienceList({
                       index={virtualRow.index}
                       start={virtualRow.start}
                     >
-                      <DiscoverExperienceRow
-                        experience={exp}
-                        isVisited={visitedIds.has(exp.id)}
-                        isSelected={selectedExperienceId === exp.id}
-                        showCheckbox={isAuthenticated}
-                        canCurate={exp.can_curate === true}
-                        onSelect={onSelectExperience}
-                        onHoverEnter={onCardMouseEnter}
-                        onHoverLeave={onCardMouseLeave}
-                        onVisitedToggle={onVisitedToggle}
-                        onCurate={onCurate}
-                      />
+                      {/* The tail after the list as in Map mode, never mixed into it:
+                          its folded row, then its places in Discover's own cards,
+                          set apart by the row's indent. */}
+                      {row.kind === 'tail' && tail && <TailRow section={tail} onToggle={onTailToggle} />}
+                      {row.kind === 'tail-place' && <TailPlace>{card}</TailPlace>}
+                      {row.kind === 'place' && card}
                     </VirtualRow>
                   );
                 })}

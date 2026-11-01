@@ -15,10 +15,11 @@
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Experience } from '../../api/experiences';
 import { HoverProvider, useHoverActions } from '../../hooks/useHoverContext';
 import { DiscoverExperienceList, DiscoverExperienceRow } from './DiscoverExperienceList';
+import type { TailSection } from '../ExperienceList/tailRows';
 
 // happy-dom has no layout, and its ResizeObserver never reports, so without
 // these the virtualiser reads a 0-height scroll container (`offsetHeight`, via
@@ -91,6 +92,8 @@ function renderList(
     /** How many of the rows the narrowing keeps; all of them unless given. */
     kept?: number;
   } = {},
+  tailed: { tail?: TailSection | null; onTailToggle?: (kindId: number) => void } = {},
+  search = '',
 ) {
   for (const key of Object.keys(cardRenders)) delete cardRenders[Number(key)];
   const experiences = Array.from({ length: count }, (_, i) => experienceOf(i + 1));
@@ -102,6 +105,8 @@ function renderList(
         activeView={{ regionId: 1, regionName: 'Europe', kindId: 1, kindName: 'UNESCO World Heritage Sites' }}
         experiences={experiences}
         filteredExperiences={experiences.slice(0, typed.kept ?? count)}
+        tail={tailed.tail ?? null}
+        onTailToggle={tailed.onTailToggle ?? noop}
         types={typed.types ?? []}
         typeFilter={typed.typeFilter ?? null}
         setTypeFilter={typed.setTypeFilter ?? noop}
@@ -109,7 +114,7 @@ function renderList(
         lostInKind={lost.lostInKind ?? 0}
         showLost={lost.showLost ?? false}
         onShowLost={lost.onShowLost ?? noop}
-        search=""
+        search={search}
         setSearch={noop}
         shortKindName="UNESCO"
         rejectedCount={0}
@@ -219,5 +224,61 @@ describe("the Discover list's way back to places that no longer exist (#609)", (
     renderList(3, { lostInKind: 2, showLost: true, onShowLost });
     fireEvent.click(screen.getByRole('button', { name: 'Hide places that no longer exist' }));
     expect(onShowLost).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("the Discover list's tail of a crowded city (#2224)", () => {
+  // Lazio's places of worship on the development catalogue, 2026-11-01: 37
+  // churches the ten best known within 10 km of each leave out of the list.
+  const folded: TailSection = { kindId: 4, label: '37 shadowed churches', open: false, places: [], failed: false };
+
+  it('ends the list with the folded row, and opens it on a press', () => {
+    const onTailToggle = vi.fn();
+    renderList(3, {}, {}, { tail: folded, onTailToggle });
+    const row = screen.getByRole('button', { name: '37 shadowed churches' });
+    expect(row).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(row);
+    expect(onTailToggle).toHaveBeenCalledWith(4);
+  });
+
+  it('shows the tail in place with Discover’s own cards, never inside the list', () => {
+    const tail = { ...folded, open: true, places: [experienceOf(901), experienceOf(902)] };
+    renderList(3, {}, {}, { tail });
+    expect(screen.getByRole('button', { name: '37 shadowed churches' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('card-901')).toBeInTheDocument();
+    expect(screen.getByTestId('card-902')).toBeInTheDocument();
+  });
+
+  it('windows an opened tail with the list, so a country-wide tail mounts a handful of cards', () => {
+    // Read with the subregions, Italy's tail holds every crowded city's places at once.
+    const places = Array.from({ length: 400 }, (_, i) => experienceOf(1000 + i));
+    renderList(3, {}, {}, { tail: { ...folded, label: '400 shadowed churches', open: true, places } });
+    expect(Object.keys(cardRenders).length).toBeLessThan(40);
+  });
+
+  it('says no list is empty while its tail holds the places a filter matches', () => {
+    renderList(3, {}, { kept: 0 }, { tail: folded });
+    expect(screen.queryByText(/No experiences/)).toBeNull();
+    expect(screen.getByRole('button', { name: '37 shadowed churches' })).toBeInTheDocument();
+  });
+
+  it('says a typed name matches nothing where neither the list nor the opened tail shows it', () => {
+    renderList(3, {}, { kept: 0 }, { tail: { ...folded, open: true, places: [] } }, 'Sant’Ignazio');
+    expect(screen.getByText('No experiences match your filter.')).toBeInTheDocument();
+    cleanup();
+    // Folded, the tail shows nothing either, so the list still says the name matches nothing.
+    renderList(3, {}, { kept: 0 }, { tail: folded }, 'Sant’Ignazio');
+    expect(screen.getByText('No experiences match your filter.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '37 shadowed churches' })).toBeInTheDocument();
+  });
+
+  it('keeps the name filter over a short list a tail extends', () => {
+    renderList(3, {}, {}, { tail: folded });
+    expect(screen.getByPlaceholderText('Filter by name...')).toBeInTheDocument();
+  });
+
+  it('offers no row where the crowded city leaves nothing out', () => {
+    renderList(3);
+    expect(screen.queryByText(/shadowed/)).toBeNull();
   });
 });

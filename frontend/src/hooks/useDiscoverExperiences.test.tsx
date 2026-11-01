@@ -20,7 +20,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router';
 import type { Experience, ExperienceLocationsResponse } from '../api/experiences';
 
-const { mockFetchWorldViews, mockFetchRegionAncestors, countsSpy, mockFetchByRegion, mockFetchOne, authState } = vi.hoisted(() => ({
+const { mockFetchWorldViews, mockFetchRegionAncestors, countsSpy, mockFetchByRegion, mockFetchOne, mockFetchTail, authState } = vi.hoisted(() => ({
+  mockFetchTail: vi.fn(),
   mockFetchWorldViews: vi.fn(),
   mockFetchRegionAncestors: vi.fn(),
   countsSpy: vi.fn(),
@@ -50,6 +51,7 @@ vi.mock('../api/experiences', async (importOriginal) => {
     ]),
     fetchExperiencesByRegion: mockFetchByRegion,
     fetchExperience: mockFetchOne,
+    fetchRegionTail: mockFetchTail,
     fetchExperienceLocations: vi.fn().mockResolvedValue({
       experienceId: 0, experienceName: '', locations: [], totalLocations: 0, regionId: null,
     } satisfies ExperienceLocationsResponse),
@@ -102,6 +104,8 @@ beforeEach(() => {
   countsSpy.mockResolvedValue([]);
   mockFetchByRegion.mockReset();
   mockFetchByRegion.mockResolvedValue({ experiences: [STONEHENGE], total: 1, lostHidden: 0 });
+  mockFetchTail.mockReset();
+  mockFetchTail.mockResolvedValue({ experiences: [] });
   mockFetchOne.mockReset();
   mockFetchOne.mockRejectedValue(new ApiError('Experience not found', 404, 'Experience not found', undefined));
   authState.isLoading = false;
@@ -423,5 +427,44 @@ describe('useDiscoverExperiences — places that no longer exist (#609)', () => 
 
     await waitFor(() => expect(result.current.discover.experiences.map(e => e.name)).toEqual(['Megalithic Temples of Malta']));
     expect(result.current.discover.lostInKind).toBe(0);
+  });
+});
+
+describe("useDiscoverExperiences — a crowded city's tail (#2224)", () => {
+  // Malta's World Heritage list as a stand-in for a crowded city: the list holds
+  // Stonehenge, and the ten best known within 10 km leave Hal Saflieni out.
+  const HYPOGEUM = {
+    ...STONEHENGE, id: 1300, name: 'Hal Saflieni Hypogeum',
+  } as Experience;
+
+  it('keeps a card only the open kind\'s tail holds, and opens that tail read with the subregions', async () => {
+    mockFetchByRegion.mockResolvedValue({
+      experiences: [STONEHENGE], total: 1, lostHidden: 0, crowdedOut: [{ kindId: 1, type: 'cultural', count: 1 }],
+    });
+    mockFetchTail.mockResolvedValue({ experiences: [HYPOGEUM] });
+    const { result } = renderAt('/discover/wv/5/r/7100/e/1300?kind=1');
+
+    await waitFor(() => expect(result.current.discover.tail.open.has(1)).toBe(true));
+    // The same set the list reads: the region with its descendants.
+    expect(mockFetchTail).toHaveBeenCalledWith(7100, 1, true);
+    expect(result.current.discover.findExperience(1300)?.name).toBe('Hal Saflieni Hypogeum');
+    expect(result.current.discover.tail.counts).toEqual([{ kindId: 1, type: 'cultural', count: 1 }]);
+    expect(result.current.at).toContain('/e/1300');
+  });
+
+  it('counts only the open kind\'s places, and lists them best known first', async () => {
+    const famed = (id: number, name: string, fame: number | null) => ({
+      ...STONEHENGE, id, name,
+      kinds: [{ ...STONEHENGE.kinds![0], fame }],
+    }) as Experience;
+    mockFetchByRegion.mockResolvedValue({
+      experiences: [famed(1, 'Abbey', 3), famed(2, 'Basilica', 9), famed(3, 'Chapel', null)],
+      total: 3, lostHidden: 0,
+      crowdedOut: [{ kindId: 1, type: 'cultural', count: 4 }, { kindId: 3, type: 'statue', count: 2 }],
+    });
+    const { result } = renderAt('/discover/wv/5/r/7100?kind=1');
+
+    await waitFor(() => expect(result.current.discover.experiences.map(e => e.name)).toEqual(['Basilica', 'Abbey', 'Chapel']));
+    expect(result.current.discover.tail.counts).toEqual([{ kindId: 1, type: 'cultural', count: 4 }]);
   });
 });

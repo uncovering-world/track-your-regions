@@ -69,6 +69,8 @@ export function DiscoverPage() {
     dropPoint,
     selectedExperienceLocations,
     selectedLocationsResolved,
+    findExperience,
+    tail,
   } = useDiscoverExperiences();
 
   const { isCurator, isAdmin } = useAuth();
@@ -112,8 +114,9 @@ export function DiscoverPage() {
 
   const selectedExperience = useMemo(() => {
     if (selectedExperienceId == null) return null;
-    return experiences.find(e => e.id === selectedExperienceId) ?? null;
-  }, [selectedExperienceId, experiences]);
+    // The list's row, or the tail's for a place a crowded city leaves out (#2224).
+    return findExperience(selectedExperienceId) ?? null;
+  }, [selectedExperienceId, findExperience]);
 
   // A dot on the map opens one part of the open object on its own card
   // (#1271), and only where the object has several: a museum's one point is
@@ -291,6 +294,8 @@ export function DiscoverPage() {
         <DiscoverExperienceView
           activeView={activeView}
           experiences={experiences}
+          tail={tail}
+          findExperience={findExperience}
           placeRowOf={placeRowOf}
           curatesRegion={curatesRegion}
           isLoading={experiencesLoading}

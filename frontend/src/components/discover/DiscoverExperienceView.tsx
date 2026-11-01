@@ -37,6 +37,9 @@ import { useDiscoverHover } from './useDiscoverHover';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { foldLabel } from '@tyr/shared/labels';
 import { narrowToType, offeredType, typeChoices } from '../../utils/typeChoices';
+import type { RegionTail } from '../../hooks/useRegionTail';
+import { tailLabel } from '../shared/tailNotice';
+import type { TailSection } from '../ExperienceList/tailRows';
 
 /**
  * A set of places as one shape to frame. `LngLatBounds.extend` was the
@@ -60,6 +63,10 @@ const NO_KIND_FILTER: Set<string> = new Set();
 interface DiscoverExperienceViewProps {
   activeView: ActiveView | null;
   experiences: Experience[];
+  /** The places of the open kind a crowded city leaves out of the list (ADR-0172, #2224). */
+  tail: RegionTail;
+  /** A row of the list or of its tail, by id (`useDiscoverExperiences`): the one lookup for both. */
+  findExperience: (id: number) => Experience | undefined;
   /** The place's own row for a row shown in one kind — what the curation dialog answers about (#1289). */
   placeRowOf: (row: Experience) => Experience;
   /** Whether the caller may curate the region itself (#613); each row says whether its place is curated. */
@@ -85,6 +92,8 @@ interface DiscoverExperienceViewProps {
 export function DiscoverExperienceView({
   activeView,
   experiences,
+  tail,
+  findExperience,
   placeRowOf,
   curatesRegion,
   isLoading,
@@ -161,7 +170,8 @@ export function DiscoverExperienceView({
    */
   const drawnCoordsRef = useRef((_expId: number): [number, number][] => []);
   drawnCoordsRef.current = (expId: number): [number, number][] => {
-    const exp = experiences.find(e => e.id === expId);
+    // The list's row, or the tail's for a card a crowded city leaves out (#2224).
+    const exp = findExperience(expId);
     const own: [number, number][] = exp ? [[exp.longitude, exp.latitude]] : [];
     // A selected object is not drawn from the region batch here — it leaves the
     // marker source and the highlight layer draws it from the per-experience
@@ -194,9 +204,9 @@ export function DiscoverExperienceView({
     // place is one pin either way, and folding it would say something the map
     // cannot show.
     if (placesOfSelected < 2) return null;
-    const exp = experiences.find(e => e.id === selectedExperienceId);
+    const exp = findExperience(selectedExperienceId);
     return exp ? { longitude: exp.longitude, latitude: exp.latitude, name: exp.name } : null;
-  }, [selectedExperienceId, collapsedExperienceIds, experiences, placesOfSelected]);
+  }, [selectedExperienceId, collapsedExperienceIds, findExperience, placesOfSelected]);
   foldedSelectionRef.current = foldedSelection;
 
   /** The set this map last framed, so a redraw — or a reveal of lost places — does not re-frame. */
@@ -246,7 +256,7 @@ export function DiscoverExperienceView({
   const {
     mapHoverCallbackRef, highlightHoverCallbackRef, onCardMouseEnter, onCardMouseLeave,
   } = useDiscoverHover({
-    mapRef, experiences, drawnCoordsRef, selectedExpIdRef, selectedLocsRef,
+    mapRef, experiences, findExperience, drawnCoordsRef, selectedExpIdRef, selectedLocsRef,
   });
 
   // Not `utils/kindColors.shortKindName`: this heading has room for
@@ -276,6 +286,22 @@ export function DiscoverExperienceView({
     if (!needle) return typedExperiences;
     return typedExperiences.filter((exp) => foldLabel(exp.name).includes(needle));
   }, [typedExperiences, search]);
+
+  // The folded row after the list (#2224): what the open kind's list leaves out,
+  // counted over the type it is narrowed to and Map mode's words for it
+  // (`tailLabel`). Its places, opened, follow the same type and name filter as
+  // the rows above, best known first as the tail read answers them.
+  const tailSection = useMemo<TailSection | null>(() => {
+    if (!activeView) return null;
+    const { kindId } = activeView;
+    const counts = tail.counts.filter(entry => entry.kindId === kindId && (activeType === null || entry.type === activeType));
+    const label = tailLabel(kindId, activeView.kindName, counts);
+    if (label === null) return null;
+    const needle = foldLabel(search);
+    const places = tail.places.get(kindId)?.filter(exp => (activeType === null || exp.type === activeType)
+      && (!needle || foldLabel(exp.name).includes(needle)));
+    return { kindId, label, open: tail.open.has(kindId), places: tail.open.has(kindId) ? places : [], failed: tail.failed.has(kindId) };
+  }, [activeView, tail.counts, tail.places, tail.open, tail.failed, activeType, search]);
 
   // New-badge impressions moved into `DiscoverExperienceList` with the window:
   // what a reader was shown is now what the window has held, and only the list
@@ -597,6 +623,9 @@ export function DiscoverExperienceView({
           activeView={activeView}
           experiences={experiences}
           filteredExperiences={filteredExperiences}
+          tail={tailSection}
+          tailPlaces={tail.places.get(activeView.kindId)}
+          onTailToggle={tail.toggle}
           isLoading={isLoading}
           lostInKind={lostInKind}
           showLost={showLost}
