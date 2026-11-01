@@ -135,14 +135,16 @@ export interface JudgedCause {
  * reason — before held, since a rule change knocks a top the catalogue already
  * holds out through that very refusal, and the reason is what the list is there
  * to surface; admitted, the kind's rule and line let it through and its arrival
- * waits in the review queue, so the line holds it; held, in the catalogue and
+ * waits in the review queue, so the line holds it; crowded, admitted and in a
+ * crowded city's tail, ten better-known places of its type within 10 km
+ * (ADR-0172), which the display decides and no line does; held, in the catalogue and
  * neither offered by this kind nor waiting for a curator in it (refused by name
  * earlier, offered by another kind alone, passed and no longer standing, or
  * marked missing before anyone read it); absent,
  * which is under the kind's editions line where the list's sitelinks say so,
  * else out of its classes' reach.
  */
-export type CalibrationStanding = 'offered' | 'admitted' | 'held' | 'refused' | 'under_line' | 'absent';
+export type CalibrationStanding = 'offered' | 'admitted' | 'crowded' | 'held' | 'refused' | 'under_line' | 'absent';
 
 export interface CalibrationTop {
   slug: string;
@@ -391,6 +393,7 @@ function standingOf(row: CalibrationRow, line: number | null): CalibrationStandi
   if (row.offered) return 'offered';
   if (row.refused_for !== null) return 'refused';
   if (row.admitted) return 'admitted';
+  if (row.crowded) return 'crowded';
   if (row.held_as !== null) return 'held';
   return line !== null && row.sitelinks !== null && row.sitelinks < line ? 'under_line' : 'absent';
 }

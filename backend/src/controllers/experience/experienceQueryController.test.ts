@@ -5,8 +5,8 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { membershipAdmittedSql, membershipVisibleSql, placeOfferedSql } from '../../db/membership.js';
-import { experienceOfferedToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
+import { membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, placeOfferedSql, placeShownSql } from '../../db/membership.js';
+import { experienceOfferedToReaderSql, experienceShownToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
@@ -259,14 +259,17 @@ describe('lifecycle visibility across the read paths', () => {
    * `countsMemberships` names the alias a path counts memberships under: a
    * kind's count is of memberships (ADR-0046 decision 8, #822), so the two
    * count paths ask the membership's own admission and gate rather than the
-   * place-level fragments every list asks.
+   * place-level fragments every list asks. `shows` marks a path that holds
+   * only what a reader is shown, a crowded city's tail left out (ADR-0172):
+   * a list and the counts, never search or a card.
    */
   const paths: Array<{
-    name: string; run: () => Promise<unknown>; filtersLost: boolean; countsMemberships?: string;
+    name: string; run: () => Promise<unknown>; filtersLost: boolean; countsMemberships?: string; shows?: true;
   }> = [
     {
       name: 'a region list',
       filtersLost: true,
+      shows: true,
       run: () => answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
         { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never),
     },
@@ -279,6 +282,7 @@ describe('lifecycle visibility across the read paths', () => {
       name: 'the region counts',
       filtersLost: true,
       countsMemberships: 'm',
+      shows: true,
       run: () => answerRoute(routeAt(experienceReadRoutes, '/region-counts'), { query: { worldViewId: '1' } } as never, makeRes() as never),
     },
     {
@@ -289,6 +293,7 @@ describe('lifecycle visibility across the read paths', () => {
       name: 'the kind counts',
       filtersLost: true,
       countsMemberships: 'km',
+      shows: true,
       run: () => answerRoute(routeAt(experienceReadRoutes, '/kinds'), {} as never, makeRes() as never),
     },
     {
@@ -336,7 +341,20 @@ describe('lifecycle visibility across the read paths', () => {
     });
   }
 
-  for (const { name, run, countsMemberships } of paths) {
+  const placeFragment = (shows?: true) => (shows ? placeShownSql('e') : placeOfferedSql('e'));
+
+  for (const { name, run, countsMemberships, shows } of paths) {
+    it(`${shows ? 'hides' : 'keeps'} a crowded city's tail ${shows ? 'from' : 'in'} ${name}`, async () => {
+      await run();
+      const sql = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
+      if (shows) expect(sql).toContain(countsMemberships ? membershipCrowdedSql(countsMemberships) : placeShownSql('e'));
+      // The tail is offered: found and opened, its kind still chosen with the
+      // shown one first (`rowKindJoinSql`), never filtered out.
+      else expect(sql).not.toContain(placeShownSql('e'));
+    });
+  }
+
+  for (const { name, run, countsMemberships, shows } of paths) {
     it(`hides what its kind refused from ${name}`, async () => {
       await run();
 
@@ -357,12 +375,12 @@ describe('lifecycle visibility across the read paths', () => {
       for (const sql of reads) {
         expect(sql).toContain(countsMemberships
           ? membershipAdmittedSql(countsMemberships)
-          : placeOfferedSql('e'));
+          : placeFragment(shows));
       }
     });
   }
 
-  for (const { name, run, countsMemberships } of paths) {
+  for (const { name, run, countsMemberships, shows } of paths) {
     it(`hides an unread row from ${name}`, async () => {
       await run();
 
@@ -379,7 +397,7 @@ describe('lifecycle visibility across the read paths', () => {
       const list = String(mockedQuery.mock.calls[0][0]);
       expect(list).toContain(countsMemberships
         ? membershipVisibleSql(countsMemberships)
-        : placeOfferedSql('e'));
+        : placeFragment(shows));
     });
   }
 
@@ -422,8 +440,8 @@ describe('lifecycle visibility across the read paths', () => {
     // predicate (`publishedContentSql('el')`), and an unanchored check would
     // pass on that alone even with the container-level gate missing — which
     // is exactly what happened here until this was anchored.
-    expect(list).toContain(experienceOfferedToReaderSql('e'));
-    expect(count).toContain(experienceOfferedToReaderSql('e'));
+    expect(list).toContain(experienceShownToReaderSql('e'));
+    expect(count).toContain(experienceShownToReaderSql('e'));
   });
 
   it('keeps search brackets round the name alternatives', async () => {
@@ -465,7 +483,7 @@ describe('lifecycle visibility across the read paths', () => {
     // pending one: `curation_state` has no toggle here, unlike `existence`
     // (ADR-0025), so it rides along in both FILTER expressions unconditionally.
     expect(count).toContain(
-      `FILTER (WHERE ${experienceOfferedToReaderSql('e')} AND e.existence <> 'lost')`);
+      `FILTER (WHERE ${experienceShownToReaderSql('e')} AND e.existence <> 'lost')`);
   });
 
   it('counts everything as shown once the caller asked for them', async () => {
@@ -478,7 +496,7 @@ describe('lifecycle visibility across the read paths', () => {
     // curation_state have no toggle, so both survive into a count the caller
     // asked to widen.
     expect(String(mockedQuery.mock.calls[1][0])).toContain(
-      `FILTER (WHERE ${experienceOfferedToReaderSql('e')})`);
+      `FILTER (WHERE ${experienceShownToReaderSql('e')})`);
   });
 
   it('reports nothing hidden once it is showing them', async () => {

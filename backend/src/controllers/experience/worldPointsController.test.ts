@@ -31,7 +31,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { placeKindsSql, placeOfferedSql } from '../../db/membership.js';
+import { placeKindsSql, placeShownSql } from '../../db/membership.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
@@ -68,7 +68,7 @@ describe('getWorldPoints', () => {
       ['the source still offers the point, and it stands', () => offeredLocationSql('el')],
       ['a curator has looked at the point', () => publishedContentSql('el')],
       ['the object still stands', () => hideLostSql('e')],
-      ['some membership of it is admitted and passed', () => placeOfferedSql('e')],
+      ['some membership of it is admitted and passed and not crowded out', () => placeShownSql('e')],
     ])('asks whether %s', async (_question, fragment) => {
       const { sql } = await ask();
       expect(sql).toContain(fragment());
@@ -77,7 +77,7 @@ describe('getWorldPoints', () => {
     it('asks all four in the folded shape too, where the fold is a second pass', async () => {
       const { sql } = await ask({ folded: 'true' });
       for (const fragment of [offeredLocationSql('el'), publishedContentSql('el'),
-        hideLostSql('e'), placeOfferedSql('e')]) {
+        hideLostSql('e'), placeShownSql('e')]) {
         expect(sql).toContain(fragment);
       }
     });
@@ -165,9 +165,9 @@ describe('getWorldPoints', () => {
     });
 
     it("reads a marker's every kind, and the overview none (#1262)", async () => {
-      expect((await ask({ detail: 'markers' })).sql).toContain(placeKindsSql('e'));
-      expect((await ask({ detail: 'markers', folded: 'true' })).sql).toContain(placeKindsSql('e'));
-      expect((await ask()).sql).not.toContain(placeKindsSql('e'));
+      expect((await ask({ detail: 'markers' })).sql).toContain(placeKindsSql('e', true));
+      expect((await ask({ detail: 'markers', folded: 'true' })).sql).toContain(placeKindsSql('e', true));
+      expect((await ask()).sql).not.toContain(placeKindsSql('e', true));
     });
 
     it("reads whether an unfolded marker's point is placed only roughly, and a folded or overview one's never (#1912)", async () => {

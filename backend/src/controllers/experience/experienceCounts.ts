@@ -21,21 +21,22 @@
  * semantics were checked live by adding a second membership to a place inside
  * a transaction and rolling it back.
  *
- * A membership a kind counts is one it offers: admitted and passed
- * (`membershipOfferedSql`), of a place still standing (`hideLostSql`) — the
- * same three questions every list under the header asks, so the number labels
- * the list it sits above.
+ * A membership a kind counts is one it shows: admitted, passed and not crowded
+ * out of a crowded city (`membershipShownSql`, ADR-0172), of a place still
+ * standing (`hideLostSql`) — the same questions every list under the header
+ * asks, so the number labels the list it sits above. A crowded-out place is
+ * found by search and never counted.
  */
 
-import { MEMBERSHIPS, membershipOfferedSql } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipShownSql } from '../../db/membership.js';
 import { hideLostSql } from '../../db/readerPredicates.js';
 
 /**
  * The memberships a kind's count counts, over a membership alias and its
- * place's alias: offered by the kind, of a place still standing.
+ * place's alias: shown by the kind, of a place still standing.
  */
 export function countedMembershipSql(membership = 'm', experience = 'e'): string {
-  return `${membershipOfferedSql(membership)} AND ${hideLostSql(experience)}`;
+  return `${membershipShownSql(membership)} AND ${hideLostSql(experience)}`;
 }
 
 /** A kind's count: the memberships under `membership`, each once. */

@@ -12,7 +12,7 @@
  */
 
 import { pool } from '../../../db/index.js';
-import { MEMBERSHIPS, realKindSql } from '../../../db/membership.js';
+import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, realKindSql } from '../../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import type {
   CoverageCalibrationEntriesRow, CoverageCalibrationSourcesRow, CoverageExpectationsRow, CoverageJudgementsRow, CoverageKindsRow,
@@ -83,6 +83,8 @@ export type CalibrationRow = Pick<CoverageCalibrationEntriesRow, 'kind_slug' | '
   offered: boolean;
   /** The kind admits a place known by the item, which a reader does not see yet: it waits for a curator. Never set for a work. */
   admitted: boolean;
+  /** The kind admits a place known by the item and crowds it out of a crowded city (ADR-0172). Never set for a work. */
+  crowded: boolean;
   /**
    * Not offered, and the catalogue holds the item all the same: the name of one place known by it that the kind
    * does not offer, or for a work the name of the treasure no such venue shows; else null.
@@ -332,6 +334,7 @@ const CALIBRATION_SQL = `
     SELECT c.kind_slug, c.slug,
            bool_or(COALESCE(counted.offered, false)) AS offered,
            bool_or(COALESCE(counted.admitted, false)) AS admitted,
+           bool_or(COALESCE(counted.crowded, false)) AS crowded,
            (array_agg(e.name ORDER BY k.own DESC, e.id))[1] AS held_as
       FROM coverage_calibration_entries c
       JOIN coverage_kinds ck ON ck.slug = c.kind_slug AND ck.form = 'place'
@@ -339,7 +342,8 @@ const CALIBRATION_SQL = `
       JOIN experiences e ON e.id = k.experience_id
       LEFT JOIN LATERAL (
         SELECT bool_or(${countedMembershipSql('m', 'e')}) AS offered,
-               bool_or(${arrivalWaitingSql('e', 'm')}) AS admitted
+               bool_or(${arrivalWaitingSql('e', 'm')}) AS admitted,
+               bool_or(${membershipAdmittedSql('m')} AND ${membershipCrowdedSql('m')}) AS crowded
           FROM ${MEMBERSHIPS} m
          WHERE m.experience_id = e.id AND m.kind_id = ck.experience_kind_id
       ) counted ON true
@@ -364,6 +368,7 @@ const CALIBRATION_SQL = `
                 WHERE cs.kind_slug = c.kind_slug AND cs.entry_slug = c.slug ORDER BY cs.source_slug) AS sources,
          COALESCE(h.offered, w.offered, false) AS offered,
          COALESCE(h.admitted, false) AS admitted,
+         COALESCE(h.crowded, false) AS crowded,
          COALESCE(h.held_as, w.held_as) AS held_as,
          r.error AS refused_for
     FROM coverage_calibration_entries c

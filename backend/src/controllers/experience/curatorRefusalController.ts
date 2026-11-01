@@ -128,9 +128,11 @@ export async function answerThroughScope<T>(
 /**
  * The refusal of an arrival, in one transaction under the place's lock.
  *
- * Open arrivals only — `arrivalOpenSql`'s terms, read under the lock: a
- * membership nobody has passed, one the rule admitted, on a row the source
- * still offers. Anything else is 409 with the reason, because each of the
+ * Open arrivals only — `arrivalOpenSql`'s terms but its crowding one, read
+ * under the lock: a membership nobody has passed, one the rule admitted, on a
+ * row the source still offers. An arrival a crowded city's tail holds may be
+ * refused all the same (ADR-0172): the queue does not ask it, a curator who
+ * finds it may still answer it. Anything else is 409 with the reason, because each of the
  * others has its own answer elsewhere: a rule-refused row is the refusal
  * card's, a passed row is not an arrival, and a withdrawn row is `missing`'s.
  */
