@@ -46,6 +46,7 @@ import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { WorkPreviewDialog } from '../shared/WorkPreviewDialog';
 import type { WorkToCorrect } from '../shared/WorkCorrection';
 import { SourceId } from './SourceId';
+import { ReviewPlaceLink } from './ReviewPlaceLink';
 
 type PendingPoint = NonNullable<ReviewQueueItem['pending_points']>[number];
 type PendingWork = NonNullable<ReviewQueueItem['pending_works']>[number];
@@ -55,10 +56,22 @@ export const TURN_ALL_DOWN_FROM = 5;
 
 const STRIPE = { new: 'success.main', elsewhere: 'info.main', shelf: 'warning.main' } as const;
 
-/** The museum readers already see an unread work in, other than this one — or null. */
-export function shownElsewhere(work: PendingWork, here: number): { name: string; kind: string | null } | null {
+type ShownAt = NonNullable<PendingWork['shownAt']>;
+
+/**
+ * The museum readers already see an unread work in, other than this one — or
+ * null. The row carries it named and linkable (`shownAt`, #2207); a row from
+ * before it did is read off the venues, as a name alone.
+ */
+export function shownElsewhere(work: PendingWork, here: number): ShownAt | { name: string; kind: string | null } | null {
+  if (work.shownAt && work.shownAt.id !== here) return work.shownAt;
   const shown = (work.venues ?? []).find(venue => venue.id !== here && venue.onShow);
   return shown ? { name: shown.name, kind: shown.kind ?? null } : null;
+}
+
+/** The place's name as a way to its card where a world view places it (`ReviewPlaceLink`), else its name. */
+function ShownAtName({ shown }: { shown: ShownAt | { name: string; kind: string | null } }) {
+  return 'regions' in shown ? <ReviewPlaceLink place={shown} /> : <>{shown.name}</>;
 }
 
 /** The heading's count: what arrived, by kind, and how much of it the list shows. */
@@ -67,7 +80,7 @@ export function arrivedHeading(works: number, points: number): string {
   return parts.filter(Boolean).join(', ');
 }
 
-function Mark({ tone, children }: { tone: keyof typeof STRIPE; children: string }) {
+function Mark({ tone, children }: { tone: keyof typeof STRIPE; children: React.ReactNode }) {
   return (
     <Typography component="span" sx={{ fontSize: 11, fontWeight: 600, letterSpacing: '.05em', textTransform: 'uppercase', color: STRIPE[tone] }}>
       ● {children}
@@ -188,7 +201,11 @@ export function ArrivedTable({ group, item, contents, works, points, busy, onPub
                 <TableRow key={`w${work.id}`} sx={{ verticalAlign: 'top' }}>
                   <TableCell sx={{ borderLeft: '3px solid', borderLeftColor: STRIPE[elsewhere ? 'elsewhere' : 'new'], width: 190 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>{elsewhere ? 'work' : 'new work'}</Typography>
-                    <Mark tone={elsewhere ? 'elsewhere' : 'new'}>{elsewhere ? 'already on show elsewhere' : 'new to the catalogue'}</Mark>
+                    {/* Which museum, not "elsewhere" (#2207): the Pergamon Altar arriving at the Altes
+                        Museum reads as a duplicate until the row says it hangs in the Pergamon Museum. */}
+                    <Mark tone={elsewhere ? 'elsewhere' : 'new'}>
+                      {elsewhere ? `already on show at ${elsewhere.name}` : 'new to the catalogue'}
+                    </Mark>
                     {/* Wikidata names no holder: English Wikipedia's shelf put it here (ADR-0166). */}
                     {work.placedBy === 'wikipedia' && <Mark tone="shelf">placed by Wikipedia's shelf</Mark>}
                   </TableCell>
@@ -213,7 +230,7 @@ export function ArrivedTable({ group, item, contents, works, points, busy, onPub
                         </Typography>
                         {elsewhere && (
                           <Typography variant="caption" color="text.secondary" display="block">
-                            {`readers see it in ${elsewhere.name}`}
+                            readers see it in <ShownAtName shown={elsewhere} />
                             {elsewhere.kind && ` (${elsewhere.kind})`}
                           </Typography>
                         )}

@@ -41,6 +41,11 @@ vi.mock('../shared/WorkPreviewDialog', () => ({
     work ? <div role="dialog">{`opened work ${work.treasureId} of ${work.experienceId} (${work.museumName})`}</div> : null
   ),
 }));
+// The way to the other museum's card is the review page's link, with its own
+// tests; what this file pins is that the row names the museum and hands it the place.
+vi.mock('./ReviewPlaceLink', () => ({
+  ReviewPlaceLink: ({ place }: { place: { id: number; name: string } }) => <a href={`#place-${place.id}`}>{place.name}</a>,
+}));
 vi.mock('../../api/curation', async (original) => ({
   ...await original<typeof import('../../api/curation')>(),
   publishExperience: vi.fn(),
@@ -168,6 +173,10 @@ describe('the works that arrived', () => {
           { id: 6214, name: 'Capitoline Museums', kind: 'Art Museums', externalId: 'Q333906', onShow: true },
           { id: 14546, name: 'Capitoline Museums', kind: 'Archaeology', externalId: 'Q333906', onShow: false },
         ],
+        shownAt: {
+          id: 6214, name: 'Capitoline Museums', kind: 'Art Museums', kind_id: 2,
+          regions: [{ id: 7000, name: 'Lazio', world_view_id: 5, world_view_name: 'Administrative' }],
+        },
       }),
       id: 14546, external_id: 'Q333906', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology',
       pending_treasures_on_show: 1,
@@ -175,8 +184,10 @@ describe('the works that arrived', () => {
     renderCard(capitoline);
 
     const row = within(rowOf('Boy with Thorn'));
-    expect(row.getByText(/already on show elsewhere/)).toBeInTheDocument();
-    expect(row.getByText('readers see it in Capitoline Museums (Art Museums)')).toBeInTheDocument();
+    // The mark names the museum (#2207), and the caption links its card.
+    expect(row.getByText(/already on show at Capitoline Museums/)).toBeInTheDocument();
+    expect(row.getByRole('link', { name: 'Capitoline Museums' })).toHaveAttribute('href', '#place-6214');
+    expect(row.getByText(/readers see it in/)).toHaveTextContent('readers see it in Capitoline Museums (Art Museums)');
     expect(row.queryByText(/new to the catalogue/)).toBeNull();
   });
 
