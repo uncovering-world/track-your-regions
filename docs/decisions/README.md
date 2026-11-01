@@ -70,7 +70,7 @@ and accepted by it.
 | [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md) | A kind is filled in two tiers, each from its own kind of source | Accepted — decision 1 and decision 5's "top" narrowed by [0126](0126-the-two-tiers-differ-by-source-and-weigh-the-same.md); decision 3 narrowed for a global source read per unit by [0171](0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md) | 2026-09-06 |
 | [0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md) | A curator writes a work's picture only with its credit | Accepted | 2026-09-06 |
 | [0050](0050-a-renamed-component-is-found-by-its-claim.md) | A renamed component is found by its claim, and a tie the name does not decide is nobody | Accepted | 2026-09-07 |
-| [0051](0051-the-review-queue-is-one-list-of-dated-questions.md) | The review queue is one list of dated questions, filtered and set aside per curator | Accepted | 2026-09-07 |
+| [0051](0051-the-review-queue-is-one-list-of-dated-questions.md) | The review queue is one list of dated questions, filtered and set aside per curator | Accepted — decision 1 narrowed by ADR-0173 | 2026-09-07 |
 | [0052](0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) | A place of worship is admitted for itself or for what it holds | Accepted — decisions 1 and 2 narrowed by [0161](0161-a-holy-place-is-a-place-of-worship-and-a-year-of-readers-opens-a-door.md) | 2026-09-08 |
 | [0053](0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md) | A curator's no is a verdict on an arrival and a mark on a part | Accepted — decision 2 narrowed by ADR-0083, decision 3 narrowed by ADR-0067 | 2026-09-09 |
 | [0054](0054-placement-reads-leaves-through-their-pieces.md) | Placement reads the leaves through their pieces, and asks a non-leaf only about what no leaf holds | Accepted | 2026-09-10 |
@@ -191,6 +191,7 @@ and accepted by it.
 | [0170](0170-a-collection-with-a-museum-class-is-the-museum-and-a-network-stands-for-the-house-at-its-coordinate.md) | A collection with a museum class is the museum, and a network stands for the house at its coordinate | Accepted | 2026-10-31 |
 | [0171](0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md) | A global source's regional tier measures a place against what lies within 50 km of it | Accepted | 2026-10-31 |
 | [0172](0172-a-crowded-city-shows-the-ten-best-known-places-of-a-type-within-10-km.md) | A crowded city shows the ten best-known places of a type within 10 km | Accepted | 2026-11-01 |
+| [0173](0173-a-held-or-conflict-question-is-dated-by-the-run-that-first-asked-it.md) | A held or conflict question is dated by the run that first asked it | Accepted | 2026-11-01 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
