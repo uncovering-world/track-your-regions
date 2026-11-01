@@ -532,7 +532,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `build` | stack | `backend`, `web`, `shared` | `npm run build && npm --prefix frontend run size` | build | never: run by hand |
 | `test:e2e:smoke` | stack | `backend`, `web`, `shared`, `database`, `tiles`, `runners`, `compose` | `npm run test:e2e:smoke` | smoke | never: run by hand |
 | `test:db` | stack | `backend`, `shared`, `database`, `runners`, `compose` | `npm run test:db` | smoke | never: run by hand |
-| `test:api` | stack | `backend`, `shared`, `database`, `runners`, `compose` | `npm run test:api` | smoke | never: run by hand |
+| `test:api` | stack | `backend`, `shared`, `database`, `runners`, `compose` | `npm run test:api` | api-contract | never: run by hand |
 | `perf` | stack | `backend`, `web`, `shared`, `database`, `tiles`, `runners`, `compose` | `npm run perf:local` | perf | never: run by hand |
 
 ### Read by no gate
@@ -629,8 +629,10 @@ Three things about that line are load-bearing.
   for an unknown change set applied one level up. Without it a broken decision
   would skip the required contexts — `Lint & Type Check`, `Security Scan`,
   `Unit Tests`, `E2E Smoke` and `Performance (Lighthouse)`, the last two
-  required since #1099 made the API contract lane in `E2E Smoke` blocking —
-  each would report Success, and the pull request would be mergeable with
+  required since #1099 made the API contract lane, then a step of `E2E Smoke`,
+  blocking (the lane's own job since #2219, `API Contract`, is required once the
+  maintainer lists it; until then the merge rule of § Before merging holds it)
+  — each would report Success, and the pull request would be mergeable with
   nothing run on it.
 - **No job waits on another but `Changes`.** The build, the smoke lane and
   Lighthouse used to wait on `Lint & Type Check`. The waits came out when they
@@ -641,8 +643,8 @@ Three things about that line are load-bearing.
   the same required check (ADR-0062 decision 2).
 
 **Every job that pulls or builds through Docker Hub logs in first** (`Lint & Type Check`, `Security
-Scan`, `Trivy Image Scan`, `E2E Smoke`, `Performance (Lighthouse)`; `docker/login-action`, pinned
-by commit). Anonymous pulls count against a budget every GitHub-hosted runner behind one address
+Scan`, `Trivy Image Scan`, `E2E Smoke`, `API Contract`, `Performance (Lighthouse)`;
+`docker/login-action`, pinned by commit). Anonymous pulls count against a budget every GitHub-hosted runner behind one address
 shares, and on 2026-10-09 a busy hour drew `toomanyrequests` on `redocly/cli`, `lycheeverse/lychee`,
 `semgrep/semgrep` and the test stack's `node:22-alpine` in one afternoon, failing four jobs on a
 clean branch (#1316). Logged in, pulls count against the account's own budget. The step reads two
@@ -672,19 +674,21 @@ rule packs that carry Python rules, so `cv-python/` is one of its inputs and a
 cv-python change pays for both. `trivy-image` no longer waits for `build`: it
 builds the image it scans, and a cv-python-only change asks for no build at all.
 
-The `e2e-smoke` job runs three lanes, because it is the one job in CI with a
-database. The smoke step keeps the stack up when it is done
-(`TEST_REPORT_KEEP_ENV=1`), and the step after it runs `npm run test:db` — the
-database-backed backend specs (#522; which specs those are is
-`docs/tech/development-guide.md` § Tests that need a database) — against that
-same stack, keeping it up too. The third runs `npm run test:api`, the API
-contract lane (§ The API contract), against the same backend; it reads
-`job_test_api` and fails the job like the others. The database step reads `job_test_db`, a key of its own
-in the shape of the `Semgrep SAST (Node)` and `Semgrep SAST (Python)` steps.
-It holds only when `job_smoke` does, since the lane reads a subset of what the
-smoke gate reads; what `scripts/gates.test.mjs` pins is that containment — a smoke
-gate narrowed to fewer inputs than `test:db` reads would leave the step inside a
-skipped job, reporting Success with nothing run.
+The `e2e-smoke` job runs two lanes on one stack. The smoke step keeps the
+stack up when it is done (`TEST_REPORT_KEEP_ENV=1`), and the step after it
+runs `npm run test:db` — the database-backed backend specs (#522; which specs
+those are is `docs/tech/development-guide.md` § Tests that need a database) —
+against that same stack and takes it down. The database step reads
+`job_test_db`, a key of its own in the shape of the `Semgrep SAST (Node)` and
+`Semgrep SAST (Python)` steps. It holds only when `job_smoke` does, since the
+lane reads a subset of what the smoke gate reads; what `scripts/gates.test.mjs`
+pins is that containment — a smoke gate narrowed to fewer inputs than `test:db`
+reads would leave the step inside a skipped job, reporting Success with nothing
+run. The `api-contract` job runs `npm run test:api`, the API contract lane
+(§ The API contract), on a stack of its own, beside the smoke job rather than
+as a step after its lanes (#2219): it reads `job_api_contract`, a job-level key
+as `job_smoke` is, and the lane's own script stands the stack up, seeds it and
+takes it down (§ The job graph says what the split bought).
 
 A scheduled run (`on: schedule`, weekly) has no base, so the `Changes` job sends
 the zero sha and every gate applies — see the calendar under *What the map does
@@ -813,7 +817,21 @@ container. That couples a runner job to the stack's addresses to save about
 fifteen seconds in a job that runs for eight minutes, so each lane keeps
 building its own.
 
-## The API contract
+**The API contract lane in a job of its own — 2026-11-01** (#2219). Until then the
+`E2E Smoke` job ran the smoke, database and API contract lanes in turn on one stack. The API lane's
+traveller and curator runs are paced at 50 requests a minute to stay under `authenticatedLimiter`
+(§ The running API against the document), and the pacing reached the curator run with #2200, whose
+coverage phase then took 484 s on run 41309465234 (2026-11-01), beside 303 s for the traveller run,
+4 min 41 s for the smoke lane and 2 min 56 s for the database specs: about 26 minutes for the job,
+against about 13.5 before #2200 (run 41241981160), and every backend pull request waited on it
+(#2215 raised the limit to 35 minutes so nothing was cut off). The lanes do not depend on one
+another, so the API lane now runs in `api-contract`, beside the smoke job, on a stack of its own —
+a second stack's start, about three minutes, against the sum of the lanes — and the slowest lane
+sets the run's wall-clock time rather than the sum. Measured on the pull request's own run
+(41321297786, 2026-11-01, every gate asked for): `E2E Smoke` 8 min 28 s, `Performance (Lighthouse)`
+14 min 48 s, `API Contract` 20 min 19 s, and the run's last job done 20 min 50 s after it was
+created, against about 26 minutes for the smoke job alone before. Each job's `timeout-minutes`
+states the measurement it was set from in its comment.
 
 The OpenAPI document (`packages/shared/src/openapi.generated.json`, ADR-0072) is what a native
 client is generated from, so a change to it can break a client that was built against the
@@ -868,7 +886,8 @@ generates.
 ### The running API against the document
 
 `npm run test:api` (`scripts/test-stack.sh run-api-contract`, `scripts/api-contract.mjs`, #1091)
-holds the running backend to the document. Schemathesis, pinned by digest, generates requests from
+holds the running backend to the document, in CI in a job of its own, `API Contract`, beside the
+smoke job (#2219, § The job graph). Schemathesis, pinned by digest, generates requests from
 the document, valid ones and deliberately invalid ones, and fails on:
 - an undocumented 500;
 - a response that does not match its schema, or a content type the document does not name;
@@ -881,8 +900,8 @@ backend's port included:
   fixture's traveller, curator and admin over `signed-in`, `curator` and `admin`. The fixture seeds
   those accounts only into a database whose name says `test`, and their credentials are read from
   the fixture module rather than restated.
-- **Reads only.** The stack is shared with the smoke and database lanes, and a write would change
-  what they read. The GET routes that start long work or call a service outside the stack (OAuth
+- **Reads only.** Locally the stack may be the one the smoke and database lanes read, and a write
+  would change what they read. The GET routes that start long work or call a service outside the stack (OAuth
   redirects, Nominatim, Wikidata, Wikimedia, OpenAI, the geometry and colour-match streams, the
   catalogue checks) are left out by name, each with its reason, in `EXCLUDED`.
   `scripts/api-contract.test.mjs` fails on a name the document no longer has.
