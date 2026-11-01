@@ -136,7 +136,7 @@ describe('what a change asks for', () => {
     expect(out.job_test_backend).toBe('true');
     expect(out.job_test_frontend).toBe('true');
     expect(out.job_test_db).toBe('false');
-    expect(out.job_test_api).toBe('false');
+    expect(out.job_api_contract).toBe('false');
   });
 
   it('asks both sides for a change to the package they share, the OpenAPI document included', () => {
@@ -255,7 +255,7 @@ describe('what a change asks for', () => {
       expect(out.job_test, path).toBe('true');
       expect(out.job_security_node, path).toBe('true');
       expect(out.job_check, path).toBe('true');
-      for (const job of ['job_build', 'job_security_python', 'job_trivy', 'job_smoke', 'job_perf']) {
+      for (const job of ['job_build', 'job_security_python', 'job_trivy', 'job_smoke', 'job_api_contract', 'job_perf']) {
         expect(out[job], `${path} ${job}`).toBe('false');
       }
     }
@@ -477,7 +477,7 @@ describe('the CI outputs', () => {
     'job_trivy',
     'job_smoke',
     'job_test_db',
-    'job_test_api',
+    'job_api_contract',
     'job_perf',
     'reason',
   ];
@@ -530,7 +530,7 @@ describe('the CI outputs', () => {
     expect(Object.keys(sample).sort()).toEqual(INPUTS.map((input) => input.id).sort());
 
     const steps = {
-      job_smoke: ['job_test_db', 'job_test_api'],
+      job_smoke: ['job_test_db'],
       job_test: ['job_test_backend', 'job_test_frontend'],
       job_security: ['job_security_node', 'job_security_python'],
     };

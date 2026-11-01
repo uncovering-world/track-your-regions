@@ -377,10 +377,13 @@ export const GATES = [
   // need a database. They run inside the same isolated stack the smoke lane
   // stands up, so they hang off that job and share its inputs.
   { id: 'test:db', tier: 'stack', inputs: ['backend', 'shared', 'database', 'runners', 'compose'], command: ['npm', 'run', 'test:db'], job: 'smoke', setup: 'docker' },
-  // The API contract lane (#1091): Schemathesis against the backend of that
-  // same stack, as each of the fixture's accounts, reads only. It hangs off
-  // the smoke job for the stack it stands up, as the database lane does.
-  { id: 'test:api', tier: 'stack', inputs: ['backend', 'shared', 'database', 'runners', 'compose'], command: ['npm', 'run', 'test:api'], job: 'smoke', setup: 'docker' },
+  // The API contract lane (#1091): Schemathesis against a test stack's
+  // backend, as each of the fixture's accounts, reads only. A job of its own
+  // (#2219), standing up a stack of its own beside the smoke job rather than
+  // after it: paced under authenticatedLimiter, the lane is the longest of
+  // the three stack lanes, and in turn it made every backend pull request
+  // wait on the sum of them.
+  { id: 'test:api', tier: 'stack', inputs: ['backend', 'shared', 'database', 'runners', 'compose'], command: ['npm', 'run', 'test:api'], job: 'api-contract', setup: 'docker' },
   { id: 'perf', tier: 'stack', inputs: ['backend', 'web', 'shared', 'database', 'tiles', 'runners', 'compose'], command: ['npm', 'run', 'perf:local'], job: 'perf', setup: 'docker' , local: PERF_LOCAL},
 ];
 
@@ -619,13 +622,14 @@ export function githubOutputs(decision) {
     job_smoke: hasJob('smoke'),
     // The database lane is a step of the smoke job, in the same shape as the
     // two Semgrep steps: the job-level key starts the job, this one says the
-    // step has something to read. Both gates read a subset of what the smoke
-    // gate reads, so neither can be true while `job_smoke` is false — and
+    // step has something to read. The gate reads a subset of what the smoke
+    // gate reads, so it cannot be true while `job_smoke` is false — and
     // gates.test.mjs pins that, since a smoke gate narrowed on its own would
     // strand the step in a skipped job that reports Success.
     job_test_db: hasGate('test:db'),
-    // The API contract lane, a step of the same job in the same shape.
-    job_test_api: hasGate('test:api'),
+    // The API contract lane is a job of its own (#2219), so its key is a
+    // job-level one, as the smoke lane's is.
+    job_api_contract: hasJob('api-contract'),
     job_perf: hasJob('perf'),
   };
   return [
