@@ -5,7 +5,7 @@
  * asks for them, less what a curator rejected from the region:
  *
  * - how many each kind and type crowds out, which the region's list answers
- *   beside its rows, so the list can offer "40 more churches in the shade";
+ *   beside its rows, so the list can offer "37 shadowed churches";
  * - the places themselves, the best known first within each kind, each row
  *   carrying the kind it is crowded out of.
  *
