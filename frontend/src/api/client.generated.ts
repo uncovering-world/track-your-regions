@@ -3643,6 +3643,26 @@ export interface PendingPoint {
 }
 
 /**
+ * The museum readers already see an unread work in, other than this one, with what a link to its card is built from (#2207).
+ */
+export interface ShownAt {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** The kind the place is shown under, which Discover's address needs. */
+  kind_id: number | null;
+  regions: ExperienceRegionRef[];
+  /**
+     * The kind the museum is listed under, as the row names it beside the link.
+     * @nullable
+     */
+  kind: string | null;
+}
+
+/**
  * An unread work under a row readers already see.
  */
 export interface PendingWork {
@@ -3668,6 +3688,8 @@ export interface PendingWork {
   venueCount?: number | null;
   /** The museums that hang the work, named. */
   venues?: WorkVenue[] | null;
+  /** Where readers already see the work, other than here, so the row names the place and links it (#2207); null for a work new to the catalogue. */
+  shownAt?: ShownAt | null;
   /** Set where only English Wikipedia's collection shelf places the work here, Wikidata naming no holder (ADR-0166). */
   placedBy?: 'wikipedia' | null;
   /** How many Wikipedia language editions write about the work (ADR-0082). */

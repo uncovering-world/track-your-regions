@@ -29243,6 +29243,17 @@
               }
             ]
           },
+          "shownAt": {
+            "description": "Where readers already see the work, other than here, so the row names the place and links it (#2207); null for a work new to the catalogue.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShownAt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "placedBy": {
             "description": "Set where only English Wikipedia's collection shelf places the work here, Wikidata naming no holder (ADR-0166).",
             "anyOf": [
@@ -34140,6 +34151,54 @@
         ],
         "additionalProperties": false,
         "description": "Whose work a drawn region shape is, and under which licence (#2085): shown with the shape wherever it is drawn."
+      },
+      "ShownAt": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The kind the place is shown under, which Discover's address needs."
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExperienceRegionRef"
+            }
+          },
+          "kind": {
+            "description": "The kind the museum is listed under, as the row names it beside the link.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind_id",
+          "regions",
+          "kind"
+        ],
+        "additionalProperties": false,
+        "description": "The museum readers already see an unread work in, other than this one, with what a link to its card is built from (#2207)."
       },
       "SiblingRegionGeometry": {
         "type": "object",
