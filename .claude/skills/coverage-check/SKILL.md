@@ -82,7 +82,7 @@ Say for each kind what a member of it is. A kind of dish, festival or route asks
 ### 7. Unsorted, and held
 
 - **Not sorted into a kind yet.** File each under a kind of the register, or propose the kind it needs, as `/coverage-survey` § 9 does.
-- **In the catalogue and not offered.** A place waiting for a curator is the review queue's; a refused or lost one is named to the user with the reason the catalogue records, since a guide still sends people there.
+- **In the catalogue and not offered.** A place waiting for a curator is the review queue's; a refused or lost one is named to the user with the reason the catalogue records, since a guide still sends people there. A top the calibration report calls `crowded` is in a crowded city's tail (ADR-0172): the cost of the display the maintainer accepted, reported as such and never as a gap of the kind's line.
 
 ### 8. Report
 

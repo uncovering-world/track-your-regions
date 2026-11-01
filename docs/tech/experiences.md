@@ -5008,6 +5008,52 @@ where its rows matched the whole-geometry comparison above one for one.
 - What a curator may do is answered by the server, never inferred from the shape of an answer (#613). A curator's or admin's region list carries `curatesRegion` — `checkCuratorScope` for the region, the question its rejected rows are shown by — and every row `can_curate`, `canCurateExperienceSql` (`backend/src/middleware/auth.ts`): the rule `resolveExperienceScope` applies on every write, asked of each row by walking up from the place's regions rather than down from the assignments. The web offers a region's actions (add a place, the rejected section, the curation dialog's *Reject from Region*, unreject, remove from the region) by `curatesRegion`, and a place's (curate, correct a point or a work) by its `can_curate`: a curator of Tuscany who opens Italy curates the Uffizi and not the Colosseum, and adds nothing to Italy. A reader's answer carries neither field. The write's own check stays what decides
 - `includeChildren=true` in region queries applies descendant-aware rejection checks
 
+### What a crowded city shows ([ADR-0172](../decisions/0172-a-crowded-city-shows-the-ten-best-known-places-of-a-type-within-10-km.md), #2201)
+
+A place is shown unless ten better-known places of its kind and type lie within 10 km of it. The rule
+decides what a reader is shown, never what a kind admits. On the development catalogue of
+2026-11-01 it leaves Rome's places of worship opening on St Peter's, the Pantheon and Santa Maria
+Maggiore, and crowds out 51 more of its churches.
+
+- **The rule is the kind's data.** `experience_kinds.crowding_limit` and `crowding_radius_km` are set
+  together or not at all; null shows every place the kind admits. Places of worship, Squares &
+  streets, Monuments & memorials, Public art, Towers and Bridges & engineering marvels take 10 and
+  10 km.
+- **Fame is measured by the run's after-step** (`services/sync/crowding.ts`, `refreshCrowding`).
+  For every membership of a kind with the rule, it reads three signals from the workbench and writes
+  them to `membership_fame`: readers a year (`readWorks`), the Wikivoyage editions that use the item
+  (`guideEditions`) and the Wikipedia editions (`subsetWikipediaEditions`). A signal whose source is
+  not in place keeps its last value, and the run's line says so. It then calls `refresh_crowding()`.
+  That function scores every candidate as the mean of the three percentiles among its kind and
+  type worldwide, then recounts the catalogue.
+- **The schema recounts between runs.** `crowding_follows_membership()` and
+  `crowding_follows_place()` call `recount_crowding(near)` within the radius of a place. They fire
+  when a membership's admission, type, kind or place changes, when the membership is deleted, and
+  when a place's existence or point changes or the place is deleted. A curator's refusal of
+  Santa Maria Maggiore lifts the eleventh church into Rome's ten as the refusal commits; no writer
+  asks for it. The triggers are deferred to the commit, and the recount takes a transaction lock
+  (`pg_advisory_xact_lock(2201, 0)`). Two recounts whose areas overlap then run one after the
+  other, the second seeing what the first committed, and the lock is held only for a
+  transaction's last moment rather than across a run's sweep.
+- **`membership_crowding` holds only the crowded-out**, with how many outrank each. Absent means
+  shown. A membership whose fame was measured after the last refresh has no score yet. It is
+  neither crowded out nor counted as better known.
+- **Who reads it.** `membershipShownSql`, `placeShownSql` and `experienceShownToReaderSql` are the
+  offered predicates less the crowded-out. They are composed into:
+  - the region list and its count (`experienceRegionQuery.ts`);
+  - the region locations;
+  - the world points and their kind filter (`kindMembershipJoinSql`);
+  - every kind and region count (`countedMembershipSql`), and so the coverage report;
+  - the queue's arrivals (`arrivalOpenSql`, `arrivalWaitingSql`): a crowded-out arrival asks
+    nothing until it rises into the ten.
+
+  Search, the card (`readableByIdSql`) and a visit (`claimablePlaceSql`) keep the offered set. A
+  crowded-out place is found and opened, and a visit to it is recorded, but it counts toward
+  nothing.
+- **Kinds.** A place crowded out of one kind and shown in another is a row of the other: the kind a
+  row is shown under takes a shown membership first (`shownMembershipSql`), and a list's or a map
+  marker's kinds leave the crowded one out (`placeKindsSql(experience, true)`).
+
 ### Lifecycle filtering
 
 The two axes ([ADR-0020](../decisions/0020-experience-lifecycle-and-run-changeset.md), narrowed
@@ -5072,9 +5118,10 @@ compose rather than collapse: merging any two into one column is forbidden, beca
 it impossible to ask about either again.
 
 Every reader-facing read now honours it. `experienceOfferedToReaderSql()` gates a place — one
-membership of it both admitted and passed (`placeOfferedSql`), which every list, count, search,
-map feed, writer of a reader's claim and review-queue guard on a place readers see composes
-(#1275) — and
+membership of it both admitted and passed (`placeOfferedSql`), which search, the card, every
+writer of a reader's claim and review-queue guard on a place readers see composes (#1275); every
+list, count and map feed composes `placeShownSql`, the same less a crowded city's tail (ADR-0172)
+— and
 `publishedContentSql()` gates a content row — a location, a treasure link, a treasure — because
 ADR-0025's split is load-bearing: a published museum may hold newly-written, unread paintings, and
 a predicate that only checked the experience would publish them the moment a run wrote them. Both
@@ -5306,7 +5353,7 @@ Every read `frontend/src/api/experiences.ts` and `frontend/src/api/worldPoints.t
 | GET | `/api/experiences/by-region/:regionId` | Supports `includeChildren`, `includeLost`, `limit` (default 100, max 5000), `offset`; optional auth affects rejection visibility, and a curator's or admin's answer carries `curatesRegion` and a `can_curate` per row (§ Rejection filtering). Rows come back by name, a tie between two places of one name by id, so a `limit` under the region's size truncates alphabetically rather than paging — both callers pass `WHOLE_REGION_LIMIT` and take the region whole. `total` is a `COUNT(DISTINCT e.id) FILTER (…)` over the same predicate the list uses — which includes the lifecycle rule, so it follows `includeLost` — and not the page size, so `offset + experiences.length < total` says rows remain beyond the returned window — truncation for a caller that started at `offset` 0 and asked for the whole region, plain `hasMore` for one that is paging; the server cannot distinguish those, since the difference is intent. Distinct because the rejection join can multiply rows per experience. `lostHidden` reports how many the region holds that no longer exist and are **not** being shown — zero once `includeLost` is on, since nothing is hidden then, and it excludes `pending` rows too, or a row gated for both reasons would be counted as something the toggle would reveal. `pending` rows are excluded from both the list and the count unconditionally, for every caller including a curator: this is a *set*, not one of the by-id reads the pending gate relaxes (`getExperience`, `getExperienceLocations`, `getExperienceTreasures`) |
 | GET | `/api/experiences/by-region/:regionId/locations` | Batch: all locations for all experiences in region, grouped by `experience_id`. Each row carries `curated_fields`, the claims a curator holds on the place, so a place's row on the map's card can say *pin corrected* (#583). The rows are typed and mapped key by key into `RegionExperienceLocationsResponse` (`backend/src/api/responses/experiences.ts`, ADR-0066), so a column the SELECT gains reaches the response only once the schema names it. Supports `includeChildren` and `includeLost`, the latter because this batch has to follow the list: a row the list shows but this omits arrives with no markers and a confident `0/N in region`. Eliminates N+1 per-experience location fetches. Excludes a `pending` container or a `pending` location, unconditionally |
 | GET | `/api/experiences/search` | `q`, `limit`. Also excludes `pending` rows unconditionally. Each result carries `kind_id`, `kind_name` and `regions[]` — **where it can be opened**: the regions that name the object to a reader (`readerRegionMembershipSql`, the same predicate `/:id`'s `regions[]` uses), in **published, active** world views only, minus any pair a curator rejected (a rejection leaves the membership row standing, so without that predicate a search row would link to a list that drops the card), ordered smallest first by `geom_area_km2` (nulls last) so a caller opening one frames the object rather than its continent. Empty where nothing published places it — 28 of the 1577 visible objects on 2026-09-01. Published-only rather than caller-shaped, because this route deliberately carries no session; the region context is computed *after* the LIMIT, in a select over a `matches` CTE, so the placement lookup runs for the page rather than for every name that matched ([ADR-0042](../decisions/0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md)) |
-| GET | `/api/experiences/kinds` | The active kinds (their source rows) ordered by priority. `experience_count` is a kind's count of ADR-0046 decision 8 — the memberships the kind offers, admitted and passed, of places not `lost`, each once (`kindCountSql`, #822) — unconditionally: it labels the kind, not a page, and no caller passes `includeLost` here |
+| GET | `/api/experiences/kinds` | The active kinds (their source rows) ordered by priority. `experience_count` is a kind's count of ADR-0046 decision 8 — the memberships the kind shows, admitted, passed and not crowded out of a crowded city (ADR-0172), of places not `lost`, each once (`kindCountSql`, #822) — unconditionally: it labels the kind, not a page, and no caller passes `includeLost` here |
 | GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId`. Per kind per region, of memberships — a kind's count, ADR-0046 decision 8 (`countedMembershipsSql`), returned under `kind_counts`, keyed by `kind_id`. One per place within a kind, because a place holds at most one membership per kind (`UNIQUE (experience_id, kind_id)`): a place in two kinds counts once under each and never twice under one; a region's total of *places* is the region list's own number (`countedPlacesSql`), not this endpoint's. Excludes `pending` and refused memberships and `lost` places unconditionally |
 | GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region`, and the answer names the region it was asked about as `regionId`. The answer is `ExperienceLocationsResponse` (ADR-0066). 404s for a refused row, like `/:id`. Also 404s a `pending` container, and excludes a `pending` location from the list — both relaxed together for a curator/admin whose scope reaches the experience, so a queue item that is itself one pending location inside an otherwise-published experience is still visible once past the gate. Each row carries `curated_fields` — the fields a curator has claimed on the place (migration 027) — so the object screen's Location field can say a correction stands rather than showing a moved pin as the source's; `curation_state`, so the same field can say an unread place is one readers are not sent to until it is published (#583); and `refused_at`, so it can tell a place a curator *turned down* from an unread one (#859) — the state cannot, a refused point staying `pending`, and without the mark the field offered publishing as the way to show a place the publish refuses |
 | GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts). Carries `readableByIdSql()` on the container — offered to a reader, admitted for a curator whose scope reaches the place (#1275) — so a refused museum's works come back empty: the contents follow the container, and answering with them would put back on screen exactly what hiding the museum took off it. Three more predicates gate `curation_state` — on the experience, the `experience_treasures` link and the treasure itself — because any of the three can be `pending` independently; all three relax together for a curator/admin whose scope reaches the experience. Each row carries `found_at` (a find's discovery place, ADR-0058) and, since #894, `found_at_site`: the Archaeology site row by that Wikidata id, with its reader-named `regions[]`, where a reader may open one — `null` where the spot is not a site the catalogue holds. Beside `venue_count` a row carries `venues`, the museums that hang the work, named (`venuesSql`) — for the caller the gate relaxes for, and `null` for a reader, since the list names venues whatever their state |
