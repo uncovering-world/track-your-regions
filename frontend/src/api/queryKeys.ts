@@ -113,7 +113,8 @@ export const queryKeys = {
     inRegion: (regionId: Id) => ['experiences', 'by-region', regionId] as const,
     byRegion: (regionId: Id, showLost: boolean) => ['experiences', 'by-region', regionId, showLost] as const,
     /** What a crowded city leaves out of a region's list, one kind's or every kind's (`null`), under the list's prefix so a write that refetches the list refetches it (#2201). */
-    tail: (regionId: Id, kindId: Id) => ['experiences', 'by-region', regionId, 'tail', kindId] as const,
+    tail: (regionId: Id, kindId: Id, includeChildren = false) =>
+      ['experiences', 'by-region', regionId, 'tail', kindId, includeChildren ? 'with-children' : 'alone'] as const,
     search: (query: string) => ['experiences', 'search', query] as const,
     kinds: ['experience-kinds'] as const,
     regionLocationsAll: ['region-locations'] as const,
