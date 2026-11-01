@@ -70,7 +70,7 @@ export function rowColumnsSql(
         ${rowKindSelectSql()},
         -- And every kind the place is offered in, none of them the primary one
         -- (ADR-0084, #1245).
-        ${placeKindsSql('e', !everyKind)} AS kinds,
+        ${placeKindsSql('e', !everyKind, true)} AS kinds,
         e.country_codes,
         e.country_names,
         -- Whether its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).

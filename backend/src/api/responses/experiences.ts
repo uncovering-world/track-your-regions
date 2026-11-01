@@ -164,6 +164,12 @@ export const PlaceKind = z.strictObject({
     "Whether this kind's source still lists the place (#1289): `former` where a curator recorded it as delisted in this"
     + ' kind — a World Heritage Site UNESCO delisted — while the place itself may still be listed by another kind.',
   ),
+  fame: z.number().nullable().optional().describe(
+    'How well known the place is in this kind, from 0 to 1 (ADR-0172): the mean of its percentiles among the kind and'
+    + ' type\'s places worldwide by readers, Wikivoyage editions and Wikipedia editions. A region\'s list carries it'
+    + ' and orders a kind\'s group by it; null where the kind measures none, or where the place has not been'
+    + ' measured yet.',
+  ),
 }).describe('One kind a place is offered in. A place belongs to no kind, and none of its kinds is the primary one (ADR-0084).');
 export type PlaceKind = z.infer<typeof PlaceKind>;
 

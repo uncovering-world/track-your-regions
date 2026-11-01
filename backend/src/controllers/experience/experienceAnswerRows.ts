@@ -57,6 +57,7 @@ function kindsOf(kinds: PlaceKind[] | null): PlaceKind[] {
     source_id: kind.source_id,
     external_id: kind.external_id,
     source_membership: kind.source_membership,
+    ...(kind.fame !== undefined ? { fame: kind.fame } : {}),
   }));
 }
 

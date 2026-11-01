@@ -41,6 +41,8 @@ export const MEMBERSHIPS = 'experience_kind_memberships';
 export const KINDS = 'experience_kinds';
 /** The memberships crowded out of what a reader is shown (ADR-0172). */
 export const CROWDING = 'membership_crowding';
+/** How well known each membership's place is, for a kind that declares the crowding rule (ADR-0172). */
+export const FAME = 'membership_fame';
 
 /**
  * World Heritage components, the virtual kind each serial site's part holds
@@ -386,14 +388,21 @@ export function rowKindSelectSql(membership = 'm', kind = 'k'): string {
  * the church crowded out of Rome's places of worship and offered as a tower
  * is in the towers' group alone. The card and search name every kind.
  *
+ * `withFame` adds each kind's `fame`, the membership's blended fame
+ * (`membership_fame.score`, ADR-0172), null where the kind measures none or the
+ * place has not been measured yet: what
+ * a region's list orders each kind's group by, the best known first. Only the
+ * list asks for it, so the world's points carry no bytes they do not read.
+ *
  * `json` rather than `jsonb`: nothing compares or indexes the array, and on the
  * region list of Europe (661 places) building it as `jsonb` cost 9 ms more.
  */
-export function placeKindsSql(experience = 'e', shownOnly = false): string {
+export function placeKindsSql(experience = 'e', shownOnly = false, withFame = false): string {
+  const fame = withFame ? `, 'fame', (SELECT pf.score FROM ${FAME} pf WHERE pf.membership_id = pk.id)` : '';
   return `(SELECT COALESCE(json_agg(json_build_object(
              'kind_id', pk.kind_id, 'kind_name', pkk.name, 'kind_priority', pkk.display_priority,
              'type', pk.type, 'source_id', pk.source_id, 'external_id', pk.external_id,
-             'source_membership', pk.source_membership)
+             'source_membership', pk.source_membership${fame})
            ORDER BY pkk.display_priority, pk.kind_id), '[]'::json)
          FROM ${MEMBERSHIPS} pk JOIN ${KINDS} pkk ON pkk.id = pk.kind_id
         WHERE pk.experience_id = ${experience}.id
