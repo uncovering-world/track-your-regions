@@ -166,6 +166,23 @@ describe('a verdict on the whole object', () => {
   });
 });
 
+describe('an arrival answered with the kind it belongs in (#2213)', () => {
+  it('names the other kind on both of its rows', () => {
+    // The Monument to Peter I: arrived in Public art, belongs in Monuments & memorials.
+    expect(formatLogDetails(entry('kind_added', {
+      kind: 'Monuments & memorials', kindId: 6, type: 'monument', note: 'a monument to a person',
+      fromArrival: { kind: 'Public art', kindId: 3, stays: false },
+    }))).toBe('Into Monuments & memorials · monument — from its arrival in Public art, kept out there — “a monument to a person”');
+    expect(formatLogDetails(entry('kind_added', {
+      kind: 'Monuments & memorials', kindId: 6, type: 'monument',
+      fromArrival: { kind: 'Public art', kindId: 3, stays: true },
+    }))).toBe('Into Monuments & memorials · monument — from its arrival in Public art, asked to be published there too');
+    expect(formatLogDetails(entry('arrival_refused', {
+      note: 'a monument to a person', movedTo: { kind: 'Monuments & memorials', kindId: 6, type: 'monument' },
+    }))).toBe('It belongs in Monuments & memorials instead — “a monument to a person”');
+  });
+});
+
 describe('a verdict on a rule’s refusal', () => {
   it("says what the system recorded about an answer apart from the curator's words (#2195)", () => {
     // The pins the unread batch answer made were read as a list, and a script recorded

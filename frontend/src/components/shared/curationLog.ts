@@ -462,8 +462,20 @@ function formatKeepOut(action: string, d: Record<string, unknown>): string | nul
   // because the take-back records the shape the refusal records — with the ids
   // always named, which the refusal does only when its caller named them.
   if (action === 'contents_unrefused') return formatContentsRefused(d, 'asked about again');
-  if (action === 'arrival_refused') return d.note ? `“${d.note}”` : null;
+  if (action === 'arrival_refused') return formatArrivalRefused(d);
   return formatAdmission(d);
+}
+
+/**
+ * A curator's no to an arrival: the note, and where the place went instead
+ * when the no was an answer that it belongs in another kind (#2213).
+ */
+function formatArrivalRefused(d: Record<string, unknown>): string | null {
+  const moved = d.movedTo as { kind?: unknown } | undefined;
+  return [
+    moved && typeof moved.kind === 'string' ? `It belongs in ${moved.kind} instead` : null,
+    d.note ? `“${d.note}”` : null,
+  ].filter(Boolean).join(' — ') || null;
 }
 
 /** What a no to unread contents reached: the counts the writer recorded, and the note. */
@@ -691,8 +703,17 @@ function formatKindAdded(d: Record<string, unknown>): string | null {
   const kind = typeof d.kind === 'string' ? d.kind : 'a kind';
   const type = typeof d.type === 'string' && typeof d.kindId === 'number'
     ? typeLabelFor(d.kindId, d.type).toLowerCase() : null;
+  // An arrival answered with this kind instead (#2213): where it came from, and what was asked of it
+  // there. A stay is the curator's request, not its outcome: the arrival's publish follows the
+  // commit and can be refused, and its own entry says whether it was published.
+  const from = d.fromArrival as { kind?: unknown; stays?: unknown } | undefined;
+  let arrived: string | null = null;
+  if (from && typeof from.kind === 'string') {
+    arrived = `from its arrival in ${from.kind}, ${from.stays === true ? 'asked to be published there too' : 'kept out there'}`;
+  }
   return [
     [`Into ${kind}`, type].filter(Boolean).join(' · '),
+    arrived,
     typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null,
   ].filter(Boolean).join(' — ');
 }

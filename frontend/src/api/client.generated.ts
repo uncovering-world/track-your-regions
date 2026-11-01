@@ -6387,6 +6387,69 @@ export interface RefuseArrivalResult {
   reason: string;
 }
 
+export interface ArrivalKindBody {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  kindId: number;
+  /**
+     * The type within the kind, from its vocabulary; absent for a kind that has none.
+     * @maxLength 100
+     */
+  type?: string;
+  /** @maxLength 1000 */
+  note?: string;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
+  /** Whether the place also stays in the kind that brought it: published there, else kept out of it. */
+  stays: boolean;
+}
+
+/**
+ * An arrival answered with the kind it belongs in instead (#2213).
+ */
+export interface ArrivalAnsweredWithKind {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /**
+     * The membership the add wrote in the chosen kind: admitted, published and pinned.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kindId: number;
+  /** The chosen kind, by name. */
+  kind: string;
+  /**
+     * The arrival the answer was about.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  arrivalMembershipId: number;
+  /** The kind that brought the place, by name. */
+  fromKind: string;
+  /** Whether the place also stays in the kind that brought it. */
+  stays: boolean;
+  /** Whether the arrival was published in its own kind; false where it was kept out. */
+  arrivalPublished: boolean;
+  /**
+     * Why the arrival could not be published where it stays, the add standing; null otherwise.
+     * @nullable
+     */
+  arrivalWaits: string | null;
+}
+
 export interface RefuseContentsBody {
   /**
      * @minItems 1
@@ -11881,6 +11944,46 @@ return apiFetch<RefuseArrivalResult>(getPostExperiencesByIdRefuseArrivalUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(refuseArrivalBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdArrivalKindUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/arrival-kind`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Answer an arrival with the kind it belongs in instead, keeping it in its own kind or not
+ */
+export const postExperiencesByIdArrivalKind = async (id: number,
+    arrivalKindBody: ArrivalKindBody, options?: Parameters<typeof apiFetch>[1]): Promise<ArrivalAnsweredWithKind> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<ArrivalAnsweredWithKind>(getPostExperiencesByIdArrivalKindUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(arrivalKindBody)
   }
 );}
 

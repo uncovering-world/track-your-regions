@@ -14,7 +14,7 @@ import type {
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeProposalTakenBack, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointHintSuggestions, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
-  WebsiteChecks, KeptOutOfKind, KindAddedToPlace, PlaceKindStandings, PictureClasses,
+  WebsiteChecks, KeptOutOfKind, KindAddedToPlace, ArrivalAnsweredWithKind, PlaceKindStandings, PictureClasses,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -26,7 +26,7 @@ import {
   postExperiencesByIdMergeProposals, type AnswerMergeProposalsBody, postExperiencesByIdMergeProposalSuggestions,
   postExperiencesByIdVisitSuggestion, postExperiencesByIdVisitQuestion, type VisitQuestionAnswerBody,
   getExperiencesByIdKinds, postExperiencesByIdKeepOut, type KeepOutOfKindBody,
-  postExperiencesByIdKinds, type AddToKindBody,
+  postExperiencesByIdKinds, type AddToKindBody, postExperiencesByIdArrivalKind, type ArrivalKindBody,
   postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody,
   getExperiencesByIdIdentifiers, postExperiencesByIdIdentifiers,
   getExperiencesReviewPins, postExperiencesByIdAdmissionPinHandBack, type HandBackPinBody, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
@@ -55,7 +55,7 @@ export type {
   RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
   KeepOutOfKindBody, KeptOutOfKind, PlaceKindStanding, PlaceKindStandings,
-  AddableKind, AddToKindBody, KindAddedToPlace,
+  AddableKind, AddToKindBody, KindAddedToPlace, ArrivalKindBody, ArrivalAnsweredWithKind,
 } from './client.generated';
 
 /**
@@ -247,6 +247,15 @@ export async function keepOutOfKind(experienceId: number, body: KeepOutOfKindBod
  */
 export async function addToKind(experienceId: number, body: AddToKindBody): Promise<KindAddedToPlace> {
   return postExperiencesByIdKinds(experienceId, body);
+}
+
+/**
+ * Answer an arrival with the kind it belongs in instead (#2213): the place is
+ * added there, and kept out of the kind that brought it or, where it stays,
+ * published there too.
+ */
+export async function answerArrivalWithKind(experienceId: number, body: ArrivalKindBody): Promise<ArrivalAnsweredWithKind> {
+  return postExperiencesByIdArrivalKind(experienceId, body);
 }
 
 /** The admission pins in the caller's scope, or one place's (#1369). */
