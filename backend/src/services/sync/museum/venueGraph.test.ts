@@ -28,6 +28,24 @@ const MUSEUM_NETWORK = 'Q88667167';
 const SOUMAYA = 'Q2097646';
 const PLAZA_CARSO = 'Q5970021';
 const PLAZA_LORETO = 'Q5970023';
+// The Antikensammlung Berlin (#2207): an art collection typed a museum, part of the
+// Pergamon and Altes Museums, its coordinate the Altes Museum's; and the Frick
+// Collection, an art collection typed a museum that is one house and part of nothing.
+const ART_COLLECTION = 'Q7328910';
+const ANTIKENSAMMLUNG = 'Q475394';
+const PERGAMON = 'Q157298';
+const ALTES = 'Q156722';
+const FRICK = 'Q682827';
+// A one-house museum typed a collection that is part of a network standing for
+// that very house: the network's house at its coordinate is the museum itself.
+const CARNEGIE = 'Q1043967';
+const CARNEGIE_NETWORK = 'Q5042370';
+const WARHOL = 'Q751128';
+// A one-house museum typed a collection whose network's coordinate sits on a
+// sister branch: the network resolves to that branch, not to the museum.
+const SISTER_MUSEUM = 'Q90000001';
+const SISTER_NETWORK = 'Q90000002';
+const SISTER_BRANCH = 'Q90000003';
 
 interface Entity {
   lat: number; lon: number; sitelinks: number; parents?: string[]; locations?: string[];
@@ -54,6 +72,22 @@ const WORLD: Record<string, Entity> = {
   },
   [PLAZA_CARSO]: { lat: 19.4406, lon: -99.2048, sitelinks: 4, parents: [SOUMAYA] },
   [PLAZA_LORETO]: { lat: 19.3625, lon: -99.1986, sitelinks: 2, parents: [SOUMAYA] },
+  [ANTIKENSAMMLUNG]: { lat: 52.5194, lon: 13.3989, sitelinks: 12, classes: [ART_COLLECTION, ART_MUSEUM], parents: [PERGAMON, ALTES] },
+  [PERGAMON]: { lat: 52.5210, lon: 13.3960, sitelinks: 60 },
+  [ALTES]: { lat: 52.5194, lon: 13.3989, sitelinks: 50 },
+  [FRICK]: { lat: 40.7712, lon: -73.9672, sitelinks: 40, classes: [ART_COLLECTION, ART_MUSEUM] },
+  [CARNEGIE]: { lat: 40.4435, lon: -79.9491, sitelinks: 30, classes: [ART_COLLECTION, ART_MUSEUM], parents: [CARNEGIE_NETWORK] },
+  [CARNEGIE_NETWORK]: {
+    lat: 40.4435, lon: -79.9491, sitelinks: 10, classes: [MUSEUM_NETWORK],
+    parts: [[CARNEGIE, 40.4435, -79.9491], [WARHOL, 40.4483, -79.9975]],
+  },
+  [WARHOL]: { lat: 40.4483, lon: -79.9975, sitelinks: 20, parents: [CARNEGIE_NETWORK] },
+  [SISTER_MUSEUM]: { lat: 41.0, lon: -80.0, sitelinks: 12, classes: [ART_COLLECTION, ART_MUSEUM], parents: [SISTER_NETWORK] },
+  [SISTER_NETWORK]: {
+    lat: 41.1, lon: -80.1, sitelinks: 5, classes: [MUSEUM_NETWORK],
+    parts: [[SISTER_MUSEUM, 41.0, -80.0], [SISTER_BRANCH, 41.1, -80.1]],
+  },
+  [SISTER_BRANCH]: { lat: 41.1, lon: -80.1, sitelinks: 8, parents: [SISTER_NETWORK] },
 };
 
 const uri = (qid: string) => ({ value: `${ENTITY}${qid}` });
@@ -152,5 +186,51 @@ describe('a museum network and the house at its coordinate (#1617)', () => {
     const { graph, rule } = await networkGraph();
     expect(graph.facts(PLAZA_CARSO)?.classes).toEqual([ART_MUSEUM]);
     expect(makeResolver(graph, rule).resolve(SOUMAYA)).toBe(PLAZA_CARSO);
+  });
+
+  it('says the network stands for a house, and the house for itself (#2207)', async () => {
+    const { graph, rule } = await networkGraph();
+    const resolver = makeResolver(graph, rule);
+    expect(resolver.standsForHouses(SOUMAYA)).toBe(true);
+    expect(resolver.standsForHouses(PLAZA_CARSO)).toBe(false);
+  });
+});
+
+describe('a collection forgiven as a museum (#2207)', () => {
+  async function collectionsGraph() {
+    const { sparql } = world();
+    const run: QueryRunner = { sparql, phase: () => {}, step: async () => {} };
+    const rule = museumRule(new Set([ART_MUSEUM]));
+    const graph = await loadVenueGraph(run, [ANTIKENSAMMLUNG, FRICK, CARNEGIE, SISTER_MUSEUM], rule);
+    return { graph, resolver: makeResolver(graph, rule) };
+  }
+
+  it('resolves both to themselves, as ADR-0170 decision 1 forgives them', async () => {
+    const { resolver } = await collectionsGraph();
+    expect(resolver.resolve(ANTIKENSAMMLUNG)).toBe(ANTIKENSAMMLUNG);
+    expect(resolver.resolve(FRICK)).toBe(FRICK);
+  });
+
+  it('says a collection part of venues that resolve stands for houses, and a one-house museum for itself', async () => {
+    const { resolver } = await collectionsGraph();
+    expect(resolver.standsForHouses(ANTIKENSAMMLUNG)).toBe(true);
+    expect(resolver.standsForHouses(FRICK)).toBe(false);
+    expect(resolver.standsForHouses(PERGAMON)).toBe(false);
+  });
+
+  it('does not read a one-house museum as a stand-in because its network stands for that very house', async () => {
+    const { resolver } = await collectionsGraph();
+    // The network's house at its coordinate is the museum itself, so its one
+    // parent resolves back to it and names no other house.
+    expect(resolver.resolve(CARNEGIE_NETWORK)).toBe(CARNEGIE);
+    expect(resolver.standsForHouses(CARNEGIE_NETWORK)).toBe(true);
+    expect(resolver.standsForHouses(CARNEGIE)).toBe(false);
+  });
+
+  it('nor because its network stands for a sister branch: a parent counts only as a venue of its own', async () => {
+    const { resolver } = await collectionsGraph();
+    expect(resolver.resolve(SISTER_NETWORK)).toBe(SISTER_BRANCH);
+    expect(resolver.standsForHouses(SISTER_NETWORK)).toBe(true);
+    expect(resolver.standsForHouses(SISTER_MUSEUM)).toBe(false);
   });
 });

@@ -270,6 +270,67 @@ describe('a work filed under a department and a room (the Louvre, 2026)', () => 
   });
 });
 
+describe('placeArtwork — a collection spread over several houses (#2207)', () => {
+  // The Antikensammlung Berlin (Q475394) on the subset, 2026-11-01: an art
+  // collection typed an archaeological museum, `part of` the Pergamon, Altes
+  // and Neues Museums, its own coordinate the Altes Museum's. Forgiven as a
+  // museum (ADR-0170 decision 1) it resolves to itself, and `foldVenues`
+  // folds it into the Altes Museum; what placement must not do is read the
+  // Pergamon Museum, which stands above it in `P361`, as its umbrella.
+  const berlinParents: Record<string, string[]> = {
+    ...PARENTS, antikensammlung: ['pergamon', 'altes', 'neues', 'smb'], pergamon: ['smb'], altes: ['smb'], neues: ['smb'],
+  };
+  const berlinAncestors = (q: string): ReadonlySet<string> => {
+    const seen = new Set<string>();
+    let frontier = berlinParents[q] ?? [];
+    while (frontier.length) {
+      const next: string[] = [];
+      for (const p of frontier) if (p !== q && !seen.has(p)) { seen.add(p); next.push(...(berlinParents[p] ?? [])); }
+      frontier = next;
+    }
+    return seen;
+  };
+  const berlinResolve = (q: string) => (
+    ({ antikensammlung: 'antikensammlung', pergamon: 'pergamon', altes: 'altes', neues: 'neues', smb: null } as Record<string, string | null>)[q]
+    ?? resolve(q)
+  );
+  const standsForHouses = (q: string) => q === 'antikensammlung' || q === 'tate';
+
+  it('places a work located in a museum there alone, not also at the house its collection stands for', () => {
+    // The Pergamon Altar and the Market Gate of Miletus: collection Antikensammlung, location Pergamon Museum.
+    expect(placeArtwork([s('antikensammlung', 'P195'), s('pergamon', 'P276')], berlinResolve, berlinAncestors, undefined, standsForHouses))
+      .toEqual(['pergamon']);
+  });
+
+  it('still places a work that names the collection and no museum at the collection, which folds into its house', () => {
+    // The Duenos Inscription: collection Antikensammlung, no location.
+    expect(placeArtwork([s('antikensammlung', 'P195')], berlinResolve, berlinAncestors, undefined, standsForHouses))
+      .toEqual(['antikensammlung']);
+  });
+
+  it('keeps the owner-first fallback for a one-house museum typed a collection (the Frick)', () => {
+    // The Frick Collection is forgiven as a museum and is part of no venue, so
+    // the resolver does not say it stands for houses: a stale location beside
+    // it (the module header's Meninas at the Royal Palace) does not win.
+    const resolveFrick = (q: string) => (q === 'frick' ? 'frick' : berlinResolve(q));
+    expect(placeArtwork([s('frick', 'P195'), s('prado', 'P276')], resolveFrick, berlinAncestors, undefined, standsForHouses))
+      .toEqual(['frick']);
+  });
+
+  it('keeps the network\'s house for a work whose location names no venue', () => {
+    // Marilyn Diptych: the Tate, and a location that resolves to nothing.
+    const resolveWithHouse = (q: string) => (q === 'tate' ? 'tateBritain' : resolve(q));
+    expect(placeArtwork([s('tate', 'P195'), s('village', 'P276')], resolveWithHouse, ancestorsOf, undefined, standsForHouses))
+      .toEqual(['tateBritain']);
+  });
+
+  it('is unchanged for a work whose location names a branch of the network', () => {
+    const resolveWithHouse = (q: string) => (q === 'tate' ? 'tateBritain' : resolve(q));
+    expect(placeArtwork([s('tate', 'P195'), s('tateModern', 'P276')], resolveWithHouse, ancestorsOf, undefined, standsForHouses))
+      .toEqual(['tateModern']);
+  });
+});
+
 describe('placeArtwork — a network that stands for a house (#1617)', () => {
   // The Tate now resolves to the house at its coordinate, Tate Britain; Ophelia names Tate as its
   // collection and Tate Britain as its location, Weeping Woman names Tate and Tate Modern.

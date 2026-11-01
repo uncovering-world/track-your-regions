@@ -9,7 +9,9 @@ import { nearest } from '../places/nearest.js';
  * nobody could read ('no facts'); an ancestor nobody fetched is no place, since the subset keeps
  * a container's container only when the chain reaches a coordinate (`places/containment.ts`).
  */
-export type Resolution = { venue: string; hops: number } | { unresolved: string; readingRoom?: true };
+export type Resolution =
+  | { venue: string; hops: number; /** Resolved through the house at the entity's coordinate, not to the entity itself. */ house?: true }
+  | { unresolved: string; readingRoom?: true };
 
 /** Why a work kept in a reading room is placed nowhere (`VenueRule.readingRooms`). */
 export const READING_ROOM_REASON = 'kept in a library or an archive, not shown in what it is part of';
@@ -32,7 +34,7 @@ export function resolveVenue(
   if (own && isUmbrella(own.classes)) {
     const house = houseOf(start);
     const known = house === undefined ? undefined : facts(house);
-    if (house !== undefined && known && venueVerdict(known, rule).pass) return { venue: house, hops: 1 };
+    if (house !== undefined && known && venueVerdict(known, rule).pass) return { venue: house, hops: 1, house: true };
   }
   const isReadingRoom = (qid: string) => facts(qid)?.classes.some((c) => rule.readingRooms?.has(c)) ?? false;
   if (isReadingRoom(start)) return { unresolved: READING_ROOM_REASON, readingRoom: true };

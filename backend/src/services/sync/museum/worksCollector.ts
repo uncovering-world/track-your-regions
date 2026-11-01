@@ -478,12 +478,13 @@ function placeWorks(
   resolve: (qid: string) => string | null,
   ancestors: (qid: string) => ReadonlySet<string>,
   keptBack: (qid: string) => boolean,
+  standsForHouses: (qid: string) => boolean,
 ): { placed: Record<string, string[]>; unseen: Record<string, UnseenWork> } {
   const placed: Record<string, string[]> = {};
   const unseen: Record<string, UnseenWork> = {};
   for (const qid of pool.keys()) {
     const own = statements.get(qid) ?? [];
-    const venues = placeArtwork(own, resolve, ancestors, keptBack);
+    const venues = placeArtwork(own, resolve, ancestors, keptBack, standsForHouses);
     const reason = unseenReason(qid, own, lost);
     if (reason === null) {
       placed[qid] = venues;
@@ -593,7 +594,9 @@ export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions
   const graph = await loadVenueGraph(run, seeds, opts.rule);
   const resolver = makeResolver(graph, opts.rule);
   run.phase('Placing works in the venues that hold them...');
-  const { placed, unseen } = placeWorks(pool, statements, lost, resolver.resolve, graph.ancestors, resolver.keptBack);
+  const { placed, unseen } = placeWorks(
+    pool, statements, lost, resolver.resolve, graph.ancestors, resolver.keptBack, resolver.standsForHouses,
+  );
   const unseenCount = Object.keys(unseen).length;
   const lostCount = Object.values(unseen).filter((u) => u.reason !== WHEREABOUTS_UNKNOWN).length;
   console.log(
