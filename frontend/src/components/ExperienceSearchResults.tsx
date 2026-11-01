@@ -16,16 +16,21 @@
  * Answering "no results" for those would tell a reader the catalogue does not
  * hold what it does hold, which is the one thing a search must never say.
  *
+ * A place a crowded city leaves out of its region's list (ADR-0172, #2201) is a
+ * link like any other, marked quietly "shadowed", its meaning on the tooltip:
+ * it opens in its kind's tail rather than among the group's own rows.
+ *
  * No pictures here, deliberately: a picture brings the credit line it must be
  * shown with (`ImageCreditLine`), and a row of a jump-to list is not where a
  * photograph earns the two lines that costs. The card the row opens carries
  * both.
  */
 
-import { Box, List, ListItem, ListItemButton, ListItemText, ListSubheader, Typography } from '@mui/material';
+import { Box, List, ListItem, ListItemButton, ListItemText, ListSubheader, Tooltip, Typography } from '@mui/material';
 import type { ExperienceRegionRef, ExperienceSearchResult } from '../api/experiences';
 import { LifecycleChip } from './shared/LifecycleChip';
 import { openableRegion } from '../utils/openableRegion';
+import { TAIL_MARK, TAIL_REASON } from './shared/tailNotice';
 
 interface ExperienceSearchResultsProps {
   results: ExperienceSearchResult[];
@@ -75,6 +80,15 @@ export function ExperienceSearchResults({ results, worldViewId, onSelect }: Expe
                   {result.name}
                 </Typography>
                 <LifecycleChip state={result} />
+                {result.in_tail && (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ flexShrink: 0, fontStyle: 'italic', whiteSpace: 'nowrap' }}
+                  >
+                    {TAIL_MARK}
+                  </Typography>
+                )}
               </Box>
             }
             secondary={
@@ -100,13 +114,18 @@ export function ExperienceSearchResults({ results, worldViewId, onSelect }: Expe
           />
         );
 
-        return region ? (
+        const row = region ? (
           <ListItemButton key={result.id} onClick={() => onSelect(result, region)}>
             {body}
           </ListItemButton>
         ) : (
           <ListItem key={result.id}>{body}</ListItem>
         );
+        // On the row, not on the mark: the row is what takes the keyboard's
+        // focus, so the meaning of "shadowed" reaches a reader who tabs to it.
+        return result.in_tail ? (
+          <Tooltip key={result.id} title={TAIL_REASON} describeChild placement="right">{row}</Tooltip>
+        ) : row;
       })}
     </List>
   );
