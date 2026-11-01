@@ -72,7 +72,7 @@ jobs:
       job_trivy: ${{ steps.gates.outputs.job_trivy }}
       job_smoke: ${{ steps.gates.outputs.job_smoke }}
       job_test_db: ${{ steps.gates.outputs.job_test_db }}
-      job_test_api: ${{ steps.gates.outputs.job_test_api }}
+      job_api_contract: ${{ steps.gates.outputs.job_api_contract }}
       job_perf: ${{ steps.gates.outputs.job_perf }}
     steps:
       - uses: actions/checkout@v4
@@ -460,18 +460,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_smoke == 'true') }}
-    # The smoke, database and API contract lanes in turn, about 26 minutes on
-    # 2026-11-01: smoke 4.7, database 3, and the API lane about 17.5, since
-    # its traveller and curator runs are paced under authenticatedLimiter
-    # (scripts/api-contract.mjs) and the curator run's coverage phase alone
-    # took 484 s. A job of the API lane's own is #2215.
-    timeout-minutes: 35
+    # The smoke and database lanes in turn, on one stack: 8 min 28 s on run
+    # 41321297786 (2026-11-01, the first with the two lanes alone) — the
+    # smoke step 4 min 58 s with the stack's start, the database specs
+    # 3 min 22 s. The API contract lane runs in the `api-contract` job beside
+    # this one (#2219).
+    timeout-minutes: 20
     env:
       DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
       # The smoke specs browse the production build, the shape a visitor gets,
       # rather than the dev server (#654, docs/tech/development-guide.md § The
-      # shape the smoke lane browses). Job-wide, so the database and API steps
-      # below find the stack in the shape the smoke step left it in instead of
+      # shape the smoke lane browses). Job-wide, so the database step below
+      # finds the stack in the shape the smoke step left it in instead of
       # recreating the frontend for a lane that never reads it.
       FRONTEND_MODE: preview
     steps:
@@ -511,10 +511,10 @@ jobs:
       # service under test installs its own dependencies inside its own
       # container image (backend/Dockerfile, frontend/Dockerfile). Host
       # node_modules are never read on this path.
-      # TEST_REPORT_KEEP_ENV=1 leaves the stack up for the steps below, which
+      # TEST_REPORT_KEEP_ENV=1 leaves the stack up for the step below, which
       # would otherwise pay for a `down -v` and a cold `up` — a Postgres
       # re-initialised from the schema, two readiness waits and a re-seed — to
-      # reach a database this step has just finished with. The API contract
+      # reach a database this step has just finished with. The database
       # lane, the last step to read the stack, takes it down after itself;
       # where that step is skipped, the runner is thrown away with the
       # containers on it.
@@ -533,17 +533,7 @@ jobs:
       # never holds without the first.
       - name: Run the database-backed backend specs
         if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_db == 'true' }}
-        # The stack stays up for the API contract lane after it, which takes
-        # it down.
-        run: TEST_REPORT_KEEP_ENV=1 npm run test:db
-
-      # The API contract lane (#1091): Schemathesis against this stack's
-      # backend, as each of the fixture's accounts, reads only. It fails the
-      # job: a query parameter a route does not declare is refused (#1099), so
-      # the lane's findings are defects, not a policy left open.
-      - name: Run the API contract lane
-        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_api == 'true' }}
-        run: npm run test:api
+        run: npm run test:db
 
       # `always()`, not `failure()`: a spec that passes on retry is flaky and
       # no longer fails the job (#447), so on a `failure()` condition the one
@@ -559,6 +549,62 @@ jobs:
             frontend/test-results
             .test-results
           retention-days: 7
+
+  api-contract:
+    # The API contract lane (#1091): Schemathesis against a test stack's
+    # backend, as each of the fixture's accounts, reads only. It fails the
+    # job: a query parameter a route does not declare is refused (#1099), so
+    # the lane's findings are defects, not a policy left open.
+    #
+    # A job of its own, beside `E2E Smoke` rather than a step after its lanes
+    # (#2219): the lane's traveller and curator runs are paced under
+    # authenticatedLimiter (scripts/api-contract.mjs), which made it the
+    # longest of the three stack lanes — 303 s for the traveller run and
+    # 484 s for the curator run's coverage phase alone on run 41309465234
+    # (2026-11-01) — and every backend pull request waited on the sum of
+    # the three, about 26 minutes. Run side by side, the slowest lane sets
+    # the wall-clock time. It stands up a stack of its own: `npm run test:api`
+    # starts and seeds one where none is up, and takes it down after itself.
+    # No FRONTEND_MODE: the lane reads the backend alone, and the dev server
+    # answers the stack's readiness wait sooner than a build does.
+    #
+    # Not a required check until the maintainer lists it: the repository's
+    # merge rule already asks for every check that ran to be green
+    # (docs/tech/gates.md § Before merging).
+    name: API Contract
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_api_contract == 'true') }}
+    # The lane's four runs and its stack's own start: 20 min 19 s on run
+    # 41321297786 (2026-11-01), the first run of this job.
+    timeout-minutes: 30
+    env:
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # As for e2e-smoke: the checkout goes straight to docker compose,
+          # so no token is left in .git/config for the containers to find.
+          persist-credentials: false
+
+      # Logged in to Docker Hub for the reason the `check` job gives (#1316).
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No host npm ci, for the reason given on the e2e-smoke job: every
+      # service under test installs its own dependencies inside its image,
+      # and Schemathesis runs from its own pinned image.
+      - name: Run the API contract lane
+        run: npm run test:api
 
   perf:
     # Lighthouse against the production build, served inside the same
