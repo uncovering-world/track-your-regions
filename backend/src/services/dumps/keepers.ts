@@ -15,7 +15,7 @@ import { buildLayer, hasCurrentPlanet, updateLayer } from './osm/layerBuild.js';
 import { latestLayer } from './osm/layerTables.js';
 import { DEFAULT_EVERY_DAYS, layerSchedule, setLayerSchedule, type LayerSchedule } from './osm/layerSchedule.js';
 import type { ReadOptions } from './read.js';
-import { buildReadership, latestReadership } from './readership/readershipBuild.js';
+import { buildReadership, latestReadership, readershipArchives, refuseOverlappingYear } from './readership/readershipBuild.js';
 import { buildRedirects } from './wikipedia/redirectBuild.js';
 import { latestRedirects } from './wikipedia/redirectTables.js';
 import { buildWikidataRedirects } from './wikidata/redirectBuild.js';
@@ -46,8 +46,18 @@ export interface Keeper {
     buildId: number; onPhase: (message: string) => void; trial?: boolean;
     /** How far a step that reads a file of its own has got (#1519). */
     onMeasure?: (read: number, total: number) => void;
+    /** The month the year built ends on, `YYYY-MM`, for a year kept beside the current one (readership, #2230). */
+    windowEnd?: string;
   }):
     Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }>;
+  /** The earlier years kept beside the current one, each by the month it ends on, `YYYY-MM`, oldest first (readership, #2230). */
+  archives?(): Promise<string[]>;
+  /**
+   * Refuse the year ending `windowEnd` (`YYYY-MM`) where it would share a month
+   * with the current year or an earlier one kept (readership, #2230);
+   * `newestOnHost` is the host's newest file's date as last learnt, or null.
+   */
+  refuseYearEnd?(windowEnd: string, newestOnHost: string | null): Promise<void>;
   /**
    * Whether a sample of the local copy can be cut and the build tried on it
    * (#1527): the subset's build can, readership's cannot, since a month is
@@ -89,7 +99,10 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   'wikidata-entities': {
     title: 'The local Wikidata subset', build: buildSubset, rederive: rederiveSubset, latest: latestSubset, samples: true, fromCopy: true,
   },
-  'pageviews-user': { title: 'Readership over the last twelve months', build: buildReadership, latest: latestReadership, samples: false, fromCopy: false },
+  'pageviews-user': {
+    title: 'Readership over the last twelve months', build: buildReadership, latest: latestReadership, archives: readershipArchives,
+    refuseYearEnd: refuseOverlappingYear, samples: false, fromCopy: false,
+  },
   'enwiki-page': {
     title: 'English Wikipedia\'s articles, categories and category links', build: buildStructure, latest: latestStructure, samples: false, fromCopy: false,
   },

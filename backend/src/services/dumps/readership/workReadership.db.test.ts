@@ -74,6 +74,22 @@ describe('a work read back from the readership year', () => {
     expect(await readershipYear()).toEqual({ months, editions: ['enwiki', 'dewiki'] });
   });
 
+  it('reads nothing of a month kept for an earlier year, however it is dated or read (#2230)', async () => {
+    // A month of a year an admin asked for, newer than the current year and with West Frisian far over the counted line.
+    await pool.query(
+      `INSERT INTO readership_month_files (month, file_name, build_id, lines, editions, kept, redirects_dump_date, redirects_build_id, window_end)
+       VALUES ('2026-12-01', 'pageviews-202612-user.bz2', $1, 60000000, '{"enwiki": 20000000, "fywiki": 30000000}', 1000, '2026-10-01', $2, '2026-12-01')`,
+      [pageviewsBuild, redirectsBuild],
+    );
+    await pool.query(
+      `INSERT INTO readership_months (month, item, site, views, mobile, daily) VALUES ('2026-12-01', $1, 'enwiki', 1000000, 500000, NULL)`,
+      [WORK],
+    );
+    const year = await readershipYear();
+    expect(year).toEqual({ months, editions: ['enwiki', 'dewiki'] });
+    expect((await readWorks(year!, [WORK])).views.get(WORK)).toBe(12_000);
+  });
+
   it('sums the counted editions and sets a machine-read pair aside', async () => {
     const year = (await readershipYear())!;
     const { views, counted } = await readWorks(year, [WORK]);

@@ -101,6 +101,14 @@ describe('a build in the dump worker (ADR-0106)', () => {
     expect(ledger.recordFile).toHaveBeenCalled();
   });
 
+  it('hands the builder the month the year ends on, with that month\'s file found by name (#2230)', async () => {
+    keepers.build.mockResolvedValue({ bytes: 1, lines: 0, checksumActual: null, summary: 'kept the year ending 2025-09 beside the current one' });
+    await runBuild({ id: 9, dump: 'osm-planet', request: { kind: 'keep', only: 'pageviews-202509-user.bz2', windowEnd: '2025-09' } }, new AbortController().signal);
+    expect(keepers.update).not.toHaveBeenCalled();
+    expect(keepers.build).toHaveBeenCalledWith(FILE, expect.objectContaining({ buildId: 9, windowEnd: '2025-09' }));
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'success', outcome: expect.stringMatching(/year ending 2025-09/) }));
+  });
+
   it('derives again without finding or reading a file, and closes as a success (#1526)', async () => {
     await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'rederive' } }, new AbortController().signal);
     expect(keepers.rederive).toHaveBeenCalledWith(expect.objectContaining({ buildId: 9 }));

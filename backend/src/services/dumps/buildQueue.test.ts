@@ -17,14 +17,18 @@ const copies = vi.hoisted(() => ({ newest: null as null | { fileName: string } }
 vi.mock('./localCopies.js', () => ({ newestLocalCopy: async () => copies.newest }));
 const samples = vi.hoisted(() => ({ newest: null as null | { fileName: string } }));
 vi.mock('./samples.js', () => ({ newestSample: async () => samples.newest }));
-const kept = vi.hoisted(() => ({ latest: vi.fn(async () => null as null | { dumpDate: string }) }));
+const kept = vi.hoisted(() => ({
+  latest: vi.fn(async () => null as null | { dumpDate: string }),
+  refuseYearEnd: vi.fn(async (_windowEnd: string, _newestOnHost: string | null) => undefined),
+}));
 vi.mock('./keepers.js', () => ({
   keeperOf: (key: string) => {
     if (key === 'wikidata-entities') return { title: 'subset', rederive: vi.fn(), latest: kept.latest, samples: true, fromCopy: true };
-    if (key === 'pageviews-user') return { title: 'readership', latest: kept.latest, samples: false, fromCopy: false };
+    if (key === 'pageviews-user') return { title: 'readership', latest: kept.latest, refuseYearEnd: kept.refuseYearEnd, samples: false, fromCopy: false };
     return null;
   },
 }));
+vi.mock('./newestOnHost.js', () => ({ newestDump: () => ({ date: '2026-10-01', askedAt: new Date(), answered: true }) }));
 
 const { buildProgress, startBuild } = await import('./buildQueue.js');
 
@@ -48,6 +52,29 @@ describe('queuing a dump build (ADR-0106)', () => {
     // Its year always ends at the newest month: a build from the copy would end it at a month not kept yet.
     await expect(startBuild('pageviews-user', { startedBy: 1, kind: 'keep', from: 'local' })).rejects.toThrow(/always reads the newest file/);
     expect(ledger.enqueueBuild).not.toHaveBeenCalled();
+  });
+
+  it('keeps a year ending on a named month only as a keeping build of a dump dated by month, read from the host (#2230)', async () => {
+    await expect(startBuild('pageviews-user', { startedBy: 1, kind: 'verify', windowEnd: '2025-09' })).rejects.toThrow(/Only a keeping build/);
+    copies.newest = { fileName: 'wikidata-20261005-all.json.gz' };
+    await expect(startBuild('wikidata-entities', { startedBy: 1, kind: 'keep', from: 'local', windowEnd: '2025-09' })).rejects.toThrow(/not from the local copy/);
+    await expect(startBuild('wikidata-entities', { startedBy: 1, kind: 'keep', windowEnd: '2025-09' })).rejects.toThrow(/dated by day, not by month/);
+    expect(ledger.enqueueBuild).not.toHaveBeenCalled();
+  });
+
+  it('refuses a year the keeper says would share a month with one kept, before anything is queued (#2230)', async () => {
+    kept.refuseYearEnd.mockRejectedValueOnce(new Error('The year ending 2026-03 shares 2025-10 to 2026-03 with the current year (2025-10 to 2026-09)'));
+    await expect(startBuild('pageviews-user', { startedBy: 1, kind: 'keep', windowEnd: '2026-03' })).rejects.toThrow(/shares 2025-10 to 2026-03 with the current year/);
+    expect(ledger.enqueueBuild).not.toHaveBeenCalled();
+  });
+
+  it('queues the year ending on the named month with that month\'s file as the one to find (#2230)', async () => {
+    ledger.activeBuildOf.mockResolvedValue(queuedRow({ kind: 'keep', only: 'pageviews-202509-user.bz2', windowEnd: '2025-09' }));
+    const progress = await startBuild('pageviews-user', { startedBy: 7, kind: 'keep', windowEnd: '2025-09' });
+    // The keeper judges the year against what is kept and against the host's newest month, as last learnt.
+    expect(kept.refuseYearEnd).toHaveBeenCalledWith('2025-09', '2026-10-01');
+    expect(ledger.enqueueBuild).toHaveBeenCalledWith('pageviews-user', 'local', { kind: 'keep', only: 'pageviews-202509-user.bz2', windowEnd: '2025-09' }, 7);
+    expect(progress).toMatchObject({ status: 'queued', kind: 'keep' });
   });
 
   it('cuts a sample from the local copy, and refuses one without a copy or a builder (#1527)', async () => {

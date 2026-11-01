@@ -259,6 +259,13 @@ function enwikiTable(key: DumpKey, job: string, table: string, title: string, ab
   return wikiTable('enwiki', key, job, table, title, about, source);
 }
 
+/**
+ * The file of a month's pageviews, from the month's first day: `2026-09-01` is
+ * `pageviews-202609-user.bz2`. Readership's twelve are found by it (#1436), and
+ * so is the last month of a year an admin asks for by its end (#2230).
+ */
+export const pageviewsFileName = (month: string) => `pageviews-${month.slice(0, 4)}${month.slice(5, 7)}-user.bz2`;
+
 const pageviews: DumpDescriptor = {
   key: 'pageviews-user',
   source: 'Wikimedia pageviews',
@@ -267,24 +274,49 @@ const pageviews: DumpDescriptor = {
   about: 'Every article of every edition with its month total and daily counts, people only (ADR-0055). No checksum is published: the size and a clean end of the bz2 stream verify it.',
   isFileName: datedName('pageviews-', 6, '-user.bz2'),
   async resolve(read, size, only) {
-    const base = `${WIKIMEDIA_DUMPS}/other/pageview_complete/monthly`;
-    const years = [...(await read(`${base}/`)).matchAll(/href="(\d{4})\/"/g)].map(m => m[1]).sort().reverse();
-    // The newest is among the last three months; a month asked for by name
-    // (readership's twelve, #1436) may be any of the last two years'.
-    for (const year of years.slice(0, only ? 3 : 2)) {
-      const months = [...(await read(`${base}/${year}/`)).matchAll(/href="(\d{4}-\d{2})\/"/g)].map(m => m[1]).sort().reverse();
-      for (const month of only ? months : months.slice(0, 3)) {
-        const fileName = safeFileName(`pageviews-${month.replace('-', '')}-user.bz2`);
-        if (only && !only(fileName)) continue;
-        const url = `${base}/${year}/${month}/${fileName}`;
-        const bytes = await size(url);
-        if (bytes === null) continue;
-        return { key: 'pageviews-user', fileName, url, date: `${month}-01`, checksum: null, expectedBytes: bytes, compression: 'bzip2' };
-      }
-    }
-    return null;
+    const years = [...(await read(`${PAGEVIEWS_MONTHLY}/`)).matchAll(/href="(\d{4})\/"/g)].map(m => m[1]).sort().reverse();
+    return only ? pageviewsNamed(years, size, only) : newestPageviews(years, read, size);
   },
 };
+
+const PAGEVIEWS_MONTHLY = `${WIKIMEDIA_DUMPS}/other/pageview_complete/monthly`;
+
+/** The month's file as the host lists it, if it does: `month` is `YYYY-MM`. */
+async function pageviewsFile(year: string, month: string, size: SizeReader): Promise<DumpFile | null> {
+  const fileName = safeFileName(pageviewsFileName(`${month}-01`));
+  const bytes = await size(`${PAGEVIEWS_MONTHLY}/${year}/${month}/${fileName}`);
+  return bytes === null ? null : { key: 'pageviews-user', fileName, url: `${PAGEVIEWS_MONTHLY}/${year}/${month}/${fileName}`, date: `${month}-01`, checksum: null, expectedBytes: bytes, compression: 'bzip2' };
+}
+
+/**
+ * A month asked for by name (readership's twelve, #1436; the last month of a
+ * year asked for by its end, #2230) is looked for in its own directory, which
+ * its name says, in whatever year the host still lists: no year's listing is
+ * read, only the file's size asked.
+ */
+async function pageviewsNamed(years: readonly string[], size: SizeReader, only: (fileName: string) => boolean): Promise<DumpFile | null> {
+  for (const year of years) {
+    for (let m = 12; m >= 1; m--) {
+      const month = `${year}-${String(m).padStart(2, '0')}`;
+      if (!only(safeFileName(pageviewsFileName(`${month}-01`)))) continue;
+      const file = await pageviewsFile(year, month, size);
+      if (file) return file;
+    }
+  }
+  return null;
+}
+
+/** The newest month the host has finished: among the last three months of the last two years listed. */
+async function newestPageviews(years: readonly string[], read: TextReader, size: SizeReader): Promise<DumpFile | null> {
+  for (const year of years.slice(0, 2)) {
+    const months = [...(await read(`${PAGEVIEWS_MONTHLY}/${year}/`)).matchAll(/href="(\d{4}-\d{2})\/"/g)].map(m => m[1]).sort().reverse();
+    for (const month of months.slice(0, 3)) {
+      const file = await pageviewsFile(year, month, size);
+      if (file) return file;
+    }
+  }
+  return null;
+}
 
 /** How many weeks before this one the planet's resolver looks: the host keeps its weekly files far longer. */
 const PLANET_WEEKS_BACK = 6;

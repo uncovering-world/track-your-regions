@@ -91,6 +91,7 @@ export const Dumps = z.strictObject({
       fromCopy: z.boolean().describe('Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered.'),
       schedule: DumpSchedule.nullable().describe('How often the dump worker brings what is kept forward by itself, where the keeper does so (the OpenStreetMap layer); null otherwise.'),
       currentTo: z.boolean().describe('Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet\'s daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump.'),
+      archives: z.array(z.string()).describe('The earlier years kept beside the current one, each by the month it ends on (YYYY-MM), oldest first (readership, #2230): asked for with `windowEnd` on a keeping build, kept through the cleanup, read by no run. Empty for every other keeper.'),
     }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet.'),
     localCopy: z.strictObject({
       fileName: z.string(),

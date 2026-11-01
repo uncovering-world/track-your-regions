@@ -115,6 +115,19 @@ describe('the dump catalog', () => {
     });
   });
 
+  it('finds a month asked for by name in its own directory, in any year the host lists, reading no year\'s listing (#2230)', async () => {
+    const base = 'https://dumps.wikimedia.org/other/pageview_complete/monthly';
+    const read = pages({ [`${base}/`]: '<a href="2023/">a</a><a href="2024/">b</a><a href="2025/">c</a><a href="2026/">d</a>' });
+    const asked: string[] = [];
+    const size = async (url: string) => { asked.push(url); return 5_900_000_000; };
+    expect(await dumpNamed('pageviews-user')!.resolve(read, size, name => name === 'pageviews-202311-user.bz2')).toMatchObject({
+      fileName: 'pageviews-202311-user.bz2', url: `${base}/2023/2023-11/pageviews-202311-user.bz2`, date: '2023-11-01',
+    });
+    expect(asked).toEqual([`${base}/2023/2023-11/pageviews-202311-user.bz2`]);
+    // A month of a year the host no longer lists is not found.
+    expect(await dumpNamed('pageviews-user')!.resolve(read, size, name => name === 'pageviews-202211-user.bz2')).toBeNull();
+  });
+
   describe("OpenStreetMap's planet (ADR-0134)", () => {
     const base = 'https://planet.openstreetmap.org/pbf';
     const MD5 = 'c51bb08eb9fc486d010aaa1a3424cabc';

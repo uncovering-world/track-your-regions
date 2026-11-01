@@ -93,6 +93,12 @@ export interface MonthRead {
   lines: number;
   /** Every Wikipedia edition's views that month, by sitelink site code. */
   editions: ReadonlyMap<string, number>;
+  /**
+   * The last month of the window the month was asked for by name, `YYYY-MM-01`
+   * (#2230), or null for a month of the current year, the twelve ending on the
+   * newest dump: a current month leaves with the twelve, an earlier year's stays.
+   */
+  windowEnd: string | null;
 }
 
 /**
@@ -145,13 +151,14 @@ export async function keepMonth(read: MonthRead): Promise<number> {
     );
     await client.query(
       `WITH redirects AS (SELECT build_id, dump_date FROM wikipedia_redirect_builds ORDER BY swapped_at DESC LIMIT 1)
-       INSERT INTO readership_month_files (month, file_name, build_id, lines, editions, kept, redirects_dump_date, redirects_build_id)
+       INSERT INTO readership_month_files (month, file_name, build_id, lines, editions, kept, redirects_dump_date, redirects_build_id, window_end)
        VALUES ($1::date, $2, $3, $4, $5::jsonb, $6,
-               (SELECT dump_date FROM redirects), (SELECT build_id FROM redirects))
+               (SELECT dump_date FROM redirects), (SELECT build_id FROM redirects), $7::date)
        ON CONFLICT (month) DO UPDATE SET file_name = EXCLUDED.file_name, build_id = EXCLUDED.build_id,
          lines = EXCLUDED.lines, editions = EXCLUDED.editions, kept = EXCLUDED.kept,
-         redirects_dump_date = EXCLUDED.redirects_dump_date, redirects_build_id = EXCLUDED.redirects_build_id, built_at = NOW()`,
-      [read.month, read.fileName, read.buildId, read.lines, JSON.stringify(Object.fromEntries(read.editions)), kept.rowCount ?? 0],
+         redirects_dump_date = EXCLUDED.redirects_dump_date, redirects_build_id = EXCLUDED.redirects_build_id, built_at = NOW(),
+         window_end = EXCLUDED.window_end`,
+      [read.month, read.fileName, read.buildId, read.lines, JSON.stringify(Object.fromEntries(read.editions)), kept.rowCount ?? 0, read.windowEnd],
     );
     await emptyStaging(client);
     await client.query('COMMIT');
@@ -164,14 +171,27 @@ export async function keepMonth(read: MonthRead): Promise<number> {
   }
 }
 
-/** The months kept, by their first day, with the file each came from and the build of the redirects it was folded with. */
-export async function keptMonths(): Promise<Map<string, { fileName: string; builtAt: Date; lines: number; redirects: number | null }>> {
-  const result = await pool.query<{ month: string; file_name: string; built_at: Date; lines: string; redirects: number | null }>(
-    `SELECT to_char(month, 'YYYY-MM-DD') AS month, file_name, built_at, lines, redirects_build_id AS redirects
+export interface KeptMonth {
+  fileName: string;
+  builtAt: Date;
+  lines: number;
+  redirects: number | null;
+  /** The window the month was asked for by name, `YYYY-MM-01`, or null for a month of the current year (#2230). */
+  windowEnd: string | null;
+}
+
+/**
+ * The months kept, by their first day, with the file each came from, the build
+ * of the redirects it was folded with, and the window it was asked for (#2230).
+ */
+export async function keptMonths(): Promise<Map<string, KeptMonth>> {
+  const result = await pool.query<{ month: string; file_name: string; built_at: Date; lines: string; redirects: number | null; window_end: string | null }>(
+    `SELECT to_char(month, 'YYYY-MM-DD') AS month, file_name, built_at, lines, redirects_build_id AS redirects,
+            to_char(window_end, 'YYYY-MM-DD') AS window_end
        FROM readership_month_files ORDER BY month`,
   );
   return new Map(result.rows.map(r => [r.month, {
-    fileName: r.file_name, builtAt: r.built_at, lines: Number(r.lines), redirects: r.redirects,
+    fileName: r.file_name, builtAt: r.built_at, lines: Number(r.lines), redirects: r.redirects, windowEnd: r.window_end,
   }]));
 }
 
@@ -187,14 +207,22 @@ export async function redirectsInPlace(): Promise<number | null> {
   return result.rows[0]?.build_id ?? null;
 }
 
-/** Drop the months before `first`: readership reads the last twelve (ADR-0055 decision 1). */
+/**
+ * Drop the current year's months before `first`: readership reads the last
+ * twelve (ADR-0055 decision 1). A month kept for an earlier year an admin asked
+ * for (`window_end` set, #2230) stays, rows and record alike, whatever its date.
+ */
 export async function dropMonthsBefore(first: string): Promise<number> {
   const client = await pool.connect();
   let unusable: Error | undefined;
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM readership_months WHERE month < $1::date', [first]);
-    const files = await client.query('DELETE FROM readership_month_files WHERE month < $1::date', [first]);
+    await client.query(
+      `DELETE FROM readership_months WHERE month < $1::date
+          AND month NOT IN (SELECT month FROM readership_month_files WHERE window_end IS NOT NULL)`,
+      [first],
+    );
+    const files = await client.query('DELETE FROM readership_month_files WHERE month < $1::date AND window_end IS NULL', [first]);
     await client.query('COMMIT');
     return files.rowCount ?? 0;
   } catch (error) {

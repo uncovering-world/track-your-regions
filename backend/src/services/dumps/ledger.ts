@@ -30,8 +30,10 @@ export type BuildKind = 'verify' | 'keep' | 'rederive' | 'sample' | 'trial';
 /** What an admin asked for, which the worker reads when it takes the build. */
 export interface BuildRequestRecord {
   kind: BuildKind;
-  /** The local file to read: the local copy, or the sample a trial reads; absent, the newest file the host lists. */
+  /** The one file to read: the local copy, the sample a trial reads, or the last month of a year asked for by its end (#2230); absent, the newest file the host lists. */
   only?: string;
+  /** The month a readership year ends on, `YYYY-MM`, for a year kept beside the current one (#2230); absent, the year ends on the newest month. */
+  windowEnd?: string;
   /**
    * Set by the worker when a keeping build took the keeper's update path and
    * brought a kept copy forward from its own source, reading no file of the
