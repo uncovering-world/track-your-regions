@@ -33844,7 +33844,33 @@
             "description": "The fields a run proposed. Null on every kind that carries no proposal, never absent."
           },
           "run_completed_at": {
-            "description": "When the run whose proposal this is finished. Conflicts only.",
+            "description": "When the run whose proposal this is finished. Conflicts and held proposals.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "first_asked_run_id": {
+            "description": "The run that first proposed the newest of the values this card asks about (ADR-0173). Conflicts and held proposals.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "first_asked_at": {
+            "description": "When that run finished: the date the question carries.",
             "anyOf": [
               {
                 "type": "string",

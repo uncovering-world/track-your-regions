@@ -65,11 +65,14 @@ describe('queryQueueKeys', () => {
     // run — and started reading the neighbouring branch's column, or nothing —
     // fails here rather than reordering the queue quietly.
     const conflict = between(sql, "SELECT 'conflict'::text", "SELECT 'waiting'");
-    expect(conflict).toContain('q.completed_at AS asked_at');   // off the changeset row's own run
-    expect(conflict).toContain('JOIN experience_sync_logs l ON l.id = ch.sync_log_id');
+    // Off the run that first asked (ADR-0173), the newest changeset row's own where none is stamped.
+    expect(conflict).toContain('q.first_asked_at AS asked_at');
+    expect(conflict).toContain('COALESCE(fl.completed_at, l.completed_at) AS first_asked_at');
+    expect(conflict).toContain('LEFT JOIN experience_sync_logs fl ON fl.id = ch.conflict_first_sync_log_id');
     const waiting = between(sql, "SELECT 'waiting'", "SELECT 'withdrawn'");
     expect(waiting).toContain("l.completed_at AS asked_at, 'arrival'::text AS sub");
-    expect(waiting).toContain("l.completed_at, 'held'");
+    expect(waiting).toContain("COALESCE(fl.completed_at, l.completed_at), 'held'");
+    expect(waiting).toContain('LEFT JOIN experience_sync_logs fl ON fl.id = ch.held_first_sync_log_id');
     expect(waiting).toContain('JOIN experience_sync_logs l ON l.id = m.pending_change_sync_log_id');
     const contents = between(sql, 'GREATEST(', "), 'contents'");
     expect(contents).toContain('max(el.created_at)');
@@ -80,6 +83,14 @@ describe('queryQueueKeys', () => {
     expect(refused).toContain('COALESCE(l.completed_at, m.updated_at)');
     const missing = between(sql, "SELECT 'missing'", ', searched AS (');
     expect(missing).toContain('e.missing_since, ARRAY[]::text[]');
+  });
+
+  it('finds under a run the held and conflict questions it proposed again, not only those it asked first', async () => {
+    await queryQueueKeys({ ...base, filters: { ...base.filters, runId: 430 } });
+    const [sql, params] = lastCall();
+    expect(sql).toMatch(/k\.run_id = \$\d+\s+OR \(k\.kind IN \('waiting', 'conflict'\) AND EXISTS \(/);
+    expect(sql).toContain('again.held_first_sync_log_id IS NOT NULL OR again.conflict_first_sync_log_id IS NOT NULL');
+    expect(params).toContain(430);
   });
 
   it('takes a waiting row\'s run from the newest sub-kind that names one', async () => {

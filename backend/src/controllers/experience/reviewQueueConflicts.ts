@@ -71,6 +71,9 @@ export async function queryConflicts(
              -- way; a curator deciding whose text is newer needs the date, and
              -- reading it off the log is the only place it exists.
              l.completed_at AS run_completed_at,
+             -- And when the question was first asked (ADR-0173).
+             ch.conflict_first_sync_log_id AS first_asked_run_id,
+             (SELECT fl.completed_at FROM experience_sync_logs fl WHERE fl.id = ch.conflict_first_sync_log_id) AS first_asked_at,
              (SELECT jsonb_agg(f || jsonb_build_object(
                        -- Who claimed this field and when, so the button stops
                        -- saying "my edit" about another curator's work. The
