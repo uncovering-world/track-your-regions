@@ -31,6 +31,7 @@ const dump = (keeps: Partial<Keeps>, progress: DumpsDumpsItem['progress'] = null
     fromCopy: true,
     schedule: null,
     currentTo: false,
+    archives: [],
     ...keeps,
   },
 });
