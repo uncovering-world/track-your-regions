@@ -11,6 +11,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
 vi.mock('../../api/curation', () => ({ chooseSourceViews: vi.fn(), suggestSourceViews: vi.fn() }));
+vi.mock('../shared/PointPreviewDialog', () => ({
+  PointPreviewDialog: ({ open, name, pins, movedTo }: {
+    open: boolean; name: string; movedTo?: unknown;
+    pins?: readonly { label: string; action?: { label: string; onPick: () => void } }[];
+  }) => (
+    open
+      ? (
+        <div data-testid="the-map-dialog" data-name={name} data-pins={pins?.map(pin => pin.label).join(' | ')} data-moved={String(movedTo !== undefined)}>
+          {pins?.map(pin => pin.action && (
+            <button key={pin.label} onClick={pin.action.onPick}>{pin.action.label}: {pin.label}</button>
+          ))}
+        </div>
+      )
+      : null
+  ),
+}));
 
 import { chooseSourceViews, suggestSourceViews } from '../../api/curation';
 import { SourcesCard } from './SourcesCard';
@@ -154,6 +170,69 @@ describe('a place two sources describe differently', () => {
     const rough = screen.getAllByText(/^Given only to the whole minute: anywhere in a cell of about 1\.7 × 1\.9 km$/);
     expect(rough).toHaveLength(1);
     expect(screen.getByRole('button', { name: /20\.68333, -103\.81667/ })).toContainElement(rough[0]);
+  });
+
+  it("shows each source's point on one map, labelled with the source and never as a move (#2202)", () => {
+    renderCard(vi.fn(), GUACHIMONTONES);
+    fireEvent.click(screen.getByRole('button', { name: 'see both points on the map' }));
+
+    const dialog = screen.getByTestId('the-map-dialog');
+    expect(dialog.dataset.name).toBe('Zona nucleo 02, Zona arqueológica Los Guachimontones de Teuchitlán: where each source puts it');
+    expect(dialog.dataset.pins).toBe('UNESCO World Heritage Sites · readers see | Archaeology');
+    expect(dialog.dataset.moved).toBe('false');
+  });
+
+  it("answers the point from the map: a pin's keep is that source's choice, sent with the other choices as they stand", async () => {
+    // Rila asked about its name and its point: Wikidata's name chosen on the
+    // tile first, then Wikidata's point kept from the map — the pin readers do
+    // not see yet, so a keep that ignored the pin would send UNESCO's 379 and
+    // fail — and one call carries both, the name choice as it stands beside
+    // the pin's point.
+    const twoFields = {
+      ...RILA,
+      source_views: [RILA.source_views![0], {
+        field: 'location',
+        metres: 8,
+        views: [
+          { ...UNESCO, membership_id: 379, value: null, image_url: null, image_credit: null, latitude: 42.1333, longitude: 23.3400, shown: true },
+          { ...WIKIDATA, membership_id: 3045, value: null, image_url: null, image_credit: null, latitude: 42.1334, longitude: 23.3401, shown: false },
+        ],
+      }],
+      quiet_fields: [],
+    } as unknown as ReviewQueueItem;
+    mockedChoose.mockResolvedValue({ changed: ['name', 'location'] });
+    const onDone = renderCard(vi.fn(), twoFields);
+    fireEvent.click(screen.getByRole('button', { name: /Monastery of Saint John of Rila/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'see both points on the map' }));
+    fireEvent.click(screen.getByRole('button', { name: 'keep this point: Places of worship' }));
+
+    await waitFor(() => expect(mockedChoose).toHaveBeenCalledWith(450, [
+      { field: 'name', membershipId: 3045 },
+      { field: 'location', membershipId: 3045 },
+    ]));
+    // The card's outcome line, and the dialog gone with the card.
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('Rila Monastery: now shows name, where it is from the source you chose', 450));
+    expect(screen.queryByTestId('the-map-dialog')).toBeNull();
+  });
+
+  it('counts the points where more than two sources place the place', () => {
+    const field = GUACHIMONTONES.source_views![0];
+    const three = {
+      ...GUACHIMONTONES,
+      source_views: [{
+        ...field,
+        views: [...field.views, {
+          ...WIKIDATA, kind_name: 'Monuments & memorials', source_name: 'Monuments & memorials', external_id: 'Q2989048',
+          source_page: null, membership_id: 130001, value: null, image_url: null, image_credit: null,
+          latitude: 20.69, longitude: -103.83, shown: false,
+        }],
+      }],
+    } as unknown as ReviewQueueItem;
+    renderCard(vi.fn(), three);
+    fireEvent.click(screen.getByRole('button', { name: 'see all 3 points on the map' }));
+
+    expect(screen.getByTestId('the-map-dialog').dataset.pins)
+      .toBe('UNESCO World Heritage Sites · readers see | Archaeology | Monuments & memorials');
   });
 
   it("publishes Wikidata's name and keeps UNESCO's picture", async () => {
