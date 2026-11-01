@@ -5438,7 +5438,7 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 | POST | `/api/experiences/:id/admission-pin` | `{ decision: 'keep' \| 'release', membershipId, asked: { verdict, reason }, note? }` — answer a run that asked again about a curator's admission pin (#1367, `pinQuestionController.ts`), in the scope of the membership's source. Under the place's lock the question is re-read and must be the one the card showed (`asked`), else 409 with nothing written. `keep` makes the pin answer what the run now says; `release` writes the run's verdict — an admission, or a refusal with its reason, marked answered — in the pin's place. One log row (`admission_pin_kept` / `admission_pin_released`). Answers `PinQuestionAnswered`: `{ experienceId, membershipId, admission, pinned }`. `authenticatedLimiter` |
 | GET | `/api/experiences/:id/identifiers` | A place's external identifiers (#1896, `placeIdentifierController.ts`): scheme, value, whether each identifies or refers, the columns it came from, the curator's word on it, and the other live places that hold it. In the scope of the place as a whole. |
 | POST | `/api/experiences/:id/identifiers` | A curator's word on one identifier (#1896): `identifies`, `refers`, `removed` or `derived`, with a note; refused with the holder named where another live place identifies the value. Written under the place's lock and the value's keys, logged as `identifier_settled`. |
-| POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — apply the values that run proposed for those fields and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted. Also deletes any standing refusal of those fields, since a refusal belongs to the claim being released. Accepting `imageUrl` releases `metadata.imageCredit` with it, drops the stored key, and **says so where there was one** — `releasedCredit` in the response, in the `accepted_source` audit row, and as a clause in the curator's confirmation line. The deletion is unconditional and the report is not: an edit that could not resolve a credit stores the key as `null`, and announcing that as a removal would name something nobody could see. Reported on the same footing as the released pin and for the same reason: the value deleted is the curator's own and the card they answered never mentioned a photographer. It does so for the reason the coordinate below gives: the two were written in one transaction and mean one thing, and releasing half would leave the source's photograph credited to the curator's photographer — permanently, since the per-key re-apply would put that name back on every later run. Accepting `location` releases the claim on **the point the anchor was taken from** as well, and answers `releasedPoints` naming it: the object's coordinate and that point's are the same fact (ADR-0028), the only path that claims `location` on an experience is `/locations/:locationId/edit`, which claims both together, and releasing one of them alone would have the next run write the source's coordinate to the object while the pin a curator corrected stays where they put it — #550, made by the two endpoints written to close it. That point is matched by its coordinate rather than by re-deriving the anchor rule, and the difference is not academic: an object that gains a second published point and has *it* corrected carries a claim the anchor never came from, and a release written as "every claiming point" would undo that correction in answer to a card about the anchor. Each released point is also **put back on the coordinate that run offered for it**, and those are answered as `movedPoints`: the pairing bounds a point's identity by the reference *and* ten metres, and the claim was the only thing letting a corrected row pair at any distance, so releasing alone would have the run retire the row and insert the source's point beside it — a `withdrawn` card for a component nobody delisted, with the visit record left on a pin no reader is shown. The coordinate is the source's own for that row, read from the same run's contents record; where that run offered none, nothing is written. A moved pin re-places the experience after the commit and answers `placementFailed`/`placementFailedWorldViews` where that failed — which is also why the route is rate-limited (`authenticatedLimiter`), like every other curator route whose work outlives its transaction. The object's own coordinate is not written here and follows at the next run, since `location` is not an acceptable field |
+| POST | `/api/experiences/:id/accept-source` | `{ fields: string[], expectedSyncLogId }` — write the values that run proposed for those fields now, every field a card offers (#2222, `acceptedWrites.ts`), and release the curator's claim on them. `expectedSyncLogId` is required: a newer proposal is refused rather than substituted. Also deletes any standing refusal of those fields, since a refusal belongs to the claim being released. Accepting `imageUrl` releases `metadata.imageCredit` with it and replaces the stored credit: with the run's own where it is accepted beside the picture, otherwise with the proposed file's credit, asked of Commons before the transaction as a curator's edit asks it (a run resends the stored credit over a claimed picture rather than resolving the source's, so a conflict card seldom carries one), null where Commons does not answer; it **says so where there was one** — `releasedCredit` in the response, in the `accepted_source` audit row, and as a clause in the curator's confirmation line. The deletion is unconditional and the report is not: an edit that could not resolve a credit stores the key as `null`, and announcing that as a removal would name something nobody could see. Reported on the same footing as the released pin and for the same reason: the value deleted is the curator's own and the card they answered never mentioned a photographer. It does so for the reason the coordinate below gives: the two were written in one transaction and mean one thing, and releasing half would leave the source's photograph credited to the curator's photographer — permanently, since the per-key re-apply would put that name back on every later run. Accepting `location` releases the claim on **the point the anchor was taken from** as well, and answers `releasedPoints` naming it: the object's coordinate and that point's are the same fact (ADR-0028), the only path that claims `location` on an experience is `/locations/:locationId/edit`, which claims both together, and releasing one of them alone would have the next run write the source's coordinate to the object while the pin a curator corrected stays where they put it — #550, made by the two endpoints written to close it. That point is matched by its coordinate rather than by re-deriving the anchor rule, and the difference is not academic: an object that gains a second published point and has *it* corrected carries a claim the anchor never came from, and a release written as "every claiming point" would undo that correction in answer to a card about the anchor. Each released point is also **put back on the coordinate that run offered for it**, and those are answered as `movedPoints`: the pairing bounds a point's identity by the reference *and* ten metres, and the claim was the only thing letting a corrected row pair at any distance, so releasing alone would have the run retire the row and insert the source's point beside it — a `withdrawn` card for a component nobody delisted, with the visit record left on a pin no reader is shown. The coordinate is the source's own for that row, read from the same run's contents record; where that run offered none, nothing is written. A moved pin re-places the experience after the commit and answers `placementFailed`/`placementFailedWorldViews` where that failed — which is also why the route is rate-limited (`authenticatedLimiter`), like every other curator route whose work outlives its transaction. The object's own coordinate is written in the same transaction, after the release finds the pin by it, and a written coordinate re-places the experience too. A kind's own fact is the one field released without a write, to the kind's next run, answered under `released`; a value no writer may store, a picture from a host the catalogue may not show or a coordinate that is not a pair, refuses the whole answer with 409, as publishing does |
 | POST | `/api/experiences/:id/decline-source` | `{ fields: string[], expectedSyncLogId }` — the opposite answer to the same card: record that the curator stands by the stored value, so the queue stops asking. Writes nothing to the experience — the stored value has already won every run since the disagreement began. The refused **value** is read from the locked proposal, never from the request, because the queue suppresses by comparing it against what the source proposes now. Every field is refusable, including the ones `accept-source` cannot write. Needs migration 022 applied, or the audit insert violates the `action` CHECK and the whole call 500s |
 | POST | `/api/experiences/:id/decline-held` | `{ fields?: string[], parts?: [{ kind, ref, name, fields }], expectedSyncLogId }` — the other answer to a held row (#722, [ADR-0038](../decisions/0038-a-held-proposal-is-answered-per-field.md)): the curator says "not this" to what a gated run proposed, without claiming the field. At least one row, named as the queue named it — the object's own field by name, a part by the kind and the reference and name the record carries, since the record names a part and never identifies it (ADR-0026 decision 4). `expectedSyncLogId` is required — unconditionally here, where publishing requires it only once a held selection is named (#722), because every call to this endpoint answers a held card and a held card always names the run whose proposal it shows. It is compared under the write lock against `pending_change_sync_log_id` and refused rather than substituted. Writes nothing to the experience or its parts — the stored value has already won every run since the gate first held this one — except where the refused row is the object's `location` and an unread point is that same move (`pointMovedToProposed`, the rule the publish uses): that point is turned down with it, the stored pin kept, the object re-placed after the commit, and the point's id answered as `movedPointRefused` with the placement pair ([ADR-0083](../decisions/0083-a-no-to-a-moved-point-keeps-the-stored-pin.md)). Nothing goes to `curated_fields`, which is the whole difference from the lever it replaces (edit the field, which claims it, then publish, which skips it). What it writes is the answer, into `experience_held_decisions`, storing **the value**: the queue suppresses the row only while the proposal is jsonb-equal to it, so a source that changes its mind is heard. The pointer is cleared only when nothing on the card is left open. Answers 409 on a stale run, on a proposal the pointer no longer names, and on a row nothing is waiting on. Needs migration 039 applied, or the audit insert violates the `action` CHECK and the whole call 500s |
 | POST | `/api/experiences/:id/publish` | `{ contentsOnly?: true, fieldsOnly?: true, locationIds?: number[], treasureIds?: number[], heldFields?: string[], heldParts?: [{ kind, ref, name, fields }], expectedSyncLogId? }` — say that a reader may see this (ADR-0025). An empty body publishes the object: any held content fields, `curation_state = 'verified'`, `published_at` if the row was `pending`, the pointer cleared, and the unread points and works the answering membership's section drew (#1290) — the rows asked through it; for an arrival, the rows its run placed that no offered membership is asked through; for an arrival that is the place's only membership, the rows nothing placed and no kind yet answers for — read under the lock before an arriving membership is made offered and named to the writers by id. `contentsOnly: true` or naming either array is a contents publish, leaving the experience's own state alone — `contentsOnly` for every pending content row, naming an array for exactly those rows. `fieldsOnly: true` is the mirror and closes the first half of #524: it applies what the run proposed for the object's own fields and leaves every unread point and work where it is, so a curator doubting one proposed sentence no longer holds back twelve checked paintings by answering it — with one point excepted, the unread point that is the object's own held coordinate moving, which is published with that coordinate (#1233, `pointMovedWithObject`). It is exclusive with all three contents shapes, since a body naming both halves is asking for the object publish it could have asked for by naming nothing. The trail records which of the three this was — `scope`, one of `object`, `contents` or `fields` — because the numbers cannot say: an object publish over a row holding no unread contents writes the same zeros as a fields-only one. All five are explicit rather than inferred, and the `.refine`s make the alternatives among them exclusive — `fieldsOnly` beside a held selection is deliberately *not* refused, since the selection is already the fields half and restating it has one reading rather than two: leaving everything absent used to be read as "the object", full stop, and a card with no ids to send had no other way to ask for its contents alone. `expectedSyncLogId` is the run the caller's card named, compared under the write lock against `pending_change_sync_log_id`, and only when the call will actually write a held field or the caller named a run at all — a pointer whose one held field is already claimed writes nothing and answers success rather than 409 forever. It may not accompany a contents publish, named or bare, and it is **required** whenever `heldFields` or `heldParts` is named: a per-row answer names the run it answers, so a selection sent without one is a 400 rather than a selection applied against whatever the object happens to hold now. `heldFields`/`heldParts` narrow the fields publish the way the id arrays narrow the contents one (#722): those rows are written, the rest stay open, and what stays open is what keeps the pointer — so publishing one of six leaves the card standing with the other five rather than clearing them unanswered. Naming either makes the call a fields publish, so it is exclusive with the contents shapes and refused on a `pending` row; a selection reaching no open row answers 409. A field the curator claims in `curated_fields` is skipped rather than refused; a row its kind refused answers 409, because admission is asked first (ADR-0025 decision 4) and `override` on the refusal is what publishes it; a point the source has withdrawn is never published, matching the `contents` card. Needs migration 019 applied, or the audit insert violates the `action` CHECK and the whole call 500s. See § Publishing for what it writes and why it does not place |
@@ -5896,8 +5896,9 @@ inside the acceptance's own transaction: a refusal says "not while I hold this f
 left behind after the claim is released would silence the field the day someone claims it again.
 
 The two answers are not symmetric about what a reader sees, and the asymmetry is the point.
-Accepting writes the source's value — immediately for the five fields in `ACCEPTABLE_FIELDS`,
-at the next sync for the rest — so a visitor sees the change as the click lands. Refusing
+Accepting writes the source's value at once, for every field the card offers (#2222), so a
+visitor sees the change as the click lands: Aqua Virgo's coordinate moves 12 km east to the
+springs near Salone, with its pin and its regions, rather than at a run nobody watches. Refusing
 writes nothing at all: the refused value had already lost every run, which is what makes it a
 decision about the *asking* rather than about the object.
 
@@ -7011,19 +7012,21 @@ metadata key, the claim key the queue reads, the claim the upsert honours and th
 `computeChangeSet` files — the very `changed_fields` and `curatedConflicts` the queue reads — are
 one string.
 
-Accepting is always a claim release; whether the value is *also* written on the spot is what
-`ACCEPTABLE_FIELDS` (`acceptableFields.ts`) decides — `name`, `description`,
-`subtitle`, `type`, `imageUrl`. Their **claim keys** are `name`, `description`,
-`subtitle`, `type`, `image_url`, and each of those is a real column, which is what
-lets `CURATED_KEY_BY_FIELD` answer both questions for them: the field name is the
-changeset's word, which is not the column's for `imageUrl`, so the map answers every field
-rather than the reader guessing which ones match. (`type` is the varchar type within the kind — `cultural`, `monument` — not the
-`source_id` foreign key, which no source proposes and this endpoint never touches.) `location` and the country arrays need
-more than an assignment, and `metadata` is claimed per key, so writing it wholesale would
-discard the keys the curator did not touch. Those fields come back marked
-`acceptable: false`, and accepting them releases the claim without writing: the **next run**
-then applies the source's value through the ordinary upsert, and the response reports them
-under `released` rather than `applied`.
+Accepting releases the claim and writes the value the answered run proposed, at once and for
+every field (#2222, `acceptedWrites.ts`), in the shapes publishing a held proposal writes, since
+a claimed field and a held one are the same column written from the same record
+(`assignmentFor`, `nextMetadata` and `nextNameLocal` in `publishHeldFields.ts`): a coordinate is
+a geometry, the country arrays and the texts are assigned, and `metadata` and `name_local` are
+merged per key over what is stored, so a key the curator did not touch stays. `CURATED_KEY_BY_FIELD`
+maps the changeset's word to the column (`imageUrl` to `image_url`). The type is the proposing
+source's membership's (ADR-0084), written there. (`type` is the varchar type within the kind —
+`cultural`, `monument` — not the `source_id` foreign key, which no source proposes and this
+endpoint never touches.) A kind's own fact lives on its membership too (ADR-0153) and no curator
+edit claims one; such an entry is released without a write, the kind's next run applies it, and
+the response reports it under `released` rather than `applied`. A picture outside the hosts
+`isDisplayablePictureUrl` admits, or a coordinate that is not a pair, refuses the whole answer, as
+publishing does: released without a write, a refused picture would leave the curator's photograph
+on the row with its credit dropped.
 
 That is the only way such an item leaves the queue, and it is why the endpoint does the
 release rather than pointing the curator at the edit dialog. `applyProposedFields` is the
@@ -7245,10 +7248,7 @@ the value; `POST /:id/decline-held` refuses it and writes nothing to the object 
 touches is the moved point a refused coordinate is the same move as, turned down with it
 (ADR-0083). Both clear the pointer
 only when nothing on the card is left open, so answering one row of six leaves the other five
-findable. The field
-carries no `acceptable` flag, unlike `conflict`'s: that flag answers "can `accept-source` write
-this?", and every field reaching this query is, by the filter above, one `accept-source`'s
-`curatedConflict: true` lookup would never find anyway. Publishing writes all eleven, which is
+findable. Publishing writes all eleven, which is
 why it has to exist as a separate writer — see § Publishing below.
 
 An empty proposal is excluded by the `WHERE` above rather than by the `WHERE q.proposed IS NOT NULL`
@@ -7493,9 +7493,12 @@ Sofía's held card from Art Museums run 177 proposed `metadata.creators` with an
 stored and no value of the run's own, and read as a new attribution (#1774). A run no longer
 files such a fact at all: an empty list is one of the spellings of nothing the shared equality
 knows (#1792), so a held proposal of one is withdrawn by the source's next run. `FactTable.tsx` lays them out as *fact ·
-readers see · the run proposes* (a held card) or *fact · as curated · the source proposes · your
-answer* (a conflict card — "as curated" rather than "yours", since the value that stands may be
-another curator's, and the trail under it says whose), and `ProposalSummary` counts the rows by kind above the table, so a
+Current · Proposed · answer* on both cards (#2222, `CHANGE_COLUMNS` in `selection/answerWords.ts`):
+"Current" rather than "yours", since the value that stands may be another curator's, and the
+trail under it says whose. Each answer names its column — *Keep current* and *Use proposed* on a
+row, *Keep all current* and *Use all proposed* for a card of proposed values alone — and the line
+under a conflict card's answers says what each does to that card's fields, a point moving on the
+map or a text changing (`changeAnswersLine`), and `ProposalSummary` counts the rows by kind above the table, so a
 curator reads which question the card asks before a single row: on this catalogue 1272 held
 cards propose only facts arriving — the criteria, which no reader surface shows yet, and a
 picture credit, which readers will see under the picture. The line "nothing readers see
@@ -7660,10 +7663,14 @@ What the card does that is not a free choice:
 - **One button for the object, and two answers per held row.** The object-level publish is one act
   at the endpoint: naming no contents applies the held fields, marks the row read *and* releases
   every unread point and work under it, and the label says what the click covers ("Publish
-  everything on this card"; an arrival's reads "Publish — readers may see it"). It is the card's
-  only publish: a "change only" button and a card-level no to the contents went with #524, since
-  every row now answers on its own. Beside it, since #722, each fact on the held table carries
-  its own answer in its own column — **publish this** and **not this**, the conflict card's shape.
+  everything on this card", or *Use all proposed* on a card of proposed values alone; an
+  arrival's reads "Publish — readers may see it"). It is the card's only publish: a "change only"
+  button and a card-level no to the contents went with #524, since every row now answers on its
+  own. A card of proposed values alone, with no arrived point or work and no moved point, gains
+  *Keep all current* beside it (#2222), which refuses every held field, the parts' included, as one
+  answer. Each fact on the held table carries its own answer in its own column (#722) —
+  **Use proposed** and **Keep current**, the conflict card's words (#2222); a moved point's row
+  answers in the same words, and an arrived work or point keeps **publish this** and **not this**.
   A key inside the source's data is a fact and carries its own pair of buttons (ADR-0039), and so
   is one language of the local names (#728) — a curator who wants Getbol's corrected Korean name
   no longer has to take the English one with it. **Nothing a run files today spans**: the column
@@ -7925,8 +7932,8 @@ where run 68 proposes a photograph and a credit for it in one changeset.
 
 Two kinds of row survive on a card that keeps its pointer and nothing on it can clear — a field
 the curator has claimed since the run, and a part the record names that no offered row answers to
-— and the card's "Publish everything on this card" reports both and clears the pointer, which is the way
-out.
+— and the card's object-level publish ("Publish everything on this card", or *Use all proposed* on
+a card of proposed values alone) reports both and clears the pointer, which is the way out.
 
 **`contentsOnly` exists because "absent means the object" was a defect, not a convenience.**
 Before it, a contents publish was inferred from named ids alone — nothing named meant an object
@@ -7988,13 +7995,14 @@ comparison alike, and what gets published is the newest state rather than the st
 Nothing in the schema records what the card showed, so there is nothing to compare against;
 changing that would be a decision about how arrivals are stored, not about this endpoint.
 
-**All eleven content fields, not `accept-source`'s five.** The column list comes from
-`CURATED_KEY_BY_FIELD`, so it cannot drift from what the upsert honours. It has to be the full
-eleven because `accept-source`'s answer for the other six is to release the claim and let the next
-ordinary run apply the value, and under a gate the next run holds it too — six fields would be
-proposed every run and applied never. For the same reason nothing held may be dropped in silence:
+**All eleven content fields.** The column list comes from `CURATED_KEY_BY_FIELD`, so it cannot
+drift from what the upsert honours. It has to be the full eleven because under a gate the next run
+holds a value too: a field this writer skipped would be proposed every run and applied never. The
+same shapes write `accept-source`'s answer since #2222 (`acceptedWrites.ts`), so a claimed field
+and a held one are written by one rule. For the same reason nothing held may be dropped in silence:
 a value this writer cannot produce (a coordinate the changeset did not record as a pair of numbers)
-refuses the whole call rather than clearing the pointer around it.
+refuses the whole call rather than clearing the pointer around it, and `accept-source` refuses the
+same values the same way.
 
 **Two columns cannot be assigned from what the changeset carries**, and they are one shape rather
 than two: a run records a fact per *part* of them, so no single entry describes the column. Both

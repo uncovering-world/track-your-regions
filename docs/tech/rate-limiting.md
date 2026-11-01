@@ -187,8 +187,8 @@ stopped being a pure claim release. Handing the object's `location` back also ha
 back the pin that carried it, and the pin is put on the coordinate that run offered
 rather than left for the next one to retire the row — so a place moves, and a place
 that moves has to be re-placed after committing, exactly as the correction above does.
-The other fields it accepts (`ACCEPTABLE_FIELDS` in `acceptableFields.ts`: `name`,
-`description`, `subtitle`, `type`, `imageUrl`) place nothing, and the endpoint asks the criterion per
+Since #2222 it writes the object's own coordinate at once as well, which re-places the place
+the same way. The other fields it writes place nothing, and the endpoint asks the criterion per
 request the way `/state` does; the limiter is on the route either way, because a route
 is what a limiter can be attached to.
 
