@@ -111,3 +111,32 @@ describe('a place in the group of every kind it is offered in', () => {
     expect(again[1].experiences[0]).toBe(first[1].experiences[0]);
   });
 });
+
+describe('a group\'s places, the best known first', () => {
+  /** A place of worship in Rome with its fame there, listed by name as the list answers. */
+  const church = (id: number, name: string, fame: number | null) => ({
+    id, name, kind_id: 4, kind_name: 'Places of worship', kind_priority: 4, type: 'church',
+    kinds: [{ kind_id: 4, kind_name: 'Places of worship', kind_priority: 4, type: 'church', source_id: 4,
+      external_id: `Q${id}`, fame }],
+  }) as Experience;
+
+  it('opens on the best known, a place not measured yet after the measured, and keeps name order among equals', () => {
+    const listed = [
+      church(1, 'Abbey of Monte Cassino', 0.62),
+      church(2, 'Archbasilica of St. John Lateran', 0.9),
+      church(3, 'New chapel', null),
+      church(4, 'Pantheon', 0.97),
+      church(5, "St. Peter's Basilica", 0.99),
+      church(6, 'Santa Maria Maggiore', 0.9),
+    ];
+    expect(groupByEveryKind(listed)[0].experiences.map(row => row.name)).toEqual([
+      "St. Peter's Basilica", 'Pantheon', 'Archbasilica of St. John Lateran', 'Santa Maria Maggiore',
+      'Abbey of Monte Cassino', 'New chapel',
+    ]);
+  });
+
+  it('keeps the list\'s name order in a kind that measures no fame', () => {
+    expect(names(groupByEveryKind([DORIA, CAPITOLINE])[0].experiences))
+      .toEqual(['Galleria Doria Pamphilj:2', 'Capitoline Museums:2']);
+  });
+});
