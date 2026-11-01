@@ -24,7 +24,7 @@ import {
   QUEUE_ITEM_KINDS, QUEUE_KINDS, REVIEW_ANSWERS, WAITING_SUBS,
 } from '../../controllers/experience/reviewQueueVocabulary.js';
 import { ContentKind, PlacementFailure } from './curation.js';
-import { DescriptionSource, ImageCredit, WorkVenue } from './experiences.js';
+import { DescriptionSource, ImageCredit, LinkedPlace, WorkVenue } from './experiences.js';
 
 /** A timestamp as the wire carries it: an ISO string, from a `Date` or from PostgreSQL's JSON. */
 const timestamp = z.iso.datetime({ offset: true });
@@ -152,6 +152,11 @@ export const PendingPoint = z.strictObject({
 }).describe('An unread point under a row readers already see.');
 export type PendingPoint = z.infer<typeof PendingPoint>;
 
+export const ShownAt = LinkedPlace.extend({
+  kind: z.string().nullable().describe('The kind the museum is listed under, as the row names it beside the link.'),
+}).describe('The museum readers already see an unread work in, other than this one, with what a link to its card is built from (#2207).');
+export type ShownAt = z.infer<typeof ShownAt>;
+
 export const PendingWork = z.strictObject({
   id: z.number().int(),
   name: z.string().nullable(),
@@ -166,6 +171,9 @@ export const PendingWork = z.strictObject({
   curatedFields: z.array(z.string()).nullable().optional(),
   venueCount: z.number().int().nullable().optional(),
   venues: z.array(WorkVenue).nullable().optional().describe('The museums that hang the work, named.'),
+  shownAt: ShownAt.nullable().optional().describe(
+    'Where readers already see the work, other than here, so the row names the place and links it (#2207); null for a work new to the catalogue.',
+  ),
   placedBy: z.literal('wikipedia').nullable().optional()
     .describe("Set where only English Wikipedia's collection shelf places the work here, Wikidata naming no holder (ADR-0166)."),
   sitelinks: z.number().int().nullable().optional()

@@ -34,6 +34,7 @@ import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
+import { readerRegionsJsonSql } from './readerRegions.js';
 import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
 import { answeringPlaceSql, pointsShownSql, someoneVisitedPointSql } from '../../db/placePoints.js';
 
@@ -349,6 +350,8 @@ export async function queryContents(
                'curatedFields', curated_fields,
                'venueCount', venue_count,
                'venues', venues,
+               -- Where readers already see it, named and linkable (#2207).
+               'shownAt', shown_at,
                -- How many Wikipedia editions write about it (ADR-0082): the
                -- number the pool's line held it to, said on its row.
                -- Who placed it here when not Wikidata: a curator weighs a
@@ -384,6 +387,22 @@ export async function queryContents(
                    JOIN experiences shown_in ON shown_in.id = shown.experience_id
                   WHERE shown.treasure_id = t.id AND shown.experience_id <> e.id
                     AND ${linkedForReaderSql('shown_in', 'shown')}) AS on_show_elsewhere,
+               -- And which museum that is (#2207): the first by name, with the
+               -- kind it is listed under and the regions a link to its card is
+               -- built from (ADR-0042), so the row says "already on show at the
+               -- Pergamon Museum" rather than "elsewhere". Only where the work
+               -- itself is published, as on_show_elsewhere asks.
+               CASE WHEN ${publishedContentSql('t')} THEN (
+                 SELECT jsonb_build_object(
+                          'id', at_place.id, 'name', at_place.name, 'kind', at_kind.name, 'kind_id', at_kind.id,
+                          'regions', ${readerRegionsJsonSql('at_place.id')})
+                   FROM experience_treasures at_link
+                   JOIN experiences at_place ON at_place.id = at_link.experience_id
+                   ${rowKindJoinSql('at_place', 'at_membership', 'at_kind')}
+                  WHERE at_link.treasure_id = t.id AND at_link.experience_id <> e.id
+                    AND ${linkedForReaderSql('at_place', 'at_link')}
+                  ORDER BY at_place.name, at_place.id
+                  LIMIT 1) END AS shown_at,
                row_number() OVER (ORDER BY t.sitelinks_count DESC NULLS LAST, t.id) AS rn
         FROM experience_treasures et
         JOIN treasures t ON t.id = et.treasure_id
