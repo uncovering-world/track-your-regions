@@ -166,8 +166,10 @@ function ArticleLinks({ groups }: { groups: readonly ViewGroup[] }) {
  * other choices as they stand, so the curator who reads the answer off the
  * ground gives it there. The card's own button stays what it is.
  */
-function BothPoints({ name, groups, onKeep, pending }: {
+function BothPoints({ name, placeId, groups, onKeep, pending }: {
   name: string;
+  /** The place the points are of, whose outline the map draws where it has one (#2205). */
+  placeId: number;
   /** The point's columns: one pin per point, labelled with every source that gives it (#2212). */
   groups: readonly ViewGroup[];
   /** Answer the point with this view's membership, as the card's button would with it chosen. */
@@ -196,6 +198,7 @@ function BothPoints({ name, groups, onKeep, pending }: {
         latitude={pins[0].latitude}
         longitude={pins[0].longitude}
         pins={pins}
+        outlinesOf={[placeId]}
       />
     </>
   );
@@ -316,7 +319,7 @@ export function SourcesCard({ item, onDone }: {
                   <Typography variant="body2" color="text.secondary">{distanceLabel(field.metres)} apart</Typography>
                 )}
                 {field.field === 'location' && (
-                  <BothPoints name={item.name} groups={groups} onKeep={keepPoint} pending={save.isPending} />
+                  <BothPoints name={item.name} placeId={item.id} groups={groups} onKeep={keepPoint} pending={save.isPending} />
                 )}
                 {field.field === 'wikipediaUrl' && <ArticleLinks groups={groups} />}
               </Stack>

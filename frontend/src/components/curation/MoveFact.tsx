@@ -35,12 +35,14 @@ export function proposedPoint(
   return pointOf(proposed?.find(field => field.field === 'location')?.new);
 }
 
-export function MoveFact({ before, after, label }: {
+export function MoveFact({ before, after, label, placeId }: {
   /** The stored coordinate and the proposed one, as the changeset carries them. */
   before: unknown;
   after: unknown;
   /** The proposed coordinate as the row prints it. */
   label: string;
+  /** The place that moves, whose outline the map draws where it has one (#2205). */
+  placeId?: number;
 }) {
   const [open, setOpen] = useState(false);
   const from = pointOf(before);
@@ -60,6 +62,7 @@ export function MoveFact({ before, after, label }: {
         latitude={from.latitude}
         longitude={from.longitude}
         movedTo={to}
+        outlinesOf={placeId === undefined ? undefined : [placeId]}
       />
     </>
   );
