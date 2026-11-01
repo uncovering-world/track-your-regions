@@ -114,6 +114,14 @@ describe('reading a well-formed set of files', () => {
   it('reads a directory with no ledger as one that has judged nothing', () => {
     expect(readCoverageFiles(files({})).judgements).toEqual([]);
   });
+
+  it('carries a region\'s control mark, and refuses any other role (#2232)', () => {
+    const control = { ...REGIONS[0], slug: 'lisbon', name: 'Lisbon', country: 'Portugal', role: 'control' };
+    const read = readCoverageFiles(files({ regions: [REGIONS[0], control], expectations: { 'cusco-region': [MACHU_PICCHU], lisbon: [] } }));
+    expect(read.regions.map(region => [region.slug, region.role])).toEqual([['cusco-region', undefined], ['lisbon', 'control']]);
+    // The refused line also leaves the region's list without its region, which is the second problem.
+    expect(problemsOf(files({ regions: [{ ...REGIONS[0], role: 'development' }] }))[0]).toMatch(/regions\.jsonl line 1: role: .*control/);
+  });
 });
 
 describe('the judgement ledger', () => {
