@@ -58,6 +58,7 @@
  * whose scope reaches the place is looking at one (#613).
  */
 
+import { useEffect, useState } from 'react';
 import { Box, Dialog, DialogContent, DialogTitle, IconButton, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { Layer, Marker, Source } from 'react-map-gl/maplibre';
@@ -67,7 +68,8 @@ import { PointCorrection, type PlaceToCorrect } from './PointCorrection';
 import {
   LabelledPin, PIN_COLOURS, PINS_MAX_ZOOM, PinLegend, PinLinks, pinColour, pinsApart, pinsGeoJson, pinsView, type MapPin,
 } from './PointPreviewPins';
-import { frameGeoJson } from '../../utils/mapUtils';
+import { frameGeoJson, type MapLike } from '../../utils/mapUtils';
+import { OutlineCredits, OutlineLayers, useFrameWithOutlines, usePlaceOutlines } from './PointPreviewOutlines';
 import { moveLabel, moveView, movedBy, shortWayLongitudeDelta } from '../../utils/moveDescription';
 
 /** The pin readers see today, where the map also draws the one proposed: present, and plainly not the news. */
@@ -206,7 +208,9 @@ function Drawn({ several, drawn, move, movedTo, latitude, longitude }: {
   return <Marker latitude={latitude} longitude={longitude} />;
 }
 
-export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, pins, correction }: {
+const NO_PLACES: readonly number[] = [];
+
+export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, pins, correction, outlinesOf }: {
   open: boolean;
   onClose: () => void;
   name: string;
@@ -230,6 +234,12 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
    * outcome line goes. Absent, the dialog is the look it always was.
    */
   correction?: { place: PlaceToCorrect; onDone: (message: string) => void };
+  /**
+   * The places whose outlines the map draws where the catalogue holds one (#2205):
+   * the places the pins stand for, so a curator sees whether a point is inside a
+   * site. Read once the dialog opens; a place with no outline draws nothing.
+   */
+  outlinesOf?: readonly number[];
 }) {
   const stored = { lon: longitude, lat: latitude };
   const several = pins && pins.length > 0 && !correction ? pins : null;
@@ -237,6 +247,11 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
   const view = viewOf(several, stored, other);
   const drawn = pinsOf(several, name, { latitude, longitude }, movedTo, move);
   const apart = several ? pinsApart(several) : null;
+  const outlines = usePlaceOutlines(outlinesOf ?? NO_PLACES, open && !correction);
+  const [loadedMap, setLoadedMap] = useState<MapLike | null>(null);
+  // A closed dialog's map is gone; the next opening loads its own.
+  useEffect(() => { if (!open) setLoadedMap(null); }, [open]);
+  useFrameWithOutlines(open ? loadedMap : null, outlines, drawn, { padding: PINS_PADDING, maxZoom: PINS_MAX_ZOOM });
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pr: 6 }}>
@@ -285,17 +300,20 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
                 // Several pins are framed by the one rule once the map can be asked to;
                 // one pin stands where the view already put it.
                 onLoad={(event) => {
+                  setLoadedMap(event.target);
                   if (several && several.length > 1) {
                     frameGeoJson(event.target, pinsGeoJson(several), { padding: PINS_PADDING, duration: 0, maxZoom: PINS_MAX_ZOOM });
                   }
                 }}
               >
+                <OutlineLayers outlines={outlines} />
                 <Drawn several={several} drawn={drawn} move={move} movedTo={movedTo} latitude={latitude} longitude={longitude} />
               </GuardedMap>
             )}
             {/* Which pin is which, on the map and not only in the title, wherever there is more than one. */}
             {drawn.length > 1 && <PinLegend entries={drawn} />}
           </Box>
+          <OutlineCredits outlines={outlines} />
           <PinLinks pins={drawn} />
         </DialogContent>
       )}

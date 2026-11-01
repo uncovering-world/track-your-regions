@@ -12,7 +12,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render as renderPlain, screen, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import * as webgl from '../../utils/webgl';
 
 /** What the mocked map hands `onLoad`: the map the framing rule is asked to move. */
@@ -27,8 +29,10 @@ vi.mock('react-map-gl/maplibre', async () => {
   return {
   default: MapGL,
   Marker: ({ children }: { children?: React.ReactNode }) => <span data-testid="the-marker">{children}</span>,
-  Source: ({ children, data }: { children?: React.ReactNode; data: GeoJSON.Feature<GeoJSON.LineString> }) => (
-    <span data-testid="the-line" data-coordinates={JSON.stringify(data.geometry.coordinates)}>{children}</span>
+  Source: ({ children, id, data }: { children?: React.ReactNode; id: string; data: GeoJSON.Feature<GeoJSON.LineString> }) => (
+    id === 'point-dialog-extent'
+      ? <span data-testid="the-outlines">{children}</span>
+      : <span data-testid="the-line" data-coordinates={JSON.stringify(data.geometry.coordinates)}>{children}</span>
   ),
   Layer: () => null,
   };
@@ -37,6 +41,12 @@ vi.mock('react-map-gl/maplibre', async () => {
 vi.mock('../../utils/mapUtils', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../utils/mapUtils')>()),
   frameGeoJson: vi.fn(),
+}));
+
+const { mockFetchExperience } = vi.hoisted(() => ({ mockFetchExperience: vi.fn() }));
+vi.mock('../../api/experiences', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/experiences')>()),
+  fetchExperience: mockFetchExperience,
 }));
 
 vi.mock('./PointCorrection', () => ({
@@ -49,6 +59,12 @@ vi.mock('./PointCorrection', () => ({
 }));
 
 import { PointPreviewDialog } from './PointPreviewDialog';
+
+/** The dialog reads its places' outlines through the query cache, as the card does. */
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderPlain(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 import { frameGeoJson } from '../../utils/mapUtils';
 
 /**
@@ -270,5 +286,31 @@ describe('PointPreviewDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'back' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the outlines of the places a dialog pins (#2205)', () => {
+  // Bisotun's site, roughly, as OpenStreetMap draws it, and its caravanserai's pin inside it.
+  const SITE = { type: 'Polygon', coordinates: [[[47.43, 34.38], [47.45, 34.38], [47.45, 34.40], [47.43, 34.40], [47.43, 34.38]]] };
+
+  it('draws the outline the catalogue holds, credits it beside the map and frames it with the pin', async () => {
+    mockFetchExperience.mockResolvedValue({
+      id: 61, name: 'Bisotun', kind_id: 5, type: 'site', boundary_geojson: SITE, area_km2: 3.2,
+    });
+    render(<PointPreviewDialog open onClose={() => {}} name="Bisotun" latitude={34.39} longitude={47.44} outlinesOf={[61]} />);
+
+    expect(await screen.findByTestId('the-outlines')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '© OpenStreetMap contributors' })).toBeInTheDocument();
+    expect(mockFetchExperience).toHaveBeenCalledWith(61);
+    expect(vi.mocked(frameGeoJson)).toHaveBeenCalledWith(THE_MAP, expect.objectContaining({ type: 'GeometryCollection' }), expect.anything());
+  });
+
+  it('draws nothing and credits nobody for a place with no outline', async () => {
+    mockFetchExperience.mockResolvedValue({ id: 62, name: 'A caravanserai', kind_id: 5, type: 'building', boundary_geojson: null });
+    render(<PointPreviewDialog open onClose={() => {}} name="A caravanserai" latitude={34.39} longitude={47.44} outlinesOf={[62]} />);
+
+    await vi.waitFor(() => expect(mockFetchExperience).toHaveBeenCalledWith(62));
+    expect(screen.queryByTestId('the-outlines')).toBeNull();
+    expect(screen.queryByText(/OpenStreetMap contributors/)).toBeNull();
   });
 });

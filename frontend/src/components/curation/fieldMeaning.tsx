@@ -411,7 +411,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
     whenItChanges: 'A move of a few metres is jitter. Kilometres can put the object in a different region or country: check the pin on the map before publishing.',
     // The proposed side opens the move on a map; the stored side is the number.
     render: (value, context, side) => (side === 'after'
-      ? <MoveFact before={context.proposed.find(f => f.field === 'location')?.old} after={value} label={coordinateLabel(value)} />
+      ? <MoveFact before={context.proposed.find(f => f.field === 'location')?.old} after={value} label={coordinateLabel(value)} placeId={context.experienceId} />
       : coordinateLabel(value)),
     event: true,
     // The one rule for a moved pin, shared with the correction dialog (`utils/moveDescription.ts`),

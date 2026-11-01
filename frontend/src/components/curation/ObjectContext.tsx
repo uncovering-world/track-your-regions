@@ -333,6 +333,7 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
           // opened from its header shows that move rather than the stored pin
           // alone: a curator who opens the map is checking exactly that.
           movedTo={proposedPoint(item.proposed)}
+          outlinesOf={[item.id]}
         />
       )}
     </Stack>
