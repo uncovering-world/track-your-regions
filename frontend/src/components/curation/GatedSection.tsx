@@ -39,6 +39,7 @@ import { ArrivedTable, RowAnswer } from './ArrivedTable';
 import { movedPointGroups } from './movedPointGroups';
 import { sectionKind, sharedKinds, type GatedGroup } from './gatedGroup';
 import { VisitReadingLine } from './VisitReadingLine';
+import { ArrivalKindChoice } from './ArrivalKindChoice';
 
 /**
  * The counts, as numbers and as a floor under the query that casts them.
@@ -350,6 +351,17 @@ export function GatedSection({ group, heading, onDone }: {
           >
             {ANSWER_WORDS.arrival.reject}
           </Button>
+        )}
+        {/* The arrival's third answer (#2213): the kind it belongs in instead. */}
+        {arrival && (
+          <ArrivalKindChoice
+            experienceId={group.id}
+            name={item.name}
+            membershipId={arrival.membership_id}
+            arrivingKind={arrival.kind_name}
+            disabled={answering}
+            onDone={message => { invalidateExperiences(queryClient, { experienceId: group.id }); onDone(message); }}
+          />
         )}
       </Stack>
 
