@@ -5214,7 +5214,8 @@ CREATE UNLOGGED TABLE IF NOT EXISTS workbench.readership_month_files (
     kept BIGINT NOT NULL,
     built_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     redirects_dump_date DATE,
-    redirects_build_id INTEGER
+    redirects_build_id INTEGER,
+    window_end DATE CHECK (EXTRACT(DAY FROM window_end) = 1)
 );
 COMMENT ON TABLE workbench.readership_month_files IS 'Each month of readership kept (#1436): the pageview file it was read from, the build that read it, its lines, every Wikipedia edition''s total views that month (editions, by sitelink site code: the denominator a door divides by, and what says which editions ADR-0055 counts, those over 15M views a year) and the rows kept.';
 
@@ -5341,6 +5342,7 @@ COMMENT ON TABLE workbench.osm_layer_schedule IS 'How often the dump worker brin
 
 COMMENT ON COLUMN workbench.readership_month_files.redirects_dump_date IS 'The dump date of the redirects the month was folded with (#1650), or null where no redirects were in place when it was kept.';
 COMMENT ON COLUMN workbench.readership_month_files.redirects_build_id IS 'The build of the redirects the month was folded with (#1650): a build reads again a month folded with another, since one dump date can be built twice over a changed subset.';
+COMMENT ON COLUMN workbench.readership_month_files.window_end IS 'The first day of the last month of the twelve-month window this month was asked for by name (#2230), or null for a month of the current year, the twelve ending on the newest dump. A current month is dropped by the next build once it leaves the twelve; a month of an earlier year is kept, and no run reads it.';
 
 CREATE UNLOGGED TABLE IF NOT EXISTS workbench.readership_staging (
     build_id INTEGER NOT NULL,

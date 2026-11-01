@@ -861,6 +861,7 @@ export interface ReadershipMonthFilesRow {
   built_at: Date;
   redirects_dump_date: Date | null;
   redirects_build_id: number | null;
+  window_end: Date | null;
 }
 
 /** The table `readership_months`. */
