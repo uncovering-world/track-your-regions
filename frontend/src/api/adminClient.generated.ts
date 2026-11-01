@@ -1402,6 +1402,28 @@ export const ChangedFieldPassedTheGate = {
 } as const;
 
 /**
+ * Where one point of a coordinate move falls.
+ */
+export interface MoveDivision {
+  /** The GADM leaf division the point falls in. */
+  name: string;
+  /** Its country: the ancestor one below the root, or the division itself where it is one. */
+  country: string;
+}
+
+/**
+ * Which divisions a coordinate move leaves and enters (#2203): on a `location` field of a card, and on an unread point that replaces a stored one.
+ */
+export interface MoveDivisions {
+  /** The stored point's division; null in none, as at sea. */
+  from: MoveDivision | null;
+  /** The proposed point's division; null in none. */
+  to: MoveDivision | null;
+  /** Whether the two points share a leaf division (ADR-0140's rule): a border point stands in both. */
+  same: boolean;
+}
+
+/**
  * One field a run proposed to change.
  */
 export interface ChangedField {
@@ -1417,6 +1439,7 @@ export interface ChangedField {
   held?: boolean;
   /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture or arriving for it where the place holds none (ADR-0151), an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, a text rewritten in its typesetting alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place (ADR-0140). */
   passedTheGate?: ChangedFieldPassedTheGate;
+  divisions?: MoveDivisions;
 }
 
 /**

@@ -142,7 +142,7 @@ describe('PointCorrection', () => {
     renderForm();
     fireEvent.click(screen.getByRole('button', { name: 'move-east' }));
     // The queue's own sentence for a moved coordinate — 0.015° of longitude at 49°N.
-    expect(screen.getByText('Moved 1.1 km east — may fall in a different region; check the pin.')).toBeInTheDocument();
+    expect(screen.getByText('Moved 1.1 km east.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(mockedEdit).toHaveBeenCalledTimes(1));

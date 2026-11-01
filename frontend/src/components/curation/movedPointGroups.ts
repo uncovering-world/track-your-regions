@@ -27,6 +27,8 @@ export function movedPointGroups(contents: ReviewQueueItem | undefined, objectNa
         field: 'location',
         old: { lon: point.replaces!.longitude, lat: point.replaces!.latitude },
         new: { lon: point.longitude!, lat: point.latitude! },
+        // Which divisions the move crosses, as the queue read them (#2203).
+        divisions: point.divisions,
       };
       return {
         subject: {
