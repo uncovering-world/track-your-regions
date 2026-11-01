@@ -15,6 +15,7 @@ import {
   VisitQuestionAnswered,
   KeptOutOfKind,
   KindAddedToPlace,
+  ArrivalAnsweredWithKind,
   PlaceKindStandings,
   AdmissionPins,
   AdmissionPinHandedBack,
@@ -123,6 +124,7 @@ import {
   publishExperience,
   publishWaiting,
   refuseArrival,
+  answerArrivalWithKind,
   refuseContents,
   unrefuseContents,
   answerReviewRows,
@@ -158,6 +160,7 @@ import {
   admissionPinsQuerySchema,
   handBackPinBodySchema,
   refuseArrivalBodySchema,
+  arrivalKindBodySchema,
   refuseContentsBodySchema,
   reviewAnswerBodySchema,
   newBadgesSeenBodySchema,
@@ -811,6 +814,17 @@ export const experienceCurationRoutes = [
     body: refuseArrivalBodySchema,
     response: RefuseArrivalResult,
     handler: refuseArrival,
+  }),
+  // The arrival's third answer (#2213): the kind it belongs in instead. Two
+  // membership rows and two log rows in one transaction, and, where the place
+  // also stays, the arrival's publish after it — limited as the add is.
+  defineRoute({
+    method: 'post', path: '/:id/arrival-kind', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Answer an arrival with the kind it belongs in instead, keeping it in its own kind or not',
+    params: idParamSchema,
+    body: arrivalKindBodySchema,
+    response: ArrivalAnsweredWithKind,
+    handler: answerArrivalWithKind,
   }),
   defineRoute({
     method: 'post', path: '/:id/refuse-contents', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,

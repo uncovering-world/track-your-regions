@@ -770,6 +770,16 @@ export const reviewAnswerBodySchema = z.object({
   answer: z.enum(['accept', 'reject', 'lost']),
 });
 
+/**
+ * An arrival answered with the kind it belongs in instead (#2213): the chosen
+ * kind and its type, as the add takes them, and whether the place also stays
+ * in the kind that brought it.
+ */
+export const arrivalKindBodySchema = addToKindBodySchema.extend({
+  membershipId: answeredMembershipSchema,
+  stays: z.boolean().describe('Whether the place also stays in the kind that brought it: published there, else kept out of it.'),
+});
+
 /** A curator keeping out an arrival (#852, ADR-0053): the note is all there is to send. */
 export const refuseArrivalBodySchema = z.object({
   note: z.string().max(1000).optional(),

@@ -188,6 +188,19 @@ export const KindAddedToPlace = z.strictObject({
 }).describe("A place put into a kind no run offers it in, by a curator from its card (#2035).");
 export type KindAddedToPlace = z.infer<typeof KindAddedToPlace>;
 
+export const ArrivalAnsweredWithKind = z.strictObject({
+  experienceId: z.number().int(),
+  membershipId: z.number().int().describe('The membership the add wrote in the chosen kind: admitted, published and pinned.'),
+  kindId: z.number().int(),
+  kind: z.string().describe('The chosen kind, by name.'),
+  arrivalMembershipId: z.number().int().describe('The arrival the answer was about.'),
+  fromKind: z.string().describe('The kind that brought the place, by name.'),
+  stays: z.boolean().describe('Whether the place also stays in the kind that brought it.'),
+  arrivalPublished: z.boolean().describe('Whether the arrival was published in its own kind; false where it was kept out.'),
+  arrivalWaits: z.string().nullable().describe('Why the arrival could not be published where it stays, the add standing; null otherwise.'),
+}).describe('An arrival answered with the kind it belongs in instead (#2213).');
+export type ArrivalAnsweredWithKind = z.infer<typeof ArrivalAnsweredWithKind>;
+
 /** Where one kind of a place stands, as the place's card says it. */
 export const PlaceKindState = z.enum(['offered', 'waiting', 'kept-out', 'refused']);
 
