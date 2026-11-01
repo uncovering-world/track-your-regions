@@ -87,8 +87,8 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   marked_lost: { label: 'No longer exists', color: RED },
   state_restored: { label: 'Verdict taken back', color: GREEN },
   missing_dismissed: { label: 'False alarm', color: GREEN },
-  // The catalogue's own acts, in the words their cards use: the queue's buttons say
-  // "take the source’s" and "keep this" about a source's proposal, and "keep it out" /
+  // The catalogue's own acts, close to the words their cards use: the queue's buttons
+  // say "Use proposed" and "Keep current" about a source's proposal, and "keep it out" /
   // "put it back" about a refusal.
   published: { label: 'Published', color: VIOLET },
   accepted_source: { label: 'Took the source’s', color: BLUE },

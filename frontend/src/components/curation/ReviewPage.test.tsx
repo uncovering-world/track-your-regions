@@ -196,7 +196,7 @@ describe('ReviewPage', () => {
 
   it('does not re-read the list when a curator opens a question in it', async () => {
     renderQueue();
-    await screen.findByRole('columnheader', { name: 'as curated' });
+    await screen.findByRole('columnheader', { name: 'Current' });
     const reads = mockedFetch.mock.calls.length;
 
     await openRow(/Dresden Elbe Valley/);

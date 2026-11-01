@@ -56,8 +56,8 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
   },
   held: {
     proposes: 'change fields of an object readers see',
-    accept: 'Publish the change',
-    reject: 'Not this — refuse every held field',
+    accept: 'Use all proposed',
+    reject: 'Keep all current',
   },
   contents: {
     proposes: 'add points and works under an object readers see',
@@ -66,8 +66,8 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
   },
   conflicts: {
     proposes: 'change a field over your edit',
-    accept: 'Take the source’s',
-    reject: 'Keep ours',
+    accept: 'Use all proposed',
+    reject: 'Keep all current',
   },
   // Which source to take is a choice per field, made on the card (#1246); a
   // batch can only keep what readers see, and the server refuses a batch take.
@@ -262,4 +262,50 @@ export function countLine(rows: AnswerableRow[]): string {
   return countByKind(rows)
     .map(({ kind, count }) => `${count.toLocaleString('en')} ${KIND_NOUN[kind][count === 1 ? 0 : 1]}`)
     .join(', ');
+}
+
+/**
+ * The two columns of a card that asks "what stands, or what is proposed" — a
+ * value a run kept back from readers, or one a curator's edit holds against
+ * the source — and the answers that name them (#2222). One pair on every such
+ * card, so a curator never has to work out which side "keep this" or "not
+ * this" means.
+ */
+export const CHANGE_COLUMNS = { before: 'Current', after: 'Proposed' } as const;
+
+export const CHANGE_ANSWERS = {
+  keep: 'Keep current',
+  use: 'Use proposed',
+  keepAll: 'Keep all current',
+  useAll: 'Use all proposed',
+} as const;
+
+/** What taking the proposed value does to one field, in words that fit it. */
+function proposedEffect(field: string): string {
+  if (field === 'location') return 'moves the place on the map';
+  if (field === 'imageUrl' || field === 'metadata.imageCredit') return 'replaces the picture and its credit';
+  if (field === 'name') return 'renames the place';
+  if (field === 'nameLocal' || field.startsWith('nameLocal.')) return 'changes its names in other languages';
+  if (field === 'description' || field === 'subtitle') return 'changes the text readers see';
+  if (field === 'countryCodes' || field === 'countryNames') return 'changes the countries it counts in';
+  if (field === 'type') return 'changes its type';
+  if (field === 'tags') return 'changes its tags';
+  return 'changes the source data readers see';
+}
+
+function joined(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
+
+/**
+ * The line under a card's answers: what each does to this card's fields. A
+ * point moves on the map and a text changes, so the sentence is built from the
+ * fields the card asks about rather than said once for all of them.
+ */
+export function changeAnswersLine(fields: readonly string[]): string {
+  const effects = joined([...new Set(fields.map(proposedEffect))]);
+  const keep = fields.includes('location') ? 'leaves the point where it is' : 'changes nothing readers see';
+  return `${CHANGE_ANSWERS.use} ${effects}, now. ${CHANGE_ANSWERS.keep} ${keep} and settles the question — `
+    + 'the source has to propose something different to ask again.';
 }

@@ -145,6 +145,7 @@ describe('ReviewQueue', () => {
       expect(screen.queryByRole('button', { name: /Publish the change only/ })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Turn them down/ })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Publish everything on this card' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Keep all current' })).not.toBeInTheDocument();
     });
 
     it('publishes through the one endpoint that can apply a held field', async () => {
@@ -153,7 +154,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
       // Not `accept-source`: its lookup requires `curatedConflict: true`, and a
       // field held by the kind's gate carries false — that button would 409
@@ -201,7 +202,7 @@ describe('ReviewQueue', () => {
       expect(await screen.findByText(/Run 47 proposed only the catalogue’s own labels/)).toBeInTheDocument();
       expect(screen.queryByText(/proposes/)).not.toBeInTheDocument();
       expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /publish everything on this card/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Use all proposed' })).toBeInTheDocument();
     });
 
     it('says what a card holding only a fact with no value on either side is (#1774)', async () => {
@@ -225,7 +226,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      await screen.findByRole('button', { name: /publish everything on this card/i });
+      await screen.findByRole('button', { name: 'Use all proposed' });
       expect(screen.getByText('1 changed')).toBeInTheDocument();
       expect(screen.queryByText(/nothing readers see changes/)).not.toBeInTheDocument();
     });
@@ -250,7 +251,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Publish everything on this card' }));
 
       // `{}` means an object publish, which sets curation_state = 'verified' —
       // a false claim that a person read the museum when only twelve paintings
@@ -265,7 +266,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Publish everything on this card' }));
 
       // A held half is a real object publish — sending `contentsOnly` here
       // would mark the row read without ever answering the held proposal.
@@ -288,11 +289,11 @@ describe('ReviewQueue', () => {
       expect(rows).toHaveLength(2);
 
       fireEvent.click(rows[1]);
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
       await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { expectedSyncLogId: 47 }));
 
       fireEvent.click(rows[0]);
-      fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
       await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(7, ['name'], 41));
     });
 
@@ -336,7 +337,7 @@ describe('ReviewQueue', () => {
         .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
       // The refetch takes the card away, so this is the only place the moment a
       // replaced pin stopped being shown is recorded for the person who caused it.
@@ -356,7 +357,7 @@ describe('ReviewQueue', () => {
         .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
       expect(await screen.findByText(/were not recomputed/)).toBeInTheDocument();
     });
@@ -373,7 +374,7 @@ describe('ReviewQueue', () => {
         .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
       // Region assignment is admin-only end to end, and this page's ordinary
       // reader is a scoped curator. "Something about regions failed" is not a
@@ -397,7 +398,7 @@ describe('ReviewQueue', () => {
         .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
       // A different fact from a named world view refusing: nothing was placed at
       // all, and there is no world view to name.
@@ -410,7 +411,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
       // A publication changes the fields, points, works and counts every other
       // surface reads — including the object the curator just looked at from
@@ -427,7 +428,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish this/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use proposed' }));
 
       // #722: a run improves and damages in the same breath, and until now the
       // card's one button took both or neither. The row names the field; what is
@@ -443,7 +444,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /not this/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Keep current' }));
 
       // Not `publishExperience` and not an edit: the one lever a curator had
       // before was to claim the field by editing it, which says whose value it
@@ -453,13 +454,34 @@ describe('ReviewQueue', () => {
       expect(mockedPublish).not.toHaveBeenCalled();
     });
 
+    it('keeps every current value with one answer for a card of held values alone', async () => {
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [],
+        held: [{ ...HELD, proposed_parts: [{
+          kind: 'location', item: { name: 'Villanueva Building', ref: 'P1' },
+          fields: [{ field: 'name', old: 'Villanueva', new: 'Villanueva Building', held: true }],
+        }] }],
+        limit: 25,
+      });
+      renderQueue();
+
+      // The same pair the conflict card ends on (#2222), refusing the parts' held fields too.
+      expect(await screen.findByRole('button', { name: 'Use all proposed' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep all current' }));
+      await waitFor(() => expect(mockedDeclineHeld).toHaveBeenCalledWith(7, {
+        fields: ['name'],
+        parts: [{ kind: 'location', ref: 'P1', name: 'Villanueva Building', fields: ['name'] }],
+      }, 47));
+      expect(mockedPublish).not.toHaveBeenCalled();
+    });
+
     it('says what a refusal settled, since the row goes away', async () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [], held: [HELD], limit: 25,
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /not this/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Keep current' }));
 
       // The answer is about *that value*, so a curator meeting the field again
       // next month is being told the source changed its mind, not that the click
@@ -478,12 +500,12 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
       // The refusal is the answer, and the card has to come back live rather
       // than disabled: the refetch redraws it against what the server now holds.
       await waitFor(() => expect(screen.getByText(/from a different run/)).toBeInTheDocument());
-      expect(screen.getByRole('button', { name: /publish everything on this card/i })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Use all proposed' })).toBeEnabled();
     });
 
     it('says what the object the gate is hiding is, on the card itself (#1780)', async () => {

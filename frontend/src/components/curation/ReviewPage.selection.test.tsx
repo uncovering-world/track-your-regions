@@ -153,7 +153,7 @@ describe('answering a selection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reject the proposed changes' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(dialog.textContent).toContain('412 held changes: Not this — refuse every held field');
+    expect(dialog.textContent).toContain('412 held changes: Keep all current');
     expect(dialog.textContent).toContain('the unread points and works a row may also hold are answered too: Turn them down — they stay unread.');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -196,7 +196,7 @@ describe('answering a selection', () => {
     expect(dialog.textContent).toContain('1,070 arrivals: Keep it out');
     // Rejecting a refusal is the take-back: the card proposes the refusal (#906).
     expect(dialog.textContent).toContain('5 refusals: The rule was wrong — put it back until the next run');
-    expect(dialog.textContent).toContain('3 disagreements: Keep ours');
+    expect(dialog.textContent).toContain('3 disagreements: Keep all current');
     expect(dialog.textContent).not.toContain('gone from the source');
     expect(mockedAnswer).not.toHaveBeenCalled();
 

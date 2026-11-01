@@ -339,9 +339,9 @@ describe('a point the source moved', () => {
     expect(screen.getByRole('button', { name: 'see the move on the map' })).toBeInTheDocument();
     expect(screen.queryByText('Arrived, not shown to readers yet')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'publish this' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use proposed' }));
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(14724, { locationIds: [15624] }));
-    fireEvent.click(screen.getByRole('button', { name: 'not this' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep current' }));
     await waitFor(() => expect(mockedRefuse).toHaveBeenCalledWith(14724, { locationIds: [15624] }));
   });
 
@@ -354,7 +354,7 @@ describe('a point the source moved', () => {
     renderCard(ephesus([other, MOVED], { coordinates_move_point_id: 15624 }));
 
     expect(screen.getAllByRole('button', { name: 'see the move on the map' })).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'publish this' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use proposed' }));
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(14724, { locationIds: [15623] }));
   });
 

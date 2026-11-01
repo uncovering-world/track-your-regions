@@ -227,7 +227,7 @@ export const CONFLICT = {
   name: 'Serengeti National Park',
   kind: 'conflict' as const,
   missing_since: null,
-  proposed: [{ field: 'name', old: 'Curator wording', new: 'Renamed upstream', acceptable: true }],
+  proposed: [{ field: 'name', old: 'Curator wording', new: 'Renamed upstream' }],
   sync_log_id: 41,
 };
 

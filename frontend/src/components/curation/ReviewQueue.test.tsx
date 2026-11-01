@@ -138,8 +138,8 @@ describe('ReviewQueue', () => {
     // Whole values, side by side in their own columns — not two ellipses from a
     // truncated summary. The words themselves are split across marked
     // and unmarked runs, so this asks the rendered text for them rather than one node.
-    await screen.findByRole('columnheader', { name: 'as curated' });
-    expect(screen.getByRole('columnheader', { name: 'the source proposes' })).toBeInTheDocument();
+    await screen.findByRole('columnheader', { name: 'Current' });
+    expect(screen.getByRole('columnheader', { name: 'Proposed' })).toBeInTheDocument();
     const cells = screen.getAllByRole('cell').map(cell => cell.textContent ?? '');
     const yours = cells.find(text => text.includes('Curator wording'));
     expect(yours).toBeDefined();
@@ -156,7 +156,7 @@ describe('ReviewQueue', () => {
     mockedFetch.mockResolvedValue({
       missing: [],
       conflicts: [{ ...CONFLICT, proposed: [
-        { field: 'tags', old: ['a'], new: ['b'], acceptable: true, claim: { by: 'Dana', at: '2026-08-04T12:29:32Z' } },
+        { field: 'tags', old: ['a'], new: ['b'], claim: { by: 'Dana', at: '2026-08-04T12:29:32Z' } },
       ] }],
       refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
@@ -166,14 +166,14 @@ describe('ReviewQueue', () => {
       .toBeInTheDocument();
     expect(screen.queryByText(/proposes nothing/)).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /take all of the source/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Use all proposed' })).toBeEnabled();
   });
 
   it('compares an added value against nothing, instead of calling it a shape difference', async () => {
     mockedFetch.mockResolvedValue({
       missing: [],
       conflicts: [{ ...CONFLICT, proposed: [
-        { field: 'description', old: null, new: 'A description this row never had', acceptable: true },
+        { field: 'description', old: null, new: 'A description this row never had' },
       ] }],
       refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
@@ -191,8 +191,8 @@ describe('ReviewQueue', () => {
     mockedFetch.mockResolvedValue({
       missing: [],
       conflicts: [{ ...CONFLICT, proposed: [
-        { field: 'name', old: 'Curator wording', new: 'Renamed upstream', acceptable: true },
-        { field: 'description', old: 'Mine', new: 'Theirs', acceptable: true },
+        { field: 'name', old: 'Curator wording', new: 'Renamed upstream' },
+        { field: 'description', old: 'Mine', new: 'Theirs' },
       ] }],
       refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
@@ -201,7 +201,7 @@ describe('ReviewQueue', () => {
     // A run improves and damages in the same breath: a better description arriving with
     // a mangled name was one button that took both or neither. The endpoint always
     // accepted a list — the screen could not say "this one".
-    const takeThese = await screen.findAllByRole('button', { name: 'take the source’s' });
+    const takeThese = await screen.findAllByRole('button', { name: 'Use proposed' });
     fireEvent.click(takeThese[1]);
 
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['description'], 41));
@@ -214,8 +214,8 @@ describe('ReviewQueue', () => {
         ...CONFLICT,
         sync_log_id: 41,
         proposed: [
-          { field: 'name', old: 'Curator wording', new: 'Renamed upstream', acceptable: true },
-          { field: 'description', old: 'Mine', new: 'Theirs', acceptable: true },
+          { field: 'name', old: 'Curator wording', new: 'Renamed upstream' },
+          { field: 'description', old: 'Mine', new: 'Theirs' },
         ],
       }],
       refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
@@ -225,7 +225,7 @@ describe('ReviewQueue', () => {
     // Standing by your own value writes a refusal, or the same card comes back after
     // every run. The run id goes with it for the reason it goes
     // with an acceptance: refusing the wrong run silences a proposal nobody read.
-    const keepThese = await screen.findAllByRole('button', { name: 'keep this' });
+    const keepThese = await screen.findAllByRole('button', { name: 'Keep current' });
     fireEvent.click(keepThese[1]);
 
     await waitFor(() => expect(mockedDecline).toHaveBeenCalledWith(88, ['description'], 41));
@@ -238,15 +238,15 @@ describe('ReviewQueue', () => {
       conflicts: [{
         ...CONFLICT,
         sync_log_id: 41,
-        proposed: [{ field: 'location', old: null, new: { lat: 1 }, acceptable: false }],
+        proposed: [{ field: 'location', old: null, new: { lat: 1 } }],
       }],
       refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
     renderQueue();
 
-    // Accepting a coordinate waits for the next sync; refusing one writes nothing at
-    // all, so there is no field the answer cannot reach.
-    fireEvent.click(await screen.findByRole('button', { name: 'keep this' }));
+    // Refusing a coordinate writes nothing at all, so there is no field the
+    // answer cannot reach.
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep current' }));
 
     await waitFor(() => expect(mockedDecline).toHaveBeenCalledWith(88, ['location'], 41));
   });
@@ -256,13 +256,13 @@ describe('ReviewQueue', () => {
     mockedFetch
       .mockResolvedValueOnce({
         missing: [],
-        conflicts: [{ ...CONFLICT, sync_log_id: 41, proposed: [{ field: 'description', old: 'Mine', new: 'Theirs', acceptable: true }] }],
+        conflicts: [{ ...CONFLICT, sync_log_id: 41, proposed: [{ field: 'description', old: 'Mine', new: 'Theirs' }] }],
         refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
       })
       .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'keep this' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep current' }));
 
     // In the reader's words, and naming the run — so a curator meeting the field again
     // later is being told the source changed its mind, not that the click failed.
@@ -280,7 +280,6 @@ describe('ReviewQueue', () => {
           field: 'name',
           old: 'Curator wording',
           new: 'Renamed upstream',
-          acceptable: true,
           claim: { by: 'Dana', at: '2026-08-04T12:29:32Z' },
           decidedBefore: [{ by: 'admin', at: '2026-07-30T08:00:00Z', applied: 'An earlier upstream name' }],
         }],
@@ -304,65 +303,66 @@ describe('ReviewQueue', () => {
     // whole-card answer, not the note under them.
     expect(screen.queryByText(/of yours|keep mine|all of mine|keeping yours/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'yours' })).not.toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'as curated' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Current' })).toBeInTheDocument();
   });
 
   it('accepts exactly the fields the source proposed', async () => {
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['name'], 41));
   });
 
-  it('says when accepting takes effect at the next sync instead of now', async () => {
+  it('says what each answer does to a point: it moves now, or stays where it is', async () => {
     mockedFetch.mockResolvedValue({
       missing: [],
+      // Aqua Virgo (#2222): a curator moved it to Vicus Caprarius by the Trevi
+      // Fountain, and the run proposes the springs near Salone, 12 km east.
       conflicts: [{ ...CONFLICT, proposed: [
-        { field: 'location', old: [1, 2], new: [3, 4], acceptable: false },
+        { field: 'location', old: { lat: 41.9004, lon: 12.4841 }, new: { lat: 41.9102, lon: 12.6269 } },
       ] }],
       limit: 25,
     });
     renderQueue();
 
-    // The coordinate says it in its own words, because it is the one field that
-    // sits across the line: the pin moves on the spot, the object's position
-    // waits for the run. Told before the click, where the decision is made.
-    expect(await screen.findByText(/moves the pin now/))
+    // The headings and the answers name each other, and nothing says "text" about a point.
+    expect(await screen.findByRole('columnheader', { name: 'Proposed' })).toBeInTheDocument();
+    expect(screen.getByText(/Use proposed moves the place on the map, now\. Keep current leaves the point where it is/))
       .toBeInTheDocument();
-    expect(screen.getByText(/object’s own position follows at the next sync/)).toBeInTheDocument();
-    // Still answerable: releasing the claim is what takes it off the queue,
-    // and it is the only thing that does — editing only ever adds a claim
-    expect(screen.getByRole('button', { name: /take all of the source/i })).toBeEnabled();
+    expect(screen.queryByText(/next sync/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use all proposed' })).toBeEnabled();
   });
 
-  it('keeps the plain deferred note for a field with no pin to move', async () => {
+  it('says what each answer does to a text, and to the countries, in their own words', async () => {
     mockedFetch.mockResolvedValue({
       missing: [],
       conflicts: [{ ...CONFLICT, proposed: [
-        // Not `tags`: those are no longer a row at all (#570). The country codes are the
-        // other array the endpoint cannot write on the spot.
-        { field: 'countryCodes', old: ['FR'], new: ['BE'], acceptable: false },
+        { field: 'description', old: 'Mine', new: 'Theirs' },
+        { field: 'countryCodes', old: ['FR'], new: ['BE'] },
       ] }],
       limit: 25,
     });
     renderQueue();
 
-    expect(await screen.findByText(/lands at the next sync/)).toBeInTheDocument();
+    expect(await screen.findByText(
+      /Use proposed changes the text readers see and changes the countries it counts in, now\. Keep current changes nothing readers see/,
+    )).toBeInTheDocument();
   });
 
-  it('sends every conflicted field, not only the ones written on the spot', async () => {
+
+  it('sends every conflicted field with one answer for the whole card', async () => {
     mockedFetch.mockResolvedValue({
       missing: [],
       conflicts: [{ ...CONFLICT, proposed: [
-        { field: 'name', old: 'a', new: 'b', acceptable: true },
-        { field: 'location', old: [1, 2], new: [3, 4], acceptable: false },
+        { field: 'name', old: 'a', new: 'b' },
+        { field: 'location', old: [1, 2], new: [3, 4] },
       ] }],
       limit: 25,
     });
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
     await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['name', 'location'], 41));
   });
@@ -396,21 +396,20 @@ describe('ReviewQueue', () => {
 
   it('says what landed and which run it came from', async () => {
     mockedAccept.mockResolvedValue({
-      experienceId: 88, applied: ['name'], released: ['location'], fromSyncLogId: 41,
+      experienceId: 88, applied: ['name', 'location'], released: [], fromSyncLogId: 41,
     });
     mockedFetch
       .mockResolvedValueOnce({ missing: [], conflicts: [CONFLICT], limit: 25 })
       .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
-    // The refetch removes the card, so this is the only place the split the
-    // button promised, and the run the values came from, can be said at all.
-    // In the same words the card used: the server answers `location`, the card
-    // called it coordinates, and one click must not rename the thing it acted on.
-    expect(await screen.findByText(/name applied now/)).toBeInTheDocument();
-    expect(screen.getByText(/coordinates at the next sync/)).toBeInTheDocument();
+    // The refetch removes the card, so this is the only place what landed, and
+    // the run the values came from, can be said at all. In the same words the
+    // card used: the server answers `location`, the card called it coordinates,
+    // and one click must not rename the thing it acted on.
+    expect(await screen.findByText(/name, coordinates applied now/)).toBeInTheDocument();
     expect(screen.getByText(/from run 41/)).toBeInTheDocument();
   });
 
@@ -429,7 +428,7 @@ describe('ReviewQueue', () => {
       .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
     // The value deleted is the curator's own — the edit that claimed the picture
     // wrote the credit in the same statement — and the card said nothing about a
@@ -453,7 +452,7 @@ describe('ReviewQueue', () => {
       .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
     renderQueue();
 
-    fireEvent.click(await screen.findByRole('button', { name: /take all of the source/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Use all proposed' }));
 
     // The card asked about the object and never mentioned a point, while the
     // answer moves the pin a curator placed by hand — and leaves its regions

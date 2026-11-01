@@ -54,8 +54,6 @@ export interface FactRow {
    * name the object's photographer under a work's picture.
    */
   context: ChangeContext;
-  /** False for fields `accept-source` cannot write now (conflict cards). */
-  acceptable?: boolean;
   /** Who claimed the field and what was answered before (conflict cards). */
   provenance?: FieldProvenance;
 }
@@ -172,7 +170,7 @@ function kindOf(before: unknown, after: unknown): FactKind {
   return 'changed';
 }
 
-type Proposal = ProposedField & { acceptable?: boolean } & FieldProvenance;
+type Proposal = ProposedField & FieldProvenance;
 
 function row(
   id: string, field: string, meaning: FieldMeaning, before: unknown, after: unknown,
@@ -188,7 +186,6 @@ function row(
     sentence: meaning.describeChange?.(before, after, context) ?? null,
     event: meaning.event === true || (meaning.event === 'replaced' && !isEmptyValue(before)),
     context,
-    acceptable: proposal.acceptable,
     // Only where there is one: a held card's fields carry no claim and no earlier
     // answer, and a trail on every row would be a guard that never guards.
     ...(proposal.claim || proposal.decidedBefore?.length

@@ -47,6 +47,7 @@ import { WorkPreviewDialog } from '../shared/WorkPreviewDialog';
 import type { WorkToCorrect } from '../shared/WorkCorrection';
 import { SourceId } from './SourceId';
 import { ReviewPlaceLink } from './ReviewPlaceLink';
+import { CHANGE_ANSWERS } from './selection/answerWords';
 
 type PendingPoint = NonNullable<ReviewQueueItem['pending_points']>[number];
 type PendingWork = NonNullable<ReviewQueueItem['pending_works']>[number];
@@ -88,14 +89,25 @@ function Mark({ tone, children }: { tone: keyof typeof STRIPE; children: React.R
   );
 }
 
-export function RowAnswer({ busy, onPublish, onRefuse }: { busy: boolean; onPublish: () => void; onRefuse: () => void }) {
+/**
+ * A row's two answers. `asChange` is a moved point in the table of changes,
+ * which sets a proposed pin against the current one, so it answers in that
+ * table's words (#2222); an arrived work or point has nothing current to keep.
+ */
+export function RowAnswer({ busy, onPublish, onRefuse, asChange = false }: {
+  busy: boolean; onPublish: () => void; onRefuse: () => void; asChange?: boolean;
+}) {
   return (
     <Stack spacing={0.5}>
-      <Button size="small" variant="outlined" disabled={busy} onClick={onPublish}>publish this</Button>
-      {/* "not this" as on the held rows: nobody has seen it, and a no keeps it
-          that way and stops the asking — it comes back from the turned-down
-          list at the foot of the page. */}
-      <Button size="small" variant="outlined" color="inherit" disabled={busy} onClick={onRefuse}>not this</Button>
+      <Button size="small" variant="outlined" disabled={busy} onClick={onPublish}>
+        {asChange ? CHANGE_ANSWERS.use : 'publish this'}
+      </Button>
+      {/* "not this": nobody has seen it, and a no keeps it that way and stops
+          the asking — it comes back from the turned-down list at the foot of
+          the page. */}
+      <Button size="small" variant="outlined" color="inherit" disabled={busy} onClick={onRefuse}>
+        {asChange ? CHANGE_ANSWERS.keep : 'not this'}
+      </Button>
     </Stack>
   );
 }

@@ -28,11 +28,11 @@ import type { HeldPart, ReviewQueueItem } from '../../api/reviewQueue';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { plural } from '../../utils/plural';
 import { worldViewList } from '../../utils/worldViewList';
-import { ANSWER_WORDS } from './selection/answerWords';
+import { ANSWER_WORDS, CHANGE_ANSWERS, CHANGE_COLUMNS } from './selection/answerWords';
 import { GatedRow, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
 import { partGroups, rowlessProposalWords, rowsFor } from './factRows';
-import { HeldAnswer, type HeldSelection } from './HeldAnswer';
+import { HeldAnswer, wholeHeldSelection, type HeldSelection } from './HeldAnswer';
 import { heldRefusalOutcomeFor, mergedPublishResult, PartlyPublished, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
 import { ArrivedTable, RowAnswer } from './ArrivedTable';
@@ -254,13 +254,13 @@ export function GatedSection({ group, heading, onDone }: {
             />
             {/* The same table the conflict card draws, because it is the same
                 decision: two versions of one fact and a person choosing between them.
-                The column headings differ and are the caller's to give — here the left
-                side is what readers are looking at right now, and no curator wrote it.
+                The same headings too, and the same answers (#2222): here the left side
+                is what readers are looking at right now, and no curator wrote it.
                 A part's group follows the object's, headed by the part's name and a
                 way to open it. */}
             <FactTable
               groups={[{ subject: { kind: 'object', label: item.name }, rows }, ...parts, ...moved]}
-              labels={{ before: 'readers see', after: 'the run proposes' }}
+              labels={CHANGE_COLUMNS}
               // One fact at a time (#722), because a run improves and damages in
               // the same breath: run 68 wants to drop "(Phase II)" from Getbol's
               // name and to rewrite its description for the 2026 extension, and
@@ -272,6 +272,7 @@ export function GatedSection({ group, heading, onDone }: {
                 // pin readers see; turned down, it stays hidden and readers keep
                 // the pin it would have replaced (ADR-0083).
                 <RowAnswer
+                  asChange
                   busy={answering}
                   onPublish={() => publish.mutate({ locationIds: [subject.movedPointId!] })}
                   onRefuse={() => turnDown.mutate({ locationIds: [subject.movedPointId!] })}
@@ -300,12 +301,12 @@ export function GatedSection({ group, heading, onDone }: {
             </Link>
             <Collapse in={showHow}>
               <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5, maxWidth: '80ch' }}>
-                Publishing one of these leaves the rest waiting. A picture is answered with its
-                credit, shown under it on each side. “Not this” settles the question — the run has to
-                propose something different to ask again — and changes nothing readers see: a moved
-                point turned down leaves its pin where it was. On
+                Using one proposed value leaves the rest waiting. A picture is answered with its
+                credit, shown under it on each side. “Keep current” settles the question — the run has
+                to propose something different to ask again — and changes nothing readers see: a moved
+                point kept leaves its pin where it was. On
                 a card raised before facts were asked one at a time, one combination still reaches
-                readers: say no to source data and then publish a new picture, and the picture goes
+                readers: keep the current source data and then use a new picture, and the picture goes
                 out with nobody credited, since the refused credit may not be written and the stored
                 one names a photograph nobody will see. A field you have edited yourself is a
                 different question and keeps your wording either way.
@@ -336,8 +337,22 @@ export function GatedSection({ group, heading, onDone }: {
           disabled={answering}
           onClick={() => publish.mutate(undefined)}
         >
-          {publishLabel(group, heading !== undefined)}
+          {publishLabel(group, heading !== undefined, points === 0 && works === 0)}
         </Button>
+        {/* A card of held values alone answers whole in its table's words, both
+            ways (#2222): "Keep all current" refuses every held field, the
+            parts' included. A moved point is a pin turned down, not a field
+            refused, so a card holding one keeps its no on that row. */}
+        {!arrival && heading === undefined && points === 0 && works === 0 && moved.length === 0 && heldFields.length > 0 && (
+          <Button
+            variant="outlined"
+            color="inherit"
+            disabled={answering}
+            onClick={() => refuse.mutate(wholeHeldSelection(proposed, held?.proposed_parts ?? []))}
+          >
+            {CHANGE_ANSWERS.keepAll}
+          </Button>
+        )}
         {/* The arrival's no (#852): kept out, the way a rule's refusal is.
             Everything else on a card is answered on its own row — a held field,
             a moved point, an arrived work — so a card-level no would only say
@@ -492,7 +507,7 @@ function runNote({ arrival }: GatedGroup): string {
  * *and* releases every unread point and work under it. Everything narrower is
  * a row's own answer (#524), so the button says it takes everything.
  */
-function publishLabel(group: GatedGroup, sectioned: boolean): string {
+function publishLabel(group: GatedGroup, sectioned: boolean, changesOnly: boolean): string {
   if (group.arrival && seenIn(group.arrival).length > 0) return `Publish — list it under ${group.arrival.kind_name}`;
   if (group.arrival) return 'Publish — readers may see it';
   // On a card two kinds ask on, the button reaches its own section alone.
@@ -502,6 +517,8 @@ function publishLabel(group: GatedGroup, sectioned: boolean): string {
       : 'Publish the place’s own facts';
   }
   if (sectioned) return `Publish everything ${sectionKind(group)} asks`;
+  // A card of proposed values alone answers in its table's words (#2222).
+  if (changesOnly) return CHANGE_ANSWERS.useAll;
   return 'Publish everything on this card';
 }
 

@@ -116,7 +116,7 @@ describe('a held card about a part', () => {
     // Both values in their own columns, and the summary above them.
     expect(screen.getByText('Johannes Vermeer')).toBeInTheDocument();
     expect(screen.getByText('1 changed')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Publish everything on this card' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use all proposed' })).toBeInTheDocument();
   });
 
   it('opens the work where it can be looked at', () => {
@@ -161,11 +161,11 @@ describe('a held card about a part', () => {
     // card holds the attribution's answer and the picture's.
     expect(screen.getByText('picture')).toBeInTheDocument();
     expect(screen.queryByText('picture credit')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /publish this/i })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Use proposed' })).toHaveLength(2);
 
     // And the picture's button names the picture: the server widens it onto the
     // credit, which is what keeps the pair one answer.
-    fireEvent.click(screen.getAllByRole('button', { name: /publish this/i })[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Use proposed' })[1]);
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(6194, {
       heldFields: undefined,
       heldParts: [{ kind: 'treasures', ref: 'Q782639', name: 'The Wine Glass', fields: ['image_url'] }],
@@ -210,7 +210,7 @@ describe('a held card about a part', () => {
   it('answers the work\'s row by naming the part the way the record names it', async () => {
     renderCard(held());
 
-    fireEvent.click(screen.getByRole('button', { name: /not this/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep current' }));
 
     // The record names a part and never identifies it (ADR-0026 decision 4), so
     // the answer echoes back the pair the server matches on: neither the
@@ -226,7 +226,7 @@ describe('a held card about a part', () => {
   it('publishes the work\'s row alone, without touching the object\'s own fields', async () => {
     renderCard(held());
 
-    fireEvent.click(screen.getByRole('button', { name: /publish this/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use proposed' }));
 
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(6194, {
       heldFields: undefined,
@@ -245,10 +245,10 @@ describe('a held card about a part', () => {
     mockedDeclineHeld.mockReset().mockReturnValue(new Promise(() => {}));
     renderCard(held());
 
-    const publishAll = screen.getByRole('button', { name: 'Publish everything on this card' });
+    const publishAll = screen.getByRole('button', { name: 'Use all proposed' });
     expect(publishAll).toBeEnabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /not this/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep current' }));
 
     await waitFor(() => expect(publishAll).toBeDisabled());
     expect(mockedPublish).not.toHaveBeenCalled();
