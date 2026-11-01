@@ -6,8 +6,8 @@
  * The table's writers are a closed list the backend lint names
  * (`VIEW_CHOICE_WRITE_RULES`): this module alone. A choice records the views of
  * the field as they stand, by the expression the open question compares with
- * (`viewsOfFieldSql`), so the answer holds exactly while every source keeps
- * sending what it sent. Which value the place then shows is the caller's
+ * (`viewsOfFieldSql`), so the answer holds while every source still standing
+ * keeps sending what it sent (`openViewFieldsSql`). Which value the place then shows is the caller's
  * (`viewChoiceController.ts`).
  */
 
