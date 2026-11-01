@@ -938,12 +938,20 @@ The local run has its own file, `frontend/perf/lighthouse-budgets.local.json`,
 with the same script and stylesheet lines, a font line at 85 000 B — the
 real catalogue's names reach past Latin-1 (Łódź, Plzeň), which fetches each
 family's Latin Extended file beside the Latin one, 80.3 kB for the two — a
-total-size line at 965 000 B
-(the map root's 916.9 kB — 562 kB of script at startup, then the favicon of
-#648 and the map's own tiles — plus the usual 5 %; on 2026-10-16, with the
-favicon cut to 2.5 kB, the page measured 939.6 kB, its 84 kB saving outrun by
-what the page gained since the line was set, so the line stays where it is,
-2.7 % above the page) and a request count of
+total-size line at 1 015 000 B
+(the map root's 967.2 kB on 2026-11-01 plus the usual 5 %. The line was
+965 000 B from the root's 916.9 kB — 562 kB of script at startup, then the
+favicon of #648 and the map's own tiles; on 2026-10-16, with the favicon cut
+to 2.5 kB, the page measured 939.6 kB, its saving outrun by what the page had
+gained, so the line stayed. It moved on 2026-11-01 (#2233) when the page
+measured 967.2 kB: the crowded city's tail (#2225, ADR-0172) put 3.7 kB of
+script in the entry chunk, and the root's data had grown with the catalogue.
+A lazy chunk for the tail was built and measured twice first and is no
+saving: Rolldown re-partitions the shared startup chunks around it, so the
+startup set lost 0.7 kB at best while the entry row grew. What the visitor
+gets for the bytes is the tail: a crowded city's lesser places a click away
+and a shadowed search answer that opens, which the root page's own code
+carries because the region list has no lazy boundary) and a request count of
 60 as errors, the region and card pages' own byte lines (1 220 000 B and 58
 requests for Europe, 1 685 000 B and 104 for the Prado's card: their
 heaviest runs + ~5 %, and the shells' quarter of headroom on the counts;
@@ -959,11 +967,12 @@ That total-size line has come down twice in a week — 2 350 000 B →
 1 440 000 B when the backend started compressing (#650), and → 1 180 000 B
 when the map root stopped reading every leaf region (#649) — which is the
 ratchet doing what it is for: each saving becomes the floor. It went up
-once, to 1 255 000 B, with the byte lines beside it, when maplibre-gl 4.7.1
+to 1 255 000 B, with the byte lines beside it, when maplibre-gl 4.7.1
 was replaced by 6.8.0 (#849): the 4.x line carries a critical advisory and
 no patched release, and the 6.x build is 96.6 kB gzip larger — the map
 library the visitor gets is one without the sanitizer bypass, and every
-other line of the ratchet stayed where it was. The CI lane's
+other line of the ratchet stayed where it was; and again on 2026-11-01
+(#2233), as the parenthesis above records. The CI lane's
 own total was left alone both times (1 050 000 B then, 1 140 000 B
 since the maplibre-gl 6 bump). Its fixture is one region
 ("Testland", `backend/src/db/seed/e2eFixture.ts`) and its responses sit

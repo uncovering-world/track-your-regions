@@ -77,7 +77,7 @@
     "resource-summary:total:size": [
       "error",
       {
-        "maxNumericValue": 965000
+        "maxNumericValue": 1015000
       }
     ],
     "resource-summary:total:count": [
