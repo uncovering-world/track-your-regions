@@ -343,7 +343,35 @@ export function makeResolver(graph: VenueGraph, rule: VenueRule) {
     const found = resolution(qid);
     return 'readingRoom' in found && found.readingRoom === true;
   };
-  return { resolve, resolution, keptBack };
+  /**
+   * Whether the entity stands for a house rather than being a visit of its
+   * own (#2207): a network resolved through the house at its coordinate
+   * (`Resolution.house`), or a holding forgiven as a museum (ADR-0170
+   * decision 1) that is `part of` a venue which resolves on its own — the
+   * Antikensammlung Berlin, an `art collection` typed an archaeological
+   * museum, part of the Pergamon, Altes and Neues Museums, whose coordinate
+   * is the Altes Museum's while its works stand in the Pergamon Museum too.
+   * A forgiven holding that is part of no such venue is the one-house museum
+   * the forgiveness is for — the Frick Collection, the Carnegie Museum of
+   * Art — and stands for nothing but itself; so is one whose only parent is
+   * a network, which resolves through a house rather than as a venue of its
+   * own, whether that house is this museum or a sister branch. Only a parent
+   * that is a venue in its own right — the Pergamon Museum above the
+   * Antikensammlung — makes the holding a stand-in. `placeArtwork` reads it
+   * so a work whose location names a venue is not also placed where a
+   * collection's coordinate happens to sit.
+   */
+  const standsForHouses = (qid: string): boolean => {
+    const found = resolution(qid);
+    if (!('venue' in found)) return false;
+    if (found.house) return true;
+    const holding = graph.facts(qid)?.classes.some((c) => HOLDING_CLASSES[c]) ?? false;
+    return holding && graph.parents(qid).some((parent) => {
+      const above = resolution(parent);
+      return 'venue' in above && !above.house && above.venue !== found.venue;
+    });
+  };
+  return { resolve, resolution, keptBack, standsForHouses };
 }
 
 /**

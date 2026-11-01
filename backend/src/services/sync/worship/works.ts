@@ -54,7 +54,7 @@ export function ourWorks(
     if (!work) continue;
     if (isItselfAPlace(qid, work, trees, placeClasses)) { places++; continue; }
     const atAMuseum = placeArtwork(
-      works.statements.get(qid) ?? [], museums.resolve, works.graph.ancestors,
+      works.statements.get(qid) ?? [], museums.resolve, works.graph.ancestors, undefined, museums.standsForHouses,
     );
     if (atAMuseum.length) { museumsWon++; continue; }
     ours[qid] = venues;

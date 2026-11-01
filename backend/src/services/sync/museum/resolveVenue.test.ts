@@ -99,7 +99,9 @@ describe('resolveVenue — a museum network stands for the house at its coordina
   const houseOf = (q: string) => (q === SOUMAYA ? PLAZA_CARSO : undefined);
 
   it('resolves the network to its house when the house is a venue', () => {
-    expect(resolveVenue(SOUMAYA, factsOf, parentsOf, museumRule(MUSEUM_CLASSES), 3, houseOf)).toEqual({ venue: PLAZA_CARSO, hops: 1 });
+    // Marked as resolved through the house, which placement reads (#2207).
+    expect(resolveVenue(SOUMAYA, factsOf, parentsOf, museumRule(MUSEUM_CLASSES), 3, houseOf))
+      .toEqual({ venue: PLAZA_CARSO, hops: 1, house: true });
   });
 
   it('leaves a network with no house at its coordinate to the kill-list\'s reason', () => {

@@ -534,7 +534,9 @@ export async function readVenueSide(
   const arrived: Record<string, string[]> = {};
   for (const [qid, kept0] of kept) {
     const { statements: ownStatements, work } = placementOf(kept0, statements.get(qid) ?? [], held.get(qid));
-    const placedAt = placeArtwork(ownStatements, resolver.resolve, graph.ancestors, resolver.keptBack);
+    const placedAt = placeArtwork(
+      ownStatements, resolver.resolve, graph.ancestors, resolver.keptBack, resolver.standsForHouses,
+    );
     // A handed-over work goes only to a place the refusal named (ADR-0102):
     // another admitted venue its statements reach refused it by its own rule.
     // A venue folded into one the refusal named is that venue: the Galleria Palatina is Palazzo Pitti's.
@@ -569,7 +571,9 @@ export async function readVenueSide(
   }
   const poolShelved = await shelvedPoolWorks(
     run, collection, shelved, placed, unseen, venueSide.shelfPlace,
-    (statements) => placeArtwork(statements, resolver.resolve, graph.ancestors, resolver.keptBack),
+    (statements) => placeArtwork(
+      statements, resolver.resolve, graph.ancestors, resolver.keptBack, resolver.standsForHouses,
+    ),
   );
   for (const { qid, statements: byShelf, venues: placedAt } of poolShelved) {
     pool.set(qid, { ...pool.get(qid)!, placedBy: 'wikipedia' });

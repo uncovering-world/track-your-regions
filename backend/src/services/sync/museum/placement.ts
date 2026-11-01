@@ -63,12 +63,16 @@ function currentValues(statements: VenueStatement[], property: VenueStatement['p
  *   below the venue an owner or location names is still that institution; a direct-parents-only
  *   implementation stops one hop short and can hand the work to the wrong building.
  * @param keptBack A location that keeps its works where they are (`VenueRule.readingRooms`).
+ * @param standsForHouses A value that stands for a house rather than being a visit of its own
+ *   (`makeResolver`, #2207): a museum network resolved through the house at its coordinate, or a
+ *   collection spread over several houses that is forgiven as a museum (ADR-0170 decision 1).
  */
 export function placeArtwork(
   statements: VenueStatement[],
   resolve: (qid: string) => string | null,
   ancestorsOf: (qid: string) => ReadonlySet<string>,
   keptBack: (qid: string) => boolean = () => false,
+  standsForHouses: (qid: string) => boolean = () => false,
 ): string[] {
   const owners = currentValues(statements, 'P195', resolve);
   const places = currentValues(statements, 'P276', resolve);
@@ -88,12 +92,25 @@ export function placeArtwork(
   // the house at its coordinate (#1617, `resolveVenue`) would add that house
   // beside the branch the work names. Only above a value that resolves: a
   // gallery named beside its own collection, which resolves to nothing, is
-  // still where the work hangs.
-  const named = [...owners, ...places];
+  // still where the work hangs. And never above a value that stands for
+  // houses (#2207): a collection is `part of` the houses it is spread over, so
+  // the Pergamon Museum stands above the Antikensammlung without being its
+  // umbrella — the museum is where the work hangs, the collection is who owns it.
+  const named = [...owners, ...places].filter((v) => !standsForHouses(v));
   const notUmbrellaOfANamed = (v: string) =>
     !named.some((o) => o !== v && resolve(o) !== null && strictlyAbove(v, o, ancestorsOf));
-  const resolveAll = (qids: string[]) =>
-    [...new Set(qids.filter(notUmbrellaOfANamed).map(resolve).filter((v): v is string => !!v))];
+  // Where the location names a venue of its own, a value that only stands for
+  // a house is not a second place the work hangs (#2207): the Pergamon Altar,
+  // located in the Pergamon Museum and owned by the Antikensammlung whose
+  // coordinate is the Altes Museum's, hangs in the Pergamon Museum alone. With
+  // no such location the house is all there is — the Duenos Inscription, which
+  // names the collection and no museum, is at the Altes Museum; *The Lady of
+  // Shalott*, which names the Tate, at Tate Britain.
+  const locatedAtAVenue = places.some((p) => resolve(p) !== null && !standsForHouses(p));
+  const notAHouseBesideTheLocation = (v: string) => !(locatedAtAVenue && standsForHouses(v));
+  const resolveAll = (qids: string[]) => [...new Set(
+    qids.filter(notUmbrellaOfANamed).filter(notAHouseBesideTheLocation).map(resolve).filter((v): v is string => !!v),
+  )];
 
   // Written as statements, not a ternary chain: sonarjs/no-nested-conditional is an error
   // in this repo, so a nested ternary fails `npm run check`.
