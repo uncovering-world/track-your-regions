@@ -48,10 +48,16 @@ export const COUNTED_EDITION_VIEWS = 15_000_000;
 export const REDIRECT_COLUMNS = { 0: 'rd_from', 1: 'rd_namespace', 2: 'rd_title', 3: 'rd_interwiki' } as const;
 export const PAGE_COLUMNS = { 0: 'page_id', 1: 'page_namespace', 2: 'page_title', 3: 'page_is_redirect' } as const;
 
-/** The editions a door counts, by their sitelink site code, the most read first. */
+/**
+ * The editions a door counts, by their sitelink site code, the most read first:
+ * those over the line in the current year's months. A month of an earlier year
+ * kept beside it (`window_end` set, #2230) is no run's to read, and summed in
+ * it would carry an edition over the line on two years' views.
+ */
 export async function countedEditions(): Promise<string[]> {
   const result = await pool.query<{ site: string }>(
     `SELECT e.key AS site FROM readership_month_files f, jsonb_each_text(f.editions) e
+      WHERE f.window_end IS NULL
       GROUP BY e.key HAVING sum(e.value::bigint) >= $1 ORDER BY sum(e.value::bigint) DESC, e.key`,
     [COUNTED_EDITION_VIEWS],
   );

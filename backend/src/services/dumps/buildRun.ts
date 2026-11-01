@@ -25,12 +25,13 @@ function verifiedMessage(file: DumpFile, lines: number, checksumActual: string |
   return `${file.fileName} verified: ${lines.toLocaleString('en')} lines, ${how}`;
 }
 
-/** The file a build reads: the newest the host lists, or the local copy's own (`only`). */
-async function resolveFile(descriptor: DumpDescriptor, signal: AbortSignal, only?: string): Promise<DumpFile> {
+/** The file a build reads: the newest the host lists, the local copy's own (`only`), or the last month of a year asked for by its end (#2230). */
+async function resolveFile(descriptor: DumpDescriptor, signal: AbortSignal, only?: string, windowEnd?: string): Promise<DumpFile> {
   const file = await descriptor.resolve(
     url => fetchText(url, signal), url => sizeOf(url, signal), only ? name => name === only : undefined,
   );
   if (file) return file;
+  if (windowEnd) throw new Error(`The host does not list ${only}, the last month of the year ending ${windowEnd}`);
   throw new Error(only
     ? `The host no longer lists ${only} with its checksum, so the local copy cannot be verified`
     : 'The host lists no complete file of this dump in its recent directories');
@@ -157,7 +158,7 @@ async function readTheDump(
   claimed: ClaimedBuild, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
   clock: PassClock, onPhase: (message: string) => boolean, figures: Figures,
 ): Promise<{ result: { bytes: number; lines: number; checksumActual: string | null }; said: string[] }> {
-  const { kind, only } = claimed.request;
+  const { kind, only, windowEnd } = claimed.request;
   const keeper = kind === 'keep' ? keeperOf(descriptor.key) : null;
   // Counting the file as a verify would end green with nothing kept.
   if (kind === 'keep' && !keeper) throw new Error(noBuilder(descriptor.key));
@@ -167,7 +168,7 @@ async function readTheDump(
   if (claimed.request.scheduled) throw new Error('What is kept can no longer be brought forward, and a scheduled update downloads nothing: start a build by hand');
   onPhase(only ? `Finding ${only} on the host...` : 'Finding the newest complete file...');
   await beat(claimed.id, progress);
-  const file = await resolveFile(descriptor, signal, only);
+  const file = await resolveFile(descriptor, signal, only, windowEnd);
   await recordFile(claimed.id, file);
   progress.phase = 'reading';
   onPhase(`Reading ${file.fileName}${dumpsDir() ? ' into the local copy' : ' from the host'}...`);
@@ -176,6 +177,7 @@ async function readTheDump(
     ? await keeper.build(file, {
       ...options,
       buildId: claimed.id,
+      ...(windowEnd ? { windowEnd } : {}),
       // A new step: a pass starts its own clock, and a step that reads no file has no estimate.
       onPhase: message => { if (onPhase(message)) { progress.etaSeconds = null; clock.reset(); } },
       onMeasure: (read, total) => {

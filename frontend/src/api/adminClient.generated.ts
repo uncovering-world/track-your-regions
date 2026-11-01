@@ -653,6 +653,8 @@ export type DumpsDumpsItemKeeps = {
   schedule: DumpSchedule | null;
   /** Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet's daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump. */
   currentTo: boolean;
+  /** The earlier years kept beside the current one, each by the month it ends on (YYYY-MM), oldest first (readership, #2230): asked for with `windowEnd` on a keeping build, kept through the cleanup, read by no run. Empty for every other keeper. */
+  archives: string[];
 } | null;
 
 /**
@@ -904,6 +906,8 @@ export const DumpBuildBodyFrom = {
 
 export interface DumpBuildBody {
   from?: DumpBuildBodyFrom;
+  /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
+  windowEnd?: string;
 }
 
 /**

@@ -28,7 +28,7 @@ vi.mock('../catalog.js', async importOriginal => ({
   dumpNamed: () => ({
     resolve: async (_read: unknown, _size: unknown, only: (name: string) => boolean) => {
       for (let m = 1; m <= 12; m++) {
-        for (const year of [2025, 2026]) {
+        for (const year of [2024, 2025, 2026]) {
           const fileName = `pageviews-${year}${String(m).padStart(2, '0')}-user.bz2`;
           if (only(fileName)) return { key: 'pageviews-user', fileName, url: '', date: `${year}-${String(m).padStart(2, '0')}-01`, checksum: null, expectedBytes: 1000, compression: 'bzip2' };
         }
@@ -44,7 +44,7 @@ vi.mock('./readershipMonth.js', async importOriginal => ({
 
 import { pool } from '../../../db/index.js';
 import type { DumpFile } from '../catalog.js';
-import { buildReadership, latestReadership, readershipWindow } from './readershipBuild.js';
+import { buildReadership, latestReadership, readershipArchives, readershipWindow, refuseOverlappingYear } from './readershipBuild.js';
 
 const ITEM = 'Q99436001';
 const OTHER = 'Q99436002';
@@ -195,5 +195,80 @@ describe('readership kept by month (#1436)', () => {
     expect(kept.rows.map(r => r.month)).toEqual(['2025-10', '2025-11', '2025-12', '2026-01', '2026-02']);
     expect((await pool.query('SELECT 1 FROM readership_staging')).rowCount).toBe(0);
     expect(await latestReadership()).toMatchObject({ dumpDate: '2026-02-01', needs: 'rebuild' });
+  });
+
+  it('keeps an earlier year beside the current one, which the current year\'s cleanup leaves and the year in place ignores (#2230)', async () => {
+    for (const m of readershipWindow('2025-09-01')) {
+      reads.lines.set(`pageviews-${m.slice(0, 4)}${m.slice(5, 7)}-user.bz2`, month(100));
+    }
+    const archive = await buildReadership(file('202509'), { ...options(), windowEnd: '2025-09' });
+
+    expect(reads.files).toHaveLength(12);
+    expect(reads.files[0]).toBe('pageviews-202410-user.bz2');
+    expect(archive.summary).toMatch(/^kept 2024-10 .*; kept the year ending 2025-09 beside the current one$/);
+    expect(archive.summary).not.toMatch(/dropped/);
+    expect((await rows('2024-10-01')).find(r => r.site === 'dewiki')?.views).toBe(404);
+    // The only year kept is an earlier one: nothing is in place for the runs to read.
+    expect(await latestReadership()).toBeNull();
+    expect(await readershipArchives()).toEqual(['2025-09']);
+
+    reads.files = [];
+    const current = await buildReadership(file('202609'), options());
+    expect(reads.files).toHaveLength(12);
+    expect(current.summary).not.toMatch(/dropped/);
+    expect(await latestReadership()).toMatchObject({ dumpDate: '2026-09-01', needs: 'nothing' });
+
+    // The twelve move on: the current month that left is dropped, the earlier year's months are not.
+    reads.lines.set('pageviews-202610-user.bz2', month(100));
+    const moved = await buildReadership(file('202610'), options());
+    expect(moved.summary).toMatch(/dropped 1 month before 2025-11/);
+    expect(await rows('2025-10-01')).toEqual([]);
+    expect((await rows('2024-10-01')).find(r => r.site === 'dewiki')?.views).toBe(404);
+    const windows = await pool.query<{ month: string; window_end: string | null }>(
+      `SELECT to_char(month, 'YYYY-MM') AS month, to_char(window_end, 'YYYY-MM') AS window_end
+         FROM readership_month_files WHERE month IN ('2024-10-01', '2025-09-01', '2026-10-01') ORDER BY month`,
+    );
+    expect(windows.rows).toEqual([
+      { month: '2024-10', window_end: '2025-09' }, { month: '2025-09', window_end: '2025-09' }, { month: '2026-10', window_end: null },
+    ]);
+    expect(await readershipArchives()).toEqual(['2025-09']);
+
+    // A month under a window is not the current year's, however it is dated: the year is not whole without it.
+    await pool.query(`UPDATE readership_month_files SET window_end = '2026-10-01' WHERE month = '2026-01-01'`);
+    expect(await latestReadership()).toMatchObject({ dumpDate: '2026-10-01', needs: 'rebuild' });
+  });
+
+  it('refuses a year that would share a month with the year in place, the year to come, or an earlier year kept, or that cannot be judged (#2230)', async () => {
+    // Nothing in place: the year to come is the twelve ending on the newest month the host lists; with that unknown too, nothing can be judged.
+    await expect(refuseOverlappingYear('2026-03', '2026-10-01')).rejects.toThrow(
+      'The year ending 2026-03 shares 2025-11 to 2026-03 with the current year to come, the twelve ending on the newest month the host lists (2025-11 to 2026-10)',
+    );
+    await expect(refuseOverlappingYear('2025-10', '2026-10-01')).resolves.toBeUndefined();
+    await expect(refuseOverlappingYear('2026-03', null)).rejects.toThrow(/cannot be judged yet/);
+    await expect(refuseOverlappingYear('2024-09', null)).rejects.toThrow(/cannot be judged yet/);
+
+    await buildReadership(file('202609'), options());
+    await expect(refuseOverlappingYear('2026-03', null)).rejects.toThrow(
+      'The year ending 2026-03 shares 2025-10 to 2026-03 with the current year (2025-10 to 2026-09)',
+    );
+    await expect(refuseOverlappingYear('2025-09', '2026-10-01')).resolves.toBeUndefined();
+    // The host more than a year past the year in place: the year to come is judged against too.
+    await expect(refuseOverlappingYear('2027-10', '2027-12-01')).rejects.toThrow(
+      'The year ending 2027-10 shares 2027-01 to 2027-10 with the current year to come, the twelve ending on the newest month the host lists (2027-01 to 2027-12)',
+    );
+    // The host not known: a year ending after the one in place cannot be judged; one ending before it begins can.
+    await expect(refuseOverlappingYear('2027-03', null)).rejects.toThrow(/ends after the current year \(2025-10 to 2026-09\)/);
+    await expect(refuseOverlappingYear('2025-06', null)).resolves.toBeUndefined();
+
+    for (const m of readershipWindow('2025-09-01')) {
+      reads.lines.set(`pageviews-${m.slice(0, 4)}${m.slice(5, 7)}-user.bz2`, month(100));
+    }
+    await buildReadership(file('202509'), { ...options(), windowEnd: '2025-09' });
+    await expect(refuseOverlappingYear('2024-12', null)).rejects.toThrow(
+      'The year ending 2024-12 shares 2024-10 to 2024-12 with the year ending 2025-09 kept beside the current one (2024-10 to 2025-09)',
+    );
+    // Asking for the year kept already is a resume.
+    await expect(refuseOverlappingYear('2025-09', null)).resolves.toBeUndefined();
+    await expect(refuseOverlappingYear('2024-09', null)).resolves.toBeUndefined();
   });
 });

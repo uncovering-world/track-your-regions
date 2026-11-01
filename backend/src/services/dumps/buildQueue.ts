@@ -5,11 +5,14 @@
  * is read back from its row, whatever process runs it.
  */
 
-import { dumpNamed, type DumpDescriptor, type DumpFile, type DumpKey } from './catalog.js';
+import { dumpNamed, pageviewsFileName, type DumpDescriptor, type DumpFile, type DumpKey } from './catalog.js';
 import type { OperationProgressAnswer } from '../../api/responses/operation.js';
-import { activeBuildOf, closeOrphanedBuilds, enqueueBuild, requestCancel, type ActiveBuild, type BuildKind, type BuildProgressRecord } from './ledger.js';
-import { keeperOf } from './keepers.js';
+import {
+  activeBuildOf, closeOrphanedBuilds, enqueueBuild, requestCancel, type ActiveBuild, type BuildKind, type BuildProgressRecord, type BuildRequestRecord,
+} from './ledger.js';
+import { keeperOf, type Keeper } from './keepers.js';
 import { newestLocalCopy } from './localCopies.js';
+import { newestDump } from './newestOnHost.js';
 import { newestSample } from './samples.js';
 
 export interface DumpBuildProgress {
@@ -69,6 +72,28 @@ async function localFileOf(descriptor: DumpDescriptor, kind: BuildKind, from: Bu
   if (kind === 'sample' || (from === 'local' && kind !== 'rederive')) return localCopyName(descriptor);
   // A re-derive reads no file.
   return undefined;
+}
+
+/**
+ * The one file the worker finds for the build, by what was asked: the last
+ * month of a year asked for by its end (#2230), which only a keeping build of
+ * a dump dated by month, read from the host, may ask for, and whose twelve
+ * may share no month with a year kept (`Keeper.refuseYearEnd`); otherwise the
+ * local file the build's kind reads, or none.
+ */
+async function fileToFind(descriptor: DumpDescriptor, keeper: Keeper | null, kind: BuildKind, from: BuildFrom, windowEnd: string | undefined): Promise<string | undefined> {
+  if (windowEnd === undefined) return localFileOf(descriptor, kind, from);
+  if (kind !== 'keep') throw new Error(`Only a keeping build keeps a year ending on a named month; a ${kind} build reads the newest file`);
+  if (from !== 'newest') throw new Error('A year ending on a named month is read from the host, not from the local copy');
+  if (descriptor.datedBy !== 'month') throw new Error(`${descriptor.key} is dated by day, not by month: its build keeps no year ending on one`);
+  await keeper?.refuseYearEnd?.(windowEnd, newestDump(descriptor.key).date);
+  // The build reads the eleven months before it by name.
+  return pageviewsFileName(`${windowEnd}-01`);
+}
+
+/** What the worker reads when it takes the build: its kind, and the file and the year's end where they were asked for. */
+function requestOf(kind: BuildKind, only: string | undefined, windowEnd: string | undefined): BuildRequestRecord {
+  return { kind, ...(only ? { only } : {}), ...(windowEnd !== undefined ? { windowEnd } : {}) };
 }
 
 function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
@@ -146,17 +171,25 @@ export interface BuildRequest {
   kind?: DumpBuildProgress['kind'];
   /** The newest file the host lists (the default), or the local copy's own. */
   from?: BuildFrom;
+  /**
+   * The month the year ends on, `YYYY-MM`, for a keeping build of a dump dated
+   * by month that keeps a year beside the current one (readership, #2230);
+   * absent, the year ends on the newest month.
+   */
+  windowEnd?: string;
 }
 
 /**
  * Queue a build of `dump` for the worker. Refuses a keeping one, a sample or
  * a trial of a dump with no builder, a re-derive with nothing kept to derive
- * from, one from a local copy or a sample that is not there, and a second one
- * of a dump with a build queued or running in any process (#1463): a second
- * download of a 156 GB dump beside the first would fill the disk under both,
- * and a re-derive beside a build would swap tables in under it.
+ * from, one from a local copy or a sample that is not there, a year ending on
+ * a named month for anything but a keeping build of a dump dated by month from
+ * the host, and a second one of a dump with a build queued or running in any
+ * process (#1463): a second download of a 156 GB dump beside the first would
+ * fill the disk under both, and a re-derive beside a build would swap tables
+ * in under it.
  */
-export async function startBuild(key: DumpKey, { startedBy, kind = 'verify', from = 'newest' }: BuildRequest): Promise<DumpBuildProgress> {
+export async function startBuild(key: DumpKey, { startedBy, kind = 'verify', from = 'newest', windowEnd }: BuildRequest): Promise<DumpBuildProgress> {
   const descriptor = dumpNamed(key);
   if (!descriptor) throw new Error(`No dump named ${key}`);
   const keeper = keeperOf(key);
@@ -167,9 +200,9 @@ export async function startBuild(key: DumpKey, { startedBy, kind = 'verify', fro
     if (!keeper?.rederive) throw new Error(`Nothing built from ${key} can be derived again`);
     if (!await keeper.latest()) throw new Error(`Nothing is built from ${key} yet: build it from the dump first`);
   }
-  const only = await localFileOf(descriptor, kind, from);
+  const only = await fileToFind(descriptor, keeper, kind, from, windowEnd);
   await closeOrphanedBuilds();
-  await enqueueBuild(key, dumpsDir() ? 'local' : 'stream', { kind, ...(only ? { only } : {}) }, startedBy);
+  await enqueueBuild(key, dumpsDir() ? 'local' : 'stream', requestOf(kind, only, windowEnd), startedBy);
   const progress = await buildProgress(key);
   if (!progress) throw new Error(`The build of ${key} was queued and has already ended`);
   return progress;

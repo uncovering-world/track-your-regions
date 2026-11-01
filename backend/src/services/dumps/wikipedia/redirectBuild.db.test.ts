@@ -178,7 +178,7 @@ describe('a month folds an article\'s redirects under it (#1650)', () => {
          ($1, 'enwiki', 'Wanderer above the Sea of Fog', 388094, 200000, '{10000,20000,30000}')`,
       [yearBuild],
     );
-    await keepMonth({ buildId: yearBuild, month: MONTH, fileName: 'pageviews-200101-user.bz2', lines: 1, editions: new Map([['enwiki', 900000000]]) });
+    await keepMonth({ buildId: yearBuild, month: MONTH, fileName: 'pageviews-200101-user.bz2', lines: 1, editions: new Map([['enwiki', 900000000]]), windowEnd: null });
     expect(await rows(`SELECT site, views, mobile, daily FROM readership_months WHERE item = '${ITEM}'`)).toEqual([
       { site: 'enwiki', views: 391832, mobile: 201000, daily: [10100, 20200, 30300] },
     ]);

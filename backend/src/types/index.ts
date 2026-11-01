@@ -419,9 +419,15 @@ export const dumpKeyParamSchema = z.object({
   dump: z.enum(DUMP_KEYS),
 });
 
-/** Which file a dump build reads (#1456): the newest the host lists (the default), or the local copy's own. */
+/**
+ * Which file a dump build reads (#1456): the newest the host lists (the default),
+ * or the local copy's own. A keeping build of a dump dated by month may name the
+ * month its year ends on (`windowEnd`, YYYY-MM, #2230), to keep that year beside
+ * the current one.
+ */
 export const dumpBuildBodySchema = z.object({
   from: z.enum(['newest', 'local']).default('newest'),
+  windowEnd: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
 });
 
 /** How often the dump worker brings what is kept forward by itself (#1437): 1 to 30 days, or null for off. */

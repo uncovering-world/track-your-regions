@@ -49,6 +49,7 @@ async function keepsOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps
     fromCopy: keeper.fromCopy,
     schedule: keeper.schedule ? { ...await keeper.schedule.read(), defaultEveryDays: keeper.schedule.defaultEveryDays } : null,
     currentTo: Boolean(keeper.update),
+    archives: keeper.archives ? await keeper.archives() : [],
   };
 }
 
@@ -113,20 +114,22 @@ export async function listDumps(): Promise<Dumps> {
 }
 
 export async function startDumpBuild(
-  { params: { dump }, body: { from }, caller }: { params: DumpParams; body: DumpBuildBody; caller: Express.User },
+  { params: { dump }, body: { from, windowEnd }, caller }: { params: DumpParams; body: DumpBuildBody; caller: Express.User },
 ): Promise<DumpBuildStarted> {
   try {
-    return { started: true, progress: wireProgress(await startBuild(dump, { startedBy: caller.id, from }))! };
+    // A verify build takes no year's end; passed on, the queue refuses it rather than this ignoring it.
+    return { started: true, progress: wireProgress(await startBuild(dump, { startedBy: caller.id, from, windowEnd }))! };
   } catch (error) {
     throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
   }
 }
 
+/** Keep what is built from the dump's newest file or the local copy's, or, for readership, the year ending on the month named (#2230). */
 export async function startDumpKeep(
-  { params: { dump }, body: { from }, caller }: { params: DumpParams; body: DumpBuildBody; caller: Express.User },
+  { params: { dump }, body: { from, windowEnd }, caller }: { params: DumpParams; body: DumpBuildBody; caller: Express.User },
 ): Promise<DumpBuildStarted> {
   try {
-    return { started: true, progress: wireProgress(await startBuild(dump, { startedBy: caller.id, kind: 'keep', from }))! };
+    return { started: true, progress: wireProgress(await startBuild(dump, { startedBy: caller.id, kind: 'keep', from, windowEnd }))! };
   } catch (error) {
     throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
   }
