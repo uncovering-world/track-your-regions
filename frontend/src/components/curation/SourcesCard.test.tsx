@@ -143,8 +143,70 @@ describe('a place two sources describe differently', () => {
   it("links each column's record: the item a Wikidata kind reads and the site's page (#2158)", () => {
     renderCard();
 
-    expect(screen.getByRole('link', { name: 'Q207945' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q207945');
-    expect(screen.getByRole('link', { name: '216' })).toHaveAttribute('href', 'https://whc.unesco.org/en/list/216');
+    // Each row's columns name their records: the name row and the picture row.
+    const items = screen.getAllByRole('link', { name: 'Q207945' });
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q207945');
+    expect(screen.getAllByRole('link', { name: '216' })[0]).toHaveAttribute('href', 'https://whc.unesco.org/en/list/216');
+  });
+
+  it('folds two kinds that give one value into one column, naming the item once and choosing both (#2212)', async () => {
+    // The Golden Gate in Vladimir on dev, 2026-11-01: the World Heritage list's
+    // component calls it "The Golden Gate"; Monuments & memorials and Public art
+    // read one item, Q775020, and both say "Golden Gate".
+    const view = (over: object) => ({ value: null, image_url: null, image_credit: null, latitude: null, longitude: null, shown: false, ...over });
+    const golden = {
+      ...RILA, id: 11713, external_id: 'component:13771', name: 'Golden Gate',
+      source_views: [{
+        field: 'name',
+        views: [
+          view({ ...UNESCO, external_id: '633-002', component: true, membership_id: 501, value: 'The Golden Gate', shown: false }),
+          view({ ...WIKIDATA, kind_name: 'Monuments & memorials', source_name: 'Monuments & memorials', external_id: 'Q775020', membership_id: 502, value: 'Golden Gate', shown: true }),
+          view({ ...WIKIDATA, kind_name: 'Public art', source_name: 'Public art', external_id: 'Q775020', membership_id: 503, value: 'Golden Gate' }),
+        ],
+      }],
+      quiet_fields: [],
+    } as unknown as ReviewQueueItem;
+    mockedChoose.mockResolvedValue({ changed: [] });
+    renderCard(vi.fn(), golden);
+
+    // Two columns, not three: the two kinds that give "Golden Gate" head one, the item named once.
+    expect(screen.getAllByRole('button', { name: /Golden Gate/ })).toHaveLength(2);
+    expect(screen.getByText('MONUMENTS & MEMORIALS')).toBeInTheDocument();
+    expect(screen.getByText('PUBLIC ART')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Q775020' })).toHaveLength(1);
+    // The folded column holds the view readers see, so it starts chosen.
+    expect(screen.getByRole('button', { name: /^Golden Gate/ })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep what readers see' }));
+    await waitFor(() => expect(mockedChoose).toHaveBeenCalledWith(11713, [{ field: 'name', membershipId: 502 }]));
+  });
+
+  it('folds two records that link one article, and keeps the other apart (#2212)', () => {
+    // The Piazza del Duomo in Pisa: the World Heritage record and Squares &
+    // streets' item link the Piazza dei Miracoli, Places of worship's the cathedral.
+    const view = (over: object) => ({ value: null, image_url: null, image_credit: null, latitude: null, longitude: null, shown: false, ...over });
+    const miracoli = 'https://en.wikipedia.org/wiki/Piazza_dei_Miracoli';
+    const pisa = {
+      ...RILA, id: 613, external_id: '395', name: 'Piazza del Duomo, Pisa',
+      source_views: [{
+        field: 'wikipediaUrl',
+        views: [
+          view({ ...UNESCO, external_id: '395', source_page: 'https://whc.unesco.org/en/list/395', membership_id: 601, value: miracoli, shown: true }),
+          view({ ...WIKIDATA, external_id: 'Q1754247', membership_id: 602, value: 'https://en.wikipedia.org/wiki/Pisa_Cathedral' }),
+          view({ ...WIKIDATA, kind_name: 'Squares & streets', source_name: 'Squares & streets', external_id: 'Q750245', membership_id: 603, value: miracoli }),
+        ],
+      }],
+      quiet_fields: [],
+    } as unknown as ReviewQueueItem;
+    renderCard(vi.fn(), pisa);
+
+    expect(screen.getAllByRole('button', { name: /Piazza dei Miracoli|Pisa Cathedral/ })).toHaveLength(2);
+    // One link to read each article, not one per source.
+    expect(screen.getAllByRole('link', { name: /^read / })).toHaveLength(2);
+    // The Miracoli column names both records it comes from.
+    expect(screen.getByRole('link', { name: '395' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Q750245' })).toBeInTheDocument();
   });
 
   it("names the property a component belongs to and tells its record from the property's (#2158)", () => {
