@@ -18,7 +18,7 @@ const planet = (schedule: NonNullable<DumpsDumpsItem['keeps']>['schedule']): Dum
   progress: null, builds: [], localCopy: null, sample: null,
   keeps: {
     title: 'The OpenStreetMap layer', built: { dumpDate: '2026-10-22', swappedAt: '2026-10-22T14:00:00Z' }, needs: 'nothing',
-    newestDumpDate: '2026-10-19', newestChecked: 'answered', rederives: false, samples: false, fromCopy: true, schedule, currentTo: true,
+    newestDumpDate: '2026-10-19', newestChecked: 'answered', rederives: false, samples: false, fromCopy: true, schedule, currentTo: true, archives: [],
   },
 });
 

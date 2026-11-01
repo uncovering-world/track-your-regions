@@ -25,8 +25,13 @@ export async function startDumpBuild(dump: Parameters<typeof postAdminDumpsByDum
   return postAdminDumpsByDumpBuild(dump, { from });
 }
 
-export async function startDumpKeep(dump: Parameters<typeof postAdminDumpsByDumpKeep>[0], from: DumpBuildFrom = 'newest'): Promise<DumpBuildStarted> {
-  return postAdminDumpsByDumpKeep(dump, { from });
+/**
+ * Keep what is built from the dump's newest file or the local copy's, or, with
+ * `windowEnd` (`YYYY-MM`), the year ending on that month beside the current one
+ * (readership, #2230).
+ */
+export async function startDumpKeep(dump: Parameters<typeof postAdminDumpsByDumpKeep>[0], from: DumpBuildFrom = 'newest', windowEnd?: string): Promise<DumpBuildStarted> {
+  return postAdminDumpsByDumpKeep(dump, { from, ...(windowEnd ? { windowEnd } : {}) });
 }
 
 export async function startDumpRederive(dump: Parameters<typeof postAdminDumpsByDumpRederive>[0]): Promise<DumpBuildStarted> {
