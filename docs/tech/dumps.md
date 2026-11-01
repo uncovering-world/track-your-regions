@@ -555,6 +555,47 @@ only local copy left is a month not kept yet, which *Build newest* resumes
 anyway, and a year ending there would be the wrong year. There is no sample or
 trial either, since a month is kept only from its whole file (`Keeper.samples`).
 
+**An earlier year beside the current one** (#2230). The admission review
+(#2177) has to show that a bar derived on one year admits the same catalogue
+on the next, which takes the same derivation run on two years of readership. A
+keeping build may name the month its year ends on (`windowEnd`, `YYYY-MM`, in
+the `keep` route's body, `dumpBuildBodySchema`; on the panel, a month field
+beside *Build the year ending …* on the readership row, `DumpArchiveLine`).
+The queue (`startBuild`, `buildQueue.ts`) takes it only for a keeping build of
+a dump dated by month read from the host, and hands the worker that month's
+file as the one to find (`pageviewsFileName`, `catalog.ts`; a month asked for
+by name is looked for in its own directory, whatever year the host still lists,
+`pageviewsNamed`); the build keeps the twelve months ending there, each
+recorded with that window (`readership_month_files.window_end`), and its
+summary says *kept the year ending 2025-09 beside the current one*. Such a
+month stays through every later build: `dropMonthsBefore` drops only months
+with no window. No run reads it: the year in place is the newest month kept
+with no window, and only such months make it whole (`latestReadership`), so an
+earlier year built before any current one is not taken for it, and the counted
+editions (`countedEditions`, `wikipedia/redirectBuild.ts`) are summed over the
+current year's months alone, since two years' views would carry an edition
+over the line; `readershipYear()` and every read over it (`readWorks`,
+`readAtLeast`) are unchanged, and `workReadership.db.test.ts` holds them to it.
+A month holds one window, so two years never share one: the queue refuses a
+year whose twelve overlap the year in place, the year to come — the twelve
+ending on the newest month the host lists, which the next current build reads
+and which may stand a year or more past the one in place — or an earlier year
+kept already, naming the months they share, and refuses one it cannot judge
+while the host's newest month is not known yet (right after a start, until
+the host has been asked once): any year when none is in place, and a year
+ending after the year in place, which the next current build may reach — a
+year ending before the year in place begins needs no word from the host
+(`refuseOverlappingYear`, `yearCollision`); asking again for a year kept
+already, whole or cut short, resumes it. Every later current build ends on a
+newer host month still, so a year clear of both, or clear of the year in
+place and ending before it, stays clear, and the cleanup never meets a month
+of two years.
+The row lists the earlier years kept, each by the month it ends on
+(`keeps.archives` in the dumps list). The first use is 2024-10 to 2025-09
+beside 2025-10 to 2026-09: about 19 GB more, read in five to eight hours on the
+development machine. How many earlier years to keep is a product call not
+taken yet.
+
 **A month, line by line** (`monthSummer.ts`, `pageviewLine.ts`). A line is an
 edition, a title, a page id, an access method, the month's total and the daily
 counts (a letter per day from `A`, then the count). Only Wikipedia editions are
@@ -597,7 +638,7 @@ is the day-by-day sum of the series its rows carry, its redirects' included
 burst flag reads has to cover the views it is read against.
 
 A door reads readership by item: `readership_months` for the item's sitelinks,
-summed over the twelve months `readership_month_files` lists, in the editions
+summed over the current year's twelve months `readership_month_files` lists, in the editions
 ADR-0055 counts — those whose twelve `editions` totals add up to more than 15
 million views — which the door picks from those totals; summing every edition
 would count the small ones the ADR leaves out.
