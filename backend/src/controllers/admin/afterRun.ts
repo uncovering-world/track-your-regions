@@ -19,6 +19,9 @@
  * 3. The places whose pairing inputs the run changed — created, renamed,
  *    moved, admitted, refused — are paired again with near places of similar
  *    names (#1950, `drainPairing`), with every other place marked since.
+ * 4. What a reader is shown in a crowded city is measured again (ADR-0172,
+ *    `refreshCrowding`): every place's fame from the run's signals, then the
+ *    places ten better-known neighbours of their type crowd out.
  *
  * Each step is guarded on its own (#2074): one that fails is logged, named in
  * the closing line, and the steps after it still run. The search needs the
@@ -42,6 +45,7 @@ import { pool } from '../../db/index.js';
 import { Operation } from '../../services/operationProgress.js';
 import { FINDER_STEPS, heldSubset } from '../../services/sync/componentItemFinder.js';
 import { runComponentItemSearch, type AcceptExact } from '../../services/sync/componentItemJob.js';
+import { crowdingSentence, refreshCrowding } from '../../services/sync/crowding.js';
 import { drainPairing, pairingSentence } from '../../services/sync/mergeProposalFinder.js';
 import { isTerminalSyncStatus, runningSyncs, type SyncProgress } from '../../services/sync/types.js';
 import { joinPlacesClaimingOneItem } from '../experience/equalItemMerges.js';
@@ -127,6 +131,20 @@ async function pairNearPlaces(shown: SyncProgress, operation: Operation, index: 
 }
 
 /**
+ * The display of crowded cities, after the pairing: a run's admissions and
+ * refusals change which places a city's ten are (ADR-0172).
+ */
+async function recountCrowding(shown: SyncProgress, operation: Operation, index: number): Promise<string> {
+  operation.step(index, 'Measuring which places crowded cities show', 1);
+  // What was shown stays shown until the next run measures it again.
+  if (shown.cancel) return 'the display of crowded cities waits for the next run';
+  shown.statusMessage = 'Measuring which places crowded cities show...';
+  const sentence = crowdingSentence(await refreshCrowding());
+  operation.advance();
+  return sentence;
+}
+
+/**
  * One step, answering its clause; a step that fails answers a clause naming
  * it, so that the steps after it still run.
  */
@@ -164,7 +182,7 @@ export async function afterRun(startedId: number, pass: readonly number[], accep
   // other run's (#1800).
   shown.cancel = false;
   const searches = startedId === UNESCO_SOURCE_ID;
-  const steps = (searches ? FINDER_STEPS : 0) + 1;
+  const steps = (searches ? FINDER_STEPS : 0) + 2;
   const operation = new Operation(LOG_PREFIX, steps);
   for (const run of runs) run.progress.continues = true;
   shown.operation = operation;
@@ -179,7 +197,8 @@ export async function afterRun(startedId: number, pass: readonly number[], accep
     if (searches) {
       await run('the search for the new components\' items', () => searchNewComponents(shown, operation, shown.logId!, accept));
     }
-    await run('the pairing of near places', () => pairNearPlaces(shown, operation, steps));
+    await run('the pairing of near places', () => pairNearPlaces(shown, operation, steps - 1));
+    await run('the display of crowded cities', () => recountCrowding(shown, operation, steps));
     operation.finish(said.join('; '));
   } finally {
     // The run's own verdict stands; the steps only add to its line.
