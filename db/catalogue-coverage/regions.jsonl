@@ -21,3 +21,4 @@
 {"slug": "moscow", "name": "Moscow", "country": "Russia", "lat": 55.756, "lon": 37.617, "radius_km": 75, "surveyed": "2026-10-16"}
 {"slug": "bangkok", "name": "Bangkok", "country": "Thailand", "lat": 13.75, "lon": 100.5, "radius_km": 90, "surveyed": "2026-11-01", "role": "control"}
 {"slug": "lisbon", "name": "Lisbon", "country": "Portugal", "lat": 38.714, "lon": -9.139, "radius_km": 40, "surveyed": "2026-11-01", "role": "control"}
+{"slug": "cape-town", "name": "Cape Town", "country": "South Africa", "lat": -33.925, "lon": 18.424, "radius_km": 75, "surveyed": "2026-11-01", "role": "control"}
