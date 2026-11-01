@@ -239,14 +239,19 @@ describe('frameGeoJson', () => {
     expect(refCalls.flyTo).toHaveLength(1);
   });
 
-  it('lets maxZoom lower the size-derived cap, never raise it', () => {
+  it('lets maxZoom set the ceiling, below the size-derived one or above it', () => {
+    // A region keeps the size-derived ceiling of 12 unless its surface names a
+    // lower one; a frame of two pins 450 m apart names a higher one, since at
+    // 12 they are twelve pixels apart.
     const { map, calls } = mockMap();
     const small = ring([[10, 50], [10.5, 50], [10.5, 50.5], [10, 50.5]]);
+    frameGeoJson(map, small);
     frameGeoJson(map, small, { maxZoom: 10 });
-    frameGeoJson(map, small, { maxZoom: 20 });
+    frameGeoJson(map, small, { maxZoom: 17 });
     const asks = calls.cameraForBounds as { opts: { maxZoom: number } }[];
-    expect(asks[0].opts.maxZoom).toBe(10);
-    expect(asks[1].opts.maxZoom).toBe(12);
+    expect(asks[0].opts.maxZoom).toBe(12);
+    expect(asks[1].opts.maxZoom).toBe(10);
+    expect(asks[2].opts.maxZoom).toBe(17);
   });
 });
 
