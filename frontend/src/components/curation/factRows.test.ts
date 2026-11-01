@@ -135,12 +135,11 @@ describe('rowsFor', () => {
     expect(danger.sentence).toContain('Readers already see this badge');
   });
 
-  it('carries what a conflict card needs: whether it lands now, and who claimed the field', () => {
+  it('carries who claimed the field a conflict card asks about', () => {
     const [row] = rowsFor([{
       field: 'description', old: 'Six housing estates', new: 'The serial property comprises seven',
-      acceptable: true, claim: { by: 'admin', at: '2026-08-04T12:24:20Z' }, decidedBefore: [],
+      claim: { by: 'admin', at: '2026-08-04T12:24:20Z' }, decidedBefore: [],
     }], NO_CONTEXT);
-    expect(row.acceptable).toBe(true);
     expect(row.provenance?.claim?.by).toBe('admin');
   });
 

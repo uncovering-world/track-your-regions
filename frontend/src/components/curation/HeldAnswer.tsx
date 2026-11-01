@@ -33,6 +33,7 @@
 import { Button, Stack } from '@mui/material';
 import type { HeldSelectionPart } from '../../api/curation';
 import type { FactSubject } from './factRows';
+import { CHANGE_ANSWERS } from './selection/answerWords';
 
 /** What a curator answered: rows of the object's own, rows of its parts, or both. */
 export interface HeldSelection {
@@ -55,11 +56,26 @@ export function heldSelectionFor(subject: FactSubject, field: string): HeldSelec
   return { parts: [{ ...subject.part, fields: [field] }] };
 }
 
+/** Every held field of the card, the object's and its parts', as one refusal. */
+export function wholeHeldSelection(
+  proposed: readonly { field: string }[],
+  parts: readonly { kind: HeldSelectionPart['kind']; item: { ref: string | null; name: string | null }; fields: readonly { field: string }[] }[],
+): HeldSelection {
+  return {
+    ...(proposed.length > 0 ? { fields: proposed.map(f => f.field) } : {}),
+    ...(parts.length > 0 ? {
+      parts: parts.map(part => ({
+        kind: part.kind, ref: part.item.ref, name: part.item.name, fields: part.fields.map(f => f.field),
+      })),
+    } : {}),
+  };
+}
+
 /**
  * The answer column's two buttons for one fact.
  *
- * "publish this" writes that value and leaves the rest of the card open; "not
- * this" writes nothing at all — the stored value has already won every run
+ * "Use proposed" writes that value and leaves the rest of the card open; "Keep
+ * current" writes nothing at all — the stored value has already won every run
  * since the gate first held this one — and settles the question for that value,
  * so a source that comes back with something different is heard again.
  *
@@ -80,13 +96,13 @@ export function HeldAnswer({ subject, field, busy, onPublish, onRefuse }: {
   return (
     <Stack spacing={0.5}>
       <Button size="small" variant="outlined" disabled={busy} onClick={() => onPublish(selection)}>
-        publish this
+        {CHANGE_ANSWERS.use}
       </Button>
-      {/* "not this", not "keep mine": nobody wrote the value readers are looking
-          at — it is what the source said last time — so a word implying the
+      {/* "current", not "mine": nobody wrote the value readers are looking at —
+          it is what the source said last time — so a word implying the
           curator's authorship would be false on every one of these cards. */}
       <Button size="small" variant="outlined" color="inherit" disabled={busy} onClick={() => onRefuse(selection)}>
-        not this
+        {CHANGE_ANSWERS.keep}
       </Button>
     </Stack>
   );

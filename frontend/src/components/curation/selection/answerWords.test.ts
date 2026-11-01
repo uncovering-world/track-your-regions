@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  changeAnswersLine,
   ANSWER_WORDS, answerVerb, countByKind, countLine, gatedKindsAlsoReached, kindsOf, lostOffered, lostOfferedFor,
   matchingKindCounts,
 } from './answerWords';
@@ -98,5 +99,21 @@ describe('the words a batch answer to a refusal carries (#906)', () => {
 
   it('says a put-back lasts until the next run, since a batch pins nothing', () => {
     expect(ANSWER_WORDS.refused.reject).toBe('The rule was wrong — put it back until the next run');
+  });
+});
+
+describe('changeAnswersLine', () => {
+  it('says a point moves on the map, or stays where it is (Aqua Virgo, #2222)', () => {
+    expect(changeAnswersLine(['location'])).toBe(
+      'Use proposed moves the place on the map, now. Keep current leaves the point where it is and settles the '
+      + 'question — the source has to propose something different to ask again.',
+    );
+  });
+
+  it('names each kind of field once, and never says text on a card without one', () => {
+    const line = changeAnswersLine(['name', 'description', 'subtitle']);
+    expect(line).toContain('Use proposed renames the place and changes the text readers see, now.');
+    expect(line).toContain('Keep current changes nothing readers see');
+    expect(changeAnswersLine(['imageUrl', 'metadata.imageCredit'])).not.toContain('text');
   });
 });

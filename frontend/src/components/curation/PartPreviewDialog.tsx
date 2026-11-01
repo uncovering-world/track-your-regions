@@ -16,8 +16,8 @@
  * address of its own (#575), this is where it can be seen.
  *
  * A part opened here is also a part a curator is looking at, so the dialog offers
- * the correction — the third answer to a held value, where "take the source's"
- * and "keep what is here" are both wrong. For a place and for a work (#583,
+ * the correction — the third answer to a held value, where "Use proposed" and
+ * "Keep current" are both wrong. For a place and for a work (#583,
  * #731), and in both cases only where the stored row was found: a record
  * naming a row the source has since withdrawn opens nothing and corrects
  * nothing, and is not opened at all: everything a card would draw — the picture,
@@ -68,7 +68,7 @@ export function PartPreviewDialog({ part, onClose, object, onDone }: {
   }
 
   // A work whose stored row was found is a work this curator may correct, and the
-  // card's two answers — "take the source's" and "keep what is here" — are exactly
+  // card's two answers — "Use proposed" and "Keep current" — are exactly
   // the two that cannot say *this instead* (#731). So the same dialog every other
   // surface opens, rather than a look with the answer missing from it.
   if (part?.kind === 'treasures' && part.treasureId != null && part.item.ref) {

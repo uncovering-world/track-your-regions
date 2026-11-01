@@ -28,6 +28,7 @@ import { ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
 import { rowlessProposalWords, rowsFor } from './factRows';
 import { fieldLabel } from './fieldMeaning';
+import { CHANGE_ANSWERS, CHANGE_COLUMNS, changeAnswersLine } from './selection/answerWords';
 import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 
 
@@ -138,19 +139,11 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
   const overWhose = claimants.length > 0
     ? `over an edit claimed by ${claimants.join(', ')}`
     : 'over a curator’s edit';
-  // A moved coordinate or a metadata key is not written to the object here, but
-  // accepting still releases the claim, and the next run applies it. Editing
-  // would not: every other path that touches `curated_fields` only ever adds to
-  // it. The coordinate is half an exception — the object's position waits, while
-  // the pin that carried the correction moves back to the source's coordinate on
-  // the spot, which is what the note under that diff says.
-  const deferred = proposed.some(f => !f.acceptable);
   const accept = useMutation({
     mutationFn: (fields: string[]) => acceptSourceValue(item.id, fields, item.sync_log_id ?? 0),
-    // Report what landed. The button promises a split — some now, some at the
-    // next sync — and the response names the run the values came from, which
-    // is the whole mitigation for a later run proposing something else. The
-    // refetch takes the card away, so this is the only place either can be said.
+    // Report what landed, and the run the values came from, which is the whole
+    // mitigation for a later run proposing something else. The refetch takes
+    // the card away, so this is the only place either can be said.
     onSettled: (data, error) => onDone(
       error ? messageFor(item, error) : outcomeFor(item, data), item.id),
   });
@@ -193,10 +186,10 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
         <Box sx={{ mb: 2 }}>
           <FactTable
             groups={[{ subject: { kind: 'object', label: item.name }, rows }]}
-            // "as curated", not "yours": the value that stands was claimed by a curator,
-            // and the trail under it says which one — the queue selects the claimant
-            // precisely so this card stops calling another curator's work "mine".
-            labels={{ before: 'as curated', after: 'the source proposes' }}
+            // "Current", not "yours": the value that stands was claimed by a curator,
+            // and the trail under it says which one. The same two headings as the
+            // held card's, and each answer names its column (#2222).
+            labels={CHANGE_COLUMNS}
             // One field at a time, because a run improves and damages in the same
             // breath: one button for a better description arriving with a mangled
             // name takes both or neither. The endpoint accepts a list, so the screen
@@ -207,18 +200,17 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
             // one answer, which is that same defect somewhere else: a stored entry
             // filed before ADR-0039 whose keys share one field, and a language
             // map, whose names share one cell for the same reason (#728). Every
-            // field is refusable, including the ones whose acceptance says "at next
-            // sync": refusing writes nothing, so there is no field this answer cannot
-            // reach.
-            answer={(field, fieldRows) => (
+            // field is refusable: refusing writes nothing, so there is no field this
+            // answer cannot reach.
+            answer={(field) => (
               <Stack spacing={0.5}>
-                {/* "this", not "mine": the standing value may be another curator's,
+                {/* "current", not "mine": the standing value may be another curator's,
                     and the trail under it says whose. */}
                 <Button size="small" variant="outlined" color="inherit" disabled={busy} onClick={() => decline.mutate([field])}>
-                  keep this
+                  {CHANGE_ANSWERS.keep}
                 </Button>
                 <Button size="small" variant="outlined" disabled={busy} onClick={() => accept.mutate([field])}>
-                  {fieldRows[0].acceptable === false ? 'take the source’s (at next sync)' : 'take the source’s'}
+                  {CHANGE_ANSWERS.use}
                 </Button>
               </Stack>
             )}
@@ -237,7 +229,7 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
             disabled={busy || proposed.length === 0}
             onClick={() => decline.mutate(proposed.map(f => f.field))}
           >
-            Keep all as curated
+            {CHANGE_ANSWERS.keepAll}
           </Button>
           <Button
             variant="outlined"
@@ -245,22 +237,18 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
             disabled={busy || proposed.length === 0}
             onClick={() => accept.mutate(proposed.map(f => f.field))}
           >
-            {deferred ? 'Take all of the source’s (some at next sync)' : 'Take all of the source’s'}
+            {CHANGE_ANSWERS.useAll}
           </Button>
           {/* What the two buttons differ in, and the difference is not symmetric.
-              Accepting hands the field back and writes the source's value — now for
-              the five fields this endpoint can write, at the next sync for the rest,
-              which is what the button labels distinguish. The coordinate sits across
-              that line: the object's own position waits for the run, its pin does not. Refusing writes nothing at
-              all, so readers stay on the curator's version; what it changes is the
-              asking, and only for the text being refused — the sentence that stops a
-              curator wondering whether "keep this" hides a source that later changes
-              its mind. Doing nothing is still possible and still keeps what is
-              stored; it is no longer the only way to say so. */}
+              Using the proposed value hands the field back and writes the source's
+              value at once, the place's point and regions with a coordinate. Keeping
+              the current one writes nothing at all, so readers stay on the curator's
+              version; what it changes is the asking, and only for the value being
+              refused — the sentence that stops a curator wondering whether "Keep
+              current" hides a source that later changes its mind. Said in the
+              words of this card's fields: a point moves, a text changes (#2222). */}
           <Typography variant="caption" color="text.secondary">
-            Accepting puts the source’s text on the site. Keeping what stands changes nothing
-            readers see and settles the question — the source has to propose something
-            different to ask again.
+            {changeAnswersLine(proposed.map(f => f.field))}
           </Typography>
         </Stack>
       </CardContent>
@@ -298,8 +286,9 @@ export function outcomeFor(
   // said "picture", and an answer that says `imageUrl` reads as a
   // different subject — our word for the column, in the one line confirming their click.
   if (data.applied.length > 0) parts.push(`${data.applied.map(fieldLabel).join(', ')} applied now`);
+  // A kind's own fact, the one entry an answer releases without a write.
   if (data.released.length > 0) {
-    parts.push(`${data.released.map(fieldLabel).join(', ')} at the next sync`);
+    parts.push(`${data.released.map(fieldLabel).join(', ')} at the kind’s next run`);
   }
   // Accepting the coordinate does something to a row the card never mentioned:
   // it hands back the pin a curator moved, and puts it on the source's

@@ -3518,8 +3518,6 @@ export interface ProposedField {
   held?: boolean;
   /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture or arriving for it where the place holds none (ADR-0151), an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, a text rewritten in its typesetting alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place (ADR-0140). */
   passedTheGate?: ProposedFieldPassedTheGate;
-  /** False where accepting releases the claim and the next run writes it. On a `conflict` field only: a `held` field carries `held` instead, and publishing is what applies it. */
-  acceptable?: boolean;
   /** Who claimed the field. Absent where the claim predates the log, or where the gate holds the field. */
   claim?: FieldClaim | null;
   /** Every earlier answer on this field, newest first, refusals as well as acceptances. */
@@ -5807,7 +5805,7 @@ export interface AcceptSourceResult {
   experienceId: number;
   /** The fields now holding the source's value. */
   applied: string[];
-  /** The claims given up to take it. */
+  /** A kind's own facts whose claim was given up without a write: the kind's next run brings the source's value. */
   released: string[];
   /**
      * The points whose own claim on the coordinate went with the object's, because the object's coordinate and its one visible point's are the same fact.

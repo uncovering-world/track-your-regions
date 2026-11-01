@@ -207,16 +207,6 @@ function ValueCells({ row }: { row: FactRow }) {
             Too long to compare word by word — both values are shown in full.
           </Typography>
         )}
-        {row.acceptable === false && (
-          <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5 }}>
-            {/* Said before the click rather than in the line that confirms it. The
-                coordinate is only half deferred: the pin moves now, the object's own
-                position follows at the next sync. */}
-            {row.field === 'location'
-              ? 'Taking it moves the pin now; the object’s own position follows at the next sync.'
-              : 'Taking it lands at the next sync.'}
-          </Typography>
-        )}
       </TableCell>
     </>
   );
