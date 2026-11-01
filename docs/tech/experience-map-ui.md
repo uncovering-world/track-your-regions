@@ -48,6 +48,11 @@ This document describes how experience markers work in both map surfaces:
 - Carries the **arrival**: the card the page was opened at, until the list has focused it. A
   reader who followed a link with a keyboard or a screen reader is put in what the link named
   rather than at the top of the page; once, so a card opened later by a click moves no focus
+- Holds the region's **tail** (`tail`, `hooks/useRegionTail.ts`): what a crowded city leaves out
+  of the list (ADR-0172), which kinds' tails are open and their places, and the open card where
+  only a tail holds it — see § A crowded city's tail. `getExperienceById` finds a place in the list
+  first and in a tail read second, so the map can fly to and highlight a tail's place without it
+  ever joining the list or a count
 
 This lets list and map stay synchronized without prop drilling. Hover is **not** here — it moved
 out, for the reason below.
@@ -537,6 +542,51 @@ Two further things are about promising the space before the content exists:
 - **Nothing animates the card in**, and two attempts are the reason. The height cannot: it is measured, so every intermediate value repositions every row below (five heights in 290 ms, stepping at about 17 fps). Nor can the content: a `clip-path` reveal of 260 ms looked graceful slowed down eight times and read as the panel blinking at speed — inspected frame by frame at 60 fps, the rows below drop away, a large pale area stands empty for four frames, and the picture then slides into it. The eye reads "a large area changed" long before it reads "content arriving". So a card is simply there, complete, in the frame it appears; verified by sampling every frame after a click — the card exists in 60 of them and is fully painted in all 60.
 
 A card that opens because everything settled has nothing left to append: the queries whose answers used to arrive late — a description that can be one line or ten, an artworks list that can hold twenty items — are among the things it waits for. There is no honest height to reserve for content of unknown length, so the card is not shown at the wrong length instead. The exception is the cap: a card opened because `READY_CAP_MS` ran out is opened incomplete, and whatever was still in flight appends when it lands, which is the old behaviour kept deliberately for the case where a request hangs.
+
+## A crowded city's tail
+
+A crowded city shows the ten best-known places of a kind and type within 10 km, and the region's
+list leaves the rest out (ADR-0172, `docs/tech/experiences.md` § What a crowded city shows). The
+list answers how many it left out per kind and type (`crowdedOut`), and Map mode offers them as a
+second-order list of their own, never mixed into a group's rows (#2201).
+
+- **The row that ends a group.** `tailSections()` (`ExperienceList/tailRows.ts`) gives each open
+  group whose kind leaves places out a folded row after its own places, worded by `tailLabel()`
+  (`shared/tailNotice.ts`): "51 shadowed churches" for one type, "40 shadowed places of worship:
+  37 churches, 2 chapels, 1 temple" for several, the type's word from its
+  kind's vocabulary (`typeLabelFor`). A group narrowed to a type by its chips counts only that type.
+  The row is a `tail` `FlatRow`, drawn by `TailRow` as an indented caption that says what
+  "shadowed" means on hover (`TAIL_ROW_REASON`).
+- **Opening it.** A click opens the kind's tail under the row, in the same windowed list: each
+  place as a `tail-place` `FlatRow`, the best known first across the kind's types, drawn with the list's own `ExperienceListItem` inside the tail's indent
+  (`TailPlace`). A second click folds it. A kind's tail is read only when it is opened
+  (`GET /by-region/:regionId/tail?kindId=`, `fetchRegionTail`), cached under the list's own query
+  prefix (`queryKeys.experiences.tail`), so a write that refetches the list refetches it. Which
+  tails are open is held per region, as a kind's type is.
+- **Rows keep their identity.** `rowKey()` keys a tail's row and its places apart from the group's,
+  so measured heights stay with their rows as a tail opens above them. `rowIndexByExperienceId()`
+  aims at a tail's place only where the list has no row of it: a place crowded out of one kind and
+  shown in another is aimed at, and its card opened, in its shown row, and its tail row is an echo.
+- **A card the list lacks.** Search finds a crowded-out place and lands in its region with its card
+  in the address. Before the provider drops a card the list does not hold, `useRegionTail` asks the
+  open tails, then every kind's tail at once (`kindId` absent) — and only in a region whose list
+  left something out. A place found there is `tail.card`: the list counts it in its kind's group
+  for the group to open (`withTailCard` into `expansionForSelection`), the kind's tail is opened
+  for it once per card, so a reader who folds it afterwards is not overruled, and its card opens
+  in the tail. A crowded kind with no group to end — none of its places shown in the region, or the
+  selected place's kind — gets an empty group (`withTailGroups`).
+- **Its points.** The region's batch of points answers for the shown places only, so a tail's card
+  reads its own (`useTailLocations`): the place's own read with `in_region` asked of the region,
+  once its card opens, never one per row — every such read is under the limiter the list's own
+  reads share. A card opened once keeps its points for as long as the cache does; a tail row never
+  opened has none in hand, and its visited box stays disabled as every row's is until its points
+  settle. A visit marked from a tail's card is recorded and counts toward nothing (ADR-0172
+  decision 5).
+- **The map.** While a tail is open and its group is, `ExperienceMarkers` draws its places
+  (`tailPins`, `hooks/useRegionTail.ts`) beside the list's, each as one pin at the point its row
+  carries, since the batch holds none of its points; a place the list already holds is not drawn
+  twice. The selected tail place is highlighted at the same point and flown to, through
+  `getExperienceById`. A multi-point place in a tail is drawn as that one pin.
 
 ## Discover's card list is windowed too
 
