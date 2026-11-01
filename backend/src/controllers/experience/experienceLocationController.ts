@@ -19,7 +19,7 @@ import {
 import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
   hideLostSql,
-  experienceOfferedToReaderSql,
+  experienceShownToReaderSql,
   readableByIdSql,
   offeredLocationSql,
   publishedContentSql,
@@ -102,8 +102,9 @@ export async function getRegionExperienceLocations(
   // The unread half has no toggle: the map feed is a set, like the list it
   // follows, and the curator relaxation (ADR-0025) stops at the three by-id
   // reads so the two never disagree on what is being shown. One question of
-  // the memberships, as the list asks it (`experienceOfferedToReaderSql`, #1275).
-  const lifecycleFilter = `AND ${experienceOfferedToReaderSql()} `
+  // the memberships, as the list asks it (`experienceShownToReaderSql`, #1275),
+  // a crowded city's tail left out as the list leaves it (ADR-0172).
+  const lifecycleFilter = `AND ${experienceShownToReaderSql()} `
     + (includeLost(q) ? '' : `AND ${hideLostSql()}`);
 
   let query: string;

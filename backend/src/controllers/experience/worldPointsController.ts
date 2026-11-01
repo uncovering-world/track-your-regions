@@ -53,7 +53,7 @@ import type { WorldPointsResponse } from '../../api/responses/worldPoints.js';
 import type { worldPointsQuerySchema } from '../../types/index.js';
 import type { PointsDetail } from './worldPointsVocabulary.js';
 import { pool } from '../../db/index.js';
-import { catalogueKindJoinSql, kindMembershipJoinSql, placeKindsSql, placeOfferedSql } from '../../db/membership.js';
+import { catalogueKindJoinSql, kindMembershipJoinSql, placeKindsSql, placeShownSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { overPlacePoints, pointNameSql, type PlacePointArm } from '../../db/placePoints.js';
@@ -143,7 +143,7 @@ function selectSql(
       'e.name AS experience_name',
       'm.kind_id',
       'm.type',
-      `${placeKindsSql('e')} AS kinds`,
+      `${placeKindsSql('e', true)} AS kinds`,
     );
     // Whether the source placed the point only roughly (#1912), which the pin
     // draws as a ring. A folded pin stands for its place, never for its point.
@@ -159,7 +159,8 @@ function selectSql(
  * them: does the source still offer this point and does it still stand, has
  * anyone looked at it — which is also what hides a point a curator turned down,
  * since a refusal leaves curation_state pending (ADR-0053) — does the object
- * still stand, and is some membership of it both admitted and passed.
+ * still stand, and is some membership of it both admitted and passed and not
+ * crowded out of a crowded city (`placeShownSql`, ADR-0172).
  *
  * Composed, never spelled: six predicates in this family were each written as a
  * subset of themselves during ADR-0025's review, which is the note
@@ -169,7 +170,7 @@ function readerGuardsSql(): string {
   return `${offeredLocationSql('el')}
         AND ${publishedContentSql('el')}
         AND ${hideLostSql('e')}
-        AND ${placeOfferedSql('e')}`;
+        AND ${placeShownSql('e')}`;
 }
 
 /**
@@ -198,7 +199,7 @@ export async function getWorldPoints(
   // by a parameter — a place belongs to the catalogue, not to a lens — so there
   // is no id whose absence could widen the answer past what a reader may see.
   //
-  // A place is in the kind by any of its offered memberships, and its pin then
+  // A place is in the kind by any of its shown memberships, and its pin then
   // carries that kind and that membership's type (ADR-0084, #1245): the
   // Capitoline Museums are an archaeology pin on the Archaeology map. Without a
   // kind the pin is the kind the place is shown under, read for every place at

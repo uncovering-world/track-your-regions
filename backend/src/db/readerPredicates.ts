@@ -48,7 +48,7 @@
  * of the first three.
  */
 
-import { placeAdmittedSql, placeOfferedSql, rowKindJoinSql } from './membership.js';
+import { placeAdmittedSql, placeOfferedSql, placeShownSql, rowKindJoinSql } from './membership.js';
 import { pointsShownSql, somePointShownSql } from './placePoints.js';
 
 /**
@@ -344,6 +344,20 @@ export function publishedContentSql(alias: string): string {
  */
 export function experienceOfferedToReaderSql(alias = 'e'): string {
   return placeOfferedSql(alias);
+}
+
+/**
+ * `experienceOfferedToReaderSql` less the tail of a crowded city (ADR-0172,
+ * #2201): some membership of the place is offered and not crowded out by ten
+ * better-known places of its kind and type within 10 km. The set a region's
+ * list, the map's points and the region counts hold, so a count is of what is
+ * shown and a parent's count stays the sum of its children's. Search, the card
+ * and a traveller's claims keep `experienceOfferedToReaderSql`: a crowded-out
+ * place is found and can be marked visited, and is never counted (the
+ * maintainer, 2026-11-01).
+ */
+export function experienceShownToReaderSql(alias = 'e'): string {
+  return placeShownSql(alias);
 }
 
 /**

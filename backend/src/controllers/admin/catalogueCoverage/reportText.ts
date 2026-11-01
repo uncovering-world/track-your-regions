@@ -77,6 +77,7 @@ function liveLines(report: CoverageReport): string[] {
 }
 
 const STANDING_WORDS: Record<Exclude<CalibrationStanding, 'offered' | 'admitted'>, string> = {
+  crowded: 'in a crowded city\'s tail: ten better known of its type within 10 km',
   held: 'in the catalogue, not offered by this kind',
   refused: 'refused by the last run',
   under_line: 'absent, under the editions line',

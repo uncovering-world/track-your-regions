@@ -33,7 +33,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { claimableToReaderSql, experienceOfferedToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
+import { claimableToReaderSql, experienceOfferedToReaderSql, experienceShownToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 import { userRoutes } from '../../routes/userRoutes.js';
@@ -226,8 +226,8 @@ describe('reads that show a point', () => {
     // (`db/seed/e2eFixture.ts` is one such writer). An `auto` location under
     // a `pending` experience is reachable by every column on the location
     // row itself, so only this container predicate, from `lifecycleFilter`'s
-    // `experienceOfferedToReaderSql()`, keeps that pin off the map (#1275).
-    expect(locationRead()).toContain(experienceOfferedToReaderSql('e'));
+    // `experienceShownToReaderSql()`, keeps that pin off the map (#1275).
+    expect(locationRead()).toContain(experienceShownToReaderSql('e'));
   });
 
   it('leaves it out whether or not the region asks for its children', async () => {

@@ -13,6 +13,7 @@ import { canCurateExperienceSql } from '../../middleware/auth.js';
 import {
   hideLostSql,
   experienceOfferedToReaderSql,
+  experienceShownToReaderSql,
   lifecycleSelectSql,
   offeredLinkSql,
   offeredLocationSql,
@@ -92,15 +93,16 @@ export function buildRegionQueries(opts: {
   // matches a reader's — see `maySeeUnreadExperience`. One question of the
   // memberships, not two (`experienceOfferedToReaderSql`, #1275): a place is listed where
   // one membership is both admitted and passed, which is the kind it is
-  // listed under and the pin the map draws.
-  const lifecycleFilter = ` AND ${experienceOfferedToReaderSql()}`
+  // listed under and the pin the map draws — and not crowded out of a crowded
+  // city (`experienceShownToReaderSql`, ADR-0172).
+  const lifecycleFilter = ` AND ${experienceShownToReaderSql()}`
     + (includeLostRows ? '' : ` AND ${hideLostSql()}`);
   // The same rule as an expression, for the count: one aggregate answers how
   // many the list is showing and another how many it is holding back, so the
   // page can offer the toggle only where there is something behind it.
   const lifecyclePredicate = includeLostRows
-    ? experienceOfferedToReaderSql()
-    : `${experienceOfferedToReaderSql()} AND ${hideLostSql()}`;
+    ? experienceShownToReaderSql()
+    : `${experienceShownToReaderSql()} AND ${hideLostSql()}`;
   // Refused rows are excluded here too. This number is an offer to reveal, and
   // revealing would not bring back a row the other predicate still hides.
   // Pending rows are excluded for the same reason: showing lost rows again
@@ -170,7 +172,7 @@ export function buildRegionQueries(opts: {
         ${rowKindSelectSql()},
         -- And every kind the place is offered in, none of them the primary one
         -- (ADR-0084, #1245).
-        ${placeKindsSql('e')} AS kinds,
+        ${placeKindsSql('e', true)} AS kinds,
         e.country_codes,
         e.country_names,
         -- Whether its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).
@@ -257,7 +259,7 @@ export function buildRegionQueries(opts: {
         ${rowKindSelectSql()},
         -- And every kind the place is offered in, none of them the primary one
         -- (ADR-0084, #1245).
-        ${placeKindsSql('e')} AS kinds,
+        ${placeKindsSql('e', true)} AS kinds,
         e.country_codes,
         e.country_names,
         -- Whether its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).

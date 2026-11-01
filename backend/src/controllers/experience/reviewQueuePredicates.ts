@@ -19,7 +19,7 @@
 
 import { approximatePointOpenSql } from '../../services/sync/pointHints.js';
 import {
-  MEMBERSHIPS, admissionAnsweredSql, admissionPinnedSql, membershipAdmittedSql, membershipOfferedSql,
+  MEMBERSHIPS, admissionAnsweredSql, admissionPinnedSql, membershipAdmittedSql, membershipCrowdedSql, membershipOfferedSql,
   placeHoldsRealKindSql, realKindSql,
 } from '../../db/membership.js';
 import { openViewFieldsSql } from '../../db/sourceViews.js';
@@ -113,10 +113,14 @@ export function offeredElsewhereSql(m: string, other: string): string {
  * not get to publish on its own say. Excludes a row the source has since
  * stopped offering, which withdraws instead (§ 3.6): there is nobody it could
  * be shown to either way, and `missing` excludes the same row so it raises no
- * card under that heading either.
+ * card under that heading either. Excludes an arrival crowded out of a crowded
+ * city too (ADR-0172): passed, it would be shown to nobody, so it asks nothing
+ * until a refusal or a loss nearby lifts it into the city's ten.
+ * `arrivalWaitingSql` is the same set for the counts.
  */
 export function arrivalOpenSql(e = 'e', m = 'm'): string {
-  return `${m}.curation_state = 'pending' AND ${membershipAdmittedSql(m)} AND ${e}.missing_since IS NULL`;
+  return `${m}.curation_state = 'pending' AND ${membershipAdmittedSql(m)} AND ${e}.missing_since IS NULL
+    AND NOT ${membershipCrowdedSql(m)}`;
 }
 
 /**

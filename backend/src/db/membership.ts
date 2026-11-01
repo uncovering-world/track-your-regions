@@ -39,6 +39,8 @@
 /** The two tables, named once. */
 export const MEMBERSHIPS = 'experience_kind_memberships';
 export const KINDS = 'experience_kinds';
+/** The memberships crowded out of what a reader is shown (ADR-0172). */
+export const CROWDING = 'membership_crowding';
 
 /**
  * World Heritage components, the virtual kind each serial site's part holds
@@ -105,6 +107,26 @@ export function membershipOfferedSql(alias = 'm'): string {
   return `${membershipAdmittedSql(alias)} AND ${membershipVisibleSql(alias)} AND ${realKindSql(alias)}`;
 }
 
+/**
+ * Ten better-known places of the membership's kind and type lie within 10 km
+ * of its place, so it is in the tail of a crowded city (ADR-0172, #2201).
+ * The schema keeps the answer (`membership_crowding`, recounted by
+ * `recount_crowding()` over the candidates `membershipAdmittedSql` and
+ * `hideLostSql` name); absent means shown. `alias` is the membership alias.
+ */
+export function membershipCrowdedSql(alias = 'm'): string {
+  return `EXISTS (SELECT 1 FROM ${CROWDING} crowded WHERE crowded.membership_id = ${alias}.id)`;
+}
+
+/**
+ * Offered and not crowded out: a membership a list, the map and a count hold.
+ * A crowded-out one is still offered, so search finds it and its card opens,
+ * but it is never counted (the maintainer, 2026-11-01).
+ */
+export function membershipShownSql(alias = 'm'): string {
+  return `${membershipOfferedSql(alias)} AND NOT ${membershipCrowdedSql(alias)}`;
+}
+
 function someMembershipSql(experienceAlias: string, predicate: (alias: string) => string): string {
   return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} ${INNER}
         WHERE ${INNER}.experience_id = ${experienceAlias}.id AND ${predicate(INNER)} AND ${realKindSql(INNER)})`;
@@ -126,6 +148,17 @@ export function placeVisibleSql(alias = 'e'): string {
  */
 export function placeOfferedSql(alias = 'e'): string {
   return someMembershipSql(alias, inner => `${membershipAdmittedSql(inner)} AND ${membershipVisibleSql(inner)}`);
+}
+
+/**
+ * Some membership of the place is offered and not crowded out
+ * (`membershipShownSql`): the place is in a region's list, on the map and in
+ * the counts. A church crowded out of Rome's places of worship and offered as
+ * a tower is shown as a tower. `alias` is the `experiences` alias.
+ */
+export function placeShownSql(alias = 'e'): string {
+  return someMembershipSql(alias, inner =>
+    `${membershipAdmittedSql(inner)} AND ${membershipVisibleSql(inner)} AND NOT ${membershipCrowdedSql(inner)}`);
 }
 
 /**
@@ -247,8 +280,9 @@ export function iconicPinnedSql(alias = 'm'): string {
 /**
  * The membership a place is shown under where the reader names no kind: its
  * group, its pin colour, the chip beside its name (ADR-0143 decision 6, #1893).
- * The first of the place's kinds in the kinds' display order, an offered one
- * before one a reader is not shown, then the kind's id, so the answer is total.
+ * The first of the place's kinds in the kinds' display order, a shown one
+ * before one crowded out of a crowded city (ADR-0172) and an offered one before
+ * one a reader is not shown, then the kind's id, so the answer is total.
  * The Ajanta Caves, offered as a World Heritage Site and a place of worship,
  * are shown as a World Heritage Site because that kind comes first, not because
  * UNESCO brought them first: the source that first brought a place
@@ -267,7 +301,7 @@ export function shownMembershipSql(experienceExpr: string): string {
 }
 
 /** The order `shownMembershipSql` takes a place's memberships in, over `shown` and its kind `shown_kind`. */
-const SHOWN_ORDER = `(${membershipOfferedSql('shown')}) DESC, shown_kind.display_priority, shown.kind_id`;
+const SHOWN_ORDER = `(${membershipShownSql('shown')}) DESC, (${membershipOfferedSql('shown')}) DESC, shown_kind.display_priority, shown.kind_id`;
 
 /**
  * The sources of a place's memberships, as an `int[]` in id order: who a
@@ -347,17 +381,23 @@ export function rowKindSelectSql(membership = 'm', kind = 'k'): string {
  * and passed — since a kind that refused the place or has not shown it yet is
  * not one a reader finds it in.
  *
+ * `shownOnly` leaves out a kind that crowds the place out of a crowded city
+ * (`membershipShownSql`, ADR-0172), for a list or a map that groups by kind:
+ * the church crowded out of Rome's places of worship and offered as a tower
+ * is in the towers' group alone. The card and search name every kind.
+ *
  * `json` rather than `jsonb`: nothing compares or indexes the array, and on the
  * region list of Europe (661 places) building it as `jsonb` cost 9 ms more.
  */
-export function placeKindsSql(experience = 'e'): string {
+export function placeKindsSql(experience = 'e', shownOnly = false): string {
   return `(SELECT COALESCE(json_agg(json_build_object(
              'kind_id', pk.kind_id, 'kind_name', pkk.name, 'kind_priority', pkk.display_priority,
              'type', pk.type, 'source_id', pk.source_id, 'external_id', pk.external_id,
              'source_membership', pk.source_membership)
            ORDER BY pkk.display_priority, pk.kind_id), '[]'::json)
          FROM ${MEMBERSHIPS} pk JOIN ${KINDS} pkk ON pkk.id = pk.kind_id
-        WHERE pk.experience_id = ${experience}.id AND ${membershipOfferedSql('pk')})`;
+        WHERE pk.experience_id = ${experience}.id
+          AND ${shownOnly ? membershipShownSql('pk') : membershipOfferedSql('pk')})`;
 }
 
 /** The source whose run alone writes a place's description: UNESCO (ADR-0149). */
@@ -415,8 +455,10 @@ export function linkKindsSql(link: string): string {
 }
 
 /**
- * The place's offered membership in one kind, joined as `membership` with its
- * kind as `kind`: the place in that kind, or no row at all (ADR-0084, #1245).
+ * The place's shown membership in one kind (`membershipShownSql`), joined as
+ * `membership` with its kind as `kind`: the place in that kind, or no row at
+ * all (ADR-0084, #1245). A place crowded out of that kind is not in its filter
+ * (ADR-0172).
  *
  * What a kind filter is: a place is in a kind by any of its memberships, not by
  * the one its first source brought, and the row it answers with carries that
@@ -428,7 +470,7 @@ export function kindMembershipJoinSql(
 ): string {
   return `JOIN ${MEMBERSHIPS} ${membership} ON ${membership}.experience_id = ${experience}.id
                                           AND ${membership}.kind_id = ${kindExpr}
-                                          AND ${membershipOfferedSql(membership)}
+                                          AND ${membershipShownSql(membership)}
       JOIN ${KINDS} ${kind} ON ${kind}.id = ${membership}.kind_id`;
 }
 

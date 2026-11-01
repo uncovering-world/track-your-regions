@@ -6,7 +6,7 @@
  * transaction and rolling it back (#822).
  */
 import { describe, it, expect } from 'vitest';
-import { membershipOfferedSql } from '../../db/membership.js';
+import { membershipShownSql } from '../../db/membership.js';
 import { hideLostSql } from '../../db/readerPredicates.js';
 import {
   countedMembershipSql, countedMembershipsSql, countedPlacesSql, kindCountSql,
@@ -20,11 +20,12 @@ describe('a kind counts its memberships', () => {
     expect(countedMembershipsSql()).toBe('COUNT(DISTINCT m.id)');
   });
 
-  it('counts the memberships the kind offers, of places still standing', () => {
-    // The three questions every list under a kind's header asks, so the
-    // number labels the list it sits above: the membership's admission and
-    // gate, and the place's existence.
-    expect(countedMembershipSql('m', 'e')).toBe(`${membershipOfferedSql('m')} AND ${hideLostSql('e')}`);
+  it('counts the memberships the kind shows, of places still standing', () => {
+    // The questions every list under a kind's header asks, so the number
+    // labels the list it sits above: the membership's admission, gate and
+    // crowding (ADR-0172), and the place's existence.
+    expect(countedMembershipSql('m', 'e')).toBe(`${membershipShownSql('m')} AND ${hideLostSql('e')}`);
+    expect(countedMembershipSql('x', 'y')).toContain('NOT EXISTS (SELECT 1 FROM membership_crowding crowded WHERE crowded.membership_id = x.id)');
     expect(countedMembershipSql('x', 'y')).toContain("x.admission <> 'refused'");
     expect(countedMembershipSql('x', 'y')).toContain("y.existence <> 'lost'");
   });
