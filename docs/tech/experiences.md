@@ -2248,7 +2248,15 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   its Plaza Carso house, though the casts of *The Kiss* and *The Gates of Hell* that name it stay
   where their preferred statements put them, the Musée Rodin and the Orsay. A network that stands
   above a branch the same work names resolves to nothing (`placeArtwork`, the strict-ancestor read
-  of the raw values), so *Ophelia* still hangs at Tate Britain alone. Measured on the subset
+  of the raw values), so *Ophelia* still hangs at Tate Britain alone. **A value that stands for a
+  house is not a second place the work hangs** (#2207, `makeResolver`'s `standsForHouses`: a network
+  resolved through its house, or a holding forgiven as a museum): where the work's location names a
+  venue that resolves on its own, such a value is dropped, and it is never the base of the umbrella
+  read, since a collection is `part of` the houses it is spread over. The Antikensammlung Berlin is
+  the case — an `art collection` typed an archaeological museum, part of the Pergamon, Altes and
+  Neues Museums, its coordinate the Altes Museum's — so the Pergamon Altar and the Market Gate of
+  Miletus, located in the Pergamon Museum, hang there alone, while the Duenos Inscription, which
+  names the collection and no museum, is placed at the collection and folded into the Altes Museum. Measured on the subset
   against run 387 (2026-10-31, ADR-0170): the kill-list had refused 20 entities a work over the
   line names, six of them museums typed collections and four networks; the second look admits the
   Frick with nine works, Palazzo Vecchio with two and Buckingham Palace with three, and moves
@@ -7557,7 +7565,15 @@ held fields of the object and its parts with both versions, and `arrived`
 (`curation/ArrivedTable.tsx`), one row per unread work and per new point, each with its own
 **publish this** / **not this** (`publishExperience(id, { treasureIds | locationIds })`,
 `refuseContents(id, { … })`). A work's row says in its stripe whether it is new to the catalogue
-or already on show in another museum's list (`shownElsewhere`, from `venues`), and its name is its
+or already on show in another museum's list — named, *already on show at Pergamon Museum*, with the
+museum linked to its card (`shownAt`, a `LinkedPlace` with its kind, built in
+`reviewQueueContents.ts`; `shownElsewhere`, #2207). The link is the review page's own,
+`ReviewPlaceLink`: an address written whole with `buildAppUrl` in the first world view the read says
+places the museum, at its smallest region there, on the map, since the review page is no place and
+has no lens to keep — and not the shell's `PlaceLink`, whose one import from the review chunk made
+Rolldown cut `useAppAddress`, the navigation context and a handful of icons out of the entry chunk,
+requests at startup over the request budget; so the link may open a world view other than the one
+the curator last had open, the one exception to the inventory's rule. Its name is its
 one door — into `WorkPreviewDialog`, where it is corrected (#731); its Wikipedia article comes
 first and the Wikidata item is the small id beside it (`SourceId`). A point's name opens
 `PointPreviewDialog` where it can be corrected (#583). The heading counts what arrived and says
@@ -7817,7 +7833,7 @@ asks it as a change of the place, with the distance on the row (`movedPointGroup
 `offered_locations` does not count the replacement, so a one-point object does not read "made
 of 2 places" while its move waits. An unread link to a work readers already see in another
 museum is new to this list and not to the catalogue: `pending_treasures_on_show` counts them
-and the row names where (`shownElsewhere`, `ArrivedTable.tsx`). The queue's line counts the
+and the row names where and links it (`shownAt`, `shownElsewhere`, `ArrivedTable.tsx`). The queue's line counts the
 same way (`contentsLabels`, `rowSpecific.ts`) — "12 works arrived, 3 new points, 1 point moved",
 nothing for a count of nothing, and no moved point where the held coordinate takes it along,
 since the line already says `coordinates`.
