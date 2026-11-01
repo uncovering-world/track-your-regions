@@ -4439,8 +4439,12 @@ export interface ReviewQueueItem {
   state_system_note?: string | null;
   /** The fields a run proposed. Null on every kind that carries no proposal, never absent. */
   proposed: ProposedField[] | null;
-  /** When the run whose proposal this is finished. Conflicts only. */
+  /** When the run whose proposal this is finished. Conflicts and held proposals. */
   run_completed_at?: string | null;
+  /** The run that first proposed the newest of the values this card asks about (ADR-0173). Conflicts and held proposals. */
+  first_asked_run_id?: number | null;
+  /** When that run finished: the date the question carries. */
+  first_asked_at?: string | null;
   /** The held fields of the object's parts. `held` items only, beside `proposed`, which is the object's own. */
   proposed_parts?: HeldPart[] | null;
   /** The famous works the kind's rule weighed, most widely known first, capped at twelve. */
