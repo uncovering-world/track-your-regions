@@ -133,7 +133,6 @@ export function changedFieldOf(f: StoredProposal): ChangedField {
 function proposedFieldOf(f: StoredProposal): ProposedField {
   return {
     ...changedFieldOf(f),
-    acceptable: f.acceptable,
     claim: f.claim,
     decidedBefore: f.decidedBefore,
   };

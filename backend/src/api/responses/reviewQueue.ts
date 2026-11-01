@@ -85,10 +85,6 @@ export type EarlierAnswer = z.infer<typeof EarlierAnswer>;
 
 export const ProposedField = z.strictObject({
   ...changedField,
-  acceptable: z.boolean().optional().describe(
-    'False where accepting releases the claim and the next run writes it. On a `conflict` field only: a `held` field'
-    + ' carries `held` instead, and publishing is what applies it.',
-  ),
   claim: FieldClaim.nullable().optional()
     .describe('Who claimed the field. Absent where the claim predates the log, or where the gate holds the field.'),
   decidedBefore: z.array(EarlierAnswer).optional()

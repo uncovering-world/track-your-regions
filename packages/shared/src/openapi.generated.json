@@ -16391,7 +16391,7 @@
             "items": {
               "type": "string"
             },
-            "description": "The claims given up to take it."
+            "description": "A kind's own facts whose claim was given up without a write: the kind's next run brings the source's value."
           },
           "releasedPoints": {
             "type": "array",
@@ -30467,10 +30467,6 @@
               "typography",
               "short-move"
             ]
-          },
-          "acceptable": {
-            "description": "False where accepting releases the claim and the next run writes it. On a `conflict` field only: a `held` field carries `held` instead, and publishing is what applies it.",
-            "type": "boolean"
           },
           "claim": {
             "description": "Who claimed the field. Absent where the claim predates the log, or where the gate holds the field.",
