@@ -47,6 +47,7 @@ export const EXCLUDED = {
   getAdminImageProxy: 'fetches from Wikimedia Commons',
   getExperiencesByIdWebsiteChecks: 'requests the official websites a place names, anywhere on the internet',
   getExperiencesByIdPictureClasses: "asks Wikimedia Commons about a place's pictures",
+  getExperiencesLocationsByLocationIdNearbyPictures: 'asks Wikimedia Commons for the files geotagged near a point',
   getAdminDataAssertions: 'runs every catalogue check, and is limited to five calls a minute on purpose',
   getWorldViewsRegionsByRegionIdGeometryComputeStream: 'computes and stores a region geometry',
   getAdminWvImportMatchesByWorldViewIdColorMatchStream: 'starts the colour-match pipeline',
