@@ -11,7 +11,7 @@
  * place and lands in its region with its card in the address (Santa Sabina in
  * Lazio). The list does not hold it, so before the provider drops the card as
  * one the region does not hold, the tail is asked: the open tails first, then
- * every kind's tail at once. A place found there is the open card — `card` —
+ * `lookupKindId`'s tail, or every kind's at once where none is given. A place found there is the open card — `card` —
  * and its kind's tail is opened for it once, as the list opens a card's group
  * once (`expansionForSelection`), so a reader who folds it afterwards is not
  * overruled.
@@ -59,11 +59,19 @@ export function useRegionTail(opts: {
   selectedExperienceId: number | null;
   /** Whether the list holds the open card. */
   listHoldsSelected: boolean;
+  /** Whether the list reads the region with its descendants, as Discover's does: the tail reads the same set. */
+  includeChildren?: boolean;
+  /**
+   * The one kind a card the list lacks is looked for in, where the list shows one
+   * kind, as Discover's does; absent, every kind's tail is asked at once.
+   */
+  lookupKindId?: number | null;
 }): RegionTail & {
   /** Whether the tail has said all it can about the open card: a card it does not hold may be dropped. */
   settled: boolean;
 } {
-  const { regionId, selectedExperienceId, listHoldsSelected } = opts;
+  const { regionId, selectedExperienceId, listHoldsSelected, includeChildren = false } = opts;
+  const lookupKindId = opts.lookupKindId ?? null;
   const counts = opts.counts ?? NO_COUNTS;
 
   // Held for the region it was opened in, as a kind's type is: a tail opened
@@ -83,8 +91,8 @@ export function useRegionTail(opts: {
   const openKinds = useMemo(() => [...open], [open]);
   const answers = useQueries({
     queries: openKinds.map(kindId => ({
-      queryKey: queryKeys.experiences.tail(regionId, kindId),
-      queryFn: () => fetchRegionTail(regionId!, kindId),
+      queryKey: queryKeys.experiences.tail(regionId, kindId, includeChildren),
+      queryFn: () => fetchRegionTail(regionId!, kindId, includeChildren),
       enabled: regionId !== null,
       staleTime: STALE_MS,
     })),
@@ -103,22 +111,28 @@ export function useRegionTail(opts: {
     [openKinds, answers],
   );
 
+  // The tails a card is looked for in: every open one, or `lookupKindId`'s alone
+  // where the list shows one kind, so another kind's open tail answers for nothing.
+  const searched = useMemo(
+    () => (lookupKindId === null ? [...places.values()] : [places.get(lookupKindId) ?? []]),
+    [places, lookupKindId],
+  );
   const inOpenTail = useMemo(() => {
     if (selectedExperienceId === null || listHoldsSelected) return undefined;
-    for (const rows of places.values()) {
+    for (const rows of searched) {
       const hit = rows.find(exp => exp.id === selectedExperienceId);
       if (hit) return hit;
     }
     return undefined;
-  }, [places, selectedExperienceId, listHoldsSelected]);
+  }, [searched, selectedExperienceId, listHoldsSelected]);
 
-  // Every kind's tail at once, asked only for a card the list lacks in a region
+  // `lookupKindId`'s tail, or every kind's at once, asked only for a card the list lacks in a region
   // that leaves something out, and only where no open tail holds it already.
   const lookupNeeded = opts.counts !== undefined && counts.length > 0
     && selectedExperienceId !== null && !listHoldsSelected && inOpenTail === undefined;
   const lookup = useQuery({
-    queryKey: queryKeys.experiences.tail(regionId, null),
-    queryFn: () => fetchRegionTail(regionId!, null),
+    queryKey: queryKeys.experiences.tail(regionId, lookupKindId, includeChildren),
+    queryFn: () => fetchRegionTail(regionId!, lookupKindId, includeChildren),
     enabled: lookupNeeded && regionId !== null,
     staleTime: STALE_MS,
   });
@@ -145,12 +159,12 @@ export function useRegionTail(opts: {
 
   const lookupRows = lookup.data?.experiences;
   const find = useCallback((id: number) => {
-    for (const rows of places.values()) {
+    for (const rows of searched) {
       const hit = rows.find(exp => exp.id === id);
       if (hit) return hit;
     }
     return lookupRows?.find(exp => exp.id === id);
-  }, [places, lookupRows]);
+  }, [searched, lookupRows]);
 
   return useMemo(
     () => ({ counts, open, toggle, places, failed, card, find, settled }),

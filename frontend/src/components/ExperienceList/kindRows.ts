@@ -22,7 +22,7 @@
  */
 
 import type { Experience } from '../../api/experiences';
-import { formerIn, shownInKind } from '../../utils/placeKinds';
+import { byFame, formerIn, shownInKind } from '../../utils/placeKinds';
 
 export interface KindGroup {
   kindName: string;
@@ -73,28 +73,6 @@ export function homeKindOf(exp: Experience, openedKindId: number | null): number
   const kinds = kindsOf(exp);
   if (openedKindId !== null && kinds.some(kind => kind.kind_id === openedKindId)) return openedKindId;
   return kinds[0].kind_id;
-}
-
-/**
- * How well known a row is in the kind it is listed under (ADR-0172), or null
- * where the kind measures none or the place has not been measured yet.
- */
-function fameIn(row: Experience): number | null {
-  return row.kinds?.find(kind => kind.kind_id === row.kind_id)?.fame ?? null;
-}
-
-/**
- * A group's places, the best known first (the maintainer, 2026-11-01): Rome's
- * places of worship open on St Peter's and the Pantheon, not on an abbey whose
- * name comes first. A kind that measures no fame keeps the list's own order,
- * by name, and a place not measured yet follows those that are. Stable, so
- * equals keep the list's order too.
- */
-function byFame(a: Experience, b: Experience): number {
-  const fa = fameIn(a);
-  const fb = fameIn(b);
-  if (fa === null || fb === null) return (fa === null ? 1 : 0) - (fb === null ? 1 : 0);
-  return fb - fa;
 }
 
 /**

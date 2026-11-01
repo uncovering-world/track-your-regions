@@ -68,9 +68,9 @@ describe('a card only the region\'s tail holds', () => {
     const { result } = renderHook(useUnderTest, { wrapper: wrapperAt(`/wv/5/r/${LAZIO}/e/${SANTA_SABINA.id}`) });
 
     await waitFor(() => expect(result.current.ctx.tail.card?.id).toBe(SANTA_SABINA.id));
-    expect(mockFetchTail).toHaveBeenCalledWith(LAZIO, null);
+    expect(mockFetchTail).toHaveBeenCalledWith(LAZIO, null, false);
     await waitFor(() => expect(result.current.ctx.tail.open.has(WORSHIP)).toBe(true));
-    expect(mockFetchTail).toHaveBeenCalledWith(LAZIO, WORSHIP);
+    expect(mockFetchTail).toHaveBeenCalledWith(LAZIO, WORSHIP, false);
     await waitFor(() => expect(result.current.ctx.tail.places.get(WORSHIP)).toEqual([SANTA_SABINA]));
 
     expect(result.current.ctx.selectedExperienceId).toBe(SANTA_SABINA.id);
@@ -128,6 +128,6 @@ describe('a card only the region\'s tail holds', () => {
     act(() => { result.current.ctx.tail.toggle(WORSHIP); });
 
     await waitFor(() => expect(result.current.ctx.tail.places.get(WORSHIP)).toEqual([SANTA_SABINA]));
-    expect(mockFetchTail).toHaveBeenCalledWith(LAZIO, WORSHIP);
+    expect(mockFetchTail).toHaveBeenCalledWith(LAZIO, WORSHIP, false);
   });
 });

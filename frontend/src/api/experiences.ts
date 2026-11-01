@@ -85,13 +85,16 @@ export async function fetchExperiencesByRegion(
 /**
  * The places a crowded city leaves out of a region's list (ADR-0172, #2201):
  * one kind's, or every kind's where `kindId` is null, the best known first
- * within each kind and type. Read over the list's own set — the region without
- * its descendants — so it answers the list's `crowdedOut` counts, and with the
- * session's token for the same reason as the list.
+ * within each kind and type. Read over the list's own set, so it answers the
+ * list's `crowdedOut` counts: the region alone for Map mode's list, with its
+ * descendants for Discover's (#2224). With the session's token for the same
+ * reason as the list.
  */
-export async function fetchRegionTail(regionId: number, kindId: number | null): Promise<RegionTailResponse> {
+export async function fetchRegionTail(
+  regionId: number, kindId: number | null, includeChildren = false,
+): Promise<RegionTailResponse> {
   return getExperiencesByRegionByRegionIdTail(regionId, {
-    includeChildren: 'false',
+    includeChildren: includeChildren ? 'true' : 'false',
     kindId: kindId ?? undefined,
     limit: WHOLE_REGION_LIMIT,
   });

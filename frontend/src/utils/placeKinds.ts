@@ -89,3 +89,30 @@ export function placeHasExtent(
   if (everyKind && row.kinds?.length) return row.kinds.some(kind => hasExtent(kind.kind_id, kind.type));
   return hasExtent(row.kind_id, row.type);
 }
+
+interface WithFame {
+  kind_id: number;
+  kinds?: ReadonlyArray<{ kind_id: number; fame?: number | null }> | null;
+}
+
+/**
+ * How well known a row is in the kind it is listed under (ADR-0172), or null
+ * where the kind measures none or the place has not been measured yet.
+ */
+function fameIn(row: WithFame): number | null {
+  return row.kinds?.find(kind => kind.kind_id === row.kind_id)?.fame ?? null;
+}
+
+/**
+ * A group's places, the best known first (the maintainer, 2026-11-01): Rome's
+ * places of worship open on St Peter's and the Pantheon, not on an abbey whose
+ * name comes first. A kind that measures no fame keeps the list's own order,
+ * by name, and a place not measured yet follows those that are. Stable, so
+ * equals keep the list's order too.
+ */
+export function byFame(a: WithFame, b: WithFame): number {
+  const fa = fameIn(a);
+  const fb = fameIn(b);
+  if (fa === null || fb === null) return (fa === null ? 1 : 0) - (fb === null ? 1 : 0);
+  return fb - fa;
+}
