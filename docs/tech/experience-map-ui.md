@@ -411,6 +411,19 @@ card's other choices as they stand — the card answers (`keepPoint`) and closes
 and its own button stays what it is. A pin of the near-places pair carries no action: nothing on that
 card is answered from the map.
 
+**The outlines of the places it pins** (#2205). Where the catalogue holds a place's outline
+(OpenStreetMap's polygon, ADR-0059), the dialog draws it under the pins in the card's own paint
+(`extentFillLayer`, `extentLineLayer`), so a curator judging whether a point is inside a site sees
+the site: Bisotun's outline beside its caravanserai's pin. The card names the places
+(`outlinesOf`): the near-places pair names both, the sources card and the object's own map name the
+place, and a move's row names the place that moves. Each is read the way the place's card reads it
+(`experienceDetailsQuery`, the same cache entry), once the dialog opens, never on hover
+(`PointPreviewOutlines.tsx`). Under the map each drawn outline gets its extent and
+"© OpenStreetMap contributors" through `ExtentLine`, named by place where there are several, visible
+without interaction (ADR-0059 decision 3); a place with no outline draws nothing and credits nobody.
+Once the outlines arrive the map frames them with the pins by the one rule (`frameGeoJson`), since
+an outline read after the map loaded would stand half off the pins' frame.
+
 ## The list answers about the view, not about the region
 
 Zoomed into Prague, the list used to answer a different question from the map: it listed the region alphabetically, so a reader looking at one city read a list running from *Historic Centre of Prague* to *Wikipedia Monument* — 661 objects for Europe, ordered by their initials (#553). It now lists what the map is showing.
