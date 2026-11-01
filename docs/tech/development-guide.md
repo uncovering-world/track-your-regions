@@ -1107,8 +1107,8 @@ differently under rolldown's chunking — each passes a run on the dev server
 and reaches a visitor. What only the dev server has, HMR and the unbundled
 module graph, is what a developer meets within seconds of `npm run dev`, so a
 second job for it would pay a stack's minutes to report what nobody misses.
-The `E2E Smoke` job sets `FRONTEND_MODE=preview` job-wide, so its database and
-API steps find the stack in the shape the smoke step left it in.
+The `E2E Smoke` job sets `FRONTEND_MODE=preview` job-wide, so its database
+step finds the stack in the shape the smoke step left it in.
 
 ### Reading a smoke result
 
