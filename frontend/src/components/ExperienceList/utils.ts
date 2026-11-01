@@ -3,6 +3,7 @@
  */
 
 import type { Experience } from '../../api/experiences';
+import type { TailSection } from './tailRows';
 
 export const OUT_OF_REGION_INITIAL = 3;
 
@@ -67,7 +68,47 @@ export type FlatRow =
   | { kind: 'header'; group: ExperienceGroupLike }
   | { kind: 'experience'; exp: Experience }
   /** The selected place's card, above the groups (`kindRows.ts` `cardAboveGroups`). */
-  | { kind: 'card'; exp: Experience };
+  | { kind: 'card'; exp: Experience }
+  /** The folded row that ends a group whose kind leaves places out (`tailRows.ts`, #2201). */
+  | { kind: 'tail'; group: ExperienceGroupLike; section: TailSection }
+  /** One place of an open tail, under that row and apart from the group's own rows. */
+  | { kind: 'tail-place'; exp: Experience };
+
+/**
+ * A row's identity, not its position: the virtualiser caches measured heights
+ * under it, and an index shifts whenever a group or a tail above it folds.
+ */
+export function rowKey(row: FlatRow): string {
+  switch (row.kind) {
+    case 'header': return `h:${row.group.kindName}`;
+    case 'tail': return `t:${row.group.kindName}`;
+    case 'card': return `c:${row.exp.id}`;
+    case 'tail-place': return `p:${row.exp.id}:${row.exp.kind_id}`;
+    default: return `e:${row.exp.id}:${row.exp.kind_id}`;
+  }
+}
+
+/**
+ * A row's height before it is measured. Measured, not guessed, because in a
+ * 467-row list the guess decides where a scroll lands: only the rows a reader
+ * has already passed carry a real height, and every other one is this number.
+ * At 72 against a real 59 the list carried some 6000 px of height that does not
+ * exist, so `scrollToIndex` aimed past its row, and the total shrank as rows
+ * arrived and were measured — which moves the content under a reader who is not
+ * scrolling, and shows an empty panel when the position ends up beyond the
+ * shrunken end.
+ *
+ * Measured live on Europe: a header is 46 px, a collapsed row 59 px (65 or 85
+ * where the title wraps to two or three lines); a tail's folded row is one line
+ * of caption. `measureElement` still corrects each row as it renders, and an
+ * expanded row is five to fifteen times taller — no estimate could cover both,
+ * which is what the measuring is for.
+ */
+export function rowEstimate(row: FlatRow | undefined): number {
+  if (row?.kind === 'header') return 46;
+  if (row?.kind === 'tail') return 40;
+  return 62;
+}
 
 /** Only what flattening needs, so the caller's fuller group type still fits. */
 export interface ExperienceGroupLike {
@@ -148,13 +189,18 @@ export function flattenGroups(
   groups: ExperienceGroupLike[],
   expandedGroups: Set<string>,
   cardAbove: Experience | null = null,
+  /** Each group's tail by its name (`tailSections`): a row after its places, and the tail's places under it while open. */
+  tails: ReadonlyMap<string, TailSection> = new Map(),
 ): FlatRow[] {
   const rows: FlatRow[] = cardAbove ? [{ kind: 'card', exp: cardAbove }] : [];
   for (const group of groups) {
     rows.push({ kind: 'header', group });
-    if (expandedGroups.has(group.kindName)) {
-      for (const exp of group.experiences) rows.push({ kind: 'experience', exp });
-    }
+    if (!expandedGroups.has(group.kindName)) continue;
+    for (const exp of group.experiences) rows.push({ kind: 'experience', exp });
+    const section = tails.get(group.kindName);
+    if (!section) continue;
+    rows.push({ kind: 'tail', group, section });
+    if (section.open) for (const exp of section.places ?? []) rows.push({ kind: 'tail-place', exp });
   }
   return rows;
 }
@@ -178,6 +224,11 @@ export function rowIndexByExperienceId(rows: FlatRow[], echoes?: ReadonlySet<unk
     // and by its card where that stands above the groups (#1262).
     if (row.kind === 'card' || (row.kind === 'experience' && !echoes?.has(row.exp))) m.set(row.exp.id, i);
   });
+  // A tail's place only where the list has no row of it: a place crowded out of
+  // one kind and shown in another is aimed at by its shown row (#2201).
+  rows.forEach((row, i) => {
+    if (row.kind === 'tail-place' && !m.has(row.exp.id)) m.set(row.exp.id, i);
+  });
   return m;
 }
 
@@ -192,7 +243,7 @@ export function experienceIdsAtIndices(rows: FlatRow[], indices: number[]): numb
   const ids: number[] = [];
   for (const i of indices) {
     const row = rows[i];
-    if (row && row.kind !== 'header') ids.push(row.exp.id);
+    if (row && 'exp' in row) ids.push(row.exp.id);
   }
   return ids;
 }

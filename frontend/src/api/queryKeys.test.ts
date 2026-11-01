@@ -16,9 +16,11 @@ describe('queryKeys', () => {
     const pairs: [readonly unknown[], readonly unknown[]][] = [
       [experience.one(1), experience.all],
       [experience.locations(1), experience.locationsAll],
+      [experience.locationsIn(1, 7), experience.locations(1)],
       [experience.contents(1), experience.contentsAll],
       [experience.curationLog(1), experience.curationLogAll],
       [experiences.byRegion(7, true), experiences.inRegion(7)],
+      [experiences.tail(7, 4), experiences.inRegion(7)],
       [experiences.inRegion(7), experiences.all],
       [experiences.regionLocations(7, false, true), experiences.regionLocationsIn(7)],
       [experiences.regionLocationsIn(7), experiences.regionLocationsAll],

@@ -24,6 +24,7 @@ import { useAppAddress } from './useAppAddress';
 import { useCollapsedExperiences } from './useCollapsedExperiences';
 import { useFoldedCard } from './useFoldedCard';
 import { HoverProvider } from './useHoverContext';
+import { useRegionTail, type RegionTail } from './useRegionTail';
 import type { ViewBounds } from '../utils/viewBounds';
 import { effectiveKindTypes, kindTypeIndex, type KindTypeEntry } from '../utils/kindTypeIndex';
 import { queryKeys } from '../api/queryKeys';
@@ -90,7 +91,7 @@ interface ExperienceContextType {
   triggerFlyTo: (id: number) => void;
   clearFlyTo: () => void;
 
-  // Helper to get experience by ID
+  /** A place by id: one the list holds, or one a tail read holds (`useRegionTail`). */
   getExperienceById: (id: number) => Experience | undefined;
 
   // Expanded source names (controls which markers are visible)
@@ -103,6 +104,13 @@ interface ExperienceContextType {
   kindTypeIndex: ReadonlyMap<string, KindTypeEntry>;
   /** Narrow one kind's group to a type, or show all of it again with `null`. */
   setKindType: (kindName: string, type: string | null) => void;
+
+  /**
+   * What a crowded city leaves out of the region's list (ADR-0172, #2201): the
+   * counts, the kinds whose tail is open and their places, and the open card
+   * where only a tail holds it (`useRegionTail`).
+   */
+  tail: RegionTail;
 
   /** Objects this reader asked to see as a single pin rather than as their places. */
   collapsedExperienceIds: ReadonlySet<number>;
@@ -223,8 +231,16 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // Except a card a merge folded into another place (#1247): its address opens
   // the surviving place's card, which the list holds where it held the folded
   // one, so the `e` segment moves to the survivor rather than being dropped.
+  //
+  // And except a card the region's tail holds (ADR-0172, #2201): a crowded-out
+  // place search found, which the list leaves out by design. The tail is asked
+  // before the card is called missing (`useRegionTail`).
+  const listHoldsSelected = selectedExperienceId !== null && experiences.some(e => e.id === selectedExperienceId);
+  const tail = useRegionTail({
+    regionId, counts: data?.crowdedOut, selectedExperienceId, listHoldsSelected,
+  });
   const cardMissing = address !== null && onAddressedRegion && data !== undefined
-    && selectedExperienceId !== null && !experiences.some(e => e.id === selectedExperienceId);
+    && selectedExperienceId !== null && !listHoldsSelected && tail.settled && tail.card === null;
   const foldedInto = useFoldedCard(selectedExperienceId, cardMissing);
   useEffect(() => {
     if (address === null || !cardMissing || foldedInto === undefined) return;
@@ -240,7 +256,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // region's name and not the card's. In place: a correction, not a step.
   const openCard = selectedExperienceId === null
     ? undefined
-    : experiences.find(e => e.id === selectedExperienceId);
+    : experiences.find(e => e.id === selectedExperienceId) ?? tail.card ?? undefined;
   useEffect(() => {
     if (address === null || !openCard?.name) return;
     go(address, { replace: true, names: { experience: openCard.name } });
@@ -262,8 +278,14 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // on them, and rebuild everything they draw when those change.
   const addressRef = useRef(address);
   addressRef.current = address;
-  const experiencesRef = useRef(experiences);
-  experiencesRef.current = experiences;
+  // A place by id: the list's, or one a tail read holds — never added to the
+  // list, so it counts toward nothing the list counts.
+  const placeById = useCallback(
+    (id: number) => experiences.find(exp => exp.id === id) ?? tail.find(id),
+    [experiences, tail],
+  );
+  const placeByIdRef = useRef(placeById);
+  placeByIdRef.current = placeById;
   const selectedRef = useRef(selectedExperienceId);
   selectedRef.current = selectedExperienceId;
 
@@ -273,14 +295,14 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   const setSelectedExperienceId = useCallback((id: number | null) => {
     const at = addressRef.current;
     if (at === null) return;
-    const name = id === null ? undefined : experiencesRef.current.find(e => e.id === id)?.name;
+    const name = id === null ? undefined : placeByIdRef.current(id)?.name;
     go(at2 => ({ ...at2, experienceId: id }), { names: { experience: name } });
   }, [go]);
   // A part's card is a step too (#1271): opened from its row or its pin, it
   // opens its object's card with it, and Back returns to the object's card.
   const openPoint = useCallback((experienceId: number, pointId: number, pointName: string) => {
     if (addressRef.current === null) return;
-    const name = experiencesRef.current.find(e => e.id === experienceId)?.name;
+    const name = placeByIdRef.current(experienceId)?.name;
     go(at2 => ({ ...at2, experienceId, pointId }), { names: { experience: name, point: pointName } });
   }, [go]);
   const closePoint = useCallback(() => {
@@ -309,9 +331,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // card will not open until its picture has settled — see `imagePreload.ts` and
   // `useExperienceCardReady.ts`.
 
-  const getExperienceById = useCallback((id: number) => {
-    return experiences.find(exp => exp.id === id);
-  }, [experiences]);
+  const getExperienceById = placeById;
 
   const toggleSelectedExperience = useCallback((id: number) => {
     setSelectedExperienceId(selectedRef.current === id ? null : id);
@@ -355,11 +375,12 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     kindTypes,
     kindTypeIndex: typeIndex,
     setKindType,
+    tail,
     collapsedExperienceIds,
     toggleCollapsedExperience,
     artworkPreview,
     setArtworkPreview,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, selectedPointId, openPoint, closePoint, dropPoint, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedKindNames, kindTypes, typeIndex, setKindType, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, selectedPointId, openPoint, closePoint, dropPoint, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedKindNames, kindTypes, typeIndex, setKindType, tail, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>
