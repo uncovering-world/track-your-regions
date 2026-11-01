@@ -7578,8 +7578,15 @@ What the table decides, rather than merely draws:
   countries, a Wikidata item replaced by another, the UNESCO region, the inscription year — is
   marked `event` and its sentence arrowed (`'replaced'` marks one only where a value stood before,
   `FactRow.event`, so an item arriving on a place that held none is no event, ADR-0129): "Listed since 2003 — readers see no badge today; publishing adds it",
-  "Moved 33.4 km north — may fall in a different region; check the pin", "Inscription years do not
-  change — check the source page". A changed country *name* reads the country *codes* row to
+  "Moved 19.4 km south-east — from Kota Belud into Ranau; check the pin", "Inscription years do not
+  change — check the source page". A coordinate's sentence names a crossing only where the two
+  points stand in different GADM leaf divisions (#2203): the queue reads the division under each
+  point of every move on the page — the held and conflicted coordinates and an unread point that replaces a stored one — in one statement (`attachMoveDivisions`,
+  `reviewQueueMoveDivisions.ts`), by the rule the short-move gate reads (`leavesSql`,
+  `db/leafDivisions.ts`, ADR-0140), and writes `divisions` onto the field — each point's leaf
+  division and its country, and whether the two share a leaf, which a point on a shared border does. On 2026-11-01, 28 of the 34 open
+  moves over a kilometre stayed in one division and say nothing of regions; a move into another
+  country says so, and a point in no division, at sea, is said to be outside any land division. A changed country *name* reads the country *codes* row to
   tell a spelling correction from a change of country, which is why a sentence sees the whole
   proposal (`ChangeContext`). The year in the danger sentence and on the proposed badge comes
   from the same place: `withDangerFields` dates a listing only on a row whose flag is true, so
