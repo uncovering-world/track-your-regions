@@ -45,7 +45,7 @@ import { CheckedWebsite } from './CheckedWebsite';
 import { TEXT_CREDITS } from '@tyr/shared/textCredits';
 
 /** One field of a proposal, as the queue carries it: the part of its `ChangedField` a rendering reads. */
-export type ProposedField = Pick<ChangedField, 'field' | 'old' | 'new'>;
+export type ProposedField = Pick<ChangedField, 'field' | 'old' | 'new' | 'divisions'>;
 
 /**
  * What a rendering or a change sentence may look at beyond its own two values.
@@ -416,7 +416,9 @@ const MEANINGS: Record<string, FieldMeaning> = {
     event: true,
     // The one rule for a moved pin, shared with the correction dialog (`utils/moveDescription.ts`),
     // which also says when a proposed point is no move at all.
-    describeChange: (before, after) => describeProposedMove(before, after),
+    describeChange: (before, after, context) => describeProposedMove(
+      before, after, context?.proposed.find(f => f.field === 'location')?.divisions,
+    ),
   },
   boundary: {
     label: 'extent',

@@ -1,4 +1,4 @@
-import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
+import { distanceMeters, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 
 /**
  * How far a pin moved, and which way — the one rule for a sentence about a
@@ -56,15 +56,41 @@ export function moveLabel(before: unknown, after: unknown): string | null {
   return move ? `${distanceLabel(move.meters)} ${move.heading}` : null;
 }
 
+/** Where the two points of a move fall, as the review queue reads them (#2203). */
+export interface MoveDivisions {
+  from: { name: string; country: string } | null;
+  to: { name: string; country: string } | null;
+  /** The two points share a GADM leaf division: a point on a shared border stands in both. */
+  same: boolean;
+}
+
 /**
- * The sentence under a moved coordinate: the move, and past a kilometre the
- * warning that it may have changed which region the place counts in.
+ * What a move crosses, said only where it crosses something: a warning on
+ * every long move was read past on the moves it was for (#2203). On
+ * 2026-11-01 the Summer Palace's 14.5 km move stayed in Beijing, while Kinabalu
+ * Park's point moved 19.4 km south-east, from Kota Belud into Ranau. Whether
+ * the two points share a leaf is the server's (`same`), which holds the leaves.
  */
-export function describeMove(before: unknown, after: unknown): string | null {
+function crossing(divisions: MoveDivisions | undefined): string {
+  if (!divisions || divisions.same) return '';
+  const { from, to } = divisions;
+  if (!from && !to) return ' — both points fall outside any land division';
+  if (!from) return ` — from outside any land division into ${to!.name}, ${to!.country}; check the pin`;
+  if (!to) return ` — out of ${from.name}, ${from.country}, to outside any land division; check the pin`;
+  if (from.country !== to.country) {
+    return ` — out of ${from.name}, ${from.country}, into ${to.name}, ${to.country}: another country; check the pin`;
+  }
+  return ` — from ${from.name} into ${to.name}; check the pin`;
+}
+
+/**
+ * The sentence under a moved coordinate: the move, and, where the review
+ * queue says the two points fall in different divisions, which ones.
+ */
+export function describeMove(before: unknown, after: unknown, divisions?: MoveDivisions): string | null {
   const move = movedBy(before, after);
   if (!move) return null;
-  const far = move.meters > LOCATION_MAJOR_METERS ? ' — may fall in a different region; check the pin' : '';
-  return `Moved ${distanceLabel(move.meters)} ${move.heading}${far}.`;
+  return `Moved ${distanceLabel(move.meters)} ${move.heading}${crossing(divisions)}.`;
 }
 
 /**
@@ -75,12 +101,12 @@ export function describeMove(before: unknown, after: unknown): string | null {
  * (#1846). A curator's own correction keeps `describeMove`: a pin they drag
  * five metres did move.
  */
-export function describeProposedMove(before: unknown, after: unknown): string | null {
+export function describeProposedMove(before: unknown, after: unknown, divisions?: MoveDivisions): string | null {
   const move = movedBy(before, after);
   if (move && move.meters <= LOCATION_UNCHANGED_METERS) {
     return `Not a move: the source writes the same place again, within ${LOCATION_UNCHANGED_METERS} m.`;
   }
-  return describeMove(before, after);
+  return describeMove(before, after, divisions);
 }
 
 /**

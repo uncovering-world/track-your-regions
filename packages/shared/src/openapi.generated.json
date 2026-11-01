@@ -18103,6 +18103,9 @@
               "typography",
               "short-move"
             ]
+          },
+          "divisions": {
+            "$ref": "#/components/schemas/MoveDivisions"
           }
         },
         "required": [
@@ -28716,6 +28719,63 @@
         "additionalProperties": false,
         "description": "The model the AI features use, chosen."
       },
+      "MoveDivision": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The GADM leaf division the point falls in."
+          },
+          "country": {
+            "type": "string",
+            "description": "Its country: the ancestor one below the root, or the division itself where it is one."
+          }
+        },
+        "required": [
+          "name",
+          "country"
+        ],
+        "additionalProperties": false,
+        "description": "Where one point of a coordinate move falls."
+      },
+      "MoveDivisions": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoveDivision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stored point's division; null in none, as at sea."
+          },
+          "to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoveDivision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The proposed point's division; null in none."
+          },
+          "same": {
+            "type": "boolean",
+            "description": "Whether the two points share a leaf division (ADR-0140's rule): a border point stands in both."
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "same"
+        ],
+        "additionalProperties": false,
+        "description": "Which divisions a coordinate move leaves and enters (#2203): on a `location` field of a card, and on an unread point that replaces a stored one."
+      },
       "MoveMemberBody": {
         "type": "object",
         "properties": {
@@ -29382,6 +29442,10 @@
                 "type": "null"
               }
             ]
+          },
+          "divisions": {
+            "description": "Which divisions the move from `replaces` leaves and enters (#2203).",
+            "$ref": "#/components/schemas/MoveDivisions"
           }
         },
         "required": [
@@ -30479,6 +30543,9 @@
               "typography",
               "short-move"
             ]
+          },
+          "divisions": {
+            "$ref": "#/components/schemas/MoveDivisions"
           },
           "claim": {
             "description": "Who claimed the field. Absent where the claim predates the log, or where the gate holds the field.",

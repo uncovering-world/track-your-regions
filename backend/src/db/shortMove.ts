@@ -24,14 +24,11 @@
  */
 
 import { SHORT_MOVE_METERS } from '@tyr/shared/moves';
+import { leavesSql } from './leafDivisions.js';
 import { placeOfferedSql } from './membership.js';
 import { madeOfSql, withWholesSql } from './placePoints.js';
 import { offeredLocationSql, partOfferedSql, publishedContentSql } from './readerPredicates.js';
 
-/** The GADM leaf divisions covering a point, as a sorted `int[]`. */
-const leavesSql = (point: string): string =>
-  `ARRAY(SELECT d.id FROM administrative_divisions d
-          WHERE NOT d.has_children AND ST_Covers(d.geom, ${point}) ORDER BY d.id)`;
 
 export function shortMovePassesSql(place: string, from: string, to: string): string {
   const metres = `ST_Distance((${from})::geography, (${to})::geography)`;
