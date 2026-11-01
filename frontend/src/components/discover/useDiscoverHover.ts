@@ -74,6 +74,11 @@ export interface DiscoverHoverWiring {
   mapRef: React.MutableRefObject<maplibregl.Map | null>;
   /** This region's batch, for the picture and name a marker hover shows. */
   experiences: Experience[];
+  /**
+   * A row of the open list or of its tail, by id (#2224): a card hovered in a
+   * crowded city's tail is in no batch, and its ring is drawn all the same.
+   */
+  findExperience: (id: number) => Experience | undefined;
   /** Where an object is drawn — its places, or the one point a fold leaves. */
   drawnCoordsRef: React.MutableRefObject<(expId: number) => [number, number][]>;
   /** The current selection, which the marker source deliberately does not hold. */
@@ -116,6 +121,7 @@ function previewOf(exp: Experience): HoverPreview {
 export function useDiscoverHover({
   mapRef,
   experiences,
+  findExperience,
   drawnCoordsRef,
   selectedExpIdRef,
   selectedLocsRef,
@@ -132,6 +138,8 @@ export function useDiscoverHover({
   const hoverGenerationRef = useRef(0);
   const experiencesRef = useRef(experiences);
   experiencesRef.current = experiences;
+  const findRef = useRef(findExperience);
+  findRef.current = findExperience;
 
   // Map hover → the store. A ref because the map's listeners are registered
   // once, on mount, by `useDiscoverMap` — they must see this render's callback.
@@ -205,7 +213,7 @@ export function useDiscoverHover({
     const hoverSource = map.getSource(SCENE_SOURCES.hover) as maplibregl.GeoJSONSource | undefined;
     if (!hoverSource) return;
 
-    const exp = experiencesRef.current.find(e => e.id === expId);
+    const exp = findRef.current(expId);
     if (!exp) return;
 
     // Every point the object is drawn at, because that is what the card stands

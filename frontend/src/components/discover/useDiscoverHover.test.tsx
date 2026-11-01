@@ -31,6 +31,7 @@ function renderDiscoverHover() {
     // what lets the store logic be tested on its own.
     mapRef: { current: null as maplibregl.Map | null },
     experiences: [],
+    findExperience: () => undefined,
     drawnCoordsRef: { current: () => [] as [number, number][] },
     selectedExpIdRef: { current: 5 as number | null },
     selectedLocsRef: { current: null },
