@@ -86,21 +86,21 @@ const normalise = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
 const LINT_JOB = 'check';
 
 /**
- * How many steps read a map output. The thirteen are the check job's five setup
- * steps — `Setup Python`, `Install backend dependencies`,
+ * How many steps read a map output. The guarded steps are the check job's five
+ * setup steps — `Setup Python`, `Install backend dependencies`,
  * `Install frontend dependencies`, `Install shared package dependencies`
  * (ADR-0065), `Set up cv-python venv` — the security job's two scans,
  * `Semgrep SAST (Node)` and `Semgrep SAST (Python)`, the smoke job's
- * `Run the database-backed backend specs` (#522) and `Run the API contract
- * lane` (#1091), and the unit job's install and run steps of each Node
- * lane (#1378).
+ * `Run the database-backed backend specs` (#522), and the unit job's install
+ * and run steps of each Node lane (#1378). The API contract lane is a job of
+ * its own (#2219), started on a job-level key, so no step of it is guarded.
  *
  * This is a property of the workflow rather than of the map: nothing in
  * `gates.mjs` says how many steps of a job install a toolchain, so the number
  * is stated here. A step that quietly loses its condition, or one added
  * without it, moves it.
  */
-const GUARDED_STEPS = 13;
+const GUARDED_STEPS = 12;
 
 function readWorkflow() {
   if (!existsSync(WORKFLOW)) {
