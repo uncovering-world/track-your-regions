@@ -11,6 +11,7 @@
 
 import type { z } from 'zod/v4';
 import type { ReviewQueue, ReviewQueueItem } from '../../api/responses/reviewQueue.js';
+import { attachMoveDivisions } from './reviewQueueMoveDivisions.js';
 import { queueItemOf, type QueueRow } from './reviewQueueItem.js';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
@@ -620,7 +621,7 @@ export async function getReviewQueue(
   // then a lookup by id, not an order of its own); `total` and `facets` are counted over
   // the union under the filter; and `paging` is the one cursor the open kinds share,
   // beside the three offsets that are not part of it.
-  return {
+  const response = {
     missing: cards(missing),
     refused: cards(refused),
     keptOut: cards(keptOutPage.items),
@@ -657,6 +658,10 @@ export async function getReviewQueue(
       },
     },
   };
+  // Which divisions each coordinate move leaves and enters (#2203): the held
+  // and conflicted coordinates, and the points a source moved under contents.
+  await attachMoveDivisions([...response.held, ...response.conflicts, ...response.contents]);
+  return response;
 }
 
 /**

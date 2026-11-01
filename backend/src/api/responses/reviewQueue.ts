@@ -26,6 +26,19 @@ import {
 import { ContentKind, PlacementFailure } from './curation.js';
 import { DescriptionSource, ImageCredit, LinkedPlace, WorkVenue } from './experiences.js';
 
+export const MoveDivision = z.strictObject({
+  name: z.string().describe('The GADM leaf division the point falls in.'),
+  country: z.string().describe('Its country: the ancestor one below the root, or the division itself where it is one.'),
+}).describe('Where one point of a coordinate move falls.');
+export type MoveDivision = z.infer<typeof MoveDivision>;
+
+export const MoveDivisions = z.strictObject({
+  from: MoveDivision.nullable().describe('The stored point\'s division; null in none, as at sea.'),
+  to: MoveDivision.nullable().describe('The proposed point\'s division; null in none.'),
+  same: z.boolean().describe('Whether the two points share a leaf division (ADR-0140\'s rule): a border point stands in both.'),
+}).describe('Which divisions a coordinate move leaves and enters (#2203): on a `location` field of a card, and on an unread point that replaces a stored one.');
+export type MoveDivisions = z.infer<typeof MoveDivisions>;
+
 /** A timestamp as the wire carries it: an ISO string, from a `Date` or from PostgreSQL's JSON. */
 const timestamp = z.iso.datetime({ offset: true });
 
@@ -63,6 +76,7 @@ const changedField = {
     + ' alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place'
     + ' (ADR-0140).',
   ),
+  divisions: MoveDivisions.optional(),
 };
 
 export const ChangedField = z.strictObject(changedField).describe('One field a run proposed to change.');
@@ -145,6 +159,7 @@ export const PendingPoint = z.strictObject({
   curatedFields: z.array(z.string()).optional(),
   replaces: z.strictObject({ latitude: z.number(), longitude: z.number() }).nullable().optional()
     .describe('The stored point this one replaces, where the source moved a point rather than added one (ADR-0025 decision 5).'),
+  divisions: MoveDivisions.optional().describe('Which divisions the move from `replaces` leaves and enters (#2203).'),
 }).describe('An unread point under a row readers already see.');
 export type PendingPoint = z.infer<typeof PendingPoint>;
 
