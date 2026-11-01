@@ -17,7 +17,9 @@ import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor, METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
 import { tidyNameValue } from './heldDecisions.js';
-import { columnFor } from './acceptableFields.js';
+import { acceptedWrites, type PictureCredit } from './acceptedWrites.js';
+import { creditForOneImage } from '../../services/sync/imageCredit.js';
+import { userAgent } from '../../config/userAgent.js';
 import type { ContentItemChange } from '../../services/sync/types.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
@@ -82,24 +84,25 @@ export async function acceptSourceUnderLock(
   fields: string[] | 'all',
   expectedSyncLogId: number,
 ): Promise<{ result?: AcceptSourceResult; refusal?: { error: string; fromSyncLogId?: number } }> {
-  const outcome = await applyProposedFields(experienceId, userId, logRegionId, fields, expectedSyncLogId);
+  const pictureCredit = await proposedPictureCredit(experienceId, fields);
+  const outcome = await applyProposedFields(experienceId, userId, logRegionId, fields, expectedSyncLogId, pictureCredit);
   if (outcome.refusal) return { refusal: outcome.refusal };
   const {
-    applied, released, releasedPoints, movedPoints, releasedCredit, fromSyncLogId,
+    applied, released, releasedPoints, movedPoints, releasedCredit, fromSyncLogId, movesPlace,
   } = outcome;
 
-  // A pin put back on the source's coordinate is a region fact, exactly as a
-  // curator moving it is: the point's `auto` rows were computed from where it
-  // used to be. After the commit, like every other placement here — a placement
+  // A place or a pin put back on the source's coordinate is a region fact,
+  // exactly as a curator moving it is: the `auto` rows were computed from where
+  // it used to be. After the commit, like every other placement here — a placement
   // inside the transaction would hold the row lock across a world-view sweep.
-  const placementFailures = movedPoints.length > 0
+  const placementFailures = movesPlace || movedPoints.length > 0
     ? await placeAfterRelease(experienceId, 'A curator accepted the source coordinate for experience %d')
     : [];
 
   return { result: {
     experienceId,
     applied,
-    // Fields this endpoint cannot write: the claim is gone, so the next run
+    // A kind's own fact, released without a write: the kind's next run
     // applies the source's value through the ordinary upsert.
     released,
     // The points whose own claim on `location` went with the object's, named
@@ -118,21 +121,82 @@ export async function acceptSourceUnderLock(
 }
 
 /**
+ * The credit of the picture the open proposal offers, asked of Commons before
+ * the transaction, as a curator's edit asks it (`editExperience`): a request to
+ * Commons is not something to hold the object lock across. Read without the
+ * lock, so the transaction writes it only beside the same file
+ * (`acceptedWrites`). Null where no picture is answered for, or Commons did not
+ * answer in time — and a null written is the point: the curator's credit must
+ * not stay under a photograph that is not theirs.
+ */
+async function proposedPictureCredit(experienceId: number, fields: string[] | 'all'): Promise<PictureCredit | null> {
+  if (fields !== 'all' && !fields.includes('imageUrl')) return null;
+  const proposal = await pool.query<{ url: unknown }>(`
+    SELECT f->'new' AS url
+      FROM experience_sync_changes ch
+      JOIN experience_sync_logs l ON l.id = ch.sync_log_id
+      JOIN experiences e ON e.id = ch.experience_id
+      CROSS JOIN LATERAL jsonb_array_elements(ch.changed_fields) f
+     WHERE ch.experience_id = $1 AND ${conflictChangeOpenSql('e', 'ch', 'l')}
+       AND f->>'field' = 'imageUrl' AND (f->>'curatedConflict')::boolean
+     ORDER BY ch.id DESC
+     LIMIT 1
+  `, [experienceId]);
+  const url = proposal?.rows[0]?.url;
+  if (typeof url !== 'string' || url === '') return null;
+  // A curator's answer, not a run: no bot marker on this one (#864).
+  return { url, credit: await creditForOneImage(url, userAgent()) };
+}
+
+/**
+ * Whether the picture is among the accepted fields, and the claims left once
+ * its credit's claim goes with it. The deletion is unconditional; the *report*
+ * is not. `editExperience` writes `metadata.imageCredit` beside every picture
+ * change and writes `null` whenever the credit could not be resolved — a
+ * picture that is not on Commons, or a lookup that timed out — so accepting the
+ * source there would otherwise tell a curator that something was dropped when
+ * nothing they could see ever existed.
+ */
+function creditWithPicture(
+  open: ReadonlyArray<{ field: string }>, hadCredit: boolean, remaining: string[],
+): { acceptedImage: boolean; releasedCredit: boolean; remaining: string[] } {
+  const acceptedImage = open.some(p => claimKeyFor(p.field) === 'image_url');
+  if (!acceptedImage) return { acceptedImage, releasedCredit: false, remaining };
+  return {
+    acceptedImage,
+    releasedCredit: hadCredit,
+    remaining: remaining.filter(k => k !== `${METADATA_CLAIM_PREFIX}imageCredit`),
+  };
+}
+
+/**
+ * The trail's entry per field: the value written, or `appliesAtNextSync` on a
+ * kind's own fact, the one entry an answer releases without writing
+ * (`acceptedWrites`).
+ */
+function loggedFields(open: ReadonlyArray<{ field: string; new: unknown }>, written: readonly string[]) {
+  return open.map(p => (written.includes(p.field)
+    ? { field: p.field, applied: p.new }
+    : { field: p.field, appliesAtNextSync: true }));
+}
+
+/**
  * Write the accepted values and release the curator's claim on those fields.
  *
- * Releasing the claim is the point, and for most fields it is the whole of the
- * answer: releasing is what lets the *next run* apply the source's value through
- * the ordinary upsert, and it is the only thing that takes such an item off the
- * queue. Three cases, not two:
+ * Every accepted field is written now with the value the answered run proposed
+ * (#2222, `acceptedWrites`), and its claim released, so later runs write the
+ * source's value through the ordinary upsert. The value is on the card already:
+ * an answer that only released the claim moved a place 12 km at a run nobody
+ * watched. Two fields reach further than the place's row:
  *
- * - the five writable fields — released and written on `experiences` now;
- * - `tags`, `metadata` and the country arrays — released, and the next run
- *   applies them, since they need more than an assignment;
- * - `location` — released on the object *and* on the points whose claim went
- *   with it, and written onto those points on the spot, one table down. The
- *   object's own coordinate still waits for the run; the pin does not, because
- *   leaving it would have that run retire the row rather than rewrite it. See
+ * - the type, written on the proposing source's membership (ADR-0084);
+ * - `location`, released on the object *and* on the pin its anchor was taken
+ *   from, and that pin written onto the source's coordinate for it, one table
+ *   down, so the reader's position and the object's move together (#550). See
  *   the two blocks below, which is where that argument lives.
+ *
+ * A kind's own fact is the one entry released without a write, to the kind's
+ * next run (`acceptedWrites` says why).
  *
  * Everything the decision rests on is read inside the transaction that writes,
  * under the row lock: `curated_fields`, and the proposal itself. Resolving the
@@ -150,6 +214,7 @@ async function applyProposedFields(
   logRegionId: number | null,
   fields: string[] | 'all',
   expectedSyncLogId: number,
+  pictureCredit: PictureCredit | null,
 ): Promise<{
   applied: string[];
   released: string[];
@@ -158,6 +223,8 @@ async function applyProposedFields(
   /** Whether accepting the picture also dropped the curator's credit for it. */
   releasedCredit: boolean;
   fromSyncLogId: number;
+  /** Whether the place's own coordinate was written, which its regions follow. */
+  movesPlace: boolean;
   refusal?: { error: string; fromSyncLogId?: number };
 }> {
   const client = await pool.connect();
@@ -167,9 +234,9 @@ async function applyProposedFields(
     // The stored credit comes back with the claims, and under the same lock:
     // whether one is *there* decides what the curator is told was removed, and
     // reading it separately would be reading it at another moment.
-    const locked = await lockExperience<{ curated_fields: string[] | null; image_credit: unknown }>(
-      client, experienceId, "curated_fields, metadata->'imageCredit' AS image_credit",
-    );
+    const locked = await lockExperience<{
+      curated_fields: string[] | null; image_credit: unknown; metadata: unknown; name_local: unknown;
+    }>(client, experienceId, "curated_fields, metadata, name_local, metadata->'imageCredit' AS image_credit");
     const placeClaims: string[] = locked?.row.curated_fields ?? [];
     const hadCredit = locked?.row.image_credit != null;
 
@@ -195,7 +262,7 @@ async function applyProposedFields(
     const refuse = async (error: string, fromSyncLogId?: number) => {
       unusable = await rollbackQuietly(client);
       return {
-        applied: [], released: [], releasedPoints: [], movedPoints: [], releasedCredit: false,
+        applied: [], released: [], releasedPoints: [], movedPoints: [], releasedCredit: false, movesPlace: false,
         fromSyncLogId: fromSyncLogId ?? 0, refusal: { error, fromSyncLogId },
       };
     };
@@ -227,52 +294,28 @@ async function applyProposedFields(
       return await refuse('None of the requested fields is still an open conflict');
     }
 
-    const writable = open.filter(p => columnFor(p.field) !== null);
     // The type is written on the membership, its claim released there.
-    const typeAccepted = writable.find(p => p.field === 'type');
-    const onPlace = writable.filter(p => p.field !== 'type');
-    const assignments = onPlace.map((p, i) => `${columnFor(p.field)} = $${i + 2}`);
-    // A name-carrying value as the catalogue stores a name (`tidyNameValue`,
-    // #835): a proposal recorded before the writers tidied carries the run of
-    // spaces the run saw, and accepting it must not put back into `name` what
-    // migration 047 took out.
-    const values = onPlace.map(p => tidyNameValue(p.field, p.new));
+    const typeAccepted = open.find(p => p.field === 'type');
     let remaining = placeClaims.filter(k => !open.some(p => claimKeyFor(p.field) === k));
 
     // **A picture's credit goes with the picture.**
     //
-    // The same shape as the coordinate below, and for the same reason: the two
-    // are written in one transaction by `editExperience` and mean one thing —
-    // "this photograph is mine, and this is who took it". Releasing only
+    // The two are written in one transaction by `editExperience` and mean one
+    // thing — "this photograph is mine, and this is who took it". Releasing only
     // `image_url` leaves `metadata.imageCredit` claimed and still naming the
-    // curator's photographer, and the per-key re-apply in `experienceUpsert.ts` then puts
-    // that name back over every later run's — so the card ends up showing the
-    // source's photograph credited to somebody who did not take it, permanently,
-    // which is the one thing this feature promises never to do.
+    // curator's photographer, and the per-key re-apply in `experienceUpsert.ts`
+    // then puts that name back over every later run's — so the card ends up
+    // showing the source's photograph credited to somebody who did not take it,
+    // permanently, which is the one thing this feature promises never to do.
     //
-    // The stored key is dropped as well as the claim: the run that follows has
-    // to be free to write the new picture's credit, and a key left behind with
-    // the old value would be re-applied before it could.
-    const acceptedImage = open.some(p => claimKeyFor(p.field) === 'image_url');
-    // The deletion is unconditional; the *report* is not. `editExperience`
-    // writes `metadata.imageCredit` beside every picture change and writes
-    // `null` whenever the credit could not be resolved — a picture that is not
-    // on Commons, or a lookup that timed out — so accepting the source there
-    // would otherwise tell a curator that something was dropped when nothing
-    // they could see ever existed.
-    const releasedCredit = acceptedImage && hadCredit;
-    const creditDrop: string[] = [];
-    if (acceptedImage) {
-      remaining = remaining.filter(k => k !== `${METADATA_CLAIM_PREFIX}imageCredit`);
-      creditDrop.push("metadata = COALESCE(metadata, '{}'::jsonb) - 'imageCredit'");
-    }
+    // The stored credit goes with the claim (`acceptedWrites`) and is replaced:
+    // by the run's own credit where it is accepted beside the picture, else by
+    // the proposed file's credit, asked of Commons before the transaction
+    // (`proposedPictureCredit`). The key is deleted only where Commons gives none.
+    const credit = creditWithPicture(open, hadCredit, remaining);
+    const { acceptedImage, releasedCredit } = credit;
+    remaining = credit.remaining;
 
-    await updateExperienceColumns(client, locked.lock, [
-      ...assignments,
-      ...creditDrop,
-      `curated_fields = $${onPlace.length + 2}::jsonb`,
-    ], [...values, JSON.stringify(remaining)]);
-    await acceptTypeOnSourceMembership(client, locked.lock, proposingSource, typeAccepted);
     // **A point's claim on the coordinate goes with the object's.**
     //
     // The object's coordinate and its points' are one fact seen at two levels:
@@ -291,8 +334,7 @@ async function applyProposedFields(
     // content of the claim is "this coordinate is mine, not the source's", and
     // "take the source's" withdraws it. Refusing instead would be worse than
     // wrong — contents claims have no other release path (ADR-0029), so the card
-    // would be unanswerable, which is the "button that lies" `acceptableFields`
-    // exists to prevent.
+    // would be unanswerable.
     //
     // **The pin the anchor was taken from, and only that one.** `editLocation`
     // claims `location` on every point it moves, and on the *object* only where
@@ -314,7 +356,35 @@ async function applyProposedFields(
       : [];
     const releasedPoints = pointRelease.map(r => r.id);
 
-    // **And the coordinate goes onto the row, here, rather than at the next run.**
+    // **Every accepted value is written now, the coordinate included** (#2222):
+    // the run being answered recorded what it offered, and that is what lands,
+    // as `expectedSyncLogId` guarantees. After the point release above, which
+    // finds the anchor's pin by the coordinate this overwrites.
+    const values: unknown[] = [];
+    const writes = acceptedWrites(
+      // A name-carrying value as the catalogue stores a name (`tidyNameValue`,
+      // #835): a proposal recorded before the writers tidied carries the run of
+      // spaces the run saw, and accepting it must not put back what migration
+      // 047 took out.
+      open.map(p => ({ ...p, new: tidyNameValue(p.field, p.new) })),
+      { metadata: locked.row.metadata, name_local: locked.row.name_local },
+      remaining,
+      acceptedImage,
+      pictureCredit,
+      (value) => `$${values.push(value) + 1}`,
+    );
+    if (writes.unwritable.length > 0) {
+      return await refuse(`The source's ${writes.unwritable.join(', ')} cannot be stored here: keep the current value`);
+    }
+    await updateExperienceColumns(client, locked.lock, [
+      ...writes.assignments,
+      `curated_fields = $${values.length + 2}::jsonb`,
+    ], [...values, JSON.stringify(remaining)]);
+    await acceptTypeOnSourceMembership(client, locked.lock, proposingSource, typeAccepted);
+    const written = writes.written;
+    const movesPlace = writes.written.includes('location');
+
+    // **And each released pin goes onto the source's coordinate for it, here.**
     //
     // Releasing alone would hand the pin back by *retiring* it. The pairing that
     // rewrites a point needs the reference **and** ten metres (ADR-0027), and the
@@ -331,10 +401,8 @@ async function applyProposedFields(
     // being answered kept the stored coordinate *because* of the claim and
     // recorded what it offered instead, per point, in its contents record. So the
     // coordinate written here is the one that run proposed for this row, which is
-    // the same guarantee `expectedSyncLogId` gives the object's fields. The
-    // object's own coordinate is not written — `location` is not an acceptable
-    // field — and follows at the next run through the ordinary upsert, now that
-    // nothing claims it.
+    // the same guarantee `expectedSyncLogId` gives the object's fields, the
+    // object's own coordinate among them (written above).
     //
     // Where the run recorded no offer for a row, nothing is written: there is no
     // source value to write, and a row whose stored coordinate the source already
@@ -388,11 +456,7 @@ async function applyProposedFields(
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
       VALUES ($1, $2, 'accepted_source', $3, $4)
     `, [experienceId, userId, logRegionId, JSON.stringify({
-      fields: open.map(p => ({
-        field: p.field,
-        applied: columnFor(p.field) !== null ? p.new : undefined,
-        appliesAtNextSync: columnFor(p.field) === null || undefined,
-      })),
+      fields: loggedFields(open, written),
       // Only when there were any, so the trail of every other accepted field
       // reads as it did before this rule existed. Both lists, because they are
       // different facts: a released point kept its coordinate, a moved one was
@@ -409,12 +473,13 @@ async function applyProposedFields(
     })]);
     await client.query('COMMIT');
     return {
-      applied: writable.map(p => p.field),
-      released: open.filter(p => columnFor(p.field) === null).map(p => p.field),
+      applied: written,
+      released: writes.released,
       releasedPoints,
       movedPoints,
       releasedCredit,
       fromSyncLogId,
+      movesPlace,
     };
   } catch (error) {
     // A client whose ROLLBACK also failed must be destroyed, not pooled: it

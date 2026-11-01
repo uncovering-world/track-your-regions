@@ -30,7 +30,7 @@ import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
 import { tidyLabel } from '@tyr/shared/labels';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
-interface ProposedField {
+export interface ProposedField {
   field: string;
   old?: unknown;
   new?: unknown;
@@ -54,7 +54,7 @@ interface ProposedField {
  * column — so `assignmentFor` returns null for the family and `nextMetadata`
  * resolves them together.
  */
-function isMetadataField(field: string): boolean {
+export function isMetadataField(field: string): boolean {
   return field === 'metadata' || field.startsWith(METADATA_CLAIM_PREFIX);
 }
 
@@ -68,7 +68,7 @@ function isMetadataField(field: string): boolean {
  * `mergedFromEntries` replaces wholesale exactly as it does a metadata
  * catch-all.
  */
-function isNameLocalField(field: string): boolean {
+export function isNameLocalField(field: string): boolean {
   return field === 'nameLocal' || field.startsWith(NAME_LOCAL_CLAIM_PREFIX);
 }
 
@@ -104,7 +104,7 @@ function asCoordinate(value: unknown): { lon: number; lat: number } | null {
  * proposed by every future run and applied by none, which is the failure this
  * writer exists to close.
  */
-function assignmentFor(field: string, value: unknown, bind: (value: unknown) => string): string | null {
+export function assignmentFor(field: string, value: unknown, bind: (value: unknown) => string): string | null {
   if (isMergedColumn(field)) return null;
   const column = CURATED_KEY_BY_FIELD[field];
   if (column === undefined) return null;
@@ -183,7 +183,7 @@ function creditOf(metadata: unknown): unknown {
 }
 
 /** What the credit must become, or null where the entries may decide it. */
-type CreditPin = { value: unknown } | null;
+export type CreditPin = { value: unknown } | null;
 
 /**
  * What the run proposes for the object's credit, and what stands against it.
@@ -386,7 +386,7 @@ function mergedFromEntries(
  * nobody had claimed the key on, so filtering claimed fields out of it cannot
  * reach the key, and publishing would quietly overwrite a curator's own link.
  */
-function nextMetadata(
+export function nextMetadata(
   stored: unknown,
   published: ProposedField[],
   claimed: string[],
@@ -437,7 +437,7 @@ function nextMetadata(
 }
 
 /** Whether a proposal's entry is one of a kind's own facts, `metadata.<fact>`. */
-function isKindFactField(field: string): boolean {
+export function isKindFactField(field: string): boolean {
   return field.startsWith(METADATA_CLAIM_PREFIX) && isKindFact(field.slice(METADATA_CLAIM_PREFIX.length));
 }
 
@@ -478,7 +478,7 @@ function nextFacts(stored: unknown, published: ProposedField[]): Record<string, 
  * editor writes the column, so a claim here covers every language and
  * `claimKeyFor` has already kept all of them out of `writable`.
  */
-function nextNameLocal(
+export function nextNameLocal(
   stored: unknown, published: ProposedField[],
 ): Record<string, unknown> | null {
   const entries = published.filter(field => isNameLocalField(field.field));
