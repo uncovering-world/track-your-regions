@@ -11,7 +11,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
 vi.mock('../../api/curation', () => ({ answerMergeProposals: vi.fn(), suggestMergeProposals: vi.fn() }));
-vi.mock('../shared/PointPreviewDialog', () => ({ PointPreviewDialog: () => null }));
+vi.mock('../shared/PointPreviewDialog', () => ({
+  PointPreviewDialog: ({ open, name, pins }: { open: boolean; name: string; pins?: readonly { label: string }[] }) => (
+    open ? <div data-testid="the-map-dialog" data-name={name} data-pins={pins?.map(pin => pin.label).join(' | ')} /> : null
+  ),
+}));
 
 import { answerMergeProposals, suggestMergeProposals } from '../../api/curation';
 import { MergeProposalsCard } from './MergeProposalsCard';
@@ -60,6 +64,27 @@ const BABYLON = {
   }],
 } as unknown as ReviewQueueItem;
 
+/**
+ * Pair 350 on dev, 2026-11-01 (#2202): Bisotun, the World Heritage site, and
+ * "Bisotūn", the caravanserai at the foot of the rock, a component of The
+ * Persian Caravanserai, 451 m apart — whether the one stands within the other
+ * is read from one map with both.
+ */
+const BISOTUN = {
+  id: 586, external_id: '1222', name: 'Bisotun', kind_id: 1, kind_name: 'World Heritage Sites',
+  latitude: 34.3883, longitude: 47.4367,
+  missing_since: null, source_membership: 'present', existence: 'extant', kind: 'merge-proposals', proposed: null,
+  merge_pairs: [{
+    proposalId: 350, otherId: 38201, otherName: 'Bisotūn', otherKinds: [], otherPartOf: 'The Persian Caravanserai',
+    otherImageUrl: null, otherImageCredit: null, otherLatitude: 34.3845, otherLongitude: 47.4349,
+    otherWikidataItem: null, anchorWikidataItem: 'Q1189440', otherItemClaimed: false, anchorItemClaimed: true,
+    anchorKinds: ['World Heritage Sites'], anchorPartOf: null,
+    otherWikidataLabel: null, otherWikidataDescription: null, anchorWikidataLabel: null, anchorWikidataDescription: null,
+    distanceM: 451, nameSimilarity: 0.8, exact: false, reachM: 3000, foundBy: 'similar', matchedWords: null,
+    proposedAt: '2026-10-30T10:00:00.000Z',
+  }],
+} as unknown as ReviewQueueItem;
+
 function renderCard(onDone = vi.fn(), item = DURHAM) {
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -88,6 +113,26 @@ describe('two near places with similar names', () => {
     expect(screen.getByText(/Both claim Wikidata/)).toBeTruthy();
     expect(screen.getAllByRole('link', { name: 'Q1250209' })[0]).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q1250209');
     expect(screen.getByRole('button', { name: 'Save answers' })).toBeDisabled();
+  });
+
+  it('shows both places of a pair on one map, each pin saying which place it is and what it is (#2202)', () => {
+    renderCard(vi.fn(), BISOTUN);
+    fireEvent.click(screen.getByRole('button', { name: 'Show both on the map' }));
+
+    const dialog = screen.getByTestId('the-map-dialog');
+    expect(dialog.dataset.name).toBe('Bisotun and Bisotūn');
+    expect(dialog.dataset.pins).toBe(
+      'Bisotun (this card) · World Heritage Sites | Bisotūn · part of The Persian Caravanserai',
+    );
+  });
+
+  it('shows the other place alone where this card\'s own place has no point', () => {
+    renderCard();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Show where it stands' })[0]);
+
+    const dialog = screen.getByTestId('the-map-dialog');
+    expect(dialog.dataset.name).toBe('Durham Cathedral');
+    expect(dialog.dataset.pins).toBe('Durham Cathedral · Places of worship');
   });
 
   it('names each place beside its own Wikidata item, with what the item is', () => {

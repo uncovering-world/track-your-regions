@@ -30,6 +30,7 @@ import { plural } from '../../utils/plural';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
+import type { MapPin } from '../shared/PointPreviewPins';
 import { JEV_SURE } from './ComponentItemsCard';
 import { ItemHeader, messageFor, partOfLead } from './queueCard';
 
@@ -113,6 +114,30 @@ function whatItIs(kinds: readonly string[], partOf: string | null): string[] {
 }
 
 /**
+ * The pair on one map (#2202): this card's place first, then the other, each
+ * pin saying which place it is and what that place is — so whether Bisotun's
+ * caravanserai stands within the World Heritage site, beside it or across the
+ * road is read from the map and not from two coordinates. A card whose own
+ * place has no point shows the other alone.
+ */
+function pairPins(item: ReviewQueueItem, pair: Pair): MapPin[] {
+  const pins: MapPin[] = [];
+  if (item.latitude != null && item.longitude != null) {
+    pins.push({
+      latitude: item.latitude, longitude: item.longitude,
+      label: [`${item.name} (this card)`, ...whatItIs(pair.anchorKinds, pair.anchorPartOf)].join(' · '),
+    });
+  }
+  if (pair.otherLatitude != null && pair.otherLongitude != null) {
+    pins.push({
+      latitude: pair.otherLatitude, longitude: pair.otherLongitude,
+      label: [pair.otherName, ...whatItIs(pair.otherKinds, pair.otherPartOf)].join(' · '),
+    });
+  }
+  return pins;
+}
+
+/**
  * The two places' Wikidata items (#1970). One item they share is one link,
  * and the line says whose it is (`anchorItemClaimed`, `otherItemClaimed`,
  * ADR-0143 decision 2, #2194): claimed by both, the strongest sign of one
@@ -191,6 +216,7 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
     onAnswer(next === 'part_of' ? { answer: next, partId: pair.otherId } : { answer: next });
   };
   const located = pair.otherLatitude != null && pair.otherLongitude != null;
+  const pins = located ? pairPins(item, pair) : [];
   return (
     <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1 }}>
       <Stack direction="row" spacing={1.25} alignItems="flex-start">
@@ -213,7 +239,9 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
             </Typography>
           )}
           {located && (
-            <Button size="small" variant="text" onClick={() => setLooking(true)}>Show where it stands</Button>
+            <Button size="small" variant="text" onClick={() => setLooking(true)}>
+              {pins.length > 1 ? 'Show both on the map' : 'Show where it stands'}
+            </Button>
           )}
           {answer?.answer === 'part_of' && (
             <ToggleButtonGroup
@@ -265,9 +293,10 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
         <PointPreviewDialog
           open={looking}
           onClose={() => setLooking(false)}
-          name={pair.otherName}
-          latitude={pair.otherLatitude!}
-          longitude={pair.otherLongitude!}
+          name={pins.length > 1 ? `${item.name} and ${pair.otherName}` : pair.otherName}
+          latitude={pins[0].latitude}
+          longitude={pins[0].longitude}
+          pins={pins}
         />
       )}
     </Box>

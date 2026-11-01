@@ -28,6 +28,7 @@ import { safeHref } from '../../utils/safeHref';
 import { wikipediaArticleTitle } from '../../utils/wikidataLinks';
 import { PictureWithCredit } from '../shared/PictureWithCredit';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
+import type { MapPin } from '../shared/PointPreviewPins';
 import { VIEW_FIELD_WORD } from './feed/rowSpecific';
 import { minuteCellSize } from './minuteCell';
 import { ItemHeader, messageFor } from './queueCard';
@@ -149,25 +150,46 @@ function ArticleLinks({ views }: { views: readonly SourceView[] }) {
   );
 }
 
-/** The location row's way to the map: both points, readers' one first. */
-function BothPoints({ name, views }: { name: string; views: readonly SourceView[] }) {
+/**
+ * The location row's way to the map: each source's point, readers' one first,
+ * every pin labelled with its source (#2202). Not a move — no run proposes
+ * anything here, so no arrow is drawn and nothing says "the run proposes".
+ * Each pin offers "keep this point": the same answer as choosing that source's
+ * tile for the point and pressing the card's one button, with the card's
+ * other choices as they stand, so the curator who reads the answer off the
+ * ground gives it there. The card's own button stays what it is.
+ */
+function BothPoints({ name, views, onKeep, pending }: {
+  name: string;
+  views: readonly SourceView[];
+  /** Answer the point with this view's membership, as the card's button would with it chosen. */
+  onKeep: (membershipId: number) => void;
+  pending: boolean;
+}) {
   const [open, setOpen] = useState(false);
-  const shown = views.find(view => view.shown) ?? views[0];
-  const other = views.find(view => view !== shown);
-  if (!shown || !other || shown.latitude == null || shown.longitude == null
-    || other.latitude == null || other.longitude == null) return null;
+  const located = views.filter((view): view is SourceView & { latitude: number; longitude: number } => (
+    view.latitude != null && view.longitude != null
+  ));
+  if (located.length < 2) return null;
+  const pins: MapPin[] = [...located]
+    .sort((a, b) => Number(b.shown) - Number(a.shown))
+    .map(view => ({
+      latitude: view.latitude, longitude: view.longitude,
+      label: `${view.source_name}${view.shown ? ' · readers see' : ''}`,
+      action: { label: 'keep this point', disabled: pending, onPick: () => { setOpen(false); onKeep(view.membership_id); } },
+    }));
   return (
     <>
       <Link component="button" type="button" variant="body2" underline="hover" onClick={() => setOpen(true)}>
-        see both points on the map
+        see {pins.length === 2 ? 'both' : `all ${pins.length}`} points on the map
       </Link>
       <PointPreviewDialog
         open={open}
         onClose={() => setOpen(false)}
-        name={`${name}: ${shown.kind_name}’s point, and ${other.kind_name}’s`}
-        latitude={shown.latitude}
-        longitude={shown.longitude}
-        movedTo={{ latitude: other.latitude, longitude: other.longitude }}
+        name={`${name}: where each source puts it`}
+        latitude={pins[0].latitude}
+        longitude={pins[0].longitude}
+        pins={pins}
       />
     </>
   );
@@ -235,12 +257,19 @@ export function SourcesCard({ item, onDone }: {
     return pick != null && !field.views.find(view => view.membership_id === pick)?.shown;
   }).length;
 
+  // The choices to send are handed in, since a pin on the map answers with
+  // the choices as they stand plus its own point, before the state has moved.
   const save = useMutation({
-    mutationFn: () => chooseSourceViews(item.id, fields.map(field => ({
-      field: field.field, membershipId: chosen[field.field] ?? null,
+    mutationFn: (picks: Record<string, number | null>) => chooseSourceViews(item.id, fields.map(field => ({
+      field: field.field, membershipId: picks[field.field] ?? null,
     }))),
     onSettled: (data, error) => onDone(error ? messageFor(item, error) : outcomeOf(item.name, data?.changed ?? []), item.id),
   });
+  const keepPoint = (membershipId: number) => {
+    const picks = { ...chosen, location: membershipId };
+    setChosen(picks);
+    save.mutate(picks);
+  };
 
   // Jev's suggestion, where this deployment asks Jev (#1260): shown beside the
   // views, never chosen for the curator. A failed read shows none.
@@ -285,7 +314,9 @@ export function SourcesCard({ item, onDone }: {
                 {field.field === 'location' && field.metres != null && (
                   <Typography variant="body2" color="text.secondary">{distanceLabel(field.metres)} apart</Typography>
                 )}
-                {field.field === 'location' && <BothPoints name={item.name} views={field.views} />}
+                {field.field === 'location' && (
+                  <BothPoints name={item.name} views={field.views} onKeep={keepPoint} pending={save.isPending} />
+                )}
                 {field.field === 'wikipediaUrl' && <ArticleLinks views={field.views} />}
               </Stack>
               {columns.map(column => {
@@ -315,7 +346,7 @@ export function SourcesCard({ item, onDone }: {
         )}
 
         <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
-          <Button variant="contained" disabled={save.isPending} onClick={() => save.mutate()}>
+          <Button variant="contained" disabled={save.isPending} onClick={() => save.mutate(chosen)}>
             {saveLabel(changes)}
           </Button>
         </Stack>
