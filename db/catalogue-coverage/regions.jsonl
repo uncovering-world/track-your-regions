@@ -19,3 +19,4 @@
 {"slug": "salvador", "name": "Salvador da Bahia", "country": "Brazil", "lat": -12.973, "lon": -38.51, "radius_km": 85, "surveyed": "2026-10-02"}
 {"slug": "berlin", "name": "Berlin", "country": "Germany", "lat": 52.52, "lon": 13.405, "radius_km": 40, "surveyed": "2026-10-16"}
 {"slug": "moscow", "name": "Moscow", "country": "Russia", "lat": 55.756, "lon": 37.617, "radius_km": 75, "surveyed": "2026-10-16"}
+{"slug": "bangkok", "name": "Bangkok", "country": "Thailand", "lat": 13.75, "lon": 100.5, "radius_km": 90, "surveyed": "2026-11-01", "role": "control"}
