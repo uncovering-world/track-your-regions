@@ -60,6 +60,11 @@ const regionSchema = z.strictObject({
   lon: z.number().min(-180).max(180),
   radius_km: z.number().positive(),
   surveyed: z.iso.date(),
+  // A control region (#2232): surveyed so that an admission rule can be verified on a list no
+  // tuning has read. Absent for an ordinary region. The reader carries the mark for what reads
+  // the files (the review's harness); the loader and the report ignore it, since the catalogue's
+  // own coverage figures are not tuning.
+  role: z.enum(['control']).optional(),
 });
 
 const expectationSchema = z.strictObject({
