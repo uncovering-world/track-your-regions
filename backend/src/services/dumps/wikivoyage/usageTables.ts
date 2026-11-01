@@ -92,3 +92,13 @@ export async function usedByAGuide(items: readonly string[]): Promise<Set<string
   );
   return new Set(result.rows.map(row => row.item));
 }
+
+/** How many Wikivoyage editions use each of `items`; an item no edition uses is absent. */
+export async function guideEditions(items: readonly string[]): Promise<Map<string, number>> {
+  if (items.length === 0) return new Map();
+  const result = await pool.query<{ item: string; editions: number }>(
+    'SELECT item, count(DISTINCT site)::int AS editions FROM wikivoyage_usage WHERE item = ANY($1::text[]) GROUP BY item',
+    [items],
+  );
+  return new Map(result.rows.map(row => [row.item, row.editions]));
+}

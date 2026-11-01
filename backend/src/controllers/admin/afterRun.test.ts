@@ -18,6 +18,10 @@ vi.mock('../../services/sync/componentItemFinder.js', async (importOriginal) => 
   ...(await importOriginal<typeof import('../../services/sync/componentItemFinder.js')>()),
   heldSubset: vi.fn(async () => ({ dumpDate: '2026-10-05' })),
 }));
+vi.mock('../../services/sync/crowding.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/sync/crowding.js')>()),
+  refreshCrowding: vi.fn(async () => ({ measured: 3365, stale: [], crowded: 124 })),
+}));
 vi.mock('../experience/equalItemMerges.js', () => ({
   joinPlacesClaimingOneItem: vi.fn(async () => ({ merged: [], refused: [] })),
 }));
@@ -74,7 +78,7 @@ describe('the steps after a run', () => {
     expect(drainPairing).toHaveBeenCalledTimes(1);
     expect(runComponentItemSearch).not.toHaveBeenCalled();
     expect(second.status).toBe('complete');
-    expect(second.statusMessage).toBe('Sync completed: 102; 2 changed places paired again with near places, 1 near pair open among them');
+    expect(second.statusMessage).toBe('Sync completed: 102; 2 changed places paired again with near places, 1 near pair open among them; 124 places crowded out of crowded cities');
     expect(first.statusMessage).toBe('Sync completed: 101');
     expect(first.continues).toBe(false);
     expect(second.continues).toBe(false);
@@ -95,7 +99,7 @@ describe('the steps after a run', () => {
 
     expect(drainPairing).toHaveBeenCalledTimes(1);
     expect(run.status).toBe('cancelled');
-    expect(run.statusMessage).toBe('Cancelled.; 2 changed places paired again with near places, 1 near pair open among them');
+    expect(run.statusMessage).toBe('Cancelled.; 2 changed places paired again with near places, 1 near pair open among them; 124 places crowded out of crowded cities');
   });
 
   it('leaves the marks to the next drain when a Cancel reaches the pairing, and says so', async () => {
@@ -108,7 +112,7 @@ describe('the steps after a run', () => {
     await afterRun(3, [3, 6], accept);
 
     expect(drainPairing).not.toHaveBeenCalled();
-    expect(second.statusMessage).toBe('Sync completed: 502; the pairing was cancelled; the next one pairs the places this run changed');
+    expect(second.statusMessage).toBe('Sync completed: 502; the pairing was cancelled; the next one pairs the places this run changed; the display of crowded cities waits for the next run');
   });
 
   it('searches the items of the components a World Heritage run left without one, and only those', async () => {
@@ -119,7 +123,7 @@ describe('the steps after a run', () => {
     await afterRun(1, [1], accept);
 
     expect(runComponentItemSearch).toHaveBeenCalledWith(run, run.operation, { pointIds: [5001, 5002] }, accept);
-    expect(run.statusMessage).toBe('Sync completed: 201; 2 of 3 components without an item have a candidate; 2 changed places paired again with near places, 1 near pair open among them');
+    expect(run.statusMessage).toBe('Sync completed: 201; 2 of 3 components without an item have a candidate; 2 changed places paired again with near places, 1 near pair open among them; 124 places crowded out of crowded cities');
   });
 
   it('skips the search when the run left no new component without an item', async () => {
@@ -153,7 +157,7 @@ describe('the steps after a run', () => {
 
     expect(drainPairing).toHaveBeenCalledTimes(1);
     expect(run.status).toBe('complete');
-    expect(run.statusMessage).toBe('Sync completed: 401; the joining of places claiming one item failed; the server log has the cause; 2 changed places paired again with near places, 1 near pair open among them');
+    expect(run.statusMessage).toBe('Sync completed: 401; the joining of places claiming one item failed; the server log has the cause; 2 changed places paired again with near places, 1 near pair open among them; 124 places crowded out of crowded cities');
     expect(run.continues).toBe(false);
   });
 
@@ -166,7 +170,7 @@ describe('the steps after a run', () => {
     await afterRun(1, [1], accept);
 
     expect(drainPairing).toHaveBeenCalledTimes(1);
-    expect(run.statusMessage).toBe('Sync completed: 402; the search for the new components\' items failed; the server log has the cause; 2 changed places paired again with near places, 1 near pair open among them');
+    expect(run.statusMessage).toBe('Sync completed: 402; the search for the new components\' items failed; the server log has the cause; 2 changed places paired again with near places, 1 near pair open among them; 124 places crowded out of crowded cities');
   });
 
   it('skips the search with its reason where the local Wikidata subset is not built, and still pairs', async () => {
@@ -180,6 +184,6 @@ describe('the steps after a run', () => {
     expect(runComponentItemSearch).not.toHaveBeenCalled();
     expect(drainPairing).toHaveBeenCalledTimes(1);
     expect(run.status).toBe('complete');
-    expect(run.statusMessage).toBe('Sync completed: 403; 2 new components left without an item, since the local Wikidata subset is not built: build it under Public Dumps, then Find component items; 2 changed places paired again with near places, 1 near pair open among them');
+    expect(run.statusMessage).toBe('Sync completed: 403; 2 new components left without an item, since the local Wikidata subset is not built: build it under Public Dumps, then Find component items; 2 changed places paired again with near places, 1 near pair open among them; 124 places crowded out of crowded cities');
   });
 });
