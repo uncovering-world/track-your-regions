@@ -460,11 +460,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_smoke == 'true') }}
-    # The smoke, database and API contract lanes in turn: measured at 13.5
-    # minutes on 2026-10-31 before the API lane's curator run was paced under
-    # authenticatedLimiter (scripts/api-contract.mjs), which adds about five,
-    # as the traveller's paced run does. Twenty cut the paced run off (#2192).
-    timeout-minutes: 25
+    # The smoke, database and API contract lanes in turn, about 26 minutes on
+    # 2026-11-01: smoke 4.7, database 3, and the API lane about 17.5, since
+    # its traveller and curator runs are paced under authenticatedLimiter
+    # (scripts/api-contract.mjs) and the curator run's coverage phase alone
+    # took 484 s. A job of the API lane's own is #2215.
+    timeout-minutes: 35
     env:
       DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
       # The smoke specs browse the production build, the shape a visitor gets,
