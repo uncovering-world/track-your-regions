@@ -399,8 +399,8 @@ Who opens the third look: the near-places card (`MergeProposalsCard.tsx`, `pairP
 on the map*, this card's place first — *Bisotun (this card) · World Heritage Sites* beside *Bisotūn ·
 part of The Persian Caravanserai*, the caravanserai at the foot of the rock 451 m off — and the
 other alone where the card's own place has no point; and the sources card (`SourcesCard.tsx`,
-`BothPoints`) on *see both points on the map*, each source's point labelled with the source and the
-one readers see first; there each pin's row offers *keep this point* (`MapPin.action`), the same
+`BothPoints`) on *see both points on the map*, one pin per point labelled with every source that
+gives it (#2212) and the one readers see first; there each pin's row offers *keep this point* (`MapPin.action`), the same
 answer as choosing that source's tile for the point and pressing the card's one button, with the
 card's other choices as they stand — the card answers (`keepPoint`) and closes with its outcome line,
 and its own button stays what it is. A pin of the near-places pair carries no action: nothing on that
