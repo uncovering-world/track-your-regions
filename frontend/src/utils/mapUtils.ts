@@ -85,9 +85,16 @@ export function focusFromGeoJson(geojson: GeoJSON.GeoJSON): GeoFocus | null {
 export type MapLike = MapRef | ReturnType<MapRef['getMap']>;
 
 export interface FrameOptions {
-  padding?: number;
+  /** How much of each edge the frame keeps clear; one number for all four, or each side's own. */
+  padding?: number | { top: number; bottom: number; left: number; right: number };
   duration?: number;
-  /** Caps the size-derived max zoom (12 / 6 / 4); it can only lower it. */
+  /**
+   * The ceiling on the zoom. Without it the ceiling is the size-derived one
+   * (12, or 6 and 4 past continent spans), which is a region's: a region is
+   * never framed closer than its streets. A frame of pins metres apart — the
+   * review card's two points of one place — names a higher one, since at 12
+   * two pins 450 m apart are twelve pixels and read as one.
+   */
   maxZoom?: number;
   /**
    * The floor under the zoom the box asks for. `smartFitBounds` defaults it to 1:
@@ -128,7 +135,7 @@ export function smartFitBounds(
   let effectiveMaxZoom = 12;
   if (lngSpan > 100 || latSpan > 50) effectiveMaxZoom = 4;
   else if (lngSpan > 50 || latSpan > 30) effectiveMaxZoom = 6;
-  if (options.maxZoom !== undefined) effectiveMaxZoom = Math.min(effectiveMaxZoom, options.maxZoom);
+  if (options.maxZoom !== undefined) effectiveMaxZoom = options.maxZoom;
 
   const map = 'getMap' in mapLike ? mapLike.getMap() : mapLike;
 
