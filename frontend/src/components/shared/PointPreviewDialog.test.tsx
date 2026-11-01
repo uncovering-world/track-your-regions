@@ -15,13 +15,28 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import * as webgl from '../../utils/webgl';
 
-vi.mock('react-map-gl/maplibre', () => ({
-  default: ({ children }: { children?: React.ReactNode }) => <div data-testid="the-map">{children}</div>,
+/** What the mocked map hands `onLoad`: the map the framing rule is asked to move. */
+const THE_MAP = { id: 'the-map' };
+
+vi.mock('react-map-gl/maplibre', async () => {
+  const { useEffect } = await import('react');
+  function MapGL({ children, onLoad }: { children?: React.ReactNode; onLoad?: (event: { target: unknown }) => void }) {
+    useEffect(() => { onLoad?.({ target: THE_MAP }); }, [onLoad]);
+    return <div data-testid="the-map">{children}</div>;
+  }
+  return {
+  default: MapGL,
   Marker: ({ children }: { children?: React.ReactNode }) => <span data-testid="the-marker">{children}</span>,
   Source: ({ children, data }: { children?: React.ReactNode; data: GeoJSON.Feature<GeoJSON.LineString> }) => (
     <span data-testid="the-line" data-coordinates={JSON.stringify(data.geometry.coordinates)}>{children}</span>
   ),
   Layer: () => null,
+  };
+});
+
+vi.mock('../../utils/mapUtils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../utils/mapUtils')>()),
+  frameGeoJson: vi.fn(),
 }));
 
 vi.mock('./PointCorrection', () => ({
@@ -34,6 +49,17 @@ vi.mock('./PointCorrection', () => ({
 }));
 
 import { PointPreviewDialog } from './PointPreviewDialog';
+import { frameGeoJson } from '../../utils/mapUtils';
+
+/**
+ * Pair 350 on dev, 2026-11-01: Bisotun, the World Heritage site, and "Bisotūn",
+ * the caravanserai at the foot of the rock, a component of The Persian
+ * Caravanserai, 451 m apart.
+ */
+const BISOTUN = [
+  { latitude: 34.3883, longitude: 47.4367, label: 'Bisotun (this card) · World Heritage Sites' },
+  { latitude: 34.3845, longitude: 47.4349, label: 'Bisotūn · part of The Persian Caravanserai' },
+];
 
 const place = {
   locationId: 13211, experienceId: 1289, objectName: 'Bilbao Fine Arts Museum', name: null,
@@ -42,6 +68,7 @@ const place = {
 
 beforeEach(() => {
   vi.spyOn(webgl, 'isWebGLAvailable').mockReturnValue(true);
+  vi.mocked(frameGeoJson).mockClear();
 });
 
 afterEach(() => {
@@ -72,8 +99,9 @@ describe('PointPreviewDialog', () => {
     expect(screen.getAllByTestId('the-marker')).toHaveLength(3);
     expect(screen.getByTestId('the-line')).toBeInTheDocument();
     expect(screen.getByText('37.9397, 27.3408 → 37.9406, 27.3394 · a proposed move of 158 m north-west')).toBeInTheDocument();
-    expect(screen.getByText('readers see')).toBeInTheDocument();
-    expect(screen.getByText('the run proposes')).toBeInTheDocument();
+    // Named in the legend on the map and again in the rows of links under it.
+    expect(screen.getAllByText('readers see')).toHaveLength(2);
+    expect(screen.getAllByText('the run proposes')).toHaveLength(2);
   });
 
   it('draws a move across the antimeridian across it, not round the world', () => {
@@ -90,6 +118,102 @@ describe('PointPreviewDialog', () => {
     const [[fromLon], [toLon]] = JSON.parse(screen.getByTestId('the-line').dataset.coordinates ?? '[]') as number[][];
     expect(fromLon).toBe(179.99);
     expect(toLon).toBeCloseTo(180.01, 6);
+  });
+
+  it('draws points that are not a move as labelled pins, with no arrow and no proposal (#2202)', () => {
+    render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Bisotun and Bisotūn" latitude={34.3883} longitude={47.4367} pins={BISOTUN}
+      />,
+    );
+
+    // Each pin and its label on the map; nothing drawn between them.
+    expect(screen.getAllByTestId('the-marker')).toHaveLength(4);
+    expect(screen.queryByTestId('the-line')).toBeNull();
+    // Whose each pin is: on the map, in the legend and in the row of links under the map.
+    expect(screen.getAllByText('Bisotun (this card) · World Heritage Sites')).toHaveLength(3);
+    expect(screen.getAllByText('Bisotūn · part of The Persian Caravanserai')).toHaveLength(3);
+    expect(screen.queryByText('the run proposes')).toBeNull();
+    expect(screen.queryByText('readers see')).toBeNull();
+    // The title says how the two stand to each other (the pass measured 451 m between the
+    // places' nearest points; four decimals of each coordinate give a few metres more);
+    // the coordinates are under the map.
+    expect(screen.getByText(/^45\d m apart$/)).toBeInTheDocument();
+    expect(screen.getByText('34.3845, 47.4349')).toBeInTheDocument();
+  });
+
+  it('frames every pin by the one framing rule once the map has loaded, above a region\'s ceiling', () => {
+    render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Bisotun and Bisotūn" latitude={34.3883} longitude={47.4367} pins={BISOTUN}
+      />,
+    );
+
+    expect(frameGeoJson).toHaveBeenCalledWith(
+      THE_MAP,
+      { type: 'MultiPoint', coordinates: [[47.4367, 34.3883], [47.4349, 34.3845]] },
+      { padding: { top: 70, bottom: 130, left: 70, right: 70 }, duration: 0, maxZoom: 17 },
+    );
+  });
+
+  it('leaves one pin where the view put it, and draws it with its label', () => {
+    render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Bisotūn" latitude={34.3845} longitude={47.4349} pins={[BISOTUN[1]]}
+      />,
+    );
+
+    expect(frameGeoJson).not.toHaveBeenCalled();
+    expect(screen.getAllByTestId('the-marker')).toHaveLength(2);
+    // One pin needs no legend; the row under the map still names it.
+    expect(screen.getAllByText('Bisotūn · part of The Persian Caravanserai')).toHaveLength(2);
+  });
+
+  it('links each point it draws in OpenStreetMap and Google Maps, on every look', () => {
+    const { unmount } = render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Bisotun and Bisotūn" latitude={34.3883} longitude={47.4367} pins={BISOTUN}
+      />,
+    );
+    const osm = screen.getAllByRole('link', { name: 'OpenStreetMap' });
+    expect(osm).toHaveLength(2);
+    expect(osm[0]).toHaveAttribute('href', expect.stringContaining('mlat=34.3883&mlon=47.4367'));
+    expect(osm[1]).toHaveAttribute('href', expect.stringContaining('mlat=34.3845&mlon=47.4349'));
+    expect(screen.getAllByRole('link', { name: 'Google Maps' })[1])
+      .toHaveAttribute('href', expect.stringContaining('query=34.3845,47.4349'));
+    unmount();
+
+    // A move links the stored point and the proposed one; one place links itself.
+    // Each look is unmounted before the next: a second open dialog hides the
+    // first from the role queries (MUI marks the rest of the page aria-hidden),
+    // so a leftover one would make the count pass for the wrong reason.
+    const move = render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Ephesus" latitude={37.939722} longitude={27.340833}
+        movedTo={{ latitude: 37.94058, longitude: 27.33939 }}
+      />,
+    );
+    expect(screen.getAllByRole('link', { name: 'OpenStreetMap' })).toHaveLength(2);
+    move.unmount();
+    render(<PointPreviewDialog open onClose={() => {}} name="Bilbao" latitude={43.27} longitude={-2.94} />);
+    expect(screen.getAllByRole('link', { name: 'Google Maps' })).toHaveLength(1);
+  });
+
+  it("offers a pin's action on its row and hands the press to the caller", () => {
+    const onPick = vi.fn();
+    render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Guachimontones: where each source puts it" latitude={20.6833} longitude={-103.8167}
+        pins={[
+          { latitude: 20.6833, longitude: -103.8167, label: 'UNESCO World Heritage Sites · readers see', action: { label: 'keep this point', onPick } },
+          { latitude: 20.6951, longitude: -103.8357, label: 'Archaeology', action: { label: 'keep this point', onPick: () => {} } },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'keep this point: UNESCO World Heritage Sites · readers see' }));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('button', { name: /^keep this point/ })).toHaveLength(2);
   });
 
   it('draws one pin where the proposed point is the stored one', () => {

@@ -35,6 +35,23 @@
  * for (`moveView`). Two pairs of numbers and "158 m north-west" say that something moved;
  * whether it moved onto the ruins or off them is read from the ground under the arrow.
  *
+ * **Points that are not a move are drawn as whose they are** (#2202). Where a caller hands
+ * in `pins` — the near-places card's two places, Bisotun and the caravanserai at the foot
+ * of its rock; the sources card's two points of one place — each pin is labelled on the
+ * map, in the legend and under the map with whose it is, a place with what it is or a
+ * source, in a colour of its own; no arrow is drawn and nothing is called a proposal,
+ * since no run proposes anything there. The map frames every pin by the one framing rule
+ * (`frameGeoJson`, #674), so two pins either side of the antimeridian are framed between
+ * them, at a ceiling the basemap still reads at (`PINS_MAX_ZOOM`), since a region's
+ * ceiling of 12 puts two pins 450 m apart twelve pixels from each other.
+ *
+ * **Every look ends in the way to each point on another map.** Under the map, each point
+ * the dialog draws is a row — whose it is, its coordinate, and the links that open it in
+ * OpenStreetMap and Google Maps (`PinLinks`) — so a curator checks the pin against another
+ * map on the same point rather than retyping the numbers. A pin whose card takes an answer
+ * about the point carries it as the pin's `action` — the sources card's "keep this point" —
+ * and the row offers it; the card answers, the dialog only hands the press on.
+ *
  * In `shared/` because the same look is asked for from three places — the review
  * page's cards, the object's own screen and the places list on a map — and the rule
  * for where a place may be corrected is the same on all of them: wherever a curator
@@ -47,11 +64,21 @@ import { Layer, Marker, Source } from 'react-map-gl/maplibre';
 import { GuardedMap } from './GuardedMap';
 import { MAP_STYLE } from '../../constants/mapStyles';
 import { PointCorrection, type PlaceToCorrect } from './PointCorrection';
+import {
+  LabelledPin, PIN_COLOURS, PINS_MAX_ZOOM, PinLegend, PinLinks, pinColour, pinsApart, pinsGeoJson, pinsView, type MapPin,
+} from './PointPreviewPins';
+import { frameGeoJson } from '../../utils/mapUtils';
 import { moveLabel, moveView, movedBy, shortWayLongitudeDelta } from '../../utils/moveDescription';
 
 /** The pin readers see today, where the map also draws the one proposed: present, and plainly not the news. */
 const STORED_PIN = '#757575';
 const MOVE_LINE = '#C62828';
+/**
+ * How much of the map's edge the framed pins keep clear: more at the bottom,
+ * where the lowest pin's label hangs under it and the legend stands in the
+ * corner — at 70 the caravanserai's label sat under the legend.
+ */
+const PINS_PADDING = { top: 70, bottom: 130, left: 70, right: 70 };
 
 /**
  * The line a move is drawn along, and the arrowhead on it.
@@ -122,10 +149,68 @@ function companion(
   return label ? { move: label, other: at } : { move: null, other: null };
 }
 
-export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, correction }: {
+type ColouredPin = MapPin & { colour: string };
+
+/**
+ * What the look draws, as the rows under the map and the legend say it: the
+ * labelled pins; or the stored and the proposed point of a move, named as the
+ * legend always named them; or the one place.
+ */
+function pinsOf(
+  several: readonly MapPin[] | null,
+  name: string,
+  stored: { latitude: number; longitude: number },
+  movedTo: { latitude: number; longitude: number } | undefined,
+  move: string | null,
+): ColouredPin[] {
+  if (several) return several.map((pin, index) => ({ ...pin, colour: pinColour(index) }));
+  if (movedTo && move) {
+    return [
+      { ...stored, label: 'readers see', colour: STORED_PIN },
+      { ...movedTo, label: 'the run proposes', colour: PIN_COLOURS[0] },
+    ];
+  }
+  return [{ ...stored, label: name, colour: PIN_COLOURS[0] }];
+}
+
+/** Where the camera opens: on the pins' span, on the move, or on the one place at street level. */
+function viewOf(
+  several: readonly MapPin[] | null,
+  stored: Coordinate,
+  other: Coordinate | null,
+): { latitude: number; longitude: number; zoom: number } {
+  if (several) return pinsView(several);
+  if (other) return moveView(stored, other);
+  return { latitude: stored.lat, longitude: stored.lon, zoom: 11 };
+}
+
+/** What stands on the map: the labelled pins, the move, or the one pin. */
+function Drawn({ several, drawn, move, movedTo, latitude, longitude }: {
+  several: readonly MapPin[] | null;
+  drawn: readonly ColouredPin[];
+  move: string | null;
+  movedTo: { latitude: number; longitude: number } | undefined;
+  latitude: number;
+  longitude: number;
+}) {
+  if (several) return <>{drawn.map(pin => <LabelledPin key={pin.label} pin={pin} colour={pin.colour} />)}</>;
+  if (movedTo && move) {
+    return (
+      <>
+        <MoveArrow from={{ latitude, longitude }} to={movedTo} />
+        <Marker latitude={latitude} longitude={longitude} color={STORED_PIN} />
+        <Marker latitude={movedTo.latitude} longitude={movedTo.longitude} />
+      </>
+    );
+  }
+  return <Marker latitude={latitude} longitude={longitude} />;
+}
+
+export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, pins, correction }: {
   open: boolean;
   onClose: () => void;
   name: string;
+  /** The place's point — or, with `pins`, the first of them, which the title prints for one pin. */
   latitude: number;
   longitude: number;
   /**
@@ -135,20 +220,30 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
    */
   movedTo?: { latitude: number; longitude: number };
   /**
+   * Points that are not a move, each with whose it is (#2202): two places that may be
+   * one, two sources' points of one place. The map draws and labels every one and
+   * frames them together; nothing is called a proposal. Read by the look alone.
+   */
+  pins?: readonly MapPin[];
+  /**
    * Offered where a curator may correct the place: what to correct, and where the
    * outcome line goes. Absent, the dialog is the look it always was.
    */
   correction?: { place: PlaceToCorrect; onDone: (message: string) => void };
 }) {
   const stored = { lon: longitude, lat: latitude };
-  const { move, other } = companion(stored, movedTo, Boolean(correction));
-  const view = other ? moveView(stored, other) : { latitude, longitude, zoom: 11 };
+  const several = pins && pins.length > 0 && !correction ? pins : null;
+  const { move, other } = companion(stored, movedTo, Boolean(correction) || several !== null);
+  const view = viewOf(several, stored, other);
+  const drawn = pinsOf(several, name, { latitude, longitude }, movedTo, move);
+  const apart = several ? pinsApart(several) : null;
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pr: 6 }}>
         {name}
         <Typography variant="body2" color="text.secondary">
-          {latitude.toFixed(4)}, {longitude.toFixed(4)}
+          {/* Two pins are said by how they stand to each other; their coordinates are under the map. */}
+          {apart ?? `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`}
           {move && ` → ${movedTo?.latitude.toFixed(4)}, ${movedTo?.longitude.toFixed(4)} · a proposed move of ${move}`}
           {/* Whose place this is — unless the place is named for the object already,
               as a museum's one place is, where the line would say the name twice. */}
@@ -174,43 +269,34 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
           />
         </DialogContent>
       ) : (
-        <DialogContent sx={{ height: 420, p: 0, position: 'relative' }}>
-          {/* Mounted only while the dialog is open — MUI unmounts the content by default,
-              which is what keeps the WebGL context to the moment it is wanted. Zoom 11
-              shows the surroundings a description talks about rather than the roof of the
-              building, which is what a curator is checking. */}
-          {open && (
-            <GuardedMap
-              initialViewState={view}
-              mapStyle={MAP_STYLE}
-              style={{ width: '100%', height: '100%' }}
-              unavailableCompact
-              unavailableDetail="The coordinate is above; the rest of this card needs no map."
-            >
-              {movedTo && move ? (
-                <>
-                  <MoveArrow from={{ latitude, longitude }} to={movedTo} />
-                  <Marker latitude={latitude} longitude={longitude} color={STORED_PIN} />
-                  <Marker latitude={movedTo.latitude} longitude={movedTo.longitude} />
-                </>
-              ) : (
-                <Marker latitude={latitude} longitude={longitude} />
-              )}
-            </GuardedMap>
-          )}
-          {move && (
-            // Which pin is which, on the map and not only in the title: a legend a
-            // curator has to look away from the pins to read is one they skip.
-            <Box
-              sx={{
-                position: 'absolute', left: 12, bottom: 12, px: 1, py: 0.5, borderRadius: 1,
-                bgcolor: 'background.paper', boxShadow: 1, fontSize: 12, lineHeight: 1.5,
-              }}
-            >
-              <Box><Box component="span" sx={{ color: STORED_PIN, fontWeight: 700 }}>●</Box> readers see</Box>
-              <Box><Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>●</Box> the run proposes</Box>
-            </Box>
-          )}
+        <DialogContent sx={{ p: 0 }}>
+          <Box sx={{ height: 420, position: 'relative' }}>
+            {/* Mounted only while the dialog is open — MUI unmounts the content by default,
+                which is what keeps the WebGL context to the moment it is wanted. Zoom 11
+                shows the surroundings a description talks about rather than the roof of the
+                building, which is what a curator is checking. */}
+            {open && (
+              <GuardedMap
+                initialViewState={view}
+                mapStyle={MAP_STYLE}
+                style={{ width: '100%', height: '100%' }}
+                unavailableCompact
+                unavailableDetail="The coordinates are below; the rest of this card needs no map."
+                // Several pins are framed by the one rule once the map can be asked to;
+                // one pin stands where the view already put it.
+                onLoad={(event) => {
+                  if (several && several.length > 1) {
+                    frameGeoJson(event.target, pinsGeoJson(several), { padding: PINS_PADDING, duration: 0, maxZoom: PINS_MAX_ZOOM });
+                  }
+                }}
+              >
+                <Drawn several={several} drawn={drawn} move={move} movedTo={movedTo} latitude={latitude} longitude={longitude} />
+              </GuardedMap>
+            )}
+            {/* Which pin is which, on the map and not only in the title, wherever there is more than one. */}
+            {drawn.length > 1 && <PinLegend entries={drawn} />}
+          </Box>
+          <PinLinks pins={drawn} />
         </DialogContent>
       )}
     </Dialog>
