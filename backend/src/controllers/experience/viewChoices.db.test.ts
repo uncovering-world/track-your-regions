@@ -196,4 +196,83 @@ describe('two sources that describe one place differently (#1246)', () => {
 
     expect(await open()).toEqual([]);
   });
+
+  it('asks nothing of a kind that refused the place, which is no source of it (#2212)', async () => {
+    // The Golden Gate's shape: a kind's rule refused the place while its source
+    // still lists it. Its view counted while listed and raised a question the
+    // card had no source to answer for.
+    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1`, [wikidataView]);
+
+    expect(await open()).toEqual([]);
+    expect((await querySources([RILA])).rows).toEqual([]);
+
+    // Admitted again, its view is a source's once more and the question is back.
+    await pool.query(`UPDATE experience_kind_memberships SET admission = 'admitted' WHERE id = $1`, [wikidataView]);
+    expect(await open()).toEqual(['name', 'imageUrl']);
+  });
+
+  it('keeps an answer when a view it recorded leaves, and asks again when one arrives (#2212)', async () => {
+    // The Golden Gate's shape: the name answered over three views, one of them
+    // a kind's that later refused the place. A third source on Rila stands in.
+    const third = await membership('Archaeology', 'Q999001', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
+    const outcome = await chooseViewsUnderLock(RILA, curatorId, null, await keepingChoices(RILA), await sources());
+    expect(outcome.result?.changed).toEqual([]);
+    expect(await open()).toEqual([]);
+
+    // Its kind refuses the place: the answer holds over the views that stand.
+    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1`, [third]);
+    expect(await open()).toEqual([]);
+
+    // Admitted again with a new name: a view the answer never saw, so it is asked.
+    await pool.query(`UPDATE experience_kind_memberships SET admission = 'admitted', reported_name = 'Rilski manastir' WHERE id = $1`, [third]);
+    expect(await open()).toEqual(['name']);
+  });
+
+  it('asks again when the view the answer chose leaves, since no standing source gives the value shown (#2212)', async () => {
+    const third = await membership('Archaeology', 'Q999001', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
+    const outcome = await chooseViewsUnderLock(RILA, curatorId, null, [
+      { field: 'name', membershipId: third },
+      { field: 'imageUrl', membershipId: unescoView },
+    ], await sources());
+    expect(outcome.result?.changed).toEqual(['name']);
+    expect(await open()).toEqual([]);
+
+    // The chosen view's kind refuses the place: the name readers see is no
+    // standing source's now, while UNESCO and Places of worship still disagree.
+    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1`, [third]);
+    expect(await open()).toEqual(['name']);
+  });
+
+  it('asks again when the chosen view\'s row is deleted, which leaves the answer naming no view (#2212)', async () => {
+    // A part's World Heritage components record goes with its last component
+    // relation, and the choice's `chosen_membership_id` goes null with it
+    // (ON DELETE SET NULL) — the shape of a keep, read off the values instead.
+    const third = await membership('Archaeology', 'Q999001', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
+    await chooseViewsUnderLock(RILA, curatorId, null, [
+      { field: 'name', membershipId: third },
+      { field: 'imageUrl', membershipId: unescoView },
+    ], await sources());
+    expect(await open()).toEqual([]);
+
+    await pool.query('DELETE FROM experience_kind_memberships WHERE id = $1', [third]);
+    expect((await pool.query(
+      "SELECT chosen_membership_id FROM experience_view_choices WHERE experience_id = $1 AND field = 'name'", [RILA],
+    )).rows).toEqual([{ chosen_membership_id: null }]);
+    expect(await open()).toEqual(['name']);
+  });
+
+  it('keeps an answer that kept a value no source gives, whatever views leave', async () => {
+    // A curator's own name, kept over the sources: in no recorded view, so it
+    // never reads as a value a departed view gave.
+    await pool.query(`UPDATE experiences SET name = 'Rila Monastery of Saint Ivan' WHERE id = $1`, [RILA]);
+    const third = await membership('Archaeology', 'Q999001', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
+    await chooseViewsUnderLock(RILA, curatorId, null, [
+      { field: 'name', membershipId: null },
+      { field: 'imageUrl', membershipId: unescoView },
+    ], await sources());
+    expect(await open()).toEqual([]);
+
+    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1`, [third]);
+    expect(await open()).toEqual([]);
+  });
 });

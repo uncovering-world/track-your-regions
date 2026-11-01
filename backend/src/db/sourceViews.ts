@@ -15,7 +15,7 @@
  */
 
 import { SHORT_MOVE_METERS } from '@tyr/shared/moves';
-import { COMPONENTS_KIND_ID, MEMBERSHIPS, realKindSql } from './membership.js';
+import { COMPONENTS_KIND_ID, MEMBERSHIPS, membershipAdmittedSql, realKindSql } from './membership.js';
 
 /**
  * The fields a view holds, in the words a run's change set and the review
@@ -47,8 +47,8 @@ export function membershipViewSql(alias = 'm'): ViewSql {
 }
 
 /**
- * Every standing view of a place, as rows under `alias`: each membership's
- * (`reported_*`), and, on a part of a serial site, the view the site's source
+ * Every standing view of a place, as rows under `alias`: each admitted
+ * membership's (`reported_*`), and, on a part of a serial site, the view the site's source
  * holds of the component (#2061, #2063): the name and coordinate the list gives
  * it, on the part's record in World Heritage components (ADR-0156 decision 2),
  * which the site's run writes (`writePartListings`) and a merge carries to the
@@ -67,13 +67,23 @@ export function membershipViewSql(alias = 'm'): ViewSql {
  * `external_id` is the id the source knows the place by, the component's
  * reference for a component view, and `site_id` names the site a component
  * view is the view of (null on a membership's), whose page holds the record.
+ *
+ * A membership its kind refused is no source of the place (#2212): its source
+ * may still list the place, but the kind's rule turned it down, so its view
+ * neither raises a question on the sources card nor holds the place's value
+ * against an admitted source's run. Both read this one set, so a field the
+ * card does not ask about is never kept against a source that would answer it.
+ * The Golden Gate in Vladimir is the case: Public art refused it on 2026-10-22
+ * while Monuments & memorials admitted it, and Public art's view asked a
+ * question beside Monuments' one about the same Wikidata item.
  */
 export function placeViewsSql(placeExpr: string, alias = 'v'): string {
   return `(SELECT m.id AS membership_id, m.kind_id, m.source_id, m.external_id::text AS external_id,
                   false AS component, NULL::int AS site_id, m.reported_name, m.reported_subtitle, m.reported_image_url,
                   m.reported_image_credit, m.reported_location, m.reported_wikipedia_url
              FROM ${MEMBERSHIPS} m
-            WHERE m.experience_id = ${placeExpr} AND ${viewStandsSql('m')} AND ${realKindSql('m')}
+            WHERE m.experience_id = ${placeExpr} AND ${viewStandsSql('m')} AND ${membershipAdmittedSql('m')}
+              AND ${realKindSql('m')}
            UNION ALL
            SELECT rec.id, w.kind_id, w.source_id, p.external_ref, true, w.experience_id, rec.reported_name, NULL::text,
                   NULL::text, NULL::jsonb, rec.reported_location, NULL::text
@@ -82,7 +92,7 @@ export function placeViewsSql(placeExpr: string, alias = 'v'): string {
              JOIN ${MEMBERSHIPS} w ON w.id = p.membership_id
             WHERE rec.experience_id = ${placeExpr} AND rec.kind_id = ${COMPONENTS_KIND_ID}
               AND (rec.reported_name IS NOT NULL OR rec.reported_location IS NOT NULL)
-              AND ${viewStandsSql('w')}) AS ${alias}`;
+              AND ${viewStandsSql('w')} AND ${membershipAdmittedSql('w')}) AS ${alias}`;
 }
 
 /**
@@ -124,7 +134,8 @@ export function otherViewsSql(
  * that stopped listing it has stopped saying anything about it, and a view
  * left from then contradicts nobody. A component's record holds no listing of
  * its own: the site's run clears its view once the list drops the component
- * (`writePartListings`).
+ * (`writePartListings`). Whether the kind admits the place is a second
+ * question, which `placeViewsSql` asks beside this one (#2212).
  */
 export function viewStandsSql(alias = 'm'): string {
   return `${alias}.missing_since IS NULL AND ${alias}.source_membership = 'present'`;
@@ -198,7 +209,8 @@ export function viewValueSql(fieldExpr: string, alias = 'm'): string {
  * membership id to value, empty views left out. What a curator's choice
  * records (`experience_view_choices.views`) and what the open question
  * compares it with: the same expression on both sides, so an answer stands
- * exactly while every source keeps sending what it sent.
+ * while every source still standing keeps sending what it sent
+ * (`openViewFieldsSql`).
  */
 export function viewsOfFieldSql(placeExpr: string, fieldExpr: string): string {
   return `(SELECT COALESCE(jsonb_object_agg(v.membership_id::text, ${viewValueSql(fieldExpr, 'v')}), '{}'::jsonb)
@@ -223,16 +235,38 @@ export function contestedViewFieldsSql(placeExpr: string): string {
  * The contested fields of a place a curator has not answered for the views as
  * they stand (#1246), as a `text[]` in `VIEW_FIELDS` order. Empty once every
  * one is answered; a field whose views change after the answer is open again.
+ *
+ * An answer holds while every view standing now is one it recorded, with the
+ * value it recorded (`@>`), and while the value readers see is not one that
+ * only a view now gone gave: a view that changed or a source that arrived opens
+ * the field again, and so does the view the place's value came from leaving
+ * with no standing view giving that value, since the place then shows what no
+ * source gives; any other view that left — a source that stopped listing the
+ * place, a kind that refused it (#2212) — leaves nothing new to choose among.
+ * The Golden Gate in Vladimir: its name was answered over three views, Public
+ * art's among them, and Public art's refusal must not ask it again.
+ *
+ * Read off the values rather than off `chosen_membership_id`, which is null
+ * both for an answer that kept the place's own value and for one whose chosen
+ * row was deleted since (`ON DELETE SET NULL`: a part's World Heritage
+ * components record goes with its last component relation). A kept value
+ * that no source ever gave — a curator's own — is in no recorded view, so it
+ * never reopens on this.
  */
 export function openViewFieldsSql(placeExpr: string): string {
   const words = VIEW_FIELDS.map(field => "'" + field + "'").join(', ');
   const order = `ARRAY[${words}]::text[]`;
+  // The value readers see now, as a view's value compares (`viewValueSql`).
+  const shown = `(SELECT ${placeViewValueSql('f', 'shown_place')} FROM experiences shown_place WHERE shown_place.id = ${placeExpr})`;
   return `(SELECT COALESCE(array_agg(f ORDER BY array_position(${order}, f)), '{}'::text[])
              FROM unnest(${contestedViewFieldsSql(placeExpr)}) AS f
             WHERE NOT EXISTS (
               SELECT 1 FROM experience_view_choices c
                WHERE c.experience_id = ${placeExpr} AND c.field = f
-                 AND c.views = ${viewsOfFieldSql(placeExpr, 'f')}))`;
+                 AND c.views @> ${viewsOfFieldSql(placeExpr, 'f')}
+                 AND NOT (EXISTS (SELECT 1 FROM jsonb_each_text(c.views) gave WHERE gave.value = ${shown})
+                          AND NOT EXISTS (SELECT 1 FROM jsonb_each_text(${viewsOfFieldSql(placeExpr, 'f')}) gives
+                                           WHERE gives.value = ${shown}))))`;
 }
 
 /**
