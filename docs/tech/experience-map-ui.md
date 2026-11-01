@@ -588,6 +588,30 @@ second-order list of their own, never mixed into a group's rows (#2201).
   twice. The selected tail place is highlighted at the same point and flown to, through
   `getExperienceById`. A multi-point place in a tail is drawn as that one pin.
 
+### Discover's tail
+
+Discover offers the same tail after its list of one kind (#2224), through the same pieces rather
+than copies of them:
+
+- **The read.** `useDiscoverExperiences` holds a `useRegionTail` with `includeChildren`, since
+  Discover reads a region with its descendants where Map mode reads it alone, and the tail has to
+  count and hold the same set as the list (`fetchRegionTail(regionId, kindId, true)`, cached under
+  its own key). Its counts are the list's `crowdedOut` narrowed to the open kind. A card the list
+  lacks is looked for in the open kind's tail only (`lookupKindId`), since a place of another kind
+  is not this list's, and opens there: the address keeps it
+  (`listMissing` waits for `tail.settled`), and `findExperience` answers the card's place from the
+  list or the tail, so the detail panel, its slug and its map fallback work for it.
+- **The row.** `DiscoverExperienceView` builds one `TailSection` for the open kind, counted over the
+  type the list is narrowed to and worded by `tailLabel()`, and `DiscoverExperienceList` draws it
+  with `TailRow` as the window's next row, after the list's rows. Opened, its places follow in `TailPlace`, each a
+  `DiscoverExperienceRow` like the list's, best known first, narrowed by the list's type and name
+  filter. The row and its places are rows of the list's own virtual window, after the list's
+  rows: read with the subregions, a country's tail holds every crowded city's places of the kind.
+- **The order.** A kind's list in Discover is ordered as Map mode's groups are, best known first by
+  the kind's fame (`byFame`, `utils/placeKinds.ts`), name order for a kind that measures none.
+- **The map.** Discover's map draws the list's places only. A tail place appears on it once its card
+  is open, through the card's own points, as any selected place does.
+
 ## Discover's card list is windowed too
 
 `DiscoverExperienceList` mounts the rows its scroll window covers (#573), through the same
