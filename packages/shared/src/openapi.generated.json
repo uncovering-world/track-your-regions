@@ -15168,6 +15168,66 @@
         }
       }
     },
+    "/api/experiences/{id}/arrival-kind": {
+      "post": {
+        "operationId": "postExperiencesByIdArrivalKind",
+        "summary": "Answer an arrival with the kind it belongs in instead, keeping it in its own kind or not",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArrivalKindBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArrivalAnsweredWithKind"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/refuse-contents": {
       "post": {
         "operationId": "postExperiencesByIdRefuseContents",
@@ -17352,6 +17412,101 @@
           }
         ],
         "description": "An area as a simplifying read draws it: one piece or several."
+      },
+      "ArrivalAnsweredWithKind": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The membership the add wrote in the chosen kind: admitted, published and pinned."
+          },
+          "kindId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "kind": {
+            "type": "string",
+            "description": "The chosen kind, by name."
+          },
+          "arrivalMembershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The arrival the answer was about."
+          },
+          "fromKind": {
+            "type": "string",
+            "description": "The kind that brought the place, by name."
+          },
+          "stays": {
+            "type": "boolean",
+            "description": "Whether the place also stays in the kind that brought it."
+          },
+          "arrivalPublished": {
+            "type": "boolean",
+            "description": "Whether the arrival was published in its own kind; false where it was kept out."
+          },
+          "arrivalWaits": {
+            "description": "Why the arrival could not be published where it stays, the add standing; null otherwise.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "experienceId",
+          "membershipId",
+          "kindId",
+          "kind",
+          "arrivalMembershipId",
+          "fromKind",
+          "stays",
+          "arrivalPublished",
+          "arrivalWaits"
+        ],
+        "additionalProperties": false,
+        "description": "An arrival answered with the kind it belongs in instead (#2213)."
+      },
+      "ArrivalKindBody": {
+        "type": "object",
+        "properties": {
+          "kindId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "type": {
+            "description": "The type within the kind, from its vocabulary; absent for a kind that has none.",
+            "type": "string",
+            "maxLength": 100
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "stays": {
+            "type": "boolean",
+            "description": "Whether the place also stays in the kind that brought it: published there, else kept out of it."
+          }
+        },
+        "required": [
+          "kindId",
+          "stays"
+        ]
       },
       "AssertionArea": {
         "type": "string",
