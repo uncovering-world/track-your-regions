@@ -15,7 +15,6 @@ import { claimsFacingSql, rowKindJoinSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
-import { ACCEPTABLE_FIELDS } from './acceptableFields.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { claimKeySql, conflictChangeOpenSql } from './reviewQueuePredicates.js';
@@ -60,7 +59,7 @@ export async function queryConflicts(
 ): Promise<QueryResult> {
   const keyMapIdx = params.length + 1;
   const familyIdx = keyMapIdx + 1;
-  const acceptableIdx = familyIdx + 1;
+  const idsIdx = familyIdx + 1;
   const claimKeyFor = (field: string) => claimKeySql(field, `$${keyMapIdx}`, `$${familyIdx}`);
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
@@ -73,7 +72,6 @@ export async function queryConflicts(
              -- reading it off the log is the only place it exists.
              l.completed_at AS run_completed_at,
              (SELECT jsonb_agg(f || jsonb_build_object(
-                       'acceptable', $${acceptableIdx}::jsonb ? (f->>'field'),
                        -- Who claimed this field and when, so the button stops
                        -- saying "my edit" about another curator's work. The
                        -- claim itself is a set membership in curated_fields and
@@ -178,11 +176,11 @@ export async function queryConflicts(
         -- experience, so narrowing to the page's ids first leaves the same newest
         -- changeset row per id and reads a handful of rows instead of every
         -- conflict in the catalogue.
-        AND e.id = ANY($${acceptableIdx + 1}::int[])
+        AND e.id = ANY($${idsIdx}::int[])
       ORDER BY e.id, ch.id DESC
     ) q
     WHERE q.proposed IS NOT NULL
     ORDER BY q.id
   `, [...params, JSON.stringify(CURATED_KEY_BY_FIELD), JSON.stringify(CLAIM_KEY_BY_FAMILY),
-    JSON.stringify([...ACCEPTABLE_FIELDS]), ids]);
+    ids]);
 }

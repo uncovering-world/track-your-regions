@@ -504,11 +504,10 @@ describe('getReviewQueue', () => {
     // 'imageUrl' is claimed as 'image_url' — the column, not the changeset's
     // word — while 'metadata.inDanger' is in no map at all: a metadata
     // claim names its key (ADR-0077 decision 3), and the field falls back to it.
-    // Counted back from the end: the tail is the key map, the families, the
-    // acceptable fields and the page's ids, one shorter than it was when a
-    // `LIMIT` and an `OFFSET` closed it.
+    // Counted back from the end: the tail is the key map, the families and the
+    // page's ids.
     const [, conflictParams] = callMatching("'conflict' AS kind");
-    const map = JSON.parse(String(conflictParams.at(-4)));
+    const map = JSON.parse(String(conflictParams.at(-3)));
     expect(map.imageUrl).toBe('image_url');
     expect(map['metadata.inDanger']).toBeUndefined();
   });
@@ -522,7 +521,7 @@ describe('getReviewQueue', () => {
     // all fall under is `name_local`, which the upsert honours whole, so without
     // this arm such a conflict would be protected and asked nowhere.
     const [, conflictParams] = callMatching("'conflict' AS kind");
-    const families = JSON.parse(String(conflictParams.at(-3)));
+    const families = JSON.parse(String(conflictParams.at(-2)));
     expect(families.nameLocal).toBe('name_local');
     // And `metadata` is deliberately absent: its claims are per key, so a family
     // rule over it would answer a whole-column question of `metadata.website`.
@@ -799,15 +798,6 @@ describe('getReviewQueue', () => {
     // The row-level guard as well as the field-level one: a card whose every
     // held row is answered must not stand with nothing on it.
     expect(sql).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM experience_held_decisions/);
-  });
-
-  it('does not offer an acceptable flag on a held field', async () => {
-    // 'acceptable' is the conflict path's concept — accept-source's own
-    // lookup requires a curatedConflict:true field, which held's now
-    // deliberately excludes, so a true flag here would advertise a button
-    // that always 409s.
-    const sql = await capturedQueueSql('held');
-    expect(sql).not.toContain('acceptable');
   });
 
   it('labels all three new kinds, like the four that predate them', async () => {

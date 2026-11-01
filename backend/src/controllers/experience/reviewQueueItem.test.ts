@@ -11,7 +11,7 @@ function conflictRow(over: Record<string, unknown> = {}): QueueRow {
     run_completed_at: new Date('2026-08-21T09:12:00.000Z'), sync_log_id: 98,
     proposed: [{
       field: 'name', old: 'Bamiyan Valley', new: 'Cultural Landscape of the Bamiyan Valley',
-      significance: 'minor', curatedConflict: true, held: false, acceptable: true,
+      significance: 'minor', curatedConflict: true, held: false,
       claim: { by: 'a curator', at: '2026-08-04T15:01:24.341+00:00' }, decidedBefore: [],
       // What runs before 2026-08-31 stored beside the field.
       protectedByClaim: true,
@@ -30,7 +30,7 @@ describe('queueItemOf', () => {
   it('serves a proposed field without the writer key a run once stored beside it', () => {
     const [field] = queueItemOf(conflictRow()).proposed!;
     expect(field).not.toHaveProperty('protectedByClaim');
-    expect(field).toMatchObject({ field: 'name', acceptable: true, claim: { by: 'a curator' } });
+    expect(field).toMatchObject({ field: 'name', claim: { by: 'a curator' } });
   });
 
   it('carries the object\'s description to the card (#1780)', () => {
