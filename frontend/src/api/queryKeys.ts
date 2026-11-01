@@ -79,6 +79,8 @@ export const queryKeys = {
     survivor: (id: Id) => ['experience', 'survivor', id] as const,
     locationsAll: ['experience-locations'] as const,
     locations: (id: Id) => ['experience-locations', id] as const,
+    /** An object's points with `in_region` asked of one region: a crowded-out place's card, which the region batch leaves out (#2201). */
+    locationsIn: (id: Id, regionId: Id) => ['experience-locations', id, regionId] as const,
     contentsAll: ['experience-contents'] as const,
     contents: (id: Id) => ['experience-contents', id] as const,
     siteFinds: (id: Id) => ['site-finds', id] as const,
@@ -110,6 +112,8 @@ export const queryKeys = {
     /** A region's list, every `showLost` variant of it. */
     inRegion: (regionId: Id) => ['experiences', 'by-region', regionId] as const,
     byRegion: (regionId: Id, showLost: boolean) => ['experiences', 'by-region', regionId, showLost] as const,
+    /** What a crowded city leaves out of a region's list, one kind's or every kind's (`null`), under the list's prefix so a write that refetches the list refetches it (#2201). */
+    tail: (regionId: Id, kindId: Id) => ['experiences', 'by-region', regionId, 'tail', kindId] as const,
     search: (query: string) => ['experiences', 'search', query] as const,
     kinds: ['experience-kinds'] as const,
     regionLocationsAll: ['region-locations'] as const,

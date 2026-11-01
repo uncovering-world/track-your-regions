@@ -33,7 +33,7 @@ describe('the windowed experience list', () => {
 
     it('gives an expanded group its header and every experience, in order', () => {
       const rows = flattenGroups([group('UNESCO', [1, 2, 3])], new Set(['UNESCO']));
-      expect(rows.map(r => (r.kind === 'header' ? 'H' : r.exp.id))).toEqual(['H', 1, 2, 3]);
+      expect(rows.map(r => ('exp' in r ? r.exp.id : 'H'))).toEqual(['H', 1, 2, 3]);
     });
 
     it('keeps the groups in the order it was given', () => {
@@ -43,7 +43,7 @@ describe('the windowed experience list', () => {
         [group('UNESCO', [1]), group('Museums', [2]), group('Public Art', [3])],
         new Set(['UNESCO', 'Museums', 'Public Art']),
       );
-      expect(rows.map(r => (r.kind === 'header' ? r.group.kindName : r.exp.id)))
+      expect(rows.map(r => ('exp' in r ? r.exp.id : r.group.kindName)))
         .toEqual(['UNESCO', 1, 'Museums', 2, 'Public Art', 3]);
     });
 
@@ -52,7 +52,7 @@ describe('the windowed experience list', () => {
         [group('UNESCO', [1, 2]), group('Museums', [3, 4])],
         new Set(['Museums']),
       );
-      expect(rows.map(r => (r.kind === 'header' ? r.group.kindName : r.exp.id)))
+      expect(rows.map(r => ('exp' in r ? r.exp.id : r.group.kindName)))
         .toEqual(['UNESCO', 'Museums', 3, 4]);
     });
   });

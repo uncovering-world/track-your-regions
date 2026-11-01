@@ -7,14 +7,16 @@
  * are `curation.ts`; the review queue's calls are `reviewQueue.ts`.
  */
 
+import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import type {
   ExperienceDetail, ExperienceKinds, ExperienceLocationsResponse, ExperienceSearch, ExperiencesByRegionResponse,
   ExperienceTreasuresResponse, NewBadgesSeen, RegionExperienceCounts, RegionExperienceLocation,
-  RegionExperienceLocationsResponse, SiteFindsResponse,
+  RegionExperienceLocationsResponse, RegionTailResponse, SiteFindsResponse,
 } from './client.generated';
 import {
   getExperiencesById, getExperiencesByIdFinds, getExperiencesByIdLocations, getExperiencesByIdTreasures,
-  getExperiencesByRegionByRegionId, getExperiencesByRegionByRegionIdLocations, getExperiencesKinds,
+  getExperiencesByRegionByRegionId, getExperiencesByRegionByRegionIdLocations,
+  getExperiencesByRegionByRegionIdTail, getExperiencesKinds,
   getExperiencesRegionCounts, getExperiencesSearch, postExperiencesNewBadgesSeen,
 } from './client.generated';
 
@@ -24,9 +26,10 @@ import {
 export type {
   Experience, ExperienceDetail, ExperienceKind, ExperienceKinds, ExperienceLocationsResponse,
   ExperienceLocationWithState, ExperienceRegionRef, ExperienceSearch, ExperienceSearchResult,
-  ExperiencesByRegionResponse, ExperienceTreasure, ExperienceTreasuresResponse, ImageCredit, LinkedPlace,
-  NewBadgesSeen, RegionExperienceCount, RegionExperienceCounts, RegionExperienceLocation,
-  RegionExperienceLocationsResponse, SiteFind, SiteFindsResponse, WorkVenue,
+  ExperiencesByRegionResponse, ExperiencesByRegionResponseCrowdedOutItem, ExperienceTreasure,
+  ExperienceTreasuresResponse, ImageCredit, LinkedPlace, NewBadgesSeen, RegionExperienceCount,
+  RegionExperienceCounts, RegionExperienceLocation, RegionExperienceLocationsResponse, RegionTailResponse,
+  SiteFind, SiteFindsResponse, WorkVenue,
 } from './client.generated';
 
 /**
@@ -80,6 +83,21 @@ export async function fetchExperiencesByRegion(
 }
 
 /**
+ * The places a crowded city leaves out of a region's list (ADR-0172, #2201):
+ * one kind's, or every kind's where `kindId` is null, the best known first
+ * within each kind and type. Read over the list's own set — the region without
+ * its descendants — so it answers the list's `crowdedOut` counts, and with the
+ * session's token for the same reason as the list.
+ */
+export async function fetchRegionTail(regionId: number, kindId: number | null): Promise<RegionTailResponse> {
+  return getExperiencesByRegionByRegionIdTail(regionId, {
+    includeChildren: 'false',
+    kindId: kindId ?? undefined,
+    limit: WHOLE_REGION_LIMIT,
+  });
+}
+
+/**
  * Search experiences by name, across the whole catalogue.
  *
  * Two callers, one read: the visitor's search in the navigation pane, which
@@ -108,11 +126,9 @@ export async function fetchExperienceLocations(
   experienceId: number,
   regionId?: number
 ): Promise<ExperienceLocationsResponse> {
-  // Guarded on `regionId` like the batch below, but conditionally: the guard
-  // engages only when one is passed and waves the request through when it is
-  // absent. No call site passes one today — both callers want an experience's
-  // locations, which is the only way to get them — so the header keeps this
-  // route correct if a caller starts rather than covering one that exists.
+  // Guarded on `regionId` like the batch below, but conditionally: a `regionId`
+  // asks for each point's `in_region` and engages the guard, and a call without
+  // one is waved through.
   return getExperiencesByIdLocations(experienceId, regionId ? { regionId } : undefined);
 }
 

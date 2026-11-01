@@ -11,7 +11,7 @@
 
 import { useCallback, useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
 import {
-  outsideViewLabel,
+  outsideViewLabel, rowKey, rowEstimate,
   flattenGroups, expansionForSelection, rowIndexByExperienceId, experienceIdsInVisibleRange,
   type ExperienceGroupLike,
 } from './ExperienceList/utils';
@@ -24,6 +24,9 @@ import { narrowGroups } from './ExperienceList/kindTypes';
 import { NoticeLink } from './shared/NoticeLink';
 import { HIDE_LOST_LABEL, lostHiddenLabel } from './shared/lostNotice';
 import { RejectedSection } from './ExperienceList/RejectedSection';
+import { TailPlace, TailRow } from './ExperienceList/TailRow';
+import { useListTails } from './ExperienceList/useListTails';
+import { withTailCard } from './ExperienceList/tailRows';
 import {
   Box,
   Typography,
@@ -38,6 +41,7 @@ import { useExperienceContext } from '../hooks/useExperienceContext';
 import { useHoverActions } from '../hooks/useHoverContext';
 import { useAuth } from '../hooks/useAuth';
 import { useNewBadgeImpressions } from '../hooks/useNewBadgeImpressions';
+import { tailPins } from '../hooks/useRegionTail';
 import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import { fetchExperienceKinds, type Experience, type ExperienceTreasure } from '../api/experiences';
@@ -86,6 +90,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     kindTypes,
     kindTypeIndex,
     setKindType,
+    tail,
     collapsedExperienceIds,
     toggleCollapsedExperience,
   } = useExperienceContext();
@@ -225,7 +230,11 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // Every place under each of its kinds, sorted by the kinds' display order, the
   // rows rebuilt only when the listed places change; one of a place's rows is the
   // home its card opens in, the rest are echoes (`kindRows.ts`).
-  const allGroups = useMemo(() => groupByEveryKind(listedExperiences), [listedExperiences]);
+  const kindGroups = useMemo(() => groupByEveryKind(listedExperiences), [listedExperiences]);
+  // With each kind's tail, the row that ends its group (ADR-0172, #2201).
+  const { groups: allGroups, sections: tails, points: tailLocations } = useListTails({
+    regionId, groups: kindGroups, tail, kindTypeIndex, kindTypes, selectedExperienceId,
+  });
   // A kind's group narrowed to the type its chips chose, the pins with it (#589).
   const groups = useMemo(
     () => narrowGroups(allGroups, kindTypes, selectedExperienceId),
@@ -303,7 +312,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // render.
   useEffect(() => {
     const decision = expansionForSelection({
-      groups: homeGroups,
+      groups: withTailCard(homeGroups, tail.card),
       selectedExperienceId,
       expanded: expandedGroups,
       openedForRegion: hasAutoExpanded.current,
@@ -315,7 +324,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     if (!decision.open) return;
     setExpandedGroups(decision.open);
     setExpandedKindNames(decision.open);
-  }, [homeGroups, selectedExperienceId, expandedGroups, setExpandedKindNames]);
+  }, [homeGroups, tail.card, selectedExperienceId, expandedGroups, setExpandedKindNames]);
 
   // ── One flat list, so the rows can be windowed ──
   //
@@ -328,8 +337,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // blocked the main thread for 2.5 s in one task, and 2.9 s of the 3.8 s that
   // opening a region cost was these rows (#552).
   const flatRows = useMemo(
-    () => flattenGroups(groups, expandedGroups, cardAbove),
-    [groups, expandedGroups, cardAbove],
+    () => flattenGroups(groups, expandedGroups, cardAbove, tails),
+    [groups, expandedGroups, cardAbove, tails],
   );
 
   // Where each experience sits, so the scroll hook can ask the virtualiser for a
@@ -338,18 +347,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // not depend on it, is `useListScrollAnchor`'s own business.
   const rowIndexByExperience = useMemo(() => rowIndexByExperienceId(flatRows, echoes), [flatRows, echoes]);
 
-  // A row's identity, not its position. Measured heights are cached under this
-  // key, and the default key is the index — which is exactly what is unstable
-  // here: collapsing a group shifts every row below it, so a height measured for
-  // "row 40" would be handed to whatever row moved into slot 40, and the
-  // scrollbar would stay wrong until each of them happened to re-render.
+  // A row's identity, not its position, which is unstable here (`rowKey`).
   const getRowKey = useCallback(
-    (index: number) => {
-      const row = flatRows[index];
-      if (!row) return index;
-      if (row.kind === 'header') return `h:${row.group.kindName}`;
-      return row.kind === 'card' ? `c:${row.exp.id}` : `e:${row.exp.id}:${row.exp.kind_id}`;
-    },
+    (index: number) => (flatRows[index] ? rowKey(flatRows[index]) : index),
     [flatRows],
   );
 
@@ -372,19 +372,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const virtualizer = useVirtualizer({
     count: flatRows.length,
     getScrollElement: () => scrollContainerRef.current,
-    // Measured, not guessed, because in a 467-row list the guess decides where a
-    // scroll lands: only the rows a reader has already passed carry a real height,
-    // and every other one is this number. At 72 against a real 59 the list carried
-    // some 6000 px of height that does not exist, so `scrollToIndex` aimed past its
-    // row, and the total shrank as rows arrived and were measured — which moves the
-    // content under a reader who is not scrolling, and shows an empty panel when the
-    // position ends up beyond the shrunken end.
-    //
-    // Measured live on Europe: a header is 46 px, a collapsed row 59 px (65 or 85
-    // where the title wraps to two or three lines). `measureElement` still corrects
-    // each row as it renders, and an expanded row is five to fifteen times taller —
-    // no estimate could cover both, which is what the measuring is for.
-    estimateSize: (i) => (flatRows[i]?.kind === 'header' ? 46 : 62),
+    // Measured, not guessed: in a 467-row list the guess decides where a scroll
+    // lands, since only the rows a reader has passed carry a real height (`rowEstimate`).
+    estimateSize: (i) => rowEstimate(flatRows[i]),
     getItemKey: getRowKey,
     scrollMargin,
     overscan: 8,
@@ -544,9 +534,10 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // would drop rows the reader did see whose pins have left the view — and with
   // the 800 ms flush that is one ordinary drag-drag, after which the server's
   // first-impression rule means their week never starts (#553 review).
+  // An open tail's rows count too, those the list does not hold already (#2201).
   const shownExperiences = useMemo(
-    () => activeExperiences.filter(exp => seenExperienceIds.has(exp.id)),
-    [activeExperiences, seenExperienceIds],
+    () => [...activeExperiences, ...tailPins(activeExperiences, tail.places)].filter(exp => seenExperienceIds.has(exp.id)),
+    [activeExperiences, tail.places, seenExperienceIds],
   );
   useNewBadgeImpressions(shownExperiences, isAuthenticated, user?.id);
 
@@ -573,7 +564,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     />
   ) : null;
 
-  if (activeExperiences.length === 0 && rejectedExperiences.length === 0) {
+  // A region whose places are all in a tail still has its tail to offer (#2201).
+  if (activeExperiences.length === 0 && rejectedExperiences.length === 0 && tail.counts.length === 0) {
     return (
       <Box sx={{ p: 2 }}>
         <Typography variant="body2" color="text.secondary">
@@ -615,17 +607,25 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     />
   );
 
-  const renderExperienceItem = (exp: Experience, rejected = false, aboveGroups = false) => {
-    // An echo of a place stays folded and keeps no reference: the list aims at,
-    // and opens the card in, the place's home row or the card above the groups
-    // (`kindRows.ts`). An echo of the open card says it is selected.
-    const echo = echoes.has(exp);
+  // An echo of a place stays folded and keeps no reference: the list aims at,
+  // and opens the card in, the place's home row or the card above the groups
+  // (`kindRows.ts`). An echo of the open card says it is selected. So is a tail's
+  // row of a place the list shows elsewhere; a tail's own place has its own points.
+  const rowPoints = (exp: Experience, inTail: boolean) => {
+    const echo = echoes.has(exp) || (inTail && ownRowsRef.current.has(exp.id));
+    return inTail && !echo
+      ? { echo, locations: tailLocations[exp.id], resolved: exp.id in tailLocations }
+      : { echo, locations: locationsByExperience[exp.id], resolved: locationsResolved };
+  };
+
+  const renderExperienceItem = (exp: Experience, rejected = false, aboveGroups = false, inTail = false) => {
+    const { echo, locations, resolved } = rowPoints(exp, inTail);
     return (
     <ExperienceListItem
       key={`${exp.id}:${exp.kind_id}`}
       experience={exp}
-      locations={locationsByExperience[exp.id]}
-      locationsResolved={locationsResolved}
+      locations={locations}
+      locationsResolved={resolved}
       isLocationVisited={isLocationVisited}
       // Hover is not passed down. It arrives at the row and at the place from
       // the store, each subscribing to its own boolean, so a mouse move does not
@@ -715,9 +715,11 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
               index={virtualRow.index}
               start={virtualRow.start - virtualizer.options.scrollMargin}
             >
-              {row.kind === 'header'
-                ? renderGroupHeader(row.group)
-                : renderExperienceItem(row.exp, false, row.kind === 'card')}
+              {row.kind === 'header' && renderGroupHeader(row.group)}
+              {row.kind === 'tail' && <TailRow section={row.section} onToggle={tail.toggle} />}
+              {row.kind === 'tail-place' && <TailPlace>{renderExperienceItem(row.exp, false, false, true)}</TailPlace>}
+              {(row.kind === 'experience' || row.kind === 'card')
+                && renderExperienceItem(row.exp, false, row.kind === 'card')}
             </VirtualRow>
           );
         })}

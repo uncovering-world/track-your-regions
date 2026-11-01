@@ -46,6 +46,7 @@ vi.mock('../hooks/useExperienceContext', async (importOriginal) => ({
     collapsedExperienceIds: new Set<number>(),
     toggleCollapsedExperience: () => {},
     showLost: false,
+    tail: { places: new Map() },
   }),
 }));
 

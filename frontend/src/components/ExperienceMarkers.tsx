@@ -39,6 +39,7 @@ import { addSplitPinImages, buildHighlightData, buildMarkerFeatures } from './ex
 import { useMarkerInteractions } from './experienceMarkers/useMarkerInteractions';
 import { useExtentLayer } from './experienceMarkers/useExtentLayer';
 import { useExperienceContext } from '../hooks/useExperienceContext';
+import { tailPins } from '../hooks/useRegionTail';
 import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../hooks/useHoverContext';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience, ExperienceLocation } from '../api/experiences';
@@ -103,6 +104,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     collapsedExperienceIds,
     toggleCollapsedExperience,
     showLost,
+    tail,
   } = useExperienceContext();
   // Only the setters and the store. This component draws the markers, so a
   // re-render here reconciles every `<Source>` and `<Layer>` react-map-gl holds;
@@ -145,10 +147,15 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   // An object folded by this reader is one marker instead, at the coordinate the
   // catalogue answers with; a selected object leaves this set and is drawn by the
   // highlight layer below, which follows the same rule.
+  //
+  // An open tail's places are drawn too, at the point each row carries — the
+  // region batch leaves them out (ADR-0172, #2201) — while the tail is open and
+  // its group is.
   const markers = useMemo(
     () => buildExperienceMarkers(
-      experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds, null, kindTypes),
-    [experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds, kindTypes],
+      [...experiences, ...tailPins(experiences, tail.places)],
+      locationsByExperience, expandedKindNames, collapsedExperienceIds, null, kindTypes),
+    [experiences, tail.places, locationsByExperience, expandedKindNames, collapsedExperienceIds, kindTypes],
   );
 
   // The outline of whichever place the reader is looking at, written straight
