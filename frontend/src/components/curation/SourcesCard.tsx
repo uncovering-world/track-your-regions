@@ -1,7 +1,7 @@
 /**
  * Two data sources that describe one place differently (#1246): a table of the
- * facts they contradict, one column per source, and the curator picks a source
- * per fact.
+ * facts they contradict, one column per value of each fact, headed by every
+ * source that gives it (#2212), and the curator picks a value per fact.
  *
  * Rila Monastery is the shape: UNESCO calls it "Rila Monastery" and shows one
  * photograph, Wikidata calls it "Monastery of Saint John of Rila" and shows
@@ -11,9 +11,11 @@
  * one of them reports, are named under the table rather than asked. A choice
  * stands until one of the two sources sends something different.
  *
- * Each column links the record its views come from, and the point's row says
- * how far apart the points stand and which one a source gave only to the
- * whole minute (#2158).
+ * Each column names the record its value comes from — once for two kinds
+ * that read one item — and the point's row says how far apart the points
+ * stand and which one a source gave only to the whole minute (#2158). A kind
+ * that refused the place is no source of it and is not on the card
+ * (`placeViewsSql`, #2212).
  */
 
 import { useState } from 'react';
@@ -33,10 +35,9 @@ import { VIEW_FIELD_WORD } from './feed/rowSpecific';
 import { minuteCellSize } from './minuteCell';
 import { ItemHeader, messageFor } from './queueCard';
 import { SourceId, worldHeritagePartsHref } from './SourceId';
+import { recordsOf, sourcesOf, viewGroups, type SourceView, type SourceViewField, type ViewGroup } from './sourceGroups';
 import { PictureClassMark } from './PictureClassMark';
 
-type SourceViewField = NonNullable<ReviewQueueItem['source_views']>[number];
-type SourceView = SourceViewField['views'][number];
 type QuietField = NonNullable<ReviewQueueItem['quiet_fields']>[number];
 
 const FIELD_LABEL: Record<SourceViewField['field'], string> = {
@@ -46,23 +47,6 @@ const FIELD_LABEL: Record<SourceViewField['field'], string> = {
   location: 'Where it is',
   wikipediaUrl: 'Wikipedia article',
 };
-
-type Column = { key: string; kind: string; source: string; record: SourceView };
-
-/**
- * The columns: every source with a view of some asked field, in the order the
- * server gave them, each with the view whose record it names.
- */
-function sourceColumns(fields: readonly SourceViewField[]): Column[] {
-  const seen = new Map<string, Column>();
-  for (const field of fields) {
-    for (const view of field.views) {
-      const key = `${view.kind_name}|${view.source_name}`;
-      if (!seen.has(key)) seen.set(key, { key, kind: view.kind_name, source: view.source_name, record: view });
-    }
-  }
-  return [...seen.values()];
-}
 
 /**
  * The source's own record of the place, as a way to open it (#2158): the
@@ -83,6 +67,29 @@ function ColumnRecord({ view }: { view: SourceView }) {
       The list's record of {href ? <Link href={href} target="_blank" rel="noopener noreferrer">{ref}</Link> : ref},
       not of the whole property
     </Typography>
+  );
+}
+
+/**
+ * Who gives a column's value (#2212): each record it comes from, under the
+ * kinds that read it — "Public art · Monuments & memorials" above one
+ * Q775020 — outside the tile, which is a button and cannot hold a link.
+ */
+function GroupSources({ group }: { group: ViewGroup }) {
+  return (
+    <Stack spacing={0.75}>
+      {recordsOf(group.views).map(views => (
+        <Stack key={views[0].membership_id} spacing={0.25}>
+          {views.map(view => (
+            <Typography key={view.membership_id} variant="caption" sx={{ fontWeight: 600, letterSpacing: '0.04em' }}>
+              {view.kind_name.toUpperCase()}
+              <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}> · {view.source_name}</Box>
+            </Typography>
+          ))}
+          <ColumnRecord view={views[0]} />
+        </Stack>
+      ))}
+    </Stack>
   );
 }
 
@@ -131,17 +138,17 @@ function ViewValue({ field, view, experienceId }: { field: SourceViewField['fiel
 }
 
 /**
- * The article row's way to the articles (#1975), one link per view: outside the
- * tiles, which are buttons and cannot hold a link. The views disagree, so each
- * title names its link.
+ * The article row's way to the articles (#1975), one link per article: outside
+ * the tiles, which are buttons and cannot hold a link. The articles differ, so
+ * each title names its link.
  */
-function ArticleLinks({ views }: { views: readonly SourceView[] }) {
+function ArticleLinks({ groups }: { groups: readonly ViewGroup[] }) {
   return (
     <>
-      {views.map(view => {
-        const href = safeHref(view.value);
+      {groups.map(({ lead }) => {
+        const href = safeHref(lead.value);
         return href && (
-          <Link key={view.membership_id} href={href} target="_blank" rel="noopener noreferrer" variant="body2">
+          <Link key={lead.membership_id} href={href} target="_blank" rel="noopener noreferrer" variant="body2">
             read {wikipediaArticleTitle(href)}
           </Link>
         );
@@ -159,24 +166,23 @@ function ArticleLinks({ views }: { views: readonly SourceView[] }) {
  * other choices as they stand, so the curator who reads the answer off the
  * ground gives it there. The card's own button stays what it is.
  */
-function BothPoints({ name, views, onKeep, pending }: {
+function BothPoints({ name, groups, onKeep, pending }: {
   name: string;
-  views: readonly SourceView[];
+  /** The point's columns: one pin per point, labelled with every source that gives it (#2212). */
+  groups: readonly ViewGroup[];
   /** Answer the point with this view's membership, as the card's button would with it chosen. */
   onKeep: (membershipId: number) => void;
   pending: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const located = views.filter((view): view is SourceView & { latitude: number; longitude: number } => (
-    view.latitude != null && view.longitude != null
-  ));
+  const located = groups.filter(({ lead }) => lead.latitude != null && lead.longitude != null);
   if (located.length < 2) return null;
   const pins: MapPin[] = [...located]
-    .sort((a, b) => Number(b.shown) - Number(a.shown))
-    .map(view => ({
-      latitude: view.latitude, longitude: view.longitude,
-      label: `${view.source_name}${view.shown ? ' · readers see' : ''}`,
-      action: { label: 'keep this point', disabled: pending, onPick: () => { setOpen(false); onKeep(view.membership_id); } },
+    .sort((a, b) => Number(b.lead.shown) - Number(a.lead.shown))
+    .map(({ lead, views }) => ({
+      latitude: lead.latitude!, longitude: lead.longitude!,
+      label: `${[...new Set(views.map(view => view.source_name))].join(' and ')}${lead.shown ? ' · readers see' : ''}`,
+      action: { label: 'keep this point', disabled: pending, onPick: () => { setOpen(false); onKeep(lead.membership_id); } },
     }));
   return (
     <>
@@ -247,7 +253,8 @@ export function SourcesCard({ item, onDone }: {
   onDone: (message?: string, experienceId?: number) => void;
 }) {
   const fields = item.source_views ?? [];
-  const columns = sourceColumns(fields);
+  const { kinds, sources } = sourcesOf(fields);
+  const rows = fields.map(field => ({ field, groups: viewGroups(field) }));
   // What readers see, chosen to begin with: keeping is the answer that changes nothing.
   const [chosen, setChosen] = useState<Record<string, number | null>>(() => Object.fromEntries(
     fields.map(field => [field.field, field.views.find(view => view.shown)?.membership_id ?? null]),
@@ -281,33 +288,27 @@ export function SourcesCard({ item, onDone }: {
     staleTime: 300_000,
     retry: false,
   });
-  const suggestedFor = (field: string, membershipId: number) => suggestions?.suggestions
-    .find(one => one.field === field && one.membershipId === membershipId)?.confidence;
+  // A column's suggestion is Jev's for any view in it: the views hold one value.
+  const suggestedFor = (field: string, group: ViewGroup) => suggestions?.suggestions
+    .find(one => one.field === field && group.views.some(view => view.membership_id === one.membershipId))?.confidence;
   const pick = (field: string, membershipId: number) => setChosen(previous => ({ ...previous, [field]: membershipId }));
   const quiet = item.quiet_fields ?? [];
-  const grid = `120px repeat(${Math.max(columns.length, 1)}, minmax(0, 1fr))`;
+  // As many columns as the widest row; a narrower row leaves the rest empty, so
+  // the next row's label stays in the first column.
+  const width = Math.max(1, ...rows.map(row => row.groups.length));
+  const grid = `120px repeat(${width}, minmax(0, 1fr))`;
 
   return (
     <Card variant="outlined">
       <CardContent>
-        <ItemHeader item={item} kinds={columns.map(column => column.kind)} />
+        <ItemHeader item={item} kinds={kinds} />
         <Typography variant="body2" sx={{ my: 2 }}>
-          {columns.map(column => column.source).join(' and ')} describe this place differently. Readers see
+          {sources.join(' and ')} describe this place differently. Readers see
           what is marked until you choose; your choice stays until one of the sources sends something new.
         </Typography>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: grid, columnGap: 2, rowGap: 1.5, alignItems: 'stretch' }}>
-          <Box />
-          {columns.map(column => (
-            <Stack key={column.key} spacing={0.25}>
-              <Typography variant="caption" sx={{ fontWeight: 600, letterSpacing: '0.04em' }}>
-                {column.kind.toUpperCase()}
-                <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}> · {column.source}</Box>
-              </Typography>
-              <ColumnRecord view={column.record} />
-            </Stack>
-          ))}
-          {fields.map(field => (
+          {rows.map(({ field, groups }) => (
             <Box key={field.field} sx={{ display: 'contents' }}>
               <Stack sx={{ pt: 1.5 }} spacing={0.5}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>{FIELD_LABEL[field.field]}</Typography>
@@ -315,26 +316,26 @@ export function SourcesCard({ item, onDone }: {
                   <Typography variant="body2" color="text.secondary">{distanceLabel(field.metres)} apart</Typography>
                 )}
                 {field.field === 'location' && (
-                  <BothPoints name={item.name} views={field.views} onKeep={keepPoint} pending={save.isPending} />
+                  <BothPoints name={item.name} groups={groups} onKeep={keepPoint} pending={save.isPending} />
                 )}
-                {field.field === 'wikipediaUrl' && <ArticleLinks views={field.views} />}
+                {field.field === 'wikipediaUrl' && <ArticleLinks groups={groups} />}
               </Stack>
-              {columns.map(column => {
-                // Two sources can fill one kind: a column is a kind and a source.
-                const view = field.views.find(one => `${one.kind_name}|${one.source_name}` === column.key);
-                if (!view) return <Box key={column.key} />;
-                return (
+              {groups.map(group => (
+                // One column per value, headed by every source that gives it;
+                // choosing it chooses all of them (#2212).
+                <Stack key={group.key} spacing={0.75}>
+                  <GroupSources group={group} />
                   <ViewTile
-                  experienceId={item.id}
-                    key={column.key}
+                    experienceId={item.id}
                     field={field.field}
-                    view={view}
-                    on={chosen[field.field] === view.membership_id}
-                    onPick={() => pick(field.field, view.membership_id)}
-                    suggested={suggestedFor(field.field, view.membership_id)}
+                    view={group.lead}
+                    on={group.views.some(view => view.membership_id === chosen[field.field])}
+                    onPick={() => pick(field.field, group.lead.membership_id)}
+                    suggested={suggestedFor(field.field, group)}
                   />
-                );
-              })}
+                </Stack>
+              ))}
+              {Array.from({ length: width - groups.length }, (_, i) => <Box key={`empty-${i}`} />)}
             </Box>
           ))}
         </Box>
