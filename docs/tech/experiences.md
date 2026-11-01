@@ -6207,6 +6207,11 @@ not (`metres` on the field, the same `POINTS_APART` as the quiet line), and a po
 whole minute (`onWholeMinute`, `@tyr/shared/precision`) says so on its tile with the cell it may
 stand in. Component 1209-002 of the Tequila landscape, *Zona nucleo 02*, is the case: Archaeology
 reads Guachimontones' item 2.4 km from the list's point, which the list gives to the whole minute.
+*See both points on the map* (`BothPoints`) opens `PointPreviewDialog` on every view's point, each
+pin labelled with its source and the one readers see first — never as a move, since no run proposes
+anything there — and each pin offers *keep this point*, the same answer as that source's tile and the
+card's button with the other choices as they stand, sent by `keepPoint` through the same
+`chooseSourceViews` call (#2202, `experience-map-ui.md` § The review card's point dialog).
 Every queue card about a place that is a part of a serial site names the property under its name,
 linked to the property's page — *Component 1209-002 of Agave Landscape and Ancient Industrial
 Facilities of Tequila* (`part_of`, `partOfFactsSql` in `db/placePoints.ts`, selected by
@@ -6653,7 +6658,11 @@ own, as an item several places carry. `identifies` is not what the card reads, s
 places claim identifies neither and two claimants would read as a shared reference; two items each beside
 the place that carries it, named with its kinds, so Babylon's city (Q5684) is told from the item of
 its World Heritage listing (Q100329356) under one and the same name; and a place that resolves to
-no item, a serial site or a place whose point was never written, as having none (`PairItems`). The card (`MergeProposalsCard.tsx`) gives each pair three
+no item, a serial site or a place whose point was never written, as having none (`PairItems`). *Show
+both on the map* draws the pair on one map, this card's place first, each pin saying which place it
+is and what it is — Bisotun, the World Heritage site, beside *Bisotūn · part of The Persian
+Caravanserai*, the caravanserai at the foot of the rock 451 m off — so whether one stands within the
+other is read from the ground (`pairPins`, `PointPreviewDialog`'s `pins`, #2202). The card (`MergeProposalsCard.tsx`) gives each pair three
 answers, `POST /api/experiences/:id/merge-proposals` (`mergeProposalController.ts`), each pair its
 own act: *one place* runs `mergePlaces` with the anchor as the survivor and `reason: 'curator'` —
 its own transaction and locks, so a pair the merge refuses (both places in one kind, ADR-0086
@@ -7749,7 +7758,10 @@ credit of another file by the file page (`detailsUrl`).
 button open `PointPreviewDialog` with `movedTo` (`MoveFact.tsx`, `proposedPoint`): the stored pin
 in grey, the proposed pin, and an arrow from the first to the second, at the zoom the move asks
 for (`moveView`, `utils/moveDescription.ts`) rather than the zoom a region is framed at, where a
-158 m correction is two pins on top of each other.
+158 m correction is two pins on top of each other. Two points that are not a move — the near-places
+card's two places, the sources card's two points — open the same dialog on its third look, each pin
+labelled with whose it is and nothing called a proposal (`pins`, #2202; `experience-map-ui.md`
+§ The review card's point dialog).
 
 **The contents half says what a row is.** An unread point that replaces a stored one
 (`withdrawal_deferred_for_location_id`) is a point that moved: the queue carries the point it

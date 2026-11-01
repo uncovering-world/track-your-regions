@@ -367,6 +367,45 @@ A serial object's part has a card of its own (#1271, the product decision on tha
 
 **A long list of parts is browsed in groups** (#1271, the product decision on that issue). Above ten places Map mode's card (`CardLocationList`), and above fifteen Discover's panel (`LocationsSection`), offer a search by name or reference, a "With a photo · N" filter (the parts with a picture of their own), and groups: the parts in the region come first and open — what the map is showing — and the rest fold by the first level of their region path at which they part ways (`groupParts`, `utils/partGroups.ts`): the countries of Prehistoric Pile Dwellings around the Alps, the autonomous communities of Rock Art of the Mediterranean Basin on the Iberian Peninsula, whatever the world view names its levels, with the unplaced last. Each group says how many parts it holds and how many have a photo. A search or the filter opens every group. Map mode reads the region path off the region's batch; Discover reads it off the same batch its map reads (`useRegionLocations`, the same key), joined to the object's own points by id, and draws the group headers as rows of its windowed list (a dot hovered on the map opens the group its part is in). A part's card steps within its group: in the region, or "in Italy" for one opened from the Italian group — the group of every part, not of what a search left, and only where the list draws groups; a shorter list's part outside the region steps through every part. The part is read from the object's own points (`fetchExperienceLocations`, the read `CurationPlaces` caches), which carry the description and the Wikidata item the region feed leaves out. The card reports its height in the layout phase, as an open card does (§ A card opens at a size it keeps).
 
+## The review card's point dialog
+
+Many review questions are about where a place stands (#2186), and the card answers them with one
+dialog, `PointPreviewDialog` (`components/shared/`), opened on one of three looks and drawing one
+WebGL context by construction (MUI mounts nothing while it is closed):
+
+- **One place**: the pin at street-level zoom, which is what a description's "close to the border"
+  is checked against.
+- **A move** (`movedTo`): a run proposing another coordinate. The place readers see as a grey pin,
+  the proposed one as the pin, an arrow between them, at the zoom the move asks for (`moveView`,
+  `utils/moveDescription.ts`); the legend says *readers see* and *the run proposes*.
+- **Points that are not a move** (`pins`, #2202): two places that may be one, or two sources' points
+  of one place. Each pin is labelled on the map with whose it is (`LabelledPin`,
+  `PointPreviewPins.tsx`), in a colour of its own (`PIN_COLOURS`), and the legend says the same;
+  no arrow is drawn and nothing is called a proposal, since no run proposes anything there. The
+  title says how two pins stand to each other (*451 m apart*). The map frames every pin by the one
+  framing rule (`frameGeoJson`, § How a crossing region is told from a global one in
+  `geometry-columns.md`, #674) once it has loaded, with the ceiling `PINS_MAX_ZOOM` in place of a
+  region's: `smartFitBounds` caps a frame at 12 unless its caller names a ceiling, and at 12 two
+  pins 450 m apart are twelve pixels. Before the map loads the camera stands on the pins' anchor
+  (`pinsView`, measured by `focusFromGeoJson`, so two pins either side of the antimeridian are
+  centred between them), at the zoom their span asks for.
+
+Under the map, every look lists each point it drew — whose it is, its coordinate, and the links that
+open it in OpenStreetMap and Google Maps (`PinLinks`, built by `utils/mapsLink.ts`, ADR-0115). The
+device's own maps app and the visitor's choice of one (`OpenInMapsLink`) are not offered there: a
+curator checks a pin against another map at a desk.
+
+Who opens the third look: the near-places card (`MergeProposalsCard.tsx`, `pairPins`) on *Show both
+on the map*, this card's place first — *Bisotun (this card) · World Heritage Sites* beside *Bisotūn ·
+part of The Persian Caravanserai*, the caravanserai at the foot of the rock 451 m off — and the
+other alone where the card's own place has no point; and the sources card (`SourcesCard.tsx`,
+`BothPoints`) on *see both points on the map*, each source's point labelled with the source and the
+one readers see first; there each pin's row offers *keep this point* (`MapPin.action`), the same
+answer as choosing that source's tile for the point and pressing the card's one button, with the
+card's other choices as they stand — the card answers (`keepPoint`) and closes with its outcome line,
+and its own button stays what it is. A pin of the near-places pair carries no action: nothing on that
+card is answered from the map.
+
 ## The list answers about the view, not about the region
 
 Zoomed into Prague, the list used to answer a different question from the map: it listed the region alphabetically, so a reader looking at one city read a list running from *Historic Centre of Prague* to *Wikipedia Monument* — 661 objects for Europe, ordered by their initials (#553). It now lists what the map is showing.
