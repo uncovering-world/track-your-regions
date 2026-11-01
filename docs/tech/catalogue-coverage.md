@@ -74,6 +74,19 @@ the first as treasures and nothing yet for the second (#1214).
 | `name`, `country` | As a person reads them |
 | `lat`, `lon`, `radius_km` | The centre and the reach of the survey: the city and the day trips a guide files under it |
 | `surveyed` | The date the list was compiled, and so the date of its sitelinks and coordinates |
+| `role` | Absent for an ordinary region. `control` marks a region surveyed so that an admission rule can be verified on a list no tuning has read (#2232) |
+
+**A control region** is compiled exactly as any other, by `/coverage-survey`, and loaded and reported
+the same way, the loader and the report ignoring the mark; what differs is who may read its list for
+tuning. The admission review (#2177) derives its
+thresholds on the other regions and reads a control region once, at the end, for the candidate it
+proposes and for today's catalogue, and the candidate is adopted only where it improves those figures.
+That read matches an entry by its Wikidata item, as the report does; an entry with none — a street
+or a promenade Wikidata has no item for — is counted apart as one no rule could have admitted or
+missed, never as found or as missed; its note says what was searched.
+A control region becomes an ordinary one only by a decision recorded on the issue that promotes it,
+since a list once read by tuning is a control no longer. On 2026-11-01 the control regions are Bangkok,
+Lisbon and Cape Town.
 
 ### `expectations/<region>.jsonl`: what a traveller expects there
 
