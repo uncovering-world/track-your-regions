@@ -349,8 +349,9 @@ describe('lifecycle visibility across the read paths', () => {
       const sql = mockedQuery.mock.calls.map(c => String(c[0])).join('\n');
       if (shows) expect(sql).toContain(countsMemberships ? membershipCrowdedSql(countsMemberships) : placeShownSql('e'));
       // The tail is offered: found and opened, its kind still chosen with the
-      // shown one first (`rowKindJoinSql`), never filtered out.
-      else expect(sql).not.toContain(placeShownSql('e'));
+      // shown one first (`rowKindJoinSql`), never filtered out. Search names
+      // it as a column, the one sanctioned use (`in_tail`).
+      else expect(sql.replace(`NOT ${placeShownSql('e')} AS in_tail`, '')).not.toContain(placeShownSql('e'));
     });
   }
 
@@ -373,9 +374,11 @@ describe('lifecycle visibility across the read paths', () => {
       // One membership both admitted and passed (#1275): the offered rule
       // hides a refused place as it hides an unread one.
       for (const sql of reads) {
-        expect(sql).toContain(countsMemberships
-          ? membershipAdmittedSql(countsMemberships)
-          : placeFragment(shows));
+        // The tail's count reads the places the list leaves out (ADR-0172),
+        // which are offered and not shown.
+        const tail = /FROM membership_crowding c\s+JOIN/.test(sql);
+        const place = tail ? placeOfferedSql('e') : placeFragment(shows);
+        expect(sql).toContain(countsMemberships ? membershipAdmittedSql(countsMemberships) : place);
       }
     });
   }

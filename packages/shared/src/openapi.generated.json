@@ -12272,6 +12272,98 @@
         }
       }
     },
+    "/api/experiences/by-region/{regionId}/tail": {
+      "get": {
+        "operationId": "getExperiencesByRegionByRegionIdTail",
+        "summary": "List the places a crowded city crowds out of a region's list, the best known first",
+        "tags": [
+          "experiences"
+        ],
+        "description": "A signed-in caller may get a different answer.",
+        "x-access": "optional",
+        "security": [
+          {},
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "regionId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "includeChildren",
+            "schema": {
+              "default": "true",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "kindId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionTailResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/by-region/{regionId}/locations": {
       "get": {
         "operationId": "getExperiencesByRegionByRegionIdLocations",
@@ -23849,6 +23941,10 @@
           "relevance": {
             "type": "number"
           },
+          "in_tail": {
+            "type": "boolean",
+            "description": "Whether a crowded city crowds the place out of every list it is in (ADR-0172): ten better-known places of its kind and type lie within 10 km. It is opened from its region's tail, never from the list itself."
+          },
           "regions": {
             "type": "array",
             "items": {
@@ -23877,6 +23973,7 @@
           "longitude",
           "latitude",
           "relevance",
+          "in_tail",
           "regions"
         ],
         "additionalProperties": false,
@@ -24480,6 +24577,37 @@
             "maximum": 9007199254740991,
             "description": "How many objects this region holds that no longer exist and are not being shown."
           },
+          "crowdedOut": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kindId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "kindId",
+                "type",
+                "count"
+              ],
+              "additionalProperties": false
+            },
+            "description": "How many places each kind and type crowds out of this list (ADR-0172): ten better-known ones of the type lie within 10 km of each. They are read on their own, ranked, from the region's tail; empty where none is."
+          },
           "limit": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -24500,6 +24628,7 @@
           "experiences",
           "total",
           "lostHidden",
+          "crowdedOut",
           "limit",
           "offset"
         ],
@@ -32499,6 +32628,40 @@
         "required": [
           "groups"
         ]
+      },
+      "RegionTailResponse": {
+        "type": "object",
+        "properties": {
+          "experiences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Experience"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "experiences",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false,
+        "description": "A page of the places a crowded city crowds out of a region's list (ADR-0172), the best known first within each kind, across its types, each row under the kind it is crowded out of."
       },
       "Regions": {
         "type": "array",

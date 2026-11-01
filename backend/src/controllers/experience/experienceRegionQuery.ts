@@ -25,7 +25,7 @@ import {
 // offers, each once, whatever kinds they belong to.
 import { countedPlacesSql } from './experienceCounts.js';
 import { descriptionAdaptedSql, descriptionSourceSql, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
-import { isNewSql } from './experienceNewBadge.js';
+import { isNewSql, type NewBadgeReaderParam } from './experienceNewBadge.js';
 import { dangerSelectSql } from './experienceDanger.js';
 import { findsOnViewCountSql } from './siteFinds.js';
 import { pointsShownSql } from '../../db/placePoints.js';
@@ -41,6 +41,77 @@ function groupedRejectionColumns(showRejected: boolean): { rejectionAggregate: s
     rejectionAggregate: ', bool_or(rej.id IS NOT NULL) as is_rejected, MAX(rej.reason) as rejection_reason',
     rejectionSelect: ', p.is_rejected, p.rejection_reason',
   };
+}
+
+/**
+ * The columns of one row of a region's list, over `e` and the row's kind as
+ * `m` and `k` (`rowKindJoinSql`): what the list, its tail (`experienceTailQuery.ts`)
+ * and every card they open read. `readerParam` names the reader for the New
+ * chip; the two selects are the curator's columns, empty for a reader.
+ * `everyKind` names every kind the place is offered in, for a tail's row, which
+ * no list groups by kind; a list's row names the kinds that show it.
+ */
+export function rowColumnsSql(
+  readerParam: NewBadgeReaderParam, rejectionSelect: string, canCurateSelect: string, everyKind = false,
+): string {
+  return `
+      SELECT
+        e.id,
+        e.external_id,
+        e.name,
+        e.subtitle,
+        e.description,
+        ${descriptionSourceSql('e')} AS description_source,
+      ${descriptionAdaptedSql('e')} AS description_adapted,
+        -- The type within that kind is the membership's too (ADR-0084).
+        m.type,
+        -- The kind, off the row's membership: what a colour and a group are
+        -- decided by (#814, #819).
+        ${rowKindSelectSql()},
+        -- And every kind the place is offered in, none of them the primary one
+        -- (ADR-0084, #1245).
+        ${placeKindsSql('e', !everyKind)} AS kinds,
+        e.country_codes,
+        e.country_names,
+        -- Whether its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).
+        e.cast_points,
+        e.image_url,
+        -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
+        -- Commons, and the licences most of them carry ask one thing of a page
+        -- showing a picture: that whoever took it is named wherever it appears.
+        e.metadata->'imageCredit' as image_credit,
+        e.created_at,
+      ${readerPositionSql('e')},
+        ${dangerSelectSql('e')},
+        -- Unconditional, and with no curator relaxation, unlike the count of
+        -- an experience in this same read: this is a per-object number a
+        -- region-wide list shows every caller the same way. It can disagree
+        -- with what a curator sees on GET /:id/locations for the same
+        -- experience -- that read widens for a curator whose scope reaches
+        -- it (ADR-0025), this count never does -- and that disagreement is
+        -- deliberate, not a bug to close: this number answers what the
+        -- catalogue offers, the by-id read answers what one caller may see.
+        (SELECT COUNT(*)::int FROM ${pointsShownSql('e.id', 'el')}
+           WHERE ${offeredLocationSql()}
+             AND ${publishedContentSql('el')}) as location_count,
+        -- What a reader can look at inside: the offered, published works of
+        -- the place (ADR-0044's offeredLinkSql, ADR-0025's published state on
+        -- the link and on the work). A church admitted for its own fame counts
+        -- zero; one admitted for its Pietà counts it -- the "treasures inside"
+        -- marker (#753).
+        (SELECT COUNT(*)::int FROM experience_treasures et
+           JOIN treasures t ON t.id = et.treasure_id
+          WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
+            AND ${publishedContentSql('et')} AND ${publishedContentSql('t')}) as treasure_count,
+        -- What was dug up at a site and is on view in a museum somewhere else
+        -- -- the "finds on view" mark on the row (#907). Zero on every row that
+        -- is not a site, and composed from the conditions the site's own list
+        -- of finds reads with, so the row and the card cannot disagree.
+        ${findsOnViewCountSql('e')} AS finds_count,
+        ${lifecycleSelectSql()},
+        ${isNewSql('e', readerParam)} AS is_new
+        ${rejectionSelect}
+        ${canCurateSelect}`;
 }
 
 /**
@@ -157,63 +228,7 @@ export function buildRegionQueries(opts: {
         ${lifecycleFilter}
         GROUP BY e.id
       )
-      SELECT
-        e.id,
-        e.external_id,
-        e.name,
-        e.subtitle,
-        e.description,
-        ${descriptionSourceSql('e')} AS description_source,
-      ${descriptionAdaptedSql('e')} AS description_adapted,
-        -- The type within that kind is the membership's too (ADR-0084).
-        m.type,
-        -- The kind, off the row's membership: what a colour and a group are
-        -- decided by (#814, #819).
-        ${rowKindSelectSql()},
-        -- And every kind the place is offered in, none of them the primary one
-        -- (ADR-0084, #1245).
-        ${placeKindsSql('e', true)} AS kinds,
-        e.country_codes,
-        e.country_names,
-        -- Whether its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).
-        e.cast_points,
-        e.image_url,
-        -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
-        -- Commons, and the licences most of them carry ask one thing of a page
-        -- showing a picture: that whoever took it is named wherever it appears.
-        e.metadata->'imageCredit' as image_credit,
-        e.created_at,
-      ${readerPositionSql('e')},
-        ${dangerSelectSql('e')},
-        -- Unconditional, and with no curator relaxation, unlike the count of
-        -- an experience in this same read: this is a per-object number a
-        -- region-wide list shows every caller the same way. It can disagree
-        -- with what a curator sees on GET /:id/locations for the same
-        -- experience -- that read widens for a curator whose scope reaches
-        -- it (ADR-0025), this count never does -- and that disagreement is
-        -- deliberate, not a bug to close: this number answers what the
-        -- catalogue offers, the by-id read answers what one caller may see.
-        (SELECT COUNT(*)::int FROM ${pointsShownSql('e.id', 'el')}
-           WHERE ${offeredLocationSql()}
-             AND ${publishedContentSql('el')}) as location_count,
-        -- What a reader can look at inside: the offered, published works of
-        -- the place (ADR-0044's offeredLinkSql, ADR-0025's published state on
-        -- the link and on the work). A church admitted for its own fame counts
-        -- zero; one admitted for its Pietà counts it -- the "treasures inside"
-        -- marker (#753).
-        (SELECT COUNT(*)::int FROM experience_treasures et
-           JOIN treasures t ON t.id = et.treasure_id
-          WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
-            AND ${publishedContentSql('et')} AND ${publishedContentSql('t')}) as treasure_count,
-        -- What was dug up at a site and is on view in a museum somewhere else
-        -- -- the "finds on view" mark on the row (#907). Zero on every row that
-        -- is not a site, and composed from the conditions the site's own list
-        -- of finds reads with, so the row and the card cannot disagree.
-        ${findsOnViewCountSql('e')} AS finds_count,
-        ${lifecycleSelectSql()},
-        ${isNewSql('e', readerParam)} AS is_new
-        ${rejectionSelect}
-        ${canCurateSelect}
+      ${rowColumnsSql(readerParam, rejectionSelect, canCurateSelect)}
       FROM places p
       JOIN experiences e ON e.id = p.id
       ${rowKindJoinSql('e')}
@@ -244,59 +259,7 @@ export function buildRegionQueries(opts: {
       ? `, rej.id IS NOT NULL as is_rejected, rej.reason as rejection_reason`
       : '';
     query = `
-      SELECT
-        e.id,
-        e.external_id,
-        e.name,
-        e.subtitle,
-        e.description,
-        ${descriptionSourceSql('e')} AS description_source,
-      ${descriptionAdaptedSql('e')} AS description_adapted,
-        -- The type within that kind is the membership's too (ADR-0084).
-        m.type,
-        -- The kind, off the row's membership: what a colour and a group are
-        -- decided by (#814, #819).
-        ${rowKindSelectSql()},
-        -- And every kind the place is offered in, none of them the primary one
-        -- (ADR-0084, #1245).
-        ${placeKindsSql('e', true)} AS kinds,
-        e.country_codes,
-        e.country_names,
-        -- Whether its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).
-        e.cast_points,
-        e.image_url,
-        -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
-        -- Commons, and the licences most of them carry ask one thing of a page
-        -- showing a picture: that whoever took it is named wherever it appears.
-        e.metadata->'imageCredit' as image_credit,
-        e.created_at,
-      ${readerPositionSql('e')},
-        ${dangerSelectSql('e')},
-        -- Unconditional, and with no curator relaxation, unlike the count of
-        -- an experience in this same read: this is a per-object number a
-        -- region-wide list shows every caller the same way. It can disagree
-        -- with what a curator sees on GET /:id/locations for the same
-        -- experience -- that read widens for a curator whose scope reaches
-        -- it (ADR-0025), this count never does -- and that disagreement is
-        -- deliberate, not a bug to close: this number answers what the
-        -- catalogue offers, the by-id read answers what one caller may see.
-        (SELECT COUNT(*)::int FROM ${pointsShownSql('e.id', 'el')}
-           WHERE ${offeredLocationSql()}
-             AND ${publishedContentSql('el')}) as location_count,
-        -- What a reader can look at inside: the offered, published works of
-        -- the place (ADR-0044's offeredLinkSql, ADR-0025's published state on
-        -- the link and on the work). A church admitted for its own fame counts
-        -- zero; one admitted for its Pietà counts it -- the "treasures inside"
-        -- marker (#753).
-        (SELECT COUNT(*)::int FROM experience_treasures et
-           JOIN treasures t ON t.id = et.treasure_id
-          WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
-            AND ${publishedContentSql('et')} AND ${publishedContentSql('t')}) as treasure_count,
-        ${findsOnViewCountSql('e')} AS finds_count,
-        ${lifecycleSelectSql()},
-        ${isNewSql('e', readerParam)} AS is_new
-        ${rejectionSelect}
-        ${canCurateSelect}
+      ${rowColumnsSql(readerParam, rejectionSelect, canCurateSelect)}
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
       ${rowKindJoinSql('e')}
