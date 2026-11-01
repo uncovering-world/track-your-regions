@@ -364,7 +364,7 @@ export type WorkEditResult = z.infer<typeof WorkEditResult>;
 export const AcceptSourceResult = placement.extend({
   experienceId: z.number().int(),
   applied: z.array(z.string()).describe("The fields now holding the source's value."),
-  released: z.array(z.string()).describe('The claims given up to take it.'),
+  released: z.array(z.string()).describe("A kind's own facts whose claim was given up without a write: the kind's next run brings the source's value."),
   releasedPoints: z.array(z.number().int()).describe(
     "The points whose own claim on the coordinate went with the object's, because the object's coordinate and its one"
     + " visible point's are the same fact.",

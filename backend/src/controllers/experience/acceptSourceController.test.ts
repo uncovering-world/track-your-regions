@@ -21,9 +21,15 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 vi.mock('./publishContents.js', () => ({ placeAfterRelease: vi.fn(async () => []) }));
+// Commons is never asked from a unit test; a spec that needs its answer says what it was.
+vi.mock('../../services/sync/imageCredit.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/sync/imageCredit.js')>()),
+  creditForOneImage: vi.fn(async () => null),
+}));
 
 import { pool } from '../../db/index.js';
 import { placeAfterRelease } from './publishContents.js';
+import { creditForOneImage } from '../../services/sync/imageCredit.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
@@ -80,7 +86,10 @@ function makeClient(
           return { rows: sql.includes('RETURNING') ? claimingPoints : [] };
         }
         if (sql.includes(OBJECT_LOCK)) {
-          return { rows: [{ curated_fields: claimed ?? [], image_credit: imageCredit }] };
+          return { rows: [{
+            curated_fields: claimed ?? [], image_credit: imageCredit,
+            metadata: { website: 'https://curator.example', imageCredit }, name_local: null,
+          }] };
         }
         return { rows: [] };
       }),
@@ -293,26 +302,35 @@ describe('acceptSourceValue', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ applied: ['name'], released: [], fromSyncLogId: 42 }));
   });
 
-  it('releases a field it cannot write, since nothing else ever would', async () => {
+  it('writes every field it is answered for now, not at the next run', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
-    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'tags', new: ['a'], curatedConflict: true }] }];
-    const { client, queries } = makeClient(['tags', 'name'], PROPOSAL);
+    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [
+      { field: 'tags', new: ['a'], curatedConflict: true },
+      { field: 'countryCodes', new: ['IT'], curatedConflict: true },
+      { field: 'metadata.website', new: 'https://source.example', curatedConflict: true },
+    ] }];
+    const { client, queries } = makeClient(['tags', 'country_codes', 'metadata.website', 'name'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
-    // 'tags' carries a real proposal but has no column here. Editing would not
-    // clear it either — every other writer of curated_fields only ever adds —
-    // so releasing the claim is the only way off the queue, and the next run
-    // then writes the value through the ordinary upsert.
-    await answerRoute(postAcceptSource, 
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['tags'], expectedSyncLogId: 9 } } as never,
+    // The value is on the card, and the run that proposed it is the one the
+    // curator answered (#2222): releasing alone left it to a run nobody watches.
+    await answerRoute(postAcceptSource,
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['tags', 'countryCodes', 'metadata.website'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
 
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'));
-    expect(update?.sql).not.toContain('tags =');
-    expect(update?.params).toContain(JSON.stringify(['name']));
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ applied: [], released: ['tags'] }));
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.sql).toContain('tags = ');
+    expect(update.sql).toContain('country_codes = ');
+    expect(update.params).toContain(JSON.stringify(['a']));
+    expect(update.params).toContainEqual(['IT']);
+    // The one metadata key, merged over what is stored rather than the column replaced.
+    expect(update.params).toContain(JSON.stringify({ website: 'https://source.example', imageCredit: null }));
+    expect(update.params).toContain(JSON.stringify(['name']));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      applied: ['tags', 'countryCodes', 'metadata.website'], released: [],
+    }));
   });
 
   it('releases a claim on a major metadata key under its own name', async () => {
@@ -364,8 +382,14 @@ describe('acceptSourceValue', () => {
     expect(release?.sql).toContain('el.location = e.location');
     expect(release?.params).toEqual([5]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      released: ['location'], releasedPoints: [41],
+      applied: ['location'], released: [], releasedPoints: [41],
     }));
+    // The object's own coordinate lands now, after the pin was found by it.
+    const placeWrite = queries.findIndex(q => q.sql.includes('UPDATE experiences') && q.sql.includes('location = ST_SetSRID'));
+    expect(placeWrite).toBeGreaterThan(queries.findIndex(q => q.sql.includes('UPDATE experience_locations')));
+    expect(queries[placeWrite].params).toEqual(expect.arrayContaining([2, 1]));
+    // A place that moved is a region fact.
+    expect(mockedPlace).toHaveBeenCalledWith(5, expect.stringContaining('accepted the source coordinate'));
     const log = queries.find(q => q.sql.includes('experience_curation_log'));
     expect(String(log?.params[3])).toContain('"releasedPoints":[41]');
   });
@@ -401,7 +425,7 @@ describe('acceptSourceValue', () => {
       res as never,
     );
 
-    const write = queries.find(q => q.sql.includes('ST_MakePoint'));
+    const write = queries.find(q => q.sql.includes('UPDATE experience_locations') && q.sql.includes('ST_MakePoint'));
     // The point, the coordinate, and the object it has to belong to (the lock's).
     expect(write?.params).toEqual([41, 10.5, 50.2, 5]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ movedPoints: [41] }));
@@ -447,7 +471,7 @@ describe('acceptSourceValue', () => {
       res as never,
     );
 
-    const write = queries.find(q => q.sql.includes('ST_MakePoint'));
+    const write = queries.find(q => q.sql.includes('UPDATE experience_locations') && q.sql.includes('ST_MakePoint'));
     expect(write?.params).toEqual([55, 3.5, 42.9, 5]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ movedPoints: [55] }));
   });
@@ -471,9 +495,8 @@ describe('acceptSourceValue', () => {
       res as never,
     );
 
-    expect(queries.some(q => q.sql.includes('ST_MakePoint'))).toBe(false);
+    expect(queries.some(q => q.sql.includes('UPDATE experience_locations') && q.sql.includes('ST_MakePoint'))).toBe(false);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ releasedPoints: [41], movedPoints: [] }));
-    expect(mockedPlace).not.toHaveBeenCalled();
   });
 
   it('does not read an entry with no rename as naming an unnamed point', async () => {
@@ -505,7 +528,7 @@ describe('acceptSourceValue', () => {
       res as never,
     );
 
-    expect(queries.some(q => q.sql.includes('ST_MakePoint'))).toBe(false);
+    expect(queries.some(q => q.sql.includes('UPDATE experience_locations') && q.sql.includes('ST_MakePoint'))).toBe(false);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ movedPoints: [] }));
   });
 
@@ -532,7 +555,7 @@ describe('acceptSourceValue', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{
       sync_log_id: 9,
-      changed_fields: [{ field: 'imageUrl', new: 'https://example.org/p.jpg', curatedConflict: true }],
+      changed_fields: [{ field: 'imageUrl', new: 'https://commons.wikimedia.org/wiki/Special:FilePath/Aqua_Vergine.jpg', curatedConflict: true }],
     }];
     const { client, queries } = makeClient(
       ['image_url', 'metadata.imageCredit'], PROPOSAL, [], { author: 'Jane Doe' },
@@ -549,7 +572,8 @@ describe('acceptSourceValue', () => {
     // photographer — and the per-key re-apply would put that name back on every
     // later run, so nothing could correct it.
     const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
-    expect(update.sql).toContain("metadata = COALESCE(metadata, '{}'::jsonb) - 'imageCredit'");
+    expect(update.sql).toContain('image_url = ');
+    expect(update.params).toContain(JSON.stringify({ website: 'https://curator.example' }));
     const claims = String((update.params as unknown[]).find(
       (v) => typeof v === 'string' && v.startsWith('['),
     ));
@@ -561,7 +585,7 @@ describe('acceptSourceValue', () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{
       sync_log_id: 9,
-      changed_fields: [{ field: 'imageUrl', new: 'https://example.org/p.jpg', curatedConflict: true }],
+      changed_fields: [{ field: 'imageUrl', new: 'https://commons.wikimedia.org/wiki/Special:FilePath/Aqua_Vergine.jpg', curatedConflict: true }],
     }];
     // What `editExperience` stores for a picture that is not on Commons: the
     // key present and null, the claim deliberately withheld.
@@ -574,12 +598,86 @@ describe('acceptSourceValue', () => {
       res as never,
     );
 
-    // The drop still happens — the key goes either way — but telling a curator
-    // that a credit was removed when nothing they could see existed is a
-    // sentence about nothing.
+    // Nothing to drop: no credit stood under the curator's picture. Telling a
+    // curator that one was removed would be a sentence about nothing.
     const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
-    expect(update.sql).toContain("- 'imageCredit'");
+    expect(update.sql).toContain('image_url = ');
+    expect(update.sql).not.toContain('metadata = ');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ releasedCredit: false }));
+  });
+
+  it('writes the run’s credit with its picture where both are taken', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
+    const RUN_CREDIT = { author: 'A Commons author', license: 'CC BY-SA 4.0' };
+    const PROPOSAL = [{
+      sync_log_id: 9,
+      changed_fields: [
+        { field: 'imageUrl', new: 'https://commons.wikimedia.org/wiki/Special:FilePath/Aqua_Vergine.jpg', curatedConflict: true },
+        { field: 'metadata.imageCredit', new: RUN_CREDIT, curatedConflict: true },
+      ],
+    }];
+    const { client, queries } = makeClient(
+      ['image_url', 'metadata.imageCredit'], PROPOSAL, [], { author: 'Jane Doe' },
+    );
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    await answerRoute(postAcceptSource,
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['imageUrl', 'metadata.imageCredit'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    // The picture lands named, rather than bare until a run fetches its credit.
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.params).toContain(JSON.stringify({ website: 'https://curator.example', imageCredit: RUN_CREDIT }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ applied: ['imageUrl', 'metadata.imageCredit'] }));
+  });
+
+  it('names the new picture’s author from Commons when the run sent no credit for it', async () => {
+    const PICTURE = 'https://commons.wikimedia.org/wiki/Special:FilePath/Aqua_Vergine.jpg';
+    const COMMONS_CREDIT = { author: 'A Commons author', license: 'CC BY-SA 4.0' };
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
+    // The picture the open proposal offers, read before the transaction.
+    mockedQuery.mockResolvedValueOnce({ rows: [{ url: PICTURE }] });
+    vi.mocked(creditForOneImage).mockResolvedValueOnce(COMMONS_CREDIT as never);
+    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'imageUrl', new: PICTURE, curatedConflict: true }] }];
+    const { client, queries } = makeClient(['image_url', 'metadata.imageCredit'], PROPOSAL, [], { author: 'Jane Doe' });
+    mockedConnect.mockResolvedValue(client);
+
+    // A run resends the stored credit over a claimed picture rather than
+    // resolving the source's, so the card carries none: without this the
+    // source's photograph would go out uncredited until its next run.
+    await answerRoute(postAcceptSource,
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['imageUrl'], expectedSyncLogId: 9 } } as never,
+      makeRes() as never,
+    );
+
+    expect(creditForOneImage).toHaveBeenCalledWith(PICTURE, expect.any(String));
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
+    expect(update.params).toContain(JSON.stringify({ website: 'https://curator.example', imageCredit: COMMONS_CREDIT }));
+  });
+
+  it('refuses a picture no writer may store, rather than release it without a write', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
+    const PROPOSAL = [{
+      sync_log_id: 9,
+      changed_fields: [{ field: 'imageUrl', new: 'https://whc.unesco.org/document/1', curatedConflict: true }],
+    }];
+    const { client, queries } = makeClient(['image_url', 'metadata.imageCredit'], PROPOSAL, [], { author: 'Jane Doe' });
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    // The World Heritage Centre's terms forbid drawing its photographs (ADR-0043).
+    // Released without a write, the curator's photograph would stay with its
+    // credit dropped; so the answer is refused, as publishing refuses it.
+    await answerRoute(postAcceptSource,
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['imageUrl'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(queries.some(q => q.sql.includes('UPDATE experiences'))).toBe(false);
+    expect(queries.some(q => q.sql === 'ROLLBACK')).toBe(true);
   });
 
   it('keeps a credit claim when the picture is not what was accepted', async () => {
@@ -594,7 +692,7 @@ describe('acceptSourceValue', () => {
     );
 
     const update = queries.find(q => q.sql.includes('UPDATE experiences'))!;
-    expect(update.sql).not.toContain("- 'imageCredit'");
+    expect(update.sql).not.toContain('metadata = ');
     const claims = String((update.params as unknown[]).find(
       (v) => typeof v === 'string' && v.startsWith('['),
     ));
