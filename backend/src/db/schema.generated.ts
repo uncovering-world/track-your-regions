@@ -386,6 +386,8 @@ export interface ExperienceKindsRow {
   display_priority: number;
   created_at: Date | null;
   is_virtual: boolean;
+  crowding_limit: number | null;
+  crowding_radius_km: number | null;
 }
 
 /** The table `experience_location_placements`. */
@@ -776,6 +778,23 @@ export interface ImportRunsRow {
   started_at: Date | null;
   completed_at: Date | null;
   source_dump_date: Date | null;
+}
+
+/** The table `membership_crowding`. */
+export interface MembershipCrowdingRow {
+  membership_id: number;
+  outranked_by: number;
+  computed_at: Date;
+}
+
+/** The table `membership_fame`. */
+export interface MembershipFameRow {
+  membership_id: number;
+  readers: number;
+  guide_editions: number;
+  wikipedia_editions: number;
+  score: number | null;
+  measured_at: Date;
 }
 
 /** The table `osm_layer_builds`. */
@@ -1349,6 +1368,8 @@ export const RELATION_SCHEMAS = {
   experiences: "public",
   geometry_computations: "public",
   import_runs: "public",
+  membership_crowding: "public",
+  membership_fame: "public",
   osm_layer_builds: "workbench",
   osm_layer_schedule: "workbench",
   osm_objects: "workbench",
