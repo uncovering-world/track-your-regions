@@ -285,6 +285,14 @@ export const experiencesByRegionQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+export const regionTailQuerySchema = z.object({
+  includeChildren: booleanStringSchema.default('true'),
+  // One kind's tail, or every kind's where absent.
+  kindId: rowIdSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(WHOLE_REGION_LIMIT).default(100),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
 export const experienceRegionCountsQuerySchema = z.object({
   worldViewId: rowIdSchema,
   parentRegionId: rowIdSchema.optional(),

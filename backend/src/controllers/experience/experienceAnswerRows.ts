@@ -232,6 +232,7 @@ export interface SearchRow {
   longitude: number;
   latitude: number;
   relevance: number;
+  in_tail: boolean;
   regions: ExperienceRegionRef[];
 }
 
@@ -256,6 +257,7 @@ export function searchResultOf(row: SearchRow): ExperienceSearchResult {
     longitude: row.longitude,
     latitude: row.latitude,
     relevance: row.relevance,
+    in_tail: row.in_tail,
     regions: row.regions,
   };
 }

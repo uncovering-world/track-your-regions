@@ -229,12 +229,31 @@ export const ExperiencesByRegionResponse = z.strictObject({
   total: z.number().int(),
   lostHidden: z.number().int()
     .describe('How many objects this region holds that no longer exist and are not being shown.'),
+  crowdedOut: z.array(z.strictObject({
+    kindId: z.number().int(),
+    type: z.string().nullable(),
+    count: z.number().int(),
+  })).describe(
+    'How many places each kind and type crowds out of this list (ADR-0172): ten better-known ones of the type lie'
+    + ' within 10 km of each. They are read on their own, ranked, from the region\'s tail; empty where none is.',
+  ),
   limit: z.number().int(),
   offset: z.number().int(),
   curatesRegion: z.boolean().optional()
     .describe('Only for a curator or admin: whether their scope reaches this region, which its own actions (add a place, put a refused one back) need (#613).'),
 }).describe("A page of a region's objects.");
 export type ExperiencesByRegionResponse = z.infer<typeof ExperiencesByRegionResponse>;
+
+export const RegionTailResponse = z.strictObject({
+  experiences: z.array(Experience),
+  total: z.number().int(),
+  limit: z.number().int(),
+  offset: z.number().int(),
+}).describe(
+  'A page of the places a crowded city crowds out of a region\'s list (ADR-0172), the best known first within each kind'
+  + ', across its types, each row under the kind it is crowded out of.',
+);
+export type RegionTailResponse = z.infer<typeof RegionTailResponse>;
 
 // Every area the API draws is stored as `geometry(MultiPolygon, 4326)` (a site's
 // extent, a region's outline and hull, a division and a part cut from it), and
@@ -312,6 +331,10 @@ export const ExperienceSearchResult = z.strictObject({
   longitude: z.number(),
   latitude: z.number(),
   relevance: z.number(),
+  in_tail: z.boolean().describe(
+    'Whether a crowded city crowds the place out of every list it is in (ADR-0172): ten better-known places of its kind'
+    + ' and type lie within 10 km. It is opened from its region\'s tail, never from the list itself.',
+  ),
   regions: z.array(ExperienceRegionRef).describe(
     'The regions whose own lists hold the object, most specific first. Empty where nothing published places it, and'
     + ' then the answer is not a link.',

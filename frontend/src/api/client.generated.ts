@@ -2127,6 +2127,8 @@ export interface ExperienceSearchResult {
   longitude: number;
   latitude: number;
   relevance: number;
+  /** Whether a crowded city crowds the place out of every list it is in (ADR-0172): ten better-known places of its kind and type lie within 10 km. It is opened from its region's tail, never from the list itself. */
+  in_tail: boolean;
   /** The regions whose own lists hold the object, most specific first. Empty where nothing published places it, and then the answer is not a link. */
   regions: ExperienceRegionRef[];
 }
@@ -2267,6 +2269,21 @@ export type ExperiencesByRegionResponseRegion = {
   world_view_name: string;
 };
 
+export type ExperiencesByRegionResponseCrowdedOutItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kindId: number;
+  /** @nullable */
+  type: string | null;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  count: number;
+};
+
 export type ExperienceSourceMembership = typeof ExperienceSourceMembership[keyof typeof ExperienceSourceMembership];
 
 
@@ -2390,6 +2407,8 @@ export interface ExperiencesByRegionResponse {
      * @maximum 9007199254740991
      */
   lostHidden: number;
+  /** How many places each kind and type crowds out of this list (ADR-0172): ten better-known ones of the type lie within 10 km of each. They are read on their own, ranked, from the region's tail; empty where none is. */
+  crowdedOut: ExperiencesByRegionResponseCrowdedOutItem[];
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
@@ -2402,6 +2421,28 @@ export interface ExperiencesByRegionResponse {
   offset: number;
   /** Only for a curator or admin: whether their scope reaches this region, which its own actions (add a place, put a refused one back) need (#613). */
   curatesRegion?: boolean;
+}
+
+/**
+ * A page of the places a crowded city crowds out of a region's list (ADR-0172), the best known first within each kind, across its types, each row under the kind it is crowded out of.
+ */
+export interface RegionTailResponse {
+  experiences: Experience[];
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  total: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  limit: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  offset: number;
 }
 
 /**
@@ -7081,6 +7122,33 @@ export const GetExperiencesByRegionByRegionIdIncludeLost = {
   false: 'false',
 } as const;
 
+export type GetExperiencesByRegionByRegionIdTailParams = {
+  includeChildren?: GetExperiencesByRegionByRegionIdTailIncludeChildren;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  kindId?: number;
+  /**
+   * @minimum 1
+   * @maximum 5000
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 9007199254740991
+   */
+  offset?: number;
+};
+
+export type GetExperiencesByRegionByRegionIdTailIncludeChildren = typeof GetExperiencesByRegionByRegionIdTailIncludeChildren[keyof typeof GetExperiencesByRegionByRegionIdTailIncludeChildren];
+
+
+export const GetExperiencesByRegionByRegionIdTailIncludeChildren = {
+  true: 'true',
+  false: 'false',
+} as const;
+
 export type GetExperiencesByRegionByRegionIdLocationsParams = {
   includeChildren?: GetExperiencesByRegionByRegionIdLocationsIncludeChildren;
   includeLost?: GetExperiencesByRegionByRegionIdLocationsIncludeLost;
@@ -10140,6 +10208,40 @@ export const getExperiencesByRegionByRegionId = async (regionId: number,
     params?: GetExperiencesByRegionByRegionIdParams, options?: Parameters<typeof apiFetch>[1]): Promise<ExperiencesByRegionResponse> => {
 
   return apiFetch<ExperiencesByRegionResponse>(getGetExperiencesByRegionByRegionIdUrl(regionId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesByRegionByRegionIdTailUrl = (regionId: number,
+    params?: GetExperiencesByRegionByRegionIdTailParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/by-region/${encodeURIComponent(String(regionId))}/tail?${stringifiedParams}` : `/api/experiences/by-region/${encodeURIComponent(String(regionId))}/tail`
+}
+
+/**
+ * A signed-in caller may get a different answer.
+ * @summary List the places a crowded city crowds out of a region's list, the best known first
+ */
+export const getExperiencesByRegionByRegionIdTail = async (regionId: number,
+    params?: GetExperiencesByRegionByRegionIdTailParams, options?: Parameters<typeof apiFetch>[1]): Promise<RegionTailResponse> => {
+
+  return apiFetch<RegionTailResponse>(getGetExperiencesByRegionByRegionIdTailUrl(regionId,params),
   {
     ...options,
     method: 'GET'

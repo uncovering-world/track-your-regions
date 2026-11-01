@@ -64,6 +64,7 @@ import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackCo
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { getWebsiteChecks } from '../controllers/experience/websiteChecksController.js';
 import { getPictureClasses } from '../controllers/experience/pictureClassesController.js';
+import { getRegionTail } from '../controllers/experience/experienceTailController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
@@ -75,6 +76,7 @@ import {
   ExperienceTreasuresResponse,
   NewBadgesSeen,
   RegionExperienceCounts,
+  RegionTailResponse,
   RegionExperienceLocationsResponse,
   SiteFindsResponse,
 } from '../api/responses/experiences.js';
@@ -130,6 +132,7 @@ import { publicReadLimiter, searchLimiter, authenticatedLimiter } from '../middl
 import {
   experienceSearchQuerySchema,
   experiencesByRegionQuerySchema,
+  regionTailQuerySchema,
   experienceRegionCountsQuerySchema,
   experienceLocationsQuerySchema,
   worldPointsQuerySchema,
@@ -232,6 +235,17 @@ export const experienceReadRoutes = [
     scope: ({ params }) => ({ regionId: params.regionId }),
     response: ExperiencesByRegionResponse,
     handler: getExperiencesByRegion,
+  }),
+  // A region's tail: what a crowded city crowds out of its list (ADR-0172),
+  // read on its own and ranked. `optional` as the list is.
+  defineRoute({
+    method: 'get', path: '/by-region/:regionId/tail', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
+    summary: 'List the places a crowded city crowds out of a region\'s list, the best known first',
+    params: regionIdParamSchema,
+    query: regionTailQuerySchema,
+    scope: ({ params }) => ({ regionId: params.regionId }),
+    response: RegionTailResponse,
+    handler: getRegionTail,
   }),
   // All locations for all experiences in a region (batch, eliminates N+1)
   defineRoute({

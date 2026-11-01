@@ -20,11 +20,14 @@ import {
   readerRegionMembershipSql,
 } from '../../db/readerPredicates.js';
 import { includeLost } from './includeLost.js';
-import { descriptionAdaptedSql, descriptionSourceSql, KINDS, kindIsRealSql, MEMBERSHIPS, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
+import {
+  descriptionAdaptedSql, descriptionSourceSql, KINDS, kindIsRealSql, MEMBERSHIPS, placeKindsSql, placeShownSql, rowKindJoinSql, rowKindSelectSql,
+} from '../../db/membership.js';
 import { wholeOfSql } from '../../db/placePoints.js';
 import { inscriptionFactsSql } from '../../db/inscription.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
+import { regionTailCountsQuery } from './experienceTailQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 import { withDangerFields } from './experienceDanger.js';
@@ -249,7 +252,12 @@ export async function getExperiencesByRegion(
   // which is both callers today, and plain `hasMore` for one that is paging.
   // The server cannot tell those apart, because the difference is intent rather
   // than response shape.
-  const countResult = await pool.query(countQuery, [regionId]);
+  // Beside it, what the list leaves out of a crowded city, by kind and type
+  // (ADR-0172): the counts the list offers its tail by.
+  const [countResult, tailCounts] = await Promise.all([
+    pool.query(countQuery, [regionId]),
+    pool.query<{ kind_id: number; type: string | null; count: number }>(regionTailCountsQuery(includeChildren), [regionId]),
+  ]);
 
   // Get region info
   const regionResult = await pool.query<{ id: number; name: string; world_view_name: string }>(`
@@ -274,6 +282,7 @@ export async function getExperiencesByRegion(
     // shown — nothing is hidden then, and a field that still counted them
     // would have the page offering to reveal what is already on screen.
     lostHidden: includeLost(q) ? 0 : countResult.rows[0].lost_hidden,
+    crowdedOut: tailCounts.rows.map(row => ({ kindId: row.kind_id, type: row.type, count: row.count })),
     limit,
     offset,
     ...(curateAs ? { curatesRegion: Boolean(showRejected) } : {}),
@@ -359,6 +368,9 @@ export async function searchExperiences(
         ${lifecycleSelectSql('e')},
         ${readerPositionSql('e')},
         similarity(e.name, $1) as relevance,
+        -- In a crowded city's tail (ADR-0172): found, never counted, so the
+        -- answer says so rather than leading to a list that does not hold it.
+        NOT ${placeShownSql('e')} AS in_tail,
         -- Named rather than repeated: the order is stated twice — once here,
         -- once outside, since a join does not carry a CTE's order — and two
         -- spellings of one rule are two things to keep in step.
@@ -397,6 +409,7 @@ export async function searchExperiences(
       m.longitude,
       m.latitude,
       m.relevance,
+      m.in_tail,
       -- Where this object can be opened. Published world views only: an
       -- unpublished one is not a place to send a reader, and this route carries
       -- no session, so "visible" can mean nothing else here. The list is the
