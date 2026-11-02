@@ -1,7 +1,7 @@
 # ADR-0163: A site a Wikivoyage guide uses opens the readership door at the 12th percentile
 
 **Date:** 2026-10-30
-**Status:** Accepted
+**Status:** Superseded by [ADR-0179](0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md)
 
 ---
 
