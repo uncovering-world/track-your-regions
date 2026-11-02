@@ -5339,9 +5339,6 @@ export interface FindSiteLink {
   name: string;
   treasure_type: string;
   year: number | null;
-  /** @nullable */
-  image_url: string | null;
-  image_credit: ImageCredit | null;
   /** Proposed by a run and not answered yet, or confirmed by a curator; a refused pair is not listed. */
   state: FindSiteLinkState;
   /** Proposed from the find's own coordinate, or made by a curator. */
@@ -5362,6 +5359,34 @@ export interface FindSiteLinks {
      */
   experienceId: number;
   links: FindSiteLink[];
+}
+
+/**
+ * A find a curator may link to the site by hand (#2242).
+ */
+export interface FindSiteCandidate {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  treasure_id: number;
+  name: string;
+  treasure_type: string;
+  year: number | null;
+  /** The museums a reader may be sent to that show the find. */
+  shown_at: LinkedPlace[];
+}
+
+/**
+ * The finds named like a curator's words that may be linked to the site, the best known first.
+ */
+export interface FindSiteCandidates {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  candidates: FindSiteCandidate[];
 }
 
 export type FindSiteLinkAnswerBodyAnswer = typeof FindSiteLinkAnswerBodyAnswer[keyof typeof FindSiteLinkAnswerBodyAnswer];
@@ -7595,6 +7620,15 @@ export const GetExperiencesReviewQueueSort = {
   date: 'date',
   question: 'question',
 } as const;
+
+export type GetExperiencesByIdFindLinksCandidatesParams = {
+  /**
+   * @minLength 2
+   * @maxLength 100
+   * @pattern ^[^\u0000]*$
+   */
+  q: string;
+};
 
 export type GetGeocodeSearchParams = {
   /**
@@ -11526,6 +11560,40 @@ export const getExperiencesByIdFindLinks = async (id: number, options?: Paramete
 
 
 
+export const getGetExperiencesByIdFindLinksCandidatesUrl = (id: number,
+    params: GetExperiencesByIdFindLinksCandidatesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/${encodeURIComponent(String(id))}/find-links/candidates?${stringifiedParams}` : `/api/experiences/${encodeURIComponent(String(id))}/find-links/candidates`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Search the finds a curator may link to a site by hand
+ */
+export const getExperiencesByIdFindLinksCandidates = async (id: number,
+    params: GetExperiencesByIdFindLinksCandidatesParams, options?: Parameters<typeof apiFetch>[1]): Promise<FindSiteCandidates> => {
+
+  return apiFetch<FindSiteCandidates>(getGetExperiencesByIdFindLinksCandidatesUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export const getPutExperiencesByIdFindLinksByTreasureIdUrl = (id: number,
     treasureId: number,) => {
 
@@ -11537,7 +11605,7 @@ export const getPutExperiencesByIdFindLinksByTreasureIdUrl = (id: number,
 
 /**
  * Requires a curator or an admin.
- * @summary Confirm or refuse that a find comes from a site
+ * @summary Confirm or refuse that a find comes from a site, or link one by hand
  */
 export const putExperiencesByIdFindLinksByTreasureId = async (id: number,
     treasureId: number,

@@ -52,6 +52,14 @@ vi.mock('../../api/experiences', () => ({
   }) satisfies ExperienceLocationsResponse),
 }));
 
+// Where a find comes from has its own test (SiteFindQuestions.test.tsx); here it
+// only has to be in the dialog of a place a find may come from.
+vi.mock('../../api/findSiteLinks', () => ({
+  fetchFindSiteLinks: vi.fn(async (experienceId: number) => ({ experienceId, links: [] })),
+  answerFindSiteLink: vi.fn(),
+  searchFindSiteCandidates: vi.fn(),
+}));
+
 // The point dialog has its own test; here it only has to say which place it holds.
 vi.mock('./PointPreviewDialog', () => ({
   PointPreviewDialog: ({ correction }: { correction?: { place: { locationId: number } } }) => (
@@ -462,3 +470,17 @@ describe('CurationDialog showing the picture it edits', () => {
     expect(preview()).not.toBeInTheDocument();
   });
 });
+
+describe('where a find comes from, answered in the dialog (#2242)', () => {
+  it('is asked in the dialog of a World Heritage place, never on its card', () => {
+    renderDialog();
+    expect(screen.getByText('Finds from this place')).toBeInTheDocument();
+  });
+
+  it('is not asked of a museum, which shows finds rather than being where they came from', () => {
+    const louvre = { ...bamiyan, kind_id: 5, type: 'museum', kinds: [{ ...bamiyan.kinds[0], kind_id: 5, type: 'museum' }] } as Experience;
+    renderDialog(louvre);
+    expect(screen.queryByText('Finds from this place')).not.toBeInTheDocument();
+  });
+});
+

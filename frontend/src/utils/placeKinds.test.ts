@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kindToOpenIn, placeHasExtent, placeKindNames, shownInKind } from './placeKinds';
+import { kindToOpenIn, mayBeFindOrigin, placeHasExtent, placeKindNames, shownInKind } from './placeKinds';
 
 /** The Capitoline Museums once merged: one place, offered in Art Museums and Archaeology. */
 const CAPITOLINE = {
@@ -76,5 +76,21 @@ describe("whether a place's card reads a site's finds (#1262)", () => {
   it("reads only the row's own kind in a kind's row", () => {
     expect(placeHasExtent(PANTHEON, false)).toBe(false);
     expect(placeHasExtent({ ...PANTHEON, kind_id: 5, type: 'site' }, false)).toBe(true);
+  });
+});
+
+describe('whether a place may be where a find came from (#2242)', () => {
+  it('is a World Heritage place or an Archaeology site, through any kind it is offered in', () => {
+    expect(mayBeFindOrigin({ kind_id: 1, type: 'cultural' })).toBe(true);
+    expect(mayBeFindOrigin({ kind_id: 5, type: 'site' })).toBe(true);
+    expect(mayBeFindOrigin({ kind_id: 4, type: 'temple', kinds: [
+      { kind_id: 4, type: 'temple' }, { kind_id: 5, type: 'site' },
+    ] } as never)).toBe(true);
+  });
+
+  it('is never a museum, where finds are shown: the Louvre is an Archaeology museum', () => {
+    expect(mayBeFindOrigin({ kind_id: 2, type: null, kinds: [
+      { kind_id: 2, type: null }, { kind_id: 5, type: 'museum' },
+    ] } as never)).toBe(false);
   });
 });

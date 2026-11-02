@@ -13,7 +13,7 @@ import type { SiteFind } from '../../api/experiences';
  * each time a thumbnail is hovered. Discover renders `SiteFinds` directly; it
  * has no overlay.
  */
-export function SiteFindsList({ finds, total }: { finds: SiteFind[]; total: number }) {
+export function SiteFindsList({ finds }: { finds: SiteFind[] }) {
   const { setArtworkPreview } = useExperienceContext();
-  return <SiteFinds finds={finds} total={total} onPreview={setArtworkPreview} />;
+  return <SiteFinds finds={finds} onPreview={setArtworkPreview} />;
 }

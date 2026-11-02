@@ -61,6 +61,8 @@ import { verdictOf } from './LifecycleChip';
 import { CurationHistory } from './CurationHistory';
 import { PlacePins } from './AdmissionPins';
 import { PlaceIdentifiers } from './PlaceIdentifiers';
+import { SiteFindQuestions } from './SiteFindQuestions';
+import { mayBeFindOrigin } from '../../utils/placeKinds';
 import { KindSeparation } from './KindSeparation';
 import { PlaceKinds } from './PlaceKinds';
 import { typeOptionsFor } from '../../utils/experienceTypes';
@@ -572,6 +574,9 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
         <PlacePins experienceId={experience.id} regionId={regionId} />
         {/* Keyed by the place, as the history is: the next one opens with its own identifiers. */}
         <PlaceIdentifiers key={`identifiers-${experience.id}`} experienceId={experience.id} />
+        {/* Where a find comes from (#2242), for a place a find may come from:
+            the run's proposals, the links confirmed, and a link made by hand. */}
+        {mayBeFindOrigin(experience) && <SiteFindQuestions key={`finds-${experience.id}`} siteId={experience.id} />}
         {/* Keyed by the place: the next one opens with its history folded. */}
         <CurationHistory key={experience.id} experienceId={experience.id} regionId={regionId} />
       </DialogContent>

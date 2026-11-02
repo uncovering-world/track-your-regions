@@ -8,7 +8,7 @@ import type { ExperienceTreasure } from '../../api/experiences';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { WorkThumbnail } from '../shared/WorkThumbnail';
-import { PlaceLink } from '../shared/PlaceLink';
+import { FindOriginLine } from '../shared/FindOriginLine';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { safeHref } from '../../utils/safeHref';
@@ -137,22 +137,11 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
             </Link>
           )}
         </Box>
-        {/* Where it was dug up, for the works that were: an archaeology
-            museum's holdings are objects taken from somewhere, and a row naming
-            only the museum tells a traveller the smaller half of what the thing
-            is (ADR-0058). Its own line rather than another term in the row
-            above, which is the makers-and-date line a painting fills and a find
-            usually leaves empty. */}
-        {content.found_at?.label && (
-          <Typography variant="caption" color="text.secondary" display="block" noWrap>
-            {/* A way to the site where the catalogue holds it (#894); its
-                name where it does not — a city, a region, a spot no site
-                door has written. */}
-            found at {content.found_at_site
-              ? <PlaceLink place={content.found_at_site} />
-              : content.found_at.label}
-          </Typography>
-        )}
+        {/* Where it comes from, for the works that are finds. Its own line
+            rather than another term in the row above, which is the
+            makers-and-date line a painting fills and a find usually leaves
+            empty. */}
+        <FindOriginLine content={content} />
         {/* `redundantWith` because the line above already names the makers, and
             Commons names the painter as the author of a photograph of a painting —
             so on most rows this would repeat a maker and add a licence that asks

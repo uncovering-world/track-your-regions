@@ -358,10 +358,10 @@ function ExperienceExpandedDetailsComponent({
       {/* Where the maps link leads only roughly, the card says so (#1912). */}
       <ApproximateLocationNote reason={onlyPoint?.approximate} />
 
-      {/* What was dug up here and where a traveller sees it — a site's
+      {/* What comes from this site and where a traveller sees it — a site's
           counterpart of the works list below, which a site never has. */}
       {findsData && findsData.finds.length > 0 && (
-        <SiteFindsList finds={findsData.finds} total={findsData.total} />
+        <SiteFindsList finds={findsData.finds} />
       )}
 
       {/* Artworks / Contents list */}
