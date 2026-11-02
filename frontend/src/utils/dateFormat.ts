@@ -11,6 +11,11 @@ export function formatDateTime(dateStr: string | null): string {
   return new Date(dateStr).toLocaleString();
 }
 
+/** An ISO date as the day it falls on, "1 October", in the reader's locale. */
+export function formatDay(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+}
+
 /**
  * Format an ISO date string as a relative time (e.g., "5m ago", "2d ago").
  * Falls back to locale date after the given threshold (default 30 days).
