@@ -74,6 +74,7 @@ import { getPictureClasses } from '../controllers/experience/pictureClassesContr
 import { getRegionTail } from '../controllers/experience/experienceTailController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
+import { CrowdingWindow, ShadowedArrivals } from '../api/responses/crowding.js';
 import {
   ExperienceDetail,
   ExperienceKinds,
@@ -135,6 +136,8 @@ import {
   refuseContents,
   unrefuseContents,
   answerReviewRows,
+  getCrowdingWindow,
+  listShadowedArrivals,
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
 import { getWikipediaEditions } from '../controllers/experience/wikipediaEditionsController.js';
@@ -171,6 +174,9 @@ import {
   arrivalKindBodySchema,
   refuseContentsBodySchema,
   reviewAnswerBodySchema,
+  crowdingWindowParamSchema,
+  crowdingWindowQuerySchema,
+  shadowedArrivalsQuerySchema,
   newBadgesSeenBodySchema,
   lifecycleStateBodySchema,
   editLocationBodySchema,
@@ -506,6 +512,27 @@ export const experienceCurationRoutes = [
     body: reviewAnswerBodySchema,
     response: ReviewAnswerResult,
     handler: answerReviewRows,
+  }),
+  // A crowded city, judged in one window (#2282, ADR-0180): every place of a
+  // kind and type around a place, the arrivals the display would shadow, which
+  // the queue asks nothing about. Under `review/crowding/`, so `/:id/…` cannot
+  // take them. The window counts the rule for each of up to 500 rows: it is
+  // limited on § 5's criterion, as the batch answer is.
+  defineRoute({
+    method: 'get', path: '/review/crowding/around/:membershipId', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'Every place of a kind and type around a place in a crowded city, best known first, with the rule\'s count and the curator\'s pin',
+    params: crowdingWindowParamSchema,
+    query: crowdingWindowQuerySchema,
+    response: CrowdingWindow,
+    handler: getCrowdingWindow,
+  }),
+  defineRoute({
+    method: 'get', path: '/review/crowding/arrivals', access: 'curator', cache: 'no-store',
+    summary: 'The new arrivals a crowded city would shadow, by region, kind and type, within the caller\'s scope',
+    query: shadowedArrivalsQuerySchema,
+    response: ShadowedArrivals,
+    handler: listShadowedArrivals,
   }),
   defineRoute({
     method: 'post', path: '/:id/state', access: 'curator', cache: 'no-store',
