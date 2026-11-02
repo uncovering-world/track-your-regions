@@ -104,7 +104,13 @@ export const queryKeys = {
     websiteChecks: (id: Id) => ['experience', 'website-checks', id] as const,
     /** What the pictures a place's review card shows are, as Commons states it (#2192). */
     pictureClasses: (id: Id) => ['experience', 'picture-classes', id] as const,
+    /** Where the place's Wikipedia article says it stands, for the point dialog (#2206). */
+    articlePoint: (id: Id) => ['experience', 'article-point', id] as const,
   },
+
+  /** What OpenStreetMap holds at a point, for the point dialog (#2206), by the coordinate to about a metre. */
+  placeAtPoint: (latitude: number, longitude: number) =>
+    ['place-at-point', latitude.toFixed(5), longitude.toFixed(5)] as const,
 
   /** The lists objects appear in, and the points that place them. */
   experiences: {

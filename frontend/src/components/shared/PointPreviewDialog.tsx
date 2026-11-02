@@ -58,7 +58,7 @@
  * whose scope reaches the place is looking at one (#613).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Box, Dialog, DialogContent, DialogTitle, IconButton, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { Layer, Marker, Source } from 'react-map-gl/maplibre';
@@ -70,6 +70,7 @@ import {
 } from './PointPreviewPins';
 import { frameGeoJson, type MapLike } from '../../utils/mapUtils';
 import { OutlineCredits, OutlineLayers, useFrameWithOutlines, usePlaceOutlines } from './PointPreviewOutlines';
+import { ARTICLE_PIN_COLOUR, GroundCredit, useArticlePins, useGroundLabels } from './PointPreviewReferences';
 import { moveLabel, moveView, movedBy, shortWayLongitudeDelta } from '../../utils/moveDescription';
 
 /** The pin readers see today, where the map also draws the one proposed: present, and plainly not the news. */
@@ -210,7 +211,7 @@ function Drawn({ several, drawn, move, movedTo, latitude, longitude }: {
 
 const NO_PLACES: readonly number[] = [];
 
-export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, pins, correction, outlinesOf }: {
+export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, pins, correction, placesOf }: {
   open: boolean;
   onClose: () => void;
   name: string;
@@ -235,23 +236,31 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
    */
   correction?: { place: PlaceToCorrect; onDone: (message: string) => void };
   /**
-   * The places whose outlines the map draws where the catalogue holds one (#2205):
-   * the places the pins stand for, so a curator sees whether a point is inside a
-   * site. Read once the dialog opens; a place with no outline draws nothing.
+   * The places the pins stand for, on a curator's card: the map draws each one's
+   * outline where the catalogue holds one (#2205), so a curator sees whether a
+   * point is inside a site, and its Wikipedia article's coordinate as one more pin
+   * (#2206), and every pin's row says what OpenStreetMap holds there. Read once
+   * the dialog opens; a reader's dialog names none and asks nothing.
    */
-  outlinesOf?: readonly number[];
+  placesOf?: readonly number[];
 }) {
   const stored = { lon: longitude, lat: latitude };
   const several = pins && pins.length > 0 && !correction ? pins : null;
   const { move, other } = companion(stored, movedTo, Boolean(correction) || several !== null);
   const view = viewOf(several, stored, other);
-  const drawn = pinsOf(several, name, { latitude, longitude }, movedTo, move);
+  const looking = open && !correction;
+  const places = placesOf ?? NO_PLACES;
+  const articlePins = useArticlePins(places, looking && places.length > 0);
+  const claims = pinsOf(several, name, { latitude, longitude }, movedTo, move);
+  const references = useMemo(() => articlePins.map(pin => ({ ...pin, colour: ARTICLE_PIN_COLOUR })), [articlePins]);
+  const grounds = useGroundLabels([...claims, ...references], looking && places.length > 0);
+  const drawn = [...claims, ...references].map((pin, index) => ({ ...pin, ground: grounds[index] }));
   const apart = several ? pinsApart(several) : null;
-  const outlines = usePlaceOutlines(outlinesOf ?? NO_PLACES, open && !correction);
+  const outlines = usePlaceOutlines(places, looking);
   const [loadedMap, setLoadedMap] = useState<MapLike | null>(null);
   // A closed dialog's map is gone; the next opening loads its own.
   useEffect(() => { if (!open) setLoadedMap(null); }, [open]);
-  useFrameWithOutlines(open ? loadedMap : null, outlines, drawn, { padding: PINS_PADDING, maxZoom: PINS_MAX_ZOOM });
+  useFrameWithOutlines(open ? loadedMap : null, outlines, drawn, { padding: PINS_PADDING, maxZoom: PINS_MAX_ZOOM }, references.length);
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pr: 6 }}>
@@ -307,7 +316,8 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
                 }}
               >
                 <OutlineLayers outlines={outlines} />
-                <Drawn several={several} drawn={drawn} move={move} movedTo={movedTo} latitude={latitude} longitude={longitude} />
+                <Drawn several={several} drawn={claims} move={move} movedTo={movedTo} latitude={latitude} longitude={longitude} />
+                {references.map((pin, index) => <LabelledPin key={`${index}:${pin.label}`} pin={pin} colour={pin.colour} />)}
               </GuardedMap>
             )}
             {/* Which pin is which, on the map and not only in the title, wherever there is more than one. */}
@@ -315,6 +325,7 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
           </Box>
           <OutlineCredits outlines={outlines} />
           <PinLinks pins={drawn} />
+          <GroundCredit shown={grounds.some(Boolean)} />
         </DialogContent>
       )}
     </Dialog>

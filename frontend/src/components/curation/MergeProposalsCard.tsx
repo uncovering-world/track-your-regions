@@ -299,7 +299,7 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
           pins={pins}
           // Each place's outline where it has one (#2205): Bisotun's site and its
           // caravanserai ask whether the one stands within the other.
-          outlinesOf={[item.id, pair.otherId]}
+          placesOf={[item.id, pair.otherId]}
         />
       )}
     </Box>
