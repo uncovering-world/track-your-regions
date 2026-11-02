@@ -111,9 +111,9 @@ export function membershipOfferedSql(alias = 'm'): string {
 
 /**
  * Ten better-known places of the membership's kind and type, holding no work a
- * reader is shown, lie within 10 km of its place, so it is in the tail of a
- * crowded city (ADR-0172, #2201); a place holding such a work never is
- * (ADR-0173).
+ * reader is shown, lie within 10 km of its place, or a curator keeps it in
+ * the shadow (ADR-0180), so it is in the tail of a crowded city (ADR-0172,
+ * #2201); a place holding such a work never is (ADR-0173).
  * The schema keeps the answer (`membership_crowding`, recounted by
  * `recount_crowding()` over the candidates `membershipAdmittedSql` and
  * `hideLostSql` name); absent means shown. `alias` is the membership alias.

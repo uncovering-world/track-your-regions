@@ -41,7 +41,8 @@ import {
  *   is counted and named, never missed;
  * - `offered`: the catalogue holds it under one of its identifiers and a reader sees it;
  * - `shadowed`: a kind admits it and crowds it out of its city, so no list, map or
- *   count holds it: ten better-known places of its kind and type stand near it;
+ *   count holds it: ten better-known places of its kind and type stand near it,
+ *   or a curator keeps it in the shadow (ADR-0180);
  * - `held`: it holds it and a reader does not: waiting for a curator, refused, lost;
  * - `unsorted`: absent, and filed under no kind yet;
  * - `missing_proposed`: absent, and every kind it is filed under is only proposed;
@@ -151,7 +152,7 @@ export interface JudgedCause {
  * to surface; admitted, the kind's rule and line let it through and its arrival
  * waits in the review queue, so the line holds it; crowded, admitted and in a
  * crowded city's tail, ten better-known places of its type within 10 km
- * (ADR-0172), which the display decides and no line does; held, in the catalogue and
+ * (ADR-0172) or a curator's shadow (ADR-0180), which the display decides and no line does; held, in the catalogue and
  * neither offered by this kind nor waiting for a curator in it (refused by name
  * earlier, offered by another kind alone, passed and no longer standing, or
  * marked missing before anyone read it); absent,

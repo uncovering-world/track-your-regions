@@ -21,7 +21,8 @@
  *    names (#1950, `drainPairing`), with every other place marked since.
  * 4. What a reader is shown in a crowded city is measured again (ADR-0172,
  *    `refreshCrowding`): every place's fame from the run's signals, then the
- *    places ten better-known neighbours of their type crowd out.
+ *    places ten better-known neighbours of their type crowd out, beside the
+ *    ones a curator keeps in the list or the shadow (ADR-0180).
  *
  * Each step is guarded on its own (#2074): one that fails is logged, named in
  * the closing line, and the steps after it still run. The search needs the

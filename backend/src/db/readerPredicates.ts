@@ -349,7 +349,8 @@ export function experienceOfferedToReaderSql(alias = 'e'): string {
 /**
  * `experienceOfferedToReaderSql` less the tail of a crowded city (ADR-0172,
  * #2201): some membership of the place is offered and not crowded out by ten
- * better-known places of its kind and type within 10 km. The set a region's
+ * better-known places of its kind and type within 10 km, nor kept in the
+ * shadow by a curator (ADR-0180). The set a region's
  * list, the map's points and the region counts hold, so a count is of what is
  * shown and a parent's count stays the sum of its children's. Search, the card
  * and a traveller's claims keep `experienceOfferedToReaderSql`: a crowded-out
