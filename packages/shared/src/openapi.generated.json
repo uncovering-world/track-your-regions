@@ -18103,6 +18103,13 @@
               "typography",
               "short-move"
             ]
+          },
+          "regionCrossings": {
+            "description": "On a `location` field of a card: every hierarchy where the move places the place in other regions. Empty where it keeps them.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegionCrossing"
+            }
           }
         },
         "required": [
@@ -29382,6 +29389,13 @@
                 "type": "null"
               }
             ]
+          },
+          "regionCrossings": {
+            "description": "Every hierarchy where the move from `replaces` places the point in other regions (#2203).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegionCrossing"
+            }
           }
         },
         "required": [
@@ -30479,6 +30493,13 @@
               "typography",
               "short-move"
             ]
+          },
+          "regionCrossings": {
+            "description": "On a `location` field of a card: every hierarchy where the move places the place in other regions. Empty where it keeps them.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegionCrossing"
+            }
           },
           "claim": {
             "description": "Who claimed the field. Absent where the claim predates the log, or where the gate holds the field.",
@@ -31756,6 +31777,36 @@
         ],
         "additionalProperties": false,
         "description": "A region on the way from the root to the suggested one; the suggested one carries its children."
+      },
+      "RegionCrossing": {
+        "type": "object",
+        "properties": {
+          "worldView": {
+            "type": "string",
+            "description": "The hierarchy whose regions the move crosses."
+          },
+          "from": {
+            "description": "The region placement puts the stored point in; null where it is placed in none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to": {
+            "description": "The region placement puts the proposed point in; null where it is placed in none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "worldView",
+          "from",
+          "to"
+        ],
+        "additionalProperties": false,
+        "description": "A hierarchy where a coordinate move places the place in other regions, or out of or into its regions (#2203)."
       },
       "RegionExperienceCount": {
         "type": "object",
