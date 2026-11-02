@@ -771,10 +771,33 @@ A quantile is read the way the review read it: the values sorted ascending, and 
 `round(q × (n − 1))`. A place the last run admitted stays while it reaches 0.8 of any of the
 three bars. The run's log names the three bars it used, as numbers, for each kind.
 
-**What a run cannot read** never drops a held place: with no year of readers it admits by
-editions alone and keeps the held places under that bar; with no Wikivoyage usage build it keeps
-a held place whose third bar would decide. Keeping the bars and readers a run last read, and the
-marks, is #2253's.
+**What a run cannot read** it takes as last read, never as zero (ADR-0175 decision 6,
+`places/worldMemory.ts`). Three rules:
+
+- **No readership year.** The run admits by the readers' bars of the source's last run that read
+  a year, and by each place's readers as last read; the editions bar is its own, since the editions
+  are read with the pool. Every place run writes the bars it admitted by on its sync log
+  (`experience_sync_logs.world_bars`, with the year they were read over), and a run without a year
+  names the run whose bars it kept (`keptFrom`). Each membership's readers are the crowding step's
+  (`membership_fame.readers`), which keeps a signal whose source is not in place as last measured
+  (ADR-0172) and dates each reading (`readers_read_at`): the zero a membership is ranked at before
+  its first reading is no reading. A place no year was ever read for is unknown: nothing new enters
+  by readers, and a held one keeps its place with a note (`keptNote`); so does every held place
+  while no run of the source has read a year, when the editions bar alone admits. A held place
+  under every bar by what was last read falls, and its reason says *as last read*. The Atlas Obscura
+  listings are asked of the places whose readers, read this year or last, could clear the third bar.
+- **No Wikivoyage usage build.** Whether a guide uses a place is as last read
+  (`membership_fame.guide_editions`, dated by `guides_read_at`); a place no build was read for is
+  unknown, and a held one the third bar would decide keeps its place. An Atlas Obscura listing is a
+  statement of the item the run reads with it, so a run that reads the item reads its listing.
+- **A tier the run did not read** leaves that tier's memberships as they stand: nothing is marked
+  missing (the place sources are ranked, so missing detection never runs on them), the sweep spares
+  the tier (`FetchResult.spareTier`), and a refusal the world rule names of a row the unread tier
+  holds is dropped, so it waits for the run that reads its tier (`mergeRegional`). A run on the live
+  service reads no pool, so nothing new enters the world tier and every held place keeps its place.
+
+The run's line names the bars it used and says which it kept and why (`barsLine`). Arrivals of
+both tiers are gated as each kind gates them.
 
 **The kinds' own entries** stand beside the bars: a place of worship admitted for a work it holds
 (ADR-0052) and Public art's street-art places (#2035). They are not fame lines.
