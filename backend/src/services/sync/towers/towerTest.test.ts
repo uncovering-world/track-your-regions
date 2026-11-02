@@ -1,8 +1,9 @@
 /**
  * What Towers admits and what it leaves to another kind (#1854), asked on real
  * entities with the classes Wikidata gave them on 2026-10-22 (the clocks and
- * the building complexes on 2026-10-30, #2136), so a rule that passes here has
- * been tried on the places a traveller would name.
+ * the building complexes on 2026-10-30, #2136; the sea forts on the subset of
+ * 2026-11-02, #2272), so a rule that passes here has been tried on the places
+ * a traveller would name.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -39,6 +40,14 @@ const BUILDING_COMPLEX = 'Q1497364';
 const ASTRONOMICAL_CLOCK = 'Q5275';
 const CARILLON = 'Q505174';
 const TWIN_TOWERS = 'Q118896406';
+const LATTICE_TOWER = 'Q1440476';
+const TRANSMITTER_MAST = 'Q1068623';
+const COMMUNICATION_TOWER = 'Q1798641';
+const SEA_FORT = 'Q20097897';
+const MAUNSELL_FORT = 'Q1911186';
+const MARTELLO_TOWER = 'Q91285';
+const MILITARY_MUSEUM = 'Q2772772';
+const ISLAND = 'Q23442';
 
 const none = new Set<string>();
 const MAUSOLEUM = 'Q162875';
@@ -46,7 +55,8 @@ const MAUSOLEUM = 'Q162875';
 const trees: TowerTrees = {
   tower: new Set([
     TOWER, BELL_TOWER, CHURCH_TOWER, STEEPLE, FREE_STANDING_TOWER, INCLINED_TOWER, MINARET, PAGODA,
-    CLOCK_TOWER, OBSERVATION_TOWER, TELEVISION_TOWER, FORTIFIED_TOWER, NURAGHE,
+    CLOCK_TOWER, OBSERVATION_TOWER, TELEVISION_TOWER, FORTIFIED_TOWER, NURAGHE, LATTICE_TOWER,
+    TRANSMITTER_MAST, COMMUNICATION_TOWER, MAUNSELL_FORT, MARTELLO_TOWER,
   ]),
   types: {
     pagoda: new Set([PAGODA]),
@@ -54,7 +64,7 @@ const trees: TowerTrees = {
     'clock-tower': new Set([CLOCK_TOWER]),
     'bell-tower': new Set([BELL_TOWER, CHURCH_TOWER, STEEPLE]),
     'observation-tower': new Set([OBSERVATION_TOWER, TELEVISION_TOWER]),
-    'fortified-tower': new Set([FORTIFIED_TOWER]),
+    'fortified-tower': new Set([FORTIFIED_TOWER, MAUNSELL_FORT, MARTELLO_TOWER]),
   },
   others: {
     lighthouse: new Set([LIGHTHOUSE, ANCIENT_LIGHTHOUSE]),
@@ -67,13 +77,17 @@ const trees: TowerTrees = {
   worship: new Set([CHURCH_BUILDING, MOSQUE, MINOR_BASILICA, MINARET]),
   archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]),
   worshipParts: new Set([MINARET, STEEPLE]),
+  // A Maunsell fort is a sea fort, and Wikidata files it under fortified towers too.
+  seaFort: new Set([SEA_FORT, MAUNSELL_FORT]),
 };
 
 const at = (classes: string[]): TowerFacts => ({ classes, onEarth: true, lat: 1, lon: 1 });
 
 describe('towerVerdict', () => {
   it.each([
-    ['the Eiffel Tower', [LANDMARK, OBSERVATION_TOWER], 'observation-tower'],
+    ['the Eiffel Tower', [LATTICE_TOWER, OBSERVATION_TOWER, LANDMARK], 'observation-tower'],
+    ['the Tokyo Skytree, a TV tower and a transmitter mast with a deck', [OBSERVATION_TOWER, TELEVISION_TOWER, TRANSMITTER_MAST, COMMUNICATION_TOWER], 'observation-tower'],
+    ['Fort Denison, a sea fort that is a Martello tower', [MILITARY_MUSEUM, SEA_FORT, ISLAND, MARTELLO_TOWER], 'fortified-tower'],
     ['the Leaning Tower of Pisa, a museum too', [MUSEUM, RELIGIOUS_MUSEUM, CHURCH_TOWER, INCLINED_TOWER, FREE_STANDING_TOWER], 'bell-tower'],
     ['Big Ben, a clock tower before a steeple', [CLOCK_TOWER, STEEPLE, INCLINED_TOWER], 'clock-tower'],
     ['the Giralda, a steeple no church class names', [STEEPLE, MONUMENT], 'bell-tower'],
@@ -105,6 +119,8 @@ describe('towerVerdict', () => {
     ['a monument no tower class names', [MONUMENT], 'no tower class'],
     ['Cœur Défense, a complex of office towers', [TOWER, BUILDING_COMPLEX], 'a building complex, not a tower'],
     ['the Prague Astronomical Clock, filed as a bell tower for its bells', [ASTRONOMICAL_CLOCK, BELL_TOWER], 'a public clock, which Public art offers, not a tower'],
+    ['HM Fort Roughs, the sea fort of "Sealand"', [MAUNSELL_FORT], 'a sea fort, not a tower'],
+    ['the Red Sands Fort, a Maunsell fort', [MAUNSELL_FORT], 'a sea fort, not a tower'],
   ])('refuses %s', (_name, classes, reason) => {
     expect(towerVerdict(at(classes), trees)).toEqual({ pass: false, reason });
   });

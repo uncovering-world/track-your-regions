@@ -22,8 +22,8 @@ const carries = (classes: readonly string[], set: ReadonlySet<string>) => classe
 
 /**
  * Why its tower classes name something other than a tower one visits, or
- * null: a public clock or an office complex (#2136), or the minaret of a place
- * of worship.
+ * null: a public clock or an office complex (#2136), the minaret of a place
+ * of worship, or a sea fort's platform (#2272).
  */
 function towerByTheWay(classes: readonly string[], towerClasses: readonly string[], trees: TowerTrees): string | null {
   if (classes.some((c) => PUBLIC_CLOCK_CLASSES[c]) && !carries(classes, trees.types['clock-tower'])) {
@@ -36,6 +36,7 @@ function towerByTheWay(classes: readonly string[], towerClasses: readonly string
   if (worshipBuilding && towerClasses.every((c) => trees.worshipParts.has(c))) {
     return 'a place of worship with a tower, not a tower';
   }
+  if (towerClasses.every((c) => trees.seaFort.has(c))) return 'a sea fort, not a tower';
   return null;
 }
 
@@ -56,6 +57,8 @@ function towerByTheWay(classes: readonly string[], towerClasses: readonly string
  *    minarets): Places of worship offers it. A worship class that is itself a
  *    tower class does not make one, since Wikidata files a minaret under
  *    structures of worship and the Qutb Minar is nothing but a minaret;
+ *    and a sea fort whose only tower class is a sea fort's: HM Fort Roughs is
+ *    a gun platform at sea, and Fort Denison, a Martello tower too, stays;
  * 6. an archaeological site no type of tower names (a nuraghe, a broch):
  *    Archaeology offers it;
  * 7. a candidate no tower class names, or one with no point on this planet.
