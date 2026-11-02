@@ -20,8 +20,9 @@ rules and leaving a record in the [source register](../sources/README.md).
 ## 1. The three tiers
 
 A kind is filled in three tiers (ADR-0178): the **world tier**, the **surroundings tier** and the
-**regional tier**. The first two read the same global sources, over the whole world and within
-50 km of a place; the third reads sources native to a region and none of the global analysis.
+**regional tier**. The first two read the same global sources, over the whole world and among a
+place's neighbours of its own density within 150 km; the third reads sources native to a region
+and none of the global analysis.
 The tiers differ in where their places are found,
 never in how much a place matters: a place any tier brings is equally a place the kind
 offers, and each tier is described and measured by its own source and signal
@@ -44,10 +45,10 @@ decision 5), and what it marks beyond a famous work waits for #1737. What the li
 job.
 
 **The surroundings tier** is what the same global sources say a place's own surroundings hold:
-the world tier's analysis, applied to the places within 50 km of a candidate rather than to the
-whole world
+the world tier's analysis, applied to the places of a candidate's own density within 150 km of it
+rather than to the whole world
 ([ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md),
-ADR-0175 decision 3). A church that is the best known of its valley and far under the world's
+ADR-0175 decision 3, [ADR-0181](../decisions/0181-the-surroundings-tier-measures-a-place-against-neighbours-of-its-own-density-within-150-km.md)). A church that is the best known of its valley and far under the world's
 line enters here. It is read from the global source, so it needs no source adopted per region,
 and it is on for the six place kinds of § 11 (§ 4 has its rule). ADR-0171 and ADR-0175 call it a
 global source's regional tier.
@@ -79,8 +80,8 @@ completeness before it is shown; this doc narrows it to *one rule per tier*. The
 complete when the ranking's own rule has been applied to the whole world — every venue holding
 a work above the line, every item above the line in the classes the source reads — however many
 that turns out to be (ADR-0023 decision 3: no cap). The surroundings tier is complete when every
-candidate of the kind's pool the world line left out has been measured against its own 50 km
-area by § 4's cut. The regional tier is complete **per unit**:
+candidate of the kind's pool the world line left out has been measured against its own
+neighbourhood by § 4's cut. The regional tier is complete **per unit**:
 the source's enumeration of the unit has been read whole, and the cut has been applied to it.
 A unit with no adopted source has no regional tier, which the product says as "we do not cover
 this yet" — never as an empty list pretending to be a full one.
@@ -199,16 +200,19 @@ source has been adopted. A global source read *for the area*: Wikidata by class
 within the unit, cut by a within-unit signal; Wikivoyage's See listings for the unit's articles;
 OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the unit and the cut are
 [ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md):
-- the unit is the place's own surroundings, everything within 50 km of it;
+- the unit is the place's own surroundings: the places within 150 km of it whose density — the
+  distance to their 20th-nearest place — is within a factor of 4 of its own, so a place on a dense
+  core's edge is measured against the edge ([ADR-0181](../decisions/0181-the-surroundings-tier-measures-a-place-against-neighbours-of-its-own-density-within-150-km.md));
 - a place under the world line enters when it has a Wikipedia article in two languages and
   3,000 readers a year, and one of three tests passes: the Wikivoyage editions that use it reach
-  half the median of the 10 best within 50 km by Wikivoyage's use, among 5 places or more; its
-  Wikipedia editions reach the median of the 10 best within 50 km by Wikipedia editions, among 25
-  places or more; or its readers reach the median of the 10 best within 50 km by readers, among 25
-  places or more (ADR-0175 decision 3, read from the register, § 11);
+  a quarter of the median of its 10 best neighbours by Wikivoyage's use, among 5 places or more;
+  its Wikipedia editions reach the median of its 10 best neighbours by Wikipedia editions, among 25
+  places or more; or its readers reach one and a half times the median of its 10 best neighbours
+  by readers, among 25 places or more (ADR-0175 decision 3, ADR-0181, read from the register,
+  § 11);
 - a tunnel, a dam or a lock enters, and stays, only while a Wikivoyage edition uses it;
 - a place the tier holds stays while it keeps two editions and 2,400 readers and passes one test,
-  the readers test read at 0.8 of its reference (ADR-0175 decision 2);
+  the readers test read at 0.8 of its share, 1.2 times the reference (ADR-0175 decision 2);
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
 - the place pass reads it after the world tier has decided, for the six place kinds of § 11, from
   the local subset (`places/surroundingsTier.ts`, `SURROUNDINGS_CUT` in `places/surroundingsCut.ts`;
@@ -563,9 +567,10 @@ like Tbilisi (13 until #807 measured readership as its signal). For
 art museums that tier can also be cut by the *local fame* of the works a museum holds (below),
 whose bar is set per language and needs no floor on the group, because it does not rank the unit's
 museums against each other (ADR-0057, in draft). For places of the live kinds, the unit and the
-signal were measured on 2026-10-31 over the 21 coverage surveys (ADR-0171): the unit is 50 km
+signal were measured on 2026-10-31 over the 21 coverage surveys (ADR-0171): the unit was 50 km
 around each place, and the signals are Wikivoyage's use and Wikipedia editions against the area's
-best, which § 4's exception states. A percentile within the country and local-language readership
+best, which § 4's exception states. On 2026-11-02 the unit became the places of a place's own
+density within 150 km (ADR-0181). A percentile within the country and local-language readership
 both ranked below them. Verdict: world tier — the source it already is; surroundings tier —
 **the source it is, read per area, with its coverage measured** (§ 4); regional tier — none, since
 it is not native to a region (ADR-0178 decision 3).
@@ -767,6 +772,7 @@ Changes are logged here:
 | 2026-10-31 | § 4's exception names the unit and the cut of Wikidata read per unit: 50 km around each place, Wikivoyage's use or Wikipedia editions against the area's best, a floor on the area's places, and an article in two languages (ADR-0171, #2154) | The country percentile of #761 carried Wikidata's density into the cut, and local-language readership, the signal § 4 named, ranked below Wikivoyage's use in every unit measured |
 | 2026-11-02 | § 11: the six place kinds' world tier admits at three quantiles of each kind's own pool, every parameter of both tiers lives in one register with its derivation, and a parameter moves only by the four steps of ADR-0175 decision 5 (#2177, #2251) | Each kind had carried its own picked line, sitting between the top 1.7 % and the top 5.6 % of its pool for no stated reason, and a count drifts as Wikipedia's readership falls |
 | 2026-11-02 | § 1, § 4, § 7.4, § 11: three tiers — world, surroundings, regional; ADR-0171's 50 km cut is the surroundings tier, and a global source read per area is no longer a regional-tier source | ADR-0178: the cut read as a kind's regional tier while no native source was adopted for it |
+| 2026-11-02 | § 1, § 4, § 7.4, § 11: the surroundings tier's unit is the places of a place's own density within 150 km, the Wikivoyage test passes at a quarter of the reference and the readers test at one and a half times it (ADR-0181, #2297) | A fixed 50 km circle measured a place on a dense core's edge against the core, or gave an emptier region too few places; the shares moved demand more than any shape did |
 
 ## 10. Out of scope
 
@@ -848,21 +854,26 @@ the world and surroundings tiers are gated as each kind gates them.
 (ADR-0052), Public art's street-art places (#2035) and the digs OpenStreetMap names that no class of
 Archaeology reaches (ADR-0060). They are not fame lines.
 
-**The surroundings tier** is ADR-0171's 50 km cut with the parameters ADR-0175 decisions 2 and 3
-derived, on for the six kinds since #2252 (`SURROUNDINGS_CUT`, `places/surroundingsCut.ts`). A candidate
-the world bars left out is measured against every place of the live kinds within 50 km, museums
-included, and the reference of each test is the median of the ten best there. It enters with at
-least two Wikipedia editions and 3,000 readers a year when one test passes:
+**The surroundings tier** is ADR-0171's cut with the parameters ADR-0175 decisions 2 and 3
+derived and the neighbourhood and shares ADR-0181 measured, on for the six kinds since #2252
+(`SURROUNDINGS_CUT`, `places/surroundingsCut.ts`). A candidate the world bars left out is measured
+against its neighbours: the places of the live kinds within 150 km, museums included, whose
+density is within a factor of 4 of its own, a place's density being its distance to its
+20th-nearest place of the pool (`places/surroundingsNeighbourhood.ts`). A monastery 95 km from the
+Kremlin is measured against the Moscow region's places, not against Moscow's core. The reference of
+each test is the median of the ten best neighbours. It enters with at least two Wikipedia editions
+and 3,000 readers a year when one test passes:
 
-- **Wikivoyage:** the editions that use it reach half the reference, in an area of at least 5
-  places;
+- **Wikivoyage:** the editions that use it reach a quarter of the reference, in an area of at
+  least 5 places;
 - **Editions:** its Wikipedia editions reach the reference, in an area of at least 25 places;
-- **Readers:** its readers reach the reference, in an area of at least 25 places.
+- **Readers:** its readers reach one and a half times the reference, in an area of at least 25
+  places.
 
 A tunnel, a dam or a lock enters only when a Wikivoyage edition uses it. A place the tier holds
 stays while it keeps two editions, reaches 2,400 readers and passes one test, the readers test
-read at 0.8 and the other two whole; a tunnel, dam or lock stays only while a guide still uses
-it. With no year of readers the tier is not read and its places keep their standing. Its arrivals
+read at 0.8 of its share (1.2 times the reference) and the other two whole; a tunnel, dam or lock
+stays only while a guide still uses it. With no year of readers the tier is not read and its places keep their standing. Its arrivals
 are gated as each kind gates arrivals.
 
 Archaeology's sites ask two things more of the surroundings tier, and of it alone (ADR-0179,
