@@ -96,7 +96,7 @@ of the kind's classes, wider than the run's
 
 ## Adopted (2026-10-31, #2034, ADR-0169)
 
-Public art reads it as one of the two marks of its marks door (`publicArt/marksDoor.ts`): a work
+Public art read it as one of the two marks of its marks door, superseded by [ADR-0175](../../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md): a work
 that passes the kind's rule, that a Wikivoyage edition uses **or** whose item carries an Atlas
 Obscura place ID, and that the latest year reads 20,000 times or over enters, whatever its count of
 Wikipedia editions, for a curator — the maintainer's decision of 2026-10-30 on #2034, sized on the
@@ -106,3 +106,12 @@ the arrival names it in the curator's question ("Atlas Obscura lists it"). The s
 the subset's entity JSON as the street-art rule reads it (`fetchStreetArtMarks`, `subset/streetArt.ts`);
 the site is never called, and nothing of it is shown. With no Wikivoyage usage build the guide's half
 of the door is silent and this mark still speaks.
+
+## The world bars (2026-11-02, #2251, ADR-0175)
+
+Every place kind of the place pass now reads the listing as a guide's mark: a candidate that
+carries an Atlas Obscura place ID, or that a Wikivoyage edition uses, enters at the kind's own
+pool's 90th percentile of readers a year (`places/worldBars.ts`, `readAtlas`, read from the subset
+through `fetchStreetArtMarks`). With the mark the review's point admitted 147 more places, among
+them Florence's Porcellino, Munich's Glockenspiel, Chicago's Crown Fountain and Madrid's Fuente del
+Ángel Caído, and the canon moved from 0.850 to 0.852 with the judged noise unchanged.

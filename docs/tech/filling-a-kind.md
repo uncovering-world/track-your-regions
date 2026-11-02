@@ -29,9 +29,10 @@ reader; such a scale may serve an internal mechanism only.
 on one signal and a line is drawn across it. World Heritage is the UNESCO list itself — the
 list *is* the tier; art museums are the venues holding a work at 22 Wikipedia-language
 sitelinks or more (works-first, [ADR-0023](../decisions/0023-works-first-museum-selection.md));
-public art and monuments are the sculptures and the monuments above the same line — ADR-0023's,
-reused by #754 and by both kinds since #1807 split them
-([experiences.md § Public art and Monuments & memorials](experiences.md#public-art-and-monuments--memorials-landmarksyncservicets-publicartts)). The
+the six place kinds of the place pass — Public art, Monuments & memorials, Places of worship,
+Towers, Bridges & engineering marvels, Squares & streets — admit at three quantiles of each
+kind's own pool, read from one register and moved only by a stated method
+([ADR-0175](../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md), § 11). The
 **Iconic** badge is written on world-tier places only, by each kind's own rule
 ([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md)
 decision 5), and what it marks beyond a famous work waits for #1737. What the line leaves out is not a defect of the line: it is the regional tier's
@@ -178,9 +179,11 @@ OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the un
 [ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md):
 - the unit is the place's own surroundings, everything within 50 km of it;
 - a place under the world line enters when it has a Wikipedia article in two languages, and
-  either the Wikivoyage editions that use it reach a quarter of the median of the 10 best within
-  50 km by Wikivoyage's use, or its Wikipedia editions reach the median of the 10 best within
-  50 km by Wikipedia editions, among 25 places or more;
+  either the Wikivoyage editions that use it reach a share of the median of the 10 best within
+  50 km by Wikivoyage's use (a half, ADR-0175 decision 3, read from the register), or its Wikipedia
+  editions reach the median of the 10 best within 50 km by Wikipedia editions, among 25 places or
+  more; ADR-0175 adds a readers test and a floor of 3,000 readers, which #2252 switches on with the
+  tier;
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
 - the place pass reads it after the world tier has decided, for every place kind, from the local subset
   (`places/regionalTier.ts`, `REGIONAL_CUT` in `places/regionalCut.ts`; experiences.md § The regional tier
@@ -724,11 +727,90 @@ Changes are logged here:
 | 2026-09-13 | Share-alike is no longer an unanswered `hold` for OpenStreetMap: § 5 and § 6.2 now name the terms on which OSM may be read (ADR-0059, #581) | OSM is the only source that says what stands on the ground — Wikidata's site tree cannot tell Athens from Pompeii — and the licence question had been open since ADR-0002. It is answered by keeping what is taken from OSM separable with its provenance, offering that part under ODbL, and showing the credit; the register's OSM record moves from `hold` to a verdict on its merits when a connector is written from it |
 | 2026-10-25 | Share-alike is answered for UNESCO's `whc001` too: § 5 and § 6.2 name it beside OpenStreetMap (ADR-0149, #2010) | The UNESCO run copied every property's CC BY-SA description with no credit and predated the register; the maintainer chose to keep the text, credit it where it is shown and keep the UNESCO part separable, as ADR-0059 does for OSM |
 | 2026-10-31 | § 4's exception names the unit and the cut of Wikidata read per unit: 50 km around each place, Wikivoyage's use or Wikipedia editions against the area's best, a floor on the area's places, and an article in two languages (ADR-0171, #2154) | The country percentile of #761 carried Wikidata's density into the cut, and local-language readership, the signal § 4 named, ranked below Wikivoyage's use in every unit measured |
+| 2026-11-02 | § 11: the six place kinds' world tier admits at three quantiles of each kind's own pool, every parameter of both tiers lives in one register with its derivation, and a parameter moves only by the four steps of ADR-0175 decision 5 (#2177, #2251) | Each kind had carried its own picked line, sitting between the top 1.7 % and the top 5.6 % of its pool for no stated reason, and a count drifts as Wikipedia's readership falls |
 
 ## 10. Out of scope
 
 Adopting any source (#628, #581, the public-art regional tier); the list of sources per unit
 (each kind's issue fills the register); thresholds per kind and the exact within-unit signal per
-source (#628's slices; for Wikidata's places, ADR-0171 is where each kind's calibration starts); the Pilgrimage badge (#808); which languages a region reads (#809); the curator screen for tier and
+source (#628's slices; for the six place kinds of Wikidata, § 11 and its register are where they
+stand); the Pilgrimage badge (#808); which languages a region reads (#809); the curator screen for tier and
 badge (#603 for the badge); any code for the register, which arrives with the first sync that
 reads it.
+
+## 11. The place kinds' admission frame, and how a number of it moves
+
+Read this before moving any number the six place kinds of the place pass admit by: Public art,
+Monuments & memorials, Places of worship, Towers, Bridges & engineering marvels, and Squares &
+streets ([ADR-0175](../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md)). The
+review that derived the frame is
+[2026-11-02 — One admission frame for the place kinds](../research/2026-11-02-one-admission-frame-for-the-place-kinds.md).
+
+### 11.1 The frame
+
+**The pool.** A kind's pool is every item of its classes with a point and at least three
+sitelinks of any Wikimedia site, whatever its Wikipedia editions, that the kind's own rule
+passes. It is read from the local Wikidata subset at every run (`PlaceKind.admissionPool`,
+`backend/src/services/sync/places/gather.ts`). Three sitelinks is the floor the review's extract
+read the candidates at, so the bars below are the review's quantiles; without it the pool is the
+regional pool's whole gather, most of it read in no Wikipedia, and the bars collapse
+([ADR-0176](../decisions/0176-a-place-kinds-pool-starts-at-three-sitelinks.md)). A row the kind
+holds counts in the pool when a class question of the kind names it at the floor; one only asked
+for by id, or named only by an entrance, is decided by the bars but does not set them. A run on the live service
+reads no pool: then nothing new enters and every place the last run admitted keeps its place.
+
+**The world tier.** A candidate enters when it reaches any one of three bars, each a quantile
+of the kind's own pool, recomputed from the pool at every run (`worldBars.ts`):
+
+- the pool's 97th percentile of Wikipedia editions;
+- its 98th percentile of readers a year;
+- its 90th percentile of readers, when at least one Wikivoyage edition uses the item or it
+  carries an Atlas Obscura place ID (`P7772`).
+
+A quantile is read the way the review read it: the values sorted ascending, and the value at
+`round(q × (n − 1))`. A place the last run admitted stays while it reaches 0.8 of any of the
+three bars. The run's log names the three bars it used, as numbers, for each kind.
+
+**What a run cannot read** never drops a held place: with no year of readers it admits by
+editions alone and keeps the held places under that bar; with no Wikivoyage usage build it keeps
+a held place whose third bar would decide. Keeping the bars and readers a run last read, and the
+marks, is #2253's.
+
+**The kinds' own entries** stand beside the bars: a place of worship admitted for a work it holds
+(ADR-0052) and Public art's street-art places (#2035). They are not fame lines.
+
+**The regional tier** is ADR-0171's 50 km cut with the parameters ADR-0175 decision 3 derived.
+They are declared in the register beside the world's; the slice that switches the tier on
+(#2252) reads the ones the cut does not read yet.
+
+### 11.2 The register
+
+Every number of the frame lives in one module,
+`backend/src/services/sync/places/admissionRegister.ts`, and nowhere else: `WORLD_REGISTER` and
+`REGIONAL_REGISTER`. Each parameter carries its value, the one sentence that says how it was
+derived, the evidence (the report and its section) and the date. The runs read the values
+(`WORLD_FRAME`, `REGIONAL_CUT`), and so does the coverage report: a survey entry carries its
+editions and no readers, so the report reads each kind's editions bar as the review measured it
+(`MEASURED_BARS`), and a top under it may still enter on its readers. No kind module declares a
+line of its own, and a kind that enters later takes the shared levels and is measured on its own
+canon list before its first run (ADR-0175 decision 4).
+
+### 11.3 How a number moves
+
+A parameter changes in four steps, never fewer (ADR-0175 decision 5):
+
+1. **The frozen metrics** on the sixteen development regions, read on what the catalogue shows
+   after the display rule (ADR-0172, ADR-0173): survey demand, canon recall, judged noise, load
+   and the share outside Europe, per kind and per region, never as one score.
+2. **The frontier** of survey demand, canon, outside Europe, load and judged noise over the
+   candidate values.
+3. **A point chosen by a rule the maintainer states.** The rule of 2026-11-02: the canon at 85 %
+   or more, the judged noise at 7 % or less, and of those the fewest places.
+4. **One read of a control group no tuning has read**, where the change is adopted only if it
+   improves the control figure. A control group read once is spent: the next change needs its
+   own.
+
+The new value goes into the register with its new derivation, evidence and date, and the
+evidence is a report under `docs/research/` that an issue or an ADR cites. The harness the review
+used, and the commands that rerun it, are in the report's § How to rerun.
+

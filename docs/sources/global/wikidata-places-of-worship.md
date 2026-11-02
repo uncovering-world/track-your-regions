@@ -269,3 +269,13 @@ the soft guide of about a hundred, because the kind spans every faith on every c
 it to the guide would need a measure of fame, and fame is what the canon checks. A place it holds
 that turns out to be known only in its own region is a question for the line-miss issue, not a
 reason to shorten the canon after its misses are known.
+
+## The world bars (2026-11-02, #2251, ADR-0175)
+
+Door one, a place the world knows by name, no longer reads the source row's line: [ADR-0175](../../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md)
+admits a place at the kind's own pool's 97th percentile of Wikipedia editions, its 98th percentile of
+readers a year, or its 90th percentile of readers where a Wikivoyage edition uses it or it carries an
+Atlas Obscura place ID, and a held place stays at 0.8 of any. On the review's extract the bars came
+to 16 editions, 49,634 readers and 10,577 with a mark. Door two, a work a place holds, keeps the line
+the source row states. The levels live in `backend/src/services/sync/places/admissionRegister.ts`
+([filling-a-kind.md § 11](../../tech/filling-a-kind.md#11-the-place-kinds-admission-frame-and-how-a-number-of-it-moves)).

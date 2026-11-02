@@ -16,7 +16,7 @@ row:
   wikidata_link: itself
   coordinates: most
   languages: [all]
-  signal: "Wikivoyage editions that use the place, against a quarter of the median of the 10 best within 50 km, or Wikipedia editions against that signal's median of the 10 best, with an article in two languages (ADR-0171); for art museums, the local fame of the works a museum holds — their readership in the unit's languages against the world tier's works in the same language (ADR-0057, in draft)"
+  signal: "Wikivoyage editions that use the place, against a share of the median of the 10 best within 50 km (a half, ADR-0175 decision 3, read from the register), or Wikipedia editions against that signal's median of the 10 best, with an article in two languages (ADR-0171); for art museums, the local fame of the works a museum holds — their readership in the unit's languages against the world tier's works in the same language (ADR-0057, in draft)"
 terms:
   licence: "CC0 1.0"
   database_right: waived

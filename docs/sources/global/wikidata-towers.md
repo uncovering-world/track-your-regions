@@ -130,8 +130,8 @@ Tower of Utrecht (8), the Torrazzo of Cremona and Kalta Minor (14) — and two i
 25,000 readers, the Iron Pagoda of Kaifeng and the Songyue Pagoda. The #1997 report measured a
 Wikivoyage guide's use beside a year of readers on them, and the maintainer decided on 2026-10-30:
 a tower a guide uses that the year reads **15,000 times or over enters, whatever its editions, for
-a curator** (`TOWER_GUIDE_DOOR`, `towers/kind.ts`). It stays over 10,800, the line's own ratio of
-stay to enter. The door reads the pool and the towers under its floor (`towers/underFloor.ts`): the
+a curator**. It stays over 10,800, the line's own ratio of
+stay to enter. The door reads the pool and the towers under its floor: the
 readership names what is read at the bar in fewer than 15 editions, the guide narrows it, and
 Wikidata is asked which carry a tower class with a point. #2145 restates the count as a rule that
 follows the year.
@@ -193,3 +193,15 @@ items: the Prague clock, Fanzago's astronomical clock on Clusone's Palazzo comun
 editions), Cœur Défense and two complexes with no edition. The Old Town Hall's tower, which a
 visitor climbs, has no item of its own: the hall's item is a town hall and a museum, and
 OpenStreetMap's tower carries the hall's item.
+
+## The world bars (2026-11-02, #2251, ADR-0175)
+
+The line and the guide door above are superseded by [ADR-0175](../../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md): a tower enters at the kind's own
+pool's 97th percentile of Wikipedia editions, its 98th percentile of readers a year, or its 90th
+percentile of readers where a Wikivoyage edition uses it or it carries an Atlas Obscura place ID,
+and a held tower stays at 0.8 of any. The pool is every candidate the rule passes with a point and
+three sitelinks or more, whatever its editions, so the towers under the old pool floor are read in
+it rather than by a door of their own. On the review's extract the bars came to 19 editions,
+64,996 readers and 12,838 with a mark. The levels live in
+`backend/src/services/sync/places/admissionRegister.ts`, and a run computes its own bars from its
+pool ([filling-a-kind.md § 11](../../tech/filling-a-kind.md#11-the-place-kinds-admission-frame-and-how-a-number-of-it-moves)).

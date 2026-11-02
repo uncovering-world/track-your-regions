@@ -187,7 +187,7 @@ Neptune's Staircase and the Fonseranes locks are filed as a built structure, and
 Centre lifts as an architectural ensemble (World Heritage holds them). Two more, the Three Gorges
 ship lift and the Elbląg Canal's inclined planes, have no item of their own in the subset. The
 coverage report reads this kind on the bridges' line, so it files the first two as under the line;
-they are typing misses (`CODE_LINES`, `report.ts`).
+they are typing misses (`report.ts`).
 
 **The line**, measured on the candidates the rule passes as a lock, flight, lift or inclined plane,
 against the 16 canon entries with an item:
@@ -217,3 +217,16 @@ container: the branch admits 342 against main's 376. The 58 canals leave, all wi
 naming #1948, and 24 of a canal's works enter: 13 boat lifts, 9 locks and 2 inclined planes.
 Wikidata types the Arzviller inclined plane as a lift and the Bingley Five Rise flight as an
 inclined plane. No other verdict changes: 238 bridges, 45 dams, 22 tunnels and 13 aqueducts.
+
+## The world bars (2026-11-02, #2251, ADR-0175)
+
+The two lines above, the waterway line among them, are superseded by [ADR-0175](../../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md): a work enters at
+the kind's own pool's 97th percentile of Wikipedia editions, its 98th percentile of readers a year,
+or its 90th percentile of readers where a Wikivoyage edition uses it or it carries an Atlas Obscura
+place ID, and a held work stays at 0.8 of any. On the review's extract the bars came to 17 editions,
+56,955 readers and 13,757 with a mark. A canal's works are read in the same pool and held to the
+same bars: a lock a guide names, read over the third bar, enters (Ballard Locks); one no guide
+names and read some 20,000 times a year does not (the Caen Hill flight), and the regional tier of
+ADR-0175 decision 3 admits a lock only where a guide uses it (#2252). The levels live in
+`backend/src/services/sync/places/admissionRegister.ts`
+([filling-a-kind.md § 11](../../tech/filling-a-kind.md#11-the-place-kinds-admission-frame-and-how-a-number-of-it-moves)).
