@@ -5034,10 +5034,21 @@ Maggiore, and crowds out 51 more of its churches.
   not in place keeps its last value, and the run's line says so. It then calls `refresh_crowding()`.
   That function scores every candidate as the mean of the three percentiles among its kind and
   type worldwide, then recounts the catalogue.
+- **A place holding works is always shown** ([ADR-0173](../decisions/0173-a-place-holding-works-is-never-crowded-out.md), #2245).
+  A place that holds a work a reader is shown is never crowded out and takes none of the ten:
+  the link is one the source still places, and neither it nor the work is unread
+  (`place_shows_works(place)`, the set the row's works-inside mark counts). Rome's churches show
+  their ten best known, then San Luigi dei Francesi for its Caravaggios and Santa Maria della
+  Vittoria for Bernini's *Ecstasy of Saint Teresa*, which fame alone ranked fifteenth and
+  eleventh.
 - **The schema recounts between runs.** `crowding_follows_membership()` and
   `crowding_follows_place()` call `recount_crowding(near)` within the radius of a place. They fire
   when a membership's admission, type, kind or place changes, when the membership is deleted, and
-  when a place's existence or point changes or the place is deleted. A curator's refusal of
+  when a place's existence or point changes or the place is deleted. `crowding_follows_link()` and
+  `crowding_follows_work()` recount around a place when what it holds changes: a link written,
+  deleted, no longer placed, read or moved, or a work read. They go through
+  `crowding_recount_place(place)`, which does nothing for a place in no kind with the rule, so an
+  art museum's works run recounts nothing. A curator's refusal of
   Santa Maria Maggiore lifts the eleventh church into Rome's ten as the refusal commits; no writer
   asks for it. The triggers are deferred to the commit, and the recount takes a transaction lock
   (`pg_advisory_xact_lock(2201, 0)`). Two recounts whose areas overlap then run one after the
