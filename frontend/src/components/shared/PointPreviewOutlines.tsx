@@ -90,16 +90,18 @@ export function OutlineCredits({ outlines }: { outlines: readonly PlaceOutline[]
 /**
  * Frames the pins and the outlines together once the outlines arrive, by the one
  * rule (`frameGeoJson`): an outline read after the map loaded would otherwise
- * stand half off the frame the pins alone were given.
+ * stand half off the frame the pins alone were given. So does a reference pin
+ * (`references`, the article's point, #2206), which arrives after the map too.
  */
 export function useFrameWithOutlines(
   map: MapLike | null,
   outlines: readonly PlaceOutline[],
   points: readonly { latitude: number; longitude: number }[],
   options: { padding: number | { top: number; bottom: number; left: number; right: number }; maxZoom: number },
+  references = 0,
 ): void {
   useEffect(() => {
-    if (!map || outlines.length === 0) return;
+    if (!map || (outlines.length === 0 && references === 0)) return;
     const framed: GeoJSON.GeometryCollection = {
       type: 'GeometryCollection',
       geometries: [
@@ -110,5 +112,5 @@ export function useFrameWithOutlines(
     frameGeoJson(map, framed, { ...options, duration: 0 });
     // Framed when the outlines arrive or the map loads; the pins and the options are the dialog's for its whole life.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reframing on every render of the pins would undo the reader's pan
-  }, [map, outlines]);
+  }, [map, outlines, references]);
 }

@@ -6888,6 +6888,63 @@ export interface PlaceSearch {
   results: PlaceResult[];
 }
 
+/**
+ * What OpenStreetMap holds at a point: the object nearest it, at the level of a building (Nominatim's reverse lookup). Every field null where it holds nothing there. The data is OpenStreetMap contributors', under the ODbL.
+ */
+export interface PlaceAtPoint {
+  /**
+     * The name OpenStreetMap gives the object nearest the point — a church, a square, a street — or null where that object is unnamed: a building, a bare address.
+     * @nullable
+     */
+  name: string | null;
+  /**
+     * The address the object stands at, house number first where it has one.
+     * @nullable
+     */
+  street: string | null;
+  /**
+     * The neighbourhood, village or town the point is in, the narrowest OpenStreetMap names.
+     * @nullable
+     */
+  area: string | null;
+  /**
+     * OpenStreetMap's key for what the object is: `building`, `highway`, `amenity`, `historic`, …
+     * @nullable
+     */
+  category: string | null;
+  /**
+     * Its value under that key: `church`, `residential`, `yes` for a building of no stated kind, …
+     * @nullable
+     */
+  type: string | null;
+  /**
+     * The object on openstreetmap.org, where the answer names one.
+     * @nullable
+     */
+  osmUrl: string | null;
+}
+
+/**
+ * The article's primary coordinate on the Earth, or null where it states none or the wiki did not answer.
+ */
+export type ArticlePointCoordinate = {
+  latitude: number;
+  longitude: number;
+} | null;
+
+/**
+ * Where the place's Wikipedia article says it stands.
+ */
+export interface ArticlePoint {
+  /**
+     * The Wikipedia article the place links to, or null where it links none.
+     * @nullable
+     */
+  article: string | null;
+  /** The article's primary coordinate on the Earth, or null where it states none or the wiki did not answer. */
+  coordinate: ArticlePointCoordinate;
+}
+
 export interface AiGeocodeBody {
   /**
      * @minLength 2
@@ -7372,6 +7429,19 @@ export type GetGeocodeSearchParams = {
    * @maximum 10
    */
   limit?: number;
+};
+
+export type GetGeocodeReverseParams = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  lat: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  lon: number;
 };
 
 export type GetGeocodeSuggestImageParams = {
@@ -12313,6 +12383,63 @@ export const getGetGeocodeSearchUrl = (params: GetGeocodeSearchParams,) => {
 export const getGeocodeSearch = async (params: GetGeocodeSearchParams, options?: Parameters<typeof apiFetch>[1]): Promise<PlaceSearch> => {
 
   return apiFetch<PlaceSearch>(getGetGeocodeSearchUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetGeocodeReverseUrl = (params: GetGeocodeReverseParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/geocode/reverse?${stringifiedParams}` : `/api/geocode/reverse`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Name what OpenStreetMap holds at a point: the object nearest it, its address and its area
+ */
+export const getGeocodeReverse = async (params: GetGeocodeReverseParams, options?: Parameters<typeof apiFetch>[1]): Promise<PlaceAtPoint> => {
+
+  return apiFetch<PlaceAtPoint>(getGetGeocodeReverseUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetGeocodeArticlePointByIdUrl = (id: number,) => {
+
+
+
+
+  return `/api/geocode/article-point/${encodeURIComponent(String(id))}`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Read the coordinate a place's Wikipedia article states, as a reference beside its points
+ */
+export const getGeocodeArticlePointById = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ArticlePoint> => {
+
+  return apiFetch<ArticlePoint>(getGetGeocodeArticlePointByIdUrl(id),
   {
     ...options,
     method: 'GET'

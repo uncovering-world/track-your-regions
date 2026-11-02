@@ -198,7 +198,7 @@ function BothPoints({ name, placeId, groups, onKeep, pending }: {
         latitude={pins[0].latitude}
         longitude={pins[0].longitude}
         pins={pins}
-        outlinesOf={[placeId]}
+        placesOf={[placeId]}
       />
     </>
   );

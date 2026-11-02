@@ -103,8 +103,8 @@ export function PinLegend({ entries }: { entries: ReadonlyArray<{ colour: string
         bgcolor: 'background.paper', boxShadow: 1, fontSize: 12, lineHeight: 1.5,
       }}
     >
-      {entries.map(entry => (
-        <Box key={entry.label}>
+      {entries.map((entry, index) => (
+        <Box key={`${index}:${entry.label}`}>
           <Box component="span" sx={{ color: entry.colour, fontWeight: 700 }}>●</Box> {entry.label}
         </Box>
       ))}
@@ -117,13 +117,14 @@ export function PinLegend({ entries }: { entries: ReadonlyArray<{ colour: string
  * Maps (`mapsLink.ts`, ADR-0115): a curator checking a pin against another map
  * opens that map on the same point. The device's own app and the visitor's
  * choice of one (`OpenInMapsLink`) are not offered: this is a desk, not a walk.
- * A pin that carries an action offers it at the end of its row.
+ * A pin that carries an action offers it at the end of its row, and one whose
+ * ground is known says under it what OpenStreetMap holds there (#2206).
  */
-export function PinLinks({ pins }: { pins: ReadonlyArray<MapPin & { colour: string }> }) {
+export function PinLinks({ pins }: { pins: ReadonlyArray<MapPin & { colour: string; ground?: string }> }) {
   return (
     <Box sx={{ px: 2.5, py: 1.5, display: 'grid', gap: 0.5 }}>
-      {pins.map(pin => (
-        <Typography key={pin.label} variant="body2" sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'baseline' }}>
+      {pins.map((pin, index) => (
+        <Typography key={`${index}:${pin.label}`} variant="body2" sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'baseline' }}>
           <Box component="span" sx={{ color: pin.colour, fontWeight: 700 }}>●</Box>
           <Box component="span" sx={{ fontWeight: 600 }}>{pin.label}</Box>
           <Box component="span" color="text.secondary">{pin.latitude.toFixed(4)}, {pin.longitude.toFixed(4)}</Box>
@@ -137,6 +138,11 @@ export function PinLinks({ pins }: { pins: ReadonlyArray<MapPin & { colour: stri
               aria-label={`${pin.action.label}: ${pin.label}`} sx={{ ml: 'auto', py: 0, lineHeight: 1.6 }}>
               {pin.action.label}
             </Button>
+          )}
+          {/* What OpenStreetMap holds at the point (#2206), on a line of its own under the pin's,
+              after the pin's action so the action stays at the end of the pin's own line. */}
+          {pin.ground && (
+            <Box component="span" color="text.secondary" sx={{ flexBasis: '100%', boxSizing: 'border-box', pl: 2 }}>{`here: ${pin.ground}`}</Box>
           )}
         </Typography>
       ))}

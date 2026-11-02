@@ -49,6 +49,14 @@ vi.mock('../../api/experiences', async (importOriginal) => ({
   fetchExperience: mockFetchExperience,
 }));
 
+const NOTHING_THERE = { name: null, street: null, area: null, category: null, type: null, osmUrl: null };
+const { mockPlaceAtPoint, mockArticlePoint } = vi.hoisted(() => ({ mockPlaceAtPoint: vi.fn(), mockArticlePoint: vi.fn() }));
+vi.mock('../../api/geocode', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/geocode')>()),
+  fetchPlaceAtPoint: mockPlaceAtPoint,
+  fetchArticlePoint: mockArticlePoint,
+}));
+
 vi.mock('./PointCorrection', () => ({
   PointCorrection: ({ onDone, onCancel }: { onDone: (m: string) => void; onCancel: () => void }) => (
     <div data-testid="the-form">
@@ -85,6 +93,8 @@ const place = {
 beforeEach(() => {
   vi.spyOn(webgl, 'isWebGLAvailable').mockReturnValue(true);
   vi.mocked(frameGeoJson).mockClear();
+  mockPlaceAtPoint.mockReset().mockResolvedValue(NOTHING_THERE);
+  mockArticlePoint.mockReset().mockResolvedValue({ article: null, coordinate: null });
 });
 
 afterEach(() => {
@@ -297,7 +307,7 @@ describe('the outlines of the places a dialog pins (#2205)', () => {
     mockFetchExperience.mockResolvedValue({
       id: 61, name: 'Bisotun', kind_id: 5, type: 'site', boundary_geojson: SITE, area_km2: 3.2,
     });
-    render(<PointPreviewDialog open onClose={() => {}} name="Bisotun" latitude={34.39} longitude={47.44} outlinesOf={[61]} />);
+    render(<PointPreviewDialog open onClose={() => {}} name="Bisotun" latitude={34.39} longitude={47.44} placesOf={[61]} />);
 
     expect(await screen.findByTestId('the-outlines')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '© OpenStreetMap contributors' })).toBeInTheDocument();
@@ -307,10 +317,73 @@ describe('the outlines of the places a dialog pins (#2205)', () => {
 
   it('draws nothing and credits nobody for a place with no outline', async () => {
     mockFetchExperience.mockResolvedValue({ id: 62, name: 'A caravanserai', kind_id: 5, type: 'building', boundary_geojson: null });
-    render(<PointPreviewDialog open onClose={() => {}} name="A caravanserai" latitude={34.39} longitude={47.44} outlinesOf={[62]} />);
+    render(<PointPreviewDialog open onClose={() => {}} name="A caravanserai" latitude={34.39} longitude={47.44} placesOf={[62]} />);
 
     await vi.waitFor(() => expect(mockFetchExperience).toHaveBeenCalledWith(62));
     expect(screen.queryByTestId('the-outlines')).toBeNull();
     expect(screen.queryByText(/OpenStreetMap contributors/)).toBeNull();
+  });
+});
+
+describe('what stands at each pin, and where the article says the place is (#2206)', () => {
+  // The Church of the Acheiropoietos (40144) on dev, 2026-11-02: its catalogue point is on a
+  // street in Άγιος Παύλος, and its article's coordinate is a building in Kamara, by the church.
+  const CHURCH = { latitude: 40.6428, longitude: 22.9633 };
+  const ARTICLE = { latitude: 40.63472222, longitude: 22.94777778 };
+
+  it('says under each pin what OpenStreetMap holds there, credits it, and draws the article\'s point', async () => {
+    mockFetchExperience.mockResolvedValue({ id: 40144, name: 'Church of Acheiropoietos', kind_id: 4, type: 'church', boundary_geojson: null });
+    mockArticlePoint.mockResolvedValue({ article: 'https://en.wikipedia.org/wiki/Church_of_the_Acheiropoietos', coordinate: ARTICLE });
+    mockPlaceAtPoint.mockImplementation(async (latitude: number) => (latitude === CHURCH.latitude
+      ? { ...NOTHING_THERE, name: 'Αχιλλέα', street: 'Αχιλλέα', area: 'Άγιος Παύλος', category: 'highway', type: 'residential' }
+      : { ...NOTHING_THERE, street: '6 Π. Παπαγεωργίου', area: 'Kamara', category: 'building', type: 'yes' }));
+    render(<PointPreviewDialog open onClose={() => {}} name="Church of Acheiropoietos" {...CHURCH} placesOf={[40144]} />);
+
+    expect(await screen.findByText('here: Αχιλλέα (street) · Άγιος Παύλος')).toBeInTheDocument();
+    expect(await screen.findByText('here: building at 6 Π. Παπαγεωργίου · Kamara')).toBeInTheDocument();
+    // The article's pin is labelled on the map, in the legend and in its row.
+    expect(screen.getAllByText('Wikipedia').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/What stands at each point/)).toBeInTheDocument();
+    expect(mockArticlePoint).toHaveBeenCalledWith(40144);
+    // Framed again once the article's pin arrives, with both points in the frame.
+    await vi.waitFor(() => expect(vi.mocked(frameGeoJson)).toHaveBeenCalledWith(
+      THE_MAP,
+      expect.objectContaining({ geometries: [{ type: 'MultiPoint', coordinates: [[CHURCH.longitude, CHURCH.latitude], [ARTICLE.longitude, ARTICLE.latitude]] }] }),
+      expect.anything(),
+    ));
+  });
+
+  it('draws no article pin where the article states no coordinate, and credits nothing it did not show', async () => {
+    mockFetchExperience.mockResolvedValue({ id: 1145, name: 'Brâncuși Monumental Ensemble', kind_id: 1, type: null, boundary_geojson: null });
+    render(<PointPreviewDialog open onClose={() => {}} name="Brâncuși Monumental Ensemble" latitude={45.0383} longitude={23.2788} placesOf={[1145]} />);
+
+    await vi.waitFor(() => expect(mockArticlePoint).toHaveBeenCalledWith(1145));
+    await vi.waitFor(() => expect(mockPlaceAtPoint).toHaveBeenCalled());
+    expect(screen.queryByText('Wikipedia')).toBeNull();
+    expect(screen.queryByText(/What stands at each point/)).toBeNull();
+  });
+
+  it('names each article\'s pin by its title where the dialog is about two places, and one point once', async () => {
+    // Bisotun and its caravanserai (pair 350): two articles, two points.
+    mockArticlePoint.mockImplementation(async (id: number) => (id === 61
+      ? { article: 'https://en.wikipedia.org/wiki/Behistun_Inscription', coordinate: { latitude: 34.3906, longitude: 47.4361 } }
+      : { article: 'https://en.wikipedia.org/wiki/Bisotun_Caravanserai', coordinate: { latitude: 34.3847, longitude: 47.4350 } }));
+    const { unmount } = render(<PointPreviewDialog open onClose={() => {}} name="Bisotun" latitude={BISOTUN[0].latitude} longitude={BISOTUN[0].longitude} pins={BISOTUN} placesOf={[61, 62]} />);
+    expect((await screen.findAllByText('Wikipedia: Behistun Inscription')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Wikipedia: Bisotun Caravanserai').length).toBeGreaterThan(0);
+    unmount();
+
+    // Two entries that may be one place, linking one article: one pin, not two under one label.
+    mockArticlePoint.mockResolvedValue({ article: 'https://en.wikipedia.org/wiki/Behistun_Inscription', coordinate: { latitude: 34.3906, longitude: 47.4361 } });
+    render(<PointPreviewDialog open onClose={() => {}} name="Bisotun" latitude={BISOTUN[0].latitude} longitude={BISOTUN[0].longitude} pins={BISOTUN} placesOf={[63, 64]} />);
+    const rows = await screen.findAllByText('Wikipedia: Behistun Inscription');
+    // The map's label, the legend and the row under the map: one pin, said three times.
+    expect(rows).toHaveLength(3);
+  });
+
+  it('asks nothing for a reader\'s dialog, which names no places', () => {
+    render(<PointPreviewDialog open onClose={() => {}} name="Bilbao" latitude={43.27} longitude={-2.94} />);
+    expect(mockPlaceAtPoint).not.toHaveBeenCalled();
+    expect(mockArticlePoint).not.toHaveBeenCalled();
   });
 });

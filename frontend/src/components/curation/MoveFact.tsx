@@ -62,7 +62,7 @@ export function MoveFact({ before, after, label, placeId }: {
         latitude={from.latitude}
         longitude={from.longitude}
         movedTo={to}
-        outlinesOf={placeId === undefined ? undefined : [placeId]}
+        placesOf={placeId === undefined ? undefined : [placeId]}
       />
     </>
   );
