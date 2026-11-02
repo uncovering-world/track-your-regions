@@ -131,8 +131,10 @@ refused point is re-placed through `placeAfterRelease` after the client is
 released, on `movedPointRefused` being set.
 
 The ones that remain — `/:id/state`, `/:id/decline-source`,
-`/:id/works/:treasureId/edit`, `/review/queue` — stay exempt, checked rather than
-assumed: nothing follows any of their `client.release()`.
+`/:id/works/:treasureId/edit`, `/:id/find-links/:treasureId`, `/review/queue` — stay
+exempt, checked rather than assumed: nothing follows any of their `client.release()`.
+`/:id/find-links/:treasureId` (#2242) writes one row of `find_site_links` and moves no
+pin, since a link between a find and a site places nothing.
 `/:id/decline-source` is the plainest of
 them: it writes one small row per field and does not touch the experience at all,
 because the value it refuses had already won every run. `/:id/works/:treasureId/edit` (#720) is the newest and is the one worth reading
