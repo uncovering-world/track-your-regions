@@ -5035,8 +5035,9 @@ Maggiore, and crowds out 51 more of its churches.
   them to `membership_fame`: readers a year (`readWorks`), the Wikivoyage editions that use the item
   (`guideEditions`) and the Wikipedia editions (`subsetWikipediaEditions`). A signal whose source is
   not in place keeps its last value, and the run's line says so. It then calls `refresh_crowding()`.
-  That function scores every candidate as the mean of the three percentiles among its kind and
-  type worldwide, then recounts the catalogue.
+  That function scores every candidate as the mean of three percentiles among its kind and type
+  worldwide — readers, whether a guide uses the item (a presence, not a count, [ADR-0177](../decisions/0177-a-crowded-city-reads-a-guides-use-as-a-presence.md)),
+  and Wikipedia editions — then recounts the catalogue.
 - **A place holding works is always shown** ([ADR-0173](../decisions/0173-a-place-holding-works-is-never-crowded-out.md), #2245).
   A place that holds a work a reader is shown is never crowded out and takes none of the ten:
   the link is one the source still places, and neither it nor the work is unread
