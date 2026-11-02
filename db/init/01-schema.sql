@@ -3924,6 +3924,26 @@ CREATE TABLE IF NOT EXISTS wikipedia_editions (
 CREATE INDEX IF NOT EXISTS idx_wikipedia_editions_title ON wikipedia_editions (wiki, title);
 COMMENT ON TABLE wikipedia_editions IS 'Every Wikipedia edition''s article about each item whose English article a place, a part or a work links (#2209): the item (QID), the edition (enwiki, ruwiki, ...) and its title as the edition writes it. A place''s article is found by its English title (wiki = ''enwiki''), and the item''s other rows are its other languages. Replaced at the end of every real run from the local Wikidata subset (refreshWikipediaEditions, backend/src/services/sync/wikipediaEditions.ts); left as it is where the subset holds no sitelinks.';
 
+-- Where a find came from when its Wikidata item names no place of discovery
+-- (#2242): a link from a museum's work to the archaeological or World Heritage
+-- site its own coordinate stands on, proposed by a run and confirmed or refused
+-- by a curator. A coordinate is a reason to propose, not a link: Harmodius and
+-- Aristogeiton's stands where the lost original stood. Serving (ADR-0124).
+CREATE TABLE IF NOT EXISTS find_site_links (
+    id SERIAL PRIMARY KEY,
+    treasure_id INTEGER NOT NULL REFERENCES treasures(id) ON DELETE CASCADE,
+    site_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    state TEXT NOT NULL CHECK (state IN ('proposed', 'confirmed', 'refused')),
+    origin TEXT NOT NULL CHECK (origin IN ('coordinate', 'curator')),
+    distance_m INTEGER,
+    proposed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    decided_at TIMESTAMPTZ,
+    UNIQUE (treasure_id, site_id)
+);
+CREATE INDEX IF NOT EXISTS idx_find_site_links_site ON find_site_links (site_id, state);
+COMMENT ON TABLE find_site_links IS 'A museum''s find linked to the site it came from where its Wikidata item names no place of discovery (#2242): proposed by a run from the find''s own coordinate (origin coordinate, distance_m from the site''s point) or made by a curator (origin curator), then confirmed or refused by a curator. A refused pair is never proposed again. Written by proposeFindSites (backend/src/services/sync/findSiteProposals.ts) and the curator''s answer.';
+
 -- Junction table: many-to-many between experiences and treasures
 CREATE TABLE IF NOT EXISTS experience_treasures (
     id SERIAL PRIMARY KEY,

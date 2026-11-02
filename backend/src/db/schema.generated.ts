@@ -752,6 +752,19 @@ export interface ExperiencesRow {
   merged_into_id: number | null;
 }
 
+/** The table `find_site_links`. */
+export interface FindSiteLinksRow {
+  id: number;
+  treasure_id: number;
+  site_id: number;
+  state: string;
+  origin: string;
+  distance_m: number | null;
+  proposed_at: Date;
+  decided_by: number | null;
+  decided_at: Date | null;
+}
+
 /** The table `geometry_computations`. */
 export interface GeometryComputationsRow {
   id: number;
@@ -1382,6 +1395,7 @@ export const RELATION_SCHEMAS = {
   experience_visit_questions: "public",
   experience_visit_suggestions: "public",
   experiences: "public",
+  find_site_links: "public",
   geometry_computations: "public",
   import_runs: "public",
   membership_crowding: "public",
@@ -1809,6 +1823,10 @@ export const CHECK_VALUES = {
     existence: ["extant", "lost"],
     source_membership: ["present", "former"],
     status: ["active", "draft", "archived"],
+  },
+  find_site_links: {
+    origin: ["coordinate", "curator"],
+    state: ["proposed", "confirmed", "refused"],
   },
   geometry_computations: {
     status: ["queued", "running", "success", "failed", "cancelled"],
