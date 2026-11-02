@@ -448,7 +448,7 @@ ten better-named temples within 10 km of it.
 |---|---|
 | tail | Every kind it is filed under leaves it in its list's tail: what the catalogue holds of it is not asked |
 | offered | The catalogue holds it under one of its identifiers and a reader sees it |
-| shadowed | A kind admits it, a curator has passed it, and the kind crowds it out of its city: ten better-known places of its kind and type stand within 10 km (ADR-0172), so no list, map or count holds it, and search and its card still find it. A crowded place still waiting for a curator reads `held` |
+| shadowed | A kind admits it, a curator has passed it, and the kind crowds it out of its city: ten better-known places of its kind and type stand within 10 km (ADR-0172), or a curator keeps it in the shadow (ADR-0180), so no list, map or count holds it, and search and its card still find it. A crowded place still waiting for a curator reads `held` |
 | held | The catalogue holds it and a reader does not: it waits for a curator, was refused, or no longer stands |
 | unsorted | Absent, and filed under no kind yet |
 | missing, kind proposed | Absent, and every kind it is filed under is only proposed |
@@ -490,7 +490,7 @@ the first that applies:
 |---|---|
 | refused | The latest real, closed run of one of the kind's active sources refused the item, with the reason the run recorded (`experience_sync_changes`, `filtered`: a refusal is never a membership row). Before held, because a rule change knocks out a top the catalogue already holds through that very refusal, and the reason is what the list is there to surface |
 | admitted | The kind admits a place known by the item and its arrival waits in the review queue (`arrivalWaitingSql`, the queue's own fragment: unread, not marked missing). Counted beside the offered, never named as a miss, since the line holds it |
-| crowded | The kind admits a place known by the item and a crowded city's tail holds it: ten better-known places of its type lie within 10 km (ADR-0172). The display decides it, not the line; named as a miss, with no place |
+| crowded | The kind admits a place known by the item and a crowded city's tail holds it: ten better-known places of its type lie within 10 km (ADR-0172), or a curator keeps it in the shadow (ADR-0180). The display decides it, not the line; named as a miss, with no place |
 | held | A catalogue place known by the item exists and this kind neither offers it nor holds it for a curator: refused by name by an earlier run, offered by another kind alone, passed by a curator and no longer standing, or marked missing before anyone read it; the place is named |
 | absent, under the editions line | Nothing holds it and no run named it, and the list's `sitelinks` are under the kind's editions line: the surroundings or the regional tier's |
 | absent, not a candidate | Nothing holds it and no run named it, at or over the line, or with no count: the kind's classes do not reach it, or a candidate under the readers' line, which the run records nowhere |

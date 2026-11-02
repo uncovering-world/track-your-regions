@@ -70,7 +70,7 @@ what goes stale when a route is added to the row below (it has already happened 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch` and its `…/rematch/cancel` (#1613), `GET /api/admin/data-assertions`, `POST /api/admin/sync/sources/:sourceId/fix-images`, `POST /api/admin/sync/sources/:sourceId/find-component-items`, `POST /api/admin/dumps/:dump/build`, `POST /api/admin/dumps/:dump/keep`, `POST /api/admin/dumps/:dump/rederive` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/sources/:sourceId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `POST /api/experiences/:id/decline-held`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `POST /api/experiences/:id/refuse-contents`, `POST /api/experiences/:id/unrefuse-contents`, `POST /api/experiences/:id/component-items`, `POST /api/experiences/:id/merge-proposals`, `GET /api/geocode/reverse`, `GET /api/geocode/article-point/:id` (#2206: a point dialog asks the first once per pin, which `searchLimiter`'s 30 would refuse within a few dialogs; Nominatim's one a second is the queue's in `services/nominatim.ts`) |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/sources/:sourceId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `POST /api/experiences/:id/decline-held`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `GET /api/experiences/review/crowding/around/:membershipId`, `POST /api/experiences/review/crowding/answers`, `POST /api/experiences/:id/refuse-contents`, `POST /api/experiences/:id/unrefuse-contents`, `POST /api/experiences/:id/component-items`, `POST /api/experiences/:id/merge-proposals`, `GET /api/geocode/reverse`, `GET /api/geocode/article-point/:id` (#2206: a point dialog asks the first once per pin, which `searchLimiter`'s 30 would refuse within a few dialogs; Nominatim's one a second is the queue's in `services/nominatim.ts`) |
 
 The catalogue checks split across both buckets on the same rule, and the split is
 the point. `GET /api/admin/data-assertions` runs a statement per assertion over
@@ -251,7 +251,13 @@ withdrawn row places the object once per point it answers, and a rejected
 row holding an unread point re-places the object, since a turned-down point
 counts toward no region any more.
 Sixty a minute bounds a runaway client at 6 000 objects a minute and is invisible
-to a curator, whose all-matching walk sends one request per hundred rows. The
+to a curator, whose all-matching walk sends one request per hundred rows.
+The crowding answers (#2282, ADR-0180) carry it on the same criterion: up to a
+hundred places a request, each publishing or refusing through its card's writer
+and recounting the crowding around it as it commits, about half a second in
+Rome's centre. The crowding window carries it too, for a cost a reader cannot
+bound: it counts the rule for each of up to 500 places, 280 ms around Santa
+Prassede on the development catalogue. The
 two single-row refusals beside it (ADR-0053) part on the same check. `POST
 /:id/refuse-arrival` joins the verified-exempt list: one membership row inside
 one transaction, touching nothing a reader sees — the row was hidden already —
