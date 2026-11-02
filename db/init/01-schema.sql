@@ -405,6 +405,8 @@ CREATE TABLE IF NOT EXISTS users (
     email_verified BOOLEAN NOT NULL DEFAULT false,
     -- The maps app places open in (#1604); NULL asks each time
     maps_app maps_app,
+    -- The Wikipedia languages an article opens in, first choice first (#2209); NULL reads the browser's
+    reading_languages TEXT[],
     -- Timestamps
     created_at TIMESTAMPTZ DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ DEFAULT NOW()
