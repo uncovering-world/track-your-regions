@@ -35,6 +35,7 @@ import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import {
   assignExperiencesToRegions, assignRegionsForExperiences, cancelAssignment, getAssignmentStatus,
+  regionsHoldingPoints,
 } from './regionAssignmentService.js';
 import { shownBySql } from '../../db/placePoints.js';
 
@@ -331,5 +332,33 @@ describe('the direct step both ways in share', () => {
     // Italy again. Missing pieces cost time and never change a row.
     expect(sql).toMatch(/whole_hits AS MATERIALIZED \(\s+SELECT x\.location_id, r\.id AS region_id, r\.is_leaf/);
     expect(sql).toMatch(/FROM whole_hits w\s+WHERE w\.is_leaf\s+OR NOT EXISTS \(SELECT 1 FROM whole_hits l WHERE l\.location_id = w\.location_id AND l\.is_leaf\)/);
+  });
+});
+
+describe('regionsHoldingPoints — where a proposed point would be placed (#2203)', () => {
+  const poolQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
+  beforeEach(() => poolQuery.mockReset());
+
+  it('asks only the public world views with geometry, and names the smallest region first', async () => {
+    poolQuery
+      .mockResolvedValueOnce({ rows: [{ id: 5, name: 'Administrative' }] })
+      .mockResolvedValueOnce({ rows: [{ point_id: 1, region_id: 40, region: 'Zanzan' }] });
+    const placed = await regionsHoldingPoints([{ id: 1, lon: -3.758, lat: 9.077 }]);
+
+    const [views] = poolQuery.mock.calls[0] as [string];
+    // A hidden world view is never placed into, so its names cannot reach a card.
+    expect(views).toMatch(/WHERE w\.is_public AND EXISTS \(SELECT 1 FROM regions r WHERE r\.world_view_id = w\.id AND r\.geom IS NOT NULL\)/);
+    expect(poolQuery).toHaveBeenCalledTimes(2);
+    const [sql, params] = poolQuery.mock.calls[1] as [string, unknown[]];
+    // A point no leaf holds is held by its country and its continent: the country is named.
+    expect(sql).toContain('ORDER BY h.location_id, r.geom_area_km2 NULLS LAST, r.id');
+    expect(sql).not.toContain('INSERT');
+    expect(params[0]).toBe(5);
+    expect(placed).toEqual([{ pointId: 1, worldViewId: 5, worldView: 'Administrative', regionId: 40, region: 'Zanzan' }]);
+  });
+
+  it('asks nothing for no points', async () => {
+    expect(await regionsHoldingPoints([])).toEqual([]);
+    expect(poolQuery).not.toHaveBeenCalled();
   });
 });
