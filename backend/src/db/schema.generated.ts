@@ -636,6 +636,7 @@ export interface ExperienceSyncLogsRow {
   total_held: number | null;
   withdrawal_skipped_reason: string | null;
   admission_sweep_skipped_reason: string | null;
+  world_bars: unknown | null;
   phase: string | null;
   status_message: string | null;
   current_item: string | null;
@@ -799,6 +800,8 @@ export interface MembershipFameRow {
   wikipedia_editions: number;
   score: number | null;
   measured_at: Date;
+  readers_read_at: Date | null;
+  guides_read_at: Date | null;
 }
 
 /** The table `osm_layer_builds`. */
