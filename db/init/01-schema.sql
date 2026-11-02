@@ -3176,6 +3176,17 @@ CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_iconic ON experience_
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_label ON experience_kind_memberships(reported_label);
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_missing ON experience_kind_memberships(source_id) WHERE missing_since IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_first_seen ON experience_kind_memberships(first_seen_sync_log_id);
+-- The memberships a reader may be shown: admitted and passed, the predicate
+-- membershipAdmittedSql and membershipVisibleSql spell (db/membership.ts), so
+-- every reader-facing read finds a place's shown memberships here without
+-- reading the arrivals that wait for a curator (#2283). A gated pass adds those
+-- by the thousand, and a read that filtered them out after a scan grew with
+-- each one. Partial on the two terms a predicate can imply, never on the kind
+-- or the crowding, which are asked of other tables; id is carried so a read's
+-- crowding check stays inside the index.
+CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_reader
+    ON experience_kind_memberships(experience_id, kind_id) INCLUDE (id)
+    WHERE admission <> 'refused' AND curation_state <> 'pending';
 
 -- The place's own missing_since and source_membership, derived from its
 -- memberships (ADR-0084, #1251): missing only once every membership's source
@@ -4187,6 +4198,17 @@ CREATE INDEX IF NOT EXISTS idx_experiences_merged_into ON experiences(merged_int
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS merged_into_id INTEGER REFERENCES experience_locations(id);
 CREATE INDEX IF NOT EXISTS idx_experience_locations_merged_into
   ON experience_locations(merged_into_id) WHERE merged_into_id IS NOT NULL;
+-- The points a reader may be shown: offered and passed, the predicate
+-- offeredLocationSql and publishedContentSql spell (db/readerPredicates.ts).
+-- Every reader-facing read of a place's points, and every region membership a
+-- reader sees (readerRegionMembershipSql), asks it per place; the unread
+-- points of the arrivals that wait for a curator are not in it (#2283). Here,
+-- after merged_into_id, because the predicate names it. id is carried so the
+-- region membership's join to experience_location_regions stays in the index.
+CREATE INDEX IF NOT EXISTS idx_experience_locations_reader
+    ON experience_locations(experience_id) INCLUDE (id)
+    WHERE missing_since IS NULL AND existence <> 'lost' AND merged_into_id IS NULL
+      AND curation_state <> 'pending';
 -- The point a published move replaced this one with (#1448). See db/migrations/098.
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS moved_to_location_id INTEGER
     REFERENCES experience_locations(id) ON DELETE SET NULL;
