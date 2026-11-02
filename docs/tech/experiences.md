@@ -24,7 +24,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 |---|---|---|---|
 | **Kind** | What a traveller browses by — a World Heritage site, an art museum, an archaeology museum, a monument. Siblings: each its own list, pin colour and count, each with a sync of its own and its own rule of what complete means — a kind's sources are that sync's inputs (ADR-0045 §1, §2, §3) | `experience_kinds` (#822), and a place's membership in it is a row of `experience_kind_memberships`; a reader-facing row carries its kind off that membership (`rowKindJoinSql`, #819) | `kind_id`, `kind_name`, `kind_priority`, `kindId`; `experience_kinds`; the chip beside an object's name on a review card, the Discover pills and `?kind=`, the group headers, `kindColors.ts` |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query — an input of the kind's sync, carrying its own gate (§3, §7); the sync and the rule of completeness are the kind's. A kind may have several; one source may feed several kinds | `experience_sources` — one row per source, the row the sync service is registered under, naming the kind it fills (`kind_id`, #822); named `experience_categories` until migration 055 (#819) | `experience_sources`, `source_id` on `experiences` (the source that first brought the row, provenance only since ADR-0084), on `experience_sync_logs`, on a membership and on the caches, the curator scope `'source'`, `requires_curation`, the admin panel's Sources tab and its routes (`/api/admin/sync/sources/…`) |
-| **Tier** | Which of a kind's three fillings a place comes through ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md), [ADR-0178](../decisions/0178-a-kind-is-filled-in-three-tiers-the-world-a-places-surroundings-and-its-region.md)): the **world tier** — a global source ranks the world on one signal and a bar is drawn, the Iconic badge is its (§5) — the **surroundings tier** — the same global sources and the same analysis, a place measured against what lies within 50 km of it (ADR-0171), no badge — or the **regional tier** — a source native to its own unit (a country's register, a city's list, a curator) enumerates what the unit holds and the kind's rule cuts within it, with no global signal, no badge. A region's list is all three together; the rules, the scorecard and the register of sources looked at are [filling-a-kind.md](filling-a-kind.md) and [`docs/sources/`](../sources/README.md) | Not a column on the source yet: every source that exists is world tier, and the surroundings tier each place kind reads from Wikidata by ADR-0171 (§ The surroundings tier from the gather) marks its rows on the membership (`facts.tier = 'regional'`, the code's name until it is renamed, ADR-0178 decision 6; no badge); the first native regional source (#628) records its tier on its `experience_sources` row | — |
+| **Tier** | Which of a kind's three fillings a place comes through ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md), [ADR-0178](../decisions/0178-a-kind-is-filled-in-three-tiers-the-world-a-places-surroundings-and-its-region.md)): the **world tier** — a global source ranks the world on one signal and a bar is drawn, the Iconic badge is its (§5) — the **surroundings tier** — the same global sources and the same analysis, a place measured against what lies within 50 km of it (ADR-0171), no badge — or the **regional tier** — a source native to its own unit (a country's register, a city's list, a curator) enumerates what the unit holds and the kind's rule cuts within it, with no global signal, no badge. A region's list is all three together; the rules, the scorecard and the register of sources looked at are [filling-a-kind.md](filling-a-kind.md) and [`docs/sources/`](../sources/README.md) | Not a column on the source yet: every source that exists is world tier, and the surroundings tier each place kind reads from Wikidata by ADR-0171 (§ The surroundings tier from the gather) marks its rows on the membership (`facts.tier = 'surroundings'`; no badge); the first native regional source (#628) records its tier on its `experience_sources` row | — |
 | **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, monument / sculpture, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue / sacred mountain / holy site, site / museum — and none for an art museum (§1, #814) | `experience_kind_memberships.type` — the membership's, since a place in two kinds has a type in each (ADR-0084, #1253); the vocabularies in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
 | **Treasure type** | What kind of thing a work is, independent of its venue's kind and type | `treasures.treasure_type` | `treasure_type` |
 
@@ -853,20 +853,21 @@ A place kind's **surroundings tier** is read from Wikidata, the world tier's own
 place against what lies within 50 km of it (ADR-0171), with the tests, the floor and the stay of
 ADR-0175 decisions 2 and 3. It is on for the six place kinds of the frame (#2252)
 and for Archaeology's sites, which ask two things more (ADR-0179, § Archaeology). It is not the
-regional tier, which reads sources native to a region and no global analysis (ADR-0178); the code
-still calls it regional (`REGIONAL_CUT`, `places/regionalPool.ts`, `item.tier === 'regional'`, the
-curator's note "In the regional tier by …") until its names are renamed (#2287).
+regional tier, which reads sources native to a region and no global analysis (ADR-0178).
 It runs after the world tier has decided, in every place source of the pass and in Places of worship's
-own run, and it is the second tier: **no Iconic badge** (`badgesAdmitted` is `item.tier !== 'regional'`
+own run, and it is the second tier: **no Iconic badge** (`badgesAdmitted` is `item.tier !== 'surroundings'`
 in `placeSource` and the worship service), its arrivals held for a curator where the source's gate
 is on, as every arrival is (the step itself does not ask the gate, unlike the readership doors), the same
 place as the world tier's where both name it, and the tier on the row's membership facts
-(`metadata.tier`, a kind fact in `@tyr/shared/placeFields`; absent on a world-tier row).
+(`metadata.tier = 'surroundings'`, a kind fact in `@tyr/shared/placeFields`; absent on a world-tier
+row). Rows the code wrote before #2287 named the tier `'regional'`;
+`db/migrations/211-the-surroundings-tier-is-named-on-its-rows.sql` renames the fact, the cut's notes
+and reasons, and the tier a run recorded on its changeset.
 
-- **One pool for the pass, cheap before dear** (`places/regionalPool.ts`, `readRegionalPool`; the
-  gather hands it on as `PlaceGather.regional`, read once on the first source that asks). The pool is
+- **One pool for the pass, cheap before dear** (`places/surroundingsPool.ts`, `readSurroundingsPool`; the
+  gather hands it on as `PlaceGather.surroundings`, read once on the first source that asks). The pool is
   every item of every place kind's classes with a point (`GatheredPlaces.classes`, Archaeology's sites
-  among them) and of the museum tree beside them (`regionalPoolOf` in `places/placePass.ts`: museums
+  among them) and of the museum tree beside them (`surroundingsPoolOf` in `places/placePass.ts`: museums
   are no kind of the pass, but the measurement counted them among a place's neighbours, and they set
   the references — the Tretyakov Gallery lifts Moscow's guide median from 4 to 4.5: measured at ADR-0171's quarter,
   a church with one Wikivoyage listing then stays under the bar rather than exactly on it), whatever its editions — the group a place is measured among, as ADR-0171's measurement
@@ -879,17 +880,17 @@ place as the world tier's where both name it, and the tier on the row's membersh
   every item with the cut's languages then gets its surroundings in one indexed query
   (`readSurroundings`: the group within the radius, the best places' editions, guide editions and
   readers, over the places that carry each signal). With no year of readers in place the pool reads no
-  surroundings and says why (`RegionalPool.unread`): every kind's part then reads no tier this run, and
-  its rows keep their standing (ADR-0175 decision 6) — a missing year is never read as no readers. Each kind's part (`places/regionalTier.ts`, `regionalArrivals`)
+  surroundings and says why (`SurroundingsPool.unread`): every kind's part then reads no tier this run, and
+  its rows keep their standing (ADR-0175 decision 6) — a missing year is never read as no readers. Each kind's part (`places/surroundingsTier.ts`, `surroundingsArrivals`)
   takes the rows of its own classes the world tier did not admit, runs the cut, and only the survivors
   are then asked about by id through the gather
   (`gatherPlaces` with a kind that has no pool question of its own, so what holds them and what they
   depict is read as for any candidate) and put to the kind's own rule: a museum's statue or a church's
-  tower is refused there as it is in the pool. Each kind declares its part as a `RegionalKind` — its
+  tower is refused there as it is in the pool. Each kind declares its part as a `SurroundingsKind` — its
   classes, its verdict over a survivor's share, a context the rule needs (what other kinds offer, for
-  Public art) — on its classifier (`regional`, a `RegionalReader`) or, for Places of worship,
-  `WORSHIP_REGIONAL` in `worshipSyncService.ts`.
-- **The cut** (`places/regionalCut.ts`, `regionalVerdict`): a candidate with at least `minLanguages`
+  Public art) — on its classifier (`surroundings`, a `SurroundingsReader`) or, for Places of worship,
+  `WORSHIP_SURROUNDINGS` in `worshipSyncService.ts`.
+- **The cut** (`places/surroundingsCut.ts`, `surroundingsVerdict`): a candidate with at least `minLanguages`
   Wikipedia editions and `minReaders` readers a year enters when one of three tests passes, each
   against the median of the `best` highest within `radiusKm` among the places that carry the signal:
   its editions reach `editionsShare` of the editions reference, in a group of at least
@@ -897,12 +898,12 @@ place as the world tier's where both name it, and the tier on the row's membersh
   at least `readersGroupFloor`; or the Wikivoyage editions that use it reach `guideShare` of the guide
   reference, in a group of at least `guideGroupFloor`. A place of a type in `guideForTypes` — a tunnel,
   a dam, a lock, as the kind's rule types it — is then refused unless a Wikivoyage edition uses it
-  (`needsAGuide`, read by `regionalArrivals` after the rule): the readership of a tunnel's article does
+  (`needsAGuide`, read by `surroundingsArrivals` after the rule): the readership of a tunnel's article does
   not say people go to see it, a guide does (the Kurobe Dam, the Old Elbe Tunnel). A place the tier
   holds stays while it keeps `minLanguages`, reaches `stayReadersShare` of `minReaders` and passes one
   test, the readers test read at `stayReadersShare` and the other two whole, since their reference is
-  its own neighbours'; a tunnel, dam or lock stays only while a guide still uses it. `REGIONAL_CUT`
-  reads its numbers from the register (`REGIONAL_REGISTER` in `places/admissionRegister.ts`, ADR-0175
+  its own neighbours'; a tunnel, dam or lock stays only while a guide still uses it. `SURROUNDINGS_CUT`
+  reads its numbers from the register (`SURROUNDINGS_REGISTER` in `places/admissionRegister.ts`, ADR-0175
   decisions 2 and 3): 50 km, the 10 best, a Wikivoyage share of a half, the editions and readers
   references whole, groups of 5, 25 and 25 places, two editions, 3,000 readers a year, a guide for
   tunnels, dams and locks, and a stay at 0.8 (2,400 readers, 0.8 of the readers reference). Two more
@@ -910,19 +911,19 @@ place as the world tier's where both name it, and the tier on the row's membersh
   every kind's part says so),
   and **`neighbours`**, whose places set the references: `all` (every place kind's and the museums',
   the measurement's pool), `kind` (the candidate's own kind's places) or `type` (its type's within
-  the kind, a mosque among mosques, by `RegionalKind.typeOf`: a candidate is measured in the group of the type the kind's own rule
+  the kind, a mosque among mosques, by `SurroundingsKind.typeOf`: a candidate is measured in the group of the type the kind's own rule
   gives its classes, and a group's neighbours are the places carrying any of the classes the rule
   files under that type, so the Trevi Fountain, a sculpture and a fountain, counts among the
   sculptures' neighbours too); Public art and Monuments & memorials read one gather kind, and each
-  keys its groups by its own rule's name (`RegionalKind.group`); the pool reads one neighbourhood per
-  group (`RegionalGroup`, `regionalGroups`), keyed `all`, the kind's group (its name, or its rule's for the two public-art sources) or `<group>:<type>`: parameters for the admission
+  keys its groups by its own rule's name (`SurroundingsKind.group`); the pool reads one neighbourhood per
+  group (`SurroundingsGroup`, `surroundingsGroups`), keyed `all`, the kind's group (its name, or its rule's for the two public-art sources) or `<group>:<type>`: parameters for the admission
   review's experiments (#2177), not a reader's or an admin's control, and shaped so a later decision can
   give a region values of its own. The curator's note carries the numbers and names every test the
-  place passes: "In the regional tier by its readers: within 50 km, 418 places: the 10 best are read in
+  place passes: "In the surroundings tier by its readers: within 50 km, 418 places: the 10 best are read in
   3 Wikipedia editions at the median, this place in 2; the best have 6,742 readers a year at the median,
   this place 7,724; the best are used by 1 Wikivoyage editions at the median, this place by 0 (ADR-0171,
   ADR-0175)" — Wat Maha That Wora Wihan in Ratchaburi. A held place kept by the stay alone reads
-  "Stays in the regional tier by its readers, read at 0.8 of the readers' reference for a place it
+  "Stays in the surroundings tier by its readers, read at 0.8 of the readers' reference for a place it
   holds: …".
 - **Measured on the development subset (2026-10-31, #2178):** the pool holds 2,117,643 items of 4,296
   classes, the surroundings of the 143,383 at two editions or more are read in 29 minutes once per pass,
@@ -931,7 +932,7 @@ place as the world tier's where both name it, and the tier on the row's membersh
   admission review's question (#2177).
 - **The dry run before the switch (2026-11-02, #2252),** read-only on the development database with
   the code's own gather, world tier and pool: the readers of the pool's 515,856 items with an article
-  are read in under two minutes, and the surroundings with the readers in 42 minutes. The regional
+  are read in under two minutes, and the surroundings with the readers in 42 minutes. The surroundings
   tier admits 5,837 places, every one for a curator: Places of worship 3,999, Bridges & engineering
   marvels 650, Monuments & memorials 442, Towers 255, Public art 247, Squares & streets 244. The
   review's replay at the point admitted 5,849; the twelve between them are rows the world tier keeps
@@ -941,12 +942,12 @@ place as the world tier's where both name it, and the tier on the row's membersh
   (`admittedExternalIds(source, undefined, 'world')`: no `tier` fact), so a surroundings row is never held
   to the world line's stay line — it would be promoted to the world tier with the badge, or refused by
   the line and readmitted by the cut on every pass. The surroundings step is handed its own
-  (`'regional'`, the code's name) and refuses one that no longer clears the cut with the cut's reason — one with no
-  surroundings any more included; `mergeRegional` joins the two decisions so a place is never both
+  (`'surroundings'`) and refuses one that no longer clears the cut with the cut's reason — one with no
+  surroundings any more included; `mergeSurroundings` joins the two decisions so a place is never both
   admitted and refused in one pass. A run that did not read the tier (switched off, on the live
   service, or with no year of readers) says so on its result (`FetchResult.spareTier`), and the sweep (`markNotAdmitted`) leaves
   that tier's admitted rows as they are: no answer is not a refusal. A refusal the world rule names of
-  a row that tier holds is dropped too (`mergeRegional`, ADR-0175 decision 6), so the row waits for the
+  a row that tier holds is dropped too (`mergeSurroundings`, ADR-0175 decision 6), so the row waits for the
   run that reads its tier. The sweep's floor counts the tiers
   the run read alone (`countAdmitted(source, spareTier)`, taken after the fetch, which writes nothing),
   so fourteen thousand surroundings rows never make a world tier of a thousand look like a run that lost
@@ -957,7 +958,7 @@ place as the world tier's where both name it, and the tier on the row's membersh
   surroundings row that falls under the stay is refused by the next run with the cut's reason, as a row
   the world bars drop is.
 - A kind whose rule reads a source of its own reads it of the survivors alone, in the kind's context
-  (`RegionalKind.context`, handed the survivors and their share): Archaeology's sites meet the site
+  (`SurroundingsKind.context`, handed the survivors and their share): Archaeology's sites meet the site
   rule, with the map read for them, and its own two conditions there (§ Archaeology).
 
 ### Where a work lies (#1819)
@@ -3530,14 +3531,14 @@ retired — its line, the readership door with the guide's lower bar (ADR-0127, 
 witnesses (ADR-0128 decision 2) and the read under the pool's floor (ADR-0152).
 
 **The surroundings tier reads the sites too** (ADR-0171's regional tier, ADR-0179,
-`archaeology/regionalSites.ts`). After the world tier has decided, the pass's regional pool measures
+`archaeology/surroundingsSites.ts`). After the world tier has decided, the pass's surroundings pool measures
 every site the bars left out against what lies within 50 km, with the register's parameters
-(`regionalArrivals`, § The surroundings tier from the gather). The candidates are the pool's items of the
+(`surroundingsArrivals`, § The surroundings tier from the gather). The candidates are the pool's items of the
 site classes; the map's entrance stays the world tier's, since opened to this tier it brought 81
 places the measurement never read, a fifth of them bridges, dams, tunnels and museums mapped as
 ruins. A survivor of the cut is put to the site rule — the world door's verdict where it
 judged the item, its facts and map read now otherwise — and to two conditions of the kind's own,
-declared in the register (`ARCHAEOLOGY_REGIONAL_REGISTER`):
+declared in the register (`ARCHAEOLOGY_SURROUNDINGS_REGISTER`):
 - **the map shows the place**: an OpenStreetMap object carrying the item that the rule reads as a
   ruin or a dig, or as the village it lifts a dig over (`UNMAPPED_REASON`); Diepkloof Rock Shelter,
   mapped as a rock, is refused;
@@ -3545,9 +3546,9 @@ declared in the register (`ARCHAEOLOGY_REGIONAL_REGISTER`):
   holds or admits this run (`partOfReason`); the Forum of Pompeii is refused as part of Pompeii.
 
 Neither is asked of the world tier, where they would cost Palenque and Calakmul, and Giza, Karnak and
-Stonehenge. A row of the tier carries `metadata.tier = 'regional'`, the cut's note on its card beside
+Stonehenge. A row of the tier carries `metadata.tier = 'surroundings'`, the cut's note on its card beside
 the map's, and no badge (`badgesAdmitted`). Where the tier is not read — the live service, or no year
-of readers — its rows stand as they are (`FetchResult.spareTier`, `CollectedArchaeology.regionalSkipped`).
+of readers — its rows stand as they are (`FetchResult.spareTier`, `CollectedArchaeology.surroundingsSkipped`).
 Measured on dev on 2026-11-02 (the report under ADR-0179): 2,062 sites held, 1,169 in the world tier
 and 893 in the surroundings tier, against 1,259 before; canon 0.876 on `calibration/archaeology.jsonl`;
 3.5 % noise among the additions. A read-only dry run of the code the same day held 1,176 and 891.

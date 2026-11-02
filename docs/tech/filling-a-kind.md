@@ -50,8 +50,7 @@ whole world
 ADR-0175 decision 3). A church that is the best known of its valley and far under the world's
 line enters here. It is read from the global source, so it needs no source adopted per region,
 and it is on for the six place kinds of § 11 (§ 4 has its rule). ADR-0171 and ADR-0175 call it a
-global source's regional tier, and so does the code (`REGIONAL_CUT`, the `regional` tier on a
-membership's facts) until their rename (#2287).
+global source's regional tier.
 
 **The regional tier** is what a region holds that a traveller standing there would visit,
 found through sources native to the region: a ministry's register, a museum association's
@@ -212,9 +211,9 @@ OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the un
   the readers test read at 0.8 of its reference (ADR-0175 decision 2);
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
 - the place pass reads it after the world tier has decided, for the six place kinds of § 11, from
-  the local subset (`places/regionalTier.ts`, `REGIONAL_CUT` in `places/regionalCut.ts`;
+  the local subset (`places/surroundingsTier.ts`, `SURROUNDINGS_CUT` in `places/surroundingsCut.ts`;
   experiences.md § The surroundings tier from the gather, #2178); it is on since #2252, and a row it
-  admits carries `facts.tier = 'regional'` (the code's name for the surroundings tier) and no badge and arrives for a curator where the kind
+  admits carries `facts.tier = 'surroundings'` and no badge and arrives for a curator where the kind
   gates its arrivals.
 - the floor counts the area's places, not the places that carry the signal.
 
@@ -799,7 +798,7 @@ sitelinks of any Wikimedia site, whatever its Wikipedia editions, that the kind'
 passes. It is read from the local Wikidata subset at every run (`PlaceKind.admissionPool`,
 `backend/src/services/sync/places/gather.ts`). Three sitelinks is the floor the review's extract
 read the candidates at, so the bars below are the review's quantiles; without it the pool is the
-surroundings tier's whole gather (the code's regional pool), most of it read in no Wikipedia, and the bars collapse
+surroundings tier's whole pool, most of it read in no Wikipedia, and the bars collapse
 ([ADR-0176](../decisions/0176-a-place-kinds-pool-starts-at-three-sitelinks.md)). A row the kind
 holds counts in the pool when a class question of the kind names it at the floor; one only asked
 for by id, or named only by an entrance, is decided by the bars but does not set them. A run on the live service
@@ -839,7 +838,7 @@ three bars. The run's log names the three bars it used, as numbers, for each kin
 - **A tier the run did not read** leaves that tier's memberships as they stand: nothing is marked
   missing (the place sources are ranked, so missing detection never runs on them), the sweep spares
   the tier (`FetchResult.spareTier`), and a refusal the world rule names of a row the unread tier
-  holds is dropped, so it waits for the run that reads its tier (`mergeRegional`). A run on the live
+  holds is dropped, so it waits for the run that reads its tier (`mergeSurroundings`). A run on the live
   service reads no pool, so nothing new enters the world tier and every held place keeps its place.
 
 The run's line names the bars it used and says which it kept and why (`barsLine`). Arrivals of
@@ -850,7 +849,7 @@ the world and surroundings tiers are gated as each kind gates them.
 Archaeology reaches (ADR-0060). They are not fame lines.
 
 **The surroundings tier** is ADR-0171's 50 km cut with the parameters ADR-0175 decisions 2 and 3
-derived, on for the six kinds since #2252 (`REGIONAL_CUT`, `places/regionalCut.ts`). A candidate
+derived, on for the six kinds since #2252 (`SURROUNDINGS_CUT`, `places/surroundingsCut.ts`). A candidate
 the world bars left out is measured against every place of the live kinds within 50 km, museums
 included, and the reference of each test is the median of the ten best there. It enters with at
 least two Wikipedia editions and 3,000 readers a year when one test passes:
@@ -867,7 +866,7 @@ it. With no year of readers the tier is not read and its places keep their stand
 are gated as each kind gates arrivals.
 
 Archaeology's sites ask two things more of the surroundings tier, and of it alone (ADR-0179,
-`archaeology/regionalSites.ts`): **the map shows the place** — an OpenStreetMap object carrying the
+`archaeology/surroundingsSites.ts`): **the map shows the place** — an OpenStreetMap object carrying the
 item that the site rule reads as a ruin or a dig, or as the village it lifts a dig over — and **a part
 of a place the kind holds is not a place of its own** — no `P361` naming a place Archaeology holds or
 admits in the same run. Together they bring the noise among the additions from 10.2 % to 3.5 % and
@@ -878,10 +877,10 @@ and Stonehenge.
 
 Every number of the frame lives in one module,
 `backend/src/services/sync/places/admissionRegister.ts`, and nowhere else: `WORLD_REGISTER`,
-`REGIONAL_REGISTER` (the surroundings tier's, under the code's name) and
-`ARCHAEOLOGY_REGIONAL_REGISTER` for Archaeology's two conditions of that tier. Each parameter carries its value, the one sentence that says how it was
+`SURROUNDINGS_REGISTER` for the surroundings tier and
+`ARCHAEOLOGY_SURROUNDINGS_REGISTER` for Archaeology's two conditions of that tier. Each parameter carries its value, the one sentence that says how it was
 derived, the evidence (the report and its section) and the date. The runs read the values
-(`WORLD_FRAME`, `REGIONAL_CUT`), and so does the coverage report: a survey entry carries its
+(`WORLD_FRAME`, `SURROUNDINGS_CUT`), and so does the coverage report: a survey entry carries its
 editions and no readers, so the report reads each kind's editions bar as the review measured it
 (`MEASURED_BARS`), and a top under it may still enter on its readers. No kind module declares a
 line of its own, and a kind that enters later takes the shared levels and is measured on its own
