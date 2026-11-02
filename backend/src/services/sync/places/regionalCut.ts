@@ -37,7 +37,7 @@ import { REGIONAL_REGISTER } from './admissionRegister.js';
 export type RegionalNeighbours = 'all' | 'kind' | 'type';
 
 export interface RegionalCut {
-  /** Whether the pass reads the regional tier at all: off until the slice that switches it on (#2252). */
+  /** Whether the pass reads the regional tier at all (ADR-0175 decision 3 switched it on). */
   enabled: boolean;
   /** Whose places set the references. */
   neighbours: RegionalNeighbours;
@@ -68,7 +68,7 @@ export interface RegionalCut {
 }
 
 export const REGIONAL_CUT: RegionalCut = {
-  enabled: false,
+  enabled: true,
   neighbours: REGIONAL_REGISTER.neighbours.value,
   radiusKm: REGIONAL_REGISTER.radiusKm.value,
   best: REGIONAL_REGISTER.best.value,

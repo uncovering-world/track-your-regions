@@ -106,9 +106,9 @@ describe('regionalVerdict', () => {
     if (!v.in) expect(v.reason).toMatch(/no place is read in any Wikipedia edition/);
   });
 
-  it('takes its numbers from the register, and stays off until its slice switches it on (#2252)', () => {
+  it('takes its numbers from the register, and is on (ADR-0175 decision 3)', () => {
     expect(REGIONAL_CUT).toEqual({
-      enabled: false, neighbours: 'all', radiusKm: 50, best: 10,
+      enabled: true, neighbours: 'all', radiusKm: 50, best: 10,
       guideShare: 0.5, editionsShare: 1, readersShare: 1, guideGroupFloor: 5, editionsGroupFloor: 25, readersGroupFloor: 25,
       minLanguages: 2, minReaders: 3_000, guideForTypes: ['tunnel', 'dam', 'lock'], stayReadersShare: 0.8,
     });
