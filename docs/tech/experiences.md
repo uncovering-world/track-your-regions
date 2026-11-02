@@ -2706,10 +2706,15 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
 4. **Verdict** — `publicArtVerdict` in `publicArtTest.ts`, pure, tested on the rows the first
    import got wrong. In the order a person would give the reason: **what it is** — a class of the
    worship tree (floor included, designations excluded), or of `KILL_CLASSES` (camps, stadiums,
-   archaeological sites and caves, tombs and mausolea, finds — a Venus figurine is a museum
-   object wherever Wikidata "locates" it, and the Venus of Willendorf is located in Austria —
-   organisations, settlements and areas, events and works, amusement parks, walks and halls of
-   fame, sculpture gardens, a destroyed building or structure, landscape) is refused whatever
+   archaeological sites, caves and megaliths — "Stonehenge, Avebury and Associated Sites" is
+   typed a megalith and a monument, and is World Heritage's and Archaeology's (#2272) — tombs
+   and mausolea, finds — a Venus figurine is a museum object wherever Wikidata "locates" it, and
+   the Venus of Willendorf is located in Austria — organisations, settlements and areas, events
+   and works — a play, a party, and the event an item is as well as the memorial raised where it
+   happened: a massacre, a mass murder, a war crime, an execution, a battle or a siege, so the
+   Gardelegen massacre, typed `German war crimes, memorial, war memorial`, is refused while
+   Oradour-sur-Glane's war memorial, an item of its own, stays (#2272) — amusement parks, walks
+   and halls of fame, sculpture gardens, a destroyed building or structure, landscape) is refused whatever
    else it carries — save that, for Monuments & memorials, a commemorative class of the pinned
    floor (`COMMEMORATIVE_FLOOR`: the memorial classes and the roots of the commemorative
    closures) lifts the organisation, attraction and burial kills (`MEMORIAL_LIFTED_KILLS`, #1989),
@@ -3170,6 +3175,13 @@ the Temple Mount is still refused as a neighbourhood.
   the Minaret of Jam, the Qutb Minar and Big Ben all read alike. A row carrying a proper worship
   class beside its tower is the place: the Ivan the Great Bell Tower is a church you walk into, and
   the Hagia Sophia is typed `minaret` among nine other classes.
+- **A retreat center is a place to stay.** Wikidata files `retreat center` directly under
+  `structure of worship`; it comes out of the worship set as the tower parts do
+  (`RETREAT_CLASSES`), so a row whose only worship class it is is refused (#2272): Rancho de San
+  Rafael, a ranch in New Mexico. A monastery that takes guests keeps its own class and is the
+  place: the Sāsanārakkha Buddhist Sanctuary is a vihāra and a retreat center. Nothing in the
+  classes tells a compound closed to visitors from a temple open to them: Dragon Springs, typed
+  `temple, shrine, religious school`, waits for a curator like any arrival.
 - **A holy place that is no building** (no class of the building tree, `holyPlaceRefusal`) is
   refused when it is a city or a city's walls (`HOLY_SITE_KILL_CLASSES`: Anuradhapura, the Walls of
   Jerusalem); when its location (`P276`, never `part of`) is a building of worship or a museum, since
@@ -4662,7 +4674,10 @@ chosen from, is [`docs/sources/global/wikidata-towers.md`](../sources/global/wik
    Kharaqan's twin tower tombs are towers a traveller visits;
 5. a place of worship whose only tower classes name a part of it (a minaret, a gopuram, a
    steeple: Hagia Sophia, the Meenakshi Temple) is refused, since Places of worship offers it. A
-   bell tower with a church in it stays a tower (Ivan the Great);
+   bell tower with a church in it stays a tower (Ivan the Great). A sea fort whose only tower
+   class is in the sea fort tree is refused too (`SEA_FORT_ROOT`, #2272): Wikidata files the Maunsell fort
+   under `fortified tower`, and HM Fort Roughs and the Red Sands Fort are gun platforms at sea.
+   Fort Denison, a Martello tower too, stays;
 6. an archaeological site no type of tower names is refused, since Archaeology offers it: a
    nuraghe, a broch. The Minaret of Jam, a site that is a minaret, is a tower;
 7. a candidate no tower class names, or with no point on Earth, is refused.
@@ -4671,6 +4686,10 @@ chosen from, is [`docs/sources/global/wikidata-towers.md`](../sources/global/wik
 `observation-tower` and `fortified-tower` its classes name, and `tower` otherwise. A church tower
 and a steeple are bell towers (the Giralda, Pisa), and a TV tower is an observation tower, since
 its deck is what it is visited for.
+
+A broadcast mast Wikidata types only `television tower` is not told from a TV tower with a deck:
+the KXTV/KOVR and KDLT masts carry exactly the class Almaty Tower, Avala Tower, the Rheinturm and
+Tallinn's TV tower carry, and no `guyed mast` (#2272). The rule refuses a mast only by that class.
 
 **The world bars** (ADR-0175, `classifyByWorldBars` in `places/worldTier.ts`, read off the pool by
 `places/worldBars.ts`): a tower the rule passes enters at the kind's own pool's 97th percentile of
@@ -4783,7 +4802,16 @@ holds every motorway, railway and bridge (`SQUARE_ROOTS`, `squares/classes.ts`).
    under archaeological sites and an agora not, #2136), a bullring, a railway line, a motorway,
    a river;
 3. a candidate no class of the kind names is refused;
-4. a candidate with no point on Earth is refused.
+4. a canal no square, street, promenade or stairway class names, only the bare thoroughfare, is
+   refused (`CANAL_ROOT`, #2272): Venice's Grand Canal is the city's waterway, ridden rather than
+   walked. A canal a street class names is a quay a visitor walks: Nyhavn, and every Amsterdam
+   gracht, which Wikidata files as a street too;
+5. a candidate with no point on Earth is refused.
+
+A bare thoroughfare is read as a street wherever it runs, so a road known for what happened on it
+reaches the kind by its readers: the Ho Chi Minh trail, the Ring of Kerry and Roxham Road carry
+the class the Arbat and Tverskaya Street carry and nothing else (#2272), and a curator turns
+them down.
 
 A neighbourhood is no refusal: Wikidata files a shopping street under neighbourhoods, and Oxford
 Street and Fifth Avenue are streets a visitor walks.
