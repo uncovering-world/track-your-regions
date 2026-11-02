@@ -96,7 +96,7 @@ The inventory this section held — every reader of `category_id` on both stacks
 
 **The kinds that hold a work** — a merged museum holds most of its works through more than one kind, its finds mostly among its works of art, so `GET /api/experiences/:id/treasures` answers each work once with `kind_ids`: the kinds of the offered memberships that place its link, in display order (`linkKindsSql`, `db/membership.ts`, read from `experience_treasure_placements`, #1263). A work no offered membership places carries none and belongs to the place; every link the sync writes is placed, so a link carries none only once its placements are gone. The card chooses the works by kind on that (`utils/worksByKind.ts`, `docs/tech/experience-map-ui.md`).
 
-**Kind** — read off the membership the place is shown under (`shownMembershipSql`), one row per place (`rowKindJoinSql`): Discover's pills and hover, the address (`?kind=`, read as `?cat=` too for a link shared before; a card the address names without one opens under a kind that offers it, `kindToOpenIn`), pin and card colours (`utils/kindColors.ts`, `experienceColors(kind_id, type)`), the treasures-inside marker (silent for kind 2), the counts (`GET /api/experiences/kinds`, `region-counts`' `kind_counts`), the type vocabulary per kind (`typeOptionsFor(kind_id)`), search results, the review card's chip and the queue rows (`kind_name`; the feed's source chip and filter read the place's membership sources, `placeSourceIdsSql`, and a conflict its run's source), the kind a curator picks when creating a place (`kindId`; the row is filed under that kind's own source).
+**Kind** — read off the membership the place is shown under (`shownMembershipSql`), one row per place (`rowKindJoinSql`): Discover's pills and hover, the address (`?kind=`, read as `?cat=` too for a link shared before; a card the address names without one opens under a kind that offers it, `kindToOpenIn`), pin and card colours (`utils/kindColors.ts`, `experienceColors(kind_id, type)`), the treasures-inside marker (silent for kind 2), the counts (`GET /api/experiences/kinds`, `region-counts`' `kind_counts`), the type vocabulary per kind (`typeOptionsFor(kind_id)`), search results, the review card's chip (`kind_name`, with the membership's `kind_type` beside it, § Review Queue) and the queue rows (`kind_name`; the feed's source chip and filter read the place's membership sources, `placeSourceIdsSql`, and a conflict its run's source), the kind a curator picks when creating a place (`kindId`; the row is filed under that kind's own source).
 
 **Source** — the source row under its own name: the admin sync panel and its routes (`/api/admin/sync/sources/:sourceId/…`), the fame line, the sync services and everything a run writes (`sourceId` in `SyncServiceConfig`, `experience_sync_logs.source_id`, the cache key of ADR-0047 on `wikidata_query_cache.source_id`), the gate and the curator scope (`curator_assignments.source_id`, `scope_type = 'source'` — the word migration 001 created it with, which #452 found the type still saying), the "New" window (`new_badge_days`, read through the membership's source), the catalogue checks and the e2e fixture.
 
@@ -5727,6 +5727,16 @@ consumer as of this slice.
 records what it could not decide, and this is where a curator decides it. Several kinds of
 question, kept apart because they are answered differently — and three lists that are not
 questions at all, carried here because nowhere else can carry them.
+
+**Every card names the kind and the type it asks about** (#2217). Each item carries its membership's
+`kind_type` beside `kind_name`, selected by every queue statement from the membership the card is
+about, and each source's view on the sources card carries its membership's `kind_id` and
+`kind_type` (`placeViewsSql`). `ItemHeader` (`queueCard.tsx`) draws one chip per membership the card
+asks about, labelled by `kindWithType` (`utils/experienceTypes.ts`): *Monuments & memorials · Arch*,
+*Towers · Minaret*; *type not set* where a kind with a vocabulary has none for the place, since it
+then answers to none of the kind's type filters; the kind alone for a kind with no vocabulary (Art
+Museums). The sources card's columns are named the same way. The label is the vocabulary's
+(`typeLabelFor`), never spelled at a card, and the reader's place panel names a type through it too.
 
 **What a decision rests on travels with the question.** Every kind carries the object
 itself — its image, its point, the source page and Wikipedia from `metadata`, and the names
