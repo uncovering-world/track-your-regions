@@ -143,7 +143,7 @@ type BarePair = Omit<MergePair, 'otherWikidataLabel' | 'otherWikidataDescription
 
 export async function queryMergeProposals(ids: number[]): Promise<QueryResult> {
   const result = await pool.query<{ merge_pairs: BarePair[] | null }>(`
-    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name, mk.type AS kind_type,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'merge-proposals' AS kind, NULL::jsonb AS proposed,
            ${ANCHOR_MEMBERSHIP} AS membership_id,

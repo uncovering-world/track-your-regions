@@ -64,7 +64,7 @@ const approximatePoints = (hinted: boolean) => `(SELECT jsonb_agg(jsonb_build_ob
  */
 export async function queryApproximatePoints(ids: number[], hinted = true): Promise<QueryResult> {
   return pool.query(`
-    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name, mk.type AS kind_type,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            '${hinted ? 'approximate-points' : 'approximate-unhinted'}' AS kind, NULL::jsonb AS proposed,
            ${approximatePoints(hinted)} AS approximate_points,

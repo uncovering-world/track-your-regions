@@ -292,7 +292,7 @@ export async function getReviewQueue(
   // in, and whether that kind keeps a delisted place as former.
   const missing = await hydrate(missingIds, async () => {
     const places = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name, mk.type AS kind_type,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
     FROM experiences e
@@ -304,7 +304,7 @@ export async function getReviewQueue(
     ORDER BY e.missing_since DESC, e.id
   `, [...params, missingIds]);
     const kinds = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name, m.type AS kind_type,
            m.source_membership, e.existence, m.missing_since, ${seenInSql()} AS seen_in,
            ${keptAsFormerSql('m')} AS kept_as_former, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
@@ -336,7 +336,7 @@ export async function getReviewQueue(
   // one carries the kinds readers still see the place in.
   const refusedIds = idsOf('refused');
   const refused = await hydrate(refusedIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name, m.type AS kind_type,
            m.admission_reason,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'refused' AS kind, ${countedWorksSelectSql()},
@@ -371,7 +371,7 @@ export async function getReviewQueue(
   // to it looking for a row they answered a moment ago, having noticed the
   // mis-click, and the row they want is the last one they touched.
   const keptOut = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name, m.type AS kind_type,
            m.admission_reason, ${seenInSql()} AS seen_in,
            -- When this membership's refusal was answered, and the note given
            -- (#1264): the latest confirmation or kept-out arrival the log
@@ -480,7 +480,7 @@ export async function getReviewQueue(
   // arrivals, each answered for its own kind, and the page groups them.
   const arrivalIds = waitingIds('arrival');
   const arrivals = await hydrate(arrivalIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name, m.type AS kind_type,
            m.curation_state, m.first_seen_sync_log_id AS sync_log_id,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'arrival' AS kind, NULL::jsonb AS proposed, ${seenInSql()} AS seen_in
@@ -550,7 +550,7 @@ export async function getReviewQueue(
   const heldIds = waitingIds('held');
   const held = await hydrate(heldIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
-      SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+      SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name, m.type AS kind_type,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              ch.sync_log_id, 'held' AS kind,
              -- The run proposing now, and the one that first asked (ADR-0174).

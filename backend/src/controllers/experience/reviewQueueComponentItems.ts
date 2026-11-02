@@ -86,7 +86,7 @@ const PLACING_MEMBERSHIP = `(SELECT pl.membership_id
 
 export async function queryComponentItems(ids: number[]): Promise<QueryResult> {
   return pool.query(`
-    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name, mk.type AS kind_type,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'component-items' AS kind, NULL::jsonb AS proposed,
            ${PLACING_MEMBERSHIP} AS membership_id,

@@ -262,7 +262,9 @@ const ViewFieldWord = z.enum(VIEW_FIELDS);
 
 export const SourceView = z.strictObject({
   membership_id: z.number().int(),
+  kind_id: z.number().int(),
   kind_name: z.string(),
+  kind_type: z.string().nullable().describe('The type within its kind the source\'s membership carries (#2217); null where it has none.'),
   source_name: z.string(),
   external_id: z.string().describe(
     "The id the source knows the place by: a Wikidata item, a World Heritage id, or a component's reference in the"
@@ -439,6 +441,10 @@ export const ReviewQueueItem = z.strictObject({
   name: z.string(),
   kind_id: z.number().int(),
   kind_name: z.string(),
+  kind_type: z.string().nullable().describe(
+    'The type within its kind the membership this card is about carries (#2217): `arch`, `minaret`, `holy site`; null'
+    + ' where it carries none. Named in the vocabulary of the kind by the web (`typeLabelFor`).',
+  ),
   missing_since: timestamp.nullable(),
   source_membership: SourceMembership,
   existence: Existence,
