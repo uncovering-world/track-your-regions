@@ -105,7 +105,7 @@ what exists, and nothing personal goes in a URL.
 |---|---|
 | A world view that is hidden or gone | The existing world-view reconciliation replaces it; the region and card go with it |
 | A region that 404s, or belongs to another world view | → the world view alone (`/wv/5`) |
-| A card the region's list does not hold — hidden, rejected, elsewhere, of another kind | The `e` segment is dropped, once the list has answered |
+| A card the region's list does not hold — hidden, rejected, elsewhere, of another kind | The `e` segment is dropped, once the list has answered and no tail holds it, once the tail has answered: a place a crowded city leaves out of the list is kept and opens in its kind's tail (`experience-map-ui.md` § A crowded city's tail, #2224, #2236) |
 | A part its card's object does not hold — withdrawn, unread, another object's (#1271) | The `p` segment is dropped, once the object's own points have answered (`PointCard`'s `onPointGone`) |
 | A card a merge folded into another place (#1247, ADR-0086) | The `e` segment moves to the surviving place, in place — once the list has answered without it and the by-id read has named the survivor |
 | A card that is a part of a serial site (ADR-0100, #1425) | The `e` segment moves to the site and `p` names the part's point, in place — the same read, answering `part_of`; a part that holds a kind of its own keeps its card (#1250) |
