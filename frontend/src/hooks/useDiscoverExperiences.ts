@@ -36,8 +36,9 @@ import { useAppAddress } from './useAppAddress';
 import { useFoldedCard, type FoldedInto } from './useFoldedCard';
 import type { AppAddress } from '../utils/appUrl';
 import { queryKeys } from '../api/queryKeys';
-import { byFame, kindToOpenIn, shownInKind } from '../utils/placeKinds';
+import { byFame, shownInKind } from '../utils/placeKinds';
 import { useRegionTail, type CrowdedOutCount } from './useRegionTail';
+import { kindlessLookup, kindlessOutcome, useKindlessCard } from './useKindlessCard';
 
 /** The active experience view: region + kind selection */
 export interface ActiveView {
@@ -58,24 +59,32 @@ export interface DiscoverBreadcrumb {
  * list leaves out, read over the list's own set — the region with its
  * descendants — so the row counts what this list misses. A card the tail holds
  * is not missing from the list: it opens there, as in Map mode.
+ *
+ * A card the address names without a kind (#2236) — Map mode hands Discover its
+ * open card so — is looked for in every kind's tail at once, since no kind is
+ * open yet: Santa Sabina, shadowed among Lazio's places of worship, is found
+ * there and opens in its kind rather than being dropped.
  */
 function useDiscoverTail(opts: {
   activeView: ActiveView | null;
+  /** The region shown, for a card the address names without a kind. */
+  regionId: number | null;
   crowdedOut: readonly CrowdedOutCount[] | undefined;
   listAnswered: boolean;
   experiences: Experience[];
   selectedExperienceId: number | null;
 }) {
   const { activeView, crowdedOut, listAnswered, experiences, selectedExperienceId } = opts;
-  const regionId = activeView?.regionId ?? null;
+  const regionId = activeView?.regionId ?? opts.regionId;
   const kindId = activeView?.kindId ?? null;
   const listHoldsSelected = selectedExperienceId !== null && experiences.some(e => e.id === selectedExperienceId);
-  const counts = useMemo(
-    () => (listAnswered && kindId !== null ? (crowdedOut ?? []).filter(entry => entry.kindId === kindId) : undefined),
-    [listAnswered, kindId, crowdedOut],
-  );
+  const counts = useMemo(() => {
+    if (!listAnswered) return undefined;
+    return kindId !== null ? (crowdedOut ?? []).filter(entry => entry.kindId === kindId) : crowdedOut ?? [];
+  }, [listAnswered, kindId, crowdedOut]);
   // A card is looked for in the open kind's tail alone: one of another kind is
-  // not this list's, and is dropped as the list's own rule says.
+  // not this list's, and is dropped as the list's own rule says. With no kind
+  // open, every kind's tail is asked (`lookupKindId` null).
   const tail = useRegionTail({
     regionId, counts, selectedExperienceId, listHoldsSelected, includeChildren: true, lookupKindId: kindId,
   });
@@ -302,15 +311,19 @@ export function useDiscoverExperiences() {
   const addressedObject = addressedExperienceId === null
     ? undefined
     : shownRows?.find(e => e.id === addressedExperienceId);
-  const unkindedMissing = address !== null && addressedExperienceId !== null && kindId === null
-    && kinds.length > 0 && experiencesData !== undefined && addressedObject === undefined;
+  const lookup = kindlessLookup({ address, addressedExperienceId, kindId, selectedExperienceId });
   const { tail, findExperience, listLacksSelected } = useDiscoverTail({
     activeView,
+    regionId: selectedRegion?.id ?? null,
     crowdedOut: experiencesData?.crowdedOut,
     listAnswered: experiencesData !== undefined,
     experiences,
-    selectedExperienceId,
+    selectedExperienceId: lookup.cardId,
   });
+  const kindless = kindlessOutcome({
+    unkinded: lookup.unkinded, addressedObject, tail, kindsKnown: kinds.length > 0, listAnswered: experiencesData !== undefined,
+  });
+  const unkindedMissing = kindless.missing;
 
   const listMissing = address !== null && selectedExperienceId !== null && experiencesData !== undefined
     && listLacksSelected;
@@ -320,21 +333,7 @@ export function useDiscoverExperiences() {
     { replace: true, names: { experience: into?.name, point: into?.pointName } },
   ), [go]);
 
-  useEffect(() => {
-    if (address === null || addressedExperienceId === null || kindId !== null) return;
-    if (kinds.length === 0 || !experiencesData) return;
-    if (addressedObject === undefined) {
-      if (foldedInto !== undefined) moveOrDrop(address, foldedInto);
-      return;
-    }
-    // A kind that offers the card, read off `kinds` as the list filter is (#1245).
-    const openIn = kindToOpenIn(addressedObject);
-    const kind = openIn === null ? undefined : kinds.find(c => c.id === openIn);
-    go(
-      kind ? { ...address, kindId: kind.id } : { ...address, experienceId: null },
-      { replace: true, names: { experience: addressedObject.name } },
-    );
-  }, [address, addressedExperienceId, addressedObject, kindId, kinds, experiencesData, foldedInto, moveOrDrop, go]);
+  useKindlessCard({ address, ...kindless, kinds, foldedInto, moveOrDrop, go });
 
   // A card the open list does not hold — hidden, rejected, elsewhere, of
   // another kind, or not there at all — is dropped from the address once
