@@ -389,6 +389,7 @@ export interface ExperienceKindsRow {
   is_virtual: boolean;
   crowding_limit: number | null;
   crowding_radius_km: number | null;
+  crowding_exempt_types: string[];
 }
 
 /** The table `experience_location_placements`. */
