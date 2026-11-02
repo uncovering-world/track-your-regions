@@ -25,10 +25,11 @@ import { siteFindOf, type SiteFindRow } from './experienceAnswerRows.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 // What a find of a site on view is, shared with the count on the site's row in
 // a region's list, so "3 finds on view" and this list cannot disagree (#907).
-import { findOfSiteSql, venuesShowingSql } from './siteFinds.js';
+import { dugUpAtSql, findOfSiteSql, venuesShowingSql } from './siteFinds.js';
 
 /**
- * Get the finds dug up at a site
+ * Get the finds of a place: dug up there, or taken from it by a curator's
+ * confirmed link (#2242)
  * GET /api/experiences/:id/finds
  *
  * Stateless, like `/search`: every row is one a reader may open, and the same
@@ -37,8 +38,8 @@ import { findOfSiteSql, venuesShowingSql } from './siteFinds.js';
  * link the source still places and a curator has passed, the work itself
  * passed) — and each museum carries the regions that name it to a reader (`readerRegionsJsonSql`),
  * which is what makes "shown at the Louvre" a link rather than a name. A site
- * nobody may see, a row that is not a site, and an id that names nothing all
- * answer the same empty list, so the route confirms no existence.
+ * nobody may see, a row with no find dug up there or linked to it, and an id
+ * that names nothing all answer the same empty list, so the route confirms no existence.
  *
  * A site that no longer stands is not one nobody may see: a dig flooded by a
  * dam or built over is shown to a reader who asks for what is gone, and what
@@ -89,7 +90,11 @@ export async function getSiteFinds(
                            WHERE venue_kind.experience_id = sv.id AND site_kind.experience_id = e.id
                              AND ${realKindSql('venue_kind')}) DESC,
                   sv.id
-       ) v) AS shown_at
+       ) v) AS shown_at,
+      -- Dug up here by the find's own item, or from here by a curator's link
+      -- (#2242): a relief cut from a standing temple was not dug up, and the
+      -- card says so. The find's item wins where both hold.
+      CASE WHEN ${dugUpAtSql('e', 't')} THEN 'dug_up' ELSE 'from_site' END AS relation
     FROM experiences e
     JOIN treasures t ON ${findOfSiteSql('e', 't')}
     WHERE e.id = $1

@@ -271,6 +271,15 @@ const HELD_DECISION_WRITE = 'experience_held_decisions is written by its writer 
 const HELD_DECISION_WRITE_RULES = spelledWriteRules('experience_held_decisions', HELD_DECISION_WRITE);
 
 /**
+ * A find's link to the site it came from (#2242): the run's proposal in
+ * `findSiteProposals.ts` and the curator's answer in `findSiteLinkWriter.ts`.
+ */
+const FIND_SITE_LINK_WRITE = 'find_site_links is written by its writer modules only: a run proposes through '
+  + 'proposeFindSites in src/services/sync/findSiteProposals.ts, and a curator answers through answerFindSiteLink in '
+  + 'src/controllers/experience/findSiteLinkWriter.ts.';
+const FIND_SITE_LINK_WRITE_RULES = spelledWriteRules('find_site_links', FIND_SITE_LINK_WRITE);
+
+/**
  * A run's record of what it proposed, written once and never rewritten (a
  * changeset is what happened, ADR-0020): `recordSyncChanges` in
  * `src/services/sync/changeRecorder.ts`.
@@ -444,7 +453,7 @@ const SOURCE_RULE_FAMILIES = [
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
-  VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES,
+  VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES, FIND_SITE_LINK_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
 ];
 
@@ -455,7 +464,7 @@ const TABLE_WRITE_FAMILIES = [
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
-  VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES,
+  VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES, FIND_SITE_LINK_WRITE_RULES,
 ];
 
 /**
@@ -720,6 +729,12 @@ export default [
     files: ['src/services/sync/visit/visitQuestions.ts', 'src/controllers/experience/visitQuestionController.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(VISIT_QUESTION_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/services/sync/findSiteProposals.ts', 'src/controllers/experience/findSiteLinkWriter.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(FIND_SITE_LINK_WRITE_RULES),
     },
   },
   {

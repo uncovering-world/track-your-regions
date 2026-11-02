@@ -180,6 +180,17 @@ export const workEditParamsSchema = z.object({
   treasureId: rowIdSchema,
 });
 
+/** `/api/experiences/:id/find-links/:treasureId` — a site and one find it may be the origin of (#2242). */
+export const findSiteLinkParamsSchema = z.object({
+  id: rowIdSchema,
+  treasureId: rowIdSchema,
+});
+
+/** A curator's answer on a find's link to a site: it comes from there, or it does not. */
+export const findSiteLinkAnswerBodySchema = z.object({
+  answer: z.enum(['confirmed', 'refused']),
+});
+
 /**
  * A curator's correction to one work: what it is called, who made it, when,
  * and which photograph it is shown by.

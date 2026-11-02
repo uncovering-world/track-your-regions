@@ -29,7 +29,7 @@ function iso(value: Date | null): string | null {
  * JSON reaches a reader only through the keys its schema names, whatever a
  * writer once left beside them.
  */
-function creditOf(credit: ImageCredit | null): ImageCredit | null {
+export function creditOf(credit: ImageCredit | null): ImageCredit | null {
   if (credit === null) return null;
   return {
     author: credit.author ?? null,
@@ -281,6 +281,7 @@ export interface TreasureRow {
   image_credit: ImageCredit | null;
   found_at: { qid: string; label: string } | null;
   found_at_site: LinkedPlace | null;
+  from_site: LinkedPlace | null;
   kind_ids: number[];
   wikipedia_url: string | null;
   wikipedia_read: boolean;
@@ -303,6 +304,7 @@ export function treasureOf(row: TreasureRow): ExperienceTreasure {
     is_iconic: row.is_iconic,
     found_at: foundAtOf(row.found_at),
     found_at_site: row.found_at_site,
+    from_site: row.from_site,
     sitelinks_count: row.sitelinks_count,
     kind_ids: row.kind_ids,
     wikipedia_url: row.wikipedia_url,
@@ -322,6 +324,7 @@ export interface SiteFindRow {
   sitelinks_count: number;
   image_credit: ImageCredit | null;
   shown_at: LinkedPlace[];
+  relation: SiteFind['relation'];
 }
 
 export function siteFindOf(row: SiteFindRow): SiteFind {
@@ -336,5 +339,6 @@ export function siteFindOf(row: SiteFindRow): SiteFind {
     is_iconic: row.is_iconic,
     sitelinks_count: row.sitelinks_count,
     shown_at: row.shown_at,
+    relation: row.relation,
   };
 }

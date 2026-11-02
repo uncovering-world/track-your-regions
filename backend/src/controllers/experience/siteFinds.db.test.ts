@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { getSiteFinds } from './experienceFindsController.js';
+import { getExperienceTreasures } from './experienceTreasureController.js';
 import { findsOnViewCountSql } from './siteFinds.js';
 
 /**
@@ -27,6 +28,8 @@ const WORKS = {
   linkGone: 'Q9560-clay-tablet',
   workUnread: 'Q9560-stone-seal',
   elsewhere: 'Q9560-silver-bowl',
+  // No place of discovery on its item: on the dig's card only by a link (#2242).
+  relief: 'Q9560-ceiling-relief',
 } as const;
 
 async function clear(): Promise<void> {
@@ -49,13 +52,18 @@ async function place(id: number, type: string, state: string): Promise<void> {
   );
 }
 
-/** A work found at `foundAt`, held by each venue of `links` — a missing date says the source stopped placing it. */
+/**
+ * A work found at `foundAt` (none where null), held by each venue of `links` —
+ * a missing date says the source stopped placing it.
+ */
 async function work(
-  externalId: string, foundAt: string, state: string, links: [number, string | null][],
-): Promise<void> {
+  externalId: string, foundAt: string | null, state: string, links: [number, string | null][],
+): Promise<number> {
   const row = await pool.query<{ id: number }>(
     `INSERT INTO treasures (external_id, name, treasure_type, curation_state, metadata)
-     VALUES ($1, $1, 'artifact', $2, jsonb_build_object('foundAt', jsonb_build_object('qid', $3::text)))
+     VALUES ($1, $1, 'artifact', $2,
+             CASE WHEN $3::text IS NULL THEN '{}'::jsonb
+                  ELSE jsonb_build_object('foundAt', jsonb_build_object('qid', $3::text)) END)
      RETURNING id`,
     [externalId, state, foundAt],
   );
@@ -66,6 +74,18 @@ async function work(
       [venue, row.rows[0].id, missingSince],
     );
   }
+  return row.rows[0].id;
+}
+
+/** The relief, held by the museum a reader may go to, with its link to the dig in `state`. */
+async function relief(state: 'proposed' | 'confirmed' | 'refused'): Promise<number> {
+  const id = await work(WORKS.relief, null, 'verified', [[SHOWN, null]]);
+  await pool.query(
+    `INSERT INTO find_site_links (treasure_id, site_id, state, origin, distance_m)
+     VALUES ($1, $2, $3, 'coordinate', 0)`,
+    [id, DIG, state],
+  );
+  return id;
 }
 
 beforeEach(async () => {
@@ -137,6 +157,52 @@ describe('the finds on view of a site', () => {
     const list = await getSiteFinds({ params: { id: DIG } });
     expect(list.total).toBe(0);
     expect(await countOn(DIG)).toBe(0);
+  });
+
+  it('says the find from the dig\'s own item was dug up there', async () => {
+    const list = await getSiteFinds({ params: { id: DIG } });
+    expect(list.finds.map((find) => find.relation)).toEqual(['dug_up']);
+  });
+
+  it('lists and counts a find a curator confirmed comes from the site, as from this site', async () => {
+    await relief('confirmed');
+
+    const list = await getSiteFinds({ params: { id: DIG } });
+    expect(Object.fromEntries(list.finds.map((find) => [find.external_id, find.relation])))
+      .toEqual({ [WORKS.onView]: 'dug_up', [WORKS.relief]: 'from_site' });
+    expect(await countOn(DIG)).toBe(list.total);
+  });
+
+  it('lists a linked find no more once its own item names a find spot', async () => {
+    const id = await relief('confirmed');
+    await pool.query(
+      `UPDATE treasures SET metadata = jsonb_build_object('foundAt', jsonb_build_object('qid', 'Q9560-another-dig')) WHERE id = $1`,
+      [id],
+    );
+    expect((await getSiteFinds({ params: { id: DIG } })).finds.map((find) => find.external_id)).toEqual([WORKS.onView]);
+    expect(await countOn(DIG)).toBe(1);
+  });
+
+  it('lists no find whose link is only proposed, or refused', async () => {
+    const id = await relief('proposed');
+    expect((await getSiteFinds({ params: { id: DIG } })).finds.map((find) => find.external_id))
+      .toEqual([WORKS.onView]);
+
+    await pool.query(`UPDATE find_site_links SET state = 'refused' WHERE treasure_id = $1`, [id]);
+    expect((await getSiteFinds({ params: { id: DIG } })).finds.map((find) => find.external_id))
+      .toEqual([WORKS.onView]);
+    expect(await countOn(DIG)).toBe(1);
+  });
+
+  it('names the site on the find\'s row in its museum once the link is confirmed', async () => {
+    const reliefId = await relief('proposed');
+    const before = await getExperienceTreasures({ params: { id: SHOWN }, caller: undefined });
+    expect(before.treasures.find((row) => row.external_id === WORKS.relief)?.from_site).toBeNull();
+
+    await pool.query(`UPDATE find_site_links SET state = 'confirmed' WHERE treasure_id = $1`, [reliefId]);
+    const after = await getExperienceTreasures({ params: { id: SHOWN }, caller: undefined });
+    expect(after.treasures.find((row) => row.external_id === WORKS.relief)?.from_site)
+      .toMatchObject({ id: DIG, name: `Place ${DIG}` });
   });
 
   it('counts nothing on a row that is not a site', async () => {
