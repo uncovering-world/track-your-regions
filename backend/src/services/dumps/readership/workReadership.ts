@@ -48,8 +48,11 @@ export function automated(views: number, mobile: number, editionShare: number | 
   return Math.abs(logOdds(mobile / views) - logOdds(editionShare)) >= AUTOMATED_LOG_ODDS;
 }
 
-/** Each counted edition's phone share over the year: one pass over the year's rows. */
-async function editionShares(year: ReadershipYear): Promise<Map<string, number>> {
+/**
+ * Each counted edition's phone share over the year: one pass over the year's
+ * rows, which a reader of many batches reads once and hands to `readWorks`.
+ */
+export async function editionShares(year: ReadershipYear): Promise<Map<string, number>> {
   const result = await pool.query<{ site: string; share: number }>(
     `SELECT site, sum(mobile)::float8 / nullif(sum(views), 0) AS share
        FROM readership_months
@@ -66,13 +69,15 @@ type CountedPairs = Map<string, Set<string>>;
 /**
  * The year's views of each item over the editions a door counts, without the
  * pairs decision 3 sets aside, and the pairs it counted; an item read in no
- * counted edition is absent.
+ * counted edition is absent. `shares` are the year's `editionShares`, read
+ * here when the caller has not read them already.
  */
 export async function readWorks(
   year: ReadershipYear,
   items: readonly string[],
+  shares?: ReadonlyMap<string, number>,
 ): Promise<{ views: Map<string, number>; counted: CountedPairs }> {
-  const shares = await editionShares(year);
+  const phoneShares = shares ?? await editionShares(year);
   const result = await pool.query<{ item: string; site: string; views: string; mobile: string }>(
     `SELECT item, site, sum(views) AS views, sum(mobile) AS mobile
        FROM readership_months
@@ -84,7 +89,7 @@ export async function readWorks(
   const counted: CountedPairs = new Map();
   for (const row of result.rows) {
     const pairViews = Number(row.views);
-    if (automated(pairViews, Number(row.mobile), shares.get(row.site))) continue;
+    if (automated(pairViews, Number(row.mobile), phoneShares.get(row.site))) continue;
     views.set(row.item, (views.get(row.item) ?? 0) + pairViews);
     const sites = counted.get(row.item) ?? new Set<string>();
     sites.add(row.site);
