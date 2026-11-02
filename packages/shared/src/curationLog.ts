@@ -54,6 +54,7 @@ export const CURATION_LOG_ACTIONS = [
   'merge_proposal_taken_back',
   'kind_added',
   'find_site_answered',
+  'crowding_answered',
 ] as const;
 
 /** One act of the curation log. */

@@ -144,6 +144,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // A site's curator said whether a find comes from the site (#2242): blue
   // like the other answers to a run's question.
   find_site_answered: { label: 'Find answered', color: BLUE },
+  // A curator's answer to a crowded city (#2282, ADR-0180): the place kept in
+  // the list, kept in the shadow, or handed back to the rule.
+  crowding_answered: { label: 'Crowding answered', color: BLUE },
   // A pin released, with the rule's verdict written in its place: one an
   // unread batch answer made (#1365, ADR-0096), or one a curator let the rule
   // decide once a run asked about it again (#1367). Red like a kept-out row,
@@ -537,6 +540,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   kept_out: d => formatKeptOut(d),
   kind_added: d => formatKindAdded(d),
   find_site_answered: d => formatFindSiteAnswered(d),
+  crowding_answered: d => formatCrowdingAnswered(d),
   identifier_settled: d => formatIdentifierSettled(d),
 };
 
@@ -728,6 +732,18 @@ function formatKindAdded(d: Record<string, unknown>): string | null {
     arrived,
     typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null,
   ].filter(Boolean).join(' — ');
+}
+
+/** Where a curator put a place in a crowded city, beside where the rule put it (#2282). */
+function formatCrowdingAnswered(d: Record<string, unknown>): string | null {
+  const kind = typeof d.kind === 'string' ? d.kind : 'its kind';
+  const pins: Record<string, string> = { list: `Kept in ${kind}'s list`, shadow: `Kept in ${kind}'s shadow` };
+  const cleared = d.answer === 'refuse' ? `Kept out of ${kind}, its crowding pin cleared` : `Handed back to ${kind}'s rule`;
+  const pin = typeof d.pin === 'string' && d.pin in pins ? pins[d.pin] : cleared;
+  const ruled = d.ruleCrowded ? 'in the shadow' : 'in the list';
+  const rule = typeof d.ruleCrowded === 'boolean' ? `the rule had it ${ruled}` : null;
+  return [pin, rule, typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null]
+    .filter(Boolean).join(' — ');
 }
 
 /** A place a merge row names: by the name it had at the act, and its id, which tells two of one name apart. */
