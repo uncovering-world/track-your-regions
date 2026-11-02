@@ -1,7 +1,7 @@
 # ADR-0167: A monument a Wikivoyage guide uses enters under the editions line, for a curator
 
 **Date:** 2026-10-31
-**Status:** Accepted
+**Status:** Superseded by [ADR-0175](0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md)
 
 ---
 

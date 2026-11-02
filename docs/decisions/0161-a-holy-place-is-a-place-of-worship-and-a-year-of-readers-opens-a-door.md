@@ -1,7 +1,7 @@
 # ADR-0161: A holy place is a place of worship, and a year of readers opens a door under the line
 
 **Date:** 2026-10-30
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0175](0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md)
 
 ---
 

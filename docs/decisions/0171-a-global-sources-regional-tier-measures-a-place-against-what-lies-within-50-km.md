@@ -1,7 +1,7 @@
 # ADR-0171: A global source's regional tier measures a place against what lies within 50 km of it
 
 **Date:** 2026-10-31
-**Status:** Accepted
+**Status:** Accepted — decisions 2 and 6 narrowed by [ADR-0175](0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md)
 
 ---
 
