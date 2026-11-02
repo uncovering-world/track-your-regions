@@ -13,6 +13,7 @@
  */
 
 import type { ReviewQueueItem } from '../../api/reviewQueue';
+import type { KindOfCard } from './queueCard';
 
 export type SourceViewField = NonNullable<ReviewQueueItem['source_views']>[number];
 export type SourceView = SourceViewField['views'][number];
@@ -58,14 +59,15 @@ export function recordsOf(views: readonly SourceView[]): SourceView[][] {
 }
 
 /** Every source the card's views come from, once each, in the order the server sent them. */
-export function sourcesOf(fields: readonly SourceViewField[]): { kinds: string[]; sources: string[] } {
-  const kinds = new Set<string>();
+export function sourcesOf(fields: readonly SourceViewField[]): { kinds: KindOfCard[]; sources: string[] } {
+  // One chip per membership's kind and type: two sources of one kind with one type are one chip.
+  const kinds = new Map<string, KindOfCard>();
   const sources = new Set<string>();
   for (const field of fields) {
     for (const view of field.views) {
-      kinds.add(view.kind_name);
+      kinds.set(`${view.kind_name}:${view.kind_type}`, { kind_id: view.kind_id, kind_name: view.kind_name, kind_type: view.kind_type });
       sources.add(view.source_name);
     }
   }
-  return { kinds: [...kinds], sources: [...sources] };
+  return { kinds: [...kinds.values()], sources: [...sources] };
 }

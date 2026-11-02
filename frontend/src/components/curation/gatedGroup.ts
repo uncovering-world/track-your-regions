@@ -5,6 +5,7 @@
  */
 
 import type { ReviewQueueItem } from '../../api/reviewQueue';
+import type { KindOfCard } from './queueCard';
 
 /**
  * Whatever a gated run left open under one kind of a place: an arrival, or a
@@ -23,7 +24,9 @@ export interface GatedGroup {
    * whose run proposes the facts it holds, with that run. Its answers go under
    * `membershipId`, the one of them that holds every lifted fact.
    */
-  sharedBy?: Array<{ kindName: string; runId: number | null; membershipId: number | null; proposesAll: boolean }>;
+  sharedBy?: Array<{
+    kindName: string; kindId: number; kindType: string | null; runId: number | null; membershipId: number | null; proposesAll: boolean;
+  }>;
   /**
    * On a kind's section some of whose rows were lifted into "This place"
    * (#1599): its proposal still holds them, so its button publishes the rows
@@ -44,8 +47,19 @@ export function sectionLabel(group: GatedGroup): string {
 
 /** Every kind a place's sections speak for, each once, in their order: "This place" for each of its runs' kinds. */
 export function sectionsKinds(sections: readonly GatedGroup[]): string[] {
-  const kinds = sections.flatMap(group => group.sharedBy?.map(run => run.kindName) ?? [sectionKind(group)]);
-  return [...new Set(kinds)];
+  return [...new Set(sectionsMemberships(sections).map(kind => kind.kind_name))];
+}
+
+/** The memberships a card's sections speak for, each kind and type once: one chip each (#2217). */
+export function sectionsMemberships(sections: readonly GatedGroup[]): KindOfCard[] {
+  const kinds = new Map<string, KindOfCard>();
+  for (const group of sections) {
+    const item = group.arrival ?? group.held ?? group.contents;
+    const own = item ? [{ kind_id: item.kind_id, kind_name: item.kind_name, kind_type: item.kind_type }] : [];
+    const runs = group.sharedBy?.map(run => ({ kind_id: run.kindId, kind_name: run.kindName, kind_type: run.kindType })) ?? own;
+    for (const kind of runs) kinds.set(`${kind.kind_name}:${kind.kind_type}`, kind);
+  }
+  return [...kinds.values()];
 }
 
 /** The kinds a "This place" section speaks for, in words: "Art Museums and Archaeology". */

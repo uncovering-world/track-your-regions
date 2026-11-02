@@ -28,7 +28,7 @@ export interface QueueRow {
   kind: RowKind;
   id: number;
   name: string;
-  /** The kind of place, as the chip beside the name says it — never the row's own `kind`, the question. */
+  /** The kind the card's chip names, without its type — never the row's own `kind`, the question. */
   placeKind: string;
   /** What is being asked, in the words the section heading uses. */
   question: string;

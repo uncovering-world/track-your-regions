@@ -17,6 +17,7 @@
 import { Box, Typography, Stack, Chip, Link } from '@mui/material';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { safeHref } from '../../utils/safeHref';
+import { kindWithType } from '../../utils/experienceTypes';
 import { ObjectContext } from './ObjectContext';
 import { SourceId, worldHeritagePartsHref } from './SourceId';
 
@@ -66,6 +67,13 @@ function PartOfLine({ partOf }: { partOf: NonNullable<ReviewQueueItem['part_of']
   );
 }
 
+/** A membership as a chip names it: its kind and its type within the kind (#2217). */
+export interface KindOfCard {
+  kind_id: number;
+  kind_name: string;
+  kind_type: string | null;
+}
+
 /**
  * Which object a card is about, in the words a curator can judge it by.
  *
@@ -73,17 +81,20 @@ function PartOfLine({ partOf }: { partOf: NonNullable<ReviewQueueItem['part_of']
  * the place, the page it came from. Both live here so every kind of card carries the
  * same amount, which is the property that made this module worth having.
  */
-export function ItemHeader({ item, kinds = [item.kind_name] }: {
+export function ItemHeader({ item, kinds = [item] }: {
   item: ReviewQueueItem;
-  /** Every kind the card asks for, one chip each — the item's own when omitted (#1264). */
-  kinds?: string[];
+  /** Every membership the card asks about, one chip each — the item's own when omitted (#1264). */
+  kinds?: readonly KindOfCard[];
 }) {
   return (
     <>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.name}</Typography>
         <SourceId id={item.external_id} kind={item.kind_name} sourcePage={item.unesco_url ?? item.website_url} />
-        {kinds.map(kind => <Chip key={kind} label={kind} size="small" variant="outlined" />)}
+        {kinds.map(kind => (
+          <Chip key={`${kind.kind_name}:${kind.kind_type}`} label={kindWithType(kind.kind_id, kind.kind_name, kind.kind_type)}
+            size="small" variant="outlined" />
+        ))}
       </Stack>
       {item.part_of && <PartOfLine partOf={item.part_of} />}
       <ObjectContext item={item} />

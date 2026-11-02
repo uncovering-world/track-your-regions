@@ -30,7 +30,7 @@ beforeEach(() => {
 
 function refusal(over: Partial<ReviewQueueItem>): ReviewQueueItem {
   return {
-    id: 6214, external_id: 'Q207694', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology',
+    id: 6214, external_id: 'Q207694', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology', kind_type: null,
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'refused', proposed: null,
     ...over,
@@ -39,7 +39,7 @@ function refusal(over: Partial<ReviewQueueItem>): ReviewQueueItem {
 
 const ITEMS = [
   refusal({ membership_id: 21, admission_reason: 'not an archaeological site' }),
-  refusal({ membership_id: 22, kind_id: 4, kind_name: 'Places of worship', admission_reason: 'not a place of worship' }),
+  refusal({ membership_id: 22, kind_id: 4, kind_name: 'Places of worship', kind_type: null, admission_reason: 'not a place of worship' }),
 ];
 
 function renderCard(items: ReviewQueueItem[]) {

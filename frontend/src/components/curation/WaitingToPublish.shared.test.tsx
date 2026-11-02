@@ -41,7 +41,7 @@ const apollo = (year: number): HeldPart => ({
 function held(kind: 'Art Museums' | 'Archaeology', over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
   const art = kind === 'Art Museums';
   return {
-    ...PLACE, kind: 'held', kind_id: art ? 2 : 5, kind_name: kind, membership_id: art ? 30 : 31,
+    ...PLACE, kind: 'held', kind_id: art ? 2 : 5, kind_name: kind, kind_type: null, membership_id: art ? 30 : 31,
     sync_log_id: art ? 170 : 169,
     missing_since: null, source_membership: 'present', existence: 'extant',
     pending_locations: 0, pending_treasures: 0, pending_points: [], pending_works: [],

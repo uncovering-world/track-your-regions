@@ -31,7 +31,7 @@ import { Card, CardContent, Stack } from '@mui/material';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { ItemHeader } from './queueCard';
 import { GatedSection } from './GatedSection';
-import { sectionKind, sectionLabel, sectionsKinds, type GatedGroup } from './gatedGroup';
+import { sectionKind, sectionLabel, sectionsMemberships, type GatedGroup } from './gatedGroup';
 import { liftSharedFacts } from './sharedFacts';
 
 /**
@@ -79,7 +79,7 @@ export function GatedCard({ sections, onDone }: { sections: GatedGroup[]; onDone
   return (
     <Card variant="outlined">
       <CardContent>
-        <ItemHeader item={item} kinds={several || first.sharedBy ? sectionsKinds(sections) : undefined} />
+        <ItemHeader item={item} kinds={several || first.sharedBy ? sectionsMemberships(sections) : undefined} />
         <Stack spacing={2}>
           {sections.map(group => (
             <GatedSection

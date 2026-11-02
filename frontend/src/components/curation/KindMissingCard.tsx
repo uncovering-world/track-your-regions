@@ -27,7 +27,7 @@ export function KindMissingCard({ items, onDone }: { items: ReviewQueueItem[]; o
   return (
     <Card variant="outlined">
       <CardContent>
-        <ItemHeader item={items[0]} kinds={items.length > 1 ? items.map(item => item.kind_name) : undefined} />
+        <ItemHeader item={items[0]} kinds={items.length > 1 ? items : undefined} />
         <Stack spacing={2}>
           {items.map(item => (
             <KindSection key={`${item.id}:${item.membership_id ?? ''}`} item={item} onDone={onDone} />

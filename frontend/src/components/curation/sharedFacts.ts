@@ -105,7 +105,7 @@ export function liftSharedFacts(sections: GatedGroup[]): GatedGroup[] {
     sharedBy: holding
       .filter(group => [...keys.get(group)!].some(key => shared.has(key)))
       .map(group => ({
-        kindName: group.held.kind_name ?? '', runId: group.held.sync_log_id ?? null, membershipId: group.membershipId ?? null,
+        kindName: group.held.kind_name ?? '', kindId: group.held.kind_id, kindType: group.held.kind_type, runId: group.held.sync_log_id ?? null, membershipId: group.membershipId ?? null,
         // Whether the run proposes every fact the section lifts, or only some of them (Mỹ Sơn's World Heritage run).
         proposesAll: [...shared].every(key => keys.get(group)!.has(key)),
       })),

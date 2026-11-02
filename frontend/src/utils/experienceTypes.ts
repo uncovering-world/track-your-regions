@@ -166,6 +166,23 @@ export function typeLabelFor(kindId: number | null | undefined, value: string): 
   return typeOptionsFor(kindId).find(option => option.value === value)?.label ?? value;
 }
 
+/** A type as a chip names it: the vocabulary's word, or the stored value capitalised where it has none ("cultural" reads "Cultural"). */
+export function typeWordFor(kindId: number | null | undefined, type: string): string {
+  const label = typeLabelFor(kindId, type);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/**
+ * A membership's kind with its type, as a card names it (#2217): *Monuments &
+ * memorials · Arch*. A kind with a vocabulary whose membership carries no type
+ * says so, *type not set*, since such a place answers to none of the kind's type
+ * filters; a kind with no vocabulary (Art Museums) is named alone.
+ */
+export function kindWithType(kindId: number | null | undefined, kindName: string, type: string | null | undefined): string {
+  if (typeOptionsFor(kindId).length === 0) return kindName;
+  return `${kindName} · ${type ? typeWordFor(kindId, type) : 'type not set'}`;
+}
+
 /** The Archaeology kind, whose holdings were dug up rather than made for a wall. */
 const ARCHAEOLOGY_KIND_ID = 5;
 
