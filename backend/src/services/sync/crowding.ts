@@ -57,7 +57,9 @@ export async function refreshCrowding(): Promise<CrowdingRefresh> {
   if (!editions) stale.push('editions');
 
   // Null where a source is not in place, so the statement keeps what was
-  // measured last; a membership measured for the first time then counts zero.
+  // measured last; a membership measured for the first time then counts zero,
+  // and its signal's read date stays null, so the place run never takes that
+  // zero for a reading (`places/worldMemory.ts`, ADR-0175 decision 6).
   const ids = members.rows.map(row => row.id);
   const read = (signal: Map<string, number> | null) =>
     members.rows.map(row => (signal ? signal.get(row.qid) ?? 0 : null));
@@ -65,14 +67,18 @@ export async function refreshCrowding(): Promise<CrowdingRefresh> {
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO membership_fame (membership_id, readers, guide_editions, wikipedia_editions, measured_at)
+      `INSERT INTO membership_fame (membership_id, readers, guide_editions, wikipedia_editions,
+                                   readers_read_at, guides_read_at, measured_at)
        SELECT i.id, COALESCE(i.readers, old.readers, 0), COALESCE(i.guides, old.guide_editions, 0),
-              COALESCE(i.editions, old.wikipedia_editions, 0), NOW()
+              COALESCE(i.editions, old.wikipedia_editions, 0),
+              CASE WHEN i.readers IS NULL THEN old.readers_read_at ELSE NOW() END,
+              CASE WHEN i.guides IS NULL THEN old.guides_read_at ELSE NOW() END, NOW()
          FROM unnest($1::int[], $2::int[], $3::int[], $4::int[]) AS i(id, readers, guides, editions)
          LEFT JOIN membership_fame old ON old.membership_id = i.id
        ON CONFLICT (membership_id) DO UPDATE
           SET readers = EXCLUDED.readers, guide_editions = EXCLUDED.guide_editions,
-              wikipedia_editions = EXCLUDED.wikipedia_editions, measured_at = EXCLUDED.measured_at`,
+              wikipedia_editions = EXCLUDED.wikipedia_editions, readers_read_at = EXCLUDED.readers_read_at,
+              guides_read_at = EXCLUDED.guides_read_at, measured_at = EXCLUDED.measured_at`,
       [ids, read(readers), read(guides), read(editions)],
     );
     // A membership whose kind no longer declares the rule, or whose item went.

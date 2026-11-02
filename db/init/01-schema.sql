@@ -2881,6 +2881,12 @@ COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-
 COMMENT ON COLUMN experience_sync_logs.withdrawal_skipped_reason IS 'Why this run marked none of the works its museums stopped holding: works coverage below the floor (ADR-0044). Every value worksCoverageSkipReason() produces lands here, and a run carrying one is partial, never success. NULL where withdrawals were applied, and on every run of a source whose contents need no floor: points are paired per object, not measured per pool.';
 COMMENT ON COLUMN experience_sync_logs.admission_sweep_skipped_reason IS 'Why this run''s admission sweep delisted nothing the run''s own rule would have (ADR-0024): cancelled, errors, nothing admitted, or an admitted set below half the previous one. NULL when the sweep ran, when the source does not recompute membership, or on runs from before the column (#751).';
 
+-- What a place run admitted its world tier by (ADR-0175 decision 6, #2253):
+-- the next run that reads no readership year admits by the readers' bars of
+-- the last run that read one.
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS world_bars JSONB;
+COMMENT ON COLUMN experience_sync_logs.world_bars IS 'The world bars a place kind''s run admitted by (ADR-0175): editions, readers, guidedReaders and pool, the readership year the readers'' bars were read over (year), and keptFrom, the sync log whose readers'' bars a run without a year kept (decision 6). Shaped as WorldBars (backend/src/services/sync/places/worldBars.ts). NULL for every other source, and for a run that read no pool.';
+
 -- A run writes where it stands to its row as it goes (#1131), and its running
 -- counts to the total_* columns above: a restart then leaves a row that says
 -- how far the run got, and the status endpoint can read a run this process
@@ -6322,6 +6328,15 @@ CREATE TABLE IF NOT EXISTS membership_fame (
 );
 COMMENT ON TABLE membership_fame IS 'How well known a membership''s place is, for a kind that declares crowding_limit (ADR-0172): the readership year''s readers, the Wikivoyage editions that use its item and its Wikipedia editions, read from the workbench by the run''s after-step, so no reader touches the workbench.';
 COMMENT ON COLUMN membership_fame.score IS 'The mean of three percentiles among the candidates of the same kind and type worldwide, set by refresh_crowding(): readers a year, whether a Wikivoyage edition uses the item (a presence, not a count, ADR-0177), and Wikipedia editions. Null for a membership that is no candidate (refused, or its place lost), or one measured since the last refresh.';
+
+-- When each signal was last read, so the zero a membership is given before
+-- its first reading is never read as a measurement: the place run admits by
+-- the readers and the guide's mark as last read where the run reads none
+-- (ADR-0175 decision 6, #2253).
+ALTER TABLE membership_fame ADD COLUMN IF NOT EXISTS readers_read_at TIMESTAMPTZ;
+ALTER TABLE membership_fame ADD COLUMN IF NOT EXISTS guides_read_at TIMESTAMPTZ;
+COMMENT ON COLUMN membership_fame.readers_read_at IS 'When readers was last read from a readership year. NULL: no reading is dated, so readers is the zero a membership is ranked at before its first reading or a value from before the column, and the place run never admits by it (ADR-0175 decision 6).';
+COMMENT ON COLUMN membership_fame.guides_read_at IS 'When guide_editions was last read from a Wikivoyage usage build. NULL: no reading is dated, so guide_editions is the zero a membership is ranked at before its first reading or a value from before the column, and the place run never admits by it (ADR-0175 decision 6).';
 
 CREATE TABLE IF NOT EXISTS membership_crowding (
     membership_id INTEGER PRIMARY KEY REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
