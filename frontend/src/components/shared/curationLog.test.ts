@@ -556,3 +556,18 @@ describe("a site's curator's answer on where a find comes from (#2242)", () => {
     }))).toBe('Dendera zodiac unlinked from here');
   });
 });
+
+describe("a curator's answer to a crowded city (#2282)", () => {
+  it('names the pin, a hand-back and a refusal apart, beside where the rule had the place', () => {
+    expect(formatLogDetails(entry('crowding_answered', {
+      kind: 'Squares & streets', answer: 'list', pin: 'list', ruleCrowded: true,
+    }))).toBe("Kept in Squares & streets's list — the rule had it in the shadow");
+    expect(formatLogDetails(entry('crowding_answered', {
+      kind: 'Squares & streets', answer: 'clear', pin: null, ruleCrowded: false,
+    }))).toBe("Handed back to Squares & streets's rule — the rule had it in the list");
+    // "Don't take" clears a standing pin too; the history says it was a refusal, not a hand-back.
+    expect(formatLogDetails(entry('crowding_answered', {
+      kind: 'Squares & streets', answer: 'refuse', pin: null, ruleCrowded: true,
+    }))).toBe('Kept out of Squares & streets, its crowding pin cleared — the rule had it in the shadow');
+  });
+});
