@@ -322,8 +322,9 @@ export function placeSourceIdsSql(experience = 'e'): string {
  * The kind a row is shown under, joined: the membership `shownMembershipSql`
  * names, as `membership`, and its kind, as `kind`. Read per row (a lateral
  * join), for a read of some places: a region's list, a card, a queue page.
- * A read over the whole catalogue takes `catalogueKindJoinSql`, the same order
- * read once for every place.
+ * A read over the whole catalogue that keeps only shown places takes
+ * `catalogueKindJoinSql`, which reads that order once for every place and
+ * picks among shown memberships only.
  *
  * A LEFT JOIN, deliberately. The kind is a column the row is shown with, not
  * a predicate that decides whether it is shown: the four questions that
@@ -354,10 +355,18 @@ export function rowKindJoinSql(experience = 'e', membership = 'm', kind = 'k'): 
  * once nearly every place is read, and dearer when only some are. Measured on
  * the development catalogue on 2026-10-23: the world points overview took
  * 38 ms with the lateral form and 20 ms with the first-source join it replaces.
+ *
+ * The pass reads shown memberships only (`membershipShownSql`), so it grows
+ * with what a reader is shown rather than with the arrivals that wait for a
+ * curator (#2283). The pick is the same for every place a caller keeps: a
+ * read over the whole catalogue keeps a place only while it is shown
+ * (`placeShownSql`), and such a place's first membership in this order is a
+ * shown one. A place with none comes back with a null kind.
  */
 export function catalogueKindJoinSql(experience = 'e', membership = 'm', kind = 'k'): string {
   return `LEFT JOIN (SELECT DISTINCT ON (shown.experience_id) shown.* FROM ${MEMBERSHIPS} shown
              JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id AND ${kindIsRealSql('shown_kind')}
+            WHERE ${membershipShownSql('shown')}
             ORDER BY shown.experience_id, ${SHOWN_ORDER}) ${membership} ON ${membership}.experience_id = ${experience}.id
       LEFT JOIN ${KINDS} ${kind} ON ${kind}.id = ${membership}.kind_id`;
 }
