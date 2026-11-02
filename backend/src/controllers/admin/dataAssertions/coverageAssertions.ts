@@ -26,12 +26,15 @@ import {
 /** Where an absent entry stands, said after "the kind does not offer it". */
 const WHERE: Record<Verdict, string> = {
   offered: 'a reader finds it under another kind',
+  shadowed: 'a kind admits it and crowds it out of its city: better-known places of its kind and type stand near it (ADR-0172)',
   held: 'the catalogue holds it and no reader sees it: it waits for a curator, was refused, or no longer stands',
   same_spot: 'something else stands at its spot, which may be the same place under another Wikidata item',
   missing_live: 'the catalogue does not hold it',
   // Never on a finding: an entry of a live kind is never only proposed or unsorted.
   missing_proposed: 'the catalogue does not hold it',
   unsorted: 'the catalogue does not hold it',
+  // Never on a finding: an entry in every kind's tail is reported missing by none.
+  tail: 'it is in the list\'s tail',
 };
 
 export const NOT_LOADED =
@@ -40,8 +43,12 @@ export const NOT_LOADED =
 
 /** How much of what a survey expects one live kind offers, in one line. */
 function kindLine(kind: CoverageReport['liveKinds'][number]): string {
-  if (kind.expected === 0) return `${kind.name}: no survey expects anything of it yet.`;
-  const offers = `${kind.name} offers ${kind.offered} of the ${kind.expected} expected of it`;
+  if (kind.expected === 0 && kind.tail === 0) return `${kind.name}: no survey expects anything of it yet.`;
+  // The tail is what its map would not show of a crowded city's places of a type either (#2246).
+  const tail = kind.tail > 0 ? `, beside ${kind.tail} in the lists' tails, beyond what its map shows of a type in a crowded city` : '';
+  // A shadowed place is the display's cost, counted beside the rows and never one of them.
+  const shadowed = kind.shadowed > 0 ? `; ${kind.shadowed} of the ${kind.expected} are shadowed in a crowded city` : '';
+  const offers = `${kind.name} offers ${kind.offered} of the ${kind.expected} expected of it${tail}${shadowed}`;
   const missing = kind.wellKnownMissing.length;
   if (missing === 0 && kind.belowLineMissing === 0) return `${offers}.`;
   if (kind.line === null) {

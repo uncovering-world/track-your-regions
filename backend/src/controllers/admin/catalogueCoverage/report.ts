@@ -5,7 +5,10 @@
  * `buildCoverageReport` is pure: it takes the facts `readCoverageFacts` read and
  * decides. Three things come out of it:
  *
- * - per region, how many expectations stand in each verdict;
+ * - per region, how many expectations stand in each verdict, the lists' tails
+ *   apart: a kind whose map shows a crowded city's best-known places of a type
+ *   (ADR-0172) is asked, around each entry, for as many entries of its type as
+ *   the map would show there, the most named first (#2246);
  * - per proposed kind, how much the surveys expect of it: the recommendation of
  *   what to build, which an issue cites and no code acts on;
  * - per live kind, the expected things it lacks, the well-known ones by name, each
@@ -34,7 +37,14 @@ import {
 /**
  * Where one expectation stands, first match wins:
  *
+ * - `tail`: every kind it is filed under shows a crowded city's best-known places
+ *   of a type alone (`crowding_limit`, ADR-0172), and as many entries of its
+ *   region, kind and type within the kind's radius of it rank above it (`tailFilings`). What the
+ *   catalogue holds of it is not asked: the map would not show it either, so it
+ *   is counted and named, never missed;
  * - `offered`: the catalogue holds it under one of its identifiers and a reader sees it;
+ * - `shadowed`: a kind admits it and crowds it out of its city, so no list, map or
+ *   count holds it: ten better-known places of its kind and type stand near it;
  * - `held`: it holds it and a reader does not: waiting for a curator, refused, lost;
  * - `unsorted`: absent, and filed under no kind yet;
  * - `missing_proposed`: absent, and every kind it is filed under is only proposed;
@@ -45,7 +55,7 @@ import {
  * - `missing_live`: absent, a kind it is filed under exists, and nothing stands
  *   at its spot.
  */
-export const VERDICTS = ['offered', 'held', 'same_spot', 'missing_live', 'missing_proposed', 'unsorted'] as const;
+export const VERDICTS = ['offered', 'shadowed', 'held', 'same_spot', 'missing_live', 'missing_proposed', 'unsorted', 'tail'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 /** One offered catalogue point at an expectation's spot. */
@@ -65,11 +75,13 @@ export interface ExpectationResult {
   name: string;
   type: string;
   kinds: string[];
+  /** Its type in each kind it is filed under, by kind slug (#2246). */
+  types: ExpectationRow['kind_types'];
   sourceCount: number;
   sitelinks: number | null;
   verdict: Verdict;
-  /** The catalogue rows its identifiers match, offered or not. */
-  matches: Pick<MatchRow, 'catalogue_name' | 'kind_id' | 'offered'>[];
+  /** The catalogue rows its identifiers match, offered, shadowed or neither. */
+  matches: Pick<MatchRow, 'catalogue_name' | 'kind_id' | 'offered' | 'shadowed'>[];
   /** Offered catalogue points at its spot, nearest first; filled only for `same_spot`. */
   nearby: NearbyPoint[];
 }
@@ -111,8 +123,13 @@ export interface LiveKindGaps {
   name: string;
   /** The sitelinks a thing needs to be well known by this kind's own rule; null where the kind has no such line. */
   line: number | null;
+  /** Filed under it and demanded of it: not in the list's tail of this kind. */
   expected: number;
   offered: number;
+  /** Filed under it and in its tail: beyond what its map shows of the region's entries of a type (#2246). */
+  tail: number;
+  /** Demanded, admitted and crowded out of its city (ADR-0172): counted, never a row a person answers. */
+  shadowed: number;
   /** Absent from this kind and at or over its line (every absent one, where there is no line), by name, judged or not. */
   wellKnownMissing: MissingEntry[];
   /** Of `wellKnownMissing`, how many a person has judged under each cause, and the issues those judgements name. */
@@ -241,6 +258,63 @@ const EXAMPLES = 5;
 
 const key = (row: { region_slug: string; slug: string }): string => `${row.region_slug}\n${row.slug}`;
 
+/** One filing of an entry under a kind: the gap a judgement names, and the unit a tail is drawn over. */
+const gapKey = (regionSlug: string, slug: string, kindSlug: string) => `${regionSlug}\n${slug}\n${kindSlug}`;
+
+/** The order a tail is drawn in: the most sources first, then the sitelinks the survey recorded, then the slug. */
+const byStrength = (a: ExpectationRow, b: ExpectationRow): number =>
+  b.source_count - a.source_count || (b.sitelinks ?? -1) - (a.sitelinks ?? -1) || a.slug.localeCompare(b.slug);
+
+const EARTH_RADIUS_KM = 6371.0088;
+
+/** The great-circle distance between two survey coordinates, in kilometres. */
+function kmBetween(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  const rad = (degrees: number) => (degrees * Math.PI) / 180;
+  const h = Math.sin(rad(b.lat - a.lat) / 2) ** 2
+    + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lon - a.lon) / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+const located = (entry: ExpectationRow): entry is ExpectationRow & { lat: number; lon: number } => entry.lat !== null && entry.lon !== null;
+
+/**
+ * The filings the map would not show (#2246), by the display rule's own
+ * geometry. A crowded city hides a place of a kind and type when its
+ * `crowding_limit` better-known places lie within `crowding_radius_km` of it
+ * (ADR-0172), so an entry of a region is in its list's tail when that many
+ * entries of the same region, kind and type, within the kind's radius of it by
+ * the survey file's own coordinates, rank above it. Rank is the most sources,
+ * then the sitelinks the survey file records, then slug: never anything the
+ * catalogue holds, which is what the report judges. An entry with no
+ * coordinate is ranked against the whole of its region's group, and an entry
+ * with one counts no entry without. An untyped entry stands with the region's
+ * other untyped entries of the kind. A kind that declares no limit has no
+ * tail: every entry filed under it is demanded.
+ */
+function tailFilings(expectations: readonly ExpectationRow[], kinds: ReadonlyMap<string, KindRow>): Set<string> {
+  const groups = new Map<string, { kindSlug: string; limit: number; radiusKm: number; entries: ExpectationRow[] }>();
+  for (const entry of expectations) {
+    for (const kindSlug of entry.kinds) {
+      const kind = kinds.get(kindSlug);
+      if (!kind || kind.crowding_limit === null || kind.crowding_radius_km === null) continue;
+      const group = JSON.stringify([entry.region_slug, kindSlug, entry.kind_types[kindSlug] ?? null]);
+      const held = groups.get(group);
+      if (held) held.entries.push(entry);
+      else groups.set(group, { kindSlug, limit: kind.crowding_limit, radiusKm: kind.crowding_radius_km, entries: [entry] });
+    }
+  }
+  const tail = new Set<string>();
+  for (const { kindSlug, limit, radiusKm, entries } of groups.values()) {
+    const ranked = [...entries].sort(byStrength);
+    ranked.forEach((entry, rank) => {
+      const above = ranked.slice(0, rank);
+      const near = located(entry) ? above.filter(other => located(other) && kmBetween(entry, other) <= radiusKm) : above;
+      if (near.length >= limit) tail.add(gapKey(entry.region_slug, entry.slug, kindSlug));
+    });
+  }
+  return tail;
+}
+
 function group<T extends { region_slug: string; slug: string }>(rows: T[]): Map<string, T[]> {
   const grouped = new Map<string, T[]>();
   for (const row of rows) {
@@ -253,6 +327,7 @@ function group<T extends { region_slug: string; slug: string }>(rows: T[]): Map<
 
 function verdictOf(entry: ExpectationRow, matches: MatchRow[], nearby: NearbyRow[], kinds: Map<string, KindRow>): Verdict {
   if (matches.some(match => match.offered)) return 'offered';
+  if (matches.some(match => match.shadowed)) return 'shadowed';
   if (matches.length > 0) return 'held';
   if (entry.kinds.length === 0) return 'unsorted';
   if (!entry.kinds.some(slug => kinds.get(slug)?.status === 'live')) return 'missing_proposed';
@@ -304,6 +379,11 @@ function calibrationLineOf(kind: KindRow): number | null {
   const lines = [lineOf(kind), kind.form === 'work' ? kind.find_enter_sitelinks : null]
     .filter((line): line is number => line !== null);
   return lines.length === 0 ? null : Math.min(...lines);
+}
+
+function shadowedIn(result: ExpectationResult, kind: KindRow): boolean {
+  if (kind.experience_kind_id === null) return false;
+  return result.matches.some(match => match.shadowed && match.kind_id === kind.experience_kind_id);
 }
 
 function offeredIn(result: ExpectationResult, kind: KindRow): boolean {
@@ -457,26 +537,34 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
   const kinds = new Map(facts.kinds.map(kind => [kind.slug, kind]));
   const matches = group(facts.matches);
   const nearby = group(facts.nearby);
+  const tail = tailFilings(facts.expectations, kinds);
+  const inTail = (regionSlug: string, slug: string, kindSlug: string) => tail.has(gapKey(regionSlug, slug, kindSlug));
   // A judgement on a gap is found by the entry and the kind whose gap it is: an entry filed
   // under two live kinds has two gaps, judged apart. One on a catalogue row has no entry to join.
-  const gapKey = (regionSlug: string, slug: string, kindSlug: string) => `${regionSlug}\n${slug}\n${kindSlug}`;
   const onEntries = facts.judgements.filter(row => row.entry_slug !== null && row.kind_slug !== null);
   const judgements = new Map(onEntries.map(row => [gapKey(row.region_slug, row.entry_slug as string, row.kind_slug as string), toJudgement(row)]));
 
   const expectations: ExpectationResult[] = facts.expectations.map((entry) => {
     const own = matches.get(key(entry)) ?? [];
     const near = nearby.get(key(entry)) ?? [];
-    const verdict = verdictOf(entry, own, near, kinds);
+    // Demanded where any kind it is filed under asks for it: a church a crowded city's
+    // places of worship leave out is still asked of World Heritage.
+    const demandedBy = entry.kinds.filter(kindSlug => !inTail(entry.region_slug, entry.slug, kindSlug));
+    const tailed = entry.kinds.length > 0 && demandedBy.length === 0;
+    // Asked only of the kinds that demand it: a Kyoto temple in Places of worship's tail and
+    // filed under a proposed kind too is missing from the proposed kind alone.
+    const verdict = tailed ? 'tail' : verdictOf({ ...entry, kinds: demandedBy }, own, near, kinds);
     return {
       regionSlug: entry.region_slug,
       slug: entry.slug,
       name: entry.name,
       type: entry.type,
       kinds: entry.kinds,
+      types: entry.kind_types,
       sourceCount: entry.source_count,
       sitelinks: entry.sitelinks,
       verdict,
-      matches: own.map(({ catalogue_name, kind_id, offered }) => ({ catalogue_name, kind_id, offered })),
+      matches: own.map(({ catalogue_name, kind_id, offered, shadowed }) => ({ catalogue_name, kind_id, offered, shadowed })),
       nearby: verdict === 'same_spot' ? distinctPoints(near) : [],
     };
   });
@@ -511,14 +599,20 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
     .sort((a, b) => b.regions - a.regions || b.expected - a.expected || a.slug.localeCompare(b.slug));
 
   const sourceNames = new Map(facts.calibrationSources.map(source => [source.slug, source.name]));
-  // A gap a live kind still has, over or under the line: a judgement on any other gap is stale.
+  // A gap a live kind still has, over or under the line, in its tail or not: a judgement on
+  // any other gap is stale. A gap in the tail is reported missing nowhere, and a judgement on
+  // it stays, since the tail moves with the list.
   const stillLacked = new Set<string>();
   const liveKinds: LiveKindGaps[] = facts.kinds
     .filter(kind => kind.status === 'live')
     .map((kind) => {
       const filed = filedUnder(kind);
-      const absent = filed.filter(result => !offeredIn(result, kind));
-      for (const result of absent) stillLacked.add(gapKey(result.regionSlug, result.slug, kind.slug));
+      for (const result of filed.filter(result => !offeredIn(result, kind))) stillLacked.add(gapKey(result.regionSlug, result.slug, kind.slug));
+      const demanded = filed.filter(result => !inTail(result.regionSlug, result.slug, kind.slug));
+      // A shadowed place is the cost of the display, not a gap a person answers for: counted
+      // beside the rows, as the tail is.
+      const shadowed = demanded.filter(result => !offeredIn(result, kind) && shadowedIn(result, kind));
+      const absent = demanded.filter(result => !offeredIn(result, kind) && !shadowedIn(result, kind));
       const line = lineOf(kind);
       const wellKnown = absent.filter(result => line === null || (result.sitelinks ?? 0) >= line);
       const wellKnownMissing: MissingEntry[] = [...wellKnown].sort(byRenown)
@@ -529,8 +623,10 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
         slug: kind.slug,
         name: kind.name,
         line,
-        expected: filed.length,
-        offered: filed.length - absent.length,
+        expected: demanded.length,
+        offered: demanded.length - absent.length - shadowed.length,
+        tail: filed.length - demanded.length,
+        shadowed: shadowed.length,
         wellKnownMissing,
         judgedByCause: judgedByCause(wellKnownMissing),
         belowLineMissing: absent.length - wellKnown.length,

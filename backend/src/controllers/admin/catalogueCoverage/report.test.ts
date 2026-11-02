@@ -9,8 +9,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../db/index.js', () => ({ pool: { query: vi.fn() } }));
 
-import { MEMBERSHIPS } from '../../../db/membership.js';
-import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
+import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, realKindSql } from '../../../db/membership.js';
+import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
 import { buildCoverageReport } from './report.js';
@@ -19,7 +19,7 @@ import { renderCoverageReport } from './reportText.js';
 
 const kind = (over: Partial<KindRow>): KindRow => ({
   slug: 'archaeology', name: 'Archaeology', form: 'place', status: 'live', experience_kind_id: 5, issue_number: null,
-  in_venue: false, enter_sitelinks: 22, find_enter_sitelinks: null, ...over,
+  in_venue: false, enter_sitelinks: 22, find_enter_sitelinks: null, crowding_limit: null, crowding_radius_km: null, ...over,
 });
 const KINDS: KindRow[] = [
   kind({}),
@@ -34,7 +34,7 @@ const KINDS: KindRow[] = [
 
 const entry = (slug: string, over: Partial<ExpectationRow> = {}): ExpectationRow => ({
   region_slug: 'cusco-region', slug, name: slug, type: 'place', source_count: 2, sitelinks: null,
-  kinds: ['archaeology'], ...over,
+  kinds: ['archaeology'], kind_types: {}, lat: null, lon: null, ...over,
 });
 
 const facts = (over: Partial<CoverageFacts>): CoverageFacts => ({
@@ -71,9 +71,9 @@ describe('where an expectation stands', () => {
       entry('mask', { type: 'work', kinds: ['notable-works'] }),
     ],
     matches: [
-      { ...at('machu-picchu'), catalogue_name: 'Machu Picchu', kind_id: 5, offered: true },
-      { ...at('machu-picchu'), catalogue_name: 'Historic Sanctuary of Machu Picchu', kind_id: 1, offered: true },
-      { ...at('pending-dig'), catalogue_name: 'A dig nobody read yet', kind_id: 5, offered: false },
+      { ...at('machu-picchu'), catalogue_name: 'Machu Picchu', kind_id: 5, offered: true, shadowed: false },
+      { ...at('machu-picchu'), catalogue_name: 'Historic Sanctuary of Machu Picchu', kind_id: 1, offered: true, shadowed: false },
+      { ...at('pending-dig'), catalogue_name: 'A dig nobody read yet', kind_id: 5, offered: false, shadowed: false },
     ],
     nearby: [
       { ...at('cusco-cathedral'), place: 'City of Cuzco', point: 'Main Square', metres: 78 },
@@ -140,7 +140,7 @@ describe('what the surveys expect of a proposed kind', () => {
       entry('inti-raymi', { type: 'event', kinds: ['festivals-and-events'] }),
       entry('old-town', { kinds: ['world-heritage', 'markets'] }),
     ],
-    matches: [{ ...at('old-town'), catalogue_name: 'City of Cuzco', kind_id: 1, offered: true }],
+    matches: [{ ...at('old-town'), catalogue_name: 'City of Cuzco', kind_id: 1, offered: true, shadowed: false }],
   }));
 
   it('orders by the regions that ask for it before the number of entries', () => {
@@ -186,10 +186,10 @@ describe('what a live kind lacks', () => {
       entry('tunic', { type: 'work', kinds: ['notable-works'], sitelinks: 3 }),
     ],
     matches: [
-      { ...at('machu-picchu'), catalogue_name: 'Machu Picchu', kind_id: 5, offered: true },
+      { ...at('machu-picchu'), catalogue_name: 'Machu Picchu', kind_id: 5, offered: true, shadowed: false },
       // Offered as a place of worship, and so still absent from Archaeology.
-      { ...at('coricancha'), catalogue_name: 'Coricancha', kind_id: 4, offered: true },
-      { ...at('tunic'), catalogue_name: 'Tunic', kind_id: null, offered: true },
+      { ...at('coricancha'), catalogue_name: 'Coricancha', kind_id: 4, offered: true, shadowed: false },
+      { ...at('tunic'), catalogue_name: 'Tunic', kind_id: null, offered: true, shadowed: false },
     ],
   }));
   const gaps = (slug: string) => report.liveKinds.find(live => live.slug === slug);
@@ -244,8 +244,8 @@ describe('what a person has judged', () => {
       entry('gallery', { kinds: ['art-museums'], sitelinks: 2 }),
     ],
     matches: [
-      { ...at('machu-picchu'), catalogue_name: 'Machu Picchu', kind_id: 5, offered: true },
-      { ...at('arch'), catalogue_name: 'Arch', kind_id: 5, offered: true },
+      { ...at('machu-picchu'), catalogue_name: 'Machu Picchu', kind_id: 5, offered: true, shadowed: false },
+      { ...at('arch'), catalogue_name: 'Arch', kind_id: 5, offered: true, shadowed: false },
     ],
     judgements: [
       judged('ollantaytambo', 'rule-defect', 1160),
@@ -447,6 +447,157 @@ describe('what a region offers that no guide names', () => {
   });
 });
 
+describe('what the map shows: a crowded city\'s tail, and the places it crowds out (#2246)', () => {
+  // The development catalogue's reading of 2026-11-02: each entry's sources, sitelinks and
+  // coordinate as Rome's, Kyoto's and Istanbul's lists record them, its type as Places of
+  // worship's rule gives it.
+  const WORSHIP = kind({
+    slug: 'places-of-worship', name: 'Places of worship', experience_kind_id: 4, enter_sitelinks: null, crowding_limit: 10, crowding_radius_km: 10,
+  });
+  const ROME_REGION = { slug: 'rome', name: 'Rome', country: 'Italy', surveyed: '2026-10-02' };
+  const place = (region: string) => (slug: string, type: string, sources: number, sitelinks: number, at: [number, number] | null, kinds = ['places-of-worship']) =>
+    entry(slug, {
+      region_slug: region, name: slug, source_count: sources, sitelinks, kinds, kind_types: { 'places-of-worship': type }, lat: at?.[0] ?? null, lon: at?.[1] ?? null,
+    });
+  const rome = place('rome');
+  const ROME = [
+    rome('st-peter-s-basilica', 'church', 8, 131, [41.90222, 12.45342]),
+    rome('pantheon', 'church', 8, 81, [41.89861, 12.47694], ['archaeology', 'places-of-worship']),
+    rome('santa-maria-del-popolo', 'church', 6, 35, [41.91145, 12.47648]),
+    rome('santa-maria-in-trastevere', 'church', 6, 33, [41.88944, 12.46972]),
+    rome('santa-maria-maggiore', 'church', 5, 58, [41.8975, 12.49861]),
+    rome('st-paul-outside-the-walls', 'church', 5, 58, [41.85861, 12.47722]),
+    rome('san-pietro-in-vincoli', 'church', 5, 42, [41.89387, 12.49307]),
+    rome('san-luigi-dei-francesi', 'church', 5, 35, [41.89958, 12.47467]),
+    rome('santa-maria-della-vittoria', 'church', 4, 36, [41.90466, 12.49434]),
+    // Four sources each: the survey's own sitelinks put Aracoeli tenth and Minerva eleventh.
+    rome('santa-maria-in-aracoeli', 'church', 4, 36, [41.89389, 12.48333]),
+    rome('santa-maria-sopra-minerva', 'church', 4, 35, [41.89806, 12.47833]),
+    // In the churches' tail, and still demanded: Archaeology shows every site it admits.
+    rome('basilica-of-san-clemente', 'church', 4, 28, [41.8893, 12.49756], ['archaeology', 'places-of-worship']),
+    rome('sant-agnese-in-agone', 'church', 4, 27, [41.89877, 12.4726]),
+    // Wikidata types Sant'Ignazio a chapel: it stands among the chapels, not the churches.
+    rome('sant-ignazio', 'chapel', 5, 29, [41.899, 12.47976]),
+    // Twenty kilometres out in the Alban Hills, with no ten better-named churches within 10 km of it.
+    rome('san-tommaso-da-villanova-castel-gandolfo', 'church', 2, 5, [41.74627, 12.65076]),
+  ];
+  const offered = (slug: string, name: string) => ({ region_slug: 'rome', slug, catalogue_name: name, kind_id: 4, offered: true, shadowed: false });
+  const report = buildCoverageReport(facts({
+    kinds: [...KINDS, WORSHIP],
+    regions: [ROME_REGION],
+    expectations: ROME,
+    matches: [
+      offered('st-peter-s-basilica', 'St. Peter\'s Basilica'),
+      offered('santa-maria-del-popolo', 'Santa Maria del Popolo'),
+      offered('san-luigi-dei-francesi', 'San Luigi dei Francesi'),
+      offered('santa-maria-sopra-minerva', 'Santa Maria sopra Minerva'),
+      { region_slug: 'rome', slug: 'santa-maria-in-aracoeli', catalogue_name: 'Santa Maria in Aracoeli', kind_id: 4, offered: false, shadowed: true },
+      { region_slug: 'rome', slug: 'sant-agnese-in-agone', catalogue_name: 'Sant\'Agnese in Agone', kind_id: 4, offered: false, shadowed: true },
+    ],
+  }));
+  const worship = report.liveKinds.find(live => live.slug === 'places-of-worship');
+
+  it('demands of a kind with the display rule the entries of a type the most sources name, as many as its map shows', () => {
+    expect(verdictOf(report, 'santa-maria-in-aracoeli')).toBe('shadowed');
+    expect(verdictOf(report, 'santa-maria-sopra-minerva')).toBe('tail');
+    expect(verdictOf(report, 'sant-agnese-in-agone')).toBe('tail');
+    // San Clemente is in the churches' tail too, and Archaeology asks for it.
+    expect(worship).toMatchObject({ expected: 12, offered: 3, tail: 3 });
+  });
+
+  it('never asks what the catalogue holds of the tail: Minerva is offered and stays in it', () => {
+    expect(report.regions[0].counts).toMatchObject({ offered: 3, shadowed: 1, tail: 2 });
+  });
+
+  it('keeps demanded an entry another kind asks for, an entry of another type, and one with no ten better named within the radius', () => {
+    expect(verdictOf(report, 'basilica-of-san-clemente')).toBe('missing_live');
+    expect(verdictOf(report, 'sant-ignazio')).toBe('missing_live');
+    expect(verdictOf(report, 'san-tommaso-da-villanova-castel-gandolfo')).toBe('missing_live');
+    expect(report.liveKinds.find(live => live.slug === 'archaeology')).toMatchObject({ expected: 2, tail: 0 });
+  });
+
+  it('never names a tail or a shadowed place among what a kind lacks, and counts the shadowed beside them', () => {
+    const slugs = worship?.wellKnownMissing.map(missing => missing.slug);
+    expect(slugs).not.toContain('sant-agnese-in-agone');
+    expect(slugs).not.toContain('santa-maria-sopra-minerva');
+    expect(slugs).not.toContain('santa-maria-in-aracoeli');
+    expect(worship?.shadowed).toBe(1);
+  });
+
+  it('asks an entry only of the kinds that demand it: a church in the tail and filed under a proposed kind is missing from that kind', () => {
+    const gardens = kind({ slug: 'parks-and-gardens', name: 'Parks and gardens', status: 'proposed', experience_kind_id: null });
+    const both = buildCoverageReport(facts({
+      kinds: [...KINDS, WORSHIP, gardens],
+      regions: [ROME_REGION],
+      expectations: ROME.map(row => row.slug === 'sant-agnese-in-agone' ? { ...row, kinds: ['places-of-worship', 'parks-and-gardens'] } : row),
+    }));
+    expect(verdictOf(both, 'sant-agnese-in-agone')).toBe('missing_proposed');
+  });
+
+  it('counts only the better-named places within the kind\'s radius: Nara\'s temples, a day trip filed under Kyoto, are demanded', () => {
+    const kyoto = place('kyoto');
+    const temples = [
+      kyoto('kiyomizu-dera', 'temple', 8, 77, [34.99483, 135.785]), kyoto('byodo-in', 'temple', 8, 37, [34.88944, 135.80778]),
+      kyoto('ginkaku-ji', 'temple', 8, 33, [35.02667, 135.79833]), kyoto('to-ji', 'temple', 8, 30, [34.98056, 135.74778]),
+      kyoto('kinkaku-ji', 'temple', 7, 57, [35.0395, 135.7285]), kyoto('nanzen-ji', 'temple', 7, 22, [35.01111, 135.79417]),
+      kyoto('saiho-ji-kokedera', 'temple', 7, 22, [34.9925, 135.68417]), kyoto('chion-in', 'temple', 7, 20, [35.00521, 135.7834]),
+      kyoto('tenryu-ji', 'temple', 7, 20, [35.01599, 135.67379]), kyoto('kodai-ji', 'temple', 7, 15, [35.00076, 135.78111]),
+      kyoto('sanzen-in', 'temple', 7, 8, [35.11972, 135.83444]), kyoto('todai-ji', 'temple', 6, 44, [34.68917, 135.83972]),
+      kyoto('enryaku-ji', 'temple', 6, 32, [35.07056, 135.84111]), kyoto('ryoan-ji', 'temple', 6, 32, [35.03444, 135.71833]),
+      kyoto('tofuku-ji', 'temple', 6, 23, [34.97571, 135.77368]), kyoto('higashi-hongan-ji', 'temple', 6, 13, [34.99081, 135.75844]),
+      kyoto('kennin-ji', 'temple', 6, 13, [35.00099, 135.77366]), kyoto('daikaku-ji', 'temple', 6, 11, [35.02824, 135.67774]),
+      kyoto('eikan-do', 'temple', 6, 9, [35.01453, 135.79529]), kyoto('shoren-in', 'temple', 6, 9, [35.00731, 135.7832]),
+      kyoto('horyu-ji', 'temple', 5, 53, [34.61444, 135.73417]), kyoto('kofuku-ji', 'temple', 5, 29, [34.68321, 135.8313]),
+    ];
+    const tail = buildCoverageReport(facts({
+      kinds: [...KINDS, WORSHIP],
+      regions: [{ slug: 'kyoto', name: 'Kyoto', country: 'Japan', surveyed: '2026-10-02' }],
+      expectations: temples,
+    })).expectations.filter(result => result.verdict === 'tail').map(result => result.slug);
+    // Ten better-named temples of central Kyoto stand within 10 km of these four; Arashiyama's Daikaku-ji has nine.
+    expect(tail).toEqual(['higashi-hongan-ji', 'kennin-ji', 'eikan-do', 'shoren-in']);
+    for (const nara of ['todai-ji', 'horyu-ji', 'kofuku-ji']) expect(tail).not.toContain(nara);
+  });
+
+  it('ranks an entry with no coordinate against its whole region, reads the line from the kind, and breaks a tie by slug: Fatih before Ortaköy', () => {
+    const istanbul = (slug: string, sources: number, sitelinks: number) => entry(slug, {
+      region_slug: 'istanbul', name: slug, source_count: sources, sitelinks, kinds: ['places-of-worship'], kind_types: { 'places-of-worship': 'mosque' },
+    });
+    const mosques = [
+      istanbul('hagia-sophia', 6, 152), istanbul('blue-mosque', 6, 89), istanbul('suleymaniye-mosque', 6, 69),
+      istanbul('chora-church', 4, 44), istanbul('sehzade-mosque', 4, 43), istanbul('new-mosque', 4, 41),
+      istanbul('rustem-pasha-mosque', 4, 33), istanbul('arap-mosque', 4, 25),
+      istanbul('ortakoy-mosque', 3, 38), istanbul('fatih-mosque', 3, 38), istanbul('little-hagia-sophia', 3, 36),
+    ];
+    const tailOf = (limit: number) => buildCoverageReport(facts({
+      kinds: [...KINDS, { ...WORSHIP, crowding_limit: limit }],
+      regions: [{ slug: 'istanbul', name: 'Istanbul', country: 'Turkey', surveyed: '2026-10-02' }],
+      expectations: mosques,
+    })).expectations.filter(result => result.verdict === 'tail').map(result => result.slug);
+    expect(tailOf(10)).toEqual(['little-hagia-sophia']);
+    expect(tailOf(9)).toEqual(['ortakoy-mosque', 'little-hagia-sophia']);
+  });
+
+  it('demands every entry of a kind without the display rule', () => {
+    const without = buildCoverageReport(facts({
+      kinds: [...KINDS, { ...WORSHIP, crowding_limit: null, crowding_radius_km: null }], regions: [ROME_REGION], expectations: ROME,
+    }));
+    expect(without.expectations.filter(result => result.verdict === 'tail')).toEqual([]);
+    expect(without.liveKinds.find(live => live.slug === 'places-of-worship')).toMatchObject({ expected: 15, tail: 0 });
+  });
+
+  it('says it as text: the tail counted and its names folded, the shadowed by name', () => {
+    const text = renderCoverageReport(report);
+    expect(text).toContain('Catalogue coverage: 3 of 13 demanded things are offered to a reader (23%), across 1 surveyed region(s); 2 more expected are the lists\' tails.');
+    expect(text).toContain('Rome, Italy (surveyed 2026-10-02): 15 expected, 13 demanded, 3 offered (23%)');
+    expect(text).toContain('       2  in the list\'s tail, beyond what the map shows of its kind and type, 1 of them offered all the same: '
+      + 'santa-maria-sopra-minerva; sant-agnese-in-agone');
+    expect(text).toContain('Places of worship [places-of-worship; no sitelinks line]: 3 of 12 expected are offered; 3 more are the lists\' tails');
+    expect(text).toContain('rome: santa-maria-in-aracoeli -> Santa Maria in Aracoeli');
+    expect(text).not.toContain('rome: sant-agnese-in-agone -> ');
+  });
+});
+
 describe('the statements', () => {
   const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
 
@@ -455,6 +606,16 @@ describe('the statements', () => {
     expect(sql).toContain(`JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id`);
     expect(sql).toContain(collapse(`(${countedMembershipSql('m', 'e')}) AS offered`));
     expect(sql).toContain(collapse(`(${publishedContentSql('t')} AND EXISTS (SELECT 1 ${venuesShowingSql('t')})) AS offered`));
+  });
+
+  it('call a place shadowed when a kind admits it and crowds it out (ADR-0172), and read the display rule and the type from the kind and the filing', () => {
+    const sql = collapse(coverageSql.MATCHES_SQL);
+    expect(sql).toContain(collapse(`(${membershipAdmittedSql('m')} AND ${membershipVisibleSql('m')} AND ${realKindSql('m')} AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}) AS shadowed`));
+    expect(sql).toContain('false AS shadowed');
+    expect(collapse(coverageSql.KINDS_SQL)).toContain('(SELECT k.crowding_limit FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_limit');
+    expect(collapse(coverageSql.KINDS_SQL)).toContain('(SELECT k.crowding_radius_km FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_radius_km');
+    expect(collapse(coverageSql.EXPECTATIONS_SQL)).toContain('jsonb_object_agg(xk.kind_slug, xk.type)');
+    expect(collapse(coverageSql.EXPECTATIONS_SQL)).toContain('ST_Y(x.location) AS lat, ST_X(x.location) AS lon');
   });
 
   it('match by identifier alone: the entry\'s Wikidata id, the ids named as the same place, UNESCO\'s id', () => {
@@ -550,12 +711,12 @@ describe('the report as text', () => {
         entry('Machu Picchu'), entry('Cusco Cathedral'), entry('Inti Raymi', { type: 'event', kinds: ['festivals-and-events'] }),
         entry('Climbing the dome', { type: 'activity', kinds: [] }),
       ],
-      matches: [{ region_slug: 'cusco-region', slug: 'Machu Picchu', catalogue_name: 'Machu Picchu', kind_id: 5, offered: true }],
+      matches: [{ region_slug: 'cusco-region', slug: 'Machu Picchu', catalogue_name: 'Machu Picchu', kind_id: 5, offered: true, shadowed: false }],
       nearby: [{ region_slug: 'cusco-region', slug: 'Cusco Cathedral', place: 'City of Cuzco', point: 'Main Square', metres: 78 }],
     })));
 
-    expect(text).toContain('Catalogue coverage: 1 of 4 expected things are offered to a reader (25%), across 1 surveyed region(s).');
-    expect(text).toContain('Cusco region, Peru (surveyed 2026-10-01): 4 expected, 1 offered (25%)');
+    expect(text).toContain('Catalogue coverage: 1 of 4 demanded things are offered to a reader (25%), across 1 surveyed region(s).');
+    expect(text).toContain('Cusco region, Peru (surveyed 2026-10-01): 4 expected, 4 demanded, 1 offered (25%)');
     expect(text).toContain('Festivals & events [festivals-and-events; holds: event; #1300]');
     expect(text).toContain('cusco-region: Cusco Cathedral -> City of Cuzco / Main Square (78 m)');
     expect(text).toContain('cusco-region: Climbing the dome [activity]');
