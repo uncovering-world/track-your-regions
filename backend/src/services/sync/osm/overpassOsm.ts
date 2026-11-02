@@ -271,7 +271,7 @@ async function askOverpass(
   query: string,
   options: { userAgent: string; isCancelled?: () => boolean; fetchImpl?: typeof fetch },
   attempt: number,
-): Promise<SparqlBinding[]> {
+): Promise<OverpassElement[]> {
   await assertRobotsAllow(endpoint);
   const { signal, release } = abortOn(declaredTimeoutMs(query), options.isCancelled);
   try {
@@ -306,7 +306,7 @@ async function askOverpass(
       throw new Error(`OpenStreetMap could not finish the question: ${body.remark.substring(0, 300)}`);
     }
     if (!body.elements) throw new Error('OpenStreetMap answered without any elements');
-    return rowsOf(body.elements);
+    return body.elements;
   } finally {
     release();
   }
@@ -341,20 +341,52 @@ export function overpassOsmDoor(
   logPrefix: string = LOG_PREFIX_DEFAULT,
   options: { fetchImpl?: typeof fetch; now?: () => number } = {},
 ): OsmDoor {
+  const ask = overpassAsker(progress, budget, logPrefix, options);
+  const send = async (query: string): Promise<SparqlBinding[]> => rowsOf(await ask(query));
+  return { name: 'overpass', question: overpassBatchQuery, digsQuestions: overpassDigsQueries, send };
+}
+
+/**
+ * Every public instance has turned the caller away, each named with why. A
+ * class of its own, so an asker that outlives one question (the card's,
+ * `pointNamesakes.ts`) tells it from a question that failed for another
+ * reason without reading the sentence.
+ */
+export class OverpassInstancesClosedError extends Error {
+  constructor(closures: readonly string[]) {
+    super(`Every public Overpass instance is closed to this run — ${closures.join('; ')}`);
+    this.name = 'OverpassInstancesClosedError';
+  }
+}
+
+/**
+ * The public instances' manners, for any question in Overpass QL: the pause
+ * between two questions, the retries and a wait budget (the run's, or one per
+ * question where the asker serves many, `questionBudget`), and the instances
+ * in order, an instance that turned the caller away never asked again by it. Answers the elements as Overpass sent them; `overpassOsmDoor`
+ * reads them as rows, and a rough point's namesakes (`pointNamesakes.ts`,
+ * #2243) as objects with a centre.
+ */
+export function overpassAsker(
+  progress: { cancel: boolean; statusMessage: string },
+  budget: WaitBudget,
+  logPrefix: string = LOG_PREFIX_DEFAULT,
+  options: { fetchImpl?: typeof fetch; now?: () => number } = {},
+): (query: string, questionBudget?: WaitBudget) => Promise<OverpassElement[]> {
   const now = options.now ?? Date.now;
   let lastAnsweredAt: number | null = null;
   let current = 0;
   const closures: string[] = [];
   const isCancelled = () => progress.cancel;
 
-  const askInstance = (endpoint: string, query: string) => withRetries(
+  const askInstance = (endpoint: string, query: string, questionBudget: WaitBudget) => withRetries(
     (attempt) => askOverpass(endpoint, query, {
       userAgent: OVERPASS_USER_AGENT, isCancelled, fetchImpl: options.fetchImpl,
     }, attempt),
     {
       logPrefix,
       retries: OSM_MAX_RETRIES,
-      budget,
+      budget: questionBudget,
       isCancelled,
       onWait: (wait: SourceWait) => {
         progress.statusMessage = waitMessage('OpenStreetMap', wait, budget);
@@ -376,30 +408,29 @@ export function overpassOsmDoor(
   };
 
   /** The question, of the instance the run is on and then of each after it. */
-  const askInOrder = async (query: string): Promise<SparqlBinding[]> => {
+  const askInOrder = async (query: string, questionBudget: WaitBudget): Promise<OverpassElement[]> => {
     for (let instance = OVERPASS_INSTANCES[current]; instance; instance = OVERPASS_INSTANCES[current]) {
       try {
-        return await askInstance(instance.endpoint, query);
+        return await askInstance(instance.endpoint, query, questionBudget);
       } catch (error) {
         if (isCancelled() || error instanceof OsmQuestionRefusedError) throw error;
         close(instance, error);
       }
     }
-    throw new Error(`Every public Overpass instance is closed to this run — ${closures.join('; ')}`);
+    throw new OverpassInstancesClosedError(closures);
   };
 
-  const send = async (query: string): Promise<SparqlBinding[]> => {
+  return async (query: string, questionBudget: WaitBudget = budget): Promise<OverpassElement[]> => {
     if (lastAnsweredAt !== null) {
       const due = lastAnsweredAt + OVERPASS_PAUSE_MS - now();
       if (due > 0) await interruptibleDelay(due, isCancelled);
     }
     try {
-      return await askInOrder(query);
+      return await askInOrder(query, questionBudget);
     } finally {
       // Measured from the end of the exchange, answered or not: a refusal held
       // a slot for as long as an answer did.
       lastAnsweredAt = now();
     }
   };
-  return { name: 'overpass', question: overpassBatchQuery, digsQuestions: overpassDigsQueries, send };
 }

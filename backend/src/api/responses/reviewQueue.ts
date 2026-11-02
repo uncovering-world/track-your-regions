@@ -358,6 +358,9 @@ export const ApproximatePoint = z.strictObject({
     'Why the point is rough: given to the whole minute, or shared with another component of the property.',
   ),
   hints: z.array(ApproximatePointHint).describe("Where it may really stand, the component's own reference first."),
+  namesAsked: z.boolean().describe(
+    'Whether a curator has asked the full OpenStreetMap for its namesakes with its name and coordinate as they are (#2243).',
+  ),
 }).describe('A component the World Heritage list placed only roughly, which nobody has placed since (#1853).');
 export type ApproximatePoint = z.infer<typeof ApproximatePoint>;
 

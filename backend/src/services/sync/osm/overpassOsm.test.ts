@@ -11,7 +11,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   OVERPASS_INSTANCES, OVERPASS_PAUSE_MS, OVERPASS_RATE_LIMIT_PAUSE_MS, OVERPASS_QUERY_MAXSIZE_B,
   OVERPASS_QUERY_TIMEOUT_S, OVERPASS_ENUMERATION_TIMEOUT_S, declaredTimeoutMs, overpassBatchQuery, overpassDigsQueries,
-  overpassOsmDoor, rowsOf,
+  overpassAsker, overpassOsmDoor, OverpassInstancesClosedError, rowsOf,
 } from './overpassOsm.js';
 import type { OverpassElement } from './overpassGeometry.js';
 import { foldOsmRows, type DigTags, type KeepWkt, type OsmObject } from './types.js';
@@ -188,6 +188,21 @@ describe('overpassOsmDoor', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps the pause across questions that each bring their own wait budget', async () => {
+    // The card's asker (pointNamesakes.ts) serves every curator's question.
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>(async () => answer([]));
+    const ask = overpassAsker(progress(), new WaitBudget(0), '[T]', { fetchImpl });
+
+    await ask('first', new WaitBudget(30000));
+    const second = ask('second', new WaitBudget(30000));
+    await vi.advanceTimersByTimeAsync(OVERPASS_PAUSE_MS - 1000);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    await second;
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it('never sends a second question while the first is in flight', async () => {
     vi.useFakeTimers();
     let release: (() => void) | undefined;
@@ -346,6 +361,7 @@ describe('overpassOsmDoor', () => {
       await expect(failed).rejects.toThrow(
         /Every public Overpass instance is closed to this run — overpass-api\.de: Overpass 504.*; maps\.mail\.ru: Overpass 504.*; overpass\.private\.coffee: OpenStreetMap answered 403/,
       );
+      await expect(failed).rejects.toBeInstanceOf(OverpassInstancesClosedError);
       expect(fetchImpl).toHaveBeenCalledTimes(3);
       // And a question after that is refused by name, sending nothing.
       await expect(runWithTimers(door.send('q2'))).rejects.toThrow(/Every public Overpass instance is closed/);

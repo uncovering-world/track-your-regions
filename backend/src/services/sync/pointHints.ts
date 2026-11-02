@@ -4,7 +4,8 @@
  * worked out by the *Find component items* pass and kept in
  * `experience_point_hints`, since the card reads no workbench table (ADR-0124).
  *
- * Three sources, each read locally, never from a live service:
+ * Three sources, each read locally; the one live answer, a curator's
+ * question from the card, is read as it was kept:
  * - `item`, the coordinate of the component's own Wikidata item, from the
  *   subset's claims;
  * - `osm-ref`, an OpenStreetMap object of the layer (ADR-0134) that carries
@@ -13,7 +14,10 @@
  *   components share, and the Longmen Grottoes' object stands 10 km from the
  *   list's point;
  * - `osm-name`, up to `OSM_NAME_HINTS` objects within `OSM_NAME_RADIUS_M`
- *   named like the component, a settlement or a boundary never among them.
+ *   named like the component, the place it is named after never among them
+ *   (`namedAfterSql`), and the namesakes a curator asked the full
+ *   OpenStreetMap for from the card (`pointNamesakes.ts`, #2243), which the
+ *   layer does not keep.
  *
  * A hint within `COPIED_COORDINATE_M` of the point is the point copied, not a
  * measurement, and is left out. The finder's own candidates are hints too, and
@@ -28,9 +32,21 @@ import { COPIED_COORDINATE_M } from './componentItemMatching.js';
 /** How far an OpenStreetMap object named like the component may stand to be offered: a whole minute's cell. */
 export const OSM_NAME_RADIUS_M = 2000;
 /** How alike an object's name must be to the component's, by trigram similarity. */
-const OSM_NAME_SIMILARITY = 0.4;
+export const OSM_NAME_SIMILARITY = 0.4;
 /** How many objects named like the component a point is offered. */
-const OSM_NAME_HINTS = 3;
+export const OSM_NAME_HINTS = 3;
+
+/**
+ * An object named like the component that is the place it is named after,
+ * not where it stands: a settlement or an area's boundary (the Dacian forts
+ * were offered their villages, #1903), and a stream or a hill (the rock
+ * shelter Barranc del Puig – Abric I was offered its ravine's stream, which
+ * runs for kilometres, #2243). `tags` is the object's tags as `jsonb`.
+ */
+export function namedAfterSql(tags: string): string {
+  return `(${tags} ? 'place' OR ${tags} ? 'boundary' OR ${tags} ? 'waterway'
+    OR COALESCE(${tags}->>'natural' IN ('peak', 'hill', 'ridge', 'valley', 'saddle', 'mountain_range'), FALSE))`;
+}
 /** Metres in a degree of latitude, near enough for a search box. */
 const METRES_PER_DEGREE = 111000;
 
@@ -71,14 +87,19 @@ const HINTS = `
        -- A copy of the point takes no namesake's place before it is left out.
        AND NOT ST_DWithin(o.geom::geography, el.location::geography, ${COPIED_COORDINATE_M})
        AND o.tags->>'ref:whc' IS DISTINCT FROM el.external_ref
-       -- A settlement or an area's boundary named like the component is the
-       -- place it is named after, not where it stands: the Dacian forts were
-       -- offered their villages (#1903).
-       AND NOT (o.tags ? 'place' OR o.tags ? 'boundary')
+       AND NOT ${namedAfterSql('o.tags')}
        AND (similarity(lower(o.tags->>'name'), lower(el.name)) >= ${OSM_NAME_SIMILARITY}
             OR similarity(lower(o.tags->>'name:en'), lower(el.name)) >= ${OSM_NAME_SIMILARITY})
      ORDER BY ST_Distance(o.geom::geography, el.location::geography)
-     LIMIT ${OSM_NAME_HINTS}) named`;
+     LIMIT ${OSM_NAME_HINTS}) named
+  UNION ALL
+  -- What the full OpenStreetMap answered when a curator asked from the card
+  -- (pointNamesakes.ts, #2243): standing only while the point keeps the name
+  -- and the coordinate it was asked with.
+  SELECT 'osm-name', o->>'ref', o->>'label',
+         ST_SetSRID(ST_MakePoint((o->>'longitude')::float8, (o->>'latitude')::float8), 4326), o->'tags'
+    FROM experience_point_name_asks a, jsonb_array_elements(a.objects) o
+   WHERE a.location_id = el.id AND a.asked_name = el.name AND ST_Equals(a.asked_location, el.location)`;
 
 /** What a pass worked out: the points it read, and the hints it kept for them. */
 export interface PointHintsReport {
@@ -109,7 +130,10 @@ export async function findPointHints(siteId?: number): Promise<PointHintsReport>
     `WITH gone AS (
        DELETE FROM experience_point_hints h WHERE h.location_id = ANY($1::int[])
      ), found AS (
-       SELECT el.id AS location_id, hint.source, hint.ref, hint.label, hint.at, hint.tags,
+       -- One row per hint: an object the layer offers and the full
+       -- OpenStreetMap answered too (pointNamesakes.ts) is one namesake.
+       SELECT DISTINCT ON (el.id, hint.source, hint.ref)
+              el.id AS location_id, hint.source, hint.ref, hint.label, hint.at, hint.tags,
               ST_Distance(hint.at::geography, el.location::geography) AS metres
          FROM experience_locations el
         CROSS JOIN LATERAL (${HINTS}) hint

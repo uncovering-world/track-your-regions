@@ -191,6 +191,12 @@ export const findSiteLinkAnswerBodySchema = z.object({
   answer: z.enum(['confirmed', 'refused']),
 });
 
+/** `/api/experiences/:id/point-namesakes/:locationId` — a site and one of its rough points (#2243). */
+export const pointNamesakesParamsSchema = z.object({
+  id: rowIdSchema,
+  locationId: rowIdSchema,
+});
+
 /**
  * A curator's correction to one work: what it is called, who made it, when,
  * and which photograph it is shown by.

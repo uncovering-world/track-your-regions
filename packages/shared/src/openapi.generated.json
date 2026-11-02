@@ -15138,6 +15138,66 @@
         }
       }
     },
+    "/api/experiences/{id}/point-namesakes/{locationId}": {
+      "post": {
+        "operationId": "postExperiencesByIdPointNamesakesByLocationId",
+        "summary": "Ask OpenStreetMap for the objects named like a roughly placed component, once per point",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "locationId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PointNamesakesAnswer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/point-hint-suggestions": {
       "post": {
         "operationId": "postExperiencesByIdPointHintSuggestions",
@@ -17630,6 +17690,10 @@
               "$ref": "#/components/schemas/ApproximatePointHint"
             },
             "description": "Where it may really stand, the component's own reference first."
+          },
+          "namesAsked": {
+            "type": "boolean",
+            "description": "Whether a curator has asked the full OpenStreetMap for its namesakes with its name and coordinate as they are (#2243)."
           }
         },
         "required": [
@@ -17639,7 +17703,8 @@
           "latitude",
           "longitude",
           "reason",
-          "hints"
+          "hints",
+          "namesAsked"
         ],
         "additionalProperties": false,
         "description": "A component the World Heritage list placed only roughly, which nobody has placed since (#1853)."
@@ -30952,6 +31017,34 @@
         ],
         "additionalProperties": false,
         "description": "A confirmed component item taken back (#1317): the point has no item again, and the candidate is back in the queue, open (#1336)."
+      },
+      "PointNamesakesAnswer": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The roughly placed point asked about."
+          },
+          "found": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How many objects named like the component are now its hints."
+          },
+          "asked": {
+            "type": "boolean",
+            "description": "False where the point had been asked already with its name and coordinate, and the kept answer stands."
+          }
+        },
+        "required": [
+          "locationId",
+          "found",
+          "asked"
+        ],
+        "additionalProperties": false,
+        "description": "What the full OpenStreetMap answered about a rough point's namesakes (#2243)."
       },
       "PointsDetail": {
         "type": "string",

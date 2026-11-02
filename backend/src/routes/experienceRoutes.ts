@@ -22,6 +22,7 @@ import {
   ComponentItemsAnswered,
   ComponentItemSuggestions,
   PointHintSuggestions,
+  PointNamesakesAnswer,
   MergeProposalsAnswered,
   MergeProposalTakenBack,
   MergeProposalSuggestions,
@@ -60,6 +61,7 @@ import { answerMergeProposals } from '../controllers/experience/mergeProposalCon
 import { takeBackMergeProposalAnswer } from '../controllers/experience/mergeProposalTakeBackController.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
 import { suggestPointHints } from '../controllers/experience/pointHintSuggestionController.js';
+import { askNamesakes } from '../controllers/experience/pointNamesakesController.js';
 import { searchReviewRegions } from '../controllers/experience/reviewRegionSearchController.js';
 import { suggestMergeProposals } from '../controllers/experience/mergeProposalSuggestionController.js';
 import { suggestVisit } from '../controllers/experience/visitSuggestionController.js';
@@ -188,6 +190,7 @@ import {
   wikipediaEditionsQuerySchema,
   findSiteLinkParamsSchema,
   findSiteLinkAnswerBodySchema,
+  pointNamesakesParamsSchema,
 } from '../types/index.js';
 
 // =============================================================================
@@ -803,6 +806,17 @@ export const experienceCurationRoutes = [
   // Jev's judgement of the hints of where a site's roughly placed components
   // stand (#1913): the stored one for each hint as it stands, or a new one
   // asked for — one call for the card's hints, a POST since it may be paid for.
+  // A rough point's namesakes asked of the full OpenStreetMap from the card
+  // (#2243): a live question to the public Overpass instances, limited as the
+  // card's other live reads are.
+  defineRoute({
+    method: 'post', path: '/:id/point-namesakes/:locationId', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'Ask OpenStreetMap for the objects named like a roughly placed component, once per point',
+    params: pointNamesakesParamsSchema,
+    response: PointNamesakesAnswer,
+    handler: askNamesakes,
+  }),
   defineRoute({
     method: 'post', path: '/:id/point-hint-suggestions', access: 'curator', cache: 'no-store',
     limiter: authenticatedLimiter,

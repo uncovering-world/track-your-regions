@@ -40,6 +40,8 @@ export interface OverpassElement {
   tags?: Record<string, string>;
   lat?: number;
   lon?: number;
+  /** A way's or a relation's centre under `out center`. */
+  center?: OverpassPoint;
   geometry?: OverpassPoint[];
   members?: OverpassMember[];
 }
