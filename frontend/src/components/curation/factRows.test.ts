@@ -127,7 +127,7 @@ describe('rowsFor', () => {
   it('keeps a coordinate whole, because a place is not two numbers', () => {
     const rows = rowsFor([{ field: 'location', old: { lon: 4, lat: 49 }, new: { lon: 4, lat: 49.3 } }], NO_CONTEXT);
     expect(rows).toHaveLength(1);
-    expect(rows[0].sentence).toBe('Moved 33.4 km north — may fall in a different region; check the pin.');
+    expect(rows[0].sentence).toBe('Moved 33.4 km north.');
   });
 
   it('carries the sentence the fact has about this change, with the object as readers see it', () => {

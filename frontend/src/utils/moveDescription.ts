@@ -1,4 +1,6 @@
-import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
+import { distanceMeters, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
+// Which regions a move changes, as the review queue reads them (#2203).
+import type { RegionCrossing } from '../api/reviewQueue';
 
 /**
  * How far a pin moved, and which way — the one rule for a sentence about a
@@ -7,9 +9,10 @@ import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from
  * Written in `fieldMeaning.tsx` for the queue's coordinate rows and moved here
  * when the correction dialog needed the same sentence: that dialog opens from
  * the review page, the object screen and the map, and `components/shared/`
- * must not import a feature folder to say "1.6 km east". The distance and the
- * kilometre the warning turns on are the server's own (`@tyr/shared/moves`),
- * which is what decided a row was a move at all.
+ * must not import a feature folder to say "1.6 km east". The distance and
+ * `LOCATION_UNCHANGED_METERS` are the server's own (`@tyr/shared/moves`), which
+ * is what decided a row was a move at all, and the regions a move changes are
+ * the review queue's (`RegionCrossing`).
  */
 
 export interface Coordinate {
@@ -57,14 +60,33 @@ export function moveLabel(before: unknown, after: unknown): string | null {
 }
 
 /**
- * The sentence under a moved coordinate: the move, and past a kilometre the
- * warning that it may have changed which region the place counts in.
+ * Which regions a move changes, said only where it changes one (#2203): a
+ * warning on every long move was read past on the moves it was for. On
+ * 2026-11-02, 31 of the 34 open held moves over a kilometre stayed in their
+ * Administrative region; Comoé National Park's left Savanes for Zanzan. The
+ * crossings are the review queue's, one per hierarchy where its placement puts
+ * the two points in no common region; the first is named and the others counted.
  */
-export function describeMove(before: unknown, after: unknown): string | null {
+function crossing(crossings: readonly RegionCrossing[] | undefined): string {
+  const first = crossings?.[0];
+  if (!first) return '';
+  const others = crossings!.length - 1;
+  const noun = others === 1 ? 'hierarchy' : 'hierarchies';
+  const more = others > 0 ? `, and in ${others} other ${noun}` : '';
+  const where = `(${first.worldView}${more})`;
+  if (first.from && first.to) return ` — from ${first.from} into ${first.to} ${where}; check the pin`;
+  if (first.to) return ` — into ${first.to}, from outside every region ${where}; check the pin`;
+  return ` — out of ${first.from}, to outside every region ${where}; check the pin`;
+}
+
+/**
+ * The sentence under a moved coordinate: the move, and, where the review
+ * queue says it changes a hierarchy's region, which one.
+ */
+export function describeMove(before: unknown, after: unknown, crossings?: readonly RegionCrossing[]): string | null {
   const move = movedBy(before, after);
   if (!move) return null;
-  const far = move.meters > LOCATION_MAJOR_METERS ? ' — may fall in a different region; check the pin' : '';
-  return `Moved ${distanceLabel(move.meters)} ${move.heading}${far}.`;
+  return `Moved ${distanceLabel(move.meters)} ${move.heading}${crossing(crossings)}.`;
 }
 
 /**
@@ -75,12 +97,12 @@ export function describeMove(before: unknown, after: unknown): string | null {
  * (#1846). A curator's own correction keeps `describeMove`: a pin they drag
  * five metres did move.
  */
-export function describeProposedMove(before: unknown, after: unknown): string | null {
+export function describeProposedMove(before: unknown, after: unknown, crossings?: readonly RegionCrossing[]): string | null {
   const move = movedBy(before, after);
   if (move && move.meters <= LOCATION_UNCHANGED_METERS) {
     return `Not a move: the source writes the same place again, within ${LOCATION_UNCHANGED_METERS} m.`;
   }
-  return describeMove(before, after);
+  return describeMove(before, after, crossings);
 }
 
 /**

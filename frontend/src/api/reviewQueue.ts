@@ -22,7 +22,7 @@ import type { ReviewAddress } from '../utils/appUrl';
 // imports a call's answer from the module of the call.
 export type {
   AnsweredPoint, ChangedField, CountedWork, EarlierAnswer, FieldClaim, HeldPart, PendingPoint, PendingWork,
-  ProposedField, QueueFacets, QueueKind, QueueOrderEntry, RefusedPoint, RefusedWork, ReviewAnswer,
+  ProposedField, QueueFacets, RegionCrossing, QueueKind, QueueOrderEntry, RefusedPoint, RefusedWork, ReviewAnswer,
   ReviewAnswerDid, ReviewAnswerResult, ReviewQueue, ReviewQueueItem, ReviewRegionSearchResult, ReviewRegionSearchResults,
   RunSetAside, WaitingSub, WithdrawnPoint,
 } from './client.generated';

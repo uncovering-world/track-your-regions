@@ -300,9 +300,10 @@ describe('what a change means, in one line', () => {
     expect(meaningOf('metadata.dateInscribed').event).toBe(true);
   });
 
-  it('says how far and which way a pin moved, and warns past the server’s kilometre', () => {
+  it('says how far and which way a pin moved, and warns only of a crossing the queue names', () => {
+    // No divisions on the field: nothing is said about regions, however far (#2203).
     expect(change('location', { lon: 4.0, lat: 49.0 }, { lon: 4.0, lat: 49.3 }))
-      .toBe('Moved 33.4 km north — may fall in a different region; check the pin.');
+      .toBe('Moved 33.4 km north.');
     // 500 m east: minor to the server, and no warning here.
     expect(change('location', { lon: 34.8333, lat: -2.3333 }, { lon: 34.8378, lat: -2.3333 }))
       .toBe('Moved 500 m east.');
