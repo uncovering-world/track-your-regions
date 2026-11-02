@@ -684,9 +684,14 @@ guides recommend in each surveyed region. A row is an expected place or work tha
 does not offer although it is at or over that kind's own sitelinks line, or any one at all for
 World Heritage and Art Museums, which draw none. It names the region, how many sources named
 it, its sitelinks, and where it stands instead: not in the catalogue, held and seen by no
-reader, something else at its spot, or offered under another kind. Beside the rows, one line
-per live kind says how many of the expected it offers and how many it lacks under its line,
-which are the regional tier's and are counted rather than listed.
+reader, something else at its spot, or offered under another kind. A place the kind admits and
+crowds out of its city (`shadowed`) is the display's cost and never a row: the kind's line counts
+it. An entry in a kind's tail, with ten better-named entries of its type within the kind's radius,
+which a crowded city's map would not show either (`docs/tech/catalogue-coverage.md` § What a
+survey demands), is never a row. Beside the rows,
+one line per live kind says how many of the expected it offers, how many more are the lists'
+tails, how many are shadowed in a crowded city, and how many it lacks under its line, which are the regional tier's and are counted
+rather than listed.
 
 A row is a gap nobody has answered for. Once a person has judged why it stands, in the
 committed ledger `db/catalogue-coverage/judgements.jsonl` (`docs/tech/catalogue-coverage.md`
