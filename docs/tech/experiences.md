@@ -7590,8 +7590,21 @@ What the table decides, rather than merely draws:
   countries, a Wikidata item replaced by another, the UNESCO region, the inscription year — is
   marked `event` and its sentence arrowed (`'replaced'` marks one only where a value stood before,
   `FactRow.event`, so an item arriving on a place that held none is no event, ADR-0129): "Listed since 2003 — readers see no badge today; publishing adds it",
-  "Moved 33.4 km north — may fall in a different region; check the pin", "Inscription years do not
-  change — check the source page". A changed country *name* reads the country *codes* row to
+  "Moved 27.9 km east — from Savanes into Zanzan (Administrative); check the pin", "Inscription
+  years do not change — check the source page". A coordinate's sentence names a crossing only where
+  the move places the place in other regions of one of the catalogue's hierarchies (#2203): the queue
+  places both points of every move on the page — the held and conflicted
+  coordinates and an unread point that replaces a stored one — through the run's own placement
+  (`regionsHoldingPoints`, which shares `placementCtesSql` with `assignDirect` in
+  `regionAssignmentService.ts`, ADR-0054), in every public world view with geometry, without writing
+  anything (`attachRegionCrossings`, `reviewQueueRegionCrossings.ts`). It writes `regionCrossings`
+  onto the move: one entry per world view where the two points are placed in no common region, with
+  the smallest region each is placed in, or none — a point off a leaf's coastline, which only its
+  country and continent hold, is named by its country. A world view that is not public is never
+  asked. The sentence names the first entry and counts the others.
+  On 2026-11-02, 31 of the 34 open held moves over a kilometre stayed in their Administrative region
+  and say nothing of regions; a point in no region, at sea, is said to come from outside every
+  region. A changed country *name* reads the country *codes* row to
   tell a spelling correction from a change of country, which is why a sentence sees the whole
   proposal (`ChangeContext`). The year in the danger sentence and on the proposed badge comes
   from the same place: `withDangerFields` dates a listing only on a row whose flag is true, so
