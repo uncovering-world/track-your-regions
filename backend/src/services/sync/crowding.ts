@@ -1,13 +1,15 @@
 /**
  * What a reader is shown in a crowded city (ADR-0172, #2201): a place is
- * shown unless ten places of the same kind and type within 10 km of it are
- * better known. This is the run's after-step half of it. It measures how well
+ * shown unless ten places of the same kind and type within 10 km of it,
+ * holding no work a reader is shown, are better known, and a place holding
+ * such a work always is (ADR-0173). This is the run's after-step half of it. It measures how well
  * known every membership of a kind that declares the rule is, from the
  * workbench's three signals, and writes that to the serving side
  * (`membership_fame`), then asks the schema to score and recount the whole
  * catalogue (`refresh_crowding()`). Between runs the schema recounts around a
- * place whenever its candidacy changes (`crowding_follows_membership()`,
- * `crowding_follows_place()`).
+ * place whenever its candidacy or what it holds changes
+ * (`crowding_follows_membership()`, `crowding_follows_place()`,
+ * `crowding_follows_link()`, `crowding_follows_work()`).
  *
  * A signal whose source is not in place is left as last measured rather than
  * read as zero: a readership year not yet folded, a subset or a Wikivoyage
