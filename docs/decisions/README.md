@@ -193,7 +193,8 @@ and accepted by it.
 | [0172](0172-a-crowded-city-shows-the-ten-best-known-places-of-a-type-within-10-km.md) | A crowded city shows the ten best-known places of a type within 10 km | Accepted — decision 1 narrowed by [0173](0173-a-place-holding-works-is-never-crowded-out.md) and [0177](0177-a-crowded-city-reads-a-guides-use-as-a-presence.md) | 2026-11-01 |
 | [0173](0173-a-place-holding-works-is-never-crowded-out.md) | A place holding works is never crowded out | Accepted | 2026-11-02 |
 | [0174](0174-a-held-or-conflict-question-is-dated-by-the-run-that-first-asked-it.md) | A held or conflict question is dated by the run that first asked it | Accepted | 2026-11-01 |
-| [0175](0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md) | A place kind admits by quantiles of its own pool, every bar derived and verified as a traveller | Accepted | 2026-11-02 |
+| [0175](0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md) | A place kind admits by quantiles of its own pool, every bar derived and verified as a traveller | Accepted — decision 1 narrowed by [0176](0176-a-place-kinds-pool-starts-at-three-sitelinks.md) | 2026-11-02 |
+| [0176](0176-a-place-kinds-pool-starts-at-three-sitelinks.md) | A place kind's pool starts at three sitelinks of any Wikimedia site | Accepted | 2026-11-02 |
 | [0177](0177-a-crowded-city-reads-a-guides-use-as-a-presence.md) | A crowded city reads a guide's use as a presence, not a count | Accepted | 2026-11-02 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
