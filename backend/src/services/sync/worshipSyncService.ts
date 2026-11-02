@@ -254,14 +254,15 @@ async function fetchWorshipItems(
   // places the world bars left out, measured against their
   // surroundings, then put to the kind's own rule by id.
   const { gathered, run, regional: regionalPool } = await gather(progress);
+  const regionalHeld = await admittedExternalIds(WORSHIP_SOURCE_ID, undefined, 'regional');
   const regional = await regionalArrivals(run, sparql, WORSHIP_REGIONAL, shareOf(gathered, WORSHIP_KIND).trees, new Set(items.map((p) => p.qid)),
     (entity, classes, { type }, note): CollectedPlaceOfWorship => ({
       qid: entity.qid, label: entity.label, description: entity.description, lat: entity.lat!, lon: entity.lon!,
       imageUrl: entity.imageUrl, itemPictures: entity.itemPictures, sitelinks: entity.sitelinks, countryLabel: entity.countryLabel,
       articleUrl: entity.articleUrl, website: entity.website, type: (type || null) as CollectedPlaceOfWorship['type'], classes,
       artworks: [], door: 'place', readershipNote: note, tier: 'regional',
-    }), await regionalPool(), await admittedExternalIds(WORSHIP_SOURCE_ID, undefined, 'regional'));
-  mergeRegional(items, filtered, regional, (place) => place.qid);
+    }), await regionalPool(), regionalHeld);
+  mergeRegional(items, filtered, regional, (place) => place.qid, regionalHeld);
   // Not read this run (switched off, or the live service): its rows stay as they are.
   const spareTier = regional.skipped ? 'regional' as const : undefined;
   // A place Wikidata says is gone is refused whichever door or tier admitted it (#2259).

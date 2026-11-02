@@ -260,6 +260,32 @@ describe('public art in the place pass', () => {
     expect(mockedCollect.mock.calls[0][6]).toEqual({ history });
   });
 
+  it('leaves a row the regional tier holds as it stands when that tier was not read, the world rule\'s refusal of it included', async () => {
+    // A fountain the regional tier holds: the world classifier names a refusal of it, but the regional step
+    // was switched off, so the tier that holds it said nothing, and nothing is written of it.
+    const fountain = { externalId: 'Q9002253', name: 'A fountain the regional tier holds', reason: 'a work of a museum, not public art' };
+    const segovia = { externalId: 'Q1499912', name: 'Segovia Cathedral', reason: 'a place of worship, not public art' };
+    mockedCollect.mockReturnValue({ items: [landmark()], fetched: 3, filtered: [fountain, segovia] });
+    mockedAdmitted.mockImplementation(async (_source: number, _type?: string, tier?: string) =>
+      new Set(tier === 'regional' ? ['Q9002253'] : ['Q337179']));
+    regionalArrivals.mockResolvedValueOnce({ items: [], filtered: [], skipped: 'The regional tier is switched off' });
+    const config = await configOf();
+    const fetched = await config.fetchItems(progress(), []);
+    expect(fetched.filtered).toEqual([segovia]);
+    expect(fetched.spareTier).toBe('regional');
+  });
+
+  it('refuses a regional row by the rule where the regional tier was read', async () => {
+    const fountain = { externalId: 'Q9002253', name: 'A fountain the regional tier holds', reason: 'a work of a museum, not public art' };
+    mockedCollect.mockReturnValue({ items: [landmark()], fetched: 2, filtered: [fountain] });
+    mockedAdmitted.mockImplementation(async (_source: number, _type?: string, tier?: string) =>
+      new Set(tier === 'regional' ? ['Q9002253'] : ['Q337179']));
+    const config = await configOf();
+    const fetched = await config.fetchItems(progress(), []);
+    expect(fetched.filtered).toEqual([fountain]);
+    expect(fetched.spareTier).toBeUndefined();
+  });
+
   it('runs Monuments & memorials beside Public art, each by its kind\'s rule, from one gather (#1807)', async () => {
     const art = await configOf();
     const monuments = await configOf({}, 6);

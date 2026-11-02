@@ -268,6 +268,22 @@ describe('what the worship run fetches', () => {
     expect(mockedCollect.mock.calls[0][0].placeWorld).toEqual({ history });
   });
 
+  it('leaves a place the regional tier holds as it stands when that tier was not read (ADR-0175 decision 6)', async () => {
+    // Hirano Shrine, held by the regional tier; the world rule names a refusal of it, and the regional step was off.
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    mockedCollect.mockResolvedValueOnce({
+      items: [place()], fetched: 1200, diff: { moved: [], gained: [], lost: [], dropped: [] },
+      filtered: [{ externalId: 'Q738971', name: 'Hirano Shrine', reason: 'a refusal by the world rule' }],
+    });
+    mockedAdmitted.mockImplementation(async (_source: number, _type?: string, tier?: string) =>
+      new Set(tier === 'regional' ? ['Q738971'] : [COLOGNE]));
+    const { regionalArrivals } = await import('./places/regionalTier.js');
+    vi.mocked(regionalArrivals).mockResolvedValueOnce({ items: [], filtered: [], skipped: 'The regional tier is switched off' });
+    const result = await (await configOf()).fetchItems(progress(), []);
+    expect(result.filtered).toEqual([]);
+    expect(result.spareTier).toBe('regional');
+  });
+
   it('measures the works floor over what it read before writing, and answers with the verdict', async () => {
     mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: STORED });
     // One of the ten offered treasures placed again: run 42's shape.
