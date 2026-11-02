@@ -25,6 +25,7 @@ import {
 import { recordItemOutcome, recordItemFailure, recordFilteredEntities, recordPutBackTypes } from './itemOutcome.js';
 import { applyAdmissionSweep, badgeAdmitted, questionPins } from './admissionStep.js';
 import { askVisitQuestions } from './visit/visitQuestions.js';
+import { refreshWikipediaEditions } from './wikipediaEditions.js';
 import {
   completionMessage,
   computeFinalStatus,
@@ -153,6 +154,20 @@ async function detectMissing<T>(
   progress.missing = missing.length;
   changes.push(...missing);
   return null;
+}
+
+/**
+ * Every edition of the articles the catalogue now links, for a reader's
+ * languages (#2209). A copy kept for readers, not the run's work: a failure is
+ * logged and the table keeps what the last run left; a dry run writes nothing.
+ */
+async function keepWikipediaEditions(dryRun: boolean, logPrefix: string): Promise<void> {
+  if (dryRun) return;
+  await refreshWikipediaEditions().then((kept) => {
+    if (kept) console.log(`${logPrefix} Kept ${kept.editions} Wikipedia editions of ${kept.items} items`);
+  }).catch((error: unknown) => {
+    console.error('%s Keeping the Wikipedia editions failed:', logPrefix, error);
+  });
 }
 
 /**
@@ -315,6 +330,8 @@ export async function orchestrateSync<T>(
       console.error('%s Asking about places with nothing to see failed:', logPrefix, error);
       progress.visitQuestions = { read: 0, short: 0, asked: 0, failed: true };
     });
+
+    await keepWikipediaEditions(dryRun, logPrefix);
 
     // Computed after that attempt: a run whose per-object record never landed is
     // not a clean run, whatever the items themselves did, and an operator
