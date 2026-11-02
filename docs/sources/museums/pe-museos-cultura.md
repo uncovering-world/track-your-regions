@@ -65,5 +65,5 @@ OpenStreetMap), the Lima Art Museum (10, untagged), the Pedro de Osma museum —
 absent from it. Wikidata knows 30 museums in Lima (28 with coordinates, 3 art museums, none
 at 22 sitelinks); OpenStreetMap 109 in the metropolitan box, 35 with a Wikidata tag;
 Wikivoyage's *Lima/Central Lima* article 99 See listings, 30 with an item. The national
-registry is the candidate to measure; until then Lima's regional tier is the global-read-per-
-unit fallback with a curator's cut.
+registry is the candidate to measure; until then Lima has no regional tier, and the global read
+per area, the surroundings tier (ADR-0178), stands in with a curator's cut.

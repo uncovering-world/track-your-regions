@@ -76,7 +76,7 @@ urls:
   terms: https://…                      # the licence or terms page quoted below
 family: registry                        # registry | association | tourism-board | global | commercial | curator
 kinds: [art-museums, archaeology-museums, history-museums]   # what it enumerates, by the kind's slug; [any] for a global source that answers for every kind
-tier: regional                          # world | regional | none (a source refused before it reached a tier)
+tier: regional                          # world | surroundings | regional | none (a source refused before it reached a tier; ADR-0178)
 unit: { level: country, code: FR, name: France }   # the source's own unit: country | region | city | any (a global source read per unit, a guide under sights/ written for travellers anywhere, or one refused outright)
 row:                                    # what one row of the source carries
   identity: "Identifiant Muséofile (M0369)"

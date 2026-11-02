@@ -9,7 +9,7 @@ urls:
   terms: https://www.wikidata.org/wiki/Wikidata:Licensing
 family: global
 kinds: [any]
-tier: regional
+tier: surroundings
 unit: { level: any, code: none, name: "the place's own surroundings, everything within 50 km of it (ADR-0171); museums were first measured by country (P17) or by coordinates inside a boundary" }
 row:
   identity: "the item"
@@ -52,8 +52,8 @@ looked_at: 2026-09-11
 # Wikidata, read per unit
 
 The world tier's source for two kinds already (ADR-0023; the public-art line reuses it, #754),
-and the **fallback** of
-the regional tier where no native source exists or can be read
+and the source of the **surroundings tier**, which ADR-0048 named the fallback of the regional
+tier where no native source exists or can be read and ADR-0178 made a tier of its own
 (`docs/tech/filling-a-kind.md` § 4, § 7.4): any museum class (`P31/P279*` under Q33506)
 located in the unit, ranked by a within-unit signal. Also the yardstick every native source is
 measured against.
@@ -104,14 +104,15 @@ else.
 
 **Terms.** CC0.
 
-**What decides it.** Adopted *per unit* as the fallback, with § 4's three conditions measured:
+**What decides it.** Adopted *per kind* as the surroundings tier's source (ADR-0178), with § 4's
+three conditions measured on the kind's calibration list, and kept when a native source arrives:
 - coverage against the unit's canon;
 - the share of rows with an item (all, here);
 - a floor on the group where the cut ranks places against each other. For places that is ADR-0171's
   floor on the places within 50 km. The local fame of art museums needs no floor, since its bar is
   set per language (ADR-0057, in draft).
 
-A kind adopts [ADR-0171](../../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md)'s rule through its own issue, measured first on its calibration list. The
-source is replaced when a native source arrives. The place
+A kind adopts [ADR-0171](../../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md)'s rule through its own issue, measured first on its calibration list. A
+native source, when one arrives, fills the regional tier beside it (ADR-0178 decision 3). The place
 that shows it: the Georgian Museum of Fine Arts in Tbilisi, 11 sitelinks, a museum no register
 lists because Georgia's is unpublished.

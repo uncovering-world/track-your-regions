@@ -56,7 +56,7 @@ For every entry the section names as absent and not judged. Under a kind with a 
   - a visitor misses nothing by the kind not offering it, a commercial gallery, a workshop: `not-a-must`.
 - **Held.** A place waiting for a curator is the review queue's and is not judged; one a rule refused is judged like an absent one.
 
-The count under the line is the regional tier's: name the count, judge nothing per place.
+The count under the line is the surroundings or the regional tier's: name the count, judge nothing per place.
 
 Then read the two things the ledger cannot see on its own. The report's section *Judgements whose gap has closed* lists the lines to remove: remove each. And for every issue the ledger names, `gh issue view <n> --json state -q .state`; a judgement whose issue is closed is stale too: the gap is either closed with it, or open again under another cause.
 

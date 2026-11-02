@@ -194,7 +194,7 @@ what the line misses. An entry enters when two independent
 sources name it, the compiler's own list counting as one, and it is of the kind by the kind's
 definition in `kinds.jsonl`, judged per entry. The canon is as long as there are tops nobody
 would dispute, about a hundred as a soft guide: a place a traveller meets only in its own region
-is the regional tier's, and the surveys' lists hold it. A kind that spans every continent and
+is the surroundings or the regional tier's, and the surveys' lists hold it. A kind that spans every continent and
 tradition, as Places of worship does, may pass the guide, and its source record says so and why;
 the canon is never cut to the guide by a rule the method does not have. Which guides named an entry is
 kept under `docs/local/`, since a guide's selection is its publisher's
@@ -340,7 +340,7 @@ kind (`coverage_expectation_kinds.type`).
 - **A filing carries its type** in the kind's own vocabulary: a church, a mosque, a temple, a
   bridge, a square (#2246). No file states it. The load computes it at every load, from the kind's
   rule of the day, with `readFilingTypes` (`backend/src/services/catalogueCoverage/entryTypes.ts`):
-  the kind's regional declaration's `typeOf`, the one the regional tier groups a place's
+  the kind's regional declaration's `typeOf` (the code's name for the surroundings tier), the one the surroundings tier groups a place's
   neighbours by, over the item's classes and the class trees the kind's gather reads. Both are
   read from the local Wikidata subset through the subset's own door, so a load asks the query
   service nothing. `TYPE_RULES` names the kinds that have types: Public art, Places of worship,
@@ -492,7 +492,7 @@ the first that applies:
 | admitted | The kind admits a place known by the item and its arrival waits in the review queue (`arrivalWaitingSql`, the queue's own fragment: unread, not marked missing). Counted beside the offered, never named as a miss, since the line holds it |
 | crowded | The kind admits a place known by the item and a crowded city's tail holds it: ten better-known places of its type lie within 10 km (ADR-0172). The display decides it, not the line; named as a miss, with no place |
 | held | A catalogue place known by the item exists and this kind neither offers it nor holds it for a curator: refused by name by an earlier run, offered by another kind alone, passed by a curator and no longer standing, or marked missing before anyone read it; the place is named |
-| absent, under the editions line | Nothing holds it and no run named it, and the list's `sitelinks` are under the kind's editions line: the regional tier's |
+| absent, under the editions line | Nothing holds it and no run named it, and the list's `sitelinks` are under the kind's editions line: the surroundings or the regional tier's |
 | absent, not a candidate | Nothing holds it and no run named it, at or over the line, or with no count: the kind's classes do not reach it, or a candidate under the readers' line, which the run records nowhere |
 
 A place is known by the same identifiers the survey lists match by (`KNOWN_AS_SQL`), and offered
@@ -515,7 +515,7 @@ build next; it changes no priority (ADR-0081 decision 8).
 **What each live kind lacks.** For every live kind: how many of the expectations filed under it
 and demanded of it the kind itself offers, how many more are its lists' tails, the absent
 demanded ones at or over the kind's own sitelinks line by name, and a count of the absent ones
-under it, which are the regional tier's to hold. The line is the
+under it, which are the surroundings or the regional tier's to hold. The line is the
 `enterSitelinks` the kind's source states, or the code's line for a monument and for a work.
 Two kinds have none, and every absent entry of theirs is named: World Heritage, where being
 inscribed is the whole rule, and Art Museums, which admits a museum through a work it holds,

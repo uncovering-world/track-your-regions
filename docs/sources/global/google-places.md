@@ -51,7 +51,7 @@ looked_at: 2026-09-04
 
 # Google Places
 
-Refused on terms, for both tiers and for curator screens alike (`docs/tech/filling-a-kind.md`
+Refused on terms, for every tier and for curator screens alike (`docs/tech/filling-a-kind.md`
 § 5, § 7.5), on the reading of the Maps Platform Terms of Service made on 2026-09-04:
 § 3.2.3(e) "No Use With Non-Google Maps" forbids displaying or using Places content on a
 non-Google map; § 3.2.3(c)(iv) forbids using latitude/longitude from the API as input for
