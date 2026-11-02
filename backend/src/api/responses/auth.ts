@@ -100,5 +100,7 @@ export const MapsApp = z.enum(MAPS_APPS)
 export const MyPreferences = z.strictObject({
   mapsApp: MapsApp.nullable()
     .describe('The maps app "Open in maps" opens; null asks each time, with every maps app side by side.'),
+  readingLanguages: z.array(z.string()).nullable()
+    .describe('The Wikipedia languages an article opens in, first choice first (#2209); null reads the browser\'s languages.'),
 }).describe('What the signed-in visitor has chosen for themselves (#1604).');
 export type MyPreferences = z.infer<typeof MyPreferences>;

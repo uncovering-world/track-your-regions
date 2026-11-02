@@ -5,7 +5,7 @@
 
 import { z } from 'zod/v4';
 import { IDENTIFIER_SCHEMES, IDENTIFIER_WORDS, isIdentifier } from '@tyr/shared/identifiers';
-import { MAPS_APPS } from '@tyr/shared/preferences';
+import { MAPS_APPS, MAX_READING_LANGUAGES, READING_LANGUAGE } from '@tyr/shared/preferences';
 import { bodyRowIdSchema, rowIdSchema } from './rowId.js';
 import { VIEW_FIELDS } from '../db/sourceViews.js';
 import { parseBbox } from '../db/bboxEnvelopes.js';
@@ -398,7 +398,23 @@ export const visitedRegionBodySchema = z.object({
 
 /** What a visitor sets on their own preferences: only the listed maps apps, or null to be asked each time (#1604). */
 export const myPreferencesBodySchema = z.strictObject({
-  mapsApp: z.enum(MAPS_APPS).nullable(),
+  mapsApp: z.enum(MAPS_APPS).nullable().optional(),
+  // First choice first, each once (#2209); null reads the browser's languages again.
+  readingLanguages: z.array(z.string().regex(READING_LANGUAGE)).max(MAX_READING_LANGUAGES)
+    .refine(codes => new Set(codes).size === codes.length, 'Each language once')
+    // The list is the languages read ahead of English, which every link falls back to.
+    .refine(codes => !codes.includes('en'), 'English is always read last, and is not listed')
+    .nullable().optional(),
+}).refine(body => body.mapsApp !== undefined || body.readingLanguages !== undefined, 'Name a preference to change');
+
+/** The English articles a reader's languages pick editions for (#2209), and those languages in order. */
+export const wikipediaEditionsQuerySchema = z.object({
+  articles: z.preprocess(
+    value => (Array.isArray(value) ? value : [value]),
+    z.array(z.string().max(1000)).min(1).max(100),
+  ),
+  languages: z.string().max(200).transform(value => value.split(',').filter(Boolean))
+    .pipe(z.array(z.string().regex(READING_LANGUAGE)).min(1).max(MAX_READING_LANGUAGES)),
 });
 
 // =============================================================================

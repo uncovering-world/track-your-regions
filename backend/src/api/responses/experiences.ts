@@ -448,3 +448,16 @@ export const NewBadgesSeen = z.strictObject({
   recorded: z.array(z.number().int()).describe('The objects whose first impression this call recorded. Only the first is kept.'),
 }).describe('Which New chips were recorded as shown.');
 export type NewBadgesSeen = z.infer<typeof NewBadgesSeen>;
+
+export const WikipediaEdition = z.strictObject({
+  article: z.string().describe('The English article asked about, as the catalogue links it.'),
+  url: z.string().describe('The same item\'s article in the first of the reader\'s languages its item has.'),
+  language: z.string().describe('That article\'s language, as the reader named it: `ru`, `de`, `zh-classical`.'),
+}).describe('An English article\'s edition in a reader\'s language (#2209).');
+
+export const WikipediaEditions = z.strictObject({
+  editions: z.array(WikipediaEdition).describe(
+    'One entry per English article asked about whose item has an article in one of the reader\'s languages ahead of English; an article without one is left out, and its English link stands.',
+  ),
+}).describe('Which edition each English article opens in for a reader\'s languages, first choice first (#2209).');
+export type WikipediaEditions = z.infer<typeof WikipediaEditions>;
