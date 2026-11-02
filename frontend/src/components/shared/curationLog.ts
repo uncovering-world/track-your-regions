@@ -141,6 +141,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // And the other way (#2035): a place put into a kind no run offers it in,
   // green like a put-back, named for the kind.
   kind_added: { label: 'Added to a kind', color: GREEN },
+  // A site's curator said whether a find comes from the site (#2242): blue
+  // like the other answers to a run's question.
+  find_site_answered: { label: 'Find answered', color: BLUE },
   // A pin released, with the rule's verdict written in its place: one an
   // unread batch answer made (#1365, ADR-0096), or one a curator let the rule
   // decide once a run asked about it again (#1367). Red like a kept-out row,
@@ -533,6 +536,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   visit_question_answered: d => formatVisitQuestionAnswered(d),
   kept_out: d => formatKeptOut(d),
   kind_added: d => formatKindAdded(d),
+  find_site_answered: d => formatFindSiteAnswered(d),
   identifier_settled: d => formatIdentifierSettled(d),
 };
 
@@ -697,6 +701,14 @@ function formatKeptOut(d: Record<string, unknown>): string | null {
   const kind = typeof d.kind === 'string' ? d.kind : 'its kind';
   return [`Out of ${kind}`, typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null]
     .filter(Boolean).join(' — ');
+}
+
+/** "Dendera zodiac comes from here", or "… does not come from here": the find and the answer (#2242). */
+function formatFindSiteAnswered(d: Record<string, unknown>): string | null {
+  const find = typeof d.find === 'string' ? d.find : 'A find';
+  if (d.answer === 'confirmed') return `${find} comes from here`;
+  if (d.answer === 'refused') return d.wasConfirmed === true ? `${find} unlinked from here` : `${find} does not come from here`;
+  return null;
 }
 
 function formatKindAdded(d: Record<string, unknown>): string | null {

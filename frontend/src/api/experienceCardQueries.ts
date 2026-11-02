@@ -40,10 +40,11 @@ export const experienceContentsQuery = (id: number) => ({
 });
 
 /**
- * What was dug up at a site and where it is shown — the third part of a
- * site's card, and only a site's (#894). Issued for a row `hasExtent()` says is
- * one, off the loaded row and before any read, for the reason the note at the
- * foot of this file gives; a museum, a monument or a church never asks.
+ * What was dug up at a site or taken from it, and where it is shown — the
+ * third part of a site's card (#894, #2242). Issued for a row `cardAsksFinds()`
+ * says has finds — a site, or a place whose row counts finds on view — off the
+ * loaded row and before any read, for the reason the note at the foot of this
+ * file gives; a museum, a monument or a church with no find linked never asks.
  */
 export const siteFindsQuery = (id: number) => ({
   queryKey: queryKeys.experience.siteFinds(id),

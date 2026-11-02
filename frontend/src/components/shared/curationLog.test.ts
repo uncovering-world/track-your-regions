@@ -542,3 +542,17 @@ describe("a near pair's part of, read off Wikidata and taken back (#1991)", () =
     expect(takeablePair(takenBack, [takenBack])).toBeNull();
   });
 });
+
+describe("a site's curator's answer on where a find comes from (#2242)", () => {
+  it('names the find and the answer, and a no that takes a link back', () => {
+    expect(formatLogDetails(entry('find_site_answered', {
+      treasureId: 501, find: 'Dendera zodiac', answer: 'confirmed', wasConfirmed: false,
+    }))).toBe('Dendera zodiac comes from here');
+    expect(formatLogDetails(entry('find_site_answered', {
+      treasureId: 502, find: 'The Yellow House', answer: 'refused', wasConfirmed: false,
+    }))).toBe('The Yellow House does not come from here');
+    expect(formatLogDetails(entry('find_site_answered', {
+      treasureId: 501, find: 'Dendera zodiac', answer: 'refused', wasConfirmed: true,
+    }))).toBe('Dendera zodiac unlinked from here');
+  });
+});

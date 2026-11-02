@@ -90,6 +90,20 @@ export function placeHasExtent(
   return hasExtent(row.kind_id, row.type);
 }
 
+/**
+ * Whether the place's card reads its finds: a site's (`placeHasExtent`), or a
+ * place a curator linked finds to as coming from it (#2242), which the row's
+ * count of finds on view says before any read — a World Heritage row such as
+ * Babylon, listed under its own kind. One rule for the card and the readiness
+ * gate that waits for it, so the row's count and the card never disagree (#907).
+ */
+export function cardAsksFinds(
+  row: Pick<WithKinds, 'kind_id' | 'type'> & { kinds?: PlaceKind[]; finds_count?: number },
+  everyKind: boolean,
+): boolean {
+  return placeHasExtent(row, everyKind) || (row.finds_count ?? 0) > 0;
+}
+
 interface WithFame {
   kind_id: number;
   kinds?: ReadonlyArray<{ kind_id: number; fame?: number | null }> | null;

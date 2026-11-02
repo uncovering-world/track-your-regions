@@ -47,11 +47,11 @@ export function useExperienceCardReady(
    */
   locationsSettled = true,
   /**
-   * Whether this row is a site, whose card has a fifth part: the finds dug up
-   * there and where they are shown (#894). Decided off the loaded row
-   * (`hasExtent`), never by asking — the read exists for sites alone, and a
-   * card that opened before it answered would grow a list of finds under the
-   * reader, which is the shuffle this hook exists to prevent.
+   * Whether this row's card has a fifth part: the finds of the place and where
+   * they are shown (#894, #2242). Decided off the loaded row (`cardAsksFinds`:
+   * a site, or a row whose `finds_count` is above zero), never by asking — a
+   * card that opened before the read answered would grow a list of finds under
+   * the reader, which is the shuffle this hook exists to prevent.
    */
   asksFinds = false,
 ): boolean {
