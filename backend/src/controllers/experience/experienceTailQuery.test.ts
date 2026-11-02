@@ -7,7 +7,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { membershipCrowdedSql, membershipOfferedSql, placeShownSql } from '../../db/membership.js';
-import { experienceOfferedToReaderSql, readerRegionMembershipSql } from '../../db/readerPredicates.js';
+import { experienceOfferedToReaderSql, placedInReaderRegionsSql } from '../../db/readerPredicates.js';
+import { notRejectedInSql } from './experienceRegionQuery.js';
 import { buildRegionTailQueries, regionTailCountsQuery } from './experienceTailQuery.js';
 
 const tail = (over: Partial<Parameters<typeof buildRegionTailQueries>[0]> = {}) =>
@@ -18,8 +19,10 @@ describe('the tail of a crowded city', () => {
     const { query, countQuery } = tail();
     for (const sql of [query, countQuery, regionTailCountsQuery(true)]) {
       expect(sql).toContain(experienceOfferedToReaderSql());
-      expect(sql).toContain(readerRegionMembershipSql());
-      expect(sql).toContain('rej.id IS NULL');
+      expect(sql).toContain(placedInReaderRegionsSql('SELECT id FROM scope_regions'));
+      expect(sql).toContain(notRejectedInSql('SELECT id FROM scope_regions'));
+      // Asked of the place, never joined from its region rows.
+      expect(sql).not.toMatch(/JOIN experience_regions/);
     }
     expect(query).toContain(membershipCrowdedSql('tm'));
     expect(query).toContain(membershipOfferedSql('tm'));

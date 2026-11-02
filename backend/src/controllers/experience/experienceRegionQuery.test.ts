@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildRegionQueries } from './experienceRegionQuery.js';
+import { placedInReaderRegionsSql } from '../../db/readerPredicates.js';
+import { buildRegionQueries, notRejectedInSql } from './experienceRegionQuery.js';
 
 /**
  * The `(SELECT COUNT(*) ... ) as location_count` subquery, whole. A single
@@ -159,6 +160,20 @@ describe('a region read with its children (#1766)', () => {
     const sql = collapse(buildRegionQueries({ ...base, showRejected: true }).query);
     expect(sql).toContain('SELECT e.id, bool_or(rej.id IS NOT NULL) as is_rejected, MAX(rej.reason) as rejection_reason FROM experiences e');
     expect(sql).toContain(', p.is_rejected, p.rejection_reason');
+  });
+
+  it('counts one row per place, the membership asked of the place (#2283)', () => {
+    // Joined from its region rows, a place's lifecycle was asked once per row,
+    // and a large region's rows are mostly places waiting for a curator.
+    const regions = 'SELECT id FROM descendant_regions';
+    const reader = collapse(buildRegionQueries({ ...base, showRejected: false }).countQuery);
+    expect(reader).toContain(collapse(`FROM experiences e WHERE ${placedInReaderRegionsSql(regions)}`));
+    expect(reader).toContain(collapse(notRejectedInSql(regions)));
+    expect(reader).not.toContain('JOIN experience_regions');
+    // A curator's count holds what was rejected, as the curator's list does.
+    const curator = collapse(buildRegionQueries({ ...base, showRejected: true }).countQuery);
+    expect(curator).toContain(collapse(placedInReaderRegionsSql(regions)));
+    expect(curator).not.toContain('experience_rejections');
   });
 
   it('orders ties between two places of one name by id, in both branches', () => {

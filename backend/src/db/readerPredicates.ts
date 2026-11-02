@@ -471,6 +471,26 @@ export function readerRegionMembershipSql(experienceIdExpr = 'e.id', membershipA
 }
 
 /**
+ * The place `experienceAlias` is in one of the regions `regionsSql` selects
+ * (`SELECT id FROM descendant_regions`), by `readerRegionMembershipSql`: the
+ * membership asked of the place, once, for a read that counts or groups places
+ * rather than listing region rows.
+ *
+ * Why the place and not the row: placement writes a place into every ancestor
+ * of the region that holds its point, and the places waiting for a curator
+ * too (ADR-0025 decision 5), so a large region holds several rows per place,
+ * most of them for places no reader sees. Joined, the conditions on the place
+ * itself (offered, crowded out, rejected) are asked once per row; asked of the
+ * place, once per place (#2283).
+ */
+export function placedInReaderRegionsSql(regionsSql: string, experienceAlias = 'e'): string {
+  const place = `${experienceAlias}.id`;
+  return `EXISTS (SELECT 1 FROM experience_regions er
+                   WHERE er.experience_id = ${place} AND er.region_id IN (${regionsSql})
+                     AND ${readerRegionMembershipSql(place)})`;
+}
+
+/**
  * Hides a link the source has stopped placing here. `alias` is the
  * `experience_treasures` alias.
  *
