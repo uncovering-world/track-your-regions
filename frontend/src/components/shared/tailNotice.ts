@@ -4,7 +4,8 @@
  * and the mark on a search answer the list leaves out.
  *
  * A place is in the tail when ten better-known places of its kind and type
- * stand within 10 km of it. Every kind that crowds takes those two numbers
+ * stand within 10 km of it, or when a curator who weighed them keeps it in
+ * the shadow (ADR-0180). Every kind that crowds takes those two numbers
  * (`experience_kinds.crowding_limit`, `crowding_radius_km`), so the sentence
  * says them rather than reading them off each kind.
  */
@@ -15,15 +16,15 @@ import { typeLabelFor } from '../../utils/experienceTypes';
 export const TAIL_MARK = 'shadowed';
 
 /** What the mark means, on hover. */
-export const TAIL_REASON = 'Shadowed: ten better-known places of its type stand within 10 km of it, so the region\'s'
-  + ' main list leaves it out.';
+export const TAIL_REASON = 'Shadowed: ten better-known places of its type stand within 10 km of it, or a curator'
+  + ' who weighed them keeps it in the shadow, so the region\'s main list leaves it out.';
 
 /** An open tail whose read failed, under its row. */
 export const TAIL_FAILED = 'These places could not be loaded. Fold and open the row to try again.';
 
 /** What the row that opens a tail means, on hover. */
-export const TAIL_ROW_REASON = 'Shadowed: ten better-known places of their type stand within 10 km of each, so the'
-  + ' main list leaves them out.';
+export const TAIL_ROW_REASON = 'Shadowed: ten better-known places of their type stand within 10 km of each, or a'
+  + ' curator who weighed them keeps them in the shadow, so the main list leaves them out.';
 
 /** How many a kind leaves out of one type, as the region's list answers it (`crowdedOut`). */
 export interface TailCount {
