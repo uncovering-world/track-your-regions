@@ -24,7 +24,7 @@ type Missing = LiveKindGaps['wellKnownMissing'][number];
 
 function liveKind(over: Partial<LiveKindGaps>): LiveKindGaps {
   return {
-    slug: 'archaeology', name: 'Archaeology', line: 22, expected: 0, offered: 0,
+    slug: 'archaeology', name: 'Archaeology', line: 22, expected: 0, offered: 0, tail: 0, shadowed: 0,
     wellKnownMissing: [], judgedByCause: [], belowLineMissing: 0, calibration: null, ...over,
   };
 }
@@ -184,6 +184,26 @@ describe('the lines beside the rows', () => {
     expect(context).toEqual([
       'Archaeology offers 9 of the 10 expected of it; 1 it lacks is at or over its line of 22 sitelinks '
         + 'and listed, and nothing it lacks sits under the line.',
+    ]);
+  });
+
+  it('says beside what a kind offers how many entries are the lists\' tails, which it is never asked for', () => {
+    const { context } = coverageFindings(report([liveKind({
+      slug: 'places-of-worship', name: 'Places of worship', expected: 40, offered: 40, tail: 12, shadowed: 0,
+    })]));
+
+    expect(context).toEqual([
+      'Places of worship offers 40 of the 40 expected of it, beside 12 in the lists\' tails, beyond what its map shows of a type in a crowded city.',
+    ]);
+  });
+
+  it('counts beside what a kind offers the places its map crowds out of a city, never as rows', () => {
+    const { context } = coverageFindings(report([liveKind({
+      slug: 'places-of-worship', name: 'Places of worship', expected: 390, offered: 379, tail: 81, shadowed: 11,
+    })]));
+
+    expect(context).toEqual([
+      'Places of worship offers 379 of the 390 expected of it, beside 81 in the lists\' tails, beyond what its map shows of a type in a crowded city; 11 of the 390 are shadowed in a crowded city.',
     ]);
   });
 

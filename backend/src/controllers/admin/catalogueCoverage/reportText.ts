@@ -13,23 +13,38 @@ import {
 
 const VERDICT_WORDS: Record<Verdict, string> = {
   offered: 'offered to a reader',
+  shadowed: 'admitted, crowded out of its city by better-known places of its type',
   held: 'in the catalogue, not offered',
   same_spot: 'something else at its spot',
   missing_live: 'absent, kind exists',
   missing_proposed: 'absent, kind proposed',
   unsorted: 'absent, not sorted',
+  tail: 'in the list\'s tail, beyond what the map shows of its kind and type',
 };
 
 const share = (part: number, whole: number): string => (whole === 0 ? '0%' : `${Math.round((100 * part) / whole)}%`);
 
+/**
+ * A region's tail, the names folded onto one line, the most named first: counted and named,
+ * never missed (#2246). How many of them a reader is shown all the same is said beside.
+ */
+function tailLine(report: CoverageReport, regionSlug: string): string {
+  const tail = report.expectations.filter(entry => entry.regionSlug === regionSlug && entry.verdict === 'tail');
+  const shown = tail.filter(entry => entry.matches.some(match => match.offered)).length;
+  return `    ${String(tail.length).padStart(4)}  ${VERDICT_WORDS.tail}, ${shown} of them offered all the same: `
+    + tail.map(entry => entry.name).join('; ');
+}
+
 function regionLines(report: CoverageReport): string[] {
   const lines = ['By region', ''];
   for (const region of report.regions) {
-    lines.push(`${region.name}, ${region.country} (surveyed ${region.surveyed}): ${region.total} expected, `
-      + `${region.counts.offered} offered (${share(region.counts.offered, region.total)})`);
-    for (const verdict of ['held', 'same_spot', 'missing_live', 'missing_proposed', 'unsorted'] as const) {
+    const demanded = region.total - region.counts.tail;
+    lines.push(`${region.name}, ${region.country} (surveyed ${region.surveyed}): ${region.total} expected, ${demanded} demanded, `
+      + `${region.counts.offered} offered (${share(region.counts.offered, demanded)})`);
+    for (const verdict of ['shadowed', 'held', 'same_spot', 'missing_live', 'missing_proposed', 'unsorted'] as const) {
       if (region.counts[verdict] > 0) lines.push(`    ${String(region.counts[verdict]).padStart(4)}  ${VERDICT_WORDS[verdict]}`);
     }
+    if (region.counts.tail > 0) lines.push(tailLine(report, region.slug));
   }
   return lines;
 }
@@ -58,7 +73,9 @@ function missingLine(missing: LiveKindGaps['wellKnownMissing'][number]): string 
 
 function liveKindLines(kind: LiveKindGaps): string[] {
   const line = kind.line === null ? 'no sitelinks line' : `line: ${kind.line} sitelinks`;
-  const lines = [`${kind.name} [${kind.slug}; ${line}]: ${kind.offered} of ${kind.expected} expected are offered`];
+  const tail = (kind.tail > 0 ? `; ${kind.tail} more are the lists' tails` : '')
+    + (kind.shadowed > 0 ? `; ${kind.shadowed} shadowed in a crowded city` : '');
+  const lines = [`${kind.name} [${kind.slug}; ${line}]: ${kind.offered} of ${kind.expected} expected are offered${tail}`];
   // The judged are counted and the rest named: a person reads what nobody has answered for.
   const unjudged = kind.wellKnownMissing.filter(missing => missing.judgement === null);
   if (unjudged.length > 0) {
@@ -157,14 +174,17 @@ function judgedLines(title: string, entries: ExpectationResult[], say: (entry: E
 }
 
 export function renderCoverageReport(report: CoverageReport): string {
-  const total = report.expectations.length;
+  const tail = report.expectations.filter(entry => entry.verdict === 'tail').length;
+  const total = report.expectations.length - tail;
   const offered = report.expectations.filter(entry => entry.verdict === 'offered').length;
+  const shadowed = report.expectations.filter(entry => entry.verdict === 'shadowed');
+  const tailWords = tail > 0 ? `; ${tail} more expected are the lists' tails` : '';
   const sameSpot = report.expectations.filter(entry => entry.verdict === 'same_spot');
   const held = report.expectations.filter(entry => entry.verdict === 'held');
   const unsorted = report.expectations.filter(entry => entry.verdict === 'unsorted');
   return [
-    `Catalogue coverage: ${offered} of ${total} expected things are offered to a reader (${share(offered, total)}), `
-      + `across ${report.regions.length} surveyed region(s).`,
+    `Catalogue coverage: ${offered} of ${total} demanded things are offered to a reader (${share(offered, total)}), `
+      + `across ${report.regions.length} surveyed region(s)${tailWords}.`,
     '',
     ...regionLines(report),
     '',
@@ -180,6 +200,11 @@ export function renderCoverageReport(report: CoverageReport): string {
       'Something else stands at the spot: for a person to judge, never counted as found',
       sameSpot,
       entry => ` -> ${entry.nearby.slice(0, 3).map(nearbyWords).join('; ')}`,
+    ),
+    ...judgedLines(
+      'Admitted and crowded out of its city: better-known places of its kind and type stand within the kind\'s radius',
+      shadowed,
+      entry => ` -> ${[...new Set(entry.matches.filter(match => match.shadowed).map(match => match.catalogue_name))].join('; ')}`,
     ),
     ...judgedLines(
       'In the catalogue and not offered to a reader',

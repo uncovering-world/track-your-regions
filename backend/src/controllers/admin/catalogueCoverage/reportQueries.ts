@@ -12,10 +12,11 @@
  */
 
 import { pool } from '../../../db/index.js';
-import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, realKindSql } from '../../../db/membership.js';
-import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
+import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, realKindSql } from '../../../db/membership.js';
+import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import type {
-  CoverageCalibrationEntriesRow, CoverageCalibrationSourcesRow, CoverageExpectationsRow, CoverageJudgementsRow, CoverageKindsRow,
+  CoverageCalibrationEntriesRow, CoverageCalibrationSourcesRow, CoverageExpectationKindsRow, CoverageExpectationsRow, CoverageJudgementsRow,
+  CoverageKindsRow,
   CoverageRegionsRow, ExperienceLocationsRow, ExperiencesRow,
 } from '../../../db/schema.generated.js';
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
@@ -28,13 +29,24 @@ export type KindRow = Pick<CoverageKindsRow, 'slug' | 'name' | 'form' | 'status'
   enter_sitelinks: number | null;
   /** For a kind of work, the finds' line a source row states: a find under it links to no venue. */
   find_enter_sitelinks: number | null;
+  /** How many places of a kind and type a crowded city shows (ADR-0172), from the kind's `experience_kinds` row; null where it shows all. */
+  crowding_limit: number | null;
+  /** The radius `crowding_limit` is counted within, in kilometres; set with it or not at all. */
+  crowding_radius_km: number | null;
 };
 
 export type RegionRow = Pick<CoverageRegionsRow, 'slug' | 'name' | 'country'> & { surveyed: string };
 
 export type ExpectationRow = Pick<
   CoverageExpectationsRow, 'region_slug' | 'slug' | 'name' | 'type' | 'source_count' | 'sitelinks'
-> & { kinds: string[] };
+> & {
+  kinds: string[];
+  /** The type each filing carries in its kind (#2246), by kind slug: null where the kind has no types or the item none. */
+  kind_types: Record<string, CoverageExpectationKindsRow['type']>;
+  /** The survey file's own coordinate of the entry; null where it records none. */
+  lat: number | null;
+  lon: number | null;
+};
 
 /** One catalogue row an expectation's identifiers match. `kind_id` is null for a work. */
 export interface MatchRow {
@@ -43,6 +55,8 @@ export interface MatchRow {
   catalogue_name: ExperiencesRow['name'];
   kind_id: number | null;
   offered: boolean;
+  /** Admitted, and crowded out of what a reader is shown: ten better-known places of its kind and type stand near it (ADR-0172). Never set for a work. */
+  shadowed: boolean;
 }
 
 /** One offered catalogue point within reach of an expectation the catalogue was not matched to by id. */
@@ -115,7 +129,9 @@ const KINDS_SQL = `
            WHERE s.kind_id = ck.experience_kind_id AND s.is_active) AS enter_sitelinks,
          (SELECT MIN((s.api_config->>'findEnterSitelinks')::int)
             FROM experience_sources s
-           WHERE ck.form = 'work' AND s.is_active) AS find_enter_sitelinks
+           WHERE ck.form = 'work' AND s.is_active) AS find_enter_sitelinks,
+         (SELECT k.crowding_limit FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_limit,
+         (SELECT k.crowding_radius_km FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_radius_km
     FROM coverage_kinds ck
    ORDER BY ck.slug`;
 
@@ -127,10 +143,14 @@ const REGIONS_SQL = `
 
 const EXPECTATIONS_SQL = `
   SELECT x.region_slug, x.slug, x.name, x.type, x.source_count, x.sitelinks,
+         ST_Y(x.location) AS lat, ST_X(x.location) AS lon,
          ARRAY(SELECT xk.kind_slug
                  FROM coverage_expectation_kinds xk
                 WHERE xk.region_slug = x.region_slug AND xk.expectation_slug = x.slug
-                ORDER BY xk.kind_slug) AS kinds
+                ORDER BY xk.kind_slug) AS kinds,
+         COALESCE((SELECT jsonb_object_agg(xk.kind_slug, xk.type)
+                     FROM coverage_expectation_kinds xk
+                    WHERE xk.region_slug = x.region_slug AND xk.expectation_slug = x.slug), '{}'::jsonb) AS kind_types
     FROM coverage_expectations x
    WHERE ($1::text[] IS NULL OR x.region_slug = ANY($1))
    ORDER BY x.region_slug, x.source_count DESC, x.sitelinks DESC NULLS LAST, x.name`;
@@ -157,6 +177,10 @@ const KNOWN_AS_SQL = `
  * work is a place in the catalogue. A UNESCO id is digits and a Wikidata id
  * starts with Q, so one column of identifiers answers for both without
  * mistaking them.
+ *
+ * A place a kind admits and crowds out of a crowded city (ADR-0172) is not
+ * offered, since no list, map or count holds it, and is told apart as shadowed:
+ * the kind holds it and the display decides that no reader is shown it.
  */
 const MATCHES_SQL = `
   WITH ids AS (
@@ -175,14 +199,16 @@ const MATCHES_SQL = `
   ), known_as AS (${KNOWN_AS_SQL}
   )
   SELECT DISTINCT ids.region_slug, ids.slug, e.name AS catalogue_name, m.kind_id,
-         (${countedMembershipSql('m', 'e')}) AS offered
+         (${countedMembershipSql('m', 'e')}) AS offered,
+         (${membershipAdmittedSql('m')} AND ${membershipVisibleSql('m')} AND ${realKindSql('m')} AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}) AS shadowed
     FROM ids
     JOIN known_as k ON k.id = ids.id
     JOIN experiences e ON e.id = k.experience_id
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
   UNION ALL
   SELECT ids.region_slug, ids.slug, t.name AS catalogue_name, NULL::int AS kind_id,
-         (${publishedContentSql('t')} AND EXISTS (SELECT 1 ${venuesShowingSql('t')})) AS offered
+         (${publishedContentSql('t')} AND EXISTS (SELECT 1 ${venuesShowingSql('t')})) AS offered,
+         false AS shadowed
     FROM ids
     JOIN treasures t ON t.external_id = ids.id`;
 

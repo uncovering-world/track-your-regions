@@ -24,11 +24,11 @@ const REGION = 'db-lane-region';
 const NORTH = { slug: 'db-lane-north', lat: 70, lon: 20 };
 const FAR_EAST = { slug: 'db-lane-far-east', lat: -17, lon: 179.8 };
 const POLE = { slug: 'db-lane-pole', lat: 89.9, lon: 0 };
-const PLACES = { offered: 9601, pending: 9602, refused: 9603, lost: 9604, otherItem: 9605, heritage: 9606, unnamed: 9607, north: 9608, acrossTheLine: 9609, byThePole: 9610, pendingMissing: 9611 } as const;
+const PLACES = { offered: 9601, pending: 9602, refused: 9603, lost: 9604, otherItem: 9605, heritage: 9606, unnamed: 9607, north: 9608, acrossTheLine: 9609, byThePole: 9610, pendingMissing: 9611, crowded: 9612 } as const;
 const WORKS = { shown: 'Q96000010', hidden: 'Q96000011' } as const;
 const QID = {
   offered: 'Q96000001', pending: 'Q96000002', refused: 'Q96000003', lost: 'Q96000004', otherItem: 'Q96000005', unnamed: 'Q96000006',
-  north: 'Q96000007', acrossTheLine: 'Q96000008', byThePole: 'Q96000009',
+  north: 'Q96000007', acrossTheLine: 'Q96000008', byThePole: 'Q96000009', crowded: 'Q96000012',
 } as const;
 const UNESCO = '96001';
 /** The items the calibration lists name and no fixture place holds (#1864, #1988). */
@@ -127,6 +127,7 @@ async function files(): Promise<CoverageFiles> {
       entry('pending-dig', { wikidata: QID.pending }),
       entry('refused-dig', { wikidata: QID.refused }),
       entry('lost-dig', { wikidata: QID.lost }),
+      entry('crowded-dig', { wikidata: QID.crowded }),
       entry('dig-under-another-item', { wikidata: 'Q96000031', same_as: [QID.otherItem] }),
       entry('heritage-property', { kinds: ['world-heritage'], unesco: UNESCO }),
       // The same property by the Wikidata item its membership resolves the site to, which no row's own id is.
@@ -211,8 +212,15 @@ beforeAll(async () => {
   await place(PLACES.acrossTheLine, QID.acrossTheLine, -179.9, dig, 'admitted', 'verified', { sitelinksCount: 2 }, FAR_EAST.lat);
   // Five degrees of longitude from a centre at 89.9 N is one kilometre: a circle in degrees drawn for the centre's latitude misses it.
   await place(PLACES.byThePole, QID.byThePole, POLE.lon + 5, dig, 'admitted', 'verified', { sitelinksCount: 1 }, POLE.lat);
+  // Admitted, passed and crowded out of what a reader is shown (ADR-0172): the row the
+  // recount would write, written last, so no recount a later write sets off replaces it.
+  await place(PLACES.crowded, QID.crowded, AT.lon + 6, dig, 'admitted', 'verified');
   await work(WORKS.shown, PLACES.offered);
   await work(WORKS.hidden, PLACES.pending);
+  await pool.query(
+    `INSERT INTO membership_crowding (membership_id, outranked_by) SELECT id, 10 FROM experience_kind_memberships WHERE experience_id = $1`,
+    [PLACES.crowded],
+  );
   await runs();
   await replaceCoverage(await files());
   report = await coverageReport([REGION]);
@@ -242,6 +250,12 @@ describe('the coverage report on a real database', () => {
     expect(verdict('lost-dig')).toBe('held');
   });
 
+  it('calls shadowed a place a kind admits and crowds out of its city, which no list, map or count holds', () => {
+    expect(verdict('crowded-dig')).toBe('shadowed');
+    const crowded = report.expectations.find(result => result.slug === 'crowded-dig');
+    expect(crowded?.matches).toEqual([{ catalogue_name: `Place ${PLACES.crowded}`, kind_id: 5, offered: false, shadowed: true }]);
+  });
+
   it('finds a work a museum a reader may go to shows, and holds one only an unread museum shows', () => {
     expect(verdict('mask-on-view')).toBe('offered');
     expect(verdict('mask-nobody-can-see')).toBe('held');
@@ -265,8 +279,8 @@ describe('the coverage report on a real database', () => {
   it('counts the region by verdict and reads no other region', () => {
     expect(report.regions).toHaveLength(1);
     expect(report.regions[0]).toMatchObject({
-      slug: REGION, surveyed: '2026-10-01', total: 14,
-      counts: { offered: 5, held: 4, same_spot: 1, missing_live: 1, missing_proposed: 2, unsorted: 1 },
+      slug: REGION, surveyed: '2026-10-01', total: 15,
+      counts: { offered: 5, shadowed: 1, held: 4, same_spot: 1, missing_live: 1, missing_proposed: 2, unsorted: 1, tail: 0 },
     });
   });
 
@@ -283,7 +297,8 @@ describe('the coverage report on a real database', () => {
     // The fixture database may state no line; the report then falls back to the code's.
     expect(archaeology?.line).toBe(stated.rows[0].line ?? 22);
     // The property by its item is filed under Archaeology and offered by World Heritage: absent here, under the line.
-    expect(archaeology).toMatchObject({ expected: 8, offered: 2 });
+    // The crowded dig is counted beside what the kind lacks, never among it.
+    expect(archaeology).toMatchObject({ expected: 9, offered: 2, tail: 0, shadowed: 1 });
     expect(archaeology?.wellKnownMissing.map(missing => missing.name)).toEqual(['three-hundred-metres-away']);
     expect(archaeology?.belowLineMissing).toBe(5);
   });
