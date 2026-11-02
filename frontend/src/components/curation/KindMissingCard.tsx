@@ -20,6 +20,7 @@ import type { ReviewQueueItem } from '../../api/reviewQueue';
 import type { SourceMembership } from '@tyr/shared/lifecycle';
 import { formatDateTime } from '../../utils/dateFormat';
 import { ItemHeader, messageFor } from './queueCard';
+import { CrowdingWayIn } from './crowding/CrowdingWayIn';
 
 type OnDone = (message?: string, experienceId?: number) => void;
 
@@ -83,6 +84,7 @@ function KindSection({ item, onDone }: { item: ReviewQueueItem; onDone: OnDone }
           False alarm — it stays under {kind}
         </Button>
       </Stack>
+      <CrowdingWayIn item={item} onDone={onDone} />
     </Stack>
   );
 }

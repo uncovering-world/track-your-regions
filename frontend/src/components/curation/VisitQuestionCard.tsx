@@ -21,6 +21,7 @@ import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { formatDateTime } from '../../utils/dateFormat';
 import { ItemHeader, messageFor } from './queueCard';
 import { readingWords } from './VisitReadingLine';
+import { CrowdingWayIn } from './crowding/CrowdingWayIn';
 
 type OnDone = (message?: string, experienceId?: number) => void;
 type VisitQuestion = NonNullable<ReviewQueueItem['visit_question']>;
@@ -129,6 +130,7 @@ function VisitSection({ item, membershipId, question, heading, onDone }: {
           Keep it
         </Button>
       </Stack>
+      <CrowdingWayIn item={item} onDone={onDone} />
     </Stack>
   );
 }
