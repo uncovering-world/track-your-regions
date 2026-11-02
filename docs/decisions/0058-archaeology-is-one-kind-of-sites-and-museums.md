@@ -1,7 +1,7 @@
 # ADR-0058: Archaeology is one kind of sites and museums, and a museum joins it for what it is, not for one find
 
 **Date:** 2026-09-13
-**Status:** Accepted — decision 4 narrowed by ADR-0060 and ADR-0127; decisions 1 and 2 narrowed by ADR-0103; decision 2 narrowed by ADR-0104 and ADR-0164
+**Status:** Accepted — decision 4 narrowed by ADR-0060 and ADR-0127; decisions 1 and 2 narrowed by ADR-0103; decision 2 narrowed by ADR-0104 and ADR-0164; decisions 4 and 5 narrowed by [ADR-0179](0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md)
 
 ---
 

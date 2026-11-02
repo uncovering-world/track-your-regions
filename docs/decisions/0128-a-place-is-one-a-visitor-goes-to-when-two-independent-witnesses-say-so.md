@@ -1,7 +1,7 @@
 # ADR-0128: A place is one a visitor goes to when two independent witnesses say so
 
 **Date:** 2026-10-20
-**Status:** Accepted
+**Status:** Accepted — decisions 2 to 4 narrowed by [ADR-0179](0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md)
 
 ---
 

@@ -1,7 +1,7 @@
 # ADR-0172: A crowded city shows the ten best-known places of a type within 10 km
 
 **Date:** 2026-11-01
-**Status:** Accepted — decision 1 narrowed by [ADR-0173](0173-a-place-holding-works-is-never-crowded-out.md) and [ADR-0177](0177-a-crowded-city-reads-a-guides-use-as-a-presence.md)
+**Status:** Accepted — decision 1 narrowed by [ADR-0173](0173-a-place-holding-works-is-never-crowded-out.md) and [ADR-0177](0177-a-crowded-city-reads-a-guides-use-as-a-presence.md); decision 2 narrowed by [ADR-0179](0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md)
 
 ---
 
