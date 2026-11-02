@@ -1406,6 +1406,11 @@ export const geocodeSearchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(10).default(5),
 });
 
+export const placeAtPointQuerySchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lon: z.coerce.number().min(-180).max(180),
+});
+
 export const suggestImageQuerySchema = z.object({
   name: z.string().max(500).optional(),
   lat: z.coerce.number().min(-90).max(90).optional(),

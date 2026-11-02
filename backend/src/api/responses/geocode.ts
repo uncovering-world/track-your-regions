@@ -39,3 +39,20 @@ export const ImageSuggestion = z.strictObject({
     .describe('The item\'s own coordinate location (P625) at its best rank, when it states one on the Earth: where the place is, as Wikidata says.'),
 }).describe('A picture for a new experience, from the Wikidata item it most likely is.');
 export type ImageSuggestion = z.infer<typeof ImageSuggestion>;
+
+export const PlaceAtPoint = z.strictObject({
+  name: z.string().nullable().describe('The name OpenStreetMap gives the object nearest the point — a church, a square, a street — or null where that object is unnamed: a building, a bare address.'),
+  street: z.string().nullable().describe('The address the object stands at, house number first where it has one.'),
+  area: z.string().nullable().describe('The neighbourhood, village or town the point is in, the narrowest OpenStreetMap names.'),
+  category: z.string().nullable().describe('OpenStreetMap\'s key for what the object is: `building`, `highway`, `amenity`, `historic`, …'),
+  type: z.string().nullable().describe('Its value under that key: `church`, `residential`, `yes` for a building of no stated kind, …'),
+  osmUrl: z.string().nullable().describe('The object on openstreetmap.org, where the answer names one.'),
+}).describe('What OpenStreetMap holds at a point: the object nearest it, at the level of a building (Nominatim\'s reverse lookup). Every field null where it holds nothing there. The data is OpenStreetMap contributors\', under the ODbL.');
+export type PlaceAtPoint = z.infer<typeof PlaceAtPoint>;
+
+export const ArticlePoint = z.strictObject({
+  article: z.string().nullable().describe('The Wikipedia article the place links to, or null where it links none.'),
+  coordinate: z.strictObject({ latitude: z.number(), longitude: z.number() }).nullable()
+    .describe('The article\'s primary coordinate on the Earth, or null where it states none or the wiki did not answer.'),
+}).describe('Where the place\'s Wikipedia article says it stands.');
+export type ArticlePoint = z.infer<typeof ArticlePoint>;

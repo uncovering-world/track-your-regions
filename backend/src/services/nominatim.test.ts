@@ -9,6 +9,7 @@ import type * as Nominatim from './nominatim.js';
 
 const fetchMock = vi.fn();
 let searchNominatim: typeof Nominatim.searchNominatim;
+let reverseNominatim: typeof Nominatim.reverseNominatim;
 let NominatimError: typeof Nominatim.NominatimError;
 
 const KREMLIN = { display_name: 'Kazan Kremlin', lat: '55.7990218', lon: '49.1061691' };
@@ -21,7 +22,7 @@ beforeEach(async () => {
   fetchMock.mockReset();
   // The queue and the cache are the process's: each spec loads them afresh.
   vi.resetModules();
-  ({ searchNominatim, NominatimError } = await import('./nominatim.js'));
+  ({ searchNominatim, reverseNominatim, NominatimError } = await import('./nominatim.js'));
 });
 
 afterEach(() => {
@@ -129,5 +130,52 @@ describe('searchNominatim', () => {
 
     expect(starts).toHaveLength(2);
     expect(starts[1] - starts[0]).toBeLessThan(2 * 1100);
+  });
+});
+
+describe('reverseNominatim', () => {
+  // What Nominatim answered on 2026-11-02 at the Church of the Acheiropoietos's catalogue point.
+  const STREET = {
+    osm_type: 'way', osm_id: 26965478, category: 'highway', type: 'residential', name: 'Αχιλλέα',
+    address: { road: 'Αχιλλέα', suburb: 'Άγιος Παύλος' },
+  };
+
+  it('waits its turn behind a search, and asks for the object at the level of a building', async () => {
+    const starts: number[] = [];
+    fetchMock.mockImplementation(async (url: string) => {
+      starts.push(Date.now());
+      return answer(url.includes('/reverse') ? STREET as unknown as unknown[] : [KREMLIN]);
+    });
+    const both = Promise.all([
+      searchNominatim('Kazan Kremlin', options),
+      reverseNominatim(40.6428, 22.9633, { userAgent: 'nominatim-spec' }),
+    ]);
+    await vi.runAllTimersAsync();
+    const [, found] = await both;
+
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(1000);
+    const asked = new URL(fetchMock.mock.calls[1][0] as string);
+    expect(asked.pathname).toBe('/reverse');
+    expect(Object.fromEntries(asked.searchParams)).toEqual({
+      lat: '40.64280', lon: '22.96330', format: 'jsonv2', zoom: '18', addressdetails: '1',
+    });
+    expect(found).toEqual(STREET);
+  });
+
+  it('answers a point a metre from one already asked from its cache', async () => {
+    fetchMock.mockResolvedValue(answer(STREET as unknown as unknown[]));
+    const first = reverseNominatim(40.642801, 22.963301, { userAgent: 'nominatim-spec' });
+    await vi.runAllTimersAsync();
+    await first;
+    const again = await reverseNominatim(40.642804, 22.963298, { userAgent: 'nominatim-spec' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(again).toEqual(STREET);
+  });
+
+  it('reads a point Nominatim holds nothing at as nothing, not as a failure', async () => {
+    fetchMock.mockResolvedValue(answer({ error: 'Unable to geocode' } as unknown as unknown[]));
+    const found = reverseNominatim(36.0, -30.0, { userAgent: 'nominatim-spec' });
+    await vi.runAllTimersAsync();
+    expect(await found).toEqual({});
   });
 });
