@@ -5772,16 +5772,33 @@ review (#2069, #2177) reads which places curators moved and between which kinds.
 
 **Every question is dated by the run that asked it** (ADR-0051 decision 1), through what each
 kind already carries — a pointer to that run, or the stamp the run left. Four have the pointer:
-`held` is the `completed_at` of the run its membership's `pending_change_sync_log_id` names,
+`held` is the `completed_at` of the run that **first asked** the newest of the values its changeset
+row at the membership's `pending_change_sync_log_id` holds (`held_first_sync_log_id`, ADR-0174),
 `arrival` that of the run which first saw the row (`first_seen_sync_log_id`), `conflict` that of
-the **newest** changeset row's own `sync_log_id` (the `DISTINCT ON (e.id) … ORDER BY ch.id DESC`
-picks it), and `refused` that of the same arrival run — whoever took the refusal — falling back to
+the run that first asked the **newest** changeset row's values (`conflict_first_sync_log_id`; the
+`DISTINCT ON (e.id) … ORDER BY ch.id DESC` picks the row), and `refused` that of the same arrival run — whoever took the refusal — falling back to
 the membership's `updated_at` only where the row names no arrival run, or names one that never
 completed. The other three read a stamp:
 `withdrawn` takes
 `MAX(el.missing_since)` over the points a run stopped offering, `missing` the object's own
 `missing_since`, and `contents` the newest pending part it holds — `GREATEST` of the pending
 points' and the pending works' `created_at`, so a card holding only works is dated by the works.
+
+**A held or conflict question keeps the date it was first asked** (ADR-0174, #2229). A source
+repeats a proposal on every run until someone answers it: My Son Sanctuary's Wikipedia article was
+proposed by every Places of worship run since 2026-10-01, and on 2026-11-01 280 of the 289 open
+held cards had been proposed with the same values before. On insert, `stamp_first_asked()` gives a
+changeset row, per proposed value, the run that first proposed it (`first_asked`, keyed `f:<field>`
+for the object's fields and `p:<kind>:<ref>:<field>` for its parts', a part by the id its source
+knows it by so that a renamed part keeps its date, under `held` and `curatedConflict`): a value the same source's previous run for the place proposed the same keeps
+that run's first run, any other value starts at this run, and a run that wrote no row for the
+place leaves the values standing. The row's `held_first_sync_log_id` and
+`conflict_first_sync_log_id` are the newest of those runs, which is when the newest question on
+the card was first asked. The order, the day headings and the run a question is filed under read
+it; the run filter also finds the held and conflict questions a run proposed again
+(`runFilterSql`). The card says both runs where they differ — *asked since 1 October, proposed
+again by the run of 1 November* (`askedSince`, from the card's `first_asked_at` and
+`run_completed_at`) — and answering still names the latest run (`expectedSyncLogId`).
 
 `contents` is the one kind with **no** run pointer at all: nothing on an unread point or work
 names the run that brought it, so the question is dated by when that row was written rather than
@@ -5882,7 +5899,9 @@ batch, counted *before* the exclusion and flagged `setAside`, and `facets.setAsi
 batches are hidden — the batch is the unit and the only number the chip needs: a batch nothing
 names has no way back. Nothing expires the row and
 nothing has to — the read offers only runs with open questions, so a run whose questions have been
-answered, or whose held pointer a later run has moved, hides nothing on its own. A dry run is
+answered hides nothing on its own. The run a batch is is the one that first asked its questions
+(ADR-0174): a held value a later run proposes again stays in the first run's batch, and setting
+the later run aside does not hide it, while a new value that later run proposes is its own. A dry run is
 refused with 404, the same answer a run that does not exist gets, since it raised no question to
 put aside.
 
