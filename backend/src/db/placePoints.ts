@@ -36,7 +36,7 @@
  * it is the point of (ADR-0100 decision 5).
  */
 
-import { COMPONENTS_KIND_ID, MEMBERSHIPS, placeHoldsRealKindSql } from './membership.js';
+import { COMPONENTS_KIND_ID, MEMBERSHIPS, placeHoldsRealKindSql, placeOfferedSql } from './membership.js';
 
 /** One way a place shows a point: the tables it is read from, and the place it is shown by. */
 export interface PlacePointArm {
@@ -252,11 +252,33 @@ export function somePointShownSql(place: string, point: string, where: string, j
  * names itself (#1250), and its point is called by its own name where it has
  * one and the part's otherwise (#1924): Etchmiadzin Cathedral's point was
  * listed by its coordinates. Any other point is called by its own name.
+ *
+ * The part names itself by a kind a reader is shown (`placeOfferedSql`): a
+ * membership waiting for a curator, or one its kind's rule refused, changes
+ * nothing a reader reads (ADR-0025 decision 5). Mount Fuji, a part of
+ * Fujisan with a Places of worship membership still unread, keeps its point
+ * called Mount Fuji rather than the component's listed "Fujisan Moutain Area"
+ * (#2283).
  */
 export function pointNameSql(point = 'el'): string {
+  return pointNameBySql(point, placeOfferedSql('prt_name'));
+}
+
+/**
+ * `pointNameSql` as the catalogue holds the part, by any membership of a real
+ * kind (`placeHoldsRealKindSql`), read or not, as the writers that name a
+ * part's point ask it: what the World Heritage reading compares with UNESCO's
+ * list, never a reader's read.
+ */
+export function pointNameAsHeldSql(point = 'el'): string {
+  return pointNameBySql(point, placeHoldsRealKindSql('prt_name.id'));
+}
+
+/** A point's name, `kinded` saying over `prt_name` whether its part names itself. */
+function pointNameBySql(point: string, kinded: string): string {
   const own = `CASE WHEN NOT names_nothing(${point}.name) THEN ${point}.name END`;
   return `CASE WHEN ${pointOfPartSql(point)}
-               THEN (SELECT CASE WHEN ${placeHoldsRealKindSql('prt_name.id')} THEN COALESCE(${own}, prt_name.name)
+               THEN (SELECT CASE WHEN ${kinded} THEN COALESCE(${own}, prt_name.name)
                                  WHEN NOT names_nothing(${point}.name) OR prt_name.curated_fields ? 'name'
                                       OR prt_name.metadata ? 'wikipediaUrl'
                                  THEN prt_name.name END
@@ -312,9 +334,20 @@ export function pointSubtitleSql(point = 'el'): string {
  * picture, subtitle and article (ADR-0156 decision 3), the subtitle's under the
  * name a point's read gives the line, `description`, and on its name where the
  * point is called by it: a part that holds a kind of its own names itself, and
- * its point keeps its own name and claim (`pointNameSql`).
+ * its point keeps its own name and claim (`pointNameSql`), by a kind a reader
+ * is shown, as the name is.
  */
 export function pointClaimsSql(point = 'el'): string {
+  return pointClaimsBySql(point, placeOfferedSql('prt_own'));
+}
+
+/** `pointClaimsSql` as the catalogue holds the part, as `pointNameAsHeldSql` names its point: a run's record of a point. */
+export function pointClaimsAsHeldSql(point = 'el'): string {
+  return pointClaimsBySql(point, placeHoldsRealKindSql('prt_own.id'));
+}
+
+/** A point's claims, `kinded` saying over `prt_own` whether its part names itself. */
+function pointClaimsBySql(point: string, kinded: string): string {
   return `CASE WHEN ${pointOfPartSql(point)}
                THEN (SELECT COALESCE(jsonb_agg(DISTINCT claim), '[]'::jsonb)
                        FROM (SELECT jsonb_array_elements_text(${point}.curated_fields) AS claim
@@ -324,7 +357,7 @@ export function pointClaimsSql(point = 'el'): string {
                                     jsonb_array_elements_text(COALESCE(prt_own.curated_fields, '[]'::jsonb)) AS prt_claim
                               WHERE prt_own.id = ${point}.experience_id
                                 AND (prt_claim IN ('image_url', 'subtitle', 'metadata.wikipediaUrl')
-                                     OR (prt_claim = 'name' AND NOT ${placeHoldsRealKindSql('prt_own.id')}))) claims)
+                                     OR (prt_claim = 'name' AND NOT ${kinded}))) claims)
                ELSE ${point}.curated_fields END`;
 }
 

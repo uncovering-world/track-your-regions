@@ -21,7 +21,7 @@
 
 import type { Pool, PoolClient } from 'pg';
 import { MEMBERSHIPS } from '../../db/membership.js';
-import { foldedPointsSql, placePointsSql, pointNameSql } from '../../db/placePoints.js';
+import { foldedPointsSql, placePointsSql, pointNameAsHeldSql } from '../../db/placePoints.js';
 import { offeredLocationSql } from '../../db/readerPredicates.js';
 
 /** The World Heritage source, as seeded. */
@@ -48,7 +48,7 @@ export async function worldHeritageReading(
   const result = await query.query<{ id: string; name: string; countries: string[] | null; components: Array<{ ref: string; name: string | null }> | null }>(
     `SELECT m.external_id AS id, e.name, e.country_codes AS countries,
             (SELECT json_agg(json_build_object('ref', c.ref, 'name', c.name) ORDER BY c.ref)
-               FROM (SELECT el.external_ref AS ref, ${pointNameSql('el')} AS name
+               FROM (SELECT el.external_ref AS ref, ${pointNameAsHeldSql('el')} AS name
                        FROM ${placePointsSql()} pp
                        JOIN experience_locations el ON el.id = pp.location_id
                       WHERE pp.place_id = e.id AND ${offeredLocationSql('el')}

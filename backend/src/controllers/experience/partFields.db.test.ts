@@ -121,6 +121,33 @@ describe("a curator's correction of a part's point (ADR-0156)", () => {
     });
   });
 
+  it('names the part whose only kind waits for a curator, where the read looks (#2283)', async () => {
+    // Mount Fuji's shape: the part's Places of worship membership is still
+    // unread, so a reader is shown no kind of its own and its point is called
+    // by the part's name. A rename lands there, not on a point the read skips.
+    const before = await luxor();
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+       SELECT $1, s.kind_id, s.id, 'Q-luxor-fixture', 'pending' FROM experience_sources s WHERE s.id = 4`,
+      [before.part_id],
+    );
+    await editLocation({
+      params: { locationId: before.point_id },
+      body: { name: 'Temple of Luxor' },
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    } as never);
+
+    const named = (await pool.query<{ part: string; point: string }>(
+      'SELECT e.name AS part, el.name AS point FROM experiences e JOIN experience_locations el ON el.experience_id = e.id WHERE e.id = $1',
+      [before.part_id],
+    )).rows[0];
+    expect(named).toEqual({ part: 'Temple of Luxor', point: LUXOR.name });
+    const read = await getExperienceLocations({
+      params: { id: THEBES }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    expect(read.locations.find(point => point.id === before.point_id)?.name).toBe('Temple of Luxor');
+  });
+
   it("takes an older claim on the point's name onto the part, so the list renames the point again", async () => {
     const before = await luxor();
     await pool.query(`UPDATE experience_locations SET curated_fields = '["name"]' WHERE id = $1`, [before.point_id]);

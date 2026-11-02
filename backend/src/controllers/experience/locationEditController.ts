@@ -30,7 +30,7 @@ import { correctPoint } from './experienceLocationWriter.js';
 import { userAgent } from '../../config/userAgent.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
 import { answeringPlaceSql, pointOfPartSql } from '../../db/placePoints.js';
-import { placeHoldsRealKindSql } from '../../db/membership.js';
+import { placeOfferedSql } from '../../db/membership.js';
 import { writePartFields, type PartWrite } from '../../db/partFieldsWriter.js';
 
 /** What a curator may claim on a point — see `db/migrations/027`, and #1270 for the picture and description. */
@@ -86,8 +86,8 @@ function partWriteOf(pointId: number, edit: PointEdit, credit: ImageCredit | nul
 /**
  * A curator's correction of a serial site's part's point: the coordinate on
  * the point, the picture and text on the part (ADR-0156 decision 3), and the
- * name on the part where the point is called by it. A part that holds a kind
- * of its own names itself, and its point keeps its own name and claim
+ * name on the part where the point is called by it. A part shown in a kind of
+ * its own names itself, and its point keeps its own name and claim
  * (`pointNameSql`).
  */
 async function correctPartPoint(
@@ -205,12 +205,15 @@ export async function editLocation(
     // columns only adds.
     // A part's picture and text are its own row's (ADR-0156 decision 3), read
     // there; the site's lock, held above, is what every writer of them takes.
-    // So is its name, unless the part holds a kind of its own: such a place
-    // names itself, and its point is called by its own name (`pointNameSql`).
+    // So is its name, unless the part is shown in a kind of its own: such a
+    // place names itself, and its point is called by its own name. The test is
+    // the read's (`pointNameSql`), so a rename lands where the curator and the
+    // reader see the name: Mount Fuji, whose only kind waits for a curator, is
+    // renamed on the part (#2283).
     const locked = await client.query(
-      `SELECT CASE WHEN ${pointOfPartSql('el')} AND NOT ${placeHoldsRealKindSql('part.id')}
+      `SELECT CASE WHEN ${pointOfPartSql('el')} AND NOT ${placeOfferedSql('part')}
                    THEN part.name ELSE el.name END AS name,
-              ${pointOfPartSql('el')} AND NOT ${placeHoldsRealKindSql('part.id')} AS names_part,
+              ${pointOfPartSql('el')} AND NOT ${placeOfferedSql('part')} AS names_part,
               el.curated_fields, ${pointOfPartSql('el')} AS of_part,
               CASE WHEN ${pointOfPartSql('el')} THEN part.image_url ELSE el.image_url END AS image_url,
               CASE WHEN ${pointOfPartSql('el')} THEN part.subtitle ELSE el.description END AS description,
