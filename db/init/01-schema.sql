@@ -4157,7 +4157,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     -- Null on the catalogue's own merge alone (ADR-0086): the check below.
     curator_id INTEGER REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back', 'kind_added', 'find_site_answered')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back', 'kind_added', 'find_site_answered', 'crowding_answered')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -4177,7 +4177,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back', 'kind_added', 'find_site_answered'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back', 'kind_added', 'find_site_answered', 'crowding_answered'));
 
 -- An existing database's NOT NULL goes with migration 076; a fresh one never had it.
 -- Two acts are the catalogue's own and name no curator: a merge of two places
@@ -6408,11 +6408,30 @@ COMMENT ON COLUMN membership_fame.guides_read_at IS 'When guide_editions was las
 
 CREATE TABLE IF NOT EXISTS membership_crowding (
     membership_id INTEGER PRIMARY KEY REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
-    outranked_by INTEGER NOT NULL CHECK (outranked_by > 0),
+    outranked_by INTEGER NOT NULL CHECK (outranked_by >= 0),
     computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-COMMENT ON TABLE membership_crowding IS 'The memberships crowded out of what a reader is shown (ADR-0172): crowding_limit or more candidates of the same kind and type within crowding_radius_km, holding no work a reader is shown, score higher. A place holding such a work is never here (ADR-0173). Absent means shown. A reader finds a crowded-out place by search and opens its card; no list, map or count holds it.';
-COMMENT ON COLUMN membership_crowding.outranked_by IS 'How many better-known candidates of its kind and type, holding no work a reader is shown (ADR-0173), lie within the radius.';
+-- Zero is a count a curator's shadow pin may stand on (ADR-0180): a place kept
+-- in the shadow with fewer than ten better known around it.
+ALTER TABLE membership_crowding DROP CONSTRAINT IF EXISTS membership_crowding_outranked_by_check;
+ALTER TABLE membership_crowding ADD CONSTRAINT membership_crowding_outranked_by_check CHECK (outranked_by >= 0);
+COMMENT ON TABLE membership_crowding IS 'The memberships crowded out of what a reader is shown (ADR-0172): crowding_limit or more candidates of the same kind and type within crowding_radius_km, holding no work a reader is shown, count above it, or a curator keeps it in the shadow (crowding_pin, ADR-0180). A place holding such a work is never here (ADR-0173), and nor is a place a curator keeps in the list. Absent means shown. A reader finds a crowded-out place by search and opens its card; no list, map or count holds it.';
+COMMENT ON COLUMN membership_crowding.outranked_by IS 'How many candidates of its kind and type within the radius count above it (crowding_better()): the better known and the ones a curator keeps in the list, less the ones a curator keeps in the shadow and the ones holding a work a reader is shown (ADR-0173, ADR-0180). Under crowding_limit only for a place a curator keeps in the shadow.';
+
+-- A curator's answer to a crowded city (ADR-0180, #2282): which places of a
+-- type around a place a reader is shown is a question of priorities among the
+-- neighbours, judged in one window, and the answer holds until a curator
+-- changes it. No run writes it. list: never crowded out, and it takes one of
+-- the ten above every place the curator did not keep there; shadow: always
+-- crowded out, and it never counts among the ten, so the next place moves up.
+-- A place holding a work a reader is shown, or of a type its kind exempts,
+-- takes no pin; the writer refuses one, and should one stand, the works and
+-- the exemption decide first.
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS crowding_pin VARCHAR(10);
+ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_crowding_pin_check;
+ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_crowding_pin_check
+    CHECK (crowding_pin IN ('list', 'shadow'));
+COMMENT ON COLUMN experience_kind_memberships.crowding_pin IS 'A curator''s answer to a crowded city (ADR-0180): list keeps the place among what a reader is shown and counts it as one of the ten above every unpinned neighbour of its type; shadow keeps it in the tail and never counts it among the ten. NULL: the rule decides (ADR-0172). Written by a curator only (membershipWriter.ts); who and when are the curation log''s crowding_answered rows.';
 
 -- The box around a point holding every point within km of it, in degrees, so
 -- the GiST index on experiences.location finds the neighbours before the
@@ -6438,11 +6457,57 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
        AND et.curation_state <> 'pending' AND t.curation_state <> 'pending')
 $$;
 
+-- How many candidates of a kind and type within `within_km` of `at_point`
+-- count above a membership whose fame is `above_score`: the better known and the ones a
+-- curator keeps in the list (ADR-0180), never one a curator keeps in the
+-- shadow nor one holding a work a reader is shown (ADR-0173). The
+-- membership's own pin is not read, so the count says where the rule puts it
+-- whatever a curator answered: the recount crowds an unpinned scored
+-- membership out at crowding_limit, and the curator's window shows the number
+-- beside the pin. A membership with no score is outranked by pins alone.
+-- A set-returning SQL function, so the planner inlines it into the recount's
+-- lateral join as if it were spelled there: as a scalar function called per
+-- candidate, a full recount took 5.7 s on the development catalogue against
+-- 2.1 s.
+CREATE OR REPLACE FUNCTION crowding_better(
+  of_kind integer, of_type text, of_member integer, at_point geometry, within_km double precision, above_score real
+) RETURNS TABLE (better integer)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT count(*)::int
+    FROM experience_kind_memberships d
+    JOIN experiences de ON de.id = d.experience_id
+    LEFT JOIN membership_fame df ON df.membership_id = d.id
+   WHERE d.kind_id = of_kind AND d.type IS NOT DISTINCT FROM of_type AND d.id <> of_member
+     AND de.location && crowding_box(at_point, within_km)
+     AND ST_DWithin(de.location::geography, at_point::geography, within_km * 1000)
+     AND d.admission <> 'refused' AND de.existence <> 'lost'
+     AND d.crowding_pin IS DISTINCT FROM 'shadow'
+     AND (d.crowding_pin = 'list' OR df.score > above_score)
+     AND NOT place_shows_works(de.id)
+$$;
+
+-- The same count for one membership, by its id: what the curator's window and
+-- an answer's log row read. NULL for a kind without the rule or a place
+-- without a point.
+CREATE OR REPLACE FUNCTION crowding_outranked_by(member integer) RETURNS integer
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT n.better
+    FROM experience_kind_memberships c
+    JOIN experience_kinds k ON k.id = c.kind_id AND k.crowding_limit IS NOT NULL
+    JOIN experiences ce ON ce.id = c.experience_id AND ce.location IS NOT NULL
+    LEFT JOIN membership_fame cf ON cf.membership_id = c.id
+    CROSS JOIN LATERAL crowding_better(c.kind_id, c.type, c.id, ce.location, k.crowding_radius_km, cf.score) n
+   WHERE c.id = member
+$$;
+
 -- Recount the crowded-out memberships of every place within its kind's radius
 -- of `near`, or of the whole catalogue when `near` is null. A candidate is an
 -- admitted membership of a kind that declares the rule, on a place that is
--- not lost and has a point, with a score, of a type the kind does not exempt;
+-- not lost and has a point, of a type the kind does not exempt;
 -- db/membership.ts states the same set (membershipAdmittedSql, hideLostSql).
+-- It is crowded out when a curator keeps it in the shadow, or when it has a
+-- score and crowding_better() reaches the limit, unless a curator keeps it in
+-- the list (ADR-0180).
 --
 -- One recount at a time, until its transaction ends: two whose areas overlap
 -- would each delete what the other has not committed and insert the same
@@ -6466,25 +6531,17 @@ BEGIN
     FROM experience_kind_memberships c
     JOIN experience_kinds k ON k.id = c.kind_id AND k.crowding_limit IS NOT NULL
     JOIN experiences ce ON ce.id = c.experience_id
-    JOIN membership_fame cf ON cf.membership_id = c.id AND cf.score IS NOT NULL
-    CROSS JOIN LATERAL (
-      SELECT count(*)::int AS better
-        FROM experiences de
-        JOIN experience_kind_memberships d ON d.experience_id = de.id AND d.kind_id = c.kind_id
-                                          AND d.type IS NOT DISTINCT FROM c.type AND d.id <> c.id
-        JOIN membership_fame df ON df.membership_id = d.id AND df.score > cf.score
-       WHERE de.location && crowding_box(ce.location, k.crowding_radius_km)
-         AND ST_DWithin(de.location::geography, ce.location::geography, k.crowding_radius_km * 1000)
-         AND d.admission <> 'refused' AND de.existence <> 'lost'
-         AND NOT place_shows_works(de.id)
-    ) n
+    LEFT JOIN membership_fame cf ON cf.membership_id = c.id
+    CROSS JOIN LATERAL crowding_better(c.kind_id, c.type, c.id, ce.location, k.crowding_radius_km, cf.score) n
    WHERE c.admission <> 'refused' AND ce.existence <> 'lost' AND ce.location IS NOT NULL
      AND (c.type IS NULL OR c.type <> ALL(k.crowding_exempt_types))
      AND (near IS NULL
           OR (ce.location && crowding_box(near, k.crowding_radius_km)
               AND ST_DWithin(ce.location::geography, near::geography, k.crowding_radius_km * 1000)))
-     AND n.better >= k.crowding_limit
      AND NOT place_shows_works(ce.id)
+     AND c.crowding_pin IS DISTINCT FROM 'list'
+     AND (c.crowding_pin = 'shadow' OR cf.score IS NOT NULL)
+     AND (c.crowding_pin = 'shadow' OR n.better >= k.crowding_limit)
   ON CONFLICT (membership_id) DO UPDATE SET outranked_by = EXCLUDED.outranked_by, computed_at = NOW();
 END $$;
 
@@ -6519,8 +6576,9 @@ BEGIN
   RETURN crowded;
 END $$;
 
--- A membership's candidacy changes: recount around its place. An insert
--- changes nothing, since a membership has no score until the next refresh.
+-- A membership's candidacy or a curator's pin on it changes: recount around
+-- its place. An insert changes nothing, since a membership has no score until
+-- the next refresh and no pin until a curator answers.
 -- Separate functions per table, so neither reads a field the other's row lacks.
 -- The triggers are deferred to the commit: the recount's lock is then held for
 -- the last moment of a transaction rather than across a run's sweep, which
@@ -6547,11 +6605,12 @@ END $$;
 
 DROP TRIGGER IF EXISTS crowding_follows_membership_change ON experience_kind_memberships;
 CREATE CONSTRAINT TRIGGER crowding_follows_membership_change
-  AFTER UPDATE OF admission, type, kind_id, experience_id ON experience_kind_memberships
+  AFTER UPDATE OF admission, type, kind_id, experience_id, crowding_pin ON experience_kind_memberships
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW
   WHEN (OLD.admission IS DISTINCT FROM NEW.admission OR OLD.type IS DISTINCT FROM NEW.type
-        OR OLD.kind_id IS DISTINCT FROM NEW.kind_id OR OLD.experience_id IS DISTINCT FROM NEW.experience_id)
+        OR OLD.kind_id IS DISTINCT FROM NEW.kind_id OR OLD.experience_id IS DISTINCT FROM NEW.experience_id
+        OR OLD.crowding_pin IS DISTINCT FROM NEW.crowding_pin)
   EXECUTE FUNCTION crowding_follows_membership();
 
 DROP TRIGGER IF EXISTS crowding_follows_membership_delete ON experience_kind_memberships;

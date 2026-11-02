@@ -532,7 +532,7 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     'kind_added',
     // A site's curator said whether a find comes from the site (#2242): a
     // proposal confirmed or refused, or a confirmed link taken back.
-    'find_site_answered',
+    'find_site_answered', 'crowding_answered',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
