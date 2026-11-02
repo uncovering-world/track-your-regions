@@ -95,6 +95,16 @@ const ARCHAEOLOGICAL_SITE_ROOT = 'Q839954';
  */
 const WORSHIP_PART_ROOTS = ['Q48356', 'Q1435771', 'Q5191724'];
 
+/**
+ * A sea fort (Q20097897), whose tree reaches the tower tree through the
+ * Maunsell fort (Q1911186), filed under `fortified tower` for its legs: HM
+ * Fort Roughs, the platform of "Sealand", and the Red Sands and Shivering
+ * Sands forts in the Thames Estuary are gun platforms out at sea, not towers
+ * a visitor climbs or stands under (#2272). A sea fort another tower class
+ * names stays a tower: Fort Denison in Sydney Harbour is a Martello tower.
+ */
+const SEA_FORT_ROOT = 'Q20097897';
+
 /** The class trees the rule reads. */
 export interface TowerTrees {
   /** Every class under a tower root: what names a candidate. */
@@ -109,6 +119,8 @@ export interface TowerTrees {
   archaeologicalSite: ReadonlySet<string>;
   /** Tower classes that may name a part of a place of worship. */
   worshipParts: ReadonlySet<string>;
+  /** The sea fort tree, whose tower classes name a gun platform at sea (`SEA_FORT_ROOT`). */
+  seaFort: ReadonlySet<string>;
 }
 
 /** Walk every tree the rule reads: one question per root, each its own step. */
@@ -137,5 +149,6 @@ export async function fetchTowerTrees(run: QueryRunner): Promise<TowerTrees> {
     tower, types: typeTrees, others, kills, worshipParts,
     worship: await tree(WORSHIP_ROOT, 'places of worship'),
     archaeologicalSite: await tree(ARCHAEOLOGICAL_SITE_ROOT, 'archaeological sites'),
+    seaFort: await tree(SEA_FORT_ROOT, 'sea forts'),
   };
 }

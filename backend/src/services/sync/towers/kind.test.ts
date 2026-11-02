@@ -29,7 +29,7 @@ const trees: TowerTrees = {
     skyscraper: new Set([SKYSCRAPER]), officeBuilding: none, towerBlock: none,
   },
   kills: { destroyed: none, proposed: none, guyedMast: none, ruins: none },
-  worship: none, archaeologicalSite: none, worshipParts: none,
+  worship: none, archaeologicalSite: none, worshipParts: none, seaFort: none,
 };
 const entity = (qid: string, label: string, sitelinks: number): PoolEntity => ({
   qid, label, description: null, lat: 44.49, lon: 11.35, onEarth: true, imageUrl: null, itemPictures: [],
