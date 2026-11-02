@@ -820,7 +820,7 @@ cache would be live answers kept past the expiry the cache gives them
 
 The generic sync lifecycle (progress init, already-running check, sync log creation, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`, which holds the order of a run's phases while each phase's writes live in a module beside it (§ Shared modules). Each service provides a `SyncServiceConfig<T>` (`syncContract.ts`, with the shapes it returns) with domain-specific callbacks:
 
-- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, typeVocabulary?, refusedContents?, handOvers?, withdrawalSkippedReason?, unread?, spareTier? }` (`FetchResult` in `syncContract.ts`), where `filtered` names entities the source offered that this kind cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `unread` names the source's rows the run could read nothing about (on the local Wikidata subset, an item newer than the dump): missing detection, the admission sweep, the must-see badge's clear and the questions about a curator's pin leave them as they are. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands. `typeVocabulary` is the kind's closed list of types where its rule declares one. `refusedContents` names what an admitted row holds that the kind's rule turned down (the venue-side read, #890), reported on the changeset and never marked; `handOvers` names works another kind's place holds part of (ADR-0102, #2036), recorded with the refusals' hand-overs. `spareTier` names a tier of the source's admissions the run did not read — the regional tier, while its step is off or on the live service (#2178) — which the sweep, the stay line and the pin questions leave as they are.
+- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, typeVocabulary?, refusedContents?, handOvers?, withdrawalSkippedReason?, unread?, spareTier? }` (`FetchResult` in `syncContract.ts`), where `filtered` names entities the source offered that this kind cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `unread` names the source's rows the run could read nothing about (on the local Wikidata subset, an item newer than the dump): missing detection, the admission sweep, the must-see badge's clear and the questions about a curator's pin leave them as they are. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands. `typeVocabulary` is the kind's closed list of types where its rule declares one. `refusedContents` names what an admitted row holds that the kind's rule turned down (the venue-side read, #890), reported on the changeset and never marked; `handOvers` names works another kind's place holds part of (ADR-0102, #2036), recorded with the refusals' hand-overs. `spareTier` names a tier of the source's admissions the run did not read — the regional tier, while its step is off, on the live service (#2178) or with no year of readers read (#2252) — which the sweep, the stay line and the pin questions leave as they are.
 - **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview, and `onLocationsChanged(experienceId)`, which a service calls **at the location write** to have the run place that experience before it ends. Called there rather than returned on the result on purpose: a service can throw after moving a point — the museum one upserts treasures afterwards — and a returned field would be lost with the throw while the point had already moved on disk. Throw to count as error.
 - **A record the source lists with nothing to place** — the UNESCO dataset's Routes of Santiago de Compostela in France (868), with no point and no component — is thrown from `processItem` as an `UnplaceableRecord` (`itemOutcome.ts`, #1814), before any write. The run records it as `filtered`, with its reason, rather than as an error. It still counts as seen, so its place is not marked missing, and missing detection still runs: a single error would skip it, and two such records in every UNESCO run had kept it from running at all. Any other throw stays an error.
 - **`afterItems(progress, context)`** (optional) — What the run does once every item is processed and before missing detection: a summary only the whole pass can make, such as the World Heritage run's account of its components' Wikidata items (#1269). A failure is logged and the run goes on.
@@ -847,10 +847,12 @@ Adding a place kind is a declaration and its seed: a `PlaceKind` with its trees 
 
 Measured on the development subset on 2026-10-22, read-only in the dev container: the place gather and main's separate gathers proposed the same places and the same refusals, by item id and reason, for all three kinds (Public art 92 and 404, Monuments & memorials 116 and 358, Places of worship 1,078 and 71). Only the order of equally famous places of worship differed. The pool named 2,722 entities: 554 public-art candidates, 2,229 places-of-worship candidates and 61 shared. The gather took 48 to 73 s over three runs and the two separate gathers 44 to 68 s, so on the subset one gather saves no time while the kinds barely overlap. What it saves is the second set of fetchers.
 
-### The regional tier from the gather ([ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md), #2178)
+### The regional tier from the gather ([ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md), #2178, #2252)
 
 Where no native source is adopted for a region, a place kind's **regional tier** is read from Wikidata
-by measuring a place against what lies within 50 km of it (ADR-0048 decision 3 as ADR-0171 narrows it).
+by measuring a place against what lies within 50 km of it (ADR-0048 decision 3 as ADR-0171 narrows it),
+with the tests, the floor and the stay of ADR-0175 decisions 2 and 3. It is on for the six place kinds of
+the frame (#2252).
 It runs after the world tier has decided, in every place source of the pass and in Places of worship's
 own run, and it is the second tier: **no Iconic badge** (`badgesAdmitted` is `item.tier !== 'regional'`
 in `placeSource` and the worship service), its arrivals held for a curator where the source's gate
@@ -867,10 +869,15 @@ place as the world tier's where both name it, and the tier on the row's membersh
   a church with one Wikivoyage listing then stays under the bar rather than exactly on it), whatever its editions — the group a place is measured among, as ADR-0171's measurement
   counted it, so a church in Cairo is measured against Giza and Saqqara — in one temporary table built
   from the subset (`wikidata_claims` P31 and P625, the editions counted as `subsetWikipediaEditions`
-  counts them, the Wikivoyage editions that use the item from `wikivoyage_usage`), with a GiST index
-  on the point; every item with the cut's languages then gets its surroundings in one indexed query
-  (`readSurroundings`: the group within the radius, the best places' editions and guide editions, over
-  the places that carry each signal). Each kind's part (`places/regionalTier.ts`, `regionalArrivals`)
+  counts them, the Wikivoyage editions that use the item from `wikivoyage_usage`), with a year of
+  readers of every item with a Wikipedia article written into it (`yearlyReadersOfMany` in
+  `places/candidates.ts`: the counter the world bars read with, `readWorks`, the year and its editions'
+  phone shares read once for the whole pool rather than once a batch), and a GiST index on the point;
+  every item with the cut's languages then gets its surroundings in one indexed query
+  (`readSurroundings`: the group within the radius, the best places' editions, guide editions and
+  readers, over the places that carry each signal). With no year of readers in place the pool reads no
+  surroundings and says why (`RegionalPool.unread`): every kind's part then reads no tier this run, and
+  its rows keep their standing (ADR-0175 decision 6) — a missing year is never read as no readers. Each kind's part (`places/regionalTier.ts`, `regionalArrivals`)
   takes the rows of its own classes the world tier did not admit, runs the cut, and only the survivors
   are then asked about by id through the gather
   (`gatherPlaces` with a kind that has no pool question of its own, so what holds them and what they
@@ -880,15 +887,24 @@ place as the world tier's where both name it, and the tier on the row's membersh
   Public art) — on its classifier (`regional`, a `RegionalReader`) or, for Places of worship,
   `WORSHIP_REGIONAL` in `worshipSyncService.ts`.
 - **The cut** (`places/regionalCut.ts`, `regionalVerdict`): a candidate with at least `minLanguages`
-  Wikipedia editions enters when its editions reach `editionsShare` of the median of the `best`
-  highest within `radiusKm` among the places read in any edition, in a group of at least
-  `editionsGroupFloor` places, or the Wikivoyage editions that use it reach `guideShare` of the median
-  of the `best` highest guide counts among the places a guide uses at all, in a group of at least
-  `guideGroupFloor`. `REGIONAL_CUT` reads its numbers from the register (`REGIONAL_REGISTER` in
-  `places/admissionRegister.ts`, ADR-0175 decision 3): 50 km, the 10 best, a Wikivoyage share of a
-  half, the editions reference whole, groups of 25 and 5 places, two editions. Two more the review's
-  experiments turned: **`enabled`**, off until #2252 switches the tier on (while it is off, the pass
-  reads no pool and every kind's part says so),
+  Wikipedia editions and `minReaders` readers a year enters when one of three tests passes, each
+  against the median of the `best` highest within `radiusKm` among the places that carry the signal:
+  its editions reach `editionsShare` of the editions reference, in a group of at least
+  `editionsGroupFloor` places; its readers reach `readersShare` of the readers reference, in a group of
+  at least `readersGroupFloor`; or the Wikivoyage editions that use it reach `guideShare` of the guide
+  reference, in a group of at least `guideGroupFloor`. A place of a type in `guideForTypes` — a tunnel,
+  a dam, a lock, as the kind's rule types it — is then refused unless a Wikivoyage edition uses it
+  (`needsAGuide`, read by `regionalArrivals` after the rule): the readership of a tunnel's article does
+  not say people go to see it, a guide does (the Kurobe Dam, the Old Elbe Tunnel). A place the tier
+  holds stays while it keeps `minLanguages`, reaches `stayReadersShare` of `minReaders` and passes one
+  test, the readers test read at `stayReadersShare` and the other two whole, since their reference is
+  its own neighbours'; a tunnel, dam or lock stays only while a guide still uses it. `REGIONAL_CUT`
+  reads its numbers from the register (`REGIONAL_REGISTER` in `places/admissionRegister.ts`, ADR-0175
+  decisions 2 and 3): 50 km, the 10 best, a Wikivoyage share of a half, the editions and readers
+  references whole, groups of 5, 25 and 25 places, two editions, 3,000 readers a year, a guide for
+  tunnels, dams and locks, and a stay at 0.8 (2,400 readers, 0.8 of the readers reference). Two more
+  the review's experiments turned: **`enabled`**, on since #2252 (off, the pass reads no pool and
+  every kind's part says so),
   and **`neighbours`**, whose places set the references: `all` (every place kind's and the museums',
   the measurement's pool), `kind` (the candidate's own kind's places) or `type` (its type's within
   the kind, a mosque among mosques, by `RegionalKind.typeOf`: a candidate is measured in the group of the type the kind's own rule
@@ -898,23 +914,34 @@ place as the world tier's where both name it, and the tier on the row's membersh
   keys its groups by its own rule's name (`RegionalKind.group`); the pool reads one neighbourhood per
   group (`RegionalGroup`, `regionalGroups`), keyed `all`, the kind's group (its name, or its rule's for the two public-art sources) or `<group>:<type>`: parameters for the admission
   review's experiments (#2177), not a reader's or an admin's control, and shaped so a later decision can
-  give a region values of its own. The curator's note carries the numbers: "In the regional tier by the
-  guides: within 50 km, 195 places: the 10 best are read in 38 Wikipedia editions at the median, this
-  place in 7; the best are used by 3.5 Wikivoyage editions at the median, this place by 1 (ADR-0171)".
+  give a region values of its own. The curator's note carries the numbers and names every test the
+  place passes: "In the regional tier by its readers: within 50 km, 418 places: the 10 best are read in
+  3 Wikipedia editions at the median, this place in 2; the best have 6,742 readers a year at the median,
+  this place 7,724; the best are used by 1 Wikivoyage editions at the median, this place by 0 (ADR-0171,
+  ADR-0175)" — Wat Maha That Wora Wihan in Ratchaburi. A held place kept by the stay alone reads
+  "Stays in the regional tier by its readers, read at 0.8 of the readers' reference for a place it
+  holds: …".
 - **Measured on the development subset (2026-10-31, #2178):** the pool holds 2,117,643 items of 4,296
   classes, the surroundings of the 143,383 at two editions or more are read in 29 minutes once per pass,
-  and each kind's part takes seconds. Inside the 21 coverage surveys the cut admits 452 places, 197 of
-  them named by a survey list — Moscow 28, Kyoto 66, Delhi 48, Bali 19, Salvador 15, Dakar 4 — and over
-  the whole world 20,915, 14,700 of them places of worship, every one for a curator; how many a dense
-  region should offer is the admission review's question (#2177).
+  and each kind's part takes seconds. At ADR-0171's numbers the cut admitted 20,915 places over the
+  whole world, 14,700 of them places of worship; how many a dense region should offer was the
+  admission review's question (#2177).
+- **The dry run before the switch (2026-11-02, #2252),** read-only on the development database with
+  the code's own gather, world tier and pool: the readers of the pool's 515,856 items with an article
+  are read in under two minutes, and the surroundings with the readers in 42 minutes. The regional
+  tier admits 5,837 places, every one for a curator: Places of worship 3,999, Bridges & engineering
+  marvels 650, Monuments & memorials 442, Towers 255, Public art 247, Squares & streets 244. The
+  review's replay at the point admitted 5,849; the twelve between them are rows the world tier keeps
+  by its stay, which the replay did not read, and one cathedral Wikidata says is destroyed. The guided
+  types refuse 322 dams, 95 tunnels and 4 locks; about half the arrivals lie outside Europe.
 - **The two tiers are held apart.** A world classifier is handed its world tier's admitted rows alone
   (`admittedExternalIds(source, undefined, 'world')`: no `tier` fact), so a regional row is never held
   to the world line's stay line — it would be promoted to the world tier with the badge, or refused by
   the line and readmitted by the cut on every pass. The regional step is handed its own
   (`'regional'`) and refuses one that no longer clears the cut with the cut's reason — one with no
   surroundings any more included; `mergeRegional` joins the two decisions so a place is never both
-  admitted and refused in one pass. A run that did not read the tier (switched off, or on the live
-  service) says so on its result (`FetchResult.spareTier`), and the sweep (`markNotAdmitted`) leaves
+  admitted and refused in one pass. A run that did not read the tier (switched off, on the live
+  service, or with no year of readers) says so on its result (`FetchResult.spareTier`), and the sweep (`markNotAdmitted`) leaves
   that tier's admitted rows as they are: no answer is not a refusal. A refusal the world rule names of
   a row that tier holds is dropped too (`mergeRegional`, ADR-0175 decision 6), so the row waits for the
   run that reads its tier. The sweep's floor counts the tiers
@@ -924,8 +951,8 @@ place as the world tier's where both name it, and the tier on the row's membersh
   having no view of it (`questionPins`, `PinnedRow.tier`).
 - **Subset only.** The radius is a question over the whole pool, which the local subset answers and
   the query service cannot; a run on the live door reads no regional tier and says so in its log. A
-  regional row that stops clearing the cut is refused by the next run as a row the line drops is; the
-  cut has no stay line of its own (a parameter for #2177 to consider).
+  regional row that falls under the stay is refused by the next run with the cut's reason, as a row
+  the world bars drop is.
 - Archaeology's sites are not read this way yet: their door asks the map and the witnesses.
 
 ### Where a work lies (#1819)
@@ -2530,7 +2557,7 @@ knows, by the same fame line as the museums'. The regional tier, the monuments a
 the world's line does not reach, comes from regional sources by the rules of
 [filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799) and carries no badge; where none is adopted,
 ADR-0171's within-50-km cut reads it from the same gather (§ The regional tier from the gather,
-built and switched off). What each kind's
+on since #2252). What each kind's
 line admits is checked after every run against the kind's own canon, compiled independently of
 what the line measures (`docs/tech/catalogue-coverage.md`): Monuments & memorials' in
 `db/catalogue-coverage/calibration/monuments-and-memorials.jsonl` (#1954), Public art's in
@@ -3034,8 +3061,8 @@ the source's record is
 [`wikidata-places-of-worship`](../sources/global/wikidata-places-of-worship.md); this source fills
 the kind's **world tier**; the regional tier is
 [filling-a-kind.md](filling-a-kind.md)'s (ADR-0048), carries no badge, and where no regional source
-is adopted is read from Wikidata by ADR-0171's cut (§ The regional tier from the gather, built and
-switched off).
+is adopted is read from Wikidata by ADR-0171's cut (§ The regional tier from the gather, on since
+#2252).
 
 **One source, two doors, one line.** A place is in the catalogue because the world knows the
 building, or because the building holds a work the world knows. One number cuts both: the source's

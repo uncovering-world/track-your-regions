@@ -178,16 +178,21 @@ within the unit, cut by a within-unit signal; Wikivoyage's See listings for the 
 OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the unit and the cut are
 [ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md):
 - the unit is the place's own surroundings, everything within 50 km of it;
-- a place under the world line enters when it has a Wikipedia article in two languages, and
-  either the Wikivoyage editions that use it reach a share of the median of the 10 best within
-  50 km by Wikivoyage's use (a half, ADR-0175 decision 3, read from the register), or its Wikipedia
-  editions reach the median of the 10 best within 50 km by Wikipedia editions, among 25 places or
-  more; ADR-0175 adds a readers test and a floor of 3,000 readers, which #2252 switches on with the
-  tier;
+- a place under the world line enters when it has a Wikipedia article in two languages and
+  3,000 readers a year, and one of three tests passes: the Wikivoyage editions that use it reach
+  half the median of the 10 best within 50 km by Wikivoyage's use, among 5 places or more; its
+  Wikipedia editions reach the median of the 10 best within 50 km by Wikipedia editions, among 25
+  places or more; or its readers reach the median of the 10 best within 50 km by readers, among 25
+  places or more (ADR-0175 decision 3, read from the register, § 11);
+- a tunnel, a dam or a lock enters, and stays, only while a Wikivoyage edition uses it;
+- a place the tier holds stays while it keeps two editions and 2,400 readers and passes one test,
+  the readers test read at 0.8 of its reference (ADR-0175 decision 2);
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
-- the place pass reads it after the world tier has decided, for every place kind, from the local subset
-  (`places/regionalTier.ts`, `REGIONAL_CUT` in `places/regionalCut.ts`; experiences.md § The regional tier
-  from the gather, #2178); a row it admits carries `facts.tier = 'regional'` and no badge.
+- the place pass reads it after the world tier has decided, for the six place kinds of § 11, from
+  the local subset (`places/regionalTier.ts`, `REGIONAL_CUT` in `places/regionalCut.ts`;
+  experiences.md § The regional tier from the gather, #2178); it is on since #2252, and a row it
+  admits carries `facts.tier = 'regional'` and no badge and arrives for a curator where the kind
+  gates its arrivals.
 - the floor counts the area's places, not the places that carry the signal.
 
 On the 21 coverage surveys this admits 79 % of the places three sources other than Wikivoyage
@@ -802,9 +807,22 @@ both tiers are gated as each kind gates them.
 **The kinds' own entries** stand beside the bars: a place of worship admitted for a work it holds
 (ADR-0052) and Public art's street-art places (#2035). They are not fame lines.
 
-**The regional tier** is ADR-0171's 50 km cut with the parameters ADR-0175 decision 3 derived.
-They are declared in the register beside the world's; the slice that switches the tier on
-(#2252) reads the ones the cut does not read yet.
+**The regional tier** is ADR-0171's 50 km cut with the parameters ADR-0175 decisions 2 and 3
+derived, on for the six kinds since #2252 (`REGIONAL_CUT`, `places/regionalCut.ts`). A candidate
+the world bars left out is measured against every place of the live kinds within 50 km, museums
+included, and the reference of each test is the median of the ten best there. It enters with at
+least two Wikipedia editions and 3,000 readers a year when one test passes:
+
+- **Wikivoyage:** the editions that use it reach half the reference, in an area of at least 5
+  places;
+- **Editions:** its Wikipedia editions reach the reference, in an area of at least 25 places;
+- **Readers:** its readers reach the reference, in an area of at least 25 places.
+
+A tunnel, a dam or a lock enters only when a Wikivoyage edition uses it. A place the tier holds
+stays while it keeps two editions, reaches 2,400 readers and passes one test, the readers test
+read at 0.8 and the other two whole; a tunnel, dam or lock stays only while a guide still uses
+it. With no year of readers the tier is not read and its places keep their standing. Its arrivals
+are gated as each kind gates arrivals.
 
 ### 11.2 The register
 
