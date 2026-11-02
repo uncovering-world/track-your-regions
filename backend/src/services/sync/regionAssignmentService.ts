@@ -108,6 +108,61 @@ async function clearPreviousAssignments(
 }
 
 /**
+ * The placement itself, over the points a preceding CTE named `offered`
+ * (`id`, `location`) holds, in world view `$1`: `leaf_hits` and `rest_hits`,
+ * each a point's id and a region that holds it, by the rule the run's
+ * placement below states. Shared by it and by any caller asking where a point
+ * would be placed (`regionsHoldingPoints`), so both answer by one rule.
+ */
+function placementCtesSql(): string {
+  return `
+    leaf_hits AS MATERIALIZED (
+      SELECT DISTINCT o.id AS location_id, p.region_id
+      FROM offered o
+      JOIN region_geom_pieces p
+        ON p.geom && o.location AND ST_Intersects(p.geom, o.location)
+      CROSS JOIN LATERAL (
+        SELECT r.geom
+        FROM regions r
+        WHERE r.id = p.region_id AND r.world_view_id = $1 AND r.is_leaf
+        OFFSET 0
+      ) leaf
+      WHERE CASE WHEN ST_Contains(p.geom, o.location) THEN true
+                 ELSE ST_Contains(leaf.geom, o.location) END
+    ),
+    unheld AS MATERIALIZED (
+      SELECT o.id, o.location
+      FROM offered o
+      WHERE NOT EXISTS (SELECT 1 FROM leaf_hits h WHERE h.location_id = o.id)
+    ),
+    candidates AS MATERIALIZED (
+      SELECT r.id AS region_id, array_agg(u.id) AS location_ids, array_agg(u.location) AS locations
+      FROM unheld u
+      JOIN regions r ON r.geom && u.location
+      WHERE r.world_view_id = $1
+        AND NOT (r.is_leaf AND EXISTS (SELECT 1 FROM region_geom_pieces p WHERE p.region_id = r.id))
+      GROUP BY r.id
+    ),
+    whole_hits AS MATERIALIZED (
+      SELECT x.location_id, r.id AS region_id, r.is_leaf
+      FROM candidates c
+      JOIN regions r ON r.id = c.region_id
+      CROSS JOIN LATERAL (
+        SELECT c.location_ids[i] AS location_id
+        FROM generate_subscripts(c.location_ids, 1) AS i
+        WHERE ST_Contains(r.geom, c.locations[i])
+        OFFSET 0
+      ) x
+    ),
+    rest_hits AS (
+      SELECT w.location_id, w.region_id
+      FROM whole_hits w
+      WHERE w.is_leaf
+         OR NOT EXISTS (SELECT 1 FROM whole_hits l WHERE l.location_id = w.location_id AND l.is_leaf)
+    )`;
+}
+
+/**
  * Which regions of a world view hold a point — the direct step, written once for
  * both ways in (#851, ADR-0054).
  *
@@ -167,57 +222,48 @@ function directPlacementSql(pointFilter: string): string {
       WHERE ${offeredLocationSql('el')}
         AND el.refused_at IS NULL
         ${pointFilter}
-    ),
-    leaf_hits AS MATERIALIZED (
-      SELECT DISTINCT o.id AS location_id, p.region_id
-      FROM offered o
-      JOIN region_geom_pieces p
-        ON p.geom && o.location AND ST_Intersects(p.geom, o.location)
-      CROSS JOIN LATERAL (
-        SELECT r.geom
-        FROM regions r
-        WHERE r.id = p.region_id AND r.world_view_id = $1 AND r.is_leaf
-        OFFSET 0
-      ) leaf
-      WHERE CASE WHEN ST_Contains(p.geom, o.location) THEN true
-                 ELSE ST_Contains(leaf.geom, o.location) END
-    ),
-    unheld AS MATERIALIZED (
-      SELECT o.id, o.location
-      FROM offered o
-      WHERE NOT EXISTS (SELECT 1 FROM leaf_hits h WHERE h.location_id = o.id)
-    ),
-    candidates AS MATERIALIZED (
-      SELECT r.id AS region_id, array_agg(u.id) AS location_ids, array_agg(u.location) AS locations
-      FROM unheld u
-      JOIN regions r ON r.geom && u.location
-      WHERE r.world_view_id = $1
-        AND NOT (r.is_leaf AND EXISTS (SELECT 1 FROM region_geom_pieces p WHERE p.region_id = r.id))
-      GROUP BY r.id
-    ),
-    whole_hits AS MATERIALIZED (
-      SELECT x.location_id, r.id AS region_id, r.is_leaf
-      FROM candidates c
-      JOIN regions r ON r.id = c.region_id
-      CROSS JOIN LATERAL (
-        SELECT c.location_ids[i] AS location_id
-        FROM generate_subscripts(c.location_ids, 1) AS i
-        WHERE ST_Contains(r.geom, c.locations[i])
-        OFFSET 0
-      ) x
-    ),
-    rest_hits AS (
-      SELECT w.location_id, w.region_id
-      FROM whole_hits w
-      WHERE w.is_leaf
-         OR NOT EXISTS (SELECT 1 FROM whole_hits l WHERE l.location_id = w.location_id AND l.is_leaf)
-    )
+    ),${placementCtesSql()}
     INSERT INTO experience_location_regions (location_id, region_id, assignment_type)
     SELECT location_id, region_id, 'auto' FROM leaf_hits
     UNION ALL
     SELECT location_id, region_id, 'auto' FROM rest_hits
     ON CONFLICT (location_id, region_id) DO NOTHING
   `;
+}
+
+/**
+ * Where these points would be placed, in every public world view with
+ * geometry: the regions the run's placement would give each, by the same rule
+ * (`placementCtesSql`), with each region's and world view's name, the smallest
+ * region first — the one a reader names, never the continent above a country
+ * that holds a point no leaf does. Nothing is written: a review card asks it of
+ * a point a source proposes (#2203), and a world view nobody is shown is never
+ * asked, so it can neither name itself nor its regions there.
+ */
+export async function regionsHoldingPoints(
+  points: ReadonlyArray<{ id: number; lon: number; lat: number }>,
+): Promise<Array<{ pointId: number; worldViewId: number; worldView: string; regionId: number; region: string }>> {
+  if (points.length === 0) return [];
+  const views = await pool.query<{ id: number; name: string }>(`
+    SELECT w.id, w.name FROM world_views w
+     WHERE w.is_public AND EXISTS (SELECT 1 FROM regions r WHERE r.world_view_id = w.id AND r.geom IS NOT NULL)
+     ORDER BY w.id`);
+  const answers = await Promise.all(views.rows.map(async (view) => {
+    const placed = await pool.query<{ point_id: number; region_id: number; region: string }>(`
+      WITH offered AS MATERIALIZED (
+        SELECT t.id, ST_SetSRID(ST_MakePoint(t.lon, t.lat), 4326) AS location
+          FROM unnest($2::int[], $3::float8[], $4::float8[]) AS t(id, lon, lat)
+      ),${placementCtesSql()}
+      SELECT h.location_id AS point_id, r.id AS region_id, r.name AS region
+        FROM (SELECT location_id, region_id FROM leaf_hits UNION ALL SELECT location_id, region_id FROM rest_hits) h
+        JOIN regions r ON r.id = h.region_id
+       ORDER BY h.location_id, r.geom_area_km2 NULLS LAST, r.id
+    `, [view.id, points.map(p => p.id), points.map(p => p.lon), points.map(p => p.lat)]);
+    return placed.rows.map(row => ({
+      pointId: row.point_id, worldViewId: view.id, worldView: view.name, regionId: row.region_id, region: row.region,
+    }));
+  }));
+  return answers.flat();
 }
 
 /** The points of the objects a run or a curator has just moved. */
