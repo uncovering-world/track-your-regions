@@ -742,6 +742,85 @@ then id, which moved 14 of them. That is also why the answer crossed the
 wire in 272 908 bytes rather than 272 967: the same rows compress a
 little differently in another order.
 
+### The reads skip the arrivals that wait — 2026-11-02
+
+The first places pass under ADR-0175 added 10 063 memberships waiting for
+a curator, with their unread points (#2283). `experience_kind_memberships`
+grew to 22 036 rows, 11 582 of them pending, and `experience_locations` to
+21 095 points, 11 550 of them pending. No reader sees any of them, and
+every answer kept its size, but `npm run perf:api` on the dev stack moved
+on every backend row:
+
+| Endpoint | p50 before the pass | p50 after the pass |
+|----------|--------------------|-------------------|
+| experiences by region | 237 ms | 306 ms |
+| experience locations by region | 206 ms | 266 ms |
+| experience counts per region | 35 ms | 51 ms |
+| world points: overview | 35 ms | 68 ms |
+| world points: overview, folded | 54 ms | 74 ms |
+| world points: markers, Europe | 105 ms | 144 ms |
+
+`EXPLAIN (ANALYZE, BUFFERS)` of the statements the controllers send, with
+the probe's parameters, showed where the waiting rows were read. JIT is
+not involved: the database runs with `jit = off`, as § The database
+compiles nothing records.
+
+- **The overview and the folded overview** read every membership and
+  filtered after the scan (`admission <> 'refused' AND curation_state <>
+  'pending'`, 11 956 of 22 036 rows removed), and every point the same way
+  (12 092 of 21 095 removed).
+- **The Europe markers** picked each place's kind
+  (`catalogueKindJoinSql`) in one `DISTINCT ON` pass over all 20 240
+  memberships of a real kind, merged with all 19 466 places, before the
+  reader's conditions dropped most of them.
+- **The counts** fetched a membership from the heap for each of the
+  world's roots' 14 895 rows of `experience_regions`, and dropped the
+  pending ones.
+- **The whole-region read and its count** joined Europe's 23 238 rows of
+  `experience_regions` with every place (a scan of all 21 293) and every
+  point a reader may see (a scan of the points, 12 092 removed), and
+  16 669 of the rows failed the region membership test.
+- **The locations read** tested each of Europe's 23 238 place memberships
+  for a point a reader may see, fetching each waiting place's point from
+  the heap only to drop it.
+
+Two partial indexes now hold what a reader may be shown, on the terms the
+reader modules spell: `idx_experience_kind_memberships_reader`, a
+membership admitted and passed (`membershipAdmittedSql`,
+`membershipVisibleSql`), and `idx_experience_locations_reader`, a point
+offered and passed (`offeredLocationSql`, `publishedContentSql`). Both
+carry the row's id, so a read's crowding check and the region membership's
+join stay inside the index. The world's kind pick reads shown memberships
+only (`membershipShownSql`), which is the same pick for every place the read
+keeps. Its rows are the same: the overview, the folded overview and the
+Europe markers return the same rows with the same fingerprint before and
+after.
+
+Statement execution on the dev database, the median of five custom-plan
+executions after a warm-up, the indexes created inside a rolled-back
+transaction. The box was otherwise idle (load 0.6); a second round under
+load 6 kept the same order:
+
+| Statement | before | after |
+|-----------|--------|-------|
+| world points: overview | 29 ms | 24 ms |
+| world points: overview, folded | 58 ms | 48 ms |
+| world points: markers, Europe | 105 ms | 87 ms |
+| experience counts per region | 35 ms | 23 ms |
+| experience locations by region | 177 ms | 137 ms |
+| experiences by region: the list | 138 ms | 122 ms |
+| experiences by region: its count | 73 ms | 44 ms |
+| experiences by region: the crowded-out tail | 33 ms | 21 ms |
+
+The pass does not go away entirely. Placement writes a waiting place's
+regions like any other's, on purpose (ADR-0025 decision 5,
+`readerRegionMembershipSql`), so `experience_regions` holds 45 290 rows,
+only 12 464 of them for a place with a membership admitted and passed. A read that starts from a
+region still tests each of its rows. The test is now an index-only probe
+that finds nothing for a waiting place, but there is one per row: the
+locations read spends about 58 ms on Europe's either way. The region
+junction is reshaped by #2120.
+
 ### What the world layer cost the map root — 2026-09-16
 
 The map root draws the catalogue itself before any region is chosen (#910,
