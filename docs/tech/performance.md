@@ -863,7 +863,16 @@ the controllers send for world view 5 and Europe (region 6737):
   `placeHoldsRealKindSql`, which a point's name reads, counts it, so the
   per-row test that used to stop at an empty set now reads the kinds. On
   the copies: 60 ms against 78 ms for the markers, 38 ms against 47 ms
-  for the folded overview.
+  for the folded overview. That count was also a leak of the waiting
+  arrivals: eight points a reader is shown were named by the source's
+  label for the component once their part held an unread kind, Mount
+  Fuji's as "Fujisan Moutain Area" and Antwerp City Hall's as
+  "Stadhuis". A point's name and claims now ask a kind a reader is shown
+  (`pointNameSql`, `pointClaimsSql`, over `placeOfferedSql`); the world
+  points, the folded overview, the Europe markers, the region lists and
+  the locations differ from main in those eight names only. The markers
+  (75 ms) and the folded overview (36 ms) take as long as before: the
+  per-row test reads a part's memberships either way.
 
 What changed: the whole-region count and both tail statements ask the
 region of the place, once (`placedInReaderRegionsSql`), and a rejection as
