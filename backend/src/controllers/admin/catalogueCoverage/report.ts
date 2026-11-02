@@ -131,7 +131,7 @@ export interface LiveKindGaps {
   wellKnownMissing: MissingEntry[];
   /** Of `wellKnownMissing`, how many a person has judged under each cause, and the issues those judgements name. */
   judgedByCause: JudgedCause[];
-  /** Absent from this kind and under its line: the regional tier's to hold. */
+  /** Absent from this kind and under its line: the surroundings or the regional tier's to hold. */
   belowLineMissing: number;
   /** The kind against its own calibration list (#1864); null where the kind has no list. */
   calibration: KindCalibration | null;

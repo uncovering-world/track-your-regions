@@ -1287,7 +1287,7 @@ describe('the site door, beside the museums', () => {
     expect(summary).toContain('Admitted 8 museums');
     // Two of the three carry an outline now: Troy's excavations and the villa
     // in Tivoli, both real objects from the measurement.
-    expect(summary).toContain('3 sites (3 in the world tier, 0 in the regional tier, 2 with an extent)');
+    expect(summary).toContain('3 sites (3 in the world tier, 0 in the surroundings tier, 2 with an extent)');
     // One refusal of each kind here, so the counted noun is singular: a line a
     // curator reads is a sentence, not a number with an `s` glued on. The
     // groups are the tags the rule put on each refusal, and a group nothing

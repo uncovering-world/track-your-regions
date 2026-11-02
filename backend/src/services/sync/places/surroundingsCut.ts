@@ -1,10 +1,10 @@
 /**
- * ADR-0171: a kind's regional tier, read from Wikidata where no native source
- * is adopted, measures a place against what lies within the radius around it,
- * with the tests and the stay of ADR-0175 decisions 2 and 3. A place the world
- * bars left out enters the regional tier when it has a Wikipedia article in the
- * cut's languages and the readers' floor a year, and one of three tests passes,
- * each against the median of the best places within the radius:
+ * ADR-0171: a kind's surroundings tier (ADR-0178), read from Wikidata, measures
+ * a place against what lies within the radius around it, with the tests and the
+ * stay of ADR-0175 decisions 2 and 3. A place the world bars left out enters
+ * the surroundings tier when it has a Wikipedia article in the cut's languages
+ * and the readers' floor a year, and one of three tests passes, each against
+ * the median of the best places within the radius:
  *
  * - the Wikivoyage editions that use it reach the guide share of that median,
  *   in an area of the guide test's group floor;
@@ -21,12 +21,12 @@
  * test read at the stay share and the other two whole, since their reference is
  * its own neighbours'.
  *
- * The numbers are the register's (`REGIONAL_REGISTER` in `admissionRegister.ts`,
- * ADR-0175 decision 5), each with its derivation, never a reader's or an
- * admin's control.
+ * The numbers are the register's (`SURROUNDINGS_REGISTER` in
+ * `admissionRegister.ts`, ADR-0175 decision 5), each with its derivation,
+ * never a reader's or an admin's control.
  */
 
-import { REGIONAL_REGISTER } from './admissionRegister.js';
+import { SURROUNDINGS_REGISTER } from './admissionRegister.js';
 
 /**
  * Whose places a candidate is measured among within the radius: every place
@@ -34,13 +34,13 @@ import { REGIONAL_REGISTER } from './admissionRegister.js';
  * candidate's own kind's, or the places of its type within the kind (a mosque
  * among mosques). The review (#2177) measures the three; the code reads one.
  */
-export type RegionalNeighbours = 'all' | 'kind' | 'type';
+export type SurroundingsNeighbours = 'all' | 'kind' | 'type';
 
-export interface RegionalCut {
-  /** Whether the pass reads the regional tier at all (ADR-0175 decision 3 switched it on). */
+export interface SurroundingsCut {
+  /** Whether the pass reads the surroundings tier at all (ADR-0175 decision 3 switched it on). */
   enabled: boolean;
   /** Whose places set the references. */
-  neighbours: RegionalNeighbours;
+  neighbours: SurroundingsNeighbours;
   /** How far around the place its surroundings reach. */
   radiusKm: number;
   /** How many of the best places within the radius set each reference. */
@@ -67,25 +67,25 @@ export interface RegionalCut {
   stayReadersShare: number;
 }
 
-export const REGIONAL_CUT: RegionalCut = {
+export const SURROUNDINGS_CUT: SurroundingsCut = {
   enabled: true,
-  neighbours: REGIONAL_REGISTER.neighbours.value,
-  radiusKm: REGIONAL_REGISTER.radiusKm.value,
-  best: REGIONAL_REGISTER.best.value,
-  guideShare: REGIONAL_REGISTER.guideShare.value,
-  editionsShare: REGIONAL_REGISTER.editionsShare.value,
-  readersShare: REGIONAL_REGISTER.readersShare.value,
-  guideGroupFloor: REGIONAL_REGISTER.guideGroupFloor.value,
-  editionsGroupFloor: REGIONAL_REGISTER.editionsGroupFloor.value,
-  readersGroupFloor: REGIONAL_REGISTER.readersGroupFloor.value,
-  minLanguages: REGIONAL_REGISTER.minLanguages.value,
-  minReaders: REGIONAL_REGISTER.minReaders.value,
-  guideForTypes: REGIONAL_REGISTER.guideForTypes.value,
-  stayReadersShare: REGIONAL_REGISTER.stayReadersShare.value,
+  neighbours: SURROUNDINGS_REGISTER.neighbours.value,
+  radiusKm: SURROUNDINGS_REGISTER.radiusKm.value,
+  best: SURROUNDINGS_REGISTER.best.value,
+  guideShare: SURROUNDINGS_REGISTER.guideShare.value,
+  editionsShare: SURROUNDINGS_REGISTER.editionsShare.value,
+  readersShare: SURROUNDINGS_REGISTER.readersShare.value,
+  guideGroupFloor: SURROUNDINGS_REGISTER.guideGroupFloor.value,
+  editionsGroupFloor: SURROUNDINGS_REGISTER.editionsGroupFloor.value,
+  readersGroupFloor: SURROUNDINGS_REGISTER.readersGroupFloor.value,
+  minLanguages: SURROUNDINGS_REGISTER.minLanguages.value,
+  minReaders: SURROUNDINGS_REGISTER.minReaders.value,
+  guideForTypes: SURROUNDINGS_REGISTER.guideForTypes.value,
+  stayReadersShare: SURROUNDINGS_REGISTER.stayReadersShare.value,
 };
 
 /** A candidate's own signals. */
-export interface RegionalCandidate {
+export interface SurroundingsCandidate {
   editions: number;
   guideEditions: number;
   /** A year's readers, by the counter the world bars read with. */
@@ -104,14 +104,14 @@ export interface Surroundings {
 }
 
 /** The three references off the best within the radius; null where no place around carries the signal. */
-export interface RegionalReferences {
+export interface SurroundingsReferences {
   editions: number | null;
   guide: number | null;
   readers: number | null;
 }
 
-export type RegionalVerdict =
-  | { in: true; note: string; reference: RegionalReferences }
+export type SurroundingsVerdict =
+  | { in: true; note: string; reference: SurroundingsReferences }
   | { in: false; reason: string };
 
 /** The median of a list of counts, highest first or not; null for none. */
@@ -126,7 +126,7 @@ const fmt = (n: number) => n.toLocaleString('en', { maximumFractionDigits: 1 });
 
 /** The tests a candidate passes against its references, the readers test read at `readersShare` of its reference. */
 function doorsOf(
-  candidate: RegionalCandidate, around: Surroundings, reference: RegionalReferences, cut: RegionalCut, readersShare: number,
+  candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut, readersShare: number,
 ): string[] {
   const doors: string[] = [];
   if (around.groupSize >= cut.editionsGroupFloor && reference.editions !== null
@@ -151,22 +151,22 @@ function doorsInWords(doors: readonly string[]): string {
  * the tier holds (`held`) stays at the stay share of the readers' floor and of
  * the readers test (ADR-0175 decision 2).
  */
-export function regionalVerdict(
-  candidate: RegionalCandidate, around: Surroundings, cut: RegionalCut = REGIONAL_CUT, held = false,
-): RegionalVerdict {
+export function surroundingsVerdict(
+  candidate: SurroundingsCandidate, around: Surroundings, cut: SurroundingsCut = SURROUNDINGS_CUT, held = false,
+): SurroundingsVerdict {
   if (candidate.editions < cut.minLanguages) {
-    return { in: false, reason: `${candidate.editions} Wikipedia editions, under the ${cut.minLanguages} the regional tier asks for` };
+    return { in: false, reason: `${candidate.editions} Wikipedia editions, under the ${cut.minLanguages} the surroundings tier asks for` };
   }
   const floor = (held ? cut.stayReadersShare : 1) * cut.minReaders;
   if (candidate.readers < floor) {
-    return { in: false, reason: `${fmt(candidate.readers)} readers a year, under the ${fmt(floor)} the regional tier asks for`
+    return { in: false, reason: `${fmt(candidate.readers)} readers a year, under the ${fmt(floor)} the surroundings tier asks for`
       + (held ? ' of a place it holds' : '') };
   }
   const smallest = Math.min(cut.guideGroupFloor, cut.editionsGroupFloor, cut.readersGroupFloor);
   if (around.groupSize < smallest) {
     return { in: false, reason: `${around.groupSize} places within ${cut.radiusKm} km, under the floor of ${smallest}: too few to measure against` };
   }
-  const reference: RegionalReferences = {
+  const reference: SurroundingsReferences = {
     editions: medianOf(around.topEditions.filter((n) => n > 0).slice(0, cut.best)),
     guide: medianOf(around.topGuideEditions.filter((n) => n > 0).slice(0, cut.best)),
     readers: medianOf(around.topReaders.filter((n) => n > 0).slice(0, cut.best)),
@@ -182,13 +182,13 @@ export function regionalVerdict(
   const enters = doorsOf(candidate, around, reference, cut, cut.readersShare);
   // A held place under the new-place floor is kept by the stay alone, and its note says so.
   const underFloor = candidate.readers < cut.minReaders;
-  if (enters.length && !underFloor) return { in: true, reference, note: `In the regional tier ${doorsInWords(enters)}: ${within} (ADR-0171, ADR-0175)` };
+  if (enters.length && !underFloor) return { in: true, reference, note: `In the surroundings tier ${doorsInWords(enters)}: ${within} (ADR-0171, ADR-0175)` };
   const stays = held ? doorsOf(candidate, around, reference, cut, cut.stayReadersShare * cut.readersShare) : [];
   if (stays.length) {
-    return { in: true, reference, note: `Stays in the regional tier ${doorsInWords(stays)}, read at ${cut.stayReadersShare} `
+    return { in: true, reference, note: `Stays in the surroundings tier ${doorsInWords(stays)}, read at ${cut.stayReadersShare} `
       + `of the readers' reference for a place it holds: ${within} (ADR-0175)` };
   }
-  return { in: false, reason: `below the regional tier's cut: ${within}` };
+  return { in: false, reason: `below the surroundings tier's cut: ${within}` };
 }
 
 /**
@@ -197,8 +197,8 @@ export function regionalVerdict(
  * none or a guide uses it. Read once the kind's rule has typed the place, and
  * for a place the tier holds as for a new one.
  */
-export function needsAGuide(type: string, guideEditions: number, cut: RegionalCut = REGIONAL_CUT): string | null {
+export function needsAGuide(type: string, guideEditions: number, cut: SurroundingsCut = SURROUNDINGS_CUT): string | null {
   if (!cut.guideForTypes.includes(type) || guideEditions > 0) return null;
-  return `a ${type} enters the regional tier only while a Wikivoyage edition uses it, and none does: `
+  return `a ${type} enters the surroundings tier only while a Wikivoyage edition uses it, and none does: `
     + 'the readership of its article does not say people go to see it (ADR-0175)';
 }

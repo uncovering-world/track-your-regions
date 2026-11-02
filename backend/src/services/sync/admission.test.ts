@@ -200,10 +200,10 @@ describe('restoreAdmission', () => {
 describe('countAdmitted over the tiers a run read (#2178)', () => {
   it('leaves a spared tier out of the sweep floor\'s denominator', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ count: 3 }] });
-    await countAdmitted(4, 'regional');
-    expect(lastSql()).toContain("coalesce(m.facts->>'tier', 'world') <> 'regional'");
+    await countAdmitted(4, 'surroundings');
+    expect(lastSql()).toContain("coalesce(m.facts->>'tier', 'world') <> 'surroundings'");
     await countAdmitted(4);
-    expect(lastSql()).not.toContain("<> 'regional'");
+    expect(lastSql()).not.toContain("<> 'surroundings'");
   });
 });
 
@@ -238,13 +238,13 @@ describe('markNotAdmitted', () => {
   });
 
   it('leaves a tier the run did not read as it is (#2178)', async () => {
-    // The regional tier switched off, or a run on the live service: its admitted rows are not refused.
-    await markNotAdmitted(4, ['Q12512'], 'reason', false, 'regional');
-    expect(lastSql()).toContain("coalesce(m.facts->>'tier', 'world') <> 'regional'");
+    // The surroundings tier switched off, or a run on the live service: its admitted rows are not refused.
+    await markNotAdmitted(4, ['Q12512'], 'reason', false, 'surroundings');
+    expect(lastSql()).toContain("coalesce(m.facts->>'tier', 'world') <> 'surroundings'");
     expect(lastParams()).toEqual([4, ['Q12512'], 'reason']);
     // And sweeps every admitted row otherwise.
     await markNotAdmitted(4, ['Q12512'], 'reason', false);
-    expect(lastSql()).not.toContain("<> 'regional'");
+    expect(lastSql()).not.toContain("<> 'surroundings'");
   });
 
   it('drops the must-see flag on a swept row too', async () => {
@@ -371,12 +371,12 @@ describe('admittedExternalIds', () => {
     expect(mockedQuery.mock.calls[0][1]).toEqual([3, null, null]);
   });
 
-  it('narrows to one tier, so the world line never holds a row the regional tier admitted (#2178)', async () => {
+  it('narrows to one tier, so the world line never holds a row the surroundings tier admitted (#2178)', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ external_id: 'Q337179' }] });
 
     await admittedExternalIds(4, undefined, 'world');
 
-    // A world row carries no tier fact; a regional one carries 'regional'.
+    // A world row carries no tier fact; a surroundings one carries 'surroundings'.
     expect(lastSql()).toContain("coalesce(m.facts->>'tier', 'world') = $3");
     expect(mockedQuery.mock.calls[0][1]).toEqual([4, null, 'world']);
   });

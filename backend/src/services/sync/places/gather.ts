@@ -30,7 +30,7 @@ import {
 } from '../publicArt/queries.js';
 import { emptyContainment, loadContainment, type Containment } from './containment.js';
 import { loadSubjects, type SubjectFacts, type SubjectRunner } from '../publicArt/subjects.js';
-import type { RegionalPool } from './regionalPool.js';
+import type { SurroundingsPool } from './surroundingsPool.js';
 import { readsSubset } from '../subset/reader.js';
 import { WORLD_FRAME } from './admissionRegister.js';
 
@@ -78,7 +78,7 @@ export interface PlaceKind<Trees> {
    * of sitelinks (`WORLD_FRAME.poolSitelinks`), whatever the candidate's
    * Wikipedia editions, so the pool the bars are quantiles of is the kind's
    * whole pool — the Asinelli Tower with 9 editions, Munich's Glockenspiel
-   * with 7. Read from the local subset alone, as the regional pool is: the
+   * with 7. Read from the local subset alone, as the surroundings pool is: the
    * live service cannot answer a question this wide. Only this kind sees what
    * the shared pool did not name.
    */
@@ -136,7 +136,7 @@ export interface GatheredPlaces {
   shares: Map<PlaceKind<unknown>, KindShare<unknown>>;
   /** Distinct entities the pool questions named, the rows asked for by id aside. */
   pooled: number;
-  /** Every class the kinds' pool questions asked by, together: the regional tier's pool is their items (ADR-0171, #2178). */
+  /** Every class the kinds' pool questions asked by, together: the surroundings tier's pool is their items (ADR-0171, #2178). */
   classes: ReadonlySet<string>;
 }
 
@@ -144,10 +144,10 @@ export interface GatheredPlaces {
 export interface PlaceGather {
   gathered: GatheredPlaces;
   sparql: SparqlFn;
-  /** The runner the gather read with, for what a source reads after it through the same door (the regional tier, #2178). */
+  /** The runner the gather read with, for what a source reads after it through the same door (the surroundings tier, #2178). */
   run: SubjectRunner;
-  /** The pass's regional pool (ADR-0171), read once on first ask; null where the run read the live service. */
-  regional: () => Promise<RegionalPool | null>;
+  /** The pass's surroundings pool (ADR-0171), read once on first ask; null where the run read the live service. */
+  surroundings: () => Promise<SurroundingsPool | null>;
 }
 
 /** One kind's share, typed by its declaration. */

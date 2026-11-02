@@ -28,7 +28,7 @@
  * decision 1), and it is another door in the same run: `archaeology/sites.ts`
  * collects it, OpenStreetMap judges it where Wikidata's classes cannot
  * (ADR-0059), the place kinds' frame admits it — the world bars over the
- * sites' own pool, and the regional tier with two conditions of the kind's
+ * sites' own pool, and the surroundings tier with two conditions of the kind's
  * own (ADR-0179) — and the writer stores it with the outline OSM drew. One
  * run, because the orchestrator reads absence from a run's items as a
  * withdrawal.
@@ -118,13 +118,13 @@ async function fetchArchaeologyItems(
   // What the source holds as admitted before the run, so the stay of the
   // hysteretic tier has something to hold (ADR-0023) — by door, since each
   // asks after its own rows and no others (`ArchaeologyPipelineDeps`), and by
-  // tier for the sites, since a row the regional tier admitted is that step's
+  // tier for the sites, since a row the surroundings tier admitted is that step's
   // (#2178). And the works another kind already shows a reader: a famous find
   // on a card already makes no question here (ADR-0103).
-  const [admittedMuseums, admittedSites, regionalSites, shownElsewhere] = await Promise.all([
+  const [admittedMuseums, admittedSites, surroundingsSites, shownElsewhere] = await Promise.all([
     admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'museum'),
     admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site', 'world'),
-    admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site', 'regional'),
+    admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site', 'surroundings'),
     worksShownByOtherSources(ARCHAEOLOGY_SOURCE_ID),
   ]);
   // What the sites' world tier last read, for what this run cannot (ADR-0175 decision 6).
@@ -169,8 +169,8 @@ async function fetchArchaeologyItems(
           // gather (#1820); every other question goes through this run's doors.
           sites: async () => shareOf((await gather(progress)).gathered, ARCHAEOLOGY_SITE_KIND),
           siteWorld: { history },
-          // The pass's regional pool, read once for every place kind (ADR-0171).
-          regional: async () => ({ pool: await (await gather(progress)).regional(), held: regionalSites }),
+          // The pass's surroundings pool, read once for every place kind (ADR-0171).
+          surroundings: async () => ({ pool: await (await gather(progress)).surroundings(), held: surroundingsSites }),
           shownElsewhere,
           line,
           // What other kinds refused as held at a museum (ADR-0102).
@@ -193,7 +193,7 @@ async function fetchArchaeologyItems(
       progress.statusMessage = 'The OpenStreetMap mirror failed; reading the map again through Overpass...';
     },
   });
-  const { items, fetched, filtered, refusedContents, regionalSkipped } = collected;
+  const { items, fetched, filtered, refusedContents, surroundingsSkipped } = collected;
 
   // The works floor is a question about museums and their finds (ADR-0044). A
   // site holds none, so counting sites here would compare what the catalogue
@@ -264,8 +264,8 @@ async function fetchArchaeologyItems(
   // were read through the pass's door, the rest through this run's.
   const { sparql: placesDoor } = await gather(progress);
   const unread = subset || readsSubset(placesDoor) ? await unreadOnSubset(ARCHAEOLOGY_SOURCE_ID) : undefined;
-  // Not read this run: the regional tier's rows stay as they are (ADR-0175 decision 6).
-  const spareTier = regionalSkipped ? 'regional' as const : undefined;
+  // Not read this run: the surroundings tier's rows stay as they are (ADR-0175 decision 6).
+  const spareTier = surroundingsSkipped ? 'surroundings' as const : undefined;
   return {
     items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread, ...(spareTier ? { spareTier } : {}),
   };
@@ -303,10 +303,10 @@ export function archaeologySource(
     // says; a museum is here for what it is, and wears the badge only for
     // holding a find the world knows (ADR-0058 decision 2). The British Museum
     // is badged for the Rosetta Stone, Pompeii for being Pompeii, and the Bardo
-    // stands in the kind in full standing without one. A regional arrival
+    // stands in the kind in full standing without one. A surroundings-tier arrival
     // carries none (ADR-0048). Written once admission is settled, not per item
     // (#760).
-    badgesAdmitted: (item) => (item.type === 'site' ? item.tier !== 'regional' : item.findsAboveLine > 0),
+    badgesAdmitted: (item) => (item.type === 'site' ? item.tier !== 'surroundings' : item.findsAboveLine > 0),
     // The one place the run's options reach the collection: the cache is a
     // property of *this* run rather than of the source.
     fetchItems: (progress) => fetchArchaeologyItems(progress, gather, options.refreshCache === true),

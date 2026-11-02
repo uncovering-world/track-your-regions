@@ -119,8 +119,9 @@ export const PLACE_FIELDS: Readonly<Record<string, PlaceField>> = {
   // The run's question to a curator about the place's admission: Archaeology's
   // rule, or a readership door (ADR-0056).
   'metadata.admissionNote': kind('unseen'),
-  // The tier that admitted the row where it is not the world's: the regional
-  // tier of ADR-0171 (#2178). Absent on a world-tier row, which the badge marks.
+  // The tier that admitted the row where it is not the world's: the
+  // surroundings tier of ADR-0171 (#2178, ADR-0178). Absent on a world-tier
+  // row, which the badge marks.
   'metadata.tier': kind('unseen'),
 };
 

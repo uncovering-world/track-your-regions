@@ -60,7 +60,7 @@
  * **And the kind's other door is here too** (ADR-0058 decision 1): the sites,
  * collected by `sites.ts` over their own pool with OpenStreetMap as the second
  * signal and admitted by the place kinds' frame (ADR-0179) — the world tier
- * there, the regional tier in `regionalSites.ts` — and returned in the same
+ * there, the surroundings tier in `surroundingsSites.ts` — and returned in the same
  * list of items. One collector and one proposal, not two runs, because the
  * orchestrator reads absence from that list as a withdrawal — two runs would
  * have each door retire the other's rows on every pass. What a site row looks
@@ -111,10 +111,10 @@ import {
 } from './museumVerdict.js';
 export type { CollectedArchaeologyMuseum } from './museumVerdict.js';
 import { collectSitesByFame, type OsmReader, type SiteEntrance } from './sites.js';
-import { collectRegionalSites, type RegionalSites } from './regionalSites.js';
+import { collectSurroundingsSites, type SurroundingsSites } from './surroundingsSites.js';
 import type { DoorWork, ReadershipDoor, UnderFloorReader } from '../readershipDoor.js';
 import type { WorldOptions } from '../places/worldTier.js';
-import type { RegionalPool } from '../places/regionalPool.js';
+import type { SurroundingsPool } from '../places/surroundingsPool.js';
 import { reportProposal, uniteDoors, type CollectedArchaeologySite } from './proposal.js';
 import { contentsLine, type SourceLine } from '../sourceLine.js';
 import type { ClosureOptions } from '../classClosure.js';
@@ -156,10 +156,10 @@ export interface CollectedArchaeology {
   refusedContents: FilteredEntity[];
   diff: PlacementDiff;
   /**
-   * Why the regional tier was not read this run, when it was not: the sweep
+   * Why the surroundings tier was not read this run, when it was not: the sweep
    * then leaves its rows as they stand (ADR-0175 decision 6).
    */
-  regionalSkipped?: string;
+  surroundingsSkipped?: string;
 }
 
 export interface ArchaeologyPipelineDeps {
@@ -187,7 +187,7 @@ export interface ArchaeologyPipelineDeps {
    * asked after the sites would refuse Athens as "no museum class" ahead of the
    * site door's own reason, and the site door asked after the museums would
    * write a museum the museum door stopped admitting as a site. The sites are
-   * the world tier's; the regional tier's are `regional`'s (#2178).
+   * the world tier's; the surroundings tier's are `surroundings`'s (#2178).
    */
   admittedMuseums: ReadonlySet<string>;
   admittedSites: ReadonlySet<string>;
@@ -231,11 +231,11 @@ export interface ArchaeologyPipelineDeps {
    */
   siteWorld?: WorldOptions;
   /**
-   * The regional tier's inputs (ADR-0171, ADR-0179): the pass's regional pool,
-   * and the sites the source's regional tier holds before the run. None where
-   * no regional tier is read, which leaves its rows as they stand.
+   * The surroundings tier's inputs (ADR-0171, ADR-0179): the pass's surroundings pool,
+   * and the sites the source's surroundings tier holds before the run. None where
+   * no surroundings tier is read, which leaves its rows as they stand.
    */
-  regional?: () => Promise<{ pool: RegionalPool | null; held: ReadonlySet<string> }>;
+  surroundings?: () => Promise<{ pool: SurroundingsPool | null; held: ReadonlySet<string> }>;
   /**
    * The readership door over the finds pool (ADR-0164), or none: the source's
    * curator gate is off, or a test asks no readership.
@@ -540,8 +540,8 @@ export async function collectArchaeology(
     resolveArticles: deps.resolveArticles,
     categories: deps.categories,
   }, deps.siteWorld);
-  // The regional tier after the world tier has decided (ADR-0171, ADR-0179).
-  const regional = await regionalSitesOf(deps, run, trees, sites, items);
+  // The surroundings tier after the world tier has decided (ADR-0171, ADR-0179).
+  const surroundings = await surroundingsSitesOf(deps, run, trees, sites, items);
 
   // What the run will actually write: a find is stored as a treasure of a museum
   // this run admits, so the diff is measured against what the database will hold.
@@ -557,15 +557,15 @@ export async function collectArchaeology(
   // refusals, because nothing can: `judgeOne` answers with an item or a refusal
   // and never both, and a museum that folded has already left the items above.
   // A tier the run did not read leaves its rows as they stand (ADR-0175
-  // decision 6): the world rule's refusal of a row the regional tier holds is
+  // decision 6): the world rule's refusal of a row the surroundings tier holds is
   // dropped, so the place waits for the run that reads its tier.
-  const unread = regional.skipped ? regional.held : new Set<string>();
+  const unread = surroundings.skipped ? surroundings.held : new Set<string>();
   const union = uniteDoors({
     museums: items,
     sites: sites.sites,
-    regionalSites: regional.sites,
+    surroundingsSites: surroundings.sites,
     museumRefusals: [...folded.values(), ...refused],
-    siteRefusals: [...sites.filtered.filter((entry) => !unread.has(entry.externalId)), ...regional.filtered],
+    siteRefusals: [...sites.filtered.filter((entry) => !unread.has(entry.externalId)), ...surroundings.filtered],
   });
 
   const nameOf = (qid: string) => rows.get(qid)?.label ?? works.graph.details.get(qid)?.label ?? qid;
@@ -615,26 +615,26 @@ export async function collectArchaeology(
       })),
     ].filter((entry) => !union.items.some((item) => item.qid === entry.externalId)),
     diff: diffPlacements(deps.previousPlacements, current),
-    ...(regional.skipped ? { regionalSkipped: regional.skipped } : {}),
+    ...(surroundings.skipped ? { surroundingsSkipped: surroundings.skipped } : {}),
   };
 }
 
 /**
- * The regional tier of the sites (`regionalSites.ts`), over what the world
+ * The surroundings tier of the sites (`surroundingsSites.ts`), over what the world
  * tier and the museum door admitted this run, or why it was not read: no
- * regional input, as in a test that reads none, or the cut's own reason.
+ * surroundings input, as in a test that reads none, or the cut's own reason.
  */
-async function regionalSitesOf(
+async function surroundingsSitesOf(
   deps: ArchaeologyPipelineDeps,
   run: QueryRunner,
   trees: ArchaeologyTrees,
   sites: Awaited<ReturnType<typeof collectSitesByFame>>,
   museums: readonly { qid: string; label: string }[],
-): Promise<RegionalSites & { held: ReadonlySet<string> }> {
-  if (!deps.regional) return { sites: new Map(), filtered: [], skipped: 'no regional tier was asked for', held: new Set() };
-  const { pool, held } = await deps.regional();
+): Promise<SurroundingsSites & { held: ReadonlySet<string> }> {
+  if (!deps.surroundings) return { sites: new Map(), filtered: [], skipped: 'no surroundings tier was asked for', held: new Set() };
+  const { pool, held } = await deps.surroundings();
   const museumNames = new Map(museums.map((museum) => [museum.qid, museum.label]));
-  const read = await collectRegionalSites({
+  const read = await collectSurroundingsSites({
     run,
     sparql: deps.sparql,
     pool,

@@ -1,5 +1,5 @@
 /**
- * The regional pool and every candidate's surroundings, read once per pass
+ * The surroundings pool and every candidate's surroundings, read once per pass
  * from the local Wikidata subset (ADR-0171, #2178): every item of the pass
  * kinds' classes with a point — the group a place is measured among, whatever
  * its editions, as ADR-0171's measurement counted it — with its Wikipedia
@@ -10,7 +10,7 @@
  * one indexed query per item (`ST_DWithin` over the GiST index).
  *
  * Whose places set a candidate's references is the cut's `neighbours`
- * (`regionalCut.ts`): every kind's together — a church in Cairo measured
+ * (`surroundingsCut.ts`): every kind's together — a church in Cairo measured
  * against Giza and Saqqara, as the measurement measured it — or one group per
  * kind or per type, each read over the pool's rows of that group's classes.
  * The groups are read side by side in the review (#2177); a run reads one.
@@ -25,11 +25,11 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../../../db/index.js';
 import { NOT_WIKIPEDIA } from '../subset/kit.js';
-import type { RegionalCut, Surroundings } from './regionalCut.js';
+import type { SurroundingsCut, Surroundings } from './surroundingsCut.js';
 import { yearlyReadersOfMany } from './candidates.js';
 
 /** An item as the pool holds it. */
-export interface RegionalPoolRow {
+export interface SurroundingsPoolRow {
   qid: string;
   editions: number;
   guideEditions: number;
@@ -41,16 +41,16 @@ export interface RegionalPoolRow {
 }
 
 /** One neighbourhood to read: whose places set the references, by the classes that name them. */
-export interface RegionalGroup {
-  /** `all`, the kind's group (`RegionalKind.group`, else its name), or `<group>:<type>` (`regionalGroupKey`). */
+export interface SurroundingsGroup {
+  /** `all`, the kind's group (`SurroundingsKind.group`, else its name), or `<group>:<type>` (`surroundingsGroupKey`). */
   key: string;
   /** The classes of the group's places; the whole pool for `all`. */
   classes: ReadonlySet<string> | null;
 }
 
-/** The pass's regional pool, read once: the rows, and each group's surroundings of every row with the cut's languages. */
-export interface RegionalPool {
-  rows: ReadonlyMap<string, RegionalPoolRow>;
+/** The pass's surroundings pool, read once: the rows, and each group's surroundings of every row with the cut's languages. */
+export interface SurroundingsPool {
+  rows: ReadonlyMap<string, SurroundingsPoolRow>;
   /** By group key, the surroundings of each candidate of that group. */
   around: ReadonlyMap<string, ReadonlyMap<string, Surroundings>>;
   /** How long the read took, for the run's log. */
@@ -59,38 +59,38 @@ export interface RegionalPool {
   unread?: string;
 }
 
-const TABLE = 'regional_pool';
+const TABLE = 'surroundings_pool';
 const BATCH = 500;
 
 /** What the pool read reports to its run, and where it lets the run stop it (the pass's runner). */
-export interface RegionalPoolRun {
+export interface SurroundingsPoolRun {
   phase: (message: string) => void;
   /** Throws to abandon the run; called before every batch. */
   step: () => Promise<void>;
 }
 
 /** A year's readers of the pool's items, or null when no year is read. */
-export type PoolReaders = (qids: readonly string[], run?: RegionalPoolRun) => Promise<ReadonlyMap<string, number> | null>;
+export type PoolReaders = (qids: readonly string[], run?: SurroundingsPoolRun) => Promise<ReadonlyMap<string, number> | null>;
 
-const yearOfReaders: PoolReaders = (qids, run) => yearlyReadersOfMany(qids, '[Regional pool]', run?.step);
+const yearOfReaders: PoolReaders = (qids, run) => yearlyReadersOfMany(qids, '[Surroundings pool]', run?.step);
 
 /**
  * Build the pool for `classes` and read every group's candidates' surroundings,
  * in one session that leaves nothing behind.
  */
-export async function readRegionalPool(
-  classes: ReadonlySet<string>, cut: RegionalCut, groups: readonly RegionalGroup[], run?: RegionalPoolRun,
+export async function readSurroundingsPool(
+  classes: ReadonlySet<string>, cut: SurroundingsCut, groups: readonly SurroundingsGroup[], run?: SurroundingsPoolRun,
   readers: PoolReaders = yearOfReaders,
-): Promise<RegionalPool> {
+): Promise<SurroundingsPool> {
   const started = Date.now();
   const client = await pool.connect();
   try {
-    run?.phase('Building the regional tier\'s pool from the subset...');
+    run?.phase('Building the surroundings tier\'s pool from the subset...');
     await run?.step();
     await createPool(client, classes);
     if (!(await readPoolReaders(client, readers, run))) {
       return { rows: new Map(), around: new Map(), seconds: Math.round((Date.now() - started) / 1000),
-        unread: 'No year of readers is read, so the regional tier\'s readers\' floor and readers test cannot be read: '
+        unread: 'No year of readers is read, so the surroundings tier\'s readers\' floor and readers test cannot be read: '
           + 'the tier is not read this run, and its places keep their standing (ADR-0175 decision 6)' };
     }
     await client.query(`CREATE INDEX ON ${TABLE} USING GIST (point)`);
@@ -150,9 +150,9 @@ async function createPool(client: PoolClient, classes: ReadonlySet<string>): Pro
  * A year of readers of every pool item with a Wikipedia article, written into
  * the session's pool; false, with nothing written, when no year is read.
  */
-async function readPoolReaders(client: PoolClient, readers: PoolReaders, run?: RegionalPoolRun): Promise<boolean> {
+async function readPoolReaders(client: PoolClient, readers: PoolReaders, run?: SurroundingsPoolRun): Promise<boolean> {
   const read = (await client.query<{ qid: string }>(`SELECT qid FROM ${TABLE} WHERE editions > 0`)).rows.map((r) => r.qid);
-  run?.phase(`Reading a year of readers of the regional pool's ${read.length.toLocaleString('en')} items with an article...`);
+  run?.phase(`Reading a year of readers of the surroundings pool's ${read.length.toLocaleString('en')} items with an article...`);
   const year = await readers(read, run);
   if (!year) return false;
   const qids = [...year.keys()];
@@ -171,8 +171,8 @@ async function readPoolReaders(client: PoolClient, readers: PoolReaders, run?: R
  * lateral join.
  */
 export async function readSurroundings(
-  client: PoolClient, qids: readonly string[], cut: RegionalCut, neighbours: ReadonlySet<string> | null = null,
-  run?: RegionalPoolRun,
+  client: PoolClient, qids: readonly string[], cut: SurroundingsCut, neighbours: ReadonlySet<string> | null = null,
+  run?: SurroundingsPoolRun,
 ): Promise<Map<string, Surroundings>> {
   const out = new Map<string, Surroundings>();
   const metres = cut.radiusKm * 1000;

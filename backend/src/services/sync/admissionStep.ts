@@ -146,7 +146,7 @@ export async function applyAdmissionSweep<T>(
   previousAdmittedCount: number,
   changes: ChangeRecord[],
   unread: string[] = [],
-  spareTier?: 'regional',
+  spareTier?: 'surroundings',
 ): Promise<SweepOutcome> {
   if (!config.recomputesMembership || progress.logId === null) return NO_SWEEP;
 
@@ -191,7 +191,7 @@ export async function applyAdmissionSweep<T>(
  * row of a tier it did not read (#2178), whose pin keeps what was asked before.
  */
 function runViewOf(
-  refusals: Refusal[], admittedExternalIds: string[], sweep: SweepOutcome, unread: string[], spareTier?: 'regional',
+  refusals: Refusal[], admittedExternalIds: string[], sweep: SweepOutcome, unread: string[], spareTier?: 'surroundings',
 ): (pin: PinnedRow) => RunView | null {
   const notRead = new Set(unread);
   const admitted = new Set(admittedExternalIds);
@@ -232,7 +232,7 @@ export async function questionPins<T>(
   /** Ask about every pin the run disagrees with, not only those whose reason changed (#1370). */
   askAll = false,
   /** A tier the run did not read (`FetchResult.spareTier`, #2178): no view of its pins, as of an unread row's. */
-  spareTier?: 'regional',
+  spareTier?: 'surroundings',
 ): Promise<void> {
   if (progress.logId === null) return;
   const viewOf = runViewOf(

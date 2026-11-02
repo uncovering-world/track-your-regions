@@ -119,7 +119,7 @@ export interface SiteCandidate {
   /**
    * What the card says: which signal carried in a row the tree did not vouch
    * for (#895), and the frame's note where it asks one — a guide's mark, a
-   * held place kept while a bar could not be read, or where the regional tier
+   * held place kept while a bar could not be read, or where the surroundings tier
    * measured it. Absent where none speaks.
    */
   note?: string;
@@ -144,8 +144,8 @@ export interface SitesByFame {
   fetched: Set<string>;
   /**
    * What the door read of every candidate it judged: the facts and the map,
-   * which the regional tier reads again of a survivor the pool already holds
-   * rather than asking twice (`regionalSites.ts`).
+   * which the surroundings tier reads again of a survivor the pool already holds
+   * rather than asking twice (`surroundingsSites.ts`).
    */
   read: SiteReading;
 }
@@ -501,8 +501,8 @@ function retypedRefusal(entity: PoolEntity, held: boolean, tier: WorldTier): Sit
  * to ask after: asked for by id here, a museum the museum door had stopped
  * admitting — folded, vetoed, no longer a museum to Wikipedia — would carry no
  * kill class, no OSM signal and no settlement class, reach the final admit of
- * step 4, and be written as a site. A row the regional tier holds is that
- * tier's (`regionalSites.ts`). `world` hands a run the source's history, for
+ * step 4, and be written as a site. A row the surroundings tier holds is that
+ * tier's (`surroundingsSites.ts`). `world` hands a run the source's history, for
  * what it cannot read (ADR-0175 decision 6), and a test the world's signals
  * and the bars where it is not about the pool (`WorldOptions`).
  */

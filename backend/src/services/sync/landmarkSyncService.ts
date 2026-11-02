@@ -28,7 +28,7 @@ import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import {
   classifyPublicArt, PUBLIC_ART_KIND, publicArtVerdictOf, streetArtCandidates, type GatheredPublicArt,
 } from './publicArt/pipeline.js';
-import { mergeRegional, regionalReader, type RegionalKind, type RegionalReader } from './places/regionalTier.js';
+import { mergeSurroundings, surroundingsReader, type SurroundingsKind, type SurroundingsReader } from './places/surroundingsTier.js';
 import { refuseGone } from './places/gone.js';
 import { worldHistory, type WorldHistory } from './places/worldMemory.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
@@ -79,8 +79,8 @@ export interface PlaceClassifier {
   }>;
   types: readonly string[];
   tag: string;
-  /** The kind's regional tier (ADR-0171, #2178), read after the world tier's decision; absent for a kind without one. */
-  regional?: RegionalReader;
+  /** The kind's surroundings tier (ADR-0171, #2178), read after the world tier's decision; absent for a kind without one. */
+  surroundings?: SurroundingsReader;
   /** What the kind's places hold, where its places hold works: Public art's street-art places (#2055). */
   contents?: PlaceContents;
 }
@@ -95,12 +95,12 @@ interface ClassifierOptions {
 }
 
 /**
- * Public art or Monuments & memorials in the regional tier (ADR-0171, #2178):
+ * Public art or Monuments & memorials in the surroundings tier (ADR-0171, #2178):
  * every item of the kind's classes measured against its surroundings, then the
  * kind's own rule over the survivors, with what holds them and what they
  * depict read by id, as the pool's candidates are judged.
  */
-export function publicArtRegional(rule: KindRule): RegionalKind<PublicArtTrees, ReadonlySet<string>> {
+export function publicArtSurroundings(rule: KindRule): SurroundingsKind<PublicArtTrees, ReadonlySet<string>> {
   return {
     kind: PUBLIC_ART_KIND,
     // Each rule's neighbourhood under its own key: both read one gather kind.
@@ -143,10 +143,10 @@ function publicArtClassifier(rule: KindRule, { streetArt = false }: ClassifierOp
     },
     types: rule.types,
     tag: 'outdoor',
-    // The regional tier (ADR-0171): the cut first over every item of the
+    // The surroundings tier (ADR-0171): the cut first over every item of the
     // kind's classes, then the kind's own rule over the few it admits, with
     // what holds them and what they depict read by id.
-    regional: regionalReader(publicArtRegional(rule)),
+    surroundings: surroundingsReader(publicArtSurroundings(rule)),
     ...(streetArt ? { contents: streetArtContents(LANDMARK_SOURCE_ID, LOG_PREFIX) } : {}),
   };
 }
@@ -368,24 +368,24 @@ async function fetchLandmarkItems(
   credits.fetched = new Map();
   credits.stored = await readStoredCredits(sourceId);
   // The world tier's rows alone, so the bars' stay share never holds a row
-  // the regional tier admitted (#2178); the regional tier's are its own step's.
+  // the surroundings tier admitted (#2178); the surroundings tier's are its own step's.
   const admitted = await admittedExternalIds(sourceId, undefined, 'world');
 
-  const { gathered, sparql, run, regional: regionalPool } = await gather(progress);
+  const { gathered, sparql, run, surroundings: surroundingsPool } = await gather(progress);
   // What the source's world tier last read, for what this run cannot (ADR-0175 decision 6).
   const history = await worldHistory(sourceId, progress.logId);
   const { items, fetched, filtered, handOvers } = await classifier.classify(gathered, admitted, sparql, history);
-  // The regional tier after the world tier has decided (ADR-0171, #2178): what
+  // The surroundings tier after the world tier has decided (ADR-0171, #2178): what
   // the world bars left out, measured against its surroundings.
-  let spareTier: 'regional' | undefined;
-  if (classifier.regional) {
-    const regionalHeld = await admittedExternalIds(sourceId, undefined, 'regional');
-    const regional = await classifier.regional.arrivals(
-      run, sparql, gathered, new Set(items.map((item) => item.qid)), await regionalPool(), regionalHeld,
+  let spareTier: 'surroundings' | undefined;
+  if (classifier.surroundings) {
+    const surroundingsHeld = await admittedExternalIds(sourceId, undefined, 'surroundings');
+    const surroundings = await classifier.surroundings.arrivals(
+      run, sparql, gathered, new Set(items.map((item) => item.qid)), await surroundingsPool(), surroundingsHeld,
     );
-    mergeRegional(items, filtered, regional, (item) => item.qid, regionalHeld);
-    // Not read this run (`regional.skipped`): its rows stay as they are.
-    if (regional.skipped) spareTier = 'regional';
+    mergeSurroundings(items, filtered, surroundings, (item) => item.qid, surroundingsHeld);
+    // Not read this run (`surroundings.skipped`): its rows stay as they are.
+    if (surroundings.skipped) spareTier = 'surroundings';
   }
   // A place Wikidata says is gone is refused whichever tier admitted it (#2259).
   await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX);
@@ -445,8 +445,8 @@ export function placeSource(
     // Belonging is the badge: the world tier is what clears the world bars, and
     // every row this run admits by it carries is_iconic for that (ADR-0045
     // decision 5) — written once admission is settled, not per landmark (#760).
-    // A row the regional tier admits carries none (ADR-0048 decision 3).
-    badgesAdmitted: (item) => item.tier !== 'regional',
+    // A row the surroundings tier admits carries none (ADR-0048 decision 3).
+    badgesAdmitted: (item) => item.tier !== 'surroundings',
     // Nothing appends to the orchestrator's error list any more: a collection
     // that fails throws, and fails the run.
     fetchItems: (progress) => fetchLandmarkItems(sourceId, classifier, credits, gather, progress),

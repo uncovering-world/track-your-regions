@@ -37,16 +37,16 @@ vi.mock('./publicArt/pipeline.js', () => ({
   PUBLIC_ART_KIND: { name: 'public art' },
   streetArtCandidates: vi.fn(),
 }));
-// The regional tier is its own module's (`regionalTier.test.ts`); here it brings nothing.
-const regionalArrivals = vi.hoisted(() => vi.fn(async () => ({ items: [], filtered: [] } as { items: never[]; filtered: never[]; skipped?: string })));
-vi.mock('./places/regionalTier.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./places/regionalTier.js')>()),
-  regionalReader: vi.fn(() => ({ arrivals: regionalArrivals })),
+// The surroundings tier is its own module's (`surroundingsTier.test.ts`); here it brings nothing.
+const surroundingsArrivals = vi.hoisted(() => vi.fn(async () => ({ items: [], filtered: [] } as { items: never[]; filtered: never[]; skipped?: string })));
+vi.mock('./places/surroundingsTier.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./places/surroundingsTier.js')>()),
+  surroundingsReader: vi.fn(() => ({ arrivals: surroundingsArrivals })),
 }));
 // What the source's world tier last read (ADR-0175 decision 6) is its own module's (`places/worldMemory.ts`).
 const history = vi.hoisted(() => ({ memory: { bars: null, readers: new Map(), guided: new Map() }, keep: vi.fn() }));
 vi.mock('./places/worldMemory.js', () => ({ worldHistory: vi.fn(async () => history) }));
-vi.mock('./places/regionalPool.js', () => ({ readRegionalPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
+vi.mock('./places/surroundingsPool.js', () => ({ readSurroundingsPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
 // Whether a place still stands is its own module's (`places/gone.test.ts`, #2259); here nothing is gone.
 vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0) }));
 // The museum tree joins the pool's classes (ADR-0171); the spec asks Wikidata nothing.
@@ -138,11 +138,11 @@ import { gatherPlaces } from './places/gather.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { syncPlacePass } from './places/placePass.js';
-import { publicArtRegional } from './landmarkSyncService.js';
+import { publicArtSurroundings } from './landmarkSyncService.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE } from './publicArt/kindRules.js';
 import type { PublicArtTrees } from './publicArt/classes.js';
-import { regionalGroupKey, regionalGroups } from './places/regionalTier.js';
-import { REGIONAL_CUT } from './places/regionalCut.js';
+import { surroundingsGroupKey, surroundingsGroups } from './places/surroundingsTier.js';
+import { SURROUNDINGS_CUT } from './places/surroundingsCut.js';
 import { TOWERS_CLASSIFIER, TOWERS_KIND } from './towers/kind.js';
 import { BRIDGES_KIND } from './bridges/kind.js';
 import { SQUARES_KIND } from './squares/kind.js';
@@ -206,10 +206,10 @@ describe('public art in the place pass', () => {
     expect(config.sourceId).toBe(3);
     expect(config.sourceCompleteness).toBe('ranked');
     expect(config.recomputesMembership).toBe(true);
-    // Belonging is the badge for the world tier alone: a row the regional tier admits carries none (ADR-0048).
-    const badges = config.badgesAdmitted as (item: { tier?: 'regional' }) => boolean;
+    // Belonging is the badge for the world tier alone: a row the surroundings tier admits carries none (ADR-0048).
+    const badges = config.badgesAdmitted as (item: { tier?: 'surroundings' }) => boolean;
     expect(badges({})).toBe(true);
-    expect(badges({ tier: 'regional' })).toBe(false);
+    expect(badges({ tier: 'surroundings' })).toBe(false);
   });
 
   it('hands the collection what the source already admits, and its refusals back', async () => {
@@ -260,26 +260,26 @@ describe('public art in the place pass', () => {
     expect(mockedCollect.mock.calls[0][6]).toEqual({ history });
   });
 
-  it('leaves a row the regional tier holds as it stands when that tier was not read, the world rule\'s refusal of it included', async () => {
-    // A fountain the regional tier holds: the world classifier names a refusal of it, but the regional step
+  it('leaves a row the surroundings tier holds as it stands when that tier was not read, the world rule\'s refusal of it included', async () => {
+    // A fountain the surroundings tier holds: the world classifier names a refusal of it, but the surroundings step
     // was switched off, so the tier that holds it said nothing, and nothing is written of it.
-    const fountain = { externalId: 'Q9002253', name: 'A fountain the regional tier holds', reason: 'a work of a museum, not public art' };
+    const fountain = { externalId: 'Q9002253', name: 'A fountain the surroundings tier holds', reason: 'a work of a museum, not public art' };
     const segovia = { externalId: 'Q1499912', name: 'Segovia Cathedral', reason: 'a place of worship, not public art' };
     mockedCollect.mockReturnValue({ items: [landmark()], fetched: 3, filtered: [fountain, segovia] });
     mockedAdmitted.mockImplementation(async (_source: number, _type?: string, tier?: string) =>
-      new Set(tier === 'regional' ? ['Q9002253'] : ['Q337179']));
-    regionalArrivals.mockResolvedValueOnce({ items: [], filtered: [], skipped: 'The regional tier is switched off' });
+      new Set(tier === 'surroundings' ? ['Q9002253'] : ['Q337179']));
+    surroundingsArrivals.mockResolvedValueOnce({ items: [], filtered: [], skipped: 'The surroundings tier is switched off' });
     const config = await configOf();
     const fetched = await config.fetchItems(progress(), []);
     expect(fetched.filtered).toEqual([segovia]);
-    expect(fetched.spareTier).toBe('regional');
+    expect(fetched.spareTier).toBe('surroundings');
   });
 
-  it('refuses a regional row by the rule where the regional tier was read', async () => {
-    const fountain = { externalId: 'Q9002253', name: 'A fountain the regional tier holds', reason: 'a work of a museum, not public art' };
+  it('refuses a surroundings-tier row by the rule where the surroundings tier was read', async () => {
+    const fountain = { externalId: 'Q9002253', name: 'A fountain the surroundings tier holds', reason: 'a work of a museum, not public art' };
     mockedCollect.mockReturnValue({ items: [landmark()], fetched: 2, filtered: [fountain] });
     mockedAdmitted.mockImplementation(async (_source: number, _type?: string, tier?: string) =>
-      new Set(tier === 'regional' ? ['Q9002253'] : ['Q337179']));
+      new Set(tier === 'surroundings' ? ['Q9002253'] : ['Q337179']));
     const config = await configOf();
     const fetched = await config.fetchItems(progress(), []);
     expect(fetched.filtered).toEqual([fountain]);
@@ -322,7 +322,7 @@ describe('public art in the place pass', () => {
       items: [landmark({ qid: 'Q91274', label: 'Galata Tower', type: 'tower', classes: ['Q12518'] })], fetched: 1, filtered: [],
     });
     const fetched = await towers.fetchItems(progress(), []);
-    // The world tier's rows alone: a regional row is never held to the world line (#2178).
+    // The world tier's rows alone: a surroundings-tier row is never held to the world line (#2178).
     expect(mockedAdmitted).toHaveBeenCalledWith(7, undefined, 'world');
     expect(vi.mocked(TOWERS_CLASSIFIER.classify).mock.calls[0][1]).toEqual(new Set(['Q91274']));
     expect(mockedCollect).not.toHaveBeenCalled();
@@ -504,7 +504,7 @@ describe('public art in the place pass', () => {
   });
 });
 
-describe('Public art\'s and Monuments\' part in the regional tier (#2178)', () => {
+describe('Public art\'s and Monuments\' part in the surroundings tier (#2178)', () => {
   const SCULPTURE = 'Q860861';
   const FOUNTAIN = 'Q483453';
   const MONUMENT = 'Q4989906';
@@ -517,15 +517,15 @@ describe('Public art\'s and Monuments\' part in the regional tier (#2178)', () =
   } as unknown as PublicArtTrees;
 
   it('reads Public art\'s own classes as candidates, not the heritage senses of monument its rule refuses', () => {
-    const classes = publicArtRegional(PUBLIC_ART_RULE).classesOf(trees);
+    const classes = publicArtSurroundings(PUBLIC_ART_RULE).classesOf(trees);
     expect(classes.has(SCULPTURE) && classes.has(FOUNTAIN) && classes.has(CLOCK)).toBe(true);
     expect(classes.has(MONUMENT) || classes.has(MEMORIAL)).toBe(false);
     // Monuments reads every admitting class: a statue raised to a person is a monument.
-    expect(publicArtRegional(MONUMENTS_RULE).classesOf(trees)).toBe(trees.admitting);
+    expect(publicArtSurroundings(MONUMENTS_RULE).classesOf(trees)).toBe(trees.admitting);
   });
 
   it('types a place as the kind\'s rule files it, with the rule\'s precedence', () => {
-    const typeOf = publicArtRegional(PUBLIC_ART_RULE).typeOf!;
+    const typeOf = publicArtSurroundings(PUBLIC_ART_RULE).typeOf!;
     // The Trevi Fountain is typed a fountain and a sculpture, and visited as the fountain.
     expect(typeOf([SCULPTURE, FOUNTAIN], trees)).toBe('fountain');
     // A public clock is a clock before anything else it is.
@@ -536,12 +536,12 @@ describe('Public art\'s and Monuments\' part in the regional tier (#2178)', () =
   it('keeps each rule\'s kind neighbourhood under its own key, though both read one gather kind', () => {
     // The pass writes every group by its key, so a shared key would let
     // Monuments' classes overwrite Public art's.
-    const cut = { ...REGIONAL_CUT, enabled: true, neighbours: 'kind' as const };
-    const [art] = regionalGroups(publicArtRegional(PUBLIC_ART_RULE), trees, cut);
-    const [monuments] = regionalGroups(publicArtRegional(MONUMENTS_RULE), trees, cut);
+    const cut = { ...SURROUNDINGS_CUT, enabled: true, neighbours: 'kind' as const };
+    const [art] = surroundingsGroups(publicArtSurroundings(PUBLIC_ART_RULE), trees, cut);
+    const [monuments] = surroundingsGroups(publicArtSurroundings(MONUMENTS_RULE), trees, cut);
     expect(art.key).not.toBe(monuments.key);
     expect(art.classes?.has(MONUMENT)).toBe(false);
     expect(monuments.classes).toBe(trees.admitting);
-    expect(regionalGroupKey(publicArtRegional(PUBLIC_ART_RULE), trees, [SCULPTURE], cut)).toBe(art.key);
+    expect(surroundingsGroupKey(publicArtSurroundings(PUBLIC_ART_RULE), trees, [SCULPTURE], cut)).toBe(art.key);
   });
 });

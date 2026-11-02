@@ -55,16 +55,16 @@ export interface CollectedArchaeologySite {
   extentWkt: string | null;
   /**
    * What the card says: which signal carried in a row the tree did not vouch
-   * for (#895), and the frame's note — a guide's mark, or where the regional
+   * for (#895), and the frame's note — a guide's mark, or where the surroundings
    * tier measured it; the museum row's key, read by the card already.
    */
   admissionNote?: string;
   /** The tier that admitted it, where it is not the world's (ADR-0171, ADR-0179). */
-  tier?: 'regional';
+  tier?: 'surroundings';
 }
 
 /** A candidate the site door admitted, as the run will write it. */
-export function siteItemOf(qid: string, site: SiteCandidate, tier?: 'regional'): CollectedArchaeologySite {
+export function siteItemOf(qid: string, site: SiteCandidate, tier?: 'surroundings'): CollectedArchaeologySite {
   const { entity } = site;
   return {
     qid,
@@ -118,8 +118,8 @@ export function siteItemOf(qid: string, site: SiteCandidate, tier?: 'regional'):
 export function uniteDoors<M extends { qid: string }, R extends FilteredEntity>(doors: {
   museums: M[];
   sites: Map<string, SiteCandidate>;
-  /** The sites the regional tier admits (`regionalSites.ts`), written as the world's are, with their tier. */
-  regionalSites?: ReadonlyMap<string, SiteCandidate>;
+  /** The sites the surroundings tier admits (`surroundingsSites.ts`), written as the world's are, with their tier. */
+  surroundingsSites?: ReadonlyMap<string, SiteCandidate>;
   /** The museum door's refusals, the fold lines first. */
   museumRefusals: FilteredEntity[];
   /** The site door's own, most famous first. */
@@ -146,8 +146,8 @@ export function uniteDoors<M extends { qid: string }, R extends FilteredEntity>(
     }
     siteItems.push(siteItemOf(qid, site));
   }
-  for (const [qid, site] of doors.regionalSites ?? []) {
-    if (!admitted.has(qid)) siteItems.push(siteItemOf(qid, site, 'regional'));
+  for (const [qid, site] of doors.surroundingsSites ?? []) {
+    if (!admitted.has(qid)) siteItems.push(siteItemOf(qid, site, 'surroundings'));
   }
 
   const items = [...doors.museums, ...siteItems];
@@ -178,12 +178,12 @@ export function uniteDoors<M extends { qid: string }, R extends FilteredEntity>(
  * living places and the cities with no ruin on the map (run 122: 76 and 55
  * against 66 by class or by name), then the class-or-name group, then the
  * three the frame and the pool add: a held site under every stay bar of the
- * world tier, a site the regional tier refuses, and a row with no coordinate
+ * world tier, a site the surroundings tier refuses, and a row with no coordinate
  * to pin. A group with nothing in it is not printed: a run says what it did,
  * not what it might have done.
  */
 const GROUP_ORDER: readonly SiteRefusalGroup[] = [
-  'living', 'no-ruin', 'class-or-name', 'under-the-bars', 'regional', 'placeless',
+  'living', 'no-ruin', 'class-or-name', 'under-the-bars', 'surroundings', 'placeless',
 ];
 
 /** What the count on the summary line is a count *of*. */
@@ -192,7 +192,7 @@ const GROUP_PHRASES: Record<SiteRefusalGroup, string> = {
   'no-ruin': 'with no ruin on the map',
   'class-or-name': 'by class or by name',
   'under-the-bars': 'under the world tier\'s bars',
-  regional: 'refused by the regional tier',
+  surroundings: 'refused by the surroundings tier',
   placeless: 'with no coordinate to pin',
 };
 
@@ -202,7 +202,7 @@ const GROUP_HEADINGS: Record<SiteRefusalGroup, string> = {
   'no-ruin': 'no ruin on the map',
   'class-or-name': 'by class or by name',
   'under-the-bars': 'under the world tier\'s bars',
-  regional: 'the regional tier',
+  surroundings: 'the surroundings tier',
   placeless: 'no coordinate to pin',
 };
 
@@ -247,12 +247,12 @@ export function reportProposal(proposal: {
 }): void {
   const { museums, held, forFind, sites, refused, treasures, siteRefusals, venueSide } = proposal;
   const extents = sites.filter((item) => item.extentWkt).length;
-  const regional = sites.filter((item) => item.tier === 'regional').length;
+  const surroundings = sites.filter((item) => item.tier === 'surroundings').length;
   console.log(
     `${LOG_PREFIX} Admitted ${museums} museums `
     + `(${held.length} held for a curator, `
     + `${forFind.length} for a find they hold) `
-    + `and ${sites.length} sites (${sites.length - regional} in the world tier, ${regional} in the regional tier, `
+    + `and ${sites.length} sites (${sites.length - surroundings} in the world tier, ${surroundings} in the surroundings tier, `
     + `${extents} with an extent); `
     + `${refused} refused, ${treasures} treasures to write`,
   );

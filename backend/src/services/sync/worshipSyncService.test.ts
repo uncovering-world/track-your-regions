@@ -38,10 +38,10 @@ vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0) }));
 vi.mock('./worship/pipeline.js', () => ({ collectPlacesOfWorship: vi.fn() }));
 // The places come from the pass's gather, which the mocked pipeline never asks.
 vi.mock('./places/gather.js', () => ({ shareOf: vi.fn(() => ({ trees: {} })) }));
-// The regional tier is its own module's (`regionalTier.test.ts`); here it brings nothing.
-vi.mock('./places/regionalTier.js', async (importOriginal) => ({
-  mergeRegional: (await importOriginal<typeof import('./places/regionalTier.js')>()).mergeRegional,
-  regionalArrivals: vi.fn(async () => ({ items: [], filtered: [] })),
+// The surroundings tier is its own module's (`surroundingsTier.test.ts`); here it brings nothing.
+vi.mock('./places/surroundingsTier.js', async (importOriginal) => ({
+  mergeSurroundings: (await importOriginal<typeof import('./places/surroundingsTier.js')>()).mergeSurroundings,
+  surroundingsArrivals: vi.fn(async () => ({ items: [], filtered: [] })),
 }));
 // What the source's world tier last read (ADR-0175 decision 6) is its own module's (`places/worldMemory.ts`).
 const history = vi.hoisted(() => ({ memory: { bars: null, readers: new Map(), guided: new Map() }, keep: vi.fn() }));
@@ -155,8 +155,8 @@ function lineRow(): { rows: { api_config: unknown }[] } {
  * places through: the live service unless a test says otherwise.
  */
 async function configOf(placesDoor: unknown = vi.fn()): Promise<SyncServiceConfig<CollectedPlaceOfWorship>> {
-  // No regional pool in the spec: the tier is its own module's (`regionalTier.test.ts`).
-  return worshipSource(vi.fn(async () => ({ gathered: {}, sparql: placesDoor, regional: async () => null })) as never, {});
+  // No surroundings pool in the spec: the tier is its own module's (`surroundingsTier.test.ts`).
+  return worshipSource(vi.fn(async () => ({ gathered: {}, sparql: placesDoor, surroundings: async () => null })) as never, {});
 }
 
 /**
@@ -268,20 +268,20 @@ describe('what the worship run fetches', () => {
     expect(mockedCollect.mock.calls[0][0].placeWorld).toEqual({ history });
   });
 
-  it('leaves a place the regional tier holds as it stands when that tier was not read (ADR-0175 decision 6)', async () => {
-    // Hirano Shrine, held by the regional tier; the world rule names a refusal of it, and the regional step was off.
+  it('leaves a place the surroundings tier holds as it stands when that tier was not read (ADR-0175 decision 6)', async () => {
+    // Hirano Shrine, held by the surroundings tier; the world rule names a refusal of it, and the surroundings step was off.
     mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
     mockedCollect.mockResolvedValueOnce({
       items: [place()], fetched: 1200, diff: { moved: [], gained: [], lost: [], dropped: [] },
       filtered: [{ externalId: 'Q738971', name: 'Hirano Shrine', reason: 'a refusal by the world rule' }],
     });
     mockedAdmitted.mockImplementation(async (_source: number, _type?: string, tier?: string) =>
-      new Set(tier === 'regional' ? ['Q738971'] : [COLOGNE]));
-    const { regionalArrivals } = await import('./places/regionalTier.js');
-    vi.mocked(regionalArrivals).mockResolvedValueOnce({ items: [], filtered: [], skipped: 'The regional tier is switched off' });
+      new Set(tier === 'surroundings' ? ['Q738971'] : [COLOGNE]));
+    const { surroundingsArrivals } = await import('./places/surroundingsTier.js');
+    vi.mocked(surroundingsArrivals).mockResolvedValueOnce({ items: [], filtered: [], skipped: 'The surroundings tier is switched off' });
     const result = await (await configOf()).fetchItems(progress(), []);
     expect(result.filtered).toEqual([]);
-    expect(result.spareTier).toBe('regional');
+    expect(result.spareTier).toBe('surroundings');
   });
 
   it('measures the works floor over what it read before writing, and answers with the verdict', async () => {
@@ -496,10 +496,10 @@ describe('what the worship run tells the orchestrator', () => {
     expect(config.recomputesMembership).toBe(true);
     // Both doors are the world tier (ADR-0045 decision 5): a place clears the
     // source's own fame line, or holds a treasure that clears it.
-    // The world tier's rows alone carry the badge; a regional arrival carries none (ADR-0048).
-    const badges = config.badgesAdmitted as (place: { tier?: 'regional' }) => boolean;
+    // The world tier's rows alone carry the badge; a surroundings-tier arrival carries none (ADR-0048).
+    const badges = config.badgesAdmitted as (place: { tier?: 'surroundings' }) => boolean;
     expect(badges({})).toBe(true);
-    expect(badges({ tier: 'regional' })).toBe(false);
+    expect(badges({ tier: 'surroundings' })).toBe(false);
     expect(config.getItemName(place())).toBe('Cologne Cathedral');
     expect(config.getItemId(place())).toBe(COLOGNE);
   });
