@@ -36,13 +36,18 @@ const regional: RegionalKind<typeof trees> = {
 const run = { sparql: vi.fn(), phase: vi.fn(), step: vi.fn() };
 const sparql = vi.fn();
 const gathered = { shares: new Map([[kind, { trees }]]), pooled: 0 };
-const around = { groupSize: 30, topEditions: [40, 30, 28, 26, 25, 22, 20, 18, 16, 15], topGuideEditions: [3, 2, 2, 1, 1] };
+const around = {
+  groupSize: 30, topEditions: [40, 30, 28, 26, 25, 22, 20, 18, 16, 15], topGuideEditions: [3, 2, 2, 1, 1],
+  topReaders: [60_000, 40_000, 30_000, 20_000, 15_000, 12_000, 10_000, 9_000, 8_500, 8_200],
+};
 // The pass's pool: four towers and a church; the church is another kind's candidate and sets the references with the rest.
-const row = (qid: string, cls: string, editions: number, guideEditions: number) => ({ qid, editions, guideEditions, classes: [cls], lat: 44.49, lon: 11.35 });
+const row = (qid: string, cls: string, editions: number, guideEditions: number, readers = 5_000) => ({
+  qid, editions, guideEditions, readers, classes: [cls], lat: 44.49, lon: 11.35,
+});
 const pool: RegionalPool = {
   rows: new Map([
-    ['Q1', row('Q1', TOWER, 40, 3)], ['Q2', row('Q2', TOWER, 9, 1)], ['Q3', row('Q3', TOWER, 7, 0)],
-    ['Q4', row('Q4', TOWER, 12, 2)], ['Q5', row('Q5', CHURCH, 30, 2)],
+    ['Q1', row('Q1', TOWER, 40, 3, 60_000)], ['Q2', row('Q2', TOWER, 9, 1, 8_000)], ['Q3', row('Q3', TOWER, 7, 0)],
+    ['Q4', row('Q4', TOWER, 12, 2, 6_000)], ['Q5', row('Q5', CHURCH, 30, 2, 40_000)],
   ]),
   around: new Map([['all', new Map([['Q1', around], ['Q2', around], ['Q3', around], ['Q4', around], ['Q5', around]])]]),
   seconds: 1,
@@ -81,8 +86,38 @@ describe('the regional tier over a kind', () => {
     expect(gatherModule.gatherPlaces).not.toHaveBeenCalled();
   });
 
+  it('reads nothing where no year of readers could be read, and says why, so its rows keep their standing', async () => {
+    const unread: RegionalPool = { rows: new Map(), around: new Map(), seconds: 0, unread: 'No year of readers is read' };
+    const result = await regionalReader(regional, ON).arrivals(run, sparql, gathered as never, new Set(), unread, new Set(['Q3']));
+    expect(result).toEqual({ items: [], filtered: [], skipped: 'No year of readers is read' });
+    expect(gatherModule.gatherPlaces).not.toHaveBeenCalled();
+  });
+
+  it('refuses a tunnel the cut admits where no guide uses it, and admits one a guide uses (ADR-0175)', async () => {
+    // Rostock's Warnow Tunnel (Q646091) clears the cut by its nine editions, and no Wikivoyage edition uses it;
+    // the Finse Tunnel (Q5450940) is used by the English Wikivoyage.
+    const tunnels: RegionalKind<typeof trees> = { ...regional, verdict: () => ({ pass: true, type: 'tunnel' }) };
+    const bored: RegionalPool = {
+      rows: new Map([['Q646091', row('Q646091', TOWER, 9, 0, 12_698)], ['Q5450940', row('Q5450940', TOWER, 5, 1, 5_320)]]),
+      around: new Map([['all', new Map([
+        ['Q646091', { groupSize: 1_013, topEditions: [12, 12, 11, 11, 9, 9, 9, 7, 7, 6], topGuideEditions: [5, 4, 3, 3, 2, 2, 2, 2, 2, 2],
+          topReaders: [20_583, 16_442, 16_301, 14_016, 13_699, 13_665, 13_452, 12_956, 12_698, 11_627] }],
+        ['Q5450940', { groupSize: 97, topEditions: [36, 20, 12, 10, 7, 7, 6, 6, 6, 6], topGuideEditions: [3, 2, 2, 1, 1, 1, 1, 1, 1, 1],
+          topReaders: [232_735, 41_825, 18_831, 9_521, 7_587, 5_320, 5_293, 3_966, 3_015, 2_758] }],
+      ])]]),
+      seconds: 0,
+    };
+    gatherModule.shareOf.mockImplementation((g: unknown, k: { name?: string }) => (g === 'gathered-by-id'
+      ? { trees, pool: new Map([['Q646091', entity('Q646091', 'Warnow Tunnel', 9)], ['Q5450940', entity('Q5450940', 'Finse Tunnel', 5)]]),
+        facts: new Map() }
+      : gathered.shares.get(k as never)));
+    const { items, filtered } = await regionalReader(tunnels, ON).arrivals(run, sparql, gathered as never, new Set(), bored, new Set());
+    expect(items.map((i) => [i.qid, i.type])).toEqual([['Q5450940', 'tunnel']]);
+    expect(filtered).toEqual([{ externalId: 'Q646091', name: 'Warnow Tunnel', reason: expect.stringMatching(/^a tunnel enters the regional tier only while a Wikivoyage edition uses it, and none does/) }]);
+  });
+
   it('reads nothing while the switch is off, and says why', async () => {
-    const result = await regionalReader(regional).arrivals(run, sparql, gathered as never, new Set(), pool, new Set());
+    const result = await regionalReader(regional, { ...ON, enabled: false }).arrivals(run, sparql, gathered as never, new Set(), pool, new Set());
     expect(result.items).toEqual([]);
     expect(result.skipped).toMatch(/switched off/);
     expect(gatherModule.gatherPlaces).not.toHaveBeenCalled();

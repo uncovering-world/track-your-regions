@@ -384,7 +384,7 @@ async function fetchLandmarkItems(
       run, sparql, gathered, new Set(items.map((item) => item.qid)), await regionalPool(), regionalHeld,
     );
     mergeRegional(items, filtered, regional, (item) => item.qid, regionalHeld);
-    // Not read this run (switched off, or the live service): its rows stay as they are.
+    // Not read this run (`regional.skipped`): its rows stay as they are.
     if (regional.skipped) spareTier = 'regional';
   }
   // A place Wikidata says is gone is refused whichever tier admitted it (#2259).

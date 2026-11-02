@@ -61,10 +61,10 @@ export const WORLD_REGISTER = {
 } as const;
 
 /**
- * The regional tier (ADR-0175 decision 3, ADR-0171's cut). Declared here with
- * the world's; the slice that switches the tier on (#2252) reads the parameters
- * the cut does not read yet — the readers test, the readers' floor, the guided
- * types and the stay — and `REGIONAL_CUT.enabled` stays off until then.
+ * The regional tier (ADR-0175 decisions 2 and 3, ADR-0171's cut), read by
+ * `REGIONAL_CUT` in `regionalCut.ts`: the neighbourhood and its reference, the
+ * three tests and their group floors, the languages and readers' floor, the
+ * types that need a guide, and the share a held place stays at.
  */
 export const REGIONAL_REGISTER = {
   neighbours: derived('all' as const,
