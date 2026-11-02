@@ -442,6 +442,43 @@ describe("a part's point with no name of its own (#1924)", () => {
     expect(card.component_items.find((c: { locationId: number }) => c.locationId === karnakPoint)?.pointName).toBeNull();
   });
 
+  it('is named by its part place while the kind of its own still waits for a curator (#2283)', async () => {
+    // Mount Fuji's shape: a part of Fujisan whose Places of worship membership
+    // a run wrote and no curator has read. A reader sees nothing of an arrival
+    // that waits (ADR-0025 decision 5), so the point keeps the name it had,
+    // the part's, rather than the source's label for the component.
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+       SELECT $1, s.kind_id, s.id, $2, 'pending' FROM experience_sources s WHERE s.id = 4`,
+      [KARNAK, `${KARNAK}-worship`],
+    );
+    const readerNames = async () => {
+      const own = await getExperienceLocations({
+        params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+      });
+      const { locationsByExperience } = await getRegionExperienceLocations({
+        params: { regionId }, query: regionLocationsQuerySchema.parse({}),
+      });
+      const world = await getWorldPoints({ query: worldPointsQuerySchema.parse({ detail: 'markers' }) });
+      const status = await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() });
+      return [
+        own.locations.find(l => l.id === karnakPoint)?.name,
+        locationsByExperience[SITE]?.find(l => l.id === karnakPoint)?.name,
+        world.name?.[(world.locationId ?? []).indexOf(karnakPoint)],
+        status.locations.find(l => l.id === karnakPoint)?.name,
+      ];
+    };
+    expect(await readerNames()).toEqual(Array(4).fill('Temple of Karnak (parts fixture)'));
+
+    // Published, the kind is the part's own, and its point is called by its own name.
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = 4`,
+      [KARNAK],
+    );
+    expect(await readerNames()).toEqual(Array(4).fill('Temple of Karnak'));
+  });
+
   it("keeps a curator's name for the point on the point, and the part its own name", async () => {
     await pool.query(
       `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
