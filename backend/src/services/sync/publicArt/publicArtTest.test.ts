@@ -188,6 +188,13 @@ describe('publicArtVerdict — what it refuses', () => {
       .toMatchObject({ pass: true, type: 'memorial' });
   });
 
+  it("refuses a World Heritage site typed a megalith and a monument, as Archaeology's (#2272)", () => {
+    // "Stonehenge, Avebury and Associated Sites" on the subset of 2026-11-02:
+    // megalith, monument, group of structures or buildings.
+    const v = publicArtVerdict(facts({ classes: ['Q164240', MONUMENT, 'Q18247357'] }), trees, monuments);
+    expect(reasonOf(v)).toContain('megalith');
+  });
+
   it('refuses a French commune typed a memorial', () => {
     // Le Gua: commune of France, memorial.
     const v = publicArtVerdict(facts({ classes: ['Q484170', MEMORIAL] }), trees, art);
