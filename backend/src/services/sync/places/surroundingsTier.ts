@@ -1,8 +1,10 @@
 /**
  * The surroundings tier of a place kind, read from Wikidata by ADR-0171's cut
  * (#2178, ADR-0178): the world tier's sources and analysis applied to what
- * lies within 50 km of a place, so what a traveller standing there would visit
- * is measured against its own surroundings rather than the whole world. No
+ * lies within 150 km of a place among the places of its own density
+ * (ADR-0181), so what a traveller standing there would visit is measured
+ * against its own surroundings rather than the whole world or a dense core
+ * next door. No
  * Iconic badge, its arrivals held for a curator where the source's gate is on
  * (the step does not ask the gate itself), the same place as the world tier's
  * where both name it.
@@ -182,7 +184,8 @@ function survivorsOf<Trees>(
     if (worldAdmitted.has(row.qid) || !row.classes.some((c) => classes.has(c))) continue;
     const key = surroundingsGroupKey(surroundings, trees, row.classes, cut);
     // A row this tier held that has no surroundings any more (under the cut's
-    // languages, or of no type where types decide) still meets the cut, so it
+    // languages, under the readers a held place stays at, or of no type where
+    // types decide) still meets the cut, so it
     // falls with the cut's reason rather than the sweep's generic one.
     const near = (key === null ? undefined : pool.around.get(key)?.get(row.qid))
       ?? (held.has(row.qid) ? { groupSize: 0, topEditions: [], topGuideEditions: [], topReaders: [] } : undefined);
@@ -235,7 +238,8 @@ export async function surroundingsArrivals<Trees, Context, T>(
   const { survivors, notes, fell, candidates } = survivorsOf(
     surroundings as SurroundingsKind<Trees, unknown>, trees, worldAdmitted, pool, held, cut,
   );
-  console.log(`${logPrefix} Surroundings tier: ${candidates.toLocaleString('en')} candidates of the kind's classes at ${cut.minLanguages}+ editions, `
+  console.log(`${logPrefix} Surroundings tier: ${candidates.toLocaleString('en')} candidates of the kind's classes at ${cut.minLanguages}+ editions `
+    + `and ${(cut.stayReadersShare * cut.minReaders).toLocaleString('en')}+ readers, `
     + `${survivors.length.toLocaleString('en')} clear the cut within ${cut.radiusKm} km, ${fell.size} it held fell`);
   if (!survivors.length && !fell.size) return none<T>();
 

@@ -75,7 +75,7 @@ describe('the surroundings tier over a kind', () => {
     expect([...requests[0].admitted]).toEqual(['Q2', 'Q4']);
     expect(requests[0].kind.poolClasses()).toEqual({ broad: [], narrow: [] });
     expect(items.map((i) => [i.qid, i.tier, i.type])).toEqual([['Q2', 'surroundings', 'tower']]);
-    expect(items[0].readershipNote).toMatch(/^In the surroundings tier by the guides: within 50 km, 30 places/);
+    expect(items[0].readershipNote).toMatch(/^In the surroundings tier by the guides: within 150 km, 30 places of its density/);
     expect(filtered).toEqual([{ externalId: 'Q4', name: 'A mast', reason: 'not a tower: a mast' }]);
   });
 
@@ -148,7 +148,7 @@ describe('the surroundings tier over a kind', () => {
     expect([...requests[0].admitted].sort()).toEqual(['Q2', 'Q3', 'Q4']);
     expect(items.map((i) => i.qid)).toEqual(['Q2']);
     expect(filtered.find((f) => f.externalId === 'Q3')).toEqual({
-      externalId: 'Q3', name: 'Torre Prendiparte', reason: expect.stringMatching(/^below the surroundings tier's cut: within 50 km/),
+      externalId: 'Q3', name: 'Torre Prendiparte', reason: expect.stringMatching(/^below the surroundings tier's cut: within 150 km/),
     });
   });
 

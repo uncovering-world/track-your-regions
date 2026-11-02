@@ -1,10 +1,12 @@
 /**
  * ADR-0171: a kind's surroundings tier (ADR-0178), read from Wikidata, measures
  * a place against what lies within the radius around it, with the tests and the
- * stay of ADR-0175 decisions 2 and 3. A place the world bars left out enters
- * the surroundings tier when it has a Wikipedia article in the cut's languages
- * and the readers' floor a year, and one of three tests passes, each against
- * the median of the best places within the radius:
+ * stay of ADR-0175 decisions 2 and 3; ADR-0181 counts among its neighbours only
+ * the places of its own density (`surroundingsNeighbourhood.ts`), so a place on
+ * a dense core's edge is measured against the edge and not the core. A place
+ * the world bars left out enters the surroundings tier when it has a Wikipedia
+ * article in the cut's languages and the readers' floor a year, and one of
+ * three tests passes, each against the median of the best of its neighbours:
  *
  * - the Wikivoyage editions that use it reach the guide share of that median,
  *   in an area of the guide test's group floor;
@@ -43,6 +45,10 @@ export interface SurroundingsCut {
   neighbours: SurroundingsNeighbours;
   /** How far around the place its surroundings reach. */
   radiusKm: number;
+  /** A place's density is its distance to this nearest of the pool's places (the 20th: ADR-0181). */
+  densityNeighbours: number;
+  /** A neighbour counts while its density over the candidate's is within this factor, either way. */
+  densityRatio: number;
   /** How many of the best places within the radius set each reference. */
   best: number;
   /** The share of the Wikivoyage reference a place's own guide editions must reach. */
@@ -71,6 +77,8 @@ export const SURROUNDINGS_CUT: SurroundingsCut = {
   enabled: true,
   neighbours: SURROUNDINGS_REGISTER.neighbours.value,
   radiusKm: SURROUNDINGS_REGISTER.radiusKm.value,
+  densityNeighbours: SURROUNDINGS_REGISTER.densityNeighbours.value,
+  densityRatio: SURROUNDINGS_REGISTER.densityRatio.value,
   best: SURROUNDINGS_REGISTER.best.value,
   guideShare: SURROUNDINGS_REGISTER.guideShare.value,
   editionsShare: SURROUNDINGS_REGISTER.editionsShare.value,
@@ -92,14 +100,14 @@ export interface SurroundingsCandidate {
   readers: number;
 }
 
-/** What lies within the radius of a candidate: the group's size and the best places' signals, highest first. */
+/** A candidate's neighbours, of its own density within the radius: the group's size and the best places' signals, highest first. */
 export interface Surroundings {
   groupSize: number;
-  /** The `best` highest edition counts within the radius, the candidate's own among them. */
+  /** The `best` highest edition counts among the neighbours, the candidate's own among them. */
   topEditions: readonly number[];
-  /** The `best` highest Wikivoyage edition counts within the radius, over the places a guide uses at all. */
+  /** The `best` highest Wikivoyage edition counts among the neighbours, over the places a guide uses at all. */
   topGuideEditions: readonly number[];
-  /** The `best` highest readers a year within the radius, over the places read at all. */
+  /** The `best` highest readers a year among the neighbours, over the places read at all. */
   topReaders: readonly number[];
 }
 
@@ -146,7 +154,7 @@ function doorsInWords(doors: readonly string[]): string {
 
 /**
  * Where a candidate stands against its surroundings. The references are read
- * off the best places within the radius, the candidate's own among them: a
+ * off the best of its neighbours, the candidate's own among them: a
  * place that is itself the best of its area clears its own reference. A place
  * the tier holds (`held`) stays at the stay share of the readers' floor and of
  * the readers test (ADR-0175 decision 2).
@@ -164,7 +172,7 @@ export function surroundingsVerdict(
   }
   const smallest = Math.min(cut.guideGroupFloor, cut.editionsGroupFloor, cut.readersGroupFloor);
   if (around.groupSize < smallest) {
-    return { in: false, reason: `${around.groupSize} places within ${cut.radiusKm} km, under the floor of ${smallest}: too few to measure against` };
+    return { in: false, reason: `${around.groupSize} places of its density within ${cut.radiusKm} km, under the floor of ${smallest}: too few to measure against` };
   }
   const reference: SurroundingsReferences = {
     editions: medianOf(around.topEditions.filter((n) => n > 0).slice(0, cut.best)),
@@ -177,16 +185,16 @@ export function surroundingsVerdict(
     : `the best have ${fmt(reference.readers)} readers a year at the median`;
   const guide = reference.guide === null ? 'no Wikivoyage edition uses any place here'
     : `the best are used by ${fmt(reference.guide)} Wikivoyage editions at the median, this place by ${fmt(candidate.guideEditions)}`;
-  const within = `within ${cut.radiusKm} km, ${fmt(around.groupSize)} places: ${editions}, this place in ${fmt(candidate.editions)}; `
+  const within = `within ${cut.radiusKm} km, ${fmt(around.groupSize)} places of its density: ${editions}, this place in ${fmt(candidate.editions)}; `
     + `${readers}, this place ${fmt(candidate.readers)}; ${guide}`;
   const enters = doorsOf(candidate, around, reference, cut, cut.readersShare);
   // A held place under the new-place floor is kept by the stay alone, and its note says so.
   const underFloor = candidate.readers < cut.minReaders;
-  if (enters.length && !underFloor) return { in: true, reference, note: `In the surroundings tier ${doorsInWords(enters)}: ${within} (ADR-0171, ADR-0175)` };
+  if (enters.length && !underFloor) return { in: true, reference, note: `In the surroundings tier ${doorsInWords(enters)}: ${within} (ADR-0171, ADR-0175, ADR-0181)` };
   const stays = held ? doorsOf(candidate, around, reference, cut, cut.stayReadersShare * cut.readersShare) : [];
   if (stays.length) {
-    return { in: true, reference, note: `Stays in the surroundings tier ${doorsInWords(stays)}, read at ${cut.stayReadersShare} `
-      + `of the readers' reference for a place it holds: ${within} (ADR-0175)` };
+    return { in: true, reference, note: `Stays in the surroundings tier ${doorsInWords(stays)}, the readers test read at `
+      + `${fmt(cut.stayReadersShare * cut.readersShare)} times the reference for a place it holds: ${within} (ADR-0175, ADR-0181)` };
   }
   return { in: false, reason: `below the surroundings tier's cut: ${within}` };
 }

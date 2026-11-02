@@ -807,7 +807,7 @@ describe('what the archaeology run writes', () => {
     wrote();
     const fetched = await afterFetch([site()]);
 
-    // Tipón, measured against what lies within 50 km of it: the tier rides on
+    // Tipón, measured against its neighbours of its own density: the tier rides on
     // the membership, where every tier read and the run's stay look for it.
     await fetched.processItem(site({ qid: 'Q1418543', label: 'Tipón', tier: 'surroundings' }), progress(), writing());
     await fetched.processItem(site(), progress(), writing());

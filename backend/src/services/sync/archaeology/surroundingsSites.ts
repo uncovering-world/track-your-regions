@@ -1,7 +1,8 @@
 /**
  * Archaeology's sites in the surroundings tier (ADR-0171, ADR-0175 decision 3,
- * ADR-0179): the sites the world bars left out, measured against what lies
- * within 50 km of them by the cut every place kind reads (`places/surroundingsTier.ts`),
+ * ADR-0179, ADR-0181): the sites the world bars left out, measured against
+ * their neighbours of their own density within 150 km by the cut every place
+ * kind reads (`places/surroundingsTier.ts`),
  * then put to the site rule by id — and to two conditions of the kind's own.
  *
  * - **The map shows the place.** A surroundings-tier site needs an OpenStreetMap object
