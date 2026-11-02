@@ -438,6 +438,17 @@ export const PartOf = z.strictObject({
 }).describe('The serial World Heritage site a place is a component of (#2158), the whole the near-places card names too (#1250).');
 export type PartOf = z.infer<typeof PartOf>;
 
+export const CardCrowding = z.strictObject({
+  limit: z.number().int().describe('How many better-known places of a type shadow a place in this kind.'),
+  radiusKm: z.number().describe('The radius they are counted within.'),
+  around: z.number().int().describe(
+    'How many places of the kind and type lie within the radius, the place itself included: what the window lists.'),
+  shadowed: z.boolean().describe('Whether the display shadows it: in the tail now, or for a new arrival, once passed.'),
+  outrankedBy: z.number().int().nullable().describe(
+    'For a shadowed place, how many places of its type within the radius count above it, as the recount stored it'
+    + ' (`membership_crowding`, ADR-0180); null for a place the display shows.'),
+}).describe("How crowded a card's city is (ADR-0172, ADR-0180).");
+
 export const ReviewQueueItem = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
@@ -559,6 +570,12 @@ export const ReviewQueueItem = z.strictObject({
   ),
   pin_question: PinQuestion.nullable().optional().describe('`pin-question` items only (#1367).'),
   visit_question: VisitQuestion.nullable().optional().describe('`visit-question` items only (#1770).'),
+  crowding: CardCrowding.nullable().optional().describe(
+    'How crowded the city of the membership this card asks about is (#2282), so the card offers the window over'
+    + ' its type and says whether it is shadowed without reading the window. Null for a kind with no display rule,'
+    + ' a type its kind exempts, a place holding a work a reader is shown, a place with no point, or a card about'
+    + ' no membership.',
+  ),
 }).describe('An object waiting on a curator, or one a curator can take a verdict back from.');
 export type ReviewQueueItem = z.infer<typeof ReviewQueueItem>;
 

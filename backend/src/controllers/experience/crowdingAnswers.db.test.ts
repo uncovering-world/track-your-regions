@@ -2,6 +2,8 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { answerCrowding } from './crowdingAnswers.js';
 import { getCrowdingWindow, listShadowedArrivals } from './crowdingWindow.js';
+import { attachCrowding } from './reviewQueueCrowding.js';
+import type { ReviewQueueItem } from '../../api/responses/reviewQueue.js';
 
 /**
  * A curator sorting a crowded city into the list and the shadow (ADR-0180,
@@ -253,6 +255,29 @@ describe('the window over a crowded city', () => {
       [curatorId, adminId]);
     await expect(window('Schloßplatz', { id: curatorId, role: 'curator' } as Express.User))
       .rejects.toMatchObject({ statusCode: 403 });
+  });
+});
+
+describe("a review card's crowding (#2282)", () => {
+  it("says how crowded each card's city is, as the window counts it, and nothing where the rule does not reach", async () => {
+    const card = (membershipId: number | null) => ({ id: 1, membership_id: membershipId }) as unknown as ReviewQueueItem;
+    const cards = [card(id('Schloßplatz')), card(id('Nollendorfplatz')), card(sanLuigi), card(neuesMuseum), card(null)];
+
+    await attachCrowding(cards, { userId: adminId, isAdmin: true });
+
+    const read = await window('Schloßplatz');
+    expect(cards[0].crowding).toEqual({
+      limit: 10, radiusKm: 10, around: read.types[0].places, shadowed: true, outrankedBy: 13,
+    });
+    // Shown, so nothing is counted above it for the card.
+    expect(cards[1].crowding).toEqual({
+      limit: 10, radiusKm: 10, around: BERLIN_SQUARES.length, shadowed: false, outrankedBy: null,
+    });
+    // A place holding a work a reader is shown is always shown (ADR-0173); a type
+    // its kind exempts is never counted (ADR-0179); a card about no membership has nothing.
+    expect(cards[2].crowding).toBeNull();
+    expect(cards[3].crowding).toBeNull();
+    expect(cards[4].crowding).toBeNull();
   });
 });
 

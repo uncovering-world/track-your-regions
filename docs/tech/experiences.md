@@ -5234,6 +5234,17 @@ Maggiore, and crowds out 51 more of its churches.
     group opening the window on its best-known arrival.
   - **Which places shadow a place** (#2228) is the window opened on it: the rows marked
     `outranksCentre` are the ones its own count counts.
+  - **A review card says how crowded its city is** without reading the window
+    (`attachCrowding`, `reviewQueueCrowding.ts`). Each card of the queue's page carries
+    `crowding`: the kind's limit and radius, how many places of its kind and type the window would
+    list (`around`, through the window's own `aroundSql`), whether the display shadows it and, if
+    it does, the count the recount stored above it (`membership_crowding.outranked_by`). It is null
+    for a kind with no rule, an exempt type, a place holding works, a place with no point, or a
+    card about no membership. It is one statement per page over the page's memberships. On dev
+    (2026-11-02), the 25 best-known churches of Lazio cost 10 ms and fifty cost 20 ms, nearly all
+    of it the count around each centre, about 337 places in a Roman 10 km box. Counting
+    `crowding_better()` again, rather than reading the stored count, put 100 ms more on the fifty,
+    since it tests every place within 10 km for works.
 
 ### Lifecycle filtering
 
