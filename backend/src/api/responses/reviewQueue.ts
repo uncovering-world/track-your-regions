@@ -26,6 +26,13 @@ import {
 import { ContentKind, PlacementFailure } from './curation.js';
 import { DescriptionSource, ImageCredit, LinkedPlace, WorkVenue } from './experiences.js';
 
+export const RegionCrossing = z.strictObject({
+  worldView: z.string().describe('The hierarchy whose regions the move crosses.'),
+  from: z.string().nullable().describe('The region placement puts the stored point in; null where it is placed in none.'),
+  to: z.string().nullable().describe('The region placement puts the proposed point in; null where it is placed in none.'),
+}).describe('A hierarchy where a coordinate move places the place in other regions, or out of or into its regions (#2203).');
+export type RegionCrossing = z.infer<typeof RegionCrossing>;
+
 /** A timestamp as the wire carries it: an ISO string, from a `Date` or from PostgreSQL's JSON. */
 const timestamp = z.iso.datetime({ offset: true });
 
@@ -62,6 +69,9 @@ const changedField = {
     + ' for, replaced by one it has (ADR-0135), a field no reader is shown, a text rewritten in its typesetting'
     + ' alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place'
     + ' (ADR-0140).',
+  ),
+  regionCrossings: z.array(RegionCrossing).optional().describe(
+    'On a `location` field of a card: every hierarchy where the move places the place in other regions. Empty where it keeps them.',
   ),
 };
 
@@ -145,6 +155,7 @@ export const PendingPoint = z.strictObject({
   curatedFields: z.array(z.string()).optional(),
   replaces: z.strictObject({ latitude: z.number(), longitude: z.number() }).nullable().optional()
     .describe('The stored point this one replaces, where the source moved a point rather than added one (ADR-0025 decision 5).'),
+  regionCrossings: z.array(RegionCrossing).optional().describe('Every hierarchy where the move from `replaces` places the point in other regions (#2203).'),
 }).describe('An unread point under a row readers already see.');
 export type PendingPoint = z.infer<typeof PendingPoint>;
 
