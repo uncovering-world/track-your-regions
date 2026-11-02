@@ -164,6 +164,12 @@ export const queryKeys = {
     placeKindsAll: ['curation', 'placeKinds'] as const,
     placeKinds: (experienceId: Id) => ['curation', 'placeKinds', experienceId] as const,
     scopes: ['curator-scopes'] as const,
+    /** Every crowded-city window (#2282): what an answer to one invalidates, since a pin recounts its neighbours. */
+    crowdingWindowAll: ['curation', 'crowdingWindow'] as const,
+    /** The window around one membership, on the type asked for (`null`: the membership's own). */
+    crowdingWindow: (membershipId: Id, type: string | null) => ['curation', 'crowdingWindow', membershipId, type] as const,
+    /** The new arrivals a crowded city would shadow, by region, kind and type (#2282). */
+    shadowedArrivals: ['curation', 'shadowedArrivals'] as const,
   },
 
   /** Per user: each key names the caller. */
