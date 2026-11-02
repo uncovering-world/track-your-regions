@@ -211,7 +211,7 @@ membership carries no gate: it is never pending and opens no card. Nothing reads
 - `backend/src/db/membership.ts` states the exclusion: `realKindSql` over a membership or a source,
   `kindIsRealSql` over a joined kind. `realKindSql` is composed into `membershipOfferedSql`, the place-level forms, the kind a row is shown under, a place's
   sources and `placeHoldsRealKindSql`, which is what "a part that holds a kind of its own" asks
-  everywhere (`answeringPlaceOfSql`, `pointNameSql`, the region placement's listed places, the
+  everywhere (`answeringPlaceOfSql`, `pointNameAsHeldSql` and `pointClaimsAsHeldSql`, the region placement's listed places, the
   equal-item merge, a curator's scope over a place's views).
 - It is never composed into `membershipAdmittedSql` or `membershipVisibleSql`, which a reader negates
   to find a refused or an unread membership.
@@ -244,11 +244,15 @@ points, 5,605 records on the development catalogue on 2026-10-27, and re-keyed t
 and Jev's suggestions that named a part's component view by its site's membership (7 suggestions,
 no choice): a view is named by the row it is on (`placeViewsSql`).
 
-A reader calls a part's point by its own name, else by the part place's where the part holds a kind
-(`pointNameSql`, `placePoints.ts`, #1924): a place another kind brought and a merge made a site's part carries its name
+A reader calls a part's point by its own name, else by the part place's where the part is shown in a
+kind of its own (`pointNameSql`, `placePoints.ts`, #1924): a place another kind brought and a merge made a site's part carries its name
 on the part row, and its point, which that kind placed, none of its own, so Etchmiadzin Cathedral's
 point read as "40.16186, 44.29100" on its site's card — 173 such points on 78 sites on the development
-catalogue on 2026-10-23. A name that names nothing (`names_nothing()`, "The") counts as none, and a
+catalogue on 2026-10-23. A kind waiting for a curator does not count
+(ADR-0025 decision 5, #2283), so Mount Fuji's point keeps the part's name while its Places of worship
+membership is unread, and a curator's rename of it lands on the part (`locationEditController.ts`,
+asked the same way). The writers and the World Heritage reading ask the held meaning under their own
+names, `pointNameAsHeldSql` and `pointClaimsAsHeldSql`. A name that names nothing (`names_nothing()`, "The") counts as none, and a
 part with no kind lends its point's Wikipedia article title instead of its name, which without an
 article is the site's with the reference and beside the site's other points would repeat both (#2065):
 Tarraco's 875-012 reads "Roman villa of Centcelles", a section of the Via Appia "1708-003". The object's own read, both shapes of the region batch, the world layer's
