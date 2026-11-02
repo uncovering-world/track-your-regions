@@ -377,12 +377,16 @@ export const KILL_CLASSES: Record<string, string> = {
   Q4728370: 'all-seater stadium',
   Q64722124: 'Ancient Greek stadium',
   Q2310214: 'pitch',
-  // Archaeology, which is another kind's — and the World Heritage list's.
+  // Archaeology, which is another kind's — and the World Heritage list's. A
+  // megalith too: Wikidata types the World Heritage site "Stonehenge, Avebury
+  // and Associated Sites" a megalith, a monument and a group of structures,
+  // and Stonehenge, Avebury and the Carnac stones are Archaeology's (#2272).
   Q839954: 'archaeological site',
   Q11269813: 'cave with prehistoric art',
   Q4443227: 'Stone Age site',
   Q755017: 'tell',
   Q665247: 'hypogeum',
+  Q164240: 'megalith',
   // Burial: a building around the dead, not a work in a square.
   ...BURIAL_CLASSES,
   // Finds: a museum object wherever Wikidata locates it. The Venus of
