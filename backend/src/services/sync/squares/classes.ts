@@ -76,6 +76,16 @@ export const OTHER_KINDS: Readonly<Record<string, { root: string; reason: string
   river: { root: 'Q4022', reason: 'a river, not a street' },
 };
 
+/**
+ * A canal (Q12284), refused when no class of a square, a street, a promenade
+ * or a stairway names it and the bare thoroughfare alone does: Venice's Grand
+ * Canal is a canal and a thoroughfare, the city's main waterway, ridden on a
+ * vaporetto rather than walked (#2272). A canal a street class names is a
+ * quay a visitor walks: Nyhavn is a canal and a street, and Amsterdam files
+ * every gracht as a street too.
+ */
+export const CANAL_ROOT = 'Q12284';
+
 /** The class trees the rule reads. */
 export interface SquareTrees {
   /** Every class under a root but the thoroughfare's, and the thoroughfare itself: what names a candidate. */
@@ -86,6 +96,8 @@ export interface SquareTrees {
   kills: Readonly<Record<string, ReadonlySet<string>>>;
   /** The classes that make a candidate another kind's, by key of `OTHER_KINDS`. */
   others: Readonly<Record<string, ReadonlySet<string>>>;
+  /** The canal tree (`CANAL_ROOT`): a canal only the thoroughfare names is a waterway. */
+  canal: ReadonlySet<string>;
 }
 
 /** Walk every tree the rule reads: one question per root, each its own step. */
@@ -108,5 +120,5 @@ export async function fetchSquareTrees(run: QueryRunner): Promise<SquareTrees> {
   for (const [key, { root }] of Object.entries(KILLS)) kills[key] = await tree(root, `${key} classes`);
   const others: Record<string, ReadonlySet<string>> = {};
   for (const [key, { root }] of Object.entries(OTHER_KINDS)) others[key] = await tree(root, `${key} classes`);
-  return { place, types, kills, others };
+  return { place, types, kills, others, canal: await tree(CANAL_ROOT, 'canal classes') };
 }

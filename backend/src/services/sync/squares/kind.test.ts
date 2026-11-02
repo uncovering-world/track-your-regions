@@ -27,6 +27,7 @@ describe('classifySquares', () => {
       worship: none, palace: none, bridge: none, archaeologicalSite: none, agora: none, bullring: new Set([BULLRING]),
       railwayLine: none, motorway: none, river: none,
     },
+    canal: none,
   };
   const entity = (qid: string, label: string, sitelinks: number): PoolEntity => ({
     qid, label, description: null, lat: 41, lon: 12, onEarth: true, imageUrl: null, itemPictures: [],

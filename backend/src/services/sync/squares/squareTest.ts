@@ -26,7 +26,9 @@ const carries = (classes: readonly string[], set: ReadonlySet<string>) => classe
  *    place of worship, a palace, a bridge, an archaeological site or an
  *    ancient agora, a bullring, a railway line, a motorway, a river;
  * 3. a candidate no class of the kind names;
- * 4. a candidate with no point on this planet.
+ * 4. a canal only the bare thoroughfare names: Venice's Grand Canal is a
+ *    waterway, while Nyhavn, a canal and a street, is a quay a visitor walks;
+ * 5. a candidate with no point on this planet.
  *
  * A neighbourhood is no refusal: Wikidata files a shopping street under
  * neighbourhoods, and Oxford Street and Fifth Avenue are streets a visitor
@@ -41,6 +43,9 @@ export function squareVerdict(facts: SquareFacts, trees: SquareTrees): SquareVer
     if (carries(classes, trees.others[key])) return { pass: false, reason };
   }
   if (!carries(classes, trees.place)) return { pass: false, reason: 'no square or street class' };
+  if (carries(classes, trees.canal) && !SQUARE_TYPES.some((type) => carries(classes, trees.types[type]))) {
+    return { pass: false, reason: 'a canal, not a street' };
+  }
   if (!facts.onEarth || facts.lat === null || facts.lon === null) return { pass: false, reason: 'no point on Earth' };
   return { pass: true, type: squareType(classes, trees) };
 }
