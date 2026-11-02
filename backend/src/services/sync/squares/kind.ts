@@ -1,21 +1,19 @@
 /**
  * Squares & streets as a place kind over the place gather (#1867): its trees
- * and pool classes, and its classifier, the rule and the fame line.
+ * and pool classes, and its classifier, the rule and the world bars.
  *
- * The line has two doors on 15 Wikipedia editions (`places/guidedLine.ts`): a
- * place enters on 30,000 readers a year, or on 5,000 where a Wikivoyage
- * edition uses its item. The readers' door stays low because guides often
- * name the monument on a square rather than the square, so Havana's Malecón
- * and the Piazza della Rotonda come in on their readers alone. The doors were
- * chosen on the reading in `docs/sources/global/wikidata-squares.md`, measured
- * on the dev subset on 2026-10-23; the line is checked against the kind's
- * canon in `db/catalogue-coverage/calibration/squares-and-streets.jsonl`. A place the source
- * holds stays while it keeps 12 editions and 21,000 readers, or 3,500 with a
- * guide.
+ * The world tier admits by the three bars of ADR-0175 over the kind's own pool
+ * (`places/worldBars.ts`). The third bar — readers where a guide marks the
+ * place — matters most here: guides often name the monument on a square
+ * rather than the square, and an expressway can be read as much as a street a
+ * traveller crosses a city for. The kind's canon is
+ * `db/catalogue-coverage/calibration/squares-and-streets.jsonl`.
  */
 
+import type { SparqlFn } from '../wikidataQueries.js';
 import { shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from '../places/gather.js';
-import { classifyByGuidedLine, type GuidedLine } from '../places/guidedLine.js';
+import { classifyByWorldBars } from '../places/worldTier.js';
+import type { WorldRead } from '../places/worldBars.js';
 import { fetchSquareTrees, SQUARE_ROOTS, SQUARE_TYPES, type SquareTrees } from './classes.js';
 import { squareType, squareVerdict } from './squareTest.js';
 import { regionalReader, type RegionalKind } from '../places/regionalTier.js';
@@ -23,25 +21,18 @@ import { regionalReader, type RegionalKind } from '../places/regionalTier.js';
 /** The source that fills Squares & streets, and the kind it fills (migration 151). */
 export const SQUARES_SOURCE_ID = 9;
 
-export const SQUARE_LINE: GuidedLine = {
-  enter: { editions: 15, readers: 30_000, guidedReaders: 5_000 },
-  stay: { editions: 12, readers: 21_000, guidedReaders: 3_500 },
-};
-
 export const SQUARES_KIND: PlaceKind<SquareTrees> = {
   name: 'squares and streets',
   trees: fetchSquareTrees,
   // The thoroughfare is a root asked by itself; its tree is not asked (`THOROUGHFARE`).
   poolClasses: (trees) => ({ broad: SQUARE_ROOTS, narrow: trees.place }),
   readsContainers: false,
+  admissionPool: true,
 };
 
-/** Decide from the kind's share: the rule, then the line (`classifyByGuidedLine`). */
-export const classifySquares = (
-  share: KindShare<SquareTrees>,
-  admitted: ReadonlySet<string>,
-  read?: { readers: Map<string, number> | null; guided: ReadonlySet<string> },
-) => classifyByGuidedLine(share, admitted, { verdict: squareVerdict, line: SQUARE_LINE, logPrefix: '[Squares]' }, read);
+/** Decide from the kind's share: the rule, then the world bars (`classifyByWorldBars`). */
+export const classifySquares = (share: KindShare<SquareTrees>, admitted: ReadonlySet<string>, sparql: SparqlFn, read?: WorldRead) =>
+  classifyByWorldBars(share, admitted, { verdict: squareVerdict, logPrefix: '[Squares]' }, sparql, read);
 
 /**
  * The kind in the regional tier (ADR-0171): every place-class item measured against its
@@ -58,7 +49,8 @@ export const SQUARES_REGIONAL: RegionalKind<SquareTrees> = {
 
 /** The kind's classifier as a source of the place pass reads it (`placeSource`). */
 export const SQUARES_CLASSIFIER = {
-  classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>) => classifySquares(shareOf(gathered, SQUARES_KIND), admitted),
+  classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn) =>
+    classifySquares(shareOf(gathered, SQUARES_KIND), admitted, sparql),
   types: SQUARE_TYPES,
   tag: 'square',
   regional: regionalReader(SQUARES_REGIONAL),

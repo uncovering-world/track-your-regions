@@ -1,8 +1,8 @@
 /**
  * What a place kind with one point reads of its candidates beside its rule
- * (#1854, #1860): a year's readers for its line, and the landmark a run
- * writes for a candidate it admits. Every place kind with one point and a
- * readers' line shares them; each kind's line and rule stay its own.
+ * (#1854, #1860): a year's readers for the world bars (`worldBars.ts`), and
+ * the landmark a run writes for a candidate it admits. Every place kind with
+ * one point shares them; each kind's rule stays its own.
  */
 
 import type { WikidataLandmark } from '../types.js';
@@ -11,8 +11,8 @@ import { readershipYear, readWorks } from '../../dumps/readership/workReadership
 
 /**
  * A year's readers of each candidate, or null when no year is folded with the
- * redirects in place. The kind says what its line does then; `logPrefix` names
- * it in the log.
+ * redirects in place. The world bars say what a run does then; `logPrefix`
+ * names the kind in the log.
  */
 export async function yearlyReaders(qids: string[], logPrefix: string): Promise<Map<string, number> | null> {
   const year = await readershipYear();

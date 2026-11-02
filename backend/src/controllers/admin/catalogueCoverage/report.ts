@@ -25,10 +25,7 @@
 
 import { ROW_CAUSES, type Cause } from '../../../services/catalogueCoverage/files.js';
 import { ICONIC_SITELINKS } from '../../../services/sync/museum/tier1.js';
-import { ENTER_SITELINKS } from '../../../services/sync/publicArt/pipeline.js';
-import { TOWER_LINE } from '../../../services/sync/towers/kind.js';
-import { BRIDGE_LINE } from '../../../services/sync/bridges/kind.js';
-import { SQUARE_LINE } from '../../../services/sync/squares/kind.js';
+import { MEASURED_BARS } from '../../../services/sync/places/admissionRegister.js';
 import {
   readCoverageFacts,
   type CalibrationRow, type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow, type MatchRow, type NearbyRow,
@@ -339,34 +336,32 @@ function verdictOf(entry: ExpectationRow, matches: MatchRow[], nearby: NearbyRow
 }
 
 /**
- * The kinds whose line is in code: a monument enters on its own sitelinks, and
- * so does a work. A tower, a bridge and a square also ask a year's readers,
- * which a survey entry does not carry, so the report reads their editions alone.
- * Bridges & engineering marvels holds a canal's locks and lifts to a lower line
- * of their own (#1947), and an entry does not say which type it is, so the
- * report reads the bridges' line, the kind's own for every type but a canal's
- * works. Its one misreading: a canal work a run does not hold with 3 to 14
- * editions reads as under the line where its classes did not reach it, which
- * is two of the canon's entries, Neptune's Staircase and the Fonseranes locks,
- * and the source record names them as such.
+ * The editions bar of each of the six place kinds that admit by the world bars
+ * of ADR-0175. A run reads its bars off the kind's own pool; a survey entry
+ * carries its editions and no readers, so the report reads the editions bar as
+ * the register measured it (`MEASURED_BARS`), and a top under it may still
+ * enter on its readers.
  */
+const FRAME_EDITIONS: Readonly<Record<string, number>> = Object.fromEntries(
+  Object.entries(MEASURED_BARS.value).map(([slug, bars]) => [slug, bars.editions]),
+);
+
+/** The kinds whose line is in code and in no register: a work enters on its own sitelinks. */
 const CODE_LINES: Readonly<Record<string, number>> = {
-  'public-art': ENTER_SITELINKS,
-  'monuments-and-memorials': ENTER_SITELINKS,
   'notable-works': ICONIC_SITELINKS,
-  towers: TOWER_LINE.enterEditions,
-  'bridges-and-engineering': BRIDGE_LINE.enter.editions,
-  'squares-and-streets': SQUARE_LINE.enter.editions,
 };
 
 /**
- * The line a live kind's own rule draws on a member's own sitelinks: its source's
- * `enterSitelinks` where it states one, else the code's. Two kinds have none.
- * World Heritage admits what is inscribed. Art Museums admits a museum through a
- * work it holds, so a museum's own sitelinks are not what that kind asks of it.
+ * The line a live kind's own rule draws on a member's own sitelinks: the
+ * frame's editions bar for a place kind it admits, else its source's
+ * `enterSitelinks` where it states one, else the code's. Places of worship
+ * states a line on its source row too, which is the line door two holds a work
+ * to, not the one its places enter by. Two kinds have none. World Heritage
+ * admits what is inscribed. Art Museums admits a museum through a work it
+ * holds, so a museum's own sitelinks are not what that kind asks of it.
  */
 function lineOf(kind: KindRow): number | null {
-  return kind.enter_sitelinks ?? CODE_LINES[kind.slug] ?? null;
+  return FRAME_EDITIONS[kind.slug] ?? kind.enter_sitelinks ?? CODE_LINES[kind.slug] ?? null;
 }
 
 /**

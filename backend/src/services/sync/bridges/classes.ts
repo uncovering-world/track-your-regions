@@ -45,7 +45,7 @@ export const BRIDGE_TYPES = [
 ] as const;
 export type BridgeType = (typeof BRIDGE_TYPES)[number];
 
-/** The types of a canal's works a traveller stops at, held to a line of their own (`WATERWAY_LINE`, #1947). */
+/** The types of a canal's works a traveller stops at (#1947): a lift or a lock that generates power is filed as a dam (`bridgeType`). */
 export const WATERWAY_TYPES: readonly BridgeType[] = ['inclined-plane', 'boat-lift', 'lock-flight', 'lock'];
 
 const TYPE_ROOT: Readonly<Record<BridgeType, string>> = {

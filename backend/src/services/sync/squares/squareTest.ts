@@ -1,7 +1,7 @@
 /**
  * Whether a candidate is a square, a street, a promenade or a stairway a
  * visitor walks as a sight (#1867), and the type it is filed under. The
- * classes are `classes.ts`'; the fame line is the classifier's (`kind.ts`).
+ * classes are `classes.ts`'; the world bars are the classifier's (`kind.ts`).
  */
 
 import { KILLS, OTHER_KINDS, SQUARE_TYPES, type SquareTrees, type SquareType } from './classes.js';

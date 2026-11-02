@@ -22,6 +22,7 @@ import {
   HINT_PREFIX,
   bandFilter,
   bandLabel,
+  chunk,
   doorOf,
   failIfTruncated,
   inWikipediaEditions,
@@ -34,7 +35,7 @@ import {
 } from '../wikidataQueries.js';
 import { readsSubset } from '../subset/reader.js';
 import {
-  subsetContainerFacts, subsetEntityFacts, subsetPoolOfClasses, subsetPoolOfIds,
+  subsetContainerFacts, subsetEntityFacts, subsetIdsOfClasses, subsetPlacedPoolOfIds, subsetPoolOfClasses, subsetPoolOfIds,
 } from '../subset/publicArt.js';
 import { subsetCastGroupIds } from '../subset/castGroups.js';
 import {
@@ -45,11 +46,10 @@ import { namingPart } from './castNaming.js';
 import { castPattern } from './castGroups.js';
 
 /**
- * The floor of the pool sits below the line a row *stays* above
- * (`STAY_SITELINKS` in the pipeline, 18): an admitted row that slipped to 17
- * is still fetched, so the run can refuse it by name with its number rather
- * than sweep it with the generic reason. A candidate below the floor was
- * never in and is never asked for.
+ * The floor of the shared pool, in Wikipedia editions, that every kind of the
+ * place pass is asked at. The kinds that admit by the world bars of ADR-0175
+ * ask their own classes again much lower (`fetchAdmissionPool`); Archaeology
+ * reads its own entrances under it.
  */
 export const POOL_MIN_SITELINKS = 15;
 
@@ -421,10 +421,7 @@ export async function fetchEntitiesByIds(
   return settleCountriesByPoint(await inWikipediaEditions(sparql, parsePool(rows, { placeless: true }), { before: step }));
 }
 
-/**
- * Entities of a batch of narrow classes, taken whole, at the pool floor or at
- * the lower `floor` a kind asks for some of its classes (`PlaceKind.belowFloor`).
- */
+/** Entities of a batch of narrow classes, taken whole, at the pool floor or at a lower `floor`. */
 export async function fetchClassPool(
   door: Door,
   classQids: string[],
@@ -443,6 +440,30 @@ export async function fetchClassPool(
   );
   failIfTruncated(rows, limit, `pool: ${classQids.length} narrow classes${at}`);
   return settleCountriesByPoint(await inWikipediaEditions(sparql, parsePool(rows), { floor, before: step }));
+}
+
+/** How many entities of an admission pool are read at once: the subset reads each one's whole statement set. */
+const ADMISSION_BATCH = 2_000;
+
+/**
+ * A kind's admission pool (ADR-0175): the entities of `classQids` with a point
+ * and at least `minSitelinks` sitelinks of any site, whatever their Wikipedia
+ * editions, but the ones `skip` already holds. The local subset's alone: the
+ * live service is never asked a question this wide.
+ */
+export async function fetchAdmissionPool(
+  run: QueryRunner, classQids: string[], minSitelinks: number, skip: ReadonlyMap<string, unknown>,
+): Promise<PoolEntity[]> {
+  if (!readsSubset(run.sparql)) throw new Error('An admission pool is read from the local subset alone');
+  const ids = (await subsetIdsOfClasses(classQids, minSitelinks)).filter((qid) => !skip.has(qid));
+  const out: PoolEntity[] = [];
+  const batches = chunk(ids, ADMISSION_BATCH);
+  for (let i = 0; i < batches.length; i++) {
+    run.phase(`Reading the admission pool (batch ${i + 1}/${batches.length})...`);
+    await run.step();
+    out.push(...await settleCountriesByPoint(await inWikipediaEditions(run.sparql, await subsetPlacedPoolOfIds(batches[i]), { before: run.step })));
+  }
+  return out;
 }
 
 // =============================================================================

@@ -35,14 +35,8 @@ vi.mock('./wikidataCache.js', () => ({
 vi.mock('./publicArt/pipeline.js', () => ({
   classifyPublicArt: vi.fn(),
   PUBLIC_ART_KIND: { name: 'public art' },
-  ENTER_SITELINKS: 22,
-  STAY_SITELINKS: 18,
-  openArtworkDoor: vi.fn(),
   streetArtCandidates: vi.fn(),
-  guideDoorCandidates: vi.fn(() => []),
 }));
-// The guide door reads the gate and the Wikivoyage usage build (ADR-0167); its own spec is places/guideDoor.test.ts.
-vi.mock('./places/guideDoor.js', () => ({ readGuideDoor: vi.fn(async () => new Set<string>()) }));
 // The regional tier is its own module's (`regionalTier.test.ts`); here it brings nothing.
 vi.mock('./places/regionalTier.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./places/regionalTier.js')>()),
@@ -53,17 +47,11 @@ vi.mock('./places/regionalPool.js', () => ({ readRegionalPool: vi.fn(async () =>
 vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0) }));
 // The museum tree joins the pool's classes (ADR-0171); the spec asks Wikidata nothing.
 vi.mock('./wikidataQueries.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('./wikidataQueries.js')>()), fetchClassTree: vi.fn(async () => new Set<string>()) }));
-// The marks door reads the gate, the year, the marks and the works under the floor (ADR-0169); its own spec is publicArt/marksDoor.test.ts.
-vi.mock('./publicArt/marksDoor.js', () => ({
-  shareWithMarksDoor: vi.fn(async (_source: number, share: unknown) => ({ share, marks: null })),
-}));
 // What the street-art rule reads (#2035); its own spec is streetArtPlaces.test.ts.
 vi.mock('./publicArt/streetArtPlaces.js', () => ({ readStreetArt: vi.fn() }));
 /** What a street-art place holds (#2055): one reader and writer per run of Public art. */
 const placeContents = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));
 vi.mock('./publicArt/streetArtWorks.js', () => ({ streetArtContents: vi.fn(() => placeContents) }));
-// The readership door reads the year and the source's gate (#2033); its own spec is readershipDoor.test.ts.
-vi.mock('./readershipDoor.js', () => ({ artworkReadershipDoorFor: vi.fn() }));
 vi.mock('./worship/places.js', () => ({ WORSHIP_KIND: { name: 'places of worship' } }));
 vi.mock('./places/gather.js', () => ({
   gatherPlaces: vi.fn(),
@@ -138,9 +126,8 @@ import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { writeExperienceLocations } from './locationWriter.js';
 import { withCache } from './wikidataCache.js';
-import { classifyPublicArt, openArtworkDoor, PUBLIC_ART_KIND, streetArtCandidates } from './publicArt/pipeline.js';
+import { classifyPublicArt, PUBLIC_ART_KIND, streetArtCandidates } from './publicArt/pipeline.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
-import { artworkReadershipDoorFor } from './readershipDoor.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { ARCHAEOLOGY_SITE_KIND } from './archaeology/sites.js';
 import { gatherPlaces } from './places/gather.js';
@@ -198,8 +185,6 @@ beforeEach(() => {
   mockedAdmitted.mockResolvedValue(new Set(['Q337179']));
   mockedGather.mockResolvedValue(GATHERED);
   mockedCollect.mockReturnValue({ items: [landmark()], fetched: 1, filtered: [] });
-  vi.mocked(artworkReadershipDoorFor).mockResolvedValue(undefined);
-  vi.mocked(openArtworkDoor).mockResolvedValue(null);
   vi.mocked(streetArtCandidates).mockReturnValue(['Q1630131']);
   vi.mocked(readStreetArt).mockResolvedValue(STREET_ART_READ);
   placeContents.read.mockResolvedValue({ withdrawalSkippedReason: null, imageUrls: [] });
@@ -245,13 +230,11 @@ describe('public art in the place pass', () => {
     expect(mockedCollect.mock.calls[0][0]).toBe(SHARE);
     expect(mockedCollect.mock.calls[0][1]).toBe(PUBLIC_ART_RULE);
     expect(mockedCollect.mock.calls[0][2]).toEqual(new Set(['Q337179']));
+    // The gather's own door, for what the world bars read beside it (ADR-0175).
+    expect(mockedCollect.mock.calls[0][3]).toEqual(expect.any(Function));
     // And the places another kind offers, so a work outdoors on a venue no
     // kind offers stays public art (#1444).
-    expect(mockedCollect.mock.calls[0][3]).toEqual(new Set(['Q19675']));
-    // And the readership door over its share, at its own line (#2033).
-    expect(vi.mocked(artworkReadershipDoorFor)).toHaveBeenCalledWith(3, 22, '[Landmark Sync]');
-    expect(vi.mocked(openArtworkDoor)).toHaveBeenCalledWith(undefined, SHARE, new Set(['Q337179']), PUBLIC_ART_RULE, new Set(['Q19675']));
-    expect(mockedCollect.mock.calls[0][4]).toBeNull();
+    expect(mockedCollect.mock.calls[0][4]).toEqual(new Set(['Q19675']));
     // And what the street-art rule reads of the candidates it decides (#2035),
     // asked through the gather's own door.
     expect(vi.mocked(streetArtCandidates)).toHaveBeenCalledWith(SHARE, PUBLIC_ART_RULE);
@@ -274,12 +257,9 @@ describe('public art in the place pass', () => {
     await monuments.fetchItems(progress(), []);
     expect(mockedAdmitted).toHaveBeenCalledWith(6, undefined, 'world');
     expect(mockedCollect.mock.calls[0][1]).toBe(MONUMENTS_RULE);
-    // Monuments & memorials opens no readership door (#2033), and holds no
-    // street-art place (#2035).
-    expect(vi.mocked(artworkReadershipDoorFor)).not.toHaveBeenCalled();
+    // Monuments & memorials holds no street-art place (#2035).
     expect(vi.mocked(readStreetArt)).not.toHaveBeenCalled();
     expect(mockedCollect.mock.calls[0][5]).toBeNull();
-    expect(vi.mocked(openArtworkDoor)).toHaveBeenCalledWith(undefined, SHARE, new Set(), MONUMENTS_RULE, expect.any(Set));
     // A place its sibling offers is not another kind's (#1444).
     expect(vi.mocked(placesOtherSourcesOffer)).toHaveBeenCalledWith([3, 6]);
     expect(art.sourceId).toBe(3);

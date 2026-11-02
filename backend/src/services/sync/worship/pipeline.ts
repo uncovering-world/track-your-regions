@@ -66,6 +66,7 @@ import type { FilteredEntity } from '../syncContract.js';
 import type { ProcessedContent } from '../types.js';
 import { admittingWork, doorNote, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
 import type { ArticleHoldingsReader } from '../museum/articleHoldings.js';
+import type { WorldBars, WorldRead } from '../places/worldBars.js';
 
 const LOG_PREFIX = '[Worship Sync]';
 
@@ -94,8 +95,9 @@ export interface CollectedPlaceOfWorship {
   admittedFor?: { qid: string; label: string };
   door: 'place' | 'work' | 'both';
   /**
-   * The curator's question on a place only the readership door admitted
-   * (ADR-0056): the work, its year, the bar and its burst flag.
+   * The curator's question: on a place only the readership door admitted
+   * (ADR-0056), the work, its year, the bar and its burst flag; on a place in
+   * by a guide's mark (ADR-0175), the mark and its readers.
    */
   readershipNote?: string;
   /** The tier that admitted it where it is not the world's: ADR-0171's regional tier (#2178). */
@@ -123,14 +125,17 @@ export interface WorshipPipelineDeps {
   previousPlacements: Record<string, string[]>;
   /** What the source holds as admitted before the run, so the stay line has something to hold. */
   admitted: ReadonlySet<string>;
-  /** The fame line the source row states (`sourceLine.ts`). */
+  /**
+   * The fame line the source row states (`sourceLine.ts`): what door two holds
+   * a work to, and a relic's badge. Door one admits by the world bars
+   * (`places.ts`, ADR-0175).
+   */
   line: SourceLine;
   /**
-   * A year of readers of the places, for the door under the editions line
-   * (`WORSHIP_READERS_LINE`); null when no year is folded. Absent, only the
-   * editions line decides.
+   * The world's signals of the places, and the bars where a test is not about
+   * the pool, handed in for a test; a run reads them (`places/worldBars.ts`).
    */
-  placeReaders?: (qids: string[]) => Promise<Map<string, number> | null>;
+  placeWorld?: { read: WorldRead; bars?: WorldBars };
   onPhase?: (message: string) => void;
   /** Throws to abandon the run; called before every query. */
   checkCancel?: () => void;
@@ -315,9 +320,9 @@ function itemOf(
     artworks: works.map((work) => readContent(work, readership)),
     admittedFor: admitting ? { qid: admitting.work.qid, label: admitting.work.label } : undefined,
     door,
-    // A place its own fame admits needs no question about a work; one its
-    // readers admitted carries their note instead.
-    ...(byFame?.readersNote ? { readershipNote: byFame.readersNote } : {}),
+    // A place its own fame admits needs no question about a work; one a
+    // guide's mark admitted carries the bars' note instead.
+    ...(byFame?.note ? { readershipNote: byFame.note } : {}),
     ...(admitting?.read && readership && !byFame
       ? { readershipNote: doorNote(admitting.work.label, admitting.read, readership) } : {}),
   };
@@ -332,8 +337,7 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   const share = await deps.places(run);
   const { trees } = share;
   run.phase('Reading what the world reads of the places...');
-  const readers = deps.placeReaders ? await deps.placeReaders([...share.pool.keys()]) : null;
-  const byFame = classifyPlacesByFame(share, deps.admitted, deps.line, readers);
+  const byFame = await classifyPlacesByFame(share, deps.admitted, deps.sparql, deps.placeWorld);
 
   const extraClasses = await fetchTreasureClasses(run);
   run.phase('Fetching the classes a museum can be...');

@@ -13,6 +13,7 @@ import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVis
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
+import { MEASURED_BARS } from '../../../services/sync/places/admissionRegister.js';
 import { buildCoverageReport } from './report.js';
 import { coverageSql, type CalibrationRow, type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow } from './reportQueries.js';
 import { renderCoverageReport } from './reportText.js';
@@ -212,8 +213,9 @@ describe('what a live kind lacks', () => {
     expect(gaps('art-museums')?.wellKnownMissing.map(missing => missing.name)).toEqual(['soumaya', 'house-museum']);
   });
 
-  it('holds a monument and a work to the line their code states', () => {
-    expect(gaps('public-art')).toMatchObject({ line: 22, expected: 2, offered: 0, belowLineMissing: 1 });
+  it('holds a work of public art to the editions bar the register measured, and a work to the line its code states', () => {
+    // Public art's editions bar as ADR-0175's review measured it: the fountain in 6 editions is under it.
+    expect(gaps('public-art')).toMatchObject({ line: MEASURED_BARS.value['public-art'].editions, expected: 2, offered: 0, belowLineMissing: 1 });
     expect(gaps('public-art')?.wellKnownMissing.map(missing => missing.name)).toEqual(['obelisk']);
     expect(gaps('notable-works')).toMatchObject({ line: 22 });
   });
@@ -592,7 +594,7 @@ describe('what the map shows: a crowded city\'s tail, and the places it crowds o
     expect(text).toContain('Rome, Italy (surveyed 2026-10-02): 15 expected, 13 demanded, 3 offered (23%)');
     expect(text).toContain('       2  in the list\'s tail, beyond what the map shows of its kind and type, 1 of them offered all the same: '
       + 'santa-maria-sopra-minerva; sant-agnese-in-agone');
-    expect(text).toContain('Places of worship [places-of-worship; no sitelinks line]: 3 of 12 expected are offered; 3 more are the lists\' tails');
+    expect(text).toContain('Places of worship [places-of-worship; line: 16 sitelinks]: 3 of 12 expected are offered; 3 more are the lists\' tails; 1 shadowed in a crowded city');
     expect(text).toContain('rome: santa-maria-in-aracoeli -> Santa Maria in Aracoeli');
     expect(text).not.toContain('rome: sant-agnese-in-agone -> ');
   });

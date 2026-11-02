@@ -6,7 +6,8 @@
  * source of `PLACE_PASS` classifies its own share: Public art and Monuments &
  * memorials by their kinds' rules, Places of worship by its door one,
  * Archaeology by its site door, Towers, Bridges & engineering marvels and
- * Squares & streets by their rules and lines. What a kind
+ * Squares & streets by their rules, each then by the world bars over its own
+ * pool (ADR-0175, `worldBars.ts`). What a kind
  * reads beyond its places — worship's
  * works and the second door they open, Archaeology's museums and finds, and the
  * map, the Wikipedias and the witnesses its site door asks — stays in its own

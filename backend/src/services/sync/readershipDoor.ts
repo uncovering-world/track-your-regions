@@ -22,11 +22,6 @@
  * as much as the Roman Baths with nothing to see (Stapleton International
  * Airport, Rungholt) stays out.
  *
- * Public art opens the place door too (#2033), for a place that is itself a
- * work: the Kelpies, *Maman*. It asks no witnesses. Its rule admits a work by
- * an artwork class and refuses one that is lost or stands indoors, which is
- * what the witnesses ask of a place, so the reading is the only question left.
- *
  * ADR-0152 widens what a place door reads to the places under the pool's floor
  * the world reads at the bar (`readUnderFloor`): the readership names them
  * first, and only those are asked of Wikidata.
@@ -224,10 +219,9 @@ async function readDoor(
 /**
  * Whether the source's curator gate is on (ADR-0056 decision 5): every door
  * that admits below a kind's line is the source's only while it is, since each
- * arrival through one is for a person to read. The guide door asks it too
- * (`publicArt/guideDoor.ts`).
+ * arrival through one is for a person to read.
  */
-export async function curatorGateOn(sourceId: number): Promise<boolean> {
+async function curatorGateOn(sourceId: number): Promise<boolean> {
   const gate = await pool.query<{ requires_curation: boolean }>(
     'SELECT requires_curation FROM experience_sources WHERE id = $1',
     [sourceId],
@@ -290,20 +284,6 @@ export async function placeReadershipDoorFor(
     }
     return openLoggedPlaceDoor(places, line, held, logPrefix, guided);
   };
-}
-
-/**
- * The place door a run of a kind whose places are works passes its pipeline
- * (#2033), or nothing while the source's curator gate is off. It needs no
- * Wikivoyage usage, since it asks no witnesses.
- */
-export async function artworkReadershipDoorFor(
-  sourceId: number,
-  line: number,
-  logPrefix: string,
-): Promise<PlaceDoor | undefined> {
-  if (!await gateIsOn(sourceId, logPrefix)) return undefined;
-  return (places, held) => openLoggedPlaceDoor(places, line, held, logPrefix);
 }
 
 /** The place door, with what it opened for or why it is shut in the run's log. */
@@ -385,16 +365,6 @@ export function placeDoorNote(place: OpenedWork, door: ReadershipDoor, witnesses
 }
 
 const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-
-/**
- * The curator's question on a work the place door alone admitted (#2033): its
- * year and where it stands against the door. Whether it still stands where it
- * did is what the reading cannot say.
- */
-export function artworkDoorNote(work: OpenedWork, door: ReadershipDoor): string {
-  return `Admitted below the sitelinks line, read ${roundViews(work.views)} times this year in every counted `
-    + `edition, ${readingAgainst(work, door)}${work.burst ? BURST_CLAUSE : ''}. Can a visitor see it there now?`;
-}
 
 /**
  * Why a place the year opens the door for stays out (ADR-0128): its year,

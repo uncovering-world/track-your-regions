@@ -29,6 +29,7 @@ import { gatherPlaces, shareOf } from '../places/gather.js';
 import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import type { SourceLine } from '../sourceLine.js';
+import { belowWorldBars, type WorldBars, type WorldRead } from '../places/worldBars.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 import { isEnglishArticlesQuery, isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 
@@ -497,6 +498,13 @@ function answer(w: World, sent: string): SparqlBinding[] {
 }
 
 const LINE: SourceLine = { enterSitelinks: 22, staySitelinks: 18 };
+/**
+ * Door one's bars, handed in since a fixture of a few places is no pool to
+ * read bars off (ADR-0175): an editions bar of 22, where a held place stays at
+ * 0.8 of it, and Places of worship's readers' bars as the review read them.
+ */
+const BARS: WorldBars = { editions: 22, readers: 49_634, guidedReaders: 10_577, pool: 56_962 };
+const UNREAD: WorldRead = { readers: new Map(), guided: new Set(), atlas: new Set() };
 
 function collect(w: World, opts: {
   line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
@@ -511,6 +519,7 @@ function collect(w: World, opts: {
     places: async (run) => shareOf(await gatherPlaces(run, [{ kind: WORSHIP_KIND, admitted }]), WORSHIP_KIND),
     line: opts.line ?? LINE,
     openDoor: opts.openDoor,
+    placeWorld: { read: UNREAD, bars: BARS },
   });
 }
 
@@ -716,20 +725,21 @@ describe('collectPlacesOfWorship', () => {
     expect(reason(out, 'Q958699')).toContain('hill');
   });
 
-  it('reads the line from the row: at 30 to enter, a place at 26 is out and the relic still admits its church', async () => {
+  it('reads the works\' line from the row: at 30 the relic still admits its church, and the places keep their bars', async () => {
     const w = world();
     w.places.Q197019.sitelinks = 26;
     const out = await collect(w, { line: { enterSitelinks: 30, staySitelinks: 25 } });
 
     expect(item(out, 'Q863593')).toMatchObject({ door: 'both' });
-    expect(item(out, 'Q197019')).toBeUndefined();
+    // Door one admits by the world bars (ADR-0175), which the row's line does not move.
+    expect(item(out, 'Q197019')).toMatchObject({ door: 'place' });
     expect(item(out, 'Q958699')).toMatchObject({ door: 'work' });
     // The same line moves the works door: at 30 neither Caravaggio is iconic,
     // and their church — 20 sitelinks — is in by neither door.
     expect(item(out, 'Q869513')).toBeUndefined();
   });
 
-  it('keeps an admitted row that slipped to the stay band and refuses one below it by name', async () => {
+  it('keeps an admitted row over 0.8 of the editions bar and refuses one under every stay bar by name', async () => {
     const w = world();
     w.places.Q172077.sitelinks = 17;
     w.places.Q197019.sitelinks = 19;
@@ -737,8 +747,7 @@ describe('collectPlacesOfWorship', () => {
 
     expect(item(out, 'Q197019')).toMatchObject({ door: 'place' });
     expect(item(out, 'Q172077')).toBeUndefined();
-    expect(reason(out, 'Q172077'))
-      .toBe("17 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)");
+    expect(reason(out, 'Q172077')).toBe(belowWorldBars({ qid: 'Q172077', editions: 17 }, UNREAD, BARS));
   });
 
   it('says where the works it writes have moved since the last run', async () => {

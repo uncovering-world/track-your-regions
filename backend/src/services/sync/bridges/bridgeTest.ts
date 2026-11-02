@@ -1,7 +1,7 @@
 /**
  * Whether a candidate is a bridge or an engineering work a traveller visits
  * (#1860), and the type it is filed under. The classes are `classes.ts`'; the
- * fame line is the classifier's (`kind.ts`).
+ * world bars are the classifier's (`kind.ts`).
  */
 
 import { BRIDGE_TYPES, CANAL, KILLS, OTHER_KINDS, WATERWAY_TYPES, type BridgeTrees, type BridgeType } from './classes.js';
