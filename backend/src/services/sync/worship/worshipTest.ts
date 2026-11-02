@@ -17,6 +17,7 @@
 
 import {
   DESTROYED_BUILDING,
+  RETREAT_CLASSES,
   RUIN_CLASSES,
   WORSHIP_KILL_CLASSES,
   WORSHIP_PART_CLASSES,
@@ -83,6 +84,11 @@ export function worshipVerdict(e: WorshipFacts, trees: WorshipTrees): WorshipRes
   // rather than a church to hand the row to: Towers is the kind that has it.
   if (parts.length && !worship.length) {
     return { pass: false, reason: `a tower, not a place of worship: ${parts.join('; ')}` };
+  }
+  // A retreat center is a place to stay; a monastery that takes guests keeps
+  // its own worship class and is the place (`RETREAT_CLASSES`).
+  if (!worship.length && e.classes.some((c) => RETREAT_CLASSES[c])) {
+    return { pass: false, reason: 'a retreat center: a place to stay, not a place of worship' };
   }
   if (!worship.length) {
     return { pass: false, reason: 'no place-of-worship class' };

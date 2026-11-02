@@ -236,6 +236,19 @@ export const WORSHIP_PART_CLASSES: Record<string, string> = {
   Q5191724: 'steeple',
 };
 
+/**
+ * A place to stay, which Wikidata files under `structure of worship`: a
+ * `retreat center` is a house where guests come for a retreat, religious or
+ * not, and Rancho de San Rafael, a ranch in New Mexico, is typed nothing else
+ * of the kind (#2272). Taken out of the worship set as the parts are, so a row
+ * whose only worship class is this one is refused, while a monastery that
+ * also takes guests keeps its own class and is the place: the Sāsanārakkha
+ * Buddhist Sanctuary is a vihāra and a retreat center.
+ */
+export const RETREAT_CLASSES: Record<string, string> = {
+  Q106115017: 'retreat center',
+};
+
 /** What a reader filters a place of worship by. */
 export type WorshipType =
   | 'cathedral' | 'monastery' | 'mosque' | 'synagogue'
@@ -414,7 +427,8 @@ export interface WorshipTrees {
  *
  * The part classes come *out* of the set afterwards, so that a row whose only
  * worship class is a bell tower has no worship class at all and is refused as a
- * tower. A row that also carries a proper one keeps it, and is the place.
+ * tower. A row that also carries a proper one keeps it, and is the place. The
+ * retreat classes (`RETREAT_CLASSES`) come out the same way.
  */
 export function buildWorshipTrees(fetched: {
   worship: Iterable<string>;
@@ -440,6 +454,7 @@ export function buildWorshipTrees(fetched: {
   for (const set of [buildings, worship]) {
     for (const designation of Object.keys(WORSHIP_DESIGNATIONS)) set.delete(designation);
     for (const part of parts) set.delete(part);
+    for (const retreat of Object.keys(RETREAT_CLASSES)) set.delete(retreat);
   }
 
   // A walked root brings its tree; a `direct` class brings itself alone, which
