@@ -4434,6 +4434,30 @@ export interface VisitQuestion {
 }
 
 /**
+ * How crowded a card's city is (ADR-0172, ADR-0180).
+ */
+export interface CardCrowding {
+  /**
+     * How many better-known places of a type shadow a place in this kind.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  limit: number;
+  /** The radius they are counted within. */
+  radiusKm: number;
+  /**
+     * How many places of the kind and type lie within the radius, the place itself included: what the window lists.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  around: number;
+  /** Whether the display shadows it: in the tail now, or for a new arrival, once passed. */
+  shadowed: boolean;
+  /** For a shadowed place, how many places of its type within the radius count above it, as the recount stored it (`membership_crowding`, ADR-0180); null for a place the display shows. */
+  outrankedBy: number | null;
+}
+
+/**
  * An object waiting on a curator, or one a curator can take a verdict back from.
  */
 export interface ReviewQueueItem {
@@ -4615,6 +4639,8 @@ export interface ReviewQueueItem {
   pin_question?: PinQuestion | null;
   /** `visit-question` items only (#1770). */
   visit_question?: VisitQuestion | null;
+  /** How crowded the city of the membership this card asks about is (#2282), so the card offers the window over its type and says whether it is shadowed without reading the window. Null for a kind with no display rule, a type its kind exempts, a place holding a work a reader is shown, a place with no point, or a card about no membership. */
+  crowding?: CardCrowding | null;
 }
 
 /**

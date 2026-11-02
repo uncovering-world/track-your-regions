@@ -44,6 +44,7 @@ import {
 } from './reviewQueuePredicates.js';
 import { heldFieldAnsweredSql } from './heldDecisions.js';
 import { withDangerFields } from './experienceDanger.js';
+import { attachCrowding } from './reviewQueueCrowding.js';
 import { PG_INTEGER_MAX } from '../../types/rowId.js';
 
 /** The request as `reviewQueueQuerySchema` leaves it. */
@@ -665,8 +666,18 @@ export async function getReviewQueue(
   // Which regions each coordinate move leaves and enters (#2203): the held
   // and conflicted coordinates, and the points a source moved under contents.
   await attachRegionCrossings([...response.held, ...response.conflicts, ...response.contents]);
+  // How crowded each card's city is (#2282): the window's count and the rule's,
+  // so a card reads the window only when a curator opens it.
+  await attachCrowding(QUEUE_CARD_LISTS.flatMap(list => response[list]), { userId, isAdmin });
   return response;
 }
+
+/** Every list of cards the page answers, each of which carries `crowding`. */
+const QUEUE_CARD_LISTS = [
+  'missing', 'refused', 'keptOut', 'conflicts', 'sources', 'componentItems', 'mergeProposals', 'pinQuestions',
+  'visitQuestions', 'approximatePoints', 'approximateUnhinted', 'arrivals', 'held', 'contents', 'withdrawn',
+  'answeredWithdrawals', 'refusedParts',
+] as const;
 
 /**
  * A query's rows as cards. The one place the queue's rows, which the driver

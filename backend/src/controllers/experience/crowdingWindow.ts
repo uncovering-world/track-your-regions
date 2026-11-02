@@ -84,11 +84,20 @@ function listedSql(isAdmin: boolean): string {
   return `(${membershipVisibleSql('m')} OR (e.missing_since IS NULL AND ${queueScopeSql(isAdmin, 'm.source_id')}))`;
 }
 
-/** Every place of the kind and type within the radius of the centre, admitted and standing. */
-function aroundSql(isAdmin: boolean): string {
-  return `m.kind_id = $2
-     AND e.location && crowding_box(centre.point, $4)
-     AND ST_DWithin(e.location::geography, centre.point::geography, $4 * 1000)
+/** Where the places are counted around: the kind, the centre's point and the radius, as SQL expressions. */
+export interface AroundAt { kind: string; point: string; radiusKm: string }
+
+/**
+ * Every place of the kind within the radius of a point, admitted and standing,
+ * over the aliases `m` and `e`, with the scope's prelude bound. The window
+ * reads it around its centre (`$2`, `centre.point`, `$4`); a review card's
+ * count reads it around the card's place (`reviewQueueCrowding.ts`), so the
+ * button's number is the window's.
+ */
+export function aroundSql(isAdmin: boolean, at: AroundAt = { kind: '$2', point: 'centre.point', radiusKm: '$4' }): string {
+  return `m.kind_id = ${at.kind}
+     AND e.location && crowding_box(${at.point}, ${at.radiusKm})
+     AND ST_DWithin(e.location::geography, ${at.point}::geography, ${at.radiusKm} * 1000)
      AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')}
      AND ${listedSql(isAdmin)}`;
 }

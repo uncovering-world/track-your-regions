@@ -18661,6 +18661,53 @@
           "hours"
         ]
       },
+      "CardCrowding": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How many better-known places of a type shadow a place in this kind."
+          },
+          "radiusKm": {
+            "type": "number",
+            "description": "The radius they are counted within."
+          },
+          "around": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How many places of the kind and type lie within the radius, the place itself included: what the window lists."
+          },
+          "shadowed": {
+            "type": "boolean",
+            "description": "Whether the display shadows it: in the tail now, or for a new arrival, once passed."
+          },
+          "outrankedBy": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a shadowed place, how many places of its type within the radius count above it, as the recount stored it (`membership_crowding`, ADR-0180); null for a place the display shows."
+          }
+        },
+        "required": [
+          "limit",
+          "radiusKm",
+          "around",
+          "shadowed",
+          "outrankedBy"
+        ],
+        "additionalProperties": false,
+        "description": "How crowded a card's city is (ADR-0172, ADR-0180)."
+      },
       "ChangePasswordBody": {
         "type": "object",
         "properties": {
@@ -35689,6 +35736,17 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/VisitQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "crowding": {
+            "description": "How crowded the city of the membership this card asks about is (#2282), so the card offers the window over its type and says whether it is shadowed without reading the window. Null for a kind with no display rule, a type its kind exempts, a place holding a work a reader is shown, a place with no point, or a card about no membership.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CardCrowding"
               },
               {
                 "type": "null"
