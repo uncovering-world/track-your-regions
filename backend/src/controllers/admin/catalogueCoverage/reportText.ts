@@ -94,7 +94,7 @@ function liveLines(report: CoverageReport): string[] {
 }
 
 const STANDING_WORDS: Record<Exclude<CalibrationStanding, 'offered' | 'admitted'>, string> = {
-  crowded: 'in a crowded city\'s tail: ten better known of its type within 10 km',
+  crowded: 'in a crowded city\'s tail: ten better known of its type within 10 km, or a curator\'s shadow',
   held: 'in the catalogue, not offered by this kind',
   refused: 'refused by the last run',
   under_line: 'absent, under the editions line',
@@ -202,7 +202,8 @@ export function renderCoverageReport(report: CoverageReport): string {
       entry => ` -> ${entry.nearby.slice(0, 3).map(nearbyWords).join('; ')}`,
     ),
     ...judgedLines(
-      'Admitted and crowded out of its city: better-known places of its kind and type stand within the kind\'s radius',
+      'Admitted and crowded out of its city: better-known places of its kind and type stand within the kind\'s radius,'
+      + ' or a curator keeps it in the shadow',
       shadowed,
       entry => ` -> ${[...new Set(entry.matches.filter(match => match.shadowed).map(match => match.catalogue_name))].join('; ')}`,
     ),

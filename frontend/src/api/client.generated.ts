@@ -2135,7 +2135,7 @@ export interface ExperienceSearchResult {
   longitude: number;
   latitude: number;
   relevance: number;
-  /** Whether a crowded city crowds the place out of every list it is in (ADR-0172): ten better-known places of its kind and type lie within 10 km. It is opened from its region's tail, never from the list itself. */
+  /** Whether a crowded city crowds the place out of every list it is in (ADR-0172): ten better-known places of its kind and type lie within 10 km, or a curator who weighed them keeps it in the shadow (ADR-0180). It is opened from its region's tail, never from the list itself. */
   in_tail: boolean;
   /** The regions whose own lists hold the object, most specific first. Empty where nothing published places it, and then the answer is not a link. */
   regions: ExperienceRegionRef[];
@@ -2435,7 +2435,7 @@ export interface ExperiencesByRegionResponse {
      * @maximum 9007199254740991
      */
   lostHidden: number;
-  /** How many places each kind and type crowds out of this list (ADR-0172): ten better-known ones of the type lie within 10 km of each. They are read on their own, ranked, from the region's tail; empty where none is. */
+  /** How many places each kind and type crowds out of this list (ADR-0172): ten places of the type that count above each lie within 10 km of it (the better known, and any a curator keeps in the list), or a curator keeps it in the shadow (ADR-0180). They are read on their own, ranked, from the region's tail; empty where none is. */
   crowdedOut: ExperiencesByRegionResponseCrowdedOutItem[];
   /**
      * @minimum -9007199254740991

@@ -26,7 +26,7 @@ import {
 /** Where an absent entry stands, said after "the kind does not offer it". */
 const WHERE: Record<Verdict, string> = {
   offered: 'a reader finds it under another kind',
-  shadowed: 'a kind admits it and crowds it out of its city: better-known places of its kind and type stand near it (ADR-0172)',
+  shadowed: 'a kind admits it and crowds it out of its city: better-known places of its kind and type stand near it, or a curator keeps it in the shadow (ADR-0172, ADR-0180)',
   held: 'the catalogue holds it and no reader sees it: it waits for a curator, was refused, or no longer stands',
   same_spot: 'something else stands at its spot, which may be the same place under another Wikidata item',
   missing_live: 'the catalogue does not hold it',

@@ -57,7 +57,7 @@ export interface MatchRow {
   catalogue_name: ExperiencesRow['name'];
   kind_id: number | null;
   offered: boolean;
-  /** Admitted, and crowded out of what a reader is shown: ten better-known places of its kind and type stand near it (ADR-0172). Never set for a work. */
+  /** Admitted, and crowded out of what a reader is shown: ten better-known places of its kind and type stand near it (ADR-0172), or a curator keeps it in the shadow (ADR-0180). Never set for a work. */
   shadowed: boolean;
 }
 

@@ -378,7 +378,7 @@ describe('a live kind against its own calibration list (#1864)', () => {
     expect(text).toContain('refused by the last run: a water system, not a site)');
     expect(text).toContain('moray (Q5109; 18 sitelinks; coverage-surveys; absent, under the editions line)');
     expect(text).toContain('in the catalogue, not offered by this kind: A dig nobody read yet)');
-    expect(text).toContain("santa-sabina (Q12115; 28 sitelinks; wonders; in a crowded city's tail: ten better known of its type within 10 km)");
+    expect(text).toContain("santa-sabina (Q12115; 28 sitelinks; wonders; in a crowded city's tail: ten better known of its type within 10 km, or a curator's shadow)");
     expect(text).not.toContain('World Heritage Sites [world-heritage]: 0 of');
   });
 });
