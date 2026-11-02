@@ -2774,8 +2774,8 @@ END $$;
 -- membership (`experience_kind_memberships.facts`), where no other kind's run
 -- writes over it. The readership notes are the keys three runs once kept them
 -- under. UNESCO's facts about an inscription are the World Heritage kind's
--- (#2068); the tier that admitted a row, where it is the regional one, is the
--- kind's too (ADR-0171, #2178). db/migrations/178-a-kind-keeps-its-own-facts.sql,
+-- (#2068); the tier that admitted a row, where it is the surroundings one, is
+-- the kind's too (ADR-0171, ADR-0178, #2178). db/migrations/178-a-kind-keeps-its-own-facts.sql,
 -- 180-the-inscription-is-the-world-heritage-kinds.sql and
 -- 195-the-tier-that-admitted-a-row-is-its-kinds-fact.sql move what a database
 -- already holds.
@@ -3109,7 +3109,7 @@ ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS wikidata_items 
 -- db/migrations/178-a-kind-keeps-its-own-facts.sql for a database whose places
 -- still hold them.
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS facts JSONB NOT NULL DEFAULT '{}'::jsonb;
-COMMENT ON COLUMN experience_kind_memberships.facts IS 'The kind''s own facts about the place (year, creators, wikidataClasses, artworkCount, admissionNote, the tier that admitted the row where it is the regional one, a World Heritage Site''s dateInscribed, inDanger, dangerList, criteria, areaHectares, ...), written by the source''s run every pass; one a reader is shown (the inscription year, the danger flag and its listing) waits behind the gate on a held place. No other kind''s run writes them, and a refused membership keeps its own (ADR-0153, ADR-0154, ADR-0171, #1775, #2068, #2178).';
+COMMENT ON COLUMN experience_kind_memberships.facts IS 'The kind''s own facts about the place (year, creators, wikidataClasses, artworkCount, admissionNote, the tier that admitted the row where it is the surroundings one, a World Heritage Site''s dateInscribed, inDanger, dangerList, criteria, areaHectares, ...), written by the source''s run every pass; one a reader is shown (the inscription year, the danger flag and its listing) waits behind the gate on a held place. No other kind''s run writes them, and a refused membership keeps its own (ADR-0153, ADR-0154, ADR-0171, ADR-0178, #1775, #2068, #2178).';
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_verdict VARCHAR(10);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_reason TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_question_verdict VARCHAR(10);
