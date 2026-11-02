@@ -15,6 +15,7 @@
  */
 
 import { entitiesAreHeld, latestSubset } from '../dumps/wikidata/subsetTables.js';
+import { ARCHAEOLOGY_TYPES } from '../sync/archaeology/regionalSites.js';
 import { BRIDGES_REGIONAL } from '../sync/bridges/kind.js';
 import { publicArtRegional } from '../sync/landmarkSyncService.js';
 import type { PlaceKind } from '../sync/places/gather.js';
@@ -33,11 +34,13 @@ export type TypeRule = Pick<RegionalKind<unknown, unknown>, 'kind' | 'typeOf'>;
 /**
  * The kinds whose places have types, by `experience_kinds` id, each filled by
  * the source of the same id: the six kinds of the place pass with a regional
- * declaration. A kind absent here files every entry under no type.
+ * declaration, and Archaeology, whose museums and sites a crowded city counts
+ * apart (ADR-0179). A kind absent here files every entry under no type.
  */
 export const TYPE_RULES: ReadonlyMap<number, TypeRule> = new Map<number, TypeRule>([
   [3, publicArtRegional(PUBLIC_ART_RULE)],
   [4, WORSHIP_REGIONAL],
+  [5, ARCHAEOLOGY_TYPES],
   [6, publicArtRegional(MONUMENTS_RULE)],
   [7, TOWERS_REGIONAL],
   [8, BRIDGES_REGIONAL],

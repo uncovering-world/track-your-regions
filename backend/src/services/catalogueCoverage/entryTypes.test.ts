@@ -51,7 +51,7 @@ const FILINGS: FilingToType[] = [
   filing('rome', 'capuchin-crypt', 'Q5037115'),
   filing('rome', 'via-margutta', null, 'squares-and-streets', 9),
   // Filed under a kind with no types: neither typed nor counted.
-  filing('rome', 'pantheon', 'Q99309', 'archaeology', 5),
+  filing('rome', 'pantheon', 'Q99309', 'world-heritage', 1),
 ];
 
 describe('typing the filings', () => {
@@ -91,7 +91,7 @@ describe('reading the types from the subset', () => {
   });
 
   it('asks nothing at all where no filing is under a kind with types', async () => {
-    const typed = await readFilingTypes([filing('rome', 'pantheon', 'Q99309', 'archaeology', 5)]);
+    const typed = await readFilingTypes([filing('rome', 'pantheon', 'Q99309', 'world-heritage', 1)]);
 
     expect(typed).toEqual({ types: new Map(), typed: 0, untyped: 0, unread: 0, skipped: null });
     expect(mockedLatest).not.toHaveBeenCalled();
@@ -118,8 +118,8 @@ describe('reading the types from the subset', () => {
 });
 
 describe('the kinds with types', () => {
-  it('are the six kinds a crowded city shows ten of a type of, each typed by its regional declaration', () => {
-    expect([...TYPE_RULES.keys()].sort((a, b) => a - b)).toEqual([3, 4, 6, 7, 8, 9]);
+  it('are the kinds a crowded city shows ten of a type of: the six by their regional declarations, and Archaeology (ADR-0179)', () => {
+    expect([...TYPE_RULES.keys()].sort((a, b) => a - b)).toEqual([3, 4, 5, 6, 7, 8, 9]);
     for (const rule of TYPE_RULES.values()) expect(rule.typeOf).toBeTypeOf('function');
   });
 });

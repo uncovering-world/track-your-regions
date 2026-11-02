@@ -22,6 +22,9 @@ const mockedRollback = rollbackQuietly as unknown as ReturnType<typeof vi.fn>;
 
 const CATALOGUE_KINDS = [{ id: 1, name: 'World Heritage Sites' }, { id: 5, name: 'Archaeology' }];
 
+/** A typer that types nothing and reads nothing: the load's own statements are what these specs ask about. */
+const NO_TYPES = vi.fn(async () => ({ types: new Map<string, string>(), typed: 0, untyped: 0, unread: 0, skipped: null }));
+
 const kind = (over: Partial<CoverageFiles['kinds'][number]>): CoverageFiles['kinds'][number] => ({
   slug: 'markets', name: 'Markets', form: 'place', definition: 'A market.', status: 'proposed',
   experience_kind_id: null, issue: null, vision: null, in_venue: false, ...over,
@@ -80,7 +83,7 @@ describe('replaceCoverage', () => {
   it('empties children before parents and fills parents before children, inside one transaction on one client', async () => {
     const client = makeClient();
 
-    const summary = await replaceCoverage(FILES);
+    const summary = await replaceCoverage(FILES, NO_TYPES);
 
     const order = statements(client).map(sql => sql.split(' (')[0].split(' SELECT')[0]);
     expect(order).toEqual([
@@ -108,7 +111,7 @@ describe('replaceCoverage', () => {
     expect(client.release).toHaveBeenCalledWith(undefined);
     expect(summary).toEqual({
       kinds: 3, regions: 1, expectations: 2, filings: 1, judgements: 2, calibrationSources: 1, calibrationEntries: 1,
-      // Archaeology has no types (`TYPE_RULES`), so no filing is asked for one and the subset is never read.
+      // The typer's own counts, handed on as the load's.
       typed: 0, untyped: 0, unread: 0, typesSkipped: null,
     });
   });
@@ -116,7 +119,7 @@ describe('replaceCoverage', () => {
   it('sends each table its own columns, a point as text and no point as null', async () => {
     const client = makeClient();
 
-    await replaceCoverage(FILES);
+    await replaceCoverage(FILES, NO_TYPES);
 
     const sent = (table: string) => {
       // The space after the name tells coverage_expectations from coverage_expectation_kinds.
@@ -155,7 +158,7 @@ describe('replaceCoverage', () => {
       kinds: [...FILES.kinds, worship],
       expectations: new Map([['cusco-region', [
         place('cusco-cathedral', 'Cusco Cathedral', 'Q2942242', ['places-of-worship']),
-        // Filed under two kinds: typed under the one that has types, and asked nothing under the other.
+        // Filed under two kinds: each filing is the typer's to type, and one it leaves untyped is stored with none.
         place('coricancha', 'Coricancha', 'Q817594', ['archaeology', 'places-of-worship']),
       ]]]),
       judgements: [],
@@ -188,8 +191,8 @@ describe('replaceCoverage', () => {
     const client = makeClient();
     const files = { ...FILES, kinds: FILES.kinds.filter(k => k.slug !== 'archaeology') };
 
-    await expect(replaceCoverage(files)).rejects.toThrow(CoverageRegisterMismatch);
-    await expect(replaceCoverage(files)).rejects.toThrow('the catalogue kind Archaeology (experience_kinds 5) has no live record in kinds.jsonl');
+    await expect(replaceCoverage(files, NO_TYPES)).rejects.toThrow(CoverageRegisterMismatch);
+    await expect(replaceCoverage(files, NO_TYPES)).rejects.toThrow('the catalogue kind Archaeology (experience_kinds 5) has no live record in kinds.jsonl');
 
     expect(statements(client).some(sql => sql.startsWith('DELETE'))).toBe(false);
     expect(mockedRollback).toHaveBeenCalledWith(client);
@@ -198,16 +201,16 @@ describe('replaceCoverage', () => {
   it('refuses a live record whose name is not the catalogue\'s, and one naming a kind the catalogue lacks', async () => {
     makeClient();
     const renamed = { ...FILES, kinds: [FILES.kinds[0], kind({ slug: 'archaeology', name: 'Digs', status: 'live', experience_kind_id: 5 })] };
-    await expect(replaceCoverage(renamed)).rejects.toThrow('archaeology is named Digs and experience_kinds 5 is named Archaeology');
+    await expect(replaceCoverage(renamed, NO_TYPES)).rejects.toThrow('archaeology is named Digs and experience_kinds 5 is named Archaeology');
 
     const extra = { ...FILES, kinds: [...FILES.kinds, kind({ slug: 'history-museums', name: 'History museums', status: 'live', experience_kind_id: 6 })] };
-    await expect(replaceCoverage(extra)).rejects.toThrow('history-museums names experience_kinds 6, which the catalogue does not have');
+    await expect(replaceCoverage(extra, NO_TYPES)).rejects.toThrow('history-museums names experience_kinds 6, which the catalogue does not have');
   });
 
   it('rolls back and releases the client when a statement fails, and hands on the error', async () => {
     const client = makeClient(/INSERT INTO coverage_expectations\s/);
 
-    await expect(replaceCoverage(FILES)).rejects.toThrow('the database said no');
+    await expect(replaceCoverage(FILES, NO_TYPES)).rejects.toThrow('the database said no');
 
     expect(statements(client)).not.toContain('COMMIT');
     expect(mockedRollback).toHaveBeenCalledWith(client);
@@ -219,7 +222,7 @@ describe('replaceCoverage', () => {
     const broken = new Error('connection lost');
     mockedRollback.mockResolvedValue(broken);
 
-    await expect(replaceCoverage(FILES)).rejects.toThrow('the database said no');
+    await expect(replaceCoverage(FILES, NO_TYPES)).rejects.toThrow('the database said no');
 
     expect(client.release).toHaveBeenCalledWith(broken);
   });
