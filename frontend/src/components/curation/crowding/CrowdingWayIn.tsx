@@ -1,19 +1,22 @@
 /**
  * The way from a review card into the crowded-city window (ADR-0180, #2282):
- * "Squares around (22)" on a card of a place in a kind with the display rule.
+ * "Squares around (22)" on a card of a place in a kind with the display rule,
+ * and, where the place is shadowed, in which kind and how many outrank it
+ * (#2228).
  *
  * Read off the card's own `crowding`, which the queue's page carries: nothing
  * is asked of the server until the curator opens the window, so a page of
- * cards spends none of the request budget the answers share.
+ * cards spends none of the request budget the answers share. The window
+ * names the places that outrank this one.
  *
  * The window is its own chunk (`LazyCrowdingWindow`), fetched when the
- * curator opens it: the review page carries only its button.
+ * curator opens it: the review page carries only this line and its button.
  */
 
 import { useState } from 'react';
-import { Box, Button } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 import type { ReviewQueueItem } from '../../../api/reviewQueue';
-import { aroundLabel } from './crowdingWords';
+import { aroundLabel, shadowLine } from './crowdingWords';
 import { LazyCrowdingWindow } from './LazyCrowdingWindow';
 
 export function CrowdingWayIn({ item, onDone }: {
@@ -25,9 +28,11 @@ export function CrowdingWayIn({ item, onDone }: {
   const [open, setOpen] = useState(false);
   const { membership_id: membershipId, crowding } = item;
   if (membershipId == null || !crowding) return null;
+  const line = shadowLine(item, crowding);
 
   return (
     <Box sx={{ mt: 1.5 }}>
+      {line && <Typography variant="body2" sx={{ mb: 1 }}>{line}</Typography>}
       <Button variant="outlined" color="inherit" onClick={() => setOpen(true)}>
         {aroundLabel(item, crowding)}
       </Button>
