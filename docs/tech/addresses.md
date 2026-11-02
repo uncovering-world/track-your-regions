@@ -23,6 +23,7 @@ implemented, and the rules that keep it honest. The decision behind it is
 | `/?wv=5`, `/discover?wv=5` | The form links carried before #644 — honoured, then rewritten in place |
 | `/review` | The curator's review feed, nothing narrowed — a page rather than a place; see § The review page |
 | `/review?sort=question&q=cologne&source=1,3&kind=held&region=6737&run=98&aside=show&row=waiting:126` | …that feed's whole working set: the order, the search, the `source`, `kind`, `region` and `run` filters, the set-aside batches shown, and the question open on the right — on the catalogue of 2026-09-07, Cologne Cathedral's held proposal from run 98 |
+| `/review?view=crowded&crowd=7-9-square` | The review page's *Crowded cities* tab, open on Berlin's squares: the new places the rule would shadow there, in the crowded city's window — see § The review page |
 
 Two rules decide where a piece of state goes:
 
@@ -181,6 +182,19 @@ decision 5.
 | `run=98` | The run that asked |
 | `aside=show` | Show the batches this curator has set aside, which are otherwise out of the list. Picking a set-aside run in the Run chip turns it on with the filter, in one write: that chip counts its runs before the set-aside rows are dropped, so the batch it offers would otherwise be filtered to a list the page hides |
 | `row=waiting:126` | The question open on the right, by the list's own key |
+| `view=crowded` | The *Crowded cities* tab (#2282). `questions`, the queue, is the default and writes nothing; any other value reads as it |
+| `crowd=7-9-square` | The crowded city's group open on that tab: its leaf region (`none` for arrivals no world view places), its kind and its type where it has one (`crowdKeyOf`), so `none-4` and `12-7-bell-tower` read too. A type's words are separated by one space, written `+` as the search's are: Places of worship's holy sites in a region read `crowd=21-4-holy+site`. Read and written only with `view=crowded` |
+
+**The tab is a parameter, and keeps the queue's** (#2282). Opening *Crowded cities*
+is a push, and the filters, the order and the open `row` stay in the address beside
+it, so Back returns to the question the curator had open; the queue's read and its
+selection are not keyed by the tab (`useReviewQueue`'s `filterKey`), so switching
+reads nothing again, and the page writes no `row` while the other tab is open.
+Picking a group is a push. The tab opening its first group by itself, where `crowd`
+names none or one the list no longer holds, is a replace, as `row` is. Opening
+*Questions* drops `crowd`. The tab's Region and Kind chips are not parameters: they
+narrow a list of a few groups for the curator at the screen, and the group open is
+what a link has to reopen.
 
 **The ticks are not a parameter** (#852). A curator can tick many rows and answer them
 at once, and the ticks are deliberately transient — component state, cleared when a
@@ -247,8 +261,8 @@ at all — it is work put down rather than a view of it, and the filter stays
 where the curator left it.
 
 **Degradation is silent here too.** A value that does not parse — `region=europe`,
-`row=conflict:88`, `kind=nonsense` — reads as absent and the rest of the address
-still applies. The leniency runs on into the endpoint the address is asked with:
+`row=conflict:88`, `kind=nonsense`, `crowd=berlin-9` — reads as absent and the rest
+of the address still applies; `view=crowds` opens *Questions*. The leniency runs on into the endpoint the address is asked with:
 a filter word the server's vocabulary does not know is dropped rather than
 answered 400, and a `cursor` it cannot read opens the first page.
 
