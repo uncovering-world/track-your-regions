@@ -22,6 +22,7 @@ import WebsiteIcon from '@mui/icons-material/Language';
 import HeritagePageIcon from '@mui/icons-material/AccountBalance';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 import { safeHref } from '../../utils/safeHref';
+import { useReaderEdition, wikipediaWords } from './WikipediaArticleLink';
 
 function storedHref(metadata: Record<string, unknown> | null | undefined, key: string): string | null {
   const value = metadata?.[key];
@@ -46,12 +47,14 @@ function PlaceLink({ stored, icon, words }: { stored: string | null; icon: React
 
 export function PlaceLinks({ metadata }: { metadata: Record<string, unknown> | null | undefined }) {
   const wikiUrl = storedHref(metadata, 'wikipediaUrl');
+  // The same article in the reader's first language ahead of English, where its item has one (#2209).
+  const edition = useReaderEdition(wikiUrl);
   const websiteUrl = storedHref(metadata, 'website');
   // UNESCO's page about a World Heritage site, beside the site's own (#1538).
   const unescoUrl = storedHref(metadata, 'unescoUrl');
   return (
     <>
-      <PlaceLink stored={wikiUrl} icon={<WikiIcon />} words="Wikipedia" />
+      <PlaceLink stored={edition?.url ?? wikiUrl} icon={<WikiIcon />} words={wikipediaWords(edition)} />
       <PlaceLink stored={websiteUrl !== wikiUrl && websiteUrl !== unescoUrl && !isWorldHeritageCentreUrl(websiteUrl ?? '') ? websiteUrl : null}
         icon={<WebsiteIcon />} words="Official website" />
       <PlaceLink stored={unescoUrl} icon={<HeritagePageIcon />} words="UNESCO page" />

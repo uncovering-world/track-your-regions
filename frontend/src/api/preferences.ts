@@ -17,3 +17,8 @@ export function getMyPreferences(): Promise<MyPreferences> {
 export function saveMyPreferences(mapsApp: MapsApp | null): Promise<MyPreferences> {
   return putUsersMePreferences({ mapsApp });
 }
+
+/** The languages a Wikipedia article opens in, first choice first (#2209); null reads the browser's again. */
+export function saveMyReadingLanguages(readingLanguages: string[] | null): Promise<MyPreferences> {
+  return putUsersMePreferences({ readingLanguages });
+}

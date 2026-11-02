@@ -13,9 +13,12 @@
 
 import { Link } from '@mui/material';
 import { safeHref } from '../../utils/safeHref';
+import { useReaderEdition, wikipediaWords } from './WikipediaArticleLink';
 
 export function PointArticleLink({ href, name }: { href: string | null | undefined; name: string }) {
-  const article = safeHref(href ?? null);
+  // The same article in the reader's first language ahead of English, where its item has one (#2209).
+  const edition = useReaderEdition(href);
+  const article = safeHref(edition?.url ?? href ?? null);
   if (!article) return null;
   return (
     <Link
@@ -27,7 +30,7 @@ export function PointArticleLink({ href, name }: { href: string | null | undefin
       onClick={(event) => event.stopPropagation()}
       sx={{ flexShrink: 0, mr: 0.5 }}
     >
-      Wikipedia
+      {wikipediaWords(edition)}
     </Link>
   );
 }

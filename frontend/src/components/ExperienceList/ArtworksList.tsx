@@ -18,6 +18,7 @@ import type { WorkKind } from '../../utils/worksByKind';
 import { useWorkKinds } from '../../hooks/useWorkKinds';
 import { WorkKindChips, WorkKindDots } from '../shared/WorkKindChips';
 import { ARTWORKS_INITIAL_LIMIT } from './utils';
+import { useReaderEdition, wikipediaWords } from '../shared/WikipediaArticleLink';
 
 /**
  * One work in the list: its picture, whether this reader has seen it, and whose photograph it is.
@@ -50,7 +51,11 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
   // work has none, and Wikidata's own redirect, resolved at the click, for a
   // work no run has asked about yet (`wikipediaArticleUrl`; none for a
   // curator-created work, whose id is no Wikidata item).
-  const article = safeHref(content.wikipedia_read ? content.wikipedia_url : wikipediaArticleUrl(content.external_id));
+  const stored = content.wikipedia_read ? content.wikipedia_url : null;
+  // The same article in the reader's first language ahead of English, where its item has one (#2209).
+  const edition = useReaderEdition(stored);
+  const english = content.wikipedia_read ? content.wikipedia_url : wikipediaArticleUrl(content.external_id);
+  const article = safeHref(edition?.url ?? english);
 
   return (
     <Box
@@ -128,7 +133,7 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
             <Link href={article} target="_blank" rel="noopener noreferrer" variant="caption"
               aria-label={`${content.name} on Wikipedia`}
               onClick={(event) => event.stopPropagation()} sx={{ flexShrink: 0 }}>
-              Wikipedia
+              {wikipediaWords(edition)}
             </Link>
           )}
         </Box>

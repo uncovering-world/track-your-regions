@@ -5,6 +5,7 @@ import type { AuthProvider } from '../../types/auth';
 import { ChangePasswordForm } from './ChangePasswordForm';
 import { displayNameOf } from '../../utils/displayName';
 import { MapsAppSetting } from './MapsAppSetting';
+import { ReadingLanguagesSetting } from './ReadingLanguagesSetting';
 
 /** How an account signs in, in the words a person would use. */
 const PROVIDER_LABEL: Record<AuthProvider, string> = {
@@ -49,6 +50,15 @@ export function AccountPage() {
       <MapsAppSetting signedIn={signedIn} />
     </Paper>
   );
+  const reading = (signedIn: boolean) => (
+    <Paper variant="outlined" sx={{ p: 3, mt: 3 }}>
+      <Typography variant="h6" component="h2" gutterBottom>
+        Wikipedia
+      </Typography>
+      <Divider sx={{ mb: 2 }} />
+      <ReadingLanguagesSetting signedIn={signedIn} />
+    </Paper>
+  );
 
   if (!isAuthenticated || !user) {
     return (
@@ -57,6 +67,7 @@ export function AccountPage() {
           Sign in to see your account.
         </Alert>
         {maps(false)}
+        {reading(false)}
       </Container>
     );
   }
@@ -115,6 +126,7 @@ export function AccountPage() {
       </Paper>
 
       {maps(true)}
+      {reading(true)}
     </Container>
   );
 }
