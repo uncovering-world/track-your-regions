@@ -1,7 +1,7 @@
 # ADR-0168: A tower a Wikivoyage guide uses enters at 15,000 readers a year, whatever its editions
 
 **Date:** 2026-10-31
-**Status:** Accepted
+**Status:** Superseded by [ADR-0175](0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md)
 
 ---
 
