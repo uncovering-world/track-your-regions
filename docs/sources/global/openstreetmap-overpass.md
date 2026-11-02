@@ -306,3 +306,19 @@ fort and ruin values or a name containing "castr"; Aalto: `architect` or `name` 
 "Aalto"): the counts are in `openstreetmap-qlever` § Read for a part's picture and description,
 with the Alps, which the Alpine bounding box timed out on here (504) and a per-point `around`
 pass, two seconds apart, spent ninety minutes in back-offs on; the mirror answered it whole.
+
+## A rough point's namesakes, asked from the card (2026-11-02, #2243)
+
+The approximate-point card asks this door, one point at a time and only when a curator presses
+*Ask OpenStreetMap by name*, for the objects within 2 km named like a component that the layer does
+not keep (`services/sync/pointNamesakes.ts`, through `overpassAsker`, under the manners above). It
+is not asked by a pass. On 2026-11-02 overpass-api.de turned an automated question away with a 502
+and this body: "This Overpass API server is currently at capacity. All query workers are busy and
+the request queue is full." Under *For heavy or automated use* it added: "This public endpoint is
+intended for browser-based and human-operated tools. For automated or high-volume use, run a local
+Overpass API instance". The measurement that decided the card's question was therefore sent to VK
+Maps, whose policy is quoted above. It was one `around:2000` question per point for 61 points (the Cemetery of Congregation and 60 drawn at random): each
+answered in 3–40 s, and 29 met a 504 first. A curator's click is the human-operated use the main
+instance names. The run's own fallback reads through this door are still automated. Whether the
+main instance stays first on `OVERPASS_INSTANCES` for them is the record's next question.
+

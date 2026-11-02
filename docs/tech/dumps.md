@@ -1052,6 +1052,17 @@ The Archaeology run and its visit witnesses read the layer while a fresh one
 is in place (`docs/tech/experiences.md` § Archaeology, **The layer as a
 door**).
 
+### A miss the layer keeps no tag for
+
+The layer selects by tag (`LAYER_SELECTION`), and a namesake mapped only under another tag is a
+miss it cannot vouch for (ADR-0134 decision 4). The rough points' namesakes are one such question.
+On 2026-11-02, 60 random points of the 462 rough points with no hint were asked of the full
+OpenStreetMap. One true namesake came back, the Cemetery of Congregation (`landuse=cemetery`), and
+three objects were the stream or hill a component is named after (`waterway=stream`, `natural=peak`).
+Adding `landuse=cemetery` would have found one point in sixty at the cost of every cemetery mapped
+on the planet, so the selection is unchanged. The miss is asked live from the card instead, one
+point at a time (`experiences.md` § Review Queue, `pointNamesakes.ts`, #2243).
+
 ## Trying a change on a sample
 
 A build of the subset reads the whole entities dump twice, about ten hours on
