@@ -2209,8 +2209,8 @@ are in the subset's `wikidata_sitelinks`, which no reader route reads (ADR-0124)
 real run copies them into the serving table `wikipedia_editions` (`item`, `wiki`, `title`, keyed on
 the item and the edition, indexed by edition and title): `refreshWikipediaEditions`
 (`services/sync/wikipediaEditions.ts`, called by `orchestrateSync` after the visit questions)
-gathers every English article a place, a part or a work links (`metadata.wikipediaUrl`,
-`treasures.wikipedia_url`), decodes each title (`articleOf`), finds the item whose `enwiki`
+gathers every English article a place, a part, a place's own point or a work links
+(`metadata.wikipediaUrl` on `experiences` and `experience_locations`, `treasures.wikipedia_url`), decodes each title (`articleOf`), finds the item whose `enwiki`
 sitelink it is, and writes every Wikipedia sitelink of that item (`NOT_WIKIPEDIA` left out, as the
 editions count leaves it out), replacing the table whole in one transaction. The item is found by
 the article the catalogue shows, never by the id a source knows the place by, so the languages a
@@ -2218,6 +2218,23 @@ reader switches among are always those of the article a curator or a rule chose 
 ADR-0094). A failure is logged and leaves the table as the last run left it; a dry run writes
 nothing; a subset holding no `enwiki` sitelink leaves it as it is. On dev on 2026-11-02: 6,573
 items, 163,843 editions, 5,124 of them Russian; the read takes about 4 s.
+
+**A reader's link opens the first of their languages the item is written in.**
+`GET /api/experiences/wikipedia-editions?articles=…&languages=ru,de` (`wikipediaEditionsController.ts`)
+answers, for each English article, the same item's article in the first of the languages ahead of
+English that the item has (`wikiOfLanguage`: `nb` is the `no` edition and `be-tarask` is
+`be_x_old`; `editionUrl` builds the address), and leaves out an article with none, so its English
+link stands. A reader's languages are their own list (`users.reading_languages`, set on the
+account page and kept in the browser when signed out) or the browser's languages ahead of English, read
+by their first part (`ru-RU` → `ru`, so `['en-US', 'ru']` reads English alone) and at most ten, always
+ending in English (`utils/readingLanguages.ts`,
+`hooks/useReadingLanguages.tsx`). A link asks through `useReaderEdition`
+(`components/shared/WikipediaArticleLink.tsx`), which gathers every link of one render into one
+request per list of languages, at most a hundred articles each (`api/wikipediaEditions.ts`), and
+names the edition it opens: *Wikipedia (ru)*. The place card (`PlaceLinks`), a part's row
+(`PointArticleLink`), a work's row (`ArtworksList`) and a part's card (`PointCard`) read it; a
+work no run has asked about keeps Wikidata's redirect. A curator's card keeps the English article
+and offers the reader's edition beside it (`ReaderEditionBeside`, in `ObjectContext`).
 
 ### Art Museums (`museumSyncService.ts`, `museum/*.ts`)
 
