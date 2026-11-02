@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { medianOf, regionalVerdict, REGIONAL_CUT, type Surroundings } from './regionalCut.js';
 
 // Ten best within 50 km of a Kyoto temple: editions 60, 55, 50, 44, 40, 36, 33, 30, 28, 26 (median 38);
-// guide use 6, 5, 5, 4, 4, 3, 3, 2, 2, 1 (median 3.5, a quarter of it 0.875).
+// guide use 6, 5, 5, 4, 4, 3, 3, 2, 2, 1 (median 3.5, half of it 1.75).
 const kyoto: Surroundings = {
   groupSize: 195,
   topEditions: [60, 55, 50, 44, 40, 36, 33, 30, 28, 26],
@@ -24,15 +24,17 @@ describe('medianOf', () => {
 });
 
 describe('regionalVerdict', () => {
-  it('admits a place a guide uses once where the best are used by a few, whatever its editions', () => {
-    const v = regionalVerdict({ editions: 7, guideEditions: 1 }, kyoto);
+  it('admits a place two guides use where the best are used by a few, whatever its editions', () => {
+    const v = regionalVerdict({ editions: 7, guideEditions: 2 }, kyoto);
     expect(v.in).toBe(true);
     if (v.in) {
       expect(v.reference).toEqual({ editions: 38, guide: 3.5 });
       expect(v.note).toBe('In the regional tier by the guides: within 50 km, 195 places: the 10 best are read in 38 '
         + 'Wikipedia editions at the median, this place in 7; the best are used by 3.5 Wikivoyage editions at the median, '
-        + 'this place by 1 (ADR-0171)');
+        + 'this place by 2 (ADR-0171)');
     }
+    // One guide is under half the reference (ADR-0175 decision 3; ADR-0171 read a quarter).
+    expect(regionalVerdict({ editions: 7, guideEditions: 1 }, kyoto).in).toBe(false);
   });
 
   it('admits a place no guide uses when its editions reach the median of the best', () => {
@@ -98,10 +100,10 @@ describe('regionalVerdict', () => {
     if (!v.in) expect(v.reason).toMatch(/no place is read in any Wikipedia edition/);
   });
 
-  it('takes its numbers from the one named set', () => {
+  it('takes its numbers from the register, and stays off until its slice switches it on (#2252)', () => {
     expect(REGIONAL_CUT).toEqual({
       enabled: false, neighbours: 'all',
-      radiusKm: 50, best: 10, guideShare: 0.25, editionsShare: 1, guideGroupFloor: 5, editionsGroupFloor: 25, minLanguages: 2,
+      radiusKm: 50, best: 10, guideShare: 0.5, editionsShare: 1, guideGroupFloor: 5, editionsGroupFloor: 25, minLanguages: 2,
     });
   });
 });
