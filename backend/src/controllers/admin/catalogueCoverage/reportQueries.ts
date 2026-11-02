@@ -33,6 +33,8 @@ export type KindRow = Pick<CoverageKindsRow, 'slug' | 'name' | 'form' | 'status'
   crowding_limit: number | null;
   /** The radius `crowding_limit` is counted within, in kilometres; set with it or not at all. */
   crowding_radius_km: number | null;
+  /** The kind's types a crowded city never hides (ADR-0179): every entry filed under one is demanded. */
+  crowding_exempt_types: string[];
 };
 
 export type RegionRow = Pick<CoverageRegionsRow, 'slug' | 'name' | 'country'> & { surveyed: string };
@@ -131,7 +133,8 @@ const KINDS_SQL = `
             FROM experience_sources s
            WHERE ck.form = 'work' AND s.is_active) AS find_enter_sitelinks,
          (SELECT k.crowding_limit FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_limit,
-         (SELECT k.crowding_radius_km FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_radius_km
+         (SELECT k.crowding_radius_km FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_radius_km,
+         COALESCE((SELECT k.crowding_exempt_types FROM experience_kinds k WHERE k.id = ck.experience_kind_id), '{}') AS crowding_exempt_types
     FROM coverage_kinds ck
    ORDER BY ck.slug`;
 

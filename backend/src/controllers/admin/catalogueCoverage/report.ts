@@ -286,7 +286,8 @@ const located = (entry: ExpectationRow): entry is ExpectationRow & { lat: number
  * coordinate is ranked against the whole of its region's group, and an entry
  * with one counts no entry without. An untyped entry stands with the region's
  * other untyped entries of the kind. A kind that declares no limit has no
- * tail: every entry filed under it is demanded.
+ * tail, nor has a type it exempts (`crowding_exempt_types`, Archaeology's
+ * museums): every entry filed under it is demanded.
  */
 function tailFilings(expectations: readonly ExpectationRow[], kinds: ReadonlyMap<string, KindRow>): Set<string> {
   const groups = new Map<string, { kindSlug: string; limit: number; radiusKm: number; entries: ExpectationRow[] }>();
@@ -294,7 +295,9 @@ function tailFilings(expectations: readonly ExpectationRow[], kinds: ReadonlyMap
     for (const kindSlug of entry.kinds) {
       const kind = kinds.get(kindSlug);
       if (!kind || kind.crowding_limit === null || kind.crowding_radius_km === null) continue;
-      const group = JSON.stringify([entry.region_slug, kindSlug, entry.kind_types[kindSlug] ?? null]);
+      const type = entry.kind_types[kindSlug] ?? null;
+      if (type !== null && kind.crowding_exempt_types.includes(type)) continue;
+      const group = JSON.stringify([entry.region_slug, kindSlug, type]);
       const held = groups.get(group);
       if (held) held.entries.push(entry);
       else groups.set(group, { kindSlug, limit: kind.crowding_limit, radiusKm: kind.crowding_radius_km, entries: [entry] });
@@ -336,15 +339,24 @@ function verdictOf(entry: ExpectationRow, matches: MatchRow[], nearby: NearbyRow
 }
 
 /**
- * The editions bar of each of the six place kinds that admit by the world bars
- * of ADR-0175. A run reads its bars off the kind's own pool; a survey entry
- * carries its editions and no readers, so the report reads the editions bar as
- * the register measured it (`MEASURED_BARS`), and a top under it may still
- * enter on its readers.
+ * The editions bar of each place kind that admits by the world bars of
+ * ADR-0175 — the six, and Archaeology's sites (ADR-0179). A run reads its bars
+ * off the kind's own pool; a survey entry carries its editions and no readers,
+ * so the report reads the editions bar as the register measured it
+ * (`MEASURED_BARS`), and a top under it may still enter on its readers.
  */
 const FRAME_EDITIONS: Readonly<Record<string, number>> = Object.fromEntries(
   Object.entries(MEASURED_BARS.value).map(([slug, bars]) => [slug, bars.editions]),
 );
+
+/**
+ * The frame kinds whose other type still enters by its source's line:
+ * Archaeology's museums are admitted works-first at the source's
+ * `enterSitelinks` (ADR-0058), its sites by the frame (ADR-0179). A top of
+ * either is under the line only below the lower of the two, as a work is
+ * under the lowest of its doors (`calibrationLineOf`).
+ */
+const SOURCE_LINE_KEPT: ReadonlySet<string> = new Set(['archaeology']);
 
 /** The kinds whose line is in code and in no register: a work enters on its own sitelinks. */
 const CODE_LINES: Readonly<Record<string, number>> = {
@@ -353,15 +365,18 @@ const CODE_LINES: Readonly<Record<string, number>> = {
 
 /**
  * The line a live kind's own rule draws on a member's own sitelinks: the
- * frame's editions bar for a place kind it admits, else its source's
- * `enterSitelinks` where it states one, else the code's. Places of worship
+ * frame's editions bar for a place kind it admits (the lower of it and the
+ * source's line where another type still enters by that, `SOURCE_LINE_KEPT`),
+ * else its source's `enterSitelinks` where it states one, else the code's. Places of worship
  * states a line on its source row too, which is the line door two holds a work
  * to, not the one its places enter by. Two kinds have none. World Heritage
  * admits what is inscribed. Art Museums admits a museum through a work it
  * holds, so a museum's own sitelinks are not what that kind asks of it.
  */
 function lineOf(kind: KindRow): number | null {
-  return FRAME_EDITIONS[kind.slug] ?? kind.enter_sitelinks ?? CODE_LINES[kind.slug] ?? null;
+  const frame = FRAME_EDITIONS[kind.slug];
+  if (frame !== undefined && SOURCE_LINE_KEPT.has(kind.slug) && kind.enter_sitelinks !== null) return Math.min(frame, kind.enter_sitelinks);
+  return frame ?? kind.enter_sitelinks ?? CODE_LINES[kind.slug] ?? null;
 }
 
 /**

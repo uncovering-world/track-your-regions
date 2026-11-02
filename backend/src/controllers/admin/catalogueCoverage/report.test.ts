@@ -20,7 +20,7 @@ import { renderCoverageReport } from './reportText.js';
 
 const kind = (over: Partial<KindRow>): KindRow => ({
   slug: 'archaeology', name: 'Archaeology', form: 'place', status: 'live', experience_kind_id: 5, issue_number: null,
-  in_venue: false, enter_sitelinks: 22, find_enter_sitelinks: null, crowding_limit: null, crowding_radius_km: null, ...over,
+  in_venue: false, enter_sitelinks: 22, find_enter_sitelinks: null, crowding_limit: null, crowding_radius_km: null, crowding_exempt_types: [], ...over,
 });
 const KINDS: KindRow[] = [
   kind({}),
@@ -588,6 +588,22 @@ describe('what the map shows: a crowded city\'s tail, and the places it crowds o
     expect(without.liveKinds.find(live => live.slug === 'places-of-worship')).toMatchObject({ expected: 15, tail: 0 });
   });
 
+  it('demands every entry of a type its kind exempts: Archaeology\'s museums in Rome (ADR-0179)', () => {
+    // Eleven museums of one type within 10 km would put the least known in the
+    // tail; filed as museums of a kind that exempts them, every one is demanded.
+    const museum = (slug: string, sources: number) => entry(slug, {
+      region_slug: 'rome', name: slug, source_count: sources, sitelinks: 30, kinds: ['archaeology'], kind_types: { archaeology: 'museum' },
+      lat: 41.9, lon: 12.48,
+    });
+    const museums = Array.from({ length: 11 }, (_, i) => museum(`museum-${String(i).padStart(2, '0')}`, 11 - i));
+    const archaeology = kind({ crowding_limit: 10, crowding_radius_km: 10 });
+    const tailOf = (exempt: string[]) => buildCoverageReport(facts({
+      kinds: [{ ...archaeology, crowding_exempt_types: exempt }], regions: [ROME_REGION], expectations: museums,
+    })).expectations.filter(result => result.verdict === 'tail').map(result => result.slug);
+    expect(tailOf([])).toEqual(['museum-10']);
+    expect(tailOf(['museum'])).toEqual([]);
+  });
+
   it('says it as text: the tail counted and its names folded, the shadowed by name', () => {
     const text = renderCoverageReport(report);
     expect(text).toContain('Catalogue coverage: 3 of 13 demanded things are offered to a reader (23%), across 1 surveyed region(s); 2 more expected are the lists\' tails.');
@@ -616,6 +632,7 @@ describe('the statements', () => {
     expect(sql).toContain('false AS shadowed');
     expect(collapse(coverageSql.KINDS_SQL)).toContain('(SELECT k.crowding_limit FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_limit');
     expect(collapse(coverageSql.KINDS_SQL)).toContain('(SELECT k.crowding_radius_km FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_radius_km');
+    expect(collapse(coverageSql.KINDS_SQL)).toContain("COALESCE((SELECT k.crowding_exempt_types FROM experience_kinds k WHERE k.id = ck.experience_kind_id), '{}') AS crowding_exempt_types");
     expect(collapse(coverageSql.EXPECTATIONS_SQL)).toContain('jsonb_object_agg(xk.kind_slug, xk.type)');
     expect(collapse(coverageSql.EXPECTATIONS_SQL)).toContain('ST_Y(x.location) AS lat, ST_X(x.location) AS lon');
   });
