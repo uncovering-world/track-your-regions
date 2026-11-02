@@ -106,7 +106,11 @@ describe('replaceCoverage', () => {
     ]);
     expect(mockedPoolQuery, 'nothing goes through the pool: a pooled BEGIN pins nothing').not.toHaveBeenCalled();
     expect(client.release).toHaveBeenCalledWith(undefined);
-    expect(summary).toEqual({ kinds: 3, regions: 1, expectations: 2, filings: 1, judgements: 2, calibrationSources: 1, calibrationEntries: 1 });
+    expect(summary).toEqual({
+      kinds: 3, regions: 1, expectations: 2, filings: 1, judgements: 2, calibrationSources: 1, calibrationEntries: 1,
+      // Archaeology has no types (`TYPE_RULES`), so no filing is asked for one and the subset is never read.
+      typed: 0, untyped: 0, unread: 0, typesSkipped: null,
+    });
   });
 
   it('sends each table its own columns, a point as text and no point as null', async () => {
@@ -127,7 +131,7 @@ describe('replaceCoverage', () => {
       region_slug: 'cusco-region', wikidata_id: 'Q1814201', source_count: 4, aliases: ['Muray'], location: 'POINT(-72.197 -13.33)',
     });
     expect(cuy).toMatchObject({ wikidata_id: null, location: null });
-    expect(sent('coverage_expectation_kinds')).toEqual([{ region_slug: 'cusco-region', expectation_slug: 'moray', kind_slug: 'archaeology' }]);
+    expect(sent('coverage_expectation_kinds')).toEqual([{ region_slug: 'cusco-region', expectation_slug: 'moray', kind_slug: 'archaeology', type: null }]);
     const [onEntry, onRow] = sent('coverage_judgements');
     expect(onEntry).toEqual({
       region_slug: 'cusco-region', entry_slug: 'moray', kind_slug: 'archaeology', row_wikidata_id: null, cause: 'rule-defect', issue_number: 1160,
@@ -137,6 +141,47 @@ describe('replaceCoverage', () => {
     expect(sent('coverage_calibration_sources')).toEqual([{ slug: 'coverage-surveys', name: 'The coverage surveys', url: null, read: '2026-10-24', note: '' }]);
     expect(sent('coverage_calibration_entries')).toEqual([{ kind_slug: 'archaeology', slug: 'machu-picchu', name: 'Machu Picchu', wikidata_id: 'Q676203', sitelinks: 150, note: '' }]);
     expect(sent('coverage_calibration_entry_sources')).toEqual([{ kind_slug: 'archaeology', entry_slug: 'machu-picchu', source_slug: 'coverage-surveys' }]);
+  });
+
+  it('files each filing under the type its kind\'s rule gives the entry\'s item, and says how many got none', async () => {
+    const client = makeClient();
+    const worship = kind({ slug: 'places-of-worship', name: 'Places of worship', status: 'live', experience_kind_id: 4 });
+    const place = (slug: string, name: string, wikidata: string | null, kinds: string[]) => ({
+      slug, name, aliases: [], type: 'place' as const, kinds, wikidata, same_as: [], unesco: null, venue: null, sources: 4, sitelinks: 14,
+      lat: -13.5163, lon: -71.9781, note: '',
+    });
+    const files: CoverageFiles = {
+      ...FILES,
+      kinds: [...FILES.kinds, worship],
+      expectations: new Map([['cusco-region', [
+        place('cusco-cathedral', 'Cusco Cathedral', 'Q2942242', ['places-of-worship']),
+        // Filed under two kinds: typed under the one that has types, and asked nothing under the other.
+        place('coricancha', 'Coricancha', 'Q817594', ['archaeology', 'places-of-worship']),
+      ]]]),
+      judgements: [],
+    };
+    const typer = vi.fn(async () => ({
+      types: new Map([['cusco-region\ncusco-cathedral\nplaces-of-worship', 'cathedral']]), typed: 1, untyped: 1, unread: 0, skipped: null,
+    }));
+    CATALOGUE_KINDS.push({ id: 4, name: 'Places of worship' });
+    try {
+      const summary = await replaceCoverage(files, typer);
+
+      expect(typer).toHaveBeenCalledWith([
+        { regionSlug: 'cusco-region', slug: 'cusco-cathedral', kindSlug: 'places-of-worship', kindId: 4, wikidata: 'Q2942242' },
+        { regionSlug: 'cusco-region', slug: 'coricancha', kindSlug: 'archaeology', kindId: 5, wikidata: 'Q817594' },
+        { regionSlug: 'cusco-region', slug: 'coricancha', kindSlug: 'places-of-worship', kindId: 4, wikidata: 'Q817594' },
+      ]);
+      const call = (client.query.mock.calls as [string, string[]?][]).find(([sql]) => /INSERT INTO coverage_expectation_kinds/.test(sql));
+      expect(JSON.parse(call?.[1]?.[0] ?? '[]')).toEqual([
+        { region_slug: 'cusco-region', expectation_slug: 'cusco-cathedral', kind_slug: 'places-of-worship', type: 'cathedral' },
+        { region_slug: 'cusco-region', expectation_slug: 'coricancha', kind_slug: 'archaeology', type: null },
+        { region_slug: 'cusco-region', expectation_slug: 'coricancha', kind_slug: 'places-of-worship', type: null },
+      ]);
+      expect(summary).toMatchObject({ typed: 1, untyped: 1, unread: 0, typesSkipped: null });
+    } finally {
+      CATALOGUE_KINDS.pop();
+    }
   });
 
   it('deletes nothing when a catalogue kind has no live record', async () => {

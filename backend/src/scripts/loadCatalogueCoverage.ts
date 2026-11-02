@@ -9,6 +9,13 @@ export async function runLoadCatalogueCoverage(dir = defaultCoverageDir()): Prom
   return replaceCoverage(readCoverageFiles(dir));
 }
 
+/** How many filings under a kind with types got one, said with why the rest did not (#2246). */
+function typesLine(summary: Pick<CoverageLoadSummary, 'typed' | 'untyped' | 'unread' | 'typesSkipped'>): string {
+  if (summary.typesSkipped !== null) return `Types: ${summary.untyped} filings under a kind with types are untyped: ${summary.typesSkipped}.`;
+  const unread = summary.unread > 0 ? `, ${summary.unread} of them with no item the local Wikidata subset holds classes for` : '';
+  return `Types: ${summary.typed} filings under a kind with types are typed by the kind's rule; ${summary.untyped} are not${unread}.`;
+}
+
 /**
  * CLI entrypoint: `--dir <path>` reads another directory than the checkout's. A relative
  * path is taken from where the command was typed: `npm --prefix backend run` moves the
@@ -29,6 +36,7 @@ async function main(): Promise<void> {
     const summary = await runLoadCatalogueCoverage(dir);
     console.log(`Loaded ${summary.kinds} kinds, ${summary.regions} regions, ${summary.expectations} expectations, ${summary.filings} filings under a kind, `
       + `${summary.judgements} judgements, ${summary.calibrationEntries} calibration entries named by ${summary.calibrationSources} reference lists.`);
+    console.log(typesLine(summary));
   } catch (error) {
     if (error instanceof CoverageFilesError || error instanceof CoverageRegisterMismatch) {
       console.error(error.message);

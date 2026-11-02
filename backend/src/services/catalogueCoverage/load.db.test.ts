@@ -99,6 +99,27 @@ describe('replacing the catalogue-coverage tables', () => {
     expect(row.rows).toEqual([{ lon: -72.197, lat: -13.33, aliases: ['also'], source_count: 3, surveyed: '2026-10-01', issue_number: 1163 }]);
   });
 
+  it('writes each filing\'s type in its kind, and none under a kind the typer gave none', async () => {
+    const both = await files('rome', ['san-luigi-dei-francesi', 'trevi-fountain'], 'places-of-worship');
+    const [church, fountain] = both.expectations.get('rome') ?? [];
+    church.wikidata = 'Q638283';
+    fountain.kinds = ['public-art'];
+    const typer = async () => ({
+      types: new Map([['rome\nsan-luigi-dei-francesi\nplaces-of-worship', 'church']]), typed: 1, untyped: 1, unread: 1, skipped: null,
+    });
+
+    const summary = await replaceCoverage(both, typer);
+
+    const filed = await pool.query<{ expectation_slug: string; kind_slug: string; type: string | null }>(
+      'SELECT expectation_slug, kind_slug, type FROM coverage_expectation_kinds ORDER BY expectation_slug',
+    );
+    expect(filed.rows).toEqual([
+      { expectation_slug: 'san-luigi-dei-francesi', kind_slug: 'places-of-worship', type: 'church' },
+      { expectation_slug: 'trevi-fountain', kind_slug: 'public-art', type: null },
+    ]);
+    expect(summary).toMatchObject({ typed: 1, untyped: 1, unread: 1, typesSkipped: null });
+  });
+
   it('copies which kinds exist only inside a place', async () => {
     await replaceCoverage(await files('first-region', ['moray']));
 

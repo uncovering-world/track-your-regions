@@ -6171,6 +6171,7 @@ CREATE TABLE IF NOT EXISTS workbench.coverage_expectation_kinds (
     region_slug VARCHAR(80) NOT NULL,
     expectation_slug VARCHAR(120) NOT NULL,
     kind_slug VARCHAR(80) NOT NULL REFERENCES workbench.coverage_kinds(slug) ON DELETE CASCADE,
+    type TEXT,
     PRIMARY KEY (region_slug, expectation_slug, kind_slug),
     CONSTRAINT coverage_expectation_kinds_entry FOREIGN KEY (region_slug, expectation_slug) REFERENCES workbench.coverage_expectations(region_slug, slug) ON DELETE CASCADE
 );
@@ -6187,6 +6188,7 @@ COMMENT ON TABLE workbench.coverage_expectations IS 'What two or more independen
 COMMENT ON COLUMN workbench.coverage_expectations.same_as IS 'Other Wikidata items that are this same place: a building and the museum inside it.';
 COMMENT ON COLUMN workbench.coverage_expectations.source_count IS 'How many sources named the entry. Which ones is not published.';
 COMMENT ON TABLE workbench.coverage_expectation_kinds IS 'The kinds of the register an expectation is filed under. An expectation with no row here is not sorted yet.';
+COMMENT ON COLUMN workbench.coverage_expectation_kinds.type IS 'The type the entry''s item takes in the kind''s own vocabulary (church, mosque, bridge, square...), computed by the kind''s rule from the item''s classes in the local Wikidata subset at every load (#2246). Null under a kind with no types, and where the entry has no item or the subset does not say what it is. The report demands an entry unless crowding_limit entries of its region, kind and type within crowding_radius_km of it are named by more sources, as the map shows a city (ADR-0172).';
 
 -- A gap the coverage report found, judged once by cause (ADR-0116): a copy of
 -- db/catalogue-coverage/judgements.jsonl, loaded with the coverage tables above.

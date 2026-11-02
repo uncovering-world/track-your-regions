@@ -104,6 +104,7 @@ export interface CoverageExpectationKindsRow {
   region_slug: string;
   expectation_slug: string;
   kind_slug: string;
+  type: string | null;
 }
 
 /** The table `coverage_expectations`. */

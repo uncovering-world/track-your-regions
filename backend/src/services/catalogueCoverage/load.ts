@@ -14,6 +14,10 @@
  * `DELETE`, not `TRUNCATE`: a truncate takes an exclusive lock a report in
  * flight would wait behind, and is not safe for a transaction that has already
  * read the tables.
+ *
+ * A filing carries the type the kind's rule gives the entry's item (#2246),
+ * computed at every load from the kind's rule of the day (`entryTypes.ts`),
+ * before the transaction opens: it reads the Wikidata subset, not these tables.
  */
 
 import type { PoolClient } from 'pg';
@@ -21,6 +25,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import type { ExperienceKindsRow } from '../../db/schema.generated.js';
 import { kindIsRealSql } from '../../db/membership.js';
 import type { CoverageFiles, CoverageKind } from './files.js';
+import { filingKey, readFilingTypes, type FilingToType, type FilingTypes } from './entryTypes.js';
 
 export interface CoverageLoadSummary {
   kinds: number;
@@ -31,7 +36,16 @@ export interface CoverageLoadSummary {
   /** The reference lists, and the entries of every kind's calibration list. */
   calibrationSources: number;
   calibrationEntries: number;
+  /** Filings under a kind with types (`TYPE_RULES`): those typed, those not, and of those the ones whose item the subset does not hold. */
+  typed: number;
+  untyped: number;
+  unread: number;
+  /** Why no filing was typed, where none could be. */
+  typesSkipped: string | null;
 }
+
+/** What gives each filing its type: the subset's reading, or a spec's. */
+export type FilingTyper = (filings: readonly FilingToType[]) => Promise<FilingTypes>;
 
 /** The register and `experience_kinds` do not describe the same live kinds. */
 export class CoverageRegisterMismatch extends Error {
@@ -66,7 +80,16 @@ function registerAgainstCatalogue(kinds: CoverageKind[], catalogue: Pick<Experie
 const point = (lat: number | null, lon: number | null): string | null =>
   (lat === null || lon === null ? null : `POINT(${lon} ${lat})`);
 
-async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageLoadSummary> {
+/** Every filing under a kind of the catalogue, with the item its type is read from. */
+function filingsToType(files: CoverageFiles): FilingToType[] {
+  const kindIds = new Map(files.kinds.map(kind => [kind.slug, kind.experience_kind_id]));
+  return [...files.expectations].flatMap(([regionSlug, entries]) => entries.flatMap(entry => entry.kinds.flatMap((kindSlug) => {
+    const kindId = kindIds.get(kindSlug) ?? null;
+    return kindId === null ? [] : [{ regionSlug, slug: entry.slug, kindSlug, kindId, wikidata: entry.wikidata }];
+  })));
+}
+
+async function fill(client: PoolClient, files: CoverageFiles, typed: FilingTypes): Promise<CoverageLoadSummary> {
   // Each row is sent under the table's own column names, as one JSON array per table.
   const kinds = files.kinds.map(kind => ({
     slug: kind.slug,
@@ -103,7 +126,10 @@ async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageL
     note: entry.note,
   })));
   const filings = [...files.expectations].flatMap(([regionSlug, entries]) => entries.flatMap(entry =>
-    entry.kinds.map(kindSlug => ({ region_slug: regionSlug, expectation_slug: entry.slug, kind_slug: kindSlug }))));
+    entry.kinds.map(kindSlug => ({
+      region_slug: regionSlug, expectation_slug: entry.slug, kind_slug: kindSlug,
+      type: typed.types.get(filingKey(regionSlug, entry.slug, kindSlug)) ?? null,
+    }))));
 
   const judgements = files.judgements.map(judgement => ({
     region_slug: judgement.region,
@@ -165,10 +191,10 @@ async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageL
     [JSON.stringify(expectations)],
   );
   await client.query(
-    `INSERT INTO coverage_expectation_kinds (region_slug, expectation_slug, kind_slug)
-     SELECT region_slug, expectation_slug, kind_slug
+    `INSERT INTO coverage_expectation_kinds (region_slug, expectation_slug, kind_slug, type)
+     SELECT region_slug, expectation_slug, kind_slug, type
        FROM jsonb_to_recordset($1::jsonb)
-         AS sent(region_slug text, expectation_slug text, kind_slug text)`,
+         AS sent(region_slug text, expectation_slug text, kind_slug text, type text)`,
     [JSON.stringify(filings)],
   );
   await client.query(
@@ -207,16 +233,21 @@ async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageL
     judgements: judgements.length,
     calibrationSources: calibrationSources.length,
     calibrationEntries: calibrationEntries.length,
+    typed: typed.typed,
+    untyped: typed.untyped,
+    unread: typed.unread,
+    typesSkipped: typed.skipped,
   };
 }
 
 /**
- * Replace the coverage tables with `files`.
+ * Replace the coverage tables with `files`, each filing typed by `typeFilings`.
  *
  * @throws CoverageRegisterMismatch before anything is deleted, when the register
  *   and `experience_kinds` disagree.
  */
-export async function replaceCoverage(files: CoverageFiles): Promise<CoverageLoadSummary> {
+export async function replaceCoverage(files: CoverageFiles, typeFilings: FilingTyper = readFilingTypes): Promise<CoverageLoadSummary> {
+  const typed = await typeFilings(filingsToType(files));
   // One transaction on one client: a `pool.query('BEGIN')` pins nothing.
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -228,7 +259,7 @@ export async function replaceCoverage(files: CoverageFiles): Promise<CoverageLoa
     );
     const problems = registerAgainstCatalogue(files.kinds, catalogue.rows);
     if (problems.length > 0) throw new CoverageRegisterMismatch(problems);
-    const summary = await fill(client, files);
+    const summary = await fill(client, files, typed);
     await client.query('COMMIT');
     return summary;
   } catch (error) {
