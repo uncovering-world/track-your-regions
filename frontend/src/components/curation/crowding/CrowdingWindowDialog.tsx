@@ -34,7 +34,8 @@ import { queryKeys } from '../../../api/queryKeys';
 import { typePluralWord, typeWordFor } from '../../../utils/experienceTypes';
 import { plural } from '../../../utils/plural';
 import { LoadingSpinner } from '../../shared/LoadingSpinner';
-import { CrowdingTable, StandingLegend } from './CrowdingTable';
+import { CrowdingMap } from './CrowdingMap';
+import { CrowdingTable, rowDomId, StandingLegend } from './CrowdingTable';
 import { answerRows, outcomeLines, stageAnswer, stagingSummary, type Staging } from './crowdingStaging';
 
 export function CrowdingWindowDialog({ memberships, groupName, onClose }: {
@@ -52,6 +53,9 @@ export function CrowdingWindowDialog({ memberships, groupName, onClose }: {
   const [type, setType] = useState<string | null>(null);
   const [staging, setStaging] = useState<Staging>(new Map());
   const [hovered, setHovered] = useState<number | null>(null);
+  // The row a click asked the map to show, counted so a second click on the same row shows it again.
+  const [shown, setShown] = useState<{ id: number; n: number } | null>(null);
+  const show = (id: number) => setShown(current => ({ id, n: (current?.n ?? 0) + 1 }));
   const [outcome, setOutcome] = useState<{ lines: string[]; error?: string } | null>(null);
   const [appliedLines, setAppliedLines] = useState<string[]>([]);
   const membershipId = memberships[at];
@@ -93,6 +97,7 @@ export function CrowdingWindowDialog({ memberships, groupName, onClose }: {
   const close = () => onClose(appliedLines.length > 0 ? appliedLines.join(' ') : undefined);
   const onAnswer = (row: CrowdingWindowRow, answer: CrowdingAnswer) => setStaging(current => stageAnswer(current, row, answer));
   const step = (by: number) => { setAt(current => current + by); setType(null); setHovered(null); };
+  const pick = (id: number) => document.getElementById(rowDomId(id))?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 
   const summary = around ? stagingSummary(around.rows, staging) : null;
   const typeWords = around ? typePluralWord(around.kind.id, around.kind.name, around.type) : '';
@@ -161,7 +166,8 @@ export function CrowdingWindowDialog({ memberships, groupName, onClose }: {
         {around && (
           <Stack direction={{ xs: 'column', md: 'row' }} sx={{ opacity: read.isPlaceholderData ? 0.6 : 1 }}>
             <Box sx={{ width: { xs: '100%', md: 440 }, flexShrink: 0, p: 2, borderRight: { md: 1 }, borderColor: { md: 'divider' } }}>
-              <StandingLegend />
+              <CrowdingMap around={around} staging={staging} hovered={hovered} shown={shown} onHover={setHovered} onPick={pick} />
+              <Box sx={{ mt: 1 }}><StandingLegend /></Box>
             </Box>
             <Box sx={{ flexGrow: 1, minWidth: 0, maxHeight: { md: '65vh' }, overflow: 'auto' }}>
               {around.rows.length === 0
@@ -177,6 +183,7 @@ export function CrowdingWindowDialog({ memberships, groupName, onClose }: {
                     staging={staging}
                     hovered={hovered}
                     onHover={setHovered}
+                    onShow={show}
                     onAnswer={onAnswer}
                   />
                 )}

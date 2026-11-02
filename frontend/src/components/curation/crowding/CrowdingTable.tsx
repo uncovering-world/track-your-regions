@@ -88,7 +88,7 @@ function RowAnswers({ row, staging, onAnswer }: {
   );
 }
 
-export function CrowdingTable({ rows, centreId, centreName, typeWord, radiusKm, limit, staging, hovered, onHover, onAnswer }: {
+export function CrowdingTable({ rows, centreId, centreName, typeWord, radiusKm, limit, staging, hovered, onHover, onShow, onAnswer }: {
   rows: readonly CrowdingWindowRow[];
   centreId: number;
   centreName: string;
@@ -99,6 +99,8 @@ export function CrowdingTable({ rows, centreId, centreName, typeWord, radiusKm, 
   staging: Staging;
   hovered: number | null;
   onHover: (membershipId: number | null) => void;
+  /** A click on a row: its dot is brought into the map's view. */
+  onShow: (membershipId: number) => void;
   onAnswer: (row: CrowdingWindowRow, answer: CrowdingAnswer) => void;
 }) {
   const lineAt = ruleLineAt(rows);
@@ -140,8 +142,8 @@ export function CrowdingTable({ rows, centreId, centreName, typeWord, radiusKm, 
                 sx={row.membershipId === centreId ? theme => ({ boxShadow: `inset 4px 0 0 ${theme.palette.primary.main}` }) : undefined}
                 onMouseEnter={() => onHover(row.membershipId)}
                 onMouseLeave={() => onHover(null)}
-                // A click or a tap lights the row's dot too, and brings it into the map's view.
-                onClick={() => onHover(row.membershipId)}
+                // A hover only lights the row's dot; a click or a tap brings it into the map's view.
+                onClick={() => { onHover(row.membershipId); onShow(row.membershipId); }}
               >
                 <TableCell>{index + 1}</TableCell>
                 <TableCell sx={{ minWidth: 180 }}>
