@@ -2820,7 +2820,10 @@ COMMENT ON TABLE experience_regions IS 'Links experiences to regions via spatial
 COMMENT ON COLUMN experience_regions.assignment_type IS 'How the assignment was made: auto (spatial query) or manual';
 
 CREATE INDEX IF NOT EXISTS idx_experience_regions_experience ON experience_regions(experience_id);
-CREATE INDEX IF NOT EXISTS idx_experience_regions_region ON experience_regions(region_id);
+-- A region's rows with the columns a reader's membership test reads, so a
+-- read that starts from a region reads none of them from the table (#2283).
+CREATE INDEX IF NOT EXISTS idx_experience_regions_region_rows
+    ON experience_regions(region_id) INCLUDE (experience_id, assignment_type);
 
 -- User visited experiences (similar pattern to user_visited_regions)
 CREATE TABLE IF NOT EXISTS user_visited_experiences (
@@ -3648,7 +3651,10 @@ COMMENT ON TABLE experience_location_regions IS 'Links experience locations to r
 COMMENT ON COLUMN experience_location_regions.assignment_type IS 'How the assignment was made: auto (spatial query) or manual';
 
 CREATE INDEX IF NOT EXISTS idx_experience_location_regions_location ON experience_location_regions(location_id);
-CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region ON experience_location_regions(region_id);
+-- A region's point rows with the point, so whether a point lies in a region
+-- is answered from the index (#2283).
+CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region_rows
+    ON experience_location_regions(region_id) INCLUDE (location_id);
 
 -- =============================================================================
 -- Experience Contents (artworks, artifacts within experiences)
