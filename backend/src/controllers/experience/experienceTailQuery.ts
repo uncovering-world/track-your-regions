@@ -17,9 +17,9 @@
 import {
   CROWDING, KINDS, MEMBERSHIPS, membershipCrowdedSql, membershipOfferedSql,
 } from '../../db/membership.js';
-import { experienceOfferedToReaderSql, readerRegionMembershipSql } from '../../db/readerPredicates.js';
+import { experienceOfferedToReaderSql, placedInReaderRegionsSql } from '../../db/readerPredicates.js';
 import { canCurateExperienceSql } from '../../middleware/auth.js';
-import { rowColumnsSql } from './experienceRegionQuery.js';
+import { notRejectedInSql, rowColumnsSql } from './experienceRegionQuery.js';
 
 /** The region, or the region and every region under it, as `scope_regions`. */
 function regionScopeSql(includeChildren: boolean): string {
@@ -35,16 +35,13 @@ function regionScopeSql(includeChildren: boolean): string {
 /**
  * The places of the region a reader may be shown there, before crowding: in
  * the region by a point the reader may see, not rejected from it, and offered.
- * Over `e`, `er` and `rej`. A place that no longer stands is no candidate, so
- * no crowding row names one (`recount_crowding()`), and the tail asks nothing
- * of existence.
+ * Over `e`, asked once per place as the list asks it. A place that no longer
+ * stands is no candidate, so no crowding row names one (`recount_crowding()`),
+ * and the tail asks nothing of existence.
  */
-const placeInRegionSql = `er.region_id IN (SELECT id FROM scope_regions)
-        AND rej.id IS NULL
-        AND ${readerRegionMembershipSql()}
+const placeInRegionSql = `${placedInReaderRegionsSql('SELECT id FROM scope_regions')}
+        AND ${notRejectedInSql('SELECT id FROM scope_regions')}
         AND ${experienceOfferedToReaderSql()}`;
-
-const REJECTION_JOIN = 'LEFT JOIN experience_rejections rej ON rej.experience_id = e.id AND rej.region_id IN (SELECT id FROM scope_regions)';
 
 /**
  * How many places each kind and type crowds out of the region's list: one row
@@ -57,8 +54,6 @@ export function regionTailCountsQuery(includeChildren: boolean): string {
       FROM ${CROWDING} c
       JOIN ${MEMBERSHIPS} m ON m.id = c.membership_id
       JOIN experiences e ON e.id = m.experience_id
-      JOIN experience_regions er ON er.experience_id = e.id
-      ${REJECTION_JOIN}
      WHERE ${membershipOfferedSql('m')}
        AND ${placeInRegionSql}
      GROUP BY m.kind_id, m.type
@@ -121,10 +116,8 @@ function crowdedInSql(kindParam: string): string {
 function tailPlacesSql(kindParam: string): string {
   return `
       places AS (
-        SELECT DISTINCT e.id
+        SELECT e.id
           FROM experiences e
-          JOIN experience_regions er ON er.experience_id = e.id
-          ${REJECTION_JOIN}
          WHERE ${placeInRegionSql}
            AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} tm WHERE tm.experience_id = e.id AND ${crowdedInSql(kindParam)})
       )`;

@@ -18,6 +18,7 @@ import {
   offeredLinkSql,
   offeredLocationSql,
   publishedContentSql,
+  placedInReaderRegionsSql,
   readerPositionSql,
   readerRegionMembershipSql,
 } from '../../db/readerPredicates.js';
@@ -29,6 +30,21 @@ import { isNewSql, type NewBadgeReaderParam } from './experienceNewBadge.js';
 import { dangerSelectSql } from './experienceDanger.js';
 import { findsOnViewCountSql } from './siteFinds.js';
 import { pointsShownSql } from '../../db/placePoints.js';
+
+/**
+ * Not rejected by a curator from any of the regions `regionsSql` selects
+ * (`SELECT id FROM descendant_regions`). `experience` is the `experiences`
+ * alias.
+ *
+ * An anti-join rather than `LEFT JOIN experience_rejections ... WHERE rej.id
+ * IS NULL`: the planner cannot estimate that filter over a table this small
+ * and takes it to keep half a percent of the rows, and plans a region's
+ * crowded-out tail as a walk over every place in the catalogue.
+ */
+export function notRejectedInSql(regionsSql: string, experience = 'e'): string {
+  return `NOT EXISTS (SELECT 1 FROM experience_rejections rej
+                       WHERE rej.experience_id = ${experience}.id AND rej.region_id IN (${regionsSql}))`;
+}
 
 /**
  * The rejection columns of a read that includes children: aggregated where the
@@ -186,10 +202,12 @@ export function buildRegionQueries(opts: {
   // What puts an object in this region, asked of the points a reader may see
   // rather than of the roll-up alone (#521) — `readerRegionMembershipSql` says
   // why the roll-up cannot answer it. It goes on the WHERE of all four
-  // statements rather than into `lifecyclePredicate`: membership is not a
-  // lifecycle question, and a count that carried it in one FILTER and not the
-  // other would offer to reveal rows the list could never show. A list and the
-  // count beside it disagreeing about the set is the same defect twice.
+  // statements (the whole-region count asks it of the place, through
+  // `placedInReaderRegionsSql`) rather than into `lifecyclePredicate`:
+  // membership is not a lifecycle question, and a count that carried it in
+  // one FILTER and not the other would offer to reveal rows the list could
+  // never show. A list and the count beside it disagreeing about the set is
+  // the same defect twice.
   const membershipFilter = ` AND ${readerRegionMembershipSql()}`;
   // The chip's personal half needs to know who is asking. Anonymous readers
   // bind nothing and fall back to the source's window, which is the whole rule
@@ -240,6 +258,11 @@ export function buildRegionQueries(opts: {
       ORDER BY e.name, e.id
       LIMIT $2 OFFSET $3
     `;
+    // One row per place rather than one per region row that holds it, so each
+    // place's lifecycle is asked once: a large region's rows are mostly places
+    // waiting for a curator (#2283). `placedInReaderRegionsSql` is the
+    // membership the list joins, asked of the place.
+    const regions = 'SELECT id FROM descendant_regions';
     countQuery = `
       WITH RECURSIVE descendant_regions AS (
         SELECT id FROM regions WHERE id = $1
@@ -251,11 +274,8 @@ export function buildRegionQueries(opts: {
         ${countedPlacesSql('e')} FILTER (WHERE ${lifecyclePredicate})::int AS total,
         ${countedPlacesSql('e')} FILTER (WHERE ${lostHiddenPredicate})::int AS lost_hidden
       FROM experiences e
-      JOIN experience_regions er ON e.id = er.experience_id
-      ${descendantRejectionJoin}
-      WHERE er.region_id IN (SELECT id FROM descendant_regions)
-      ${rejectionFilter}
-      ${membershipFilter}
+      WHERE ${placedInReaderRegionsSql(regions)}
+      ${showRejected ? '' : `AND ${notRejectedInSql(regions)}`}
     `;
   } else {
     const rejectionSelect = showRejected
