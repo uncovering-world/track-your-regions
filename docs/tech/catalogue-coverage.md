@@ -103,7 +103,7 @@ the product has a kind for it.
 | `same_as` | Other Wikidata items that are this same place: a building and the museum inside it |
 | `unesco` | UNESCO's id of an inscribed World Heritage property, or `null` |
 | `venue` | The place a work is shown in, or an activity or an event is held at, in words; `null` when it is tied to no one place, and always on a place |
-| `sources` | How many sources named it. Two or more |
+| `sources` | How many sources named it. Two or more. Within a kind whose map shows a crowded city's best-known places of a type, it decides which entries are demanded (§ What a survey demands) |
 | `sitelinks`, `lat`, `lon` | As Wikidata gave them on the region's `surveyed` date |
 | `note` | Anything a later reader needs: why an entry lies outside the region's reach, which of two Wikidata items was taken |
 
@@ -326,8 +326,9 @@ files, so that the comparison with the catalogue is a join. They are declared in
 load nothing; `069-coverage-kinds-in-venue.sql` adds `coverage_kinds.in_venue` to a database
 that has them, `114-coverage-judgements.sql` the ledger's table,
 `115-coverage-judgements-worth-a-visit.sql` the cause a row alone takes and the constraints on
-what each subject may be judged, and `167-coverage-calibration-lists.sql` the calibration
-tables.
+what each subject may be judged, `167-coverage-calibration-lists.sql` the calibration
+tables, and `203-a-survey-entry-carries-its-type-in-the-kind.sql` the type a filing carries in its
+kind (`coverage_expectation_kinds.type`).
 
 - **One writer.** `replaceCoverage` in `backend/src/services/catalogueCoverage/load.ts`
   empties them all and fills them from what the reader returned, in one transaction. Nobody
@@ -336,6 +337,17 @@ tables.
   kind lives only in `coverage_kinds`; a live kind's record there points at its
   `experience_kinds` row.
 - **Keys are the files' slugs**, so a reload keeps every key.
+- **A filing carries its type** in the kind's own vocabulary: a church, a mosque, a temple, a
+  bridge, a square (#2246). No file states it. The load computes it at every load, from the kind's
+  rule of the day, with `readFilingTypes` (`backend/src/services/catalogueCoverage/entryTypes.ts`):
+  the kind's regional declaration's `typeOf`, the one the regional tier groups a place's
+  neighbours by, over the item's classes and the class trees the kind's gather reads. Both are
+  read from the local Wikidata subset through the subset's own door, so a load asks the query
+  service nothing. `TYPE_RULES` names the kinds that have types: Public art, Places of worship,
+  Monuments & memorials, Towers, Bridges & engineering marvels, and Squares & streets. Under any
+  other kind the type is null, and so it is for an entry with no item, an item whose classes the
+  subset does not hold, or classes no type of the kind fits; with no subset built nothing is typed.
+  The load's last line says how many filings were typed and how many were not, and why.
 
 The load also checks what the reader cannot see: that every `experience_kinds` row has a live
 record under the catalogue's own name, and that no live record names a kind the catalogue
@@ -392,12 +404,52 @@ report and says what each finding asks for: a defect and its issue, a place to r
 `buildCoverageReport` in `backend/src/controllers/admin/catalogueCoverage/report.ts` decides,
 from what `readCoverageFacts` (`reportQueries.ts`) read; `reportText.ts` writes it out.
 
+### What a survey demands
+
+A list is the union of its sources, and no guide names a whole list: each of Rome's sources
+names ten to fifteen places of worship, and the list holds 39. A crowded city's map shows a
+kind's ten best-known places of a type within 10 km (ADR-0172). So the report asks of the
+catalogue what its map shows (#2246):
+
+- **A kind whose map shows the best-known of a type asks for what its map would show, by the
+  map's own geometry.** The kind declares the rule (`experience_kinds.crowding_limit` and
+  `crowding_radius_km`, both read from the kind and never a second constant): today Public art,
+  Places of worship, Monuments & memorials, Towers, Bridges & engineering marvels, and Squares &
+  streets. An entry filed under such a kind is demanded unless `crowding_limit` entries of the same
+  region, kind and type within `crowding_radius_km` of it rank above it. Rank is the most sources,
+  then the entry's `sitelinks` as its list file records them, then slug; the distance is between
+  the list file's own coordinates. Never anything the catalogue holds: the catalogue is what is
+  judged. An entry with no coordinate is ranked against its whole region's entries of the kind and
+  type, and an entry with one counts no entry without. An untyped entry stands with the region's
+  other untyped entries of the kind.
+- **The rest is the list's tail**, counted and named and never reported missing, since the map
+  would not show it either.
+- **Every other kind demands every entry filed under it**: Art Museums, Archaeology, World
+  Heritage and every proposed kind. An entry is demanded when any kind it is filed under demands
+  it, so San Clemente, in Rome's churches' tail, is still asked of Archaeology.
+
+On the development catalogue of 2026-11-02, Places of worship's rule types Rome's 39 entries 31
+churches, three chapels (Wikidata types Sant'Ignazio and the Gesù as chapels, beside the Sistine
+Chapel), one cathedral (St John Lateran), a monastery, a synagogue and two it gives no type. In
+the centre the kind demands ten churches: St Peter's and the Pantheon with eight sources down to
+Santa Maria della Vittoria and Santa Maria in Aracoeli with four. Santa Maria sopra Minerva has
+four sources too, and 35 sitelinks to Aracoeli's 36, so it is the first of the churches' tail,
+beside Sant'Ivo alla Sapienza and Santa Cecilia: 19 entries in all. San Tommaso da Villanova in
+Castel Gandolfo, named by two sources, is demanded, since no ten better-named churches stand
+within 10 km of it in the Alban Hills. The radius is why the rule reads the map's geometry rather
+than the region whole: Kyoto's list files Nara as a day trip, and Tōdai-ji, Hōryū-ji and Kōfuku-ji,
+35 km from Kyoto's temples, are shown by Nara's own map, so they are demanded. Kyoto's tail is
+then the 25 temples crowded in the city itself, Higashi Hongan-ji and Kennin-ji first, each with
+ten better-named temples within 10 km of it.
+
 **Where each expectation stands.** The first that applies:
 
 | Verdict | Meaning |
 |---|---|
+| tail | Every kind it is filed under leaves it in its list's tail: what the catalogue holds of it is not asked |
 | offered | The catalogue holds it under one of its identifiers and a reader sees it |
-| held | The catalogue holds it and a reader does not: it waits for a curator, was refused, no longer stands, or is in a crowded city's tail (ten better-known places of its type within 10 km, ADR-0172) |
+| shadowed | A kind admits it, a curator has passed it, and the kind crowds it out of its city: ten better-known places of its kind and type stand within 10 km (ADR-0172), so no list, map or count holds it, and search and its card still find it. A crowded place still waiting for a curator reads `held` |
+| held | The catalogue holds it and a reader does not: it waits for a curator, was refused, or no longer stands |
 | unsorted | Absent, and filed under no kind yet |
 | missing, kind proposed | Absent, and every kind it is filed under is only proposed |
 | something else at its spot | Absent by identifier from a kind that exists, while an offered place stands within `SAME_SPOT_METRES` of it |
@@ -410,7 +462,15 @@ among the places by every id a place is known by (`KNOWN_AS_SQL`): the place's o
 Archaeology knows by its item is found by either. A place is offered when a kind's count would
 count it, and a work when it is passed and a museum a reader
 may go to shows it: the report composes `countedMembershipSql` and `venuesShowingSql`, the
-predicates the lists and counts use, and spells none of its own.
+predicates the lists and counts use, and spells none of its own. A count leaves a crowded-out
+membership out (`membershipShownSql`), and a place is shadowed where a membership is admitted, of
+a real kind and a place still standing, and crowded out (`membershipCrowdedSql`): Santa Maria in
+Aracoeli, demanded among Rome's churches, and Nanzen-ji and Chion-in among Kyoto's temples on
+2026-11-02. A shadowed place a survey demands is a cost of the display, read beside the
+calibration report's `crowded`: a live kind counts it beside its missing rows (`shadowed`), never
+among them, so Catalogue Checks asks nobody to answer for it. One in the tail is where the map and
+the survey agree. An entry is asked only of the kinds that demand it: a Kyoto temple in Places of
+worship's tail and filed under a proposed kind too reads `missing_proposed`.
 
 "Something else at its spot" is a list for a person and is never counted as found. It turns up
 three things: the same place under another Wikidata item (Palazzo Barberini is the building,
@@ -453,8 +513,9 @@ whether it exists only inside a place, and its issue. Kinds asked for by the mos
 build next; it changes no priority (ADR-0081 decision 8).
 
 **What each live kind lacks.** For every live kind: how many of the expectations filed under it
-the kind itself offers, the absent ones at or over the kind's own sitelinks line by name, and
-a count of the absent ones under it, which are the regional tier's to hold. The line is the
+and demanded of it the kind itself offers, how many more are its lists' tails, the absent
+demanded ones at or over the kind's own sitelinks line by name, and a count of the absent ones
+under it, which are the regional tier's to hold. The line is the
 `enterSitelinks` the kind's source states, or the code's line for a monument and for a work.
 Two kinds have none, and every absent entry of theirs is named: World Heritage, where being
 inscribed is the whole rule, and Art Museums, which admits a museum through a work it holds,
@@ -467,7 +528,8 @@ from another live kind is bare there. The text names the absent entries nobody h
 counts the judged by cause, with the issues the judgements name: `absent and judged: 100: 90
 door-missing (#628); 6 rule-defect (#1614, #1617); 4 not-a-must`. A judgement whose kind
 offers the entry now, over or under the line, is stale: its gap has closed, and the report
-lists it as a line to remove from `judgements.jsonl`. Whether a judgement's issue has closed is
+lists it as a line to remove from `judgements.jsonl`. A judgement on a gap in a kind's tail is not
+stale: the gap stands, and the tail moves with the list. Whether a judgement's issue has closed is
 not the report's to know; the `/coverage-check` skill asks GitHub for the issues the ledger
 names.
 
@@ -493,7 +555,7 @@ not wait for a person, and the count that waits reaches zero without it.
 the report's *What each live kind lacks* in the panel: one row per live kind and absent entry
 at or over that kind's line that nobody has judged, the most named first, then one row per stale
 judgement, said as the line to remove; and one line per live kind saying how many of the
-expected it offers, how many it lacks under the line, and how many of what it lacks are judged
+expected it offers, how many more are the lists' tails, how many it lacks under the line, and how many of what it lacks are judged
 under each cause, with their issues, and how many wait for a person. It runs `coverageReport()`
 and decides nothing of its own, so the command and the panel cannot disagree. With nothing
 loaded it reports nothing as missing and says the lists have not been loaded.

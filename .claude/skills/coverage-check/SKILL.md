@@ -24,13 +24,13 @@ Read `docs/tech/catalogue-coverage.md` § What the report says: the verdicts and
 ./scripts/catalogue-coverage.sh report            # add --region <slug> per region in $ARGUMENTS
 ```
 
-The load reads `db/catalogue-coverage/` and replaces the tables; when it refuses, it names the file and the line, and that is fixed before anything else. The report reads the active database: say which one it is, since a development database and a published one hold different catalogues.
+The load reads `db/catalogue-coverage/` and replaces the tables; when it refuses, it names the file and the line, and that is fixed before anything else. Its last line says how many filings it typed from the local Wikidata subset: with no subset built nothing is typed, every entry of a kind stands in one group, and the report's tails mean little until the subset is back. The report reads the active database: say which one it is, since a development database and a published one hold different catalogues.
 
 Save the report as `docs/local/research/catalogue-coverage/reports/<date>.txt`, with the command that produced it on the first line. A number without its command cannot be checked later.
 
 ### 2. Compare with the report before
 
-When an earlier report is in that directory, say what moved, per region: the share offered, and each verdict's count. A region whose offered count fell lost something a guide names; find which entries by comparing the two reports' lists, and treat each as step 4 treats a defect.
+When an earlier report is in that directory, say what moved, per region: the share of the demanded offered, and each verdict's count. A region whose offered count fell lost something a guide names; find which entries by comparing the two reports' lists, and treat each as step 4 treats a defect.
 
 ### 3. Something else at its spot
 
@@ -79,10 +79,12 @@ Read the ordering: the kinds the most regions ask for come first. For each of th
 
 Say for each kind what a member of it is. A kind of dish, festival or route asks for more than a new sync, because a catalogue record is a place today; say that where it applies.
 
-### 7. Unsorted, and held
+### 7. Unsorted, held, shadowed, and the tail
 
 - **Not sorted into a kind yet.** File each under a kind of the register, or propose the kind it needs, as `/coverage-survey` § 9 does.
 - **In the catalogue and not offered.** A place waiting for a curator is the review queue's; a refused or lost one is named to the user with the reason the catalogue records, since a guide still sends people there. A top the calibration report calls `crowded` is in a crowded city's tail (ADR-0172): the cost of the display the maintainer accepted, reported as such and never as a gap of the kind's line.
+- **Admitted and crowded out of its city** (`shadowed`). The kind admits the place and its map shows ten better-known places of its type nearby (ADR-0172). Name each to the user: a demanded place a crowded city hides is the cost of the display, never a defect of the kind's rule, and nothing is judged for it. The report counts it beside a kind's missing rows, never among them. A crowded place a curator has not passed yet reads `held`, not `shadowed`.
+- **The list's tail.** Entries with ten better-named entries of their kind and type within the kind's radius, which a crowded kind's map would not show either (`docs/tech/catalogue-coverage.md` § What a survey demands). They are never missed and never judged; say how many each region has, and read the names once as a traveller: a place you would send everyone to that sits in a tail says the list's `sources` count undersells it, which a later survey corrects, never the ledger.
 
 ### 8. Report
 
