@@ -22,7 +22,7 @@ import { CONTENT_KINDS } from '../../services/sync/types.js';
 import { WEBSITE_OUTCOMES, WEBSITE_REASONS } from '../../services/websiteCheck/checkWebsite.js';
 import { PICTURE_CLASSES } from '../../services/pictureClass/classifyPicture.js';
 import { placementTogether } from '../placementTogether.js';
-import { ImageCredit } from './experiences.js';
+import { ImageCredit, LinkedPlace } from './experiences.js';
 
 export const ContentKind = z.enum(CONTENT_KINDS)
   .describe("Which of an object's contents a part is: one of its points (`locations`) or one of its works (`treasures`).");
@@ -360,6 +360,33 @@ export const WorkEditResult = z.strictObject({
   ),
 }).describe("What a curator's correction to a work did.");
 export type WorkEditResult = z.infer<typeof WorkEditResult>;
+
+export const FindSiteLink = z.strictObject({
+  treasure_id: z.number().int(),
+  name: z.string(),
+  treasure_type: z.string(),
+  year: z.number().int().nullable(),
+  image_url: z.string().nullable(),
+  image_credit: ImageCredit.nullable(),
+  state: z.enum(['proposed', 'confirmed'])
+    .describe('Proposed by a run and not answered yet, or confirmed by a curator; a refused pair is not listed.'),
+  origin: z.enum(['coordinate', 'curator']).describe("Proposed from the find's own coordinate, or made by a curator."),
+  distance_m: z.number().int().nullable().describe("How far the find's coordinate lies from the site's point, where a run proposed it."),
+  shown_at: z.array(LinkedPlace).describe('The museums a reader may be sent to that show the find.'),
+}).describe('A find a run proposed as coming from this site, or one a curator confirmed (#2242).');
+
+export const FindSiteLinks = z.strictObject({
+  experienceId: z.number().int(),
+  links: z.array(FindSiteLink),
+}).describe("The finds a site's curator is asked about, and those already linked to it.");
+export type FindSiteLinks = z.infer<typeof FindSiteLinks>;
+
+export const FindSiteLinkAnswerResult = z.strictObject({
+  success: z.literal(true),
+  treasureId: z.number().int(),
+  answer: z.enum(['confirmed', 'refused']),
+}).describe("A curator's answer on where a find comes from.");
+export type FindSiteLinkAnswerResult = z.infer<typeof FindSiteLinkAnswerResult>;
 
 export const AcceptSourceResult = placement.extend({
   experienceId: z.number().int(),

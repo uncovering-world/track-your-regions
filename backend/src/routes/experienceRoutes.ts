@@ -48,7 +48,9 @@ import {
   RegionMembershipResult,
   UnrefuseContentsResult,
   WorkEditResult,
+  FindSiteLinks, FindSiteLinkAnswerResult,
 } from '../api/responses/curation.js';
+import { answerFindSiteLinkRequest, getFindSiteLinks } from '../controllers/experience/findSiteLinksController.js';
 import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
 import { separatePlaceMembership, undoPlaceSeparation } from '../controllers/experience/membershipSeparationController.js';
@@ -184,6 +186,8 @@ import {
   editExperienceBodySchema,
   createManualExperienceBodySchema,
   wikipediaEditionsQuerySchema,
+  findSiteLinkParamsSchema,
+  findSiteLinkAnswerBodySchema,
 } from '../types/index.js';
 
 // =============================================================================
@@ -578,6 +582,25 @@ export const experienceCurationRoutes = [
     body: editWorkBodySchema,
     response: WorkEditResult,
     handler: editWork,
+  }),
+  // Where a find comes from, asked on the site's card (#2242): the finds a run
+  // proposed from their own coordinate and the links a curator confirmed. No
+  // limiter on either, by the criterion the works edit above is held to: the
+  // answer writes one row and nothing follows the commit — a link moves no pin.
+  defineRoute({
+    method: 'get', path: '/:id/find-links', access: 'curator', cache: 'no-store',
+    summary: 'List the finds proposed as coming from a site, and those linked to it',
+    params: idParamSchema,
+    response: FindSiteLinks,
+    handler: getFindSiteLinks,
+  }),
+  defineRoute({
+    method: 'put', path: '/:id/find-links/:treasureId', access: 'curator', cache: 'no-store',
+    summary: 'Confirm or refuse that a find comes from a site',
+    params: findSiteLinkParamsSchema,
+    body: findSiteLinkAnswerBodySchema,
+    response: FindSiteLinkAnswerResult,
+    handler: answerFindSiteLinkRequest,
   }),
   // Rate-limited for the same reason `/:id/publish` below is, and it is the same
   // branch rather than a similar one: overriding a refusal on a gated arrival

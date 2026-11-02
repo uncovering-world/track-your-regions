@@ -213,7 +213,7 @@ export const Experience = z.strictObject({
     .describe('Its points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5).'),
   treasure_count: z.number().int().describe('Offered and published links to works.'),
   finds_count: z.number().int()
-    .describe('Finds dug up at this site and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row that is not a site.'),
+    .describe('Finds dug up at this place, or taken from it by a confirmed link (#2242), and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row with neither.'),
   created_at: timestamp.unwrap().optional(),
   is_rejected: z.boolean().optional().describe('Only for a curator whose scope reaches the region.'),
   can_curate: z.boolean().optional()
@@ -393,6 +393,8 @@ export const ExperienceTreasure = z.strictObject({
     .describe('Where the object was dug up, for the kind whose works are finds (ADR-0058).'),
   found_at_site: LinkedPlace.nullable()
     .describe('The site row that spot names, where the catalogue holds one a reader may open (#894).'),
+  from_site: LinkedPlace.nullable()
+    .describe('The site a curator confirmed the work comes from, where its item names no place of discovery (#2242).'),
   sitelinks_count: z.number().int(),
   kind_ids: z.array(z.number().int())
     .describe('The kinds that hold the work here, by the memberships that place it, in display order (#1263).'
@@ -422,7 +424,9 @@ export const SiteFind = z.strictObject({
   is_iconic: z.boolean(),
   sitelinks_count: z.number().int(),
   shown_at: z.array(LinkedPlace).describe('One entry per building, never empty: a find nobody can go and see is not listed.'),
-}).describe('One find dug up at a site (#894).');
+  relation: z.enum(['dug_up', 'from_site'])
+    .describe('Dug up here, by the find\'s own place of discovery (#894), or from this site, by a link a curator confirmed (#2242).'),
+}).describe('One find of a site: dug up there, or taken from it (#894, #2242).');
 export type SiteFind = z.infer<typeof SiteFind>;
 
 export const SiteFindsResponse = z.strictObject({

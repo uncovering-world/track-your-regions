@@ -6488,7 +6488,8 @@
                 "separated",
                 "kept_out",
                 "merge_proposal_taken_back",
-                "kind_added"
+                "kind_added",
+                "find_site_answered"
               ]
             }
           },
@@ -6624,7 +6625,8 @@
                 "separated",
                 "kept_out",
                 "merge_proposal_taken_back",
-                "kind_added"
+                "kind_added",
+                "find_site_answered"
               ]
             }
           },
@@ -13980,6 +13982,126 @@
         }
       }
     },
+    "/api/experiences/{id}/find-links": {
+      "get": {
+        "operationId": "getExperiencesByIdFindLinks",
+        "summary": "List the finds proposed as coming from a site, and those linked to it",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindSiteLinks"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/find-links/{treasureId}": {
+      "put": {
+        "operationId": "putExperiencesByIdFindLinksByTreasureId",
+        "summary": "Confirm or refuse that a find comes from a site",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "treasureId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindSiteLinkAnswerBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindSiteLinkAnswerResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/admission": {
       "post": {
         "operationId": "postExperiencesByIdAdmission",
@@ -20863,7 +20985,8 @@
               "separated",
               "kept_out",
               "merge_proposal_taken_back",
-              "kind_added"
+              "kind_added",
+              "find_site_answered"
             ]
           },
           "region_id": {
@@ -21038,7 +21161,8 @@
               "separated",
               "kept_out",
               "merge_proposal_taken_back",
-              "kind_added"
+              "kind_added",
+              "find_site_answered"
             ]
           },
           "created_at": {
@@ -23466,7 +23590,7 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "Finds dug up at this site and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row that is not a site."
+            "description": "Finds dug up at this place, or taken from it by a confirmed link (#2242), and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row with neither."
           },
           "created_at": {
             "type": "string",
@@ -24714,6 +24838,17 @@
             ],
             "description": "The site row that spot names, where the catalogue holds one a reader may open (#894)."
           },
+          "from_site": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkedPlace"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The site a curator confirmed the work comes from, where its item names no place of discovery (#2242)."
+          },
           "sitelinks_count": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -24756,6 +24891,7 @@
           "is_iconic",
           "found_at",
           "found_at_site",
+          "from_site",
           "sitelinks_count",
           "kind_ids",
           "wikipedia_url",
@@ -25257,6 +25393,165 @@
         ],
         "additionalProperties": false,
         "description": "Who claimed a field, and when."
+      },
+      "FindSiteLink": {
+        "type": "object",
+        "properties": {
+          "treasure_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "treasure_type": {
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_credit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "confirmed"
+            ],
+            "description": "Proposed by a run and not answered yet, or confirmed by a curator; a refused pair is not listed."
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "coordinate",
+              "curator"
+            ],
+            "description": "Proposed from the find's own coordinate, or made by a curator."
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How far the find's coordinate lies from the site's point, where a run proposed it."
+          },
+          "shown_at": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedPlace"
+            },
+            "description": "The museums a reader may be sent to that show the find."
+          }
+        },
+        "required": [
+          "treasure_id",
+          "name",
+          "treasure_type",
+          "year",
+          "image_url",
+          "image_credit",
+          "state",
+          "origin",
+          "distance_m",
+          "shown_at"
+        ],
+        "additionalProperties": false,
+        "description": "A find a run proposed as coming from this site, or one a curator confirmed (#2242)."
+      },
+      "FindSiteLinkAnswerBody": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "refused"
+            ]
+          }
+        },
+        "required": [
+          "answer"
+        ]
+      },
+      "FindSiteLinkAnswerResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "treasureId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "answer": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "refused"
+            ]
+          }
+        },
+        "required": [
+          "success",
+          "treasureId",
+          "answer"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's answer on where a find comes from."
+      },
+      "FindSiteLinks": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FindSiteLink"
+            }
+          }
+        },
+        "required": [
+          "experienceId",
+          "links"
+        ],
+        "additionalProperties": false,
+        "description": "The finds a site's curator is asked about, and those already linked to it."
       },
       "FlattenBlocked": {
         "type": "object",
@@ -35018,6 +35313,14 @@
               "$ref": "#/components/schemas/LinkedPlace"
             },
             "description": "One entry per building, never empty: a find nobody can go and see is not listed."
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "dug_up",
+              "from_site"
+            ],
+            "description": "Dug up here, by the find's own place of discovery (#894), or from this site, by a link a curator confirmed (#2242)."
           }
         },
         "required": [
@@ -35030,10 +35333,11 @@
           "image_credit",
           "is_iconic",
           "sitelinks_count",
-          "shown_at"
+          "shown_at",
+          "relation"
         ],
         "additionalProperties": false,
-        "description": "One find dug up at a site (#894)."
+        "description": "One find of a site: dug up there, or taken from it (#894, #2242)."
       },
       "SiteFindsResponse": {
         "type": "object",

@@ -77,6 +77,7 @@ describe('treasureOf', () => {
       image_credit: { author: 'A photographer', license: 'CC BY 2.0', licenseUrl: null, detailsUrl: null, fetchedAt: '2026-09-13' },
       found_at: { qid: 'Q131594', label: 'Mycenae', source: 'P189' },
       found_at_site: null,
+      from_site: null,
       kind_ids: [5],
       wikipedia_url: 'https://en.wikipedia.org/wiki/Mask_of_Agamemnon',
       wikipedia_read: true,

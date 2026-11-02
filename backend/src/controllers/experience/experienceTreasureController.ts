@@ -103,7 +103,25 @@ export async function getExperienceTreasures(
           AND ${experienceOfferedToReaderSql('site')}
           AND ${hideLostSql('site')}
         ORDER BY site.id
-        LIMIT 1) AS found_at_site
+        LIMIT 1) AS found_at_site,
+      -- The site a curator confirmed the work comes from, where its item names
+      -- no place of discovery (#2242): the Dendera zodiac's row in the Louvre
+      -- reads "from the Dendera Temple complex". Gated as the spot's site is,
+      -- since it is the same way out of a museum's list.
+      (SELECT json_build_object(
+                'id', site.id, 'name', site.name, 'kind_id', sk.id,
+                'regions', ${readerRegionsJsonSql('site.id')})
+         FROM find_site_links fsl
+         JOIN experiences site ON site.id = fsl.site_id
+         ${rowKindJoinSql('site', 'sm', 'sk')}
+        WHERE fsl.treasure_id = t.id AND fsl.state = 'confirmed'
+          -- Only where the item names no find spot: one a later run reads
+          -- off the item is the row's own claim, and the link stands behind it.
+          AND t.metadata->'foundAt' IS NULL
+          AND ${experienceOfferedToReaderSql('site')}
+          AND ${hideLostSql('site')}
+        ORDER BY site.id
+        LIMIT 1) AS from_site
     FROM treasures t
     JOIN experience_treasures et ON t.id = et.treasure_id
     JOIN experiences e ON e.id = et.experience_id

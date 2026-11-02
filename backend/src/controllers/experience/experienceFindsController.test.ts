@@ -108,6 +108,7 @@ describe('getSiteFinds', () => {
       image_credit: { author: 'Xuan Che', license: 'CC BY 2.0', licenseUrl: null, detailsUrl: null },
       shown_at: [{ id: 14551, name: 'National Archaeological Museum of Athens', kind_id: 5,
         regions: [{ id: 6918, name: 'Attica', world_view_id: 5, world_view_name: 'Administrative' }] }],
+      relation: 'dug_up',
     };
     mockedQuery.mockResolvedValueOnce({ rows: [find] });
     const res = makeRes();
