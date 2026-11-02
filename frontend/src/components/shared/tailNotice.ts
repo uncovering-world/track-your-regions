@@ -10,7 +10,7 @@
  * says them rather than reading them off each kind.
  */
 
-import { typeLabelFor } from '../../utils/experienceTypes';
+import { typeNoun } from '../../utils/experienceTypes';
 
 /** The quiet mark beside a search answer the region's list leaves out: one word, explained on hover. */
 export const TAIL_MARK = 'shadowed';
@@ -32,42 +32,13 @@ export interface TailCount {
   count: number;
 }
 
-/**
- * A type's plural where an `s` alone would be wrong. "Street art" counts no
- * pieces of itself and "flight of locks" pluralises its head.
- */
-const IRREGULAR: Record<string, [string, string]> = {
-  'street-art': ['piece of street art', 'pieces of street art'],
-  'lock-flight': ['flight of locks', 'flights of locks'],
-};
-
 /** A kind's own name as a plural count reads it: "places of worship", "works of public art". */
 const KIND_NOUNS: Record<number, string> = { 3: 'works of public art' };
-
-/** "church" → "churches", "monastery" → "monasteries", "temple" → "temples". */
-function pluralWord(word: string): string {
-  if (/(s|sh|ch|x|z)$/.test(word)) return `${word}es`;
-  if (/[^aeiou]y$/.test(word)) return `${word.slice(0, -1)}ies`;
-  return `${word}s`;
-}
 
 /** Types by name, a place with no type last. */
 function byType(a: string | null, b: string | null): number {
   if (a === null || b === null) return (a === null ? 1 : 0) - (b === null ? 1 : 0);
   return a.localeCompare(b);
-}
-
-/**
- * A type's noun for a count of it: "church" for one, "churches" for more, and
- * "other"/"others" for a place with no type. The type's own word in the kind's
- * vocabulary (`typeLabelFor`), lowercased.
- */
-function typeNoun(kindId: number, type: string | null, count: number): string {
-  if (type === null) return count === 1 ? 'other' : 'others';
-  const irregular = IRREGULAR[type];
-  if (irregular) return irregular[count === 1 ? 0 : 1];
-  const word = typeLabelFor(kindId, type).toLowerCase();
-  return count === 1 ? word : pluralWord(word);
 }
 
 /** "1 church", "37 churches", "2 others": the count first. */

@@ -232,3 +232,43 @@ export function typeVocabularyOf(value: unknown): TypeVocabulary | null {
   return Object.values(VOCABULARY_BY_KIND)
     .find(vocabulary => vocabulary.options.some(option => option.value === value)) ?? null;
 }
+
+/**
+ * A type's plural where an `s` alone would be wrong. "Street art" counts no
+ * pieces of itself and "flight of locks" pluralises its head.
+ */
+const IRREGULAR: Record<string, [string, string]> = {
+  'street-art': ['piece of street art', 'pieces of street art'],
+  'lock-flight': ['flight of locks', 'flights of locks'],
+};
+
+/** "church" → "churches", "monastery" → "monasteries", "temple" → "temples". */
+function pluralWord(word: string): string {
+  if (/(s|sh|ch|x|z)$/.test(word)) return `${word}es`;
+  if (/[^aeiou]y$/.test(word)) return `${word.slice(0, -1)}ies`;
+  return `${word}s`;
+}
+
+/**
+ * A type's noun for a count of it: "church" for one, "churches" for more, and
+ * "other"/"others" for a place with no type. The type's own word in the kind's
+ * vocabulary (`typeLabelFor`), lowercased. Beside the vocabularies, so a
+ * count of a type reads alike wherever one is said: a crowded city's tail and
+ * the window a curator sorts it in.
+ */
+export function typeNoun(kindId: number, type: string | null, count: number): string {
+  if (type === null) return count === 1 ? 'other' : 'others';
+  const irregular = IRREGULAR[type];
+  if (irregular) return irregular[count === 1 ? 0 : 1];
+  const word = typeLabelFor(kindId, type).toLowerCase();
+  return count === 1 ? word : pluralWord(word);
+}
+
+/**
+ * A type's plural as a heading or a button leads with it: "Squares",
+ * "Churches", "Flights of locks"; the kind's own name for a place with no type.
+ */
+export function typePluralWord(kindId: number, kindName: string, type: string | null): string {
+  const noun = type === null ? kindName : typeNoun(kindId, type, 2);
+  return noun.charAt(0).toUpperCase() + noun.slice(1);
+}
