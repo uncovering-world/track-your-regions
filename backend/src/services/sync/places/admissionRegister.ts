@@ -1,10 +1,11 @@
 /**
- * ADR-0175 decision 5: every number the six place kinds admit by — Places of
- * worship, Squares & streets, Monuments & memorials, Public art, Towers, and
- * Bridges & engineering marvels — lives here, with how it was derived, the
- * evidence and the date. The runs read it (`worldBars.ts`, `regionalCut.ts`)
- * and so does the coverage report (`report.ts`); no kind module states a line
- * of its own.
+ * ADR-0175 decision 5: every number the place kinds admit by — Places of
+ * worship, Squares & streets, Monuments & memorials, Public art, Towers,
+ * Bridges & engineering marvels, and Archaeology's sites (ADR-0179) — lives
+ * here, with how it was derived, the evidence and the date. The runs read it
+ * (`worldBars.ts`, `regionalCut.ts`, `archaeology/regionalSites.ts`) and so
+ * does the coverage report (`report.ts`); no kind module states a line of its
+ * own.
  *
  * A parameter changes only by the method of decision 5, which
  * `docs/tech/filling-a-kind.md` § 11 spells out: the frozen metrics on the
@@ -111,6 +112,32 @@ export const REGIONAL_REGISTER = {
     'Results, Checks at the point'),
 } as const;
 
+const ARCHAEOLOGY_REPORT = 'docs/research/2026-11-02-archaeologys-sites-in-the-admission-frame.md';
+
+/**
+ * Archaeology's two conditions on its regional tier (ADR-0179), read on the
+ * kind's survivors of the cut after its rule (`archaeology/regionalSites.ts`).
+ * The bare frame's regional tier brought 10.2 % noise to Archaeology, nearly
+ * all of it finds spots with nothing to see, places gone or under water, and
+ * parts of a site the kind already holds. Each holds for the regional tier
+ * alone: on the world tier the first costs Palenque and Calakmul, the second
+ * Giza, Karnak and Stonehenge.
+ */
+export const ARCHAEOLOGY_REGIONAL_REGISTER = {
+  mapped: {
+    value: true,
+    derivation: 'A regional site needs an OpenStreetMap object carrying its item that the site rule reads as the place: a ruin or a dig, or the village the rule lifts a dig over. With the next, the noise among the additions falls from 10.2 % to 3.5 %, the canon stays at 0.876, and the control regions show 4 places against 3 today.',
+    evidence: `${ARCHAEOLOGY_REPORT} § The point`,
+    date: DERIVED,
+  } satisfies Parameter<boolean>,
+  partsOfHeld: {
+    value: true,
+    derivation: 'A regional site that is part (P361) of a place Archaeology holds or admits in the same run is not a place of its own: the Forum of Pompeii is Pompeii, the Temple of Olympian Zeus at Agrigento is the Valley of the Temples.',
+    evidence: `${ARCHAEOLOGY_REPORT} § The point`,
+    date: DERIVED,
+  } satisfies Parameter<boolean>,
+} as const;
+
 /** The world frame's values, as a run reads them. */
 export interface WorldFrame {
   poolSitelinks: number;
@@ -132,10 +159,10 @@ export const WORLD_FRAME: WorldFrame = {
   stayShare: WORLD_REGISTER.stayShare.value,
 };
 
-/** The coverage slugs of the six kinds the frame admits by. */
+/** The coverage slugs of the kinds the frame admits by: the six of ADR-0175 and Archaeology's sites (ADR-0179). */
 export type FrameKindSlug =
   | 'places-of-worship' | 'squares-and-streets' | 'monuments-and-memorials'
-  | 'public-art' | 'towers' | 'bridges-and-engineering';
+  | 'public-art' | 'towers' | 'bridges-and-engineering' | 'archaeology';
 
 /**
  * Each kind's bars as the review read them on its pool (the readership year to
@@ -152,8 +179,10 @@ export const MEASURED_BARS: Parameter<Readonly<Record<FrameKindSlug, { editions:
     'places-of-worship': { editions: 16, readers: 49_634, guidedReaders: 10_577 },
     'public-art': { editions: 17, readers: 93_029, guidedReaders: 20_871 },
     'monuments-and-memorials': { editions: 18, readers: 85_409, guidedReaders: 16_719 },
+    // Over the 12,603 sites of Archaeology's pool, its museums aside: they stay works-first (ADR-0058).
+    archaeology: { editions: 34, readers: 150_543, guidedReaders: 25_421 },
   },
-  derivation: "The three quantiles above read on each kind's pool in the review's extract.",
-  evidence: 'docs/decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md, decision 1',
+  derivation: "The three quantiles above read on each kind's pool: the six kinds' in the review's extract, Archaeology's sites in its own (ADR-0179).",
+  evidence: `docs/decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md, decision 1; ${ARCHAEOLOGY_REPORT} § The bars`,
   date: DERIVED,
 };

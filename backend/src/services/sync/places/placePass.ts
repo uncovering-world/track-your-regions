@@ -7,11 +7,10 @@
  * memorials by their kinds' rules, Places of worship by its door one,
  * Archaeology by its site door, Towers, Bridges & engineering marvels and
  * Squares & streets by their rules, each then by the world bars over its own
- * pool (ADR-0175, `worldBars.ts`). What a kind
- * reads beyond its places — worship's
- * works and the second door they open, Archaeology's museums and finds, and the
- * map, the Wikipedias and the witnesses its site door asks — stays in its own
- * run, through its own doors.
+ * pool (ADR-0175, ADR-0179, `worldBars.ts`). What a kind reads beyond its
+ * places — worship's works and the second door they open, Archaeology's
+ * museums and finds, and the map and the Wikipedias its site door asks —
+ * stays in its own run, through its own doors.
  */
 
 import type { SyncProgress, SyncRunOptions } from '../types.js';
@@ -94,9 +93,9 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
     const gathered = await gatherPlaces(run, [
       { kind: PUBLIC_ART_KIND, admitted: await admittedBy(PUBLIC_ART_SOURCES) },
       { kind: WORSHIP_KIND, admitted: await admittedBy([WORSHIP_SOURCE_ID]) },
-      // The sites Archaeology admits, not its museums, which its own museum
-      // door asks after (`ArchaeologyPipelineDeps.admittedSites`).
-      { kind: ARCHAEOLOGY_SITE_KIND, admitted: await admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site') },
+      // The sites Archaeology's world tier admits, not its museums, which its
+      // own museum door asks after (`ArchaeologyPipelineDeps.admittedSites`).
+      { kind: ARCHAEOLOGY_SITE_KIND, admitted: await admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site', 'world') },
       { kind: TOWERS_KIND, admitted: await admittedBy([TOWERS_SOURCE_ID]) },
       { kind: BRIDGES_KIND, admitted: await admittedBy([BRIDGES_SOURCE_ID]) },
       { kind: SQUARES_KIND, admitted: await admittedBy([SQUARES_SOURCE_ID]) },

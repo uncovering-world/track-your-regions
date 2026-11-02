@@ -1,22 +1,21 @@
 /**
  * The site door: the excavation a traveller stands in (ADR-0058 decision 1).
  *
- * `worship/places.ts`'s shape — a banded pool of what the admitting classes
- * name, the facts about each candidate, the rule, and then the fame line — with
- * two steps of its own, both reads of OpenStreetMap. **The first feeds the
- * pool** (#895, ADR-0060, `siteEntrance.ts`): the map's own list of digs, asked
- * once a run — one question through the mirror, eight through Overpass — and
- * then Wikidata for the sitelinks of what the classes did not name, five
- * hundred to a question, some eighty questions at the measured pool. **The
- * second comes after the pool is known**: what the map carries under each
- * candidate at the line, its own rows included, one question per hundred —
- * fifteen questions over 1,471 items on dry run 137 (2026-09-15), where a
- * question per candidate would be as many requests to somebody else's mirror.
- * The order is the whole of the cost, and every answer is kept for a day
- * (ADR-0030, ADR-0047).
+ * `worship/places.ts`'s shape — the kind's share of the place gather, the
+ * facts about each candidate, the rule, and then the world bars of the place
+ * kinds' frame over the sites' own pool (ADR-0175, ADR-0179) — with two steps
+ * of its own, both reads of OpenStreetMap. **The first feeds the pool** (#895,
+ * ADR-0060, `siteEntrance.ts`): the map's own list of digs, asked once a run,
+ * and then Wikidata for the sitelinks of what the classes did not name. **The
+ * second comes after the pool is known**: what the map carries under every
+ * candidate, one question per hundred through the mirror and one read of the
+ * layer, since the rule decides which candidates are sites before the bars are
+ * read over them. Every answer is kept for a day (ADR-0030, ADR-0047).
  *
  * Nothing here decides what a site is: that is `siteTest.ts`, over the sets
- * `classes.ts` composes and the objects `osm/` reads. This file is the wiring.
+ * `classes.ts` composes and the objects `osm/` reads. Nothing here decides
+ * whether it is famous enough: that is the frame's (`places/worldTier.ts`).
+ * This file is the wiring.
  */
 
 import { chunk, type QueryRunner } from '../wikidataQueries.js';
@@ -27,21 +26,20 @@ import { categoryVotes, collectOsmEntrance, withNamed, type SiteEntrance } from 
 export type { SiteEntrance } from './siteEntrance.js';
 import {
   siteExtent,
-  siteStanding,
   siteVerdict,
   type OsmSignal,
   type SiteFacts,
   type SiteRefusalGroup,
+  type SiteVerdict,
 } from './siteTest.js';
 import { OSM_KEEP_WKT, SITE_ROOT, type ArchaeologyTrees } from './classes.js';
 import type { KeepWkt, OsmObject, OsmReaderName } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
-import { lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncContract.js';
-import { fewWitnessesReason, placeDoorNote, type OpenedWork, type PlaceDoor, type ReadershipDoor, type UnderFloorReader } from '../readershipDoor.js';
-import { isVisited, type Witness } from '../visit/witnesses.js';
-import type { VisitWitnessReader } from '../visit/visitWitnesses.js';
-import { collectUnderFloor } from './underFloor.js';
+import { inPool, namesRefusal, openWorldTier, type WorldOptions, type WorldTier } from '../places/worldTier.js';
+import type { WorldCandidate } from '../places/worldBars.js';
+
+const LOG_PREFIX = '[Archaeology Sync]';
 
 const FACT_BATCH = 50;
 
@@ -65,9 +63,6 @@ export type OsmReader = (
   keep: KeepWkt,
   run: Pick<QueryRunner, 'phase' | 'step'>,
 ) => Promise<Map<string, OsmObject[]>>;
-
-/** A row the readership door alone admits: the door, what it read, and the witnesses it has (ADR-0128). */
-interface OpenedFor { door: ReadershipDoor; read: OpenedWork; witnesses: Witness[] }
 
 /**
  * When and through which door the object a verdict was read from was read:
@@ -104,7 +99,7 @@ export function extentProvenanceOf(
   return { extentDoor: source.door, extentReadAt: source.asOf };
 }
 
-/** A site the rule admitted and the line let in, with what the run learned about it. */
+/** A site the rule admitted and the frame let in, with what the run learned about it. */
 export interface SiteCandidate {
   entity: PoolEntity;
   /** Every `P31` it carries, as the catalogue stores them. */
@@ -122,8 +117,10 @@ export interface SiteCandidate {
   /** The extent's WKT in EPSG:4326, or null where OSM gave none. */
   extentWkt: string | null;
   /**
-   * What the card says of a row the tree did not vouch for — which signal
-   * carried it in (#895). Absent on a row admitted by class.
+   * What the card says: which signal carried in a row the tree did not vouch
+   * for (#895), and the frame's note where it asks one — a guide's mark, a
+   * held place kept while a bar could not be read, or where the regional tier
+   * measured it. Absent where none speaks.
    */
   note?: string;
 }
@@ -145,15 +142,35 @@ export interface SitesByFame {
   filtered: SiteRefusal[];
   /** Every entity this door named, which is what the panel counts as *fetched*. */
   fetched: Set<string>;
+  /**
+   * What the door read of every candidate it judged: the facts and the map,
+   * which the regional tier reads again of a survivor the pool already holds
+   * rather than asking twice (`regionalSites.ts`).
+   */
+  read: SiteReading;
 }
+
+/** What the door read of the candidates it judged, by item. */
+export interface SiteReading {
+  /** The rule's verdict on each candidate it judged, with the objects it read it off. */
+  judged: ReadonlyMap<string, JudgedSite>;
+  /** Each candidate's label, for a sentence that names a place by more than its item. */
+  labels: ReadonlyMap<string, string>;
+  /** When the map was read, for a site whose objects name no source of their own. */
+  readAt: string;
+}
+
+/** The rule's verdict on one candidate, and the objects it was read off. */
+export interface JudgedSite { verdict: SiteVerdict; objects: OsmObject[] }
 
 /**
  * Archaeology's sites as the place gather reads them (`places/gather.ts`,
  * #1820): the kind's class trees, and the classes whose instances are its
  * candidates — the root in fame bands and the rest of the site tree whole,
- * which is worship's shape and not the museums': 1,960 candidates carry a
- * coordinate at 15 sitelinks (measured 2026-09-14) against the museums' 87,
- * and `archaeological site` alone is most of them.
+ * which is worship's shape and not the museums'. Every class is asked again at
+ * the frame's floor of three sitelinks (`admissionPool`, ADR-0176): the pool
+ * the world bars are quantiles of, 12,603 sites the rule passes with a point
+ * on 2026-11-02 (ADR-0179).
  *
  * The narrow classes are what carry the canon. Troy is `city-state, polis,
  * Bronze Age settlement, settlement site` and Athens is `big city, largest
@@ -168,6 +185,7 @@ export const ARCHAEOLOGY_SITE_KIND: PlaceKind<ArchaeologyTrees> = {
   trees: fetchArchaeologyTrees,
   poolClasses: (trees) => ({ broad: [SITE_POOL_ROOT], narrow: [...trees.site].filter((cls) => cls !== SITE_ROOT) }),
   readsContainers: false,
+  admissionPool: true,
 };
 
 /**
@@ -218,21 +236,17 @@ async function collectPool(
  * name whose facts come back with no class at all: the pool is cached for a
  * day and the facts for twelve hours, and an item merged into another, deleted
  * or with its one site statement deprecated in between (Side's is deprecated)
- * answers `wdt:P31` with nothing. Both are refused by name here, before the
- * map is asked about them, and silently `out` where the line already put them
- * out. A whole batch answering nothing is a different thing — `collectFacts`
- * fails the run on it — so one merged item never stops the run.
+ * answers `wdt:P31` with nothing. Both are refused before the map is asked
+ * about them, by name where the frame names a refusal (`namesRefusal`). A
+ * whole batch answering nothing is a different thing — `collectFacts` fails
+ * the run on it — so one merged item never stops the run.
  */
-function refuseRetyped(
+function retypedOf(
   candidates: PoolEntity[],
   facts: ReadonlyMap<string, SiteFactsRow>,
   trees: ArchaeologyTrees,
-  admitted: ReadonlySet<string>,
-  line: SourceLine,
   named: ReadonlyMap<string, OsmObject[]>,
-  readOpened: ReadonlySet<string>,
-): { retyped: Set<string>; filtered: SiteRefusal[] } {
-  const filtered: SiteRefusal[] = [];
+): Set<string> {
   const retyped = new Set<string>();
   for (const entity of candidates) {
     const classes = facts.get(entity.qid)?.classes ?? [];
@@ -241,26 +255,19 @@ function refuseRetyped(
     // classes as what can contradict it (#895) — whichever question named it
     // first: a class-pool row whose one site statement was deprecated since
     // the pool was read, and whose excavation the map still tags, is the
-    // second entrance's to judge, and the sentence below would be false of it.
+    // second entrance's to judge, and the refusal below would be false of it.
     if ((named.get(entity.qid)?.length ?? 0) > 0) continue;
     retyped.add(entity.qid);
-    // `out` is the long tail the source never admitted and the line never let
-    // in — no rule ran on it, so no refusal names it (`sourceLine.ts`). Only an
-    // unadmitted row can be out; an admitted one is `in` or `fell`, both named.
-    if (siteStanding(entity.qid, entity.sitelinks, admitted, line, readOpened) === 'out') continue;
-    filtered.push({
-      externalId: entity.qid,
-      name: entity.label,
-      // True of both shapes an admitted row can arrive in here: one the
-      // classes once vouched for and Wikidata has retyped, and one the map
-      // once named and no longer does (#895) — a row the map still names
-      // never reaches this line.
-      reason: 'no class under archaeological sites on Wikidata, and no OpenStreetMap object tagged as a dig carries it',
-      group: 'class-or-name',
-    });
   }
-  return { retyped, filtered };
+  return retyped;
 }
+
+/**
+ * True of both shapes a retyped row can arrive in: one the classes once
+ * vouched for and Wikidata has retyped, and one the map once named and no
+ * longer does (#895) — a row the map still names never reaches it.
+ */
+export const RETYPED_REASON = 'no class under archaeological sites on Wikidata, and no OpenStreetMap object tagged as a dig carries it';
 
 /**
  * What each candidate is, in batches of fifty: the classes and the two disputed
@@ -277,7 +284,7 @@ function refuseRetyped(
  * branch and admit it at step 4 — or, on the entrance's rows, let a comune or
  * a business in on the map's note with nothing left to veto it. The run fails
  * by name instead. One silent row in an otherwise answered batch is an item
- * Wikidata changed between the two reads, and `refuseRetyped` names it — and
+ * Wikidata changed between the two reads, and `retypedOf` refuses it — and
  * so is the one row of a batch that holds only one: silence on a single row is
  * evidence of nothing, and a tail batch of one (a pool size ending in 1) would
  * otherwise turn one merged item into a run that fails until the day-old pool
@@ -285,7 +292,7 @@ function refuseRetyped(
  * batch looks like.
  */
 const SILENT_BATCH_FLOOR = 2;
-async function collectFacts(
+export async function collectFacts(
   run: QueryRunner,
   qids: string[],
   vouched: (qid: string) => boolean,
@@ -331,12 +338,11 @@ function siteFactsOf(entity: PoolEntity, row: SiteFactsRow): SiteFacts {
     classes: row.classes,
     worldHeritage: row.worldHeritage,
     statesPopulation: row.statesPopulation,
-    sitelinks: entity.sitelinks,
   };
 }
 
 /** Where a candidate stands, or why it cannot be a pin at all. */
-function placementOf(entity: PoolEntity): { lat: number; lon: number } | { reason: string } {
+export function placementOf(entity: PoolEntity): { lat: number; lon: number } | { reason: string } {
   if (!entity.onEarth) {
     return { reason: 'not on Earth: its coordinate (P625) is on another globe' };
   }
@@ -346,7 +352,7 @@ function placementOf(entity: PoolEntity): { lat: number; lon: number } | { reaso
   return { lat: entity.lat, lon: entity.lon };
 }
 
-const emptyFacts = (): SiteFactsRow => ({
+export const emptyFacts = (): SiteFactsRow => ({
   classes: [], worldHeritage: false, statesPopulation: false,
 });
 
@@ -354,8 +360,8 @@ const emptyFacts = (): SiteFactsRow => ({
  * How much of what the mirror was asked about it has to answer for before its
  * answers are read as facts (ADR-0044's shape, for the same reason).
  *
- * The measurement of 2026-09-14: 885 of the 1,126 world-tier candidates carry
- * at least one OSM object, which is 79%. The floor is half that share rather
+ * The measurement of 2026-09-14: 885 of the 1,126 candidates at the line of
+ * the day carry at least one OSM object, which is 79%. The floor is half that share rather
  * than just under it, because the number it exists to catch is *zero* — a
  * renamed `osmkey:` IRI, a rebuilt dataset, the mirror moving host again, any
  * of which answers HTTP 200 with no bindings at all — and a floor set beside
@@ -386,162 +392,130 @@ export class OsmAnswerFloorError extends OsmEmptyAnswerError {
 }
 
 /**
- * One candidate through the rule: the row the run would write, the refusal a
- * curator reads, or nothing — `out` is the long tail nobody has heard of, and
- * no rule is reported on it, for the reason `sourceLine.ts` states for every
- * kind.
+ * The objects the rule reads of a candidate: what the map carries under the
+ * item — and, where the map's word is what the rule reads, what named it. The
+ * per-item read asks by the `wikidata` tag and never sees the object that
+ * carried only an article, so the enumeration's objects are merged in by ref.
+ * The map's word is read for a row with no class under the tree, whichever
+ * question named it first (`retypedOf` and `categoryVotes` draw the same
+ * line): a row the map alone vouched for, and a pool row whose site class has
+ * since gone. A row that carries a site class is judged as ADR-0058 decision 4
+ * judges it, on the objects that carry its item: a ruin node in the Agora
+ * whose `wikipedia` tag names Athens would otherwise be the first ruin tag
+ * step 2 finds and the city a dig, past the vetoes that exist for that
+ * mapping.
  */
-function judgeCandidate(
-  entity: PoolEntity,
-  input: {
-    facts: SiteFactsRow;
-    objects: OsmObject[];
-    namedByCategory: boolean;
-    /** Whether only the map named it (`byOsm`), and no class question did. */
-    osmOnly: boolean;
-    trees: ArchaeologyTrees;
-    admitted: ReadonlySet<string>;
-    line: SourceLine;
-    readAt: string;
-    /** The door that opened for this row below the line, what it read (ADR-0127) and its witnesses (ADR-0128). */
-    door?: OpenedFor | undefined;
-  },
-): SiteCandidate | SiteRefusal | null {
-  const { objects, trees, admitted, line, readAt } = input;
-  const verdict = siteVerdict({
-    facts: {
-      ...siteFactsOf(entity, input.facts),
-      ...(input.namedByCategory ? { namedByCategory: true } : {}),
-    },
-    objects, trees, admitted, line,
-    ...(input.door ? { readOpened: new Set([entity.qid]) } : {}),
+function objectsOf(
+  qid: string, row: SiteFactsRow, trees: ArchaeologyTrees, byOsm: ReadonlySet<string>,
+  objects: ReadonlyMap<string, OsmObject[]>, named: ReadonlyMap<string, OsmObject[]>,
+): OsmObject[] {
+  const mapsWord = byOsm.has(qid) || !row.classes.some((cls) => trees.site.has(cls));
+  return mapsWord ? withNamed(objects.get(qid) ?? [], named.get(qid) ?? []) : objects.get(qid) ?? [];
+}
+
+/** The rule's verdict on one candidate, read off its facts and the objects that carry it. */
+export function judgeSite(
+  entity: PoolEntity, row: SiteFactsRow, objects: OsmObject[], trees: ArchaeologyTrees, namedByCategory = false,
+): SiteVerdict {
+  return siteVerdict({
+    facts: { ...siteFactsOf(entity, row), ...(namedByCategory ? { namedByCategory: true } : {}) },
+    objects,
+    trees,
   });
-  if (!verdict.pass) {
-    if ('out' in verdict) return null;
-    return { externalId: entity.qid, name: entity.label, reason: verdict.reason, group: verdict.group };
-  }
-  const at = placementOf(entity);
-  if ('reason' in at) {
-    // A row only the map named that has no coordinate claimed no place — a
-    // mapper's tag naming a person, a class, an event — and is out, never
-    // refused: dry run 136 named 43 such rows, "tumulus" and "Nikola Tesla"
-    // among them. An admitted row that lost its coordinate is still named.
-    if (input.osmOnly && !admitted.has(entity.qid)) return null;
-    return { externalId: entity.qid, name: entity.label, reason: at.reason, group: 'placeless' };
-  }
+}
+
+/** The row the run would write of a candidate the rule passed, with the card's note. */
+export function siteCandidateOf(
+  entity: PoolEntity,
+  verdict: Extract<SiteVerdict, { pass: true }>,
+  input: { classes: string[]; objects: OsmObject[]; readAt: string; note?: string },
+): SiteCandidate {
+  const { objects, readAt } = input;
   const extent = siteExtent(objects);
-  // Both questions where both apply: what carried a row the tree did not vouch
-  // for in, and that it came in on its reading rather than its sitelinks.
-  const note = [verdict.note, input.door && placeDoorNote(input.door.read, input.door.door, input.door.witnesses)]
-    .filter(Boolean).join(' ');
+  const note = [verdict.note, input.note].filter(Boolean).join(' ');
   return {
     entity,
-    classes: input.facts.classes,
+    classes: input.classes,
     osm: { ...verdict.osm, ...provenanceOf(objects, verdict.osm.object, readAt), ...extentProvenanceOf(objects, verdict.osm, readAt) },
     extentWkt: extent ? extent.wkt : null,
     ...(note ? { note } : {}),
   };
 }
 
-/**
- * The readership door over the site pool (ADR-0127), or null where none is
- * open. The bar is read over the sites the source holds at the line — not over
- * every candidate at it, where Athens and Istanbul would set it — so the door
- * is handed the held rows at the line and every row below it.
- */
-async function openSiteDoor(
-  openDoor: PlaceDoor | undefined,
-  candidates: readonly PoolEntity[],
-  admitted: ReadonlySet<string>,
-  line: SourceLine,
-): Promise<ReadershipDoor | null> {
-  if (!openDoor) return null;
-  return openDoor(
-    candidates
-      .filter((entity) => entity.sitelinks < line.enterSitelinks || admitted.has(entity.qid))
-      .map((entity) => ({ qid: entity.qid, sitelinks: entity.sitelinks })),
-    admitted,
-  );
-}
+const candidateOf = (entity: PoolEntity): WorldCandidate => ({ qid: entity.qid, editions: entity.sitelinks });
 
 /**
- * The witnesses of the rows the readership door alone admits and the rule
- * would admit (ADR-0128), and the ones refused for having fewer than two. A
- * row the rule refuses on its own (a living town, no ruin on the map) is
- * refused for that, and costs no question. With no reader, as in a test that
- * asks no witnesses, every door row keeps its standing with none named.
+ * Where one candidate the rule judged ends: the row the run would write, the
+ * refusal a curator reads, or nothing. A refusal is named where the frame
+ * names one (`namesRefusal`): a row the source holds, one the shared pool named
+ * at its floor, or one a bar would admit. The rest is the long tail of the
+ * pool, and naming a living village there would bury the refusals a curator
+ * has to read — Athens, Cairo, Rhodes, Sabratha.
  */
-async function witnessTheDoor(
-  read: VisitWitnessReader | undefined,
-  rows: readonly PoolEntity[],
-  doorAlone: (entity: PoolEntity) => { door: ReadershipDoor; read: OpenedWork } | undefined,
-  objects: ReadonlyMap<string, readonly OsmObject[]>,
-): Promise<{ of: Map<string, Witness[]>; out: Set<string>; refused: SiteRefusal[] }> {
-  const of = read && rows.length > 0 ? await read(rows, objects) : new Map<string, Witness[]>();
-  const out = new Set<string>();
-  const refused: SiteRefusal[] = [];
-  if (!read) return { of, out, refused };
-  for (const entity of rows) {
-    const witnesses = of.get(entity.qid) ?? [];
-    if (isVisited(witnesses)) continue;
-    const { door, read: reading } = doorAlone(entity)!;
-    out.add(entity.qid);
-    refused.push({ externalId: entity.qid, name: entity.label, reason: fewWitnessesReason(reading, door, witnesses), group: 'few-witnesses' });
+function settle(
+  entity: PoolEntity,
+  verdict: SiteVerdict,
+  input: { held: boolean; osmOnly: boolean; tier: WorldTier; classes: string[]; objects: OsmObject[]; readAt: string },
+): SiteCandidate | SiteRefusal | null {
+  const { held, tier } = input;
+  const c = candidateOf(entity);
+  const refusal = (reason: string, group: SiteRefusalGroup): SiteRefusal | null =>
+    (namesRefusal(c, held, tier) ? { externalId: entity.qid, name: entity.label, reason, group } : null);
+  if (!verdict.pass) return 'out' in verdict ? null : refusal(verdict.reason, verdict.group);
+  const at = placementOf(entity);
+  if ('reason' in at) {
+    // A row only the map named that has no coordinate claimed no place — a
+    // mapper's tag naming a person, a class, an event — and is out, never
+    // refused: dry run 136 named 43 such rows, "tumulus" and "Nikola Tesla"
+    // among them. A held row that lost its coordinate is still named.
+    if (input.osmOnly && !held) return null;
+    return refusal(at.reason, 'placeless');
   }
-  return { of, out, refused };
+  const stands = tier.standing(c, held);
+  if (stands === 'out') return null;
+  if ('fell' in stands) return { externalId: entity.qid, name: entity.label, reason: stands.fell, group: 'under-the-bars' };
+  return siteCandidateOf(entity, verdict, { ...input, note: tier.noteOf(c, stands) });
+}
+
+/** The refusal of a retyped row (`retypedOf`), where the frame names one. */
+function retypedRefusal(entity: PoolEntity, held: boolean, tier: WorldTier): SiteRefusal | null {
+  return namesRefusal(candidateOf(entity), held, tier)
+    ? { externalId: entity.qid, name: entity.label, reason: RETYPED_REASON, group: 'class-or-name' }
+    : null;
 }
 
 /**
- * Take the door rows the witnesses refused out of the sites, and judge the
- * others again so each card names its witnesses.
- */
-function keepWitnessed(
-  sites: Map<string, SiteCandidate>,
-  doorRows: readonly PoolEntity[],
-  witnessed: { of: ReadonlyMap<string, Witness[]>; out: ReadonlySet<string> },
-  judgeAgain: (entity: PoolEntity) => SiteCandidate | SiteRefusal | null,
-): void {
-  for (const entity of doorRows) {
-    if (witnessed.out.has(entity.qid)) {
-      sites.delete(entity.qid);
-      continue;
-    }
-    if (witnessed.of.size === 0) continue;
-    const again = judgeAgain(entity);
-    if (again && !('group' in again)) sites.set(entity.qid, again);
-  }
-}
-
-/**
- * The sites this run would admit, and every candidate the rule refused with the
- * reason it gave.
+ * The sites this run admits to the world tier, and every candidate the rule
+ * or the bars refused that is worth naming, with the reason.
  *
- * Candidates are judged most famous first, which is the order the refusals are
- * reported in.
+ * The rule runs over every candidate first, since the world bars are
+ * quantiles of the sites it passes (ADR-0175, ADR-0179): every item of the
+ * site classes with a point and at least three sitelinks that a class question
+ * of the kind named (`inPool`). A row only the map named, or only asked for by
+ * id, is decided by the bars but does not set them (ADR-0176 decision 3).
+ * Candidates are judged most famous first, which is the order the refusals
+ * are reported in.
  *
- * `admitted` is what the source holds as **sites**, not as museums. One source
- * fills both doors, and the museums are the other door's to ask after: asked
- * for by id here, a museum the museum door had stopped admitting — folded,
- * vetoed, no longer a museum to Wikipedia — would carry no kill class, no OSM
- * signal and no settlement class, reach the final admit of step 4 on its own
- * fame, and be written as a site.
+ * `admitted` is what the source's world tier holds as **sites**, not as
+ * museums. One source fills both doors, and the museums are the other door's
+ * to ask after: asked for by id here, a museum the museum door had stopped
+ * admitting — folded, vetoed, no longer a museum to Wikipedia — would carry no
+ * kill class, no OSM signal and no settlement class, reach the final admit of
+ * step 4, and be written as a site. A row the regional tier holds is that
+ * tier's (`regionalSites.ts`). `world` hands a run the source's history, for
+ * what it cannot read (ADR-0175 decision 6), and a test the world's signals
+ * and the bars where it is not about the pool (`WorldOptions`).
  */
 export async function collectSitesByFame(
   run: QueryRunner,
   share: KindShare<ArchaeologyTrees>,
   admitted: ReadonlySet<string>,
-  line: SourceLine,
   osm: OsmReader,
   entrance: SiteEntrance,
-  openDoor?: PlaceDoor,
-  witnesses?: VisitWitnessReader,
-  underFloor?: UnderFloorReader,
+  world?: WorldOptions,
 ): Promise<SitesByFame> {
   const { trees } = share;
   const { pool, byId, byOsm, named, byArticleOnly } = await collectPool(run, share, admitted, entrance);
-  // The sites under the floor the world reads (ADR-0152), as rows a class
-  // question named: each carries a site class, and the rule reads it unchanged.
-  for (const entity of await collectUnderFloor(run, underFloor, pool, trees, admitted, line)) pool.set(entity.qid, entity);
   const qids = [...pool.keys()];
   // Vouched for by a class question or by the map: a row asked for by id
   // vouches for nothing but the id. A row the map named carries no class
@@ -551,109 +525,73 @@ export async function collectSitesByFame(
   // the same quiet failure, with a comune walking in on the map's note.
   const facts = await collectFacts(run, qids, (qid) => !byId.has(qid));
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
+  const retyped = retypedOf(candidates, facts, trees, named);
 
-  // The readership door, before anything asks where a row stands.
-  const door = await openSiteDoor(openDoor, candidates, admitted, line);
-  const readOpened: ReadonlySet<string> = new Set(door?.opened.keys() ?? []);
-  // The door's question goes only on a row the door alone lets in: a held
-  // site of 18 to 21 sitelinks is kept by the line's own stay, whatever it reads.
-  const doorAlone = (entity: PoolEntity) => {
-    const read = door?.opened.get(entity.qid);
-    const lineKeeps = lineStanding(entity.sitelinks, admitted.has(entity.qid), line) === 'in';
-    return door && read && !lineKeeps ? { door, read } : undefined;
-  };
-
-  const { retyped, filtered } = refuseRetyped(candidates, facts, trees, admitted, line, named, readOpened);
-
-  // **Only the candidates the line would let speak.** `siteVerdict` answers
-  // `out` for every row below the line that the source does not already admit,
-  // whatever the map says about it — so asking the mirror about them buys
-  // nothing and spends somebody else's bandwidth on it. 830 of this pool's
-  // rows sit between 15 and 21 sitelinks: at the measured pool that is a third
-  // of the questions, and the register record's promise is that this connector
-  // is not a heavy user.
-  const asked = candidates
-    .filter((entity) => !retyped.has(entity.qid))
-    .filter((entity) => siteStanding(entity.qid, entity.sitelinks, admitted, line, readOpened) !== 'out')
-    .map((entity) => entity.qid);
-
-  // One read, here: after the pool is known and before a single verdict. The
-  // run's time is what a site's row stores where its objects name no source of
-  // their own (a live door's read, asked once); the layer's door stamps each
-  // object with its door and time (`provenanceOf`, ADR-0059 decision 2).
+  // One read, here: after the pool is known and before a single verdict, of
+  // every candidate the rule can judge, since the bars are read over what it
+  // passes. The run's time is what a site's row stores where its objects name
+  // no source of their own (a live door's read, asked once); the layer's door
+  // stamps each object with its door and time (`provenanceOf`, ADR-0059
+  // decision 2).
+  const asked = candidates.filter((entity) => !retyped.has(entity.qid)).map((entity) => entity.qid);
   const objects = await osm(asked, OSM_KEEP_WKT, run);
   const readAt = new Date().toISOString();
   // After the read, since a place used today is said so by its objects (#1352).
-  const namedByCategory = await categoryVotes(
-    run, candidates, facts, trees, named, line, admitted, entrance, objects, readOpened,
-  );
+  const namedByCategory = await categoryVotes(run, candidates, facts, trees, named, entrance, objects);
 
   // **And an empty answer is not a fact.** A mirror that answers 200 with no
   // bindings says "no OSM object carries this item" about every candidate at
-  // once, which is exactly the sentence that refuses the settlement branch —
-  // some 261 rows the ruin signal admits — and the sweep would then withdraw
-  // them. So the share that came back with an object is counted before any
-  // verdict is taken, and a run below the floor fails with its own name on it.
-  // Measured on the rows the read can be expected to answer about. An item
-  // under `byItem` carries the `wikidata` tag on a dig, so the read answers
-  // about it or is silent for the reason the floor exists. An item the
-  // enumeration reached through an article alone may carry the tag on some
-  // other object or on none — Nemrut's peak node carries the item while its
-  // tumulus carries the article — so its silence is evidence neither way,
-  // and it is counted on neither side (#895).
+  // once, which is exactly the sentence that refuses the settlement branch,
+  // and the sweep would then withdraw the sites the ruin signal admits. So the
+  // share that came back with an object is counted before any verdict is
+  // taken, and a run below the floor fails with its own name on it. Measured
+  // on the rows the read can be expected to answer about. An item under
+  // `byItem` carries the `wikidata` tag on a dig, so the read answers about it
+  // or is silent for the reason the floor exists. An item the enumeration
+  // reached through an article alone may carry the tag on some other object
+  // or on none — Nemrut's peak node carries the item while its tumulus
+  // carries the article — so its silence is evidence neither way, and it is
+  // counted on neither side (#895).
   const measured = asked.filter((qid) => !byArticleOnly.has(qid));
   const answered = measured.filter((qid) => (objects.get(qid)?.length ?? 0) > 0).length;
   if (measured.length > 0 && answered / measured.length < OSM_ANSWER_FLOOR) {
     throw new OsmAnswerFloorError(measured.length, answered);
   }
 
-  const sites = new Map<string, SiteCandidate>();
-  const judge = (entity: PoolEntity, witnessesOf: ReadonlyMap<string, Witness[]>) => {
-    const row = facts.get(entity.qid) ?? emptyFacts();
-    // What the map carries under the item — and, where the map's word is what
-    // the rule reads, what named it: the per-item read asks by the `wikidata`
-    // tag and never sees the object that carried only an article, so the
-    // enumeration's objects are merged in by ref. The map's word is read for
-    // a row with no class under the tree, whichever question named it first
-    // (`refuseRetyped` and `categoryVotes` draw the same line): a row the map
-    // alone vouched for, and a pool row whose site class has since gone —
-    // dropped in silence otherwise, since the read never saw its node. A row
-    // that carries a site class is judged as ADR-0058 decision 4 judges it, on
-    // the objects that carry its item: a ruin node in the Agora whose
-    // `wikipedia` tag names Athens would otherwise be the first ruin tag step
-    // 2 finds and the city a dig, past the vetoes that exist for that mapping.
-    const mapsWord = byOsm.has(entity.qid) || !row.classes.some((cls) => trees.site.has(cls));
-    return judgeCandidate(entity, {
-      facts: row,
-      objects: mapsWord
-        ? withNamed(objects.get(entity.qid) ?? [], named.get(entity.qid) ?? [])
-        : objects.get(entity.qid) ?? [],
-      namedByCategory: namedByCategory.has(entity.qid),
-      osmOnly: byOsm.has(entity.qid),
-      trees, admitted, line, readAt,
-      door: openedFor(entity, witnessesOf),
-    });
-  };
-  const openedFor = (entity: PoolEntity, witnessesOf: ReadonlyMap<string, Witness[]>): OpenedFor | undefined => {
-    const alone = doorAlone(entity);
-    return alone ? { ...alone, witnesses: witnessesOf.get(entity.qid) ?? [] } : undefined;
-  };
+  const verdicts = new Map<string, JudgedSite>();
   for (const entity of candidates) {
     if (retyped.has(entity.qid)) continue;
-    const judged = judge(entity, new Map());
-    if (judged === null) continue;
-    if ('group' in judged) filtered.push(judged);
-    else sites.set(entity.qid, judged);
+    const row = facts.get(entity.qid) ?? emptyFacts();
+    const read = objectsOf(entity.qid, row, trees, byOsm, objects, named);
+    verdicts.set(entity.qid, { verdict: judgeSite(entity, row, read, trees, namedByCategory.has(entity.qid)), objects: read });
   }
+  const tier = await openWorldTier({
+    pool: candidates.filter((entity) => verdicts.get(entity.qid)?.verdict.pass && inPool(share, entity.qid, entity)).map(candidateOf),
+    qids: candidates.map((entity) => entity.qid),
+    poolRead: share.admissionPool !== null,
+    sparql: run.sparql,
+    logPrefix: LOG_PREFIX,
+    ...world,
+  });
 
-  // The door's rows the rule admits need two witnesses (ADR-0128).
-  const doorRows = candidates.filter((entity) => sites.has(entity.qid) && doorAlone(entity));
-  const witnessed = await witnessTheDoor(witnesses, doorRows, doorAlone, objects);
-  filtered.push(...witnessed.refused);
-  keepWitnessed(sites, doorRows, witnessed, (entity) => judge(entity, witnessed.of));
+  const sites = new Map<string, SiteCandidate>();
+  const filtered: SiteRefusal[] = [];
+  for (const entity of candidates) {
+    const held = admitted.has(entity.qid);
+    const judged = verdicts.get(entity.qid);
+    const settled = judged
+      ? settle(entity, judged.verdict, {
+        held, osmOnly: byOsm.has(entity.qid), tier, classes: facts.get(entity.qid)?.classes ?? [], objects: judged.objects, readAt,
+      })
+      : retypedRefusal(entity, held, tier);
+    if (settled === null) continue;
+    if ('group' in settled) filtered.push(settled);
+    else sites.set(entity.qid, settled);
+  }
 
   // What the run admitted is said once, by `reportProposal`, where the museums
   // are counted too: two lines with the same number in them is one line a
   // reader has to reconcile with the other.
-  return { sites, filtered, fetched: new Set(qids) };
+  const labels = new Map(candidates.map((entity) => [entity.qid, entity.label]));
+  return { sites, filtered, fetched: new Set(qids), read: { judged: verdicts, labels, readAt } };
 }

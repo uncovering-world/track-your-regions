@@ -54,14 +54,17 @@ export interface CollectedArchaeologySite {
   /** The extent's WKT in EPSG:4326, or null where OSM gave none. */
   extentWkt: string | null;
   /**
-   * What the card says of a row the tree did not vouch for — which signal
-   * carried it in (#895); the museum row's key, read by the card already.
+   * What the card says: which signal carried in a row the tree did not vouch
+   * for (#895), and the frame's note — a guide's mark, or where the regional
+   * tier measured it; the museum row's key, read by the card already.
    */
   admissionNote?: string;
+  /** The tier that admitted it, where it is not the world's (ADR-0171, ADR-0179). */
+  tier?: 'regional';
 }
 
 /** A candidate the site door admitted, as the run will write it. */
-function siteItemOf(qid: string, site: SiteCandidate): CollectedArchaeologySite {
+export function siteItemOf(qid: string, site: SiteCandidate, tier?: 'regional'): CollectedArchaeologySite {
   const { entity } = site;
   return {
     qid,
@@ -82,6 +85,7 @@ function siteItemOf(qid: string, site: SiteCandidate): CollectedArchaeologySite 
     osm: site.osm,
     extentWkt: site.extentWkt,
     ...(site.note ? { admissionNote: site.note } : {}),
+    ...(tier ? { tier } : {}),
   };
 }
 
@@ -114,6 +118,8 @@ function siteItemOf(qid: string, site: SiteCandidate): CollectedArchaeologySite 
 export function uniteDoors<M extends { qid: string }, R extends FilteredEntity>(doors: {
   museums: M[];
   sites: Map<string, SiteCandidate>;
+  /** The sites the regional tier admits (`regionalSites.ts`), written as the world's are, with their tier. */
+  regionalSites?: ReadonlyMap<string, SiteCandidate>;
   /** The museum door's refusals, the fold lines first. */
   museumRefusals: FilteredEntity[];
   /** The site door's own, most famous first. */
@@ -140,6 +146,9 @@ export function uniteDoors<M extends { qid: string }, R extends FilteredEntity>(
     }
     siteItems.push(siteItemOf(qid, site));
   }
+  for (const [qid, site] of doors.regionalSites ?? []) {
+    if (!admitted.has(qid)) siteItems.push(siteItemOf(qid, site, 'regional'));
+  }
 
   const items = [...doors.museums, ...siteItems];
   const written = new Set(items.map((item) => item.qid));
@@ -153,7 +162,11 @@ export function uniteDoors<M extends { qid: string }, R extends FilteredEntity>(
     items,
     siteItems,
     filtered: [...filtered.values()],
-    siteRefusals: doors.siteRefusals.filter((entry) => !written.has(entry.externalId)),
+    // One line per site, the first door's, as `filtered`: a site the
+    // surroundings tier held can be refused by both the world rule and the cut.
+    siteRefusals: [...new Map(doors.siteRefusals
+      .filter((entry) => !written.has(entry.externalId))
+      .reverse().map((entry) => [entry.externalId, entry] as const)).values()].reverse(),
   };
 }
 
@@ -163,14 +176,14 @@ export function uniteDoors<M extends { qid: string }, R extends FilteredEntity>(
  * The rule's own order — what the item is not is asked after the map, but a
  * reader of the line wants the two the door turns away most often first: the
  * living places and the cities with no ruin on the map (run 122: 76 and 55
- * against 66 by class or by name), then the class-or-name group, then the three
- * the pool itself can add: a row that fell below the line, a row the readership
- * door opened for that fewer than two witnesses say a visitor goes to, and a row
- * with no coordinate to pin. A group with nothing in it is not printed: a run says what
- * it did, not what it might have done.
+ * against 66 by class or by name), then the class-or-name group, then the
+ * three the frame and the pool add: a held site under every stay bar of the
+ * world tier, a site the regional tier refuses, and a row with no coordinate
+ * to pin. A group with nothing in it is not printed: a run says what it did,
+ * not what it might have done.
  */
 const GROUP_ORDER: readonly SiteRefusalGroup[] = [
-  'living', 'no-ruin', 'class-or-name', 'below-the-line', 'few-witnesses', 'placeless',
+  'living', 'no-ruin', 'class-or-name', 'under-the-bars', 'regional', 'placeless',
 ];
 
 /** What the count on the summary line is a count *of*. */
@@ -178,8 +191,8 @@ const GROUP_PHRASES: Record<SiteRefusalGroup, string> = {
   living: 'living places',
   'no-ruin': 'with no ruin on the map',
   'class-or-name': 'by class or by name',
-  'below-the-line': 'below the line',
-  'few-witnesses': 'opened by the readership door with fewer than two visit witnesses',
+  'under-the-bars': 'under the world tier\'s bars',
+  regional: 'refused by the regional tier',
   placeless: 'with no coordinate to pin',
 };
 
@@ -188,8 +201,8 @@ const GROUP_HEADINGS: Record<SiteRefusalGroup, string> = {
   living: 'living places',
   'no-ruin': 'no ruin on the map',
   'class-or-name': 'by class or by name',
-  'below-the-line': 'below the line',
-  'few-witnesses': 'read, but fewer than two witnesses say a visitor goes there',
+  'under-the-bars': 'under the world tier\'s bars',
+  regional: 'the regional tier',
   placeless: 'no coordinate to pin',
 };
 
@@ -234,11 +247,13 @@ export function reportProposal(proposal: {
 }): void {
   const { museums, held, forFind, sites, refused, treasures, siteRefusals, venueSide } = proposal;
   const extents = sites.filter((item) => item.extentWkt).length;
+  const regional = sites.filter((item) => item.tier === 'regional').length;
   console.log(
     `${LOG_PREFIX} Admitted ${museums} museums `
     + `(${held.length} held for a curator, `
     + `${forFind.length} for a find they hold) `
-    + `and ${sites.length} sites (${extents} with an extent); `
+    + `and ${sites.length} sites (${sites.length - regional} in the world tier, ${regional} in the regional tier, `
+    + `${extents} with an extent); `
     + `${refused} refused, ${treasures} treasures to write`,
   );
   if (held.length) console.log(`${LOG_PREFIX} held: ${held.join(', ')}`);

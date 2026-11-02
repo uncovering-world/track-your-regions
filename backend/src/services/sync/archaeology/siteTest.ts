@@ -1,7 +1,8 @@
 /**
- * Whether an archaeological site belongs to the kind, and where it stands
- * against the fame line: ADR-0058 decision 4 as #581's PR 2 narrowed it, and
- * nothing else.
+ * Whether an archaeological site belongs to the kind: ADR-0058 decision 4 as
+ * #581's PR 2 narrowed it, and nothing else. Whether it is famous enough is
+ * the place kinds' frame's (ADR-0179, `places/worldTier.ts`), asked of every
+ * candidate this rule passes.
  *
  * **Wikidata cannot tell Troy from Athens.** Both are settlements in its tree —
  * Troy is `city-state, polis, Bronze Age settlement, settlement site` and
@@ -16,8 +17,7 @@
  * every fact is handed in, so the rule is pure and can be tried on the
  * catalogue's own mistakes without a network. The rules run in the order a
  * person would give the reason — what the item *is not*, then what the map
- * says, then what Wikidata says where the map says nothing, then whether the
- * world has heard of it.
+ * says, then what Wikidata says where the map says nothing.
  *
  * **Population is not the living-place rule** (ADR-0058 decision 4 stands). It
  * is the last word in one narrow dispute — OSM says town, Wikidata says site —
@@ -33,7 +33,6 @@ import {
   type ArchaeologyTrees,
 } from './classes.js';
 import { largestByArea, wktIsPolygonal, type OsmObject } from '../osm/types.js';
-import { belowLineReason, lineStanding, type LinePair, type LineStanding } from '../sourceLine.js';
 
 /** What the rule is told about one candidate. */
 export interface SiteFacts {
@@ -44,7 +43,6 @@ export interface SiteFacts {
   worldHeritage: boolean;
   /** Whether the item states a population (`P1082`) — any number, 0 included. */
   statesPopulation: boolean;
-  sitelinks: number;
   /**
    * Whether English Wikipedia files the item's article under `Archaeological
    * sites in …` — the second vote a living place OpenStreetMap named gets
@@ -64,19 +62,20 @@ export interface SiteFacts {
  * a lake *and* says "with no ruin on the map", so a substring test filed it
  * under the map's answer when the class is what refused it.
  *
- * `placeless` and `few-witnesses` are the two values the rule itself never
- * returns: they are the pool's (`sites.ts`), for a candidate with no
- * coordinate to pin and for one the readership door alone admits that fewer
- * than two witnesses say a visitor goes to (ADR-0128). It is named here all
- * the same, because the report's groups are one vocabulary and a caller should
- * not have to invent a word for the one refusal it owns.
+ * `placeless`, `under-the-bars` and `regional` are the values the rule itself
+ * never returns: they are the pool's and the frame's (`sites.ts`,
+ * `regionalSites.ts`), for a candidate with no coordinate to pin, for a held
+ * site under every stay bar of the world tier, and for one the regional tier
+ * held or measured and now refuses (ADR-0179). They are named here all the
+ * same, because the report's groups are one vocabulary and a caller should not
+ * have to invent a word for the refusal it owns.
  */
 export type SiteRefusalGroup =
   | 'living'
   | 'no-ruin'
   | 'class-or-name'
-  | 'below-the-line'
-  | 'few-witnesses'
+  | 'under-the-bars'
+  | 'regional'
   | 'placeless';
 
 /**
@@ -103,6 +102,7 @@ export type SiteVerdict =
     note?: string;
   }
   | { pass: false; reason: string; group: SiteRefusalGroup }
+  /** A row only the map named that nothing on the map names any more: it claimed nothing, and no refusal names it. */
   | { pass: false; out: true };
 
 /**
@@ -234,7 +234,7 @@ export function siteExtent(objects: OsmObject[]): { ref: string; wkt: string } |
  * row that states a population is refused because people are counted there
  * (Athens 643,452, Asyut 562,061). A row that states none is refused because
  * nothing on the item says "dig" — Populonia, Baia, Tindari, Tus and Halki are
- * the five of those above the line, each a hamlet or a suburb on the map with
+ * five of those at 22 editions or more, each a hamlet or a suburb on the map with
  * an ancient city of the same name under it, and each a curator's to return.
  * Telling those five that "Wikidata counts its people" would put a fact in the
  * refusal that the rule never read.
@@ -334,38 +334,8 @@ function killed(facts: SiteFacts, signal: OsmSignal, trees: ArchaeologyTrees): s
   return null;
 }
 
-/**
- * Where a row stands against the line: as `lineStanding` decides it for every
- * kind, except that a row the readership door opened for stands in, as one at
- * the line does (ADR-0127). The door has already applied its own exit to the
- * rows the source holds, so an admitted row it let go falls back to the line.
- */
-export function siteStanding(
-  qid: string,
-  sitelinks: number,
-  admitted: ReadonlySet<string>,
-  line: LinePair,
-  readOpened?: ReadonlySet<string>,
-): LineStanding {
-  return readOpened?.has(qid) ? 'in' : lineStanding(sitelinks, admitted.has(qid), line);
-}
-
-/** The line, asked last, as `siteStanding` decides it. */
-function admit(
-  signal: OsmSignal,
-  objects: OsmObject[],
-  stands: LineStanding,
-  facts: SiteFacts,
-  line: LinePair,
-): SiteVerdict {
-  if (stands === 'out') return { pass: false, out: true };
-  if (stands === 'fell') {
-    return {
-      pass: false,
-      reason: belowLineReason(facts.sitelinks, line),
-      group: 'below-the-line',
-    };
-  }
+/** A site the rule admits, with the signal it was read off and the object its extent comes from. */
+function admit(signal: OsmSignal, objects: OsmObject[]): SiteVerdict {
   const extent = siteExtent(objects);
   return { pass: true, type: 'site', osm: { ...signal, extentFrom: extent ? extent.ref : null } };
 }
@@ -502,8 +472,6 @@ function osmNamedVerdict(
   facts: SiteFacts,
   objects: OsmObject[],
   trees: ArchaeologyTrees,
-  stands: LineStanding,
-  line: LinePair,
   refuse: (reason: string, group: SiteRefusalGroup) => SiteVerdict,
 ): SiteVerdict {
   const naming = osmNaming(objects);
@@ -533,7 +501,7 @@ function osmNamedVerdict(
   }
 
   const signal: OsmSignal = { verdict: 'ruin', object: naming.object.ref, tag: naming.tag };
-  const admitted = admit(signal, objects, stands, facts, line);
+  const admitted = admit(signal, objects);
   if (!admitted.pass) return admitted;
   const note = `no class of a site on Wikidata; OpenStreetMap maps ${mapped}`
     + (facts.namedByCategory ? '; English Wikipedia files it under its archaeological sites' : '');
@@ -541,30 +509,22 @@ function osmNamedVerdict(
 }
 
 /**
- * The whole verdict on one candidate: in, refused by name, or simply out.
+ * The whole verdict on one candidate: in, refused, or out.
  *
- * `out` is not a refusal, and the distinction is `sourceLine.ts`'s for every
- * kind: a refusal names a rule that ran on a row somebody has heard of, and a
- * row nobody has heard of that the source never admitted had none run on it.
- * 830 of this pool's rows sit between 15 and 21 sitelinks, and naming a living
- * village down there would bury the refusals a curator has to read — Athens,
- * Cairo, Rhodes, Sabratha — under the long tail. So the rule decides first and
- * the line decides whether the answer is *said*.
+ * Whether a refusal is *said* is not the rule's: the frame names the refusal
+ * of a row the kind holds or the world reads (`namesRefusal`), and leaves the
+ * long tail unnamed, so a living village with two articles does not bury the
+ * refusals a curator has to read — Athens, Cairo, Rhodes, Sabratha. `out` is
+ * only a row the map alone named that nothing on the map names any more.
  */
 export function siteVerdict(input: {
   facts: SiteFacts;
   objects: OsmObject[];
   trees: ArchaeologyTrees;
-  admitted: ReadonlySet<string>;
-  line: LinePair;
-  /** The rows below the line the readership door opened for (ADR-0127). */
-  readOpened?: ReadonlySet<string>;
 }): SiteVerdict {
-  const { facts, objects, trees, admitted, line } = input;
+  const { facts, objects, trees } = input;
   const signal = siteSignal(objects);
-  const stands = siteStanding(facts.qid, facts.sitelinks, admitted, line, input.readOpened);
-  const refuse = (reason: string, group: SiteRefusalGroup): SiteVerdict =>
-    (stands === 'out' ? { pass: false, out: true } : { pass: false, reason, group });
+  const refuse = (reason: string, group: SiteRefusalGroup): SiteVerdict => ({ pass: false, reason, group });
 
   // 1. What the item is not.
   const kill = killed(facts, signal, trees);
@@ -575,7 +535,7 @@ export function siteVerdict(input: {
   // as ruins — so the map's word stands in for the class, and Wikidata's
   // classes are read as what can contradict it.
   if (!facts.classes.some((cls) => trees.site.has(cls))) {
-    return osmNamedVerdict(facts, objects, trees, stands, line, refuse);
+    return osmNamedVerdict(facts, objects, trees, refuse);
   }
 
   // Which branch the item came in on is a question about the class tree — is
@@ -588,7 +548,7 @@ export function siteVerdict(input: {
   // 2. The map says a ruin stands here. Whatever branch the item came in on,
   //    and whatever Wikidata's classes call it.
   if (signal.verdict === 'ruin') {
-    return admit(signal, objects, stands, facts, line);
+    return admit(signal, objects);
   }
 
   // 3. The map says people live here, and nothing says ruin. The one narrow
@@ -600,7 +560,7 @@ export function siteVerdict(input: {
   if (signal.verdict === 'living') {
     const lifted = facts.worldHeritage || (hasSiteClass(facts) && !facts.statesPopulation);
     if (!lifted) return refuse(livingReason(facts, signal), 'living');
-    return admit(signal, objects, stands, facts, line);
+    return admit(signal, objects);
   }
 
   // 4. The map says nothing of interest — a weak tag, an object with no tag
@@ -626,11 +586,11 @@ export function siteVerdict(input: {
   //    count of objects as if the tag had not been read.
   if (settlementBranch && !hasSiteClass(facts) && !facts.worldHeritage) {
     const weak = objects.map(weakTagOf).find((tag) => tag !== null) ?? null;
-    if (weak && !facts.statesPopulation) return admit(signal, objects, stands, facts, line);
+    if (weak && !facts.statesPopulation) return admit(signal, objects);
     const why = weak
       ? `${weak} is all OSM says, and Wikidata counts its people`
       : osmNote(objects);
     return refuse(`${noRuinReason(objects)} (${why})`, 'no-ruin');
   }
-  return admit(signal, objects, stands, facts, line);
+  return admit(signal, objects);
 }

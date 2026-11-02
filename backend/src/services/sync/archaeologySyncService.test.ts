@@ -364,10 +364,12 @@ describe('what the archaeology run fetches', () => {
       staySitelinks: 18,
       find: { enterSitelinks: 18, staySitelinks: 15 },
     });
-    // What the source already admits, so the stay line has something to hold —
-    // asked by door, so neither judges the other's rows.
+    // What the source already admits, so the stay has something to hold —
+    // asked by door, so neither judges the other's rows, and the sites by
+    // tier, so the world tier never holds a row the regional tier admitted.
     expect(mockedAdmitted).toHaveBeenCalledWith(5, 'museum');
-    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site');
+    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site', 'world');
+    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site', 'regional');
     expect(deps.admittedMuseums).toEqual(new Set([BRITISH_MUSEUM]));
     expect(deps.admittedSites).toEqual(new Set([BRITISH_MUSEUM]));
     // And the works every other kind shows, so a famous find makes a question
@@ -799,6 +801,20 @@ describe('what the archaeology run writes', () => {
     // No finds: what was dug up here is in a museum somewhere else, and a site
     // says so by having nothing to list.
     expect(mockedWriter).not.toHaveBeenCalled();
+  });
+
+  it('writes the tier of a site the surroundings tier admitted, and none for a world-tier site (ADR-0179)', async () => {
+    wrote();
+    const fetched = await afterFetch([site()]);
+
+    // Tipón, measured against what lies within 50 km of it: the tier rides on
+    // the membership, where every tier read and the run's stay look for it.
+    await fetched.processItem(site({ qid: 'Q1418543', label: 'Tipón', tier: 'regional' }), progress(), writing());
+    await fetched.processItem(site(), progress(), writing());
+
+    expect(mockedUpsert.mock.calls[0][0].metadata.tier).toBe('regional');
+    // A world-tier row carries no tier: the reads default its absence to the world's.
+    expect(mockedUpsert.mock.calls[1][0].metadata).not.toHaveProperty('tier');
   });
 
   it('sends no extent for a site OpenStreetMap maps as a point', async () => {

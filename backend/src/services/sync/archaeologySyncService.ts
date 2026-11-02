@@ -27,8 +27,11 @@
  * **The kind's other half is the site a traveller stands on** (ADR-0058
  * decision 1), and it is another door in the same run: `archaeology/sites.ts`
  * collects it, OpenStreetMap judges it where Wikidata's classes cannot
- * (ADR-0059), and the writer stores it with the outline OSM drew. One run,
- * because the orchestrator reads absence from a run's items as a withdrawal.
+ * (ADR-0059), the place kinds' frame admits it — the world bars over the
+ * sites' own pool, and the regional tier with two conditions of the kind's
+ * own (ADR-0179) — and the writer stores it with the outline OSM drew. One
+ * run, because the orchestrator reads absence from a run's items as a
+ * withdrawal.
  *
  * The badge differs by door and says so: a site is badged for belonging — it is
  * one of the world's archaeological sites, which is the whole claim — and a
@@ -56,7 +59,7 @@ import { readThroughOneDoor } from './osm/oneDoorPerRun.js';
 // for Overpass's (`archaeology/runDoors.ts`).
 import { subsetRunDoor, unreadOnSubset } from './subset/runDoor.js';
 import {
-  ARCHAEOLOGY_FINDS_DOOR, ARCHAEOLOGY_GUIDED_DOOR, ARCHAEOLOGY_SOURCE_ID, doorsForAPass, LOG_PREFIX,
+  ARCHAEOLOGY_FINDS_DOOR, ARCHAEOLOGY_SOURCE_ID, doorsForAPass, LOG_PREFIX,
 } from './archaeology/runDoors.js';
 // One item at a time, once the run has decided: the writers and what they were
 // told about this pass (`archaeology/writer.ts`).
@@ -84,9 +87,9 @@ import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
 import { articleHoldingsReader } from './museum/articleHoldings.js';
 import { wikipediaStructureFor } from './wikipediaStructure.js';
-import { placeReadershipDoorFor, readershipDoorFor, readUnderFloor, type UnderFloorReader } from './readershipDoor.js';
-import { POOL_MIN_SITELINKS } from './publicArt/queries.js';
+import { readershipDoorFor, readUnderFloor, type UnderFloorReader } from './readershipDoor.js';
 import { POOL_MIN_SITELINKS as WORKS_POOL_FLOOR } from './museum/queries.js';
+import { worldHistory } from './places/worldMemory.js';
 
 // =============================================================================
 // Fetch
@@ -112,30 +115,27 @@ async function fetchArchaeologyItems(
   const articleHoldings = await articleHoldingsReader(LOG_PREFIX);
   const storedCredits = await readStoredCredits(ARCHAEOLOGY_SOURCE_ID);
   const storedTreasureCredits = await readStoredTreasureCredits();
-  // What the source holds as admitted before the run, so the stay line of the
+  // What the source holds as admitted before the run, so the stay of the
   // hysteretic tier has something to hold (ADR-0023) — by door, since each
-  // asks after its own rows and no others (`ArchaeologyPipelineDeps`).
-  // And the works another kind already shows a reader: a famous find on a
-  // card already makes no question here (ADR-0103).
-  const [admittedMuseums, admittedSites, shownElsewhere] = await Promise.all([
+  // asks after its own rows and no others (`ArchaeologyPipelineDeps`), and by
+  // tier for the sites, since a row the regional tier admitted is that step's
+  // (#2178). And the works another kind already shows a reader: a famous find
+  // on a card already makes no question here (ADR-0103).
+  const [admittedMuseums, admittedSites, regionalSites, shownElsewhere] = await Promise.all([
     admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'museum'),
-    admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site'),
+    admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site', 'world'),
+    admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site', 'regional'),
     worksShownByOtherSources(ARCHAEOLOGY_SOURCE_ID),
   ]);
+  // What the sites' world tier last read, for what this run cannot (ADR-0175 decision 6).
+  const history = await worldHistory(ARCHAEOLOGY_SOURCE_ID, progress.logId);
 
-  // A site the world reads opens a second door to the world tier (ADR-0127),
-  // while the source's curator gate is on.
-  const openSiteDoor = await placeReadershipDoorFor(ARCHAEOLOGY_SOURCE_ID, line.enterSitelinks, LOG_PREFIX, ARCHAEOLOGY_GUIDED_DOOR);
-  // And reads the sites under the pool's floor the world reads at its bar
-  // (ADR-0152), only while the door is open.
-  const underFloorSites: UnderFloorReader | undefined = openSiteDoor
-    && ((places) => readUnderFloor(places, line.enterSitelinks, POOL_MIN_SITELINKS, ARCHAEOLOGY_GUIDED_DOOR));
   // A find under the finds' line the world reads counts as one at it (ADR-0164).
   const openFindsDoor = await readershipDoorFor(ARCHAEOLOGY_SOURCE_ID, findsLine.enterSitelinks, LOG_PREFIX, ARCHAEOLOGY_FINDS_DOOR);
   // And asks about the finds under the works pool's floor the year reads at
   // that door's bar, only while the door is open (ADR-0165).
   const underFloorFinds: UnderFloorReader | undefined = openFindsDoor
-    && ((finds) => readUnderFloor(finds, findsLine.enterSitelinks, WORKS_POOL_FLOOR, undefined, ARCHAEOLOGY_FINDS_DOOR));
+    && ((finds) => readUnderFloor(finds, findsLine.enterSitelinks, WORKS_POOL_FLOOR, ARCHAEOLOGY_FINDS_DOOR));
 
   // The collection, read through the OpenStreetMap door the environment names
   // (`osm/oneDoorPerRun.ts`): unset, the layer while a fresh one is in place
@@ -168,13 +168,14 @@ async function fetchArchaeologyItems(
           // The sites, and the trees both doors read, come from the pass's
           // gather (#1820); every other question goes through this run's doors.
           sites: async () => shareOf((await gather(progress)).gathered, ARCHAEOLOGY_SITE_KIND),
+          siteWorld: { history },
+          // The pass's regional pool, read once for every place kind (ADR-0171).
+          regional: async () => ({ pool: await (await gather(progress)).regional(), held: regionalSites }),
           shownElsewhere,
           line,
           // What other kinds refused as held at a museum (ADR-0102).
           handOvers,
           articleHoldings,
-          openSiteDoor,
-          underFloorSites,
           openFindsDoor,
           underFloorFinds,
           onPhase: (message) => { progress.statusMessage = message; },
@@ -192,7 +193,7 @@ async function fetchArchaeologyItems(
       progress.statusMessage = 'The OpenStreetMap mirror failed; reading the map again through Overpass...';
     },
   });
-  const { items, fetched, filtered, refusedContents } = collected;
+  const { items, fetched, filtered, refusedContents, regionalSkipped } = collected;
 
   // The works floor is a question about museums and their finds (ADR-0044). A
   // site holds none, so counting sites here would compare what the catalogue
@@ -263,7 +264,11 @@ async function fetchArchaeologyItems(
   // were read through the pass's door, the rest through this run's.
   const { sparql: placesDoor } = await gather(progress);
   const unread = subset || readsSubset(placesDoor) ? await unreadOnSubset(ARCHAEOLOGY_SOURCE_ID) : undefined;
-  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread };
+  // Not read this run: the regional tier's rows stay as they are (ADR-0175 decision 6).
+  const spareTier = regionalSkipped ? 'regional' as const : undefined;
+  return {
+    items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread, ...(spareTier ? { spareTier } : {}),
+  };
 }
 
 // =============================================================================
@@ -298,9 +303,10 @@ export function archaeologySource(
     // says; a museum is here for what it is, and wears the badge only for
     // holding a find the world knows (ADR-0058 decision 2). The British Museum
     // is badged for the Rosetta Stone, Pompeii for being Pompeii, and the Bardo
-    // stands in the kind in full standing without one. Written once admission
-    // is settled, not per item (#760).
-    badgesAdmitted: (item) => item.type === 'site' || item.findsAboveLine > 0,
+    // stands in the kind in full standing without one. A regional arrival
+    // carries none (ADR-0048). Written once admission is settled, not per item
+    // (#760).
+    badgesAdmitted: (item) => (item.type === 'site' ? item.tier !== 'regional' : item.findsAboveLine > 0),
     // The one place the run's options reach the collection: the cache is a
     // property of *this* run rather than of the source.
     fetchItems: (progress) => fetchArchaeologyItems(progress, gather, options.refreshCache === true),

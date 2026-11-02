@@ -54,23 +54,6 @@ export async function subsetSiteFacts(qids: string[]): Promise<Map<string, SiteF
   return out;
 }
 
-/**
- * Which of `qids` carry a best-rank class among `classes` and a best-rank
- * point, as `fetchPlacedAmong` asks the live service.
- */
-export async function subsetPlacedAmong(qids: string[], classes: string[]): Promise<string[]> {
-  if (!qids.length || !classes.length) return [];
-  const result = await pool.query<{ subject: string }>(
-    `SELECT DISTINCT c.subject FROM wikidata_claims c
-      WHERE c.property = 'P31' AND c.subject = ANY($1::text[]) AND c.value_item = ANY($2::text[]) AND c.rank >= 0 AND ${BEST('c')}
-        AND EXISTS (SELECT 1 FROM wikidata_claims p
-                     WHERE p.subject = c.subject AND p.property = 'P625' AND p.rank >= 0 AND p.value ? 'latitude' AND ${BEST('p')})`,
-    [qids, classes],
-  );
-  const sites = new Set(result.rows.map(row => row.subject));
-  return qids.filter(qid => sites.has(qid));
-}
-
 /** `fetchFindsAmong` on the subset: which of `qids` carry one of `classes` as their own, floor and coordinate aside. */
 export async function subsetFindsAmong(qids: string[], classes: string[]): Promise<string[]> {
   if (!qids.length || !classes.length) return [];

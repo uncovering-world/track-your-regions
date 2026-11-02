@@ -317,6 +317,9 @@ async function processSite(
     // kind's membership, written whole every pass (`kindFacts.ts`), so a note
     // leaves a site whose item has since gained a class.
     admissionNote: item.admissionNote ?? null,
+    // The tier that admitted it, on a surroundings-tier row only: every tier
+    // read defaults a row without it to the world's (ADR-0171, ADR-0179).
+    ...(item.tier ? { tier: item.tier } : {}),
     ...creditPatch(item.qid, item.imageUrl),
   };
 

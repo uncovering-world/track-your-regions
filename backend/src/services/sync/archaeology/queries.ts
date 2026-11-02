@@ -53,12 +53,12 @@ import {
 } from './classes.js';
 import type { FindFacts } from './finds.js';
 import { readsSubset } from '../subset/reader.js';
-import { subsetFindFacts, subsetFindsAmong, subsetSiteFacts, subsetPlacedAmong } from '../subset/archaeology.js';
+import { subsetFindFacts, subsetFindsAmong, subsetSiteFacts } from '../subset/archaeology.js';
 
 const CLASS_BATCH = 25;
 const ID_BATCH = 50;
-/** Items per question when asking which of a readership's names are sites: two cheap statements each. */
-const SITES_AMONG_BATCH = 400;
+/** Items per question when asking which of a readership's names are finds: one cheap statement each. */
+const FINDS_AMONG_BATCH = 400;
 
 /**
  * The eleven class trees the rules read: what an archaeology museum is, which
@@ -293,44 +293,10 @@ export async function collectMuseumPool(
 }
 
 /**
- * Which of `qids` are places of `classes` with a point (#1757, ADR-0152): a
- * class of their own (`wdt:P31`) in the set and a coordinate (`wdt:P625`), as
- * the pool questions ask, with no sitelink floor. The readership names the
- * items, so the question is asked by id rather than by class: the site tree
- * holds hundreds of thousands of items under the floor, and the world reads a
- * few hundred of them. Archaeology asks it with its site tree (ADR-0152) and
- * Towers with its tower tree (ADR-0168).
- */
-export async function fetchPlacedAmong(
-  door: Door,
-  qids: string[],
-  classes: ReadonlySet<string>,
-): Promise<string[]> {
-  const asked = qids.filter(isQid);
-  if (!asked.length) return [];
-  const { sparql, step } = doorOf(door);
-  if (readsSubset(sparql)) return subsetPlacedAmong(asked, [...classes]);
-  const sites = new Set<string>();
-  for (const batch of chunk(asked, SITES_AMONG_BATCH)) {
-    await step();
-    const rows = await sparql(`
-      SELECT ?e ?class WHERE {
-        VALUES ?e { ${values(batch)} }
-        ?e wdt:P31 ?class .
-        FILTER EXISTS { ?e wdt:P625 ?point }
-      }`, { kind: 'edges', label: `which of ${batch.length} items the world reads are sites` });
-    for (const row of rows) {
-      if (classes.has(extractQid(row.class?.value ?? ''))) sites.add(extractQid(row.e?.value ?? ''));
-    }
-  }
-  return asked.filter((qid) => sites.has(qid));
-}
-
-/**
  * Which of `qids` carry a class of this kind's finds as their own (`wdt:P31`
  * in `findClasses`), with no sitelink floor and no coordinate: the finds the
- * readership names under the pool's floor (ADR-0165), asked by id as
- * `fetchPlacedAmong` asks the sites. The year reads tens of thousands of items
+ * readership names under the pool's floor (ADR-0165), asked by id rather than
+ * by class. The year reads tens of thousands of items
  * under the floor at the door's bar, and the find rule wants a few hundred of
  * them: what the rule's class roads would ever keep is what is read in full.
  */
@@ -344,7 +310,7 @@ export async function fetchFindsAmong(
   const { sparql, step } = doorOf(door);
   if (readsSubset(sparql)) return subsetFindsAmong(asked, [...findClasses]);
   const finds = new Set<string>();
-  for (const batch of chunk(asked, SITES_AMONG_BATCH)) {
+  for (const batch of chunk(asked, FINDS_AMONG_BATCH)) {
     await step();
     const rows = await sparql(`
       SELECT ?e ?class WHERE {

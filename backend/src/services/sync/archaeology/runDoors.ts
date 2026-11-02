@@ -22,8 +22,6 @@ import type { OsmReader, SiteEntrance } from './sites.js';
 import { fetchWikipediaCategories } from '../wikipediaCategories.js';
 import { resolveWikipediaArticles } from '../wikipediaArticles.js';
 import { fetchCategoryMembers } from '../wikipediaCategoryMembers.js';
-import { commonsPhotoDoor } from '../visit/commonsPhotos.js';
-import { visitWitnessReader } from '../visit/visitWitnesses.js';
 import { structureCategories, structureCategoryReads } from '../wikipediaStructure.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { DEPARTMENT_ROOTS, DEPARTMENT_WALK, NATURE_CATEGORY_ROOT, NATURE_WALK, OSM_DIG_TAGS } from './classes.js';
@@ -41,15 +39,6 @@ import {
 export const ARCHAEOLOGY_SOURCE_ID = 5;
 
 export const LOG_PREFIX = '[Archaeology Sync]';
-
-/**
- * ADR-0163: a site a Wikivoyage guide uses enters by its readers at the 12th
- * percentile of the sites at the line (24,756 readers a year on the dump of
- * 2026-10-19) and stays at the 8th; every other site at ADR-0127's median.
- * The Roman Agora of Athens, one of the seven sites of the city's combined
- * ticket, reads 47,207 under a median of 75,419 (#1982).
- */
-export const ARCHAEOLOGY_GUIDED_DOOR = { enter: 0.12, stay: 0.08 } as const;
 
 /**
  * ADR-0164: a find under the finds' line enters by its readers at the 12th
@@ -246,32 +235,11 @@ function articlesDoor(
   });
 }
 
-/**
- * The door a pass counts a place's Commons photographs through (#1768), with
- * the run's cache over it like every other answer the run pays for, and the
- * pass's patience and pause.
- */
-function cachedPhotosDoor(progress: SyncProgress, refreshCache: boolean, budget: WaitBudget) {
-  return withCache(commonsPhotoDoor({
-    userAgent: WIKIDATA_USER_AGENT,
-    isCancelled: () => progress.cancel,
-    pause: () => delay(SPARQL_DELAY_MS),
-    budget,
-    onWait: (wait) => { progress.statusMessage = waitMessage('Commons', wait, budget); },
-  }), {
-    sourceId: ARCHAEOLOGY_SOURCE_ID,
-    enabled: !refreshCache,
-    onHit: (descriptor, rows) => {
-      progress.statusMessage = `${descriptor.label}: ${rows} rows, from cache`;
-    },
-  });
-}
-
 /** What a pass hands the pipeline, and the door it read the map through. */
 export interface PassDoors {
   deps: Pick<
     ArchaeologyPipelineDeps,
-    'sparql' | 'categories' | 'categoryMembers' | 'osm' | 'osmDigs' | 'resolveArticles' | 'visitWitnesses'
+    'sparql' | 'categories' | 'categoryMembers' | 'osm' | 'osmDigs' | 'resolveArticles'
   >;
   osm: OsmDoor;
   /** Takes back the cached OpenStreetMap answers this pass's door touched. */
@@ -311,9 +279,6 @@ export function doorsForAPass(
       osm: reader === 'local' ? localOsmReader(door) : osmReader(door),
       osmDigs: reader === 'local' ? localDigsReader(door, OSM_DIG_TAGS) : osmDigsReader(door),
       resolveArticles: articlesDoor(progress, budget),
-      // The witnesses the readership door's rows need (ADR-0128): the map's
-      // is read from the objects this pass's door brought.
-      visitWitnesses: visitWitnessReader({ sparql, photos: cachedPhotosDoor(progress, refreshCache, budget) }),
     },
     osm: { ...door, name: reader },
     forgetOsm: forget,

@@ -87,6 +87,7 @@ import {
 import { ARCHAEOLOGY_SITE_KIND } from './sites.js';
 import { gatherPlaces, shareOf, type PlaceKind } from '../places/gather.js';
 import type { QueryRunner } from '../wikidataQueries.js';
+import type { WorldOptions } from '../places/worldTier.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const RANK = 'http://wikiba.se/ontology#NormalRank';
@@ -192,6 +193,8 @@ interface FixtureSite {
   worldHeritage?: boolean;
   /** `P1082` — any number, 0 included. */
   statesPopulation?: boolean;
+  /** `P361`: what it is part of, which the regional tier reads (ADR-0179). */
+  parents?: string[];
 }
 
 /** One OSM object carrying `wikidata=<item>`, as the reader hands it over. */
@@ -826,7 +829,10 @@ const edgeRows = (w: World, asked: string[]): SparqlBinding[] =>
  */
 const entityFactRows = (w: World, asked: string[]): SparqlBinding[] => [
   ...edgeRows(w, asked),
-  ...asked.flatMap((qid) => (w.museums[qid] ? [] : (w.sites[qid]?.classes ?? []).map((c) => ({ e: uri(qid), cls: uri(c) })))),
+  ...asked.flatMap((qid) => (w.museums[qid] ? [] : [
+    ...(w.sites[qid]?.classes ?? []).map((c) => ({ e: uri(qid), cls: uri(c) })),
+    ...(w.sites[qid]?.parents ?? []).map((p) => ({ e: uri(qid), parent: uri(p) })),
+  ])),
 ];
 
 export function answer(w: World, sent: string): SparqlBinding[] {
@@ -949,19 +955,32 @@ export const LINE: SourceLine = {
   enterSitelinks: 22, staySitelinks: 18, find: { enterSitelinks: 18, staySitelinks: 15 },
 };
 
+/**
+ * The sites' world bars the specs admit by (ADR-0179): a run reads them off
+ * the sites' pool on the local subset, which the spec's door is not, so they
+ * are handed in — 22 Wikipedia editions, and readers' bars nothing here
+ * reaches, with no year of readers or guide's mark read for any site.
+ */
+export const SITE_WORLD: WorldOptions = {
+  read: { readers: new Map(), guided: new Set(), atlas: new Set() },
+  bars: { editions: 22, readers: 1_000_000_000, guidedReaders: 1_000_000_000, pool: 3 },
+};
+
 export function collect(w: World, opts: {
-  line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
+  line?: SourceLine; admitted?: string[]; admittedSites?: string[]; previousPlacements?: Record<string, string[]>;
   shownElsewhere?: Iterable<string>;
   openFindsDoor?: ArchaeologyPipelineDeps['openFindsDoor'];
   underFloorFinds?: ArchaeologyPipelineDeps['underFloorFinds'];
+  siteWorld?: WorldOptions;
+  regional?: ArchaeologyPipelineDeps['regional'];
 } = {}): Promise<CollectedArchaeology> {
   const door = categoryDoor(w);
   return collectArchaeology({
     sparql: (query: string) => Promise.resolve(answer(w, query)),
     previousPlacements: opts.previousPlacements ?? {},
     admittedMuseums: new Set(opts.admitted ?? []),
-    admittedSites: new Set<string>(),
-    sites: siteShare(new Set<string>()),
+    admittedSites: new Set(opts.admittedSites ?? []),
+    sites: siteShare(new Set(opts.admittedSites ?? [])),
     shownElsewhere: new Set(opts.shownElsewhere ?? SHOWN),
     line: opts.line ?? LINE,
     categories: door.categories,
@@ -971,6 +990,8 @@ export function collect(w: World, opts: {
     resolveArticles: osmDoor(w).resolveArticles,
     openFindsDoor: opts.openFindsDoor,
     underFloorFinds: opts.underFloorFinds,
+    siteWorld: opts.siteWorld ?? SITE_WORLD,
+    regional: opts.regional,
   });
 }
 
