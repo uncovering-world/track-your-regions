@@ -3252,6 +3252,98 @@ CREATE INDEX IF NOT EXISTS idx_sync_changes_log ON experience_sync_changes(sync_
 CREATE INDEX IF NOT EXISTS idx_sync_changes_exp ON experience_sync_changes(experience_id);
 CREATE INDEX IF NOT EXISTS idx_sync_changes_review ON experience_sync_changes(sync_log_id, change_type);
 
+-- When a held or conflict question was first asked (ADR-0173, #2229).
+ALTER TABLE experience_sync_changes ADD COLUMN IF NOT EXISTS first_asked JSONB;
+ALTER TABLE experience_sync_changes ADD COLUMN IF NOT EXISTS held_first_sync_log_id INTEGER
+  REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+ALTER TABLE experience_sync_changes ADD COLUMN IF NOT EXISTS conflict_first_sync_log_id INTEGER
+  REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+COMMENT ON COLUMN experience_sync_changes.first_asked IS 'Per proposed value, the run that first proposed it (ADR-0173, #2229): {"held": {key: run}, "curatedConflict": {key: run}}, a key per field of the object (f:<field>) and per field of a part (p:<kind>:<item>:<field>). A value the source''s previous run proposed the same hands on that run''s; any other starts at this run. Stamped on insert by stamp_first_asked().';
+COMMENT ON COLUMN experience_sync_changes.held_first_sync_log_id IS 'The latest of first_asked''s held runs: when the newest question this row holds was first asked, the date its held card carries (ADR-0173). Null where the row holds nothing.';
+COMMENT ON COLUMN experience_sync_changes.conflict_first_sync_log_id IS 'The same as held_first_sync_log_id for the values a curator''s claim kept out (curatedConflict): the date a conflict card carries (ADR-0173).';
+
+-- The values a row proposes under one flag ('held' or 'curatedConflict'), one
+-- per field: the object's own as f:<field>, a part's as p:<kind>:<item>:<field>.
+CREATE OR REPLACE FUNCTION proposal_entries(changed_fields jsonb, contents jsonb, flag text)
+RETURNS TABLE (key text, value jsonb)
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT 'f:' || (f->>'field'), COALESCE(f->'new', 'null'::jsonb)
+    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(changed_fields) = 'array'
+                                   THEN changed_fields ELSE '[]'::jsonb END) f
+   WHERE (f->>flag)::boolean
+  UNION ALL
+  SELECT 'p:' || k.key || ':' || (c->'item')::text || ':' || (fl->>'field'), COALESCE(fl->'new', 'null'::jsonb)
+    FROM jsonb_each(CASE WHEN jsonb_typeof(contents) = 'object' THEN contents ELSE '{}'::jsonb END) k
+   CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(k.value->'changed') = 'array'
+                                                THEN k.value->'changed' ELSE '[]'::jsonb END) c
+   CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(c->'fields') = 'array'
+                                                THEN c->'fields' ELSE '[]'::jsonb END) fl
+   WHERE (fl->>flag)::boolean
+$$;
+
+-- When each value of one flag was first proposed, for a row of run `run` about
+-- `place` from `source`: a value the source's previous run for the place
+-- proposed the same keeps that run's first run; any other value starts at this
+-- run. A run that wrote no row for the place in between leaves the values
+-- standing: it proposed nothing new. Dry runs are no runs here.
+CREATE OR REPLACE FUNCTION first_asked_runs(
+  place integer, source integer, run integer, changed_fields jsonb, contents jsonb, flag text
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE AS $$
+DECLARE
+  prev_run integer;
+  prev_values jsonb := '{}'::jsonb;
+  prev_firsts jsonb := '{}'::jsonb;
+  firsts jsonb;
+BEGIN
+  IF place IS NOT NULL AND source IS NOT NULL THEN
+    SELECT p.sync_log_id INTO prev_run
+      FROM experience_sync_changes p
+      JOIN experience_sync_logs pl ON pl.id = p.sync_log_id
+     WHERE p.experience_id = place AND pl.source_id = source AND NOT pl.is_dry_run
+       AND p.sync_log_id < run
+     ORDER BY p.sync_log_id DESC
+     LIMIT 1;
+  END IF;
+  IF prev_run IS NOT NULL THEN
+    SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb) INTO prev_values
+      FROM experience_sync_changes p, proposal_entries(p.changed_fields, p.contents, flag) e
+     WHERE p.experience_id = place AND p.sync_log_id = prev_run;
+    SELECT COALESCE(jsonb_object_agg(x.key, x.value), '{}'::jsonb) INTO prev_firsts
+      FROM experience_sync_changes p, jsonb_each(COALESCE(p.first_asked->flag, '{}'::jsonb)) x
+     WHERE p.experience_id = place AND p.sync_log_id = prev_run;
+  END IF;
+  SELECT jsonb_object_agg(e.key, CASE WHEN prev_values->e.key = e.value
+                                      THEN COALESCE(prev_firsts->e.key, to_jsonb(prev_run))
+                                      ELSE to_jsonb(run) END)
+    INTO firsts
+    FROM proposal_entries(changed_fields, contents, flag) e;
+  RETURN firsts;
+END $$;
+
+CREATE OR REPLACE FUNCTION stamp_first_asked() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  source integer;
+  dry boolean;
+  held jsonb;
+  claimed jsonb;
+BEGIN
+  SELECT l.source_id, l.is_dry_run INTO source, dry FROM experience_sync_logs l WHERE l.id = NEW.sync_log_id;
+  IF dry THEN source := NULL; END IF;
+  held := first_asked_runs(NEW.experience_id, source, NEW.sync_log_id, NEW.changed_fields, NEW.contents, 'held');
+  claimed := first_asked_runs(NEW.experience_id, source, NEW.sync_log_id, NEW.changed_fields, NEW.contents, 'curatedConflict');
+  NEW.first_asked := NULLIF(jsonb_strip_nulls(jsonb_build_object('held', held, 'curatedConflict', claimed)), '{}'::jsonb);
+  NEW.held_first_sync_log_id := (SELECT max(v::int) FROM jsonb_each_text(held) AS x(k, v));
+  NEW.conflict_first_sync_log_id := (SELECT max(v::int) FROM jsonb_each_text(claimed) AS x(k, v));
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_stamp_first_asked ON experience_sync_changes;
+CREATE TRIGGER trg_stamp_first_asked
+  BEFORE INSERT ON experience_sync_changes
+  FOR EACH ROW EXECUTE FUNCTION stamp_first_asked();
+
 -- =============================================================================
 -- Experience Locations (Multi-Location Support)
 -- =============================================================================

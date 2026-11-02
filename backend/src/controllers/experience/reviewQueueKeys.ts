@@ -182,14 +182,18 @@ export function decodeCursor(s: string): Cursor | null {
 function conflictKeysSql(scopeFilter: string, claimKey: (field: string) => string): string {
   return `
     SELECT 'conflict'::text AS kind, ${KIND_RANK.conflict} AS rank, q.id, q.name,
-           ARRAY[q.source_id] AS source_ids, q.sync_log_id AS run_id, q.completed_at AS asked_at,
+           ARRAY[q.source_id] AS source_ids, q.first_run_id AS run_id, q.first_asked_at AS asked_at,
            ARRAY[]::text[] AS subs
     FROM (
+      -- Dated by the run that first asked (ADR-0173): the newest changeset row's
+      -- conflict_first_sync_log_id, which a run proposing the same again keeps.
       SELECT DISTINCT ON (e.id) e.id, e.name, l.source_id, ${claimsFacingSql('e', 'l.source_id')} AS curated_fields,
-             ch.changed_fields, ch.sync_log_id, l.completed_at
+             ch.changed_fields, COALESCE(ch.conflict_first_sync_log_id, ch.sync_log_id) AS first_run_id,
+             COALESCE(fl.completed_at, l.completed_at) AS first_asked_at
       FROM experience_sync_changes ch
       JOIN experiences e ON e.id = ch.experience_id
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
+      LEFT JOIN experience_sync_logs fl ON fl.id = ch.conflict_first_sync_log_id
       WHERE ${conflictChangeOpenSql('e', 'ch', 'l')}
         AND ${scopeFilter}
       ORDER BY e.id, ch.id DESC
@@ -222,17 +226,21 @@ function arrivalKeysSql(scopeFilter: string): string {
 /**
  * A held proposal: a visible row whose newest content proposal the gate kept
  * out. The join to the log is what the card's `pending_change_sync_log_id IS
- * NOT NULL` says, and it is also where the question's date comes from.
+ * NOT NULL` says. The question is dated by the run that first asked it
+ * (ADR-0173): the changeset row's `held_first_sync_log_id`, the newest of its
+ * values' first runs, so a run that proposes the same again leaves the date
+ * and the run it is filed under alone.
  */
 function heldKeysSql(scopeFilter: string): string {
   return `
-        SELECT e.id, e.name, m.source_id, m.pending_change_sync_log_id,
-               l.completed_at, 'held'
+        SELECT e.id, e.name, m.source_id, COALESCE(ch.held_first_sync_log_id, m.pending_change_sync_log_id),
+               COALESCE(fl.completed_at, l.completed_at), 'held'
         FROM experiences e
         JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
         JOIN experience_sync_logs l ON l.id = m.pending_change_sync_log_id
         JOIN experience_sync_changes ch ON ch.experience_id = e.id
                                        AND ch.sync_log_id = m.pending_change_sync_log_id
+        LEFT JOIN experience_sync_logs fl ON fl.id = ch.held_first_sync_log_id
         WHERE ${heldOpenSql('e', 'm', 'ch')}
           AND ${scopeFilter}`;
 }
@@ -264,6 +272,19 @@ function contentsKeysSql(membershipScopeFilter: string): string {
         JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
         WHERE ${contentsWaitingSql('e', 'm')}
           AND ${membershipScopeFilter}`;
+}
+
+/**
+ * A run's questions: the ones it asked first (`run_id`, ADR-0173), and the
+ * held and conflict questions it proposed again, which a curator looking at
+ * what one run found can still reach (#2229).
+ */
+function runFilterSql(run: string): string {
+  return `(k.run_id = ${run}
+    OR (k.kind IN ('waiting', 'conflict') AND EXISTS (
+      SELECT 1 FROM experience_sync_changes again
+       WHERE again.experience_id = k.id AND again.sync_log_id = ${run}
+         AND (again.held_first_sync_log_id IS NOT NULL OR again.conflict_first_sync_log_id IS NOT NULL))))`;
 }
 
 /**
@@ -616,7 +637,7 @@ function boundFilters(filters: QueueFilters, bind: (value: unknown) => string): 
     region: region.predicate,
     regionCte: region.cte,
     pickedRegion: pickedRegionSql(filters.regionId, bind),
-    run: filters.runId === undefined ? 'TRUE' : `k.run_id = ${bind(filters.runId)}`,
+    run: filters.runId === undefined ? 'TRUE' : runFilterSql(bind(filters.runId)),
     search: filters.q === undefined ? 'TRUE' : `k.name ILIKE ${bind(likeParam(filters.q))} ESCAPE '\\'`,
     aside: filters.showAside
       ? 'TRUE'

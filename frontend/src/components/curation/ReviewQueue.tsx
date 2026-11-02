@@ -26,6 +26,7 @@ import { formatDateTime } from '../../utils/dateFormat';
 import { worldViewList } from '../../utils/worldViewList';
 import { ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
+import { askedSince } from './askedSince';
 import { rowlessProposalWords, rowsFor } from './factRows';
 import { fieldLabel } from './fieldMeaning';
 import { CHANGE_ANSWERS, CHANGE_COLUMNS, changeAnswersLine } from './selection/answerWords';
@@ -179,7 +180,7 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
             ? `The run that finished ${formatDateTime(item.run_completed_at)} proposes`
             : 'The source proposes'}
           rows={rows}
-          trailing={overWhose}
+          trailing={[overWhose, askedSince(item)].filter(Boolean).join(' · ')}
         />
         )}
         {rows.length > 0 && (

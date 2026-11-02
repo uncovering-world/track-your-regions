@@ -31,6 +31,7 @@ import { worldViewList } from '../../utils/worldViewList';
 import { ANSWER_WORDS, CHANGE_ANSWERS, CHANGE_COLUMNS } from './selection/answerWords';
 import { GatedRow, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
+import { askedSince } from './askedSince';
 import { partGroups, rowlessProposalWords, rowsFor } from './factRows';
 import { HeldAnswer, wholeHeldSelection, type HeldSelection } from './HeldAnswer';
 import { heldRefusalOutcomeFor, mergedPublishResult, PartlyPublished, publishOutcomeFor } from './publishOutcome';
@@ -251,6 +252,7 @@ export function GatedSection({ group, heading, onDone }: {
             <ProposalSummary
               lead={summaryLead(held, group.sharedBy)}
               rows={[...rows, ...partRows]}
+              trailing={held ? askedSince(held) : null}
             />
             {/* The same table the conflict card draws, because it is the same
                 decision: two versions of one fact and a person choosing between them.

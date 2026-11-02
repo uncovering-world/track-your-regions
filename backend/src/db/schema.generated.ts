@@ -606,6 +606,9 @@ export interface ExperienceSyncChangesRow {
   significance: string | null;
   error: string | null;
   created_at: Date | null;
+  first_asked: unknown | null;
+  held_first_sync_log_id: number | null;
+  conflict_first_sync_log_id: number | null;
 }
 
 /** The table `experience_sync_logs`. */

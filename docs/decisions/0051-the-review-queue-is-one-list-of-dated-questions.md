@@ -1,7 +1,7 @@
 # ADR-0051: The review queue is one list of dated questions, filtered and set aside per curator
 
 **Date:** 2026-09-07
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by ADR-0173
 **Issue:** [#805](https://github.com/uncovering-world/track-your-regions/issues/805)
 
 ---

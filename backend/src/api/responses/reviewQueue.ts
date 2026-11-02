@@ -477,7 +477,11 @@ export const ReviewQueueItem = z.strictObject({
   proposed: z.array(ProposedField).nullable().describe(
     'The fields a run proposed. Null on every kind that carries no proposal, never absent.',
   ),
-  run_completed_at: timestamp.nullable().optional().describe('When the run whose proposal this is finished. Conflicts only.'),
+  run_completed_at: timestamp.nullable().optional().describe('When the run whose proposal this is finished. Conflicts and held proposals.'),
+  first_asked_run_id: z.number().int().nullable().optional().describe(
+    'The run that first proposed the newest of the values this card asks about (ADR-0173). Conflicts and held proposals.',
+  ),
+  first_asked_at: timestamp.nullable().optional().describe('When that run finished: the date the question carries.'),
   proposed_parts: z.array(HeldPart).nullable().optional()
     .describe("The held fields of the object's parts. `held` items only, beside `proposed`, which is the object's own."),
   counted_works: z.array(CountedWork).nullable().optional()

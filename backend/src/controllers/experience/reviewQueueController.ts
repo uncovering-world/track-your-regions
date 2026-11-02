@@ -552,6 +552,10 @@ export async function getReviewQueue(
       SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              ch.sync_log_id, 'held' AS kind,
+             -- The run proposing now, and the one that first asked (ADR-0173).
+             (SELECT l.completed_at FROM experience_sync_logs l WHERE l.id = ch.sync_log_id) AS run_completed_at,
+             ch.held_first_sync_log_id AS first_asked_run_id,
+             (SELECT fl.completed_at FROM experience_sync_logs fl WHERE fl.id = ch.held_first_sync_log_id) AS first_asked_at,
              (SELECT jsonb_agg(f) FROM jsonb_array_elements(ch.changed_fields) AS f
                WHERE (f->>'held')::boolean
                  AND NOT ${heldFieldAnsweredSql('e.id', 'ch.sync_log_id')}) AS proposed,
