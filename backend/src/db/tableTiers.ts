@@ -65,6 +65,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   experience_pairing_due: 'serving',
   experience_pairing_rule: 'serving',
   experience_separations: 'serving',
+  find_site_links: 'serving',
   separated_visit_questions: 'serving',
   experience_parts: 'serving',
   experience_point_hint_suggestions: 'serving',
