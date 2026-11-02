@@ -411,10 +411,24 @@ export const KILL_CLASSES: Record<string, string> = {
   Q61297932: 'neighborhood of Manhattan',
   Q2755753: 'area of London',
   Q1529: 'traffic circle',
-  // Events and works.
+  // Events and works. An item Wikidata types an event as well as a memorial
+  // is the event, though a memorial stands where it happened: the Gardelegen
+  // massacre is typed `German war crimes, memorial, war memorial`, the
+  // Oranienbaum Bridgehead a siege and a war memorial (#2272). A memorial to
+  // an event that is an item of its own stays: Oradour-sur-Glane's war
+  // memorial is typed nothing but a war memorial. No commemorative class
+  // lifts these, read off the event classes the subset's memorial items
+  // carried on 2026-11-02.
   Q1253136: 'liturgical drama',
   Q7725634: 'literary work',
   Q200538: 'party',
+  Q3199915: 'massacre',
+  Q750215: 'mass murder',
+  Q135010: 'war crime',
+  Q715434: 'German war crimes',
+  Q216169: 'execution by firing squad',
+  Q178561: 'battle',
+  Q188055: 'siege',
   // Attractions and lists.
   Q194195: 'amusement park',
   Q974968: 'miniature park',
