@@ -89,6 +89,14 @@ const TAOIST_TEMPLE = 'Q1151612';
 const MUSEUM = 'Q33506';
 const STATUE = 'Q179700';
 const BUILT_STRUCTURE = 'Q811979';
+const REAL_PROPERTY = 'Q684740';
+const GEOGRAPHIC_LOCATION = 'Q2221906';
+
+// A place to stay Wikidata files under the worship tree, and a monastery that is one too.
+const RETREAT_CENTER = 'Q106115017';
+const VIHARA = 'Q844619';
+const HERMITAGE = 'Q513550';
+const SEMINARY = 'Q233324';
 const HISTORIC_SITE = 'Q1081138';
 const ARCHAEOLOGICAL_SITE = 'Q839954';
 
@@ -112,7 +120,7 @@ const ARCHAEOLOGICAL_SITE = 'Q839954';
 const trees = buildWorshipTrees({
   worship: [CHURCH, CATHEDRAL, CATHOLIC_CATHEDRAL, BASILICA, CHAPEL, MOSQUE, TEMPLE,
     BUDDHIST_TEMPLE, HINDU_TEMPLE, ANCIENT_GREEK_TEMPLE, PILGRIMAGE_SITE,
-    BELL_TOWER, CHURCH_TOWER, MINARET],
+    BELL_TOWER, CHURCH_TOWER, MINARET, VIHARA, RETREAT_CENTER],
   sacred: [SACRED_MOUNTAIN, SACRED_RIVER],
   typeTrees: {
     'sacred mountain': [SACRED_MOUNTAIN],
@@ -120,7 +128,7 @@ const trees = buildWorshipTrees({
     cathedral: [CATHEDRAL, CATHOLIC_CATHEDRAL],
     // `Tibetan Buddhist monastery` is under both `vihāra` and `monastery`,
     // which is what makes Sera the negative case for the wat override.
-    monastery: [MONASTERY, TIBETAN_MONASTERY],
+    monastery: [MONASTERY, TIBETAN_MONASTERY, VIHARA],
     mosque: [MOSQUE],
     synagogue: [SYNAGOGUE],
     chapel: [CHAPEL],
@@ -311,6 +319,19 @@ describe('worshipVerdict — what it refuses', () => {
     expect(reasonOf(worshipVerdict(facts([
       'Q29168169', PILGRIMAGE_SITE, 'Q1779653', STATUE, 'Q4989906']), trees)))
       .toBe('no place-of-worship class');
+  });
+
+  it('refuses Rancho de San Rafael: a retreat center is a place to stay, not a place of worship', () => {
+    // Q133504290 on the subset of 2026-11-02 (#2272): `real property,
+    // geographic location, retreat center`, and a deprecated `ranch`.
+    expect(reasonOf(worshipVerdict(facts([REAL_PROPERTY, GEOGRAPHIC_LOCATION, RETREAT_CENTER]), trees)))
+      .toBe('a retreat center: a place to stay, not a place of worship');
+  });
+
+  it('admits the Sāsanārakkha Buddhist Sanctuary, a vihāra that is a retreat center too', () => {
+    // Q7425003 on the subset of 2026-11-02: `vihāra, hermitage, retreat center, seminary`.
+    expect(worshipVerdict(facts([VIHARA, HERMITAGE, RETREAT_CENTER, SEMINARY]), trees))
+      .toEqual({ pass: true, type: 'monastery' });
   });
 
   it('refuses a place of worship on another globe, or without coordinates', () => {
