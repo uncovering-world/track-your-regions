@@ -172,6 +172,22 @@ describe('publicArtVerdict — what it refuses', () => {
     expect(reasonOf(v)).toContain('liturgical drama');
   });
 
+  it('refuses an event typed a memorial, for Monuments & memorials too (#2272)', () => {
+    // The Gardelegen massacre on the subset of 2026-11-02: German war crimes,
+    // memorial, memorial wall, war memorial. The memorial classes lift nothing.
+    const gardelegen = facts({ classes: ['Q715434', MEMORIAL, 'Q116452632', WAR_MEMORIAL] });
+    expect(reasonOf(publicArtVerdict(gardelegen, trees, monuments))).toContain('German war crimes');
+    // The Oranienbaum Bridgehead: siege, war memorial.
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q188055', WAR_MEMORIAL] }), trees, monuments)))
+      .toContain('siege');
+  });
+
+  it("admits Oradour-sur-Glane's war memorial, a memorial to an event that is an item of its own", () => {
+    // Q136067481 on the subset of 2026-11-02: war memorial.
+    expect(publicArtVerdict(facts({ classes: [WAR_MEMORIAL] }), trees, monuments))
+      .toMatchObject({ pass: true, type: 'memorial' });
+  });
+
   it('refuses a French commune typed a memorial', () => {
     // Le Gua: commune of France, memorial.
     const v = publicArtVerdict(facts({ classes: ['Q484170', MEMORIAL] }), trees, art);
