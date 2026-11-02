@@ -3,6 +3,7 @@ import {
   buildAppUrl,
   buildReviewUrl,
   cardUrl,
+  crowdKeyOf,
   EMPTY_REVIEW,
   legacyRedirect,
   normaliseReviewQ,
@@ -293,6 +294,30 @@ describe('review address', () => {
       expect(parseReviewUrl('?run=98&row=nonsense')).toEqual({ ...EMPTY_REVIEW, runId: 98 });
     });
 
+    it('reads view=crowded only, anything else as the queue’s tab', () => {
+      expect(parseReviewUrl('?view=crowded')).toEqual({ ...EMPTY_REVIEW, view: 'crowded' });
+      expect(parseReviewUrl('?view=questions')).toEqual(EMPTY_REVIEW);
+      expect(parseReviewUrl('?view=crowds')).toEqual(EMPTY_REVIEW);
+    });
+
+    it('reads a crowded city’s group on its own tab only, garbage as absent', () => {
+      const crowded = { ...EMPTY_REVIEW, view: 'crowded' as const };
+      // Berlin's squares; arrivals no world view places, under Places of worship with no type;
+      // a type that holds a hyphen of its own.
+      expect(parseReviewUrl('?view=crowded&crowd=7-9-square')).toEqual({ ...crowded, crowd: '7-9-square' });
+      expect(parseReviewUrl('?view=crowded&crowd=none-4')).toEqual({ ...crowded, crowd: 'none-4' });
+      expect(parseReviewUrl('?view=crowded&crowd=12-7-bell-tower')).toEqual({ ...crowded, crowd: '12-7-bell-tower' });
+      // Places of worship's two types of two words, the space as the build writes it and as a browser may.
+      expect(parseReviewUrl('?view=crowded&crowd=8-4-holy+site')).toEqual({ ...crowded, crowd: '8-4-holy site' });
+      expect(parseReviewUrl('?view=crowded&crowd=8-4-sacred%20mountain')).toEqual({ ...crowded, crowd: '8-4-sacred mountain' });
+      expect(parseReviewUrl('?view=crowded&crowd=8-4-holy++site')).toEqual(crowded);
+      expect(parseReviewUrl('?view=crowded&crowd=8-4-holy+')).toEqual(crowded);
+      expect(parseReviewUrl('?view=crowded&crowd=berlin-9')).toEqual(crowded);
+      expect(parseReviewUrl('?view=crowded&crowd=7-0-square')).toEqual(crowded);
+      expect(parseReviewUrl('?view=crowded&crowd=7-9-')).toEqual(crowded);
+      expect(parseReviewUrl('?crowd=7-9-square')).toEqual(EMPTY_REVIEW);
+    });
+
     it('drops unknown parameters', () => {
       expect(parseReviewUrl('?foo=bar&q=memorial')).toEqual({ ...EMPTY_REVIEW, q: 'memorial' });
     });
@@ -332,7 +357,7 @@ describe('review address', () => {
       expect(buildReviewUrl({ ...EMPTY_REVIEW, sort: 'date' })).toBe('/review');
     });
 
-    it('writes every field in a stable key order: sort, q, source, kind, region, run, aside, row', () => {
+    it('writes every field in a stable key order: sort, q, source, kind, region, run, aside, row, view, crowd', () => {
       const full: ReviewAddress = {
         q: 'memorial',
         sort: 'question',
@@ -342,10 +367,26 @@ describe('review address', () => {
         runId: 98,
         showAside: true,
         row: 'waiting:600',
+        view: 'crowded',
+        crowd: '7-9-square',
       };
       expect(buildReviewUrl(full)).toBe(
-        '/review?sort=question&q=memorial&source=1,3&kind=arrival,refused&region=6737&run=98&aside=show&row=waiting:600',
+        '/review?sort=question&q=memorial&source=1,3&kind=arrival,refused&region=6737&run=98&aside=show&row=waiting:600'
+          + '&view=crowded&crowd=7-9-square',
       );
+    });
+
+    it('writes a crowded city’s group only on its own tab', () => {
+      expect(buildReviewUrl({ ...EMPTY_REVIEW, view: 'crowded' })).toBe('/review?view=crowded');
+      expect(buildReviewUrl({ ...EMPTY_REVIEW, view: 'crowded', crowd: '8-4-holy site' })).toBe('/review?view=crowded&crowd=8-4-holy+site');
+      expect(buildReviewUrl({ ...EMPTY_REVIEW, crowd: '7-9-square' })).toBe('/review');
+    });
+
+    it('names a group by its region, kind and type, the region none and the type left off where absent', () => {
+      expect(crowdKeyOf({ regionId: 7, kindId: 9, type: 'square' })).toBe('7-9-square');
+      expect(crowdKeyOf({ regionId: null, kindId: 4, type: null })).toBe('none-4');
+      expect(crowdKeyOf({ regionId: 12, kindId: 7, type: 'bell-tower' })).toBe('12-7-bell-tower');
+      expect(crowdKeyOf({ regionId: 8, kindId: 4, type: 'holy site' })).toBe('8-4-holy site');
     });
 
     it('writes region=none', () => {
@@ -384,6 +425,12 @@ describe('review address', () => {
       { ...EMPTY_REVIEW, row: 'withdrawn:2' },
       { ...EMPTY_REVIEW, row: 'refused:3' },
       { ...EMPTY_REVIEW, row: 'missing:4' },
+      { ...EMPTY_REVIEW, view: 'crowded' },
+      { ...EMPTY_REVIEW, view: 'crowded', crowd: '7-9-square' },
+      { ...EMPTY_REVIEW, view: 'crowded', crowd: 'none-4' },
+      { ...EMPTY_REVIEW, view: 'crowded', crowd: '12-7-bell-tower' },
+      { ...EMPTY_REVIEW, view: 'crowded', crowd: '8-4-holy site' },
+      { ...EMPTY_REVIEW, view: 'crowded', crowd: '8-4-sacred mountain' },
       {
         q: 'memorial',
         sort: 'question',
@@ -393,6 +440,8 @@ describe('review address', () => {
         runId: 98,
         showAside: true,
         row: 'waiting:600',
+        view: 'crowded',
+        crowd: '7-9-square',
       },
     ];
 

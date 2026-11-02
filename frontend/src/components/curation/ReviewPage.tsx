@@ -21,7 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
-  Stack, Typography,
+  Stack, Tab, Tabs, Typography,
 } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,6 +32,7 @@ import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { buildReviewUrl, isFilteredReview } from '../../utils/appUrl';
 import { plural } from '../../utils/plural';
 import { useReviewAddress, type ReviewPatch } from '../../hooks/useReviewAddress';
+import type { ReviewAddress } from '../../utils/appUrl';
 import { nextSelection, type QueueRow, type RowKind } from './queueRows';
 import { useReviewQueue } from './useReviewQueue';
 import { queryKeys } from '../../api/queryKeys';
@@ -49,6 +50,10 @@ import { SelectionBar } from './selection/SelectionBar';
 import { SelectionSummary } from './selection/SelectionSummary';
 import { answerVerb, lostOfferedFor } from './selection/answerWords';
 import { PinnedAnswers } from '../shared/AdmissionPins';
+import { LazyCrowdedCities } from './crowding/LazyCrowdedCities';
+import { LeaveStagedDialog } from './crowding/LeaveStagedDialog';
+import { useShadowedArrivals } from './crowding/useShadowedArrivals';
+import type { GroupStagings } from './crowding/crowdedGroups';
 
 /**
  * What to add to "nothing here has changed what visitors see", which is not always true.
@@ -91,12 +96,45 @@ function useBenchRow(shown: QueueRow | undefined, row: string | null, looking: b
   return shown ?? (looking && last?.key === row ? last : undefined);
 }
 
+/** A tab's name and, once read, how much waits under it. */
+function TabLabel({ name, count }: { name: string; count: number | undefined }) {
+  return (
+    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'baseline', gap: 1 }}>
+      {name}
+      {count !== undefined && (
+        <Box component="span" sx={{ typography: 'body2', color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
+          {count.toLocaleString('en')}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 export function ReviewPage() {
   const queryClient = useQueryClient();
   const { address, go } = useReviewAddress();
   const [notice, setNotice] = useState<string | null>(null);
   const queue = useReviewQueue(address);
   const { rows, total } = queue;
+  const questionsOpen = address.view === 'questions';
+
+  /**
+   * The *Crowded cities* tab (#2282): its count, read here for the tab's label, and the
+   * answers staged in its windows, by city. They are the page's, not the tab's, so a
+   * curator who leaves the tab by Back finds them on return; leaving it by its own tab
+   * asks first, since the queue's tab shows none of them.
+   */
+  const shadowed = useShadowedArrivals();
+  const shadowedCount = shadowed.data?.groups.reduce((sum, group) => sum + group.arrivals, 0);
+  const [crowdStagings, setCrowdStagings] = useState<GroupStagings>(new Map());
+  const crowdStaged = [...crowdStagings.values()].reduce((sum, staging) => sum + staging.size, 0);
+  const [leavingCrowd, setLeavingCrowd] = useState(false);
+  const openTab = (view: ReviewAddress['view']) => {
+    if (view === address.view) return;
+    if (view === 'questions' && crowdStaged > 0) setLeavingCrowd(true);
+    else go({ view, crowd: null });
+  };
+  const openCrowd = useCallback((crowd: string, opts?: { replace?: boolean }) => go({ crowd }, opts), [go]);
 
   /**
    * The selected row is the address's, when the list still holds it.
@@ -157,11 +195,12 @@ export function ReviewPage() {
   // into the address — which the next render would then have to correct. It waits.
   // `queue.settling` holds it while a row that left the loaded pages is looked for: a row
   // that only moved keeps its card (#1779), and only an answered one hands over.
+  // Only on the queue's tab: the other tab's address is not the queue's to correct.
   useEffect(() => {
-    if (queue.stale || queue.settling || rows.length === 0 || selected !== null) return;
+    if (!questionsOpen || queue.stale || queue.settling || rows.length === 0 || selected !== null) return;
     const next = nextSelection(rows, lastIndex.current);
     if (next !== undefined) go({ row: next }, { replace: true });
-  }, [rows, selected, go, queue.stale, queue.settling]);
+  }, [rows, selected, go, queue.stale, queue.settling, questionsOpen]);
 
   // A change that names a different list clears the row with it: the question the curator
   // had open was chosen out of a list that no longer exists, and the effect above picks the
@@ -267,15 +306,6 @@ export function ReviewPage() {
       </Stack>
     );
   };
-
-  if (queue.isError) {
-    return (
-      <Alert severity="error" sx={{ m: 3 }}>
-        Could not load the review queue
-        {queue.error instanceof Error ? `: ${queue.error.message}` : '.'}
-      </Alert>
-    );
-  }
 
   // The search and the source chip narrow the answered blocks as they narrow the questions;
   // the region, the run and the kind of question do not, since they choose among open
@@ -385,171 +415,216 @@ export function ReviewPage() {
         </Alert>
       )}
 
-      {/* Outside the loading branch on purpose: a filter that matches nothing takes the
-          list away with it, and *Clear all* is the way back out of that. */}
-      <ReviewToolbar
-        address={address}
-        facets={queue.facets}
-        total={total}
-        onChange={onFilterChange}
-        onSetAside={runId => runAside(setRunAside(runId), `Could not set run ${runId} aside`)}
-        onBringBack={runId => runAside(bringRunBack(runId), `Could not bring run ${runId} back`)}
+      <Tabs
+        value={address.view}
+        onChange={(_, view: ReviewAddress['view']) => openTab(view)}
+        aria-label="What to review"
+        sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
+      >
+        <Tab value="questions" label={<TabLabel name="Questions" count={queue.isLoading ? undefined : total} />} sx={{ textTransform: 'none' }} />
+        {/* The arrivals a crowded city would shadow (#2282), which no question asks about:
+            asked a city and a type at a time, whatever the queue's filters say. */}
+        <Tab value="crowded" label={<TabLabel name="Crowded cities" count={shadowedCount} />} sx={{ textTransform: 'none' }} />
+      </Tabs>
+
+      {!questionsOpen && (
+        <LazyCrowdedCities
+          selected={address.crowd}
+          onSelect={openCrowd}
+          stagings={crowdStagings}
+          onStagings={setCrowdStagings}
+          onApplied={() => {
+            refresh();
+            invalidateExperiences(queryClient);
+          }}
+        />
+      )}
+      <LeaveStagedDialog
+        staged={leavingCrowd ? crowdStaged : null}
+        onStay={() => setLeavingCrowd(false)}
+        onDiscard={() => {
+          setLeavingCrowd(false);
+          setCrowdStagings(new Map());
+          go({ view: 'questions', crowd: null });
+        }}
       />
 
-      {queue.isLoading && <LoadingSpinner padding={4} />}
-
-      {!queue.isLoading && rows.length === 0 && (
-        <Alert severity="success">
-          {isFilteredReview(address)
-            ? 'Nothing matches. Clear a filter or the search.'
-            : 'Nothing waiting. Every flagged object has been answered.'}
+      {questionsOpen && queue.isError && (
+        <Alert severity="error">
+          Could not load the review queue
+          {queue.error instanceof Error ? `: ${queue.error.message}` : '.'}
         </Alert>
       )}
 
-      {!queue.isLoading && rows.length > 0 && (
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={0} alignItems="flex-start">
-          {/* The two columns scroll on their own, and that is not a nicety: sharing the
-              page's scroll meant clicking a row near the foot of a nineteen-row list left
-              the card rendered far above the viewport — the curator clicked and the screen
-              appeared not to react. The list keeps its own scrollbar, and the bench sticks
-              to the top, so the answer to a click is always where the click was. */}
-          <Box
-            sx={{
-              // 400, not 320: a row carries an object's name and, under it, its kind
-              // and what is being asked of it. At 320 both truncate after a few words —
-              // "Cultural Landscape and Archaeolo…" over "UNESCO World Heritage Sites ·
-              // holds a change: …" — which leaves the list unable to do the one thing it
-              // is for, which is telling one question from the next without opening it.
-              width: { xs: '100%', md: 400 },
-              flexShrink: 0,
-              maxHeight: { xs: 320, md: 'calc(100vh - 220px)' },
-              overflowY: 'auto',
-              position: { md: 'sticky' },
-              top: { md: 16 },
-            }}
-          >
-            <ReviewQueueList
-              rows={rows}
-              selected={selected}
-              onSelect={key => go({ row: key })}
-              sort={address.sort}
-              today={dayOf(new Date().toISOString())}
-              hasMore={queue.hasMore}
-              startsPastTop={queue.startsPastTop}
-              onTop={() => { lastIndex.current = 0; queue.openAtTop(); }}
-              loadingMore={queue.loadingMore}
-              onMore={queue.more}
-              total={total}
-              stale={queue.stale}
-              selection={selection}
-            />
-          </Box>
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            {/* The selected row — kept while it is looked for after an answer moved it —
-                or nothing for the one render before the effect above picks the next one. Falling back to `rows[0]` would flash the top of the
-                list as the answer to a click somewhere else. With more than one row
-                ticked the bench sums the selection instead (#852); one tick, or none,
-                and the card is what it always was. */}
-            {tickedRows.length > 1 || selection.allMatching
-              ? (
-                <SelectionSummary
-                  rows={tickedRows}
-                  allMatching={selection.allMatching}
-                  reach={answering.reach}
-                  facets={queue.facets}
-                  sourceIds={address.sourceIds}
-                  runId={address.runId}
-                  showAside={address.showAside}
-                  lost={lost}
+      {questionsOpen && !queue.isError && (
+        <>
+          {/* Outside the loading branch on purpose: a filter that matches nothing takes the
+              list away with it, and *Clear all* is the way back out of that. */}
+          <ReviewToolbar
+            address={address}
+            facets={queue.facets}
+            total={total}
+            onChange={onFilterChange}
+            onSetAside={runId => runAside(setRunAside(runId), `Could not set run ${runId} aside`)}
+            onBringBack={runId => runAside(bringRunBack(runId), `Could not bring run ${runId} back`)}
+          />
+
+          {queue.isLoading && <LoadingSpinner padding={4} />}
+
+          {!queue.isLoading && rows.length === 0 && (
+            <Alert severity="success">
+              {isFilteredReview(address)
+                ? 'Nothing matches. Clear a filter or the search.'
+                : 'Nothing waiting. Every flagged object has been answered.'}
+            </Alert>
+          )}
+
+          {!queue.isLoading && rows.length > 0 && (
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={0} alignItems="flex-start">
+              {/* The two columns scroll on their own, and that is not a nicety: sharing the
+                  page's scroll meant clicking a row near the foot of a nineteen-row list left
+                  the card rendered far above the viewport — the curator clicked and the screen
+                  appeared not to react. The list keeps its own scrollbar, and the bench sticks
+                  to the top, so the answer to a click is always where the click was. */}
+              <Box
+                sx={{
+                  // 400, not 320: a row carries an object's name and, under it, its kind
+                  // and what is being asked of it. At 320 both truncate after a few words —
+                  // "Cultural Landscape and Archaeolo…" over "UNESCO World Heritage Sites ·
+                  // holds a change: …" — which leaves the list unable to do the one thing it
+                  // is for, which is telling one question from the next without opening it.
+                  width: { xs: '100%', md: 400 },
+                  flexShrink: 0,
+                  maxHeight: { xs: 320, md: 'calc(100vh - 220px)' },
+                  overflowY: 'auto',
+                  position: { md: 'sticky' },
+                  top: { md: 16 },
+                }}
+              >
+                <ReviewQueueList
+                  rows={rows}
+                  selected={selected}
+                  onSelect={key => go({ row: key })}
+                  sort={address.sort}
+                  today={dayOf(new Date().toISOString())}
+                  hasMore={queue.hasMore}
+                  startsPastTop={queue.startsPastTop}
+                  onTop={() => { lastIndex.current = 0; queue.openAtTop(); }}
+                  loadingMore={queue.loadingMore}
+                  onMore={queue.more}
                   total={total}
+                  stale={queue.stale}
+                  selection={selection}
                 />
-              )
-              // Keyed by the row: a card's unsaved answers are about its own object,
-              // and another row of the same question must not inherit them (#1397).
-              : <ReviewBench key={onBench?.key} row={onBench} onDone={refresh} />}
-          </Box>
-        </Stack>
-      )}
-
-      <SelectionBar
-        rows={tickedRows}
-        allMatching={selection.allMatching}
-        reach={answering.reach}
-        lost={lost}
-        total={total}
-        progress={answering.progress}
-        onAnswer={answering.answer}
-        onClear={selection.clear}
-      />
-      {/* Room under the columns for the bar, which is page-fixed: without it the
-          last rows of a long list sit behind it. */}
-      {batchOpen && <Box sx={{ height: 96 }} />}
-
-      {/* Asked once: past one page and for all matching — otherwise the count is on
-          the bar and every answer can be undone from the foot of this page. Names what
-          it will do per kind, in the cards' words, so "Accept 1,078 proposals" is never
-          the whole of what a curator agrees to. */}
-      <Dialog open={answering.confirming !== null} onClose={answering.cancel}>
-        <DialogTitle>
-          {answerVerb(answering.confirming)}
-          {' '}
-          {selection.allMatching
-            ? `all ${total.toLocaleString('en')} matching these filters?`
-            : `${plural(tickedRows.length, 'proposal')}?`}
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText component="div">
-            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-              {answering.confirmLines.map(line => <li key={line}>{line}</li>)}
-            </Box>
-            {answering.confirmNote && (
-              <Box component="p" sx={{ mb: 0 }}>{answering.confirmNote}</Box>
-            )}
-            {selection.allMatching && (
-              <Box component="p" sx={{ mb: 0 }}>
-                The counts above are every question these filters match, not only the rows
-                on screen; the answer goes to all of them, a page at a time, and the bar says
-                how far it has got.
               </Box>
-            )}
-            <Box component="p" sx={{ mb: 0 }}>
-              Each object is answered on its own and recorded on its own, so the line
-              afterwards names anything that refused. Every answer has a take-back, at the
-              foot of this page.
-            </Box>
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={answering.cancel}>Cancel</Button>
-          <Button variant="contained" onClick={answering.confirm}>
-            {answerVerb(answering.confirming)}
-          </Button>
-        </DialogActions>
-      </Dialog>
+              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                {/* The selected row — kept while it is looked for after an answer moved it —
+                    or nothing for the one render before the effect above picks the next one. Falling back to `rows[0]` would flash the top of the
+                    list as the answer to a click somewhere else. With more than one row
+                    ticked the bench sums the selection instead (#852); one tick, or none,
+                    and the card is what it always was. */}
+                {tickedRows.length > 1 || selection.allMatching
+                  ? (
+                    <SelectionSummary
+                      rows={tickedRows}
+                      allMatching={selection.allMatching}
+                      reach={answering.reach}
+                      facets={queue.facets}
+                      sourceIds={address.sourceIds}
+                      runId={address.runId}
+                      showAside={address.showAside}
+                      lost={lost}
+                      total={total}
+                    />
+                  )
+                  // Keyed by the row: a card's unsaved answers are about its own object,
+                  // and another row of the same question must not inherit them (#1397).
+                  : <ReviewBench key={onBench?.key} row={onBench} onDone={refresh} />}
+              </Box>
+            </Stack>
+          )}
 
-      {/* Drawn on its offset as well as its rows: a block paged forward and then answered
-          down to nothing would otherwise vanish with the only control that could go back,
-          stranding the offset until a reload. */}
-      {answeredLists
-        .filter(list => list.items.length > 0 || queue.pageOf(list.kind).offset > 0)
-        .map(list => (
-          <AnsweredSection
-            key={list.kind}
-            label={list.label}
-            count={list.count}
-            explanation={list.explanation}
-            unfiltered={unfiltered}
-            pager={pagerOver(list.kind)}
-          >
-            {queue.answeredFailed(list.kind) && (
-              <Alert severity="error">Could not load this page of the list. Previous goes back to the one before.</Alert>
-            )}
-            {list.items.map(list.card)}
-          </AnsweredSection>
-        ))}
-      {/* The answers pinned against a rule (#1369): answered work like the blocks
-          above, read on their own, until curators have a home screen (#614). */}
-      <PinnedAnswers />
+          <SelectionBar
+            rows={tickedRows}
+            allMatching={selection.allMatching}
+            reach={answering.reach}
+            lost={lost}
+            total={total}
+            progress={answering.progress}
+            onAnswer={answering.answer}
+            onClear={selection.clear}
+          />
+          {/* Room under the columns for the bar, which is page-fixed: without it the
+              last rows of a long list sit behind it. */}
+          {batchOpen && <Box sx={{ height: 96 }} />}
+
+          {/* Asked once: past one page and for all matching — otherwise the count is on
+              the bar and every answer can be undone from the foot of this page. Names what
+              it will do per kind, in the cards' words, so "Accept 1,078 proposals" is never
+              the whole of what a curator agrees to. */}
+          <Dialog open={answering.confirming !== null} onClose={answering.cancel}>
+            <DialogTitle>
+              {answerVerb(answering.confirming)}
+              {' '}
+              {selection.allMatching
+                ? `all ${total.toLocaleString('en')} matching these filters?`
+                : `${plural(tickedRows.length, 'proposal')}?`}
+            </DialogTitle>
+            <DialogContent>
+              <DialogContentText component="div">
+                <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                  {answering.confirmLines.map(line => <li key={line}>{line}</li>)}
+                </Box>
+                {answering.confirmNote && (
+                  <Box component="p" sx={{ mb: 0 }}>{answering.confirmNote}</Box>
+                )}
+                {selection.allMatching && (
+                  <Box component="p" sx={{ mb: 0 }}>
+                    The counts above are every question these filters match, not only the rows
+                    on screen; the answer goes to all of them, a page at a time, and the bar says
+                    how far it has got.
+                  </Box>
+                )}
+                <Box component="p" sx={{ mb: 0 }}>
+                  Each object is answered on its own and recorded on its own, so the line
+                  afterwards names anything that refused. Every answer has a take-back, at the
+                  foot of this page.
+                </Box>
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={answering.cancel}>Cancel</Button>
+              <Button variant="contained" onClick={answering.confirm}>
+                {answerVerb(answering.confirming)}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Drawn on its offset as well as its rows: a block paged forward and then answered
+              down to nothing would otherwise vanish with the only control that could go back,
+              stranding the offset until a reload. */}
+          {answeredLists
+            .filter(list => list.items.length > 0 || queue.pageOf(list.kind).offset > 0)
+            .map(list => (
+              <AnsweredSection
+                key={list.kind}
+                label={list.label}
+                count={list.count}
+                explanation={list.explanation}
+                unfiltered={unfiltered}
+                pager={pagerOver(list.kind)}
+              >
+                {queue.answeredFailed(list.kind) && (
+                  <Alert severity="error">Could not load this page of the list. Previous goes back to the one before.</Alert>
+                )}
+                {list.items.map(list.card)}
+              </AnsweredSection>
+            ))}
+          {/* The answers pinned against a rule (#1369): answered work like the blocks
+              above, read on their own, until curators have a home screen (#614). */}
+          <PinnedAnswers />
+        </>
+      )}
     </Box>
   );
 }
