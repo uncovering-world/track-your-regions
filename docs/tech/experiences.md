@@ -5284,7 +5284,9 @@ Maggiore, and crowds out 51 more of its churches.
   - **Which places shadow a place** (#2228) is the window opened on it: the rows marked
     `outranksCentre` are the ones its own count counts.
   - **A review card says how crowded its city is** without reading the window
-    (`attachCrowding`, `reviewQueueCrowding.ts`). Each card of the queue's page carries
+    (`attachCrowding`, `reviewQueueCrowding.ts`), and so does a kind row of a place's curation
+    dialog (`listPlaceKinds`): both ask `crowdingOf`, one statement over their memberships, so a
+    row and a card say the number the window lists. Each card of the queue's page carries
     `crowding`: the kind's limit and radius, how many places of its kind and type the window would
     list (`around`, through the window's own `aroundSql`), whether the display shadows it and, if
     it does, the count the recount stored above it (`membership_crowding.outranked_by`). It is null
@@ -5294,6 +5296,67 @@ Maggiore, and crowds out 51 more of its churches.
     of it the count around each centre, about 337 places in a Roman 10 km box. Counting
     `crowding_better()` again, rather than reading the stored count, put 100 ms more on the fifty,
     since it tests every place within 10 km for works.
+  - **The curator's side** lives in `frontend/src/components/curation/crowding/`:
+    - `CrowdingWayIn` is the way in on a review card of a membership (`GatedSection`,
+      `PinQuestionCard`, `VisitQuestionCard`, `KindMissingCard`). It reads the card's `crowding`
+      and nothing else, so no card reads the window before a curator opens it. The button says
+      "Squares around (22)" from `around`. On a shadowed place, `shadowLine` (`crowdingWords.ts`)
+      says "Shadowed in Squares & streets: 13 better-known squares within 10 km outrank it" from
+      `outrankedBy`. The window opened on it names them: the rows that count above its place.
+      A place's curation dialog offers the same button on each kind row that carries `crowding`
+      (`PlaceKinds`), opening the window over the dialog on that membership. The dialog's lazy
+      wrapper (`LazyCurationDialog`) hands it `LazyCrowdingWindow` rather than the dialog importing
+      it: a dialog chunk that imports the shell's lazy helpers makes Rolldown re-cut the startup
+      chunks, moving the code the shell shares with the dialog into the entry chunk.
+    - `CrowdingWindow` is the window, drawn in one of two frames: `CrowdingWindowDialog` over a review
+      card, its own chunk behind `LazyCrowdingWindow`, so the review queue's chunk carries only the
+      ways in, and the *Crowded cities* tab's pane, in the page. The window reads, stages, applies
+      and reports, and hands its parts — heading, map and list, report, Apply — to its frame, which
+      lays them out and keeps the staging. A dialog sets the map beside the list from a medium
+      width and scrolls the list on its own; a pane, narrower, only on the widest screens, and lets
+      the list run on with the page under an Apply bar pinned to the foot of the screen
+      from a medium width.
+      `CrowdingTable` holds the rows, the rule's line
+      (`ruleLineAt`: before the first row the rule shadows) and each row's List, Shadow, Don't take
+      and Clear. `CrowdingMap` draws the rows as numbered dots coloured by standing, the card's place
+      ringed, and the radius as a circle drawn on the sphere (`radiusCircle`) and framed with
+      `frameGeoJson`. A row and its dot share the hovered membership. `@turf/turf`'s `circle` is not
+      used: imported from the window's chunk, it put 19 kB into the visitor's entry chunk.
+    - `crowdingStaging.ts` is the staging: which answers a row takes (`answersOffered`, from
+      `pinnable` and `canAnswer`), what a press stages, how a staged row is drawn and what the report
+      says. Staged answers are kept across a type switch and a step to another place, and one Apply
+      sends them all (`answerCrowding` in `api/crowdingAnswers.ts`, a hundred to a request). The
+      window then re-reads every window and the shadowed arrivals, and hands the report to its
+      frame: the dialog passes it to its opener on close, and the tab has the page refresh the
+      queue and the lists at once.
+    - `CrowdedCities` is the review page's *Crowded cities* tab (`view=crowded`,
+      `docs/tech/addresses.md` § The review page), a chunk of its own behind `LazyCrowdedCities`,
+      fetched when the tab is opened: the review page carries the two tabs, their counts, the
+      staged answers and `LeaveStagedDialog`. The tab reads the new arrivals a crowded city would shadow
+      (`useShadowedArrivals`, the same read the tab's count makes), which no question of the queue
+      asks about, and is not narrowed by the queue's filters. On the left, one line per region,
+      kind and type, drawn with the queue's own line (`feed/QueueLine`): "Berlin · squares" over
+      "Squares & streets · 11 new places a crowded city would shadow". Its Region and Kind chips are
+      the toolbar's `FilterChip`, counted by `crowdedGroups.ts` under the other chip, and kept in
+      the tab, not the address. On the right, the window in a pane on the open group's
+      `membershipIds`, best known first, with Previous and Next through them. The open group is
+      the address's `crowd` (`crowdKeyOf`), and `groupShown` opens the first group the chips keep
+      where it names none the list holds, as a replace. On a narrow screen one side shows at a
+      time.
+    - The tab's staged answers are kept by group (`GroupStagings`, `crowdedGroups.ts`) and by the
+      review page, so Back off the tab keeps them. A window stages into its own group, and its
+      Apply sends that group's only: nothing staged in Berlin goes with Rome's Apply. A group left,
+      by its line or by Back, keeps its answers; its line says "1 staged", and the Apply bar names
+      every other group holding some ("1 answer staged in Berlin · squares") with *Open*, which
+      clears the chips where they hide that group. An Apply sends the answers as they stood when
+      it was pressed, so one staged while it runs stays staged. While it runs no other group opens,
+      and its report is kept by group, so a group whose last arrival it answers hands its report
+      to the group the tab moves to, and to that one alone, until another group's Apply reports.
+      There the newer of the two reports is shown, so one the group held from an earlier Apply
+      gives way, and where the Apply answered the last group out of the list, its report is said
+      over the empty list. Leaving the tab for *Questions*, which shows
+      none of them, with answers staged opens `LeaveStagedDialog`: stay and apply them, or discard
+      them.
 
 ### Lifecycle filtering
 
