@@ -62,10 +62,10 @@ export interface SiteFacts {
  * a lake *and* says "with no ruin on the map", so a substring test filed it
  * under the map's answer when the class is what refused it.
  *
- * `placeless`, `under-the-bars` and `regional` are the values the rule itself
+ * `placeless`, `under-the-bars` and `surroundings` are the values the rule itself
  * never returns: they are the pool's and the frame's (`sites.ts`,
- * `regionalSites.ts`), for a candidate with no coordinate to pin, for a held
- * site under every stay bar of the world tier, and for one the regional tier
+ * `surroundingsSites.ts`), for a candidate with no coordinate to pin, for a held
+ * site under every stay bar of the world tier, and for one the surroundings tier
  * held or measured and now refuses (ADR-0179). They are named here all the
  * same, because the report's groups are one vocabulary and a caller should not
  * have to invent a word for the refusal it owns.
@@ -75,7 +75,7 @@ export type SiteRefusalGroup =
   | 'no-ruin'
   | 'class-or-name'
   | 'under-the-bars'
-  | 'regional'
+  | 'surroundings'
   | 'placeless';
 
 /**

@@ -1,6 +1,6 @@
 /**
  * Archaeology's sites in the place kinds' frame (ADR-0179), through the whole
- * run: the world bars admit a site whatever it is part of, and the regional
+ * run: the world bars admit a site whatever it is part of, and the surroundings
  * tier asks two things more — that the map shows the place, and that it is no
  * part of a place the kind holds.
  *
@@ -13,8 +13,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ARCHAEOLOGICAL_SITE, collect, world, type World } from './pipelineFixture.js';
-import { partOfReason, UNMAPPED_REASON } from './regionalSites.js';
-import type { RegionalPool, RegionalPoolRow } from '../places/regionalPool.js';
+import { partOfReason, UNMAPPED_REASON } from './surroundingsSites.js';
+import type { SurroundingsPool, SurroundingsPoolRow } from '../places/surroundingsPool.js';
 import type { CollectedArchaeologySite } from './proposal.js';
 
 const ANCIENT_CITY = 'Q15661340';
@@ -35,7 +35,7 @@ const GIZA_NECROPOLIS = 'Q13217298';
 const ALTAMIRA = 'Q133575';
 const ALTAMIRA_SERIAL = 'Q899302';
 
-function regionalWorld(): World {
+function surroundingsWorld(): World {
   const w = world();
   // `Ancient Egyptian necropolis`, `cave with prehistoric art` and `Stone Age
   // site` are under `archaeological site`; a wat is not.
@@ -77,8 +77,8 @@ function regionalWorld(): World {
 }
 
 /** A pool row and its surroundings: the place is the best of its own area, by its editions, readers and guides. */
-function poolOf(rows: Array<Omit<RegionalPoolRow, 'lat' | 'lon'> & { lat?: number; lon?: number }>): RegionalPool {
-  const full: RegionalPoolRow[] = rows.map((row) => ({ lat: 0, lon: 0, ...row }));
+function poolOf(rows: Array<Omit<SurroundingsPoolRow, 'lat' | 'lon'> & { lat?: number; lon?: number }>): SurroundingsPool {
+  const full: SurroundingsPoolRow[] = rows.map((row) => ({ lat: 0, lon: 0, ...row }));
   return {
     rows: new Map(full.map((row) => [row.qid, row])),
     around: new Map([['all', new Map(full.map((row) => [row.qid, {
@@ -88,7 +88,7 @@ function poolOf(rows: Array<Omit<RegionalPoolRow, 'lat' | 'lon'> & { lat?: numbe
   };
 }
 
-/** The measurement's signals of the regional candidates (2026-11-02). */
+/** The measurement's signals of the surroundings-tier candidates (2026-11-02). */
 const POOL = poolOf([
   { qid: FORUM_OF_POMPEII, editions: 5, guideEditions: 4, readers: 5_165, classes: [ARCHAEOLOGICAL_SITE] },
   { qid: DIEPKLOOF, editions: 16, guideEditions: 1, readers: 6_256, classes: [CAVE, ARCHAEOLOGICAL_SITE, ROCK_SHELTER] },
@@ -101,46 +101,46 @@ const siteOf = (items: readonly { qid: string; type: string }[], qid: string) =>
 
 describe('Archaeology\'s sites in the frame (ADR-0179)', () => {
   it('admits Giza and keeps Altamira by the world bars, though each is part of a whole the kind holds', async () => {
-    const out = await collect(regionalWorld(), {
-      admittedSites: [ALTAMIRA, GIZA_NECROPOLIS, ALTAMIRA_SERIAL], regional: async () => ({ pool: POOL, held: new Set() }),
+    const out = await collect(surroundingsWorld(), {
+      admittedSites: [ALTAMIRA, GIZA_NECROPOLIS, ALTAMIRA_SERIAL], surroundings: async () => ({ pool: POOL, held: new Set() }),
     });
     expect(siteOf(out.items, GIZA)?.tier).toBeUndefined();
     expect(siteOf(out.items, ALTAMIRA)?.tier).toBeUndefined();
     expect(siteOf(out.items, GIZA_NECROPOLIS)).toBeDefined();
   });
 
-  it('admits Tipón to the regional tier: a site the map draws, part of nothing the kind holds', async () => {
-    const out = await collect(regionalWorld(), { admittedSites: [POMPEII], regional: async () => ({ pool: POOL, held: new Set() }) });
+  it('admits Tipón to the surroundings tier: a site the map draws, part of nothing the kind holds', async () => {
+    const out = await collect(surroundingsWorld(), { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
     const tipon = siteOf(out.items, TIPON);
-    expect(tipon?.tier).toBe('regional');
+    expect(tipon?.tier).toBe('surroundings');
     expect(tipon?.osm.tag).toBe('historic=archaeological_site');
-    expect(tipon?.admissionNote).toContain('In the regional tier by');
-    expect(out.regionalSkipped).toBeUndefined();
+    expect(tipon?.admissionNote).toContain('In the surroundings tier by');
+    expect(out.surroundingsSkipped).toBeUndefined();
   });
 
-  it('leaves Wat Ratchaburana out of the regional tier: a wat to Wikidata, which no class of the kind reaches', async () => {
+  it('leaves Wat Ratchaburana out of the surroundings tier: a wat to Wikidata, which no class of the kind reaches', async () => {
     // The map tags it as a dig, and the map's entrance names it: that road is
     // the world tier's alone, and the wat is under its bars.
-    const out = await collect(regionalWorld(), { admittedSites: [POMPEII], regional: async () => ({ pool: POOL, held: new Set() }) });
+    const out = await collect(surroundingsWorld(), { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
     expect(siteOf(out.items, WAT_RATCHABURANA)).toBeUndefined();
   });
 
-  it('refuses the Forum of Pompeii in the regional tier: part of Pompeii, which the kind holds', async () => {
-    const out = await collect(regionalWorld(), { admittedSites: [POMPEII], regional: async () => ({ pool: POOL, held: new Set() }) });
+  it('refuses the Forum of Pompeii in the surroundings tier: part of Pompeii, which the kind holds', async () => {
+    const out = await collect(surroundingsWorld(), { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
     expect(siteOf(out.items, FORUM_OF_POMPEII)).toBeUndefined();
     expect(out.filtered.find((row) => row.externalId === FORUM_OF_POMPEII)?.reason).toBe(partOfReason(`Pompeii (${POMPEII})`));
   });
 
-  it('refuses Diepkloof Rock Shelter in the regional tier: the map shows no ruin or dig there', async () => {
-    const out = await collect(regionalWorld(), { admittedSites: [POMPEII], regional: async () => ({ pool: POOL, held: new Set() }) });
+  it('refuses Diepkloof Rock Shelter in the surroundings tier: the map shows no ruin or dig there', async () => {
+    const out = await collect(surroundingsWorld(), { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
     expect(siteOf(out.items, DIEPKLOOF)).toBeUndefined();
     expect(out.filtered.find((row) => row.externalId === DIEPKLOOF)?.reason).toBe(UNMAPPED_REASON);
   });
 
-  it('leaves the regional tier as it stands where no regional pool was read (ADR-0175 decision 6)', async () => {
-    const out = await collect(regionalWorld(), { regional: async () => ({ pool: null, held: new Set([WAT_RATCHABURANA]) }) });
+  it('leaves the surroundings tier as it stands where no surroundings pool was read (ADR-0175 decision 6)', async () => {
+    const out = await collect(surroundingsWorld(), { surroundings: async () => ({ pool: null, held: new Set([WAT_RATCHABURANA]) }) });
     expect(siteOf(out.items, WAT_RATCHABURANA)).toBeUndefined();
     expect(out.filtered.map((row) => row.externalId)).not.toContain(WAT_RATCHABURANA);
-    expect(out.regionalSkipped).toContain('live service');
+    expect(out.surroundingsSkipped).toContain('live service');
   });
 });

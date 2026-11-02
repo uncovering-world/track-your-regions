@@ -1,7 +1,7 @@
 /**
  * What a place kind with one point reads of its candidates beside its rule
  * (#1854, #1860): a year's readers for the world bars (`worldBars.ts`) and for
- * the regional tier's pool (`regionalPool.ts`), and the landmark a run writes
+ * the surroundings tier's pool (`surroundingsPool.ts`), and the landmark a run writes
  * for a candidate it admits. Every place kind with one point shares them; each
  * kind's rule stays its own.
  */
@@ -30,7 +30,7 @@ const MANY_BATCH = 5_000;
 /**
  * A year's readers of many items, by the counter `yearlyReaders` reads with,
  * the year and its editions' phone shares read once rather than once a batch:
- * the regional pool asks about hundreds of thousands of items, and the shares
+ * the surroundings pool asks about hundreds of thousands of items, and the shares
  * are a pass over the whole year. Null when no year is folded. `step` runs
  * before every batch, where the run can be stopped.
  */

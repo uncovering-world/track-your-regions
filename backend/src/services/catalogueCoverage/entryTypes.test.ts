@@ -118,7 +118,7 @@ describe('reading the types from the subset', () => {
 });
 
 describe('the kinds with types', () => {
-  it('are the kinds a crowded city shows ten of a type of: the six by their regional declarations, and Archaeology (ADR-0179)', () => {
+  it('are the kinds a crowded city shows ten of a type of: the six by their surroundings declarations, and Archaeology (ADR-0179)', () => {
     expect([...TYPE_RULES.keys()].sort((a, b) => a - b)).toEqual([3, 4, 5, 6, 7, 8, 9]);
     for (const rule of TYPE_RULES.values()) expect(rule.typeOf).toBeTypeOf('function');
   });

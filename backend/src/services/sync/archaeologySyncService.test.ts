@@ -366,10 +366,10 @@ describe('what the archaeology run fetches', () => {
     });
     // What the source already admits, so the stay has something to hold —
     // asked by door, so neither judges the other's rows, and the sites by
-    // tier, so the world tier never holds a row the regional tier admitted.
+    // tier, so the world tier never holds a row the surroundings tier admitted.
     expect(mockedAdmitted).toHaveBeenCalledWith(5, 'museum');
     expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site', 'world');
-    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site', 'regional');
+    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site', 'surroundings');
     expect(deps.admittedMuseums).toEqual(new Set([BRITISH_MUSEUM]));
     expect(deps.admittedSites).toEqual(new Set([BRITISH_MUSEUM]));
     // And the works every other kind shows, so a famous find makes a question
@@ -809,10 +809,10 @@ describe('what the archaeology run writes', () => {
 
     // Tipón, measured against what lies within 50 km of it: the tier rides on
     // the membership, where every tier read and the run's stay look for it.
-    await fetched.processItem(site({ qid: 'Q1418543', label: 'Tipón', tier: 'regional' }), progress(), writing());
+    await fetched.processItem(site({ qid: 'Q1418543', label: 'Tipón', tier: 'surroundings' }), progress(), writing());
     await fetched.processItem(site(), progress(), writing());
 
-    expect(mockedUpsert.mock.calls[0][0].metadata.tier).toBe('regional');
+    expect(mockedUpsert.mock.calls[0][0].metadata.tier).toBe('surroundings');
     // A world-tier row carries no tier: the reads default its absence to the world's.
     expect(mockedUpsert.mock.calls[1][0].metadata).not.toHaveProperty('tier');
   });

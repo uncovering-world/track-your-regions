@@ -77,7 +77,7 @@ export interface PinnedRow {
   /** The question standing on the pin, waiting for a curator; null where none does. */
   question: RunView | null;
   /** The tier that admitted the row (#2178): a run that did not read a tier has no view of its pins. */
-  tier?: 'world' | 'regional';
+  tier?: 'world' | 'surroundings';
 }
 
 /**
@@ -101,7 +101,7 @@ export async function pinnedRows(sourceId: number): Promise<PinnedRow[]> {
   const result = await pool.query<{
     id: number; external_id: string; name: string; membership_id: number; admission: Admission;
     admission_pin_verdict: Admission | null; admission_pin_reason: string | null;
-    admission_question_verdict: Admission | null; admission_question_reason: string | null; tier: 'world' | 'regional';
+    admission_question_verdict: Admission | null; admission_question_reason: string | null; tier: 'world' | 'surroundings';
   }>(
     `SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.admission, m.admission_pin_verdict, m.admission_pin_reason,
             m.admission_question_verdict, m.admission_question_reason, coalesce(m.facts->>'tier', 'world') AS tier

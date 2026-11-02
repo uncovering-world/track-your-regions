@@ -56,7 +56,7 @@ import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 import { shareOf, type PlaceGather } from './places/gather.js';
 import { WORSHIP_KIND } from './worship/places.js';
-import { mergeRegional, regionalArrivals, type RegionalKind } from './places/regionalTier.js';
+import { mergeSurroundings, surroundingsArrivals, type SurroundingsKind } from './places/surroundingsTier.js';
 import { refuseGone } from './places/gone.js';
 import { worldHistory } from './places/worldMemory.js';
 import { typeOf, worshipVerdict } from './worship/worshipTest.js';
@@ -67,11 +67,11 @@ export const WORSHIP_SOURCE_ID = 4;
 const LOG_PREFIX = '[Worship Sync]';
 
 /**
- * Places of worship in the regional tier (ADR-0171, #2178): every item of the
+ * Places of worship in the surroundings tier (ADR-0171, #2178): every item of the
  * worship and sacred-place trees measured against its surroundings, and the
  * kind's own rule over the survivors, with what holds a holy object read by id.
  */
-export const WORSHIP_REGIONAL: RegionalKind<WorshipTrees> = {
+export const WORSHIP_SURROUNDINGS: SurroundingsKind<WorshipTrees> = {
   kind: WORSHIP_KIND,
   classesOf: (trees) => trees.worship,
   typeOf: (classes, trees) => typeOf([...classes], trees),
@@ -221,7 +221,7 @@ async function fetchWorshipItems(
   storedTreasureCredits = await readStoredTreasureCredits();
   // What the source's world tier holds as admitted before the run, so the stay
   // line of the hysteretic tier has something to hold (ADR-0023) — and only
-  // what it holds: a row the regional tier admitted is that step's (#2178).
+  // what it holds: a row the surroundings tier admitted is that step's (#2178).
   const admitted = await admittedExternalIds(WORSHIP_SOURCE_ID, undefined, 'world');
 
   // Or the local subset, where the admin switched the source to it (#1461).
@@ -250,21 +250,21 @@ async function fetchWorshipItems(
     pause: readsSubset(sparql) ? undefined : () => delay(SPARQL_DELAY_MS),
   });
 
-  // The regional tier after the world tier has decided (ADR-0171, #2178): the
+  // The surroundings tier after the world tier has decided (ADR-0171, #2178): the
   // places the world bars left out, measured against their
   // surroundings, then put to the kind's own rule by id.
-  const { gathered, run, regional: regionalPool } = await gather(progress);
-  const regionalHeld = await admittedExternalIds(WORSHIP_SOURCE_ID, undefined, 'regional');
-  const regional = await regionalArrivals(run, sparql, WORSHIP_REGIONAL, shareOf(gathered, WORSHIP_KIND).trees, new Set(items.map((p) => p.qid)),
+  const { gathered, run, surroundings: surroundingsPool } = await gather(progress);
+  const surroundingsHeld = await admittedExternalIds(WORSHIP_SOURCE_ID, undefined, 'surroundings');
+  const surroundings = await surroundingsArrivals(run, sparql, WORSHIP_SURROUNDINGS, shareOf(gathered, WORSHIP_KIND).trees, new Set(items.map((p) => p.qid)),
     (entity, classes, { type }, note): CollectedPlaceOfWorship => ({
       qid: entity.qid, label: entity.label, description: entity.description, lat: entity.lat!, lon: entity.lon!,
       imageUrl: entity.imageUrl, itemPictures: entity.itemPictures, sitelinks: entity.sitelinks, countryLabel: entity.countryLabel,
       articleUrl: entity.articleUrl, website: entity.website, type: (type || null) as CollectedPlaceOfWorship['type'], classes,
-      artworks: [], door: 'place', readershipNote: note, tier: 'regional',
-    }), await regionalPool(), regionalHeld);
-  mergeRegional(items, filtered, regional, (place) => place.qid, regionalHeld);
-  // Not read this run (`regional.skipped`): its rows stay as they are.
-  const spareTier = regional.skipped ? 'regional' as const : undefined;
+      artworks: [], door: 'place', readershipNote: note, tier: 'surroundings',
+    }), await surroundingsPool(), surroundingsHeld);
+  mergeSurroundings(items, filtered, surroundings, (place) => place.qid, surroundingsHeld);
+  // Not read this run (`surroundings.skipped`): its rows stay as they are.
+  const spareTier = surroundings.skipped ? 'surroundings' as const : undefined;
   // A place Wikidata says is gone is refused whichever door or tier admitted it (#2259).
   await refuseGone(items, filtered, sparql, { id: (place) => place.qid, name: (place) => place.label, type: (place) => place.type }, LOG_PREFIX);
 
@@ -471,8 +471,8 @@ export function worshipSource(
     // And belonging is the badge: a place enters on its own fame or on a
     // treasure's, and both lines are the world tier (ADR-0045 decision 5) —
     // written once admission is settled, not per place (#760).
-    // The world tier's rows alone carry the badge; a regional arrival carries none (ADR-0048).
-    badgesAdmitted: (place) => place.tier !== 'regional',
+    // The world tier's rows alone carry the badge; a surroundings-tier arrival carries none (ADR-0048).
+    badgesAdmitted: (place) => place.tier !== 'surroundings',
     // The one place the run's options reach the collection: the cache is a
     // property of *this* run rather than of the source.
     fetchItems: (progress) => fetchWorshipItems(progress, gather, options.refreshCache === true),

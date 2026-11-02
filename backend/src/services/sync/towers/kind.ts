@@ -19,7 +19,7 @@ import type { WorldRead } from '../places/worldBars.js';
 import type { WorldHistory } from '../places/worldMemory.js';
 import { fetchTowerTrees, TOWER_ROOTS, TOWER_TYPES, type TowerTrees } from './classes.js';
 import { towerType, towerVerdict } from './towerTest.js';
-import { regionalReader, type RegionalKind } from '../places/regionalTier.js';
+import { surroundingsReader, type SurroundingsKind } from '../places/surroundingsTier.js';
 
 /** The source that fills Towers, and the kind it fills (migration 148). */
 export const TOWERS_SOURCE_ID = 7;
@@ -39,11 +39,11 @@ export const classifyTowers = (share: KindShare<TowerTrees>, admitted: ReadonlyS
   classifyByWorldBars(share, admitted, { verdict: towerVerdict, logPrefix: LOG_PREFIX }, sparql, read, history);
 
 /**
- * The kind in the regional tier (ADR-0171): every tower-class item measured against its
+ * The kind in the surroundings tier (ADR-0171): every tower-class item measured against its
  * surroundings, the rule over the survivors. Its `typeOf` is also the type a
  * coverage survey's entry is filed under within the kind (#2246).
  */
-export const TOWERS_REGIONAL: RegionalKind<TowerTrees> = {
+export const TOWERS_SURROUNDINGS: SurroundingsKind<TowerTrees> = {
   kind: TOWERS_KIND,
   classesOf: (trees) => trees.tower,
   typeOf: (classes, trees) => towerType(classes, trees),
@@ -57,5 +57,5 @@ export const TOWERS_CLASSIFIER = {
     classifyTowers(shareOf(gathered, TOWERS_KIND), admitted, sparql, undefined, history),
   types: TOWER_TYPES,
   tag: 'tower',
-  regional: regionalReader(TOWERS_REGIONAL),
+  surroundings: surroundingsReader(TOWERS_SURROUNDINGS),
 };

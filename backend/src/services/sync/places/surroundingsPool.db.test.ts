@@ -1,5 +1,5 @@
 /**
- * The regional pool and a candidate's surroundings read from the local subset
+ * The surroundings pool and a candidate's surroundings read from the local subset
  * against PostgreSQL (ADR-0171, #2178): the kinds' items with a point whatever
  * their editions, their Wikipedia editions counted as the runs count them, the
  * Wikivoyage editions that use them, a year of their readers, and the best
@@ -11,8 +11,8 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
-import { readRegionalPool, type PoolReaders } from './regionalPool.js';
-import { REGIONAL_CUT } from './regionalCut.js';
+import { readSurroundingsPool, type PoolReaders } from './surroundingsPool.js';
+import { SURROUNDINGS_CUT } from './surroundingsCut.js';
 
 const TOWER = 'Q12518';
 const MAST = 'Q5622819';
@@ -69,18 +69,18 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe('the regional pool read from the subset (#2178)', () => {
+describe('the surroundings pool read from the subset (#2178)', () => {
   it('holds the kinds\' items with a point whatever their editions, counted as the runs count them, and the surroundings of those with the cut\'s languages', async () => {
-    const regional = await readRegionalPool(new Set([TOWER]), { ...REGIONAL_CUT, best: 3 }, [{ key: 'all', classes: null }], undefined, year);
-    const all = regional.around.get('all')!;
+    const surroundings = await readSurroundingsPool(new Set([TOWER]), { ...SURROUNDINGS_CUT, best: 3 }, [{ key: 'all', classes: null }], undefined, year);
+    const all = surroundings.around.get('all')!;
     // Every tower with a point is of the pool, the one-edition tower too; the mast is another class.
-    expect([...regional.rows.keys()].sort()).toEqual([TWO_TOWERS, PISA, GARISENDA, ASINELLI, PRENDIPARTE, ONE_WIKI].sort());
-    expect(regional.rows.get(ASINELLI)).toEqual({ qid: ASINELLI, editions: 9, guideEditions: 1, readers: 30_000, classes: [TOWER], lat: 44.4944, lon: 11.3468 });
+    expect([...surroundings.rows.keys()].sort()).toEqual([TWO_TOWERS, PISA, GARISENDA, ASINELLI, PRENDIPARTE, ONE_WIKI].sort());
+    expect(surroundings.rows.get(ASINELLI)).toEqual({ qid: ASINELLI, editions: 9, guideEditions: 1, readers: 30_000, classes: [TOWER], lat: 44.4944, lon: 11.3468 });
     // Readers are asked of every item with a Wikipedia article; one read by nobody counted reads 0.
     expect(asked.sort()).toEqual([TWO_TOWERS, PISA, GARISENDA, ASINELLI, PRENDIPARTE, ONE_WIKI].sort());
-    expect(regional.rows.get(PRENDIPARTE)?.readers).toBe(0);
-    expect(regional.unread).toBeUndefined();
-    expect(regional.rows.get(GARISENDA)?.guideEditions).toBe(0);
+    expect(surroundings.rows.get(PRENDIPARTE)?.readers).toBe(0);
+    expect(surroundings.unread).toBeUndefined();
+    expect(surroundings.rows.get(GARISENDA)?.guideEditions).toBe(0);
     // The surroundings are read for the items at two languages or more: the one-edition tower counts in the group and is asked about nothing.
     expect(all.has(ONE_WIKI)).toBe(false);
     // Bologna's five towers lie within 50 km of the Asinelli; Pisa does not. The best three by editions, and the guide use among the places a guide uses.
@@ -88,16 +88,16 @@ describe('the regional pool read from the subset (#2178)', () => {
     expect(all.get(ASINELLI)).toEqual({ groupSize: 5, topEditions: [10, 9, 8], topGuideEditions: [3, 1], topReaders: [90_000, 30_000, 12_000] });
     // Pisa stands alone within its radius.
     expect(all.get(PISA)).toEqual({ groupSize: 1, topEditions: [11], topGuideEditions: [4], topReaders: [2_000_000] });
-    expect(regional.seconds).toBeGreaterThanOrEqual(0);
+    expect(surroundings.seconds).toBeGreaterThanOrEqual(0);
   });
 
   it('reads a group over its own classes alone: a neighbourhood of masts holds no tower', async () => {
-    const regional = await readRegionalPool(new Set([TOWER, MAST]), { ...REGIONAL_CUT, best: 3 },
+    const surroundings = await readSurroundingsPool(new Set([TOWER, MAST]), { ...SURROUNDINGS_CUT, best: 3 },
       [{ key: 'towers', classes: new Set([TOWER]) }, { key: 'masts', classes: new Set([MAST]) }], undefined, year);
     // The Asinelli's neighbours among towers alone: the five Bologna towers; the mast is not counted.
-    expect(regional.around.get('towers')!.get(ASINELLI)?.groupSize).toBe(5);
+    expect(surroundings.around.get('towers')!.get(ASINELLI)?.groupSize).toBe(5);
     // The mast has five sitelinks but no Wikipedia edition, so it is under the cut's languages and gets no surroundings.
-    expect(regional.around.get('masts')!.size).toBe(0);
+    expect(surroundings.around.get('masts')!.size).toBe(0);
   });
 
   it('reports its progress and stops between batches when the run is cancelled', async () => {
@@ -107,25 +107,25 @@ describe('the regional pool read from the subset (#2178)', () => {
       phase: (m: string) => { phases.push(m); },
       step: async () => { steps += 1; if (steps > 1) throw new Error('Sync cancelled'); },
     };
-    await expect(readRegionalPool(new Set([TOWER]), REGIONAL_CUT, [{ key: 'all', classes: null }], run, year)).rejects.toThrow('Sync cancelled');
-    expect(phases[0]).toMatch(/Building the regional tier's pool/);
+    await expect(readSurroundingsPool(new Set([TOWER]), SURROUNDINGS_CUT, [{ key: 'all', classes: null }], run, year)).rejects.toThrow('Sync cancelled');
+    expect(phases[0]).toMatch(/Building the surroundings tier's pool/);
     // And it leaves no table behind when stopped.
-    const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'regional_pool'");
+    const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'surroundings_pool'");
     expect(left.rows).toEqual([]);
   });
 
   it('reads no surroundings where no year of readers is read, says why, and leaves no table behind', async () => {
-    const regional = await readRegionalPool(new Set([TOWER]), REGIONAL_CUT, [{ key: 'all', classes: null }], undefined, async () => null);
-    expect(regional.rows.size).toBe(0);
-    expect(regional.around.size).toBe(0);
-    expect(regional.unread).toMatch(/^No year of readers is read/);
-    const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'regional_pool'");
+    const surroundings = await readSurroundingsPool(new Set([TOWER]), SURROUNDINGS_CUT, [{ key: 'all', classes: null }], undefined, async () => null);
+    expect(surroundings.rows.size).toBe(0);
+    expect(surroundings.around.size).toBe(0);
+    expect(surroundings.unread).toMatch(/^No year of readers is read/);
+    const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'surroundings_pool'");
     expect(left.rows).toEqual([]);
   });
 
   it('leaves no table behind once the read is over', async () => {
-    await readRegionalPool(new Set([TOWER]), REGIONAL_CUT, [{ key: 'all', classes: null }], undefined, year);
-    const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'regional_pool'");
+    await readSurroundingsPool(new Set([TOWER]), SURROUNDINGS_CUT, [{ key: 'all', classes: null }], undefined, year);
+    const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'surroundings_pool'");
     expect(left.rows).toEqual([]);
   });
 });

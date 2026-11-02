@@ -193,7 +193,7 @@ interface FixtureSite {
   worldHeritage?: boolean;
   /** `P1082` — any number, 0 included. */
   statesPopulation?: boolean;
-  /** `P361`: what it is part of, which the regional tier reads (ADR-0179). */
+  /** `P361`: what it is part of, which the surroundings tier reads (ADR-0179). */
   parents?: string[];
 }
 
@@ -972,7 +972,7 @@ export function collect(w: World, opts: {
   openFindsDoor?: ArchaeologyPipelineDeps['openFindsDoor'];
   underFloorFinds?: ArchaeologyPipelineDeps['underFloorFinds'];
   siteWorld?: WorldOptions;
-  regional?: ArchaeologyPipelineDeps['regional'];
+  surroundings?: ArchaeologyPipelineDeps['surroundings'];
 } = {}): Promise<CollectedArchaeology> {
   const door = categoryDoor(w);
   return collectArchaeology({
@@ -991,7 +991,7 @@ export function collect(w: World, opts: {
     openFindsDoor: opts.openFindsDoor,
     underFloorFinds: opts.underFloorFinds,
     siteWorld: opts.siteWorld ?? SITE_WORLD,
-    regional: opts.regional,
+    surroundings: opts.surroundings,
   });
 }
 

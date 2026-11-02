@@ -3,7 +3,7 @@
  * worship, Squares & streets, Monuments & memorials, Public art, Towers,
  * Bridges & engineering marvels, and Archaeology's sites (ADR-0179) — lives
  * here, with how it was derived, the evidence and the date. The runs read it
- * (`worldBars.ts`, `regionalCut.ts`, `archaeology/regionalSites.ts`) and so
+ * (`worldBars.ts`, `surroundingsCut.ts`, `archaeology/surroundingsSites.ts`) and so
  * does the coverage report (`report.ts`); no kind module states a line of its
  * own.
  *
@@ -62,12 +62,12 @@ export const WORLD_REGISTER = {
 } as const;
 
 /**
- * The regional tier (ADR-0175 decisions 2 and 3, ADR-0171's cut), read by
- * `REGIONAL_CUT` in `regionalCut.ts`: the neighbourhood and its reference, the
+ * The surroundings tier (ADR-0175 decisions 2 and 3, ADR-0171's cut), read by
+ * `SURROUNDINGS_CUT` in `surroundingsCut.ts`: the neighbourhood and its reference, the
  * three tests and their group floors, the languages and readers' floor, the
  * types that need a guide, and the share a held place stays at.
  */
-export const REGIONAL_REGISTER = {
+export const SURROUNDINGS_REGISTER = {
   neighbours: derived('all' as const,
     "A place is measured against every place of the live kinds within the radius, museums included, as ADR-0171's measurement counted them.",
     'Results, The point'),
@@ -81,7 +81,7 @@ export const REGIONAL_REGISTER = {
     'The reference is the median of the ten best within the radius; skipping the first ranks moved nothing worth its load.',
     'Results, The point'),
   minLanguages: derived(2,
-    'A regional place has a Wikipedia article in two languages or more, as ADR-0171 asked.',
+    'A surroundings-tier place has a Wikipedia article in two languages or more, as ADR-0171 asked.',
     'Results, The point'),
   minReaders: derived(3_000,
     'At least 3,000 readers a year: a floor of 10,000 costs 1,100 places for 0.2 points of noise, and a floor of 1,000 doubles the noise.',
@@ -105,34 +105,34 @@ export const REGIONAL_REGISTER = {
     'The readers test reads an area of 25 places or more, as the editions test does.',
     'Results, The point'),
   guideForTypes: derived(['tunnel', 'dam', 'lock'] as readonly string[],
-    'A tunnel, a dam or a lock enters the regional tier only when a Wikivoyage edition uses it, and stays only while one still does: 370 places out, noise 9.1 % to 6.5 %, recall and canon unmoved.',
+    'A tunnel, a dam or a lock enters the surroundings tier only when a Wikivoyage edition uses it, and stays only while one still does: 370 places out, noise 9.1 % to 6.5 %, recall and canon unmoved.',
     'Results, The noise is in the regional tier of two kinds'),
   stayReadersShare: derived(0.8,
-    'A regional place stays while it keeps two editions, reaches 0.8 of the readers\' floor (2,400 a year) and passes one test, the readers test read at 0.8 and the others whole.',
+    'A surroundings-tier place stays while it keeps two editions, reaches 0.8 of the readers\' floor (2,400 a year) and passes one test, the readers test read at 0.8 and the others whole.',
     'Results, Checks at the point'),
 } as const;
 
 const ARCHAEOLOGY_REPORT = 'docs/research/2026-11-02-archaeologys-sites-in-the-admission-frame.md';
 
 /**
- * Archaeology's two conditions on its regional tier (ADR-0179), read on the
- * kind's survivors of the cut after its rule (`archaeology/regionalSites.ts`).
- * The bare frame's regional tier brought 10.2 % noise to Archaeology, nearly
+ * Archaeology's two conditions on its surroundings tier (ADR-0179), read on the
+ * kind's survivors of the cut after its rule (`archaeology/surroundingsSites.ts`).
+ * The bare frame's surroundings tier brought 10.2 % noise to Archaeology, nearly
  * all of it finds spots with nothing to see, places gone or under water, and
- * parts of a site the kind already holds. Each holds for the regional tier
+ * parts of a site the kind already holds. Each holds for the surroundings tier
  * alone: on the world tier the first costs Palenque and Calakmul, the second
  * Giza, Karnak and Stonehenge.
  */
-export const ARCHAEOLOGY_REGIONAL_REGISTER = {
+export const ARCHAEOLOGY_SURROUNDINGS_REGISTER = {
   mapped: {
     value: true,
-    derivation: 'A regional site needs an OpenStreetMap object carrying its item that the site rule reads as the place: a ruin or a dig, or the village the rule lifts a dig over. With the next, the noise among the additions falls from 10.2 % to 3.5 %, the canon stays at 0.876, and the control regions show 4 places against 3 today.',
+    derivation: 'A surroundings-tier site needs an OpenStreetMap object carrying its item that the site rule reads as the place: a ruin or a dig, or the village the rule lifts a dig over. With the next, the noise among the additions falls from 10.2 % to 3.5 %, the canon stays at 0.876, and the control regions show 4 places against 3 today.',
     evidence: `${ARCHAEOLOGY_REPORT} § The point`,
     date: DERIVED,
   } satisfies Parameter<boolean>,
   partsOfHeld: {
     value: true,
-    derivation: 'A regional site that is part (P361) of a place Archaeology holds or admits in the same run is not a place of its own: the Forum of Pompeii is Pompeii, the Temple of Olympian Zeus at Agrigento is the Valley of the Temples.',
+    derivation: 'A surroundings-tier site that is part (P361) of a place Archaeology holds or admits in the same run is not a place of its own: the Forum of Pompeii is Pompeii, the Temple of Olympian Zeus at Agrigento is the Valley of the Temples.',
     evidence: `${ARCHAEOLOGY_REPORT} § The point`,
     date: DERIVED,
   } satisfies Parameter<boolean>,

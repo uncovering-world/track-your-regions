@@ -17,7 +17,7 @@ import type { WorldRead } from '../places/worldBars.js';
 import type { WorldHistory } from '../places/worldMemory.js';
 import { fetchSquareTrees, SQUARE_ROOTS, SQUARE_TYPES, type SquareTrees } from './classes.js';
 import { squareType, squareVerdict } from './squareTest.js';
-import { regionalReader, type RegionalKind } from '../places/regionalTier.js';
+import { surroundingsReader, type SurroundingsKind } from '../places/surroundingsTier.js';
 
 /** The source that fills Squares & streets, and the kind it fills (migration 151). */
 export const SQUARES_SOURCE_ID = 9;
@@ -36,11 +36,11 @@ export const classifySquares = (share: KindShare<SquareTrees>, admitted: Readonl
   classifyByWorldBars(share, admitted, { verdict: squareVerdict, logPrefix: '[Squares]' }, sparql, read, history);
 
 /**
- * The kind in the regional tier (ADR-0171): every place-class item measured against its
+ * The kind in the surroundings tier (ADR-0171): every place-class item measured against its
  * surroundings, the rule over the survivors. Its `typeOf` is also the type a
  * coverage survey's entry is filed under within the kind (#2246).
  */
-export const SQUARES_REGIONAL: RegionalKind<SquareTrees> = {
+export const SQUARES_SURROUNDINGS: SurroundingsKind<SquareTrees> = {
   kind: SQUARES_KIND,
   classesOf: (trees) => trees.place,
   typeOf: (classes, trees) => squareType(classes, trees),
@@ -54,5 +54,5 @@ export const SQUARES_CLASSIFIER = {
     classifySquares(shareOf(gathered, SQUARES_KIND), admitted, sparql, undefined, history),
   types: SQUARE_TYPES,
   tag: 'square',
-  regional: regionalReader(SQUARES_REGIONAL),
+  surroundings: surroundingsReader(SQUARES_SURROUNDINGS),
 };

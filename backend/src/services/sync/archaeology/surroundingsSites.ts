@@ -1,10 +1,10 @@
 /**
- * Archaeology's sites in the regional tier (ADR-0171, ADR-0175 decision 3,
+ * Archaeology's sites in the surroundings tier (ADR-0171, ADR-0175 decision 3,
  * ADR-0179): the sites the world bars left out, measured against what lies
- * within 50 km of them by the cut every place kind reads (`places/regionalTier.ts`),
+ * within 50 km of them by the cut every place kind reads (`places/surroundingsTier.ts`),
  * then put to the site rule by id — and to two conditions of the kind's own.
  *
- * - **The map shows the place.** A regional site needs an OpenStreetMap object
+ * - **The map shows the place.** A surroundings-tier site needs an OpenStreetMap object
  *   carrying its item that the site rule reads as the place: a ruin or a dig,
  *   or the village the rule lifts a dig over (a verdict other than `none`).
  *   A finds spot with nothing to see (Diepkloof Rock Shelter), a tell in a
@@ -13,11 +13,11 @@
  *   of Pompeii is part (`P361`) of Pompeii, which the kind holds: the visit is
  *   Pompeii's.
  *
- * Both are the regional tier's alone (`ARCHAEOLOGY_REGIONAL_REGISTER`): on the
+ * Both are the surroundings tier's alone (`ARCHAEOLOGY_SURROUNDINGS_REGISTER`): on the
  * world tier the first would cost Palenque and Calakmul, the second Giza,
  * Karnak and Stonehenge, each part of a larger whole on Wikidata.
  *
- * Its candidates are the regional pool's items of the site classes. The map's
+ * Its candidates are the surroundings pool's items of the site classes. The map's
  * entrance (ADR-0060) is the world tier's alone: opened to this tier it would
  * bring some 81 places the measurement never read, a fifth of them bridges,
  * dams, tunnels and museums mapped as ruins. What the world door already read
@@ -30,10 +30,10 @@ import type { PoolEntity } from '../publicArt/queries.js';
 import type { SubjectRunner } from '../publicArt/subjects.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { KindShare } from '../places/gather.js';
-import { regionalArrivals, type RegionalKind, type RegionalRuleVerdict } from '../places/regionalTier.js';
-import { REGIONAL_CUT, type RegionalCut } from '../places/regionalCut.js';
-import type { RegionalPool } from '../places/regionalPool.js';
-import { ARCHAEOLOGY_REGIONAL_REGISTER } from '../places/admissionRegister.js';
+import { surroundingsArrivals, type SurroundingsKind, type SurroundingsRuleVerdict } from '../places/surroundingsTier.js';
+import { SURROUNDINGS_CUT, type SurroundingsCut } from '../places/surroundingsCut.js';
+import type { SurroundingsPool } from '../places/surroundingsPool.js';
+import { ARCHAEOLOGY_SURROUNDINGS_REGISTER } from '../places/admissionRegister.js';
 import { OSM_KEEP_WKT, type ArchaeologyTrees } from './classes.js';
 import type { SiteRefusalGroup } from './siteTest.js';
 import {
@@ -55,35 +55,35 @@ export function archaeologyTypeOf(classes: readonly string[], trees: Archaeology
 }
 
 /** Archaeology's types, as the coverage report files a survey's entry under them (`entryTypes.ts`). */
-export const ARCHAEOLOGY_TYPES: Pick<RegionalKind<ArchaeologyTrees, unknown>, 'kind' | 'typeOf'> = {
+export const ARCHAEOLOGY_TYPES: Pick<SurroundingsKind<ArchaeologyTrees, unknown>, 'kind' | 'typeOf'> = {
   kind: ARCHAEOLOGY_SITE_KIND,
   typeOf: archaeologyTypeOf,
 };
 
-/** What the regional step reads beside the pass's pool. */
-export interface RegionalSitesInput {
+/** What the surroundings step reads beside the pass's pool. */
+export interface SurroundingsSitesInput {
   /** The runner the survivors are asked about by id through, and the run's Wikidata. */
   run: SubjectRunner;
   sparql: SparqlFn;
-  /** The pass's regional pool (`placePass.ts`); null where the run read the live service. */
-  pool: RegionalPool | null;
-  /** The sites the source's regional tier holds before the run, which stay by the cut's stay. */
+  /** The pass's surroundings pool (`placePass.ts`); null where the run read the live service. */
+  pool: SurroundingsPool | null;
+  /** The sites the source's surroundings tier holds before the run, which stay by the cut's stay. */
   held: ReadonlySet<string>;
   trees: ArchaeologyTrees;
   /** The pass's map door, for the survivors the world door never asked about. */
   osm: OsmReader;
   /** What the world door read of its candidates. */
   read: SiteReading;
-  /** What this run admits beside the regional tier: the world tier's sites and the museums. Never a regional candidate. */
+  /** What this run admits beside the surroundings tier: the world tier's sites and the museums. Never a surroundings-tier candidate. */
   admitted: ReadonlySet<string>;
   /** Every place the kind holds before the run, of either tier and either type: a part of one is no place of its own. */
   holds: ReadonlySet<string>;
   /** The names of the places `admitted` and `holds` name, where the run knows them. */
   nameOf: (qid: string) => string | undefined;
-  cut?: RegionalCut;
+  cut?: SurroundingsCut;
 }
 
-export interface RegionalSites {
+export interface SurroundingsSites {
   sites: Map<string, SiteCandidate>;
   filtered: SiteRefusal[];
   /** Why the tier was not read, when it was not: its rows then stay as they stand (ADR-0175 decision 6). */
@@ -93,18 +93,18 @@ export interface RegionalSites {
 /** A survivor's answer: the row to write, or the refusal with its group. */
 type Decided = { pass: true; judged: JudgedSite } | { pass: false; reason: string; group: SiteRefusalGroup };
 
-/** Why a regional site the map does not show is refused (ADR-0179). */
+/** Why a surroundings-tier site the map does not show is refused (ADR-0179). */
 export const UNMAPPED_REASON = 'no OpenStreetMap object carrying its item maps a ruin or a dig there: '
-  + 'a site the regional tier admits is one the map shows (ADR-0179)';
+  + 'a site the surroundings tier admits is one the map shows (ADR-0179)';
 
-/** Why a regional site that is part of a place the kind holds is refused (ADR-0179). */
+/** Why a surroundings-tier site that is part of a place the kind holds is refused (ADR-0179). */
 export function partOfReason(whole: string): string {
-  return `part of ${whole} (P361), which Archaeology holds: in the regional tier a part is the whole's visit, not a place of its own (ADR-0179)`;
+  return `part of ${whole} (P361), which Archaeology holds: in the surroundings tier a part is the whole's visit, not a place of its own (ADR-0179)`;
 }
 
 /** The rule's verdict on each survivor: the world door's where it judged one, read now of the rest. */
 async function judgeSurvivors(
-  survivors: readonly PoolEntity[], input: RegionalSitesInput,
+  survivors: readonly PoolEntity[], input: SurroundingsSitesInput,
 ): Promise<Map<string, { entity: PoolEntity; judged: JudgedSite }>> {
   const { run, trees, read, osm } = input;
   const unread = survivors.filter((entity) => !read.judged.has(entity.qid));
@@ -125,7 +125,7 @@ async function judgeSurvivors(
 
 /** The place a survivor the rule passed is part of, among the places the kind holds or admits, if any. */
 function wholeOf(qid: string, share: KindShare<ArchaeologyTrees>, holds: ReadonlySet<string>): string | undefined {
-  if (!ARCHAEOLOGY_REGIONAL_REGISTER.partsOfHeld.value) return undefined;
+  if (!ARCHAEOLOGY_SURROUNDINGS_REGISTER.partsOfHeld.value) return undefined;
   return (share.facts.get(qid)?.parents ?? []).find((parent) => parent !== qid && holds.has(parent));
 }
 
@@ -137,12 +137,12 @@ function decideOne(
   if (!verdict.pass) return 'out' in verdict ? { pass: false, reason: RETYPED_REASON, group: 'class-or-name' } : verdict;
   const at = placementOf(entity);
   if ('reason' in at) return { pass: false, reason: at.reason, group: 'placeless' };
-  if (ARCHAEOLOGY_REGIONAL_REGISTER.mapped.value && verdict.osm.verdict === 'none') {
-    return { pass: false, reason: UNMAPPED_REASON, group: 'regional' };
+  if (ARCHAEOLOGY_SURROUNDINGS_REGISTER.mapped.value && verdict.osm.verdict === 'none') {
+    return { pass: false, reason: UNMAPPED_REASON, group: 'surroundings' };
   }
   if (whole) {
     const name = nameOf(whole);
-    return { pass: false, reason: partOfReason(name ? `${name} (${whole})` : whole), group: 'regional' };
+    return { pass: false, reason: partOfReason(name ? `${name} (${whole})` : whole), group: 'surroundings' };
   }
   return { pass: true, judged };
 }
@@ -154,7 +154,7 @@ function decideOne(
  * by no one, and its part is not refused in its name.
  */
 function decide(
-  judged: ReadonlyMap<string, { entity: PoolEntity; judged: JudgedSite }>, share: KindShare<ArchaeologyTrees>, input: RegionalSitesInput,
+  judged: ReadonlyMap<string, { entity: PoolEntity; judged: JudgedSite }>, share: KindShare<ArchaeologyTrees>, input: SurroundingsSitesInput,
 ): Map<string, Decided> {
   const nameOf = (qid: string) => input.nameOf(qid) ?? judged.get(qid)?.entity.label;
   const clearing = [...judged].filter(([, { entity, judged: j }]) => decideOne(entity, j, undefined, nameOf).pass).map(([qid]) => qid);
@@ -163,13 +163,13 @@ function decide(
 }
 
 /**
- * The sites the regional tier admits this run, and what it refuses by name:
+ * The sites the surroundings tier admits this run, and what it refuses by name:
  * a survivor of the cut the rule or a condition refuses, and a site it held
  * that no longer clears the cut.
  */
-export async function collectRegionalSites(input: RegionalSitesInput): Promise<RegionalSites> {
+export async function collectSurroundingsSites(input: SurroundingsSitesInput): Promise<SurroundingsSites> {
   const decided = new Map<string, Decided>();
-  const regional: RegionalKind<ArchaeologyTrees, null> = {
+  const surroundings: SurroundingsKind<ArchaeologyTrees, null> = {
     kind: ARCHAEOLOGY_SITE_KIND,
     classesOf: (trees) => trees.site,
     typeOf: archaeologyTypeOf,
@@ -177,25 +177,25 @@ export async function collectRegionalSites(input: RegionalSitesInput): Promise<R
       for (const [qid, answer] of decide(await judgeSurvivors(survivors, input), share, input)) decided.set(qid, answer);
       return null;
     },
-    verdict: (entity): RegionalRuleVerdict => {
+    verdict: (entity): SurroundingsRuleVerdict => {
       const answer = decided.get(entity.qid);
       if (!answer) return { pass: false, reason: RETYPED_REASON };
       return answer.pass ? { pass: true, type: 'site' } : { pass: false, reason: answer.reason };
     },
     logPrefix: LOG_PREFIX,
   };
-  const arrivals = await regionalArrivals(
-    input.run, input.sparql, regional, input.trees, input.admitted,
+  const arrivals = await surroundingsArrivals(
+    input.run, input.sparql, surroundings, input.trees, input.admitted,
     (entity, classes, _verdict, note) => {
       const answer = decided.get(entity.qid);
-      if (!answer?.pass || !answer.judged.verdict.pass) throw new Error(`A regional site the rule did not pass reached the writer: ${entity.qid}`);
+      if (!answer?.pass || !answer.judged.verdict.pass) throw new Error(`A surroundings-tier site the rule did not pass reached the writer: ${entity.qid}`);
       return siteCandidateOf(entity, answer.judged.verdict, { classes, objects: answer.judged.objects, readAt: input.read.readAt, note });
     },
-    input.pool, input.held, input.cut ?? REGIONAL_CUT,
+    input.pool, input.held, input.cut ?? SURROUNDINGS_CUT,
   );
   const groupOf = (qid: string): SiteRefusalGroup => {
     const answer = decided.get(qid);
-    return answer && !answer.pass ? answer.group : 'regional';
+    return answer && !answer.pass ? answer.group : 'surroundings';
   };
   return {
     sites: new Map(arrivals.items.map((site) => [site.entity.qid, site])),

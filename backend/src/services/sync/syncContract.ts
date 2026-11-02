@@ -87,11 +87,11 @@ export interface FetchResult<T> {
   unread?: Array<{ externalId: string; name: string }>;
   /**
    * A tier of the source's admissions this run did not read (#2178): the
-   * regional tier, whenever the run did not read it (`regional.skipped`). The sweep leaves that tier's admitted memberships as they are —
+   * surroundings tier, whenever the run did not read it (`surroundings.skipped`). The sweep leaves that tier's admitted memberships as they are —
    * no answer is not a refusal — and they are no arrival of the world tier
    * either, so nothing badges them.
    */
-  spareTier?: 'regional';
+  spareTier?: 'surroundings';
 }
 
 

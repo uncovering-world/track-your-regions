@@ -168,7 +168,7 @@ describe('the lines beside the rows', () => {
 
     expect(context).toEqual([
       'Archaeology offers 81 of the 213 expected of it; 2 it lacks are at or over its line of 22 sitelinks '
-        + 'and listed, and 116 under the line are the regional tier\'s to hold.',
+        + 'and listed, and 116 under the line are the surroundings or the regional tier\'s to hold.',
       'Art Museums offers 8 of the 135 expected of it; it draws no sitelinks line, so the one it lacks is listed.',
       'World Heritage Sites offers 54 of the 54 expected of it.',
       'Public art: no survey expects anything of it yet.',
@@ -214,7 +214,7 @@ describe('the lines beside the rows', () => {
 
     expect(context).toEqual([
       'Public art offers 92 of the 93 expected of it; none it lacks is at or over its line '
-        + 'of 22 sitelinks, and 1 under the line is the regional tier\'s to hold.',
+        + 'of 22 sitelinks, and 1 under the line is the surroundings or the regional tier\'s to hold.',
     ]);
   });
 });

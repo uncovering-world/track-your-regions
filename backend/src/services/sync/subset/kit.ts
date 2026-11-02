@@ -26,7 +26,7 @@ const BEST = `NOT EXISTS (
  * Mars, which Wikidata states with its globe, lies near no place on the map,
  * however its latitude and longitude read; a coordinate with no globe is the
  * Earth's, as Wikidata reads it. Read by the component items' search and the
- * finds' sites (#2242); the place pass's regional pool still spells it itself.
+ * finds' sites (#2242); the place pass's surroundings pool still spells it itself.
  */
 export const onEarthSql = (alias: string): string =>
   `COALESCE(${alias}.value->>'globe', 'http://www.wikidata.org/entity/Q2') = 'http://www.wikidata.org/entity/Q2'`;

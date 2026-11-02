@@ -100,8 +100,8 @@ export interface CollectedPlaceOfWorship {
    * by a guide's mark (ADR-0175), the mark and its readers.
    */
   readershipNote?: string;
-  /** The tier that admitted it where it is not the world's: ADR-0171's regional tier (#2178). */
-  tier?: 'regional';
+  /** The tier that admitted it where it is not the world's: ADR-0171's surroundings tier (#2178). */
+  tier?: 'surroundings';
 }
 
 export interface CollectedWorship {

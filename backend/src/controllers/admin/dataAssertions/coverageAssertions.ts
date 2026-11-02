@@ -62,7 +62,7 @@ function kindLine(kind: CoverageReport['liveKinds'][number]): string {
     : `${lacks} at or over its line of ${kind.line} sitelinks and listed`;
   if (kind.belowLineMissing === 0) return `${offers}; ${over}, and nothing it lacks sits under the line.`;
   const under = kind.belowLineMissing === 1 ? '1 under the line is' : `${kind.belowLineMissing} under the line are`;
-  return `${offers}; ${over}, and ${under} the regional tier's to hold.`;
+  return `${offers}; ${over}, and ${under} the surroundings or the regional tier's to hold.`;
 }
 
 /** How many wait for a person, said in number. */
@@ -133,7 +133,7 @@ const expectedWellKnownMissing: ComputedAssertion = {
     + 'yet, a kind that does not exist, a part of a place the catalogue offers, a reader finding it under another kind, '
     + 'or not a must. A judged gap is counted by its cause beside the rows and listed no more; a judgement whose gap '
     + 'has since closed, the kind offering the entry now, is listed as a line to remove. Those under the line are the '
-    + 'regional tier\'s, and are counted beside the rows rather than listed.',
+    + 'surroundings or the regional tier\'s, and are counted beside the rows rather than listed.',
   collect: async () => coverageFindings(await coverageReport()),
   describe: (row) => {
     if (row.stale !== undefined) return describeStale(row);

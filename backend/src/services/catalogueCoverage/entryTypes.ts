@@ -5,8 +5,8 @@
  * places of a type within its radius (ADR-0172), and the coverage report asks
  * of a survey what the map shows, type by type.
  *
- * One rule, one runtime: the type is the kind's regional declaration's
- * `typeOf`, the one the regional tier groups a place's neighbours by, over the
+ * One rule, one runtime: the type is the kind's surroundings declaration's
+ * `typeOf`, the one the surroundings tier groups a place's neighbours by, over the
  * class trees the kind's gather reads (`PlaceKind.trees`). The trees and each
  * item's classes are read from the local Wikidata subset through the door a run
  * on the subset reads (`subsetOnlyDoor`), which refuses any question the subset
@@ -15,36 +15,36 @@
  */
 
 import { entitiesAreHeld, latestSubset } from '../dumps/wikidata/subsetTables.js';
-import { ARCHAEOLOGY_TYPES } from '../sync/archaeology/regionalSites.js';
-import { BRIDGES_REGIONAL } from '../sync/bridges/kind.js';
-import { publicArtRegional } from '../sync/landmarkSyncService.js';
+import { ARCHAEOLOGY_TYPES } from '../sync/archaeology/surroundingsSites.js';
+import { BRIDGES_SURROUNDINGS } from '../sync/bridges/kind.js';
+import { publicArtSurroundings } from '../sync/landmarkSyncService.js';
 import type { PlaceKind } from '../sync/places/gather.js';
-import type { RegionalKind } from '../sync/places/regionalTier.js';
+import type { SurroundingsKind } from '../sync/places/surroundingsTier.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE } from '../sync/publicArt/kindRules.js';
 import { fetchEntityFacts } from '../sync/publicArt/queries.js';
-import { SQUARES_REGIONAL } from '../sync/squares/kind.js';
+import { SQUARES_SURROUNDINGS } from '../sync/squares/kind.js';
 import { subsetOnlyDoor } from '../sync/subset/reader.js';
-import { TOWERS_REGIONAL } from '../sync/towers/kind.js';
+import { TOWERS_SURROUNDINGS } from '../sync/towers/kind.js';
 import { chunk, type QueryRunner } from '../sync/wikidataQueries.js';
-import { WORSHIP_REGIONAL } from '../sync/worshipSyncService.js';
+import { WORSHIP_SURROUNDINGS } from '../sync/worshipSyncService.js';
 
 /** What a kind's type is read with: the gather kind whose trees its rule reads, and the rule's `typeOf` over them. */
-export type TypeRule = Pick<RegionalKind<unknown, unknown>, 'kind' | 'typeOf'>;
+export type TypeRule = Pick<SurroundingsKind<unknown, unknown>, 'kind' | 'typeOf'>;
 
 /**
  * The kinds whose places have types, by `experience_kinds` id, each filled by
- * the source of the same id: the six kinds of the place pass with a regional
+ * the source of the same id: the six kinds of the place pass with a surroundings
  * declaration, and Archaeology, whose museums and sites a crowded city counts
  * apart (ADR-0179). A kind absent here files every entry under no type.
  */
 export const TYPE_RULES: ReadonlyMap<number, TypeRule> = new Map<number, TypeRule>([
-  [3, publicArtRegional(PUBLIC_ART_RULE)],
-  [4, WORSHIP_REGIONAL],
+  [3, publicArtSurroundings(PUBLIC_ART_RULE)],
+  [4, WORSHIP_SURROUNDINGS],
   [5, ARCHAEOLOGY_TYPES],
-  [6, publicArtRegional(MONUMENTS_RULE)],
-  [7, TOWERS_REGIONAL],
-  [8, BRIDGES_REGIONAL],
-  [9, SQUARES_REGIONAL],
+  [6, publicArtSurroundings(MONUMENTS_RULE)],
+  [7, TOWERS_SURROUNDINGS],
+  [8, BRIDGES_SURROUNDINGS],
+  [9, SQUARES_SURROUNDINGS],
 ]);
 
 /** One filing of an entry under a kind of the catalogue, with the item its type is read from. */

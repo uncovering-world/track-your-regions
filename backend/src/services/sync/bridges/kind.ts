@@ -17,7 +17,7 @@ import type { WorldRead } from '../places/worldBars.js';
 import type { WorldHistory } from '../places/worldMemory.js';
 import { BRIDGE_ROOTS, BRIDGE_TYPES, fetchBridgeTrees, type BridgeTrees } from './classes.js';
 import { bridgeType, bridgeVerdict } from './bridgeTest.js';
-import { regionalReader, type RegionalKind } from '../places/regionalTier.js';
+import { surroundingsReader, type SurroundingsKind } from '../places/surroundingsTier.js';
 
 /** The source that fills Bridges & engineering marvels, and the kind it fills (migration 150). */
 export const BRIDGES_SOURCE_ID = 8;
@@ -35,11 +35,11 @@ export const classifyBridges = (share: KindShare<BridgeTrees>, admitted: Readonl
   classifyByWorldBars(share, admitted, { verdict: bridgeVerdict, logPrefix: '[Bridges]' }, sparql, read, history);
 
 /**
- * The kind in the regional tier (ADR-0171): every work-class item measured against its
+ * The kind in the surroundings tier (ADR-0171): every work-class item measured against its
  * surroundings, the rule over the survivors. Its `typeOf` is also the type a
  * coverage survey's entry is filed under within the kind (#2246).
  */
-export const BRIDGES_REGIONAL: RegionalKind<BridgeTrees> = {
+export const BRIDGES_SURROUNDINGS: SurroundingsKind<BridgeTrees> = {
   kind: BRIDGES_KIND,
   classesOf: (trees) => trees.work,
   typeOf: (classes, trees) => bridgeType(classes, trees),
@@ -53,5 +53,5 @@ export const BRIDGES_CLASSIFIER = {
     classifyBridges(shareOf(gathered, BRIDGES_KIND), admitted, sparql, undefined, history),
   types: BRIDGE_TYPES,
   tag: 'engineering',
-  regional: regionalReader(BRIDGES_REGIONAL),
+  surroundings: surroundingsReader(BRIDGES_SURROUNDINGS),
 };
