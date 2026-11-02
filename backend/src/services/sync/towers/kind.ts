@@ -16,6 +16,7 @@ import type { SparqlFn } from '../wikidataQueries.js';
 import { shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from '../places/gather.js';
 import { classifyByWorldBars } from '../places/worldTier.js';
 import type { WorldRead } from '../places/worldBars.js';
+import type { WorldHistory } from '../places/worldMemory.js';
 import { fetchTowerTrees, TOWER_ROOTS, TOWER_TYPES, type TowerTrees } from './classes.js';
 import { towerType, towerVerdict } from './towerTest.js';
 import { regionalReader, type RegionalKind } from '../places/regionalTier.js';
@@ -34,8 +35,8 @@ export const TOWERS_KIND: PlaceKind<TowerTrees> = {
 };
 
 /** Decide from the kind's share: the rule, then the world bars (`classifyByWorldBars`). */
-export const classifyTowers = (share: KindShare<TowerTrees>, admitted: ReadonlySet<string>, sparql: SparqlFn, read?: WorldRead) =>
-  classifyByWorldBars(share, admitted, { verdict: towerVerdict, logPrefix: LOG_PREFIX }, sparql, read);
+export const classifyTowers = (share: KindShare<TowerTrees>, admitted: ReadonlySet<string>, sparql: SparqlFn, read?: WorldRead, history?: WorldHistory) =>
+  classifyByWorldBars(share, admitted, { verdict: towerVerdict, logPrefix: LOG_PREFIX }, sparql, read, history);
 
 /**
  * The kind in the regional tier (ADR-0171): every tower-class item measured against its
@@ -52,8 +53,8 @@ export const TOWERS_REGIONAL: RegionalKind<TowerTrees> = {
 
 /** Towers' classifier as a source of the place pass reads it (`placeSource`). */
 export const TOWERS_CLASSIFIER = {
-  classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn) =>
-    classifyTowers(shareOf(gathered, TOWERS_KIND), admitted, sparql),
+  classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn, history?: WorldHistory) =>
+    classifyTowers(shareOf(gathered, TOWERS_KIND), admitted, sparql, undefined, history),
   types: TOWER_TYPES,
   tag: 'tower',
   regional: regionalReader(TOWERS_REGIONAL),

@@ -43,6 +43,9 @@ vi.mock('./places/regionalTier.js', async (importOriginal) => ({
   mergeRegional: (await importOriginal<typeof import('./places/regionalTier.js')>()).mergeRegional,
   regionalArrivals: vi.fn(async () => ({ items: [], filtered: [] })),
 }));
+// What the source's world tier last read (ADR-0175 decision 6) is its own module's (`places/worldMemory.ts`).
+const history = vi.hoisted(() => ({ memory: { bars: null, readers: new Map(), guided: new Map() }, keep: vi.fn() }));
+vi.mock('./places/worldMemory.js', () => ({ worldHistory: vi.fn(async () => history) }));
 vi.mock('./worship/worshipTest.js', () => ({ worshipVerdict: vi.fn() }));
 vi.mock('./worship/places.js', () => ({ WORSHIP_KIND: { name: 'places of worship' } }));
 vi.mock('./museum/pipeline.js', () => ({ collectTier1Museums: vi.fn() }));
@@ -254,6 +257,15 @@ describe('what the worship run fetches', () => {
     // What the source already admits, so the stay line has something to hold.
     expect(deps.admitted).toEqual(new Set([COLOGNE]));
     expect(result.fetchedCount).toBe(1200);
+  });
+
+  it('hands the collector what the source\'s world tier last read, for what the run cannot read (ADR-0175 decision 6)', async () => {
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    collected([place()]);
+    await (await configOf()).fetchItems({ ...progress(), logId: 913 } as SyncProgress, []);
+    const { worldHistory } = await import('./places/worldMemory.js');
+    expect(vi.mocked(worldHistory)).toHaveBeenCalledWith(4, 913);
+    expect(mockedCollect.mock.calls[0][0].placeWorld).toEqual({ history });
   });
 
   it('measures the works floor over what it read before writing, and answers with the verdict', async () => {

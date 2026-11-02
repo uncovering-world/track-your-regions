@@ -37,8 +37,8 @@ import type { KindFacts, KindRule } from './kindRules.js';
 import { CAST_GROUP, emptyFacts, fetchCastGroupPool, type PoolEntity, type EntityFacts } from './queries.js';
 import { attachCasts, fetchCastItems } from './castGroups.js';
 import type { PlaceKind } from '../places/gather.js';
-import { inPool, namesRefusal, openWorldTier, type WorldTier } from '../places/worldTier.js';
-import type { WorldBars, WorldCandidate, WorldRead } from '../places/worldBars.js';
+import { inPool, namesRefusal, openWorldTier, type WorldOptions, type WorldTier } from '../places/worldTier.js';
+import type { WorldCandidate } from '../places/worldBars.js';
 import { chainOf, ownersOf, type Containment } from '../places/containment.js';
 import type { SubjectFacts } from './subjects.js';
 import type { FilteredEntity } from '../syncContract.js';
@@ -383,8 +383,9 @@ export type PublicArtShare = GatheredPublicArt & { admissionPool: ReadonlySet<st
  * stranded there (#1444). `streetArt` is what the street-art rule reads of the
  * candidates it decides (`streetArtCandidates`), for the kind that holds them;
  * without it, a candidate only the street-art entrance named is not this
- * kind's and is skipped. `world` hands the world's signals in, and the bars
- * where the test is not about the pool, for a test; a run reads them. Items
+ * kind's and is skipped. `world` hands a run the source's history, for what
+ * it cannot read (ADR-0175 decision 6), and a test the world's signals and
+ * the bars where it is not about the pool (`WorldOptions`). Items
  * come back most famous first, which is the order the run writes them in and
  * the order a person watching it reads.
  */
@@ -395,7 +396,7 @@ export async function classifyPublicArt(
   sparql: SparqlFn,
   offered?: ReadonlySet<string>,
   streetArt: StreetArtReading | null = null,
-  world?: { read: WorldRead; bars?: WorldBars },
+  world?: WorldOptions,
 ): Promise<CollectedPublicArt> {
   const { pool } = gathered;
   const decidedAsStreetArt = new Set(streetArt ? streetArtCandidates(gathered, rule) : []);
@@ -411,8 +412,7 @@ export async function classifyPublicArt(
     poolRead: gathered.admissionPool !== null,
     sparql,
     logPrefix: `[Landmark Sync] ${rule.noun}:`,
-    read: world?.read,
-    bars: world?.bars,
+    ...world,
   });
 
   // The street-art rule's decision where it decides the candidate, the kind's own otherwise.

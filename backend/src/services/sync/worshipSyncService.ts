@@ -58,6 +58,7 @@ import { shareOf, type PlaceGather } from './places/gather.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { mergeRegional, regionalArrivals, type RegionalKind } from './places/regionalTier.js';
 import { refuseGone } from './places/gone.js';
+import { worldHistory } from './places/worldMemory.js';
 import { typeOf, worshipVerdict } from './worship/worshipTest.js';
 import type { WorshipTrees } from './worship/classes.js';
 
@@ -229,6 +230,8 @@ async function fetchWorshipItems(
     sparql,
     previousPlacements,
     admitted,
+    // What the source's world tier last read, for what this run cannot (ADR-0175 decision 6).
+    placeWorld: { history: await worldHistory(WORSHIP_SOURCE_ID, progress.logId) },
     line,
     // What other kinds refused as held at a place of worship (ADR-0102).
     handOvers: await readHandOvers(WORSHIP_SOURCE_ID),

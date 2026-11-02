@@ -15,9 +15,10 @@ import type { KindShare } from './gather.js';
 import { placeLandmark } from './candidates.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import {
-  barsLine, guidedBarNote, keptNote, reachesABar, readAtlas, readWorld, worldBars, worldStanding,
+  barsLine, barsToAdmitBy, guidedBarNote, keptNote, reachesABar, readAtlas, readWorld, worldBars, worldStanding,
   type WorldBars, type WorldCandidate, type WorldRead, type WorldStanding,
 } from './worldBars.js';
+import type { WorldHistory } from './worldMemory.js';
 
 /** The bars a kind opened this run, and how a candidate stands against them. */
 export interface WorldTier {
@@ -54,28 +55,41 @@ export function namesRefusal(c: WorldCandidate, held: boolean, tier: WorldTier):
 }
 
 /**
+ * What a classifier hands the world tier beside its pool: for a run, the
+ * source's history (`worldMemory.ts`); for a test, the signals and the bars,
+ * where the test is not about the pool they come from.
+ */
+export interface WorldOptions {
+  read?: WorldRead;
+  bars?: WorldBars;
+  history?: WorldHistory;
+}
+
+/**
  * Open the world tier: read the signals of every candidate in `qids` (or take
  * `read` handed in, for a test), compute the bars over `pool` — none where the
  * kind's admission pool was not read — and read the Atlas Obscura listings
- * of the candidates they could decide. The run's line names the bars. `bars`
- * hands the bars in, for a test of what a kind does with them rather than of
- * the pool they come from.
+ * of the candidates they could decide. What the run cannot read it takes from
+ * the source's history (ADR-0175 decision 6): the readers' bars of the last
+ * run that read a year, and each place's readers and guide's mark as last
+ * read; the bars it admits by are then kept on the run's log. The run's line
+ * names the bars and what it kept.
  */
 export async function openWorldTier(
-  { pool, qids, poolRead, sparql, logPrefix, read, bars: given }: {
+  { pool, qids, poolRead, sparql, logPrefix, read, bars: given, history }: {
     pool: readonly WorldCandidate[];
     qids: readonly string[];
     poolRead: boolean;
     sparql: SparqlFn;
     logPrefix: string;
-    read?: WorldRead;
-    bars?: WorldBars;
-  },
+  } & WorldOptions,
 ): Promise<WorldTier> {
-  const base = read ?? await readWorld(qids, logPrefix);
-  const bars = given ?? (poolRead ? worldBars(pool, base.readers) : null);
-  const signals: WorldRead = read ?? { ...base, atlas: await readAtlas(sparql, qids, base, bars) };
-  console.log(barsLine(logPrefix, bars));
+  const fresh = read ?? await readWorld(qids, logPrefix);
+  const base = history ? { ...fresh, memory: history.memory } : fresh;
+  const bars = given ?? barsToAdmitBy(poolRead ? worldBars(pool, base.readers) : null, base);
+  const signals: WorldRead = read ? base as WorldRead : { ...base, atlas: await readAtlas(sparql, qids, base, bars) };
+  console.log(barsLine(logPrefix, bars, base));
+  if (bars) await history?.keep(bars);
   return {
     bars,
     read: signals,
@@ -101,7 +115,8 @@ export interface WorldKind<Trees, Type extends WikidataLandmark['type']> {
 /**
  * Decide from a kind's share: the rule, then the world bars. Items come back
  * most famous first. A refusal by the rule is named as `namesRefusal` says.
- * `read` hands the signals in, for a test; a run reads them.
+ * `read` hands the signals in, for a test; a run reads them, with what the
+ * source last read (`history`) for what it cannot.
  */
 export async function classifyByWorldBars<Trees, Type extends WikidataLandmark['type']>(
   share: KindShare<Trees>,
@@ -109,6 +124,7 @@ export async function classifyByWorldBars<Trees, Type extends WikidataLandmark['
   kind: WorldKind<Trees, Type>,
   sparql: SparqlFn,
   read?: WorldRead,
+  history?: WorldHistory,
 ): Promise<{ items: WikidataLandmark[]; fetched: number; filtered: FilteredEntity[] }> {
   const { trees, pool, facts } = share;
   const entities = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
@@ -124,6 +140,7 @@ export async function classifyByWorldBars<Trees, Type extends WikidataLandmark['
     sparql,
     logPrefix: kind.logPrefix,
     read,
+    history,
   });
   const items: WikidataLandmark[] = [];
   const filtered: FilteredEntity[] = [];
