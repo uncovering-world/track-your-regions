@@ -14032,10 +14032,71 @@
         }
       }
     },
+    "/api/experiences/{id}/find-links/candidates": {
+      "get": {
+        "operationId": "getExperiencesByIdFindLinksCandidates",
+        "summary": "Search the finds a curator may link to a site by hand",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 100,
+              "pattern": "^[^\\u0000]*$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindSiteCandidates"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/find-links/{treasureId}": {
       "put": {
         "operationId": "putExperiencesByIdFindLinksByTreasureId",
-        "summary": "Confirm or refuse that a find comes from a site",
+        "summary": "Confirm or refuse that a find comes from a site, or link one by hand",
         "tags": [
           "experiences"
         ],
@@ -25459,7 +25520,7 @@
         "additionalProperties": false,
         "description": "Who claimed a field, and when."
       },
-      "FindSiteLink": {
+      "FindSiteCandidate": {
         "type": "object",
         "properties": {
           "treasure_id": {
@@ -25485,16 +25546,66 @@
               }
             ]
           },
-          "image_url": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "shown_at": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedPlace"
+            },
+            "description": "The museums a reader may be sent to that show the find."
+          }
+        },
+        "required": [
+          "treasure_id",
+          "name",
+          "treasure_type",
+          "year",
+          "shown_at"
+        ],
+        "additionalProperties": false,
+        "description": "A find a curator may link to the site by hand (#2242)."
+      },
+      "FindSiteCandidates": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
           },
-          "image_credit": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FindSiteCandidate"
+            }
+          }
+        },
+        "required": [
+          "experienceId",
+          "candidates"
+        ],
+        "additionalProperties": false,
+        "description": "The finds named like a curator's words that may be linked to the site, the best known first."
+      },
+      "FindSiteLink": {
+        "type": "object",
+        "properties": {
+          "treasure_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "treasure_type": {
+            "type": "string"
+          },
+          "year": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ImageCredit"
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
               },
               {
                 "type": "null"
@@ -25543,8 +25654,6 @@
           "name",
           "treasure_type",
           "year",
-          "image_url",
-          "image_credit",
           "state",
           "origin",
           "distance_m",

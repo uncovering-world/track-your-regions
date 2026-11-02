@@ -42,7 +42,8 @@ import { onEarthSql } from './subset/kit.js';
 export const REACH_M = 500;
 /** How far from its own museum a find's coordinate must stand to say anything but the museum. */
 export const AWAY_M = 50_000;
-const ARCHAEOLOGY_KIND_ID = 5;
+/** The Archaeology kind, whose places of type `site` a find may come from. */
+export const ARCHAEOLOGY_KIND_ID = 5;
 /**
  * The box a site's point is first looked for in around a find's coordinate,
  * in degrees, so the index on `experiences.location` answers before the exact

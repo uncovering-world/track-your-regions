@@ -49,9 +49,11 @@ import {
   RegionMembershipResult,
   UnrefuseContentsResult,
   WorkEditResult,
-  FindSiteLinks, FindSiteLinkAnswerResult,
+  FindSiteLinks, FindSiteLinkAnswerResult, FindSiteCandidates,
 } from '../api/responses/curation.js';
-import { answerFindSiteLinkRequest, getFindSiteLinks } from '../controllers/experience/findSiteLinksController.js';
+import {
+  answerFindSiteLinkRequest, getFindSiteCandidates, getFindSiteLinks,
+} from '../controllers/experience/findSiteLinksController.js';
 import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
 import { separatePlaceMembership, undoPlaceSeparation } from '../controllers/experience/membershipSeparationController.js';
@@ -191,6 +193,7 @@ import {
   findSiteLinkParamsSchema,
   findSiteLinkAnswerBodySchema,
   pointNamesakesParamsSchema,
+  findSiteCandidatesQuerySchema,
 } from '../types/index.js';
 
 // =============================================================================
@@ -586,7 +589,7 @@ export const experienceCurationRoutes = [
     response: WorkEditResult,
     handler: editWork,
   }),
-  // Where a find comes from, asked on the site's card (#2242): the finds a run
+  // Where a find comes from, asked in the place's curation dialog (#2242): the finds a run
   // proposed from their own coordinate and the links a curator confirmed. No
   // limiter on either, by the criterion the works edit above is held to: the
   // answer writes one row and nothing follows the commit — a link moves no pin.
@@ -597,9 +600,20 @@ export const experienceCurationRoutes = [
     response: FindSiteLinks,
     handler: getFindSiteLinks,
   }),
+  // The finds a curator may link by hand, by part of a name: a search, so it
+  // carries the limiter the card's other curator reads do.
+  defineRoute({
+    method: 'get', path: '/:id/find-links/candidates', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'Search the finds a curator may link to a site by hand',
+    params: idParamSchema,
+    query: findSiteCandidatesQuerySchema,
+    response: FindSiteCandidates,
+    handler: getFindSiteCandidates,
+  }),
   defineRoute({
     method: 'put', path: '/:id/find-links/:treasureId', access: 'curator', cache: 'no-store',
-    summary: 'Confirm or refuse that a find comes from a site',
+    summary: 'Confirm or refuse that a find comes from a site, or link one by hand',
     params: findSiteLinkParamsSchema,
     body: findSiteLinkAnswerBodySchema,
     response: FindSiteLinkAnswerResult,

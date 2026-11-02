@@ -186,6 +186,11 @@ export const findSiteLinkParamsSchema = z.object({
   treasureId: rowIdSchema,
 });
 
+/** A curator's search for a find to link to a site by hand (#2242): part of its name. */
+export const findSiteCandidatesQuerySchema = z.object({
+  q: searchText(2, 100).transform(v => v.trim()).pipe(z.string().min(2)),
+});
+
 /** A curator's answer on a find's link to a site: it comes from there, or it does not. */
 export const findSiteLinkAnswerBodySchema = z.object({
   answer: z.enum(['confirmed', 'refused']),
