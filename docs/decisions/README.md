@@ -190,10 +190,11 @@ and accepted by it.
 | [0169](0169-a-work-a-guide-uses-or-atlas-obscura-lists-enters-at-20000-readers-a-year-whatever-its-editions.md) | A work a guide uses or Atlas Obscura lists enters at 20,000 readers a year, whatever its editions | Superseded by [0175](0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md) | 2026-10-31 |
 | [0170](0170-a-collection-with-a-museum-class-is-the-museum-and-a-network-stands-for-the-house-at-its-coordinate.md) | A collection with a museum class is the museum, and a network stands for the house at its coordinate | Accepted | 2026-10-31 |
 | [0171](0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md) | A global source's regional tier measures a place against what lies within 50 km of it | Accepted — decisions 2 and 6 narrowed by [0175](0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md) | 2026-10-31 |
-| [0172](0172-a-crowded-city-shows-the-ten-best-known-places-of-a-type-within-10-km.md) | A crowded city shows the ten best-known places of a type within 10 km | Accepted — decision 1 narrowed by [0173](0173-a-place-holding-works-is-never-crowded-out.md) | 2026-11-01 |
+| [0172](0172-a-crowded-city-shows-the-ten-best-known-places-of-a-type-within-10-km.md) | A crowded city shows the ten best-known places of a type within 10 km | Accepted — decision 1 narrowed by [0173](0173-a-place-holding-works-is-never-crowded-out.md) and [0177](0177-a-crowded-city-reads-a-guides-use-as-a-presence.md) | 2026-11-01 |
 | [0173](0173-a-place-holding-works-is-never-crowded-out.md) | A place holding works is never crowded out | Accepted | 2026-11-02 |
 | [0174](0174-a-held-or-conflict-question-is-dated-by-the-run-that-first-asked-it.md) | A held or conflict question is dated by the run that first asked it | Accepted | 2026-11-01 |
 | [0175](0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md) | A place kind admits by quantiles of its own pool, every bar derived and verified as a traveller | Accepted | 2026-11-02 |
+| [0177](0177-a-crowded-city-reads-a-guides-use-as-a-presence.md) | A crowded city reads a guide's use as a presence, not a count | Accepted | 2026-11-02 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
