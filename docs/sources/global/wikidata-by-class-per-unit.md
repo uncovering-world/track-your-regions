@@ -10,13 +10,13 @@ urls:
 family: global
 kinds: [any]
 tier: surroundings
-unit: { level: any, code: none, name: "the place's own surroundings, everything within 50 km of it (ADR-0171); museums were first measured by country (P17) or by coordinates inside a boundary" }
+unit: { level: any, code: none, name: "the place's own surroundings, the places of its own density within the register's radius (ADR-0171, ADR-0181); museums were first measured by country (P17) or by coordinates inside a boundary" }
 row:
   identity: "the item"
   wikidata_link: itself
   coordinates: most
   languages: [all]
-  signal: "Wikivoyage editions that use the place, against a share of the median of the 10 best within 50 km (a half, ADR-0175 decision 3, read from the register), or Wikipedia editions against that signal's median of the 10 best, with an article in two languages (ADR-0171); for art museums, the local fame of the works a museum holds — their readership in the unit's languages against the world tier's works in the same language (ADR-0057, in draft)"
+  signal: "Wikivoyage editions that use the place, against a share of the median of the 10 best of its surroundings (the share read from the register, ADR-0175 decision 3, ADR-0181), or Wikipedia editions against that signal's median of the 10 best, with an article in two languages (ADR-0171); for art museums, the local fame of the works a museum holds — their readership in the unit's languages against the world tier's works in the same language (ADR-0057, in draft)"
 terms:
   licence: "CC0 1.0"
   database_right: waived
@@ -109,7 +109,7 @@ three conditions measured on the kind's calibration list, and kept when a native
 - coverage against the unit's canon;
 - the share of rows with an item (all, here);
 - a floor on the group where the cut ranks places against each other. For places that is ADR-0171's
-  floor on the places within 50 km. The local fame of art museums needs no floor, since its bar is
+  floor on the place's neighbours of its own density, within the register's radius (ADR-0181). The local fame of art museums needs no floor, since its bar is
   set per language (ADR-0057, in draft).
 
 A kind adopts [ADR-0171](../../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md)'s rule through its own issue, measured first on its calibration list. A
