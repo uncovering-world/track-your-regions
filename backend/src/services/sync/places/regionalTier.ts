@@ -23,7 +23,7 @@ import type { PoolEntity } from '../publicArt/queries.js';
 import type { SubjectRunner } from '../publicArt/subjects.js';
 import { gatherPlaces, shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from './gather.js';
 import { placeLandmark } from './candidates.js';
-import { REGIONAL_CUT, regionalVerdict, type RegionalCut } from './regionalCut.js';
+import { needsAGuide, REGIONAL_CUT, regionalVerdict, type RegionalCut } from './regionalCut.js';
 import type { RegionalGroup, RegionalPool } from './regionalPool.js';
 
 /**
@@ -179,10 +179,12 @@ function survivorsOf<Trees>(
     // languages, or of no type where types decide) still meets the cut, so it
     // falls with the cut's reason rather than the sweep's generic one.
     const near = (key === null ? undefined : pool.around.get(key)?.get(row.qid))
-      ?? (held.has(row.qid) ? { groupSize: 0, topEditions: [], topGuideEditions: [] } : undefined);
+      ?? (held.has(row.qid) ? { groupSize: 0, topEditions: [], topGuideEditions: [], topReaders: [] } : undefined);
     if (!near) continue;
     candidates += 1;
-    const verdict = regionalVerdict({ editions: row.editions, guideEditions: row.guideEditions }, near, cut);
+    const verdict = regionalVerdict(
+      { editions: row.editions, guideEditions: row.guideEditions, readers: row.readers }, near, cut, held.has(row.qid),
+    );
     if (verdict.in) { survivors.push(row.qid); notes.set(row.qid, verdict.note); }
     // A row this tier admitted before that no longer clears the cut falls with
     // the cut's own reason, rather than the sweep's generic one.
@@ -211,7 +213,7 @@ export async function regionalArrivals<Trees, Context, T>(
 ): Promise<RegionalArrivals<T>> {
   const { logPrefix } = regional;
   if (!cut.enabled) {
-    const skipped = 'The regional tier is switched off (REGIONAL_CUT.enabled) until the admission review settles its numbers (#2177)';
+    const skipped = 'The regional tier is switched off (REGIONAL_CUT.enabled)';
     console.log(`${logPrefix} ${skipped}`);
     return { ...none<T>(), skipped };
   }
@@ -219,6 +221,10 @@ export async function regionalArrivals<Trees, Context, T>(
     const skipped = 'The regional tier is read from the local subset alone (ADR-0171); this run read the live service, so none was read';
     console.log(`${logPrefix} ${skipped}`);
     return { ...none<T>(), skipped };
+  }
+  if (pool.unread) {
+    console.log(`${logPrefix} ${pool.unread}`);
+    return { ...none<T>(), skipped: pool.unread };
   }
   const { survivors, notes, fell, candidates } = survivorsOf(
     regional as RegionalKind<Trees, unknown>, trees, worldAdmitted, pool, held, cut,
@@ -242,6 +248,13 @@ export async function regionalArrivals<Trees, Context, T>(
     const verdict = regional.verdict(entity, share, context);
     if (!verdict.pass) {
       filtered.push({ externalId: qid, name: entity.label, reason: verdict.reason });
+      continue;
+    }
+    // A tunnel, a dam or a lock the cut admits by its readers or editions is
+    // still no sight until a guide says people go to see it (ADR-0175).
+    const unguided = needsAGuide(verdict.type, pool.rows.get(qid)?.guideEditions ?? 0, cut);
+    if (unguided) {
+      filtered.push({ externalId: qid, name: entity.label, reason: unguided });
       continue;
     }
     items.push(build(entity, share.facts.get(qid)?.classes ?? [], verdict, notes.get(qid) ?? ''));

@@ -525,8 +525,8 @@ export async function markNotAdmitted(
   if (admittedExternalIds.length === 0) return [];
 
   // A tier the run did not read (`FetchResult.spareTier`, #2178) keeps its
-  // admitted memberships: the regional tier switched off is not a refusal of
-  // what it admitted. The one value is a literal of this module's, never input.
+  // admitted memberships: a tier not read is not a refusal of what it
+  // admitted. The one value is a literal of this module's, never input.
   const spared = spareTier === 'regional' ? "\n      AND coalesce(m.facts->>'tier', 'world') <> 'regional'" : '';
   const predicate = `m.source_id = $1
       AND m.admission = 'admitted'

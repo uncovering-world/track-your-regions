@@ -263,7 +263,7 @@ async function fetchWorshipItems(
       artworks: [], door: 'place', readershipNote: note, tier: 'regional',
     }), await regionalPool(), regionalHeld);
   mergeRegional(items, filtered, regional, (place) => place.qid, regionalHeld);
-  // Not read this run (switched off, or the live service): its rows stay as they are.
+  // Not read this run (`regional.skipped`): its rows stay as they are.
   const spareTier = regional.skipped ? 'regional' as const : undefined;
   // A place Wikidata says is gone is refused whichever door or tier admitted it (#2259).
   await refuseGone(items, filtered, sparql, { id: (place) => place.qid, name: (place) => place.label, type: (place) => place.type }, LOG_PREFIX);
