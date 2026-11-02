@@ -13,6 +13,8 @@ vi.mock('../../../api/crowdingAnswers', async importOriginal => ({
   answerCrowding: vi.fn(),
   fetchCrowdingWindow: vi.fn(),
 }));
+// The map needs WebGL; the list and the answers are what is tested here.
+vi.mock('./CrowdingMap', () => ({ CrowdingMap: () => <div data-testid="crowding-map" /> }));
 
 import { answerCrowding, CrowdingPartlyApplied, fetchCrowdingWindow } from '../../../api/crowdingAnswers';
 import { CrowdingWindowDialog } from './CrowdingWindowDialog';
