@@ -71,6 +71,7 @@ import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside
 import {
   ExperienceDetail,
   ExperienceKinds,
+  WikipediaEditions,
   ExperienceLocationsResponse,
   ExperienceSearch,
   ExperiencesByRegionResponse,
@@ -130,6 +131,7 @@ import {
   answerReviewRows,
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
+import { getWikipediaEditions } from '../controllers/experience/wikipediaEditionsController.js';
 import { publicReadLimiter, searchLimiter, authenticatedLimiter } from '../middleware/rateLimiter.js';
 import {
   experienceSearchQuerySchema,
@@ -181,6 +183,7 @@ import {
   assignExperienceBodySchema,
   editExperienceBodySchema,
   createManualExperienceBodySchema,
+  wikipediaEditionsQuerySchema,
 } from '../types/index.js';
 
 // =============================================================================
@@ -202,6 +205,15 @@ export const experienceReadRoutes = [
     summary: 'List the kinds of place a traveller can browse by, each with how many it offers',
     response: ExperienceKinds,
     handler: listKinds,
+  }),
+  // Which edition each English article opens in for a reader's languages
+  // (#2209). Above `/:id` like the other literal paths.
+  defineRoute({
+    method: 'get', path: '/wikipedia-editions', access: 'public', cache: 'shared-revalidate', limiter: publicReadLimiter,
+    summary: 'Say which Wikipedia edition each English article opens in for a reader\'s languages, first choice first',
+    query: wikipediaEditionsQuerySchema,
+    response: WikipediaEditions,
+    handler: getWikipediaEditions,
   }),
   // The catalogue's places across the whole world, before a region is chosen
   // (#910). Above `/:id`, since a one-segment literal path of the same method

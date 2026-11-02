@@ -12041,6 +12041,64 @@
         }
       }
     },
+    "/api/experiences/wikipedia-editions": {
+      "get": {
+        "operationId": "getExperiencesWikipediaEditions",
+        "summary": "Say which Wikipedia edition each English article opens in for a reader's languages, first choice first",
+        "tags": [
+          "experiences"
+        ],
+        "x-access": "public",
+        "security": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "articles",
+            "schema": {
+              "minItems": 1,
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "languages",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikipediaEditions"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/points": {
       "get": {
         "operationId": "getExperiencesPoints",
@@ -28989,10 +29047,25 @@
               }
             ],
             "description": "The maps app \"Open in maps\" opens; null asks each time, with every maps app side by side."
+          },
+          "readingLanguages": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Wikipedia languages an article opens in, first choice first (#2209); null reads the browser's languages."
           }
         },
         "required": [
-          "mapsApp"
+          "mapsApp",
+          "readingLanguages"
         ],
         "additionalProperties": false,
         "description": "What the signed-in visitor has chosen for themselves (#1604)."
@@ -29014,11 +29087,23 @@
                 "type": "null"
               }
             ]
+          },
+          "readingLanguages": {
+            "anyOf": [
+              {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z]{2,3}(-[a-z0-9]{2,12})*$"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": [
-          "mapsApp"
-        ],
         "additionalProperties": false
       },
       "NamedDivision": {
@@ -38243,6 +38328,47 @@
         ],
         "additionalProperties": false,
         "description": "Which Wikidata a source's runs read, switched."
+      },
+      "WikipediaEdition": {
+        "type": "object",
+        "properties": {
+          "article": {
+            "type": "string",
+            "description": "The English article asked about, as the catalogue links it."
+          },
+          "url": {
+            "type": "string",
+            "description": "The same item's article in the first of the reader's languages its item has."
+          },
+          "language": {
+            "type": "string",
+            "description": "That article's language, as the reader named it: `ru`, `de`, `zh-classical`."
+          }
+        },
+        "required": [
+          "article",
+          "url",
+          "language"
+        ],
+        "additionalProperties": false,
+        "description": "An English article's edition in a reader's language (#2209)."
+      },
+      "WikipediaEditions": {
+        "type": "object",
+        "properties": {
+          "editions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WikipediaEdition"
+            },
+            "description": "One entry per English article asked about whose item has an article in one of the reader's languages ahead of English; an article without one is left out, and its English link stands."
+          }
+        },
+        "required": [
+          "editions"
+        ],
+        "additionalProperties": false,
+        "description": "Which edition each English article opens in for a reader's languages, first choice first (#2209)."
       },
       "WikivoyageCopy": {
         "type": "object",

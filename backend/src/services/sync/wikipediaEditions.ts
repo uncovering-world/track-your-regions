@@ -30,10 +30,13 @@ import { pool } from '../../db/index.js';
 import { articleOf } from '../wikipediaCoordinate.js';
 import { NOT_WIKIPEDIA } from './subset/kit.js';
 
-/** Every English article a place, a part or a work links: what the editions are kept for. */
+/** Every English article a place, a part, a place's own point or a work links: what the editions are kept for. */
 async function linkedEnglishTitles(client: PoolClient): Promise<string[]> {
   const result = await client.query<{ url: string }>(
     `SELECT metadata->>'wikipediaUrl' AS url FROM experiences
+      WHERE metadata->>'wikipediaUrl' LIKE 'https://en.wikipedia.org/wiki/%'
+     UNION
+     SELECT metadata->>'wikipediaUrl' FROM experience_locations
       WHERE metadata->>'wikipediaUrl' LIKE 'https://en.wikipedia.org/wiki/%'
      UNION
      SELECT wikipedia_url FROM treasures WHERE wikipedia_url LIKE 'https://en.wikipedia.org/wiki/%'`,
