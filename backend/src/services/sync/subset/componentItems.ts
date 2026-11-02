@@ -20,6 +20,7 @@ import { cancellable } from '../../dumps/wikidata/subsetTables.js';
 import { FIND_RECORD_CLASSES, type CandidateItem } from '../componentItemMatching.js';
 import { REGISTER_CODES, type ItemCode } from '../componentItemRegisters.js';
 import { BEST } from './entities.js';
+import { onEarthSql } from './kit.js';
 
 /** What a step is told of its progress: how many of the asked-about items an answer covered; and whether the pass was cancelled. */
 interface Progress {
@@ -56,19 +57,11 @@ const SETTLEMENT = 'Q486972';
  */
 const NOT_SETTLEMENTS = ['Q57821', 'Q839954'];
 
-/**
- * A coordinate on the Earth: a point on the Moon or Mars, which Wikidata
- * states with its globe, lies near no World Heritage component, however its
- * latitude and longitude read. A value with no globe is the Earth's, as
- * Wikidata reads it.
- */
-const ON_EARTH = (alias: string) => `COALESCE(${alias}.value->>'globe', 'http://www.wikidata.org/entity/Q2') = 'http://www.wikidata.org/entity/Q2'`;
-
 /** The item's best coordinates on the Earth, as `[[lat, lon], …]`, the first statement first. */
 const coordsSql = (subject: string) => `COALESCE((
   SELECT jsonb_agg(jsonb_build_array((p.value->>'latitude')::float8, (p.value->>'longitude')::float8) ORDER BY p.statement_id)
     FROM wikidata_claims p
-   WHERE p.subject = ${subject} AND p.property = 'P625' AND p.rank >= 0 AND p.value ? 'latitude' AND ${ON_EARTH('p')} AND ${BEST('p')}
+   WHERE p.subject = ${subject} AND p.property = 'P625' AND p.rank >= 0 AND p.value ? 'latitude' AND ${onEarthSql('p')} AND ${BEST('p')}
 ), '[]'::jsonb)`;
 
 /** The World Heritage references among the item's best statements. */
@@ -224,7 +217,7 @@ export async function itemsInBoxes(
         CROSS JOIN LATERAL (SELECT (p.value->>'latitude')::float8 AS lat, (p.value->>'longitude')::float8 AS lon) q
          JOIN keys k ON k.cell = ${CELL_SQL('q.lat', 'q.lon')}
          JOIN ranges r ON r.n = k.n + 1
-        WHERE p.property = 'P625' AND p.rank >= 0 AND p.value ? 'latitude' AND ${ON_EARTH('p')}
+        WHERE p.property = 'P625' AND p.rank >= 0 AND p.value ? 'latitude' AND ${onEarthSql('p')}
           AND q.lat BETWEEN r.south AND r.north AND q.lon BETWEEN r.west AND r.east
      )
      SELECT DISTINCT pl.box, pl.item, pl.lat, pl.lon, c.value_item AS class
