@@ -98,7 +98,8 @@ export function rowColumnsSql(
         -- the place (ADR-0044's offeredLinkSql, ADR-0025's published state on
         -- the link and on the work). A church admitted for its own fame counts
         -- zero; one admitted for its Pietà counts it -- the "treasures inside"
-        -- marker (#753).
+        -- marker (#753). The schema's place_shows_works() reads the same set:
+        -- a place it counts is never crowded out (ADR-0173).
         (SELECT COUNT(*)::int FROM experience_treasures et
            JOIN treasures t ON t.id = et.treasure_id
           WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}

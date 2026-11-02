@@ -4,6 +4,8 @@
  * 10 km, the schema recounts around a place when its candidacy changes, one
  * recount at a time as each transaction commits, and a
  * crowded-out place leaves what a reader is shown but not what is offered.
+ * A place holding a work a reader is shown is never crowded out and takes none
+ * of the ten (ADR-0173, #2245).
  * Fixture rows: twelve churches within 2 km of the Pantheon, a mosque among
  * them, and a church 25 km out at Frascati.
  */
@@ -45,6 +47,18 @@ const crowded = async (): Promise<number[]> =>
 
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id >= $1 AND id < $2', [BASE, BASE + 1000]);
+  await pool.query("DELETE FROM treasures WHERE external_id LIKE 'Q9201%'");
+}
+
+/** Hang a work in a place, as the works run links one: offered and not unread. */
+async function hang(placeId: number, name: string): Promise<number> {
+  const work = await pool.query<{ id: number }>(
+    `INSERT INTO treasures (external_id, name, treasure_type) VALUES ($1, $2, 'painting') RETURNING id`,
+    [`Q${placeId}9`, name]);
+  const link = await pool.query<{ id: number }>(
+    'INSERT INTO experience_treasures (experience_id, treasure_id) VALUES ($1, $2) RETURNING id',
+    [placeId, work.rows[0].id]);
+  return link.rows[0].id;
 }
 
 beforeAll(clear);
@@ -137,6 +151,23 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
     expect(await read(placeOfferedSql('e'))).toContain(BASE + 12);
     expect(await read(placeShownSql('e'))).not.toContain(BASE + 12);
     expect(await read(placeShownSql('e'))).toContain(BASE + 10);
+  });
+
+  it('shows a place holding a work, and counts it among none of the ten', async () => {
+    // Church 3 holds a painting: church 11 now has nine better known that
+    // hold none, church 12 still ten (1, 2 and 4 to 11).
+    await hang(BASE + 3, 'The Calling of Saint Matthew');
+    expect(await crowded()).toEqual([BASE + 12]);
+    // A painting in church 12 itself shows it; church 11 stays shown.
+    await hang(BASE + 12, 'The Ecstasy of Saint Teresa');
+    expect(await crowded()).toEqual([]);
+  });
+
+  it('returns a place to the tail once the source stops placing its only work there', async () => {
+    const link = await hang(BASE + 12, 'Madonna di Loreto');
+    expect(await crowded()).toEqual([BASE + 11]);
+    await pool.query('UPDATE experience_treasures SET missing_since = NOW() WHERE id = $1', [link]);
+    expect(await crowded()).toEqual([BASE + 11, BASE + 12]);
   });
 
   it('shows every place of a kind that declares no rule', async () => {

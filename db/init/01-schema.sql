@@ -6232,6 +6232,22 @@ $$;
 -- membership twice. Under the lock every statement after it sees what the
 -- previous recount committed. The key's class is #2201, as a place
 -- identifier's is #1143 (lock_place_identifier_keys).
+-- Does the place hold a work a reader is shown: a link the source still
+-- places, neither the link nor the work unread (ADR-0044, ADR-0025). Such a
+-- place is never crowded out and does not take one of the ten, since what
+-- hangs inside it is not in the fame of its own article (ADR-0173): San
+-- Luigi dei Francesi, known for three Caravaggios, ranks under fifteen
+-- churches of Rome known for themselves. experienceRegionQuery.ts counts the
+-- same set as the row's works-inside mark (treasure_count).
+CREATE OR REPLACE FUNCTION place_shows_works(place integer) RETURNS boolean
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM experience_treasures et
+      JOIN treasures t ON t.id = et.treasure_id
+     WHERE et.experience_id = place AND et.missing_since IS NULL
+       AND et.curation_state <> 'pending' AND t.curation_state <> 'pending')
+$$;
+
 CREATE OR REPLACE FUNCTION recount_crowding(near geometry DEFAULT NULL) RETURNS void
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -6259,12 +6275,14 @@ BEGIN
        WHERE de.location && crowding_box(ce.location, k.crowding_radius_km)
          AND ST_DWithin(de.location::geography, ce.location::geography, k.crowding_radius_km * 1000)
          AND d.admission <> 'refused' AND de.existence <> 'lost'
+         AND NOT place_shows_works(de.id)
     ) n
    WHERE c.admission <> 'refused' AND ce.existence <> 'lost' AND ce.location IS NOT NULL
      AND (near IS NULL
           OR (ce.location && crowding_box(near, k.crowding_radius_km)
               AND ST_DWithin(ce.location::geography, near::geography, k.crowding_radius_km * 1000)))
      AND n.better >= k.crowding_limit
+     AND NOT place_shows_works(ce.id)
   ON CONFLICT (membership_id) DO UPDATE SET outranked_by = EXCLUDED.outranked_by, computed_at = NOW();
 END $$;
 
@@ -6366,6 +6384,68 @@ CREATE CONSTRAINT TRIGGER crowding_follows_place_delete
   AFTER DELETE ON experiences
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION crowding_follows_place();
+
+-- What a place holds changes: recount around it, when it is a candidate of a
+-- kind that declares the rule. A run's works pass writes links of museums by
+-- the thousand; the guard keeps those from recounting anything. Separate
+-- functions per table, so neither reads a field the other's row lacks.
+CREATE OR REPLACE FUNCTION crowding_recount_place(place integer) RETURNS void
+LANGUAGE plpgsql AS $$
+DECLARE point geometry;
+BEGIN
+  SELECT e.location INTO point FROM experiences e
+   WHERE e.id = place AND e.location IS NOT NULL
+     AND EXISTS (SELECT 1 FROM experience_kind_memberships m
+                   JOIN experience_kinds k ON k.id = m.kind_id AND k.crowding_limit IS NOT NULL
+                  WHERE m.experience_id = e.id);
+  IF point IS NOT NULL THEN PERFORM recount_crowding(point); END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION crowding_follows_link() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP IN ('UPDATE', 'DELETE') THEN PERFORM crowding_recount_place(OLD.experience_id); END IF;
+  IF TG_OP = 'INSERT' THEN PERFORM crowding_recount_place(NEW.experience_id); END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.experience_id IS DISTINCT FROM OLD.experience_id THEN PERFORM crowding_recount_place(NEW.experience_id); END IF;
+  END IF;
+  RETURN NULL;
+END $$;
+
+DROP TRIGGER IF EXISTS crowding_follows_link_change ON experience_treasures;
+CREATE CONSTRAINT TRIGGER crowding_follows_link_change
+  AFTER UPDATE OF missing_since, curation_state, experience_id, treasure_id ON experience_treasures
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  WHEN ((OLD.missing_since IS NULL) IS DISTINCT FROM (NEW.missing_since IS NULL)
+        OR (OLD.curation_state = 'pending') IS DISTINCT FROM (NEW.curation_state = 'pending')
+        OR OLD.experience_id IS DISTINCT FROM NEW.experience_id OR OLD.treasure_id IS DISTINCT FROM NEW.treasure_id)
+  EXECUTE FUNCTION crowding_follows_link();
+
+DROP TRIGGER IF EXISTS crowding_follows_link_insert ON experience_treasures;
+CREATE CONSTRAINT TRIGGER crowding_follows_link_insert
+  AFTER INSERT OR DELETE ON experience_treasures
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION crowding_follows_link();
+
+-- A work is passed by a curator: recount around every place that holds it.
+CREATE OR REPLACE FUNCTION crowding_follows_work() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE place integer;
+BEGIN
+  FOR place IN SELECT et.experience_id FROM experience_treasures et WHERE et.treasure_id = NEW.id LOOP
+    PERFORM crowding_recount_place(place);
+  END LOOP;
+  RETURN NULL;
+END $$;
+
+DROP TRIGGER IF EXISTS crowding_follows_work_change ON treasures;
+CREATE CONSTRAINT TRIGGER crowding_follows_work_change
+  AFTER UPDATE OF curation_state ON treasures
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  WHEN ((OLD.curation_state = 'pending') IS DISTINCT FROM (NEW.curation_state = 'pending'))
+  EXECUTE FUNCTION crowding_follows_work();
 
 
 -- =============================================================================
