@@ -30,6 +30,7 @@ import { CheckedWebsite } from './CheckedWebsite';
 import { worldHeritagePartsHref } from './SourceId';
 import { PictureClassMark } from './PictureClassMark';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
+import { ReaderEditionBeside } from '../shared/WikipediaArticleLink';
 
 /**
  * Up to this many regions are read at a glance and shown whole. Past it the card
@@ -233,6 +234,8 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
                 Wikipedia
               </Link>
             )}
+            {/* The English article stays the reference; the reader's edition is offered beside it (#2209). */}
+            {wikipediaHref && <ReaderEditionBeside article={item.wikipedia_url} />}
             {/* Some items give UNESCO's page as their official website: one link, not two. */}
             {officialSiteHref && officialSiteHref !== unescoHref && item.website_url && (
               // With whether it still answers (#2165): the check is keyed by the

@@ -1382,6 +1382,8 @@ export const MapsApp = {
 export interface MyPreferences {
   /** The maps app "Open in maps" opens; null asks each time, with every maps app side by side. */
   mapsApp: MapsApp | null;
+  /** The Wikipedia languages an article opens in, first choice first (#2209); null reads the browser's languages. */
+  readingLanguages: string[] | null;
 }
 
 export type MyPreferencesBodyMapsApp = typeof MyPreferencesBodyMapsApp[keyof typeof MyPreferencesBodyMapsApp] | null;
@@ -1394,7 +1396,8 @@ export const MyPreferencesBodyMapsApp = {
 } as const;
 
 export interface MyPreferencesBody {
-  mapsApp: MyPreferencesBodyMapsApp;
+  mapsApp?: MyPreferencesBodyMapsApp;
+  readingLanguages?: string[] | null;
 }
 
 /**
@@ -2174,6 +2177,26 @@ export interface ExperienceKind {
  * The kinds a source fills today, in display order.
  */
 export type ExperienceKinds = ExperienceKind[];
+
+/**
+ * An English article's edition in a reader's language (#2209).
+ */
+export interface WikipediaEdition {
+  /** The English article asked about, as the catalogue links it. */
+  article: string;
+  /** The same item's article in the first of the reader's languages its item has. */
+  url: string;
+  /** That article's language, as the reader named it: `ru`, `de`, `zh-classical`. */
+  language: string;
+}
+
+/**
+ * Which edition each English article opens in for a reader's languages, first choice first (#2209).
+ */
+export interface WikipediaEditions {
+  /** One entry per English article asked about whose item has an article in one of the reader's languages ahead of English; an article without one is left out, and its English link stands. */
+  editions: WikipediaEdition[];
+}
 
 export type WorldPointsResponseKindsItem = ({
   /**
@@ -7201,6 +7224,17 @@ export type GetExperiencesSearchParams = {
   limit?: number;
 };
 
+export type GetExperiencesWikipediaEditionsParams = {
+  /**
+   * @minItems 1
+   * @maxItems 100
+   * @items.maxLength 1000
+   */
+  articles: string[];
+  /** @maxLength 200 */
+  languages: string;
+};
+
 export type GetExperiencesPointsParams = {
   /**
    * @maximum 2147483647
@@ -10275,6 +10309,45 @@ export const getGetExperiencesKindsUrl = () => {
 export const getExperiencesKinds = async ( options?: Parameters<typeof apiFetch>[1]): Promise<ExperienceKinds> => {
 
   return apiFetch<ExperienceKinds>(getGetExperiencesKindsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesWikipediaEditionsUrl = (params: GetExperiencesWikipediaEditionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    const explodeParameters = ["articles"];
+
+    if (Array.isArray(value) && explodeParameters.includes(key)) {
+      value.forEach((v) => {
+        normalizedParams.append(key, v === null ? 'null' : String(v));
+      });
+      return;
+    }
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/wikipedia-editions?${stringifiedParams}` : `/api/experiences/wikipedia-editions`
+}
+
+/**
+ * @summary Say which Wikipedia edition each English article opens in for a reader's languages, first choice first
+ */
+export const getExperiencesWikipediaEditions = async (params: GetExperiencesWikipediaEditionsParams, options?: Parameters<typeof apiFetch>[1]): Promise<WikipediaEditions> => {
+
+  return apiFetch<WikipediaEditions>(getGetExperiencesWikipediaEditionsUrl(params),
   {
     ...options,
     method: 'GET'

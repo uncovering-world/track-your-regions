@@ -43,6 +43,7 @@ import { ApproximateLocationNote } from './ApproximateLocationNote';
 import { ImageCreditLine } from './ImageCreditLine';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
+import { useReaderEdition, wikipediaWords } from './WikipediaArticleLink';
 
 /** The object the part belongs to, as the surface that opened the card knows it. */
 export interface PointCardObject {
@@ -99,6 +100,9 @@ export function PointCard({
   // a gated source — and it opens for them, marked as such; the steps stay on
   // the parts a visitor sees.
   const point = (points.data?.locations ?? []).find(loc => loc.id === pointId) ?? null;
+  // The same article in the reader's first language ahead of English, where its item has one (#2209);
+  // asked before the card's early return, as every hook is.
+  const edition = useReaderEdition(point?.wikipedia_url);
   const unread = point?.curation_state === 'pending';
   // A step stays in what the caller is showing: from Riesi in Aargau, the next
   // part is Aargau's other one, not Port on Lake Geneva while the map stays put.
@@ -145,7 +149,7 @@ export function PointCard({
   // The part's own article as a run stored it (#1963); for a point with an item
   // and none stored yet — one the next run has not reached, or one a curator
   // confirmed before the article was read with the item — Wikidata's redirect.
-  const article = safeHref(point.wikipedia_url ?? wikipediaArticleUrl(point.wikidata_item));
+  const article = safeHref(edition?.url ?? point.wikipedia_url ?? wikipediaArticleUrl(point.wikidata_item));
   const unescoPage = safeHref(unescoUrl);
   // Some items give UNESCO's page as their official website, under any scheme
   // or page of it: never a second link to it (`isWorldHeritageCentreUrl`, #1851).
@@ -242,7 +246,7 @@ export function PointCard({
 
         <Stack direction="row" alignItems="center" sx={{ gap: 2, flexWrap: 'wrap', '&:empty': { display: 'none' } }}>
           {article && (
-            <Link href={article} target="_blank" rel="noopener noreferrer" variant="body2">Wikipedia</Link>
+            <Link href={article} target="_blank" rel="noopener noreferrer" variant="body2">{wikipediaWords(edition)}</Link>
           )}
           {wikidata && (
             <Link href={wikidata} target="_blank" rel="noopener noreferrer" variant="body2">

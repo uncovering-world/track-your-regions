@@ -15,6 +15,7 @@ import { lazyChunk } from './utils/lazyChunk';
 import { NavigationProvider } from './hooks/useNavigation';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { MapsAppProvider } from './hooks/useMapsApp';
+import { ReadingLanguagesProvider } from './hooks/useReadingLanguages';
 import { AppThemeProvider, useAppTheme, createAppTheme } from './theme';
 import { parseAppUrl } from './utils/appUrl';
 
@@ -186,6 +187,7 @@ function ThemedApp() {
       <CssBaseline />
       <AuthProvider>
         <MapsAppProvider>
+          <ReadingLanguagesProvider>
           <NavigationProvider>
             <Routes>
               <Route path="/auth/callback" element={<AuthCallbackHandler />} />
@@ -197,6 +199,7 @@ function ThemedApp() {
               <Route path="/*" element={<MainContent />} />
             </Routes>
           </NavigationProvider>
+          </ReadingLanguagesProvider>
         </MapsAppProvider>
       </AuthProvider>
     </ThemeProvider>

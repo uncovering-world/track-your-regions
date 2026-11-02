@@ -74,7 +74,10 @@ function useMapsAppState(): MapsAppChoice {
     // And a read a refocus started while the save was on its way is dropped before the answer lands.
     onSuccess: async (saved: MyPreferences, { userId }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.preferences.mine(userId) });
-      queryClient.setQueryData(queryKeys.preferences.mine(userId), saved);
+      // Its own field only: the reading languages' save writes the same answer (#2209), and one
+      // that lands later must not put an older choice back.
+      queryClient.setQueryData<MyPreferences>(queryKeys.preferences.mine(userId),
+        held => (held ? { ...held, mapsApp: saved.mapsApp } : saved));
     },
   });
   // And is dropped when the account changes, so a later save starts clean.
