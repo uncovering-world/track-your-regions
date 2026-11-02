@@ -1246,6 +1246,13 @@ export interface WikidataSubsetBuildsRow {
   rules: unknown | null;
 }
 
+/** The table `wikipedia_editions`. */
+export interface WikipediaEditionsRow {
+  item: string;
+  wiki: string;
+  title: string;
+}
+
 /** The table `wikipedia_redirect_builds`. */
 export interface WikipediaRedirectBuildsRow {
   build_id: number;
@@ -1416,6 +1423,7 @@ export const RELATION_SCHEMAS = {
   wikidata_redirects: "workbench",
   wikidata_sitelinks: "workbench",
   wikidata_subset_builds: "workbench",
+  wikipedia_editions: "public",
   wikipedia_redirect_builds: "workbench",
   wikipedia_redirects: "workbench",
   wikivoyage_pages: "workbench",

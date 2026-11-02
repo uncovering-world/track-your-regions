@@ -3903,6 +3903,19 @@ COMMENT ON COLUMN treasures.wikipedia_url IS
 COMMENT ON COLUMN treasures.wikipedia_read_at IS
     'When a works run last read the English article (#1608); NULL means never, and the card keeps the redirect link';
 
+-- Every Wikipedia edition's article about the items the catalogue's places and
+-- works link (#2209): what a reader's languages choose among. Serving (ADR-0124):
+-- a precomputed copy of the local Wikidata subset's sitelinks, which no reader
+-- route may read, written at the end of every run by refreshWikipediaEditions().
+CREATE TABLE IF NOT EXISTS wikipedia_editions (
+    item TEXT NOT NULL,
+    wiki TEXT NOT NULL,
+    title TEXT NOT NULL,
+    PRIMARY KEY (item, wiki)
+);
+CREATE INDEX IF NOT EXISTS idx_wikipedia_editions_title ON wikipedia_editions (wiki, title);
+COMMENT ON TABLE wikipedia_editions IS 'Every Wikipedia edition''s article about each item whose English article a place, a part or a work links (#2209): the item (QID), the edition (enwiki, ruwiki, ...) and its title as the edition writes it. A place''s article is found by its English title (wiki = ''enwiki''), and the item''s other rows are its other languages. Replaced at the end of every real run from the local Wikidata subset (refreshWikipediaEditions, backend/src/services/sync/wikipediaEditions.ts); left as it is where the subset holds no sitelinks.';
+
 -- Junction table: many-to-many between experiences and treasures
 CREATE TABLE IF NOT EXISTS experience_treasures (
     id SERIAL PRIMARY KEY,
