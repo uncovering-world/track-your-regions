@@ -1,6 +1,7 @@
 /**
  * What Squares & streets admits and what it leaves to another kind (#1867),
- * asked on real entities with the classes Wikidata gave them on 2026-10-23.
+ * asked on real entities with the classes Wikidata gave them on 2026-10-23
+ * (the canals on the subset of 2026-11-02, #2272).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -26,12 +27,20 @@ const AGORA = 'Q187909';
 const BULLRING = 'Q1193438';
 const MOTORWAY = 'Q2154027';
 const DESTROYED = 'Q19860854';
+const AVENUE_CLASS = 'Q7543083';
+const BOULEVARD = 'Q54114';
+const RAMBLA = 'Q29518746';
+const URBAN_ENSEMBLE = 'Q66626342';
+const CANAL = 'Q12284';
+const GRACHT = 'Q523166';
+const HISTORIC_DISTRICT = 'Q15243209';
+const TOURIST_ATTRACTION = 'Q570116';
 
 const none = new Set<string>();
 const stairways = new Set([STAIRS, MONUMENTAL_STAIRCASE]);
 const squares = new Set([SQUARE]);
 const promenades = new Set([PROMENADE_CLASS]);
-const streets = new Set([STREET, PEDESTRIAN_ZONE, SHOPPING_STREET, AVENUE]);
+const streets = new Set([STREET, PEDESTRIAN_ZONE, SHOPPING_STREET, AVENUE, AVENUE_CLASS, BOULEVARD, RAMBLA]);
 const trees: SquareTrees = {
   place: new Set([THOROUGHFARE, ...stairways, ...squares, ...promenades, ...streets]),
   types: { stairway: stairways, square: squares, promenade: promenades, street: streets },
@@ -41,6 +50,7 @@ const trees: SquareTrees = {
     archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]), agora: new Set([AGORA]), bullring: new Set([BULLRING]),
     railwayLine: none, motorway: new Set([MOTORWAY]), river: none,
   },
+  canal: new Set([CANAL, GRACHT]),
 };
 
 const at = (classes: string[]): SquareFacts => ({ classes, onEarth: true, lat: 1, lon: 1 });
@@ -55,6 +65,10 @@ describe('squareVerdict', () => {
     ['Oxford Street, a shopping street that is also a road', [SHOPPING_STREET, ROAD], 'street'],
     ['the National Mall, a square though an avenue and a park too', [AVENUE, SQUARE, PARK], 'square'],
     ['Times Square, though a neighbourhood too', [SQUARE, NEIGHBOURHOOD], 'square'],
+    ['the Champs-Élysées, an avenue and a boulevard', [AVENUE_CLASS, BOULEVARD], 'street'],
+    ['La Rambla, a street and a rambla', [STREET, URBAN_ENSEMBLE, RAMBLA], 'street'],
+    ['Nyhavn, a canal and a street', [CANAL, HISTORIC_DISTRICT, TOURIST_ATTRACTION, STREET], 'street'],
+    ['the Prinsengracht, a gracht and a street', [GRACHT, STREET], 'street'],
   ])('admits %s', (_name, classes, type) => {
     expect(squareVerdict(at(classes), trees)).toEqual({ pass: true, type });
   });
@@ -68,6 +82,7 @@ describe('squareVerdict', () => {
     ['Las Ventas, a plaza de toros', [BULLRING], 'a bullring, not a square'],
     ['the M25', [MOTORWAY], 'a motorway, not a street a visitor walks'],
     ['a road no class of the kind names', [ROAD], 'no square or street class'],
+    ['Venice\'s Grand Canal, a canal and a bare thoroughfare', [CANAL, THOROUGHFARE], 'a canal, not a street'],
   ])('refuses %s', (_name, classes, reason) => {
     expect(squareVerdict(at(classes), trees)).toEqual({ pass: false, reason });
   });
