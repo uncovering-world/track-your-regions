@@ -1151,6 +1151,7 @@ export interface UsersRow {
   provider_id: string | null;
   email_verified: boolean;
   maps_app: MapsApp | null;
+  reading_languages: string[] | null;
   created_at: Date | null;
   last_seen_at: Date | null;
 }

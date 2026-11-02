@@ -14,3 +14,14 @@
 export const MAPS_APPS = ['device', 'osm', 'google'] as const;
 
 export type MapsApp = (typeof MAPS_APPS)[number];
+
+/**
+ * A reading language as Wikipedia names its editions (#2209): `ru`, `de`,
+ * `zh-classical`, `be-tarask` — lowercase letters, then any number of
+ * hyphenated parts. A visitor's list holds at most `MAX_READING_LANGUAGES`,
+ * first choice first; both the request schema and the account page hold it to
+ * these.
+ */
+export const READING_LANGUAGE = /^[a-z]{2,3}(-[a-z0-9]{2,12})*$/;
+
+export const MAX_READING_LANGUAGES = 10;
