@@ -20,6 +20,10 @@ import { orchestrateSync } from './syncOrchestrator.js';
 import type { SyncServiceConfig, ProcessItemResult, FetchResult } from './syncContract.js';
 import { runningSyncs } from './types.js';
 
+// The end of a run copies the Wikipedia editions from the subset (#2209): a
+// statement on the real pool, which a unit spec must never reach.
+vi.mock('./wikipediaEditions.js', () => ({ refreshWikipediaEditions: vi.fn().mockResolvedValue(null) }));
+
 vi.mock('./syncUtils.js', () => ({
   createSyncLog: vi.fn().mockResolvedValue(42),
   updateSyncLog: vi.fn().mockResolvedValue(undefined),
