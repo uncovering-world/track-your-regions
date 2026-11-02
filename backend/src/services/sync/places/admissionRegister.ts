@@ -32,6 +32,13 @@ const derived = <T>(value: T, derivation: string, section: string): Parameter<T>
   value, derivation, evidence: `${REPORT} § ${section}`, date: DERIVED,
 });
 
+const NEIGHBOURHOOD_REPORT = 'docs/research/2026-11-02-a-surroundings-neighbourhood-that-follows-density.md';
+
+/** A value the neighbourhood measurement of #2297 moved (ADR-0181). */
+const remeasured = <T>(value: T, derivation: string, section: string): Parameter<T> => ({
+  value, derivation, evidence: `${NEIGHBOURHOOD_REPORT} § ${section}`, date: DERIVED,
+});
+
 /**
  * The world tier (ADR-0175 decisions 1, 2 and 4): three bars, each a quantile
  * of the kind's own pool, recomputed from that pool at every run, and the
@@ -62,21 +69,25 @@ export const WORLD_REGISTER = {
 } as const;
 
 /**
- * The surroundings tier (ADR-0175 decisions 2 and 3, ADR-0171's cut), read by
- * `SURROUNDINGS_CUT` in `surroundingsCut.ts`: the neighbourhood and its reference, the
- * three tests and their group floors, the languages and readers' floor, the
- * types that need a guide, and the share a held place stays at.
+ * The surroundings tier (ADR-0175 decisions 2 and 3, ADR-0171's cut, its
+ * neighbourhood and shares narrowed by ADR-0181), read by `SURROUNDINGS_CUT`
+ * in `surroundingsCut.ts`: the neighbourhood and its reference, the three
+ * tests and their group floors, the languages and readers' floor, the types
+ * that need a guide, and the share a held place stays at.
  */
 export const SURROUNDINGS_REGISTER = {
   neighbours: derived('all' as const,
     "A place is measured against every place of the live kinds within the radius, museums included, as ADR-0171's measurement counted them.",
     'Results, The point'),
-  radiusKm: {
-    value: 50,
-    derivation: 'ADR-0171 decision 1: what lies within 50 km of a place, unchanged by the review.',
-    evidence: 'docs/decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md',
-    date: '2026-10-31',
-  } satisfies Parameter<number>,
+  radiusKm: remeasured(150,
+    'A place is measured against what lies within 150 km of it, among the places of its own density: at the shares below, 150 km shows 12,653 places and 299 of the 451 demanded, where 100 km shows 13,432 and 300.',
+    'The point'),
+  densityNeighbours: remeasured(20,
+    "A place's density is its distance to the 20th-nearest place of the pool: the 50th shows 12,601 places, two demanded fewer and canon 0.856 against 0.860.",
+    'Neighbourhoods that follow density'),
+  densityRatio: remeasured(4,
+    "A neighbour counts while its density is within a factor of 4 of the candidate's, either way: a factor of 2 shows 779 more places (13,432) for two more demanded.",
+    'Neighbourhoods that follow density'),
   best: derived(10,
     'The reference is the median of the ten best within the radius; skipping the first ranks moved nothing worth its load.',
     'Results, The point'),
@@ -86,9 +97,9 @@ export const SURROUNDINGS_REGISTER = {
   minReaders: derived(3_000,
     'At least 3,000 readers a year: a floor of 10,000 costs 1,100 places for 0.2 points of noise, and a floor of 1,000 doubles the noise.',
     'Results, The point'),
-  guideShare: derived(0.5,
-    'The Wikivoyage test passes at half the reference, in an area of five places or more (ADR-0171 said a quarter).',
-    'Results, The point'),
+  guideShare: remeasured(0.25,
+    'The Wikivoyage test passes at a quarter of the reference, in an area of five places or more: half shows 10,551 places and 279 demanded against 12,653 and 299, and per kind the share moves demand by 2 to 16 places where the neighbourhood moves it by 0 to 3.',
+    'Per kind'),
   guideGroupFloor: derived(5,
     'The Wikivoyage minimum moved nothing in the screening and is fixed at ADR-0171\'s five places.',
     'Method, The search'),
@@ -98,9 +109,9 @@ export const SURROUNDINGS_REGISTER = {
   editionsGroupFloor: derived(25,
     'The editions test reads an area of 25 places or more, as ADR-0171 did.',
     'Results, The point'),
-  readersShare: derived(1,
-    'The readers test, new, passes at the reference, in an area of 25 places or more.',
-    'Results, The point'),
+  readersShare: remeasured(1.5,
+    'The readers test passes at one and a half times the reference, in an area of 25 places or more: at the reference itself it shows 233 more places (12,886) for no more demanded and the same canon.',
+    'The point'),
   readersGroupFloor: derived(25,
     'The readers test reads an area of 25 places or more, as the editions test does.',
     'Results, The point'),

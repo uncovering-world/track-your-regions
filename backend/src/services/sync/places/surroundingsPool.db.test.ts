@@ -2,11 +2,13 @@
  * The surroundings pool and a candidate's surroundings read from the local subset
  * against PostgreSQL (ADR-0171, #2178): the kinds' items with a point whatever
  * their editions, their Wikipedia editions counted as the runs count them, the
- * Wikivoyage editions that use them, a year of their readers, and the best
- * within the radius for every item with the cut's languages. Fixture rows on real items around Bologna:
+ * Wikivoyage editions that use them, a year of their readers, and the best of
+ * the neighbours of its own density for every item with the cut's languages
+ * and readers (ADR-0181). Fixture rows on real items around Bologna:
  * the Two Towers (Q201003), the Asinelli Tower (Q3990290), the Garisenda
- * (Q3758980), the Prendiparte Tower (Q3995048) and, 300 km away, the Leaning
- * Tower of Pisa (Q39054).
+ * (Q3758980), the Prendiparte Tower (Q3995048) and, 115 km away, the Leaning
+ * Tower of Pisa (Q39054). The pool is a handful of places, so the tests read a
+ * place's density at its fourth-nearest place rather than its twentieth.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -30,6 +32,9 @@ const year: PoolReaders = async (qids) => {
   asked = [...qids];
   return new Map(qids.filter((q) => YEAR.has(q)).map((q) => [q, YEAR.get(q)!]));
 };
+
+// A place's density read at its fourth-nearest: Bologna's towers stand metres apart, Pisa a hundred kilometres from them.
+const CUT = { ...SURROUNDINGS_CUT, best: 3, densityNeighbours: 4 };
 
 const point = (lat: number, lon: number) => JSON.stringify({ latitude: lat, longitude: lon, globe: 'http://www.wikidata.org/entity/Q2' });
 
@@ -70,8 +75,8 @@ afterAll(async () => {
 });
 
 describe('the surroundings pool read from the subset (#2178)', () => {
-  it('holds the kinds\' items with a point whatever their editions, counted as the runs count them, and the surroundings of those with the cut\'s languages', async () => {
-    const surroundings = await readSurroundingsPool(new Set([TOWER]), { ...SURROUNDINGS_CUT, best: 3 }, [{ key: 'all', classes: null }], undefined, year);
+  it('holds the kinds\' items with a point whatever their editions, counted as the runs count them, and the surroundings of those with the cut\'s languages and readers', async () => {
+    const surroundings = await readSurroundingsPool(new Set([TOWER]), CUT, [{ key: 'all', classes: null }], undefined, year);
     const all = surroundings.around.get('all')!;
     // Every tower with a point is of the pool, the one-edition tower too; the mast is another class.
     expect([...surroundings.rows.keys()].sort()).toEqual([TWO_TOWERS, PISA, GARISENDA, ASINELLI, PRENDIPARTE, ONE_WIKI].sort());
@@ -83,16 +88,22 @@ describe('the surroundings pool read from the subset (#2178)', () => {
     expect(surroundings.rows.get(GARISENDA)?.guideEditions).toBe(0);
     // The surroundings are read for the items at two languages or more: the one-edition tower counts in the group and is asked about nothing.
     expect(all.has(ONE_WIKI)).toBe(false);
-    // Bologna's five towers lie within 50 km of the Asinelli; Pisa does not. The best three by editions, and the guide use among the places a guide uses.
-    // The readers are the best three read at all: the unread Prendiparte sets none.
+    // Nor for one under the readers a held place stays at, which the verdict refuses before it reads any: the unread Prendiparte.
+    expect(all.has(PRENDIPARTE)).toBe(false);
+    // Pisa lies within 150 km of the Asinelli, but a hundred kilometres from its nearest places where Bologna's towers
+    // stand metres apart: the Asinelli's neighbours are Bologna's five towers. The best three by editions, and the guide
+    // use among the places a guide uses. The readers are the best three read at all: the unread Prendiparte sets none.
     expect(all.get(ASINELLI)).toEqual({ groupSize: 5, topEditions: [10, 9, 8], topGuideEditions: [3, 1], topReaders: [90_000, 30_000, 12_000] });
-    // Pisa stands alone within its radius.
+    // Pisa stands alone among the places of its density.
     expect(all.get(PISA)).toEqual({ groupSize: 1, topEditions: [11], topGuideEditions: [4], topReaders: [2_000_000] });
+    // In a plain circle of the same radius, Pisa is among the Asinelli's neighbours and sets its best.
+    const circle = await readSurroundingsPool(new Set([TOWER]), { ...CUT, densityRatio: Infinity }, [{ key: 'all', classes: null }], undefined, year);
+    expect(circle.around.get('all')!.get(ASINELLI)).toEqual({ groupSize: 6, topEditions: [11, 10, 9], topGuideEditions: [4, 3, 1], topReaders: [2_000_000, 90_000, 30_000] });
     expect(surroundings.seconds).toBeGreaterThanOrEqual(0);
   });
 
   it('reads a group over its own classes alone: a neighbourhood of masts holds no tower', async () => {
-    const surroundings = await readSurroundingsPool(new Set([TOWER, MAST]), { ...SURROUNDINGS_CUT, best: 3 },
+    const surroundings = await readSurroundingsPool(new Set([TOWER, MAST]), CUT,
       [{ key: 'towers', classes: new Set([TOWER]) }, { key: 'masts', classes: new Set([MAST]) }], undefined, year);
     // The Asinelli's neighbours among towers alone: the five Bologna towers; the mast is not counted.
     expect(surroundings.around.get('towers')!.get(ASINELLI)?.groupSize).toBe(5);
