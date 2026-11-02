@@ -16,8 +16,7 @@ import { fetchSitelinksByIds, SITELINKS_BATCH, type SiteFactsRow } from './queri
 import { SITE_CATEGORY, type ArchaeologyTrees } from './classes.js';
 import type { OsmDigs, OsmObject } from '../osm/types.js';
 import { enwikiTitleOf } from '../wikipediaCategories.js';
-import type { SourceLine } from '../sourceLine.js';
-import { inUseAmong, siteStanding } from './siteTest.js';
+import { inUseAmong } from './siteTest.js';
 import { readsSubset } from '../subset/reader.js';
 import { subsetKeeps } from '../subset/archaeology.js';
 
@@ -46,8 +45,7 @@ export interface SiteEntrance {
  *
  * **The count is asked before the row.** 40,572 items the map named on dry
  * run 136 (2026-09-15), 39,587 of them in no class under the tree, 601 at the
- * pool's floor (`POOL_MIN_SITELINKS`, 15 — below the place line, so that an
- * admitted row that slipped under it still arrives to be refused by name): a
+ * pool's floor (`POOL_MIN_SITELINKS`, 15): a
  * sitelinks question five hundred at a time is eighty cheap questions, where
  * the pool's own question of all of them would be some eight hundred
  * expensive ones. What the class pool
@@ -172,9 +170,8 @@ function refusedUnlessVoted(row: SiteFactsRow, objects: OsmObject[]): boolean {
 /**
  * English Wikipedia's second vote (#895, ADR-0060 decision 3), asked only
  * where it can change the answer: a row the map named and no class vouches
- * for, that has an English article, stands where the line would name its
- * refusal, and is refused on the map's entrance unless the vote says
- * otherwise — it states a population and is not World Heritage itself, or
+ * for, that has an English article, and is refused on the map's entrance
+ * unless the vote says otherwise — it states a population and is not World Heritage itself, or
  * one of its objects says it is used today (`inUseAmong`, #1352). A handful
  * of titles a run — the categories of the article, never a walk — against the
  * eighteen comuni and the Jerash that share the first shape, and Bamburgh
@@ -186,12 +183,8 @@ export async function categoryVotes(
   facts: ReadonlyMap<string, SiteFactsRow>,
   trees: ArchaeologyTrees,
   named: ReadonlyMap<string, OsmObject[]>,
-  line: SourceLine,
-  admitted: ReadonlySet<string>,
   entrance: SiteEntrance,
   objects: ReadonlyMap<string, OsmObject[]>,
-  /** The rows below the line the readership door opened for (ADR-0127). */
-  readOpened: ReadonlySet<string> = new Set(),
 ): Promise<Set<string>> {
   const titles = new Map<string, string>();
   for (const entity of candidates) {
@@ -203,7 +196,6 @@ export async function categoryVotes(
     const row = facts.get(entity.qid);
     if (!row || !refusedUnlessVoted(row, withNamed(objects.get(entity.qid) ?? [], mapped))) continue;
     if (row.classes.some((cls) => trees.site.has(cls))) continue;
-    if (siteStanding(entity.qid, entity.sitelinks, admitted, line, readOpened) === 'out') continue;
     const title = enwikiTitleOf(entity.articleUrl);
     if (title) titles.set(entity.qid, title);
   }

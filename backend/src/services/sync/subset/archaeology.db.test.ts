@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
-import { fetchFindFacts, fetchSiteFacts, fetchPlacedAmong } from '../archaeology/queries.js';
+import { fetchFindFacts, fetchFindsAmong, fetchSiteFacts } from '../archaeology/queries.js';
 import { subsetKeeps } from './archaeology.js';
 import { subsetOnlyDoor } from './reader.js';
 
@@ -49,7 +49,7 @@ const ENTITIES: Array<[string, Record<string, unknown>]> = [
 
 interface FixtureClaim { id: string; value: unknown; rank?: string }
 
-/** The claims table, which the question about sites with a point reads by column. */
+/** The claims table, which the question about the finds the readership names reads by column. */
 async function seedClaims(id: string, claims: Record<string, FixtureClaim[]>): Promise<void> {
   const ranks: Record<string, number> = { preferred: 1, normal: 0, deprecated: -1 };
   for (const [property, statements] of Object.entries(claims)) {
@@ -91,9 +91,9 @@ describe('Archaeology read from the subset (#1462)', () => {
     expect(facts.get(CAIRO)).toEqual({ classes: [], worldHeritage: false, statesPopulation: true });
   });
 
-  it('says which of the items the readership names are sites with a point (ADR-0152)', async () => {
-    // Troy is a polis with no point of its own here; the museum is not kept.
-    expect(await fetchPlacedAmong(door, [TROY, GERASA, BRITISH_MUSEUM], new Set([ARCHAEOLOGICAL_SITE, POLIS]))).toEqual([GERASA]);
+  it('says which of the items the readership names are finds (ADR-0165)', async () => {
+    // Gerasa is a site, not a find; the museum is not kept.
+    expect(await fetchFindsAmong(door, [GERASA, ROSETTA, BRITISH_MUSEUM], new Set([STELE_CLASS]))).toEqual([ROSETTA]);
   });
 
   it('says which items it keeps, so one outside it is not read as having no articles', async () => {

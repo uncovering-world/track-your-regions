@@ -12,8 +12,6 @@ import { buildArchaeologyTrees, SHIPWRECK_ROOT } from './classes.js';
 import { siteExtent, siteSignal, siteVerdict, type SiteFacts } from './siteTest.js';
 import type { OsmObject } from '../osm/types.js';
 
-const LINE = { enterSitelinks: 22, staySitelinks: 18 };
-
 /** The trees a run fetches, as far as these rows need them. */
 const TREES = buildArchaeologyTrees({
   museum: [], park: [], naturalHistory: [], artefact: [],
@@ -43,14 +41,14 @@ const object = (ref: string, tags: Record<string, string>, wkt: string | null = 
 // branch is a question about the class tree, and the rule holds the tree, so
 // the rule asks it. A helper that computed it was a second copy of a rule the
 // verdict already applies — and a caller that forgot it admitted Athens.
-const facts = (over: Partial<SiteFacts> & Pick<SiteFacts, 'qid' | 'classes' | 'sitelinks'>): SiteFacts => ({
+const facts = (over: Partial<SiteFacts> & Pick<SiteFacts, 'qid' | 'classes'>): SiteFacts => ({
   worldHeritage: false,
   statesPopulation: false,
   ...over,
 });
 
 const verdictOf = (f: SiteFacts, objects: OsmObject[] = []) =>
-  siteVerdict({ facts: f, objects, trees: TREES, admitted: new Set<string>(), line: LINE });
+  siteVerdict({ facts: f, objects, trees: TREES });
 
 const POLYGON = 'POLYGON((26.23 39.95,26.24 39.95,26.24 39.96,26.23 39.95))';
 
@@ -60,7 +58,7 @@ describe('the site door, on the rows it was written from', () => {
     // / settlement site — not one of them says "site" on its own — and
     // way/423938794 tagged historic=archaeological_site.
     const verdict = verdictOf(
-      facts({ qid: 'Q22647', classes: ['Q133442', 'Q148837', 'Q65064889', 'Q1708422'], sitelinks: 121, worldHeritage: true }),
+      facts({ qid: 'Q22647', classes: ['Q133442', 'Q148837', 'Q65064889', 'Q1708422'], worldHeritage: true }),
       [object('way/423938794', {
         historic: 'archaeological_site', archaeological_site: 'city',
         heritage: '1', tourism: 'attraction', boundary: 'protected_area',
@@ -77,7 +75,7 @@ describe('the site door, on the rows it was written from', () => {
     // Q1524, 288 sitelinks, classes big city / largest city / metropolis / free
     // city — no site class — population 643,452, node/441183 place=city.
     const verdict = verdictOf(
-      facts({ qid: 'Q1524', classes: ['Q1549591', 'Q51929311', 'Q200250', 'Q5500203'], sitelinks: 288, statesPopulation: true }),
+      facts({ qid: 'Q1524', classes: ['Q1549591', 'Q51929311', 'Q200250', 'Q5500203'], statesPopulation: true }),
       [object('node/441183', { place: 'city', name: 'Αθήνα' })],
     );
     expect(verdict.pass).toBe(false);
@@ -94,7 +92,7 @@ describe('the site door, on the rows it was written from', () => {
     // Baia (32), Tindari (28), Tus (43) and Halki (38) are the same shape above
     // the line: the refusal stands, and the sentence says what was read.
     const verdict = verdictOf(
-      facts({ qid: 'Q1231948', classes: ['Q1134686', 'Q15661340'], sitelinks: 22 }),
+      facts({ qid: 'Q1231948', classes: ['Q1134686', 'Q15661340'] }),
       [object('node/2813463723', { place: 'hamlet', name: 'Populonia' })],
     );
     expect(verdict.pass).toBe(false);
@@ -110,7 +108,7 @@ describe('the site door, on the rows it was written from', () => {
     // node/4753980853 place=locality — which the measurement found on Pompeii,
     // Sounion and Capernaum and which names a spot, not a town.
     const verdict = verdictOf(
-      facts({ qid: 'Q43332', classes: ['Q839954', 'Q15661340'], sitelinks: 122, statesPopulation: true }),
+      facts({ qid: 'Q43332', classes: ['Q839954', 'Q15661340'], statesPopulation: true }),
       [object('node/4753980853', { place: 'locality', name: 'Pompei Antica' })],
     );
     expect(verdict.pass).toBe(true);
@@ -123,7 +121,7 @@ describe('the site door, on the rows it was written from', () => {
     // Q29317, 79 sitelinks, P757 1588 and P1435 Q9259, population 22,000,
     // node/597205381 place=town.
     const verdict = verdictOf(
-      facts({ qid: 'Q29317', classes: ['Q7830262', 'Q839954', 'Q15661340'], sitelinks: 79, worldHeritage: true, statesPopulation: true }),
+      facts({ qid: 'Q29317', classes: ['Q7830262', 'Q839954', 'Q15661340'], worldHeritage: true, statesPopulation: true }),
       [object('node/597205381', { place: 'town' })],
     );
     expect(verdict.pass).toBe(true);
@@ -135,7 +133,7 @@ describe('the site door, on the rows it was written from', () => {
     // Q192134, 65 sitelinks, classes village / necropolis / archaeological site,
     // no population statement, node/331877485 place=village.
     const verdict = verdictOf(
-      facts({ qid: 'Q192134', classes: ['Q532', 'Q200141', 'Q839954'], sitelinks: 65 }),
+      facts({ qid: 'Q192134', classes: ['Q532', 'Q200141', 'Q839954'] }),
       [object('node/331877485', { place: 'village' })],
     );
     expect(verdict.pass).toBe(true);
@@ -145,7 +143,7 @@ describe('the site door, on the rows it was written from', () => {
     // Q29962, 74 sitelinks, classes city / big city / archaeological site,
     // population 562,061, a node and a way both place=city.
     const verdict = verdictOf(
-      facts({ qid: 'Q29962', classes: ['Q515', 'Q1549591', 'Q839954'], sitelinks: 74, statesPopulation: true }),
+      facts({ qid: 'Q29962', classes: ['Q515', 'Q1549591', 'Q839954'], statesPopulation: true }),
       [object('node/6379231716', { place: 'city' }), object('way/94168759', { place: 'city' })],
     );
     expect(verdict.pass).toBe(false);
@@ -159,7 +157,7 @@ describe('the site door, on the rows it was written from', () => {
     // pene-enclave, and relation/305693 boundary=administrative. Nothing else
     // in the rule catches it: the class says site and OSM says nothing.
     const verdict = verdictOf(
-      facts({ qid: 'Q2181', classes: ['Q590080', 'Q8273909', 'Q839954'], sitelinks: 67 }),
+      facts({ qid: 'Q2181', classes: ['Q590080', 'Q8273909', 'Q839954'] }),
       [object('relation/305693', { boundary: 'administrative' })],
     );
     expect(verdict.pass).toBe(false);
@@ -171,7 +169,7 @@ describe('the site door, on the rows it was written from', () => {
     // Q25173, 160 sitelinks, classes four funnel liner / steamship /
     // shipwreck. 58 shipwrecks sit in the site tree.
     const verdict = verdictOf(
-      facts({ qid: 'Q25173', classes: ['Q3362987', 'Q12859788', 'Q852190'], sitelinks: 160 }),
+      facts({ qid: 'Q25173', classes: ['Q3362987', 'Q12859788', 'Q852190'] }),
     );
     expect(verdict.pass).toBe(false);
     if (verdict.pass || 'out' in verdict) throw new Error('the Titanic must be refused by name');
@@ -183,7 +181,7 @@ describe('the site door, on the rows it was written from', () => {
     // archaeological site, relation/8160590 carrying heritage=1 and nothing
     // else of interest.
     const verdict = verdictOf(
-      facts({ qid: 'Q163607', classes: ['Q515', 'Q15661340', 'Q109607', 'Q839954'], sitelinks: 91, worldHeritage: true }),
+      facts({ qid: 'Q163607', classes: ['Q515', 'Q15661340', 'Q109607', 'Q839954'], worldHeritage: true }),
       [object('relation/8160590', { heritage: '1', name: 'Angkor' })],
     );
     expect(verdict.pass).toBe(true);
@@ -198,7 +196,7 @@ describe('the site door, on the rows it was written from', () => {
     // Chios, Ithaca, Zakynthos, Milos …), and calling Ithaca a city is telling
     // a curator something false about the island in the photograph.
     const verdict = verdictOf(
-      facts({ qid: 'Q43048', classes: ['Q148837', 'Q23442'], sitelinks: 116 }),
+      facts({ qid: 'Q43048', classes: ['Q148837', 'Q23442'] }),
       [object('relation/452614', { place: 'island' }), object('relation/5321592', { boundary: 'administrative' })],
     );
     expect(verdict.pass).toBe(false);
@@ -215,7 +213,7 @@ describe('the site door, on the rows it was written from', () => {
     // Libya — no site class, no P757 on the item — and no OSM object at all.
     // Its World Heritage row stands on its own, from source 1.
     const verdict = verdictOf(
-      facts({ qid: 'Q192918', classes: ['Q515', 'Q16124843', 'Q1549591', 'Q15661340'], sitelinks: 57, statesPopulation: true }),
+      facts({ qid: 'Q192918', classes: ['Q515', 'Q16124843', 'Q1549591', 'Q15661340'], statesPopulation: true }),
     );
     expect(verdict.pass).toBe(false);
     if (verdict.pass || 'out' in verdict) throw new Error('Sabratha must be refused by name');
@@ -235,7 +233,7 @@ describe('the site door, on the rows it was written from', () => {
     // kind reads. 16 rows of the pool take this branch, Samos and Chios among
     // them, so the singular has to read as a sentence.
     const verdict = verdictOf(
-      facts({ qid: 'Q16869', classes: ['Q515', 'Q56061', 'Q15661340'], sitelinks: 127 }),
+      facts({ qid: 'Q16869', classes: ['Q515', 'Q56061', 'Q15661340'] }),
       [object('relation/20353798', { name: 'Sultanahmet Historic Tour' })],
     );
     expect(verdict.pass).toBe(false);
@@ -251,7 +249,7 @@ describe('the site door, on the rows it was written from', () => {
     // / tectonic lake, P1435 Q18519893 (not World Heritage), relation/646
     // natural=water.
     const verdict = verdictOf(
-      facts({ qid: 'Q648902', classes: ['Q23397', 'Q839954', 'Q211302', 'Q3511952'], sitelinks: 55 }),
+      facts({ qid: 'Q648902', classes: ['Q23397', 'Q839954', 'Q211302', 'Q3511952'] }),
       [object('relation/646', { natural: 'water' })],
     );
     expect(verdict.pass).toBe(false);
@@ -264,7 +262,7 @@ describe('the site door, on the rows it was written from', () => {
     // P757 179 — the rock art is the reason to go — with no ruin object:
     // way/464707583 carries place=region, heritage=1 and natural=mountain_range.
     const verdict = verdictOf(
-      facts({ qid: 'Q190048', classes: ['Q46831', 'Q839954'], sitelinks: 69, worldHeritage: true }),
+      facts({ qid: 'Q190048', classes: ['Q46831', 'Q839954'], worldHeritage: true }),
       [object('way/464707583', { place: 'region', heritage: '1', natural: 'mountain_range' })],
     );
     expect(verdict.pass).toBe(true);
@@ -275,7 +273,7 @@ describe('the site door, on the rows it was written from', () => {
     // node/7702655158 historic=archaeological_site beside relation/16911758
     // natural=mountain_range.
     const verdict = verdictOf(
-      facts({ qid: 'Q308807', classes: ['Q46831', 'Q839954'], sitelinks: 55, worldHeritage: true }),
+      facts({ qid: 'Q308807', classes: ['Q46831', 'Q839954'], worldHeritage: true }),
       [object('node/7702655158', { historic: 'archaeological_site' }),
         object('relation/16911758', { natural: 'mountain_range' })],
     );
@@ -289,11 +287,11 @@ describe('the site door, on the rows it was written from', () => {
     // with node/127835001 place=town. Q1153959 Thinis, 39 sitelinks, typed
     // `lost city` alone with no OSM object — its site has never been located.
     const pripyat = verdictOf(
-      facts({ qid: 'Q170456', classes: ['Q2974842', 'Q2514025'], sitelinks: 86, statesPopulation: true }),
+      facts({ qid: 'Q170456', classes: ['Q2974842', 'Q2514025'], statesPopulation: true }),
       [object('node/127835001', { place: 'town' })],
     );
     expect(pripyat.pass).toBe(false);
-    const thinis = verdictOf(facts({ qid: 'Q1153959', classes: ['Q2974842'], sitelinks: 39 }));
+    const thinis = verdictOf(facts({ qid: 'Q1153959', classes: ['Q2974842'] }));
     expect(thinis.pass).toBe(false);
     if (thinis.pass || 'out' in thinis) throw new Error('Thinis must be refused by name');
     // The sentence names the class and stops there: which of the two kinds of
@@ -313,7 +311,7 @@ describe('the site door, on the rows it was written from', () => {
         'POLYGON((44.48 31.90,44.49 31.90,44.49 31.91,44.48 31.90))'),
     ];
     const verdict = verdictOf(
-      facts({ qid: 'Q310799', classes: ['Q2974842', 'Q839954'], sitelinks: 35 }), objects,
+      facts({ qid: 'Q310799', classes: ['Q2974842', 'Q839954'] }), objects,
     );
     expect(verdict.pass).toBe(true);
     if (!verdict.pass) return;
@@ -324,7 +322,7 @@ describe('the site door, on the rows it was written from', () => {
     // map is read. The same mapped dig, on an item that does not carry the site
     // class, gets Pripyat's answer rather than Troy's.
     const withoutTheSiteClass = verdictOf(
-      facts({ qid: 'Q310799', classes: ['Q2974842'], sitelinks: 35 }), objects,
+      facts({ qid: 'Q310799', classes: ['Q2974842'] }), objects,
     );
     expect(withoutTheSiteClass.pass).toBe(false);
     if (withoutTheSiteClass.pass || 'out' in withoutTheSiteClass) {
@@ -337,7 +335,7 @@ describe('the site door, on the rows it was written from', () => {
     // Q5788, 117 sitelinks, node/7549551054 place=village for the modern town
     // and way/424506592 historic=archaeological_site with the polygon.
     const verdict = verdictOf(
-      facts({ qid: 'Q5788', classes: ['Q15661340', 'Q515', 'Q839954'], sitelinks: 117, worldHeritage: true }),
+      facts({ qid: 'Q5788', classes: ['Q15661340', 'Q515', 'Q839954'], worldHeritage: true }),
       [object('node/7549551054', { place: 'village' }),
         object('way/424506592', {
           historic: 'archaeological_site', archaeological_site: 'city', boundary: 'protected_area',
@@ -347,69 +345,6 @@ describe('the site door, on the rows it was written from', () => {
     if (!verdict.pass) return;
     expect(verdict.osm.verdict).toBe('ruin');
     expect(verdict.osm.extentFrom).toBe('way/424506592');
-  });
-});
-
-describe('the line, asked last', () => {
-  it('says nothing about a row nobody has heard of that the source never admitted', () => {
-    const verdict = verdictOf(facts({ qid: 'Q43332', classes: ['Q839954'], sitelinks: 16 }));
-    expect(verdict.pass).toBe(false);
-    if (verdict.pass) return;
-    expect('out' in verdict && verdict.out).toBe(true);
-  });
-
-  it('refuses an admitted row that has slipped, by name and with its number', () => {
-    const verdict = siteVerdict({
-      facts: facts({ qid: 'Q43332', classes: ['Q839954'], sitelinks: 16 }),
-      objects: [], trees: TREES, admitted: new Set(['Q43332']), line: LINE,
-    });
-    expect(verdict.pass).toBe(false);
-    if (verdict.pass || 'out' in verdict) throw new Error('a fallen row is refused by name');
-    expect(verdict.reason).toBe('16 Wikipedia editions: below the world tier\'s line (22 to enter, 18 to stay)');
-  });
-
-  it('keeps an admitted row inside the band', () => {
-    const verdict = siteVerdict({
-      facts: facts({ qid: 'Q43332', classes: ['Q839954'], sitelinks: 19 }),
-      objects: [], trees: TREES, admitted: new Set(['Q43332']), line: LINE,
-    });
-    expect(verdict.pass).toBe(true);
-  });
-
-  it('leaves a rule refusal unnamed below the line, so a curator reads the ones that matter', () => {
-    // 830 rows sit between 15 and 21 sitelinks in this pool. A living place
-    // down there is not a decision anybody has to read.
-    const verdict = verdictOf(
-      facts({ qid: 'Q1524', classes: ['Q1549591'], sitelinks: 16, statesPopulation: true }),
-      [object('node/441183', { place: 'city' })],
-    );
-    expect(verdict.pass).toBe(false);
-    if (verdict.pass) return;
-    expect('out' in verdict && verdict.out).toBe(true);
-  });
-});
-
-describe('the readership door (ADR-0127)', () => {
-  it('lets in a row below the line the door opened for, as one at the line', () => {
-    const verdict = siteVerdict({
-      facts: facts({ qid: 'Q43332', classes: ['Q839954'], sitelinks: 16 }),
-      objects: [], trees: TREES, admitted: new Set<string>(), line: LINE, readOpened: new Set(['Q43332']),
-    });
-    expect(verdict.pass).toBe(true);
-  });
-
-  it('names a rule refusal of a row the door opened for, since the world reads it', () => {
-    // Asyut's own facts (Q29962) moved below the line: a site class and half a
-    // million people. Out unread without the door; named once the door opened.
-    const asyut = facts({ qid: 'Q29962', classes: ['Q515', 'Q1549591', 'Q839954'], sitelinks: 16, statesPopulation: true });
-    const city = [object('node/6379231716', { place: 'city' })];
-    const unread = siteVerdict({ facts: asyut, objects: city, trees: TREES, admitted: new Set<string>(), line: LINE });
-    expect(!unread.pass && 'out' in unread).toBe(true);
-    const verdict = siteVerdict({
-      facts: asyut, objects: city, trees: TREES, admitted: new Set<string>(), line: LINE, readOpened: new Set(['Q29962']),
-    });
-    if (verdict.pass || 'out' in verdict) throw new Error('a refusal the door let speak is named');
-    expect(verdict.reason).toContain('a living place');
   });
 });
 
@@ -516,7 +451,7 @@ describe('what the final pass of #581 changed', () => {
     // no population. Shi Cheng, the drowned city, is under the water a dam put
     // there in 1959; relation/162908 is tagged natural=water.
     const verdict = verdictOf(
-      facts({ qid: 'Q2470528', classes: ['Q131681', 'Q839954', 'Q6838244'], sitelinks: 22 }),
+      facts({ qid: 'Q2470528', classes: ['Q131681', 'Q839954', 'Q6838244'] }),
       [object('relation/162908', { natural: 'water' })],
     );
     expect(verdict.pass).toBe(false);
@@ -531,7 +466,7 @@ describe('what the final pass of #581 changed', () => {
     // pool that tag decides, which is why `memorial` left RUIN_HISTORIC: a
     // memorial is a modern marker, and reading it as a ruin lifted the kill.
     const verdict = verdictOf(
-      facts({ qid: 'Q620724', classes: ['Q8514', 'Q839954'], sitelinks: 22 }),
+      facts({ qid: 'Q620724', classes: ['Q8514', 'Q839954'] }),
       [object('node/3640081430', { historic: 'memorial' })],
     );
     expect(verdict.pass).toBe(false);
@@ -548,12 +483,12 @@ describe('what the final pass of #581 changed', () => {
     // 179 — the rock art is the reason to go). Without both, the widened list
     // would take the rock art along with the reservoirs.
     const acacus = verdictOf(
-      facts({ qid: 'Q308807', classes: ['Q46831', 'Q839954'], sitelinks: 55 }),
+      facts({ qid: 'Q308807', classes: ['Q46831', 'Q839954'] }),
       [object('node/7702655158', { historic: 'archaeological_site' })],
     );
     expect(acacus.pass).toBe(true);
     const listed = verdictOf(
-      facts({ qid: 'Q190048', classes: ['Q46831', 'Q839954'], sitelinks: 69, worldHeritage: true }),
+      facts({ qid: 'Q190048', classes: ['Q46831', 'Q839954'], worldHeritage: true }),
       [object('way/464707583', { natural: 'mountain_range' })],
     );
     expect(listed.pass).toBe(true);
@@ -566,7 +501,7 @@ describe('what the final pass of #581 changed', () => {
     // Village (Q1237840), Skyline-Ganipa (Q2293403) and Sunrise (Q1836972) are
     // the same shape: read as named spots they walked in as digs.
     const verdict = verdictOf(
-      facts({ qid: 'Q342064', classes: ['Q498162', 'Q839954'], sitelinks: 25, statesPopulation: true }),
+      facts({ qid: 'Q342064', classes: ['Q498162', 'Q839954'], statesPopulation: true }),
       [object('relation/171143', {
         place: 'locality', boundary: 'census', name: 'Acomita Lake',
       })],
@@ -588,7 +523,7 @@ describe('what the final pass of #581 changed', () => {
     // relation/18138696 heritage=2, no population) is the pool's only other row
     // of this shape.
     const verdict = verdictOf(
-      facts({ qid: 'Q6343', classes: ['Q133442', 'Q655593', 'Q15661340'], sitelinks: 121 }),
+      facts({ qid: 'Q6343', classes: ['Q133442', 'Q655593', 'Q15661340'] }),
       [object('relation/8305288', { heritage: '1', name: 'موقع قرطاج الأثري' })],
     );
     expect(verdict.pass).toBe(true);
@@ -604,7 +539,7 @@ describe('what the final pass of #581 changed', () => {
     // Syracuse is the step-4 known miss; Tyre, Sidon, Agrigento and Side are
     // refused a step earlier, as living places.
     const verdict = verdictOf(
-      facts({ qid: 'Q13670', classes: ['Q515', 'Q148837'], sitelinks: 120, statesPopulation: true }),
+      facts({ qid: 'Q13670', classes: ['Q515', 'Q148837'], statesPopulation: true }),
       [object('relation/39169', { boundary: 'administrative', name: 'Siracusa' })],
     );
     expect(verdict.pass).toBe(false);
@@ -624,7 +559,7 @@ describe('what the final pass of #581 changed', () => {
     // the same way. Their card is the living-place sentence, which is what a
     // curator returning them from the kept-out card will be reading.
     const verdict = verdictOf(
-      facts({ qid: 'Q82070', classes: ['Q515', 'Q1549591', 'Q15661340', 'Q133442'], sitelinks: 103, statesPopulation: true }),
+      facts({ qid: 'Q82070', classes: ['Q515', 'Q1549591', 'Q15661340', 'Q133442'], statesPopulation: true }),
       [object('node/803018184', { place: 'city', name: 'صور' }),
         object('relation/12196423', { boundary: 'administrative', name: 'صور' })],
     );
@@ -670,14 +605,14 @@ describe('a candidate only OpenStreetMap named', () => {
     worship: ['Q1370598', 'Q56242215', 'Q44539'],
   });
   const osmVerdict = (f: SiteFacts, objects: OsmObject[]) =>
-    siteVerdict({ facts: f, objects, trees: OSM_TREES, admitted: new Set<string>(), line: LINE });
+    siteVerdict({ facts: f, objects, trees: OSM_TREES });
 
   it('admits Ajanta on the map\'s word alone, and says so on the card', () => {
     // Q184427, 83 sitelinks, classes grotto / artificial cave / temple — a
     // place of worship to Wikidata, a dig to nobody — and way/115567314
     // tagged historic=archaeological_site.
     const verdict = osmVerdict(
-      facts({ qid: 'Q184427', classes: ['Q1131329', 'Q88778578', 'Q44539'], sitelinks: 83, worldHeritage: true }),
+      facts({ qid: 'Q184427', classes: ['Q1131329', 'Q88778578', 'Q44539'], worldHeritage: true }),
       [object('way/115567314', { historic: 'archaeological_site', tourism: 'attraction', name: 'Ajanta Caves' }, POLYGON)],
     );
     expect(verdict.pass).toBe(true);
@@ -695,7 +630,7 @@ describe('a candidate only OpenStreetMap named', () => {
     // wikipedia=tr:Nemrut Dağı, and the pool resolved it. Merged, the ruin is
     // what decides.
     const verdict = osmVerdict(
-      facts({ qid: 'Q207917', classes: ['Q8502'], sitelinks: 61, worldHeritage: true }),
+      facts({ qid: 'Q207917', classes: ['Q8502'], worldHeritage: true }),
       [
         object('node/75969654', { name: 'Nemrut Dağı' }),
         object('way/974945296', { heritage: '1', boundary: 'protected_area', name: 'Nemrut Dağı' }, POLYGON),
@@ -713,7 +648,7 @@ describe('a candidate only OpenStreetMap named', () => {
     // Q206823, class Catholic cathedral, World Heritage on the item itself —
     // which does not lift this refusal.
     const verdict = osmVerdict(
-      facts({ qid: 'Q206823', classes: ['Q56242215'], sitelinks: 70, worldHeritage: true }),
+      facts({ qid: 'Q206823', classes: ['Q56242215'], worldHeritage: true }),
       [
         object('node/7388163831', { historic: 'archaeological_site', archaeological_site: 'church', name: 'Cathédrale de Reims' }),
         object('way/92294792', { amenity: 'place_of_worship', building: 'cathedral', tourism: 'attraction' }, POLYGON),
@@ -731,7 +666,7 @@ describe('a candidate only OpenStreetMap named', () => {
 
   it('refuses Prora, where people live in the blocks the map also calls ruins', () => {
     const verdict = osmVerdict(
-      facts({ qid: 'Q685448', classes: ['Q486972'], sitelinks: 30 }),
+      facts({ qid: 'Q685448', classes: ['Q486972'] }),
       [
         object('way/91181455', { building: 'ruins', historic: 'ruins' }),
         object('way/117783762', { building: 'apartments', heritage: 'yes' }),
@@ -744,7 +679,7 @@ describe('a candidate only OpenStreetMap named', () => {
 
   it('admits Bamburgh Castle, a standing castle English Wikipedia files under its archaeological sites', () => {
     const verdict = osmVerdict(
-      facts({ qid: 'Q2026185', classes: ['Q23413'], sitelinks: 40, namedByCategory: true }),
+      facts({ qid: 'Q2026185', classes: ['Q23413'], namedByCategory: true }),
       [
         object('way/405517389', { historic: 'archaeological_site', name: 'Bamburgh Research Project Archaeological Site' }),
         object('way/301645315', { historic: 'castle', castle_type: 'fortress' }, POLYGON),
@@ -755,13 +690,13 @@ describe('a candidate only OpenStreetMap named', () => {
 
   it('admits Dunfermline Palace and Zvartnots, whose place of worship and church are ruins', () => {
     const dunfermline = osmVerdict(
-      facts({ qid: 'Q2014458', classes: ['Q23413'], sitelinks: 30 }),
+      facts({ qid: 'Q2014458', classes: ['Q23413'] }),
       [object('relation/5353726', {
         amenity: 'place_of_worship', building: 'yes', historic: 'archaeological_site', ruins: 'yes',
       }, POLYGON)],
     );
     const zvartnots = osmVerdict(
-      facts({ qid: 'Q17054090', classes: ['Q56242215'], sitelinks: 40, worldHeritage: true }),
+      facts({ qid: 'Q17054090', classes: ['Q56242215'], worldHeritage: true }),
       [
         object('way/1169668461', { historic: 'archaeological_site' }),
         object('way/360172402', { building: 'church', historic: 'ruins', ruins: 'temple' }, POLYGON),
@@ -775,7 +710,7 @@ describe('a candidate only OpenStreetMap named', () => {
     // Q3543, 106 sitelinks, classes city / comune of Italy, a population
     // statement, and node/1687849903 tagged historic=archaeological_site.
     const verdict = osmVerdict(
-      facts({ qid: 'Q3543', classes: ['Q515', 'Q747074'], sitelinks: 106, statesPopulation: true }),
+      facts({ qid: 'Q3543', classes: ['Q515', 'Q747074'], statesPopulation: true }),
       [object('node/1687849903', { historic: 'archaeological_site', name: 'Potentia' })],
     );
     expect(verdict.pass).toBe(false);
@@ -791,7 +726,7 @@ describe('a candidate only OpenStreetMap named', () => {
     // The card says what the mapper wrote: a town under `historic=ruins` was
     // not called a dig by anyone.
     const verdict = osmVerdict(
-      facts({ qid: 'Q3543', classes: ['Q515'], sitelinks: 106, statesPopulation: true }),
+      facts({ qid: 'Q3543', classes: ['Q515'], statesPopulation: true }),
       [object('way/1', { historic: 'ruins', name: 'Potentia' })],
     );
     if (verdict.pass || 'out' in verdict) throw new Error('a counted town must be refused by name');
@@ -807,7 +742,7 @@ describe('a candidate only OpenStreetMap named', () => {
     // shape as Potenza — but its article sits under `Archaeological sites in
     // Jordan`, and the mapped object says archaeological_site=city.
     const verdict = osmVerdict(
-      facts({ qid: 'Q31565', classes: ['Q515'], sitelinks: 54, statesPopulation: true, namedByCategory: true }),
+      facts({ qid: 'Q31565', classes: ['Q515'], statesPopulation: true, namedByCategory: true }),
       [
         object('way/28969503', { historic: 'archaeological_site', archaeological_site: 'city', name: 'Jerash' }, POLYGON),
         object('node/250367730', { place: 'city', name: 'Jerash' }),
@@ -823,7 +758,7 @@ describe('a candidate only OpenStreetMap named', () => {
     // settlement, a population statement, World Heritage 530, and
     // way/125611041 tagged historic=archaeological_site.
     const verdict = osmVerdict(
-      facts({ qid: 'Q173148', classes: ['Q23442', 'Q9259', 'Q486972'], sitelinks: 80, statesPopulation: true, worldHeritage: true }),
+      facts({ qid: 'Q173148', classes: ['Q23442', 'Q9259', 'Q486972'], statesPopulation: true, worldHeritage: true }),
       [object('way/125611041', { historic: 'archaeological_site', name: 'Δήλος' }, POLYGON)],
     );
     expect(verdict.pass).toBe(true);
@@ -833,7 +768,7 @@ describe('a candidate only OpenStreetMap named', () => {
     // Q41931, 99 sitelinks, classes hanging garden / Wonder of the Ancient
     // World / destroyed building or structure, and a historic=ruins node.
     const verdict = osmVerdict(
-      facts({ qid: 'Q41931', classes: ['Q2332212', 'Q66108498', 'Q19860854'], sitelinks: 99 }),
+      facts({ qid: 'Q41931', classes: ['Q2332212', 'Q66108498', 'Q19860854'] }),
       [object('node/4623538420', { historic: 'ruins', name: 'Hanging Gardens of Babylon' })],
     );
     expect(verdict.pass).toBe(false);
@@ -847,7 +782,7 @@ describe('a candidate only OpenStreetMap named', () => {
     // figurine, with the find spot as its coordinate and a
     // historic=archaeological_site node on it.
     const verdict = osmVerdict(
-      facts({ qid: 'Q131397', classes: ['Q860861', 'Q10855061', 'Q248726'], sitelinks: 67 }),
+      facts({ qid: 'Q131397', classes: ['Q860861', 'Q10855061', 'Q248726'] }),
       [object('node/2547106017', { historic: 'archaeological_site', name: 'Venus von Willendorf' })],
     );
     expect(verdict.pass).toBe(false);
@@ -859,7 +794,7 @@ describe('a candidate only OpenStreetMap named', () => {
     // Q830976, 34 sitelinks, classes castle / castle ruin, and a ruins=yes
     // way. `historic=archaeological_site` would have carried it in.
     const verdict = osmVerdict(
-      facts({ qid: 'Q830976', classes: ['Q23413', 'Q17715832'], sitelinks: 34 }),
+      facts({ qid: 'Q830976', classes: ['Q23413', 'Q17715832'] }),
       [object('way/23745380', { historic: 'castle', ruins: 'yes', name: 'Hrad Devín' }, POLYGON)],
     );
     expect(verdict.pass).toBe(false);
@@ -873,18 +808,22 @@ describe('a candidate only OpenStreetMap named', () => {
     // Q272153, 62 sitelinks, class human settlement, no population statement,
     // World Heritage 202, and a way tagged historic=ruins + ruins=yes.
     const verdict = osmVerdict(
-      facts({ qid: 'Q272153', classes: ['Q486972'], sitelinks: 62, worldHeritage: true }),
+      facts({ qid: 'Q272153', classes: ['Q486972'], worldHeritage: true }),
       [object('way/196493741', { historic: 'ruins', ruins: 'yes', name: 'Sigiriya' }, POLYGON)],
     );
     expect(verdict.pass).toBe(true);
   });
 
-  it('says nothing about a row below the line', () => {
+  it('refuses a living place whatever its fame: whether the refusal is named is the frame\'s', () => {
+    // Q3543, a comune of 12 editions: the rule refuses it as it refuses
+    // Potenza, and the frame names the refusal only of a row the kind holds or
+    // the world reads (`namesRefusal`).
     const verdict = osmVerdict(
-      facts({ qid: 'Q3543', classes: ['Q515', 'Q747074'], sitelinks: 12, statesPopulation: true }),
+      facts({ qid: 'Q3543', classes: ['Q515', 'Q747074'], statesPopulation: true }),
       [object('node/1687849903', { historic: 'archaeological_site' })],
     );
-    expect(verdict).toEqual({ pass: false, out: true });
+    if (verdict.pass || 'out' in verdict) throw new Error('a living place is refused by the rule');
+    expect(verdict.group).toBe('living');
   });
 });
 
@@ -900,12 +839,12 @@ describe('a candidate only OpenStreetMap named, after dry run 136', () => {
     fortification: ['Q57821', 'Q23413'], palace: ['Q16560'], worship: ['Q1370598'],
   });
   const osmVerdict = (f: SiteFacts, objects: OsmObject[]) =>
-    siteVerdict({ facts: f, objects, trees: OSM_TREES, admitted: new Set<string>(), line: LINE });
+    siteVerdict({ facts: f, objects, trees: OSM_TREES });
 
   it('refuses Azovstal: a business whose plant lies in ruins is not a place to stand in', () => {
     // Q4058442, 37 sitelinks, class business, ruins=yes on the works.
     const verdict = osmVerdict(
-      facts({ qid: 'Q4058442', classes: ['Q4830453'], sitelinks: 37 }),
+      facts({ qid: 'Q4058442', classes: ['Q4830453'] }),
       [object('way/24868143', { ruins: 'yes', name: 'Азовсталь' }, POLYGON)],
     );
     expect(verdict.pass).toBe(false);
@@ -921,7 +860,7 @@ describe('a candidate only OpenStreetMap named, after dry run 136', () => {
     // it: with both on the row, the sentence quotes whichever the item lists
     // first, and the verdict is the same.
     const verdict = osmVerdict(
-      facts({ qid: 'Q945496', classes: ['Q22806', 'Q3152824'], sitelinks: 35 }),
+      facts({ qid: 'Q945496', classes: ['Q22806', 'Q3152824'] }),
       [object('way/1', { historic: 'ruins', name: 'Народна библиотека Србије' }, POLYGON)],
     );
     expect(verdict.pass).toBe(false);
@@ -933,7 +872,7 @@ describe('a candidate only OpenStreetMap named, after dry run 136', () => {
     // Q133331, 85 sitelinks, class ecumenical council, and a node tagged
     // historic=archaeological_site where the basilica stood.
     const verdict = osmVerdict(
-      facts({ qid: 'Q133331', classes: ['Q51645'], sitelinks: 85 }),
+      facts({ qid: 'Q133331', classes: ['Q51645'] }),
       [object('node/4270000000', { historic: 'archaeological_site', name: 'Council of Nicaea' })],
     );
     expect(verdict.pass).toBe(false);
@@ -945,7 +884,7 @@ describe('a candidate only OpenStreetMap named, after dry run 136', () => {
     // Q4055, class château (Q751876) — under manor house, not under
     // fortification or palace — with ruins=* on one of its objects.
     const verdict = osmVerdict(
-      facts({ qid: 'Q4055', classes: ['Q751876'], sitelinks: 41 }),
+      facts({ qid: 'Q4055', classes: ['Q751876'] }),
       [object('way/4650000000', { historic: 'castle', ruins: 'yes', name: 'Château de Blois' }, POLYGON)],
     );
     expect(verdict.pass).toBe(false);
@@ -974,21 +913,21 @@ describe('a ruins key whose value says no', () => {
     // object carries with `ruins=no`: the per-item read's object comes first
     // in the merge, and the card must not read "maps ruins here (ruins=no …)".
     const verdict = siteVerdict({
-      facts: facts({ qid: 'Q272153', classes: ['Q486972'], sitelinks: 62, worldHeritage: true }),
+      facts: facts({ qid: 'Q272153', classes: ['Q486972'], worldHeritage: true }),
       objects: [
         object('node/1', { ruins: 'no', name: 'Sigiriya village' }),
         object('way/196493741', { ruins: 'yes', name: 'Sigiriya' }, POLYGON),
       ],
-      trees: OSM_TREES, admitted: new Set<string>(), line: LINE,
+      trees: OSM_TREES,
     });
     expect(verdict.pass).toBe(true);
     if (!verdict.pass) return;
     expect(verdict.note).toContain('(ruins=yes on way/196493741)');
     // And with only the `no` object the map names nothing: out, not a card.
     expect(siteVerdict({
-      facts: facts({ qid: 'Q272153', classes: ['Q486972'], sitelinks: 62 }),
+      facts: facts({ qid: 'Q272153', classes: ['Q486972'] }),
       objects: [object('node/1', { ruins: 'no' })],
-      trees: OSM_TREES, admitted: new Set<string>(), line: LINE,
+      trees: OSM_TREES,
     })).toEqual({ pass: false, out: true });
   });
 });

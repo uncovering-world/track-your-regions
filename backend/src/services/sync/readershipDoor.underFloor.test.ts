@@ -7,15 +7,13 @@ const readership = vi.hoisted(() => ({
   burstsAmong: vi.fn(),
 }));
 vi.mock('../dumps/readership/workReadership.js', () => readership);
-const usage = vi.hoisted(() => ({ latestUsage: vi.fn() }));
-vi.mock('../dumps/wikivoyage/usageTables.js', () => usage);
 
 import { readUnderFloor } from './readershipDoor.js';
 
 /**
- * ADR-0152's read under the floor, on the door's tier drawn small: three
- * sites at the line of 22 read 100, 200 and 300 thousand times a year, so the
- * bar (the median) is 200,000; a site below the line does not move it.
+ * The read under the floor (ADR-0165), on a door's tier drawn small: three
+ * items at the line of 22 read 100, 200 and 300 thousand times a year, so the
+ * bar (the median) is 200,000; an item below the line does not move it.
  */
 const year = { months: ['2025-10-01'], editions: ['enwiki'] };
 const held = [
@@ -27,7 +25,6 @@ const held = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  usage.latestUsage.mockResolvedValue({ buildId: 1 });
   readership.readershipYear.mockResolvedValue(year);
   readership.readWorks.mockResolvedValue({
     views: new Map([['Q22647', 300_000], ['Q43332', 200_000], ['Q184427', 100_000], ['Q56072866', 900_000]]),
@@ -36,22 +33,16 @@ beforeEach(() => {
   readership.readAtLeast.mockResolvedValue(['Q21705206']);
 });
 
-describe('the sites under the floor the readership names (ADR-0152)', () => {
+describe('the items under the floor the readership names (ADR-0165)', () => {
   it('asks the year for the items read at the bar of the held tier, under the floor', async () => {
     expect(await readUnderFloor(held, 22, 15)).toEqual(['Q21705206']);
     expect(readership.readWorks).toHaveBeenCalledWith(year, ['Q22647', 'Q43332', 'Q184427', 'Q56072866']);
     expect(readership.readAtLeast).toHaveBeenCalledWith(year, 200_000, 15);
   });
 
-  it('names nothing for a guided door while no Wikivoyage usage is built, since that door is then shut', async () => {
-    usage.latestUsage.mockResolvedValue(null);
-    expect(await readUnderFloor(held, 22, 15, { enter: 0.12, stay: 0.08 })).toEqual([]);
-    expect(readership.readershipYear).not.toHaveBeenCalled();
-  });
-
-  it('reads for a door that asks no guide whether or not a Wikivoyage usage is built (ADR-0165)', async () => {
-    usage.latestUsage.mockResolvedValue(null);
-    expect(await readUnderFloor(held, 22, 15)).toEqual(['Q21705206']);
+  it('reads at the door\'s own percentiles: the finds door\'s 12th (ADR-0164)', async () => {
+    await readUnderFloor(held, 22, 15, { enter: 0.12, stay: 0.08 });
+    expect(readership.readAtLeast).toHaveBeenCalledWith(year, 124_000, 15);
   });
 
   it('names nothing while the year cannot be read', async () => {
@@ -60,7 +51,7 @@ describe('the sites under the floor the readership names (ADR-0152)', () => {
     expect(readership.readAtLeast).not.toHaveBeenCalled();
   });
 
-  it('names nothing when no held site at the line was read, since the door then opens for nothing', async () => {
+  it('names nothing when no item at the line was read, since the door then opens for nothing', async () => {
     readership.readWorks.mockResolvedValue({ views: new Map(), counted: new Map() });
     expect(await readUnderFloor(held, 22, 15)).toEqual([]);
     expect(readership.readAtLeast).not.toHaveBeenCalled();

@@ -34,6 +34,7 @@ import {
   NATIONAL_MUSEUM,
   PALACE,
   siteShare,
+  SITE_WORLD,
   type World,
 } from './pipelineFixture.js';
 
@@ -197,6 +198,7 @@ describe('collectArchaeology', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      siteWorld: SITE_WORLD,
       sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
@@ -845,6 +847,7 @@ describe('collectArchaeology', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      siteWorld: SITE_WORLD,
       // Gathered through the pass's door, as the place pass gathers it: the
       // question counted here is the museum door's own.
       sites: () => siteShare(new Set<string>())({
@@ -895,6 +898,7 @@ describe('collectArchaeology', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      siteWorld: SITE_WORLD,
       sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
@@ -1069,6 +1073,7 @@ describe('what an admitted museum holds, read from its own side (#890)', () => {
       previousPlacements: {},
       admittedMuseums: new Set(),
       admittedSites: new Set<string>(),
+      siteWorld: SITE_WORLD,
       sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
@@ -1119,6 +1124,7 @@ describe('what an admitted museum holds, read from its own side (#890)', () => {
       previousPlacements: {},
       admittedMuseums: new Set(),
       admittedSites: new Set<string>(),
+      siteWorld: SITE_WORLD,
       sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
@@ -1153,6 +1159,7 @@ describe('the site door, beside the museums', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      siteWorld: SITE_WORLD,
       sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
@@ -1280,7 +1287,7 @@ describe('the site door, beside the museums', () => {
     expect(summary).toContain('Admitted 8 museums');
     // Two of the three carry an outline now: Troy's excavations and the villa
     // in Tivoli, both real objects from the measurement.
-    expect(summary).toContain('3 sites (2 with an extent)');
+    expect(summary).toContain('3 sites (3 in the world tier, 0 in the regional tier, 2 with an extent)');
     // One refusal of each kind here, so the counted noun is singular: a line a
     // curator reads is a sentence, not a number with an `s` glued on. The
     // groups are the tags the rule put on each refusal, and a group nothing

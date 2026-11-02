@@ -230,7 +230,7 @@ describe('public art in the place pass', () => {
       { kind: SQUARES_KIND, admitted: new Set(['Q337179']) },
     ]);
     // Archaeology's sites, not its museums: its museum door asks after its own.
-    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site');
+    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site', 'world');
     expect(mockedCollect.mock.calls[0][0]).toBe(SHARE);
     expect(mockedCollect.mock.calls[0][1]).toBe(PUBLIC_ART_RULE);
     expect(mockedCollect.mock.calls[0][2]).toEqual(new Set(['Q337179']));

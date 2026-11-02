@@ -59,8 +59,13 @@ export interface RegionalKind<Trees, Context = undefined> {
    * either), never a second filing that could disagree with it.
    */
   typeOf?(classes: readonly string[], trees: Trees): string | null;
-  /** What the kind's rule needs beside the share, read once per run (what other kinds offer, say). */
-  context?(): Promise<Context>;
+  /**
+   * What the kind's rule needs beside the share, read once per run (what other
+   * kinds offer, say), with the survivors of the cut and the share the gather
+   * read of them in hand: a kind whose rule reads a source of its own reads it
+   * here, of the survivors alone (Archaeology's map, ADR-0179).
+   */
+  context?(survivors: readonly PoolEntity[], share: KindShare<Trees>): Promise<Context>;
   /** The kind's own verdict on a survivor of the cut, read off what the gather asked about it by id. */
   verdict(entity: PoolEntity, share: KindShare<Trees>, context: Context): RegionalRuleVerdict;
   logPrefix: string;
@@ -239,7 +244,8 @@ export async function regionalArrivals<Trees, Context, T>(
   run.phase(`Asking about the ${survivors.length} places the regional cut admits...`);
   const gathered = await gatherPlaces(run, [{ kind: byId, admitted: new Set([...survivors, ...fell.keys()]) }]);
   const share = shareOf(gathered, byId);
-  const context = (regional.context ? await regional.context() : undefined) as Context;
+  const asked = survivors.flatMap((qid) => share.pool.get(qid) ?? []);
+  const context = (regional.context ? await regional.context(asked, share) : undefined) as Context;
   const items: T[] = [];
   const filtered: FilteredEntity[] = [];
   for (const qid of survivors) {
