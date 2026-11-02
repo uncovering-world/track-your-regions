@@ -837,7 +837,7 @@ A Wikidata kind is filled by a source of its own, and sources whose kinds are dr
 - **Each source runs as before.** `runSyncPass` registers every source of the pass in `runningSyncs` before the first starts. A later source shows *Waiting for the pass's earlier kinds to finish...* until its turn. The runs then go through `orchestrateSync` one after another, each taking up the entry the pass registered (`PassSlot`). Each source keeps its own `fetchItems` (its share of the gather, with its own stay line), its own log, admission, sweep, badge, pins, missing detection and changeset. Per source is per kind, so none of those is shared between two kinds.
 - **A pass starts, stops and reads as one run.** A start of any of its sources starts the pass, and `startSync` answers 409 while any of them runs. A Cancel on one sets the flag on every source of the pass that can still read one (`SyncProgress.passSources`). A source that had not started is closed as cancelled with no log, since it read nothing. A run that fails for its own reason leaves the next to run. Every log after the first names the first (`experience_sync_logs.pass_log_id`). The history (`GET /api/admin/sync/logs`) lists a pass's runs together, newest pass first and its runs in the order they ran, and a later run says which run's gather it read. The sources list answers each source's `pass`, itself included, in the order it runs, and the Sync panel draws a pass as one card (`PassCard`, grouped by `cardsOf`). On top are what the pass shares: the starts and the Cancel, and a sentence naming the source whose Wikidata reader and cache the gather reads. Below, a section per source holds what is its own: how its run went, its gate, its line, what it holds for a curator, its own reader and cache, which the rest of its run reads through (its visit witnesses, #1770, Places of worship's works, Archaeology's museums and finds), and its own runs beside a sync, such as *Fix pictures* (each with its own Cancel; the card's Cancel stops the pass's sync). A start follows every source's run from that moment, so a later source's section says it waits for the earlier ones and then runs. The card moves whole when the panel is reordered.
 - **One Start Sync does every step a current catalogue needs** (#1805, `controllers/admin/afterRun.ts`). Once a run's items are written — however the run ended — `startSync` hands the pass to `afterRun`, which goes on in the entry the card is still following — the pass's last run's, since on a pass of several sources the first source's run ends minutes before the pass does and its card has stopped asking by then (`PassCard.tsx`); on a source of its own, the one run there is: the join of the places claiming one Wikidata item (`joinPlacesClaimingOneItem`), for the World Heritage source the items of the components this run created without one (`runComponentItemSearch` on `FinderOptions.pointIds`, the finder the card's *Find component items* runs over every component, then `acceptExactCandidates`; a run that created none skips the search, the ordinary case, since a full search costs eight minutes and three hundred requests to Wikidata), and the near-places pairing of the places the runs changed (`drainPairing`, #1950), each a step of the run on its card (`Operation`, #1356). Each step is guarded on its own (`guarded`, #2074): one that fails is logged and named in the closing line (`the search for the new components' items failed; the server log has the cause`), and the steps after it still run. The search reads the local Wikidata subset, so it asks `heldSubset` first, the check the finder itself makes, and on a machine with no subset built it is skipped with its reason in the closing line (`2 new components left without an item, since the local Wikidata subset is not built: build it under Public Dumps, then Find component items`) while the pairing still runs. Every entry of the pass is kept while the steps go (`SyncProgress.continues`, which both `releaseLater`s respect), the followed one's status `processing`, and back to the run's verdict at the end with the closing line extended by what the steps did; a Cancel pressed meanwhile is accepted (`isCancellable` reads `continues`) and stops the search between its requests, or the pairing before it starts, leaving its marks to the next drain, the closing line saying so; the counts stay the run's — the candidates a search proposes are counted as created only on the card's own *Find component items* job — and the steps release the entries a while after they end, as a writer would. The run's modes — a preview, a run without the cache, a run that asks again about pins — are options of that one button on the card (`SourceRunActions.tsx`); the single-purpose actions sit under *More actions*, each with the sentence saying when it is needed: *Fix pictures* stays a repair, since it writes past the gate where a run proposes, and *Find component items* over every site or one is for after a rule of the search changes. The near-places pairing has no button: it pairs again every place whose inputs change, and the whole catalogue after a rule changes (§ Near places with similar names).
-- **The gather reads Wikidata under the pass's first source**: its subset door and its cache key (ADR-0132 decision 5). Everything else a source asks goes through its own door: its visit witnesses; for Places of worship, its works and the second door they open; for Archaeology, its museum door, its finds, and what its site door asks of OpenStreetMap, the Wikipedias and the readership door. #1821 gathers the works and #1822 makes the pipeline one build (Epic #1445). #1819 is the one resolver of where a work lies.
+- **The gather reads Wikidata under the pass's first source**: its subset door and its cache key (ADR-0132 decision 5). Everything else a source asks goes through its own door: its visit witnesses; for Places of worship, its works and the second door they open; for Archaeology, its museum door, its finds, and what its site door asks of OpenStreetMap and the Wikipedias. #1821 gathers the works and #1822 makes the pipeline one build (Epic #1445). #1819 is the one resolver of where a work lies.
 
 **A place kind is a classifier over the place gather** (#1820, `places/gather.ts`). A kind is declared as a `PlaceKind`: the class trees its rule reads (`trees`), the classes its candidates are asked by (`poolClasses`: broad roots in fame bands, every other class whole), and whether its rule reads what holds and owns a candidate (`readsContainers`). A kind that admits by the world bars (ADR-0175) also asks every class it asks by again at three sitelinks of any Wikimedia site, whatever the candidate's editions (`admissionPool`, read from the subset alone; `KindShare.admissionPool` says whether it was read): the Caen Hill flight has 3 editions and Munich's Glockenspiel 7, and the bars are quantiles of that whole pool. What it adds is that kind's alone, so no other kind meets a candidate under the shared floor of 15 editions. `gatherPlaces` walks every kind's trees, asks the pool once over the union of their classes (a root two kinds ask by is asked once), asks for every kind's admitted rows the pool did not name by id, and reads the facts of every entity once and the containers once, for the kinds that read them. It hands each kind its **share** (`shareOf`): the entities the pool named by a class of that kind (a pool question names an entity by a class it carries itself, best rank, on the live service and on the subset alike), and the rows that kind admits. Public art therefore never sees the churches only Places of worship asked for, and refuses none of them. The kind's classifier decides from its share alone: `classifyPublicArt` per rule for Public art and Monuments & memorials (`PUBLIC_ART_KIND`), `classifyPlacesByFame` for Places of worship's door one (`WORSHIP_KIND`), `collectSitesByFame` for Archaeology's site door (`ARCHAEOLOGY_SITE_KIND`), whose kind also hands its trees to the museum door, `classifyTowers` for Towers (`TOWERS_KIND`), `classifyBridges` for Bridges & engineering marvels (`BRIDGES_KIND`) and `classifySquares` for Squares & streets (`SQUARES_KIND`). A kind may also declare an **entrance** (`entrance`, #2035): items it names by something other than a class, which `gatherPlaces` fetches by id when the pool did not name them and hands that kind alone as `entered` (Public art's street-art places, § Public art and Monuments & memorials). A share names the admitted rows no class question named (`byId`): the site door first lets OpenStreetMap's entrance name them, so a dig the map names is vouched for by the map and only the rest by id, as before.
 
@@ -851,7 +851,8 @@ Measured on the development subset on 2026-10-22, read-only in the dev container
 
 A place kind's **surroundings tier** is read from Wikidata, the world tier's own source, by measuring a
 place against what lies within 50 km of it (ADR-0171), with the tests, the floor and the stay of
-ADR-0175 decisions 2 and 3. It is on for the six place kinds of the frame (#2252). It is not the
+ADR-0175 decisions 2 and 3. It is on for the six place kinds of the frame (#2252)
+and for Archaeology's sites, which ask two things more (ADR-0179, § Archaeology). It is not the
 regional tier, which reads sources native to a region and no global analysis (ADR-0178); the code
 still calls it regional (`REGIONAL_CUT`, `places/regionalPool.ts`, `item.tier === 'regional'`, the
 curator's note "In the regional tier by …") until its names are renamed (#2287).
@@ -955,7 +956,9 @@ place as the world tier's where both name it, and the tier on the row's membersh
   the query service cannot; a run on the live door reads no surroundings tier and says so in its log. A
   surroundings row that falls under the stay is refused by the next run with the cut's reason, as a row
   the world bars drop is.
-- Archaeology's sites are not read this way yet: their door asks the map and the witnesses.
+- A kind whose rule reads a source of its own reads it of the survivors alone, in the kind's context
+  (`RegionalKind.context`, handed the survivors and their share): Archaeology's sites meet the site
+  rule, with the map read for them, and its own two conditions there (§ Archaeology).
 
 ### Where a work lies (#1819)
 
@@ -3062,7 +3065,7 @@ stored rows the rule's question, for the rows the rule never reached.
 
 **What a run keeps (ADR-0030)**: the Wikidata collectors — Art Museums, Public art and Monuments & memorials, Places of worship and Archaeology — cache what Wikidata answers, in `wikidata_query_cache`, keyed by the hash of the source and the query text — the query is the question, so a changed filter misses by construction rather than by remembering to invalidate, and one source's rows are never another's (§ Public art and Monuments & memorials, its cache paragraph). Two reasons: their front end caches nothing we send, because we POST, so a class closure that has not moved in months is recomputed by their cluster on every run; and a collection that fails in its third phase used to start the next attempt at the first — run 61 threw away 1166 artwork classes it had already paid for. Every row carries its own expiry, written at fetch time, with defaults set to the rate the facts change at: class trees 7 days, work pools 1 day, venue statements and entity edges 12 hours, entity details 6 hours. Per source, and only for the kinds that source's collector describes — the public-art collector describes four (`classes`, `pool`, `edges`, `entities`; § Public art and Monuments & memorials above), the places-of-worship collector five (those four and `statements`, since it collects works as well; § Places of worship below), the art-museums collector the same five, the archaeology collector those five and two of its own, `osm` — what OpenStreetMap maps at each site candidate, asked of the QLever mirror or, where `OSM_READER` names it, of the public Overpass API, and kept for a day either way; a run that reads the layer (§ Archaeology's **The layer as a door**) keeps only what it asked live, and on a fresh layer asks nothing — and `photos`, how many of a place's Commons photographs were taken there, kept a week (§ Archaeology below); every one of the four also keeps `statements`, `osm` and `photos` for the visit witnesses its run reads of the places it offers (#1770, § Archaeology's **A kind's run asks a curator** paragraph; what English Wikipedia files an article under is asked of a wiki rather than of Wikidata and is kept nowhere), the UNESCO run reads that source's own API and caches nothing. Only the source that keeps something is offered the bypass: `caches` on the sources listing is `cachedKindsFor(id, reader).length > 0`, and the panel hides "Without the cache", a way to run the sync behind *Start Sync*'s arrow, where it is false, rather than offering to ignore a cache that does not exist. A run started with `refreshCache` ignores the cache **in both directions** — `withCache` short-circuits before the read *and* the write, so what is kept survives with its original `fetched_at`/`expires_at` and the next ordinary run uses it again. Replacing an answer is what Clear is for; the admin panel shows each kind's age, expiry, size and lifetime, can change that lifetime (which re-dates what is already cached, from each answer's own fetch time) and can clear any of it. A cache failure never fails a run: a read that throws falls through to the source, a write that throws is logged and the answer still returned. **The write and a lifetime change serialise** on a transaction-scoped advisory lock keyed by `(source_id, kind)`, and the write reads the policy inside its own `INSERT`: without both, a row could commit carrying an expiry the panel no longer shows — a policy nothing obeys, which is decision 7 read backwards. The locked section is two database statements; the source's answer is already in hand when `writeCached` is called, so nothing waits on a network request while holding it.
 
-**A source that reads the local subset keeps only what it still asks live** ([ADR-0119](../decisions/0119-a-source-that-reads-the-subset-keeps-only-what-it-still-asks-live.md)). Its runs answer Wikidata's class trees, pools, statements, details and edges from the subset (`SUBSET_ANSWERS`), so none of those is written to the cache, and `cachedKindsFor(sourceId, reader)` leaves them out of the source's kinds. What is still asked of a live service is kept as before: the `osm` answers, from the mirror or Overpass, and the `photos` answers, from Commons, of Archaeology's site door (#1768) and of every kind's visit witnesses (#1770). Those two are the whole list, since a Wikidata question with no twin in the subset stops the run instead of going live. `withCache` refuses a door `subsetDoor` marked. A wrapper carries no mark, so the fetchers behind it would send SPARQL, and the cache would answer some of a question family from the live service's Wikidata, of another date than the dump's. The panel reads the source's reader with its kinds (`GET /api/admin/sync/sources/:id/cache` answers `reader`, `subsetDumpDate` and each kind's `answeredBy`). On the subset it names the dump the subset was built from, lists the kinds still cached with their lifetimes, and lists apart, with *Clear* and no lifetime, the rows the source's live runs left (`answeredBy: 'subset'`). No run reads those rows. A switch back to the live service reads what has not expired, as any cached answer. A run on the subset prunes them by the week-past-expiry rule below (`subsetRunDoor`), since it may build no cached door to prune through.
+**A source that reads the local subset keeps only what it still asks live** ([ADR-0119](../decisions/0119-a-source-that-reads-the-subset-keeps-only-what-it-still-asks-live.md)). Its runs answer Wikidata's class trees, pools, statements, details and edges from the subset (`SUBSET_ANSWERS`), so none of those is written to the cache, and `cachedKindsFor(sourceId, reader)` leaves them out of the source's kinds. What is still asked of a live service is kept as before: the `osm` answers, from the mirror or Overpass, and the `photos` answers, from Commons, of every kind's visit witnesses (#1770). Those two are the whole list, since a Wikidata question with no twin in the subset stops the run instead of going live. `withCache` refuses a door `subsetDoor` marked. A wrapper carries no mark, so the fetchers behind it would send SPARQL, and the cache would answer some of a question family from the live service's Wikidata, of another date than the dump's. The panel reads the source's reader with its kinds (`GET /api/admin/sync/sources/:id/cache` answers `reader`, `subsetDumpDate` and each kind's `answeredBy`). On the subset it names the dump the subset was built from, lists the kinds still cached with their lifetimes, and lists apart, with *Clear* and no lifetime, the rows the source's live runs left (`answeredBy: 'subset'`). No run reads those rows. A switch back to the live service reads what has not expired, as any cached answer. A run on the subset prunes them by the week-past-expiry rule below (`subsetRunDoor`), since it may build no cached door to prune through.
 
 **Expired answers are pruned a week on** (`pruneExpired` and `EXPIRED_GRACE_MS` in `services/sync/wikidataCache.ts`, #627). No read uses a row past its expiry, so a row kept after it is for a person: the admin panel counts it as expired, and a failed run's answers stay there long enough to be looked at. The first question a run's cache answers drops that source's rows that expired more than the grace (7 days) ago, once for each cached door a run builds (Archaeology builds two per pass, and the second prune finds nothing) and only on a run that uses the cache; a prune that fails is logged and the run goes on.
 
@@ -3478,12 +3481,11 @@ traveller browsing museums found no archaeology museum in Egypt, Mexico, Turkey 
 London, art museums without the British Museum (measured for ADR-0058, 2026-09-13). The rule is
 [ADR-0058](../decisions/0058-archaeology-is-one-kind-of-sites-and-museums.md) and the source's
 record is [`wikidata-archaeology`](../sources/global/wikidata-archaeology.md); this source fills the
-kind's **world tier**. The regional tier — the state antiquities services that enumerate the museums
-of Greece, Turkey, Egypt, Mexico, Italy and France nearly whole — is
-[filling-a-kind.md](filling-a-kind.md)'s (ADR-0048) and carries no badge, as it does for every other
-kind. Archaeology has no surroundings tier yet: its sites are neighbours in the pass's pool, but no
-step reads Archaeology's own surroundings tier from it (§ The surroundings tier from the gather);
-#2286 brings its sites into the frame.
+kind's **world tier**, and its sites' surroundings tier, read from the pass's pool since
+ADR-0179. The regional tier — the state antiquities services that enumerate the museums of
+Greece, Turkey, Egypt, Mexico, Italy and France nearly whole — is
+[filling-a-kind.md](filling-a-kind.md)'s (ADR-0048, ADR-0178, #881) and carries no badge, as it
+does for every other kind.
 
 **One kind, two types, both doors built.** `Archaeology` is kind 5 and its types are `site` and
 `museum` (ADR-0058 decision 1): a person planning Egypt wants Saqqara and the Egyptian Museum on
@@ -3504,61 +3506,56 @@ class that says dig. **So OpenStreetMap is the judge**, and the verdict runs in 
 the item is not (a shipwreck, a lost city, a lake or a reservoir or a desert or a mountain range
 with no ruin on it), the map's ruin, the map's town or census boundary (where a site class with
 no population statement, or a World Heritage listing of the place itself, still lifts it), the
-branch it came in on (where a weak tag on an item nobody is counted at lifts it too — Carthage),
-then the line. Refused on the map's town, the card names only what the rule read: "a living place —
-OSM maps a town here and Wikidata counts its people" where the item states a population, "a
-living place — OSM maps a town here and Wikidata gives it no class of a site" where it states
-none. The line is asked last and decides whether a refusal is *named*: 830 rows sit between
-15 and 21 sitelinks, and a village refused down there would bury Athens and Rhodes under the long
-tail.
+branch it came in on (where a weak tag on an item nobody is counted at lifts it too — Carthage).
+Refused on the map's town, the card names only what the rule read: "a living place — OSM maps a
+town here and Wikidata counts its people" where the item states a population, "a living place —
+OSM maps a town here and Wikidata gives it no class of a site" where it states none. The rule reads
+no line. Whether it is famous enough is the frame's, below, and so is whether a refusal is *named*:
+a row the kind holds, one the shared pool named at its floor of 15 editions, or one a bar would admit
+(`namesRefusal`), so a village refused in the pool's long tail does not bury Athens and Rhodes.
 
-**A site the world reads opens a second door** (ADR-0127, #1756, `placeReadershipDoorFor` and
-`openPlaceDoor` in `readershipDoor.ts`). Before anything asks where a row stands, the run reads the
-year of readership of every candidate below the line and of every site the source holds at it,
-with the work door's measure (`readWorks`). A candidate below the line read at the median of the
-held sites at the line or over stands in, as one at the line does (`siteStanding`,
-`archaeology/siteTest.ts`). A held site stays while it reads at the 35th percentile. A site a
-Wikivoyage guide uses has a lower bar (ADR-0163, `ARCHAEOLOGY_GUIDED_DOOR`): the 12th percentile to
-enter and the 8th to stay, 24,756 readers a year on the dump of 2026-10-19. The guide's word is the
-sign that a dig overshadowed by its town's or its neighbour's item is a visit of its own: the Roman
-Agora of Athens (19 editions, 47,207 readers), Epidaurus' Sanctuary of Asclepius and the Pyramids
-of Meroë. The read under the floor uses the same lower bar for a site a guide uses, and the
-curator's note names the bar the site cleared. On the development data it brings 220 sites, few of
-them no dig (Manchester Piccadilly station, Hillsborough Castle). The bar is read
-over the held sites, not over every candidate at the line, where Athens and Istanbul would set it.
-The rest of the rule is unchanged, so a row the door opened for that the map shows to be a living
-town is refused by name. The door reads the pool the site door already asks for, from its floor of
-15 sitelinks, and the sites under that floor the world reads at the bar (ADR-0152, #1757,
-`readUnderFloor` and `archaeology/underFloor.ts`). The readership names those first: every item
-read at the bar in fewer counted editions than the floor (`readAtLeast`), about 20,000 on
-2026-10-26, of which Wikidata is asked which carry a class under the site tree and a coordinate
-(`fetchPlacedAmong`, its subset twin `subsetPlacedAmong`). Those few dozen, the Temple of Poseidon at
-Sounion and the Inca Trail among them, join the pool as a class question's rows and meet the same
-rule and witnesses. It is shut while the source's curator gate is off and while the year is not
-folded with the redirects in place. A site it alone admits carries the curator's question in
-`admissionNote` (`placeDoorNote`): its reading, the bar, the burst flag and its witnesses.
+**The frame admits a site** ([ADR-0179](../decisions/0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md),
+#2286): the place kinds' world bars of ADR-0175 over the sites' own pool, as the six kinds are
+admitted (§ Several kinds from one gather, [filling-a-kind.md](filling-a-kind.md) § 11). The pool is
+every item of the site classes with a point and three sitelinks that the rule passes
+(`ARCHAEOLOGY_SITE_KIND.admissionPool`), so the rule — and the map it reads — runs over every
+candidate before the bars are read: about 15,000 items, one read of the OpenStreetMap layer. On
+2026-11-02 the pool holds 12,603 sites and the bars come to 34 Wikipedia editions, 150,543 readers a
+year, or 25,421 where a guide uses the site or Atlas Obscura lists it; a held site stays at 0.8 of
+any (`collectSitesByFame`, `openWorldTier`). What a run cannot read is ADR-0175 decision 6's
+(`worldHistory`), and the bars it admitted by are kept on its sync log. A row only the map's entrance
+named, or only asked for by id, is decided by the bars but does not set them. The museums are not in
+the pool: they stay works-first, at the source's line (ADR-0058). The site door's own admission is
+retired — its line, the readership door with the guide's lower bar (ADR-0127, ADR-0163), the two
+witnesses (ADR-0128 decision 2) and the read under the pool's floor (ADR-0152).
 
-**A place the door alone admits needs two witnesses** (ADR-0128, #1768, `services/sync/visit/`).
-A year of reading says people read about a place, not that they go there: dry run 178's door
-opened for Stapleton International Airport, Rungholt and the circus of Nero, read as much as the
-Roman Baths with nothing to see. So every row the door alone admits that the rule would admit is
-asked, once the map is read, of four independent witnesses (`visitWitnessReader`, wired by `doorsForAPass`):
-- **the guide**, a Wikivoyage article using the item (`usedByAGuide`, `docs/tech/dumps.md`
-  § The items Wikivoyage uses);
-- **the photographs**, at least 10 files of the item's Commons category taken within 1 km
-  (`commonsPhotos.ts`, the run's MediaWiki transport behind the cache kind `photos`);
-- **Wikidata's formal statements**, a heritage designation, opening hours, a visitor count or a
-  website (`fetchVisitFacts`, with its subset twin `subsetVisitFacts`);
-- **the map**, an object that stands or that visitors are sent to (`mapWitness`). A dig or ruins
-  tag alone is not one, since mappers tag Rungholt as a dig.
+**The surroundings tier reads the sites too** (ADR-0171's regional tier, ADR-0179,
+`archaeology/regionalSites.ts`). After the world tier has decided, the pass's regional pool measures
+every site the bars left out against what lies within 50 km, with the register's parameters
+(`regionalArrivals`, § The surroundings tier from the gather). The candidates are the pool's items of the
+site classes; the map's entrance stays the world tier's, since opened to this tier it brought 81
+places the measurement never read, a fifth of them bridges, dams, tunnels and museums mapped as
+ruins. A survivor of the cut is put to the site rule — the world door's verdict where it
+judged the item, its facts and map read now otherwise — and to two conditions of the kind's own,
+declared in the register (`ARCHAEOLOGY_REGIONAL_REGISTER`):
+- **the map shows the place**: an OpenStreetMap object carrying the item that the rule reads as a
+  ruin or a dig, or as the village it lifts a dig over (`UNMAPPED_REASON`); Diepkloof Rock Shelter,
+  mapped as a rock, is refused;
+- **a part of a place the kind holds is not a place of its own**: a `P361` naming a place the kind
+  holds or admits this run (`partOfReason`); the Forum of Pompeii is refused as part of Pompeii.
 
-A row with fewer than two is refused under `few-witnesses` (`fewWitnessesReason`): its reading,
-where it stands against the bar or the exit, and the witnesses it has. A row the rule refuses on its
-own (a living town, no ruin on the map) is refused for that and costs no question, and a row the
-line keeps on its own is not asked. With no Wikivoyage usage built the place door is shut and the run says so. On
-dry run 178's arrivals the rule keeps 18 of the 20 sites and none of the 11 places with nothing to
-see or Roman predecessors of a living city. A part of a held place and a place of another kind
-pass it (the Lupanar, Jantar Mantar), and stay a curator's question.
+Neither is asked of the world tier, where they would cost Palenque and Calakmul, and Giza, Karnak and
+Stonehenge. A row of the tier carries `metadata.tier = 'regional'`, the cut's note on its card beside
+the map's, and no badge (`badgesAdmitted`). Where the tier is not read — the live service, or no year
+of readers — its rows stand as they are (`FetchResult.spareTier`, `CollectedArchaeology.regionalSkipped`).
+Measured on dev on 2026-11-02 (the report under ADR-0179): 2,062 sites held, 1,169 in the world tier
+and 893 in the surroundings tier, against 1,259 before; canon 0.876 on `calibration/archaeology.jsonl`;
+3.5 % noise among the additions. A read-only dry run of the code the same day held 1,176 and 891.
+
+**A crowded city counts the sites, not the museums** (ADR-0172, ADR-0179). Archaeology declares ten
+per type within 10 km, and its type `museum` is exempt (`experience_kinds.crowding_exempt_types`): a
+museum is admitted for the finds it holds, and half of them showed none yet on 2026-11-02 (§ What a
+crowded city shows).
 
 **Jev reads what a visitor finds at an arriving place** (#1768, ADR-0087). The witnesses cannot
 tell a part of a larger place, an object or a culture from a site: the Lupanar has a guide and
@@ -4067,8 +4064,8 @@ placement through the venue graph, which already holds its row and classes. The 
   - The door reads what the class pool holds, which is finds of 10 editions or more, and the finds
     under that floor the year reads at its bar (ADR-0165, `underFloorFinds`). Those are named by
     the readership dump (`readUnderFloor`, read over the same tier as the door), narrowed to the
-    items carrying a find class of their own (`fetchFindsAmong`, as `fetchPlacedAmong` narrows the
-    sites: 57,849 named on the subset, a few hundred asked in full), read by id once the pool's
+    items carrying a find class of their own (`fetchFindsAmong`: 57,849 named on the subset, a few
+    hundred asked in full), read by id once the pool's
     find rule has run and passed through the same rule (`underFloor` on the works collector), and
     then judged, placed and badged as any pool find is: the Houmuwu ding (9 editions, a `fangding`, which joins `FIND_CLASSES`
     with `ding`), the Berlin Gold Hat, the Omphalos of Delphi. The read happens only while the
@@ -4626,8 +4623,8 @@ venue graph and for each site candidate's classes, listings and populations, `en
 details, and `osm` for what OpenStreetMap maps at each site candidate — a kind of its own, a day
 long, so an admin can drop the OSM half without dropping Wikidata's and see its size beside it in
 the panel — all of it asked before the first museum is written — and `photos` for how many of a
-place's Commons photographs were taken there, asked of the rows the readership door alone admits
-and kept a week (ADR-0128). What English Wikipedia answers goes through no cache. *Without the cache*, the per-kind ages and lifetimes, *Clear* and *Fix pictures*
+place's Commons photographs were taken there, asked by the visit witnesses of the places the run
+offers and kept a week (#1770). What English Wikipedia answers goes through no cache. *Without the cache*, the per-kind ages and lifetimes, *Clear* and *Fix pictures*
 (`fixArchaeologyImages`, the shared Wikidata picture repair) are all offered on the source's card.
 On the subset the source keeps only `osm` and `photos` (`cachedKindsFor`, ADR-0119).
 
@@ -5085,8 +5082,10 @@ Maggiore, and crowds out 51 more of its churches.
 
 - **The rule is the kind's data.** `experience_kinds.crowding_limit` and `crowding_radius_km` are set
   together or not at all; null shows every place the kind admits. Places of worship, Squares &
-  streets, Monuments & memorials, Public art, Towers and Bridges & engineering marvels take 10 and
-  10 km.
+  streets, Monuments & memorials, Public art, Towers, Bridges & engineering marvels and Archaeology
+  take 10 and 10 km. A kind names the types it exempts (`crowding_exempt_types`): such a membership is
+  never scored, never crowded out and takes none of the ten. Archaeology exempts its museums, which it
+  admits for the finds they hold (ADR-0179, migration 210).
 - **Fame is measured by the run's after-step** (`services/sync/crowding.ts`, `refreshCrowding`).
   For every membership of a kind with the rule, it reads three signals from the workbench and writes
   them to `membership_fame`: readers a year (`readWorks`), the Wikivoyage editions that use the item
