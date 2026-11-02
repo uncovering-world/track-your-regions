@@ -58,7 +58,7 @@ with any third-party content; § 3.5.2(c) forbids editing, transforming or adapt
 limits use to display through the customer's own site to end users; § 3.1.3 forbids model
 training and allows retrieval-augmented grounding for internal testing only; displays must be
 non-indexable. Storing rows, combining them with a register's and placing them in regions is
-everything the catalogue does, so the API is out for both tiers. A guidebook's or a review
+everything the catalogue does, so the API is out for every tier. A guidebook's or a review
 site's editorial list remains what a curator reads before writing their own.
 
 **The Wikidata link (#1977, 2026-10-25).** Wikidata does link to Tripadvisor's location id, by

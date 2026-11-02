@@ -137,7 +137,7 @@ admit **326** and refuse **28**. By type: 177 squares, 136 streets, 8 promenades
 By refusal: 13 archaeological sites, 6 bridges, 4 bullrings, 3 motorways, 1 place of worship and
 1 destroyed. The reading's places: 109 of 114. Of the five not admitted, Al-Aqsa is offered by
 Places of worship; Bhaktapur and Patan Durbar Squares and São Francisco Square are World Heritage
-components; and Yerevan's Abovyan Street, with 7,900 readers a year, is a regional tier's.
+components; and Yerevan's Abovyan Street, with 7,900 readers a year, is the surroundings or the regional tier's.
 
 **What a curator reads.** The doors let in some districts (Akihabara, Bur Dubai, HafenCity, the
 London Docklands), a fairground (the Theresienwiese), the Ho Chi Minh trail and a ladder in the

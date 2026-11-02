@@ -1,10 +1,12 @@
-# Filling a kind: two tiers, and how a source is found, judged and kept
+# Filling a kind: three tiers, and how a source is found, judged and kept
 
 The rules by which a kind of place is filled — which sources, chosen how — so that the next
 kind (regional art museums, #628; archaeology and history museums, #581; the public art a
 country knows and the world's line does not reach) is filled by applying them rather than by answering the
 question again. The decisions that bind are
-[ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md);
+[ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md)
+and [ADR-0178](../decisions/0178-a-kind-is-filled-in-three-tiers-the-world-a-places-surroundings-and-its-region.md),
+which splits ADR-0048's two tiers into three;
 everything else here — the scorecard, the search procedure, the verdicts — is a **best effort
 written before any regional source was adopted, and is expected to be revised** when the first
 kinds and units are worked (§ What revises these rules). What a source *is* and what a *kind*
@@ -15,14 +17,17 @@ rules and leaving a record in the [source register](../sources/README.md).
 
 ---
 
-## 1. The two tiers
+## 1. The three tiers
 
-A kind is filled in two tiers, always both. The tiers differ in where their places are found,
-never in how much a place matters: a place either tier brings is equally a place the kind
+A kind is filled in three tiers (ADR-0178): the **world tier**, the **surroundings tier** and the
+**regional tier**. The first two read the same global sources, over the whole world and within
+50 km of a place; the third reads sources native to a region and none of the global analysis.
+The tiers differ in where their places are found,
+never in how much a place matters: a place any tier brings is equally a place the kind
 offers, and each tier is described and measured by its own source and signal
-([ADR-0126](../decisions/0126-the-two-tiers-differ-by-source-and-weigh-the-same.md)). The world
-tier is built first only because one global source covers every region at once. No grade that
-separates the two tiers' places, such as "worth a journey" or "worth a detour", reaches a
+([ADR-0126](../decisions/0126-the-two-tiers-differ-by-source-and-weigh-the-same.md), held for
+three by ADR-0178 decision 4). The world tier is built first only because one global source
+covers every region at once. No grade that separates the tiers' places, such as "worth a journey" or "worth a detour", reaches a
 reader; such a scale may serve an internal mechanism only.
 
 **The world tier** is what the world knows of the kind: a global source ranks the whole world
@@ -35,8 +40,18 @@ kind's own pool, read from one register and moved only by a stated method
 ([ADR-0175](../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md), § 11). The
 **Iconic** badge is written on world-tier places only, by each kind's own rule
 ([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md)
-decision 5), and what it marks beyond a famous work waits for #1737. What the line leaves out is not a defect of the line: it is the regional tier's
+decision 5), and what it marks beyond a famous work waits for #1737. What the line leaves out is not a defect of the line: it is the other two tiers'
 job.
+
+**The surroundings tier** is what the same global sources say a place's own surroundings hold:
+the world tier's analysis, applied to the places within 50 km of a candidate rather than to the
+whole world
+([ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md),
+ADR-0175 decision 3). A church that is the best known of its valley and far under the world's
+line enters here. It is read from the global source, so it needs no source adopted per region,
+and it is on for the six place kinds of § 11 (§ 4 has its rule). ADR-0171 and ADR-0175 call it a
+global source's regional tier, and so does the code (`REGIONAL_CUT`, the `regional` tier on a
+membership's facts) until their rename (#2287).
 
 **The regional tier** is what a region holds that a traveller standing there would visit,
 found through sources native to the region: a ministry's register, a museum association's
@@ -47,8 +62,8 @@ city — never a world-view region: the catalogue places each place into world-v
 coordinates afterwards, as it does today, so a country register fills every region that country
 overlaps, and a region has a regional tier the moment any source covering it is adopted.
 
-**How a reader sees them.** A region's list of a kind is its world-tier places and its
-regional-tier places together, one list. Counts count both (ADR-0046 decision 8: a kind
+**How a reader sees them.** A region's list of a kind is its world-tier, surroundings-tier and
+regional-tier places together, one list. Counts count every tier (ADR-0046 decision 8: a kind
 counts memberships, a region counts places). Nothing on a card says which tier brought a
 place.
 
@@ -64,7 +79,9 @@ membership.
 completeness before it is shown; this doc narrows it to *one rule per tier*. The world tier is
 complete when the ranking's own rule has been applied to the whole world — every venue holding
 a work above the line, every item above the line in the classes the source reads — however many
-that turns out to be (ADR-0023 decision 3: no cap). The regional tier is complete **per unit**:
+that turns out to be (ADR-0023 decision 3: no cap). The surroundings tier is complete when every
+candidate of the kind's pool the world line left out has been measured against its own 50 km
+area by § 4's cut. The regional tier is complete **per unit**:
 the source's enumeration of the unit has been read whole, and the cut has been applied to it.
 A unit with no adopted source has no regional tier, which the product says as "we do not cover
 this yet" — never as an empty list pretending to be a full one.
@@ -73,9 +90,12 @@ this yet" — never as an empty list pretending to be a full one.
 museum the ministry recognises, every listing in the city guide — and the tier's rule then cuts
 *within the unit* to what is worth a traveller's time: by the source's own editorial judgement
 where it has one (the *Musée de France* label; Poland's state register, which admits only a
-museum "of high merit"; a guide's See list), or by a within-unit signal (visitors, Wikivoyage's
-use, Wikipedia editions against the unit's best) where the source has none, with a floor on the
-group's size so that a unit with five museums does not make the fifth a 100th percentile. What the regional tier never does is rank the world and cut lower: a lower
+museum "of high merit"; a guide's See list), or by a signal the native source carries itself (the
+visitors a register records) where it has no judgement of its own, with a floor on the group's
+size so that a unit with five museums does not make the fifth a 100th percentile. A cut by a
+global source's signal — Wikivoyage's use, Wikipedia editions or readers against the area's best —
+is the surroundings tier's (§ 4), not this tier's: the regional tier takes no global analysis
+(ADR-0178 decision 1). What the regional tier never does is rank the world and cut lower: a lower
 line on the world signal is the rejected alternative of ADR-0023 and the mismeasurement #759
 was closed for — it reaches the museums Wikipedia writes about, not the ones a region holds.
 A curator may add to and remove from the cut.
@@ -83,8 +103,8 @@ A curator may add to and remove from the cut.
 **A curator is a source.** A curator's list for a unit is a source of the regional tier — or of
 the world tier, where the curator says the place belongs there — judged by the same scorecard
 as any other (identity, coordinates, a Wikidata item where one exists), and it is how a unit
-with no native source gets filled at all. A curator may place an object in either tier and set
-or clear the badge; the model has two tiers and one badge, and the badge is not a third
+with no native source gets filled at all. A curator may place an object in any tier and set
+or clear the badge; the model has three tiers and one badge, and the badge is not a fourth
 status. The vision's "curators can promote or demote Iconic" is this sentence.
 
 ---
@@ -142,7 +162,8 @@ is the museums' own, reused); the UNESCO list is the degenerate case in which th
   public reads.)
 - **A signal of significance within the unit, or an editorial judgement** — a category, a label,
   a visitor count, a "state museum" flag, or the fact of being listed by a guide that lists what
-  is worth seeing. Without either the cut has to come from elsewhere (§ 4, the fallback).
+  is worth seeing. Without either the cut is a curator's; a cut by a global signal is the
+  surroundings tier's, not this source's (§ 4).
 - **Terms** that permit reading the list, storing what it says and showing it with attribution
   (§ 5), and an **access mode** the catalogue can pay for (§ 6.2).
 - **Its field family** ([ADR-0109](../decisions/0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md)):
@@ -171,9 +192,11 @@ person who lives there — knows that. Wikidata knows 30 museums in Lima and 32 
 90 rows. The global source is the yardstick a regional source is measured against, not the
 regional source.
 
-**The exception, named: a global source read per unit.** Where no native source exists, or none
-can be read (terms, access, a register the law establishes but nobody publishes — Georgia,
-§ 7), a global source read *for the unit* is a regional-tier candidate: Wikidata by class
+**A global source read per area is the surroundings tier, not the regional one** (ADR-0178
+decision 3). ADR-0048 decision 3 named it as the regional tier's fallback, where no native source
+exists or none can be read (terms, access, a register the law establishes but nobody publishes —
+Georgia, § 7); it is a tier of its own now, and a kind has a regional tier only where a native
+source has been adopted. A global source read *for the area*: Wikidata by class
 within the unit, cut by a within-unit signal; Wikivoyage's See listings for the unit's articles;
 OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the unit and the cut are
 [ADR-0171](../decisions/0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md):
@@ -190,8 +213,8 @@ OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the un
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
 - the place pass reads it after the world tier has decided, for the six place kinds of § 11, from
   the local subset (`places/regionalTier.ts`, `REGIONAL_CUT` in `places/regionalCut.ts`;
-  experiences.md § The regional tier from the gather, #2178); it is on since #2252, and a row it
-  admits carries `facts.tier = 'regional'` and no badge and arrives for a curator where the kind
+  experiences.md § The surroundings tier from the gather, #2178); it is on since #2252, and a row it
+  admits carries `facts.tier = 'regional'` (the code's name for the surroundings tier) and no badge and arrives for a curator where the kind
   gates its arrivals.
 - the floor counts the area's places, not the places that carry the signal.
 
@@ -203,13 +226,14 @@ and below Wikivoyage's use in every unit tried. A percentile of sitelinks within
 (#761) carried Wikidata's density into the cut, 126–128 places in Berlin against 2–3 in Dakar.
 A kind adopts the rule through its own issue, after measuring it on its calibration list.
 
-A global source read per unit is enough when three things hold, each measured before adoption: (1) **coverage** — the canon of places a
-person who knows the unit names (its national museum, its art museum, the house museum every
-guide mentions) is found, with the misses listed; (2) **identity** — the share of rows with a
-Wikidata item is known and the rest go through the gate as proposals; (3) **a floor** — the
-group is large enough for a within-unit cut to mean something, and where it is not, the whole
-enumeration is offered and a curator cuts. A global source read per unit is adopted *for that
-unit*, recorded as such in the register, and replaced when a native source arrives.
+A kind adopts the surroundings tier when three things hold, each measured on its calibration list
+before adoption: (1) **coverage** — the canon of places a person who knows an area names (its
+national museum, its art museum, the house museum every guide mentions) is found, with the misses
+listed; (2) **identity** — the share of rows with a Wikidata item is known and the rest go through
+the gate as proposals; (3) **a floor** — the area is large enough for a cut against its best to
+mean something, and where it is not, a curator cuts. The adoption is per kind, never per unit, and
+it stays when a native source is adopted for a unit: that source fills the regional tier beside it,
+and a place both bring is one place (ADR-0178 decisions 3 and 5).
 
 ---
 
@@ -228,7 +252,7 @@ Reading a list and showing what it says are two different permissions, and both 
   place id) and Tripadvisor's Content API (Master Terms § 3.4.3 caching only per its policy,
   which permits caching nothing but the location id; § 3.4.4(iv) no commingling with third-party
   content; § 3.5.2(c) no transforming; § 3.1.2 display to end users only; § 3.1.3 no model
-  training) are excluded for both tiers and for curator screens alike.
+  training) are excluded for every tier and for curator screens alike.
 - **Non-commercial.** A licence that forbids commercial use (CC BY-NC, CC BY-NC-SA, GADM's
   terms) is admissible, because the product is public and not operated for revenue
   ([ADR-0078](../decisions/0078-the-product-is-public-and-non-commercial-and-gadm-is-asked-before-it-is-published.md)).
@@ -322,8 +346,9 @@ nothing.
    the unit, the fields a row carries, the terms, the access mode, and the scorecard with its
    evidence — named places, not adjectives.
 4. **Stop** when a native enumerator scores as adoptable (§ 6.2), or when the candidates are
-   exhausted: then declare the global-read-per-unit fallback for the unit (§ 4) and record that
-   too, so the unit is not searched again until something changes.
+   exhausted: then the unit has no regional tier for the kind, which is recorded as searched, so
+   the unit is not searched again until something changes. What the kind's surroundings tier
+   holds there is unchanged by either outcome (§ 4).
 
 ### 6.2 The scorecard
 
@@ -336,7 +361,7 @@ deliberately flat; the vetoes are what decides.
 | **Identity** | none stable | an id of its own | an id of its own and a Wikidata item on most rows | the id's shape; the share of rows with an item |
 | **Coordinates** | none, and no geocodable address | an address | coordinates on every row | the share with coordinates |
 | **Names** | none in the unit's languages | one language | the unit's languages | a row |
-| **Signal** | none | an editorial cut (a label, a category, being listed) | a measured within-unit signal (visitors, readership) | what the cut would be for the unit |
+| **Signal** | none | an editorial cut (a label, a category, being listed) | a measured within-unit signal the source carries (the visitors a register records; for a surroundings-tier source, editions or readers against the area's best) | what the cut would be for the unit |
 | **Terms** | forbids storing, combining or showing — **veto** | permits with obligations (share-alike, no derived database, ask first) | open with attribution | the licence page, quoted |
 | **Access mode** | documents only, by hand | scraping, or documents read with a model | an API or a dump | the endpoint or file; the volume and rate |
 | **Cadence** | unknown, or older than two years | yearly or irregular | monthly or continuous | the last update and the stated frequency |
@@ -485,9 +510,9 @@ National Museum is an umbrella of the country's leading museums — the Janashia
 Museum of Fine Arts, the Open Air Museum of Ethnography, the Museum of Soviet Occupation,
 house museums — with one website, which is the Louvre problem of ADR-0023 one country over: an
 umbrella is not the venue a traveller stands in.
-Verdict: no native register readable → the global-read-per-unit fallback (§ 7.4) and a
-curator's list; the record says so, so Tbilisi is not searched again for a register until one
-is published.
+Verdict: no native register readable → no regional tier for Tbilisi yet, beside what the
+surroundings tier holds there (§ 7.4), and a curator's list; the record says so, so Tbilisi is not
+searched again for a register until one is published.
 
 **Estonia — statistics, a collections system, and an association.** Statistics Estonia counts
 160 museums and 102 expositions in 2024 (table KU05) — the yardstick, not a list. MuIS, the
@@ -495,7 +520,7 @@ museum information system, publishes open data as RDF over persistent URIs, but 
 objects*, not of museums: it enumerates works, not venues. The Estonian Museums Association
 keeps an alphabetical directory of museums; its terms and shape were not measured. Verdict: no
 register found yet that enumerates *museums* with terms and coordinates; the association's
-directory is the next candidate, then the fallback.
+directory is the next candidate, then a curator's list.
 
 **Germany — a statistical database, and a city portal.** The Institut für Museumsforschung
 holds the addresses and collection areas of some 6,300 museums for the annual statistics; no
@@ -506,7 +531,7 @@ open dataset of it was found. Berlin's *Museumsportal* is § 7.3.
 A national committee of ICOM, a museums association (Deutscher Museumsbund, the Estonian
 Museums Association), an umbrella such as the Georgian National Museum. They enumerate their
 *members*, which is a bias the record has to state (a private house museum that never joined
-is absent), and they rarely publish terms or coordinates. Verdict for both tiers: a list a
+is absent), and they rarely publish terms or coordinates. Verdict for every tier: a list a
 curator reads and a way to reach a registry that is not online; a source only where the
 directory is licensed and machine-readable, which none of the three looked at is.
 
@@ -524,7 +549,7 @@ scores 10), and identity 0 makes the verdict `curator-list` whatever the total; 
 register as `looked-at` with the address to write to. Verdict: regional tier — **a cut worth having, on
 permission**; world tier — no.
 
-### 7.4 Global open data read per unit — the fallback, and the yardstick
+### 7.4 Global open data read per area — the surroundings tier, and the yardstick
 
 **Wikidata by class within the unit.** Identity 2, coordinates 1–2 (137 of 162 in Florence,
 220 of 236 in Paris, 43 of 346 in Estonia), names 2, terms 2 (CC0), access 2, cadence 2 — and
@@ -534,16 +559,17 @@ signal is sitelinks ranked *inside the unit* (Tbilisi: Museum of Soviet Occupati
 Museum of Georgia 23, Simon Janashia Museum 20, the National Gallery 14 — the order a resident
 would give), or local-language readership (2026-09-04: Kumu 1,889 Estonian views in twelve
 months, the Niguliste Museum 406 with two sitelinks and no English article at all). With a floor
-on the group for either signal it is the fallback of § 4 and scores 14 for a unit like Tbilisi (13
-until #807 measured readership as its signal); the record names the unit it was adopted for. For
-art museums the fallback can also be cut by the *local fame* of the works a museum holds (below),
+on the group for either signal it is the surroundings tier's source (§ 4) and scores 14 for a unit
+like Tbilisi (13 until #807 measured readership as its signal). For
+art museums that tier can also be cut by the *local fame* of the works a museum holds (below),
 whose bar is set per language and needs no floor on the group, because it does not rank the unit's
 museums against each other (ADR-0057, in draft). For places of the live kinds, the unit and the
 signal were measured on 2026-10-31 over the 21 coverage surveys (ADR-0171): the unit is 50 km
 around each place, and the signals are Wikivoyage's use and Wikipedia editions against the area's
 best, which § 4's exception states. A percentile within the country and local-language readership
-both ranked below them. Verdict: world tier — the source it already is; regional tier — **the
-fallback, per unit, with its coverage measured** (§ 4's three conditions).
+both ranked below them. Verdict: world tier — the source it already is; surroundings tier —
+**the source it is, read per area, with its coverage measured** (§ 4); regional tier — none, since
+it is not native to a region (ADR-0178 decision 3).
 
 Read *by class for the whole world*, rather than within a unit, Wikidata is now the world tier of
 three kinds: art museums through the works they hold (ADR-0023), public art and monuments by the
@@ -558,15 +584,15 @@ in Tbilisi, 0 of 43 in Kraków/Old Town, 1 of 29 on the Paris city article, whic
 twenty district articles. An editorial "worth seeing" cut by construction, in the unit's
 guide, and the reason it is not the first choice: coverage depends on which editor last walked
 the city, and share-alike on the text binds what is copied — the coordinates and the item are
-facts, the description is not ours to store. Verdict: regional tier — **a cut and a fallback,
-where its `wikidata=` coverage is measured high**; never the description.
+facts, the description is not ours to store. Verdict: surroundings tier — **a cut, read per area,
+where its `wikidata=` coverage is measured high** (ADR-0178 decision 3); never the description.
 
 **OpenStreetMap through Overpass.** ODbL; the most complete *enumeration* of what stands —
 350 museums in Estonia against the statistics office's 160, because a farm museum and a
 school's museum room are `tourism=museum` too — with a Wikidata tag on 30 % (Estonia) to 82 %
 (Paris) and pictures on almost none. Identity is the weakness (ids move on re-mapping; the tag
 is the only stable one) and share-alike is the question (§ 5). Verdict: **the yardstick and the
-finder** for both tiers — what the unit holds that no register lists — and a source of rows
+finder** for every tier — what the unit holds that no register lists — and a source of rows
 only once the ODbL question is answered for the catalogue as a whole.
 
 **Wikipedia readership** enumerates nothing on its own. #807 measured it over September 2025 to
@@ -581,8 +607,8 @@ which this year adds 16 museums, from the Musée Fabre in Montpellier with Caban
 Angel* to the Norman Rockwell Museum with *The Problem We All Live With*
 ([ADR-0056](../decisions/0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md),
 in draft). Read in a country's own languages as *local fame* — a work's views over the median
-views, in the same language, of the world tier's works — it is the cut of the fallback above
-for a country with no native source: at 1 or more it finds 171 candidate art museums, 168 of
+views, in the same language, of the world tier's works — it is a candidate cut of the surroundings tier
+above for art museums: at 1 or more it finds 171 candidate art museums, 168 of
 them in 47 countries once the reader-country check has run, and Wikivoyage's See listings in
 40 test cities name 40 % of them against 28 % of all candidates
 ([ADR-0057](../decisions/0057-a-work-famous-in-its-own-language-admits-its-museum-where-no-native-source-is-adopted.md),
@@ -602,24 +628,29 @@ recorded for 19 of the 126, too few to be a door. The result for each museum, an
 counts, are on #870. It is not adopted. A regional tier is read at more than one level: a
 country and any division below it, each with sources of its own. A country can have several
 languages, and nothing in the catalogue ties a region to the languages spoken in it yet (#809),
-so a signal read by language waits for the regional tier's own design (#628). Verdict: a signal — for the world tier's second door and for the fallback's
+so a signal read by language waits for the catalogue to know them. Verdict: a signal — for the world tier's second door and for the surroundings tier's
 cut — never a source of rows on its own.
 
 ### 7.5 Commercial catalogues and guides
 
-Google Places is excluded by its terms for both tiers and for curator screens (§ 5); the
+Google Places is excluded by its terms for every tier and for curator screens (§ 5); the
 Tripadvisor Content API forbids storing, combining and transforming what it returns, which is
 everything a catalogue does; a printed guide (Michelin, Lonely Planet) is copyright and has no
 data interface; a museum pass's list (the Paris Museum Pass names its venues) is a small
 editorial cut whose terms are the pass's. Verdict: **no** as sources; a guide's list is what a
 curator reads before writing their own.
 
-### 7.6 What the rules choose on the canon, for the regional tier of art museums
+### 7.6 What the rules choose on the canon, for art museums below the world line
 
 What the world tier holds there today (the development catalogue, 2026-09-06): Florence —
 the Uffizi, the Galleria dell'Accademia, the Bargello, the Galleria Palatina; Berlin — the
 Alte Nationalgalerie and the Gemäldegalerie, and nothing else; Kraków — the Czartoryski
 Museum alone; Paris — the Louvre and its peers; Lima, Tbilisi, Tallinn, Tartu — nothing.
+
+The table was drawn on 2026-09-06, when a global source read per unit was the regional tier's
+fallback. Since ADR-0178 a row that chooses Wikidata or Wikivoyage read for the unit names the
+surroundings tier's cut there, and the native register in the same row is the regional tier's;
+the two stand side by side.
 
 | Unit | The rules choose | The rules refuse | The canon place that decides it |
 |---|---|---|---|
@@ -631,8 +662,9 @@ Museum alone; Paris — the Louvre and its peers; Lima, Tbilisi, Tallinn, Tartu 
 | Tbilisi | Wikidata-per-unit ranked by sitelinks (32 items, 30 with coordinates) plus a curator's list | waiting for a register the law names and nobody publishes | Art Museum of Georgia, 23 sitelinks; the Georgian Museum of Fine Arts, 11 |
 | Estonia | the association's directory, to be measured; Wikidata by `country` (346, 43 with coordinates) ranked by Estonian readership | OSM's 350 as rows; the location chain (46) | the Niguliste Museum — 2 sitelinks, 406 Estonian readers, Notke's *Danse Macabre* |
 
-Every row above is a decision the rules make with the numbers of one day, and every one is
-overturned the moment a native source that scores higher is found — which is the point.
+Every row above is a decision the rules make with the numbers of one day. A native source that
+scores higher, once found, fills the regional tier beside what the surroundings tier holds there,
+and replaces only the native choice it outscores — which is the point.
 
 ---
 
@@ -709,8 +741,10 @@ expected to rewrite part of it:
 - **The first register adopted** (#628, Muséofile or Luoghi della cultura): the scorecard's
   lines (11 and 8), the cut rule for a source with its own label, and how the regional rows meet
   the world tier's in practice — § 6.2, § 1, § 7.1.
-- **The first fallback adopted for a unit** (Tbilisi or Lima): § 4's three conditions and the
-  floor, and what the curator's cut looks like on a screen — § 4, § 7.4.
+- **The first kind whose surroundings tier reaches art museums** (Tbilisi or Lima): § 4's three
+  conditions and the floor, and what the curator's cut looks like on a screen — § 4, § 7.4. A
+  global source read for the area is the surroundings tier since ADR-0178, which for Wikidata
+  ADR-0171 built.
 - **The first source read from documents with a model**: § 6.2's access modes and the shape of
   the proposal the gate receives.
 - **The first curator list**: what the curator screen asks for and how a curator's tier and
@@ -733,6 +767,7 @@ Changes are logged here:
 | 2026-10-25 | Share-alike is answered for UNESCO's `whc001` too: § 5 and § 6.2 name it beside OpenStreetMap (ADR-0149, #2010) | The UNESCO run copied every property's CC BY-SA description with no credit and predated the register; the maintainer chose to keep the text, credit it where it is shown and keep the UNESCO part separable, as ADR-0059 does for OSM |
 | 2026-10-31 | § 4's exception names the unit and the cut of Wikidata read per unit: 50 km around each place, Wikivoyage's use or Wikipedia editions against the area's best, a floor on the area's places, and an article in two languages (ADR-0171, #2154) | The country percentile of #761 carried Wikidata's density into the cut, and local-language readership, the signal § 4 named, ranked below Wikivoyage's use in every unit measured |
 | 2026-11-02 | § 11: the six place kinds' world tier admits at three quantiles of each kind's own pool, every parameter of both tiers lives in one register with its derivation, and a parameter moves only by the four steps of ADR-0175 decision 5 (#2177, #2251) | Each kind had carried its own picked line, sitting between the top 1.7 % and the top 5.6 % of its pool for no stated reason, and a count drifts as Wikipedia's readership falls |
+| 2026-11-02 | § 1, § 4, § 7.4, § 11: three tiers — world, surroundings, regional; ADR-0171's 50 km cut is the surroundings tier, and a global source read per area is no longer a regional-tier source | ADR-0178: the cut read as a kind's regional tier while no native source was adopted for it |
 
 ## 10. Out of scope
 
@@ -758,7 +793,7 @@ sitelinks of any Wikimedia site, whatever its Wikipedia editions, that the kind'
 passes. It is read from the local Wikidata subset at every run (`PlaceKind.admissionPool`,
 `backend/src/services/sync/places/gather.ts`). Three sitelinks is the floor the review's extract
 read the candidates at, so the bars below are the review's quantiles; without it the pool is the
-regional pool's whole gather, most of it read in no Wikipedia, and the bars collapse
+surroundings tier's whole gather (the code's regional pool), most of it read in no Wikipedia, and the bars collapse
 ([ADR-0176](../decisions/0176-a-place-kinds-pool-starts-at-three-sitelinks.md)). A row the kind
 holds counts in the pool when a class question of the kind names it at the floor; one only asked
 for by id, or named only by an entrance, is decided by the bars but does not set them. A run on the live service
@@ -802,12 +837,12 @@ three bars. The run's log names the three bars it used, as numbers, for each kin
   service reads no pool, so nothing new enters the world tier and every held place keeps its place.
 
 The run's line names the bars it used and says which it kept and why (`barsLine`). Arrivals of
-both tiers are gated as each kind gates them.
+the world and surroundings tiers are gated as each kind gates them.
 
 **The kinds' own entries** stand beside the bars: a place of worship admitted for a work it holds
 (ADR-0052) and Public art's street-art places (#2035). They are not fame lines.
 
-**The regional tier** is ADR-0171's 50 km cut with the parameters ADR-0175 decisions 2 and 3
+**The surroundings tier** is ADR-0171's 50 km cut with the parameters ADR-0175 decisions 2 and 3
 derived, on for the six kinds since #2252 (`REGIONAL_CUT`, `places/regionalCut.ts`). A candidate
 the world bars left out is measured against every place of the live kinds within 50 km, museums
 included, and the reference of each test is the median of the ten best there. It enters with at
@@ -828,7 +863,7 @@ are gated as each kind gates arrivals.
 
 Every number of the frame lives in one module,
 `backend/src/services/sync/places/admissionRegister.ts`, and nowhere else: `WORLD_REGISTER` and
-`REGIONAL_REGISTER`. Each parameter carries its value, the one sentence that says how it was
+`REGIONAL_REGISTER`, the surroundings tier's under the code's name. Each parameter carries its value, the one sentence that says how it was
 derived, the evidence (the report and its section) and the date. The runs read the values
 (`WORLD_FRAME`, `REGIONAL_CUT`), and so does the coverage report: a survey entry carries its
 editions and no readers, so the report reads each kind's editions bar as the review measured it

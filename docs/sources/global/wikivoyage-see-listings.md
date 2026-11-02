@@ -9,7 +9,7 @@ urls:
   terms: https://creativecommons.org/licenses/by-sa/3.0/
 family: global
 kinds: [any]
-tier: regional
+tier: surroundings
 unit: { level: city, code: none, name: "the unit's article, or its district articles where the city is split" }
 row:
   identity: "the listing's wikidata= parameter, where an editor set it"
@@ -64,7 +64,7 @@ the unit is the set of them. Florence's listings carry the Uffizi (Q51252), the 
 (Q388448), the Accademia (Q10855544), Palazzo Pitti (Q29286) — the world tier's four — and
 the Museo Stibbert (Q3329363, 11 sitelinks) beside them.
 
-**What decides it.** A cut and a fallback where the item coverage is measured high (Florence,
+**What decides it.** A cut of the surroundings tier where the item coverage is measured high (Florence,
 Berlin/Mitte, Tbilisi), and neither where it is not (Kraków's Old Town: 43 listings, no
 items). Coverage depends on which editor last walked the city. Share-alike on the text binds
 what is copied, so the description is never stored — the name, the coordinates and the item

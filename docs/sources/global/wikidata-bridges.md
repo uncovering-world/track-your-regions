@@ -136,8 +136,8 @@ measure of what a curator will turn away:
 **The line is 15 editions and 50,000 readers a year, or 10,000 where a Wikivoyage edition uses
 the work's item.** It keeps 77 of the 79, and the fewest works no guide or register vouches for.
 The two it misses are the Proserpina Dam, a part of Mérida's World Heritage property that the
-rule leaves to Archaeology as a site, and Yerevan's Victory Bridge, with 5,800 readers a year, a
-regional tier's. A work the source holds stays while it keeps 12 editions and 35,000 readers, or
+rule leaves to Archaeology as a site, and Yerevan's Victory Bridge, with 5,800 readers a year, the
+surroundings or the regional tier's. A work the source holds stays while it keeps 12 editions and 35,000 readers, or
 7,000 with a guide. With no year of readership folded, nothing new enters, as for Towers; with no
 Wikivoyage usage built, the guide door is shut and only the readers' door is open.
 
@@ -204,7 +204,7 @@ against the 16 canon entries with an item:
 **The line is 3 editions and 15,000 readers a year, or 4,000 where a Wikivoyage edition uses the
 item** (`WATERWAY_LINE`); a work stays on 3 editions and 10,000 readers, or 3,000 with a guide. It
 keeps 12 of the 16, and every canon entry the kind's classes reach but one, the Kirkfield Lift
-Lock (2 editions, 2,900 readers), a regional tier's. A lower readers' door lets in places a guide
+Lock (2 editions, 2,900 readers), the surroundings or the regional tier's. A lower readers' door lets in places a guide
 does not vouch for (Camden Lock, a market; the Louis Joubert lock). Beside the canon it admits the
 Soo Locks, Ronquières, Scharnebeck, Montech's water slope, the Krasnoyarsk ship lift and the Big
 Chute marine railway, which a traveller goes to see, and a few navigation locks of large rivers
@@ -226,7 +226,7 @@ or its 90th percentile of readers where a Wikivoyage edition uses it or it carri
 place ID, and a held work stays at 0.8 of any. On the review's extract the bars came to 17 editions,
 56,955 readers and 13,757 with a mark. A canal's works are read in the same pool and held to the
 same bars: a lock a guide names, read over the third bar, enters (Ballard Locks); one no guide
-names and read some 20,000 times a year does not (the Caen Hill flight), and the regional tier of
+names and read some 20,000 times a year does not (the Caen Hill flight), and the surroundings tier of
 ADR-0175 decision 3 admits a lock only where a guide uses it (#2252). The levels live in
 `backend/src/services/sync/places/admissionRegister.ts`
 ([filling-a-kind.md § 11](../../tech/filling-a-kind.md#11-the-place-kinds-admission-frame-and-how-a-number-of-it-moves)).

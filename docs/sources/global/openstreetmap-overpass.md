@@ -76,7 +76,7 @@ Museum.
 and count binds nothing; storing its rows beside rows from a CC BY register makes a derivative
 database whose ODbL obligations reach the whole (ADR-0002 noted the same for boundaries).
 
-**What decides it.** The yardstick and the finder for both tiers — what a unit holds that no
+**What decides it.** The yardstick and the finder for every tier — what a unit holds that no
 register lists — and a source of *rows* only once the share-alike question is answered for the
 catalogue as a whole: the total is 12, and the verdict is `hold` by § 6.2's share-alike clause,
 whatever the total. Identity is the other weakness: ids move on re-mapping, and only the

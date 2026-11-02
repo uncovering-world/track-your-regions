@@ -690,7 +690,7 @@ it. An entry in a kind's tail, with ten better-named entries of its type within 
 which a crowded city's map would not show either (`docs/tech/catalogue-coverage.md` § What a
 survey demands), is never a row. Beside the rows,
 one line per live kind says how many of the expected it offers, how many more are the lists'
-tails, how many are shadowed in a crowded city, and how many it lacks under its line, which are the regional tier's and are counted
+tails, how many are shadowed in a crowded city, and how many it lacks under its line, which are the surroundings or the regional tier's and are counted
 rather than listed.
 
 A row is a gap nobody has answered for. Once a person has judged why it stands, in the
