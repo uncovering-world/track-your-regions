@@ -284,7 +284,7 @@ Every answer above, `GET /api/users/me` and the preferences routes are declared 
 - **A password change** (`PasswordChanged`) carries the new access token and the sentence to show.
 - **Registration and a resent verification** (`AuthMessage`) carry one message, the same whether or not the address has an account.
 - **The account read** (`MyAccount`, `GET /api/users/me`) carries the profile and, for a curator or an admin, what their assignments reach (`CuratorScope`).
-- **The visitor's own preferences** (`MyPreferences`, `GET` and `PUT /api/users/me/preferences`, #1604) carry the maps app places open in, null for *ask each time*; the `PUT` body accepts only the values of `MAPS_APPS` (`@tyr/shared/preferences`) or null.
+- **The visitor's own preferences** (`MyPreferences`, `GET` and `PUT /api/users/me/preferences`, #1604) carry the maps app places open in, null for *ask each time*, and the reading languages a Wikipedia link opens in, first choice first, null for the browser's (#2209); the `PUT` body names either or both and keeps the one it leaves out, and accepts only the values of `MAPS_APPS` or null, and at most `MAX_READING_LANGUAGES` distinct codes matching `READING_LANGUAGE`, English not among them since the list is what is read ahead of it, or null (`@tyr/shared/preferences`).
 
 No schema names the refresh token: it travels only in its httpOnly cookie. `routerOf` (`backend/src/api/route.ts`) refuses at startup a route whose response schema declares `accessToken` under any cache policy but `token`, so a new one is marked `private, no-store` the moment it declares the key. On the web, `frontend/src/api/auth.ts` re-exports these types, and the session refresh in `fetchUtils.ts` reads `SessionStarted`.
 
