@@ -5228,6 +5228,122 @@ export interface ShadowedArrivals {
   groups: ShadowedArrivalsGroupsItem[];
 }
 
+export type CrowdingAnswersBodyAnswersItemAnswer = typeof CrowdingAnswersBodyAnswersItemAnswer[keyof typeof CrowdingAnswersBodyAnswersItemAnswer];
+
+
+export const CrowdingAnswersBodyAnswersItemAnswer = {
+  list: 'list',
+  shadow: 'shadow',
+  refuse: 'refuse',
+  clear: 'clear',
+} as const;
+
+export type CrowdingAnswersBodyAnswersItem = {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId: number;
+  answer: CrowdingAnswersBodyAnswersItemAnswer;
+};
+
+export interface CrowdingAnswersBody {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  answers: CrowdingAnswersBodyAnswersItem[];
+  /** @maxLength 1000 */
+  note?: string;
+}
+
+export type CrowdingAnsweredAnsweredItemAnswer = typeof CrowdingAnsweredAnsweredItemAnswer[keyof typeof CrowdingAnsweredAnsweredItemAnswer];
+
+
+export const CrowdingAnsweredAnsweredItemAnswer = {
+  list: 'list',
+  shadow: 'shadow',
+  refuse: 'refuse',
+  clear: 'clear',
+} as const;
+
+/**
+ * The pin the place holds now.
+ */
+export type CrowdingAnsweredAnsweredItemPin = typeof CrowdingAnsweredAnsweredItemPin[keyof typeof CrowdingAnsweredAnsweredItemPin] | null;
+
+
+export const CrowdingAnsweredAnsweredItemPin = {
+  list: 'list',
+  shadow: 'shadow',
+} as const;
+
+export type CrowdingAnsweredAnsweredItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  name: string;
+  answer: CrowdingAnsweredAnsweredItemAnswer;
+  /** The pin the place holds now. */
+  pin: CrowdingAnsweredAnsweredItemPin;
+  /** The answer published a new arrival. */
+  published: boolean;
+  /** The answer refused the place from its kind. */
+  refused: boolean;
+};
+
+export type CrowdingAnsweredRefusedItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  experienceId: number | null;
+  /** @nullable */
+  name: string | null;
+  /**
+     * The status a single answer would have had: 409 for a place that takes no pin.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  status: number;
+  error: string;
+};
+
+export type CrowdingAnsweredPlacementFailedItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  name: string;
+  worldViews: PlacementFailure[];
+};
+
+/**
+ * The report of a curator's answers to a crowded city, applied together (#2282).
+ */
+export interface CrowdingAnswered {
+  answered: CrowdingAnsweredAnsweredItem[];
+  /** The answers the server would not apply, each with its reason. The rest go on without them. */
+  refused: CrowdingAnsweredRefusedItem[];
+  /**
+     * Answers about places outside the curator's scope, counted rather than named.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  outOfScope: number;
+  /** The arrivals published whose re-placement did not land. */
+  placementFailed: CrowdingAnsweredPlacementFailedItem[];
+}
+
 export type LifecycleStateBodyMembership = typeof LifecycleStateBodyMembership[keyof typeof LifecycleStateBodyMembership];
 
 
@@ -11570,6 +11686,45 @@ export const getExperiencesReviewCrowdingArrivals = async (params?: GetExperienc
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export const getPostExperiencesReviewCrowdingAnswersUrl = () => {
+
+
+
+
+  return `/api/experiences/review/crowding/answers`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Keep places of a crowded city in the list or in the shadow, refuse them, or hand them back to the rule, together
+ */
+export const postExperiencesReviewCrowdingAnswers = async (crowdingAnswersBody: CrowdingAnswersBody, options?: Parameters<typeof apiFetch>[1]): Promise<CrowdingAnswered> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<CrowdingAnswered>(getPostExperiencesReviewCrowdingAnswersUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(crowdingAnswersBody)
   }
 );}
 

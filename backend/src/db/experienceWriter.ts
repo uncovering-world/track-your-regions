@@ -39,6 +39,14 @@ declare const locked: unique symbol;
 export type LockedExperience = { readonly id: number; readonly [locked]: true };
 
 /**
+ * More writes a caller adds to a writer's transaction, under the lock the
+ * writer took, before it commits: a curator's crowding pin written in the act
+ * that publishes or refuses the arrival it answers (ADR-0180), so the two land
+ * together or not at all.
+ */
+export type UnderLock = (client: PoolClient, lock: LockedExperience) => Promise<void>;
+
+/**
  * Lock the object, in a statement of its own, and read `columns` of it.
  *
  * `columns` is a select list of the row's own columns — they are re-read at

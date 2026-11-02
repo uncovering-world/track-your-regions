@@ -811,6 +811,19 @@ export const shadowedArrivalsQuerySchema = z.object({
 });
 
 /**
+ * A curator's answers to a crowded city, applied together (#2282, ADR-0180):
+ * keep a place in the list, keep it in the shadow, refuse it, or hand it back
+ * to the rule. Bounded as the review answers are, a page at most.
+ */
+export const crowdingAnswersBodySchema = z.object({
+  answers: z.array(z.object({
+    membershipId: bodyRowIdSchema,
+    answer: z.enum(['list', 'shadow', 'refuse', 'clear']),
+  })).min(1).max(100),
+  note: z.string().max(1000).optional(),
+});
+
+/**
  * A selection of review rows and one answer for all of them (#852).
  *
  * A row is what a click sends: which row — the queue's own kind word and the

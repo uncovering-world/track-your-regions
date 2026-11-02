@@ -13732,6 +13732,55 @@
         }
       }
     },
+    "/api/experiences/review/crowding/answers": {
+      "post": {
+        "operationId": "postExperiencesReviewCrowdingAnswers",
+        "summary": "Keep places of a crowded city in the list or in the shadow, refuse them, or hand them back to the rule, together",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrowdingAnswersBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrowdingAnswered"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/state": {
       "post": {
         "operationId": "postExperiencesByIdState",
@@ -21063,6 +21112,207 @@
         ],
         "additionalProperties": false,
         "description": "A subregion an edit created for a division."
+      },
+      "CrowdingAnswered": {
+        "type": "object",
+        "properties": {
+          "answered": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "membershipId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "experienceId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "name": {
+                  "type": "string"
+                },
+                "answer": {
+                  "type": "string",
+                  "enum": [
+                    "list",
+                    "shadow",
+                    "refuse",
+                    "clear"
+                  ]
+                },
+                "pin": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "list",
+                        "shadow"
+                      ],
+                      "description": "A curator's answer: list keeps the place among what a reader is shown and counts it as one of the ten; shadow keeps it in the tail and never counts it (ADR-0180)."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The pin the place holds now."
+                },
+                "published": {
+                  "type": "boolean",
+                  "description": "The answer published a new arrival."
+                },
+                "refused": {
+                  "type": "boolean",
+                  "description": "The answer refused the place from its kind."
+                }
+              },
+              "required": [
+                "membershipId",
+                "experienceId",
+                "name",
+                "answer",
+                "pin",
+                "published",
+                "refused"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "refused": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "membershipId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "experienceId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The status a single answer would have had: 409 for a place that takes no pin."
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "membershipId",
+                "experienceId",
+                "name",
+                "status",
+                "error"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The answers the server would not apply, each with its reason. The rest go on without them."
+          },
+          "outOfScope": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Answers about places outside the curator's scope, counted rather than named."
+          },
+          "placementFailed": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "membershipId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "name": {
+                  "type": "string"
+                },
+                "worldViews": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlacementFailure"
+                  }
+                }
+              },
+              "required": [
+                "membershipId",
+                "name",
+                "worldViews"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The arrivals published whose re-placement did not land."
+          }
+        },
+        "required": [
+          "answered",
+          "refused",
+          "outOfScope",
+          "placementFailed"
+        ],
+        "additionalProperties": false,
+        "description": "The report of a curator's answers to a crowded city, applied together (#2282)."
+      },
+      "CrowdingAnswersBody": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "membershipId": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                "answer": {
+                  "type": "string",
+                  "enum": [
+                    "list",
+                    "shadow",
+                    "refuse",
+                    "clear"
+                  ]
+                }
+              },
+              "required": [
+                "membershipId",
+                "answer"
+              ]
+            }
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "answers"
+        ]
       },
       "CrowdingWindow": {
         "type": "object",

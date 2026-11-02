@@ -43,7 +43,7 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql, contentsMembershipToAnswerSql } from './waitingCounts.js';
-import { lockExperience, recordDecisionOnExperience } from '../../db/experienceWriter.js';
+import { lockExperience, recordDecisionOnExperience, type UnderLock } from '../../db/experienceWriter.js';
 import { markUnreadPointsRefused } from './experienceLocationWriter.js';
 import { markUnreadLinksRefused } from './workWriter.js';
 
@@ -135,12 +135,15 @@ export async function answerThroughScope<T>(
  * finds it may still answer it. Anything else is 409 with the reason, because each of the
  * others has its own answer elsewhere: a rule-refused row is the refusal
  * card's, a passed row is not an arrival, and a withdrawn row is `missing`'s.
+ * `alsoUnderLock` is a caller's own writes in the same transaction: a crowding
+ * pin the refusal clears (ADR-0180).
  */
 export async function refuseArrivalUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
   { note, membershipId: namedMembershipId }: { note?: string; membershipId?: number },
+  alsoUnderLock?: UnderLock,
 ): Promise<{ result?: RefuseArrivalResult; refusal?: AnswerRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -194,6 +197,7 @@ export async function refuseArrivalUnderLock(
       // The membership kept out (#1264), which the kept-out card reads.
       membershipId, reason: CURATOR_REFUSAL_REASON, note: note ?? null,
     })]);
+    await alsoUnderLock?.(client, locked.lock);
 
     await client.query('COMMIT');
     return { result: { experienceId, admission: 'refused', reason: CURATOR_REFUSAL_REASON } };
