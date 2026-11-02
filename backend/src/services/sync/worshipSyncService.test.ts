@@ -35,6 +35,8 @@ vi.mock('./wikidataCache.js', () => ({
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
 // Whether a place still stands is its own module's (`places/gone.test.ts`, #2259); here nothing is gone.
 vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0) }));
+// Whether a place is a World Heritage series is its own module's (`places/serialSite.test.ts`, #2276); here none is.
+vi.mock('./places/serialSite.js', () => ({ refuseSerialSites: vi.fn(async () => 0) }));
 vi.mock('./worship/pipeline.js', () => ({ collectPlacesOfWorship: vi.fn() }));
 // The places come from the pass's gather, which the mocked pipeline never asks.
 vi.mock('./places/gather.js', () => ({ shareOf: vi.fn(() => ({ trees: {} })) }));

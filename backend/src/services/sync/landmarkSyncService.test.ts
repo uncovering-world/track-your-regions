@@ -49,6 +49,7 @@ vi.mock('./places/worldMemory.js', () => ({ worldHistory: vi.fn(async () => hist
 vi.mock('./places/regionalPool.js', () => ({ readRegionalPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
 // Whether a place still stands is its own module's (`places/gone.test.ts`, #2259); here nothing is gone.
 vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0) }));
+vi.mock('./places/serialSite.js', () => ({ refuseSerialSites: vi.fn(async () => 0) }));
 // The museum tree joins the pool's classes (ADR-0171); the spec asks Wikidata nothing.
 vi.mock('./wikidataQueries.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('./wikidataQueries.js')>()), fetchClassTree: vi.fn(async () => new Set<string>()) }));
 // What the street-art rule reads (#2035); its own spec is streetArtPlaces.test.ts.
@@ -249,6 +250,10 @@ describe('public art in the place pass', () => {
     // And what it admits is asked whether it still stands, through the gather's door (#2259).
     const { refuseGone } = await import('./places/gone.js');
     expect((vi.mocked(refuseGone).mock.calls[0][0] as WikidataLandmark[]).map((i) => i.qid)).toEqual(['Q337179']);
+    // And whether it is a World Heritage site of several components, from the catalogue (#2276).
+    const { refuseSerialSites } = await import('./places/serialSite.js');
+    expect((vi.mocked(refuseSerialSites).mock.calls[0][0] as WikidataLandmark[]).map((i) => i.qid)).toEqual(['Q337179']);
+    expect(vi.mocked(refuseSerialSites).mock.calls[0][1]).toBe(fetched.filtered);
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q337179']);
   });
 

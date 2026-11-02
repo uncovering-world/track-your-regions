@@ -30,6 +30,8 @@ import {
 } from './publicArt/pipeline.js';
 import { mergeRegional, regionalReader, type RegionalKind, type RegionalReader } from './places/regionalTier.js';
 import { refuseGone } from './places/gone.js';
+import { refuseSerialSites } from './places/serialSite.js';
+import type { RefusedItemOf } from './places/lateRefusal.js';
 import { worldHistory, type WorldHistory } from './places/worldMemory.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
@@ -387,8 +389,11 @@ async function fetchLandmarkItems(
     // Not read this run (`regional.skipped`): its rows stay as they are.
     if (regional.skipped) spareTier = 'regional';
   }
-  // A place Wikidata says is gone is refused whichever tier admitted it (#2259).
-  await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX);
+  // A place Wikidata says is gone, and a World Heritage site of several
+  // components, are refused whichever tier admitted them (#2259, #2276).
+  const refusedOf: RefusedItemOf<WikidataLandmark> = { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type };
+  await refuseGone(items, filtered, sparql, refusedOf, LOG_PREFIX);
+  await refuseSerialSites(items, filtered, refusedOf, LOG_PREFIX);
   // What the admitted places hold, read before the first is written, so the
   // coverage floor is measured over the whole run (ADR-0044).
   const held = await classifier.contents?.read(items, sparql, progress);

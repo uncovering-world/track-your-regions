@@ -58,6 +58,8 @@ import { shareOf, type PlaceGather } from './places/gather.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { mergeRegional, regionalArrivals, type RegionalKind } from './places/regionalTier.js';
 import { refuseGone } from './places/gone.js';
+import { refuseSerialSites } from './places/serialSite.js';
+import type { RefusedItemOf } from './places/lateRefusal.js';
 import { worldHistory } from './places/worldMemory.js';
 import { typeOf, worshipVerdict } from './worship/worshipTest.js';
 import type { WorshipTrees } from './worship/classes.js';
@@ -265,8 +267,11 @@ async function fetchWorshipItems(
   mergeRegional(items, filtered, regional, (place) => place.qid, regionalHeld);
   // Not read this run (`regional.skipped`): its rows stay as they are.
   const spareTier = regional.skipped ? 'regional' as const : undefined;
-  // A place Wikidata says is gone is refused whichever door or tier admitted it (#2259).
-  await refuseGone(items, filtered, sparql, { id: (place) => place.qid, name: (place) => place.label, type: (place) => place.type }, LOG_PREFIX);
+  // A place Wikidata says is gone, and a World Heritage site of several
+  // components, are refused whichever door or tier admitted them (#2259, #2276).
+  const refusedOf: RefusedItemOf<CollectedPlaceOfWorship> = { id: (place) => place.qid, name: (place) => place.label, type: (place) => place.type };
+  await refuseGone(items, filtered, sparql, refusedOf, LOG_PREFIX);
+  await refuseSerialSites(items, filtered, refusedOf, LOG_PREFIX);
 
   // Whether the run saw enough of what the catalogue holds to be believed about
   // what left it (ADR-0044) — measured here, before a single place is written,

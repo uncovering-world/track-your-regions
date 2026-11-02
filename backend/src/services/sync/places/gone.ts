@@ -29,6 +29,7 @@ import { chunk, values, type SparqlFn } from '../wikidataQueries.js';
 import { extractQid, isQid } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
 import { subsetStandingFacts, type StandingFacts } from '../subset/standing.js';
+import { moveRefused, type RefusedItemOf } from './lateRefusal.js';
 
 export type { StandingFacts };
 
@@ -135,22 +136,13 @@ async function liveStandingFacts(sparql: SparqlFn, qids: string[]): Promise<Map<
  * deleted. Returns how many it refused, for the run's log.
  */
 export async function refuseGone<T>(
-  items: T[], filtered: FilteredEntity[], sparql: SparqlFn,
-  of: { id: (item: T) => string; name: (item: T) => string; type?: (item: T) => string | null | undefined },
-  logPrefix: string,
+  items: T[], filtered: FilteredEntity[], sparql: SparqlFn, of: RefusedItemOf<T>, logPrefix: string,
 ): Promise<number> {
   const facts = await fetchStandingFacts(sparql, items.map(of.id));
-  const kept: T[] = [];
-  const gone: string[] = [];
-  for (const item of items) {
+  const gone = moveRefused(items, filtered, of, (item) => {
     const known = facts.get(of.id(item));
-    const reason = known ? goneReason(known) : null;
-    if (!reason) { kept.push(item); continue; }
-    const type = of.type?.(item);
-    filtered.push({ externalId: of.id(item), name: of.name(item), reason, ...(type ? { type } : {}) });
-    gone.push(of.name(item));
-  }
-  items.splice(0, items.length, ...kept);
+    return known ? goneReason(known) : null;
+  });
   if (gone.length) console.log(`${logPrefix} Refused as gone (#2259): ${gone.join(', ')}`);
   return gone.length;
 }
