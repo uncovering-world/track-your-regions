@@ -1,20 +1,23 @@
 /**
  * ADR-0171: a kind's regional tier, read from Wikidata where no native source
  * is adopted, measures a place against what lies within 50 km of it. A place
- * the world line left out enters the regional tier when it has a Wikipedia
+ * the world bars left out enters the regional tier when it has a Wikipedia
  * article in two languages or more and either the Wikivoyage editions that use
- * it reach a quarter of the median of the ten best within the radius by
- * Wikivoyage's use, among five places or more, or its Wikipedia editions reach
+ * it reach half the median of the ten best within the radius by Wikivoyage's
+ * use (ADR-0175; ADR-0171 read a quarter), among five places or more, or its Wikipedia editions reach
  * the median of the ten best within the radius by editions, among 25 places or
  * more. Where fewer than ten places carry a signal, the reference is the median
  * of those that do, and a place that carries none sets no reference.
  *
- * The numbers are one named set here and nowhere else (#2178): they are
- * parameters for the admission review's experiments (#2177), not a reader's or
- * an admin's control, and a later decision may give a region values of its
- * own beside the world's. Each is what ADR-0171's measurement chose, on the
- * dump of 2026-10-19 over the 21 coverage surveys.
+ * The numbers are the register's (`admissionRegister.ts`, ADR-0175 decision
+ * 5), each with its derivation, never a reader's or an admin's control: the
+ * Wikivoyage test reads half the reference since ADR-0175 decision 3, where
+ * ADR-0171 read a quarter. The tests that decision adds — the readers test,
+ * the readers' floor, the guided types and the stay — are declared there and
+ * read when the tier is switched on (#2252).
  */
+
+import { REGIONAL_REGISTER } from './admissionRegister.js';
 
 /**
  * Whose places a candidate is measured among within the radius: every place
@@ -26,10 +29,10 @@ export type RegionalNeighbours = 'all' | 'kind' | 'type';
 
 export interface RegionalCut {
   /**
-   * Whether the pass reads the regional tier at all. Off until the review
-   * (#2177) settles the numbers: at ADR-0171's, the rule admits some 21,000
-   * places for a curator over the whole world (2026-10-31), which is the
-   * review's question, not a queue to fill before it is answered.
+   * Whether the pass reads the regional tier at all. Off until the slice that
+   * switches it on with ADR-0175's tests (#2252): at ADR-0171's numbers the
+   * rule admitted some 21,000 places for a curator over the whole world
+   * (2026-10-31).
    */
   enabled: boolean;
   /** Whose places set the references. */
@@ -51,8 +54,15 @@ export interface RegionalCut {
 }
 
 export const REGIONAL_CUT: RegionalCut = {
-  enabled: false, neighbours: 'all',
-  radiusKm: 50, best: 10, guideShare: 0.25, editionsShare: 1, guideGroupFloor: 5, editionsGroupFloor: 25, minLanguages: 2,
+  enabled: false,
+  neighbours: REGIONAL_REGISTER.neighbours.value,
+  radiusKm: REGIONAL_REGISTER.radiusKm.value,
+  best: REGIONAL_REGISTER.best.value,
+  guideShare: REGIONAL_REGISTER.guideShare.value,
+  editionsShare: REGIONAL_REGISTER.editionsShare.value,
+  guideGroupFloor: REGIONAL_REGISTER.guideGroupFloor.value,
+  editionsGroupFloor: REGIONAL_REGISTER.editionsGroupFloor.value,
+  minLanguages: REGIONAL_REGISTER.minLanguages.value,
 };
 
 /** A candidate's own signals. */
