@@ -52,7 +52,13 @@ const approximatePoints = (hinted: boolean) => `(SELECT jsonb_agg(jsonb_build_ob
            'latitude', ST_Y(el.location),
            'longitude', ST_X(el.location),
            'reason', el.approximate,
-           'hints', ${HINTS_OF_POINT})
+           'hints', ${HINTS_OF_POINT},
+           -- Asked of the full OpenStreetMap from the card with this name and
+           -- coordinate (pointNamesakes.ts, #2243): the card offers the
+           -- question only where it has not been.
+           'namesAsked', EXISTS (SELECT 1 FROM experience_point_name_asks a
+                                  WHERE a.location_id = el.id AND a.asked_name = el.name
+                                    AND ST_Equals(a.asked_location, el.location)))
          ORDER BY el.ordinal NULLS LAST, el.id)
        FROM ${pointsShownSql('e.id', 'el')}
       WHERE ${approximatePointAskedSql(hinted, 'el')})`;

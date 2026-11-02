@@ -589,6 +589,13 @@ export const ComponentItemSuggestions = z.strictObject({
 }).describe("Jev's judgement of the candidate items of a site's components (#1272), per candidate it could judge; never applied.");
 export type ComponentItemSuggestions = z.infer<typeof ComponentItemSuggestions>;
 
+export const PointNamesakesAnswer = z.strictObject({
+  locationId: z.number().int().describe('The roughly placed point asked about.'),
+  found: z.number().int().describe('How many objects named like the component are now its hints.'),
+  asked: z.boolean().describe('False where the point had been asked already with its name and coordinate, and the kept answer stands.'),
+}).describe("What the full OpenStreetMap answered about a rough point's namesakes (#2243).");
+export type PointNamesakesAnswer = z.infer<typeof PointNamesakesAnswer>;
+
 export const PointHintSuggestions = z.strictObject({
   configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no judgement, nothing else changes.'),
   suggestions: z.array(z.strictObject({

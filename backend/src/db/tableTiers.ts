@@ -70,6 +70,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   experience_parts: 'serving',
   experience_point_hint_suggestions: 'serving',
   experience_point_hints: 'serving',
+  experience_point_name_asks: 'serving',
   experience_regions: 'serving',
   experience_rejections: 'serving',
   experience_sources: 'serving',

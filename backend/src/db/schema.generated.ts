@@ -539,6 +539,16 @@ export interface ExperiencePointHintsRow {
   tags: unknown | null;
 }
 
+/** The table `experience_point_name_asks`. */
+export interface ExperiencePointNameAsksRow {
+  location_id: number;
+  asked_name: string;
+  asked_location: string;
+  asked_at: Date;
+  asked_by: number | null;
+  objects: unknown;
+}
+
 /** The table `experience_regions`. */
 export interface ExperienceRegionsRow {
   id: number;
@@ -1383,6 +1393,7 @@ export const RELATION_SCHEMAS = {
   experience_parts: "public",
   experience_point_hint_suggestions: "public",
   experience_point_hints: "public",
+  experience_point_name_asks: "public",
   experience_regions: "public",
   experience_rejections: "public",
   experience_separations: "public",
