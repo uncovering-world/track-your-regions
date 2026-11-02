@@ -780,11 +780,17 @@ reads it.
 
 ## 11. The place kinds' admission frame, and how a number of it moves
 
-Read this before moving any number the six place kinds of the place pass admit by: Public art,
+Read this before moving any number the place kinds of the place pass admit by: Public art,
 Monuments & memorials, Places of worship, Towers, Bridges & engineering marvels, and Squares &
-streets ([ADR-0175](../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md)). The
-review that derived the frame is
-[2026-11-02 — One admission frame for the place kinds](../research/2026-11-02-one-admission-frame-for-the-place-kinds.md).
+streets ([ADR-0175](../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md)), and
+Archaeology's sites
+([ADR-0179](../decisions/0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md)).
+The review that derived the frame is
+[2026-11-02 — One admission frame for the place kinds](../research/2026-11-02-one-admission-frame-for-the-place-kinds.md),
+and Archaeology's measurement at its shared levels is
+[2026-11-02 — Archaeology's sites in the admission frame](../research/2026-11-02-archaeologys-sites-in-the-admission-frame.md).
+Archaeology's museums are not in the frame: they are admitted works-first, at the source's line
+(ADR-0058).
 
 ### 11.1 The frame
 
@@ -840,7 +846,8 @@ The run's line names the bars it used and says which it kept and why (`barsLine`
 the world and surroundings tiers are gated as each kind gates them.
 
 **The kinds' own entries** stand beside the bars: a place of worship admitted for a work it holds
-(ADR-0052) and Public art's street-art places (#2035). They are not fame lines.
+(ADR-0052), Public art's street-art places (#2035) and the digs OpenStreetMap names that no class of
+Archaeology reaches (ADR-0060). They are not fame lines.
 
 **The surroundings tier** is ADR-0171's 50 km cut with the parameters ADR-0175 decisions 2 and 3
 derived, on for the six kinds since #2252 (`REGIONAL_CUT`, `places/regionalCut.ts`). A candidate
@@ -859,11 +866,20 @@ read at 0.8 and the other two whole; a tunnel, dam or lock stays only while a gu
 it. With no year of readers the tier is not read and its places keep their standing. Its arrivals
 are gated as each kind gates arrivals.
 
+Archaeology's sites ask two things more of the surroundings tier, and of it alone (ADR-0179,
+`archaeology/regionalSites.ts`): **the map shows the place** — an OpenStreetMap object carrying the
+item that the site rule reads as a ruin or a dig, or as the village it lifts a dig over — and **a part
+of a place the kind holds is not a place of its own** — no `P361` naming a place Archaeology holds or
+admits in the same run. Together they bring the noise among the additions from 10.2 % to 3.5 % and
+leave the canon at 0.876; on the world tier they would cost Palenque and Calakmul, and Giza, Karnak
+and Stonehenge.
+
 ### 11.2 The register
 
 Every number of the frame lives in one module,
-`backend/src/services/sync/places/admissionRegister.ts`, and nowhere else: `WORLD_REGISTER` and
-`REGIONAL_REGISTER`, the surroundings tier's under the code's name. Each parameter carries its value, the one sentence that says how it was
+`backend/src/services/sync/places/admissionRegister.ts`, and nowhere else: `WORLD_REGISTER`,
+`REGIONAL_REGISTER` (the surroundings tier's, under the code's name) and
+`ARCHAEOLOGY_REGIONAL_REGISTER` for Archaeology's two conditions of that tier. Each parameter carries its value, the one sentence that says how it was
 derived, the evidence (the report and its section) and the date. The runs read the values
 (`WORLD_FRAME`, `REGIONAL_CUT`), and so does the coverage report: a survey entry carries its
 editions and no readers, so the report reads each kind's editions bar as the review measured it
