@@ -170,6 +170,29 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
     expect(await crowded()).toEqual([BASE + 11, BASE + 12]);
   });
 
+  it('ranks a guide\'s use as a presence: two Wikivoyage editions weigh as seven (ADR-0177)', async () => {
+    // Churches 5 and 6 read alike but for their guides: the Ortaköy Mosque's two against seven.
+    for (const [id, guides] of [[BASE + 5, 2], [BASE + 6, 7]] as const) {
+      await pool.query(
+        `UPDATE membership_fame f SET readers = 8000, wikipedia_editions = 8, guide_editions = $2
+           FROM experience_kind_memberships m WHERE m.id = f.membership_id AND m.experience_id = $1`, [id, guides]);
+    }
+    await pool.query('SELECT refresh_crowding()');
+    const scores = (await pool.query<{ experience_id: number; score: number }>(
+      `SELECT m.experience_id, f.score FROM membership_fame f JOIN experience_kind_memberships m ON m.id = f.membership_id
+        WHERE m.experience_id = ANY($1) ORDER BY 1`, [[BASE + 5, BASE + 6]])).rows;
+    expect(scores[0].score).toBe(scores[1].score);
+    // A guide still counts: one Wikivoyage edition against none lifts the place.
+    await pool.query(
+      `UPDATE membership_fame f SET guide_editions = 0
+         FROM experience_kind_memberships m WHERE m.id = f.membership_id AND m.experience_id = $1`, [BASE + 5]);
+    await pool.query('SELECT refresh_crowding()');
+    const [unguided, guided] = (await pool.query<{ score: number }>(
+      `SELECT f.score FROM membership_fame f JOIN experience_kind_memberships m ON m.id = f.membership_id
+        WHERE m.experience_id = ANY($1) ORDER BY m.experience_id`, [[BASE + 5, BASE + 6]])).rows;
+    expect(guided.score).toBeGreaterThan(unguided.score);
+  });
+
   it('shows every place of a kind that declares no rule', async () => {
     await pool.query('UPDATE experience_kinds SET crowding_limit = NULL, crowding_radius_km = NULL WHERE id = $1', [WORSHIP]);
     try {

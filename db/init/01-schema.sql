@@ -6308,7 +6308,7 @@ CREATE TABLE IF NOT EXISTS membership_fame (
     measured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 COMMENT ON TABLE membership_fame IS 'How well known a membership''s place is, for a kind that declares crowding_limit (ADR-0172): the readership year''s readers, the Wikivoyage editions that use its item and its Wikipedia editions, read from the workbench by the run''s after-step, so no reader touches the workbench.';
-COMMENT ON COLUMN membership_fame.score IS 'The mean of the three signals'' percentiles among the candidates of the same kind and type worldwide, set by refresh_crowding(). Null for a membership that is no candidate (refused, or its place lost), or one measured since the last refresh.';
+COMMENT ON COLUMN membership_fame.score IS 'The mean of three percentiles among the candidates of the same kind and type worldwide, set by refresh_crowding(): readers a year, whether a Wikivoyage edition uses the item (a presence, not a count, ADR-0177), and Wikipedia editions. Null for a membership that is no candidate (refused, or its place lost), or one measured since the last refresh.';
 
 CREATE TABLE IF NOT EXISTS membership_crowding (
     membership_id INTEGER PRIMARY KEY REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
@@ -6408,7 +6408,7 @@ BEGIN
   ), scored AS (
     SELECT membership_id,
            ((percent_rank() OVER (PARTITION BY kind_id, type ORDER BY readers)
-           + percent_rank() OVER (PARTITION BY kind_id, type ORDER BY guide_editions)
+           + percent_rank() OVER (PARTITION BY kind_id, type ORDER BY guide_editions > 0)
            + percent_rank() OVER (PARTITION BY kind_id, type ORDER BY wikipedia_editions)) / 3)::real AS score
       FROM candidates
   )
