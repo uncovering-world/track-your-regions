@@ -119,3 +119,17 @@ export function invalidateVisitedStatus(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: queryKeys.visited.locationsAll });
   queryClient.invalidateQueries({ queryKey: queryKeys.visited.statusAll });
 }
+
+/**
+ * After a curator's answer on where a find comes from (#2242): the site's finds
+ * and its questions (one prefix, `site-finds`), the museums' works lists whose
+ * rows name the site, and the region lists whose rows count the site's finds.
+ */
+export function invalidateFindSiteLink(queryClient: QueryClient, siteId: number, venueIds: number[]) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.experience.siteFinds(siteId) });
+  for (const venueId of venueIds) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.experience.contents(venueId) });
+  }
+  queryClient.invalidateQueries({ queryKey: queryKeys.experiences.all });
+  queryClient.invalidateQueries({ queryKey: queryKeys.discover.experiencesAll });
+}

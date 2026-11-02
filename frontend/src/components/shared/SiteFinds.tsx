@@ -16,7 +16,8 @@ import { WorkThumbnail } from './WorkThumbnail';
 const FINDS_INITIAL_LIMIT = 10;
 
 /**
- * What was dug up at a site, and where a traveller can see it (#894).
+ * What was dug up at a site or taken from it, and where a traveller can see it
+ * (#894, #2242).
  *
  * A traveller at Mycenae reads "Mask of Agamemnon — shown at the National
  * Archaeological Museum of Athens", with the museum a way there where the
@@ -24,27 +25,35 @@ const FINDS_INITIAL_LIMIT = 10;
  * catalogue — a find's `foundAt` from the museum door, the site row from the
  * site door — and nothing joined them until this list.
  *
+ * One list, *From this site*, whichever way a find reached it: its own place
+ * of discovery (the Mask of Agamemnon at Mycenae) or a link a curator
+ * confirmed (the Dendera zodiac). The data cannot tell a find dug up from one
+ * taken from a standing building: the Parthenon frieze reaches the Acropolis
+ * by its place of discovery and was taken off the temple, so no heading may
+ * say "dug up". A curator answers where a find comes from in the place's
+ * curation dialog (`SiteFindQuestions`), never on this list.
+ *
  * Shared by Map mode's card and Discover's panel, so one site is not described
  * two ways; only the larger picture differs, since Discover has no overlay to
  * open one in (`onPreview`). Renders nothing for an empty list rather than an
  * empty heading: a site with no find above the finds' line says so by having
  * nothing to list.
  */
-export function SiteFinds({ finds, total, onPreview }: {
+export function SiteFinds({ finds, onPreview }: {
   finds: SiteFind[];
-  total: number;
   /** Map mode's overlay for the larger picture; absent on Discover. */
   onPreview?: (preview: ArtworkPreview | null) => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   if (finds.length === 0) return null;
+  const total = finds.length;
   const shown = showAll ? finds : finds.slice(0, FINDS_INITIAL_LIMIT);
   const hasMore = total > FINDS_INITIAL_LIMIT;
 
   return (
     <Box sx={{ mb: 2 }}>
       <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontWeight: 600 }}>
-        Finds dug up here ({total})
+        From this site ({total})
       </Typography>
       <Box
         sx={{

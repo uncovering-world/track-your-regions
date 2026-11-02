@@ -46,10 +46,10 @@ function find(over: Partial<SiteFind> = {}): SiteFind {
   };
 }
 
-function renderFinds(finds: SiteFind[], total = finds.length, onPreview?: () => void) {
+function renderFinds(finds: SiteFind[], onPreview?: () => void) {
   return render(
     <MemoryRouter initialEntries={['/wv/5/r/6922-peloponnese/e/14730-mycenae']}>
-      <SiteFinds finds={finds} total={total} onPreview={onPreview} />
+      <SiteFinds finds={finds} onPreview={onPreview} />
     </MemoryRouter>,
   );
 }
@@ -58,7 +58,7 @@ describe('SiteFinds', () => {
   it('names the find, what it is and when, and the museum that shows it as a way there', () => {
     renderFinds([find()]);
 
-    expect(screen.getByText('Finds dug up here (1)')).toBeInTheDocument();
+    expect(screen.getByText('From this site (1)')).toBeInTheDocument();
     expect(screen.getByText('Mask of Agamemnon')).toBeInTheDocument();
     // "1,600 BC", never the signed integer the column stores.
     expect(screen.getByText('death mask · 1,600 BC')).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('SiteFinds', () => {
 
   it('opens the larger picture over the map only where a surface has a map to draw on', () => {
     const onPreview = vi.fn();
-    renderFinds([find()], 1, onPreview);
+    renderFinds([find()], onPreview);
 
     fireEvent.mouseEnter(screen.getByRole('img', { name: 'Mask of Agamemnon' }).parentElement!);
     // The 500 px copy, sized once from the stored value: `toThumbnailUrl`
@@ -107,6 +107,19 @@ describe('SiteFinds', () => {
     const { container } = renderFinds([]);
 
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('lists the finds dug up there and those taken from it as one, under no word that says dug up', () => {
+    // The Mask of Agamemnon by its own place of discovery; the Dendera zodiac
+    // by a curator's link, cut from a temple that still stands (#2242).
+    renderFinds([
+      find(),
+      find({ id: 9001, name: 'Dendera zodiac', treasure_type: 'relief', relation: 'from_site' }),
+    ]);
+
+    expect(screen.getByText('From this site (2)')).toBeInTheDocument();
+    expect(screen.getByText('Dendera zodiac')).toBeInTheDocument();
+    expect(screen.queryByText(/dug up/i)).not.toBeInTheDocument();
   });
 
   it('mounts ten and puts the rest behind a control', () => {

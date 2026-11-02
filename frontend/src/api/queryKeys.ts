@@ -84,6 +84,10 @@ export const queryKeys = {
     contentsAll: ['experience-contents'] as const,
     contents: (id: Id) => ['experience-contents', id] as const,
     siteFinds: (id: Id) => ['site-finds', id] as const,
+    /** The finds a site's curator is asked about, and those linked to it (#2242). */
+    findSiteLinks: (id: Id) => ['site-finds', id, 'links'] as const,
+    /** The finds named like a curator's words that may be linked to the site by hand (#2242). */
+    findSiteCandidates: (id: Id, words: string) => ['site-finds', id, 'candidates', words] as const,
     curationLogAll: ['curation-log'] as const,
     curationLog: (id: Id) => ['curation-log', id] as const,
     /** The place's identifiers and the curator's words on them (#1896). */

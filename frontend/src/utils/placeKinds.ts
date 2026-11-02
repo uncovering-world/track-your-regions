@@ -104,6 +104,26 @@ export function cardAsksFinds(
   return placeHasExtent(row, everyKind) || (row.finds_count ?? 0) > 0;
 }
 
+/** World Heritage: any of its places may be where a find came from (#2242). */
+const WORLD_HERITAGE_KIND_ID = 1;
+
+/** One kind of a place, by its id and its type within the kind. */
+function mayBeOriginIn(kindId: number, type: string | null | undefined): boolean {
+  return kindId === WORLD_HERITAGE_KIND_ID || hasExtent(kindId, type);
+}
+
+/**
+ * Whether a run may have proposed a find as coming from this place (#2242),
+ * so its curation dialog asks its curator (`SiteFindQuestions`): a World Heritage place, or an
+ * Archaeology site, through any kind it is offered in. Never a museum, which
+ * is where finds are shown, not where they came from — the Louvre is an
+ * Archaeology museum.
+ */
+export function mayBeFindOrigin(row: Pick<WithKinds, 'kind_id' | 'type'> & { kinds?: PlaceKind[] }): boolean {
+  if (row.kinds?.length) return row.kinds.some(kind => mayBeOriginIn(kind.kind_id, kind.type));
+  return mayBeOriginIn(row.kind_id, row.type);
+}
+
 interface WithFame {
   kind_id: number;
   kinds?: ReadonlyArray<{ kind_id: number; fame?: number | null }> | null;

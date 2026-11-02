@@ -398,10 +398,10 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
           </Box>
         )}
 
-        {/* What was dug up here and where a traveller sees it; no overlay on
+        {/* What comes from this site and where a traveller sees it; no overlay on
             this surface, so the thumbnail is a picture and nothing more. */}
         {findsData && findsData.finds.length > 0 && (
-          <SiteFinds finds={findsData.finds} total={findsData.total} />
+          <SiteFinds finds={findsData.finds} />
         )}
 
         {/* Contents / Artworks section */}

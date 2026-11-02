@@ -202,6 +202,30 @@ describe('a work that was dug up somewhere', () => {
     expect(screen.getByText(/found at/)).toHaveTextContent('found at Mycenae');
     expect(screen.getByRole('button', { name: 'Mycenae' })).toBeInTheDocument();
   });
+
+  it('names the site a curator confirmed a find comes from, where its item names no find spot', () => {
+    // The Dendera zodiac in the Louvre: cut from the temple's ceiling, not dug
+    // up, so the row says "from", never "found at" (#2242).
+    render(
+      <MemoryRouter initialEntries={['/wv/5/r/6918-attica/e/14551-athens']}>
+        <ArtworksList
+          contents={[work({
+            name: 'Dendera zodiac', external_id: 'Q3100139', image_url: null,
+            from_site: {
+              id: 15102, name: 'Dendera Temple complex', kind_id: 5,
+              regions: [{ id: 7001, name: 'Qena', world_view_id: 5, world_view_name: 'Administrative' }],
+            },
+          })]}
+          total={1}
+          experienceId={14551}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/^from/)).toHaveTextContent('from Dendera Temple complex');
+    expect(screen.queryByText(/found at/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dendera Temple complex' })).toBeInTheDocument();
+  });
 });
 
 describe('a work whose picture does not arrive', () => {
