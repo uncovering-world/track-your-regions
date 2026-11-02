@@ -452,6 +452,32 @@ describe("useDiscoverExperiences — a crowded city's tail (#2224)", () => {
     expect(result.current.at).toContain('/e/1300');
   });
 
+  it('opens a card Map mode hands over without a kind in the kind whose tail holds it (#2236)', async () => {
+    // What the header writes on the way from the map: the card, no kind. The
+    // region's list lacks it; every kind's tail is asked, and its kind is the place's.
+    mockFetchByRegion.mockResolvedValue({
+      experiences: [STONEHENGE], total: 1, lostHidden: 0, crowdedOut: [{ kindId: 1, type: 'cultural', count: 1 }],
+    });
+    mockFetchTail.mockResolvedValue({ experiences: [HYPOGEUM] });
+    const { result } = renderAt('/discover/wv/5/r/7100/e/1300');
+
+    await waitFor(() => expect(result.current.at).toContain('?kind=1'));
+    expect(mockFetchTail).toHaveBeenCalledWith(7100, null, true);
+    expect(result.current.at).toContain('/e/1300');
+    expect(result.current.type).toBe('REPLACE');
+  });
+
+  it('drops a card without a kind that neither the list nor any tail holds', async () => {
+    mockFetchByRegion.mockResolvedValue({
+      experiences: [STONEHENGE], total: 1, lostHidden: 0, crowdedOut: [{ kindId: 1, type: 'cultural', count: 1 }],
+    });
+    mockFetchTail.mockResolvedValue({ experiences: [] });
+    const { result } = renderAt('/discover/wv/5/r/7100/e/1300');
+
+    await waitFor(() => expect(result.current.at).not.toContain('/e/1300'));
+    expect(mockFetchTail).toHaveBeenCalledWith(7100, null, true);
+  });
+
   it('counts only the open kind\'s places, and lists them best known first', async () => {
     const famed = (id: number, name: string, fame: number | null) => ({
       ...STONEHENGE, id, name,
