@@ -1,7 +1,7 @@
 # ADR-0175: A place kind admits by quantiles of its own pool, every bar derived and verified as a traveller
 
 **Date:** 2026-11-02
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0176](0176-a-place-kinds-pool-starts-at-three-sitelinks.md)
 
 ---
 
