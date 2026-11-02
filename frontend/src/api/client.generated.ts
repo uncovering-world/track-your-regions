@@ -3942,7 +3942,17 @@ export interface SourceView {
      * @maximum 9007199254740991
      */
   membership_id: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kind_id: number;
   kind_name: string;
+  /**
+     * The type within its kind the source's membership carries (#2217); null where it has none.
+     * @nullable
+     */
+  kind_type: string | null;
   source_name: string;
   /** The id the source knows the place by: a Wikidata item, a World Heritage id, or a component's reference in the list ("1209-002") (#2158). */
   external_id: string;
@@ -4421,6 +4431,11 @@ export interface ReviewQueueItem {
      */
   kind_id: number;
   kind_name: string;
+  /**
+     * The type within its kind the membership this card is about carries (#2217): `arch`, `minaret`, `holy site`; null where it carries none. Named in the vocabulary of the kind by the web (`typeLabelFor`).
+     * @nullable
+     */
+  kind_type: string | null;
   missing_since: string | null;
   source_membership: ReviewQueueItemSourceMembership;
   existence: ReviewQueueItemExistence;

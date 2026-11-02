@@ -28,7 +28,7 @@ import {
   type Experience,
 } from '../../api/experiences';
 import { siteFindsQuery } from '../../api/experienceCardQueries';
-import { hasExtent } from '../../utils/experienceTypes';
+import { hasExtent, typeWordFor } from '../../utils/experienceTypes';
 import { SiteFinds } from '../shared/SiteFinds';
 import { useAuth } from '../../hooks/useAuth';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
@@ -260,9 +260,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
         <Box sx={{ display: 'flex', gap: 0.75, mb: 2, flexWrap: 'wrap' }}>
           {experience.type && (
             <Chip
-              label={experience.type}
+              label={typeWordFor(experience.kind_id, experience.type)}
               size="small"
-              sx={{ bgcolor: catStyle.bg, color: catStyle.text, fontWeight: 600, textTransform: 'capitalize' }}
+              sx={{ bgcolor: catStyle.bg, color: catStyle.text, fontWeight: 600 }}
             />
           )}
           {experience.in_danger && (

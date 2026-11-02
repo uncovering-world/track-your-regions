@@ -5,7 +5,7 @@ import { rowSpecific } from './rowSpecific';
 /** A visible object with unread contents, as the queue sends it. */
 function contents(extra: Partial<ReviewQueueItem>): ReviewQueueItem {
   return {
-    id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology',
+    id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology', kind_type: null,
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'contents', proposed: null,
     pending_locations: 0, pending_treasures: 0, pending_points: [], pending_works: [],
@@ -42,7 +42,7 @@ describe('a waiting row two kinds ask about (#1264)', () => {
     // their Art Museums membership holds a new picture.
     const arrival = contents({ name: 'Capitoline Museums', kind: 'arrival', kind_name: 'Archaeology' });
     const held = contents({
-      name: 'Capitoline Museums', kind: 'held', kind_name: 'Art Museums',
+      name: 'Capitoline Museums', kind: 'held', kind_name: 'Art Museums', kind_type: null,
       proposed: [{ field: 'imageUrl', old: null, new: 'https://commons.wikimedia.org/wiki/Special:FilePath/Capitoline_Museums.jpg' }],
     });
     expect(rowSpecific({
@@ -60,7 +60,7 @@ describe('a held row names only the facts its card asks about (#1774)', () => {
     // The Reina Sofía's held card from Art Museums run 177: an empty list of makers
     // stored and none proposed, beside a year the run no longer gives.
     const held = contents({
-      id: 1438, name: 'Museo Nacional Centro de Arte Reina Sofía', kind: 'held', kind_name: 'Art Museums',
+      id: 1438, name: 'Museo Nacional Centro de Arte Reina Sofía', kind: 'held', kind_name: 'Art Museums', kind_type: null,
       proposed: [{ field: 'metadata.creators', old: [], new: undefined }, { field: 'metadata.year', old: 1992, new: null }],
     });
     expect(rowSpecific({ kind: 'waiting', sections: [{ id: 1438, name: held.name, held }] })).toBe('year');
@@ -68,7 +68,7 @@ describe('a held row names only the facts its card asks about (#1774)', () => {
 
   it('counts only the parts the card draws a group for', () => {
     const held = contents({
-      id: 1438, name: 'Museo Nacional Centro de Arte Reina Sofía', kind: 'held', kind_name: 'Art Museums',
+      id: 1438, name: 'Museo Nacional Centro de Arte Reina Sofía', kind: 'held', kind_name: 'Art Museums', kind_type: null,
       proposed: [{ field: 'metadata.year', old: 1992, new: null }],
       proposed_parts: [{
         kind: 'treasures', item: { name: 'Guernica', ref: 'Q175036' },
@@ -83,7 +83,7 @@ describe('a held row names only the facts its card asks about (#1774)', () => {
     // either side, so it names nothing, and the line still says it holds a change.
     const arrival = contents({ name: 'Capitoline Museums', kind: 'arrival', kind_name: 'Archaeology' });
     const held = contents({
-      name: 'Capitoline Museums', kind: 'held', kind_name: 'Art Museums',
+      name: 'Capitoline Museums', kind: 'held', kind_name: 'Art Museums', kind_type: null,
       proposed: [{ field: 'metadata.creators', old: [], new: undefined }],
     });
     expect(rowSpecific({

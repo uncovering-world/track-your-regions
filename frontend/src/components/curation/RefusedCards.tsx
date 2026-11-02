@@ -55,7 +55,7 @@ export function RefusedCard({ items, onDone }: { items: ReviewQueueItem[]; onDon
   return (
     <Card variant="outlined">
       <CardContent>
-        <ItemHeader item={items[0]} kinds={several ? items.map(item => item.kind_name) : undefined} />
+        <ItemHeader item={items[0]} kinds={several ? items : undefined} />
         <Stack spacing={2}>
           {items.map(item => (
             <RefusalSection

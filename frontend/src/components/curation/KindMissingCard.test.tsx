@@ -26,7 +26,7 @@ beforeEach(() => {
 
 function kind(over: Partial<ReviewQueueItem>): ReviewQueueItem {
   return {
-    id: 6214, external_id: 'Q207694', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology',
+    id: 6214, external_id: 'Q207694', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology', kind_type: null,
     missing_since: '2026-10-01T10:00:00Z', source_membership: 'present', existence: 'extant',
     kind: 'missing', proposed: null, membership_id: 21, seen_in: ['Art Museums'], kept_as_former: false,
     ...over,
@@ -35,7 +35,7 @@ function kind(over: Partial<ReviewQueueItem>): ReviewQueueItem {
 
 const ITEMS = [
   kind({}),
-  kind({ membership_id: 23, kind_id: 1, kind_name: 'World Heritage Sites', kept_as_former: true }),
+  kind({ membership_id: 23, kind_id: 1, kind_name: 'World Heritage Sites', kind_type: null, kept_as_former: true }),
 ];
 
 function renderCard(items: ReviewQueueItem[]) {
@@ -52,6 +52,13 @@ function sectionOf(kindName: string): HTMLElement {
 }
 
 describe('a kind whose source stopped listing a place', () => {
+  it('names each membership\'s kind with its type on its chip, and says where a type is not set (#2217)', () => {
+    renderCard([kind({}), kind({ membership_id: 23, kind_id: 1, kind_name: 'World Heritage Sites', kind_type: 'cultural' })]);
+
+    expect(screen.getByText('World Heritage Sites · Cultural')).toBeInTheDocument();
+    expect(screen.getByText('Archaeology · type not set')).toBeInTheDocument();
+  });
+
   it('asks whether the place is still of that kind, saying where readers still see it', () => {
     renderCard(ITEMS);
 

@@ -29,7 +29,7 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
     external_id: '15',
     name: 'Aksum',
     kind_id: 1,
-    kind_name: 'World Heritage Sites',
+    kind_name: 'World Heritage Sites', kind_type: null,
     missing_since: null,
     source_membership: 'present',
     existence: 'extant',
@@ -123,7 +123,7 @@ describe('ObjectContext', () => {
     cleanup();
     // The row another kind names, by its Wikidata item: the property's page still names the number.
     render(<ObjectContext item={item({
-      external_id: 'Q5684', kind_id: 5, kind_name: 'Archaeology', unesco_url: 'https://whc.unesco.org/en/list/278', parts_total: 3,
+      external_id: 'Q5684', kind_id: 5, kind_name: 'Archaeology', kind_type: null, unesco_url: 'https://whc.unesco.org/en/list/278', parts_total: 3,
     })} />);
     expect(screen.getByRole('link', { name: 'the list of its parts' })).toHaveAttribute('href', 'https://whc.unesco.org/en/list/278/maps/');
     cleanup();

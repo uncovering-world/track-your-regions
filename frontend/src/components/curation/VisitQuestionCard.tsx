@@ -59,7 +59,7 @@ export function VisitQuestionCard({ items, onDone }: { items: ReviewQueueItem[];
   return (
     <Card variant="outlined">
       <CardContent>
-        <ItemHeader item={items[0]} kinds={several ? items.map(item => item.kind_name) : undefined} />
+        <ItemHeader item={items[0]} kinds={several ? items : undefined} />
         <Stack spacing={2}>
           {items.map(item => item.visit_question && item.membership_id != null && (
             <VisitSection

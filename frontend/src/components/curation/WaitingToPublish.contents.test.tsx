@@ -70,7 +70,7 @@ type Point = NonNullable<ReviewQueueItem['pending_points']>[number];
 function contents(...works: Work[]): ReviewQueueItem {
   return {
     id: 6194, external_id: 'Q165631', name: 'Gemäldegalerie Berlin',
-    kind_id: 2, kind_name: 'Art Museums',
+    kind_id: 2, kind_name: 'Art Museums', kind_type: null,
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'contents', proposed: null,
     pending_locations: 0, pending_treasures: works.length,
@@ -82,7 +82,7 @@ function contents(...works: Work[]): ReviewQueueItem {
 function points(...rows: Point[]): ReviewQueueItem {
   return {
     id: 1345, external_id: '1465', name: 'Champagne Hillsides, Houses and Cellars',
-    kind_id: 1, kind_name: 'World Heritage Sites',
+    kind_id: 1, kind_name: 'World Heritage Sites', kind_type: null,
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'contents', proposed: null,
     pending_locations: rows.length, pending_treasures: 0,
@@ -178,7 +178,7 @@ describe('the works that arrived', () => {
           regions: [{ id: 7000, name: 'Lazio', world_view_id: 5, world_view_name: 'Administrative' }],
         },
       }),
-      id: 14546, external_id: 'Q333906', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology',
+      id: 14546, external_id: 'Q333906', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology', kind_type: null,
       pending_treasures_on_show: 1,
     };
     renderCard(capitoline);
@@ -320,7 +320,7 @@ describe('a point the source moved', () => {
   function ephesus(rows: Point[], extra: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
     return {
       ...points(...rows),
-      id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology',
+      id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology', kind_type: null,
       pending_moved_locations: rows.length,
       ...extra,
     };
@@ -418,7 +418,7 @@ describe('the question the run wrote down', () => {
   function arrival(admission_note: string | null): ReviewQueueItem {
     return {
       id: 7311, external_id: 'Q4238', name: 'Pushkin Museum',
-      kind_id: 5, kind_name: 'Archaeology',
+      kind_id: 5, kind_name: 'Archaeology', kind_type: null,
       missing_since: null, source_membership: 'present', existence: 'extant',
       kind: 'arrival', proposed: null,
       pending_locations: 0, pending_treasures: 0,

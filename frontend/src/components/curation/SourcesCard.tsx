@@ -34,6 +34,7 @@ import type { MapPin } from '../shared/PointPreviewPins';
 import { VIEW_FIELD_WORD } from './feed/rowSpecific';
 import { minuteCellSize } from './minuteCell';
 import { ItemHeader, messageFor } from './queueCard';
+import { kindWithType } from '../../utils/experienceTypes';
 import { SourceId, worldHeritagePartsHref } from './SourceId';
 import { recordsOf, sourcesOf, viewGroups, type SourceView, type SourceViewField, type ViewGroup } from './sourceGroups';
 import { PictureClassMark } from './PictureClassMark';
@@ -82,7 +83,7 @@ function GroupSources({ group }: { group: ViewGroup }) {
         <Stack key={views[0].membership_id} spacing={0.25}>
           {views.map(view => (
             <Typography key={view.membership_id} variant="caption" sx={{ fontWeight: 600, letterSpacing: '0.04em' }}>
-              {view.kind_name.toUpperCase()}
+              {kindWithType(view.kind_id, view.kind_name, view.kind_type).toUpperCase()}
               <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}> · {view.source_name}</Box>
             </Typography>
           ))}

@@ -31,7 +31,7 @@ const PLACE = { id: 6214, external_id: 'Q207694', name: 'Capitoline Museums' };
 
 function item(over: Partial<ReviewQueueItem>): ReviewQueueItem {
   return {
-    ...PLACE, kind_id: 5, kind_name: 'Archaeology',
+    ...PLACE, kind_id: 5, kind_name: 'Archaeology', kind_type: null,
     missing_since: null, source_membership: 'present', existence: 'extant',
     kind: 'arrival', proposed: null,
     pending_locations: 0, pending_treasures: 0, pending_points: [], pending_works: [],
@@ -45,7 +45,7 @@ const SECTIONS: GatedGroup[] = [
     ...PLACE,
     membershipId: 20,
     contents: item({
-      kind: 'contents', kind_id: 2, kind_name: 'Art Museums', membership_id: 20, pending_treasures: 1,
+      kind: 'contents', kind_id: 2, kind_name: 'Art Museums', kind_type: null, membership_id: 20, pending_treasures: 1,
       pending_works: [{
         id: 3120, name: 'Boy with Thorn', artists: [], artistsCurated: false,
         year: null, imageUrl: null, iconic: false, externalId: 'Q1138826',

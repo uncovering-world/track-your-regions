@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { hasExtent, typeOptionsFor, typeVocabularyOf } from './experienceTypes';
+import { hasExtent, kindWithType, typeOptionsFor, typeVocabularyOf } from './experienceTypes';
 
 const WORLD_HERITAGE = 1;
 const ART_MUSEUMS = 2;
@@ -97,5 +97,17 @@ describe('hasExtent', () => {
     expect(hasExtent(WORLD_HERITAGE, 'cultural')).toBe(false);
     expect(hasExtent(null, 'site')).toBe(false);
     expect(hasExtent(undefined, undefined)).toBe(false);
+  });
+});
+
+describe('kindWithType (#2217)', () => {
+  it('names a membership\'s kind with its type, in the vocabulary\'s words', () => {
+    expect(kindWithType(6, 'Monuments & memorials', 'arch')).toBe('Monuments & memorials · Arch');
+    expect(kindWithType(7, 'Towers', 'minaret')).toBe('Towers · Minaret');
+  });
+
+  it('says a type is not set where the kind has types, and names a kind with none alone', () => {
+    expect(kindWithType(6, 'Monuments & memorials', null)).toBe('Monuments & memorials · type not set');
+    expect(kindWithType(2, 'Art Museums', null)).toBe('Art Museums');
   });
 });
