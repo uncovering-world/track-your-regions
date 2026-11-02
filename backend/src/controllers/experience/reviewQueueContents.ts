@@ -241,7 +241,7 @@ export async function queryContents(
   // once, and a list without its total is a silent cap.
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, COALESCE(m.external_id, e.external_id) AS external_id, e.name, m.kind_id,
-           kd.name AS kind_name, ${lifecycleSelectSql()}, ${objectContextSelectSql()},
+           kd.name AS kind_name, m.type AS kind_type, ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'contents' AS kind,
            m.id AS membership_id,
            points.total AS pending_locations,
@@ -443,7 +443,7 @@ export async function queryWithdrawn(
   { scopeFilter, sourceFilter, params, ids }: QueueQueryContext,
 ): Promise<QueryResult> {
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name, mk.type AS kind_type,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'withdrawn' AS kind,
            jsonb_agg(jsonb_build_object(
@@ -643,7 +643,7 @@ export async function queryAnsweredWithdrawals(
   // shown. `locationStateController.ts` names them one branch at a time and has
   // no list to import.
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name, mk.type AS kind_type,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'withdrawn-answered' AS kind,
            answered.total AS answered_points_total,

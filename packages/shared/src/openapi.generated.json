@@ -33947,6 +33947,13 @@
           "kind_name": {
             "type": "string"
           },
+          "kind_type": {
+            "description": "The type within its kind the membership this card is about carries (#2217): `arch`, `minaret`, `holy site`; null where it carries none. Named in the vocabulary of the kind by the web (`typeLabelFor`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "missing_since": {
             "anyOf": [
               {
@@ -34533,6 +34540,7 @@
           "name",
           "kind_id",
           "kind_name",
+          "kind_type",
           "missing_since",
           "source_membership",
           "existence",
@@ -35328,8 +35336,20 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "kind_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
           "kind_name": {
             "type": "string"
+          },
+          "kind_type": {
+            "description": "The type within its kind the source's membership carries (#2217); null where it has none.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source_name": {
             "type": "string"
@@ -35391,7 +35411,9 @@
         },
         "required": [
           "membership_id",
+          "kind_id",
           "kind_name",
+          "kind_type",
           "source_name",
           "external_id",
           "component",

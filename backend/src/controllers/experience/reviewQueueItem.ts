@@ -32,6 +32,8 @@ export interface QueueRow {
   name: string;
   kind_id: number;
   kind_name: string;
+  /** The membership's type within its kind (#2217); null where it has none. */
+  kind_type?: string | null;
   missing_since: Date | null;
   source_membership: CheckValue<'experiences', 'source_membership'>;
   existence: CheckValue<'experiences', 'existence'>;
@@ -178,6 +180,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     name: row.name,
     kind_id: row.kind_id,
     kind_name: row.kind_name,
+    kind_type: row.kind_type ?? null,
     missing_since: iso(row.missing_since) ?? null,
     source_membership: row.source_membership,
     existence: row.existence,

@@ -35,7 +35,9 @@ const FIELD_ORDER = `ARRAY[${VIEW_FIELDS.map(field => "'" + field + "'").join(',
  */
 const VIEWS_OF_FIELD = `(SELECT jsonb_agg(jsonb_build_object(
            'membership_id', m.membership_id,
+           'kind_id', m.kind_id,
            'kind_name', k.name,
+           'kind_type', m.type,
            'source_name', s.name,
            'external_id', m.external_id,
            'component', m.component,
@@ -84,7 +86,7 @@ const QUIET_FIELDS = `(SELECT jsonb_agg(jsonb_build_object(
 
 export async function querySources(ids: number[]): Promise<QueryResult> {
   return pool.query(`
-    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name, mk.type AS kind_type,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'sources' AS kind, NULL::jsonb AS proposed,
            (SELECT jsonb_agg(jsonb_build_object('field', f, 'views', ${VIEWS_OF_FIELD},

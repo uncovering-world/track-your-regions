@@ -80,13 +80,13 @@ export function membershipViewSql(alias = 'm'): ViewSql {
 export function placeViewsSql(placeExpr: string, alias = 'v'): string {
   return `(SELECT m.id AS membership_id, m.kind_id, m.source_id, m.external_id::text AS external_id,
                   false AS component, NULL::int AS site_id, m.reported_name, m.reported_subtitle, m.reported_image_url,
-                  m.reported_image_credit, m.reported_location, m.reported_wikipedia_url
+                  m.reported_image_credit, m.reported_location, m.reported_wikipedia_url, m.type
              FROM ${MEMBERSHIPS} m
             WHERE m.experience_id = ${placeExpr} AND ${viewStandsSql('m')} AND ${membershipAdmittedSql('m')}
               AND ${realKindSql('m')}
            UNION ALL
            SELECT rec.id, w.kind_id, w.source_id, p.external_ref, true, w.experience_id, rec.reported_name, NULL::text,
-                  NULL::text, NULL::jsonb, rec.reported_location, NULL::text
+                  NULL::text, NULL::jsonb, rec.reported_location, NULL::text, w.type
              FROM ${MEMBERSHIPS} rec
              JOIN experience_parts p ON p.part_id = rec.experience_id AND rec.external_id = 'component:' || p.id
              JOIN ${MEMBERSHIPS} w ON w.id = p.membership_id
