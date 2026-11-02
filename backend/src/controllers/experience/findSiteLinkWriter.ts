@@ -17,6 +17,28 @@ import type { LockedExperience } from '../../db/experienceWriter.js';
 /** What a curator may say of a link: that the find comes from the site, or that it does not. */
 export type FindSiteAnswer = 'confirmed' | 'refused';
 
+/**
+ * A link a curator makes by hand (`origin` curator), confirmed as it is made:
+ * the find's item names no find spot and its own point stands nowhere near
+ * the site, or it has none, so no run would propose it. Null where
+ * the pair already has a row, which is answered instead.
+ */
+export async function linkFindToSite(
+  client: PoolClient,
+  site: LockedExperience,
+  treasureId: number,
+  curatorId: number,
+): Promise<AnsweredFindSiteLink | null> {
+  const result = await client.query<AnsweredFindSiteLink>(
+    `INSERT INTO find_site_links (treasure_id, site_id, state, origin, decided_by, decided_at)
+     VALUES ($2, $1, 'confirmed', 'curator', $3, NOW())
+     ON CONFLICT (treasure_id, site_id) DO NOTHING
+     RETURNING 'proposed' AS was, (SELECT name FROM treasures WHERE id = $2) AS find`,
+    [site.id, treasureId, curatorId],
+  );
+  return result.rows[0] ?? null;
+}
+
 /** The link as it stood before the answer, and the find's name, for the curation log. */
 export interface AnsweredFindSiteLink {
   was: 'proposed' | 'confirmed' | 'refused';

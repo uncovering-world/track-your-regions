@@ -17,6 +17,8 @@
  */
 
 import { MEMBERSHIPS, membershipOfferedSql, rowKindJoinSql } from '../../db/membership.js';
+import { WORLD_HERITAGE_KIND_ID } from '../../db/inscription.js';
+import { ARCHAEOLOGY_KIND_ID } from '../../services/sync/findSiteProposals.js';
 import {
   experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql,
 } from '../../db/readerPredicates.js';
@@ -95,6 +97,21 @@ export function findOfSiteSql(site: string, find: string): string {
   return `${find}.id IN (${siteFindIdsSql(site)})
         AND ${publishedContentSql(find)}
         AND EXISTS (SELECT 1 ${venuesShowingSql(find)})`;
+}
+
+/**
+ * The place `site` may be where a find came from (#2242): an offered World
+ * Heritage membership, or an Archaeology one of type `site`. Never a museum,
+ * which is where finds are shown, not where they came from — the Louvre is an
+ * Archaeology museum. The client's `mayBeFindOrigin` (`utils/placeKinds.ts`)
+ * decides on it whether the curation dialog asks; this is the server's word.
+ */
+export function mayBeFindOriginSql(site: string): string {
+  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} origin_member
+                 WHERE origin_member.experience_id = ${site}.id
+                   AND (origin_member.kind_id = ${WORLD_HERITAGE_KIND_ID}
+                        OR (origin_member.kind_id = ${ARCHAEOLOGY_KIND_ID} AND origin_member.type = 'site'))
+                   AND ${membershipOfferedSql('origin_member')})`;
 }
 
 /** How many finds of the site `site` are on view — the list's length, as a scalar. */

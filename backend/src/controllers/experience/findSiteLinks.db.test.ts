@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { answerFindSiteLinkRequest, getFindSiteLinks } from './findSiteLinksController.js';
+import { answerFindSiteLinkRequest, getFindSiteCandidates, getFindSiteLinks } from './findSiteLinksController.js';
 
 /**
  * A site's curator answers where a find comes from (#2242), against
@@ -24,11 +24,13 @@ const WORKS = {
   amulet: 'Q9570-amulet',
   hidden: 'Q9570-hidden-jar',
   unread: 'Q9570-unread-lamp',
+  // No link at all: a curator links it by hand.
+  stele: 'Q9570-loose-stele',
 } as const;
 
 let admin: Express.User;
 let outOfScope: Express.User;
-const ids: Record<keyof typeof WORKS, number> = { relief: 0, stela: 0, amulet: 0, hidden: 0, unread: 0 };
+const ids: Record<keyof typeof WORKS, number> = { relief: 0, stela: 0, amulet: 0, hidden: 0, unread: 0, stele: 0 };
 
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = ANY($1::int[])', [[TEMPLE, MUSEUM, UNREAD]]);
@@ -50,7 +52,7 @@ async function place(id: number, type: string, state: string): Promise<void> {
   );
 }
 
-async function find(key: keyof typeof WORKS, venue: number, state: string, workState = 'verified'): Promise<void> {
+async function find(key: keyof typeof WORKS, venue: number, state: string | null, workState = 'verified'): Promise<void> {
   const row = await pool.query<{ id: number }>(
     `INSERT INTO treasures (external_id, name, treasure_type, curation_state)
      VALUES ($1, $1, 'relief', $2) RETURNING id`,
@@ -61,6 +63,7 @@ async function find(key: keyof typeof WORKS, venue: number, state: string, workS
     `INSERT INTO experience_treasures (experience_id, treasure_id, curation_state) VALUES ($1, $2, 'verified')`,
     [venue, ids[key]],
   );
+  if (state === null) return;
   await pool.query(
     `INSERT INTO find_site_links (treasure_id, site_id, state, origin, distance_m)
      VALUES ($1, $2, $3, 'coordinate', $4)`,
@@ -85,6 +88,7 @@ beforeEach(async () => {
   await find('stela', MUSEUM, 'confirmed');
   await find('amulet', MUSEUM, 'refused');
   await find('hidden', UNREAD, 'proposed');
+  await find('stele', MUSEUM, null);
 });
 
 afterAll(async () => {
@@ -148,7 +152,7 @@ describe("a site's curator answers where a find comes from", () => {
     expect(links.map((link) => link.name)).toEqual([WORKS.relief, WORKS.stela]);
   });
 
-  it('answers a find the site has no link to with 404, and writes nothing', async () => {
+  it('answers 404 for a link to the museum that shows the find, and writes nothing', async () => {
     await expect(answerFindSiteLinkRequest({
       params: { id: MUSEUM, treasureId: ids.relief }, body: { answer: 'confirmed' }, caller: admin,
     })).rejects.toMatchObject({ statusCode: 404 });
@@ -165,4 +169,69 @@ describe("a site's curator answers where a find comes from", () => {
     );
     expect(state.rows[0].state).toBe('proposed');
   });
+
+  it('offers a curator the finds named like their words that the site does not hold yet', async () => {
+    const { candidates } = await getFindSiteCandidates({ params: { id: TEMPLE }, query: { q: 'Q9570' }, caller: admin });
+
+    // The loose stele, and the refused amulet, which a curator may link after all;
+    // not the proposed relief, the confirmed stela, or the jar no reader sees.
+    expect(candidates.map((c) => c.name).sort()).toEqual([WORKS.amulet, WORKS.stele].sort());
+    expect(candidates.find((c) => c.name === WORKS.stele)?.shown_at.map((v) => v.id)).toEqual([MUSEUM]);
+  });
+
+  it('reads the curator\'s words as words, not as a pattern', async () => {
+    const { candidates } = await getFindSiteCandidates({ params: { id: TEMPLE }, query: { q: 'Q9570_%' }, caller: admin });
+    expect(candidates).toEqual([]);
+  });
+
+  it('links a find by hand as confirmed, made by the curator, and logs it', async () => {
+    await answerFindSiteLinkRequest({
+      params: { id: TEMPLE, treasureId: ids.stele }, body: { answer: 'confirmed' }, caller: admin,
+    });
+
+    const row = await pool.query<{ state: string; origin: string; decided_by: number }>(
+      'SELECT state, origin, decided_by FROM find_site_links WHERE treasure_id = $1 AND site_id = $2', [ids.stele, TEMPLE],
+    );
+    expect(row.rows).toEqual([{ state: 'confirmed', origin: 'curator', decided_by: admin.id }]);
+    const log = await pool.query<{ details: Record<string, unknown> }>(
+      `SELECT details FROM experience_curation_log WHERE experience_id = $1 AND action = 'find_site_answered'`, [TEMPLE],
+    );
+    expect(log.rows.map((r) => r.details)).toEqual([
+      { treasureId: ids.stele, find: WORKS.stele, answer: 'confirmed', wasConfirmed: false, byHand: true },
+    ]);
+  });
+
+  it('links by hand no find a reader cannot see, and refuses nothing it has no link to', async () => {
+    // The jar no reader sees, with its proposal gone: only a hand-made link could reach it.
+    await pool.query('DELETE FROM find_site_links WHERE treasure_id = $1', [ids.hidden]);
+    await expect(answerFindSiteLinkRequest({
+      params: { id: TEMPLE, treasureId: ids.hidden }, body: { answer: 'confirmed' }, caller: admin,
+    })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(answerFindSiteLinkRequest({
+      params: { id: TEMPLE, treasureId: ids.stele }, body: { answer: 'refused' }, caller: admin,
+    })).rejects.toMatchObject({ statusCode: 404 });
+    const rows = await pool.query('SELECT 1 FROM find_site_links WHERE treasure_id = $1', [ids.stele]);
+    expect(rows.rowCount).toBe(0);
+  });
+
+  it('offers and links by hand no find whose own item names a find spot, which keeps it', async () => {
+    await pool.query(
+      `UPDATE treasures SET metadata = jsonb_build_object('foundAt', jsonb_build_object('qid', 'Q9570-susa')) WHERE id = $1`,
+      [ids.stele],
+    );
+    const { candidates } = await getFindSiteCandidates({ params: { id: TEMPLE }, query: { q: 'Q9570' }, caller: admin });
+    expect(candidates.map((c) => c.name)).toEqual([WORKS.amulet]);
+    await expect(answerFindSiteLinkRequest({
+      params: { id: TEMPLE, treasureId: ids.stele }, body: { answer: 'confirmed' }, caller: admin,
+    })).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('answers nothing for a place no find may come from, such as a museum', async () => {
+    await expect(getFindSiteCandidates({ params: { id: MUSEUM }, query: { q: 'Q9570' }, caller: admin }))
+      .rejects.toMatchObject({ statusCode: 404 });
+    await expect(answerFindSiteLinkRequest({
+      params: { id: MUSEUM, treasureId: ids.amulet }, body: { answer: 'confirmed' }, caller: admin,
+    })).rejects.toMatchObject({ statusCode: 404 });
+  });
 });
+

@@ -1,5 +1,6 @@
 /**
- * A site's card asks its curator where a find comes from (#2242).
+ * A place's curation dialog asks its curator where a find comes from (#2242),
+ * in its section *Finds from this place* (`SiteFindQuestions`).
  *
  * GET /api/experiences/:id/find-links
  * PUT /api/experiences/:id/find-links/:treasureId
@@ -8,7 +9,7 @@
  * the site its own coordinate stands on (`services/sync/findSiteProposals.ts`):
  * the Dendera zodiac in the Louvre is proposed for the Dendera Temple complex,
  * 0 m from its point. A coordinate is a reason to ask, not an answer, so the
- * site's curator reads each proposal on the card and says yes or no. A yes puts
+ * site's curator reads each proposal in the dialog and says yes or no. A yes puts
  * the find on the site's card, worded "from this site", and the site on the
  * find's row in its museum (`siteFinds.ts`, `found_at_site`'s neighbour
  * `from_site`); a no is kept, and the pair is never proposed again.
@@ -20,18 +21,19 @@
  */
 
 import type { z } from 'zod/v4';
-import type { FindSiteLinkAnswerResult, FindSiteLinks } from '../../api/responses/curation.js';
+import type { FindSiteCandidates, FindSiteLinkAnswerResult, FindSiteLinks } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
-import type { findSiteLinkAnswerBodySchema, findSiteLinkParamsSchema, idParamSchema } from '../../types/index.js';
-import { creditOf } from './experienceAnswerRows.js';
+import type {
+  findSiteCandidatesQuerySchema, findSiteLinkAnswerBodySchema, findSiteLinkParamsSchema, idParamSchema,
+} from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
-import { answerFindSiteLink } from './findSiteLinkWriter.js';
+import { answerFindSiteLink, linkFindToSite } from './findSiteLinkWriter.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
-import { venuesShowingSql } from './siteFinds.js';
+import { mayBeFindOriginSql, venuesShowingSql } from './siteFinds.js';
+import { likeParam } from './reviewQueueKeys.js';
 import { publishedContentSql } from '../../db/readerPredicates.js';
-import type { ImageCredit } from '../../services/sync/imageCredit.js';
 import type { LinkedPlace } from '../../api/responses/experiences.js';
 
 /**
@@ -51,8 +53,6 @@ interface FindSiteLinkRow {
   name: string;
   treasure_type: string;
   year: number | null;
-  image_url: string | null;
-  image_credit: ImageCredit | null;
   state: 'proposed' | 'confirmed';
   origin: 'coordinate' | 'curator';
   distance_m: number | null;
@@ -64,8 +64,7 @@ export async function getFindSiteLinks(
 ): Promise<FindSiteLinks> {
   await requireSiteScope(id, caller);
   const result = await pool.query<FindSiteLinkRow>(`
-    SELECT fsl.treasure_id, t.name, t.treasure_type, t.year, t.image_url,
-           t.metadata->'imageCredit' AS image_credit,
+    SELECT fsl.treasure_id, t.name, t.treasure_type, t.year,
            fsl.state, fsl.origin, fsl.distance_m,
            -- Where the find is shown, so the curator reads "the Dendera zodiac,
            -- at the Louvre" and knows which object the question is about.
@@ -100,8 +99,6 @@ export async function getFindSiteLinks(
       name: row.name,
       treasure_type: row.treasure_type,
       year: row.year,
-      image_url: row.image_url,
-      image_credit: creditOf(row.image_credit),
       state: row.state,
       origin: row.origin,
       distance_m: row.distance_m,
@@ -124,7 +121,25 @@ export async function answerFindSiteLinkRequest(
     await client.query('BEGIN');
     const locked = await lockExperience(client, id);
     if (!locked) throw notFound('Experience not found');
-    const answered = await answerFindSiteLink(client, locked.lock, treasureId, answer, caller.id);
+    let answered = await answerFindSiteLink(client, locked.lock, treasureId, answer, caller.id);
+    // A yes on a pair with no row is a link made by hand: to a place a find
+    // may come from (a World Heritage place or an Archaeology site), for a
+    // find a reader may see — passed itself and shown by a museum a reader may
+    // be sent to — whose own item names no find spot, since a link stands
+    // only there (siteFindIdsSql), and never to the museum that shows it.
+    const byHand = !answered && answer === 'confirmed';
+    if (byHand) {
+      const linkable = await client.query(
+        `SELECT 1 FROM treasures t, experiences site
+          WHERE t.id = $1 AND site.id = $2 AND ${mayBeFindOriginSql('site')}
+            AND ${publishedContentSql('t')} AND EXISTS (SELECT 1 ${venuesShowingSql('t')})
+            AND t.metadata->'foundAt' IS NULL
+            AND NOT EXISTS (SELECT 1 ${venuesShowingSql('t')} AND sv.id = $2)`,
+        [treasureId, id],
+      );
+      if (linkable.rowCount === 0) throw notFound('Find not found');
+      answered = await linkFindToSite(client, locked.lock, treasureId, caller.id);
+    }
     if (!answered) throw notFound('Link not found');
     // In the place's history like every other curator act (#863): which find,
     // the answer, and whether a no took back a link already confirmed.
@@ -133,6 +148,7 @@ export async function answerFindSiteLinkRequest(
        VALUES ($1, $2, 'find_site_answered', $3, $4)`,
       [id, caller.id, logRegionId, JSON.stringify({
         treasureId, find: answered.find, answer, wasConfirmed: answered.was === 'confirmed',
+        ...(byHand ? { byHand: true } : {}),
       })],
     );
     await client.query('COMMIT');
@@ -144,3 +160,58 @@ export async function answerFindSiteLinkRequest(
   }
   return { success: true, treasureId, answer };
 }
+
+/**
+ * The finds a curator may link to the site by hand (#2242): works named like
+ * the curator's words, passed and shown by a museum a reader may be sent to,
+ * whose own item names no find spot (a link stands only there, siteFindIdsSql),
+ * and not already the site's — no proposal or confirmed link of it, and not
+ * shown there: a museum is not where its works came from. Only for a place a
+ * find may come from (`mayBeFindOriginSql`); any other answers 404. The best known first, ten at most. A
+ * refused pair may be linked again: the curator who refused it can change
+ * their mind, and a no to the run's coordinate is not a no to a curator.
+ */
+export async function getFindSiteCandidates(
+  { params: { id }, query: { q }, caller }: {
+    params: z.output<typeof idParamSchema>;
+    query: z.output<typeof findSiteCandidatesQuerySchema>;
+    caller: Express.User;
+  },
+): Promise<FindSiteCandidates> {
+  await requireSiteScope(id, caller);
+  const origin = await pool.query(`SELECT 1 FROM experiences site WHERE site.id = $1 AND ${mayBeFindOriginSql('site')}`, [id]);
+  if (origin.rowCount === 0) throw notFound('A find cannot come from this place');
+  const result = await pool.query<Omit<FindSiteLinkRow, 'state' | 'origin' | 'distance_m'>>(`
+    SELECT t.id AS treasure_id, t.name, t.treasure_type, t.year,
+           (SELECT COALESCE(json_agg(json_build_object(
+                     'id', v.id, 'name', v.name, 'kind_id', v.kind_id,
+                     'regions', ${readerRegionsJsonSql('v.id')})
+                   ORDER BY v.name, v.id), '[]'::json)
+              FROM (SELECT DISTINCT ON (sv.external_id) sv.id, sv.name, svk.id AS kind_id
+                    ${venuesShowingSql('t')}
+                    ORDER BY sv.external_id, sv.id) v) AS shown_at
+      FROM treasures t
+      JOIN experiences e ON e.id = $1
+     WHERE t.name ILIKE $2
+       AND ${publishedContentSql('t')}
+       AND EXISTS (SELECT 1 ${venuesShowingSql('t')})
+       AND NOT EXISTS (SELECT 1 FROM find_site_links fsl
+                        WHERE fsl.treasure_id = t.id AND fsl.site_id = e.id
+                          AND fsl.state IN ('proposed', 'confirmed'))
+       AND t.metadata->'foundAt' IS NULL
+       AND NOT EXISTS (SELECT 1 ${venuesShowingSql('t')} AND sv.id = e.id)
+     ORDER BY t.sitelinks_count DESC, t.id
+     LIMIT 10
+  `, [id, likeParam(q)]);
+  return {
+    experienceId: id,
+    candidates: result.rows.map(row => ({
+      treasure_id: row.treasure_id,
+      name: row.name,
+      treasure_type: row.treasure_type,
+      year: row.year,
+      shown_at: row.shown_at,
+    })),
+  };
+}
+

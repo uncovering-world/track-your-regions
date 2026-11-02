@@ -366,8 +366,6 @@ export const FindSiteLink = z.strictObject({
   name: z.string(),
   treasure_type: z.string(),
   year: z.number().int().nullable(),
-  image_url: z.string().nullable(),
-  image_credit: ImageCredit.nullable(),
   state: z.enum(['proposed', 'confirmed'])
     .describe('Proposed by a run and not answered yet, or confirmed by a curator; a refused pair is not listed.'),
   origin: z.enum(['coordinate', 'curator']).describe("Proposed from the find's own coordinate, or made by a curator."),
@@ -380,6 +378,16 @@ export const FindSiteLinks = z.strictObject({
   links: z.array(FindSiteLink),
 }).describe("The finds a site's curator is asked about, and those already linked to it.");
 export type FindSiteLinks = z.infer<typeof FindSiteLinks>;
+
+export const FindSiteCandidate = FindSiteLink.pick({
+  treasure_id: true, name: true, treasure_type: true, year: true, shown_at: true,
+}).describe('A find a curator may link to the site by hand (#2242).');
+
+export const FindSiteCandidates = z.strictObject({
+  experienceId: z.number().int(),
+  candidates: z.array(FindSiteCandidate),
+}).describe('The finds named like a curator\'s words that may be linked to the site, the best known first.');
+export type FindSiteCandidates = z.infer<typeof FindSiteCandidates>;
 
 export const FindSiteLinkAnswerResult = z.strictObject({
   success: z.literal(true),
