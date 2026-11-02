@@ -18,6 +18,10 @@ vi.mock('../../utils/queryInvalidation', () => ({
 const { mockedFetch } = vi.hoisted(() => ({ mockedFetch: vi.fn() }));
 vi.mock('./feed/ReviewToolbar', () => ({ ReviewToolbar: () => null }));
 
+// The crowded-city read (#2282): no arrival a crowded city shadows.
+vi.mock('../../api/crowding', () => ({
+  fetchShadowedArrivals: vi.fn(async () => ({ groups: [] })),
+}));
 vi.mock('../../api/reviewQueue', () => ({
   fetchReviewQueue: async (params: unknown) => shaped(await mockedFetch(params)),
   setRunAside: vi.fn(),

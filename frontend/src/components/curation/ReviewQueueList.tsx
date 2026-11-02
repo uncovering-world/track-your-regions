@@ -20,11 +20,12 @@ import {
   Fragment, useEffect, useRef, type KeyboardEvent,
 } from 'react';
 import {
-  Box, Button, Checkbox, List, ListItem, ListItemButton, ListSubheader, Typography,
+  Box, Button, Checkbox, List, ListItem, ListSubheader, Typography,
 } from '@mui/material';
 import { KIND_COLOR, rowQuestionWord, type QueueRow, type RowKind } from './queueRows';
 import { dayOf, dayLabel, dateShort } from './feed/rowDate';
 import { COUNT_SX } from './feed/FilterChip';
+import { QueueLine } from './feed/QueueLine';
 import type { RowSelection } from './selection/useRowSelection';
 
 /** The selection header's height in pixels: the offset the sticky group headings pin under. */
@@ -336,35 +337,22 @@ export function ReviewQueueList({
                     inputProps={{ 'aria-label': `Select ${row.name}` }}
                   />
                 </Box>
-                <ListItemButton
-                  ref={row.key === selected ? selectedRowRef : undefined}
+                <QueueLine
+                  lineRef={row.key === selected ? selectedRowRef : undefined}
                   selected={row.key === selected}
                   onClick={() => { if (!stale) onSelect(row.key); }}
-                  sx={{
-                    // `block` over the button's own flex row, so the two lines stack; the
-                    // width comes from `ListItem`'s flex, which the button grows into.
-                    display: 'block', py: 1, borderLeft: '3px solid', borderLeftColor: color,
-                    minWidth: 0,
-                  }}
-                >
-                  <Box sx={{
-                    display: 'flex', alignItems: 'baseline', gap: 1,
-                  }}
-                  >
-                    <Typography variant="body2" noWrap sx={{ fontWeight: 600, flexGrow: 1, minWidth: 0 }}>
-                      {row.name}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
-                      {dateShort(row.askedAt, today)}
-                    </Typography>
-                  </Box>
-                  <Typography variant="caption" color="text.secondary" noWrap component="div">
-                    {row.placeKind}
-                    {' · '}
-                    <Box component="span" sx={{ fontWeight: 700, color }}>{word}</Box>
-                    {row.specific ? `: ${row.specific}` : null}
-                  </Typography>
-                </ListItemButton>
+                  color={color}
+                  title={row.name}
+                  aside={dateShort(row.askedAt, today)}
+                  detail={(
+                    <>
+                      {row.placeKind}
+                      {' · '}
+                      <Box component="span" sx={{ fontWeight: 700, color }}>{word}</Box>
+                      {row.specific ? `: ${row.specific}` : null}
+                    </>
+                  )}
+                />
               </ListItem>
             </Fragment>
           );

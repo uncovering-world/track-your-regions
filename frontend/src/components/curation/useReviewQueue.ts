@@ -64,8 +64,9 @@ export interface ReviewQueueRead {
   refusedParts: ReviewQueueItem[];
   /**
    * The filters as one string — the address without the selected row, which names a card
-   * rather than asking the server anything. A page watching *this* sees a filter change
-   * and not a row click.
+   * rather than asking the server anything, and without the tab and its crowded city's
+   * group, which name another list. A page watching *this* sees a filter change and not a
+   * row click or a tab switch.
    */
   filterKey: string;
   /**
@@ -110,7 +111,7 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
   const answeredWithdrawalsOffset = offsets.answeredWithdrawals ?? 0;
   const refusedPartsOffset = offsets.refusedParts ?? 0;
 
-  const filters = useMemo(() => ({ ...address, row: null }), [address]);
+  const filters = useMemo(() => ({ ...address, row: null, view: 'questions' as const, crowd: null }), [address]);
   const filterKey = useMemo(() => JSON.stringify(filters), [filters]);
 
   // A filter is a different list, in which the offset a curator had paged to means

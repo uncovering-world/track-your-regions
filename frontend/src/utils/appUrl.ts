@@ -248,7 +248,9 @@ export function legacyRedirect(pathname: string, search: string): string | null 
  * extension of them: no path segments, only query parameters, in the words
  * `GET /api/experiences/review/queue` already reads (`q`, `sort`, `source`,
  * `kind`, `region`, `run`, `aside`, and `row` for the selected card, which the
- * first read of a list sends as the queue's `row` so a link opens on its page, #843).
+ * first read of a list sends as the queue's `row` so a link opens on its page, #843),
+ * and two of the page's own: `view` for the tab open (#2282), and `crowd` for the
+ * crowded city's group the *Crowded cities* tab shows, read only on that tab.
  */
 export interface ReviewAddress {
   /** '' when absent. Trimmed and capped at 100 characters — the API's own `q` limit, enforced on both the read and the write. */
@@ -267,6 +269,10 @@ export interface ReviewAddress {
   showAside: boolean;
   /** ?row=waiting:11586 — `${kind}:${id}`, the QueueRow key. */
   row: string | null;
+  /** ?view=crowded — the tab open; `questions`, the queue, is the default and writes nothing. */
+  view: 'questions' | 'crowded';
+  /** ?crowd=7-9-square — the crowded city's group open on that tab (`crowdKeyOf`); null on the queue's tab. */
+  crowd: string | null;
 }
 
 export const EMPTY_REVIEW: ReviewAddress = {
@@ -278,6 +284,8 @@ export const EMPTY_REVIEW: ReviewAddress = {
   runId: null,
   showAside: false,
   row: null,
+  view: 'questions',
+  crowd: null,
 };
 
 /**
@@ -327,6 +335,36 @@ const REVIEW_KIND_WORDS = new Set([
  */
 const REVIEW_ROW = /^(conflicts|sources|waiting|withdrawn|refused|missing|component-items|merge-proposals|pin-question|visit-question|approximate-points|approximate-unhinted|find-sites):(\d+)$/;
 
+/**
+ * A crowded city's group as the address names it: its leaf region (`none` for
+ * arrivals no world view places), its kind and its type, which may itself hold
+ * a hyphen (`bell-tower`) or a space between words (`holy site`, Places of
+ * worship's) and is left off where the group has none — `7-9-square`,
+ * `8-4-holy site`, `none-4`. The address carries the space encoded
+ * (`buildReviewUrl`).
+ */
+export function crowdKeyOf(group: { regionId: number | null; kindId: number; type: string | null }): string {
+  const type = group.type ? `-${group.type}` : '';
+  return `${group.regionId ?? 'none'}-${group.kindId}${type}`;
+}
+
+/**
+ * A group's region and kind, then its type where it has one, each word of it
+ * apart: read in parts, so no regex nests a quantifier. Words are separated by
+ * one space, so `holy  site` and a trailing space read as no group.
+ */
+const CROWD_HEAD = /^(?:none|[1-9]\d*)-[1-9]\d*/;
+const CROWD_WORD = /^[a-z][a-z0-9-]*$/;
+
+function readCrowd(raw: string | null): string | null {
+  const head = raw === null ? null : CROWD_HEAD.exec(raw);
+  if (raw === null || !head) return null;
+  const type = raw.slice(head[0].length);
+  if (type === '') return raw;
+  if (!type.startsWith('-')) return null;
+  return type.slice(1).split(' ').every(word => CROWD_WORD.test(word)) ? raw : null;
+}
+
 /** A comma-separated parameter's entries, or `[]` when the parameter is absent. */
 function csv(raw: string | null): string[] {
   return raw ? raw.split(',') : [];
@@ -348,6 +386,8 @@ export function parseReviewUrl(search: string): ReviewAddress {
   const params = new URLSearchParams(search);
 
   const rawRegion = params.get('region');
+  // An unknown tab reads as the queue's; a group is read only on the tab that shows it.
+  const view = params.get('view') === 'crowded' ? 'crowded' : 'questions';
 
   return {
     q: normaliseReviewQ(params.get('q') ?? ''),
@@ -358,6 +398,8 @@ export function parseReviewUrl(search: string): ReviewAddress {
     runId: readId(params.get('run')),
     showAside: params.get('aside') === 'show',
     row: readRow(params.get('row')),
+    view,
+    crowd: view === 'crowded' ? readCrowd(params.get('crowd')) : null,
   };
 }
 
@@ -377,5 +419,10 @@ export function buildReviewUrl(a: ReviewAddress): string {
   if (a.runId !== null) parts.push(`run=${a.runId}`);
   if (a.showAside) parts.push('aside=show');
   if (a.row !== null) parts.push(`row=${a.row}`);
+  if (a.view === 'crowded') {
+    parts.push('view=crowded');
+    // Encoded as the search is: a type's space travels as `+`.
+    if (a.crowd !== null) parts.push(new URLSearchParams({ crowd: a.crowd }).toString());
+  }
   return parts.length > 0 ? `/review?${parts.join('&')}` : '/review';
 }

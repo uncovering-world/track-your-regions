@@ -43,6 +43,9 @@ describe('fetchReviewQueue', () => {
       // request parameter. Included here precisely so its absence below is
       // proof the query-building code drops it, not that the test forgot it.
       row: 'waiting:11586',
+      // The tab and its group are the page's own, never the queue's parameters.
+      view: 'crowded',
+      crowd: '7-9-square',
     };
 
     await fetchReviewQueue({

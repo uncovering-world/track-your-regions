@@ -6,7 +6,7 @@
  * holding works, which takes no pin.
  */
 
-import type { CrowdingWindow, CrowdingWindowRow } from '../../../api/crowding';
+import type { CrowdingWindow, CrowdingWindowRow, ShadowedArrivalsGroup } from '../../../api/crowding';
 
 export function squareRow(over: Partial<CrowdingWindowRow> & Pick<CrowdingWindowRow, 'membershipId' | 'name'>): CrowdingWindowRow {
   return {
@@ -74,4 +74,14 @@ export const aroundSchlossplatz: CrowdingWindow = {
   typeExempt: false,
   types: [{ type: 'square', places: 22, exempt: false }, { type: 'street', places: 9, exempt: false }],
   rows: berlinSquares,
+};
+
+/** The review page's crowded cities: Berlin's squares, Schloßplatz first, and Rome's churches. */
+export const BERLIN_SQUARES: ShadowedArrivalsGroup = {
+  regionId: 7, regionName: 'Berlin', worldViewId: 1, kindId: 9, kindName: 'Squares & streets', type: 'square',
+  arrivals: 11, membershipIds: [SCHLOSSPLATZ, FRANKFURTER_TOR],
+};
+export const ROME_CHURCHES: ShadowedArrivalsGroup = {
+  regionId: 8, regionName: 'Rome', worldViewId: 1, kindId: 4, kindName: 'Places of worship', type: 'church',
+  arrivals: 3, membershipIds: [40, 41, 42],
 };
