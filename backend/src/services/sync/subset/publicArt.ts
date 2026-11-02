@@ -150,11 +150,11 @@ async function poolOf(ids: string[], placeless: boolean): Promise<PoolEntity[]> 
 }
 
 /**
- * The entities of any of `classes` (best-rank P31) with a point and at least
- * `minSitelinks` sitelinks of any site, as the live class and broad pools
- * collect them before the Wikipedia editions are counted.
+ * The ids of the entities of any of `classes` (best-rank P31) with a point and
+ * at least `minSitelinks` sitelinks of any site, as the live class and broad
+ * pools collect them before the Wikipedia editions are counted.
  */
-export async function subsetPoolOfClasses(classes: string[], minSitelinks: number): Promise<PoolEntity[]> {
+export async function subsetIdsOfClasses(classes: string[], minSitelinks: number): Promise<string[]> {
   if (!classes.length) return [];
   const result = await pool.query<{ subject: string }>(
     `SELECT DISTINCT c.subject FROM wikidata_claims c
@@ -165,7 +165,17 @@ export async function subsetPoolOfClasses(classes: string[], minSitelinks: numbe
                      WHERE p.subject = c.subject AND p.property = 'P625' AND p.rank >= 0 AND p.value ? 'latitude' AND ${BEST('p')})`,
     [classes, minSitelinks],
   );
-  return poolOf(result.rows.map(row => row.subject), false);
+  return result.rows.map(row => row.subject);
+}
+
+/** The pool rows of the entities `subsetIdsOfClasses` names. */
+export async function subsetPoolOfClasses(classes: string[], minSitelinks: number): Promise<PoolEntity[]> {
+  return subsetPlacedPoolOfIds(await subsetIdsOfClasses(classes, minSitelinks));
+}
+
+/** The pool row of each entity asked for by id that has a point; one with none is not answered. */
+export async function subsetPlacedPoolOfIds(ids: string[]): Promise<PoolEntity[]> {
+  return poolOf(ids, false);
 }
 
 /**

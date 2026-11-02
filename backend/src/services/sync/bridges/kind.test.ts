@@ -1,135 +1,114 @@
 /**
- * The line of Bridges & engineering marvels (#1860): two doors on 15 editions,
- * 50,000 readers a year or 10,000 with a Wikivoyage guide naming the work.
+ * Bridges & engineering marvels' world tier (ADR-0175): the rule, then the
+ * three bars read off the kind's own pool — a dam a traveller crosses Japan
+ * for in, a water-supply dam out, whatever a guide says of it.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readershipYear, readWorks } from '../../dumps/readership/workReadership.js';
 import { latestUsage, usedByAGuide } from '../../dumps/wikivoyage/usageTables.js';
 
 vi.mock('../../dumps/readership/workReadership.js', () => ({ readershipYear: vi.fn(), readWorks: vi.fn() }));
 vi.mock('../../dumps/wikivoyage/usageTables.js', () => ({ latestUsage: vi.fn(), usedByAGuide: vi.fn() }));
+vi.mock('../publicArt/streetArtQueries.js', () => ({ fetchStreetArtMarks: vi.fn(async () => new Map()) }));
 
 import type { PoolEntity } from '../publicArt/queries.js';
 import type { KindShare } from '../places/gather.js';
+import type { SparqlFn } from '../wikidataQueries.js';
 import { emptyContainment } from '../places/containment.js';
+import { guidedBarNote, keptNote, type WorldBars, type WorldRead } from '../places/worldBars.js';
 import type { BridgeTrees } from './classes.js';
-import { belowGuidedLine, guidedStanding } from '../places/guidedLine.js';
-import { BRIDGE_LINE, WATERWAY_LINE, classifyBridges } from './kind.js';
+import { classifyBridges } from './kind.js';
 
-describe('guidedStanding, on Bridges\' line', () => {
-  it('lets in a work read widely, guided or not', () => {
-    // The Lake Pontchartrain Causeway: 36 editions, 435,000 readers, one guide.
-    expect(guidedStanding(BRIDGE_LINE, 36, 435_000, false, false)).toBe('in');
-  });
-
-  it('lets in a work a guide names on fewer readers, and keeps out one no guide names', () => {
-    // The Khaju Bridge in Isfahan: 25 editions, 43,000 readers, three guides.
-    expect(guidedStanding(BRIDGE_LINE, 25, 43_351, true, false)).toBe('in');
-    expect(guidedStanding(BRIDGE_LINE, 25, 43_351, false, false)).toBe('out');
-    // Ponte Sisto: 21 editions, under 19,000 readers, named by guides.
-    expect(guidedStanding(BRIDGE_LINE, 21, 18_668, true, false)).toBe('in');
-  });
-
-  it('keeps out a work under 15 editions however read', () => {
-    expect(guidedStanding(BRIDGE_LINE, 14, 900_000, true, false)).toBe('out');
-  });
-
-  it('keeps a work the source holds on the stay line, and lets it fall below it', () => {
-    expect(guidedStanding(BRIDGE_LINE, 13, 40_000, false, true)).toBe('in');
-    expect(guidedStanding(BRIDGE_LINE, 13, 30_000, false, true)).toBe('fell');
-    expect(guidedStanding(BRIDGE_LINE, 13, 8_000, true, true)).toBe('in');
-    expect(guidedStanding(BRIDGE_LINE, 11, 900_000, true, true)).toBe('fell');
-  });
-
-  it('lets nothing new in when no year of readers can be read, and keeps what the source holds on editions', () => {
-    expect(guidedStanding(BRIDGE_LINE, 60, null, true, false)).toBe('out');
-    expect(guidedStanding(BRIDGE_LINE, 12, null, false, true)).toBe('in');
-    expect(guidedStanding(BRIDGE_LINE, 11, null, true, true)).toBe('fell');
-  });
+const BRIDGE = 'Q12280';
+const DAM = 'Q12323';
+const LOCK = 'Q105731';
+const DESTROYED = 'Q19860854';
+const none = new Set<string>();
+const trees: BridgeTrees = {
+  work: new Set([BRIDGE, DAM, LOCK]),
+  types: {
+    aqueduct: none, bridge: new Set([BRIDGE]), dam: new Set([DAM]), 'inclined-plane': none, 'boat-lift': none,
+    'lock-flight': none, lock: new Set([LOCK]), tunnel: none,
+  },
+  kills: { destroyed: new Set([DESTROYED]), proposed: none, proposedTunnel: none, underConstruction: none, ruins: none },
+  others: { river: none, railwayLine: none },
+  archaeologicalSite: none,
+  canal: none,
+  powerStation: none,
+};
+const entity = (qid: string, label: string, sitelinks: number): PoolEntity => ({
+  qid, label, description: null, lat: 36.57, lon: 137.66, onEarth: true, imageUrl: null, itemPictures: [],
+  sitelinks, countryLabel: null, articleUrl: null, website: null, year: null,
 });
 
-describe('guidedStanding, on the waterway line (#1947)', () => {
-  it('lets in a lock read in few languages but by many', () => {
-    // The Caen Hill flight: 3 editions, 20,500 readers, no guide.
-    expect(guidedStanding(WATERWAY_LINE, 3, 20_544, false, false)).toBe('in');
-    // Seattle's Ballard Locks: 4 editions, 24,000 readers, two guides.
-    expect(guidedStanding(WATERWAY_LINE, 4, 24_221, true, false)).toBe('in');
-  });
+// A pool of 51 works the rule passes: the 97th and 98th percentiles are the
+// second highest value, the 90th the sixth.
+const CHARLES = entity('Q204871', 'Charles Bridge', 61);
+const FORTY = entity('Q9000040', 'A bridge read 200,000 times a year in 40 editions', 40);
+const HELD = entity('Q9000033', 'A bridge the last run admitted, in 33 editions', 33);
+const KHAJU = entity('Q1740490', 'Khaju Bridge', 25);
+const KUROBE = entity('Q1208749', 'Kurobe Dam', 15);
+const WIVENHOE = entity('Q1801107', 'Wivenhoe Dam', 5);
+const CAEN_HILL = entity('Q3577623', 'Caen Hill Locks', 3);
+const WELL_READ = Array.from({ length: 4 }, (_, i) => entity(`Q90001${i}`, 'A viaduct read 15,000 times a year in 5 editions', 5));
+const TAIL = Array.from({ length: 40 }, (_, i) => entity(`Q9100${100 + i}`, "A bridge in the pool's tail", 3));
+const POLCEVERA = entity('Q3907993', 'Polcevera Viaduct', 37);
 
-  it('lets in a lift a guide names on fewer readers, and keeps out one no guide names', () => {
-    // The Fontinettes boat lift: 4 editions, 4,700 readers, one guide.
-    expect(guidedStanding(WATERWAY_LINE, 4, 4_658, true, false)).toBe('in');
-    // The Rhine's Kembs-Niffer lock: 2 editions, 3,800 readers, no guide.
-    expect(guidedStanding(WATERWAY_LINE, 2, 3_843, false, false)).toBe('out');
-  });
-});
+const CLASSES: Record<string, string[]> = {
+  [KUROBE.qid]: [DAM], [WIVENHOE.qid]: [DAM], [CAEN_HILL.qid]: [LOCK], [POLCEVERA.qid]: [BRIDGE, DESTROYED],
+};
+const WORKS = [CHARLES, FORTY, HELD, KHAJU, KUROBE, WIVENHOE, CAEN_HILL, ...WELL_READ, ...TAIL, POLCEVERA];
+const READERS: Record<string, number> = {
+  Q204871: 518_395, Q9000040: 200_000, Q9000033: 3_000, Q1740490: 43_351, Q1208749: 146_576, Q1801107: 9_015, Q3577623: 20_544,
+  ...Object.fromEntries(WELL_READ.map((e) => [e.qid, 15_000])),
+  ...Object.fromEntries(TAIL.map((e) => [e.qid, 1_000])),
+};
+const GUIDED = [CHARLES.qid, KHAJU.qid, KUROBE.qid, WIVENHOE.qid];
+// The second highest editions (40) and readers (200,000), the sixth highest readers (15,000).
+const BARS: WorldBars = { editions: 40, readers: 200_000, guidedReaders: 15_000, pool: 51 };
 
-describe('belowGuidedLine, on Bridges\' line', () => {
-  it('names the measures, the guide and both lines', () => {
-    expect(belowGuidedLine(BRIDGE_LINE, 13, 30_000, false)).toBe(
-      '13 Wikipedia editions and 30,000 readers a year, named by no Wikivoyage guide: below the line '
-      + '(15 editions and 50,000 readers to enter, 10,000 with a guide; 12 and 35,000, 7,000 with a guide, to stay)',
-    );
-  });
+const share = (): KindShare<BridgeTrees> => ({
+  trees,
+  pool: new Map(WORKS.map((e) => [e.qid, e])),
+  byId: new Set(),
+  facts: new Map(WORKS.map((e) => [e.qid, { classes: CLASSES[e.qid] ?? [BRIDGE] }])) as never,
+  containers: emptyContainment(),
+  subjects: new Map(),
+  entered: new Set(),
+  enteredOnly: new Set(),
+  admissionPool: new Set(WORKS.map((e) => e.qid)),
 });
+const sparql: SparqlFn = () => Promise.reject(new Error('no question reaches Wikidata here'));
+const signals: WorldRead = { readers: new Map(Object.entries(READERS)), guided: new Set(GUIDED), atlas: new Set() };
+
+beforeEach(() => vi.clearAllMocks());
 
 describe('classifyBridges', () => {
-  const BRIDGE = 'Q12280';
-  const DESTROYED = 'Q19860854';
-  const none = new Set<string>();
-  const trees: BridgeTrees = {
-    work: new Set([BRIDGE]),
-    types: {
-      aqueduct: none, bridge: new Set([BRIDGE]), dam: none, 'inclined-plane': none, 'boat-lift': none,
-      'lock-flight': none, lock: none, tunnel: none,
-    },
-    kills: { destroyed: new Set([DESTROYED]), proposed: none, proposedTunnel: none, underConstruction: none, ruins: none },
-    others: { river: none, railwayLine: none },
-    archaeologicalSite: none,
-    canal: none,
-    powerStation: none,
-  };
-  const entity = (qid: string, label: string, sitelinks: number): PoolEntity => ({
-    qid, label, description: null, lat: 50, lon: 14, onEarth: true, imageUrl: null, itemPictures: [],
-    sitelinks, countryLabel: null, articleUrl: null, website: null, year: null,
-  });
-  const share = (rows: [PoolEntity, string[]][]): KindShare<BridgeTrees> => ({
-    trees,
-    pool: new Map(rows.map(([e]) => [e.qid, e])),
-    byId: new Set(),
-    facts: new Map(rows.map(([e, classes]) => [e.qid, { classes }])) as never,
-    containers: emptyContainment(),
-    subjects: new Map(),
-    entered: new Set(),
-    enteredOnly: new Set(),
-  });
-
-  it('admits by the rule and both doors, refuses what the rule refuses, and names a fallen work', async () => {
-    const result = await classifyBridges(share([
-      [entity('Q204871', 'Charles Bridge', 61), [BRIDGE]],
-      [entity('Q1740490', 'Khaju Bridge', 25), [BRIDGE]],
-      [entity('Q3907993', 'Polcevera Viaduct', 37), [BRIDGE, DESTROYED]],
-      [entity('Q1', 'An expressway viaduct', 27), [BRIDGE]],
-      [entity('Q2', 'A held bridge', 13), [BRIDGE]],
-    ]), new Set(['Q2']), {
-      readers: new Map([['Q204871', 518_395], ['Q1740490', 43_351], ['Q1', 42_872], ['Q2', 30_000]]),
-      guided: new Set(['Q204871', 'Q1740490']),
-    });
-
-    expect(result.items.map((item) => [item.qid, item.type])).toEqual([['Q204871', 'bridge'], ['Q1740490', 'bridge']]);
-    expect(result.fetched).toBe(5);
-    expect(result.filtered).toEqual([
-      { externalId: 'Q3907993', name: 'Polcevera Viaduct', reason: 'destroyed or demolished' },
-      { externalId: 'Q2', name: 'A held bridge', reason: belowGuidedLine(BRIDGE_LINE, 13, 30_000, false), type: 'bridge' },
+  it('admits at any one of the bars its own pool sets, and refuses what the rule refuses by name', async () => {
+    const result = await classifyBridges(share(), new Set([HELD.qid]), sparql, signals);
+    // The Kurobe Dam is in on a guide's mark and 146,576 readers; the Wivenhoe Dam, a guide's too,
+    // is read 9,015 times, under the 15,000 the pool sets for a marked work. Caen Hill's flight, in 3
+    // editions and no guide, reaches no bar: the canal works' own line is gone with the picked lines.
+    expect(result.items.map((item) => [item.qid, item.type])).toEqual([
+      [CHARLES.qid, 'bridge'], [FORTY.qid, 'bridge'], [HELD.qid, 'bridge'], [KHAJU.qid, 'bridge'], [KUROBE.qid, 'dam'],
     ]);
+    expect(result.items.find((item) => item.qid === KUROBE.qid)?.readershipNote)
+      .toBe(guidedBarNote({ qid: KUROBE.qid, editions: 15 }, signals, BARS));
+    expect(result.fetched).toBe(52);
+    expect(result.filtered).toEqual([{ externalId: POLCEVERA.qid, name: 'Polcevera Viaduct', reason: 'destroyed or demolished' }]);
   });
-  it('shuts the guide door while no Wikivoyage usage is built', async () => {
+
+  it('reads the year and the guides itself, and keeps a held work a guide would decide while no usage build is in place', async () => {
     vi.mocked(readershipYear).mockResolvedValue({ months: ['2026-09-01'], editions: ['enwiki'] } as never);
-    vi.mocked(readWorks).mockResolvedValue({ views: new Map([['Q1740490', 43_351]]) } as never);
+    vi.mocked(readWorks).mockImplementation(async (_year, qids) =>
+      ({ views: new Map(qids.filter((q) => READERS[q]).map((q) => [q, READERS[q]])) }) as never);
     vi.mocked(latestUsage).mockResolvedValue(null);
-    const result = await classifyBridges(share([[entity('Q1740490', 'Khaju Bridge', 25), [BRIDGE]]]), new Set());
-    expect(result.items).toEqual([]);
+    const result = await classifyBridges(share(), new Set([HELD.qid, KHAJU.qid]), sparql);
+    expect(result.items.map((item) => [item.qid, item.readershipNote])).toEqual([
+      [CHARLES.qid, undefined], [FORTY.qid, undefined], [HELD.qid, undefined],
+      [KHAJU.qid, keptNote({ qid: KHAJU.qid, editions: 25 }, 'no Wikivoyage usage is built to read whether a guide uses it')],
+    ]);
     expect(usedByAGuide).not.toHaveBeenCalled();
   });
 });

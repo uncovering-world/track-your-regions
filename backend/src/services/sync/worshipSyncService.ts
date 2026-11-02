@@ -8,11 +8,11 @@
  * the source row states, hand the proposal to the orchestrator, and write each
  * place as an experience with one point and its treasures as treasures.
  *
- * Two doors, one tier. A cathedral enters because the world knows the building,
- * or because it holds something the world knows — a relic, a tomb, an
- * altarpiece — and both lines are the source's own fame line (ADR-0045 decision
- * 5), which is why the run badges everything it admits and recomputes the whole
- * membership every pass.
+ * Two doors, one tier. A cathedral enters because the world knows the building
+ * — the world bars over the kind's own pool (ADR-0175) — or because it holds
+ * something the world knows — a relic, a tomb, an altarpiece — at the source's
+ * own fame line (ADR-0045 decision 5), which is why the run badges everything
+ * it admits and recomputes the whole membership every pass.
  */
 
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
@@ -52,7 +52,6 @@ import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
 import { articleHoldingsReader } from './museum/articleHoldings.js';
 import { readershipDoorFor } from './readershipDoor.js';
-import { yearlyReaders } from './places/candidates.js';
 import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 import { shareOf, type PlaceGather } from './places/gather.js';
@@ -240,8 +239,6 @@ async function fetchWorshipItems(
     places: async () => shareOf((await gather(progress)).gathered, WORSHIP_KIND),
     // A work below the line the world reads (ADR-0056), while the gate is on.
     openDoor: await readershipDoorFor(WORSHIP_SOURCE_ID, line.enterSitelinks, LOG_PREFIX),
-    // A place under the editions line its readers admit (#1978).
-    placeReaders: (qids) => yearlyReaders(qids, LOG_PREFIX),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');
@@ -251,7 +248,7 @@ async function fetchWorshipItems(
   });
 
   // The regional tier after the world tier has decided (ADR-0171, #2178): the
-  // places the line and the readers' door left out, measured against their
+  // places the world bars left out, measured against their
   // surroundings, then put to the kind's own rule by id.
   const { gathered, run, regional: regionalPool } = await gather(progress);
   const regional = await regionalArrivals(run, sparql, WORSHIP_REGIONAL, shareOf(gathered, WORSHIP_KIND).trees, new Set(items.map((p) => p.qid)),

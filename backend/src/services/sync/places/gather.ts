@@ -20,6 +20,7 @@ import {
 } from '../wikidataQueries.js';
 import {
   emptyFacts,
+  fetchAdmissionPool,
   fetchBroadPool,
   fetchClassPool,
   fetchEntitiesByIds,
@@ -30,6 +31,8 @@ import {
 import { emptyContainment, loadContainment, type Containment } from './containment.js';
 import { loadSubjects, type SubjectFacts, type SubjectRunner } from '../publicArt/subjects.js';
 import type { RegionalPool } from './regionalPool.js';
+import { readsSubset } from '../subset/reader.js';
+import { WORLD_FRAME } from './admissionRegister.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
@@ -70,12 +73,16 @@ export interface PlaceKind<Trees> {
     attach(run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>): Promise<void>;
   };
   /**
-   * Classes whose instances are its candidates below the pool's floor, with
-   * the floor they are asked at (#1947): a canal's lock or boat lift is a sight
-   * read in few languages — the Anderton Boat Lift has 11 Wikipedia editions —
-   * and the kind's own line for them decides. Only this kind sees them.
+   * Whether the kind admits by the world bars of ADR-0175, read over its own
+   * pool: then every class it asks by is asked again at the register's floor
+   * of sitelinks (`WORLD_FRAME.poolSitelinks`), whatever the candidate's
+   * Wikipedia editions, so the pool the bars are quantiles of is the kind's
+   * whole pool — the Asinelli Tower with 9 editions, Munich's Glockenspiel
+   * with 7. Read from the local subset alone, as the regional pool is: the
+   * live service cannot answer a question this wide. Only this kind sees what
+   * the shared pool did not name.
    */
-  belowFloor?(trees: Trees): { classes: readonly string[]; floor: number };
+  admissionPool?: boolean;
   /**
    * Candidates named by what they are filed under rather than by a class
    * (#2035): a street-art place is typed a wall, a road or a tunnel, and the
@@ -107,6 +114,15 @@ export interface KindShare<Trees> {
    * question of the kind named them and the kind does not admit them.
    */
   enteredOnly: Set<string>;
+  /**
+   * The kind's admission pool (`PlaceKind.admissionPool`): the rows of `pool`
+   * a class question of the kind named at a pool's floor, the shared one or
+   * the admission pool's, which the world bars are read over once the rule has
+   * passed them. Not a row only asked for by id or only an entrance named.
+   * Null for a kind that asks none, and for every kind on the live service,
+   * where no bar can be read off the pool.
+   */
+  admissionPool: ReadonlySet<string> | null;
 }
 
 /** The kinds a gather was asked for, with what each of them admits before the run. */
@@ -213,18 +229,27 @@ function candidatesOf(
   classes: ReadonlySet<string>,
   admitted: ReadonlySet<string>,
   named: ReadonlySet<string>,
-  pooled: Map<string, PoolEntity>,
+  shared: Map<string, PoolEntity>,
+  own: Map<string, PoolEntity> | undefined,
   byId: Map<string, PoolEntity>,
   facts: Map<string, EntityFacts>,
-): { pool: Map<string, PoolEntity>; byId: Set<string>; facts: Map<string, EntityFacts>; entered: Set<string>; enteredOnly: Set<string> } {
+): {
+  pool: Map<string, PoolEntity>; byId: Set<string>; facts: Map<string, EntityFacts>; entered: Set<string>; enteredOnly: Set<string>;
+  admissionPool: Set<string> | null;
+} {
+  const pooled = withOwn(shared, own);
   const byClass = (qid: string) => (facts.get(qid)?.classes ?? []).some((c) => classes.has(c));
   const wanted = (qid: string) => admitted.has(qid) || named.has(qid);
   const pool = new Map([...pooled].filter(([qid]) => wanted(qid) || byClass(qid)));
   for (const [qid, entity] of byId) if (wanted(qid)) pool.set(qid, entity);
   // A row the kind admits that none of its own classes names is one it has by
   // id, whichever question fetched it: another kind's class question may name
-  // a site Archaeology admits, and that vouches for nothing of the site's.
-  const askedById = new Set([...pool.keys()].filter((qid) => admitted.has(qid) && (byId.has(qid) || !byClass(qid))));
+  // a site Archaeology admits, and that vouches for nothing of the site's. A
+  // row asked for by id that the kind's own admission pool named as well is
+  // the pool's: the Asinelli tower, held at 9 editions, is a candidate of the
+  // pool its bars are read on.
+  const askedById = new Set([...pool.keys()].filter((qid) => admitted.has(qid)
+    && ((byId.has(qid) && !pooled.has(qid)) || !byClass(qid))));
   const known = new Map<string, EntityFacts>();
   for (const qid of pool.keys()) {
     const entry = facts.get(qid);
@@ -232,30 +257,33 @@ function candidatesOf(
   }
   const entered = new Set([...pool.keys()].filter((qid) => named.has(qid)));
   const enteredOnly = new Set([...entered].filter((qid) => !admitted.has(qid) && !byClass(qid)));
-  return { pool, byId: askedById, facts: known, entered, enteredOnly };
+  // What a class question of the kind named at a pool's floor: the pool the world bars are read over.
+  const admissionPool = own ? new Set([...pool.keys()].filter((qid) => pooled.has(qid) && byClass(qid))) : null;
+  return { pool, byId: askedById, facts: known, entered, enteredOnly, admissionPool };
 }
 
 /**
- * The candidates each kind asks for below the pool's floor (`belowFloor`), by
- * kind: entities the pool already named stay the pool's, and the rest are the
+ * Each kind's admission pool (`PlaceKind.admissionPool`): every class the kind
+ * asks by, at the register's floor of sitelinks, from the local subset.
+ * Entities the shared pool already named stay the pool's, and the rest are the
  * asking kind's alone, so no other kind meets a candidate under its floor.
+ * Nothing on the live service: the kind's share then says its pool was not read.
  */
-async function collectBelowFloor(
-  run: QueryRunner, requests: GatherRequest[], trees: Map<PlaceKind<unknown>, unknown>, pooled: Map<string, PoolEntity>,
+async function collectAdmissionPools(
+  run: QueryRunner, requests: GatherRequest[], classesOf: Map<PlaceKind<unknown>, Set<string>>, pooled: Map<string, PoolEntity>,
 ): Promise<Map<PlaceKind<unknown>, Map<string, PoolEntity>>> {
   const out = new Map<PlaceKind<unknown>, Map<string, PoolEntity>>();
-  for (const { kind } of requests) {
-    if (!kind.belowFloor) continue;
-    const { classes, floor } = kind.belowFloor(trees.get(kind));
+  const asking = requests.filter(({ kind }) => kind.admissionPool);
+  if (!asking.length) return out;
+  if (!readsSubset(run.sparql)) {
+    console.log(`[Place pass] The admission pools are read from the local subset alone (ADR-0175); this run read the live service, so none was read`);
+    return out;
+  }
+  for (const { kind } of asking) {
+    run.phase(`Reading ${kind.name} at ${WORLD_FRAME.poolSitelinks} sitelinks or more from the local subset...`);
+    await run.step();
     const own = new Map<string, PoolEntity>();
-    const batches = chunk([...classes], CLASS_BATCH);
-    for (let i = 0; i < batches.length; i++) {
-      run.phase(`Fetching ${kind.name} below the pool floor (batch ${i + 1}/${batches.length})...`);
-      await run.step();
-      for (const entity of await fetchClassPool(run, batches[i], undefined, floor)) {
-        if (!pooled.has(entity.qid)) own.set(entity.qid, entity);
-      }
-    }
+    for (const entity of await fetchAdmissionPool(run, [...classesOf.get(kind)!], WORLD_FRAME.poolSitelinks, pooled)) own.set(entity.qid, entity);
     out.set(kind, own);
   }
   return out;
@@ -273,7 +301,7 @@ async function collectEntrances(run: QueryRunner, requests: GatherRequest[]): Pr
   return out;
 }
 
-/** The pool as one kind sees it: the shared pool and what it asked below the floor. */
+/** The pool as one kind sees it: the shared pool and what its admission pool added. */
 function withOwn(pooled: Map<string, PoolEntity>, own: Map<string, PoolEntity> | undefined): Map<string, PoolEntity> {
   return own ? new Map([...own, ...pooled]) : pooled;
 }
@@ -295,14 +323,14 @@ export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]
   for (const [qid, entity] of await collectById(run, [...namedIds].filter((qid) => !pooled.has(qid) && !byId.has(qid)), 'the places an entrance named')) {
     byId.set(qid, entity);
   }
-  const low = await collectBelowFloor(run, requests, trees, pooled);
+  const low = await collectAdmissionPools(run, requests, classesOf, pooled);
   const lowIds = [...low.values()].flatMap((own) => [...own.keys()]);
   const facts = await collectFacts(run, [...new Set([...pooled.keys(), ...byId.keys(), ...lowIds])]);
   for (const edition of editions) await edition.attach(run, pooled, facts);
 
   const shares = new Map<PlaceKind<unknown>, KindShare<unknown>>();
   for (const { kind, admitted: ids } of requests) {
-    const share = candidatesOf(classesOf.get(kind)!, ids, named.get(kind) ?? new Set(), withOwn(pooled, low.get(kind)), byId, facts);
+    const share = candidatesOf(classesOf.get(kind)!, ids, named.get(kind) ?? new Set(), pooled, low.get(kind), byId, facts);
     shares.set(kind, { trees: trees.get(kind), ...share, containers: emptyContainment(), subjects: new Map() });
   }
 

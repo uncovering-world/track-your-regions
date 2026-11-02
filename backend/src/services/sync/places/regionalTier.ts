@@ -222,7 +222,7 @@ export async function regionalArrivals<Trees, Context, T>(
 
   // The survivors asked about by id, with everything the kind's rule reads of a
   // candidate: a kind with no pool question of its own, so the gather reads them alone.
-  const byId: PlaceKind<Trees> = { ...regional.kind, poolClasses: () => ({ broad: [], narrow: [] }), belowFloor: undefined, entrance: undefined, editions: undefined };
+  const byId: PlaceKind<Trees> = { ...regional.kind, poolClasses: () => ({ broad: [], narrow: [] }), admissionPool: false, entrance: undefined, editions: undefined };
   run.phase(`Asking about the ${survivors.length} places the regional cut admits...`);
   const gathered = await gatherPlaces(run, [{ kind: byId, admitted: new Set([...survivors, ...fell.keys()]) }]);
   const share = shareOf(gathered, byId);

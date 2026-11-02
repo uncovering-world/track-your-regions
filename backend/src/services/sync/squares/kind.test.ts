@@ -1,6 +1,6 @@
 /**
- * The line of Squares & streets (#1867): 15 editions, then 30,000 readers a
- * year or 5,000 with a Wikivoyage guide naming the place.
+ * Squares & streets' world tier (ADR-0175): the rule, then the three bars
+ * read off the kind's own pool.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -10,6 +10,7 @@ vi.mock('../../dumps/wikivoyage/usageTables.js', () => ({ latestUsage: vi.fn(), 
 
 import type { PoolEntity } from '../publicArt/queries.js';
 import type { KindShare } from '../places/gather.js';
+import type { SparqlFn } from '../wikidataQueries.js';
 import { emptyContainment } from '../places/containment.js';
 import type { SquareTrees } from './classes.js';
 import { classifySquares } from './kind.js';
@@ -31,7 +32,18 @@ describe('classifySquares', () => {
     qid, label, description: null, lat: 41, lon: 12, onEarth: true, imageUrl: null, itemPictures: [],
     sitelinks, countryLabel: null, articleUrl: null, website: null, year: null,
   });
-  const share = (rows: [PoolEntity, string[]][]): KindShare<SquareTrees> => ({
+  // 51 squares the rule passes: the bars are the second highest editions and readers, the sixth highest readers.
+  const RED_SQUARE = entity('Q41116', 'Red Square', 98);
+  const WIDE = entity('Q9000003', 'An unguided square read widely', 19);
+  const GUIDED = entity('Q9000004', 'A square a guide names', 15);
+  const LITTLE = entity('Q9000005', 'An unguided square read little', 20);
+  const TAIL = Array.from({ length: 47 }, (_, i) => entity(`Q9100${100 + i}`, "A square in the pool's tail", 3));
+  const LAS_VENTAS = entity('Q756621', 'Las Ventas', 40);
+  const rows: [PoolEntity, string[]][] = [
+    [RED_SQUARE, [SQUARE]], [WIDE, [SQUARE]], [GUIDED, [SQUARE]], [LITTLE, [SQUARE]], [LAS_VENTAS, [BULLRING]],
+    ...TAIL.map((e): [PoolEntity, string[]] => [e, [SQUARE]]),
+  ];
+  const share: KindShare<SquareTrees> = {
     trees,
     pool: new Map(rows.map(([e]) => [e.qid, e])),
     byId: new Set(),
@@ -40,23 +52,23 @@ describe('classifySquares', () => {
     subjects: new Map(),
     entered: new Set(),
     enteredOnly: new Set(),
-  });
+    admissionPool: new Set(rows.map(([e]) => e.qid)),
+  };
+  const sparql: SparqlFn = () => Promise.reject(new Error('no question reaches Wikidata here'));
 
-  it('admits on readers or on a guide, and refuses what the rule refuses', async () => {
-    const result = await classifySquares(share([
-      [entity('Q41116', 'Red Square', 98), [SQUARE]],
-      // Read as much as Havana's Malecón, which no guide names: its readers carry it.
-      [entity('Q3', 'An unguided square read widely', 19), [SQUARE]],
-      // Read little, but a guide names it.
-      [entity('Q4', 'A guided square', 15), [SQUARE]],
-      [entity('Q5', 'An unguided square read little', 20), [SQUARE]],
-      [entity('Q756621', 'Las Ventas', 40), [BULLRING]],
-    ]), new Set(), {
-      readers: new Map([['Q41116', 520_123], ['Q3', 36_088], ['Q4', 7_423], ['Q5', 12_000], ['Q756621', 90_000]]),
-      guided: new Set(['Q41116', 'Q4']),
+  it('admits on editions, on readers or on a guide\'s mark, and refuses what the rule refuses', async () => {
+    const result = await classifySquares(share, new Set(), sparql, {
+      readers: new Map([
+        ['Q41116', 520_123], ['Q9000003', 36_088], ['Q9000004', 7_423], ['Q9000005', 2_000], ['Q756621', 90_000],
+        ...TAIL.map((e): [string, number] => [e.qid, 1_000]),
+      ]),
+      guided: new Set(['Q41116', 'Q9000004']),
+      atlas: new Set(),
     });
-
-    expect(result.items.map((item) => [item.qid, item.type])).toEqual([['Q41116', 'square'], ['Q3', 'square'], ['Q4', 'square']]);
+    // Bars: 20 editions (the second highest), 36,088 readers, 1,000 for a marked square.
+    expect(result.items.map((item) => [item.qid, item.type])).toEqual([
+      ['Q41116', 'square'], ['Q9000005', 'square'], ['Q9000003', 'square'], ['Q9000004', 'square'],
+    ]);
     expect(result.filtered).toEqual([{ externalId: 'Q756621', name: 'Las Ventas', reason: 'a bullring, not a square' }]);
   });
 });

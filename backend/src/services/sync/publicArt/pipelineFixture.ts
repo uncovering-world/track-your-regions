@@ -2,8 +2,8 @@
  * The fake Wikidata of the public-art pipeline specs: a world of entities,
  * classes, casts and containers, and a door that answers each question of the
  * gather by the shape of the query, so a spec can say what Wikidata holds and
- * read what the catalogue would make of it. Shared by `pipeline.test.ts` and
- * `pipeline.marksDoor.test.ts`; each spec declares its own module mocks.
+ * read what the catalogue would make of it. Kept apart from `pipeline.test.ts`,
+ * which declares its own module mocks.
  */
 
 import { classifyPublicArt, PUBLIC_ART_KIND } from './pipeline.js';
@@ -12,6 +12,7 @@ import { PUBLIC_ART_RULE, type KindRule } from './kindRules.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import type { CacheDescriptor } from '../wikidataCache.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import type { WorldBars, WorldRead } from '../places/worldBars.js';
 import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
@@ -146,9 +147,21 @@ export async function gatherPublicArt(run: QueryRunner, admitted: ReadonlySet<st
   return shareOf(await gatherPlaces(run, [{ kind: PUBLIC_ART_KIND, admitted }]), PUBLIC_ART_KIND);
 }
 
-/** The run as a pass of one source: the gather, then this source's classification. */
+/** No guide's use, no listing, and nobody reading: the world's signals of a world that reads nothing. */
+export const UNREAD: WorldRead = { readers: new Map(), guided: new Set(), atlas: new Set() };
+
+/**
+ * The bars a fixture's world is held to, since a world of a few works is no
+ * pool to read bars off: an editions bar of 22, so a work at 22 enters and
+ * one the source holds stays at 0.8 of it, and Public art's readers' bars as
+ * the review read them on 2026-11-02.
+ */
+export const BARS: WorldBars = { editions: 22, readers: 93_029, guidedReaders: 20_871, pool: 3_614 };
+
+/** The run as a pass of one source: the gather, then this source's classification, at `BARS`. */
 export async function collectPublicArt(
   run: QueryRunner, admitted: ReadonlySet<string>, offered?: ReadonlySet<string>, rule: KindRule = PUBLIC_ART_RULE,
+  read: WorldRead = UNREAD,
 ) {
-  return classifyPublicArt(await gatherPublicArt(run, admitted), rule, admitted, offered);
+  return classifyPublicArt(await gatherPublicArt(run, admitted), rule, admitted, run.sparql, offered, null, { read, bars: BARS });
 }

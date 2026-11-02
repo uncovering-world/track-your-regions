@@ -16,7 +16,7 @@ import { admittedExternalIds } from '../admission.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureItemsInCategories } from '../wikipediaStructure.js';
 import { yearlyReaders } from '../places/candidates.js';
-import { guidedOf } from '../places/guidedLine.js';
+import { guidedOf } from '../places/worldBars.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 import {
   fetchItemsOfClasses, fetchItemsOfGenres, fetchRootsOfClasses, fetchStreetArtMarks, type StreetArtMarks,

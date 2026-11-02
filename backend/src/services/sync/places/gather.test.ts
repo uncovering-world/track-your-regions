@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../publicArt/queries.js', () => ({
+  fetchAdmissionPool: vi.fn(async () => []),
   fetchBroadPool: vi.fn(),
   fetchClassPool: vi.fn(),
   fetchEntitiesByIds: vi.fn(),
@@ -17,7 +18,11 @@ vi.mock('../publicArt/queries.js', () => ({
   fetchContainerFacts: vi.fn(),
 }));
 
+vi.mock('../subset/reader.js', () => ({ readsSubset: vi.fn(() => false) }));
+
+import { readsSubset } from '../subset/reader.js';
 import {
+  fetchAdmissionPool,
   fetchBroadPool,
   fetchClassPool,
   fetchContainerFacts,
@@ -154,34 +159,57 @@ describe('gatherPlaces', () => {
     expect(shareOf(gathered, WORSHIP).pool.has('Q5')).toBe(true);
   });
 
-  it('asks a kind\'s classes below the pool floor for that kind alone (#1947)', async () => {
-    // A kind of a canal's works, asking its lock class at 3 editions; public art names locks too.
-    const LOCK = 'Q105731';
-    const WORKS: PlaceKind<{ locks: string[] }> = {
-      name: 'engineering works',
-      trees: vi.fn(async () => ({ locks: [LOCK] })),
-      poolClasses: (trees) => ({ broad: [], narrow: trees.locks }),
-      readsContainers: false,
-      belowFloor: (trees) => ({ classes: trees.locks, floor: 3 }),
-    };
-    const LOCKY_ART: PlaceKind<{ admitting: string[] }> = { ...ART, trees: vi.fn(async () => ({ admitting: [STATUE, LOCK] })) };
+  // A kind of a canal's works, which admits by the world bars (ADR-0175); public art names locks too.
+  const LOCK = 'Q105731';
+  const WORKS: PlaceKind<{ locks: string[] }> = {
+    name: 'engineering works',
+    trees: vi.fn(async () => ({ locks: [LOCK] })),
+    poolClasses: (trees) => ({ broad: [], narrow: trees.locks }),
+    readsContainers: false,
+    admissionPool: true,
+  };
+  const LOCKY_ART: PlaceKind<{ admitting: string[] }> = { ...ART, trees: vi.fn(async () => ({ admitting: [STATUE, LOCK] })) };
+
+  it('reads a kind\'s admission pool from the subset at the register\'s floor, for that kind alone (ADR-0175)', async () => {
+    vi.mocked(readsSubset).mockReturnValue(true);
     KNOWN.Q6 = facts([LOCK]);
-    vi.mocked(fetchClassPool).mockImplementation(async (_door, _classes, _limit, floor) => (
-      // The Anderton Boat Lift's shape: read in 11 languages, under the pool's floor.
-      floor === 3 ? [entity('Q6', 11)] : []
-    ));
+    // The Caen Hill flight's shape: 3 Wikipedia editions, far under the shared pool's floor.
+    vi.mocked(fetchAdmissionPool).mockResolvedValueOnce([entity('Q6', 3)]);
 
     const gathered = await gatherPlaces(run, [
       { kind: WORKS as PlaceKind<unknown>, admitted: new Set() },
       { kind: LOCKY_ART as PlaceKind<unknown>, admitted: new Set() },
     ]);
     delete KNOWN.Q6;
+    vi.mocked(readsSubset).mockReturnValue(false);
 
-    expect(vi.mocked(fetchClassPool).mock.calls.filter(([, , , floor]) => floor === 3).map(([, classes]) => classes)).toEqual([[LOCK]]);
+    expect(vi.mocked(fetchAdmissionPool).mock.calls.map(([, classes, floor]) => [classes, floor])).toEqual([[[LOCK], 3]]);
     expect(shareOf(gathered, WORKS).pool.has('Q6')).toBe(true);
     expect(shareOf(gathered, WORKS).facts.get('Q6')?.classes).toEqual([LOCK]);
-    // The other kind meets no candidate under its floor, though its classes name it.
+    expect(shareOf(gathered, WORKS).admissionPool).toEqual(new Set(['Q6']));
+    // The other kind meets no candidate under the shared floor, though its classes name it, and reads no bars.
     expect(shareOf(gathered, LOCKY_ART).pool.has('Q6')).toBe(false);
+    expect(shareOf(gathered, LOCKY_ART).admissionPool).toBeNull();
+  });
+
+  it('counts a held row the admission pool names as the pool\'s, not as one asked for by id', async () => {
+    vi.mocked(readsSubset).mockReturnValue(true);
+    KNOWN.Q6 = facts([LOCK]);
+    // Held under the shared floor, so asked for by id; the admission pool names it by its class too.
+    vi.mocked(fetchAdmissionPool).mockResolvedValueOnce([entity('Q6', 3)]);
+    const gathered = await gatherPlaces(run, [{ kind: WORKS as PlaceKind<unknown>, admitted: new Set(['Q6']) }]);
+    delete KNOWN.Q6;
+    vi.mocked(readsSubset).mockReturnValue(false);
+    expect(fetchEntitiesByIds).toHaveBeenCalled();
+    expect(shareOf(gathered, WORKS).pool.has('Q6')).toBe(true);
+    expect(shareOf(gathered, WORKS).byId.has('Q6')).toBe(false);
+    expect(shareOf(gathered, WORKS).admissionPool?.has('Q6')).toBe(true);
+  });
+
+  it('reads no admission pool on the live service, and the share says so', async () => {
+    const gathered = await gatherPlaces(run, [{ kind: WORKS as PlaceKind<unknown>, admitted: new Set() }]);
+    expect(fetchAdmissionPool).not.toHaveBeenCalled();
+    expect(shareOf(gathered, WORKS).admissionPool).toBeNull();
   });
 
   it('refuses to hand a share of a kind it was not asked for', async () => {

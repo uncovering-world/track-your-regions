@@ -1,6 +1,6 @@
 /**
  * Whether a candidate is a tower a traveller climbs or looks at (#1854), and
- * the type it is filed under. The classes are `classes.ts`'; the fame line is
+ * the type it is filed under. The classes are `classes.ts`'; the world bars are
  * the classifier's (`kind.ts`).
  */
 

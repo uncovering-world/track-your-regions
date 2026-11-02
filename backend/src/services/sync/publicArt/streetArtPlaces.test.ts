@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../dumps/wikipedia/structureTables.js', () => ({ latestStructure: mocks.latestStructure }));
 vi.mock('../wikipediaStructure.js', () => ({ structureItemsInCategories: mocks.structureItemsInCategories }));
 vi.mock('../admission.js', () => ({ admittedExternalIds: mocks.admittedExternalIds }));
-vi.mock('../places/guidedLine.js', () => ({ guidedOf: mocks.guidedOf }));
+vi.mock('../places/worldBars.js', () => ({ guidedOf: mocks.guidedOf }));
 vi.mock('../places/candidates.js', () => ({ yearlyReaders: mocks.yearlyReaders }));
 vi.mock('./streetArtQueries.js', () => ({
   fetchItemsOfGenres: mocks.fetchItemsOfGenres,

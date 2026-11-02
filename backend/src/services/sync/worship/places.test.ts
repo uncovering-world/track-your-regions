@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { classifyPlacesByFame, WORSHIP_READERS_LINE } from './places.js';
+import { classifyPlacesByFame } from './places.js';
 import { buildWorshipTrees, TYPE_ROOTS } from './classes.js';
 import type { KindShare } from '../places/gather.js';
 import type { WorshipTrees, WorshipType } from './classes.js';
 import type { PoolEntity } from '../publicArt/queries.js';
-import type { SourceLine } from '../sourceLine.js';
+import type { SparqlFn } from '../wikidataQueries.js';
+import { belowWorldBars, keptNote, type WorldBars, type WorldRead } from '../places/worldBars.js';
 
 const MONASTERY = 'Q44613';
-const LINE: SourceLine = { enterSitelinks: 22, staySitelinks: 18 };
 
 const trees = buildWorshipTrees({
   worship: [MONASTERY],
@@ -15,43 +15,64 @@ const trees = buildWorshipTrees({
   typeTrees: Object.fromEntries(TYPE_ROOTS.map(({ type }) => [type, []])) as unknown as Record<WorshipType, string[]>,
 });
 
-function shareOf(rows: Array<{ qid: string; label: string; sitelinks: number }>): KindShare<WorshipTrees> {
-  const pool = new Map(rows.map((row) => [row.qid, { ...row, onEarth: true, lat: 48.6, lon: -1.5 } as PoolEntity]));
-  const facts = new Map(rows.map((row) => [row.qid, { classes: [MONASTERY] }]));
-  return { trees, pool, facts } as unknown as KindShare<WorshipTrees>;
+const row = (qid: string, label: string, sitelinks: number) => ({ qid, label, sitelinks });
+// 51 places the rule passes: the 97th and 98th percentiles are the second highest value, the 90th the sixth.
+const COLOGNE = row('Q4176', 'Cologne Cathedral', 84);
+const SECOND = row('Q9000030', 'An abbey in 30 editions read 200,000 times a year', 30);
+const MONT_SAINT_MICHEL = row('Q651388', 'Mont-Saint-Michel Abbey', 19);
+const HELD = row('Q9000025', 'An abbey the last run admitted, in 25 editions', 25);
+const FALLEN = row('Q9000012', 'An abbey the last run admitted, in 12 editions', 12);
+const WELL_READ = Array.from({ length: 4 }, (_, i) => row(`Q90001${i}`, 'A chapel read 10,000 times a year in 6 editions', 6));
+const TAIL = Array.from({ length: 42 }, (_, i) => row(`Q9100${100 + i}`, "A village church in the pool's tail", 3));
+const ROWS = [COLOGNE, SECOND, MONT_SAINT_MICHEL, HELD, FALLEN, ...WELL_READ, ...TAIL];
+
+const READERS = new Map<string, number>([
+  ['Q4176', 2_149_701], ['Q9000030', 200_000], ['Q651388', 181_451], ['Q9000025', 2_000], ['Q9000012', 2_000],
+  ...WELL_READ.map((r): [string, number] => [r.qid, 10_000]),
+  ...TAIL.map((r): [string, number] => [r.qid, 400]),
+]);
+// The second highest editions (30) and readers (200,000), the sixth highest readers (10,000).
+const BARS: WorldBars = { editions: 30, readers: 200_000, guidedReaders: 10_000, pool: 51 };
+
+function share(admissionPool = true): KindShare<WorshipTrees> {
+  const pool = new Map(ROWS.map((r) => [r.qid, { ...r, onEarth: true, lat: 50.94, lon: 6.96 } as PoolEntity]));
+  const facts = new Map(ROWS.map((r) => [r.qid, { classes: [MONASTERY] }]));
+  return {
+    trees, pool, facts, byId: new Set(), enteredOnly: new Set(), admissionPool: admissionPool ? new Set(pool.keys()) : null,
+  } as unknown as KindShare<WorshipTrees>;
 }
+const sparql: SparqlFn = () => Promise.reject(new Error('no question reaches Wikidata here'));
+const read = (readers: ReadonlyMap<string, number> | null = READERS): WorldRead => ({
+  readers, guided: new Set(WELL_READ.slice(0, 1).map((r) => r.qid)), atlas: new Set(),
+});
 
-describe('classifyPlacesByFame, the readers door', () => {
-  // Mont-Saint-Michel Abbey (Q651388) reads 181,451 a year at 19 editions; the
-  // other two rows are the door's edges.
-  const share = shareOf([
-    { qid: 'Q651388', label: 'Mont-Saint-Michel Abbey', sitelinks: 19 },
-    { qid: 'Q1', label: 'Read under the bar', sitelinks: 19 },
-    { qid: 'Q2', label: 'Held, read at the stay bar', sitelinks: 17 },
-  ]);
-  const readers = new Map([
-    ['Q651388', 181_451],
-    ['Q1', WORSHIP_READERS_LINE.enter - 1],
-    ['Q2', WORSHIP_READERS_LINE.stay],
-  ]);
-
-  it('admits a place under the editions line that its readers carry, with the note a curator reads', () => {
-    const { places } = classifyPlacesByFame(share, new Set(), LINE, readers);
-    expect(places.get('Q651388')?.readersNote)
-      .toBe('19 Wikipedia editions, under the line, and 181,451 readers a year: in by its readers (25,000 to enter)');
-    expect(places.has('Q1')).toBe(false);
+describe('classifyPlacesByFame, the world bars (ADR-0175)', () => {
+  it('admits a place by its editions, by its readers, or by a guide\'s mark, at the bars its own pool sets', async () => {
+    const { places } = await classifyPlacesByFame(share(), new Set(), sparql, { read: read() });
+    // Mont-Saint-Michel Abbey is under the editions bar and over none of the readers' — 181,451 against 200,000.
+    expect([...places.keys()]).toEqual([COLOGNE.qid, SECOND.qid, WELL_READ[0].qid]);
+    expect(places.get(WELL_READ[0].qid)?.note).toMatch(/^In the world tier by a guide's mark/);
+    expect(places.get(COLOGNE.qid)?.note).toBeUndefined();
   });
 
-  it('keeps a held place while it reads at the stay bar, and refuses it by name below it', () => {
-    expect(classifyPlacesByFame(share, new Set(['Q2']), LINE, readers).places.has('Q2')).toBe(true);
-    const fallen = classifyPlacesByFame(share, new Set(['Q2']), LINE, new Map([['Q2', WORSHIP_READERS_LINE.stay - 1]]));
-    expect(fallen.places.has('Q2')).toBe(false);
-    expect(fallen.filtered.find((row) => row.externalId === 'Q2')?.reason)
-      .toBe('17 Wikipedia editions: below the world tier\'s line (22 to enter, 18 to stay), and 17,999 readers a year (18,000 to stay)');
+  it('keeps a held place at 0.8 of a bar, and refuses one under every stay bar by name', async () => {
+    const { places, filtered } = await classifyPlacesByFame(share(), new Set([HELD.qid, FALLEN.qid, MONT_SAINT_MICHEL.qid]), sparql, { read: read() });
+    // 25 editions is over 0.8 of 30, and 181,451 readers over 0.8 of 200,000.
+    expect(places.has(HELD.qid)).toBe(true);
+    expect(places.has(MONT_SAINT_MICHEL.qid)).toBe(true);
+    expect(filtered).toEqual([
+      { externalId: FALLEN.qid, name: FALLEN.label, reason: belowWorldBars({ qid: FALLEN.qid, editions: 12 }, read(), BARS) },
+    ]);
   });
 
-  it('decides on editions alone when no year of readers can be read', () => {
-    const { places } = classifyPlacesByFame(share, new Set(), LINE, null);
-    expect(places.size).toBe(0);
+  it('decides on editions alone when no year of readers can be read, and keeps the held it cannot read', async () => {
+    const { places } = await classifyPlacesByFame(share(), new Set([FALLEN.qid]), sparql, { read: read(null) });
+    expect([...places.keys()]).toEqual([COLOGNE.qid, SECOND.qid, FALLEN.qid]);
+    expect(places.get(FALLEN.qid)?.note).toBe(keptNote({ qid: FALLEN.qid, editions: 12 }, 'no year of readers is read'));
+  });
+
+  it('lets nothing new in when the kind\'s pool was not read', async () => {
+    const { places } = await classifyPlacesByFame(share(false), new Set([HELD.qid]), sparql, { read: read() });
+    expect([...places.keys()]).toEqual([HELD.qid]);
   });
 });

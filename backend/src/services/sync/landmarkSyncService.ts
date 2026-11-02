@@ -26,19 +26,13 @@ import type { FetchResult, FilteredEntity, ProcessItemResult, SyncRunContext, Sy
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import {
-  classifyPublicArt, ENTER_SITELINKS, guideDoorCandidates, openArtworkDoor, PUBLIC_ART_KIND, publicArtVerdictOf, STAY_SITELINKS,
-  streetArtCandidates, type GatheredPublicArt,
+  classifyPublicArt, PUBLIC_ART_KIND, publicArtVerdictOf, streetArtCandidates, type GatheredPublicArt,
 } from './publicArt/pipeline.js';
 import { mergeRegional, regionalReader, type RegionalKind, type RegionalReader } from './places/regionalTier.js';
 import { refuseGone } from './places/gone.js';
-import { isPublicClock } from './publicArt/clockLine.js';
-import { readGuideDoor } from './places/guideDoor.js';
-import { shareWithMarksDoor } from './publicArt/marksDoor.js';
-import { yearlyReaders } from './places/candidates.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
-import { artworkReadershipDoorFor, type PlaceDoor } from './readershipDoor.js';
-import { shareOf, type GatheredPlaces, type KindShare, type PlaceGather } from './places/gather.js';
+import { shareOf, type GatheredPlaces, type PlaceGather } from './places/gather.js';
 import { PUBLIC_CLOCK_CLASSES, STREET_ART_CLASSES, type PublicArtTrees } from './publicArt/classes.js';
 import type { SparqlFn } from './wikidataQueries.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './publicArt/kindRules.js';
@@ -64,8 +58,6 @@ import {
 
 const LANDMARK_SOURCE_ID = 3;
 const LOG_PREFIX = '[Landmark Sync]';
-/** The kinds' editions line as the pair the marks door reads it by (`sourceLine.ts`). */
-const PUBLIC_ART_LINE = { enterSitelinks: ENTER_SITELINKS, staySitelinks: STAY_SITELINKS };
 
 /**
  * What a source of the place pass decides by: its classifier over the gather,
@@ -91,40 +83,15 @@ export interface PlaceClassifier {
   contents?: PlaceContents;
 }
 
-/** The readership door a public-art source opens each run (#2033). */
-interface ArtworkDoor { open: () => Promise<PlaceDoor | undefined> }
-
-/** What a kind of the pass reads beside its rule and the line. */
+/** What a kind of the pass reads beside its rule and the world bars. */
 interface ClassifierOptions {
-  /** The readership door the kind opens over its share (#2033). */
-  door?: ArtworkDoor;
   /**
    * The kind holds the street-art places its entrance names (#2035), reads
    * what their rule asks, and writes the works they hold (#2055).
    */
   streetArt?: boolean;
-  /** The kind holds a public clock below its line to the clocks' own (`CLOCK_LINE`, #2140), with the year's readers it reads. */
-  clocks?: boolean;
-  /**
-   * The source whose guide door the kind opens under its line (ADR-0167): a
-   * candidate a Wikivoyage guide uses enters, for a curator, while that
-   * source's curator gate is on.
-   */
-  guide?: number;
-  /**
-   * The source whose marks door the kind opens under its line (ADR-0169): a
-   * candidate a Wikivoyage guide uses or Atlas Obscura lists, read over the
-   * door's bar, enters whatever its editions, for a curator, while that
-   * source's curator gate is on; the works under the pool's floor join the
-   * share first.
-   */
-  marks?: number;
 }
 
-/**
- * Public art's and Monuments & memorials' classifier: their kind's rule over
- * the public-art share, with the doors the kind opens (`ClassifierOptions`).
- */
 /**
  * Public art or Monuments & memorials in the regional tier (ADR-0171, #2178):
  * every item of the kind's classes measured against its surroundings, then the
@@ -138,9 +105,8 @@ export function publicArtRegional(rule: KindRule): RegionalKind<PublicArtTrees, 
     group: rule.noun,
     // The kind's own classes: Public art's are the sculptural and fountain trees,
     // the public clocks and street art — not the heritage senses of "monument",
-    // which its rule refuses and `publicArt/underFloor.ts` leaves out for that
-    // reason (ADR-0169 d2); Monuments' are every admitting class, since a statue
-    // raised to a person is a monument.
+    // which its rule refuses by name; Monuments' are every admitting class,
+    // since a statue raised to a person is a monument.
     classesOf: (trees) => (rule === PUBLIC_ART_RULE
       ? new Set([...trees.sculptural, ...trees.fountain, ...Object.keys(PUBLIC_CLOCK_CLASSES), ...Object.keys(STREET_ART_CLASSES)])
       : trees.admitting),
@@ -157,25 +123,21 @@ export function publicArtRegional(rule: KindRule): RegionalKind<PublicArtTrees, 
   };
 }
 
-function publicArtClassifier(
-  rule: KindRule, { door, streetArt = false, clocks = false, guide, marks }: ClassifierOptions = {},
-): PlaceClassifier {
+/**
+ * Public art's and Monuments & memorials' classifier: their kind's rule over
+ * the public-art share, then the world bars over the kind's own pool
+ * (ADR-0175), with the street-art places where the kind holds them.
+ */
+function publicArtClassifier(rule: KindRule, { streetArt = false }: ClassifierOptions = {}): PlaceClassifier {
   return {
     // The places a kind outside these two offers a reader, so a work outdoors
     // on a venue no such kind offers stays public art rather than being
     // refused onto no card (#1444).
     classify: async (gathered, admitted, sparql) => {
-      // The marks door first, since the works it reads under the floor join
-      // the share every other read works on (ADR-0169).
-      const { share, marks: marked } = marks === undefined
-        ? { share: shareOf(gathered, PUBLIC_ART_KIND), marks: undefined }
-        : await shareWithMarksDoor(marks, shareOf(gathered, PUBLIC_ART_KIND), sparql, PUBLIC_ART_LINE, LOG_PREFIX);
+      const share = shareOf(gathered, PUBLIC_ART_KIND);
       const offered = await placesOtherSourcesOffer(PUBLIC_ART_SOURCES);
-      const read = await openArtworkDoor(await door?.open(), share, admitted, rule, offered);
       const streetArtRead = streetArt ? await readStreetArt(sparql, streetArtCandidates(share, rule), share.facts) : null;
-      const clockReaders = clocks ? await publicClockReaders(share) : undefined;
-      const guided = guide === undefined ? undefined : await readGuideDoor(guide, guideDoorCandidates(share), LOG_PREFIX);
-      return classifyPublicArt(share, rule, admitted, offered, read, streetArtRead, clockReaders, guided, marked);
+      return classifyPublicArt(share, rule, admitted, sparql, offered, streetArtRead);
     },
     types: rule.types,
     tag: 'outdoor',
@@ -187,28 +149,10 @@ function publicArtClassifier(
   };
 }
 
-/** A year's readers of the public clocks among the candidates, for the line they are held to (#2140). */
-async function publicClockReaders(share: KindShare<PublicArtTrees>): Promise<Map<string, number> | null> {
-  const clocks = [...share.pool.keys()].filter((qid) => isPublicClock(share.facts.get(qid)?.classes ?? []));
-  return clocks.length ? yearlyReaders(clocks, LOG_PREFIX) : new Map<string, number>();
-}
-
-/** The classifier each public-art source decides by. */
+/** The classifier each public-art source decides by: Public art alone holds the street-art places. */
 const PUBLIC_ART_CLASSIFIERS: Readonly<Record<number, PlaceClassifier>> = {
-  // Public art alone opens the readership door and holds the public clocks to
-  // their own line; Monuments & memorials opens the guide door instead
-  // (ADR-0167): under its line a year of readers brings tombs and historic
-  // sites filed as monuments, and a Wikivoyage guide brings the canon's tops
-  // (the #1997 report).
-  [LANDMARK_SOURCE_ID]: publicArtClassifier(PUBLIC_ART_RULE, {
-    door: { open: () => artworkReadershipDoorFor(LANDMARK_SOURCE_ID, ENTER_SITELINKS, LOG_PREFIX) },
-    streetArt: true,
-    clocks: true,
-    // And the marks door (ADR-0169): a guide's use or an Atlas Obscura listing
-    // with the year's readers, under the pool's floor too.
-    marks: LANDMARK_SOURCE_ID,
-  }),
-  6: publicArtClassifier(MONUMENTS_RULE, { guide: 6 }),
+  [LANDMARK_SOURCE_ID]: publicArtClassifier(PUBLIC_ART_RULE, { streetArt: true }),
+  6: publicArtClassifier(MONUMENTS_RULE),
 };
 
 /**
@@ -421,14 +365,14 @@ async function fetchLandmarkItems(
 ): Promise<FetchResult<WikidataLandmark>> {
   credits.fetched = new Map();
   credits.stored = await readStoredCredits(sourceId);
-  // The world tier's rows alone, so the line's stay line never holds a row
+  // The world tier's rows alone, so the bars' stay share never holds a row
   // the regional tier admitted (#2178); the regional tier's are its own step's.
   const admitted = await admittedExternalIds(sourceId, undefined, 'world');
 
   const { gathered, sparql, run, regional: regionalPool } = await gather(progress);
   const { items, fetched, filtered, handOvers } = await classifier.classify(gathered, admitted, sparql);
   // The regional tier after the world tier has decided (ADR-0171, #2178): what
-  // the line and the doors left out, measured against its surroundings.
+  // the world bars left out, measured against its surroundings.
   let spareTier: 'regional' | undefined;
   if (classifier.regional) {
     const regional = await classifier.regional.arrivals(
@@ -493,7 +437,7 @@ export function placeSource(
     // fetching a published list, so absence from the admitted set is this
     // source's own decision and belongs on the admission axis (ADR-0024).
     recomputesMembership: true,
-    // Belonging is the badge: the world tier is what clears the fame line, and
+    // Belonging is the badge: the world tier is what clears the world bars, and
     // every row this run admits by it carries is_iconic for that (ADR-0045
     // decision 5) — written once admission is settled, not per landmark (#760).
     // A row the regional tier admits carries none (ADR-0048 decision 3).
