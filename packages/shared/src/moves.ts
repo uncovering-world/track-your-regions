@@ -6,9 +6,11 @@
  * rewritten point with the one it replaces. The web says it: the sentence
  * under a moved coordinate on the review card and in the correction dialog
  * (`moveDescription.ts`), and the withdrawn-points card telling a rewrite from
- * a move. A threshold moved on one side alone would have the web warn about
- * moves the server calls minor, or call a move what the writer forgave as the
- * same place, so both read these.
+ * a move. A threshold moved on one side alone would have the web call a move
+ * what the writer forgave as the same place, or measure a distance the server
+ * does not, so both read `LOCATION_UNCHANGED_METERS` and `distanceMeters`. The
+ * web says which regions a move changes from the queue's own reading (#2203),
+ * never from a distance.
  */
 
 /**
@@ -30,7 +32,7 @@ export const LOCATION_UNCHANGED_METERS = 10;
  */
 export const SHORT_MOVE_METERS = 250;
 
-/** Above this, a place has moved far enough to matter to a traveller: it may now fall in another region. */
+/** Above this, a run calls a move `major` in its changeset; the server's significance alone. */
 export const LOCATION_MAJOR_METERS = 1000;
 
 /** Great-circle distance in metres, on a sphere of radius 6 371 km. */

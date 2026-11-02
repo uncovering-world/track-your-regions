@@ -3469,6 +3469,24 @@ export const ProposedFieldPassedTheGate = {
 } as const;
 
 /**
+ * A hierarchy where a coordinate move places the place in other regions, or out of or into its regions (#2203).
+ */
+export interface RegionCrossing {
+  /** The hierarchy whose regions the move crosses. */
+  worldView: string;
+  /**
+     * The region placement puts the stored point in; null where it is placed in none.
+     * @nullable
+     */
+  from: string | null;
+  /**
+     * The region placement puts the proposed point in; null where it is placed in none.
+     * @nullable
+     */
+  to: string | null;
+}
+
+/**
  * Who claimed a field, and when.
  */
 export interface FieldClaim {
@@ -3518,6 +3536,8 @@ export interface ProposedField {
   held?: boolean;
   /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture or arriving for it where the place holds none (ADR-0151), an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, a text rewritten in its typesetting alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place (ADR-0140). */
   passedTheGate?: ProposedFieldPassedTheGate;
+  /** On a `location` field of a card: every hierarchy where the move places the place in other regions. Empty where it keeps them. */
+  regionCrossings?: RegionCrossing[];
   /** Who claimed the field. Absent where the claim predates the log, or where the gate holds the field. */
   claim?: FieldClaim | null;
   /** Every earlier answer on this field, newest first, refusals as well as acceptances. */
@@ -3577,6 +3597,8 @@ export interface ChangedField {
   held?: boolean;
   /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture or arriving for it where the place holds none (ADR-0151), an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, a text rewritten in its typesetting alone (ADR-0139), or a coordinate moved under 250 m, in the same division and no nearer another place (ADR-0140). */
   passedTheGate?: ChangedFieldPassedTheGate;
+  /** On a `location` field of a card: every hierarchy where the move places the place in other regions. Empty where it keeps them. */
+  regionCrossings?: RegionCrossing[];
 }
 
 /**
@@ -3684,6 +3706,8 @@ export interface PendingPoint {
   curatedFields?: string[];
   /** The stored point this one replaces, where the source moved a point rather than added one (ADR-0025 decision 5). */
   replaces?: PendingPointReplaces;
+  /** Every hierarchy where the move from `replaces` places the point in other regions (#2203). */
+  regionCrossings?: RegionCrossing[];
 }
 
 /**
