@@ -1,8 +1,9 @@
 /**
  * The way from a review card into the crowded-city window (#2282), read off
- * the card's own `crowding`: the button names the type and the count, and a
- * card the rule does not reach draws nothing. Nothing is asked of the server
- * until the window opens.
+ * the card's own `crowding`: the button names the type and the count, a
+ * shadowed place's card says in which kind and how many outrank it (#2228),
+ * and a card the rule does not reach draws nothing. Nothing is asked of the
+ * server until the window opens.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -12,6 +13,7 @@ vi.mock('./LazyCrowdingWindow', () => ({
   LazyCrowdingWindow: ({ memberships }: { memberships: number[] }) => <div data-testid="window">{memberships.join(',')}</div>,
 }));
 
+import type { ReviewQueueItem } from '../../../api/reviewQueue';
 import { CrowdingWayIn } from './CrowdingWayIn';
 
 type Card = Parameters<typeof CrowdingWayIn>[0]['item'];
@@ -26,13 +28,32 @@ function renderWayIn(item: Card) {
   return render(<CrowdingWayIn item={item} onDone={vi.fn()} />);
 }
 
-const crowding = (over: Partial<NonNullable<Card['crowding']>>) => ({ ...schlossplatz.crowding!, ...over });
+const crowding = (over: Partial<NonNullable<ReviewQueueItem['crowding']>>) => ({ ...schlossplatz.crowding!, ...over });
 
 describe('the way into a crowded city', () => {
-  it('offers the squares around an arriving square, with the count', () => {
+  it('offers the squares around an arriving square, with the count, and says the rule would shadow it once published', () => {
     renderWayIn(schlossplatz);
 
     expect(screen.getByRole('button', { name: 'Squares around (22)' })).toBeInTheDocument();
+    expect(screen.getByText('Once published, shadowed in Squares & streets: 13 better-known squares within 10 km outrank it.'))
+      .toBeInTheDocument();
+  });
+
+  it('says a published place is shadowed, and says nothing of one the display shows', () => {
+    const leipziger = { ...schlossplatz, curation_state: 'verified', crowding: crowding({ outrankedBy: 11 }) };
+    const { unmount } = renderWayIn(leipziger);
+    expect(screen.getByText('Shadowed in Squares & streets: 11 better-known squares within 10 km outrank it.')).toBeInTheDocument();
+    unmount();
+
+    renderWayIn({ ...schlossplatz, crowding: crowding({ shadowed: false, outrankedBy: null }) });
+    expect(screen.queryByText(/shadow/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Squares around (22)' })).toBeInTheDocument();
+  });
+
+  it('says a curator kept a place in the shadow, under the kind’s ten', () => {
+    renderWayIn({ ...schlossplatz, curation_state: 'verified', crowding: crowding({ outrankedBy: 8 }) });
+    expect(screen.getByText('Kept in the shadow of Squares & streets by a curator; 8 better-known squares within 10 km count above it.'))
+      .toBeInTheDocument();
   });
 
   it('names a type by its plural: churches', () => {
