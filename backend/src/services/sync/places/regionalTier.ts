@@ -113,12 +113,19 @@ const none = <T>(): RegionalArrivals<T> => ({ items: [], filtered: [] });
  * dropped), and a refusal both tiers name is listed once — the world's, which
  * a candidate in the pool already carries — so the run never refuses and
  * readmits the same place in one pass.
+ *
+ * A tier the run did not read leaves its memberships as they stand (ADR-0175
+ * decision 6): where the regional step was skipped, a refusal the world
+ * classifier names of a row the regional tier holds (`held`) is dropped, so
+ * the place waits for the run that reads its tier.
  */
 export function mergeRegional<T>(
   items: T[], filtered: FilteredEntity[], regional: RegionalArrivals<T>, idOf: (item: T) => string,
+  held: ReadonlySet<string> = new Set(),
 ): void {
   const admitted = new Set(regional.items.map(idOf));
-  const kept = filtered.filter((entity) => !admitted.has(entity.externalId));
+  const unread = regional.skipped ? held : new Set<string>();
+  const kept = filtered.filter((entity) => !admitted.has(entity.externalId) && !unread.has(entity.externalId));
   const refused = new Set(kept.map((entity) => entity.externalId));
   filtered.splice(0, filtered.length, ...kept, ...regional.filtered.filter((entity) => !refused.has(entity.externalId)));
   items.push(...regional.items);

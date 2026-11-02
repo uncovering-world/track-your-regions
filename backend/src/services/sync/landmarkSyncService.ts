@@ -379,10 +379,11 @@ async function fetchLandmarkItems(
   // the world bars left out, measured against its surroundings.
   let spareTier: 'regional' | undefined;
   if (classifier.regional) {
+    const regionalHeld = await admittedExternalIds(sourceId, undefined, 'regional');
     const regional = await classifier.regional.arrivals(
-      run, sparql, gathered, new Set(items.map((item) => item.qid)), await regionalPool(), await admittedExternalIds(sourceId, undefined, 'regional'),
+      run, sparql, gathered, new Set(items.map((item) => item.qid)), await regionalPool(), regionalHeld,
     );
-    mergeRegional(items, filtered, regional, (item) => item.qid);
+    mergeRegional(items, filtered, regional, (item) => item.qid, regionalHeld);
     // Not read this run (switched off, or the live service): its rows stay as they are.
     if (regional.skipped) spareTier = 'regional';
   }

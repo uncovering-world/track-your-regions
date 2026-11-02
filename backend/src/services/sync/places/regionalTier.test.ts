@@ -153,6 +153,17 @@ describe('merging the regional tier into the run', () => {
     expect(items.map((i) => i.qid)).toEqual(['Q1', 'Q2']);
     expect(filtered.map((f) => f.externalId)).toEqual(['Q4', 'Q5']);
   });
+
+  it('leaves a row the regional tier holds as it stands when the run did not read that tier (ADR-0175 decision 6)', () => {
+    // Q6, a regional tower, is refused by the world rule this run; the regional step was switched off.
+    const filtered = [refusal('Q6', 'not a tower: a mast'), refusal('Q4', 'not a tower: a mast')];
+    mergeRegional([row('Q1')], filtered, { items: [], filtered: [], skipped: 'switched off' }, (i) => i.qid, new Set(['Q6']));
+    expect(filtered.map((f) => f.externalId)).toEqual(['Q4']);
+    // Read, the same refusal stands: the tier that holds the row was asked.
+    const read = [refusal('Q6', 'not a tower: a mast')];
+    mergeRegional([row('Q1')], read, { items: [], filtered: [] }, (i) => i.qid, new Set(['Q6']));
+    expect(read.map((f) => f.externalId)).toEqual(['Q6']);
+  });
 });
 
 describe('a landmark of the regional tier', () => {
