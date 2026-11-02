@@ -6341,7 +6341,8 @@ COMMENT ON TABLE workbench.coverage_calibration_entry_sources IS 'Which referenc
 -- A place is shown unless crowding_limit places of the same kind and type
 -- within crowding_radius_km of it, holding no work a reader is shown, are
 -- better known; a place holding such a work is always shown (ADR-0173,
--- #2245). membership_fame holds a
+-- #2245), and so is a place of a type its kind admits for the works it holds
+-- (crowding_exempt_types, ADR-0179). membership_fame holds a
 -- membership's signals and blended fame, written by the run's after-step;
 -- membership_crowding the memberships crowded out, recounted around a place
 -- whenever its candidacy changes and in full after every run. Absent from
@@ -6356,11 +6357,17 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 COMMENT ON COLUMN experience_kinds.crowding_limit IS 'How many better-known places of the same kind and type within crowding_radius_km crowd a place out of what a reader is shown (ADR-0172). Null: the kind shows every place it admits.';
 COMMENT ON COLUMN experience_kinds.crowding_radius_km IS 'The radius crowding_limit is counted within, in kilometres (ADR-0172). Set with crowding_limit or not at all.';
+ALTER TABLE experience_kinds ADD COLUMN IF NOT EXISTS crowding_exempt_types TEXT[] NOT NULL DEFAULT '{}';
+COMMENT ON COLUMN experience_kinds.crowding_exempt_types IS 'The types of the kind a crowded city never hides and that take none of the ten: a type the kind admits for the works it holds, which its own article''s fame does not measure (ADR-0179). Archaeology''s museums, admitted works-first (ADR-0058), half of them holding no find the catalogue shows yet. Empty: every type is counted.';
 
--- The six kinds #2177 measured. Art Museums, Archaeology and World Heritage
--- Sites are measured before they take the rule.
+-- The six kinds #2177 measured, and Archaeology's sites (ADR-0179). Art
+-- Museums and World Heritage Sites are measured before they take the rule.
 UPDATE experience_kinds SET crowding_limit = 10, crowding_radius_km = 10
  WHERE id IN (3, 4, 6, 7, 8, 9) AND crowding_limit IS NULL;
+UPDATE experience_kinds SET crowding_limit = 10, crowding_radius_km = 10
+ WHERE id = 5 AND crowding_limit IS NULL;
+-- Apart from the limit, so a kind already given one still exempts its museums.
+UPDATE experience_kinds SET crowding_exempt_types = '{museum}' WHERE id = 5;
 
 CREATE TABLE IF NOT EXISTS membership_fame (
     membership_id INTEGER PRIMARY KEY REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
@@ -6371,7 +6378,7 @@ CREATE TABLE IF NOT EXISTS membership_fame (
     measured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 COMMENT ON TABLE membership_fame IS 'How well known a membership''s place is, for a kind that declares crowding_limit (ADR-0172): the readership year''s readers, the Wikivoyage editions that use its item and its Wikipedia editions, read from the workbench by the run''s after-step, so no reader touches the workbench.';
-COMMENT ON COLUMN membership_fame.score IS 'The mean of three percentiles among the candidates of the same kind and type worldwide, set by refresh_crowding(): readers a year, whether a Wikivoyage edition uses the item (a presence, not a count, ADR-0177), and Wikipedia editions. Null for a membership that is no candidate (refused, or its place lost), or one measured since the last refresh.';
+COMMENT ON COLUMN membership_fame.score IS 'The mean of three percentiles among the candidates of the same kind and type worldwide, set by refresh_crowding(): readers a year, whether a Wikivoyage edition uses the item (a presence, not a count, ADR-0177), and Wikipedia editions. Null for a membership that is no candidate (refused, its place lost, or of a type its kind exempts, ADR-0179), or one measured since the last refresh.';
 
 -- When each signal was last read, so the zero a membership is given before
 -- its first reading is never read as a measurement: the place run admits by
@@ -6417,8 +6424,8 @@ $$;
 -- Recount the crowded-out memberships of every place within its kind's radius
 -- of `near`, or of the whole catalogue when `near` is null. A candidate is an
 -- admitted membership of a kind that declares the rule, on a place that is
--- not lost and has a point, with a score; db/membership.ts states the same
--- set (membershipAdmittedSql, hideLostSql).
+-- not lost and has a point, with a score, of a type the kind does not exempt;
+-- db/membership.ts states the same set (membershipAdmittedSql, hideLostSql).
 --
 -- One recount at a time, until its transaction ends: two whose areas overlap
 -- would each delete what the other has not committed and insert the same
@@ -6455,6 +6462,7 @@ BEGIN
          AND NOT place_shows_works(de.id)
     ) n
    WHERE c.admission <> 'refused' AND ce.existence <> 'lost' AND ce.location IS NOT NULL
+     AND (c.type IS NULL OR c.type <> ALL(k.crowding_exempt_types))
      AND (near IS NULL
           OR (ce.location && crowding_box(near, k.crowding_radius_km)
               AND ST_DWithin(ce.location::geography, near::geography, k.crowding_radius_km * 1000)))
@@ -6477,6 +6485,7 @@ BEGIN
       JOIN experience_kinds k ON k.id = m.kind_id AND k.crowding_limit IS NOT NULL
       JOIN experiences e ON e.id = m.experience_id
      WHERE m.admission <> 'refused' AND e.existence <> 'lost' AND e.location IS NOT NULL
+       AND (m.type IS NULL OR m.type <> ALL(k.crowding_exempt_types))
   ), scored AS (
     SELECT membership_id,
            ((percent_rank() OVER (PARTITION BY kind_id, type ORDER BY readers)

@@ -5,7 +5,8 @@
  * recount at a time as each transaction commits, and a
  * crowded-out place leaves what a reader is shown but not what is offered.
  * A place holding a work a reader is shown is never crowded out and takes none
- * of the ten (ADR-0173, #2245).
+ * of the ten (ADR-0173, #2245), and so does a place of a type its kind exempts
+ * (ADR-0179).
  * Fixture rows: twelve churches within 2 km of the Pantheon, a mosque among
  * them, and a church 25 km out at Frascati.
  */
@@ -191,6 +192,22 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
       `SELECT f.score FROM membership_fame f JOIN experience_kind_memberships m ON m.id = f.membership_id
         WHERE m.experience_id = ANY($1) ORDER BY m.experience_id`, [[BASE + 5, BASE + 6]])).rows;
     expect(guided.score).toBeGreaterThan(unguided.score);
+  });
+
+  it('shows every place of a type its kind exempts, scores none of them, and counts them among none of the ten (ADR-0179)', async () => {
+    // The kind exempts its churches, as Archaeology exempts its museums: no
+    // church is crowded out or scored, and the mosque has no ten of its own.
+    await pool.query("UPDATE experience_kinds SET crowding_exempt_types = '{church}' WHERE id = $1", [WORSHIP]);
+    try {
+      await pool.query('SELECT refresh_crowding()');
+      expect(await crowded()).toEqual([]);
+      const scored = await pool.query<{ scored: number }>(
+        `SELECT count(*)::int AS scored FROM membership_fame f JOIN experience_kind_memberships m ON m.id = f.membership_id
+          WHERE m.experience_id >= $1 AND m.type = 'church' AND f.score IS NOT NULL`, [BASE]);
+      expect(scored.rows[0].scored).toBe(0);
+    } finally {
+      await pool.query("UPDATE experience_kinds SET crowding_exempt_types = '{}' WHERE id = $1", [WORSHIP]);
+    }
   });
 
   it('shows every place of a kind that declares no rule', async () => {
