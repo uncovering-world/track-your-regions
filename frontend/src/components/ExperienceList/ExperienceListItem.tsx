@@ -21,7 +21,7 @@ import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 import { PlaceSubtitle } from '../shared/PlaceSubtitle';
 import { experienceColor } from '../../utils/kindColors';
-import { placeHasExtent } from '../../utils/placeKinds';
+import { cardAsksFinds } from '../../utils/placeKinds';
 import { preloadCardImage } from '../../utils/imagePreload';
 import { endsTextSelectionIn } from '../../utils/textSelection';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
@@ -206,7 +206,7 @@ function ExperienceListItemComponent({
   // whatever its two queries take, having already fetched the picture below.
   const cardReady = useExperienceCardReady(
     experience.id, experience.image_url, isSelected, locationsResolved,
-    placeHasExtent(experience, isAboveGroups),
+    cardAsksFinds(experience, isAboveGroups),
   );
 
   const cardOpen = isSelected && cardReady;

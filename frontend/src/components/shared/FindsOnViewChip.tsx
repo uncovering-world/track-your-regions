@@ -1,14 +1,16 @@
 /**
- * Says that what was dug up at a site is on view in a museum, derived from
- * the region row's `finds_count` (#907) — the length of the site's own list
- * of finds, which opening the row shows (`SiteFinds`).
+ * Says that what was dug up at a site, or taken from a place by a curator's
+ * confirmed link (#2242), is on view in a museum, derived from the region
+ * row's `finds_count` (#907) — the length of the place's own list of finds,
+ * which opening the row shows (`SiteFinds`, read wherever `cardAsksFinds`
+ * says so).
  *
  * The sibling of `TreasuresInsideChip`, and a different statement: not "there
  * is something to see inside" but "what was found here is on view somewhere
  * else" — Amarna's Nefertiti in Berlin, the Mask of Agamemnon from Mycenae in
  * Athens. The must-see badge cannot carry it, since nearly every archaeology
- * row wears that already. Silent at zero, which is every row that is not a
- * site: the count is only ever asked of one.
+ * row wears that already. Silent at zero, which is every row with no find
+ * dug up there or linked to it.
  *
  * Sized and spaced as `TreasuresInsideChip` is, for the reason given there: it
  * sits beside the same badges in the same rows and cards.

@@ -41,6 +41,7 @@ function find(over: Partial<SiteFind> = {}): SiteFind {
     is_iconic: true,
     sitelinks_count: 38,
     shown_at: [ATHENS],
+    relation: 'dug_up',
     ...over,
   };
 }

@@ -53,7 +53,7 @@ import { computeVisitedStatus } from '@tyr/shared/visits';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
 import { typeChipsFor } from './typeChips';
-import { placeHasExtent } from '../../utils/placeKinds';
+import { cardAsksFinds } from '../../utils/placeKinds';
 
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
@@ -131,12 +131,13 @@ function ExperienceExpandedDetailsComponent({
   const { data: details } = useQuery(experienceDetailsQuery(experience.id));
   const description = descriptionBeyondSubtitle(experience);
   const { data: contentsData } = useQuery(experienceContentsQuery(experience.id));
-  // The third, for a site alone (#894): the finds dug up here and where they
-  // are shown. Decided off the row, before any read, and waited on by the same
-  // gate, so the list is in the card the frame it opens.
+  // The third, for a site (#894) or a place a curator linked finds to (#2242):
+  // the finds of the place and where they are shown. Decided off the row,
+  // before any read, and waited on by the same gate (`cardAsksFinds`), so the
+  // list is in the card the frame it opens.
   const { data: findsData } = useQuery({
     ...siteFindsQuery(experience.id),
-    enabled: placeHasExtent(experience, everyKind),
+    enabled: cardAsksFinds(experience, everyKind),
   });
 
   // Use batch locations from parent + global isLocationVisited

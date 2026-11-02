@@ -28,7 +28,8 @@ import {
   type Experience,
 } from '../../api/experiences';
 import { siteFindsQuery } from '../../api/experienceCardQueries';
-import { hasExtent, typeWordFor } from '../../utils/experienceTypes';
+import { typeWordFor } from '../../utils/experienceTypes';
+import { cardAsksFinds } from '../../utils/placeKinds';
 import { SiteFinds } from '../shared/SiteFinds';
 import { useAuth } from '../../hooks/useAuth';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
@@ -97,12 +98,12 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
     staleTime: 300000,
   });
 
-  // The finds dug up here, for a site alone (#894) — the same read, the same
-  // key and the same rule as the map's card, so one site is not described two
-  // ways.
+  // The finds of a site (#894), or of a place a curator linked finds to
+  // (#2242), which the row's count says — the same read, the same key and the
+  // same rule as the map's card, so one site is not described two ways.
   const { data: findsData } = useQuery({
     ...siteFindsQuery(experience.id),
-    enabled: hasExtent(experience.kind_id, experience.type),
+    enabled: cardAsksFinds(experience, false),
   });
 
   // Visited state

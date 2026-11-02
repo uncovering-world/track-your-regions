@@ -2398,7 +2398,7 @@ export interface Experience {
      */
   treasure_count: number;
   /**
-     * Finds dug up at this site and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row that is not a site.
+     * Finds dug up at this place, or taken from it by a confirmed link (#2242), and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row with neither.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
@@ -2845,6 +2845,8 @@ export interface ExperienceTreasure {
   found_at: ExperienceTreasureFoundAt;
   /** The site row that spot names, where the catalogue holds one a reader may open (#894). */
   found_at_site: LinkedPlace | null;
+  /** The site a curator confirmed the work comes from, where its item names no place of discovery (#2242). */
+  from_site: LinkedPlace | null;
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
@@ -2883,7 +2885,18 @@ export interface ExperienceTreasuresResponse {
 }
 
 /**
- * One find dug up at a site (#894).
+ * Dug up here, by the find's own place of discovery (#894), or from this site, by a link a curator confirmed (#2242).
+ */
+export type SiteFindRelation = typeof SiteFindRelation[keyof typeof SiteFindRelation];
+
+
+export const SiteFindRelation = {
+  dug_up: 'dug_up',
+  from_site: 'from_site',
+} as const;
+
+/**
+ * One find of a site: dug up there, or taken from it (#894, #2242).
  */
 export interface SiteFind {
   /**
@@ -2906,6 +2919,8 @@ export interface SiteFind {
   sitelinks_count: number;
   /** One entry per building, never empty: a find nobody can go and see is not listed. */
   shown_at: LinkedPlace[];
+  /** Dug up here, by the find's own place of discovery (#894), or from this site, by a link a curator confirmed (#2242). */
+  relation: SiteFindRelation;
 }
 
 /**
@@ -3200,6 +3215,7 @@ export const CurationLogEntryAction = {
   kept_out: 'kept_out',
   merge_proposal_taken_back: 'merge_proposal_taken_back',
   kind_added: 'kind_added',
+  find_site_answered: 'find_site_answered',
 } as const;
 
 /**
@@ -5285,6 +5301,98 @@ export interface WorkEditResult {
   claimed: WorkEditResultClaimedItem[];
   /** Who is named under the new picture. Present only where the picture changed, and null where Commons named nobody in time. */
   imageCredit?: ImageCredit | null;
+}
+
+/**
+ * Proposed by a run and not answered yet, or confirmed by a curator; a refused pair is not listed.
+ */
+export type FindSiteLinkState = typeof FindSiteLinkState[keyof typeof FindSiteLinkState];
+
+
+export const FindSiteLinkState = {
+  proposed: 'proposed',
+  confirmed: 'confirmed',
+} as const;
+
+/**
+ * Proposed from the find's own coordinate, or made by a curator.
+ */
+export type FindSiteLinkOrigin = typeof FindSiteLinkOrigin[keyof typeof FindSiteLinkOrigin];
+
+
+export const FindSiteLinkOrigin = {
+  coordinate: 'coordinate',
+  curator: 'curator',
+} as const;
+
+/**
+ * A find a run proposed as coming from this site, or one a curator confirmed (#2242).
+ */
+export interface FindSiteLink {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  treasure_id: number;
+  name: string;
+  treasure_type: string;
+  year: number | null;
+  /** @nullable */
+  image_url: string | null;
+  image_credit: ImageCredit | null;
+  /** Proposed by a run and not answered yet, or confirmed by a curator; a refused pair is not listed. */
+  state: FindSiteLinkState;
+  /** Proposed from the find's own coordinate, or made by a curator. */
+  origin: FindSiteLinkOrigin;
+  /** How far the find's coordinate lies from the site's point, where a run proposed it. */
+  distance_m: number | null;
+  /** The museums a reader may be sent to that show the find. */
+  shown_at: LinkedPlace[];
+}
+
+/**
+ * The finds a site's curator is asked about, and those already linked to it.
+ */
+export interface FindSiteLinks {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  links: FindSiteLink[];
+}
+
+export type FindSiteLinkAnswerBodyAnswer = typeof FindSiteLinkAnswerBodyAnswer[keyof typeof FindSiteLinkAnswerBodyAnswer];
+
+
+export const FindSiteLinkAnswerBodyAnswer = {
+  confirmed: 'confirmed',
+  refused: 'refused',
+} as const;
+
+export interface FindSiteLinkAnswerBody {
+  answer: FindSiteLinkAnswerBodyAnswer;
+}
+
+export type FindSiteLinkAnswerResultAnswer = typeof FindSiteLinkAnswerResultAnswer[keyof typeof FindSiteLinkAnswerResultAnswer];
+
+
+export const FindSiteLinkAnswerResultAnswer = {
+  confirmed: 'confirmed',
+  refused: 'refused',
+} as const;
+
+/**
+ * A curator's answer on where a find comes from.
+ */
+export interface FindSiteLinkAnswerResult {
+  success: true;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  treasureId: number;
+  answer: FindSiteLinkAnswerResultAnswer;
 }
 
 export type ExperienceAdmissionBodyDecision = typeof ExperienceAdmissionBodyDecision[keyof typeof ExperienceAdmissionBodyDecision];
@@ -11366,6 +11474,73 @@ return apiFetch<WorkEditResult>(getPatchExperiencesByIdWorksByTreasureIdEditUrl(
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(editWorkBody)
+  }
+);}
+
+
+
+export const getGetExperiencesByIdFindLinksUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/find-links`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary List the finds proposed as coming from a site, and those linked to it
+ */
+export const getExperiencesByIdFindLinks = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<FindSiteLinks> => {
+
+  return apiFetch<FindSiteLinks>(getGetExperiencesByIdFindLinksUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getPutExperiencesByIdFindLinksByTreasureIdUrl = (id: number,
+    treasureId: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/find-links/${encodeURIComponent(String(treasureId))}`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Confirm or refuse that a find comes from a site
+ */
+export const putExperiencesByIdFindLinksByTreasureId = async (id: number,
+    treasureId: number,
+    findSiteLinkAnswerBody: FindSiteLinkAnswerBody, options?: Parameters<typeof apiFetch>[1]): Promise<FindSiteLinkAnswerResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<FindSiteLinkAnswerResult>(getPutExperiencesByIdFindLinksByTreasureIdUrl(id,treasureId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(findSiteLinkAnswerBody)
   }
 );}
 
