@@ -3,6 +3,8 @@
  * its reason, the curator's pin on it, its gate state and the held proposal's
  * pointer — under the place's lock (ADR-0077 decision 4, #1148).
  *
+ * The curator's crowding pin (ADR-0180) is written here too, and by no run.
+ *
  * The table's writers are a closed list the backend lint names
  * (`MEMBERSHIP_WRITE_RULES`), spelled or through `${MEMBERSHIPS}`: this module
  * for the curator; for the run, the upsert's own statement
@@ -26,6 +28,7 @@
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
+import type { CheckValue } from '../../db/schema.generated.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
 
@@ -231,6 +234,35 @@ export async function refuseOnMembership(
           ${CLEAR_ICONIC}
       WHERE m.id = $1 AND m.experience_id = $4
     `, [membershipId, reason, JSON.stringify(curated), lock.id]);
+}
+
+/** A curator's answer to a crowded city: kept in the list, kept in the shadow (ADR-0180). */
+export type CrowdingPin = CheckValue<'experience_kind_memberships', 'crowding_pin'>;
+
+/**
+ * A curator's crowding pin on the membership (ADR-0180, #2282), or none, which
+ * hands the place back to the rule. No run writes the column, so nothing else
+ * marks it claimed. The recount around the place follows the write as it
+ * commits (`crowding_follows_membership_change`), so no caller asks for one.
+ * Whether the membership may take a pin, a place holding works or a type its
+ * kind exempts never does, is the caller's to decide under the same lock.
+ * Answers the pin it replaced, for the log row beside it.
+ */
+export async function setCrowdingPin(
+  client: PoolClient,
+  lock: LockedExperience,
+  membershipId: number,
+  pin: CrowdingPin | null,
+): Promise<{ before: CrowdingPin | null }> {
+  const result = await client.query<{ before: CrowdingPin | null }>(
+    `WITH old AS (SELECT id, crowding_pin FROM ${MEMBERSHIPS} WHERE id = $1 AND experience_id = $3)
+     UPDATE ${MEMBERSHIPS} m SET crowding_pin = $2, updated_at = NOW()
+       FROM old WHERE m.id = old.id
+     RETURNING old.crowding_pin AS before`,
+    [membershipId, pin, lock.id],
+  );
+  if (result.rows.length !== 1) throw new Error(`membership ${membershipId} is not on place ${lock.id}`);
+  return { before: result.rows[0].before };
 }
 
 /**

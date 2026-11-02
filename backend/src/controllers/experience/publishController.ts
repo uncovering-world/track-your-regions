@@ -49,7 +49,7 @@ import {
 } from './publishHeldParts.js';
 import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
-import { lockExperience, updateExperienceColumns, type LockedExperience } from '../../db/experienceWriter.js';
+import { lockExperience, updateExperienceColumns, type LockedExperience, type UnderLock } from '../../db/experienceWriter.js';
 import { lockWorksToPublish, type WorksToPublish } from './workWriter.js';
 import {
   clearAnsweredHeldPointers, publishFactsOnMembership, publishMembership, publishTypeOnMembership,
@@ -459,13 +459,16 @@ async function planHeldAnswer(
  * comment mid-sentence, which is how the first attempt at this line broke the file.)
  *
  * Its caller drains the pairing marks the publish left (`drainPairing`, #1950), a
- * batch once after its loop.
+ * batch once after its loop. `alsoUnderLock` is a caller's own writes in the
+ * same transaction, before it commits: a crowding pin the publish answers
+ * (ADR-0180).
  */
 export async function publishUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
   body: PublishRequest,
+  alsoUnderLock?: UnderLock,
 ): Promise<{ result?: PublishResult; refusal?: PublishRefusal }> {
   const { locationIds, treasureIds, contentsOnly: bareContentsOnly, expectedSyncLogId } = body;
   const selection = selectionOf(body);
@@ -682,6 +685,7 @@ export async function publishUnderLock(
       // nothing about when it took effect.
       withdrawalsReleased,
     })]);
+    await alsoUnderLock?.(client, locked.lock);
 
     await client.query('COMMIT');
 

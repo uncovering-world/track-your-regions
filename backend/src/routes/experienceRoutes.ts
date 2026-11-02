@@ -74,7 +74,7 @@ import { getPictureClasses } from '../controllers/experience/pictureClassesContr
 import { getRegionTail } from '../controllers/experience/experienceTailController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
-import { CrowdingWindow, ShadowedArrivals } from '../api/responses/crowding.js';
+import { CrowdingAnswered, CrowdingWindow, ShadowedArrivals } from '../api/responses/crowding.js';
 import {
   ExperienceDetail,
   ExperienceKinds,
@@ -136,6 +136,7 @@ import {
   refuseContents,
   unrefuseContents,
   answerReviewRows,
+  answerCrowding,
   getCrowdingWindow,
   listShadowedArrivals,
   markNewBadgesSeen,
@@ -174,6 +175,7 @@ import {
   arrivalKindBodySchema,
   refuseContentsBodySchema,
   reviewAnswerBodySchema,
+  crowdingAnswersBodySchema,
   crowdingWindowParamSchema,
   crowdingWindowQuerySchema,
   shadowedArrivalsQuerySchema,
@@ -515,8 +517,10 @@ export const experienceCurationRoutes = [
   }),
   // A crowded city, judged in one window (#2282, ADR-0180): every place of a
   // kind and type around a place, the arrivals the display would shadow, which
-  // the queue asks nothing about. Under `review/crowding/`, so `/:id/…` cannot
-  // take them. The window counts the rule for each of up to 500 rows: it is
+  // the queue asks nothing about, and the answers applied together. Under
+  // `review/crowding/`, so `/:id/…` cannot take them. The window counts the rule
+  // for each of up to 500 rows, and the answers publish or refuse a page of
+  // places at most, each re-placed and recounted as it commits: both are
   // limited on § 5's criterion, as the batch answer is.
   defineRoute({
     method: 'get', path: '/review/crowding/around/:membershipId', access: 'curator', cache: 'no-store',
@@ -533,6 +537,13 @@ export const experienceCurationRoutes = [
     query: shadowedArrivalsQuerySchema,
     response: ShadowedArrivals,
     handler: listShadowedArrivals,
+  }),
+  defineRoute({
+    method: 'post', path: '/review/crowding/answers', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Keep places of a crowded city in the list or in the shadow, refuse them, or hand them back to the rule, together',
+    body: crowdingAnswersBodySchema,
+    response: CrowdingAnswered,
+    handler: answerCrowding,
   }),
   defineRoute({
     method: 'post', path: '/:id/state', access: 'curator', cache: 'no-store',

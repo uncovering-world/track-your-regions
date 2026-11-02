@@ -1,7 +1,7 @@
 /**
  * What the crowded city's curator calls answer (ADR-0066, ADR-0180): the window
- * over a type around a place and the arrivals the city's display would shadow
- * (#2282).
+ * over a type around a place, the arrivals the city's display would shadow,
+ * and the report of answers applied together (#2282).
  *
  * Each exported schema is the type of the same name in the web's generated
  * client, and the handler's body is held to it by `respond()`.
@@ -13,6 +13,7 @@
 
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
+import { PlacementFailure } from './curation.js';
 
 const CrowdingPin = z.enum(CHECK_VALUES.experience_kind_memberships.crowding_pin)
   .describe("A curator's answer: list keeps the place among what a reader is shown and counts it as one of the ten; "
@@ -85,3 +86,27 @@ export const ShadowedArrivals = z.strictObject({
   })),
 }).describe('The new arrivals a crowded city would shadow, which the review queue does not ask about, by region, kind and type.');
 export type ShadowedArrivals = z.infer<typeof ShadowedArrivals>;
+
+export const CrowdingAnswered = z.strictObject({
+  answered: z.array(z.strictObject({
+    membershipId: z.number().int(),
+    experienceId: z.number().int(),
+    name: z.string(),
+    answer: z.enum(['list', 'shadow', 'refuse', 'clear']),
+    pin: CrowdingPin.nullable().describe('The pin the place holds now.'),
+    published: z.boolean().describe('The answer published a new arrival.'),
+    refused: z.boolean().describe('The answer refused the place from its kind.'),
+  })),
+  refused: z.array(z.strictObject({
+    membershipId: z.number().int(),
+    experienceId: z.number().int().nullable(),
+    name: z.string().nullable(),
+    status: z.number().int().describe('The status a single answer would have had: 409 for a place that takes no pin.'),
+    error: z.string(),
+  })).describe('The answers the server would not apply, each with its reason. The rest go on without them.'),
+  outOfScope: z.number().int().describe("Answers about places outside the curator's scope, counted rather than named."),
+  placementFailed: z.array(z.strictObject({
+    membershipId: z.number().int(), name: z.string(), worldViews: z.array(PlacementFailure),
+  })).describe('The arrivals published whose re-placement did not land.'),
+}).describe("The report of a curator's answers to a crowded city, applied together (#2282).");
+export type CrowdingAnswered = z.infer<typeof CrowdingAnswered>;

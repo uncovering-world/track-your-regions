@@ -24,7 +24,7 @@
 import type { z } from 'zod/v4';
 import type { KeptOutOfKind, PlaceKindStandings } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { lockExperience, type UnderLock } from '../../db/experienceWriter.js';
 import {
   KINDS, MEMBERSHIPS, admissionPinnedSql, membershipAdmittedSql, membershipOfferedSql,
 } from '../../db/membership.js';
@@ -60,12 +60,17 @@ export async function keepOutOfKind(
   return outcome.result!;
 }
 
-/** The refusal under the place's lock, the membership re-read in the statement after it. */
+/**
+ * The refusal under the place's lock, the membership re-read in the statement
+ * after it. `alsoUnderLock` is a caller's own writes in the same transaction:
+ * a crowding pin the refusal clears (ADR-0180).
+ */
 export async function keepOutUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
   { membershipId, note }: KeepOut,
+  alsoUnderLock?: UnderLock,
 ): Promise<{ result?: KeptOutOfKind; refusal?: AnswerRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -101,6 +106,7 @@ export async function keepOutUnderLock(
     `, [experienceId, userId, logRegionId, JSON.stringify({
       membershipId, kind: membership.kind, reason: CURATOR_REFUSAL_REASON, note: note ?? null,
     })]);
+    await alsoUnderLock?.(client, locked.lock);
     await client.query('COMMIT');
     return { result: { experienceId, membershipId, admission: 'refused' } };
   } catch (error) {
