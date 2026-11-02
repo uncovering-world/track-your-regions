@@ -11,7 +11,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
-vi.mock('../../api/curation', () => ({ editLocation: vi.fn(), suggestPointHints: vi.fn() }));
+vi.mock('../../api/curation', () => ({ editLocation: vi.fn(), suggestPointHints: vi.fn(), askPointNamesakes: vi.fn() }));
 // The map, as the card hands it its focus: the hint picked, by its label.
 vi.mock('./ComponentItemsMap', async (original) => ({
   ...(await original<typeof import('./ComponentItemsMap')>()),
@@ -23,7 +23,7 @@ vi.mock('../shared/PointPreviewDialog', () => ({
   PointPreviewDialog: ({ name }: { name: string }) => <div>{`placing ${name} by hand`}</div>,
 }));
 
-import { editLocation, suggestPointHints } from '../../api/curation';
+import { askPointNamesakes, editLocation, suggestPointHints } from '../../api/curation';
 import { ApproximatePointsCard, hintHref, hintsInOrder, reasonWords, type ApproximatePoint } from './ApproximatePointsCard';
 import { minuteCell } from './minuteCell';
 
@@ -37,10 +37,11 @@ const GAYANEH: ApproximatePoint = {
     { source: 'osm-ref', ref: 'W194252618', label: 'Saint Gayane Church', latitude: 40.1587, longitude: 44.2925, metres: 341 },
     { source: 'candidate', ref: 'Q-gayane-fixture', label: 'Saint Gayane Church', latitude: 40.157494, longitude: 44.291922, metres: 340 },
   ],
+  namesAsked: false,
 };
 const ROUNDED: ApproximatePoint = {
   locationId: 10750, name: 'A component given to the whole minute', ref: '1011-007',
-  latitude: 40.15, longitude: 44.3, reason: 'whole-minute', hints: [],
+  latitude: 40.15, longitude: 44.3, reason: 'whole-minute', hints: [], namesAsked: false,
 };
 
 const ECHMIATSIN = {
@@ -152,5 +153,36 @@ describe('the hint picked on the map (#1913)', () => {
     ] });
     expect(await screen.findByText('Jev says another place · 95 %')).toBeTruthy();
     expect(screen.getByText('map on The candidate item')).toBeTruthy();
+  });
+
+  it('asks OpenStreetMap by name for a point no namesake was offered for, once', async () => {
+    vi.mocked(askPointNamesakes).mockResolvedValue({ locationId: GAYANEH.locationId, found: 1, asked: true });
+    renderCard();
+
+    const asks = screen.getAllByRole('button', { name: 'Ask OpenStreetMap by name' });
+    expect(asks).toHaveLength(2);
+    fireEvent.click(asks[0]);
+    await waitFor(() => expect(askPointNamesakes).toHaveBeenCalledWith(ECHMIATSIN.id, GAYANEH.locationId));
+  });
+
+  it('says OpenStreetMap was asked and found nothing, instead of the button', () => {
+    const asked = { ...ECHMIATSIN, approximate_points: [{ ...ROUNDED, namesAsked: true }] } as unknown as ReviewQueueItem;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ApproximatePointsCard item={asked} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText('OpenStreetMap maps nothing named like it within 2 km.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ask OpenStreetMap by name' })).not.toBeInTheDocument();
+  });
+
+  it('offers no question for a point with no name', () => {
+    const unnamed = { ...ECHMIATSIN, approximate_points: [{ ...ROUNDED, name: null }] } as unknown as ReviewQueueItem;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ApproximatePointsCard item={unnamed} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Ask OpenStreetMap by name' })).not.toBeInTheDocument();
   });
 });

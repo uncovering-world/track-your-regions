@@ -4208,6 +4208,8 @@ export interface ApproximatePoint {
   reason: ApproximatePointReason;
   /** Where it may really stand, the component's own reference first. */
   hints: ApproximatePointHint[];
+  /** Whether a curator has asked the full OpenStreetMap for its namesakes with its name and coordinate as they are (#2243). */
+  namesAsked: boolean;
 }
 
 /**
@@ -6414,6 +6416,26 @@ export interface ComponentItemSuggestions {
   /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
   configured: boolean;
   suggestions: ComponentItemSuggestionsSuggestionsItem[];
+}
+
+/**
+ * What the full OpenStreetMap answered about a rough point's namesakes (#2243).
+ */
+export interface PointNamesakesAnswer {
+  /**
+     * The roughly placed point asked about.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  locationId: number;
+  /**
+     * How many objects named like the component are now its hints.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  found: number;
+  /** False where the point had been asked already with its name and coordinate, and the kept answer stands. */
+  asked: boolean;
 }
 
 /**
@@ -12183,6 +12205,33 @@ export const getPostExperiencesByIdComponentItemSuggestionsUrl = (id: number,) =
 export const postExperiencesByIdComponentItemSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemSuggestions> => {
 
   return apiFetch<ComponentItemSuggestions>(getPostExperiencesByIdComponentItemSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdPointNamesakesByLocationIdUrl = (id: number,
+    locationId: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/point-namesakes/${encodeURIComponent(String(locationId))}`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask OpenStreetMap for the objects named like a roughly placed component, once per point
+ */
+export const postExperiencesByIdPointNamesakesByLocationId = async (id: number,
+    locationId: number, options?: Parameters<typeof apiFetch>[1]): Promise<PointNamesakesAnswer> => {
+
+  return apiFetch<PointNamesakesAnswer>(getPostExperiencesByIdPointNamesakesByLocationIdUrl(id,locationId),
   {
     ...options,
     method: 'POST'
