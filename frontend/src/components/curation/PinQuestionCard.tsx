@@ -22,6 +22,7 @@ import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { formatDateTime } from '../../utils/dateFormat';
 import { ItemHeader, messageFor } from './queueCard';
 import { RefusalLine } from './RefusalLine';
+import { CrowdingWayIn } from './crowding/CrowdingWayIn';
 
 type OnDone = (message?: string, experienceId?: number) => void;
 type PinQuestion = NonNullable<ReviewQueueItem['pin_question']>;
@@ -154,6 +155,7 @@ function PinSection({ item, membershipId, question, heading, onDone }: {
           {admits ? 'Let the rule decide — admit it' : 'Let the rule decide — keep it out'}
         </Button>
       </Stack>
+      <CrowdingWayIn item={item} onDone={onDone} />
     </Stack>
   );
 }

@@ -41,6 +41,7 @@ import { movedPointGroups } from './movedPointGroups';
 import { sectionKind, sharedKinds, type GatedGroup } from './gatedGroup';
 import { VisitReadingLine } from './VisitReadingLine';
 import { ArrivalKindChoice } from './ArrivalKindChoice';
+import { CrowdingWayIn } from './crowding/CrowdingWayIn';
 
 /**
  * The counts, as numbers and as a floor under the query that casts them.
@@ -401,6 +402,9 @@ export function GatedSection({ group, heading, onDone }: {
           question, because it answers what the run's witnesses cannot — a part
           of a larger place, an object, a culture. Never chosen for the curator. */}
       {arrival && <VisitReadingLine experienceId={group.id} name={item.name} />}
+
+      {/* The place among its neighbours of its type (#2282), where its kind shows a crowded city. */}
+      <CrowdingWayIn item={item} onDone={onDone} />
 
       <PartPreviewDialog
         part={openPart}
