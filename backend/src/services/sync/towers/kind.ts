@@ -32,7 +32,7 @@ import { usedByAGuide } from '../../dumps/wikivoyage/usageTables.js';
 import { fetchTowerTrees, TOWER_ROOTS, TOWER_TYPES, type TowerTrees } from './classes.js';
 import { towerType, towerVerdict } from './towerTest.js';
 import { collectTowersUnderFloor } from './underFloor.js';
-import { regionalReader } from '../places/regionalTier.js';
+import { regionalReader, type RegionalKind } from '../places/regionalTier.js';
 
 /** The line: Wikipedia editions and a year's readers, to enter and to stay. */
 export interface TowerLine {
@@ -240,6 +240,19 @@ async function shareWithGuideDoor(
   return { share: { ...share, pool, facts }, guide: await usedByAGuide([...pool.keys()]) };
 }
 
+/**
+ * The kind in the regional tier (ADR-0171): every tower-class item measured against its
+ * surroundings, the rule over the survivors. Its `typeOf` is also the type a
+ * coverage survey's entry is filed under within the kind (#2246).
+ */
+export const TOWERS_REGIONAL: RegionalKind<TowerTrees> = {
+  kind: TOWERS_KIND,
+  classesOf: (trees) => trees.tower,
+  typeOf: (classes, trees) => towerType(classes, trees),
+  verdict: (entity, share) => towerVerdict({ classes: share.facts.get(entity.qid)?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon }, share.trees),
+  logPrefix: LOG_PREFIX,
+};
+
 /** Towers' classifier as a source of the place pass reads it (`placeSource`). */
 export const TOWERS_CLASSIFIER = {
   classify: async (gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn) => {
@@ -248,12 +261,5 @@ export const TOWERS_CLASSIFIER = {
   },
   types: TOWER_TYPES,
   tag: 'tower',
-  // The regional tier (ADR-0171): every tower-class item measured against its surroundings, the rule over the survivors.
-  regional: regionalReader<TowerTrees>({
-    kind: TOWERS_KIND,
-    classesOf: (trees) => trees.tower,
-    typeOf: (classes, trees) => towerType(classes, trees),
-    verdict: (entity, share) => towerVerdict({ classes: share.facts.get(entity.qid)?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon }, share.trees),
-    logPrefix: LOG_PREFIX,
-  }),
+  regional: regionalReader(TOWERS_REGIONAL),
 };
