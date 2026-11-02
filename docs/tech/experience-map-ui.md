@@ -415,7 +415,7 @@ card is answered from the map.
 (OpenStreetMap's polygon, ADR-0059), the dialog draws it under the pins in the card's own paint
 (`extentFillLayer`, `extentLineLayer`), so a curator judging whether a point is inside a site sees
 the site: Bisotun's outline beside its caravanserai's pin. The card names the places
-(`outlinesOf`): the near-places pair names both, the sources card and the object's own map name the
+(`placesOf`): the near-places pair names both, the sources card and the object's own map name the
 place, and a move's row names the place that moves. Each is read the way the place's card reads it
 (`experienceDetailsQuery`, the same cache entry), once the dialog opens, never on hover
 (`PointPreviewOutlines.tsx`). Under the map each drawn outline gets its extent and
@@ -423,6 +423,33 @@ place, and a move's row names the place that moves. Each is read the way the pla
 without interaction (ADR-0059 decision 3); a place with no outline draws nothing and credits nobody.
 Once the outlines arrive the map frames them with the pins by the one rule (`frameGeoJson`), since
 an outline read after the map loaded would stand half off the pins' frame.
+
+**What stands at each pin, and where the article says the place is** (#2206). Two pins say where
+two claims put a place, not what stands at either point, so a dialog that names its places
+(`placesOf`) adds two references (`PointPreviewReferences.tsx`):
+
+- **Each pin's row says what OpenStreetMap holds there** — *here: Αχιλλέα (street) · Άγιος Παύλος*
+  under the Church of the Acheiropoietos's catalogue point, *here: building at 6 Π. Παπαγεωργίου ·
+  Kamara* under its article's: the object nearest the point at the level of a building, by its name
+  and kind, or by its kind and address where it is unnamed, then the narrowest area named
+  (`groundLabel`). Read by Nominatim's reverse lookup through `GET /api/geocode/reverse`, which
+  queues it behind the product's one request a second with the place search
+  (`services/nominatim.ts`), once per pin when the dialog opens and kept for the session by the
+  coordinate to about a metre. Under the rows, "What stands at each point: © OpenStreetMap
+  contributors", shown with the names or not at all (`GroundCredit`, ADR-0059 decision 3).
+- **The article's coordinate is one more pin**, labelled *Wikipedia* — by the article's title where the
+  dialog names several places (*Wikipedia: Behistun Inscription*), so the near-places pair's two
+  articles say whose each point is, and two places whose articles put them on one point are one pin
+  named for both — in a colour no claim's pin wears (`ARTICLE_PIN_COLOUR`: Wikipedia's own
+  near-black read as the second source's brown), on the map, in the legend and in a row of its own
+  with its ground: the primary coordinate of the article the place
+  links to (`metadata.wikipediaUrl`), read by `GET /api/geocode/article-point/:id`
+  (`services/wikipediaCoordinate.ts`), and the map frames it with the rest once it arrives. On dev
+  on 2026-11-02 the Acheiropoietos's article puts the church 1.6 km from its catalogue point, in
+  central Thessaloniki; the Brâncuși ensemble's article states no coordinate and draws nothing.
+
+Both are a curator's: each asks a third party on the product's behalf, so both endpoints are
+`curator` and a reader's dialog, which names no places, asks nothing.
 
 ## The list answers about the view, not about the region
 
