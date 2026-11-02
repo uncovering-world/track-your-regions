@@ -190,7 +190,8 @@ and accepted by it.
 | [0169](0169-a-work-a-guide-uses-or-atlas-obscura-lists-enters-at-20000-readers-a-year-whatever-its-editions.md) | A work a guide uses or Atlas Obscura lists enters at 20,000 readers a year, whatever its editions | Accepted | 2026-10-31 |
 | [0170](0170-a-collection-with-a-museum-class-is-the-museum-and-a-network-stands-for-the-house-at-its-coordinate.md) | A collection with a museum class is the museum, and a network stands for the house at its coordinate | Accepted | 2026-10-31 |
 | [0171](0171-a-global-sources-regional-tier-measures-a-place-against-what-lies-within-50-km.md) | A global source's regional tier measures a place against what lies within 50 km of it | Accepted | 2026-10-31 |
-| [0172](0172-a-crowded-city-shows-the-ten-best-known-places-of-a-type-within-10-km.md) | A crowded city shows the ten best-known places of a type within 10 km | Accepted | 2026-11-01 |
+| [0172](0172-a-crowded-city-shows-the-ten-best-known-places-of-a-type-within-10-km.md) | A crowded city shows the ten best-known places of a type within 10 km | Accepted — decision 1 narrowed by [0173](0173-a-place-holding-works-is-never-crowded-out.md) | 2026-11-01 |
+| [0173](0173-a-place-holding-works-is-never-crowded-out.md) | A place holding works is never crowded out | Accepted | 2026-11-02 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
