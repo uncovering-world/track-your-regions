@@ -30,6 +30,7 @@ import {
   streetArtCandidates, type GatheredPublicArt,
 } from './publicArt/pipeline.js';
 import { mergeRegional, regionalReader, type RegionalKind, type RegionalReader } from './places/regionalTier.js';
+import { refuseGone } from './places/gone.js';
 import { isPublicClock } from './publicArt/clockLine.js';
 import { readGuideDoor } from './places/guideDoor.js';
 import { shareWithMarksDoor } from './publicArt/marksDoor.js';
@@ -437,6 +438,8 @@ async function fetchLandmarkItems(
     // Not read this run (switched off, or the live service): its rows stay as they are.
     if (regional.skipped) spareTier = 'regional';
   }
+  // A place Wikidata says is gone is refused whichever tier admitted it (#2259).
+  await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX);
   // What the admitted places hold, read before the first is written, so the
   // coverage floor is measured over the whole run (ADR-0044).
   const held = await classifier.contents?.read(items, sparql, progress);
