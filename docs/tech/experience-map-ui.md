@@ -640,7 +640,13 @@ than copies of them:
   lacks is looked for in the open kind's tail only (`lookupKindId`), since a place of another kind
   is not this list's, and opens there: the address keeps it
   (`listMissing` waits for `tail.settled`), and `findExperience` answers the card's place from the
-  list or the tail, so the detail panel, its slug and its map fallback work for it.
+  list or the tail, so the detail panel, its slug and its map fallback work for it. A card the
+  address names without a kind — Map mode hands Discover its open card so, and a shared link may —
+  is looked for in the region's list and then in every kind's tail at once (`lookupKindId` null,
+  `fetchRegionTail(regionId, null, true)`), and opens in the kind of the place found
+  (`useKindlessCard`, `hooks/useKindlessCard.ts`, #2236): Santa Sabina, open in Map mode among
+  Lazio's shadowed places of worship, stays open in Discover. A card found in neither is moved where
+  a merge folded it, or dropped.
 - **The row.** `DiscoverExperienceView` builds one `TailSection` for the open kind, counted over the
   type the list is narrowed to and worded by `tailLabel()`, and `DiscoverExperienceList` draws it
   with `TailRow` as the window's next row, after the list's rows. Opened, its places follow in `TailPlace`, each a
