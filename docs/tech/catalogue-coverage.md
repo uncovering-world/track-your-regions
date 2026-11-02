@@ -340,7 +340,7 @@ kind (`coverage_expectation_kinds.type`).
 - **A filing carries its type** in the kind's own vocabulary: a church, a mosque, a temple, a
   bridge, a square (#2246). No file states it. The load computes it at every load, from the kind's
   rule of the day, with `readFilingTypes` (`backend/src/services/catalogueCoverage/entryTypes.ts`):
-  the kind's regional declaration's `typeOf` (the code's name for the surroundings tier), the one the surroundings tier groups a place's
+  the kind's surroundings declaration's `typeOf`, the one the surroundings tier groups a place's
   neighbours by, over the item's classes and the class trees the kind's gather reads. Both are
   read from the local Wikidata subset through the subset's own door, so a load asks the query
   service nothing. `TYPE_RULES` names the kinds that have types: Public art, Places of worship,
