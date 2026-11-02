@@ -3929,6 +3929,26 @@ a site is something you walk across, and Troy's excavations measure 5.7 ha (Mach
 both read off OpenStreetMap's polygons on 2026-09-14 with the expression the writer stores them
 by.
 
+**A find with no place of discovery is proposed for the site its own coordinate stands on** (#2242).
+Many finds carry no `foundAt`: the Dendera zodiac, cut from a chapel ceiling of the Temple of Hathor
+and held by the Louvre, has no `P189`, but its own coordinate (`P625`) stands on the temple, 3,637 km
+from the Louvre. The end of every real run (`keepSubsetCopies` in `syncOrchestrator.ts`, the run's copies from the
+subset) asks `proposeFindSites` (`services/sync/findSiteProposals.ts`): for
+each work an admitted archaeology museum holds with no `foundAt`, its best-ranked Earth coordinate in
+the subset, the nearest admitted World Heritage or Archaeology place within `REACH_M` (500 m) of it,
+the museum itself excepted, and a proposal in `find_site_links` (`state` proposed, `origin`
+coordinate, `distance_m`) where the find's museum is more than `AWAY_M` (50 km) from the coordinate.
+A coordinate is a reason to propose, not a link, so three cases propose nothing: a painting (The
+Yellow House's coordinate is Arles, the scene it shows), a memorial (`P31` Q5003624: Harmodius and
+Aristogeiton in Naples, a Roman copy, carries the Agora's coordinate, where the lost original
+stood), and a coordinate whose nearest place is a museum (the Rampin Rider's, 45 m from the
+Acropolis Museum). A pair already answered, and any pair of a find that already has a link, is never
+proposed again. Measured on dev on 2026-11-02, the rule proposes four: the Dendera zodiac (0 m from
+the temple), the Code of Ur-Nammu (Ur, 0 m), the Ishtar Gate (Babylon, 200 m) and the Libyco-Punic
+Mausoleum's inscription (Dougga, 367 m); the next place out, the Church of the Nativity for the Ain
+Sakhri lovers, stands at 1,141 m and is not the cave they came from. A curator's answer, and a link
+made by hand (`origin` curator), are the site card's.
+
 **A site's card lists the finds dug up there, and where they are shown** (#894). A find is a
 museum's treasure carrying `metadata.foundAt` — the discovery place the museum door stores
 (decision 3) — and the site rows those names point at are places of this kind (`type = 'site'`),
