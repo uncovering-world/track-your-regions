@@ -821,6 +821,103 @@ that finds nothing for a waiting place, but there is one per row: the
 locations read spends about 58 ms on Europe's either way. The region
 junction is reshaped by #2120.
 
+#### Round 2: the reads that start from a region
+
+`perf:api` after round 1 still read the by-region list 66 ms, the
+locations 31 ms, the counts 6 ms, the folded overview 5 ms and the Europe
+markers 21 ms over the medians before the pass. To tell what the pass
+added from what was there before it, each statement also ran against a
+copy of the five tables it reads (`experiences`, the memberships, the
+points, `experience_regions`, `experience_location_regions`) without the
+pass's 9 663 places, their 9 656 points and the pass's 10 063 memberships,
+the copies carrying the same indexes, inside a rolled-back transaction.
+
+Where the rest goes, by `EXPLAIN (ANALYZE, BUFFERS)` of the statements
+the controllers send for world view 5 and Europe (region 6737):
+
+- **Every region read is planned for a large region.** The descendant
+  set is a recursive CTE the planner always estimates at 691 regions,
+  so it plans for about 18 000 rows of `experience_regions` whatever the
+  region: Europe has 23 238, Italy 2 409, Lazio 336. With that estimate
+  the reader membership test is built once as a hash over the region rows
+  of every point a reader may see, which scans all 59 782 rows of
+  `experience_location_regions`, and every place is read to be joined.
+  That cost is the same for Lazio as for Europe and grew with the
+  catalogue: the pass nearly doubled the places and the point regions.
+- **The by-region count** asked each place's lifecycle (shown, and
+  offered for the lost count) once per joined region row: 6 572 rows for
+  the 2 100 places Europe holds.
+- **The tail counts and the tail.** `LEFT JOIN experience_rejections ...
+  WHERE rej.id IS NULL` over a table this small is estimated to keep half
+  a percent of the rows, so the tail was planned as a walk over all
+  21 293 places and their memberships, then a nested loop of 151 557
+  region comparisons, where it is a matter of 505 crowded memberships.
+- **The locations read** tests each of Europe's 23 238 region rows for a
+  point a reader may see, one by one (about 39 ms), and its `in_region`
+  column reads Europe's 32 013 point regions from the heap, once per arm
+  of the read, where there were 17 735 before the pass. On the copies
+  without the pass the read took 125 ms against 165 ms with it.
+- **The Europe markers and the folded overview** spend it in per-row
+  subqueries over the points of serial sites' parts. 209 parts now hold a
+  membership of a real kind waiting for a curator, and
+  `placeHoldsRealKindSql`, which a point's name reads, counts it, so the
+  per-row test that used to stop at an empty set now reads the kinds. On
+  the copies: 60 ms against 78 ms for the markers, 38 ms against 47 ms
+  for the folded overview.
+
+What changed: the whole-region count and both tail statements ask the
+region of the place, once (`placedInReaderRegionsSql`), and a rejection as
+an anti-join (`notRejectedInSql`). The rows are the same: every changed
+statement returned the same row count and the same md5 of its rows, in
+their order and as a set, for Europe, Italy and Lazio, for a reader, a
+curator and with lost rows shown, with no rejection and with 91
+rejections inserted in the comparing transaction.
+
+Statement execution on the dev database, the median of custom-plan
+executions after a warm-up, main and the branch interleaved: Europe's
+count and tail counts in three rounds of nine, the rest in two rounds of
+five. The box ran a sync throughout, load 1.1 to 1.5, so a row moves by a
+few milliseconds between rounds:
+
+| Statement | Europe before | Europe after | Italy | Lazio |
+|-----------|---------------|--------------|-------|-------|
+| experiences by region: its count | 47 ms | 37 ms | 30 → 30 ms | 22 → 22 ms |
+| experiences by region: the crowded-out tail | 22 ms | 7 ms | 17 → 2 ms | 17 → 2 ms |
+| the tail's page | 45 ms | 28-34 ms | 21 → 22 ms | 20 → 20 ms |
+
+The count and the tail counts run side by side after the list, so the
+by-region read loses about 10 ms. The list, the locations, the region
+counts and the world points send the statements they sent before.
+
+The region's indexes carry the columns a region read takes from its rows
+(migration 212): `idx_experience_regions_region_rows` holds the place and
+its assignment type, `idx_experience_location_regions_region_rows` the
+point, each in place of the plain index on `region_id`. The locations
+read's `in_region` and its region rows are then read from the index:
+Europe's locations read 148 → 136 ms, and the list, the counts, Italy and
+Lazio stay within a few milliseconds of where they were, measured with the
+migration's statements in a rolled-back transaction.
+
+Measured and not taken:
+
+- **The list and the locations read asked of the place**, as the count
+  is: Europe's list 128 → 107 ms, but Italy's 38 → 50 ms and Lazio's
+  28 → 42 ms, and the locations read 22 → 37 ms on Lazio, because the
+  planner then builds the shown places first for every region, for the
+  reason in the first point above.
+- **Asking the region's own row.** Placement writes a place into every
+  ancestor of the region that holds its point, so Europe's own 7 657 rows
+  name every place under it, and `er.region_id = $1` is estimated right.
+  The rows were identical for all three regions, but the planner kept the
+  hashed membership test, and Lazio's list read 28 → 32 ms. It would also
+  make the reader reads rest on that propagation, which today only the
+  review queue's region facet does.
+- **`realKindSql` spelled `kind_id = ANY (ARRAY(...))`**: the Europe
+  markers 81 → 60 ms and the locations 145 → 126 ms, but the region counts
+  25 → 31-37 ms, because the reader index then probes once per real kind.
+  It is the kind test of every reader read, so it is not changed for
+  three of them.
+
 ### What the world layer cost the map root — 2026-09-16
 
 The map root draws the catalogue itself before any region is chosen (#910,
