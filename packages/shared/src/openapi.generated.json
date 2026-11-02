@@ -15799,6 +15799,116 @@
         }
       }
     },
+    "/api/geocode/reverse": {
+      "get": {
+        "operationId": "getGeocodeReverse",
+        "summary": "Name what OpenStreetMap holds at a point: the object nearest it, its address and its area",
+        "tags": [
+          "geocode"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lat",
+            "schema": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "lon",
+            "schema": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceAtPoint"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/geocode/article-point/{id}": {
+      "get": {
+        "operationId": "getGeocodeArticlePointById",
+        "summary": "Read the coordinate a place's Wikipedia article states, as a reference beside its points",
+        "tags": [
+          "geocode"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticlePoint"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/geocode/ai": {
       "post": {
         "operationId": "postGeocodeAi",
@@ -17507,6 +17617,48 @@
           "kindId",
           "stays"
         ]
+      },
+      "ArticlePoint": {
+        "type": "object",
+        "properties": {
+          "article": {
+            "description": "The Wikipedia article the place links to, or null where it links none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "coordinate": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "latitude": {
+                    "type": "number"
+                  },
+                  "longitude": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "latitude",
+                  "longitude"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The article's primary coordinate on the Earth, or null where it states none or the wiki did not answer."
+          }
+        },
+        "required": [
+          "article",
+          "coordinate"
+        ],
+        "additionalProperties": false,
+        "description": "Where the place's Wikipedia article says it stands."
       },
       "AssertionArea": {
         "type": "string",
@@ -29870,6 +30022,63 @@
         ],
         "additionalProperties": false,
         "description": "A curator's answer to a run that asked again about their admission pin (#1367)."
+      },
+      "PlaceAtPoint": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "The name OpenStreetMap gives the object nearest the point — a church, a square, a street — or null where that object is unnamed: a building, a bare address.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "street": {
+            "description": "The address the object stands at, house number first where it has one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "area": {
+            "description": "The neighbourhood, village or town the point is in, the narrowest OpenStreetMap names.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category": {
+            "description": "OpenStreetMap's key for what the object is: `building`, `highway`, `amenity`, `historic`, …",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "description": "Its value under that key: `church`, `residential`, `yes` for a building of no stated kind, …",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "osmUrl": {
+            "description": "The object on openstreetmap.org, where the answer names one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "street",
+          "area",
+          "category",
+          "type",
+          "osmUrl"
+        ],
+        "additionalProperties": false,
+        "description": "What OpenStreetMap holds at a point: the object nearest it, at the level of a building (Nominatim's reverse lookup). Every field null where it holds nothing there. The data is OpenStreetMap contributors', under the ODbL."
       },
       "PlaceIdentifier": {
         "type": "object",
