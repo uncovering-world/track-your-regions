@@ -795,6 +795,21 @@ export const addToKindBodySchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+/** `/review/crowding/around/:membershipId`: the membership the crowding window opens on (#2282). */
+export const crowdingWindowParamSchema = z.object({
+  membershipId: rowIdSchema,
+});
+
+/** The type the window lists, for the switch between a kind's types; the centre's own where absent. */
+export const crowdingWindowQuerySchema = z.object({
+  type: z.string().min(1).max(COLUMN_WIDTHS.experience_kind_memberships.type).optional(),
+});
+
+/** The world view whose leaf regions group the shadowed arrivals; the first public one placing each where absent. */
+export const shadowedArrivalsQuerySchema = z.object({
+  worldViewId: rowIdSchema.optional(),
+});
+
 /**
  * A selection of review rows and one answer for all of them (#852).
  *

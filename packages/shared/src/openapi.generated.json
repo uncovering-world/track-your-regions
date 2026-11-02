@@ -6489,7 +6489,8 @@
                 "kept_out",
                 "merge_proposal_taken_back",
                 "kind_added",
-                "find_site_answered"
+                "find_site_answered",
+                "crowding_answered"
               ]
             }
           },
@@ -6626,7 +6627,8 @@
                 "kept_out",
                 "merge_proposal_taken_back",
                 "kind_added",
-                "find_site_answered"
+                "find_site_answered",
+                "crowding_answered"
               ]
             }
           },
@@ -13605,6 +13607,114 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReviewAnswerResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/review/crowding/around/{membershipId}": {
+      "get": {
+        "operationId": "getExperiencesReviewCrowdingAroundByMembershipId",
+        "summary": "Every place of a kind and type around a place in a crowded city, best known first, with the rule's count and the curator's pin",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "membershipId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrowdingWindow"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/review/crowding/arrivals": {
+      "get": {
+        "operationId": "getExperiencesReviewCrowdingArrivals",
+        "summary": "The new arrivals a crowded city would shadow, by region, kind and type, within the caller's scope",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "worldViewId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShadowedArrivals"
                 }
               }
             }
@@ -20954,6 +21064,309 @@
         "additionalProperties": false,
         "description": "A subregion an edit created for a division."
       },
+      "CrowdingWindow": {
+        "type": "object",
+        "properties": {
+          "centre": {
+            "type": "object",
+            "properties": {
+              "membershipId": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "experienceId": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "name": {
+                "type": "string"
+              },
+              "latitude": {
+                "type": "number"
+              },
+              "longitude": {
+                "type": "number"
+              },
+              "type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "membershipId",
+              "experienceId",
+              "name",
+              "latitude",
+              "longitude",
+              "type"
+            ],
+            "additionalProperties": false,
+            "description": "The place the window opened on."
+          },
+          "kind": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "name": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "How many better-known places of a type shadow a place."
+              },
+              "radiusKm": {
+                "type": "number",
+                "description": "The radius they are counted within, and the window drawn within."
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "limit",
+              "radiusKm"
+            ],
+            "additionalProperties": false
+          },
+          "type": {
+            "description": "The type the rows are of.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "typeExempt": {
+            "type": "boolean",
+            "description": "The kind never hides a place of this type (ADR-0179): nothing in this window takes a pin."
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "places": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "How many places of the type lie within the radius."
+                },
+                "exempt": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "type",
+                "places",
+                "exempt"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The types of the kind around the place, for a switch between them: types are judged apart."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CrowdingWindowRow"
+            },
+            "description": "Every place of the type within the radius, best known first."
+          }
+        },
+        "required": [
+          "centre",
+          "kind",
+          "type",
+          "typeExempt",
+          "types",
+          "rows"
+        ],
+        "additionalProperties": false,
+        "description": "A crowded city around a place, for a curator to sort into the list and the shadow (#2282)."
+      },
+      "CrowdingWindowRow": {
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "distanceM": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How far the place lies from the window's centre, in metres."
+          },
+          "readers": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Readers a year of its Wikipedia articles; null before its first measurement."
+          },
+          "guideEditions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Wikivoyage editions that use its item."
+          },
+          "guideUsed": {
+            "description": "Whether a guide uses it: what its fame reads of the guides (ADR-0177).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "wikipediaEditions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score": {
+            "description": "Its fame among its kind and type worldwide (ADR-0172); null before it is scored.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "outrankedBy": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many places of its type within the radius count above it as the rule counts them, whatever its own pin: the better known and those kept in the list, less those kept in the shadow and those holding works. The rule shadows it at the kind's limit. Null for a type its kind exempts."
+          },
+          "standing": {
+            "type": "string",
+            "enum": [
+              "listed",
+              "shadowed",
+              "new"
+            ],
+            "description": "Where it stands now: in the list a reader is shown, in the tail, or a new arrival nobody has passed."
+          },
+          "crowded": {
+            "type": "boolean",
+            "description": "In the tail now, or for a new arrival, once passed."
+          },
+          "ruleCrowded": {
+            "type": "boolean",
+            "description": "Where the rule puts it whatever its own pin says: in the tail, or not."
+          },
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "list",
+                  "shadow"
+                ],
+                "description": "A curator's answer: list keeps the place among what a reader is shown and counts it as one of the ten; shadow keeps it in the tail and never counts it (ADR-0180)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "holdsWorks": {
+            "type": "boolean",
+            "description": "It holds a work a reader is shown, so it is always shown and takes no pin (ADR-0173)."
+          },
+          "pinnable": {
+            "type": "boolean",
+            "description": "Whether it may take a pin: not while it holds works or its type is exempt."
+          },
+          "outranksCentre": {
+            "description": "Whether it is counted above the window's place: the places that shadow it (#2228). Null on another type's window.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "canAnswer": {
+            "type": "boolean",
+            "description": "Whether the caller's scope reaches it, so an answer about it is taken."
+          }
+        },
+        "required": [
+          "membershipId",
+          "experienceId",
+          "name",
+          "latitude",
+          "longitude",
+          "distanceM",
+          "readers",
+          "guideEditions",
+          "guideUsed",
+          "wikipediaEditions",
+          "score",
+          "outrankedBy",
+          "standing",
+          "crowded",
+          "ruleCrowded",
+          "pin",
+          "holdsWorks",
+          "pinnable",
+          "outranksCentre",
+          "canAnswer"
+        ],
+        "additionalProperties": false,
+        "description": "One place of the type around the window's place."
+      },
       "CurationActivity": {
         "type": "object",
         "properties": {
@@ -21112,7 +21525,8 @@
               "kept_out",
               "merge_proposal_taken_back",
               "kind_added",
-              "find_site_answered"
+              "find_site_answered",
+              "crowding_answered"
             ]
           },
           "region_id": {
@@ -21288,7 +21702,8 @@
               "kept_out",
               "merge_proposal_taken_back",
               "kind_added",
-              "find_site_answered"
+              "find_site_answered",
+              "crowding_answered"
             ]
           },
           "created_at": {
@@ -35328,6 +35743,94 @@
         "required": [
           "modelId"
         ]
+      },
+      "ShadowedArrivals": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "regionId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The leaf region the arrivals lie in; null where no world view places them."
+                },
+                "regionName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "worldViewId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kindId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "kindName": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "arrivals": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "membershipIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "description": "The arrivals, best known first: the window opens on the first."
+                }
+              },
+              "required": [
+                "regionId",
+                "regionName",
+                "worldViewId",
+                "kindId",
+                "kindName",
+                "type",
+                "arrivals",
+                "membershipIds"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "groups"
+        ],
+        "additionalProperties": false,
+        "description": "The new arrivals a crowded city would shadow, which the review queue does not ask about, by region, kind and type."
       },
       "ShapeCredit": {
         "type": "object",
