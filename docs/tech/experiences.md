@@ -839,7 +839,7 @@ A Wikidata kind is filled by a source of its own, and sources whose kinds are dr
 - **One Start Sync does every step a current catalogue needs** (#1805, `controllers/admin/afterRun.ts`). Once a run's items are written — however the run ended — `startSync` hands the pass to `afterRun`, which goes on in the entry the card is still following — the pass's last run's, since on a pass of several sources the first source's run ends minutes before the pass does and its card has stopped asking by then (`PassCard.tsx`); on a source of its own, the one run there is: the join of the places claiming one Wikidata item (`joinPlacesClaimingOneItem`), for the World Heritage source the items of the components this run created without one (`runComponentItemSearch` on `FinderOptions.pointIds`, the finder the card's *Find component items* runs over every component, then `acceptExactCandidates`; a run that created none skips the search, the ordinary case, since a full search costs eight minutes and three hundred requests to Wikidata), and the near-places pairing of the places the runs changed (`drainPairing`, #1950), each a step of the run on its card (`Operation`, #1356). Each step is guarded on its own (`guarded`, #2074): one that fails is logged and named in the closing line (`the search for the new components' items failed; the server log has the cause`), and the steps after it still run. The search reads the local Wikidata subset, so it asks `heldSubset` first, the check the finder itself makes, and on a machine with no subset built it is skipped with its reason in the closing line (`2 new components left without an item, since the local Wikidata subset is not built: build it under Public Dumps, then Find component items`) while the pairing still runs. Every entry of the pass is kept while the steps go (`SyncProgress.continues`, which both `releaseLater`s respect), the followed one's status `processing`, and back to the run's verdict at the end with the closing line extended by what the steps did; a Cancel pressed meanwhile is accepted (`isCancellable` reads `continues`) and stops the search between its requests, or the pairing before it starts, leaving its marks to the next drain, the closing line saying so; the counts stay the run's — the candidates a search proposes are counted as created only on the card's own *Find component items* job — and the steps release the entries a while after they end, as a writer would. The run's modes — a preview, a run without the cache, a run that asks again about pins — are options of that one button on the card (`SourceRunActions.tsx`); the single-purpose actions sit under *More actions*, each with the sentence saying when it is needed: *Fix pictures* stays a repair, since it writes past the gate where a run proposes, and *Find component items* over every site or one is for after a rule of the search changes. The near-places pairing has no button: it pairs again every place whose inputs change, and the whole catalogue after a rule changes (§ Near places with similar names).
 - **The gather reads Wikidata under the pass's first source**: its subset door and its cache key (ADR-0132 decision 5). Everything else a source asks goes through its own door: its visit witnesses; for Places of worship, its works and the second door they open; for Archaeology, its museum door, its finds, and what its site door asks of OpenStreetMap, the Wikipedias and the readership door. #1821 gathers the works and #1822 makes the pipeline one build (Epic #1445). #1819 is the one resolver of where a work lies.
 
-**A place kind is a classifier over the place gather** (#1820, `places/gather.ts`). A kind is declared as a `PlaceKind`: the class trees its rule reads (`trees`), the classes its candidates are asked by (`poolClasses`: broad roots in fame bands, every other class whole), and whether its rule reads what holds and owns a candidate (`readsContainers`). A kind may also name classes it asks below the pool's floor of 15 editions, with the floor it asks them at (`belowFloor`, #1947): a canal's lock is read in few languages, and those candidates are that kind's alone, so no other kind meets one under its floor. `gatherPlaces` walks every kind's trees, asks the pool once over the union of their classes (a root two kinds ask by is asked once), asks for every kind's admitted rows the pool did not name by id, and reads the facts of every entity once and the containers once, for the kinds that read them. It hands each kind its **share** (`shareOf`): the entities the pool named by a class of that kind (a pool question names an entity by a class it carries itself, best rank, on the live service and on the subset alike), and the rows that kind admits. Public art therefore never sees the churches only Places of worship asked for, and refuses none of them. The kind's classifier decides from its share alone: `classifyPublicArt` per rule for Public art and Monuments & memorials (`PUBLIC_ART_KIND`), `classifyPlacesByFame` for Places of worship's door one (`WORSHIP_KIND`), `collectSitesByFame` for Archaeology's site door (`ARCHAEOLOGY_SITE_KIND`), whose kind also hands its trees to the museum door, `classifyTowers` for Towers (`TOWERS_KIND`), `classifyBridges` for Bridges & engineering marvels (`BRIDGES_KIND`) and `classifySquares` for Squares & streets (`SQUARES_KIND`). A kind may also declare an **entrance** (`entrance`, #2035): items it names by something other than a class, which `gatherPlaces` fetches by id when the pool did not name them and hands that kind alone as `entered` (Public art's street-art places, § Public art and Monuments & memorials). A share names the admitted rows no class question named (`byId`): the site door first lets OpenStreetMap's entrance name them, so a dig the map names is vouched for by the map and only the rest by id, as before.
+**A place kind is a classifier over the place gather** (#1820, `places/gather.ts`). A kind is declared as a `PlaceKind`: the class trees its rule reads (`trees`), the classes its candidates are asked by (`poolClasses`: broad roots in fame bands, every other class whole), and whether its rule reads what holds and owns a candidate (`readsContainers`). A kind that admits by the world bars (ADR-0175) also asks every class it asks by again at three sitelinks of any Wikimedia site, whatever the candidate's editions (`admissionPool`, read from the subset alone; `KindShare.admissionPool` says whether it was read): the Caen Hill flight has 3 editions and Munich's Glockenspiel 7, and the bars are quantiles of that whole pool. What it adds is that kind's alone, so no other kind meets a candidate under the shared floor of 15 editions. `gatherPlaces` walks every kind's trees, asks the pool once over the union of their classes (a root two kinds ask by is asked once), asks for every kind's admitted rows the pool did not name by id, and reads the facts of every entity once and the containers once, for the kinds that read them. It hands each kind its **share** (`shareOf`): the entities the pool named by a class of that kind (a pool question names an entity by a class it carries itself, best rank, on the live service and on the subset alike), and the rows that kind admits. Public art therefore never sees the churches only Places of worship asked for, and refuses none of them. The kind's classifier decides from its share alone: `classifyPublicArt` per rule for Public art and Monuments & memorials (`PUBLIC_ART_KIND`), `classifyPlacesByFame` for Places of worship's door one (`WORSHIP_KIND`), `collectSitesByFame` for Archaeology's site door (`ARCHAEOLOGY_SITE_KIND`), whose kind also hands its trees to the museum door, `classifyTowers` for Towers (`TOWERS_KIND`), `classifyBridges` for Bridges & engineering marvels (`BRIDGES_KIND`) and `classifySquares` for Squares & streets (`SQUARES_KIND`). A kind may also declare an **entrance** (`entrance`, #2035): items it names by something other than a class, which `gatherPlaces` fetches by id when the pool did not name them and hands that kind alone as `entered` (Public art's street-art places, § Public art and Monuments & memorials). A share names the admitted rows no class question named (`byId`): the site door first lets OpenStreetMap's entrance name them, so a dig the map names is vouched for by the map and only the rest by id, as before.
 
 **A place Wikidata says is gone is refused** (#2259, `places/gone.ts`), beside each kind's own refusals: once a run of Public art, Monuments & memorials, Places of worship, Towers, Bridges & engineering marvels or Squares & streets has decided, whichever tier or door admitted a place, the run reads what the item states of itself (`fetchStandingFacts`, through the run's own door: `subset/standing.ts` on the subset) and refuses by name (`refuseGone`, `goneReason`) a place whose state of use (`P5817`) says *demolished or destroyed* (the St. Francis Dam) or that it was never built (*proposed building or structure*, *cancelled*, *abandoned project*); one whose end of existence (`P576`) a state of use agrees with — closed, temporarily or for good, out of service, decommissioned, abandoned — where no heritage designation (`P1435`) still holds and no state of conservation (`P5816`) says *preserved*, *ruinous* or *partially destroyed* (the Francis Scott Key Bridge, Old St. Peter's Basilica); and a work out of service or decommissioned whose state of conservation is ruinous (the Teton Dam). A heritage designation that still holds spares a place from the last two tests. An end of existence alone is never read as gone: it is as often the end of what a building housed as of the building — Bath Abbey's monastery was dissolved, Hagia Sophia ceased to be a church, the Registan and Coventry's bombed cathedral carry one — and a state of conservation of *demolished or destroyed* sits on churches rebuilt since (the Cathedral of Christ the Saviour, St Michael's Golden-Domed Monastery) and on ruins worth the journey (Fountains Abbey). The Frauenkirche in Dresden and the Parthenon stay. On every membership of the six kinds on the development subset (2026-11-02), the end-of-existence test names the Francis Scott Key Bridge and Old St. Peter's Basilica alone, and no held place carries a state of use that says demolished or never built. A place the catalogue already offers that the run now refuses is refused as any is: held for a curator, never deleted.
 
@@ -863,8 +863,8 @@ place as the world tier's where both name it, and the tier on the row's membersh
   every item of every place kind's classes with a point (`GatheredPlaces.classes`, Archaeology's sites
   among them) and of the museum tree beside them (`regionalPoolOf` in `places/placePass.ts`: museums
   are no kind of the pass, but the measurement counted them among a place's neighbours, and they set
-  the references — the Tretyakov Gallery lifts Moscow's guide median from 4 to 4.5, and a church with
-  one Wikivoyage listing then stays under a quarter of it rather than exactly on it), whatever its editions — the group a place is measured among, as ADR-0171's measurement
+  the references — the Tretyakov Gallery lifts Moscow's guide median from 4 to 4.5: measured at ADR-0171's quarter,
+  a church with one Wikivoyage listing then stays under the bar rather than exactly on it), whatever its editions — the group a place is measured among, as ADR-0171's measurement
   counted it, so a church in Cairo is measured against Giza and Saqqara — in one temporary table built
   from the subset (`wikidata_claims` P31 and P625, the editions counted as `subsetWikipediaEditions`
   counts them, the Wikivoyage editions that use the item from `wikivoyage_usage`), with a GiST index
@@ -884,10 +884,11 @@ place as the world tier's where both name it, and the tier on the row's membersh
   highest within `radiusKm` among the places read in any edition, in a group of at least
   `editionsGroupFloor` places, or the Wikivoyage editions that use it reach `guideShare` of the median
   of the `best` highest guide counts among the places a guide uses at all, in a group of at least
-  `guideGroupFloor`. The numbers are one named set, `REGIONAL_CUT` (50 km, 10, 1, ¼, 25 and 5, 2 —
-  ADR-0171's, as its measurement's `final.py` applied them on the dump of 2026-10-19 over the 21
-  coverage surveys), with two more that the review's experiments turn: **`enabled`**, off until the
-  review (#2177) settles the numbers — the pass then reads no pool and every kind's part says so —
+  `guideGroupFloor`. `REGIONAL_CUT` reads its numbers from the register (`REGIONAL_REGISTER` in
+  `places/admissionRegister.ts`, ADR-0175 decision 3): 50 km, the 10 best, a Wikivoyage share of a
+  half, the editions reference whole, groups of 25 and 5 places, two editions. Two more the review's
+  experiments turned: **`enabled`**, off until #2252 switches the tier on (while it is off, the pass
+  reads no pool and every kind's part says so),
   and **`neighbours`**, whose places set the references: `all` (every place kind's and the museums',
   the measurement's pool), `kind` (the candidate's own kind's places) or `type` (its type's within
   the kind, a mosque among mosques, by `RegionalKind.typeOf`: a candidate is measured in the group of the type the kind's own rule
@@ -2804,83 +2805,38 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    courtyard of the CIA's headquarters; nothing in its classes says so, and its visit question is
    the one that can (§ Archaeology's **A kind's run asks a curator**). The Pakistan Monument,
    Tsitsernakaberd and the 9/11 Memorial were on the first list until #803.
-5. **The line, then the write** — a candidate that passes enters at **22 sitelinks and stays until
-   it falls below 18** (`ENTER_SITELINKS`/`STAY_SITELINKS` in the pipeline; the museums' own line,
-   ADR-0023), read against what the kind already admits (`admittedExternalIds`). An admitted
-   row that fell below 18 is refused by name — `17 Wikipedia editions: below the world tier's line (22 to
-   enter, 18 to stay)` — and a candidate below the line that was never in is simply out, and
-   nothing is said about it: a refusal names a rule, and none ran on it.
-   **A public clock with a show has a line of its own** (#2140, `CLOCK_LINE` in
-   `publicArt/clockLine.ts`): it is read in few languages, Munich's Rathaus-Glockenspiel in 7
-   editions and the Olomouc Astronomical Clock in 7, so the kind asks for the clock classes below
-   the pool's floor down to 4 editions (`belowFloor` on `PUBLIC_ART_KIND`), and a clock the kind's
-   line does not keep enters with 5 editions **and** 15,000 readers in the latest year
-   (`yearlyReaders`), and stays with 4 and 10,000. Chosen on the dev subset on 2026-10-30 over
-   every astronomical clock and Glockenspiel: Munich (65,572 readers), Messina (22,206) and Olomouc
-   (16,331) enter, and the Gdańsk clock (7,997) and Besançon's (5,949) do not. With no year read,
-   no clock enters, and a held one keeps its place on the stay line's editions; one that falls is
-   refused with both measures named (`belowGuidedLine`). A clock kept in a church or a museum
-   some kind offers is still that venue's (the Strasbourg clock), whatever it reads.
-   **A work the world reads opens a second door to Public art** (#2033, `openArtworkDoor` in the
-   pipeline, `artworkReadershipDoorFor` in `readershipDoor.ts`). It is Archaeology's place door
-   (ADR-0127) over the share: the run reads the year of readership of every candidate below the
-   line and of every work the source holds that the rule still passes (a held work it now refuses
-   is leaving and sets no bar), and a candidate below the line read at the median of
-   the held works at the line or over stands in, as one at the line does; a held work stays down to
-   the 35th percentile. The bar is read over what the source holds, not over every candidate at
-   the line, where works indoors that the rule refuses (the Pietà) would set it. On the
-   development catalogue on 2026-10-25 the bar was 115,121 views and the exit 76,328, over the 80
-   works held at the line; the Kelpies (17 sitelinks) read 193,801 and *Maman* (20) 215,384. The
-   door asks no witnesses (ADR-0128), since the rule already admits a work only by an artwork class
-   and refuses one that is lost or stands indoors, which is what the witnesses ask of a place. The
-   rest of the rule is unchanged: a work the door opened for that stands inside a church is refused
-   by name. It reads the pool the gather already asks for, from its floor of 15 sitelinks, so a
-   work arrives through it at 15 or over; a held work fallen below that floor is asked for by id,
-   as every admitted row is (`collectById` in `places/gather.ts`), and the door keeps it or the
-   line refuses it by name. It is
-   shut while the source's curator gate is off and while the year is not folded with the redirects
-   in place, so every work it admits arrives for a curator, with the question on Public art's own
-   membership, its `admissionNote` fact (`artworkDoorNote`): the reading, the bar or the exit,
-   the burst flag, and whether a visitor can see it there now. The run's log names every work the
-   door admitted. **A guide's use or an Atlas Obscura listing opens a third door to Public art**
-   ([ADR-0169](../decisions/0169-a-work-a-guide-uses-or-atlas-obscura-lists-enters-at-20000-readers-a-year-whatever-its-editions.md),
-   `publicArt/marksDoor.ts`, `PUBLIC_ART_MARKS_DOOR`): a work that passes the rule, that a Wikivoyage
-   edition uses or whose item carries an Atlas Obscura place ID (`P7772`, Wikidata's CC0 statement,
-   read from the subset as the street-art rule reads it — `fetchStreetArtMarks`, never the site) and
-   that the latest year reads 20,000 times or over enters, whatever its count of editions, for a
-   curator, with the door's question as its `admissionNote` (`marksDoorNote`: editions, readers, the
-   marks, the bar). Cadillac Ranch carries 10 editions, the Crown Fountain 13, *The Spirit of
-   Detroit* 2. A work the door admitted stays while a mark stands and the year reads it over 16,400 —
-   the editions line's own ratio of stay to enter — and falls with the marks named
-   (`belowLineUnmarkedReason`). The door reads the pool and the works under its floor
-   (`publicArt/underFloor.ts`, `collectWorksUnderFloor`): the readership names every item read at
-   the bar in fewer than 15 editions (`readAtLeast`), the marks narrow them, Wikidata is asked which
-   carry a class the kind's rule admits by with a point (`fetchPlacedAmong`, with the sculptural and
-   fountain closures and `PUBLIC_CLOCK_CLASSES` — not the pool's whole admitting set, whose heritage
-   senses of monument are Monuments & memorials' candidates) and then
-   for their rows, facts, containers and subjects, and they join the share before any other read
-   (`shareWithMarksDoor`), so the readership door, the street-art reading and the clock line see
-   them too. Shut while the source's curator gate is off (ADR-0056 decision 5) or no year of
-   readership is folded: nothing is read under the floor, nothing enters, and a held work under the
-   stay line keeps its place with a note (`keptMarksNote`); with no Wikivoyage usage build the
-   guide's half is silent and Atlas Obscura's still speaks. The bar is the maintainer's count of
-   2026-10-30; #2145 restates every readers' bar as a rule that follows the year. **Monuments & memorials opens the guide door instead** ([ADR-0167](../decisions/0167-a-monument-a-wikivoyage-guide-uses-enters-under-the-editions-line-for-a-curator.md),
-   `publicArt/guideDoor.ts`, `guideDoorCandidates` in the pipeline): a candidate under the line
-   that passes the rule and that a Wikivoyage edition uses (`usedByAGuide`, the usage build of
-   `docs/tech/dumps.md`) stands in, for a curator, with the door's question as its `admissionNote`
-   (`guideDoorNote`: the editions, the line, and whether it is a monument a visitor goes to see).
-   The door asks the guide and nothing else — no readers' bar: under this kind's line a year of
-   readers brings tombs, national historic sites and kofun filed as monuments, and the guide
-   brings the canon's missing tops with few places that are not monuments (the #1997 report, `docs/research/2026-10-30-what-other-signals-find-under-a-kinds-editions-line.md`).
-   It reads the pool from its floor of 15 editions and no further: under the floor the guide
-   brings few tops and many misfiled places. A held row under the stay line stays while a guide
-   uses it, and falls with the guide named (`belowLineUnguidedReason`) once none does; while the
-   source's curator gate is off (`curatorGateOn` in `readershipDoor.ts`, ADR-0056 decision 5 —
-   every arrival through the door is for a person to read) or no usage build is in place the door
-   is shut, nothing enters by it, and a held row under the stay line keeps its place with a note
-   saying so (`shutDoorNote`), as a place keeps its place while no year of readers can be read.
-   The run's log says when the door is shut, and why. Public art opens no guide door:
-   the report measured the guide as bringing it few tops. The admitted are written
+5. **The world bars, then the write** — a candidate that passes enters the world tier at any one
+   of three bars read off the kind's own pool at this run (ADR-0175, `places/worldBars.ts`,
+   [filling-a-kind.md § 11](filling-a-kind.md#11-the-place-kinds-admission-frame-and-how-a-number-of-it-moves)):
+   the pool's 97th percentile of Wikipedia editions, its 98th percentile of readers a year, or its
+   90th percentile of readers where a Wikivoyage edition uses the item or it carries an Atlas
+   Obscura place ID (`P7772`, read from the subset as the street-art rule reads it —
+   `fetchStreetArtMarks`, never the site). The pool is every candidate of the kind's classes the
+   kind's own rule passes, with a point and at least three sitelinks of any Wikimedia site,
+   whatever its editions (`admissionPool` on `PUBLIC_ART_KIND`, read from the subset), and each
+   source reads its own: Public art's and Monuments & memorials' rules split the one share into two
+   pools, so each kind has bars of its own. On the review's extract (2026-11-02) Public art's came
+   to 17 editions, 93,029 readers and 20,871 with a mark, Monuments & memorials' to 18, 85,409 and
+   16,719; a run's log names the bars it read, as numbers. A row the kind already admits
+   (`admittedExternalIds`) stays at 0.8 of any bar; one under every stay bar is refused by name
+   with its editions, its readers, its marks and the bars (`belowWorldBars`), and a candidate under
+   every bar that was never in is simply out, and nothing is said about it. A refusal by the rule
+   is named for a row the kind holds, one the shared pool named at its floor of 15 editions, one a
+   bar would admit, or one the street-art entrance named (`namesRefusal`); the rest of the pool the
+   rule refuses is its long tail. So the Kelpies (17 editions, 193,801 readers) and *Maman*
+   (20, 215,384) are in by their readers; Florence's Porcellino (9 editions) and Munich's
+   Rathaus-Glockenspiel (7), each listed by Atlas Obscura and read some 65,000 times a year, by the
+   third bar, with the curator's question as their `admissionNote` (`guidedBarNote`: the editions,
+   the readers, the mark and the bar, and whether a visitor can see it there now); a public clock is
+   held to the kind's bars like any work. A work the bars admit that stands inside a church is
+   still refused by the rule, by name. What a run cannot read never drops a held work: with no
+   year of readers the editions bar alone admits and a held work under it keeps its place; with
+   no Wikivoyage usage build a held work the third bar would decide is kept; on the live service no
+   pool is read and nothing new enters (`keptNote`). The bars replaced the 22/18 editions line, the
+   readership door (#2033), the public clocks' line (#2140), Public art's marks door (ADR-0169,
+   with its read under the pool's floor) and Monuments & memorials' guide door (ADR-0167): each of
+   those was a picked number, and the third bar is what the two doors were, as one rule for every
+   place kind. The admitted are written
    most famous first, credits asked of
    Commons for them alone; every class the rule read goes onto the kind's
    membership as its `wikidataClasses` fact, and whether the kind answered a building's veto — an artwork
@@ -3179,16 +3135,23 @@ the Temple Mount is still refused as a neighbourhood.
   Fuji is a kami's mountain; Kanchenjunga, Gangkhar Puensum, Rainier and Shiprock name none.
 - **Somewhere to stand**: a coordinate, and on Earth.
 
-The line is asked after the verdict, not inside it: `standingOf` in `places.ts` reads the source
-row's two numbers rather than a constant, admits what clears the enter line, refuses by name — with
-its count — an admitted row that has fallen below the stay line, and says nothing at all about a
-candidate that was never in. Under the editions line a year of readers is a second door
-(`WORSHIP_READERS_LINE`, #1978): 25,000 readers admit a place and 18,000 keep it, read by
-`yearlyReaders` through the pipeline's `placeReaders`, and the arrival carries the note a curator
-reads ("19 Wikipedia editions, under the line, and 181,451 readers a year: in by its readers").
-Measured in #1997, it brings all seven tops of the kind's list under the line — Mont-Saint-Michel
-Abbey, the Sanctuary of Fátima, the Virupaksha Temple — where a Wikivoyage guide would miss Fátima
-and Virupaksha. With no year of readers read, the editions line alone decides.
+The world bars are asked after the verdict, not inside it (`classifyPlacesByFame` in `places.ts`,
+ADR-0175, `places/worldBars.ts`): a place the rule passes enters at the kind's own pool's 97th
+percentile of Wikipedia editions, its 98th percentile of readers a year, or its 90th percentile of
+readers where a Wikivoyage edition uses the place or it carries an Atlas Obscura place ID. The pool
+is every candidate of the worship classes the rule passes, with a point and three sitelinks or more
+of any Wikimedia site, read from the subset (`admissionPool` on `WORSHIP_KIND`); on the review's
+extract (2026-11-02) the bars came to 16 editions, 49,634 readers and 10,577 with a mark, and a run's
+log names its own. Door one reads no line of the source row: that line is door two's and a relic's
+badge (`contentsLine`). A place the last run admitted stays at 0.8 of any bar and is refused by name,
+with its signals and the bars, once it falls under all three; a candidate that was never in and
+reaches no bar is out, and nothing is said of it. So Cologne Cathedral is in by its editions,
+Mont-Saint-Michel Abbey (19 editions, 181,451 readers) by its readers, and a chapel a guide names on
+some 11,000 readers by the third bar, with the curator's question as its admission note. The bars
+replaced the editions line the source row stated for door one and the readers' line of ADR-0161
+decision 2 (25,000 to enter, 18,000 to stay), narrowed by ADR-0175. What a run cannot read never
+drops a held place: with no year of readers the editions bar alone admits, and a held place under it
+keeps its place.
 
 **Door two — a work it holds** (`worship/pipeline.ts`). The museum import's works collector
 (`museum/worksCollector.ts`), run with this kind's own rule: a `VenueRule` whose classes are the
@@ -4664,49 +4627,35 @@ chosen from, is [`docs/sources/global/wikidata-towers.md`](../sources/global/wik
 and a steeple are bell towers (the Giralda, Pisa), and a TV tower is an observation tower, since
 its deck is what it is visited for.
 
-**The line** (`TOWER_LINE`, `towers/kind.ts`) reads two measures, because bots wrote many
-editions of some towers: a tower enters with 15 Wikipedia editions **and** 25,000 readers in the
-latest year of readership folded with its redirects (`readWorks`, the counting Art Museums'
-works door uses), and a tower the source holds stays while it keeps 12 and 18,000. When no year
-is folded, no tower enters, and one the source holds keeps its place on the stay line's editions —
-or, whatever its editions, through the guide door while a guide uses it, with a note saying so
-(`keptTowerNote`, `standingWithoutYear`) — as the readership door shuts in the same case (`readDoor`,
-`readershipDoor.ts`); the run says so in its log. A tower that falls
-below the line is refused with both measures named (`belowTowerLine`); a candidate that never
-reached it is not reported. The coverage report reads the editions alone (`CODE_LINES`), since a
-survey entry carries no readers.
-
-**The guide door** ([ADR-0168](../decisions/0168-a-tower-a-wikivoyage-guide-uses-enters-at-15000-readers-a-year-whatever-its-editions.md),
-`TOWER_GUIDE_DOOR` in `towers/kind.ts`) stands beside the line: a tower that passes the rule, that a
-Wikivoyage edition uses and that the year reads 15,000 times or over enters, whatever its count of
-editions, for a curator, with the door's question as its `admissionNote` (`towerDoorNote`: the
-editions, the readers, the guide and the bar). The Asinelli Tower carries 9 editions, the Dom
-Tower of Utrecht 8, the Torrazzo of Cremona 14, and everyone who comes to their towns climbs them.
-A tower the door admitted stays while a guide uses it and the year reads it over 10,800 — the
-line's own ratio of stay to enter — and falls with the guide named (`belowTowerDoor`). The door
-reads the pool and the towers under its floor (`towers/underFloor.ts`, `collectTowersUnderFloor`):
-the readership names every item read at the bar in fewer than 15 editions (`readAtLeast`), the
-guide narrows them (`usedByAGuide`), Wikidata is asked which of those carry a tower class with a
-point (`fetchPlacedAmong`, the question Archaeology asks with its site tree) and then for their
-rows and classes, and they join the share as a class question's rows would. Whether the door is
-open is the shared door's (`places/guideDoor.ts`, `guideDoorOpen`): shut while the source's
-curator gate is off (ADR-0056 decision 5) or no Wikivoyage usage build is in place, and then
-nothing is read under the floor, nothing enters by it, and a held tower under the line keeps its
-place with a note saying so (`keptTowerNote`, which also carries the other case the door cannot be
-asked in: no year of readers read, with a held tower a guide uses kept whatever its editions). The
-bar is a count the maintainer chose on
-2026-10-30 from the #1997 report; #2145 restates every readers' bar as a rule that follows the
-year.
+**The world bars** (ADR-0175, `classifyByWorldBars` in `places/worldTier.ts`, read off the pool by
+`places/worldBars.ts`): a tower the rule passes enters at the kind's own pool's 97th percentile of
+Wikipedia editions, its 98th percentile of readers in the latest year folded with its redirects
+(`readWorks`), or its 90th percentile of readers where a Wikivoyage edition uses it or it carries an
+Atlas Obscura place ID. The pool is every candidate of the tower classes the rule passes, with a
+point and three sitelinks or more of any Wikimedia site, read from the subset (`admissionPool` on
+`TOWERS_KIND`, [filling-a-kind.md § 11](filling-a-kind.md#11-the-place-kinds-admission-frame-and-how-a-number-of-it-moves));
+on the review's extract (2026-11-02) the bars came to 19 editions, 64,996 readers and 12,838 with a
+mark, and a run's log names its own. The readers' bar is what bots cannot write: Hoằng Phúc pagoda's
+37 editions are read 2,766 times a year. The third bar lets in the Asinelli Tower (9 editions) and
+the Torrazzo of Cremona (14), read in few languages and climbed by everyone who comes to their
+towns, with the curator's question as their `admissionNote` (`guidedBarNote`). A tower the last run
+admitted stays at 0.8 of any bar, and one under all three is refused with its signals and the bars
+named (`belowWorldBars`); a candidate that never reached a bar is not reported. What a run cannot read
+never drops a held tower: with no year folded the editions bar alone admits and a held tower under
+it keeps its place, with no usage build a held tower the third bar would decide is kept, and on the
+live service no pool is read and nothing new enters (`keptNote`). The bars replaced the kind's line
+(15 editions and 25,000 readers) and its guide door at 15,000 readers (ADR-0168), with the read under
+the pool's floor that door needed. The coverage report reads the editions bar alone, since a survey
+entry carries no readers (`MEASURED_BARS`).
 
 Measured on the development subset on 2026-10-22, read-only in the dev container: the pool named
 174 candidates, and the source would admit 108 and refuse 31. The record has what they are.
 
 What a place kind with one point reads of its candidates beside its rule is shared
 (`places/candidates.ts`): a year's readers (`yearlyReaders`) and the landmark a run writes for a
-candidate it admits (`placeLandmark`). Each kind's rule and line stay its own. A kind whose
-line has two doors, a year's readers or fewer where a Wikivoyage guide names the place, runs one
-classifier over its share (`classifyByGuidedLine`, `places/guidedLine.ts`) with its own verdict and
-numbers: Bridges & engineering marvels and Squares & streets do.
+candidate it admits (`placeLandmark`). Each kind's rule stays its own, and its bars are the frame's
+over its own pool: Towers, Bridges & engineering marvels and Squares & streets run one classifier
+over their shares (`classifyByWorldBars`, `places/worldTier.ts`) with their own verdicts.
 
 ### Bridges & engineering marvels (`bridges/*.ts`)
 
@@ -4744,25 +4693,20 @@ also files as a dam a lock (the Soo Locks, Seattle's Ballard Locks). A dam that 
 is a dam whatever lock it holds (`POWER_STATION`): the Dnieper's hydroelectric plants pass ships
 and stay dams.
 
-**The lines** (`bridges/kind.ts`, read by `places/guidedLine.ts`) each have two doors on one count
-of Wikipedia editions: a work enters on a year's readers in the latest year folded, or on fewer
-where a Wikivoyage edition uses its item (`usedByAGuide`, the table the visit witnesses read). A
-disaster fills a year of readers and an expressway viaduct can be read as much as a bridge a
-traveller crosses a city for, and a guide naming the work is what tells them apart.
-
-- `BRIDGE_LINE`, for every type but a canal's works: 15 editions and 50,000 readers, or 10,000
-  with a guide, to enter; 12 editions and 35,000, or 7,000 with a guide, to stay.
-- `WATERWAY_LINE`, for a lock, a flight, a boat lift or an inclined plane (#1947): 3 editions and
-  15,000 readers, or 4,000 with a guide, to enter; 3 and 10,000, or 3,000 with a guide, to stay.
-  A lock is read in few languages however many people stop at it: the Caen Hill flight has 3
-  editions and 20,000 readers. The kind chooses the line by the type (`lineFor`), and asks these
-  classes below the pool's floor of 15 editions, at the stay line's 3 (`belowFloor`): only this
-  kind meets those candidates (`collectBelowFloor`, `places/gather.ts`).
-
-With no year of readership folded, nothing new enters and a work the source holds keeps its place
-on the stay line's editions, as for Towers; with no Wikivoyage usage built, the guide door is
-shut. A work that falls below its line is refused with its measures named (`belowGuidedLine`).
-The coverage report reads the editions alone (`CODE_LINES`).
+**The world bars** are the frame's over the kind's own pool (ADR-0175, `classifyByWorldBars`, as
+for Towers): its 97th percentile of Wikipedia editions, its 98th of readers a year, or its 90th of
+readers where a Wikivoyage edition uses the work or it carries an Atlas Obscura place ID; on the
+review's extract (2026-11-02) 17 editions, 56,955 readers and 13,757 with a mark. A disaster fills a
+year of readers and an expressway viaduct can be read as much as a bridge a traveller crosses a
+city for, and a guide's mark is what lets a work in on fewer readers: the Khaju Bridge in Isfahan
+(25 editions, 43,351 readers) and the Kurobe Dam (15, 146,576) are in by it; the Wivenhoe Dam, a
+water-supply dam a guide also names, is read 9,015 times and stays out. A canal's works are read in
+the same pool as every other work, whatever their editions, and held to the same bars: the canal
+works' own line (`WATERWAY_LINE`, 3 editions and 15,000 readers, #1947) went with the picked lines,
+so a lock no guide names and read some 20,000 times a year — the Caen Hill flight — reaches no
+bar. A work the last run admitted stays at 0.8 of any bar and is refused with its signals and the
+bars named once it falls under all three (`belowWorldBars`). What a run cannot read never drops a
+held work, as for Towers. The coverage report reads the editions bar alone (`MEASURED_BARS`).
 
 Measured on the development subset on 2026-10-24, read-only in the dev container, with main's
 code beside the branch's: the 58 canals the kind held leave with the reason naming #1948, and 24
@@ -4802,12 +4746,13 @@ Street and Fifth Avenue are streets a visitor walks.
 classes name, and `street` for a bare thoroughfare: the Spanish Steps are a stairway, and the
 National Mall a square though an avenue too.
 
-**The line** (`SQUARE_LINE`, `squares/kind.ts`, read by `places/guidedLine.ts`) has the same two
-doors as Bridges & engineering marvels' with its own numbers: 15 editions, then 30,000 readers a
-year, or 5,000 where a Wikivoyage edition uses the place's item. The readers' door stays low
-because a guide often names the monument on a square rather than the square: no edition uses the
-item of Havana's Malecón or of the Piazza della Rotonda. A place the source holds stays while it
-keeps 12 editions and 21,000 readers, or 3,500 with a guide.
+**The world bars** are the frame's over the kind's own pool (ADR-0175, `classifyByWorldBars`, as
+for Towers); on the review's extract (2026-11-02) 15 editions, 44,480 readers, and 10,963 where a
+Wikivoyage edition uses the place or it carries an Atlas Obscura place ID. The third bar matters
+here because a guide often names the monument on a square rather than the square: no edition uses
+the item of Havana's Malecón or of the Piazza della Rotonda, which come in on their readers. A
+place the last run admitted stays at 0.8 of any bar. The bars replaced the kind's line (15
+editions, then 30,000 readers or 5,000 with a guide).
 
 Measured on the development subset on 2026-10-23, read-only in the dev container: the pool named
 419 candidates, and the source would admit 326 and refuse 28, with 109 of the 114 places the line

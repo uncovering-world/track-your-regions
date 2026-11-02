@@ -57,8 +57,8 @@ Champs-Élysées, the Arbat. Its world tier is read from Wikidata by the source 
 (`experience_sources` row 9), which decides from the place pass's gather (ADR-0132 decision 5).
 The rule is code, and is not restated here: the classes are
 `backend/src/services/sync/squares/classes.ts`, the verdict `squareTest.ts` and the line
-`kind.ts`, with the two-door line read by `places/guidedLine.ts`. This record holds what the
-search measured and why the line is where it is.
+`kind.ts`, with the world bars read by `places/worldBars.ts`. This record holds what the
+search measured and why the line was where it was.
 
 ## The candidates (2026-10-23, the dev subset)
 
@@ -152,3 +152,12 @@ site since. Over every item a square or street class names, the condition fires 
 agora and the Agora of the Gods at Cyrene, which has no Wikipedia edition. OpenStreetMap tags the
 Roman Agora as an archaeological site, so it is Archaeology's candidate, decided by that kind's
 line and its readership door.
+
+## The world bars (2026-11-02, #2251, ADR-0175)
+
+The line above is superseded by [ADR-0175](../../decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md): a place enters at the kind's own pool's 97th percentile
+of Wikipedia editions, its 98th percentile of readers a year, or its 90th percentile of readers
+where a Wikivoyage edition uses it or it carries an Atlas Obscura place ID, and a held place stays
+at 0.8 of any. On the review's extract the bars came to 15 editions, 44,480 readers and 10,963 with
+a mark. The levels live in `backend/src/services/sync/places/admissionRegister.ts`
+([filling-a-kind.md § 11](../../tech/filling-a-kind.md#11-the-place-kinds-admission-frame-and-how-a-number-of-it-moves)).
