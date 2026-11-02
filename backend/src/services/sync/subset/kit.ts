@@ -21,6 +21,16 @@ import { articleUrl } from './values.js';
 const BEST = `NOT EXISTS (
   SELECT 1 FROM wikidata_claims h WHERE h.subject = c.subject AND h.property = 'P279' AND h.rank > c.rank)`;
 
+/**
+ * Whether claim `alias`'s coordinate is on the Earth. A point on the Moon or
+ * Mars, which Wikidata states with its globe, lies near no place on the map,
+ * however its latitude and longitude read; a coordinate with no globe is the
+ * Earth's, as Wikidata reads it. Read by the component items' search and the
+ * finds' sites (#2242); the place pass's regional pool still spells it itself.
+ */
+export const onEarthSql = (alias: string): string =>
+  `COALESCE(${alias}.value->>'globe', 'http://www.wikidata.org/entity/Q2') = 'http://www.wikidata.org/entity/Q2'`;
+
 /** Direct subclasses of any of `parents`, as `fetchSubclasses` answers. */
 export async function subsetSubclasses(parents: string[]): Promise<string[]> {
   if (!parents.length) return [];

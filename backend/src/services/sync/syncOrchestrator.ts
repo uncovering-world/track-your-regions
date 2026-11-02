@@ -26,6 +26,7 @@ import { recordItemOutcome, recordItemFailure, recordFilteredEntities, recordPut
 import { applyAdmissionSweep, badgeAdmitted, questionPins } from './admissionStep.js';
 import { askVisitQuestions } from './visit/visitQuestions.js';
 import { refreshWikipediaEditions } from './wikipediaEditions.js';
+import { proposeFindSites } from './findSiteProposals.js';
 import {
   completionMessage,
   computeFinalStatus,
@@ -157,16 +158,23 @@ async function detectMissing<T>(
 }
 
 /**
- * Every edition of the articles the catalogue now links, for a reader's
- * languages (#2209). A copy kept for readers, not the run's work: a failure is
- * logged and the table keeps what the last run left; a dry run writes nothing.
+ * The two copies a real run takes from the local Wikidata subset for readers and
+ * curators, never the run's own work: every edition of the articles the catalogue
+ * now links, for a reader's languages (#2209), and the sites the finds with no
+ * place of discovery stand on, for a curator (#2242). A failure of either is
+ * logged and its table keeps what the last run left; a dry run writes nothing.
  */
-async function keepWikipediaEditions(dryRun: boolean, logPrefix: string): Promise<void> {
+async function keepSubsetCopies(dryRun: boolean, logPrefix: string): Promise<void> {
   if (dryRun) return;
   await refreshWikipediaEditions().then((kept) => {
     if (kept) console.log(`${logPrefix} Kept ${kept.editions} Wikipedia editions of ${kept.items} items`);
   }).catch((error: unknown) => {
     console.error('%s Keeping the Wikipedia editions failed:', logPrefix, error);
+  });
+  await proposeFindSites().then((proposed) => {
+    if (proposed) console.log(`${logPrefix} Proposed ${proposed} finds' sites`);
+  }).catch((error: unknown) => {
+    console.error('%s Proposing the finds\' sites failed:', logPrefix, error);
   });
 }
 
@@ -331,7 +339,7 @@ export async function orchestrateSync<T>(
       progress.visitQuestions = { read: 0, short: 0, asked: 0, failed: true };
     });
 
-    await keepWikipediaEditions(dryRun, logPrefix);
+    await keepSubsetCopies(dryRun, logPrefix);
 
     // Computed after that attempt: a run whose per-object record never landed is
     // not a clean run, whatever the items themselves did, and an operator
