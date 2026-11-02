@@ -2174,6 +2174,22 @@ writer stores it as it stores `sitelinks_count`, a measurement outside any claim
 (`treasures.wikipedia_url`), and stamps `wikipedia_read_at`; a run that did not ask keeps what
 the row holds. A test world answers that question with no article (`isEnglishArticlesQuery`).
 
+**Every edition of those articles is kept for readers** (#2209). A place's and a work's link is one
+English article, while the item behind it is written about in about 27 Wikipedia editions. Those
+are in the subset's `wikidata_sitelinks`, which no reader route reads (ADR-0124), so the end of every
+real run copies them into the serving table `wikipedia_editions` (`item`, `wiki`, `title`, keyed on
+the item and the edition, indexed by edition and title): `refreshWikipediaEditions`
+(`services/sync/wikipediaEditions.ts`, called by `orchestrateSync` after the visit questions)
+gathers every English article a place, a part or a work links (`metadata.wikipediaUrl`,
+`treasures.wikipedia_url`), decodes each title (`articleOf`), finds the item whose `enwiki`
+sitelink it is, and writes every Wikipedia sitelink of that item (`NOT_WIKIPEDIA` left out, as the
+editions count leaves it out), replacing the table whole in one transaction. The item is found by
+the article the catalogue shows, never by the id a source knows the place by, so the languages a
+reader switches among are always those of the article a curator or a rule chose (#1963, #1964,
+ADR-0094). A failure is logged and leaves the table as the last run left it; a dry run writes
+nothing; a subset holding no `enwiki` sitelink leaves it as it is. On dev on 2026-11-02: 6,573
+items, 163,843 editions, 5,124 of them Russian; the read takes about 4 s.
+
 ### Art Museums (`museumSyncService.ts`, `museum/*.ts`)
 
 Works-first: the sync decides what belongs in the catalogue by which artworks the world knows,
