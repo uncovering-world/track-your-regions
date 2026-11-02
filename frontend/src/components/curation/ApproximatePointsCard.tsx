@@ -19,8 +19,8 @@
 
 import { useMemo, useState } from 'react';
 import { Box, Button, Card, CardContent, Link, Stack, Typography } from '@mui/material';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { editLocation, suggestPointHints, type PointHintSuggestions } from '../../api/curation';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { askPointNamesakes, editLocation, suggestPointHints, type PointHintSuggestions } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { distanceLabel } from '../../utils/moveDescription';
@@ -132,6 +132,15 @@ export function ApproximatePointsCard({ item, onDone }: { item: ReviewQueueItem;
     ),
   });
 
+  // The full OpenStreetMap, asked for one point's namesakes (#2243): what the
+  // layer does not keep. The answer becomes the point's hints, so the queue is
+  // read again.
+  const queryClient = useQueryClient();
+  const namesakes = useMutation({
+    mutationFn: (target: ApproximatePoint) => askPointNamesakes(item.id, target.locationId),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll }),
+  });
+
   if (!point || !focus) return null;
 
   return (
@@ -186,6 +195,9 @@ export function ApproximatePointsCard({ item, onDone }: { item: ReviewQueueItem;
                   );
                 })}
               </Stack>
+              <NamesakesLine point={each} asking={namesakes.isPending && namesakes.variables?.locationId === each.locationId}
+                failed={namesakes.isError && namesakes.variables?.locationId === each.locationId}
+                onAsk={() => namesakes.mutate(each)} />
               <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
                 <Button size="small" onClick={() => { setReading({ point: p, hint: null }); setByHand(each); }}>
                   Place it by hand
@@ -218,5 +230,41 @@ export function ApproximatePointsCard({ item, onDone }: { item: ReviewQueueItem;
         />
       )}
     </Card>
+  );
+}
+
+/**
+ * The question to the full OpenStreetMap, for a point the layer offered no
+ * namesake (#2243): a button until it is asked, and once asked with the
+ * point's name and coordinate as they are, what it found or that it found
+ * nothing. A point with a namesake from the layer is offered none.
+ */
+function NamesakesLine({ point, asking, failed, onAsk }: {
+  point: ApproximatePoint;
+  asking: boolean;
+  failed: boolean;
+  onAsk: () => void;
+}) {
+  // A point with no name has nothing to be named like, and the server answers
+  // it with nothing to ask.
+  if (point.name === null || point.hints.some(h => h.source === 'osm-name')) return null;
+  if (point.namesAsked) {
+    return (
+      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+        OpenStreetMap maps nothing named like it within 2 km.
+      </Typography>
+    );
+  }
+  return (
+    <Box sx={{ mt: 1 }}>
+      <Button size="small" variant="text" disabled={asking} onClick={onAsk}>
+        {asking ? 'Asking OpenStreetMap…' : 'Ask OpenStreetMap by name'}
+      </Button>
+      {failed && (
+        <Typography variant="caption" color="error" display="block">
+          OpenStreetMap did not answer. Try again later.
+        </Typography>
+      )}
+    </Box>
   );
 }

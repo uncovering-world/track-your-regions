@@ -14,7 +14,7 @@ import type {
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeProposalTakenBack, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointHintSuggestions, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
-  WebsiteChecks, KeptOutOfKind, KindAddedToPlace, ArrivalAnsweredWithKind, PlaceKindStandings, PictureClasses,
+  WebsiteChecks, PointNamesakesAnswer, KeptOutOfKind, KindAddedToPlace, ArrivalAnsweredWithKind, PlaceKindStandings, PictureClasses,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -35,6 +35,7 @@ import {
   postExperiencesByIdUnrefuseContents, postExperiencesByIdUnreject, postExperiencesLocationsByLocationIdState,
   postExperiencesLocationsByLocationIdTakeBackItem, getExperiencesLocationsByLocationIdNearbyPictures,
   getExperiencesByIdWebsiteChecks,
+  postExperiencesByIdPointNamesakesByLocationId,
   getExperiencesByIdPictureClasses,
   postExperiencesByIdMergeProposalsByProposalIdTakeBack,
   type CreateManualExperienceBody, type DeclineHeldBody, type EditExperienceBody, type EditLocationBody,
@@ -49,7 +50,7 @@ export type {
   ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry, PointHintSuggestions,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPicture,
-  NearbyPictures, WebsiteCheckResult, WebsiteChecks, PictureClassResult, PictureClasses,
+  NearbyPictures, PointNamesakesAnswer, WebsiteCheckResult, WebsiteChecks, PictureClassResult, PictureClasses,
   AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
   PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PlaceIdentifier, PlaceIdentifiers, IdentifierSettled, IdentifierVerdictBody, PointItemTakenBack, MergeProposalTakenBack, ViewsChosen, ViewSuggestions, VisitQuestionAnswerBody, VisitQuestionAnswered, VisitSuggestion, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
@@ -552,6 +553,15 @@ export async function suggestComponentItems(experienceId: number): Promise<Compo
  */
 export async function suggestPointHints(experienceId: number): Promise<PointHintSuggestions> {
   return postExperiencesByIdPointHintSuggestions(experienceId);
+}
+
+/**
+ * Ask the full OpenStreetMap for the objects named like a site's roughly
+ * placed component (#2243), once per point: what the local layer does not
+ * keep, the Cemetery of Congregation's `landuse=cemetery` among them.
+ */
+export async function askPointNamesakes(experienceId: number, locationId: number): Promise<PointNamesakesAnswer> {
+  return postExperiencesByIdPointNamesakesByLocationId(experienceId, locationId);
 }
 
 /**
