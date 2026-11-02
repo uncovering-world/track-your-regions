@@ -915,7 +915,9 @@ place as the world tier's where both name it, and the tier on the row's membersh
   surroundings any more included; `mergeRegional` joins the two decisions so a place is never both
   admitted and refused in one pass. A run that did not read the tier (switched off, or on the live
   service) says so on its result (`FetchResult.spareTier`), and the sweep (`markNotAdmitted`) leaves
-  that tier's admitted rows as they are: no answer is not a refusal. The sweep's floor counts the tiers
+  that tier's admitted rows as they are: no answer is not a refusal. A refusal the world rule names of
+  a row that tier holds is dropped too (`mergeRegional`, ADR-0175 decision 6), so the row waits for the
+  run that reads its tier. The sweep's floor counts the tiers
   the run read alone (`countAdmitted(source, spareTier)`, taken after the fetch, which writes nothing),
   so fourteen thousand regional rows never make a world tier of a thousand look like a run that lost
   half of what it held; and a curator's pin on a row of that tier is not asked about again, the run
@@ -2845,10 +2847,10 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    third bar, with the curator's question as their `admissionNote` (`guidedBarNote`: the editions,
    the readers, the mark and the bar, and whether a visitor can see it there now); a public clock is
    held to the kind's bars like any work. A work the bars admit that stands inside a church is
-   still refused by the rule, by name. What a run cannot read never drops a held work: with no
-   year of readers the editions bar alone admits and a held work under it keeps its place; with
-   no Wikivoyage usage build a held work the third bar would decide is kept; on the live service no
-   pool is read and nothing new enters (`keptNote`). The bars replaced the 22/18 editions line, the
+   still refused by the rule, by name. What a run cannot read it takes as last read, never as
+   zero: with no year of readers the readers' bars of the source's last run that read one and each
+   work's readers as last read, with no Wikivoyage usage build each work's guide as last read, and
+   on the live service no pool, so nothing new enters ([filling-a-kind.md § 11.1](filling-a-kind.md#111-the-frame)). The bars replaced the 22/18 editions line, the
    readership door (#2033), the public clocks' line (#2140), Public art's marks door (ADR-0169,
    with its read under the pool's floor) and Monuments & memorials' guide door (ADR-0167): each of
    those was a picked number, and the third bar is what the two doors were, as one rule for every
@@ -3165,9 +3167,9 @@ reaches no bar is out, and nothing is said of it. So Cologne Cathedral is in by 
 Mont-Saint-Michel Abbey (19 editions, 181,451 readers) by its readers, and a chapel a guide names on
 some 11,000 readers by the third bar, with the curator's question as its admission note. The bars
 replaced the editions line the source row stated for door one and the readers' line of ADR-0161
-decision 2 (25,000 to enter, 18,000 to stay), narrowed by ADR-0175. What a run cannot read never
-drops a held place: with no year of readers the editions bar alone admits, and a held place under it
-keeps its place.
+decision 2 (25,000 to enter, 18,000 to stay), narrowed by ADR-0175. What a run cannot read it
+takes as last read, never as zero: the readers' bars of the source's last run that read a year, and
+each place's readers and guide as last read ([filling-a-kind.md § 11.1](filling-a-kind.md#111-the-frame)).
 
 **Door two — a work it holds** (`worship/pipeline.ts`). The museum import's works collector
 (`museum/worksCollector.ts`), run with this kind's own rule: a `VenueRule` whose classes are the
@@ -4656,10 +4658,11 @@ mark, and a run's log names its own. The readers' bar is what bots cannot write:
 the Torrazzo of Cremona (14), read in few languages and climbed by everyone who comes to their
 towns, with the curator's question as their `admissionNote` (`guidedBarNote`). A tower the last run
 admitted stays at 0.8 of any bar, and one under all three is refused with its signals and the bars
-named (`belowWorldBars`); a candidate that never reached a bar is not reported. What a run cannot read
-never drops a held tower: with no year folded the editions bar alone admits and a held tower under
-it keeps its place, with no usage build a held tower the third bar would decide is kept, and on the
-live service no pool is read and nothing new enters (`keptNote`). The bars replaced the kind's line
+named (`belowWorldBars`); a candidate that never reached a bar is not reported. The run writes the
+bars it admitted by on its sync log (`world_bars`). What a run cannot read it takes as last read,
+never as zero: with no year folded the readers' bars of the source's last run that read one and each
+tower's readers as last read, with no usage build each tower's guide as last read, and on the live
+service no pool, so nothing new enters ([filling-a-kind.md § 11.1](filling-a-kind.md#111-the-frame)). The bars replaced the kind's line
 (15 editions and 25,000 readers) and its guide door at 15,000 readers (ADR-0168), with the read under
 the pool's floor that door needed. The coverage report reads the editions bar alone, since a survey
 entry carries no readers (`MEASURED_BARS`).
@@ -4995,7 +4998,10 @@ Maggiore, and crowds out 51 more of its churches.
   For every membership of a kind with the rule, it reads three signals from the workbench and writes
   them to `membership_fame`: readers a year (`readWorks`), the Wikivoyage editions that use the item
   (`guideEditions`) and the Wikipedia editions (`subsetWikipediaEditions`). A signal whose source is
-  not in place keeps its last value, and the run's line says so. It then calls `refresh_crowding()`.
+  not in place keeps its last value, and the run's line says so. Each reading of the readers and of
+  the guides is dated (`readers_read_at`, `guides_read_at`), so the zero a membership is ranked at
+  before its first reading is never taken for one: the place run admits by those signals as last read
+  where it reads none ([filling-a-kind.md § 11.1](filling-a-kind.md#111-the-frame)). It then calls `refresh_crowding()`.
   That function scores every candidate as the mean of three percentiles among its kind and type
   worldwide — readers, whether a guide uses the item (a presence, not a count, [ADR-0177](../decisions/0177-a-crowded-city-reads-a-guides-use-as-a-presence.md)),
   and Wikipedia editions — then recounts the catalogue.
