@@ -16,7 +16,7 @@ import type { PoolEntity } from '../publicArt/queries.js';
 import type { KindShare } from '../places/gather.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { emptyContainment } from '../places/containment.js';
-import { guidedBarNote, keptNote, type WorldBars, type WorldRead } from '../places/worldBars.js';
+import { guidedBarNote, keptNote, type WorldBars, type WorldMemory, type WorldRead } from '../places/worldBars.js';
 import type { BridgeTrees } from './classes.js';
 import { classifyBridges } from './kind.js';
 
@@ -110,5 +110,70 @@ describe('classifyBridges', () => {
       [KHAJU.qid, keptNote({ qid: KHAJU.qid, editions: 25 }, 'no Wikivoyage usage is built to read whether a guide uses it')],
     ]);
     expect(usedByAGuide).not.toHaveBeenCalled();
+  });
+});
+
+describe('classifyBridges when a run cannot read a signal (ADR-0175 decision 6)', () => {
+  const YEAR = { months: ['2025-10-01', '2026-09-01'], editions: ['enwiki'] };
+  // What the source's last runs read: the bars run 812 computed over its year, and each membership's signals.
+  const members = [CHARLES, HELD, KHAJU, KUROBE, WIVENHOE];
+  const history = (bars: WorldMemory['bars'] = { readers: 200_000, guidedReaders: 15_000, year: '2025-10 to 2026-09', logId: 812 }) => ({
+    memory: {
+      bars,
+      readers: new Map(members.map((e) => [e.qid, READERS[e.qid]])),
+      guided: new Map(members.map((e) => [e.qid, GUIDED.includes(e.qid)])),
+    },
+    keep: vi.fn(async () => undefined),
+  });
+  const readWith = (year: typeof YEAR | null) => {
+    vi.mocked(readershipYear).mockResolvedValue(year as never);
+    vi.mocked(readWorks).mockImplementation(async (_year, qids) =>
+      ({ views: new Map(qids.filter((q) => READERS[q]).map((q) => [q, READERS[q]])) }) as never);
+  };
+
+  it('admits by the bars and the readers it last read when no year is read, and keeps the bars it admitted by', async () => {
+    readWith(null);
+    vi.mocked(latestUsage).mockResolvedValue({ dumpDate: '2026-10-01' } as never);
+    vi.mocked(usedByAGuide).mockResolvedValue(new Set(GUIDED));
+    const kept = history();
+    const result = await classifyBridges(share(), new Set([HELD.qid]), sparql, undefined, kept);
+    // The Kurobe Dam is in again on its guide's mark and its 146,576 readers as last read: the year's absence
+    // is not its readers' absence. A viaduct the last run never read stays out, as nothing vouches for it.
+    expect(result.items.map((item) => item.qid)).toEqual([CHARLES.qid, FORTY.qid, HELD.qid, KHAJU.qid, KUROBE.qid]);
+    expect(kept.keep).toHaveBeenCalledWith({ editions: 40, readers: 200_000, guidedReaders: 15_000, pool: 51, year: '2025-10 to 2026-09', keptFrom: 812 });
+  });
+
+  it('reads the year it has whatever an earlier run kept, and keeps its own bars', async () => {
+    readWith(YEAR);
+    vi.mocked(latestUsage).mockResolvedValue({ dumpDate: '2026-10-01' } as never);
+    vi.mocked(usedByAGuide).mockResolvedValue(new Set(GUIDED));
+    // Bars kept from an earlier run that no viaduct reaches: a run that reads a year sets its own.
+    const kept = history({ readers: 10_000_000, guidedReaders: 10_000_000, year: '2024-10 to 2025-09', logId: 700 });
+    const result = await classifyBridges(share(), new Set([HELD.qid]), sparql, undefined, kept);
+    expect(result.items.map((item) => item.qid)).toEqual([CHARLES.qid, FORTY.qid, HELD.qid, KHAJU.qid, KUROBE.qid]);
+    expect(kept.keep).toHaveBeenCalledWith({ ...BARS, year: '2025-10 to 2026-09' });
+  });
+
+  it('reads a guide\'s mark as last read when no usage build is in place', async () => {
+    readWith(YEAR);
+    vi.mocked(latestUsage).mockResolvedValue(null);
+    const result = await classifyBridges(share(), new Set([HELD.qid]), sparql, undefined, history());
+    // The Kurobe Dam is in on the guide's mark as last read; without the source's history it would not be.
+    expect(result.items.map((item) => item.qid)).toContain(KUROBE.qid);
+    const unread = await classifyBridges(share(), new Set([HELD.qid]), sparql);
+    expect(unread.items.map((item) => item.qid)).not.toContain(KUROBE.qid);
+    expect(usedByAGuide).not.toHaveBeenCalled();
+  });
+
+  it('admits by editions alone, as before, where no run of the source has read a year', async () => {
+    readWith(null);
+    vi.mocked(latestUsage).mockResolvedValue({ dumpDate: '2026-10-01' } as never);
+    vi.mocked(usedByAGuide).mockResolvedValue(new Set(GUIDED));
+    const result = await classifyBridges(share(), new Set([HELD.qid, KUROBE.qid]), sparql, undefined, history(null));
+    // The held dam has no readers' bar to stay on and is kept, with the note why; nothing enters on readers.
+    expect(result.items.map((item) => [item.qid, item.readershipNote])).toEqual([
+      [CHARLES.qid, undefined], [FORTY.qid, undefined], [HELD.qid, undefined],
+      [KUROBE.qid, keptNote({ qid: KUROBE.qid, editions: 15 }, 'no year of readers is read')],
+    ]);
   });
 });

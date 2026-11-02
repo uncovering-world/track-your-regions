@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { classifyPlacesByFame } from './places.js';
 import { buildWorshipTrees, TYPE_ROOTS } from './classes.js';
 import type { KindShare } from '../places/gather.js';
@@ -69,6 +69,25 @@ describe('classifyPlacesByFame, the world bars (ADR-0175)', () => {
     const { places } = await classifyPlacesByFame(share(), new Set([FALLEN.qid]), sparql, { read: read(null) });
     expect([...places.keys()]).toEqual([COLOGNE.qid, SECOND.qid, FALLEN.qid]);
     expect(places.get(FALLEN.qid)?.note).toBe(keptNote({ qid: FALLEN.qid, editions: 12 }, 'no year of readers is read'));
+  });
+
+  it('decides by the readers\' bars and the readers it last read when no year can be read (ADR-0175 decision 6)', async () => {
+    const keep = vi.fn(async () => undefined);
+    const history = {
+      memory: { bars: { readers: 200_000, guidedReaders: 10_000, year: '2025-10 to 2026-09', logId: 812 }, readers: READERS, guided: new Map() },
+      keep,
+    };
+    const { places, filtered } = await classifyPlacesByFame(
+      share(), new Set([MONT_SAINT_MICHEL.qid, FALLEN.qid]), sparql, { read: read(null), history },
+    );
+    // Cologne Cathedral is in by its editions; Mont-Saint-Michel Abbey stays on its 181,451 readers as last read,
+    // with no note, as it would with the year, and the chapel a guide uses enters on its 10,000; the abbey in
+    // 12 editions read 2,000 times falls by them, said so.
+    expect([...places.keys()]).toEqual([COLOGNE.qid, SECOND.qid, MONT_SAINT_MICHEL.qid, WELL_READ[0].qid]);
+    expect(places.get(MONT_SAINT_MICHEL.qid)?.note).toBeUndefined();
+    expect(filtered.map((f) => [f.externalId, f.reason])).toEqual([
+      [FALLEN.qid, expect.stringContaining('12 Wikipedia editions and 2,000 readers a year as last read')],
+    ]);
   });
 
   it('lets nothing new in when the kind\'s pool was not read', async () => {

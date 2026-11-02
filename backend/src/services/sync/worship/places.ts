@@ -18,8 +18,8 @@ import type { SparqlFn } from '../wikidataQueries.js';
 import { worshipVerdict } from './worshipTest.js';
 import { fetchWorshipTrees } from './queries.js';
 import { BROAD_WORSHIP_ROOTS, type WorshipTrees, type WorshipType } from './classes.js';
-import { inPool, namesRefusal, openWorldTier } from '../places/worldTier.js';
-import type { WorldBars, WorldCandidate, WorldRead } from '../places/worldBars.js';
+import { inPool, namesRefusal, openWorldTier, type WorldOptions } from '../places/worldTier.js';
+import type { WorldCandidate } from '../places/worldBars.js';
 import type { FilteredEntity } from '../syncContract.js';
 
 const LOG_PREFIX = '[Worship Sync]';
@@ -82,8 +82,9 @@ const candidateOf = (entity: PoolEntity): WorldCandidate => ({ qid: entity.qid, 
  * refused that are worth naming (`namesRefusal`), with the reason it gave.
  *
  * `admitted` is what the source holds as admitted before the run, so the stay
- * share has something to hold. `world` hands the world's signals in, and the
- * bars where the test is not about the pool, for a test; a run reads them.
+ * share has something to hold. `world` hands a run the source's history, for
+ * what it cannot read (ADR-0175 decision 6), and a test the world's signals
+ * and the bars where it is not about the pool (`WorldOptions`).
  * Candidates are judged most famous first, which is the order the refusals are
  * reported in.
  */
@@ -91,7 +92,7 @@ export async function classifyPlacesByFame(
   share: KindShare<WorshipTrees>,
   admitted: ReadonlySet<string>,
   sparql: SparqlFn,
-  world?: { read: WorldRead; bars?: WorldBars },
+  world?: WorldOptions,
 ): Promise<PlacesByFame> {
   const { trees, pool, facts, containers } = share;
   const classesOf = new Map([...facts].map(([qid, row]) => [qid, row.classes]));
@@ -117,8 +118,7 @@ export async function classifyPlacesByFame(
     poolRead: share.admissionPool !== null,
     sparql,
     logPrefix: LOG_PREFIX,
-    read: world?.read,
-    bars: world?.bars,
+    ...world,
   });
 
   const places = new Map<string, PlaceCandidate>();

@@ -3,11 +3,17 @@
  * one, stayed at 0.8 of any, and what a run that cannot read a bar does.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('../publicArt/streetArtQueries.js', () => ({ fetchStreetArtMarks: vi.fn(async () => new Map()) }));
+
 import {
-  barsLine, belowWorldBars, quantile, reachesABar, worldBars, worldStanding, type WorldBars, type WorldRead,
+  barsLine, barsToAdmitBy, belowWorldBars, quantile, reachesABar, readAtlas, worldBars, worldStanding,
+  type WorldBars, type WorldMemory, type WorldRead,
 } from './worldBars.js';
 import { MEASURED_BARS, WORLD_FRAME, WORLD_REGISTER } from './admissionRegister.js';
+import { fetchStreetArtMarks } from '../publicArt/streetArtQueries.js';
+import type { SparqlFn } from '../wikidataQueries.js';
 
 // Places of worship's bars as the review read them on 2026-11-02.
 const WORSHIP: WorldBars = { ...MEASURED_BARS.value['places-of-worship'], pool: 56_962 };
@@ -125,5 +131,88 @@ describe('the words', () => {
       + 'or 10,577 where a guide uses it or Atlas Obscura lists it; a held place stays at 0.8 of any',
     );
     expect(barsLine('[Towers]', null)).toBe('[Towers] World bars: no pool read this run, so nothing new enters and the held keep their place');
+  });
+});
+
+describe('what a run cannot read (ADR-0175 decision 6)', () => {
+  // Public art's bars as the review read them, kept by run 812 over its year.
+  const ART = MEASURED_BARS.value['public-art'];
+  const YEAR = '2025-10 to 2026-09';
+  const KEPT: WorldMemory['bars'] = { readers: ART.readers, guidedReaders: ART.guidedReaders, year: YEAR, logId: 812 };
+  // Munich's Glockenspiel: 7 editions, 65,572 readers a year, listed by Atlas Obscura; the village church read 400 times.
+  const GLOCKENSPIEL = { qid: 'Q7295591', editions: 7 };
+  const memory = (over: Partial<WorldMemory> = {}): WorldMemory => ({
+    bars: KEPT,
+    readers: new Map([['Q7295591', 65_572], ['Q100', 400]]),
+    guided: new Map([['Q7295591', false], ['Q100', false]]),
+    ...over,
+  });
+  const noYear = (over: Partial<WorldRead> = {}): WorldRead => ({ readers: null, guided: new Set(), atlas: new Set(), memory: memory(), ...over });
+  const pool = Array.from({ length: 101 }, (_, i) => ({ qid: `Q${i + 1}`, editions: i }));
+
+  it('admits by the readers\' bars the last run that read a year computed, and by this run\'s editions bar', () => {
+    expect(barsToAdmitBy(worldBars(pool, null), noYear()))
+      .toEqual({ editions: 97, readers: ART.readers, guidedReaders: ART.guidedReaders, pool: 101, year: YEAR, keptFrom: 812 });
+    // With no run before it that read a year, the editions bar alone, as before.
+    expect(barsToAdmitBy(worldBars(pool, null), noYear({ memory: memory({ bars: null }) })))
+      .toEqual({ editions: 97, readers: null, guidedReaders: null, pool: 101 });
+  });
+
+  it('admits by its own numbers when it reads a year, whatever an earlier run kept', () => {
+    // A run that reads a year sets every bar off its own pool and names its year.
+    const readers = new Map(pool.map((c) => [c.qid, c.editions * 1_000]));
+    const fresh: WorldRead = { readers, guided: new Set(), atlas: new Set(), year: YEAR, memory: memory() };
+    expect(barsToAdmitBy(worldBars(pool, readers), fresh))
+      .toEqual({ editions: 97, readers: 98_000, guidedReaders: 90_000, pool: 101, year: YEAR });
+    // Cologne Cathedral is in by its editions; and a place this run's year does not name reads as nobody's,
+    // not as last read: the Glockenspiel, unread this year and unlisted, falls.
+    expect(worldStanding(COLOGNE, { ...fresh, readers: new Map([['Q4176', 2_147_381]]) }, WORSHIP, false)).toEqual({ by: 'editions' });
+    expect(worldStanding(GLOCKENSPIEL, { ...fresh, readers: new Map() }, { ...ART, pool: 3_614 }, true))
+      .toEqual({ fell: expect.stringContaining('7 Wikipedia editions and 0 readers a year, no guide') });
+  });
+
+  it('keeps a held place on its readers as last read, and lets one fall by them where they are under every bar', () => {
+    const bars = { ...ART, pool: 3_614, year: YEAR, keptFrom: 812 };
+    // The Glockenspiel stays on the third bar: 65,572 readers as last read, and Atlas Obscura lists it.
+    expect(worldStanding(GLOCKENSPIEL, noYear({ atlas: new Set(['Q7295591']) }), bars, true)).toEqual({ by: 'guided' });
+    // The village church, 400 readers a year as last read and 4 editions, is under every bar: it falls, and the reason says so.
+    expect(worldStanding(VILLAGE, noYear(), bars, true))
+      .toEqual({ fell: expect.stringContaining('4 Wikipedia editions and 400 readers a year as last read') });
+    // A held place no year was ever read for is kept: unknown is not zero.
+    expect(worldStanding({ qid: 'Q9', editions: 4 }, noYear(), bars, true)).toEqual({ kept: 'no year of readers is read' });
+    expect(worldStanding({ qid: 'Q9', editions: 4 }, noYear(), bars, false)).toBe('out');
+  });
+
+  it('reads a guide\'s mark as last read where no usage build is in place, and a place no build was read for as unknown', () => {
+    // Erfurt's Krämerbrücke: 16 editions and 54,022 readers, a guide's, under Bridges' editions and readers bars.
+    const BRIDGES: WorldBars = { ...MEASURED_BARS.value['bridges-and-engineering'], pool: 41_000 };
+    const KRAMER = { qid: 'Q896890', editions: 16 };
+    const noBuild = (guided: ReadonlyMap<string, boolean>): WorldRead =>
+      ({ readers: new Map([['Q896890', 54_022]]), guided: null, atlas: new Set(), memory: memory({ guided }) });
+    expect(worldStanding(KRAMER, noBuild(new Map([['Q896890', true]])), BRIDGES, false)).toEqual({ by: 'guided' });
+    expect(worldStanding(KRAMER, noBuild(new Map([['Q896890', false]])), BRIDGES, false)).toBe('out');
+    // Unread, as before: nothing new enters by it, and a held place it would decide keeps its place.
+    expect(worldStanding(KRAMER, noBuild(new Map()), BRIDGES, false)).toBe('out');
+    const read20k: WorldRead = { readers: new Map([['Q9', 20_000]]), guided: null, atlas: new Set(), memory: memory({ guided: new Map() }) };
+    expect(worldStanding({ qid: 'Q9', editions: 5 }, read20k, BRIDGES, true))
+      .toEqual({ kept: 'no Wikivoyage usage is built to read whether a guide uses it' });
+  });
+
+  it('asks Atlas Obscura of the places whose readers as last read could clear the third bar', async () => {
+    const sparql: SparqlFn = async () => [];
+    vi.mocked(fetchStreetArtMarks).mockResolvedValueOnce(new Map([['Q7295591', { atlasObscura: true, ended: false }]]));
+    const atlas = await readAtlas(sparql, ['Q7295591', 'Q100', 'Q9'], noYear(), { ...ART, pool: 3_614, keptFrom: 812, year: YEAR });
+    expect([...atlas]).toEqual(['Q7295591']);
+    // The village church is read too little, and Q9 was never read: neither is asked.
+    expect(fetchStreetArtMarks).toHaveBeenCalledWith(sparql, ['Q7295591']);
+  });
+
+  it('says in the run\'s line which bars it kept, and that the guides are as last read', () => {
+    expect(barsLine('[Landmark Sync] public art:', { ...ART, pool: 3_614, year: YEAR, keptFrom: 812 }, noYear({ guided: null }))).toBe(
+      '[Landmark Sync] public art: World bars over a pool of 3,614 (quantiles 0.97, 0.98, 0.9, readers over 2025-10 to 2026-09): '
+      + '17 Wikipedia editions, 93,029 readers a year, or 20,871 where a guide uses it or Atlas Obscura lists it; a held place stays at 0.8 of any'
+      + "; no year of readers is read, so the readers' bars are run 812's and each place's readers are as last read"
+      + '; no Wikivoyage usage is built, so whether a guide uses a place is as last read',
+    );
   });
 });

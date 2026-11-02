@@ -14,6 +14,7 @@ import type { SparqlFn } from '../wikidataQueries.js';
 import { shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from '../places/gather.js';
 import { classifyByWorldBars } from '../places/worldTier.js';
 import type { WorldRead } from '../places/worldBars.js';
+import type { WorldHistory } from '../places/worldMemory.js';
 import { BRIDGE_ROOTS, BRIDGE_TYPES, fetchBridgeTrees, type BridgeTrees } from './classes.js';
 import { bridgeType, bridgeVerdict } from './bridgeTest.js';
 import { regionalReader, type RegionalKind } from '../places/regionalTier.js';
@@ -30,8 +31,8 @@ export const BRIDGES_KIND: PlaceKind<BridgeTrees> = {
 };
 
 /** Decide from the kind's share: the rule, then the world bars (`classifyByWorldBars`). */
-export const classifyBridges = (share: KindShare<BridgeTrees>, admitted: ReadonlySet<string>, sparql: SparqlFn, read?: WorldRead) =>
-  classifyByWorldBars(share, admitted, { verdict: bridgeVerdict, logPrefix: '[Bridges]' }, sparql, read);
+export const classifyBridges = (share: KindShare<BridgeTrees>, admitted: ReadonlySet<string>, sparql: SparqlFn, read?: WorldRead, history?: WorldHistory) =>
+  classifyByWorldBars(share, admitted, { verdict: bridgeVerdict, logPrefix: '[Bridges]' }, sparql, read, history);
 
 /**
  * The kind in the regional tier (ADR-0171): every work-class item measured against its
@@ -48,8 +49,8 @@ export const BRIDGES_REGIONAL: RegionalKind<BridgeTrees> = {
 
 /** The kind's classifier as a source of the place pass reads it (`placeSource`). */
 export const BRIDGES_CLASSIFIER = {
-  classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn) =>
-    classifyBridges(shareOf(gathered, BRIDGES_KIND), admitted, sparql),
+  classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn, history?: WorldHistory) =>
+    classifyBridges(shareOf(gathered, BRIDGES_KIND), admitted, sparql, undefined, history),
   types: BRIDGE_TYPES,
   tag: 'engineering',
   regional: regionalReader(BRIDGES_REGIONAL),

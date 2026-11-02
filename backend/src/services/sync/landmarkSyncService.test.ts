@@ -38,10 +38,14 @@ vi.mock('./publicArt/pipeline.js', () => ({
   streetArtCandidates: vi.fn(),
 }));
 // The regional tier is its own module's (`regionalTier.test.ts`); here it brings nothing.
+const regionalArrivals = vi.hoisted(() => vi.fn(async () => ({ items: [], filtered: [] } as { items: never[]; filtered: never[]; skipped?: string })));
 vi.mock('./places/regionalTier.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./places/regionalTier.js')>()),
-  regionalReader: vi.fn(() => ({ arrivals: vi.fn(async () => ({ items: [], filtered: [] })) })),
+  regionalReader: vi.fn(() => ({ arrivals: regionalArrivals })),
 }));
+// What the source's world tier last read (ADR-0175 decision 6) is its own module's (`places/worldMemory.ts`).
+const history = vi.hoisted(() => ({ memory: { bars: null, readers: new Map(), guided: new Map() }, keep: vi.fn() }));
+vi.mock('./places/worldMemory.js', () => ({ worldHistory: vi.fn(async () => history) }));
 vi.mock('./places/regionalPool.js', () => ({ readRegionalPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
 // Whether a place still stands is its own module's (`places/gone.test.ts`, #2259); here nothing is gone.
 vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0) }));
@@ -246,6 +250,14 @@ describe('public art in the place pass', () => {
     const { refuseGone } = await import('./places/gone.js');
     expect((vi.mocked(refuseGone).mock.calls[0][0] as WikidataLandmark[]).map((i) => i.qid)).toEqual(['Q337179']);
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q337179']);
+  });
+
+  it('hands the classifier what the source\'s world tier last read, for what the run cannot read (ADR-0175 decision 6)', async () => {
+    const config = await configOf();
+    await config.fetchItems({ ...progress(), logId: 812 } as SyncProgress, []);
+    const { worldHistory } = await import('./places/worldMemory.js');
+    expect(vi.mocked(worldHistory)).toHaveBeenCalledWith(3, 812);
+    expect(mockedCollect.mock.calls[0][6]).toEqual({ history });
   });
 
   it('runs Monuments & memorials beside Public art, each by its kind\'s rule, from one gather (#1807)', async () => {

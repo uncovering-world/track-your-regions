@@ -14,6 +14,7 @@ import type { SparqlFn } from '../wikidataQueries.js';
 import { shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from '../places/gather.js';
 import { classifyByWorldBars } from '../places/worldTier.js';
 import type { WorldRead } from '../places/worldBars.js';
+import type { WorldHistory } from '../places/worldMemory.js';
 import { fetchSquareTrees, SQUARE_ROOTS, SQUARE_TYPES, type SquareTrees } from './classes.js';
 import { squareType, squareVerdict } from './squareTest.js';
 import { regionalReader, type RegionalKind } from '../places/regionalTier.js';
@@ -31,8 +32,8 @@ export const SQUARES_KIND: PlaceKind<SquareTrees> = {
 };
 
 /** Decide from the kind's share: the rule, then the world bars (`classifyByWorldBars`). */
-export const classifySquares = (share: KindShare<SquareTrees>, admitted: ReadonlySet<string>, sparql: SparqlFn, read?: WorldRead) =>
-  classifyByWorldBars(share, admitted, { verdict: squareVerdict, logPrefix: '[Squares]' }, sparql, read);
+export const classifySquares = (share: KindShare<SquareTrees>, admitted: ReadonlySet<string>, sparql: SparqlFn, read?: WorldRead, history?: WorldHistory) =>
+  classifyByWorldBars(share, admitted, { verdict: squareVerdict, logPrefix: '[Squares]' }, sparql, read, history);
 
 /**
  * The kind in the regional tier (ADR-0171): every place-class item measured against its
@@ -49,8 +50,8 @@ export const SQUARES_REGIONAL: RegionalKind<SquareTrees> = {
 
 /** The kind's classifier as a source of the place pass reads it (`placeSource`). */
 export const SQUARES_CLASSIFIER = {
-  classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn) =>
-    classifySquares(shareOf(gathered, SQUARES_KIND), admitted, sparql),
+  classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn, history?: WorldHistory) =>
+    classifySquares(shareOf(gathered, SQUARES_KIND), admitted, sparql, undefined, history),
   types: SQUARE_TYPES,
   tag: 'square',
   regional: regionalReader(SQUARES_REGIONAL),

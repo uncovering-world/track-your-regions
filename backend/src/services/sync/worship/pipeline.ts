@@ -66,7 +66,7 @@ import type { FilteredEntity } from '../syncContract.js';
 import type { ProcessedContent } from '../types.js';
 import { admittingWork, doorNote, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
 import type { ArticleHoldingsReader } from '../museum/articleHoldings.js';
-import type { WorldBars, WorldRead } from '../places/worldBars.js';
+import type { WorldOptions } from '../places/worldTier.js';
 
 const LOG_PREFIX = '[Worship Sync]';
 
@@ -132,10 +132,11 @@ export interface WorshipPipelineDeps {
    */
   line: SourceLine;
   /**
-   * The world's signals of the places, and the bars where a test is not about
-   * the pool, handed in for a test; a run reads them (`places/worldBars.ts`).
+   * What the world tier reads beside the pool (`places/worldTier.ts`): the
+   * source's history for a run, or the signals and the bars handed in for a
+   * test where it is not about the pool.
    */
-  placeWorld?: { read: WorldRead; bars?: WorldBars };
+  placeWorld?: WorldOptions;
   onPhase?: (message: string) => void;
   /** Throws to abandon the run; called before every query. */
   checkCancel?: () => void;

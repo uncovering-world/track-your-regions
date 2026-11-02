@@ -30,6 +30,7 @@ import {
 } from './publicArt/pipeline.js';
 import { mergeRegional, regionalReader, type RegionalKind, type RegionalReader } from './places/regionalTier.js';
 import { refuseGone } from './places/gone.js';
+import { worldHistory, type WorldHistory } from './places/worldMemory.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
 import { shareOf, type GatheredPlaces, type PlaceGather } from './places/gather.js';
@@ -69,10 +70,11 @@ const LOG_PREFIX = '[Landmark Sync]';
 export interface PlaceClassifier {
   /**
    * Decide from the gather; `admitted` is what the source holds as admitted
-   * before the run, and `sparql` the door the gather was read through, for
-   * what a classifier asks beyond it.
+   * before the run, `sparql` the door the gather was read through, for what a
+   * classifier asks beyond it, and `history` what the source's world tier last
+   * read, for what this run cannot (ADR-0175 decision 6).
    */
-  classify(gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn): Promise<{
+  classify(gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn, history?: WorldHistory): Promise<{
     items: WikidataLandmark[]; fetched: number; filtered: FilteredEntity[]; handOvers?: FilteredEntity[];
   }>;
   types: readonly string[];
@@ -133,11 +135,11 @@ function publicArtClassifier(rule: KindRule, { streetArt = false }: ClassifierOp
     // The places a kind outside these two offers a reader, so a work outdoors
     // on a venue no such kind offers stays public art rather than being
     // refused onto no card (#1444).
-    classify: async (gathered, admitted, sparql) => {
+    classify: async (gathered, admitted, sparql, history) => {
       const share = shareOf(gathered, PUBLIC_ART_KIND);
       const offered = await placesOtherSourcesOffer(PUBLIC_ART_SOURCES);
       const streetArtRead = streetArt ? await readStreetArt(sparql, streetArtCandidates(share, rule), share.facts) : null;
-      return classifyPublicArt(share, rule, admitted, sparql, offered, streetArtRead);
+      return classifyPublicArt(share, rule, admitted, sparql, offered, streetArtRead, { history });
     },
     types: rule.types,
     tag: 'outdoor',
@@ -370,7 +372,9 @@ async function fetchLandmarkItems(
   const admitted = await admittedExternalIds(sourceId, undefined, 'world');
 
   const { gathered, sparql, run, regional: regionalPool } = await gather(progress);
-  const { items, fetched, filtered, handOvers } = await classifier.classify(gathered, admitted, sparql);
+  // What the source's world tier last read, for what this run cannot (ADR-0175 decision 6).
+  const history = await worldHistory(sourceId, progress.logId);
+  const { items, fetched, filtered, handOvers } = await classifier.classify(gathered, admitted, sparql, history);
   // The regional tier after the world tier has decided (ADR-0171, #2178): what
   // the world bars left out, measured against its surroundings.
   let spareTier: 'regional' | undefined;

@@ -16,28 +16,56 @@
 
 import type { SparqlFn } from '../wikidataQueries.js';
 import { chunk } from '../wikidataQueries.js';
-import { yearlyReaders } from './candidates.js';
+import { readershipYear, readWorks, type ReadershipYear } from '../../dumps/readership/workReadership.js';
 import { latestUsage, usedByAGuide } from '../../dumps/wikivoyage/usageTables.js';
 import { fetchStreetArtMarks } from '../publicArt/streetArtQueries.js';
 import { WORLD_FRAME, type WorldFrame } from './admissionRegister.js';
 
-/** A kind's three bars this run, and the pool they were read on. Readers' bars are null when no year is read. */
+/**
+ * A kind's three bars this run, and the pool they were read on. The readers'
+ * bars are null when no year is read and no run of the source ever read one.
+ */
 export interface WorldBars {
   editions: number;
   readers: number | null;
   guidedReaders: number | null;
   pool: number;
+  /** The readership year the readers' bars were read on, its first and last month (`2025-10 to 2026-09`). */
+  year?: string;
+  /**
+   * The run whose readers' bars these are, where this run read no year and
+   * kept them (ADR-0175 decision 6): the sync log of the run that read them.
+   */
+  keptFrom?: number;
+}
+
+/**
+ * What the source's runs last read of each membership, for the signals this
+ * run cannot read (ADR-0175 decision 6): the readers' bars of the last run
+ * that read a year, and each membership's readers and guide's mark as the
+ * crowding step last measured them (`membership_fame`). A membership no year
+ * or no usage build was ever read for is absent: its signal is unknown, never
+ * zero.
+ */
+export interface WorldMemory {
+  bars: { readers: number; guidedReaders: number; year: string; logId: number } | null;
+  readers: ReadonlyMap<string, number>;
+  guided: ReadonlyMap<string, boolean>;
 }
 
 /**
  * What the run read of the candidates beside their editions: a year's readers
  * (null when none is folded), the items a Wikivoyage edition uses (null when no
- * usage build is in place) and the items Atlas Obscura lists.
+ * usage build is in place) and the items Atlas Obscura lists. `memory` is what
+ * the source last read, consulted only for a signal this run did not read.
  */
 export interface WorldRead {
   readers: ReadonlyMap<string, number> | null;
   guided: ReadonlySet<string> | null;
   atlas: ReadonlySet<string>;
+  /** The readership year read this run, as `WorldBars.year` names it. */
+  year?: string;
+  memory?: WorldMemory;
 }
 
 /** One candidate as the frame reads it. */
@@ -85,13 +113,42 @@ export type WorldStanding = { by: WorldBar; kept?: undefined } | { kept: string;
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en');
 
+/**
+ * A candidate's readers: this run's year, where one is read (an item nobody
+ * read counts none); otherwise as last read, or unknown — never zero
+ * (ADR-0175 decision 6).
+ */
+function readersOf(qid: string, read: Omit<WorldRead, 'atlas'>): number | null {
+  if (read.readers !== null) return read.readers.get(qid) ?? 0;
+  return read.memory?.readers.get(qid) ?? null;
+}
+
+/** Whether a guide uses a candidate: this run's usage build, or as last read, or unknown — never no guide. */
+function guideOf(qid: string, read: Omit<WorldRead, 'atlas'>): boolean | null {
+  if (read.guided !== null) return read.guided.has(qid);
+  return read.memory?.guided.get(qid) ?? null;
+}
+
 /** A candidate's signals, read off the run's reading. */
 function signalsOf(c: WorldCandidate, read: WorldRead) {
-  const readers = read.readers === null ? null : read.readers.get(c.qid) ?? 0;
+  const readers = readersOf(c.qid, read);
   const atlas = read.atlas.has(c.qid);
-  // Unknown while no usage build is in place: never read as no guide (ADR-0175 decision 6).
-  const guide = read.guided === null ? null : read.guided.has(c.qid);
+  const guide = guideOf(c.qid, read);
   return { readers, atlas, guide, marked: atlas || guide === true };
+}
+
+/**
+ * The bars a run admits by: those it read off its pool, with the readers' bars
+ * of the source's last run that read a year where this run reads none
+ * (ADR-0175 decision 6). The editions bar is always this run's, since the
+ * editions are read with the pool. A run that reads a year sets its own.
+ */
+export function barsToAdmitBy(bars: WorldBars | null, read: Omit<WorldRead, 'atlas'>): WorldBars | null {
+  if (!bars) return null;
+  if (read.readers !== null) return read.year ? { ...bars, year: read.year } : bars;
+  const kept = read.memory?.bars;
+  if (!kept) return bars;
+  return { ...bars, readers: kept.readers, guidedReaders: kept.guidedReaders, year: kept.year, keptFrom: kept.logId };
 }
 
 /** The bar a candidate clears at `share` of each bar, or null. */
@@ -105,11 +162,13 @@ function clears(c: WorldCandidate, read: WorldRead, bars: WorldBars, share: numb
 
 /**
  * Where a candidate the kind's rule passed stands against this run's bars. A
- * place the last run admitted (`held`) stays at the stay share of any bar. What
- * the run cannot read never drops a held place: with no bars (no pool read),
- * no year of readers, or no usage build where the guide would decide, it keeps
- * its place with a note naming what was not read, and nothing new enters but
- * by what was read.
+ * place the last run admitted (`held`) stays at the stay share of any bar. A
+ * run without a year of readers holds each place's readers as last read to the
+ * readers bars it kept, so a held place under every one of them falls with *as
+ * last read* in its reason; what the run cannot read at all never drops a held
+ * place: with no bars (no pool read), no readers' bar kept, readers never read,
+ * or no usage build where the guide would decide, it keeps its place with a
+ * note naming what was not read, and nothing new enters but by what was read.
  */
 export function worldStanding(
   c: WorldCandidate, read: WorldRead, bars: WorldBars | null, held: boolean, frame: WorldFrame = WORLD_FRAME,
@@ -121,7 +180,8 @@ export function worldStanding(
   const stays = clears(c, read, bars, frame.stayShare);
   if (stays) return { by: stays };
   const { readers, guide, atlas } = signalsOf(c, read);
-  if (readers === null) return { kept: 'no year of readers is read' };
+  // Unknown readers, or no readers' bar to hold them to: never a fall.
+  if (readers === null || bars.readers === null) return { kept: 'no year of readers is read' };
   if (guide === null && !atlas && bars.guidedReaders !== null && readers >= frame.stayShare * bars.guidedReaders) {
     return { kept: 'no Wikivoyage usage is built to read whether a guide uses it' };
   }
@@ -143,9 +203,11 @@ export function barsInWords(bars: WorldBars): string {
 /** The refusal of a held place under every stay bar, with its signals and the bars named. */
 export function belowWorldBars(c: WorldCandidate, read: WorldRead, bars: WorldBars, frame: WorldFrame = WORLD_FRAME): string {
   const { readers, marked, guide } = signalsOf(c, read);
-  const read_ = readers === null ? 'no year of readers read' : `${fmt(readers)} readers a year`;
+  let read_ = 'no year of readers read';
+  if (readers !== null) read_ = `${fmt(readers)} readers a year${read.readers === null ? ' as last read' : ''}`;
   let marks = 'no guide uses it and Atlas Obscura does not list it';
   if (marked) marks = guide ? 'a Wikivoyage guide uses it' : 'Atlas Obscura lists it';
+  if (read.guided === null && guide !== null) marks += ' (the guides as last read)';
   return `${c.editions} Wikipedia editions and ${read_}, ${marks}: under the world tier's bars `
     + `(${barsInWords(bars)}; a place held stays at ${frame.stayShare} of any)`;
 }
@@ -163,48 +225,66 @@ export function keptNote(c: WorldCandidate, because: string): string {
   return `Kept in the world tier (${c.editions} Wikipedia editions): ${because}`;
 }
 
-/** The run's line: the three bars it used as numbers, and the pool they were read on (ADR-0175). */
-export function barsLine(logPrefix: string, bars: WorldBars | null, frame: WorldFrame = WORLD_FRAME): string {
+/**
+ * The run's line: the three bars it used as numbers, the pool they were read
+ * on (ADR-0175), and what it kept as last read because it could not read it
+ * this run (decision 6).
+ */
+export function barsLine(
+  logPrefix: string, bars: WorldBars | null, read?: Omit<WorldRead, 'atlas'>, frame: WorldFrame = WORLD_FRAME,
+): string {
   if (!bars) return `${logPrefix} World bars: no pool read this run, so nothing new enters and the held keep their place`;
+  const kept: string[] = [];
+  if (bars.keptFrom !== undefined) {
+    kept.push(`no year of readers is read, so the readers' bars are run ${bars.keptFrom}'s and each place's readers are as last read`);
+  }
+  if (read && read.guided === null) kept.push('no Wikivoyage usage is built, so whether a guide uses a place is as last read');
+  const year = bars.year ? `, readers over ${bars.year}` : '';
   return `${logPrefix} World bars over a pool of ${fmt(bars.pool)} (quantiles ${frame.editionsQuantile}, ${frame.readersQuantile}, `
-    + `${frame.guidedQuantile}): ${barsInWords(bars)}; a held place stays at ${frame.stayShare} of any`;
+    + `${frame.guidedQuantile}${year}): ${barsInWords(bars)}; a held place stays at ${frame.stayShare} of any`
+    + kept.map((clause) => `; ${clause}`).join('');
 }
 
 const READ_BATCH = 5_000;
 
+/** A readership year in words, as a run's bars record it: its first and last month. */
+const yearInWords = (year: ReadershipYear) => `${year.months[0].slice(0, 7)} to ${year.months[year.months.length - 1].slice(0, 7)}`;
+
 /**
  * A year's readers and the guide's use of `qids`, read in batches. The Atlas
  * Obscura listings are read after the bars (`readAtlas`), only of the
- * candidates whose readers could clear the third bar.
+ * candidates whose readers could clear the third bar. What is not in place —
+ * no year, no usage build — is null, for the bars and the source's memory to
+ * answer (`barsToAdmitBy`, ADR-0175 decision 6).
  */
 export async function readWorld(qids: readonly string[], logPrefix: string): Promise<Omit<WorldRead, 'atlas'>> {
-  let readers: Map<string, number> | null = new Map();
-  for (const batch of chunk([...qids], READ_BATCH)) {
-    const got = await yearlyReaders(batch, logPrefix);
-    if (got === null) { readers = null; break; }
-    for (const [qid, n] of got) readers.set(qid, n);
+  const year = await readershipYear();
+  let readers: Map<string, number> | null = null;
+  if (year) {
+    readers = new Map();
+    for (const batch of chunk([...qids], READ_BATCH)) for (const [qid, n] of (await readWorks(year, batch)).views) readers.set(qid, n);
+  } else {
+    console.log(`${logPrefix} No year of readership is folded with the redirects in place`);
   }
-  if (!(await latestUsage())) {
-    console.log(`${logPrefix} No Wikivoyage usage is built: a guide's use is not read, and a held place it would decide keeps its place`);
-    return { readers, guided: null };
-  }
+  const yearRead = year ? { year: yearInWords(year) } : {};
+  if (!(await latestUsage())) return { readers, guided: null, ...yearRead };
   const guided = new Set<string>();
   for (const batch of chunk([...qids], READ_BATCH)) for (const qid of await usedByAGuide(batch)) guided.add(qid);
-  return { readers, guided };
+  return { readers, guided, ...yearRead };
 }
 
 /**
  * The candidates among `qids` that carry an Atlas Obscura place ID (`P7772`),
- * asked only of those a guide does not already mark and whose readers reach
- * the stay share of the third bar: no other candidate's listing can change
- * what the bars decide.
+ * asked only of those a guide does not already mark and whose readers — this
+ * run's, or as last read — reach the stay share of the third bar: no other
+ * candidate's listing can change what the bars decide.
  */
 export async function readAtlas(
   sparql: SparqlFn, qids: readonly string[], read: Omit<WorldRead, 'atlas'>, bars: WorldBars | null, frame: WorldFrame = WORLD_FRAME,
 ): Promise<Set<string>> {
-  if (!frame.atlasObscura || !bars || bars.guidedReaders === null || read.readers === null) return new Set();
+  if (!frame.atlasObscura || !bars || bars.guidedReaders === null) return new Set();
   const floor = frame.stayShare * bars.guidedReaders;
-  const asked = qids.filter((qid) => !read.guided?.has(qid) && (read.readers!.get(qid) ?? 0) >= floor);
+  const asked = qids.filter((qid) => guideOf(qid, read) !== true && (readersOf(qid, read) ?? 0) >= floor);
   const atlas = new Set<string>();
   for (const [qid, marks] of await fetchStreetArtMarks(sparql, asked)) if (marks.atlasObscura) atlas.add(qid);
   return atlas;
