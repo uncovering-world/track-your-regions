@@ -49,6 +49,8 @@ vi.mock('./places/regionalTier.js', async (importOriginal) => ({
   regionalReader: vi.fn(() => ({ arrivals: vi.fn(async () => ({ items: [], filtered: [] })) })),
 }));
 vi.mock('./places/regionalPool.js', () => ({ readRegionalPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
+// Whether a place still stands is its own module's (`places/gone.test.ts`, #2259); here nothing is gone.
+vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0) }));
 // The museum tree joins the pool's classes (ADR-0171); the spec asks Wikidata nothing.
 vi.mock('./wikidataQueries.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('./wikidataQueries.js')>()), fetchClassTree: vi.fn(async () => new Set<string>()) }));
 // The marks door reads the gate, the year, the marks and the works under the floor (ADR-0169); its own spec is publicArt/marksDoor.test.ts.
@@ -257,6 +259,9 @@ describe('public art in the place pass', () => {
     expect(mockedCollect.mock.calls[0][5]).toBe(STREET_ART_READ);
     expect(fetched.fetchedCount).toBe(5);
     expect(fetched.filtered).toEqual([refusal]);
+    // And what it admits is asked whether it still stands, through the gather's door (#2259).
+    const { refuseGone } = await import('./places/gone.js');
+    expect((vi.mocked(refuseGone).mock.calls[0][0] as WikidataLandmark[]).map((i) => i.qid)).toEqual(['Q337179']);
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q337179']);
   });
 
