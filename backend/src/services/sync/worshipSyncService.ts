@@ -226,12 +226,14 @@ async function fetchWorshipItems(
 
   // Or the local subset, where the admin switched the source to it (#1461).
   const sparql = await wikidataRunDoor(WORSHIP_SOURCE_ID, progress, () => collectingSparql(progress, refreshCache));
+  // What the source last read, for what this run cannot (ADR-0175 decision 6):
+  // the world tier's bars and signals, and the guides of both tiers' places.
+  const history = await worldHistory(WORSHIP_SOURCE_ID, progress.logId);
   const { items, fetched, filtered, refusedContents } = await collectPlacesOfWorship({
     sparql,
     previousPlacements,
     admitted,
-    // What the source's world tier last read, for what this run cannot (ADR-0175 decision 6).
-    placeWorld: { history: await worldHistory(WORSHIP_SOURCE_ID, progress.logId) },
+    placeWorld: { history },
     line,
     // What other kinds refused as held at a place of worship (ADR-0102).
     handOvers: await readHandOvers(WORSHIP_SOURCE_ID),
@@ -261,7 +263,7 @@ async function fetchWorshipItems(
       imageUrl: entity.imageUrl, itemPictures: entity.itemPictures, sitelinks: entity.sitelinks, countryLabel: entity.countryLabel,
       articleUrl: entity.articleUrl, website: entity.website, type: (type || null) as CollectedPlaceOfWorship['type'], classes,
       artworks: [], door: 'place', readershipNote: note, tier: 'surroundings',
-    }), await surroundingsPool(), surroundingsHeld);
+    }), await surroundingsPool(), surroundingsHeld, undefined, history.memory);
   mergeSurroundings(items, filtered, surroundings, (place) => place.qid, surroundingsHeld);
   // Not read this run (`surroundings.skipped`): its rows stay as they are.
   const spareTier = surroundings.skipped ? 'surroundings' as const : undefined;

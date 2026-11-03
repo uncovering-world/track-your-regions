@@ -33,6 +33,9 @@ const year: PoolReaders = async (qids) => {
   return new Map(qids.filter((q) => YEAR.has(q)).map((q) => [q, YEAR.get(q)!]));
 };
 
+// A usage build in place, as the fixture's usage rows stand for one.
+const built = async () => true;
+
 // A place's density read at its fourth-nearest: Bologna's towers stand metres apart, Pisa a hundred kilometres from them.
 const CUT = { ...SURROUNDINGS_CUT, best: 3, densityNeighbours: 4 };
 
@@ -76,7 +79,7 @@ afterAll(async () => {
 
 describe('the surroundings pool read from the subset (#2178)', () => {
   it('holds the kinds\' items with a point whatever their editions, counted as the runs count them, and the surroundings of those with the cut\'s languages and readers', async () => {
-    const surroundings = await readSurroundingsPool(new Set([TOWER]), CUT, [{ key: 'all', classes: null }], undefined, year);
+    const surroundings = await readSurroundingsPool(new Set([TOWER]), CUT, [{ key: 'all', classes: null }], undefined, year, built);
     const all = surroundings.around.get('all')!;
     // Every tower with a point is of the pool, the one-edition tower too; the mast is another class.
     expect([...surroundings.rows.keys()].sort()).toEqual([TWO_TOWERS, PISA, GARISENDA, ASINELLI, PRENDIPARTE, ONE_WIKI].sort());
@@ -85,6 +88,7 @@ describe('the surroundings pool read from the subset (#2178)', () => {
     expect(asked.sort()).toEqual([TWO_TOWERS, PISA, GARISENDA, ASINELLI, PRENDIPARTE, ONE_WIKI].sort());
     expect(surroundings.rows.get(PRENDIPARTE)?.readers).toBe(0);
     expect(surroundings.unread).toBeUndefined();
+    expect(surroundings.unreadGuides).toBeUndefined();
     expect(surroundings.rows.get(GARISENDA)?.guideEditions).toBe(0);
     // The surroundings are read for the items at two languages or more: the one-edition tower counts in the group and is asked about nothing.
     expect(all.has(ONE_WIKI)).toBe(false);
@@ -132,6 +136,13 @@ describe('the surroundings pool read from the subset (#2178)', () => {
     expect(surroundings.unread).toMatch(/^No year of readers is read/);
     const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'surroundings_pool'");
     expect(left.rows).toEqual([]);
+  });
+
+  it('reads the pool where no Wikivoyage usage is built, and says its guides are not read (ADR-0175 decision 6)', async () => {
+    const surroundings = await readSurroundingsPool(new Set([TOWER]), CUT, [{ key: 'all', classes: null }], undefined, year, async () => false);
+    expect(surroundings.unread).toBeUndefined();
+    expect(surroundings.unreadGuides).toMatch(/^No Wikivoyage usage is built, so no guide's use is read/);
+    expect(surroundings.around.get('all')!.has(ASINELLI)).toBe(true);
   });
 
   it('leaves no table behind once the read is over', async () => {

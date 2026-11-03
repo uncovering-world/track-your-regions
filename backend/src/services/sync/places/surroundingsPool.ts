@@ -23,7 +23,9 @@
  * and ADR-0171 reads the cut from the local copy. With no year of readers in
  * place the pool is not read at all (`unread`): the readers' floor and the
  * readers test cannot be read, and a missing year is never read as no
- * readers (ADR-0175 decision 6).
+ * readers (ADR-0175 decision 6). With no Wikivoyage usage build in place the
+ * pool is read and says its guides are not (`unreadGuides`), so a missing
+ * build is never read as no guide.
  */
 
 import type { PoolClient } from 'pg';
@@ -31,6 +33,7 @@ import { pool } from '../../../db/index.js';
 import { NOT_WIKIPEDIA } from '../subset/kit.js';
 import type { SurroundingsCut, Surroundings } from './surroundingsCut.js';
 import { yearlyReadersOfMany } from './candidates.js';
+import { latestUsage } from '../../dumps/wikivoyage/usageTables.js';
 import { densityOf, SphereIndex, surroundingsOf } from './surroundingsNeighbourhood.js';
 
 /** An item as the pool holds it. */
@@ -62,6 +65,12 @@ export interface SurroundingsPool {
   seconds: number;
   /** Why the pool was not read, when it was not: the rows and the surroundings are then empty. */
   unread?: string;
+  /**
+   * Why no guide's use is read, when no Wikivoyage usage build is in place:
+   * the rows' and the surroundings' guide editions are then no reading, and
+   * the tier reads its held places' guides as last read (ADR-0175 decision 6).
+   */
+  unreadGuides?: string;
 }
 
 const TABLE = 'surroundings_pool';
@@ -87,19 +96,30 @@ export type PoolReaders = (qids: readonly string[], run?: SurroundingsPoolRun) =
 
 const yearOfReaders: PoolReaders = (qids, run) => yearlyReadersOfMany(qids, '[Surroundings pool]', run?.step);
 
+/** Whether a Wikivoyage usage build is in place, so the guide editions the pool counts are a reading. */
+type UsageBuilt = () => Promise<boolean>;
+
+const usageInPlace: UsageBuilt = async () => (await latestUsage()) !== null;
+
+/** Why the pool reads no guide's use, where no usage build is in place. */
+const UNREAD_GUIDES = 'No Wikivoyage usage is built, so no guide\'s use is read: the surroundings tier reads the guides of the places it holds '
+  + 'as last read, and admits no new place by a guide (ADR-0175 decision 6)';
+
 /**
  * Build the pool for `classes` and read every group's candidates' surroundings,
  * in one session that leaves nothing behind.
  */
 export async function readSurroundingsPool(
   classes: ReadonlySet<string>, cut: SurroundingsCut, groups: readonly SurroundingsGroup[], run?: SurroundingsPoolRun,
-  readers: PoolReaders = yearOfReaders,
+  readers: PoolReaders = yearOfReaders, usageBuilt: UsageBuilt = usageInPlace,
 ): Promise<SurroundingsPool> {
   const started = Date.now();
   const client = await pool.connect();
   try {
     run?.phase('Building the surroundings tier\'s pool from the subset...');
     await run?.step();
+    // Asked before the pool counts the guides, so the answer is of the usage it counted.
+    const guides = await usageBuilt() ? {} : { unreadGuides: UNREAD_GUIDES };
     await createPool(client, classes);
     if (!(await readPoolReaders(client, readers, run))) {
       return { rows: new Map(), around: new Map(), seconds: Math.round((Date.now() - started) / 1000),
@@ -125,7 +145,7 @@ export async function readSurroundingsPool(
       around.set(group.key, await readSurroundings({ index, list, density }, candidates, cut,
         group.classes === null ? undefined : (j) => inGroup(list[j]), run));
     }
-    return { rows, around, seconds: Math.round((Date.now() - started) / 1000) };
+    return { rows, around, seconds: Math.round((Date.now() - started) / 1000), ...guides };
   } finally {
     await client.query(`DROP TABLE IF EXISTS ${TABLE}`).catch(() => undefined);
     client.release();
