@@ -38,6 +38,8 @@ function link(over: Partial<FindSiteLink> = {}): FindSiteLink {
     origin: 'coordinate',
     distance_m: 0,
     shown_at: [LOUVRE],
+    image_url: null,
+    image_credit: null,
     ...over,
   };
 }
@@ -68,6 +70,18 @@ describe('SiteFindQuestions', () => {
 
     await waitFor(() => expect(answerFindSiteLink).toHaveBeenCalledWith(DENDERA, 501, 'confirmed'));
     await waitFor(() => expect(invalidateFindSiteLink).toHaveBeenCalledWith(expect.anything(), DENDERA, [LOUVRE.id]));
+  });
+
+  it("shows a proposed find's own picture with whose photograph it is (#2304)", async () => {
+    vi.mocked(fetchFindSiteLinks).mockResolvedValue({ experienceId: DENDERA, links: [link({
+      image_url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Dendera%20zodiac%20Louvre.jpg',
+      image_credit: { author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null },
+    })] });
+    renderQuestions();
+
+    const picture = await screen.findByRole('img', { name: 'Dendera zodiac' });
+    expect(picture.getAttribute('src')).toContain('Dendera%20zodiac%20Louvre.jpg');
+    expect(screen.getByText(/A photographer/)).toBeInTheDocument();
   });
 
   it('takes a confirmed link back with a no', async () => {

@@ -15,6 +15,7 @@ import { RefusedCard } from './RefusedCards';
 import { PinQuestionCard } from './PinQuestionCard';
 import { VisitQuestionCard } from './VisitQuestionCard';
 import { ApproximatePointsCard } from './ApproximatePointsCard';
+import { FindSitesCard } from './FindSitesCard';
 import { SourcesCard } from './SourcesCard';
 import { ComponentItemsCard } from './ComponentItemsCard';
 import { MergeProposalsCard } from './MergeProposalsCard';
@@ -80,6 +81,10 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'they stand: no map object carries their number, no Wikidata entry or namesake stands near. Keep the list\'s '
     + 'point where it serves a large area well enough, or place it by hand; a later search that finds a hint moves it '
     + 'to the cards that ask.',
+  'find-sites': 'A museum holds these finds, and no record says where they were found, but each one\'s own point stands '
+    + 'on this place: the Code of Ur-Nammu at Ur, the Ishtar Gate at Babylon. A point can also be what a painting '
+    + 'shows or where a lost original stood, so read each one. Say it comes from here, and it is listed on this '
+    + 'place\'s card, or not, and it is not proposed again.',
 };
 
 /** The note above a kind whose source stopped listing a place other sources still list (#1264). */
@@ -120,6 +125,7 @@ export function ReviewBench({ row, onDone }: {
       {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
       {row.kind === 'pin-question' && row.items && <PinQuestionCard items={row.items} onDone={onDone} />}
       {row.kind === 'visit-question' && row.items && <VisitQuestionCard items={row.items} onDone={onDone} />}
+      {row.kind === 'find-sites' && row.item && <FindSitesCard item={row.item} onDone={onDone} />}
       {(row.kind === 'approximate-points' || row.kind === 'approximate-unhinted') && row.item && (
         <ApproximatePointsCard item={row.item} onDone={onDone} />
       )}

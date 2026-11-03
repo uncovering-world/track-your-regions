@@ -42,6 +42,7 @@ export const KIND_COLOR: Record<RowKind | 'arrival' | 'contents', string> = {
   'visit-question': '#AD1457',
   'approximate-points': '#1565C0',
   'approximate-unhinted': '#78909C',
+  'find-sites': '#8D6E63',
 };
 
 /** The question word a row prints in bold, ahead of its specific text. */
@@ -60,6 +61,7 @@ export const KIND_SHORT: Record<RowKind | 'arrival' | 'contents', string> = {
   'visit-question': 'nothing to see?',
   'approximate-points': 'where is it?',
   'approximate-unhinted': 'roughly placed',
+  'find-sites': 'from here?',
 };
 
 /** Jev's reading a visit question was raised on (#1770), as a row says it in a few words. */
@@ -238,6 +240,9 @@ export function rowSpecific(row: {
       const shared = points.filter(point => point.reason === 'shared').length;
       return countLabel(points.length, 'component', 'components') + (shared > 0 ? `, ${shared} on a shared point` : '');
     }
+    case 'find-sites':
+      // How many finds a run proposed for the site that nobody has answered (#2304).
+      return countLabel(row.item?.find_proposals ?? 0, 'find', 'finds');
     case 'waiting':
       return row.sections ? waitingSpecific(row.sections) : '';
     default:
