@@ -841,6 +841,14 @@ three bars. The run's log names the three bars it used, as numbers, for each kin
   (`membership_fame.guide_editions`, dated by `guides_read_at`); a place no build was read for is
   unknown, and a held one the third bar would decide keeps its place. An Atlas Obscura listing is a
   statement of the item the run reads with it, so a run that reads the item reads its listing.
+  The surroundings tier reads the same memory (`surroundingsArrivals`, handed the source's
+  `WorldMemory`): its Wikivoyage test cannot be read, since its reference is the neighbours' guides,
+  so nothing new enters by a guide and a new tunnel, dam or lock does not enter at all; a held place
+  that passes no other test keeps its place where a guide used it when last read, or where no build
+  was ever read for it, and falls by the tests it read where none did. A held tunnel, dam or lock
+  stays by its guide as last read the same way: the Finse Tunnel and the Eschbach Dam, held by the
+  guides alone, keep their places. The pool says the build is missing (`SurroundingsPool.unreadGuides`),
+  and the tier's line says its guides were read as last read.
 - **A tier the run did not read** leaves that tier's memberships as they stand: nothing is marked
   missing (the place sources are ranked, so missing detection never runs on them), the sweep spares
   the tier (`FetchResult.spareTier`), and a refusal the world rule names of a row the unread tier
@@ -873,7 +881,8 @@ and 3,000 readers a year when one test passes:
 A tunnel, a dam or a lock enters only when a Wikivoyage edition uses it. A place the tier holds
 stays while it keeps two editions, reaches 2,400 readers and passes one test, the readers test
 read at 0.8 of its share (1.2 times the reference) and the other two whole; a tunnel, dam or lock
-stays only while a guide still uses it. With no year of readers the tier is not read and its places keep their standing. Its arrivals
+stays only while a guide still uses it. With no year of readers the tier is not read and its places keep their standing;
+with no Wikivoyage usage build it is read, and the guides of the places it holds are as last read (above). Its arrivals
 are gated as each kind gates arrivals.
 
 Archaeology's sites ask two things more of the surroundings tier, and of it alone (ADR-0179,
