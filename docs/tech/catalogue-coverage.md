@@ -528,8 +528,13 @@ build next; it changes no priority (ADR-0081 decision 8).
 **What each live kind lacks.** For every live kind: how many of the expectations filed under it
 and demanded of it the kind itself offers, how many more are its lists' tails, the absent
 demanded ones at or over the kind's own sitelinks line by name, and a count of the absent ones
-under it, which are the surroundings or the regional tier's to hold. The line is the
-`enterSitelinks` the kind's source states, or the code's line for a monument and for a work.
+under it, which are the surroundings or the regional tier's to hold. For a place kind the
+world bars admit (ADR-0175), the line is the editions bar of its last real, closed run that
+read its pool, off that run's sync log (`world_editions`, #2321): a later run that read no pool
+writes no bars and keeps its places as they stand (ADR-0175 decision 6). There is none before
+its first such run; Archaeology takes the lower of it and its museums' `enterSitelinks`, and keeps that line
+alone before its first run. Any other kind's line
+is the `enterSitelinks` its source states, or the code's line for a work.
 Two kinds have none, and every absent entry of theirs is named: World Heritage, where being
 inscribed is the whole rule, and Art Museums, which admits a museum through a work it holds,
 so the museum's own sitelinks are not what the kind asks of it. An entry a reader

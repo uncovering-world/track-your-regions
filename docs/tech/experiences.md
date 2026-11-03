@@ -4854,7 +4854,7 @@ tower's readers as last read, with no usage build each tower's guide as last rea
 service no pool, so nothing new enters ([filling-a-kind.md § 11.1](filling-a-kind.md#111-the-frame)). The bars replaced the kind's line
 (15 editions and 25,000 readers) and its guide door at 15,000 readers (ADR-0168), with the read under
 the pool's floor that door needed. The coverage report reads the editions bar alone, since a survey
-entry carries no readers (`MEASURED_BARS`).
+entry carries no readers: the last real run's, off its sync log (`world_editions`, #2321).
 
 Measured on the development subset on 2026-10-22, read-only in the dev container: the pool named
 174 candidates, and the source would admit 108 and refuse 31. The record has what they are.
@@ -4914,7 +4914,7 @@ works' own line (`WATERWAY_LINE`, 3 editions and 15,000 readers, #1947) went wit
 so a lock no guide names and read some 20,000 times a year — the Caen Hill flight — reaches no
 bar. A work the last run admitted stays at 0.8 of any bar and is refused with its signals and the
 bars named once it falls under all three (`belowWorldBars`). What a run cannot read never drops a
-held work, as for Towers. The coverage report reads the editions bar alone (`MEASURED_BARS`).
+held work, as for Towers. The coverage report reads the editions bar alone, the last real run's (`world_editions`, #2321).
 
 Measured on the development subset on 2026-10-24, read-only in the dev container, with main's
 code beside the branch's: the 58 canals the kind held leave with the reason naming #1948, and 24
