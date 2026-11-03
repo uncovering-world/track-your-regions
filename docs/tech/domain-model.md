@@ -129,10 +129,10 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `ExternalID`: The id that source knows the place by, unique per source — what a run
     finds the place through (ADR-0084)
   - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' /
-    'natural' / 'mixed' for a World Heritage site, 'monument' / 'sculpture' for public art,
+    'natural' / 'mixed' for a World Heritage site, 'sculpture' / 'fountain' / 'street-art' / 'clock' for public art,
     'cathedral' / 'church' / 'chapel' / 'monastery' / 'mosque' / 'temple' / 'shrine' /
     'synagogue' / 'sacred mountain' / 'holy site' for a place of worship, 'site' / 'museum' for archaeology — and NULL for an
-    art museum, whose kind has no types (ADR-0045, #814; on the membership since ADR-0084, #1253)
+    art museum, whose kind has no types (ADR-0045, #814; on the membership since ADR-0084, #1253); every kind's list is `@tyr/shared/placeTypes` (#2319)
   - `MissingSince` / `SourceMembership`: Whether the membership's source still lists the
     place (ADR-0020's first axis, per source since #1251); the place's copy is derived
   - `Admission` / `AdmissionReason`: 'admitted' or 'refused', and the rule's reason
