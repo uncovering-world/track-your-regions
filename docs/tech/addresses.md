@@ -76,7 +76,15 @@ and nothing rests on it:
   as 6737 and quietly accept a segment nothing in the app ever wrote.
 - When the object's name is known and the slug differs, the address is rewritten
   with `replace`. A link made before a rename still opens the object, and the
-  address bar corrects itself with no round trip and no 404.
+  address bar corrects itself with no round trip and no 404. The correction is
+  written on the latest address `go` knows, and only while that address still
+  names the object (`useAddressedRegion`, a function target that answers null
+  otherwise, #2257): a name arriving after the reader's next step would
+  otherwise put back the address they just left, a closed Discover list among
+  them. The same hook's other two writes, a region selected in the app and an
+  address degraded when its region is not there, build on the latest address
+  too, and the degradation writes only while the address still names the
+  region it asked for.
 - `slugify` is NFD, combining marks stripped, lowercase, non-alphanumerics
   collapsed to `-`, trimmed, capped at 60 characters. A name with no Latin
   letters or digits (`Москва`, `東京`) slugs to nothing, and the id stands alone.
@@ -287,7 +295,7 @@ questions above* does not ask: the curator asked for the top.
 |---|---|
 | `frontend/src/utils/appUrl.ts` | The grammar: `parseAppUrl`, `buildAppUrl`, `legacyRedirect`, `slugify`, `slugsOf`. Parse and build side by side — and the review page's sibling pair, `parseReviewUrl`/`buildReviewUrl`, with `isFilteredReview` for the one list of narrowing parameters |
 | `frontend/src/utils/appUrl.test.ts` | Its tests, including the **round trip** — state → URL → state for every shape, both grammars |
-| `frontend/src/hooks/useAppAddress.ts` | The one door: `{ address, go }`. `go` builds, no-ops on the current address, pushes by default and replaces when asked; keeps the slugs already in the address for ids a write leaves alone; performs the legacy redirect |
+| `frontend/src/hooks/useAppAddress.ts` | The one door: `{ address, go }`. `go` builds, no-ops on the current address and on a function target that answers null, pushes by default and replaces when asked; keeps the slugs already in the address for ids a write leaves alone; performs the legacy redirect |
 | `frontend/src/hooks/useReviewAddress.ts` | The second door, for `/review`: the same `{ address, go }` over the review grammar, with the same ref discipline, pushing what the curator did and replacing what the page corrected |
 | `frontend/src/hooks/useAddressedRegion.ts` | The selected region: the object, the ancestors read that restores and completes it, the follow, the degradation, the canonical rewrite |
 | `frontend/src/hooks/useNavigation.tsx` | The world view: reads it from the address, writes it with `push` / `replace` / `none` per case |
