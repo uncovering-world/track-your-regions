@@ -2973,7 +2973,12 @@ The line is fame read three ways at once, since a lane is read in few languages:
 entry (`P7772`, the only way the catalogue reads Atlas Obscura), a Wikivoyage guide naming it
 (`guidedOf`) and 10,000 readers a year (`yearlyReaders`). A newcomer needs two of the three, a
 place the source holds keeps its place on one, and readers that cannot be read admit nothing new
-and keep a held place. A newcomer below the line is out quietly, before anything else is asked,
+and keep a held place. A guide that cannot be read is no guide only once it has been read so
+(ADR-0175 decision 6, #2267): without the Wikivoyage usage build `guidedOf` answers null, and each
+place's guide is taken as the source last read it (`membership_fame.guides_read_at`, #2253, passed
+from the world tier's memory, `streetArtGuideOf`). A guide never read is no mark for a newcomer and
+keeps a held place, so a held work that rests on a guide's use alone does not fall for a build the
+run could not read. A newcomer below the line is out quietly, before anything else is asked,
 so a category's long tail reaches no changeset. Then the rule refuses, by name: a place of worship
 or a lost work (the kind's trees), a burial or kill class, a candidate whose class is a kind of a
 place or work of another kind (`NOT_A_STREET_ART_PLACE`, read through the class tree: a
