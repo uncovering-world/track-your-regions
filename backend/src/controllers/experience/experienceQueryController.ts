@@ -118,6 +118,7 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       e.country_names,
       e.image_url,
       e.metadata,
+      e.metadata->'imageCredit' AS image_credit,
       -- The inscription's year is the World Heritage kind's, shown while its
       -- membership stands (#2068).
       ${inscriptionFactsSql('e')}->>'dateInscribed' AS date_inscribed,

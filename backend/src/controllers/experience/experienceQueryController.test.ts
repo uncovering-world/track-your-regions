@@ -31,6 +31,7 @@ const EXPERIENCE_ROW = {
   country_codes: ['KR'],
   country_names: ['Republic of Korea'],
   image_url: null,
+  image_credit: null,
   metadata: {},
   date_inscribed: '2019',
   created_at: new Date('2026-08-04T15:01:24.341Z'),

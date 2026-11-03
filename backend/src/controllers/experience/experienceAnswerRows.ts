@@ -151,6 +151,7 @@ export interface ExperienceDetailRow {
   country_codes: string[] | null;
   country_names: string[] | null;
   image_url: string | null;
+  image_credit: ImageCredit | null;
   metadata: Record<string, unknown> | null;
   date_inscribed: string | null;
   created_at: Date | null;
@@ -188,6 +189,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     country_codes: row.country_codes,
     country_names: row.country_names,
     image_url: row.image_url,
+    image_credit: creditOf(row.image_credit),
     metadata: row.metadata,
     date_inscribed: row.date_inscribed,
     created_at: iso(row.created_at),

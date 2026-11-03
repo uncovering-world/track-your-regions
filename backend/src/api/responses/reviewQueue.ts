@@ -431,6 +431,7 @@ export const VisitQuestion = z.strictObject({
 export type VisitQuestion = z.infer<typeof VisitQuestion>;
 
 export const PartOf = z.strictObject({
+  id: z.number().int().describe('The whole, which a card opens for curation by it (#2293).'),
   name: z.string(),
   unesco_id: z.string().nullable().describe("The World Heritage id the site's run knows the property by."),
   unesco_url: z.string().nullable().describe("The property's page on the World Heritage list."),

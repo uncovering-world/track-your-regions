@@ -286,6 +286,8 @@ export const ExperienceDetail = z.strictObject({
     .describe('Null on a place created by hand without a country, which the columns allow.'),
   country_names: z.array(z.string()).nullable(),
   image_url: z.string().nullable(),
+  image_credit: ImageCredit.nullable()
+    .describe("Whose photograph the picture is, off the place's metadata, as every list sends it beside `image_url`."),
   metadata: z.record(z.string(), z.unknown()).nullable()
     .describe("The source's metadata, as an open record until #574 settles its model."),
   date_inscribed: z.string().nullable()
