@@ -26371,6 +26371,24 @@
               "$ref": "#/components/schemas/LinkedPlace"
             },
             "description": "The museums a reader may be sent to that show the find."
+          },
+          "image_url": {
+            "description": "The find's own picture, which the question shows beside it (#2304).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_credit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whose photograph the find's picture is, shown with it."
           }
         },
         "required": [
@@ -26381,7 +26399,9 @@
           "state",
           "origin",
           "distance_m",
-          "shown_at"
+          "shown_at",
+          "image_url",
+          "image_credit"
         ],
         "additionalProperties": false,
         "description": "A find a run proposed as coming from this site, or one a curator confirmed (#2242)."
@@ -32465,6 +32485,7 @@
                     "visit-question",
                     "approximate-points",
                     "approximate-unhinted",
+                    "find-sites",
                     "arrival",
                     "held",
                     "contents"
@@ -32678,7 +32699,8 @@
           "pin-question",
           "visit-question",
           "approximate-points",
-          "approximate-unhinted"
+          "approximate-unhinted",
+          "find-sites"
         ],
         "description": "The class of an open question, which a batch answer names a row by."
       },
@@ -34637,7 +34659,8 @@
                     "pin-question",
                     "visit-question",
                     "approximate-points",
-                    "approximate-unhinted"
+                    "approximate-unhinted",
+                    "find-sites"
                   ]
                 },
                 "id": {
@@ -34980,6 +35003,13 @@
             },
             "description": "Serial sites with a component the World Heritage list placed only roughly and nothing says where else it may stand (#1903): kept or placed by hand."
           },
+          "findSites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "description": "Sites a run proposed finds for, from the finds' own points, that no curator has answered (#2304)."
+          },
           "arrivals": {
             "type": "array",
             "items": {
@@ -35138,6 +35168,7 @@
           "visitQuestions",
           "approximatePoints",
           "approximateUnhinted",
+          "findSites",
           "arrivals",
           "held",
           "contents",
@@ -35227,7 +35258,8 @@
               "pin-question",
               "visit-question",
               "approximate-points",
-              "approximate-unhinted"
+              "approximate-unhinted",
+              "find-sites"
             ]
           },
           "membership_id": {
@@ -35719,6 +35751,19 @@
                 "items": {
                   "$ref": "#/components/schemas/ApproximatePoint"
                 }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "find_proposals": {
+            "description": "How many finds a run proposed for this site from their own points that no curator has answered (#2304). `find-sites` items only; the questions are the place dialog's, read by `GET /:id/find-links`.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
               },
               {
                 "type": "null"

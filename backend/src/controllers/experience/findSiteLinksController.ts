@@ -31,10 +31,10 @@ import type {
 import { resolveExperienceScope } from './experienceScope.js';
 import { answerFindSiteLink, linkFindToSite } from './findSiteLinkWriter.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
-import { mayBeFindOriginSql, venuesShowingSql } from './siteFinds.js';
+import { linkableFindSql, mayBeFindOriginSql, venuesShowingSql } from './siteFinds.js';
 import { likeParam } from './reviewQueueKeys.js';
-import { publishedContentSql } from '../../db/readerPredicates.js';
-import type { LinkedPlace } from '../../api/responses/experiences.js';
+import type { ImageCredit, LinkedPlace } from '../../api/responses/experiences.js';
+import { creditOf } from './experienceAnswerRows.js';
 
 /**
  * The caller may curate the place `id`, which exists; throws otherwise. The
@@ -50,6 +50,8 @@ async function requireSiteScope(id: number, caller: Express.User): Promise<numbe
 
 interface FindSiteLinkRow {
   treasure_id: number;
+  image_url: string | null;
+  image_credit: ImageCredit | null;
   name: string;
   treasure_type: string;
   year: number | null;
@@ -66,6 +68,9 @@ export async function getFindSiteLinks(
   const result = await pool.query<FindSiteLinkRow>(`
     SELECT fsl.treasure_id, t.name, t.treasure_type, t.year,
            fsl.state, fsl.origin, fsl.distance_m,
+           -- The find's own picture and its credit: what a curator who does not know the
+           -- object looks at before saying where it comes from (#2304).
+           t.image_url, t.metadata->'imageCredit' AS image_credit,
            -- Where the find is shown, so the curator reads "the Dendera zodiac,
            -- at the Louvre" and knows which object the question is about.
            (SELECT COALESCE(json_agg(json_build_object(
@@ -82,14 +87,9 @@ export async function getFindSiteLinks(
       JOIN treasures t ON t.id = fsl.treasure_id
      WHERE fsl.site_id = $1
        AND fsl.state IN ('proposed', 'confirmed')
-       -- A find a reader may see: passed itself and shown by a museum a reader
-       -- may be sent to, which is what the card would list once confirmed.
-       AND ${publishedContentSql('t')}
-       AND EXISTS (SELECT 1 ${venuesShowingSql('t')})
-       -- And whose own item names no find spot, the rule a link stands by on
-       -- the card (siteFindIdsSql): one a later run reads off the item has
-       -- taken the link's place, and confirming it would change nothing.
-       AND t.metadata->'foundAt' IS NULL
+       -- A find a reader may see, whose own item names no find spot: what the
+       -- card would list once confirmed, and the rule the review page asks by.
+       AND ${linkableFindSql('t')}
      ORDER BY fsl.state = 'proposed' DESC, fsl.distance_m NULLS LAST, t.sitelinks_count DESC, t.id
   `, [id]);
   return {
@@ -103,6 +103,8 @@ export async function getFindSiteLinks(
       origin: row.origin,
       distance_m: row.distance_m,
       shown_at: row.shown_at,
+      image_url: row.image_url,
+      image_credit: creditOf(row.image_credit),
     })),
   };
 }
@@ -132,8 +134,7 @@ export async function answerFindSiteLinkRequest(
       const linkable = await client.query(
         `SELECT 1 FROM treasures t, experiences site
           WHERE t.id = $1 AND site.id = $2 AND ${mayBeFindOriginSql('site')}
-            AND ${publishedContentSql('t')} AND EXISTS (SELECT 1 ${venuesShowingSql('t')})
-            AND t.metadata->'foundAt' IS NULL
+            AND ${linkableFindSql('t')}
             AND NOT EXISTS (SELECT 1 ${venuesShowingSql('t')} AND sv.id = $2)`,
         [treasureId, id],
       );
@@ -193,12 +194,10 @@ export async function getFindSiteCandidates(
       FROM treasures t
       JOIN experiences e ON e.id = $1
      WHERE t.name ILIKE $2
-       AND ${publishedContentSql('t')}
-       AND EXISTS (SELECT 1 ${venuesShowingSql('t')})
+       AND ${linkableFindSql('t')}
        AND NOT EXISTS (SELECT 1 FROM find_site_links fsl
                         WHERE fsl.treasure_id = t.id AND fsl.site_id = e.id
                           AND fsl.state IN ('proposed', 'confirmed'))
-       AND t.metadata->'foundAt' IS NULL
        AND NOT EXISTS (SELECT 1 ${venuesShowingSql('t')} AND sv.id = e.id)
      ORDER BY t.sitelinks_count DESC, t.id
      LIMIT 10

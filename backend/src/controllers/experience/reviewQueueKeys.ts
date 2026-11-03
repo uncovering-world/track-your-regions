@@ -54,7 +54,8 @@ import { pool } from '../../db/index.js';
 import type { QueueFacets, QueueOrderEntry } from '../../api/responses/reviewQueue.js';
 import { EMPTY_FACETS, FACETS_JSON_SQL, facetsSql, regionRootsCte } from './reviewQueueFacets.js';
 import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './reviewQueueVocabulary.js';
-import { MEMBERSHIPS, claimsFacingSql, placeSourceIdsSql, realKindSql } from '../../db/membership.js';
+import { MEMBERSHIPS, claimsFacingSql, membershipOfferedSql, placeSourceIdsSql, realKindSql } from '../../db/membership.js';
+import { linkableFindSql, mayBeFindOriginSql } from './siteFinds.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorPlaceScopeExists, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { contentsWaitingSql, linkMembershipSql, pointMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
@@ -88,6 +89,7 @@ import { placeViewSourcesSql } from '../../db/sourceViews.js';
 export const KIND_RANK: Record<QueueKind, number> = {
   conflict: 1, sources: 2, waiting: 3, withdrawn: 4, refused: 5, missing: 6, 'component-items': 7,
   'merge-proposals': 8, 'pin-question': 9, 'visit-question': 10, 'approximate-points': 11, 'approximate-unhinted': 12,
+  'find-sites': 13,
 };
 
 // The words a `kind` chip may carry, and the only ones, are `QUEUE_KINDS` and
@@ -519,6 +521,28 @@ function visitQuestionKeysSql(membershipScopeFilter: string): string {
     GROUP BY e.id, e.name`;
 }
 
+/**
+ * A site a run proposed finds for, from their own points, that no curator has
+ * answered (#2242, #2304, `openFindProposalsSql`): one row per site, in scope
+ * by the source of any offered membership of the site, as the answer's place
+ * scope is (`findSiteLinksController.ts`), and dated by its newest proposal. The run that proposes is every real run's
+ * last step and names no log, so the row is never set aside with a batch.
+ */
+function findSitesKeysSql(membershipScopeFilter: string): string {
+  return `
+    SELECT 'find-sites', ${KIND_RANK['find-sites']}, e.id, e.name, array_agg(DISTINCT m.source_id), NULL,
+           max(fsl.proposed_at), ARRAY[]::text[]
+    FROM find_site_links fsl
+    JOIN treasures t ON t.id = fsl.treasure_id
+    JOIN experiences e ON e.id = fsl.site_id
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND ${membershipOfferedSql('m')}
+    WHERE fsl.state = 'proposed'
+      AND ${linkableFindSql('t')}
+      AND ${mayBeFindOriginSql('e')}
+      AND ${membershipScopeFilter}
+    GROUP BY e.id, e.name`;
+}
+
 /** The order, over the union's own columns. `prefix` qualifies them for `json_agg`. */
 function orderSql(sort: 'date' | 'question', prefix = ''): string {
   const date = `COALESCE(${prefix}asked_at, '-infinity') DESC`;
@@ -848,6 +872,7 @@ export async function queryQueueKeys(
     UNION ALL${visitQuestionKeysSql(membershipScopeFilter)}
     UNION ALL${approximatePointsKeysSql(membershipScopeFilter, true)}
     UNION ALL${approximatePointsKeysSql(membershipScopeFilter, false)}
+    UNION ALL${findSitesKeysSql(membershipScopeFilter)}
   )
 , searched AS (
     SELECT k.kind, k.rank, k.id, k.name, k.source_ids, k.run_id, k.asked_at, k.subs

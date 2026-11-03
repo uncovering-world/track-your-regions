@@ -371,6 +371,8 @@ export const FindSiteLink = z.strictObject({
   origin: z.enum(['coordinate', 'curator']).describe("Proposed from the find's own coordinate, or made by a curator."),
   distance_m: z.number().int().nullable().describe("How far the find's coordinate lies from the site's point, where a run proposed it."),
   shown_at: z.array(LinkedPlace).describe('The museums a reader may be sent to that show the find.'),
+  image_url: z.string().nullable().describe("The find's own picture, which the question shows beside it (#2304)."),
+  image_credit: ImageCredit.nullable().describe("Whose photograph the find's picture is, shown with it."),
 }).describe('A find a run proposed as coming from this site, or one a curator confirmed (#2242).');
 
 export const FindSiteLinks = z.strictObject({

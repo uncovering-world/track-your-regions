@@ -102,6 +102,8 @@ export interface QueueRow {
   component_items?: ComponentItemProposal[] | null;
   site_points?: SitePoint[] | null;
   approximate_points?: ApproximatePoint[] | null;
+  /** How many finds a `find-sites` card asks about (#2304). */
+  find_proposals?: number | null;
   /** The open pairs of a `merge-proposals` card (#1249). */
   merge_pairs?: MergePair[] | null;
   /** Postgres's jsonb renders the dates as strings, in the schema's shape. */
@@ -241,6 +243,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     component_items: row.component_items,
     site_points: row.site_points,
     approximate_points: row.approximate_points,
+    find_proposals: row.find_proposals,
     merge_pairs: row.merge_pairs,
     pin_question: row.pin_question,
     visit_question: row.visit_question,

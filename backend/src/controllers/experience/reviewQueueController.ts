@@ -33,6 +33,7 @@ import { queryComponentItems } from './reviewQueueComponentItems.js';
 import { queryMergeProposals } from './reviewQueueMergeProposals.js';
 import { queryPinQuestions } from './reviewQueuePinQuestions.js';
 import { queryVisitQuestions } from './reviewQueueVisitQuestions.js';
+import { queryFindSites } from './reviewQueueFindSites.js';
 import { queryApproximatePoints } from './reviewQueueApproximatePoints.js';
 import { queryConflicts } from './reviewQueueConflicts.js';
 import {
@@ -471,6 +472,10 @@ export async function getReviewQueue(
   // apart, answered on the same card by keeping or placing each by hand.
   const approximateUnhintedIds = idsOf('approximate-unhinted');
   const approximateUnhinted = await hydrate(approximateUnhintedIds, () => queryApproximatePoints(approximateUnhintedIds, false));
+  // A site a run proposed finds for from their own points (#2304), one card per
+  // site; its questions are the place dialog's, which the card reads itself.
+  const findSitesIds = idsOf('find-sites');
+  const findSites = await hydrate(findSitesIds, () => queryFindSites(findSitesIds));
 
   // What counts as `arrival`: the reasoning is on `arrivalOpenSql`
   // (`reviewQueuePredicates.ts`).
@@ -638,6 +643,7 @@ export async function getReviewQueue(
     visitQuestions: cards(visitQuestions),
     approximatePoints: cards(approximatePoints),
     approximateUnhinted: cards(approximateUnhinted),
+    findSites: cards(findSites),
     arrivals: cards(arrivals),
     held: cards(held),
     contents: cards(contents),
@@ -675,7 +681,7 @@ export async function getReviewQueue(
 /** Every list of cards the page answers, each of which carries `crowding`. */
 const QUEUE_CARD_LISTS = [
   'missing', 'refused', 'keptOut', 'conflicts', 'sources', 'componentItems', 'mergeProposals', 'pinQuestions',
-  'visitQuestions', 'approximatePoints', 'approximateUnhinted', 'arrivals', 'held', 'contents', 'withdrawn',
+  'visitQuestions', 'approximatePoints', 'approximateUnhinted', 'findSites', 'arrivals', 'held', 'contents', 'withdrawn',
   'answeredWithdrawals', 'refusedParts',
 ] as const;
 

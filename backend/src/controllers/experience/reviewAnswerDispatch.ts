@@ -23,6 +23,7 @@
  * | visit-question | refused: a refusal pins the place out of its kind, answered on its card | keep it in the kind | — |
  * | approximate-points | refused: where a component stands is read off its card's map | refused, the same | — |
  * | approximate-unhinted | refused, as approximate-points | refused, the same | — |
+ * | find-sites | refused: where a find comes from is read one find at a time | refused, the same | — |
  * | refused | keep it out (confirm, unpinned) | put it back for now (override, unpinned; publishes an arrival) | — |
  * | missing | former: delisted, still there | the object stays: false alarm | no longer exists |
  * | missing, one kind (#1264) | no longer that kind (former, or out of the kind) | it stays in the kind | — |
@@ -118,6 +119,9 @@ export async function answerRow(
     // never a batch's verdict (#1853).
     case 'approximate-points':
     case 'approximate-unhinted': return refused(409, 'Where a component stands is answered on its card, one point at a time, off its map');
+    // A find's point says where it comes from, what a painting shows or where a
+    // lost original stood: each is read on its own, never a batch's verdict (#2304).
+    case 'find-sites': return refused(409, 'Where a find comes from is answered on its card, one find at a time');
     case 'refused': return answerRefused(who, answer);
     case 'missing': return answerMissing(who, answer);
     case 'withdrawn': return answerWithdrawn(who, answer);

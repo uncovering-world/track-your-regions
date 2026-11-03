@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { answerFindSiteLinkRequest, getFindSiteCandidates, getFindSiteLinks } from './findSiteLinksController.js';
+import { queryQueueKeys } from './reviewQueueKeys.js';
+import { queryFindSites } from './reviewQueueFindSites.js';
 
 /**
  * A site's curator answers where a find comes from (#2242), against
@@ -108,6 +110,22 @@ describe("a site's curator answers where a find comes from", () => {
     expect(links[0].distance_m).toBe(0);
   });
 
+  it("shows each find's own picture with whose photograph it is (#2304)", async () => {
+    const picture = 'https://commons.wikimedia.org/wiki/Special:FilePath/Relief%209570%20fixture.jpg';
+    await pool.query(
+      `UPDATE treasures SET image_url = $2, metadata = jsonb_build_object('imageCredit', $3::jsonb) WHERE id = $1`,
+      [ids.relief, picture, JSON.stringify({ author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null, fetchedAt: '2026-11-03' })],
+    );
+
+    const { links } = await getFindSiteLinks({ params: { id: TEMPLE }, caller: admin });
+
+    expect(links[0]).toMatchObject({
+      image_url: picture,
+      image_credit: { author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null },
+    });
+    expect(links[1].image_url).toBeNull();
+  });
+
   it('records a yes with who said it, and a no that takes a confirmed link back', async () => {
     await answerFindSiteLinkRequest({
       params: { id: TEMPLE, treasureId: ids.relief }, body: { answer: 'confirmed' }, caller: admin,
@@ -135,6 +153,22 @@ describe("a site's curator answers where a find comes from", () => {
       { curator_id: admin.id, details: { treasureId: ids.relief, find: WORKS.relief, answer: 'confirmed', wasConfirmed: false } },
       { curator_id: admin.id, details: { treasureId: ids.stela, find: WORKS.stela, answer: 'refused', wasConfirmed: true } },
     ]);
+  });
+
+  it('asks about the site on the review page while a proposal is open, and no longer once it is answered (#2304)', async () => {
+    const keysOf = async () => (await queryQueueKeys({
+      userId: admin.id, isAdmin: true, filters: { q: 'Place 9570', sort: 'date', limit: 25, kinds: ['find-sites'] },
+    })).keys.filter(key => key.kind === 'find-sites').map(key => key.id);
+    expect(await keysOf()).toEqual([TEMPLE]);
+    // The relief alone is open: the hidden jar is shown by no museum a reader may see.
+    expect((await queryFindSites([TEMPLE])).rows.map(row => row.find_proposals)).toEqual([1]);
+
+    await answerFindSiteLinkRequest({
+      params: { id: TEMPLE, treasureId: ids.relief }, body: { answer: 'refused' }, caller: admin,
+    });
+
+    expect(await keysOf()).toEqual([]);
+    expect((await queryFindSites([TEMPLE])).rows).toEqual([]);
   });
 
   it('asks nothing about a find whose own item names a find spot', async () => {

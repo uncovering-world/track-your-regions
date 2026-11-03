@@ -16,6 +16,7 @@ vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn() } }));
 
 import { pool } from '../../db/index.js';
 import { queryQueueKeys, encodeCursor, decodeCursor, KIND_RANK } from './reviewQueueKeys.js';
+import { linkableFindSql, mayBeFindOriginSql } from './siteFinds.js';
 import {
   missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql,
   conflictChangeOpenSql, mergeProposalOpenSql, pairMembershipSql, visitQuestionOpenSql,
@@ -111,11 +112,12 @@ describe('queryQueueKeys', () => {
     // refused, the two missing branches — the place's, and one kind's
     // (#1264) —, component items (#1272), near places with similar names
     // (#1249), pin questions (#1367), visit questions (#1770), and roughly
-    // placed components with a hint (#1853) and with none (#1903). The scope CTE's own join reads
+    // placed components with a hint (#1853) and with none (#1903), and sites a run
+    // proposed finds for (#2304). The scope CTE's own join reads
     // `r.parent_region_id = s.id`, so it is not counted here, and dropping the
     // predicate from one branch fails this.
     expect(lastCall()[0].match(/JOIN curator_scoped_regions s ON s\.id = er\.region_id/g))
-      .toHaveLength(15);
+      .toHaveLength(16);
   });
 
   it('dates a pair of near places by the newest proposal, anchors it on the lower id and scopes it by either place (#1249)', async () => {
@@ -157,10 +159,22 @@ describe('queryQueueKeys', () => {
     expect(rough).toContain('AND (EXISTS (SELECT 1 FROM experience_point_hints hint');
     expect(rough).not.toContain('AND NOT (EXISTS (SELECT 1 FROM experience_point_hints hint');
     // The points nothing says more about are listed apart, after them (#1903).
-    const unhinted = between(sql, "SELECT 'approximate-unhinted'", ', searched AS (');
+    const unhinted = between(sql, "SELECT 'approximate-unhinted'", "SELECT 'find-sites'");
     expect(unhinted).toContain('AND NOT (EXISTS (SELECT 1 FROM experience_point_hints hint');
-    expect(Math.max(...Object.values(KIND_RANK))).toBe(KIND_RANK['approximate-unhinted']);
     expect(KIND_RANK['approximate-unhinted']).toBe(KIND_RANK['approximate-points'] + 1);
+  });
+
+  it('files a site a run proposed finds for last, dated by its newest proposal and under no run (#2304)', async () => {
+    await queryQueueKeys(base);
+    const [sql] = lastCall();
+    const finds = between(sql, "SELECT 'find-sites'", ', searched AS (');
+    expect(finds).toContain(`'find-sites', ${KIND_RANK['find-sites']}, e.id, e.name, array_agg(DISTINCT m.source_id), NULL`);
+    expect(finds).toContain('max(fsl.proposed_at)');
+    expect(finds).toContain("WHERE fsl.state = 'proposed'");
+    // The finds the place's dialog asks about, and only on a place they may come from.
+    expect(finds).toContain(linkableFindSql('t'));
+    expect(finds).toContain(mayBeFindOriginSql('e'));
+    expect(Math.max(...Object.values(KIND_RANK))).toBe(KIND_RANK['find-sites']);
   });
 
   it('dates a site\'s candidate items by the newest proposal and files them under no run (#1272)', async () => {
