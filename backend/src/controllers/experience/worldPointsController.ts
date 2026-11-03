@@ -53,7 +53,7 @@ import type { WorldPointsResponse } from '../../api/responses/worldPoints.js';
 import type { worldPointsQuerySchema } from '../../types/index.js';
 import type { PointsDetail } from './worldPointsVocabulary.js';
 import { pool } from '../../db/index.js';
-import { catalogueKindJoinSql, kindMembershipJoinSql, placeKindsSql, placeShownSql } from '../../db/membership.js';
+import { catalogueKindJoinSql, kindMembershipJoinSql, placeKindsSql, placeShownSql, shownKindsByPlaceSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { overPlacePoints, pointNameSql, type PlacePointArm } from '../../db/placePoints.js';
@@ -123,11 +123,12 @@ interface PointRow {
  * The columns a tier selects, over the aliases the two query shapes share.
  *
  * `location` is the geometry column's owner — `el` unfolded, the fold's CTE
- * folded — so one list serves both.
+ * folded — so one list serves both. `kindsJoined` says the place's kinds are
+ * joined as `wk` (`shownKindsByPlaceSql`) rather than read per row.
  */
 function selectSql(
   detail: PointsDetail, folded: boolean, location: string, locationRow: string,
-  placeId = `${locationRow}.experience_id`,
+  placeId = `${locationRow}.experience_id`, kindsJoined = false,
 ): string {
   const geometry = `${location}.location`;
   const columns = [
@@ -143,7 +144,7 @@ function selectSql(
       'e.name AS experience_name',
       'm.kind_id',
       'm.type',
-      `${placeKindsSql('e', true)} AS kinds`,
+      kindsJoined ? `COALESCE(wk.kinds, '[]'::json) AS kinds` : `${placeKindsSql('e', true)} AS kinds`,
     );
     // Whether the source placed the point only roughly (#1912), which the pin
     // draws as a ring. A folded pin stands for its place, never for its point.
@@ -220,10 +221,15 @@ export async function getWorldPoints(
   }
 
   const where = conditions.join('\n        AND ');
-  const unfolded = ({ from, placeId }: PlacePointArm): string => `SELECT
-        ${selectSql(detail, false, 'el', 'el', placeId)}
+  // A serial site's markers are its parts' points, each carrying the site's
+  // kinds: read once a site, not once a point (#2301), since the per-row read
+  // asked a site's memberships for each of its parts.
+  const kindsJoined = (wholes: string | undefined) => detail === 'markers' && wholes !== undefined;
+  const unfolded = ({ from, placeId, wholes }: PlacePointArm): string => `SELECT
+        ${selectSql(detail, false, 'el', 'el', placeId, kindsJoined(wholes))}
       FROM ${from}
       ${kindJoin}
+      ${kindsJoined(wholes) ? `LEFT JOIN ${shownKindsByPlaceSql(wholes!)} wk ON wk.experience_id = e.id` : ''}
       WHERE ${where}`;
   const query = folded
     ? foldedQuery(detail, where, kindJoin)

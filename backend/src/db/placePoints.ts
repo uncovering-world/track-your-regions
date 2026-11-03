@@ -44,6 +44,8 @@ export interface PlacePointArm {
   from: string;
   /** The id of the place that shows the point, as a column expression. */
   placeId: string;
+  /** The places this arm shows points for, as a `SELECT` of ids: wholes for the parts' arm, whose rows repeat their whole. */
+  wholes?: string;
 }
 
 /** The place's own points, and its parts' points shown by the whole. */
@@ -57,6 +59,7 @@ export const PLACE_POINT_ARMS: readonly PlacePointArm[] = [
            JOIN experience_locations el ON el.experience_id = prt.part_id
            JOIN experiences e ON e.id = prt.whole_id`,
     placeId: 'prt.whole_id',
+    wholes: 'SELECT whole_id FROM experience_parts',
   },
 ];
 
