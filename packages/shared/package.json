@@ -22,6 +22,7 @@
     "./precision": "./src/precision.ts",
     "./preferences": "./src/preferences.ts",
     "./placeFields": "./src/placeFields.ts",
+    "./placeTypes": "./src/placeTypes.ts",
     "./runStatuses": "./src/runStatuses.ts",
     "./textCredits": "./src/textCredits.ts",
     "./visits": "./src/visits.ts"
