@@ -52,7 +52,7 @@ const facts = (over: Partial<CoverageFacts>): CoverageFacts => ({
 });
 const top = (slug: string, over: Partial<CalibrationRow> = {}): CalibrationRow => ({
   kind_slug: 'archaeology', slug, name: slug, wikidata_id: `Q${slug.length}${slug.charCodeAt(0)}`, sitelinks: 40, sources: ['coverage-surveys'],
-  offered: false, admitted: false, crowded: false, held_as: null, refused_for: null, ...over,
+  offered: false, admitted: false, crowded: false, held_as: null, offered_as: null, refused_for: null, ...over,
 });
 const judged = (slug: string, cause: string, issue: number | null, over: Partial<JudgementRow> = {}): JudgementRow => ({
   region_slug: 'cusco-region', entry_slug: slug, kind_slug: 'archaeology', row_wikidata_id: null, cause, issue_number: issue, judged: '2026-10-16',
@@ -361,6 +361,23 @@ describe('a live kind against its own calibration list (#1864)', () => {
       { slug: 'coverage-surveys', name: 'The coverage surveys', named: 8, offered: 1 },
       { slug: 'wonders', name: 'The wonders list', named: 3, offered: 1 },
     ]);
+  });
+
+  it("names a top offered by a place that holds it, under both names, and counts it offered (#2151)", () => {
+    const museums = buildCoverageReport(facts({
+      calibration: [
+        top('getty-center', {
+          kind_slug: 'public-art', name: 'Getty Center', offered: true, offered_as: 'J. Paul Getty Museum', sitelinks: 50,
+        }),
+        top('obelisk', { kind_slug: 'public-art', offered: true }),
+      ],
+    })).liveKinds.find(live => live.slug === 'public-art')?.calibration;
+
+    expect(museums).toMatchObject({ entries: 2, offered: 2, misses: [] });
+    expect(museums?.offeredAs.map(top => [top.name, top.standing, top.detail])).toEqual([
+      ['Getty Center', 'offered', 'J. Paul Getty Museum'],
+    ]);
+    expect(own('archaeology')?.offeredAs).toEqual([]);
   });
 
   it('keeps each kind to its own list, and gives a kind with no list none', () => {
@@ -680,8 +697,11 @@ describe('the statements', () => {
     for (const identifier of ['e.external_id AS id', 'm.external_id, false', 'unnest(m.wikidata_items) AS item']) {
       expect(sql).toContain(identifier);
     }
-    // Joined once and aggregated per entry, never a subquery per top over the whole union.
-    expect(sql).toContain('JOIN known_as k ON k.id = c.wikidata_id');
+    // Joined once and aggregated per entry, never a subquery per top over the whole union:
+    // the entry's own item and each place that holds it (#2151).
+    expect(sql).toContain('JOIN known_as k ON k.id = ei.item');
+    expect(sql).toContain("wc.property IN ('P361', 'P276')");
+    expect(sql).toContain("wc.property = 'P527'");
     expect(sql).not.toMatch(/EXISTS \(SELECT 1 FROM known_as/);
     // A refusal is a changeset row of the latest real, closed run, never a membership.
     expect(sql).toContain("ch.change_type = 'filtered'");

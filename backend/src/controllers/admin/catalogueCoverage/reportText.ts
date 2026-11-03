@@ -115,6 +115,9 @@ function calibrationLines(kind: LiveKindGaps): string[] {
   const waiting = own.admitted > 0 ? `, ${own.admitted} more admitted and waiting for a curator` : '';
   const lines = [`${kind.name} [${kind.slug}]: ${own.offered} of ${own.entries} tops are offered${waiting}`];
   for (const source of own.bySource) lines.push(`    ${source.name}: ${source.offered} of ${source.named}`);
+  if (own.offeredAs.length > 0) {
+    lines.push('    offered as a place that holds it:', ...own.offeredAs.map(top => `        ${top.name} (${top.wikidataId}): as ${top.detail}`));
+  }
   if (own.misses.length > 0) lines.push('    not offered:', ...own.misses.map(missLine));
   return lines;
 }
