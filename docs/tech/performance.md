@@ -968,6 +968,48 @@ Measured and not taken:
   It is the kind test of every reader read, so it is not changed for
   three of them.
 
+#### Round 3: a serial site's kinds once a site (#2301)
+
+After round 2, `perf:api` on dev still read the Europe markers at 123 ms and
+the folded overview at 58 ms, against 105 and 54 before the pass. Measured
+at `00ec9760f` by `EXPLAIN (ANALYZE, BUFFERS)` of the statements the
+controller sends, on an idle box (load 0.1 to 0.6):
+
+- **The Europe markers** (75 ms of statement time) spend 69 ms of the
+  `EXPLAIN` on the parts' arm, for 3 120 points of 1 421 serial sites. Each
+  point reads its name (`pointNameSql`, about 28 ms) and the site's kinds
+  (`placeKindsSql` over the site, about 19 ms) as a subquery per row, so a
+  site's kinds were read once for each of its parts' points.
+- **The folded overview** runs in 36 ms, and the copies without the pass ran
+  it in 38 ms (round 2). The statement carries none of the pass's cost, so
+  what its endpoint still reads over the medians before the pass is outside
+  the statement. Its JSON grew with the 3 831 places it folds.
+
+What changed: the parts' arm of the markers joins the sites' kinds once a
+site (`shownKindsByPlaceSql` over the arm's `wholes`, `db/placePoints.ts`).
+The places' own arm keeps the per-row read, whose rows name each place
+once. Every shape of the world points read returns the same rows, the same
+count and the same md5 of its rows as a set, for the markers, the markers of
+one kind, the folded markers, the overview and the folded overview.
+
+Statement execution on dev, the median of eight runs after a warm-up, main
+and the branch interleaved, load 0.1:
+
+| Statement | main | branch |
+|-----------|------|--------|
+| world points: markers, Europe | 74 ms | 65 ms |
+| world points: markers of one kind, Europe | 58 ms | 46 ms |
+
+Measured and not taken:
+
+- **The point's name asked of a set built once**, the parts with a kind a
+  reader is shown read as one hashed `IN` in place of the per-row `EXISTS`:
+  over every membership, 145 ms against 122 ms under `EXPLAIN ANALYZE`; over
+  the parts' memberships alone, 84 ms against 75 ms of statement time. The
+  per-row probe is an index probe that finds nothing for most parts.
+- **The name's real-kind test written as a join** to `experience_kinds`:
+  79.6 ms against 79.8 ms, the same.
+
 ### What the world layer cost the map root — 2026-09-16
 
 The map root draws the catalogue itself before any region is chosen (#910,
