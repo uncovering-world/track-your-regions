@@ -70,7 +70,7 @@ describe('experienceColors', () => {
   });
 
   it('lets a type value name its kind where no kind id came with it', () => {
-    // The vocabularies are closed and disjoint (`experienceTypes.ts`): `natural` is
+    // The vocabularies are closed and disjoint (`@tyr/shared/placeTypes`): `natural` is
     // World Heritage's wherever it appears, so a row that reached a surface without
     // its kind id still draws in the colour readers know it by, not in grey.
     expect(experienceColor(undefined, 'natural')).toBe(TYPE_COLORS.natural.primary);

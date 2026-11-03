@@ -3,34 +3,40 @@
  *
  * A type is a distinction inside a kind whose members a traveller still browses
  * together (ADR-0045): a World Heritage site is cultural, natural or mixed; a
- * piece of public art is a sculpture, a fountain, street art or a clock; a monument is a
- * memorial, an arch, a column, an obelisk or a monument; a place of worship is a
- * cathedral, church, chapel, monastery, mosque, temple, shrine, synagogue, sacred
- * mountain or holy site; a
- * tower is a pagoda, a minaret, a clock tower, a bell tower, an observation tower, a
- * fortified tower or a tower; an engineering work is an aqueduct, a bridge, a
- * dam, an inclined plane, a boat lift, a flight of locks, a lock or a tunnel; a
- * square or a street is a stairway, a square, a
- * promenade or a street. An
- * art museum has no type; Archaeology has two, site and museum, because a
- * traveller browses the dig and its museum as one list (ADR-0058). An art
- * museum carries no literal `art`: it says nothing the kind does not (#814).
+ * square or a street is a stairway, a square, a promenade or a street; every
+ * kind's list is `@tyr/shared/placeTypes`. An art museum has no
+ * type; Archaeology has two, site and museum, because a traveller browses the
+ * dig and its museum as one list (ADR-0058). An art museum carries no literal
+ * `art`: it says nothing the kind does not (#814).
  * One closed vocabulary per kind, never one shared enum, which is why a value
  * alone says which kind's vocabulary it belongs to.
  *
  * The dialogs that let a curator set a type offer the kind's own list and
  * nothing else; the review card explains a proposed type in the words of the
  * vocabulary the value is from.
+ *
+ * The values and their words are declared once, beside what the run writes
+ * (`@tyr/shared/placeTypes`, #2319); this module adds what a reader is told about
+ * each vocabulary and which kind id it belongs to.
  */
 
-export interface TypeOption {
-  value: string;
-  label: string;
-}
+import {
+  ARCHAEOLOGY_TYPES,
+  BRIDGES_TYPES,
+  MONUMENTS_TYPES,
+  PLACES_OF_WORSHIP_TYPES,
+  PUBLIC_ART_TYPES,
+  SQUARES_TYPES,
+  TOWERS_TYPES,
+  WORLD_HERITAGE_TYPES,
+  type PlaceTypeEntry,
+} from '@tyr/shared/placeTypes';
+
+export type TypeOption = PlaceTypeEntry;
 
 /** A closed vocabulary and what it says about the object. */
 export interface TypeVocabulary {
-  options: TypeOption[];
+  options: readonly TypeOption[];
   /** The fact on the ground, in the review card's words. */
   what: string;
   /** What a change usually means, and what to check. */
@@ -38,100 +44,49 @@ export interface TypeVocabulary {
 }
 
 const WORLD_HERITAGE: TypeVocabulary = {
-  options: [
-    { value: 'cultural', label: 'Cultural' },
-    { value: 'natural', label: 'Natural' },
-    { value: 'mixed', label: 'Mixed' },
-  ],
+  options: WORLD_HERITAGE_TYPES,
   what: 'Cultural, natural or mixed — which kind of criteria the World Heritage site meets.',
   whenItChanges: 'Reclassified by the Centre, usually with an extension; check the criteria row.',
 };
 
 const PUBLIC_ART: TypeVocabulary = {
-  options: [
-    { value: 'sculpture', label: 'Sculpture' },
-    { value: 'fountain', label: 'Fountain' },
-    { value: 'street-art', label: 'Street art' },
-    { value: 'clock', label: 'Clock' },
-  ],
+  options: PUBLIC_ART_TYPES,
   what: 'What the work is, read from Wikidata’s classes: a public clock with a show as a clock, a fountain before a sculpture, a mural as street art.',
   whenItChanges: 'Retyped on Wikidata. The same work either way; the filter chip it answers to changes.',
 };
 
 const MONUMENTS: TypeVocabulary = {
-  options: [
-    { value: 'memorial', label: 'Memorial' },
-    { value: 'arch', label: 'Arch' },
-    { value: 'column', label: 'Column' },
-    { value: 'obelisk', label: 'Obelisk' },
-    { value: 'monument', label: 'Monument' },
-  ],
+  options: MONUMENTS_TYPES,
   what: 'What was raised, read from Wikidata’s classes: the form first — an arch, a column, an obelisk — then a memorial, and a monument otherwise.',
   whenItChanges: 'Retyped on Wikidata. The same monument either way; the filter chip it answers to changes.',
 };
 
 const PLACES_OF_WORSHIP: TypeVocabulary = {
-  options: [
-    { value: 'cathedral', label: 'Cathedral' },
-    { value: 'church', label: 'Church' },
-    { value: 'chapel', label: 'Chapel' },
-    { value: 'monastery', label: 'Monastery' },
-    { value: 'mosque', label: 'Mosque' },
-    { value: 'temple', label: 'Temple' },
-    { value: 'shrine', label: 'Shrine' },
-    { value: 'synagogue', label: 'Synagogue' },
-    { value: 'sacred mountain', label: 'Sacred mountain' },
-    { value: 'holy site', label: 'Holy site' },
-  ],
+  options: PLACES_OF_WORSHIP_TYPES,
   what: 'What kind of place of worship it is, read from Wikidata’s classes: a cathedral before a church, a monastery that is also a cathedral is a cathedral.',
   whenItChanges: 'Retyped on Wikidata. The same place either way; the filter chip it answers to changes.',
 };
 
 const ARCHAEOLOGY: TypeVocabulary = {
-  options: [
-    { value: 'site', label: 'Site' },
-    { value: 'museum', label: 'Museum' },
-  ],
+  options: ARCHAEOLOGY_TYPES,
   what: 'An excavation a traveller stands in, or the museum that shows what was dug up — one list, two chips.',
   whenItChanges: 'Retyped by the run from Wikidata’s classes; the same place either way.',
 };
 
 const TOWERS: TypeVocabulary = {
-  options: [
-    { value: 'pagoda', label: 'Pagoda' },
-    { value: 'minaret', label: 'Minaret' },
-    { value: 'clock-tower', label: 'Clock tower' },
-    { value: 'bell-tower', label: 'Bell tower' },
-    { value: 'observation-tower', label: 'Observation tower' },
-    { value: 'fortified-tower', label: 'Fortified tower' },
-    { value: 'tower', label: 'Tower' },
-  ],
+  options: TOWERS_TYPES,
   what: 'What kind of tower it is, read from Wikidata’s classes: a pagoda, a minaret or a clock tower before a bell tower, a TV tower as an observation tower, and a tower otherwise.',
   whenItChanges: 'Retyped on Wikidata. The same tower either way; the filter chip it answers to changes.',
 };
 
 const BRIDGES: TypeVocabulary = {
-  options: [
-    { value: 'aqueduct', label: 'Aqueduct' },
-    { value: 'bridge', label: 'Bridge' },
-    { value: 'dam', label: 'Dam' },
-    { value: 'inclined-plane', label: 'Inclined plane' },
-    { value: 'boat-lift', label: 'Boat lift' },
-    { value: 'lock-flight', label: 'Flight of locks' },
-    { value: 'lock', label: 'Lock' },
-    { value: 'tunnel', label: 'Tunnel' },
-  ],
+  options: BRIDGES_TYPES,
   what: 'What was built, read from Wikidata’s classes: an aqueduct before a bridge, so the Pont du Gard is an aqueduct, and a bridge before a tunnel. On a waterway, a lock Wikidata also files as a dam is a lock (the Soo Locks), unless the dam is a power station, which stays a dam; a lift that is also a lock is a boat lift (the Peterborough Lift Lock); and a flight of locks is a flight before a lock.',
   whenItChanges: 'Retyped on Wikidata. The same work either way; the filter chip it answers to changes.',
 };
 
 const SQUARES: TypeVocabulary = {
-  options: [
-    { value: 'stairway', label: 'Stairway' },
-    { value: 'square', label: 'Square' },
-    { value: 'promenade', label: 'Promenade' },
-    { value: 'street', label: 'Street' },
-  ],
+  options: SQUARES_TYPES,
   what: 'What a visitor walks, read from Wikidata’s classes: a stairway before a square, so the Spanish Steps are a stairway, and a promenade before a street.',
   whenItChanges: 'Retyped on Wikidata. The same place either way; the filter chip it answers to changes.',
 };
@@ -157,7 +112,7 @@ const VOCABULARY_BY_KIND: Record<number, TypeVocabulary> = {
 };
 
 /** The types a curator may set on an object of this kind — none for an art museum. */
-export function typeOptionsFor(kindId: number | null | undefined): TypeOption[] {
+export function typeOptionsFor(kindId: number | null | undefined): readonly TypeOption[] {
   return kindId != null ? VOCABULARY_BY_KIND[kindId]?.options ?? [] : [];
 }
 
