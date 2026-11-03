@@ -6,6 +6,7 @@ import type { MonumentType, PublicArtType } from './publicArt/kindRules.js';
 import type { TowerType } from './towers/classes.js';
 import type { BridgeType } from './bridges/classes.js';
 import type { SquareType } from './squares/classes.js';
+import type { ParkType } from './parks/classes.js';
 import type { Operation } from '../operationProgress.js';
 import type { FieldChange } from './changeSet.js';
 
@@ -326,8 +327,11 @@ export interface WikidataLandmark {
   year: number | null;
   sitelinks: number;
   countryLabel: string | null;
-  /** The type within the kind the run fills, in that kind's own vocabulary. */
-  type: PublicArtType | MonumentType | TowerType | BridgeType | SquareType;
+  /**
+   * The type within the kind the run fills, in that kind's own vocabulary.
+   * Parks & gardens' is here for its dry run (#2254); no source writes it yet.
+   */
+  type: PublicArtType | MonumentType | TowerType | BridgeType | SquareType | ParkType;
   /** The tier that admitted it where it is not the world's: ADR-0171's surroundings tier (#2178). */
   tier?: 'surroundings';
   /**
