@@ -13,20 +13,20 @@ import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVis
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
-import { MEASURED_BARS } from '../../../services/sync/places/admissionRegister.js';
 import { buildCoverageReport } from './report.js';
 import { coverageSql, type CalibrationRow, type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow } from './reportQueries.js';
 import { renderCoverageReport } from './reportText.js';
 
 const kind = (over: Partial<KindRow>): KindRow => ({
   slug: 'archaeology', name: 'Archaeology', form: 'place', status: 'live', experience_kind_id: 5, issue_number: null,
-  in_venue: false, enter_sitelinks: 22, find_enter_sitelinks: null, crowding_limit: null, crowding_radius_km: null, crowding_exempt_types: [], ...over,
+  in_venue: false, enter_sitelinks: 22, find_enter_sitelinks: null, world_editions: null, by_world_bars: false, crowding_limit: null, crowding_radius_km: null, crowding_exempt_types: [], ...over,
 });
 const KINDS: KindRow[] = [
   kind({}),
   kind({ slug: 'world-heritage', name: 'World Heritage Sites', experience_kind_id: 1, enter_sitelinks: null }),
   kind({ slug: 'art-museums', name: 'Art Museums', experience_kind_id: 2, enter_sitelinks: null }),
-  kind({ slug: 'public-art', name: 'Public art', experience_kind_id: 3, enter_sitelinks: null }),
+  // The editions bar Public art's last run admitted by (`world_bars` on its sync log).
+  kind({ slug: 'public-art', name: 'Public art', experience_kind_id: 3, enter_sitelinks: null, world_editions: 17, by_world_bars: true }),
   kind({ slug: 'notable-works', name: 'Notable works', form: 'work', experience_kind_id: null, in_venue: true, enter_sitelinks: null }),
   kind({ slug: 'markets', name: 'Markets', status: 'proposed', experience_kind_id: null, enter_sitelinks: null }),
   kind({ slug: 'festivals-and-events', name: 'Festivals & events', form: 'event', status: 'proposed', experience_kind_id: null, issue_number: 1300, enter_sitelinks: null }),
@@ -203,6 +203,15 @@ describe('what a live kind lacks', () => {
     ]);
   });
 
+  it('draws no line for a kind the world bars admit that has not run, whatever its source row states (#2321)', () => {
+    // Places of worship's source row states 22, the line its second door holds a work to, not its places'.
+    const unrun = buildCoverageReport(facts({
+      kinds: [...KINDS, kind({ slug: 'places-of-worship', name: 'Places of worship', experience_kind_id: 4, by_world_bars: true })],
+      expectations: [entry('church', { kinds: ['places-of-worship'], sitelinks: 30 })],
+    })).liveKinds.find(live => live.slug === 'places-of-worship');
+    expect(unrun?.line).toBeNull();
+  });
+
   it('names every absent property of World Heritage, which has no line', () => {
     expect(gaps('world-heritage')).toMatchObject({ line: null, expected: 1, offered: 0, belowLineMissing: 0 });
     expect(gaps('world-heritage')?.wellKnownMissing.map(missing => missing.name)).toEqual(['cuzco']);
@@ -213,9 +222,9 @@ describe('what a live kind lacks', () => {
     expect(gaps('art-museums')?.wellKnownMissing.map(missing => missing.name)).toEqual(['soumaya', 'house-museum']);
   });
 
-  it('holds a work of public art to the editions bar the register measured, and a work to the line its code states', () => {
-    // Public art's editions bar as ADR-0175's review measured it: the fountain in 6 editions is under it.
-    expect(gaps('public-art')).toMatchObject({ line: MEASURED_BARS.value['public-art'].editions, expected: 2, offered: 0, belowLineMissing: 1 });
+  it('holds a work of public art to the editions bar its last run admitted by, and a work to the line its code states', () => {
+    // Public art's editions bar from its fixture run (`world_editions`): the fountain in 6 editions is under it.
+    expect(gaps('public-art')).toMatchObject({ line: 17, expected: 2, offered: 0, belowLineMissing: 1 });
     expect(gaps('public-art')?.wellKnownMissing.map(missing => missing.name)).toEqual(['obelisk']);
     expect(gaps('notable-works')).toMatchObject({ line: 22 });
   });
@@ -471,7 +480,7 @@ describe('what the map shows: a crowded city\'s tail, and the places it crowds o
   // coordinate as Rome's, Kyoto's and Istanbul's lists record them, its type as Places of
   // worship's rule gives it.
   const WORSHIP = kind({
-    slug: 'places-of-worship', name: 'Places of worship', experience_kind_id: 4, enter_sitelinks: null, crowding_limit: 10, crowding_radius_km: 10,
+    slug: 'places-of-worship', name: 'Places of worship', experience_kind_id: 4, enter_sitelinks: null, world_editions: 16, by_world_bars: true, crowding_limit: 10, crowding_radius_km: 10,
   });
   const ROME_REGION = { slug: 'rome', name: 'Rome', country: 'Italy', surveyed: '2026-10-02' };
   const place = (region: string) => (slug: string, type: string, sources: number, sitelinks: number, at: [number, number] | null, kinds = ['places-of-worship']) =>

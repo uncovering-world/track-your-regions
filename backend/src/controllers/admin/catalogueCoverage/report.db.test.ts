@@ -188,14 +188,18 @@ let runLogId: number;
 /** The latest real, closed Archaeology run, refusing one item of the list; an older run that refused another says nothing. */
 async function runs(): Promise<void> {
   const older = await pool.query<{ id: number }>(
-    `INSERT INTO experience_sync_logs (source_id, status, completed_at, is_dry_run) VALUES (5, 'success', NOW() - interval '1 day', false) RETURNING id`,
+    `INSERT INTO experience_sync_logs (source_id, status, completed_at, is_dry_run, world_bars) VALUES (5, 'success', NOW() - interval '1 day', false, '{"editions": 30}') RETURNING id`,
   );
   await pool.query(
     `INSERT INTO experience_sync_changes (sync_log_id, external_id, name_snapshot, change_type, error) VALUES ($1, $2, 'Out of reach', 'filtered', 'an older run said so')`,
     [older.rows[0].id, TOPS.outOfReach],
   );
+  // The bars the kind's last real run admitted by (#2321); a later preview's are its own.
   const latest = await pool.query<{ id: number }>(
-    `INSERT INTO experience_sync_logs (source_id, status, completed_at, is_dry_run) VALUES (5, 'success', NOW(), false) RETURNING id`,
+    `INSERT INTO experience_sync_logs (source_id, status, completed_at, is_dry_run, world_bars) VALUES (5, 'success', NOW(), false, '{"editions": 20}') RETURNING id`,
+  );
+  await pool.query(
+    `INSERT INTO experience_sync_logs (source_id, status, completed_at, is_dry_run, world_bars) VALUES (5, 'success', NOW(), true, '{"editions": 5}')`,
   );
   await pool.query(
     `INSERT INTO experience_sync_changes (sync_log_id, external_id, name_snapshot, change_type, error) VALUES ($1, $2, 'Refused by the run', 'filtered', 'a water system, not a site')`,
@@ -313,13 +317,14 @@ describe('the coverage report on a real database', () => {
       .toEqual([['festivals-and-events', 'event', 1300, 1], ['markets', 'place', null, 1]]);
   });
 
-  it('names the well-known dig Archaeology lacks, against the line its own source states', async () => {
+  it('names the well-known dig Archaeology lacks, against the editions bar its last real run admitted by (#2321)', async () => {
     const archaeology = report.liveKinds.find(kind => kind.slug === 'archaeology');
     const stated = await pool.query<{ line: number | null }>(
       `SELECT MIN((api_config->>'enterSitelinks')::int) AS line FROM experience_sources WHERE kind_id = 5 AND is_active`,
     );
-    // The fixture database may state no line; the report then falls back to the code's.
-    expect(archaeology?.line).toBe(stated.rows[0].line ?? 22);
+    // The editions bar of the kind's last real run (20), or the lower line its museums still enter by.
+    const museums = stated.rows[0].line;
+    expect(archaeology?.line).toBe(museums === null ? 20 : Math.min(20, museums));
     // The property by its item is filed under Archaeology and offered by World Heritage: absent here, under the line.
     // The crowded dig is counted beside what the kind lacks, never among it.
     expect(archaeology).toMatchObject({ expected: 9, offered: 2, tail: 0, shadowed: 1 });

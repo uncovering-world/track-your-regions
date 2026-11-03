@@ -11,12 +11,12 @@ import {
   barsLine, barsToAdmitBy, belowWorldBars, quantile, reachesABar, readAtlas, worldBars, worldStanding,
   type WorldBars, type WorldMemory, type WorldRead,
 } from './worldBars.js';
-import { MEASURED_BARS, WORLD_FRAME, WORLD_REGISTER } from './admissionRegister.js';
+import { WORLD_FRAME, WORLD_REGISTER } from './admissionRegister.js';
 import { fetchStreetArtMarks } from '../publicArt/streetArtQueries.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 
 // Places of worship's bars as the review read them on 2026-11-02.
-const WORSHIP: WorldBars = { ...MEASURED_BARS.value['places-of-worship'], pool: 56_962 };
+const WORSHIP: WorldBars = { editions: 16, readers: 49_634, guidedReaders: 10_577, pool: 56_962 };
 
 const read = (readers: Record<string, number> | null, guided: string[] | null = [], atlas: string[] = []): WorldRead => ({
   readers: readers && new Map(Object.entries(readers)),
@@ -136,7 +136,7 @@ describe('the words', () => {
 
 describe('what a run cannot read (ADR-0175 decision 6)', () => {
   // Public art's bars as the review read them, kept by run 812 over its year.
-  const ART = MEASURED_BARS.value['public-art'];
+  const ART = { editions: 17, readers: 93_029, guidedReaders: 20_871 };
   const YEAR = '2025-10 to 2026-09';
   const KEPT: WorldMemory['bars'] = { readers: ART.readers, guidedReaders: ART.guidedReaders, year: YEAR, logId: 812 };
   // Munich's Glockenspiel: 7 editions, 65,572 readers a year, listed by Atlas Obscura; the village church read 400 times.
@@ -185,7 +185,7 @@ describe('what a run cannot read (ADR-0175 decision 6)', () => {
 
   it('reads a guide\'s mark as last read where no usage build is in place, and a place no build was read for as unknown', () => {
     // Erfurt's Krämerbrücke: 16 editions and 54,022 readers, a guide's, under Bridges' editions and readers bars.
-    const BRIDGES: WorldBars = { ...MEASURED_BARS.value['bridges-and-engineering'], pool: 41_000 };
+    const BRIDGES: WorldBars = { editions: 17, readers: 56_955, guidedReaders: 13_757, pool: 41_000 };
     const KRAMER = { qid: 'Q896890', editions: 16 };
     const noBuild = (guided: ReadonlyMap<string, boolean>): WorldRead =>
       ({ readers: new Map([['Q896890', 54_022]]), guided: null, atlas: new Set(), memory: memory({ guided }) });
