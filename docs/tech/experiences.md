@@ -5254,7 +5254,9 @@ Maggiore, and crowds out 51 more of its churches.
   rejected from the region.
 - **Kinds.** A place crowded out of one kind and shown in another is a row of the other: the kind a
   row is shown under takes a shown membership first (`shownMembershipSql`), and a list's or a map
-  marker's kinds leave the crowded one out (`placeKindsSql(experience, true)`).
+  marker's kinds leave the crowded one out (`membershipShownSql`, read per row by
+  `placeKindsSql(experience, true)` and once a site for a serial site's parts' markers by
+  `shownKindsByPlaceSql`, #2301).
 - **A curator sorts a crowded city in one window** ([ADR-0180](../decisions/0180-a-curator-keeps-a-place-of-a-crowded-city-in-its-list-or-its-shadow.md), #2282).
   Whether a place belongs in a city's list or its shadow is a question of priorities among its
   neighbours, so the window (`GET /review/crowding/around/:membershipId`, `crowdingWindow.ts`) lists
