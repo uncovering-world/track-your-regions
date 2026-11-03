@@ -7050,10 +7050,11 @@ places claim identifies neither and two claimants would read as a shared referen
 the place that carries it, named with its kinds, so Babylon's city (Q5684) is told from the item of
 its World Heritage listing (Q100329356) under one and the same name; and a place that resolves to
 no item, a serial site or a place whose point was never written, as having none (`PairItems`). *Show
-both on the map* draws the pair on one map, this card's place first, each pin saying which place it
-is and what it is — Bisotun, the World Heritage site, beside *Bisotūn · part of The Persian
-Caravanserai*, the caravanserai at the foot of the rock 451 m off — so whether one stands within the
-other is read from the ground (`pairPins`, `PointPreviewDialog`'s `pins`, #2202). The card (`MergeProposalsCard.tsx`) gives each pair three
+both on the map* draws the pair on one map, this card's place first, each pin labelled with which
+place it is and its row under the map saying what it is (#2273) — *Bisotun (this card)*, the World
+Heritage site, beside *Bisotūn*, part of The Persian Caravanserai, the caravanserai at the foot of
+the rock 451 m off — so whether one stands within the other is read from the ground (`pairPins`,
+`PointPreviewDialog`'s `pins`, #2202). The card (`MergeProposalsCard.tsx`) gives each pair three
 answers, `POST /api/experiences/:id/merge-proposals` (`mergeProposalController.ts`), each pair its
 own act: *one place* runs `mergePlaces` with the anchor as the survivor and `reason: 'curator'` —
 its own transaction and locks, so a pair the merge refuses (both places in one kind, ADR-0086
