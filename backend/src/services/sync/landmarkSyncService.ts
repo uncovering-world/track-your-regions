@@ -29,7 +29,7 @@ import {
   classifyPublicArt, PUBLIC_ART_KIND, publicArtVerdictOf, streetArtCandidates, type GatheredPublicArt,
 } from './publicArt/pipeline.js';
 import { mergeSurroundings, surroundingsReader, type SurroundingsKind, type SurroundingsReader } from './places/surroundingsTier.js';
-import { refuseGone } from './places/gone.js';
+import { goneWorkReason, refuseGone, type StandingFacts } from './places/gone.js';
 import { worldHistory, type WorldHistory } from './places/worldMemory.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
@@ -83,6 +83,8 @@ export interface PlaceClassifier {
   surroundings?: SurroundingsReader;
   /** What the kind's places hold, where its places hold works: Public art's street-art places (#2055). */
   contents?: PlaceContents;
+  /** How the kind reads a place Wikidata says is gone: a place's (`goneReason`, #2259) unless it names its own. */
+  gone?: (facts: StandingFacts) => string | null;
 }
 
 /** What a kind of the pass reads beside its rule and the world bars. */
@@ -149,6 +151,9 @@ function publicArtClassifier(rule: KindRule, { streetArt = false }: ClassifierOp
     // kind's classes, then the kind's own rule over the few it admits, with
     // what holds them and what they depict read by id.
     surroundings: surroundingsReader(publicArtSurroundings(rule)),
+    // A statue or a column houses nothing: its end of existence is its removal
+    // unless the item says it stands again (#2280).
+    gone: goneWorkReason,
     ...(streetArt ? { contents: streetArtContents(LANDMARK_SOURCE_ID, LOG_PREFIX) } : {}),
   };
 }
@@ -390,7 +395,9 @@ async function fetchLandmarkItems(
     if (surroundings.skipped) spareTier = 'surroundings';
   }
   // A place Wikidata says is gone is refused whichever tier admitted it (#2259).
-  await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX);
+  // A work removed, destroyed or taken down is refused too, where the kind holds works (#2280).
+  await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX,
+    classifier.gone);
   // What the admitted places hold, read before the first is written, so the
   // coverage floor is measured over the whole run (ADR-0044).
   const held = await classifier.contents?.read(items, sparql, progress);
