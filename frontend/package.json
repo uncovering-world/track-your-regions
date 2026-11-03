@@ -28,7 +28,13 @@
       "name": "entry chunk (gzip)",
       "path": "dist/assets/index-*.js",
       "gzip": true,
-      "limit": "210 kB"
+      "limit": "182 kB"
+    },
+    {
+      "name": "startup shared chunk (gzip)",
+      "path": "dist/assets/startup-*.js",
+      "gzip": true,
+      "limit": "148 kB"
     },
     {
       "name": "map library chunk (gzip)",
@@ -61,7 +67,7 @@
       "name": "review queue chunk (gzip)",
       "path": "dist/assets/ReviewPage-*.js",
       "gzip": true,
-      "limit": "49 kB"
+      "limit": "51 kB"
     },
     {
       "name": "stylesheet (gzip)",
