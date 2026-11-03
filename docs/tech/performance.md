@@ -101,8 +101,9 @@ reading a number:
 The budget syntax is Lighthouse CI's (`"<key>": ["<level>", { <threshold> }]`),
 evaluated by `frontend/perf/assertions.mjs`, so anyone who has read a
 `lighthouserc.json` reads ours. One key is the lane's own,
-`requests-except:<host>:size|count`, for the pages whose weight is mostly a
-basemap the repository does not serve (ADR-0118, § The region and card pages). Lighthouse CI itself is not used: at the time
+`requests-except:<host>:size|count`, for the pages that draw a basemap the
+repository does not serve, which is every page of the lane (ADR-0118, § The
+region and card pages, § Budgets and the ratchet rule). Lighthouse CI itself is not used: at the time
 of writing `@lhci/cli` pinned a year-old Lighthouse whose dependency tree
 carried nine high-severity advisories, for a feature set this lane needs a
 small part of — N runs, a median, a handful of assertions, reports on disk.
@@ -1105,8 +1106,11 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 | `resource-summary:script:size` | error | 610 000 B | 562 066 B transferred — every script the page loads at startup, whatever its chunks are called (+ ~5 %; was 925 000 B until #643). The admin screens' endpoints then grew the startup chunk week by week, to 589.8 kB on every page of the CI lane (#1862's run, 2026-10-22) and 590 021 B locally: a function the generated client defines stays in its module's chunk wherever it is called from. Since #1850 the `admin` operations are a module of their own that only the admin screens load, and the lane measures 586.9 kB on each of its four pages. The line stayed: it was already within 1 % of the page, and a saving smaller than its headroom earns no ratchet. It was 590 000 B until #2010 credited UNESCO's description wherever it is shown (CC BY-SA 4.0 asks for the credit on every surface that shows the text): `perf:local` then measured 590 476 B on each of its four pages on 2026-10-25, and the line moved with the measurement, as the admin panel's did for #1613, rather than refusing the next feature for a margin of bytes. It was 600 000 B until #2224 gave Discover a crowded city's tail and the fame order of a kind's list: `perf:local` measured 599 432 B on `main` on 2026-11-01, 568 B under the line, and 600 241 B on the branch on each of its four pages, the tail's read with the subregions and its rows in the list's window being Discover's, which the entry chunk carries. Splitting Discover out was measured before (above) and grows what the page loads, so the line moved with the measurement |
 | `resource-summary:stylesheet:size` | error | 12 100 B | 11 503 B, the app's CSS with the `@font-face` rules in it (#653; 13 000 B over 12 377 B before, when the Google Fonts stylesheet was a second one) |
 | `resource-summary:font:size` | error | 58 000 B | 55 300 B, the two Latin faces the first paint draws (Figtree and Syne, served first-party since #653). No `third-party` line beside it: on the fixture that row is 34 / 35 requests, every one the stack's own backend and tile server or the OpenStreetMap basemap, so a budget there would gate the stack's shape |
-| `resource-summary:total:size` | error | 805 000 B | 765 698 B on Discover, the heavier of the two (was 1 140 000 B until #643) |
-| `resource-summary:total:count` | error | 54 | 42 / 43 requests on the map view / Discover, measured once an anonymous read stopped paying a preflight (#1542; 47 / 48 under a budget of 60 before it, 38 / 43 before #643), with the same quarter of headroom — an N+1 shows up here as tens |
+| map view `/wv/9001` and Discover `/discover/wv/9001`: `requests-except:openstreetmap.org:size` | error | 715 000 B | 685 827 B on the map view on #2312's head, the heavier of the two, + ~4 %, the region and card pages' line (#2290). Everything the page fetched but the OpenStreetMap basemap, which held to within 5 B: 684 187–684 192 B on the map view and 681 426–681 431 B on Discover across nine CI runs on three heads with one frontend (603 342 B of script, #2257, #2267, #2271, 2026-11-03) |
+| map view: `requests-except:openstreetmap.org:count` | error | 54 | 42 requests on every one of those runs, under the count line the page carried before (#2290), a quarter of headroom — an N+1 shows up here as tens |
+| Discover: `requests-except:openstreetmap.org:count` | error | 38 | 30 requests on every one of those runs, with the same quarter of headroom: the map view's 54 would let an N+1 of two dozen reads pass here (#2290) |
+| map view and Discover: `resource-summary:total:size` | warn | 845 000 B | 804 243 B on Discover, the heaviest of twenty-one CI runs on 2026-11-03, its 25 basemap tiles included (+ ~5 %). Read, not gated, since #2290: on one frontend the tiles weighed 120.9–122.6 kB, and on #2285, which changed no frontend file, the total reached 805 304 B and failed the lane at the error line of 805 000 B, which it carried until then over 765 698 B (1 140 000 B until #643) |
+| map view and Discover: `resource-summary:total:count` | warn | 67 | 52 / 53 requests on the map view / Discover, 12 / 25 of them tiles, with the quarter of headroom; an error line of 54 until #2290, over 42 / 43 once an anonymous read stopped paying a preflight (#1542) |
 | `largest-contentful-paint` | error | 2 000 ms | 1.33–1.49 s on the CI runner (1.38 / 1.39 s locally); network-simulated, so the least noisy timing |
 | `total-blocking-time` | error | 300 ms | 0–128 ms on the CI runner (229 ms locally, quiet); the noisiest number the lane has, hence the widest headroom |
 | `cumulative-layout-shift` | error | 0.02 | 0.001–0.006 / 0.000 on the CI runner |
@@ -1193,6 +1197,21 @@ The rule:
   and a budget moved on a bump says so in its "Set from" cell (#656). The
   baselines in the table above were measured with Lighthouse 13.4.1 driving
   the Chromium of `mcr.microsoft.com/playwright:v1.58.2-jammy`.
+- **A byte line gates what the repository serves.** A page whose total
+  includes the OpenStreetMap basemap's raster tiles is gated on everything
+  else it fetched (`requests-except:openstreetmap.org:size` and `:count`),
+  and its total is read at `warn`, because a visitor pays for the tiles but a
+  public server renders them. All four pages of the CI lane are gated so
+  since #2290 (the region and card pages since #669). On the map view and
+  Discover the tiles moved by up to 1.7 kB between runs of one head, while
+  what the app served moved by 5 B, so a line on the total left 0.1 % of
+  headroom that the tiles alone could spend. The lines without the basemap
+  stand 4.3 % over the heaviest run measured (685 827 B), as other byte
+  lines stand about 5 % over theirs. #651, which moves the basemap off
+  OpenStreetMap's public server, would let the totals gate again. The local
+  run keeps its total lines: there the root's line stands 47 kB over the
+  page, and its tiles moved by 0.3 kB across the three runs of `perf:local`
+  on 2026-11-03 (50.8 kB on the map root, 122.5 kB on Discover).
 - **Bytes are `error` from the day they are set.** They are deterministic.
   **Timings start at `warn`** when a page is first measured and move to
   `error` once CI runs have shown where they sit — a timing budget copied
@@ -1216,8 +1235,10 @@ Filed, and linked here so the baseline is read with them in mind:
   #1641, #1644 and #1646, against 4.0 kB of this repository's own vector
   tiles and 13.7 kB from the backend. That spread is why those pages gate on
   everything but the basemap and only read their totals at `warn`
-  (ADR-0118).
-  The map view and Discover shells sit at world zoom and pay a fraction of it.
+  (ADR-0118). The map view and Discover sit at world zoom and pay a fraction
+  of it, 51 kB and 122 kB, but those tiles also move by up to 1.7 kB between
+  runs, more than a byte line's headroom was over the page, so they gate the
+  same way since #2290 (§ Budgets and the ratchet rule).
 - #551 — the region tile LOD ladder: a z3 tile costs hundreds of
   milliseconds of Postgres time for a few kilobytes. The first known breach
   on the backend side; the probe's row for `tile_world_view_root_regions/3/4/2`
