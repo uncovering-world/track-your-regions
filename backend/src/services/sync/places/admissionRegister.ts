@@ -37,6 +37,13 @@ const derived = <T>(value: T, derivation: string, section: string): Parameter<T>
 
 const NEIGHBOURHOOD_REPORT = 'docs/research/2026-11-02-a-surroundings-neighbourhood-that-follows-density.md';
 
+const BRIDGES_REPORT = 'docs/research/2026-11-03-a-guide-for-a-bridge-in-the-surroundings-tier.md';
+
+/** A value the bridges measurement of #2324 moved, on the 2177 harness at the live point (ADR-0181). */
+const bridgesMeasured = <T>(value: T, derivation: string, section: string): Parameter<T> => ({
+  value, derivation, evidence: `${BRIDGES_REPORT} § ${section}`, date: '2026-11-03',
+});
+
 /** A value the neighbourhood measurement of #2297 moved (ADR-0181). */
 const remeasured = <T>(value: T, derivation: string, section: string): Parameter<T> => ({
   value, derivation, evidence: `${NEIGHBOURHOOD_REPORT} § ${section}`, date: DERIVED,
@@ -118,9 +125,12 @@ export const SURROUNDINGS_REGISTER = {
   readersGroupFloor: derived(25,
     'The readers test reads an area of 25 places or more, as the editions test does.',
     'Results, The point'),
-  guideForTypes: derived<readonly PlaceTypeOf<'bridges-and-engineering'>[]>(['tunnel', 'dam', 'lock'],
-    'A tunnel, a dam or a lock enters the surroundings tier only when a Wikivoyage edition uses it, and stays only while one still does: 370 places out, noise 9.1 % to 6.5 %, recall and canon unmoved.',
-    'Results, The noise is in the regional tier of two kinds'),
+  guideForTypes: bridgesMeasured<readonly PlaceTypeOf<'bridges-and-engineering'>[]>(['tunnel', 'dam', 'lock', 'bridge'],
+    'A tunnel, a dam, a lock (#2177: 370 places out, noise 9.1 % to 6.5 %) and a bridge (#2324) enter the surroundings tier only when a Wikivoyage edition uses them, and stay only while one still does: with the bridge, 146 shown places out, judged noise 6.67 % to 5.00 %, demand and canon unmoved.',
+    'The measurement'),
+  heritageForTypes: bridgesMeasured<readonly PlaceTypeOf<'bridges-and-engineering'>[]>(['bridge'],
+    'A bridge with a heritage designation (P1435) that still holds counts as one a guide uses: it keeps 20 sights no list names, the Anping, Luding and Kawarau Gorge bridges among them, at the same noise (the maintainer\'s choice, 2026-11-03).',
+    'The heritage exception'),
   stayReadersShare: derived(0.8,
     'A surroundings-tier place stays while it keeps two editions, reaches 0.8 of the readers\' floor (2,400 a year) and passes one test, the readers test read at 0.8 and the others whole.',
     'Results, Checks at the point'),

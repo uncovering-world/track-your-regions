@@ -225,6 +225,35 @@ function survivorsOf<Trees>(
 }
 
 /**
+ * The places of `passed` a guide says people go to see, where their type needs
+ * one, and the refusals of the rest. A tunnel, a dam, a lock or a bridge the cut
+ * admits by its readers or editions is still no sight until a guide says people
+ * go to see it (ADR-0175, #2324), and without a usage build a held one is read
+ * by its guide as last read. A bridge with a heritage designation counts as
+ * guided: its designation is read of the few no guide uses, off the subset the
+ * tier reads (`subsetStandingFacts`), imported where it is asked so a run that
+ * asks nothing loads none of the subset's entity reader.
+ */
+async function guidedOnly<P extends { qid: string; entity: PoolEntity; verdict: { type: string } }>(
+  passed: readonly P[], pool: SurroundingsPool, held: ReadonlySet<string>, cut: SurroundingsCut, memory?: WorldMemory,
+): Promise<{ kept: P[]; refused: FilteredEntity[] }> {
+  const unguidedOf = (qid: string, type: string, heritage = false) =>
+    needsAGuide(type, guideOf(qid, pool, held.has(qid), memory), held.has(qid), cut, heritage);
+  const ask = passed.filter(({ qid, verdict }) => cut.heritageForTypes.includes(verdict.type) && unguidedOf(qid, verdict.type));
+  const standing = ask.length
+    ? await (await import('../subset/standing.js')).subsetStandingFacts(ask.map(({ qid }) => qid))
+    : new Map<string, { heritage: boolean }>();
+  const kept: P[] = [];
+  const refused: FilteredEntity[] = [];
+  for (const place of passed) {
+    const unguided = unguidedOf(place.qid, place.verdict.type, standing.get(place.qid)?.heritage === true);
+    if (unguided) refused.push({ externalId: place.qid, name: place.entity.label, reason: unguided });
+    else kept.push(place);
+  }
+  return { kept, refused };
+}
+
+/**
  * The kind's surroundings-tier arrivals this run: every candidate of the kind's classes
  * the cut admits that the world tier did not (`worldAdmitted`), the kind's
  * rule passed, as rows of the surroundings tier with the cut's note for the
@@ -279,6 +308,7 @@ export async function surroundingsArrivals<Trees, Context, T>(
   const context = (surroundings.context ? await surroundings.context(asked, share) : undefined) as Context;
   const items: T[] = [];
   const filtered: FilteredEntity[] = [];
+  const passed: { qid: string; entity: PoolEntity; verdict: Extract<ReturnType<typeof surroundings.verdict>, { pass: true }> }[] = [];
   for (const qid of survivors) {
     const entity = share.pool.get(qid);
     if (!entity) continue;
@@ -287,16 +317,11 @@ export async function surroundingsArrivals<Trees, Context, T>(
       filtered.push({ externalId: qid, name: entity.label, reason: verdict.reason });
       continue;
     }
-    // A tunnel, a dam or a lock the cut admits by its readers or editions is
-    // still no sight until a guide says people go to see it (ADR-0175), and
-    // without a usage build a held one is read by its guide as last read.
-    const unguided = needsAGuide(verdict.type, guideOf(qid, pool, held.has(qid), memory), held.has(qid), cut);
-    if (unguided) {
-      filtered.push({ externalId: qid, name: entity.label, reason: unguided });
-      continue;
-    }
-    items.push(build(entity, share.facts.get(qid)?.classes ?? [], verdict, notes.get(qid) ?? ''));
+    passed.push({ qid, entity, verdict });
   }
+  const { kept, refused } = await guidedOnly(passed, pool, held, cut, memory);
+  filtered.push(...refused);
+  for (const { qid, entity, verdict } of kept) items.push(build(entity, share.facts.get(qid)?.classes ?? [], verdict, notes.get(qid) ?? ''));
   for (const [qid, reason] of fell) {
     filtered.push({ externalId: qid, name: share.pool.get(qid)?.label ?? qid, reason });
   }
