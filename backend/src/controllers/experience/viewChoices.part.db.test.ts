@@ -136,7 +136,7 @@ describe("the curator is asked which view a serial site's part shows (#2063)", (
     const [card] = (await querySources([part.id])).rows;
 
     expect(card.part_of).toEqual({
-      name: 'Frontiers of the Roman Empire (fixture)', unesco_id: '9491-fixture',
+      id: SITE, name: 'Frontiers of the Roman Empire (fixture)', unesco_id: '9491-fixture',
       unesco_url: 'https://whc.unesco.org/en/list/9491-fixture', component_ref: PRAETORIUM.externalRef,
     });
     const location = card.source_views.find((row: { field: string }) => row.field === 'location');

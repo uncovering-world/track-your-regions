@@ -156,13 +156,14 @@ export function partOfNameSql(place: string): string {
 
 /**
  * The same whole as `partOfNameSql`, as a jsonb object a queue card names it
- * by (#2158), or NULL: its name, the World Heritage id its site's run knows it
+ * by (#2158), or NULL: its id, which the card opens it by (#2293), its name, the World Heritage id its site's run knows it
  * by and its page on the World Heritage list, and the reference the list gives
  * the part ("1209-002"). A part found through Wikidata's "part of" or named by
  * a curator carries no reference and no site membership, so those are null.
  */
 export function partOfFactsSql(place: string): string {
   return `(SELECT jsonb_build_object(
+             'id', whole_facts.id,
              'name', whole_facts.name,
              'unesco_id', site_facts.external_id,
              'unesco_url', whole_facts.metadata->>'unescoUrl',
