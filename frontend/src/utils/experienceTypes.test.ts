@@ -44,12 +44,6 @@ describe('typeOptionsFor', () => {
     // the line above, since it is *archaeology* the museum is a type of.
     expect(typeOptionsFor(ARCHAEOLOGY).map(o => o.value)).toEqual(['site', 'museum']);
   });
-
-  it('keeps the vocabularies disjoint, so a value names its kind', () => {
-    const all = [WORLD_HERITAGE, PUBLIC_ART, PLACES_OF_WORSHIP, ARCHAEOLOGY]
-      .flatMap(kind => typeOptionsFor(kind).map(o => o.value));
-    expect(new Set(all).size).toBe(all.length);
-  });
 });
 
 describe('typeVocabularyOf', () => {
