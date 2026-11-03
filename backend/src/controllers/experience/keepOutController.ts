@@ -36,6 +36,7 @@ import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { addableKinds } from './kindAddController.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { refuseOnMembership } from './membershipWriter.js';
+import { crowdingOf } from './reviewQueueCrowding.js';
 import { queueScopeSql } from './reviewQueueKeys.js';
 import { ADDED_BY, ADDED_BY_CURATOR, PINNED_BY } from './reviewQueuePinQuestions.js';
 
@@ -173,6 +174,8 @@ export async function listPlaceKinds(
      ORDER BY kd.display_priority, kd.name, m.id
   `, [caller.id, experienceId]);
 
+  // The kind row's "Squares around (22)" (#2282): the review card's own count.
+  const crowding = await crowdingOf(result.rows.map(row => row.membership_id), { userId: caller.id, isAdmin });
   return {
     kinds: result.rows.map(row => ({
       membershipId: row.membership_id,
@@ -186,6 +189,7 @@ export async function listPlaceKinds(
       note: row.note,
       curatorName: row.curator_name,
       canAnswer: row.can_answer,
+      crowding: crowding.get(row.membership_id) ?? null,
     })),
     addable: await addableKinds(experienceId, caller),
   };

@@ -23,7 +23,7 @@ import { WITNESSES } from '../../services/sync/visit/witnesses.js';
 import {
   QUEUE_ITEM_KINDS, QUEUE_KINDS, REVIEW_ANSWERS, WAITING_SUBS,
 } from '../../controllers/experience/reviewQueueVocabulary.js';
-import { ContentKind, PlacementFailure } from './curation.js';
+import { CardCrowding, ContentKind, PlacementFailure } from './curation.js';
 import { DescriptionSource, ImageCredit, LinkedPlace, WorkVenue } from './experiences.js';
 
 export const RegionCrossing = z.strictObject({
@@ -438,17 +438,6 @@ export const PartOf = z.strictObject({
   component_ref: z.string().nullable().describe('The reference the list gives the component ("1209-002").'),
 }).describe('The serial World Heritage site a place is a component of (#2158), the whole the near-places card names too (#1250).');
 export type PartOf = z.infer<typeof PartOf>;
-
-export const CardCrowding = z.strictObject({
-  limit: z.number().int().describe('How many better-known places of a type shadow a place in this kind.'),
-  radiusKm: z.number().describe('The radius they are counted within.'),
-  around: z.number().int().describe(
-    'How many places of the kind and type lie within the radius, the place itself included: what the window lists.'),
-  shadowed: z.boolean().describe('Whether the display shadows it: in the tail now, or for a new arrival, once passed.'),
-  outrankedBy: z.number().int().nullable().describe(
-    'For a shadowed place, how many places of its type within the radius count above it, as the recount stored it'
-    + ' (`membership_crowding`, ADR-0180); null for a place the display shows.'),
-}).describe("How crowded a card's city is (ADR-0172, ADR-0180).");
 
 export const ReviewQueueItem = z.strictObject({
   id: z.number().int(),
