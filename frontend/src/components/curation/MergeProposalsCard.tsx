@@ -116,23 +116,26 @@ function whatItIs(kinds: readonly string[], partOf: string | null): string[] {
 
 /**
  * The pair on one map (#2202): this card's place first, then the other, each
- * pin saying which place it is and what that place is — so whether Bisotun's
- * caravanserai stands within the World Heritage site, beside it or across the
- * road is read from the map and not from two coordinates. A card whose own
- * place has no point shows the other alone.
+ * pin saying which place it is — so whether Bisotun's caravanserai stands
+ * within the World Heritage site, beside it or across the road is read from
+ * the map and not from two coordinates. What each place is, its kinds and the
+ * site it is part of, is said in its row under the map, where it does not
+ * crowd the labels (#2273). A card whose own place has no point shows the
+ * other alone.
  */
 function pairPins(item: ReviewQueueItem, pair: Pair): MapPin[] {
   const pins: MapPin[] = [];
+  const detail = (what: string[]) => (what.length > 0 ? what.join(' · ') : undefined);
   if (item.latitude != null && item.longitude != null) {
     pins.push({
       latitude: item.latitude, longitude: item.longitude,
-      label: [`${item.name} (this card)`, ...whatItIs(pair.anchorKinds, pair.anchorPartOf)].join(' · '),
+      label: item.name, own: true, detail: detail(whatItIs(pair.anchorKinds, pair.anchorPartOf)),
     });
   }
   if (pair.otherLatitude != null && pair.otherLongitude != null) {
     pins.push({
       latitude: pair.otherLatitude, longitude: pair.otherLongitude,
-      label: [pair.otherName, ...whatItIs(pair.otherKinds, pair.otherPartOf)].join(' · '),
+      label: pair.otherName, detail: detail(whatItIs(pair.otherKinds, pair.otherPartOf)),
     });
   }
   return pins;

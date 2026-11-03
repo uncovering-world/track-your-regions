@@ -12,8 +12,8 @@ import type { ReviewQueueItem } from '../../api/reviewQueue';
 
 vi.mock('../../api/curation', () => ({ answerMergeProposals: vi.fn(), suggestMergeProposals: vi.fn() }));
 vi.mock('../shared/PointPreviewDialog', () => ({
-  PointPreviewDialog: ({ open, name, pins }: { open: boolean; name: string; pins?: readonly { label: string }[] }) => (
-    open ? <div data-testid="the-map-dialog" data-name={name} data-pins={pins?.map(pin => pin.label).join(' | ')} /> : null
+  PointPreviewDialog: ({ open, name, pins }: { open: boolean; name: string; pins?: readonly { label: string; own?: boolean; detail?: string }[] }) => (
+    open ? <div data-testid="the-map-dialog" data-name={name} data-pins={pins?.map(pin => [`${pin.label}${pin.own ? ' (this card)' : ''}`, pin.detail].filter(Boolean).join(' — ')).join(' | ')} /> : null
   ),
 }));
 
@@ -122,7 +122,8 @@ describe('two near places with similar names', () => {
     const dialog = screen.getByTestId('the-map-dialog');
     expect(dialog.dataset.name).toBe('Bisotun and Bisotūn');
     expect(dialog.dataset.pins).toBe(
-      'Bisotun (this card) · World Heritage Sites | Bisotūn · part of The Persian Caravanserai',
+      // The map labels each pin by its place; what the place is goes to its row (#2273).
+      'Bisotun (this card) — World Heritage Sites | Bisotūn — part of The Persian Caravanserai',
     );
   });
 
@@ -132,7 +133,7 @@ describe('two near places with similar names', () => {
 
     const dialog = screen.getByTestId('the-map-dialog');
     expect(dialog.dataset.name).toBe('Durham Cathedral');
-    expect(dialog.dataset.pins).toBe('Durham Cathedral · Places of worship');
+    expect(dialog.dataset.pins).toBe('Durham Cathedral — Places of worship');
   });
 
   it('names each place beside its own Wikidata item, with what the item is', () => {

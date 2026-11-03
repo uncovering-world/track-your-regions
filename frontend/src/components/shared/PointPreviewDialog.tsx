@@ -38,12 +38,21 @@
  * **Points that are not a move are drawn as whose they are** (#2202). Where a caller hands
  * in `pins` — the near-places card's two places, Bisotun and the caravanserai at the foot
  * of its rock; the sources card's two points of one place — each pin is labelled on the
- * map, in the legend and under the map with whose it is, a place with what it is or a
- * source, in a colour of its own; no arrow is drawn and nothing is called a proposal,
+ * map with whose it is, a place or a source, and its row under the map says what the
+ * place is, in a colour of its own; no arrow is drawn and nothing is called a proposal,
  * since no run proposes anything there. The map frames every pin by the one framing rule
  * (`frameGeoJson`, #674), so two pins either side of the antimeridian are framed between
  * them, at a ceiling the basemap still reads at (`PINS_MAX_ZOOM`), since a region's
  * ceiling of 12 puts two pins 450 m apart twelve pixels from each other.
+ *
+ * **Every pin can be seen and its label read** (#2273). Pins that stand on one point at
+ * the zoom drawn are one pin whose label names them all: the Cathedral of Santiago de
+ * Compostela and its Wikipedia article's point, from one Wikidata statement, used to be
+ * two pins on one metre, the article's covering the cathedral's. A label names the place
+ * and nothing else, is cut short with the whole as its hover text, and hangs on the side
+ * of its pin where it covers no other pin or label (`PinsOnMap`, `pinLayout.ts`). No
+ * legend stands over labelled pins; a move, whose two pins carry no label, keeps one.
+ * The basemap is drawn muted (`MUTED_MAP_STYLE`), so the pins are its strongest marks.
  *
  * **Every look ends in the way to each point on another map.** Under the map, each point
  * the dialog draws is a row — whose it is, its coordinate, and the links that open it in
@@ -63,10 +72,10 @@ import { Box, Dialog, DialogContent, DialogTitle, IconButton, Typography } from 
 import CloseIcon from '@mui/icons-material/Close';
 import { Layer, Marker, Source } from 'react-map-gl/maplibre';
 import { GuardedMap } from './GuardedMap';
-import { MAP_STYLE } from '../../constants/mapStyles';
+import { MUTED_MAP_STYLE } from '../../constants/mapStyles';
 import { PointCorrection, type PlaceToCorrect } from './PointCorrection';
 import {
-  LabelledPin, PIN_COLOURS, PINS_MAX_ZOOM, PinLegend, PinLinks, pinColour, pinsApart, pinsGeoJson, pinsView, type MapPin,
+  PIN_COLOURS, PINS_MAX_ZOOM, PinLegend, PinLinks, PinsOnMap, pinColour, pinsApart, pinsGeoJson, pinsView, type MapPin,
 } from './PointPreviewPins';
 import { frameGeoJson, type MapLike } from '../../utils/mapUtils';
 import { OutlineCredits, OutlineLayers, useFrameWithOutlines, usePlaceOutlines } from './PointPreviewOutlines';
@@ -77,11 +86,12 @@ import { moveLabel, moveView, movedBy, shortWayLongitudeDelta } from '../../util
 const STORED_PIN = '#757575';
 const MOVE_LINE = '#C62828';
 /**
- * How much of the map's edge the framed pins keep clear: more at the bottom,
- * where the lowest pin's label hangs under it and the legend stands in the
- * corner — at 70 the caravanserai's label sat under the legend.
+ * How much of the map's edge the framed pins keep clear: room for a pin and a
+ * short label beside it, a little more at the bottom, where a label hangs
+ * first. A longer label that would leave the canvas is placed on another side
+ * (`labelSides`). No legend stands over a look at labelled pins (#2273).
  */
-const PINS_PADDING = { top: 70, bottom: 130, left: 70, right: 70 };
+const PINS_PADDING = { top: 80, bottom: 100, left: 90, right: 90 };
 
 /**
  * The line a move is drawn along, and the arrowhead on it.
@@ -187,26 +197,34 @@ function viewOf(
   return { latitude: stored.lat, longitude: stored.lon, zoom: 11 };
 }
 
-/** What stands on the map: the labelled pins, the move, or the one pin. */
-function Drawn({ several, drawn, move, movedTo, latitude, longitude }: {
-  several: readonly MapPin[] | null;
-  drawn: readonly ColouredPin[];
+/**
+ * What stands on the map. A move is its two pins and the arrow, which the
+ * legend names, with the articles' pins labelled beside them; every other look
+ * is labelled pins, the claims and the articles' points together, so a place
+ * and its article on one point are one pin (`PinsOnMap`, #2273).
+ */
+function Drawn({ claims, references, move, movedTo, latitude, longitude, map }: {
+  claims: readonly ColouredPin[];
+  references: readonly ColouredPin[];
   move: string | null;
   movedTo: { latitude: number; longitude: number } | undefined;
   latitude: number;
   longitude: number;
+  map: MapLike | null;
 }) {
-  if (several) return <>{drawn.map(pin => <LabelledPin key={pin.label} pin={pin} colour={pin.colour} />)}</>;
   if (movedTo && move) {
     return (
       <>
         <MoveArrow from={{ latitude, longitude }} to={movedTo} />
         <Marker latitude={latitude} longitude={longitude} color={STORED_PIN} />
         <Marker latitude={movedTo.latitude} longitude={movedTo.longitude} />
+        {/* The move's two points in the layout: an article's pin on the proposed point joins it
+            rather than covering it, and its label avoids both. */}
+        <PinsOnMap pins={references} map={map} drawnElsewhere={claims} />
       </>
     );
   }
-  return <Marker latitude={latitude} longitude={longitude} />;
+  return <PinsOnMap pins={[...claims, ...references]} map={map} />;
 }
 
 const NO_PLACES: readonly number[] = [];
@@ -302,7 +320,7 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
             {open && (
               <GuardedMap
                 initialViewState={view}
-                mapStyle={MAP_STYLE}
+                mapStyle={MUTED_MAP_STYLE}
                 style={{ width: '100%', height: '100%' }}
                 unavailableCompact
                 unavailableDetail="The coordinates are below; the rest of this card needs no map."
@@ -316,12 +334,14 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
                 }}
               >
                 <OutlineLayers outlines={outlines} />
-                <Drawn several={several} drawn={claims} move={move} movedTo={movedTo} latitude={latitude} longitude={longitude} />
-                {references.map((pin, index) => <LabelledPin key={`${index}:${pin.label}`} pin={pin} colour={pin.colour} />)}
+                <Drawn
+                  claims={claims} references={references} move={move} movedTo={movedTo}
+                  latitude={latitude} longitude={longitude} map={loadedMap}
+                />
               </GuardedMap>
             )}
-            {/* Which pin is which, on the map and not only in the title, wherever there is more than one. */}
-            {drawn.length > 1 && <PinLegend entries={drawn} />}
+            {/* A move's two pins carry no label of their own: the legend names them. */}
+            {move && <PinLegend entries={claims} />}
           </Box>
           <OutlineCredits outlines={outlines} />
           <PinLinks pins={drawn} />
