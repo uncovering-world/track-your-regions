@@ -895,7 +895,12 @@ and reasons, and the tier a run recorded on its changeset.
   ground around it is. The arithmetic yields to the run between batches, so the backend keeps
   answering while a pass reads it. With no year of readers in place the pool reads no
   surroundings and says why (`SurroundingsPool.unread`): every kind's part then reads no tier this run, and
-  its rows keep their standing (ADR-0175 decision 6) — a missing year is never read as no readers. Each kind's part (`places/surroundingsTier.ts`, `surroundingsArrivals`)
+  its rows keep their standing (ADR-0175 decision 6) — a missing year is never read as no readers. With no
+  Wikivoyage usage build in place the pool is read and says its guides are not (`SurroundingsPool.unreadGuides`),
+  so a missing build is never read as no guide: the cut reads no Wikivoyage test, new places or held, and a
+  held place is read by whether a guide used it when last read, the world tier's memory of the source's
+  memberships (`WorldMemory.guided`, `membership_fame.guides_read_at`, `places/worldMemory.ts`) that each
+  kind's step hands `surroundingsArrivals`. Each kind's part (`places/surroundingsTier.ts`, `surroundingsArrivals`)
   takes the rows of its own classes the world tier did not admit, runs the cut, and only the survivors
   are then asked about by id through the gather
   (`gatherPlaces` with a kind that has no pool question of its own, so what holds them and what they
@@ -916,7 +921,11 @@ and reasons, and the tier a run recorded on its changeset.
   not say people go to see it, a guide does (the Kurobe Dam, the Old Elbe Tunnel). A place the tier
   holds stays while it keeps `minLanguages`, reaches `stayReadersShare` of `minReaders` and passes one
   test, the readers test read at `stayReadersShare` and the other two whole, since their reference is
-  its own neighbours'; a tunnel, dam or lock stays only while a guide still uses it. `SURROUNDINGS_CUT`
+  its own neighbours'; a tunnel, dam or lock stays only while a guide still uses it. Where no usage
+  build is in place (`guideEditions` null, ADR-0175 decision 6), a held place that passes neither other
+  test is kept, its note naming the guides' test it could not read, unless no guide used it when last
+  read (`guidedAsLastRead`), and a held tunnel, dam or lock stays by its guide as last read — the Finse
+  Tunnel, the Eschbach Dam; nothing new enters by a guide, and a new tunnel, dam or lock not at all. `SURROUNDINGS_CUT`
   reads its numbers from the register (`SURROUNDINGS_REGISTER` in `places/admissionRegister.ts`, ADR-0175
   decisions 2 and 3, ADR-0181): 150 km, a density at the 20th-nearest place and a ratio of 4, the 10
   best, a Wikivoyage share of a quarter, the editions reference whole and the readers reference at one
