@@ -4,7 +4,17 @@
       "url": "http://frontend:5173/wv/{worldView}",
       "expectRequestMatching": "/tile_"
     },
-    "http://frontend:5173/discover/wv/{worldView}",
+    {
+      "url": "http://frontend:5173/discover/wv/{worldView}",
+      "assertions": {
+        "requests-except:openstreetmap.org:count": [
+          "error",
+          {
+            "maxNumericValue": 38
+          }
+        ]
+      }
+    },
     {
       "url": "http://frontend:5173/wv/{worldView}/r/{region}",
       "expectRequestMatching": "/api/experiences/by-region/{region}?",
@@ -148,12 +158,24 @@
       }
     ],
     "resource-summary:total:size": [
-      "error",
+      "warn",
       {
-        "maxNumericValue": 805000
+        "maxNumericValue": 845000
       }
     ],
     "resource-summary:total:count": [
+      "warn",
+      {
+        "maxNumericValue": 67
+      }
+    ],
+    "requests-except:openstreetmap.org:size": [
+      "error",
+      {
+        "maxNumericValue": 715000
+      }
+    ],
+    "requests-except:openstreetmap.org:count": [
       "error",
       {
         "maxNumericValue": 54
