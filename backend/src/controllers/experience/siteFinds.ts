@@ -118,3 +118,28 @@ export function mayBeFindOriginSql(site: string): string {
 export function findsOnViewCountSql(site: string): string {
   return `(SELECT COUNT(*)::int FROM treasures sf WHERE ${findOfSiteSql(site, 'sf')})`;
 }
+
+/**
+ * A find a link to a site may stand on (#2242): one a reader may see, passed
+ * itself and shown by a museum a reader may be sent to, whose own item names no
+ * find spot, since a link stands only there (`siteFindIdsSql`). What the place's
+ * dialog lists and what the review page asks about (#2304) read it alike.
+ */
+export function linkableFindSql(find: string): string {
+  return `${publishedContentSql(find)}
+       AND EXISTS (SELECT 1 ${venuesShowingSql(find)})
+       AND ${find}.metadata->'foundAt' IS NULL`;
+}
+
+/**
+ * The run's proposals still open on the site `site`: a find whose own point
+ * stands on it (`findSiteProposals.ts`) that no curator has answered, on a
+ * place a find may come from. The review page's question (#2304), as a scalar.
+ */
+export function openFindProposalsSql(site: string): string {
+  return `(SELECT COUNT(*)::int FROM find_site_links open_link
+            JOIN treasures open_find ON open_find.id = open_link.treasure_id
+           WHERE open_link.site_id = ${site}.id AND open_link.state = 'proposed'
+             AND ${linkableFindSql('open_find')}
+             AND ${mayBeFindOriginSql(site)})`;
+}

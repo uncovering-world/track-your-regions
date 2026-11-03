@@ -565,6 +565,10 @@ export const ReviewQueueItem = z.strictObject({
     'The components the World Heritage list placed only roughly, each with where it may really stand (#1853).'
     + ' `approximate-points` and `approximate-unhinted` items only.',
   ),
+  find_proposals: z.number().int().nullable().optional().describe(
+    'How many finds a run proposed for this site from their own points that no curator has answered (#2304).'
+    + ' `find-sites` items only; the questions are the place dialog\'s, read by `GET /:id/find-links`.',
+  ),
   merge_pairs: z.array(MergePair).nullable().optional().describe(
     'The open pairs of near places with similar names this place is the lower id of, the most alike first (#1249).'
     + ' `merge-proposals` items only.',
@@ -651,6 +655,7 @@ export const ReviewQueue = z.strictObject({
   visitQuestions: z.array(ReviewQueueItem).describe('Offered places few witnesses vouch for and Jev reads as nothing to see (#1770).'),
   approximatePoints: z.array(ReviewQueueItem).describe('Serial sites whose components the World Heritage list placed only roughly (#1853).'),
   approximateUnhinted: z.array(ReviewQueueItem).describe('Serial sites with a component the World Heritage list placed only roughly and nothing says where else it may stand (#1903): kept or placed by hand.'),
+  findSites: z.array(ReviewQueueItem).describe('Sites a run proposed finds for, from the finds\' own points, that no curator has answered (#2304).'),
   arrivals: z.array(ReviewQueueItem),
   held: z.array(ReviewQueueItem),
   contents: z.array(ReviewQueueItem).describe('One per place and membership holding unread rows it placed (#1290).'),
