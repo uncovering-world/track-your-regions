@@ -56,8 +56,8 @@ visitor walks as a sight in itself: Red Square, Piazza Navona, the Spanish Steps
 Champs-Élysées, the Arbat. Its world tier is read from Wikidata by the source *Squares & streets*
 (`experience_sources` row 9), which decides from the place pass's gather (ADR-0132 decision 5).
 The rule is code, and is not restated here: the classes are
-`backend/src/services/sync/squares/classes.ts`, the verdict `squareTest.ts` and the line
-`kind.ts`, with the world bars read by `places/worldBars.ts`. This record holds what the
+`backend/src/services/sync/squares/classes.ts`, the declaration `SQUARES_DECLARATION` there, read by
+`places/declaredKind.ts`, and the line `kind.ts`, with the world bars read by `places/worldBars.ts`. This record holds what the
 search measured and why the line was where it was.
 
 ## The candidates (2026-10-23, the dev subset)

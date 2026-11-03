@@ -57,7 +57,7 @@ Jam, the Eiffel Tower, the CN Tower. Its world tier is read from Wikidata by the
 *Towers* (`experience_sources` row 7), which decides from the place pass's gather beside Public
 art, Monuments & memorials, Places of worship and Archaeology (ADR-0132 decision 5). The rule
 is code, and is not restated here: the classes are `backend/src/services/sync/towers/classes.ts`,
-the verdict `towerTest.ts` and the line `kind.ts`. This record holds what the search measured
+the declaration `TOWERS_DECLARATION` there, read by `places/declaredKind.ts`, and the line `kind.ts`. This record holds what the search measured
 and why the line is where it is.
 
 ## The candidates (2026-10-22, the dev subset)

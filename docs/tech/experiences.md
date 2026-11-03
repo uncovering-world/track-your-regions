@@ -850,7 +850,7 @@ A Wikidata kind is filled by a source of its own, and sources whose kinds are dr
 
 **A work no longer where its point is is refused** (#2280, `removedWorkReason` in `places/gone.ts`): Public art and Monuments & memorials read a gone place through `goneWorkReason` (the classifier's `gone`, handed to `refuseGone`), which asks #2259's test first and then a work's. A statue, a column or an installation houses nothing, so its end of existence (`P576`) is its removal unless the item says it stands after it: an inception (`P571`) after the end (the Swedish lion in Narva, ended 1944 and set up again in 2000; the Catherine II Monument in Krasnodar, ended 1920 and restored in 2006), or one in the same period as the end beside an earlier inception (the Arch of Neutrality, 1998 and 2010, ended 2010), since a lone inception in the end's own year is the work set up and taken down within it, a coordinate (`P625`) placed there since the end (the Arch of Neutrality, moved in 2010), or a heritage designation (`P1435`) that still holds and is not known to be older than the end — a register that listed the work after it ended, or states no start, lists what stands there now (the Moscow Triumphal Gate in St Petersburg and the Triumphal Arch of Moscow, both ended in 1936 and rebuilt), while one older than the end says only what stood then (the Empress Joséphine, inscribed in 1992 and pulled down in 2020; the Charlottesville Lee, listed from 1982, melted down in 2023). Two times are compared as precisely as the coarser of them is stated (`StatedTime`, read with its precision from the subset in `subset/standing.ts` and from `psv:`/`pqv:` on the live service). The reason says why in words: *destroyed in 1966* where an event (`P793` demolition or destruction) or the state of conservation says so (Nelson's Pillar, the Arch of Reunification), *a temporary work, taken down in 1976* where the work stood less than a year (Running Fence), *removed in 2020* otherwise (the Utah monolith, the Monument to the founders of Odesa). Measured on the 1,531 admitted memberships of the two kinds on the development subset (2026-11-03), it refuses 13 memberships of nine works — Nelson's Pillar, the Arch of Reunification, the Utah monolith, the Monument to the founders of Odesa, the Empress Joséphine, the Charlottesville Lee, El Colotero, Budapest's Timewheel (taken off its site in Városliget in 2021) and the Barmaley Fountain — and keeps the Moscow Triumphal Gate, the Triumphal Arch of Moscow, the Catherine II Monument and the Arch of Neutrality. The Barmaley Fountain's refusal is a fact about its item, not a fault of the rule: the replica set up in Volgograd in 2013 stands, but the item describes the fountain of 1930 and states only that it was destroyed in 1951, so a curator's put-back pin keeps it, and a second inception stated on Wikidata keeps it on the next run. A work removed whose item states no end — the Nathan Bedford Forrest Statue, the Statue of Francisco Franco in Melilla, both arriving for a curator — is no refusal of the rule: Jev's reading on the arrival's card (#1768) is the curator's question there. A work already published that was removed and still has two visit witnesses, its photographs and a heritage designation, is not asked by the run's visit questions (#1770), which read only places short of two witnesses; asking about it is a separate product question.
 
-Adding a place kind is a declaration and its seed: a `PlaceKind` with its trees and pool classes, its classifier (the verdict, the fame line, the type), its source row and kind row, and its entry in `passKinds()` (`places/placePass.ts`, `pointKind` for a kind of one-point places) with its source in `PLACE_PASS`. It has no fetchers, run or service of its own. Towers was the first kind added that way, then Bridges & engineering marvels and Squares & streets: their members are `placeSource(7, gather, TOWERS_CLASSIFIER)`, `placeSource(8, gather, BRIDGES_CLASSIFIER)` and `placeSource(9, gather, SQUARES_CLASSIFIER)`, the run Public art and Monuments & memorials have, over a `PlaceClassifier` of its own (`landmarkSyncService.ts`), which names its types and its tag. The source is then registered where every Wikidata source is: the run registry (`syncController.ts`), the field families (`fieldFamilies.ts`), the subset's ready sources (`SUBSET_READY_SOURCES`), the visit questions (`ASKING_SOURCES`), its cache kinds (`CACHED_KINDS_BY_SOURCE`), the coverage report's type rule (`TYPE_RULES` in `catalogueCoverage/entryTypes.ts`, without which every survey entry under the kind is filed under no type), its types (`TYPE_VOCABULARIES` in `@tyr/shared/placeTypes`, which the landmark record's type and the reader's words both read) and, on the web, its colour (`kindColors.ts`) and its kind id (`experienceTypes.ts`).
+Adding a place kind is a declaration and its seed. A kind of one-point places whose rule reads its classes alone is a `PlaceKindDeclaration` (`places/declaredKind.ts`, #2318): its pool roots, what names a candidate, its types in the order they are read and the classes each is read from, what else is no place to visit for it beside the gone and the unbuilt every declared kind refuses (`GONE`), what another kind offers (unless a type of its own names it), what it shares with another kind (refused unless a class of its own names it), and its exceptions, each a line of data: refused where no type names it (`untyped`: Squares' canal, Towers' public clock and archaeological site, Bridges' archaeological site), and refused where only certain classes of the kind name it (`only`: Towers' building complex, a place of worship's minaret and the sea fort, Parks' archaeological site and residence). `declaredKind()` builds its class trees, each root asked once, its verdict, in one order for every kind, and the `PlaceKind`, the classifier and the surroundings kind the pass reads. Squares & streets, Towers, Bridges & engineering marvels and the proposed Parks & gardens are declared so (`<kind>/classes.ts`, `<kind>/kind.ts`). Places of worship, Public art, Monuments & memorials and Archaeology are not: their rules read more than a candidate's classes (what it holds or depicts, what holds it, the works a venue shows, the map), which a declaration of classes cannot say. With the declaration come its source row and kind row, and its entry in `passKinds()` (`places/placePass.ts`, `pointKind` for a kind of one-point places) with its source in `PLACE_PASS`. It has no fetchers, run or service of its own. Towers was the first kind added that way, then Bridges & engineering marvels and Squares & streets: their members are `placeSource(7, gather, TOWERS_CLASSIFIER)`, `placeSource(8, gather, BRIDGES_CLASSIFIER)` and `placeSource(9, gather, SQUARES_CLASSIFIER)`, the run Public art and Monuments & memorials have, over a `PlaceClassifier` of its own (`landmarkSyncService.ts`), which names its types and its tag. The source is then registered where every Wikidata source is: the run registry (`syncController.ts`), the field families (`fieldFamilies.ts`), the subset's ready sources (`SUBSET_READY_SOURCES`), the visit questions (`ASKING_SOURCES`), its cache kinds (`CACHED_KINDS_BY_SOURCE`), the coverage report's type rule (`TYPE_RULES` in `catalogueCoverage/entryTypes.ts`, without which every survey entry under the kind is filed under no type), its types (`TYPE_VOCABULARIES` in `@tyr/shared/placeTypes`, which the landmark record's type and the reader's words both read) and, on the web, its colour (`kindColors.ts`) and its kind id (`experienceTypes.ts`).
 
 Measured on the development subset on 2026-10-22, read-only in the dev container: the place gather and main's separate gathers proposed the same places and the same refusals, by item id and reason, for all three kinds (Public art 92 and 404, Monuments & memorials 116 and 358, Places of worship 1,078 and 71). Only the order of equally famous places of worship differed. The pool named 2,722 entities: 554 public-art candidates, 2,229 places-of-worship candidates and 61 shared. The gather took 48 to 73 s over three runs and the two separate gathers 44 to 68 s, so on the subset one gather saves no time while the kinds barely overlap. What it saves is the second set of fetchers.
 
@@ -4799,31 +4799,32 @@ candidates are asked by nine tower roots (`TOWER_ROOTS`, `towers/classes.ts`), a
 wait for a curator (`requires_curation`). The source record, with the measurements the line was
 chosen from, is [`docs/sources/global/wikidata-towers.md`](../sources/global/wikidata-towers.md).
 
-**The rule** is `towerVerdict` (`towers/towerTest.ts`), in order:
+**The rule** is `TOWERS_DECLARATION` (`towers/classes.ts`), read by `places/declaredKind.ts`, in order:
 
-1. what is no place to visit is refused (`KILLS`): destroyed or demolished, proposed, a guyed
-   mast, ruins;
+1. what is no place to visit is refused (`GONE` and `KILLS`): destroyed or demolished, proposed,
+   under construction, a guyed mast, ruins;
 2. what another kind holds is refused (`OTHER_KINDS`): a lighthouse, a bridge, a city gate or a
    gate tower (ADR-0131 decision 2), a sculpture, a skyscraper, an office building or a tower
    block, which wait for Skyscrapers (#1857). A TV or observation tower that Wikidata also calls
    a skyscraper stays a tower, as the Oriental Pearl Tower does;
-3. a public clock (`PUBLIC_CLOCK_CLASSES`: an astronomical clock, a Glockenspiel) that no
+3. a candidate no tower class names is refused;
+4. a public clock (`PUBLIC_CLOCK_CLASSES`: an astronomical clock, a Glockenspiel) that no
    clock-tower class names is refused, since Public art offers it (#2136): Wikidata files the
    Prague Astronomical Clock as a bell tower for its bells. Big Ben and the Tower of the Winds are
    clock towers and stay;
-4. a building complex (`BUILDING_COMPLEX`, the class alone and not its tree) that only the plain
+5. a building complex (`BUILDING_COMPLEX`, the class alone and not its tree) that only the plain
    `tower` class names is refused (#2136): Cœur Défense, a complex of office towers. Bologna's Two
    Towers, inclined towers, stay; the tree is not read because it holds twin towers, and
    Kharaqan's twin tower tombs are towers a traveller visits;
-5. a place of worship whose only tower classes name a part of it (a minaret, a gopuram, a
+6. a place of worship whose only tower classes name a part of it (a minaret, a gopuram, a
    steeple: Hagia Sophia, the Meenakshi Temple) is refused, since Places of worship offers it. A
    bell tower with a church in it stays a tower (Ivan the Great). A sea fort whose only tower
    class is in the sea fort tree is refused too (`SEA_FORT_ROOT`, #2272): Wikidata files the Maunsell fort
    under `fortified tower`, and HM Fort Roughs and the Red Sands Fort are gun platforms at sea.
    Fort Denison, a Martello tower too, stays;
-6. an archaeological site no type of tower names is refused, since Archaeology offers it: a
+7. an archaeological site no type of tower names is refused, since Archaeology offers it: a
    nuraghe, a broch. The Minaret of Jam, a site that is a minaret, is a tower;
-7. a candidate no tower class names, or with no point on Earth, is refused.
+8. a candidate with no point on Earth is refused.
 
 **The type** (`towerType`) is the first of `pagoda`, `minaret`, `clock-tower`, `bell-tower`,
 `observation-tower` and `fortified-tower` its classes name, and `tower` otherwise. A church tower
@@ -4861,9 +4862,10 @@ Measured on the development subset on 2026-10-22, read-only in the dev container
 
 What a place kind with one point reads of its candidates beside its rule is shared
 (`places/candidates.ts`): a year's readers (`yearlyReaders`) and the landmark a run writes for a
-candidate it admits (`placeLandmark`). Each kind's rule stays its own, and its bars are the frame's
-over its own pool: Towers, Bridges & engineering marvels and Squares & streets run one classifier
-over their shares (`classifyByWorldBars`, `places/worldTier.ts`) with their own verdicts.
+candidate it admits (`placeLandmark`). Each kind's declaration stays its own, and its bars are the
+frame's over its own pool: Towers, Bridges & engineering marvels and Squares & streets run one
+classifier over their shares (`classifyByWorldBars`, `places/worldTier.ts`), with the one verdict
+`places/declaredKind.ts` reads each kind's declaration by.
 
 ### Bridges & engineering marvels (`bridges/*.ts`)
 
@@ -4879,9 +4881,9 @@ roots (`BRIDGE_ROOTS`, `bridges/classes.ts`): bridge, aqueduct, dam, tunnel, loc
 and boat lift. Its arrivals wait for a curator. The source record, with the readings its lines
 were chosen on, is [`docs/sources/global/wikidata-bridges.md`](../sources/global/wikidata-bridges.md).
 
-**The rule** is `bridgeVerdict` (`bridges/bridgeTest.ts`), in order:
+**The rule** is `BRIDGES_DECLARATION` (`bridges/classes.ts`), read by `places/declaredKind.ts`, in order:
 
-1. what is no place to visit is refused (`KILLS`): destroyed, proposed, under construction,
+1. what is no place to visit is refused (`GONE` and `KILLS`): destroyed, proposed, under construction,
    ruins (the Polcevera Viaduct, the Brenner Base Tunnel, the Fehmarn Belt link);
 2. what is no engineering work a traveller visits is refused (`OTHER_KINDS`): a river Wikidata
    also files as a canal (the Amstel), a railway line in a tunnel (the Waterloo & City line);
@@ -4935,9 +4937,9 @@ pedestrian zone, and by a sixth, thoroughfare (`THOROUGHFARE`), asked by itself 
 tree: Moscow files the Arbat as a thoroughfare and nothing narrower, while the tree beneath it
 holds every motorway, railway and bridge (`SQUARE_ROOTS`, `squares/classes.ts`).
 
-**The rule** is `squareVerdict` (`squares/squareTest.ts`), in order:
+**The rule** is `SQUARES_DECLARATION` (`squares/classes.ts`), read by `places/declaredKind.ts`, in order:
 
-1. what is no place to visit is refused (`KILLS`): destroyed, proposed, under construction;
+1. what is no place to visit is refused (`GONE`): destroyed, proposed, under construction;
 2. what another kind offers, or no square or street a visitor walks, is refused (`OTHER_KINDS`):
    a place of worship (Al-Aqsa, filed as a square for its esplanade), a palace, a bridge (the
    Charles Bridge, filed as a street), an archaeological site (the Roman Forum), an ancient agora
