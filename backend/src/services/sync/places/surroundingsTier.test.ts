@@ -9,6 +9,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const gatherModule = vi.hoisted(() => ({ gatherPlaces: vi.fn(), shareOf: vi.fn() }));
 vi.mock('./gather.js', () => gatherModule);
+const standingModule = vi.hoisted(() => ({ subsetStandingFacts: vi.fn() }));
+vi.mock('../subset/standing.js', () => standingModule);
 
 import { mergeSurroundings, surroundingsGroupKey, surroundingsGroups, surroundingsLandmark, surroundingsReader, type SurroundingsKind } from './surroundingsTier.js';
 import { SURROUNDINGS_CUT } from './surroundingsCut.js';
@@ -114,6 +116,29 @@ describe('the surroundings tier over a kind', () => {
     const { items, filtered } = await surroundingsReader(tunnels, ON).arrivals(run, sparql, gathered as never, new Set(), bored, new Set());
     expect(items.map((i) => [i.qid, i.type])).toEqual([['Q5450940', 'tunnel']]);
     expect(filtered).toEqual([{ externalId: 'Q646091', name: 'Warnow Tunnel', reason: expect.stringMatching(/^a tunnel enters the surroundings tier only while a Wikivoyage edition uses it, and none does/) }]);
+  });
+
+  it('refuses a bridge no guide uses unless a heritage designation holds, read of those bridges alone (#2324)', async () => {
+    // The Luding Bridge (Q1873911), a protected historic site, and the Astoria–Megler Bridge (Q706082), a crossing:
+    // neither is used by a Wikivoyage edition; the Pont des Amours (Q3397523) is.
+    const bridges: SurroundingsKind<typeof trees> = { ...surroundings, verdict: () => ({ pass: true, type: 'bridge' }) };
+    const around = { groupSize: 500, topEditions: [9, 9, 8, 8, 7, 7, 6, 6, 5, 5], topGuideEditions: [2, 2, 1, 1, 1, 1, 1, 1, 1, 1],
+      topReaders: [20_000, 19_000, 18_000, 17_000, 16_000, 15_000, 14_000, 13_000, 12_000, 11_000] };
+    const crossings: SurroundingsPool = {
+      rows: new Map([['Q1873911', row('Q1873911', TOWER, 13, 0, 23_238)], ['Q706082', row('Q706082', TOWER, 10, 0, 56_301)], ['Q3397523', row('Q3397523', TOWER, 5, 2, 9_000)]]),
+      around: new Map([['all', new Map([['Q1873911', around], ['Q706082', around], ['Q3397523', around]])]]),
+      seconds: 0,
+    };
+    gatherModule.shareOf.mockImplementation((g: unknown, k: { name?: string }) => (g === 'gathered-by-id'
+      ? { trees, pool: new Map([['Q1873911', entity('Q1873911', 'Luding Bridge', 13)], ['Q706082', entity('Q706082', 'Astoria–Megler Bridge', 10)], ['Q3397523', entity('Q3397523', 'Pont des Amours', 5)]]),
+        facts: new Map() }
+      : gathered.shares.get(k as never)));
+    standingModule.subsetStandingFacts.mockResolvedValue(new Map([['Q1873911', { heritage: true }], ['Q706082', { heritage: false }]]));
+    const { items, filtered } = await surroundingsReader(bridges, ON).arrivals(run, sparql, gathered as never, new Set(), crossings, new Set());
+    expect(items.map((i) => i.qid).sort()).toEqual(['Q1873911', 'Q3397523']);
+    expect(filtered).toEqual([{ externalId: 'Q706082', name: 'Astoria–Megler Bridge', reason: expect.stringMatching(/^a bridge enters the surroundings tier only while a Wikivoyage edition uses it, and none does/) }]);
+    // Asked of the two no guide uses, never of the one a guide does.
+    expect(standingModule.subsetStandingFacts).toHaveBeenCalledWith(['Q1873911', 'Q706082']);
   });
 
   describe('where no Wikivoyage usage is built (ADR-0175 decision 6)', () => {

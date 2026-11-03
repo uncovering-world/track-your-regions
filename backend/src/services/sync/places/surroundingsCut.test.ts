@@ -121,7 +121,7 @@ describe('surroundingsVerdict', () => {
     expect(SURROUNDINGS_CUT).toEqual({
       enabled: true, neighbours: 'all', radiusKm: 150, densityNeighbours: 20, densityRatio: 4, best: 10,
       guideShare: 0.25, editionsShare: 1, readersShare: 1.5, guideGroupFloor: 5, editionsGroupFloor: 25, readersGroupFloor: 25,
-      minLanguages: 2, minReaders: 3_000, guideForTypes: ['tunnel', 'dam', 'lock'], stayReadersShare: 0.8,
+      minLanguages: 2, minReaders: 3_000, guideForTypes: ['tunnel', 'dam', 'lock', 'bridge'], heritageForTypes: ['bridge'], stayReadersShare: 0.8,
     });
   });
 });
@@ -273,15 +273,24 @@ describe('the cut where no Wikivoyage usage is built (ADR-0175 decision 6)', () 
 });
 
 describe('the types that need a guide', () => {
-  it('refuses a tunnel, a dam or a lock no Wikivoyage edition uses, and lets one a guide uses through', () => {
+  it('refuses a tunnel, a dam, a lock or a bridge no Wikivoyage edition uses, and lets one a guide uses through', () => {
     // Rostock's Warnow Tunnel: nine editions, 12,698 readers, no guide.
     expect(needsAGuide('tunnel', { guideEditions: 0 })).toMatch(/^a tunnel enters the surroundings tier only while a Wikivoyage edition uses it, and none does/);
     // The Kurobe Dam, used by the Bengali, English and Japanese Wikivoyages; the Finse Tunnel by the English one.
     expect(needsAGuide('dam', { guideEditions: 3 })).toBeNull();
     expect(needsAGuide('tunnel', { guideEditions: 1 })).toBeNull();
     expect(needsAGuide('lock', { guideEditions: 0 })).not.toBeNull();
-    // A bridge needs none.
-    expect(needsAGuide('bridge', { guideEditions: 0 })).toBeNull();
+    // The Astoria–Megler Bridge, a crossing no guide uses, is refused (#2324); an aqueduct needs none.
+    expect(needsAGuide('bridge', { guideEditions: 0 })).toMatch(/^a bridge enters the surroundings tier only while a Wikivoyage edition uses it, and none does/);
+    expect(needsAGuide('aqueduct', { guideEditions: 0 })).toBeNull();
+  });
+
+  it('counts a heritage designation as a guide for a bridge alone (#2324)', () => {
+    // The Luding Bridge, a Major Historical and Cultural Site Protected at the National Level that no guide uses.
+    expect(needsAGuide('bridge', { guideEditions: 0 }, false, SURROUNDINGS_CUT, true)).toBeNull();
+    expect(needsAGuide('bridge', { guideEditions: null }, false, SURROUNDINGS_CUT, true)).toBeNull();
+    // A listed dam still needs a guide: the exception is the bridge's.
+    expect(needsAGuide('dam', { guideEditions: 0 }, false, SURROUNDINGS_CUT, true)).not.toBeNull();
   });
 
   it('reads a held one by its guide as last read where no usage is built, and lets no new one in (ADR-0175 decision 6)', () => {
@@ -296,6 +305,6 @@ describe('the types that need a guide', () => {
     // New: nothing the run read says a guide uses it.
     expect(needsAGuide('tunnel', { guideEditions: null }))
       .toMatch(/^a tunnel enters the surroundings tier only when a Wikivoyage edition uses it, and no Wikivoyage usage is built/);
-    expect(needsAGuide('bridge', { guideEditions: null })).toBeNull();
+    expect(needsAGuide('bridge', { guideEditions: null })).not.toBeNull();
   });
 });

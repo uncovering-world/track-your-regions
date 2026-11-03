@@ -16,8 +16,9 @@
  *
  * Where fewer than the best places carry a signal, the reference is the median
  * of those that do, and a place that carries none sets no reference. A tunnel,
- * a dam or a lock enters only when a Wikivoyage edition uses it, since the
- * readership of its article does not say people go to see it (`needsAGuide`).
+ * a dam, a lock or a bridge enters only when a Wikivoyage edition uses it, since
+ * the readership of its article does not say people go to see it, and a bridge
+ * also when a heritage designation holds (`needsAGuide`, #2324).
  * A place the tier admitted before stays while it keeps the cut's languages,
  * reaches the stay share of the readers' floor and passes one test, the readers
  * test read at the stay share and the other two whole, since their reference is
@@ -73,8 +74,10 @@ export interface SurroundingsCut {
   minLanguages: number;
   /** The fewest readers a year a place must have, whatever its surroundings. */
   minReaders: number;
-  /** The types of a kind's rule (a tunnel, a dam, a lock) that enter and stay only while a Wikivoyage edition uses the place. */
+  /** The types of a kind's rule (a tunnel, a dam, a lock, a bridge) that enter and stay only while a Wikivoyage edition uses the place. */
   guideForTypes: readonly string[];
+  /** The types of `guideForTypes` for which a heritage designation that holds counts as a guide's use (a bridge). */
+  heritageForTypes: readonly string[];
   /** The share of the readers' floor and of the readers test at which a place the tier holds stays. */
   stayReadersShare: number;
 }
@@ -95,6 +98,7 @@ export const SURROUNDINGS_CUT: SurroundingsCut = {
   minLanguages: SURROUNDINGS_REGISTER.minLanguages.value,
   minReaders: SURROUNDINGS_REGISTER.minReaders.value,
   guideForTypes: SURROUNDINGS_REGISTER.guideForTypes.value,
+  heritageForTypes: SURROUNDINGS_REGISTER.heritageForTypes.value,
   stayReadersShare: SURROUNDINGS_REGISTER.stayReadersShare.value,
 };
 
@@ -241,9 +245,11 @@ function guidesAsLastRead(guided: boolean | null | undefined): string {
 }
 
 /**
- * Why a place of a type that needs a guide (a tunnel, a dam, a lock) is
- * refused where no Wikivoyage edition uses it, or null where its type needs
- * none or a guide uses it. Read once the kind's rule has typed the place, and
+ * Why a place of a type that needs a guide (a tunnel, a dam, a lock, a bridge)
+ * is refused where no Wikivoyage edition uses it, or null where its type needs
+ * none, a guide uses it, or, for a type of `heritageForTypes`, a heritage
+ * designation holds (`heritage`): the Luding Bridge no guide lists is a sight
+ * all the same, while the Astoria–Megler Bridge is a crossing (#2324). Read once the kind's rule has typed the place, and
  * for a place the tier holds as for a new one. Where no usage build is in
  * place (`guideEditions` null), a place the tier holds is read by its guide
  * mark as last read, and kept where no build was ever read for it; a new
@@ -252,9 +258,10 @@ function guidesAsLastRead(guided: boolean | null | undefined): string {
  */
 export function needsAGuide(
   type: string, guide: Pick<SurroundingsCandidate, 'guideEditions' | 'guidedAsLastRead'>, held = false,
-  cut: SurroundingsCut = SURROUNDINGS_CUT,
+  cut: SurroundingsCut = SURROUNDINGS_CUT, heritage = false,
 ): string | null {
   if (!cut.guideForTypes.includes(type)) return null;
+  if (heritage && cut.heritageForTypes.includes(type)) return null;
   const why = 'the readership of its article does not say people go to see it (ADR-0175)';
   if (guide.guideEditions !== null) {
     return guide.guideEditions > 0 ? null : `a ${type} enters the surroundings tier only while a Wikivoyage edition uses it, and none does: ${why}`;
