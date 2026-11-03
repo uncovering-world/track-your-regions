@@ -210,7 +210,8 @@ OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the un
   places or more; or its readers reach one and a half times the median of its 10 best neighbours
   by readers, among 25 places or more (ADR-0175 decision 3, ADR-0181, read from the register,
   § 11);
-- a tunnel, a dam or a lock enters, and stays, only while a Wikivoyage edition uses it;
+- a tunnel, a dam, a lock or a bridge enters, and stays, only while a Wikivoyage edition uses it, a
+  bridge also while a heritage designation holds (#2324);
 - a place the tier holds stays while it keeps two editions and 2,400 readers and passes one test,
   the readers test read at 0.8 of its share, 1.2 times the reference (ADR-0175 decision 2);
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
@@ -843,9 +844,11 @@ three bars. The run's log names the three bars it used, as numbers, for each kin
   statement of the item the run reads with it, so a run that reads the item reads its listing.
   The surroundings tier reads the same memory (`surroundingsArrivals`, handed the source's
   `WorldMemory`): its Wikivoyage test cannot be read, since its reference is the neighbours' guides,
-  so nothing new enters by a guide and a new tunnel, dam or lock does not enter at all; a held place
+  so nothing new enters by a guide and a new tunnel, dam, lock or bridge does not enter at all, save a
+  bridge whose heritage designation holds; a held place
   that passes no other test keeps its place where a guide used it when last read, or where no build
-  was ever read for it, and falls by the tests it read where none did. A held tunnel, dam or lock
+  was ever read for it, and falls by the tests it read where none did. A held tunnel, dam, lock or
+  bridge (a bridge also by its heritage designation)
   stays by its guide as last read the same way: the Finse Tunnel and the Eschbach Dam, held by the
   guides alone, keep their places. The pool says the build is missing (`SurroundingsPool.unreadGuides`),
   and the tier's line says its guides were read as last read.
@@ -878,10 +881,11 @@ and 3,000 readers a year when one test passes:
 - **Readers:** its readers reach one and a half times the reference, in an area of at least 25
   places.
 
-A tunnel, a dam or a lock enters only when a Wikivoyage edition uses it. A place the tier holds
+A tunnel, a dam, a lock or a bridge enters only when a Wikivoyage edition uses it, a bridge also
+when a heritage designation holds (the Luding Bridge, #2324). A place the tier holds
 stays while it keeps two editions, reaches 2,400 readers and passes one test, the readers test
-read at 0.8 of its share (1.2 times the reference) and the other two whole; a tunnel, dam or lock
-stays only while a guide still uses it. With no year of readers the tier is not read and its places keep their standing;
+read at 0.8 of its share (1.2 times the reference) and the other two whole; a tunnel, dam, lock or
+bridge stays only while a guide still uses it (a bridge, or its designation). With no year of readers the tier is not read and its places keep their standing;
 with no Wikivoyage usage build it is read, and the guides of the places it holds are as last read (above). Its arrivals
 are gated as each kind gates arrivals.
 
