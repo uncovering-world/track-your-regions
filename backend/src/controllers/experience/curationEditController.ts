@@ -21,6 +21,9 @@ import { followTheirPoints } from '../../db/partFieldsWriter.js';
 import { MEMBERSHIPS, shownMembershipSql } from '../../db/membership.js';
 import { setTypeOnSourceMembership, typeClaimedBy } from './membershipWriter.js';
 import { refusalFor } from './curatedUrlRefusal.js';
+import { heldSettledDetails, settleHeldByEdit } from './heldSettledByEdit.js';
+import { CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
+import { HELD_CREDIT_FIELD } from '@tyr/shared/pictures';
 
 type IdParams = z.output<typeof idParamSchema>;
 
@@ -237,6 +240,25 @@ function buildEditAuditDetails(
   return details;
 }
 
+/** The changeset's name for each column an edit writes: `image_url` is the object's `imageUrl`. */
+const FIELD_BY_COLUMN = new Map(Object.entries(CURATED_KEY_BY_FIELD).map(([field, column]) => [column, field]));
+
+/**
+ * Each field the edit writes, by the name a run's changeset gives it, with the
+ * value the row now holds: what a held proposal for that field is answered
+ * against (`settleHeldByEdit`). The picture's credit is answered with the
+ * picture there, and is named only where the edit resolved one.
+ */
+function editedFields(payload: EditPayload): Map<string, unknown> {
+  const edited = new Map<string, unknown>(
+    payload.updates.map(u => [FIELD_BY_COLUMN.get(u.column) ?? u.column, clearedToNull(u.value)]),
+  );
+  if (payload.hasWebsiteUpdate) edited.set('metadata.website', payload.websiteUrl || null);
+  if (payload.hasWikipediaUpdate) edited.set('metadata.wikipediaUrl', payload.wikipediaUrl || null);
+  if (payload.imageCredit) edited.set(HELD_CREDIT_FIELD, payload.imageCredit);
+  return edited;
+}
+
 /**
  * Edit an experience's fields
  * PATCH /api/experiences/:id/edit
@@ -346,7 +368,12 @@ export async function editExperience(
         || (shownSource !== undefined && await typeClaimedBy(client, locked.lock, shownSource))) {
       newCurated = [...newCurated, 'type'];
     }
-    const details = buildEditAuditDetails(payload, before);
+    // The held proposal for a field the curator has just set is answered by
+    // this edit (#2293), so the card no longer offers a value already ruled on.
+    const heldSettled = await settleHeldByEdit(
+      client, locked.lock, userId, editedFields(payload), typeEdit ? shownSource : undefined,
+    );
+    const details = { ...buildEditAuditDetails(payload, before), ...heldSettledDetails(heldSettled) };
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
       VALUES ($1, $2, 'edited', $3, $4)
