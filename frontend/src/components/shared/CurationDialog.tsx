@@ -69,9 +69,20 @@ import { typeOptionsFor } from '../../utils/experienceTypes';
 import { tidyLabel } from '@tyr/shared/labels';
 import { queryKeys } from '../../api/queryKeys';
 
+/**
+ * What the dialog reads of a place. The region list's row carries it, and so
+ * does the place's own read (`fetchExperience`) with the picture's credit
+ * taken off its metadata, which is how a review card opens a place no region
+ * list shows yet, a waiting arrival among them (#2293).
+ */
+export type CurationTarget = Pick<Experience,
+  | 'id' | 'name' | 'subtitle' | 'description' | 'description_source' | 'description_adapted' | 'type'
+  | 'image_url' | 'image_credit' | 'kind_id' | 'kind_name' | 'kinds' | 'country_names'
+  | 'missing_since' | 'source_membership' | 'existence' | 'is_rejected' | 'rejection_reason'>;
+
 interface CurationDialogProps {
   /** The experience to curate — null means dialog is closed */
-  experience: Experience | null;
+  experience: CurationTarget | null;
   /** Region context for reject/unreject scope */
   regionId: number | null;
   /**
@@ -93,7 +104,7 @@ interface CurationDialogProps {
  * for a picture that is not theirs. Read off the row, which every list this
  * dialog opens from sends beside `image_url` (the region list's `Experience`).
  */
-function creditForPreview(editImageUrl: string, row: Experience): ImageCredit | null {
+function creditForPreview(editImageUrl: string, row: CurationTarget): ImageCredit | null {
   if (editImageUrl !== (row.image_url || '')) return null;
   return row.image_credit;
 }
@@ -106,7 +117,7 @@ type EditFields = Required<Pick<Parameters<typeof editExperience>[1],
 const UNESCO_SOURCE_ID = 1;
 
 /** Whether the UNESCO source holds the place, whose description is then UNESCO's text or a curator's word on it. */
-function holdsUnescoText(experience: Experience | null): boolean {
+function holdsUnescoText(experience: CurationTarget | null): boolean {
   return !!experience?.kinds?.some(kind => kind.source_id === UNESCO_SOURCE_ID)
     || experience?.description_source === 'unesco';
 }
@@ -115,7 +126,7 @@ function holdsUnescoText(experience: Experience | null): boolean {
  * Whether the dialog asks whose the description is: of such a place's text once
  * the curator touched it, or once a curator already claimed it.
  */
-function asksAuthorship(experience: Experience | null, description: string): boolean {
+function asksAuthorship(experience: CurationTarget | null, description: string): boolean {
   if (!holdsUnescoText(experience) || description.trim() === '') return false;
   const edited = description !== (experience?.description ?? '');
   const claimedOwn = !!experience?.description && !experience.description_source;
@@ -128,7 +139,7 @@ function asksAuthorship(experience: Experience | null, description: string): boo
  * only where it was asked, so a text edited and then restored sends none.
  */
 function withAdaptation(
-  changes: Partial<EditFields>, experience: Experience | null, description: string, adapted: boolean,
+  changes: Partial<EditFields>, experience: CurationTarget | null, description: string, adapted: boolean,
 ): Partial<EditFields> {
   const { descriptionAdapted: asked, ...rest } = changes;
   return asksAuthorship(experience, description) && (changes.description !== undefined || asked !== undefined)
@@ -144,7 +155,7 @@ function withAdaptation(
  * text carries none.
  */
 function DescriptionAuthorship({ experience, description, adapted, onAdapted }: {
-  experience: Experience | null;
+  experience: CurationTarget | null;
   description: string;
   adapted: boolean;
   onAdapted: (adapted: boolean) => void;

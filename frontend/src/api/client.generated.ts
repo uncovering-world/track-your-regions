@@ -2620,6 +2620,8 @@ export interface ExperienceDetail {
   country_names: string[] | null;
   /** @nullable */
   image_url: string | null;
+  /** Whose photograph the picture is, off the place's metadata, as every list sends it beside `image_url`. */
+  image_credit: ImageCredit | null;
   /** The source's metadata, as an open record until #574 settles its model. */
   metadata: ExperienceDetailMetadata;
   /**
@@ -3464,6 +3466,12 @@ export const ReviewQueueItemKind = {
  * The serial World Heritage site a place is a component of (#2158), the whole the near-places card names too (#1250).
  */
 export interface PartOf {
+  /**
+     * The whole, which a card opens for curation by it (#2293).
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
   name: string;
   /**
      * The World Heritage id the site's run knows the property by.

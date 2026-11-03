@@ -17,7 +17,7 @@ import type { Experience } from '../../api/experiences';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 
 export function KindSeparation({ experience, regionId, onSeparated }: {
-  experience: Experience;
+  experience: Pick<Experience, 'id' | 'kinds'>;
   regionId: number | null;
   /** The place the dialog shows is no longer what it was: the dialog closes. */
   onSeparated: () => void;

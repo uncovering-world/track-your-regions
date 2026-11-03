@@ -20,6 +20,7 @@ import { safeHref } from '../../utils/safeHref';
 import { kindWithType } from '../../utils/experienceTypes';
 import { ObjectContext } from './ObjectContext';
 import { SourceId, worldHeritagePartsHref } from './SourceId';
+import { CuratePlaceButton } from './CuratePlaceButton';
 
 /**
  * How a part is named before its whole, on every card that names one: by the
@@ -57,6 +58,9 @@ function PartOfLine({ partOf }: { partOf: NonNullable<ReviewQueueItem['part_of']
           <Link href={partsHref} target="_blank" rel="noopener noreferrer">the list of its parts</Link>
         </>
       )}
+      {/* The whole, in its own curation dialog (#2293). */}
+      {' · '}
+      <CuratePlaceButton placeId={partOf.id} name={partOf.name} />
       {partOf.component_ref && (
         <Typography variant="caption" color="text.secondary" display="block">
           Reference {partOf.component_ref}, the name and the point the card shows are the catalogue’s;
@@ -95,6 +99,8 @@ export function ItemHeader({ item, kinds = [item] }: {
           <Chip key={`${kind.kind_name}:${kind.kind_type}`} label={kindWithType(kind.kind_id, kind.kind_name, kind.kind_type)}
             size="small" variant="outlined" />
         ))}
+        {/* The place itself, in its curation dialog (#2293). */}
+        <CuratePlaceButton placeId={item.id} />
       </Stack>
       {item.part_of && <PartOfLine partOf={item.part_of} />}
       <ObjectContext item={item} />
