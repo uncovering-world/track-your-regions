@@ -1,6 +1,7 @@
 /**
- * Towers as a place kind over the place gather (#1854, #1820): its trees and
- * pool classes, and its classifier, the rule and the world bars.
+ * Towers as a place kind over the place gather (#1854): built from its
+ * declaration (`classes.ts`, #2318), its trees and pool classes, its rule and
+ * the world bars.
  *
  * The world tier admits by the three bars of ADR-0175 over the kind's own pool
  * (`places/worldBars.ts`): its Wikipedia editions, its readers a year, and its
@@ -10,52 +11,28 @@
  * Tower and the Torrazzo of Cremona, read in few languages and visited by
  * everyone who comes to their towns. The kind's canon is
  * `db/catalogue-coverage/calibration/towers.jsonl`.
+ *
+ * The verdict, in the order `places/declaredKind.ts` reads it: what is no
+ * place to visit (gone, never built, a bare mast, ruins); what another kind
+ * holds (a lighthouse, a bridge, a city gate or a gate tower, a sculpture, a
+ * skyscraper, #1857, unless it is an observation tower); a candidate no tower
+ * class names; the exceptions of `TOWERS_DECLARATION`; a candidate with no
+ * point on this planet.
  */
 
-import type { SparqlFn } from '../wikidataQueries.js';
-import { shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from '../places/gather.js';
-import { classifyByWorldBars } from '../places/worldTier.js';
-import type { WorldRead } from '../places/worldBars.js';
-import type { WorldHistory } from '../places/worldMemory.js';
-import { fetchTowerTrees, TOWER_ROOTS, TOWER_TYPES, type TowerTrees } from './classes.js';
-import { towerType, towerVerdict } from './towerTest.js';
-import { surroundingsReader, type SurroundingsKind } from '../places/surroundingsTier.js';
+import { declaredKind, type DeclaredTrees, type PlaceFacts } from '../places/declaredKind.js';
+import { TOWERS_DECLARATION, type TowerType } from './classes.js';
 
 /** The source that fills Towers, and the kind it fills (migration 148). */
 export const TOWERS_SOURCE_ID = 7;
 
-const LOG_PREFIX = '[Towers]';
+const TOWERS = declaredKind(TOWERS_DECLARATION);
 
-export const TOWERS_KIND: PlaceKind<TowerTrees> = {
-  name: 'towers',
-  trees: fetchTowerTrees,
-  poolClasses: (trees) => ({ broad: TOWER_ROOTS, narrow: trees.tower }),
-  readsContainers: false,
-  admissionPool: true,
-};
-
-/** Decide from the kind's share: the rule, then the world bars (`classifyByWorldBars`). */
-export const classifyTowers = (share: KindShare<TowerTrees>, admitted: ReadonlySet<string>, sparql: SparqlFn, read?: WorldRead, history?: WorldHistory) =>
-  classifyByWorldBars(share, admitted, { verdict: towerVerdict, logPrefix: LOG_PREFIX }, sparql, read, history);
-
-/**
- * The kind in the surroundings tier (ADR-0171): every tower-class item measured against its
- * surroundings, the rule over the survivors. Its `typeOf` is also the type a
- * coverage survey's entry is filed under within the kind (#2246).
- */
-export const TOWERS_SURROUNDINGS: SurroundingsKind<TowerTrees> = {
-  kind: TOWERS_KIND,
-  classesOf: (trees) => trees.tower,
-  typeOf: (classes, trees) => towerType(classes, trees),
-  verdict: (entity, share) => towerVerdict({ classes: share.facts.get(entity.qid)?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon }, share.trees),
-  logPrefix: LOG_PREFIX,
-};
-
-/** Towers' classifier as a source of the place pass reads it (`placeSource`). */
-export const TOWERS_CLASSIFIER = {
-  classify: (gathered: GatheredPlaces, admitted: ReadonlySet<string>, sparql: SparqlFn, history?: WorldHistory) =>
-    classifyTowers(shareOf(gathered, TOWERS_KIND), admitted, sparql, undefined, history),
-  types: TOWER_TYPES,
-  tag: 'tower',
-  surroundings: surroundingsReader(TOWERS_SURROUNDINGS),
-};
+export type TowerTrees = DeclaredTrees<TowerType>;
+export type TowerFacts = PlaceFacts;
+export const TOWERS_KIND = TOWERS.kind;
+export const towerVerdict = TOWERS.verdict;
+export const towerType = TOWERS.typeOf;
+export const classifyTowers = TOWERS.classify;
+export const TOWERS_SURROUNDINGS = TOWERS.surroundings;
+export const TOWERS_CLASSIFIER = TOWERS.classifier;

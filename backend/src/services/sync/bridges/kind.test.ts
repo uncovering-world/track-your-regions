@@ -17,8 +17,7 @@ import type { KindShare } from '../places/gather.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { emptyContainment } from '../places/containment.js';
 import { guidedBarNote, keptNote, type WorldBars, type WorldMemory, type WorldRead } from '../places/worldBars.js';
-import type { BridgeTrees } from './classes.js';
-import { classifyBridges } from './kind.js';
+import { classifyBridges, type BridgeTrees } from './kind.js';
 
 const BRIDGE = 'Q12280';
 const DAM = 'Q12323';
@@ -26,16 +25,15 @@ const LOCK = 'Q105731';
 const DESTROYED = 'Q19860854';
 const none = new Set<string>();
 const trees: BridgeTrees = {
-  work: new Set([BRIDGE, DAM, LOCK]),
+  place: new Set([BRIDGE, DAM, LOCK]),
   types: {
     aqueduct: none, bridge: new Set([BRIDGE]), dam: new Set([DAM]), 'inclined-plane': none, 'boat-lift': none,
     'lock-flight': none, lock: new Set([LOCK]), tunnel: none,
   },
   kills: { destroyed: new Set([DESTROYED]), proposed: none, proposedTunnel: none, underConstruction: none, ruins: none },
   others: { river: none, railwayLine: none },
-  archaeologicalSite: none,
-  canal: none,
-  powerStation: none,
+  noClass: {}, shared: {},
+  named: { archaeologicalSite: none, powerStation: none },
 };
 const entity = (qid: string, label: string, sitelinks: number): PoolEntity => ({
   qid, label, description: null, lat: 36.57, lon: 137.66, onEarth: true, imageUrl: null, itemPictures: [],

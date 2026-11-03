@@ -9,8 +9,8 @@
  * Jardin du Luxembourg, Kenroku-en, the Generalife, Gorky Park.
  */
 
-import { fetchClassTree, type QueryRunner } from '../wikidataQueries.js';
 import type { PoolRoot } from '../places/gather.js';
+import type { PlaceKindDeclaration } from '../places/declaredKind.js';
 import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 const PARK = 'Q22698';
@@ -22,7 +22,7 @@ const BOTANICAL_GARDEN = 'Q167346';
  * kept for walking in, and Wikidata files Arashiyama's Bamboo Forest as a
  * bamboo grove and nothing under a park or a garden.
  */
-export const BAMBOO_GROVE = 'Q11599236';
+const BAMBOO_GROVE = 'Q11599236';
 
 /**
  * The roots the candidates are asked by, in fame bands on the live service.
@@ -45,13 +45,6 @@ export const PARK_ROOTS: readonly PoolRoot[] = [
 export const PARK_TYPES = typeValues('parks-and-gardens');
 export type ParkType = PlaceTypeOf<'parks-and-gardens'>;
 
-/** Never a place to visit: gone, or not built yet. The Hanging Gardens of Babylon are destroyed. */
-export const KILLS: Readonly<Record<string, { root: string; reason: string }>> = {
-  destroyed: { root: 'Q19860854', reason: 'destroyed or demolished' },
-  proposed: { root: 'Q811683', reason: 'proposed, not built' },
-  underConstruction: { root: 'Q12377751', reason: 'under construction' },
-};
-
 /**
  * What another kind offers whatever park or garden class it carries, with the
  * sentence a refusal names it by. A national, state or provincial park is a
@@ -62,7 +55,7 @@ export const KILLS: Readonly<Record<string, { root: string; reason: string }>> =
  * Saihō-ji), as a square's mosque is; a cemetery park is Cemeteries'
  * (Ohlsdorf, Munich's Waldfriedhof).
  */
-export const OTHER_KINDS: Readonly<Record<string, { root: string; reason: string }>> = {
+const OTHER_KINDS: PlaceKindDeclaration<ParkType>['others'] = {
   nationalPark: { root: 'Q46169', reason: 'a national park: a reserve, not a park' },
   statePark: { root: 'Q1761072', reason: 'a state park: a reserve, not a park' },
   provincialPark: { root: 'Q52063214', reason: 'a provincial park: a reserve, not a park' },
@@ -83,7 +76,7 @@ export const OTHER_KINDS: Readonly<Record<string, { root: string; reason: string
  * Tivoli Gardens, an amusement park and a pleasure garden, stays; Disneyland,
  * a theme park, does not.
  */
-export const SHARED: Readonly<Record<string, { root: string; reason: string }>> = {
+const SHARED: PlaceKindDeclaration<ParkType>['shared'] = {
   protectedArea: { root: 'Q473972', reason: 'a protected area, not a park' },
   zoo: { root: 'Q43501', reason: 'a zoo, not a park' },
   amusementPark: { root: 'Q194195', reason: 'an amusement park, not a park' },
@@ -106,10 +99,8 @@ export const SHARED: Readonly<Record<string, { root: string; reason: string }>> 
  * Pyramids of Güímar as a site and a park, and Archaeology offers them, while
  * its 530 archaeological parks are the site tree's too.
  */
-export const ARCHAEOLOGICAL_SITE = { root: 'Q839954', reason: 'an archaeological site, not a park' };
+const ARCHAEOLOGICAL_SITE = 'Q839954';
 
-/** The plain classes, which name a site's or a house's grounds by their use alone. */
-export const PLAIN = { park: PARK, garden: GARDEN };
 
 /**
  * A palace, a historic house or a castle that only the plain `garden` class
@@ -119,50 +110,46 @@ export const PLAIN = { park: PARK, garden: GARDEN };
  * Hamarikyu, a Japanese garden; Stourhead, an English garden), and one
  * Wikidata files as a park is a park ensemble (Tsaritsyno).
  */
-export const RESIDENCE_ROOTS: readonly string[] = ['Q16560', 'Q5773747', 'Q23413'];
+const RESIDENCE_ROOTS: readonly string[] = ['Q16560', 'Q5773747', 'Q23413'];
 
-/** The class trees the rule reads. */
-export interface ParkTrees {
-  /** Every class under the park or the garden root, and the bamboo grove: what names a candidate. */
-  place: ReadonlySet<string>;
-  /** The classes each type is read from; `park` is every place class the other two leave. */
-  types: Readonly<Record<Exclude<ParkType, 'park'>, ReadonlySet<string>>>;
-  /** The classes that make a candidate no place to visit, by key of `KILLS`. */
-  kills: Readonly<Record<string, ReadonlySet<string>>>;
-  /** The classes that make a candidate another kind's, by key of `OTHER_KINDS`. */
-  others: Readonly<Record<string, ReadonlySet<string>>>;
-  /** The classes that make a candidate no park unless a class of its own names it, by key of `SHARED`. */
-  shared: Readonly<Record<string, ReadonlySet<string>>>;
-  /** The archaeological site tree (`ARCHAEOLOGICAL_SITE`). */
-  archaeologicalSite: ReadonlySet<string>;
-  /** The palace, historic house and castle trees together (`RESIDENCE_ROOTS`). */
-  residence: ReadonlySet<string>;
-}
-
-/** Walk every tree the rule reads: one question per root, each its own step. */
-export async function fetchParkTrees(run: QueryRunner): Promise<ParkTrees> {
-  const tree = async (root: string, label: string): Promise<Set<string>> => {
-    await run.step();
-    return fetchClassTree(run.sparql, root, label);
-  };
-  run.phase('Reading what a park or a garden is...');
-  const park = await tree(PARK, 'park classes');
-  const garden = await tree(GARDEN, 'garden classes');
-  const botanical = await tree(BOTANICAL_GARDEN, 'botanical garden classes');
-  const place = new Set<string>([...park, ...garden, BAMBOO_GROVE]);
-  // A garden class that is no park class: an urban park is under both, and is a park.
-  const gardenOnly = new Set([...garden].filter((cls) => !park.has(cls) && !botanical.has(cls)));
-  run.phase('Reading what a park or a garden is not...');
-  const kills: Record<string, ReadonlySet<string>> = {};
-  for (const [key, { root }] of Object.entries(KILLS)) kills[key] = await tree(root, `${key} classes`);
-  const others: Record<string, ReadonlySet<string>> = {};
-  for (const [key, { root }] of Object.entries(OTHER_KINDS)) others[key] = await tree(root, `${key} classes`);
-  const shared: Record<string, ReadonlySet<string>> = {};
-  for (const [key, { root }] of Object.entries(SHARED)) shared[key] = await tree(root, `${key} classes`);
-  const residence = new Set<string>();
-  for (const root of RESIDENCE_ROOTS) for (const cls of await tree(root, 'palaces, houses and castles')) residence.add(cls);
-  return {
-    place, types: { 'botanical-garden': botanical, garden: gardenOnly }, kills, others, shared, residence,
-    archaeologicalSite: await tree(ARCHAEOLOGICAL_SITE.root, 'archaeological sites'),
-  };
-}
+/**
+ * Parks & gardens, declared (#2318). What names a park is every class under
+ * the park or the garden root, and the bamboo grove; a garden is a garden
+ * class that is neither a park class nor a botanical garden's (an urban park,
+ * under both, is a park). After the classes of the kind named a candidate,
+ * what it shares with another kind (`SHARED`, the archaeological site among
+ * them) counts only where a class of the kind's own names it too, and the
+ * plain `park` and `garden` classes name a site's or a house's grounds by their
+ * use alone: an archaeological site only they name (Alacahöyük), and a palace,
+ * house or castle only the plain `garden` names (the Alhambra, Blenheim
+ * Palace), are refused. A palace garden is no refusal: the kind's definition
+ * names it, and the Generalife and Hamarikyu are palaces to Wikidata too.
+ */
+export const PARKS_DECLARATION: PlaceKindDeclaration<ParkType> = {
+  name: 'parks and gardens',
+  what: 'a park or a garden',
+  logPrefix: '[Parks]',
+  tag: 'park',
+  types: PARK_TYPES,
+  fallback: 'park',
+  pool: PARK_ROOTS,
+  place: { roots: [PARK, GARDEN], classes: [BAMBOO_GROVE] },
+  typeClasses: {
+    'botanical-garden': { roots: [BOTANICAL_GARDEN] },
+    garden: { roots: [GARDEN], minus: { roots: [PARK, BOTANICAL_GARDEN] } },
+  },
+  others: OTHER_KINDS,
+  noClass: { reason: 'no park or garden class' },
+  shared: SHARED,
+  trees: {
+    archaeologicalSite: { roots: [ARCHAEOLOGICAL_SITE] },
+    residence: { roots: RESIDENCE_ROOTS },
+    plain: { classes: [PARK, GARDEN] },
+    plainGarden: { classes: [GARDEN] },
+  },
+  notOwn: ['archaeologicalSite'],
+  exceptions: [
+    { refuse: 'only', when: 'archaeologicalSite', only: 'plain', reason: 'an archaeological site, not a park' },
+    { refuse: 'only', when: 'residence', only: 'plainGarden', reason: 'a palace, a house or a castle with its garden, not a garden' },
+  ],
+};

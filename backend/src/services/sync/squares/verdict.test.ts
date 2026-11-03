@@ -5,8 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { SquareTrees } from './classes.js';
-import { squareVerdict, type SquareFacts } from './squareTest.js';
+import { squareVerdict, type SquareFacts, type SquareTrees } from './kind.js';
 
 const SQUARE = 'Q174782';
 const STREET = 'Q79007';
@@ -50,7 +49,7 @@ const trees: SquareTrees = {
     archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]), agora: new Set([AGORA]), bullring: new Set([BULLRING]),
     railwayLine: none, motorway: new Set([MOTORWAY]), river: none,
   },
-  canal: new Set([CANAL, GRACHT]),
+  noClass: {}, shared: {}, named: { canal: new Set([CANAL, GRACHT]) },
 };
 
 const at = (classes: string[]): SquareFacts => ({ classes, onEarth: true, lat: 1, lon: 1 });

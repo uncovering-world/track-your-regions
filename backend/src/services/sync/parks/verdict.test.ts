@@ -5,8 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { ParkTrees } from './classes.js';
-import { parkVerdict, type ParkFacts } from './parkTest.js';
+import { parkVerdict, type ParkFacts, type ParkTrees } from './kind.js';
 
 const PARK = 'Q22698';
 const GARDEN = 'Q1107656';
@@ -67,8 +66,13 @@ const trees: ParkTrees = {
     square: new Set([SQUARE, GARDEN_SQUARE]), sportsVenue: none, sportsPark: none, outdoorGym: none, golfCourse: none,
     businessPark: none, industrialPark: none, sittingOutArea: none, allotment: none, communityGarden: none,
   },
-  archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE, TELL]),
-  residence: new Set([PALACE, DETACHED_PALACE, HISTORIC_HOUSE_MUSEUM, ENGLISH_COUNTRY_HOUSE]),
+  noClass: {},
+  named: {
+    archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE, TELL]),
+    residence: new Set([PALACE, DETACHED_PALACE, HISTORIC_HOUSE_MUSEUM, ENGLISH_COUNTRY_HOUSE]),
+    plain: new Set([PARK, GARDEN]),
+    plainGarden: new Set([GARDEN]),
+  },
 };
 
 const at = (classes: string[]): ParkFacts => ({ classes, onEarth: true, lat: 1, lon: 1 });

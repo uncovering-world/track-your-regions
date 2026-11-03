@@ -8,8 +8,8 @@
  * Piazza Navona, the Spanish Steps, the Champs-Élysées, the Arbat.
  */
 
-import { fetchClassTree, type QueryRunner } from '../wikidataQueries.js';
 import type { PoolRoot } from '../places/gather.js';
+import type { PlaceKindDeclaration } from '../places/declaredKind.js';
 import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /**
@@ -49,13 +49,6 @@ const TYPE_ROOTS: Readonly<Record<SquareType, readonly string[]>> = {
   street: ['Q79007', 'Q369730'],
 };
 
-/** Never a place to visit: gone, or not built yet. */
-export const KILLS: Readonly<Record<string, { root: string; reason: string }>> = {
-  destroyed: { root: 'Q19860854', reason: 'destroyed or demolished' },
-  proposed: { root: 'Q811683', reason: 'proposed, not built' },
-  underConstruction: { root: 'Q12377751', reason: 'under construction' },
-};
-
 /**
  * What another kind offers, or no square or street a visitor walks, with the
  * sentence a refusal names it by. Wikidata files Al-Aqsa as a square for its
@@ -64,7 +57,7 @@ export const KILLS: Readonly<Record<string, { root: string; reason: string }>> =
  * Wikidata, and an agora is not: the Roman Agora of Athens is a square and an
  * agora, the ancient Greek public space, and Archaeology's to offer (#2136).
  */
-export const OTHER_KINDS: Readonly<Record<string, { root: string; reason: string }>> = {
+const OTHER_KINDS: PlaceKindDeclaration<SquareType>['others'] = {
   worship: { root: 'Q1370598', reason: 'a place of worship, not a square' },
   palace: { root: 'Q16560', reason: 'a palace, not a square' },
   bridge: { root: 'Q12280', reason: 'a bridge, not a street' },
@@ -85,41 +78,25 @@ export const OTHER_KINDS: Readonly<Record<string, { root: string; reason: string
  * quay a visitor walks: Nyhavn is a canal and a street, and Amsterdam files
  * every gracht as a street too.
  */
-export const CANAL_ROOT = 'Q12284';
+const CANAL_ROOT = 'Q12284';
 
-/** The class trees the rule reads. */
-export interface SquareTrees {
-  /** Every class under a root but the thoroughfare's, and the thoroughfare itself: what names a candidate. */
-  place: ReadonlySet<string>;
-  /** The classes each type is read from. */
-  types: Readonly<Record<SquareType, ReadonlySet<string>>>;
-  /** The classes that make a candidate no place to visit, by key of `KILLS`. */
-  kills: Readonly<Record<string, ReadonlySet<string>>>;
-  /** The classes that make a candidate another kind's, by key of `OTHER_KINDS`. */
-  others: Readonly<Record<string, ReadonlySet<string>>>;
-  /** The canal tree (`CANAL_ROOT`): a canal only the thoroughfare names is a waterway. */
-  canal: ReadonlySet<string>;
-}
-
-/** Walk every tree the rule reads: one question per root, each its own step. */
-export async function fetchSquareTrees(run: QueryRunner): Promise<SquareTrees> {
-  const tree = async (root: string, label: string): Promise<Set<string>> => {
-    await run.step();
-    return fetchClassTree(run.sparql, root, label);
-  };
-  run.phase('Reading what a square or a street is...');
-  const types = {} as Record<SquareType, ReadonlySet<string>>;
-  const place = new Set<string>([THOROUGHFARE]);
-  for (const type of SQUARE_TYPES) {
-    const classes = new Set<string>();
-    for (const root of TYPE_ROOTS[type]) for (const cls of await tree(root, `${type} classes`)) classes.add(cls);
-    types[type] = classes;
-    for (const cls of classes) place.add(cls);
-  }
-  run.phase('Reading what a square or a street is not...');
-  const kills: Record<string, ReadonlySet<string>> = {};
-  for (const [key, { root }] of Object.entries(KILLS)) kills[key] = await tree(root, `${key} classes`);
-  const others: Record<string, ReadonlySet<string>> = {};
-  for (const [key, { root }] of Object.entries(OTHER_KINDS)) others[key] = await tree(root, `${key} classes`);
-  return { place, types, kills, others, canal: await tree(CANAL_ROOT, 'canal classes') };
-}
+/**
+ * Squares & streets, declared (#2318): what names a square or a street is
+ * every class under a type's roots and the bare thoroughfare, and a canal is
+ * refused where no type names it.
+ */
+export const SQUARES_DECLARATION: PlaceKindDeclaration<SquareType> = {
+  name: 'squares and streets',
+  what: 'a square or a street',
+  logPrefix: '[Squares]',
+  tag: 'square',
+  types: SQUARE_TYPES,
+  fallback: 'street',
+  pool: SQUARE_ROOTS,
+  place: { roots: Object.values(TYPE_ROOTS).flat(), classes: [THOROUGHFARE] },
+  typeClasses: Object.fromEntries(Object.entries(TYPE_ROOTS).map(([type, roots]) => [type, { roots }])),
+  others: OTHER_KINDS,
+  noClass: { reason: 'no square or street class' },
+  trees: { canal: { roots: [CANAL_ROOT] } },
+  exceptions: [{ refuse: 'untyped', when: 'canal', reason: 'a canal, not a street' }],
+};

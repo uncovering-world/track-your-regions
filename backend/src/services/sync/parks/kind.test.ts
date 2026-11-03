@@ -12,8 +12,7 @@ import type { PoolEntity } from '../publicArt/queries.js';
 import type { KindShare } from '../places/gather.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { emptyContainment } from '../places/containment.js';
-import type { ParkTrees } from './classes.js';
-import { classifyParks } from './kind.js';
+import { classifyParks, type ParkTrees } from './kind.js';
 
 describe('classifyParks', () => {
   const URBAN_PARK = 'Q22746';
@@ -29,8 +28,8 @@ describe('classifyParks', () => {
       sportsPark: none, outdoorGym: none, golfCourse: none, businessPark: none, industrialPark: none,
       sittingOutArea: none, allotment: none, communityGarden: none,
     },
-    archaeologicalSite: none,
-    residence: none,
+    noClass: {},
+    named: { archaeologicalSite: none, residence: none, plain: none, plainGarden: none },
   };
   const entity = (qid: string, label: string, sitelinks: number): PoolEntity => ({
     qid, label, description: null, lat: 41, lon: 12, onEarth: true, imageUrl: null, itemPictures: [],
