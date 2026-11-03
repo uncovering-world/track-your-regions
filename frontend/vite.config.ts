@@ -58,6 +58,9 @@ function sharedExportsRestart(): PluginOption {
   };
 }
 
+const MAPLIBRE = /node_modules[\\/]maplibre-gl[\\/]/;
+const STYLESHEET = /\.css(\?|$)/;
+
 export default defineConfig({
   plugins: [react(), previewCompression(), devServerTitle(), sharedExportsRestart()],
   resolve: {
@@ -96,6 +99,32 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            // The map library keeps a file of its own, cached across releases and
+            // budgeted by name (`frontend/package.json` → `size-limit`).
+            { name: 'maplibre-gl', test: id => MAPLIBRE.test(id) && !STYLESHEET.test(id), priority: 2 },
+            // The code the shell shares with a lazy screen is one chunk. Left to
+            // itself, Rolldown groups a module by the set of entries that reach
+            // it, so a lazy screen that uses part of a shared chunk cuts that
+            // chunk in two, and the shell, which needs both halves at startup,
+            // pays a request and the compression lost across the cut for each
+            // screen added. Every module here is one the shell imports statically
+            // (`$initial`) and a lazy screen imports too (`minShareCount`), so a
+            // visitor loads it at startup either way; the shell's own modules
+            // stay in the entry chunk, and a screen's code and what only lazy
+            // screens share stay automatic. A captured module brings its own
+            // imports along (`includeDependenciesRecursively`), which keeps the
+            // chunks acyclic and is why `@turf/helpers`, whose functions the
+            // shell never calls, is in it. Stylesheets stay out, so the page
+            // keeps its one stylesheet in its order.
+            { name: 'startup', tags: ['$initial'], minShareCount: 2, priority: 1, test: id => !STYLESHEET.test(id) },
+          ],
+        },
+      },
+    },
   },
   test: {
     // ADR-0093: happy-dom, which builds a document for less than jsdom did. It

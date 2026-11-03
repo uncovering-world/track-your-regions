@@ -1188,7 +1188,11 @@ screen goes under `/admin/*` or `/review`, or is `lazy` where it mounts: a
 static import of it from the shell puts it back in the entry chunk, and the
 entry chunk's `size-limit` row fails on it. The lazy chunks have rows of their
 own (`frontend/package.json`), keyed by the screen each one is named after.
-Such a screen is loaded with `lazyChunk()` and mounted in a `ChunkBoundary`,
+The code the shell shares with those screens is one chunk, `startup-*.js`
+(`frontend/vite.config.ts`, `codeSplitting.groups`): without it, a new lazy
+screen that uses part of a shared chunk cuts it in two and the shell loads
+one more file for the same code (`docs/tech/performance.md` § The shell's
+shared code in one chunk). Such a screen is loaded with `lazyChunk()` and mounted in a `ChunkBoundary`,
 not with a bare `React.lazy` and `Suspense`: a chunk can fail to arrive — a
 deployment replaced the file names an open tab still asks for — and without
 the boundary that failure unmounts the whole application.

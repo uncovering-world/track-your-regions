@@ -307,9 +307,49 @@ the few small chunks both the shell and a lazy screen use: 557.7 kB gzip,
 where the single chunk of 2026-09-09 was 876.0 kB and, with a fortnight of
 features on top, 899 kB on the day it was split. Rolldown names a chunk
 after the module that leads it, so only the chunks with a stable name —
-the entry, the map library and the three screens — have a `size-limit`
-row; what the page loads at startup, whatever its chunks are called, is
-Lighthouse's `resource-summary:script:size`, below.
+the entry, the shared `startup` chunk, the map library and the three
+screens — have a `size-limit` row; what the page loads at startup, whatever
+its chunks are called, is Lighthouse's `resource-summary:script:size`, below.
+
+### The shell's shared code in one chunk — 2026-11-03
+
+Rolldown groups a module by the set of entries that reach it, and every lazy
+screen is an entry. A screen that uses part of a shared chunk therefore cuts
+it in two, and the shell, which needs both halves at startup, pays one more
+request and the compression lost across the cut. The crowded-city window
+(#2282) did exactly that: two lazy chunks of its own cut the code the shell
+shares with the curator's screens from fifteen startup files into
+twenty-one, 4.9 kB heavier, with not one module added to or taken from what
+the shell loads. Lighthouse read it as 610 555 B of script on each of its four
+visitor pages and 58–59 requests where the budgets allow 610 000 and 54.
+
+Since then `frontend/vite.config.ts` gives that code one chunk of its own
+(`codeSplitting.groups`, `startup`): every module the shell imports
+statically (Rolldown's `$initial`) that a lazy screen imports too. A visitor
+loads each of them at startup either way, so the group changes how many files
+carry them, and a new lazy screen no longer re-partitions the shell. The map library keeps its own file in a group ahead
+of it, and stylesheets stay out of both, so the page still loads one
+stylesheet. `gzip -9` over the entry chunk and every chunk `index.html`
+preloads, map library included:
+
+| Build | Startup files | Startup script, gzip | Entry chunk (`size-limit`) |
+|-------|---------------|----------------------|----------------------------|
+| `main`, Rolldown's own chunks | 15 | 596 250 B | 193.2 kB |
+| `main` with the group | 4 | 589 134 B | 172.8 kB |
+| #2282 with Rolldown's own chunks | 21 | 601 152 B | 196.4 kB |
+| #2282 with the group | 4 | 589 500 B | 175.1 kB |
+
+The four files are the entry chunk, `startup-*.js` (142.5 kB), the map library
+and Rolldown's 0.5 kB runtime. The group brings one module the shell did not
+load before: a captured module takes its imports along, which keeps the
+chunks acyclic, and `@turf/meta` imports `@turf/helpers` (1.9 kB gzip), whose
+functions the shell never calls. On `main` the lazy screens' chunks are
+unchanged within 0.2 kB, but for the chunk the admin panel and the editor
+share, 0.7 kB lighter for importing from one file instead of several. The
+entry chunk's `size-limit` row now measures the shell's own code alone, so its
+line ratcheted from 210 to 182 kB, and `startup-*.js` has a row of its own,
+148 kB over 142.5 kB measured (§ Budgets and the ratchet rule); what the shell
+loads in all is still Lighthouse's `resource-summary:script:size`.
 
 ### Lighthouse — 2026-09-09, re-measured 2026-09-25
 
@@ -1098,9 +1138,10 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 
 | Budget | Level | Value | Set from |
 |--------|-------|-------|----------|
-| entry chunk, gzip (`size-limit`) | error | 210 kB | 201.6 kB baseline + ~4 %, measured on `main` once #1604's choice of a maps app (the provider every route sits under, the place's chosen app with *Other maps* beside it, and the way to the setting) and #1691's close pair on the component-items map landed together: each measured under the line on its own base, 195.91 and 197.39 kB, and the two took the chunk to 201.57 kB. It was 200 kB over a 191.7 kB baseline, measured on #1271's grouped browsing of a serial site's parts; 190 kB over a 181.0 kB baseline, by when `main` stood at 189.94 kB, the headroom spent by the features since #643, and the part cards' groups, search and photo filter added 1.72 kB; and 920 kB, the whole application in one chunk, until #643. A lazy chunk was measured before each raise and is no saving here, since it moves shared code into this chunk: splitting the part card or Discover out grew the chunk to 204.8 and 200.0 kB, and splitting *Open in maps* out grew it to 211.8 kB, and what the page loads at start from 311.2 to 313.2 kB (`gzip -9` over the entry and the chunks `index.html` preloads, the map library aside) |
+| entry chunk, gzip (`size-limit`) | error | 182 kB | 175.1 kB + ~4 %, since #2306 gave the code the shell shares with a lazy screen one `startup` chunk (§ The shell's shared code in one chunk — 2026-11-03): the entry now holds the shell's own code, and the saving of about 21 kB was more than the headroom, so the line ratcheted. It was 210 kB over a 201.6 kB baseline + ~4 %, measured on `main` once #1604's choice of a maps app (the provider every route sits under, the place's chosen app with *Other maps* beside it, and the way to the setting) and #1691's close pair on the component-items map landed together: each measured under the line on its own base, 195.91 and 197.39 kB, and the two took the chunk to 201.57 kB. It was 200 kB over a 191.7 kB baseline, measured on #1271's grouped browsing of a serial site's parts; 190 kB over a 181.0 kB baseline, by when `main` stood at 189.94 kB, the headroom spent by the features since #643, and the part cards' groups, search and photo filter added 1.72 kB; and 920 kB, the whole application in one chunk, until #643. A lazy chunk was measured before each raise and is no saving here, since it moves shared code into this chunk: splitting the part card or Discover out grew the chunk to 204.8 and 200.0 kB, and splitting *Open in maps* out grew it to 211.8 kB, and what the page loads at start from 311.2 to 313.2 kB (`gzip -9` over the entry and the chunks `index.html` preloads, the map library aside) |
+| startup shared chunk, gzip (`size-limit`) | error | 148 kB | 142.5 kB + ~4 %, measured on #2306: every module the shell imports statically that a lazy screen imports too, which a visitor loads at start beside the entry. Without this row that code was measured by Lighthouse's `script:size` alone |
 | map library chunk, gzip (`size-limit`) | error | 285 kB | 271.2 kB baseline + ~5 % |
-| admin panel, world-view editor and review queue chunks, gzip (`size-limit`) | error | 155 / 139 / 49 kB | 151.1 / 132.1 / 45.3 kB baseline + ~5 % (the admin panel's about 2.6 %, 3.9 kB, since #1613): a screen growing, or its code moving back into the entry chunk, fails visibly. The admin panel's was 148 kB until #1583 gave Public Dumps an admin's card for the Wikidata copy and a collapsible developers' section, and it measured 148.83 kB; loading that page on its own was tried and moved 12.8 kB of shared components into the entry chunk, so the page stays in the admin chunk. It was 151 kB until #1613 gave a running re-match its Cancel: the admin screens added since had grown the chunk to 150.93 kB on main, 70 B under the line, and the cancel's 130 B took it to 151.06 kB, so the line moved with the measurement rather than every admin feature after it being refused for a margin of bytes. The review queue's was 32 kB over a 30.1 kB baseline until #1264 gave the queue a question per kind of a place — a card per place with a section per kind for arrivals, held changes, refusals and a kind its source dropped — and it measured 32.16 kB; 34 kB until #1272 gave it the card for a serial site's candidate component items, and it measured 35.38 kB; 37 kB until #1249 gave it the card for two near places with similar names — the other place beside this one and three answers per pair — and it measured 38.27 kB; 40 kB until #1599 asked a fact two kinds propose alike once, in a section for the place, and it measured 40.09 kB; 42 kB until #1853 gave it the card for a component the World Heritage list placed only roughly — its hints, the minute's cell on the map and three answers per point — and it measured 43.36 kB on CI's build; 45 kB until #2158 named a component's property on every card and linked each source's record on the sources card, when `main` stood at 44.94 kB, 60 B under the line, and the branch measured 45.27 kB; 47 kB until #2213 gave an arrival's card its third answer, the kind the place belongs in, when `main` stood at 46.84 kB, 160 B under the line, and the branch measured 47.21 kB with the form in a chunk of its own that the card fetches when it is opened (47.64 kB with the form in the queue's chunk) |
+| admin panel, world-view editor and review queue chunks, gzip (`size-limit`) | error | 155 / 139 / 51 kB | 151.1 / 132.1 / 45.3 kB baseline + ~5 % (the admin panel's about 2.6 %, 3.9 kB, since #1613): a screen growing, or its code moving back into the entry chunk, fails visibly. The admin panel's was 148 kB until #1583 gave Public Dumps an admin's card for the Wikidata copy and a collapsible developers' section, and it measured 148.83 kB; loading that page on its own was tried and moved 12.8 kB of shared components into the entry chunk, so the page stays in the admin chunk. It was 151 kB until #1613 gave a running re-match its Cancel: the admin screens added since had grown the chunk to 150.93 kB on main, 70 B under the line, and the cancel's 130 B took it to 151.06 kB, so the line moved with the measurement rather than every admin feature after it being refused for a margin of bytes. The review queue's was 32 kB over a 30.1 kB baseline until #1264 gave the queue a question per kind of a place — a card per place with a section per kind for arrivals, held changes, refusals and a kind its source dropped — and it measured 32.16 kB; 34 kB until #1272 gave it the card for a serial site's candidate component items, and it measured 35.38 kB; 37 kB until #1249 gave it the card for two near places with similar names — the other place beside this one and three answers per pair — and it measured 38.27 kB; 40 kB until #1599 asked a fact two kinds propose alike once, in a section for the place, and it measured 40.09 kB; 42 kB until #1853 gave it the card for a component the World Heritage list placed only roughly — its hints, the minute's cell on the map and three answers per point — and it measured 43.36 kB on CI's build; 45 kB until #2158 named a component's property on every card and linked each source's record on the sources card, when `main` stood at 44.94 kB, 60 B under the line, and the branch measured 45.27 kB; 47 kB until #2213 gave an arrival's card its third answer, the kind the place belongs in, when `main` stood at 46.84 kB, 160 B under the line, and the branch measured 47.21 kB with the form in a chunk of its own that the card fetches when it is opened (47.64 kB with the form in the queue's chunk); 49 kB until #2306 gave the queue the crowded city's way in, a card's line and button and the shadowed arrivals' header, with the window and the list in chunks of their own, when `main` stood at 47.9 kB and the branch measured 48.82 kB on CI's gzip (49.01 kB on the mini PC's zlib-ng), so the line moved with the measurement |
 | map worker chunk, gzip (`size-limit`) | error | 142 kB | 135.2 kB baseline + ~5 % — the one payload Lighthouse's resource summary does not see |
 | stylesheet, gzip (`size-limit`) | error | 11.5 kB | 10.6 kB baseline + ~9 % |
 | `resource-summary:script:size` | error | 610 000 B | 562 066 B transferred — every script the page loads at startup, whatever its chunks are called (+ ~5 %; was 925 000 B until #643). The admin screens' endpoints then grew the startup chunk week by week, to 589.8 kB on every page of the CI lane (#1862's run, 2026-10-22) and 590 021 B locally: a function the generated client defines stays in its module's chunk wherever it is called from. Since #1850 the `admin` operations are a module of their own that only the admin screens load, and the lane measures 586.9 kB on each of its four pages. The line stayed: it was already within 1 % of the page, and a saving smaller than its headroom earns no ratchet. It was 590 000 B until #2010 credited UNESCO's description wherever it is shown (CC BY-SA 4.0 asks for the credit on every surface that shows the text): `perf:local` then measured 590 476 B on each of its four pages on 2026-10-25, and the line moved with the measurement, as the admin panel's did for #1613, rather than refusing the next feature for a margin of bytes. It was 600 000 B until #2224 gave Discover a crowded city's tail and the fame order of a kind's list: `perf:local` measured 599 432 B on `main` on 2026-11-01, 568 B under the line, and 600 241 B on the branch on each of its four pages, the tail's read with the subregions and its rows in the list's window being Discover's, which the entry chunk carries. Splitting Discover out was measured before (above) and grows what the page loads, so the line moved with the measurement |
