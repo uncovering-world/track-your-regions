@@ -919,21 +919,26 @@ and reasons, and the tier a run recorded on its changeset.
   `editionsGroupFloor` places; its readers reach `readersShare` of the readers reference, in a group of
   at least `readersGroupFloor`; or the Wikivoyage editions that use it reach `guideShare` of the guide
   reference, in a group of at least `guideGroupFloor`. A place of a type in `guideForTypes` — a tunnel,
-  a dam, a lock, as the kind's rule types it — is then refused unless a Wikivoyage edition uses it
+  a dam, a lock, a bridge, as the kind's rule types it — is then refused unless a Wikivoyage edition uses it
   (`needsAGuide`, read by `surroundingsArrivals` after the rule): the readership of a tunnel's article does
-  not say people go to see it, a guide does (the Kurobe Dam, the Old Elbe Tunnel). A place the tier
+  not say people go to see it, a guide does (the Kurobe Dam, the Old Elbe Tunnel). For a type in
+  `heritageForTypes`, a bridge, a heritage designation (`P1435`) that still holds counts as a guide's use,
+  read off the subset (`subsetStandingFacts`) for the bridges no guide uses alone: the Luding Bridge
+  stays and the Astoria–Megler Bridge, a crossing people only drive across, does not (#2324). A place the tier
   holds stays while it keeps `minLanguages`, reaches `stayReadersShare` of `minReaders` and passes one
   test, the readers test read at `stayReadersShare` and the other two whole, since their reference is
-  its own neighbours'; a tunnel, dam or lock stays only while a guide still uses it. Where no usage
+  its own neighbours'; a place of a `guideForTypes` type stays only while a guide still uses it, a bridge
+  also while its heritage designation holds. Where no usage
   build is in place (`guideEditions` null, ADR-0175 decision 6), a held place that passes neither other
   test is kept, its note naming the guides' test it could not read, unless no guide used it when last
-  read (`guidedAsLastRead`), and a held tunnel, dam or lock stays by its guide as last read — the Finse
-  Tunnel, the Eschbach Dam; nothing new enters by a guide, and a new tunnel, dam or lock not at all. `SURROUNDINGS_CUT`
+  read (`guidedAsLastRead`), and a held place of a `guideForTypes` type stays by its guide as last read — the
+  Finse Tunnel, the Eschbach Dam; nothing new enters by a guide, and a new tunnel, dam, lock or bridge not
+  at all, save a bridge whose heritage designation holds, which the subset reads whatever the usage build. `SURROUNDINGS_CUT`
   reads its numbers from the register (`SURROUNDINGS_REGISTER` in `places/admissionRegister.ts`, ADR-0175
   decisions 2 and 3, ADR-0181): 150 km, a density at the 20th-nearest place and a ratio of 4, the 10
   best, a Wikivoyage share of a quarter, the editions reference whole and the readers reference at one
   and a half, groups of 5, 25 and 25 places, two editions, 3,000 readers a year, a guide for tunnels,
-  dams and locks, and a stay at 0.8 (2,400 readers, 0.8 of the readers share). Two more
+  dams, locks and bridges, a bridge also kept by a heritage designation, and a stay at 0.8 (2,400 readers, 0.8 of the readers share). Two more
   the review's experiments turned: **`enabled`**, on since #2252 (off, the pass reads no pool and
   every kind's part says so),
   and **`neighbours`**, whose places set the references: `all` (every place kind's and the museums',
