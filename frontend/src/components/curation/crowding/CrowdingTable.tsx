@@ -58,9 +58,10 @@ function guideWords(used: boolean | null): string {
 
 const numberCell = (value: number | null) => (value === null ? '—' : value.toLocaleString('en'));
 
-function RowAnswers({ row, staging, onAnswer }: {
+function RowAnswers({ row, staging, frozen, onAnswer }: {
   row: CrowdingWindowRow;
   staging: Staging;
+  frozen: boolean;
   onAnswer: (row: CrowdingWindowRow, answer: CrowdingAnswer) => void;
 }) {
   const offered = answersOffered(row);
@@ -75,7 +76,7 @@ function RowAnswers({ row, staging, onAnswer }: {
             size="small"
             variant={chosen === answer ? 'contained' : 'outlined'}
             color={color}
-            disabled={!offered[answer]}
+            disabled={frozen || !offered[answer]}
             aria-pressed={chosen === answer}
             onClick={() => onAnswer(row, answer)}
             sx={{ minWidth: 0, px: 1, whiteSpace: 'nowrap' }}
@@ -88,7 +89,7 @@ function RowAnswers({ row, staging, onAnswer }: {
   );
 }
 
-export function CrowdingTable({ rows, centreId, centreName, typeWord, radiusKm, limit, staging, hovered, onHover, onShow, onAnswer }: {
+export function CrowdingTable({ rows, centreId, centreName, typeWord, radiusKm, limit, staging, frozen = false, hovered, onHover, onShow, onAnswer }: {
   rows: readonly CrowdingWindowRow[];
   centreId: number;
   centreName: string;
@@ -97,6 +98,8 @@ export function CrowdingTable({ rows, centreId, centreName, typeWord, radiusKm, 
   radiusKm: number;
   limit: number;
   staging: Staging;
+  /** The rows of the previous read, shown while the next one loads: they take no new answer. */
+  frozen?: boolean;
   hovered: number | null;
   onHover: (membershipId: number | null) => void;
   /** A click on a row: its dot is brought into the map's view. */
@@ -166,7 +169,7 @@ export function CrowdingTable({ rows, centreId, centreName, typeWord, radiusKm, 
                 <TableCell>{guideWords(row.guideUsed)}</TableCell>
                 <TableCell align="right">{row.score === null ? 'not scored' : row.score.toFixed(2)}</TableCell>
                 <TableCell align="right">{outrankedWords(row)}</TableCell>
-                <TableCell align="right"><RowAnswers row={row} staging={staging} onAnswer={onAnswer} /></TableCell>
+                <TableCell align="right"><RowAnswers row={row} staging={staging} frozen={frozen} onAnswer={onAnswer} /></TableCell>
               </TableRow>
             </Fragment>
           );

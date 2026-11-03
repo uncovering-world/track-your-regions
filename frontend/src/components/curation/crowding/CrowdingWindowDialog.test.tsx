@@ -130,6 +130,29 @@ describe('the crowded-city window', () => {
     expect(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('keeps an answer staged while an Apply runs, which that Apply did not send', async () => {
+    let finish: (value: Awaited<ReturnType<typeof answerCrowding>>) => void = () => {};
+    mockedAnswer.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
+    await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith([{ membershipId: SCHLOSSPLATZ, answer: 'list' }]));
+    // Staged while the first Apply's pages go.
+    fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
+
+    finish({
+      answered: [{ membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'list', pin: 'list', published: true, refused: false }],
+      refused: [],
+      outOfScope: 0,
+      placementFailed: [],
+    });
+    expect(await screen.findByRole('button', { name: 'Apply 1 answer' })).toBeEnabled();
+    expect(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' })).toHaveAttribute('aria-pressed', 'true');
+    expect(rowOf('Schloßplatz').getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('says why an answer is not offered where a curator can hover it', async () => {
     renderWindow();
     await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
@@ -160,6 +183,16 @@ describe('the crowded-city window', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Street · 9' }));
     await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(SCHLOSSPLATZ, 'street'));
+  });
+
+  it('takes no new answer on the squares still shown while the streets load', async () => {
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    mockedWindow.mockReturnValueOnce(new Promise(() => {}));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Street · 9' }));
+    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(SCHLOSSPLATZ, 'street'));
+    expect(rowOf('Nollendorfplatz').getByRole('button', { name: 'List' })).toBeDisabled();
   });
 
   it('steps through a group of shadowed arrivals', async () => {
