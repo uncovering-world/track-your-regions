@@ -114,6 +114,14 @@ export function ApproximatePointsCard({ item, onDone }: { item: ReviewQueueItem;
   const [reading, setReading] = useState<{ point: number; hint?: string | null }>({ point: 0 });
   const [byHand, setByHand] = useState<ApproximatePoint | null>(null);
   const point = points[Math.min(reading.point, points.length - 1)];
+  // After an answer the card stays on the points still open (the queue re-reads
+  // it without the one answered), at the answered point's place in the list,
+  // which is then the next open point, on its first hint. The place is the
+  // answered point's own, not the one being read, which a click may have moved
+  // while the answer was on its way.
+  const answered = (target: ApproximatePoint) => {
+    setReading({ point: Math.max(0, points.findIndex(x => x.locationId === target.locationId)) });
+  };
   const hint = point ? pickedHint(point, reading.hint) : null;
   // Kept while the point and the hint stay the same: the map eases to its focus
   // whenever the focus changes, and a new one each render would undo a zoom.
@@ -127,9 +135,13 @@ export function ApproximatePointsCard({ item, onDone }: { item: ReviewQueueItem;
     mutationFn: ({ target, at }: { target: ApproximatePoint; at: { latitude: number; longitude: number }; word: string }) => (
       editLocation(target.locationId, { latitude: at.latitude, longitude: at.longitude })
     ),
-    onSettled: (data, error, { target, word }) => onDone(
-      error || !data ? messageFor(item, error) : `${item.name}: ${target.name ?? target.ref ?? 'a component'} ${word}`, item.id,
-    ),
+    onSettled: (data, error, { target, word }) => {
+      // A failed answer leaves the point and the hint picked as they were.
+      if (data && !error) answered(target);
+      onDone(
+        error || !data ? messageFor(item, error) : `${item.name}: ${target.name ?? target.ref ?? 'a component'} ${word}`, item.id,
+      );
+    },
   });
 
   // The full OpenStreetMap, asked for one point's namesakes (#2243): what the
@@ -149,7 +161,8 @@ export function ApproximatePointsCard({ item, onDone }: { item: ReviewQueueItem;
         <ItemHeader item={item} />
         <Typography variant="body2" sx={{ mb: 2 }}>
           The World Heritage list places {points.length === 1 ? 'one component' : `${points.length} components`} of this
-          site only roughly. Say where each stands: pick a hint, place it by hand, or keep the list&apos;s point where it
+          site only roughly. Say where each stands, in any order — pick a component to show it on the map — then pick
+          a hint, place it by hand, or keep the list&apos;s point where it
           stands for a large area well enough. Readers see the list&apos;s point until you answer.
         </Typography>
         <ComponentItemsMap
@@ -160,7 +173,21 @@ export function ApproximatePointsCard({ item, onDone }: { item: ReviewQueueItem;
         />
         <Stack spacing={2} sx={{ mt: 2 }}>
           {points.map((each, p) => (
-            <Box key={each.locationId} sx={{ border: 1, borderColor: p === reading.point ? 'primary.main' : 'divider', borderRadius: 1, p: 1.5 }}>
+            // A click on the row picks the point to read, in any order: the map
+            // follows it, its hints and all (*Show it on the map* below is the
+            // same for a keyboard). Its buttons pick a hint of the same point, and
+            // their click reaches the row after their own pick, in the same batch:
+            // the update reads the pick already made, so the row keeps the hint
+            // chosen rather than clearing it.
+            <Box
+              key={each.locationId}
+              onClick={() => setReading(r => (r.point === p ? r : { point: p }))}
+              sx={{
+                border: 1, borderColor: p === reading.point ? 'primary.main' : 'divider', borderRadius: 1, p: 1.5,
+                cursor: p === reading.point ? 'default' : 'pointer',
+                '&:hover': p === reading.point ? undefined : { borderColor: 'text.secondary' },
+              }}
+            >
               <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                 {each.name ?? 'Unnamed component'}{each.ref ? ` (${each.ref})` : ''}
               </Typography>
@@ -199,6 +226,9 @@ export function ApproximatePointsCard({ item, onDone }: { item: ReviewQueueItem;
                 failed={namesakes.isError && namesakes.variables?.locationId === each.locationId}
                 onAsk={() => namesakes.mutate(each)} />
               <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+                {p !== reading.point && (
+                  <Button size="small" onClick={() => setReading({ point: p })}>Show it on the map</Button>
+                )}
                 <Button size="small" onClick={() => { setReading({ point: p, hint: null }); setByHand(each); }}>
                   Place it by hand
                 </Button>
@@ -225,7 +255,7 @@ export function ApproximatePointsCard({ item, onDone }: { item: ReviewQueueItem;
               locationId: byHand.locationId, experienceId: item.id, objectName: item.name,
               name: byHand.name, latitude: byHand.latitude, longitude: byHand.longitude,
             },
-            onDone: (message) => { setByHand(null); onDone(message, item.id); },
+            onDone: (message) => { answered(byHand); setByHand(null); onDone(message, item.id); },
           }}
         />
       )}

@@ -15,8 +15,11 @@ vi.mock('../../api/curation', () => ({ editLocation: vi.fn(), suggestPointHints:
 // The map, as the card hands it its focus: the hint picked, by its label.
 vi.mock('./ComponentItemsMap', async (original) => ({
   ...(await original<typeof import('./ComponentItemsMap')>()),
-  ComponentItemsMap: ({ focus }: { focus: { candidate: { label: string } | null } }) => (
-    <div>{`map on ${focus.candidate?.label ?? 'no hint'}`}</div>
+  ComponentItemsMap: ({ focus }: { focus: { point: { name: string }; candidate: { label: string } | null } }) => (
+    <>
+      <div>{`map on ${focus.candidate?.label ?? 'no hint'}`}</div>
+      <div>{`reading ${focus.point.name}`}</div>
+    </>
   ),
 }));
 vi.mock('../shared/PointPreviewDialog', () => ({
@@ -90,6 +93,61 @@ describe('the card for components placed only roughly', () => {
     renderCard();
     fireEvent.click(screen.getAllByRole('button', { name: "Keep the list's point" })[1]);
     await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(10750, { latitude: 40.15, longitude: 44.3 }));
+  });
+
+  it('starts on the first point, and lets a curator pick any other to read, by its row or its button', () => {
+    renderCard();
+    expect(screen.getByText(`reading ${GAYANEH.name}`)).toBeTruthy();
+
+    // A point with no hint has no Show on the map of its own: its button and its row pick it.
+    fireEvent.click(screen.getByRole('button', { name: 'Show it on the map' }));
+    expect(screen.getByText(`reading ${ROUNDED.name}`)).toBeTruthy();
+    expect(screen.getByText('map on no hint')).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/^Church Saint Gayaneh and surrounding buildings/));
+    expect(screen.getByText(`reading ${GAYANEH.name}`)).toBeTruthy();
+    expect(screen.getByText('map on Saint Gayane Church')).toBeTruthy();
+  });
+
+  it('keeps the hint picked when the click reaches the row from the hint\'s own button', () => {
+    // Saint Gayaneh second, so its row is not the one being read when its
+    // candidate's button is clicked: the button's pick and the row's land together.
+    const named = { ...GAYANEH, hints: [GAYANEH.hints[0], { ...GAYANEH.hints[1], label: 'The candidate item' }] };
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ApproximatePointsCard item={{ ...ECHMIATSIN, approximate_points: [ROUNDED, named] } as ReviewQueueItem} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText(`reading ${ROUNDED.name}`)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Show on the map' })[1]);
+    expect(screen.getByText(`reading ${GAYANEH.name}`)).toBeTruthy();
+    expect(screen.getByText('map on The candidate item')).toBeTruthy();
+  });
+
+  it('keeps the point and the hint picked when an answer fails', async () => {
+    mockedEdit.mockRejectedValue(new Error('offline'));
+    const named = { ...GAYANEH, hints: [GAYANEH.hints[0], { ...GAYANEH.hints[1], label: 'The candidate item' }] };
+    const onDone = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ApproximatePointsCard item={{ ...ECHMIATSIN, approximate_points: [ROUNDED, named] } as ReviewQueueItem} onDone={onDone} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Show on the map' })[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Move here' })[1]);
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(screen.getByText(`reading ${GAYANEH.name}`)).toBeTruthy();
+    expect(screen.getByText('map on The candidate item')).toBeTruthy();
+  });
+
+  it('answers the point picked, not the first, and names it', async () => {
+    const onDone = renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Show it on the map' }));
+    fireEvent.click(screen.getAllByRole('button', { name: "Keep the list's point" })[1]);
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(10750, { latitude: 40.15, longitude: 44.3 }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(
+      `${ECHMIATSIN.name}: ${ROUNDED.name} kept at the list's point`, 831,
+    ));
   });
 
   it('opens the correction to place a point by hand', () => {
