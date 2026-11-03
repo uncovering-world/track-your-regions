@@ -633,6 +633,31 @@ describe('the street-art places (#2035)', () => {
     }));
   });
 
+  it('keeps a held street-art place resting on a guide alone when no usage build is in place (ADR-0175 decision 6)', async () => {
+    withCopy();
+    const held = new Set([LENNON_WALL]);
+    const gathered = await gatherPublicArt(doorTo(world), held);
+    // A year's readers below the mark and no Atlas Obscura entry: the guide is its one mark.
+    const unbuilt = { marks: new Map(), guided: null, readers: new Map([[LENNON_WALL, 3_000]]) };
+
+    const asLastRead = await classifyAt(gathered, PUBLIC_ART_RULE, held, { streetArt: reading({
+      ...unbuilt, guidedAsLastRead: new Map([[LENNON_WALL, true]]),
+    }) });
+    expect(asLastRead.items.map((i) => i.qid)).toContain(LENNON_WALL);
+
+    // Never read either: kept, since the run cannot say it has no guide.
+    const neverRead = await classifyAt(gathered, PUBLIC_ART_RULE, held, { streetArt: reading(unbuilt) });
+    expect(neverRead.items.map((i) => i.qid)).toContain(LENNON_WALL);
+
+    // Last read without a guide: the line refuses it as on a run that reads one.
+    const readWithout = await classifyAt(gathered, PUBLIC_ART_RULE, held, { streetArt: reading({
+      ...unbuilt, guidedAsLastRead: new Map([[LENNON_WALL, false]]),
+    }) });
+    expect(readWithout.filtered).toContainEqual(expect.objectContaining({
+      externalId: LENNON_WALL, reason: expect.stringContaining('below the street-art line'),
+    }));
+  });
+
   it('is not Monuments & memorials\' to decide: what only the entrance named is skipped there', async () => {
     withCopy();
     const gathered = await gatherPublicArt(doorTo(world), new Set());

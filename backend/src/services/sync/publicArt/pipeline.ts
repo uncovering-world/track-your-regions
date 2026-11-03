@@ -32,7 +32,7 @@ import {
 } from './classes.js';
 import { publicArtVerdict, type PublicArtFacts } from './publicArtTest.js';
 import { streetArtVerdict } from './streetArtTest.js';
-import { enterStreetArtPlaces, type StreetArtReading } from './streetArtPlaces.js';
+import { enterStreetArtPlaces, streetArtGuideOf, type StreetArtReading } from './streetArtPlaces.js';
 import type { KindFacts, KindRule } from './kindRules.js';
 import { CAST_GROUP, emptyFacts, fetchCastGroupPool, type PoolEntity, type EntityFacts } from './queries.js';
 import { attachCasts, fetchCastItems } from './castGroups.js';
@@ -235,7 +235,7 @@ function streetArtVerdictOf(entity: PoolEntity, gathered: GatheredPublicArt, rea
     classes: known.classes,
     excludedRoots: [...new Set(known.classes.flatMap((c) => reading.roots.get(c) ?? []))],
     atlasObscura: marks?.atlasObscura ?? false,
-    guided: reading.guided.has(entity.qid),
+    guided: streetArtGuideOf(entity.qid, reading),
     readers: reading.readers === null ? null : reading.readers.get(entity.qid) ?? 0,
     ended: marks?.ended ?? false,
     admitted: held,

@@ -138,7 +138,9 @@ function publicArtClassifier(rule: KindRule, { streetArt = false }: ClassifierOp
     classify: async (gathered, admitted, sparql, history) => {
       const share = shareOf(gathered, PUBLIC_ART_KIND);
       const offered = await placesOtherSourcesOffer(PUBLIC_ART_SOURCES);
-      const streetArtRead = streetArt ? await readStreetArt(sparql, streetArtCandidates(share, rule), share.facts) : null;
+      const streetArtRead = streetArt
+        ? await readStreetArt(sparql, streetArtCandidates(share, rule), share.facts, history?.memory)
+        : null;
       return classifyPublicArt(share, rule, admitted, sparql, offered, streetArtRead, { history });
     },
     types: rule.types,
