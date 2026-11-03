@@ -18,6 +18,7 @@ import { MapsAppProvider } from './hooks/useMapsApp';
 import { ReadingLanguagesProvider } from './hooks/useReadingLanguages';
 import { AppThemeProvider, useAppTheme, createAppTheme } from './theme';
 import { parseAppUrl } from './utils/appUrl';
+import { AppAddressProvider } from './hooks/useAppAddress';
 
 // The admin panel and the review queue are a signed-in admin's and curator's
 // screens, and the account page one a visitor opens rarely: route-level
@@ -209,11 +210,14 @@ function ThemedApp() {
 function App() {
   return (
     <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <AppThemeProvider>
-          <ThemedApp />
-        </AppThemeProvider>
-      </QueryClientProvider>
+      {/* One latest address for every reader and writer of it (#2308). */}
+      <AppAddressProvider>
+        <QueryClientProvider client={queryClient}>
+          <AppThemeProvider>
+            <ThemedApp />
+          </AppThemeProvider>
+        </QueryClientProvider>
+      </AppAddressProvider>
     </BrowserRouter>
   );
 }

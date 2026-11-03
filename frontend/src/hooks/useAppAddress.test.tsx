@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router';
 import type { ReactNode } from 'react';
-import { useAppAddress } from './useAppAddress';
+import { AppAddressProvider, useAppAddress } from './useAppAddress';
 
 function makeWrapper(entry: string) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -15,6 +15,14 @@ function useUnderTest() {
   const { address, go } = useAppAddress();
   const location = useLocation();
   return { address, go, at: `${location.pathname}${location.search}`, key: location.key, type: useNavigationType() };
+}
+
+/** Two instances of the hook in one tree, as the header and the navigation provider are. */
+function useTwoWriters() {
+  const header = useAppAddress();
+  const provider = useAppAddress();
+  const location = useLocation();
+  return { header, provider, at: `${location.pathname}${location.search}` };
 }
 
 describe('useAppAddress', () => {
@@ -129,6 +137,37 @@ describe('useAppAddress', () => {
 
     await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta?kind=1'));
     expect(result.current.type).toBe('REPLACE');
+  });
+
+  it("builds one instance's relative write on another instance's write, under the router's provider (#2308)", async () => {
+    // The header switches Malta's page to Discover through its own instance, and the
+    // slug correction follows through the navigation provider's, before React has
+    // rendered the first write: it must find Discover there, not put the map back.
+    const { result } = renderHook(useTwoWriters, {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <MemoryRouter initialEntries={['/wv/5/r/7100']}><AppAddressProvider>{children}</AppAddressProvider></MemoryRouter>
+      ),
+    });
+
+    act(() => {
+      result.current.header.go(at => ({ ...at, mode: 'discover' }));
+      result.current.provider.go(at => (at.regionId === 7100 ? at : null), { replace: true, names: { region: 'Malta' } });
+    });
+
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta'));
+  });
+
+  it('keeps a latest address of its own under a bare router, which another instance does not see', async () => {
+    const { result } = renderHook(useTwoWriters, { wrapper: makeWrapper('/wv/5/r/7100') });
+
+    act(() => {
+      result.current.header.go(at => ({ ...at, mode: 'discover' }));
+      result.current.provider.go(at => (at.regionId === 7100 ? at : null), { replace: true, names: { region: 'Malta' } });
+    });
+
+    // What #2308 is about, kept where no provider is mounted: the second instance
+    // never saw the first one's write.
+    await waitFor(() => expect(result.current.at).toBe('/wv/5/r/7100-malta'));
   });
 
   it('follows a navigation made from outside it', async () => {
