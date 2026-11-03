@@ -111,6 +111,7 @@ export function shaped(over: QueuePatch = {}) {
     visitQuestions: [],
     approximatePoints: [],
     approximateUnhinted: [],
+    findSites: [],
     keptOut: [],
     arrivals: [],
     held: [],

@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   queueRows, nextSelection, rowQuestionWord, KIND_SHORT,
+  serverRowOf,
 } from './queueRows';
 import type {
   HeldPart, QueueOrderEntry, ReviewQueue, ReviewQueueItem,
@@ -51,7 +52,7 @@ function heldPart(over: Partial<HeldPart> = {}): HeldPart {
 function queue(over: Partial<ReviewQueue> = {}): ReviewQueue {
   return {
     missing: [], refused: [], keptOut: [], conflicts: [], sources: [], componentItems: [], mergeProposals: [],
-    pinQuestions: [], visitQuestions: [], approximatePoints: [], approximateUnhinted: [], arrivals: [], held: [], contents: [], withdrawn: [], answeredWithdrawals: [],
+    pinQuestions: [], visitQuestions: [], approximatePoints: [], approximateUnhinted: [], findSites: [], arrivals: [], held: [], contents: [], withdrawn: [], answeredWithdrawals: [],
     refusedParts: [],
     limit: 25,
     order: [],
@@ -281,6 +282,18 @@ describe('queueRows', () => {
     }));
 
     expect(rows[0].specific).toBe('1 place');
+  });
+
+  it('a row for a site a run proposed finds for counts its open finds, and its key is the page\'s address (#2304)', () => {
+    const rows = queueRows(queue({
+      findSites: [item({ id: 1469, name: 'The Ahwar of Southern Iraq', kind: 'find-sites', find_proposals: 2 })],
+      order: [orderEntry({ kind: 'find-sites', id: 1469 })],
+    }));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe('find-sites');
+    expect(rows[0].specific).toBe('2 finds');
+    expect(serverRowOf(rows[0].key)).toBe('find-sites:1469');
   });
 
   describe('a key order names that no hydrated row answers to', () => {

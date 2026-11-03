@@ -3460,6 +3460,7 @@ export const ReviewQueueItemKind = {
   'visit-question': 'visit-question',
   'approximate-points': 'approximate-points',
   'approximate-unhinted': 'approximate-unhinted',
+  'find-sites': 'find-sites',
 } as const;
 
 /**
@@ -4641,6 +4642,8 @@ export interface ReviewQueueItem {
   site_points?: SitePoint[] | null;
   /** The components the World Heritage list placed only roughly, each with where it may really stand (#1853). `approximate-points` and `approximate-unhinted` items only. */
   approximate_points?: ApproximatePoint[] | null;
+  /** How many finds a run proposed for this site from their own points that no curator has answered (#2304). `find-sites` items only; the questions are the place dialog's, read by `GET /:id/find-links`. */
+  find_proposals?: number | null;
   /** The open pairs of near places with similar names this place is the lower id of, the most alike first (#1249). `merge-proposals` items only. */
   merge_pairs?: MergePair[] | null;
   /** `pin-question` items only (#1367). */
@@ -4670,6 +4673,7 @@ export const QueueKind = {
   'visit-question': 'visit-question',
   'approximate-points': 'approximate-points',
   'approximate-unhinted': 'approximate-unhinted',
+  'find-sites': 'find-sites',
 } as const;
 
 /**
@@ -4717,6 +4721,7 @@ export const QueueFacetsKindItemKind = {
   'visit-question': 'visit-question',
   'approximate-points': 'approximate-points',
   'approximate-unhinted': 'approximate-unhinted',
+  'find-sites': 'find-sites',
   arrival: 'arrival',
   held: 'held',
   contents: 'contents',
@@ -4848,6 +4853,8 @@ export interface ReviewQueue {
   approximatePoints: ReviewQueueItem[];
   /** Serial sites with a component the World Heritage list placed only roughly and nothing says where else it may stand (#1903): kept or placed by hand. */
   approximateUnhinted: ReviewQueueItem[];
+  /** Sites a run proposed finds for, from the finds' own points, that no curator has answered (#2304). */
+  findSites: ReviewQueueItem[];
   arrivals: ReviewQueueItem[];
   held: ReviewQueueItem[];
   /** One per place and membership holding unread rows it placed (#1290). */
@@ -4901,6 +4908,7 @@ export const ReviewAnswerBodyRowsItemKind = {
   'visit-question': 'visit-question',
   'approximate-points': 'approximate-points',
   'approximate-unhinted': 'approximate-unhinted',
+  'find-sites': 'find-sites',
 } as const;
 
 export type ReviewAnswerBodyRowsItem = {
@@ -5682,6 +5690,13 @@ export interface FindSiteLink {
   distance_m: number | null;
   /** The museums a reader may be sent to that show the find. */
   shown_at: LinkedPlace[];
+  /**
+     * The find's own picture, which the question shows beside it (#2304).
+     * @nullable
+     */
+  image_url: string | null;
+  /** Whose photograph the find's picture is, shown with it. */
+  image_credit: ImageCredit | null;
 }
 
 /**

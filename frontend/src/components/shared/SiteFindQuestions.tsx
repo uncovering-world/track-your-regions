@@ -3,18 +3,21 @@ import { useState, type ReactNode } from 'react';
 import { Box, Button, TextField, Typography } from '@mui/material';
 import {
   answerFindSiteLink, fetchFindSiteLinks, searchFindSiteCandidates, type FindSiteAnswer, type FindSiteCandidate,
+  type FindSiteLink,
 } from '../../api/findSiteLinks';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { queryKeys } from '../../api/queryKeys';
 import { distanceLabel } from '../../utils/moveDescription';
 import { yearLabel } from '../../utils/yearLabel';
 import { invalidateFindSiteLink } from '../../utils/queryInvalidation';
+import { PictureWithCredit } from './PictureWithCredit';
 
 
 /**
  * Where a find comes from, answered in the place's curation dialog
- * (`CurationDialog`, #2242), never on the card a traveller reads: the card
- * lists the finds from this site and nothing more.
+ * (`CurationDialog`, #2242) and on the review page's card for a site a run
+ * proposed finds for (`FindSitesCard`, #2304), never on the card a traveller
+ * reads: the card lists the finds from this site and nothing more.
  *
  * A run proposes a find whose Wikidata item names no place of discovery for
  * the site its own coordinate stands on: the Dendera zodiac in the Louvre for
@@ -31,7 +34,14 @@ import { invalidateFindSiteLink } from '../../utils/queryInvalidation';
  * Archaeology site, never a museum (`mayBeFindOrigin`). With nothing to ask,
  * only the control that links a find by hand is drawn.
  */
-export function SiteFindQuestions({ siteId }: { siteId: number }) {
+export function SiteFindQuestions({ siteId, onAnswered }: {
+  siteId: number;
+  /**
+   * Told of each answer saved, by the review page's card (#2304), which says
+   * it in the page's notice and reads the queue again.
+   */
+  onAnswered?: (find: string, answer: FindSiteAnswer) => void;
+}) {
   const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: queryKeys.experience.findSiteLinks(siteId),
@@ -40,8 +50,10 @@ export function SiteFindQuestions({ siteId }: { siteId: number }) {
   const answer = useMutation({
     mutationFn: ({ link, value }: { link: FindSiteCandidate; value: FindSiteAnswer }) =>
       answerFindSiteLink(siteId, link.treasure_id, value),
-    onSuccess: (_result, { link }) =>
-      invalidateFindSiteLink(queryClient, siteId, link.shown_at.map((venue) => venue.id)),
+    onSuccess: (_result, { link, value }) => {
+      invalidateFindSiteLink(queryClient, siteId, link.shown_at.map((venue) => venue.id));
+      onAnswered?.(link.name, value);
+    },
   });
 
   const links = data?.links ?? [];
@@ -178,15 +190,17 @@ function LinkByHand({ siteId, busy, onLink }: {
 }
 
 /**
- * One find in the dialog: its name, what it is and when, and the museums that
- * show it, as words. Not the card's row (`FindRow` in `SiteFinds.tsx`): the
- * dialog is a lazy chunk, and a module it shares with the startup chunk is
- * split into a file of its own that every page preloads, so the dialog draws
- * its own row rather than share the card's. No picture, so no credit to hang
- * under one; the museum's card shows the photograph.
+ * One find asked about, in the place's dialog and on the review page's card
+ * (#2304): its name, what it is and when, the museums that show it, as words,
+ * and its own picture with whose photograph it is (`PictureWithCredit`), which
+ * a curator who does not know the object reads first. Not the reader card's
+ * row (`FindRow` in `SiteFinds.tsx`): the dialog is a lazy chunk, and a module
+ * it shares with the startup chunk is split into a file of its own that every
+ * page preloads, so the dialog draws its own row rather than share the card's.
  */
 function FindRow({ find, children }: {
-  find: Pick<FindSiteCandidate, 'name' | 'treasure_type' | 'year' | 'shown_at'>;
+  find: Pick<FindSiteCandidate, 'name' | 'treasure_type' | 'year' | 'shown_at'>
+    & Partial<Pick<FindSiteLink, 'image_url' | 'image_credit'>>;
   children?: ReactNode;
 }) {
   return (
@@ -199,6 +213,11 @@ function FindRow({ find, children }: {
         <Typography variant="caption" color="text.secondary" display="block">
           shown at {find.shown_at.map((venue) => venue.name).join(', ')}
         </Typography>
+      )}
+      {/* The find itself, with whose photograph it is: what a curator who does not
+          know the object reads before saying where it comes from (#2304). */}
+      {find.image_url && (
+        <PictureWithCredit url={find.image_url} credit={find.image_credit ?? null} alt={find.name} width={120} />
       )}
       {children}
     </Box>

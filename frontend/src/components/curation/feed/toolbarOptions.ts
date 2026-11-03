@@ -110,6 +110,12 @@ const KIND_OPTIONS: Array<{ key: string; label: string; short: string; swatch: s
     short: 'roughly, no hint',
     swatch: KIND_COLOR['approximate-unhinted'],
   },
+  {
+    key: 'find-sites',
+    label: 'Finds that may come from a place',
+    short: 'finds from here?',
+    swatch: KIND_COLOR['find-sites'],
+  },
 ];
 
 /** What the question chip says once a kind is picked: its short word, never the API's. */

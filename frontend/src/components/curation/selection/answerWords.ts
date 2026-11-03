@@ -37,7 +37,7 @@ export interface AnswerableRow {
 
 export type AnswerableKind =
   | 'arrival' | 'held' | 'contents' | 'conflicts' | 'sources' | 'refused' | 'missing' | 'withdrawn' | 'component-items'
-  | 'merge-proposals' | 'pin-question' | 'visit-question' | 'approximate-points' | 'approximate-unhinted';
+  | 'merge-proposals' | 'pin-question' | 'visit-question' | 'approximate-points' | 'approximate-unhinted' | 'find-sites';
 
 export interface AnswerWords {
   /** What the row proposes, as the bar's expansion states it. */
@@ -138,6 +138,13 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
     accept: 'Answer them on each card',
     reject: 'Answer them on each card',
   },
+  // A find's point can be where it comes from, what a painting shows or where a lost
+  // original stood, read one find at a time (#2304): the server refuses both.
+  'find-sites': {
+    proposes: 'say whether a find comes from the place its own point stands on',
+    accept: 'Answer them on each card',
+    reject: 'Answer them on each card',
+  },
 };
 
 /** The plural noun the bar counts a kind by. */
@@ -156,6 +163,7 @@ export const KIND_NOUN: Record<AnswerableKind, [string, string]> = {
   'visit-question': ['place with nothing to see', 'places with nothing to see'],
   'approximate-points': ['site placed only roughly', 'sites placed only roughly'],
   'approximate-unhinted': ['site placed only roughly, with no hint', 'sites placed only roughly, with no hint'],
+  'find-sites': ['site a run proposed finds for', 'sites a run proposed finds for'],
 };
 
 /**

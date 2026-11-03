@@ -64,6 +64,7 @@ const QUESTION: Record<RowKind, string> = {
   'visit-question': 'offered, with nothing to see',
   'approximate-points': 'placed only roughly',
   'approximate-unhinted': 'placed only roughly, no hint',
+  'find-sites': 'finds that may come from here',
 };
 
 /** The server's word for a question kind, mapped to this file's own — only `conflict` differs. */
@@ -80,6 +81,7 @@ const ROW_KIND: Record<QueueOrderEntry['kind'], RowKind> = {
   'visit-question': 'visit-question',
   'approximate-points': 'approximate-points',
   'approximate-unhinted': 'approximate-unhinted',
+  'find-sites': 'find-sites',
 };
 
 /**
@@ -173,6 +175,7 @@ export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
     'visit-question': byPlace(data.visitQuestions),
     'approximate-points': byPlace(data.approximatePoints),
     'approximate-unhinted': byPlace(data.approximateUnhinted),
+    'find-sites': byPlace(data.findSites),
   };
 
   const rows: QueueRow[] = [];

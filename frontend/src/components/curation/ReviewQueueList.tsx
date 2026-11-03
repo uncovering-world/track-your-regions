@@ -44,6 +44,7 @@ const KIND_HEADING: Record<RowKind, string> = {
   'visit-question': 'Offered places with nothing to see — refuse them?',
   'approximate-points': 'Components the World Heritage list placed only roughly — where are they?',
   'approximate-unhinted': 'Components placed only roughly that nothing says more about — keep or place them',
+  'find-sites': 'Finds that may come from these places — are they from here?',
 };
 
 /** A group's heading a transition in `rows` opens — never computed for a row that continues its predecessor's group. */
