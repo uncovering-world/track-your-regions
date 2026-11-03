@@ -58,8 +58,8 @@ locks, boat lift or inclined plane, each one place (§ A canal's works), and no 
 long object and waits for a model of its own (#1948). Its world tier is read
 from Wikidata by the source *Bridges & engineering marvels* (`experience_sources` row 8), which
 decides from the place pass's gather (ADR-0132 decision 5). The rule is code, and is not restated
-here: the classes are `backend/src/services/sync/bridges/classes.ts`, the verdict
-`bridgeTest.ts` and the line `kind.ts`. This record holds what the search measured and why the
+here: the classes are `backend/src/services/sync/bridges/classes.ts`, the declaration
+`BRIDGES_DECLARATION` there, read by `places/declaredKind.ts`, and the line `kind.ts`. This record holds what the search measured and why the
 line is where it is.
 
 ## The candidates (2026-10-22, the dev subset)
