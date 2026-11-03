@@ -8,8 +8,9 @@
  * a tower tomb.
  */
 
-import { fetchClassTree, type QueryRunner } from '../wikidataQueries.js';
 import type { PoolRoot } from '../places/gather.js';
+import type { PlaceKindDeclaration } from '../places/declaredKind.js';
+import { PUBLIC_CLOCK_CLASSES } from '../publicArt/classes.js';
 import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /** The roots the candidates are asked by, in fame bands on the live service. */
@@ -47,21 +48,21 @@ const TYPE_ROOTS: Readonly<Record<Exclude<TowerType, 'tower'>, readonly string[]
  * gate tower have kinds of their own (ADR-0131 decision 2); a statue is a
  * monument or public art; a skyscraper waits for Skyscrapers (#1857).
  */
-export const OTHER_KINDS: Readonly<Record<string, { root: string; reason: string }>> = {
+const OTHER_KINDS: PlaceKindDeclaration<TowerType>['others'] = {
   lighthouse: { root: 'Q39715', reason: 'a lighthouse, not a tower' },
   bridge: { root: 'Q12280', reason: 'a bridge, not a tower' },
   gate: { root: 'Q82117', reason: 'a city gate, not a tower' },
   gateTower: { root: 'Q685204', reason: 'a gate tower, not a tower' },
   sculpture: { root: 'Q860861', reason: 'a sculpture, not a tower' },
-  skyscraper: { root: 'Q11303', reason: 'a skyscraper, not a tower' },
-  officeBuilding: { root: 'Q1021645', reason: 'an office building, not a tower' },
-  towerBlock: { root: 'Q18142', reason: 'a tower block, not a tower' },
+  // A TV or observation tower Wikidata also calls a skyscraper is still a tower
+  // (the Oriental Pearl Tower): its type names what it is visited for.
+  skyscraper: { root: 'Q11303', reason: 'a skyscraper, not a tower', unlessTyped: ['observation-tower'] },
+  officeBuilding: { root: 'Q1021645', reason: 'an office building, not a tower', unlessTyped: ['observation-tower'] },
+  towerBlock: { root: 'Q18142', reason: 'a tower block, not a tower', unlessTyped: ['observation-tower'] },
 };
 
-/** Never a place to visit as a tower: gone, never built, or a bare mast. */
-export const KILLS: Readonly<Record<string, { root: string; reason: string }>> = {
-  destroyed: { root: 'Q19860854', reason: 'destroyed or demolished' },
-  proposed: { root: 'Q811683', reason: 'proposed, not built' },
+/** Never a place to visit as a tower, beside the gone and the unbuilt: a bare mast, ruins. */
+const KILLS: PlaceKindDeclaration<TowerType>['kills'] = {
   guyedMast: { root: 'Q5622819', reason: 'a guyed mast, not a tower one visits' },
   ruins: { root: 'Q109607', reason: 'ruins: an archaeological site, not a tower' },
 };
@@ -72,10 +73,10 @@ export const KILLS: Readonly<Record<string, { root: string; reason: string }>> =
  * tower. The tree holds twin towers, monasteries and convents, and Kharaqan's
  * twin tower tombs are towers a traveller visits (#2136).
  */
-export const BUILDING_COMPLEX = 'Q1497364';
+const BUILDING_COMPLEX = 'Q1497364';
 
 /** The plain `tower` class, which names a complex's towers by their height alone. */
-export const PLAIN_TOWER = 'Q12518';
+const PLAIN_TOWER = 'Q12518';
 
 /** A place of worship (Q1370598), whose tower classes may name only its part. */
 const WORSHIP_ROOT = 'Q1370598';
@@ -106,50 +107,51 @@ const WORSHIP_PART_ROOTS = ['Q48356', 'Q1435771', 'Q5191724'];
  */
 const SEA_FORT_ROOT = 'Q20097897';
 
-/** The class trees the rule reads. */
-export interface TowerTrees {
-  /** Every class under a tower root: what names a candidate. */
-  tower: ReadonlySet<string>;
-  /** The classes each type is read from. */
-  types: Readonly<Record<Exclude<TowerType, 'tower'>, ReadonlySet<string>>>;
-  /** The classes that make a candidate another kind's, by key of `OTHER_KINDS`. */
-  others: Readonly<Record<string, ReadonlySet<string>>>;
-  /** The classes that make a candidate no place to visit, by key of `KILLS`. */
-  kills: Readonly<Record<string, ReadonlySet<string>>>;
-  worship: ReadonlySet<string>;
-  archaeologicalSite: ReadonlySet<string>;
-  /** Tower classes that may name a part of a place of worship. */
-  worshipParts: ReadonlySet<string>;
-  /** The sea fort tree, whose tower classes name a gun platform at sea (`SEA_FORT_ROOT`). */
-  seaFort: ReadonlySet<string>;
-}
-
-/** Walk every tree the rule reads: one question per root, each its own step. */
-export async function fetchTowerTrees(run: QueryRunner): Promise<TowerTrees> {
-  const tree = async (root: string, label: string): Promise<Set<string>> => {
-    await run.step();
-    return fetchClassTree(run.sparql, root, label);
-  };
-  run.phase('Reading what a tower is...');
-  const tower = new Set<string>();
-  for (const root of TOWER_ROOTS) for (const cls of await tree(root.qid, `${root.label} classes`)) tower.add(cls);
-  const typeTrees = {} as Record<Exclude<TowerType, 'tower'>, ReadonlySet<string>>;
-  for (const [type, roots] of Object.entries(TYPE_ROOTS) as [Exclude<TowerType, 'tower'>, readonly string[]][]) {
-    const classes = new Set<string>();
-    for (const root of roots) for (const cls of await tree(root, `${type} classes`)) classes.add(cls);
-    typeTrees[type] = classes;
-  }
-  run.phase('Reading what a tower is not...');
-  const others: Record<string, ReadonlySet<string>> = {};
-  for (const [key, { root }] of Object.entries(OTHER_KINDS)) others[key] = await tree(root, `${key} classes`);
-  const kills: Record<string, ReadonlySet<string>> = {};
-  for (const [key, { root }] of Object.entries(KILLS)) kills[key] = await tree(root, `${key} classes`);
-  const worshipParts = new Set<string>();
-  for (const root of WORSHIP_PART_ROOTS) for (const cls of await tree(root, 'tower parts of a place of worship')) worshipParts.add(cls);
-  return {
-    tower, types: typeTrees, others, kills, worshipParts,
-    worship: await tree(WORSHIP_ROOT, 'places of worship'),
-    archaeologicalSite: await tree(ARCHAEOLOGICAL_SITE_ROOT, 'archaeological sites'),
-    seaFort: await tree(SEA_FORT_ROOT, 'sea forts'),
-  };
-}
+/**
+ * Towers, declared (#2318). After the classes of a tower named a candidate,
+ * the exceptions, in order:
+ * - a public clock no clock-tower class names: Wikidata files the Prague
+ *   Astronomical Clock as a bell tower for its bells, and Public art offers it
+ *   (#2136). Big Ben and the Tower of the Winds are clock towers;
+ * - a building complex that only the plain `tower` class names: Cœur
+ *   Défense's office towers (#2136). Bologna's Two Towers, a complex of
+ *   inclined towers, stay;
+ * - a place of worship whose only tower class names its part (Hagia Sophia's
+ *   minarets): Places of worship offers it. A worship class that is itself a
+ *   tower class does not make one, since Wikidata files a minaret under
+ *   structures of worship and the Qutb Minar is nothing but a minaret;
+ * - a sea fort whose only tower class is a sea fort's: HM Fort Roughs is a gun
+ *   platform at sea, and Fort Denison, a Martello tower too, stays;
+ * - an archaeological site no type of tower names (a nuraghe, a broch):
+ *   Archaeology offers it.
+ */
+export const TOWERS_DECLARATION: PlaceKindDeclaration<TowerType> = {
+  name: 'towers',
+  what: 'a tower',
+  logPrefix: '[Towers]',
+  tag: 'tower',
+  types: TOWER_TYPES,
+  fallback: 'tower',
+  pool: TOWER_ROOTS,
+  place: { roots: TOWER_ROOTS.map((root) => root.qid) },
+  typeClasses: Object.fromEntries(Object.entries(TYPE_ROOTS).map(([type, roots]) => [type, { roots }])),
+  kills: KILLS,
+  others: OTHER_KINDS,
+  noClass: { reason: 'no tower class' },
+  trees: {
+    publicClock: { classes: Object.keys(PUBLIC_CLOCK_CLASSES) },
+    buildingComplex: { classes: [BUILDING_COMPLEX] },
+    plainTower: { classes: [PLAIN_TOWER] },
+    worship: { roots: [WORSHIP_ROOT] },
+    worshipParts: { roots: WORSHIP_PART_ROOTS },
+    seaFort: { roots: [SEA_FORT_ROOT] },
+    archaeologicalSite: { roots: [ARCHAEOLOGICAL_SITE_ROOT] },
+  },
+  exceptions: [
+    { refuse: 'untyped', when: 'publicClock', unlessTyped: ['clock-tower'], reason: 'a public clock, which Public art offers, not a tower' },
+    { refuse: 'only', when: 'buildingComplex', only: 'plainTower', reason: 'a building complex, not a tower' },
+    { refuse: 'only', when: 'worship', outsideKind: true, only: 'worshipParts', reason: 'a place of worship with a tower, not a tower' },
+    { refuse: 'only', only: 'seaFort', reason: 'a sea fort, not a tower' },
+    { refuse: 'untyped', when: 'archaeologicalSite', reason: 'an archaeological site, not a tower' },
+  ],
+};

@@ -12,14 +12,13 @@ import type { KindShare } from '../places/gather.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { emptyContainment } from '../places/containment.js';
 import { belowWorldBars, guidedBarNote, keptNote, type WorldBars, type WorldRead } from '../places/worldBars.js';
-import type { TowerTrees } from './classes.js';
-import { classifyTowers } from './kind.js';
+import { classifyTowers, type TowerTrees } from './kind.js';
 
 const TOWER = 'Q12518';
 const SKYSCRAPER = 'Q11303';
 const none = new Set<string>();
 const trees: TowerTrees = {
-  tower: new Set([TOWER]),
+  place: new Set([TOWER]),
   types: {
     pagoda: none, minaret: none, 'clock-tower': none, 'bell-tower': none,
     'observation-tower': none, 'fortified-tower': none,
@@ -29,7 +28,8 @@ const trees: TowerTrees = {
     skyscraper: new Set([SKYSCRAPER]), officeBuilding: none, towerBlock: none,
   },
   kills: { destroyed: none, proposed: none, guyedMast: none, ruins: none },
-  worship: none, archaeologicalSite: none, worshipParts: none, seaFort: none,
+  noClass: {}, shared: {},
+  named: { publicClock: none, buildingComplex: none, plainTower: none, worship: none, archaeologicalSite: none, worshipParts: none, seaFort: none },
 };
 const entity = (qid: string, label: string, sitelinks: number): PoolEntity => ({
   qid, label, description: null, lat: 44.49, lon: 11.35, onEarth: true, imageUrl: null, itemPictures: [],

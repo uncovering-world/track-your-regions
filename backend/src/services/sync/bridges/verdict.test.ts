@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { CANAL as CANAL_REFUSAL, type BridgeTrees } from './classes.js';
-import { bridgeVerdict, type BridgeFacts } from './bridgeTest.js';
+import { CANAL as CANAL_REFUSAL } from './classes.js';
+import { bridgeVerdict, type BridgeFacts, type BridgeTrees } from './kind.js';
 
 const BRIDGE = 'Q12280';
 const STONE_BRIDGE = 'Q3397526';
@@ -57,7 +57,7 @@ const flights = new Set([FLIGHT_OF_LOCKS, STAIRCASE_LOCKS]);
 const lifts = new Set([BOAT_LIFT, INCLINED_PLANE]);
 const inclinedPlanes = new Set([INCLINED_PLANE]);
 const trees: BridgeTrees = {
-  work: new Set([...bridges, ...aqueducts, ...dams, ...tunnels, ...locks, ...flights, ...lifts]),
+  place: new Set([...bridges, ...aqueducts, ...dams, ...tunnels, ...locks, ...flights, ...lifts]),
   types: {
     aqueduct: aqueducts, bridge: bridges, dam: dams, 'inclined-plane': inclinedPlanes, 'boat-lift': lifts,
     'lock-flight': flights, lock: locks, tunnel: tunnels,
@@ -67,9 +67,9 @@ const trees: BridgeTrees = {
     underConstruction: new Set([UNDER_CONSTRUCTION]), ruins: none,
   },
   others: { river: new Set([RIVER]), railwayLine: new Set([RAILWAY_LINE, RAPID_TRANSIT_LINE]) },
-  archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]),
-  canal: canals,
-  powerStation: new Set(['Q159719', HYDRO_STATION]),
+  noClass: { [CANAL_REFUSAL.root]: canals },
+  shared: {},
+  named: { archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]), powerStation: new Set(['Q159719', HYDRO_STATION]) },
 };
 
 const at = (classes: string[]): BridgeFacts => ({ classes, onEarth: true, lat: 1, lon: 1 });

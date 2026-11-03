@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { TowerTrees } from './classes.js';
-import { towerVerdict, type TowerFacts } from './towerTest.js';
+import { PUBLIC_CLOCK_CLASSES } from '../publicArt/classes.js';
+import { towerVerdict, type TowerFacts, type TowerTrees } from './kind.js';
 
 const TOWER = 'Q12518';
 const BELL_TOWER = 'Q200334';
@@ -53,7 +53,7 @@ const none = new Set<string>();
 const MAUSOLEUM = 'Q162875';
 
 const trees: TowerTrees = {
-  tower: new Set([
+  place: new Set([
     TOWER, BELL_TOWER, CHURCH_TOWER, STEEPLE, FREE_STANDING_TOWER, INCLINED_TOWER, MINARET, PAGODA,
     CLOCK_TOWER, OBSERVATION_TOWER, TELEVISION_TOWER, FORTIFIED_TOWER, NURAGHE, LATTICE_TOWER,
     TRANSMITTER_MAST, COMMUNICATION_TOWER, MAUNSELL_FORT, MARTELLO_TOWER,
@@ -73,12 +73,18 @@ const trees: TowerTrees = {
     officeBuilding: none, towerBlock: none,
   },
   kills: { destroyed: new Set([DESTROYED]), proposed: none, guyedMast: new Set([GUYED_MAST]), ruins: none },
-  // Wikidata files a minaret under structures of worship.
-  worship: new Set([CHURCH_BUILDING, MOSQUE, MINOR_BASILICA, MINARET]),
-  archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]),
-  worshipParts: new Set([MINARET, STEEPLE]),
-  // A Maunsell fort is a sea fort, and Wikidata files it under fortified towers too.
-  seaFort: new Set([SEA_FORT, MAUNSELL_FORT]),
+  noClass: {}, shared: {},
+  named: {
+    publicClock: new Set(Object.keys(PUBLIC_CLOCK_CLASSES)),
+    buildingComplex: new Set([BUILDING_COMPLEX]),
+    plainTower: new Set([TOWER]),
+    // Wikidata files a minaret under structures of worship.
+    worship: new Set([CHURCH_BUILDING, MOSQUE, MINOR_BASILICA, MINARET]),
+    archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]),
+    worshipParts: new Set([MINARET, STEEPLE]),
+    // A Maunsell fort is a sea fort, and Wikidata files it under fortified towers too.
+    seaFort: new Set([SEA_FORT, MAUNSELL_FORT]),
+  },
 };
 
 const at = (classes: string[]): TowerFacts => ({ classes, onEarth: true, lat: 1, lon: 1 });

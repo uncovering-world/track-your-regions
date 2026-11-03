@@ -14,8 +14,8 @@
  * inclined plane were read from the local subset on 2026-10-24.
  */
 
-import { fetchClassTree, type QueryRunner } from '../wikidataQueries.js';
 import type { PoolRoot } from '../places/gather.js';
+import type { PlaceKindDeclaration } from '../places/declaredKind.js';
 import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /** The roots the candidates are asked by, in fame bands on the live service. */
@@ -63,14 +63,11 @@ const TYPE_ROOT: Readonly<Record<BridgeType, string>> = {
 export const CANAL = { root: 'Q12284', reason: 'a canal: a long object, offered once long objects have a model of their own (#1948)' };
 
 /** A power station (Q159719): a dam that is one is a dam, whatever lock it holds. */
-export const POWER_STATION = 'Q159719';
+const POWER_STATION = 'Q159719';
 
-/** Never a place to visit: gone, not built yet, or ruins. */
-export const KILLS: Readonly<Record<string, { root: string; reason: string }>> = {
-  destroyed: { root: 'Q19860854', reason: 'destroyed or demolished' },
-  proposed: { root: 'Q811683', reason: 'proposed, not built' },
+/** Never a place to visit, beside the gone and the unbuilt: a proposed tunnel, ruins. */
+const KILLS: PlaceKindDeclaration<BridgeType>['kills'] = {
   proposedTunnel: { root: 'Q27464969', reason: 'proposed, not built' },
-  underConstruction: { root: 'Q12377751', reason: 'under construction' },
   ruins: { root: 'Q109607', reason: 'ruins: an archaeological site, not a standing work' },
 };
 
@@ -80,7 +77,7 @@ export const KILLS: Readonly<Record<string, { root: string; reason: string }>> =
  * a transit line that runs in a tunnel (the Waterloo & City line) is a way to
  * get about, not a sight.
  */
-export const OTHER_KINDS: Readonly<Record<string, { root: string; reason: string }>> = {
+const OTHER_KINDS: PlaceKindDeclaration<BridgeType>['others'] = {
   river: { root: 'Q4022', reason: 'a river, not an engineering work' },
   railwayLine: { root: 'Q728937', reason: 'a railway line, not a sight' },
 };
@@ -93,45 +90,33 @@ export const OTHER_KINDS: Readonly<Record<string, { root: string; reason: string
  */
 const ARCHAEOLOGICAL_SITE_ROOT = 'Q839954';
 
-/** The class trees the rule reads. */
-export interface BridgeTrees {
-  /** Every class under a root: what names a candidate. */
-  work: ReadonlySet<string>;
-  /** The classes each type is read from. */
-  types: Readonly<Record<BridgeType, ReadonlySet<string>>>;
-  /** The classes that make a candidate no place to visit, by key of `KILLS`. */
-  kills: Readonly<Record<string, ReadonlySet<string>>>;
-  /** The classes that make a candidate something else, by key of `OTHER_KINDS`. */
-  others: Readonly<Record<string, ReadonlySet<string>>>;
-  archaeologicalSite: ReadonlySet<string>;
-  /** Every class under canal, which leaves a candidate no other class of the kind names (`CANAL`). */
-  canal: ReadonlySet<string>;
-  /** Every class under power station (`POWER_STATION`). */
-  powerStation: ReadonlySet<string>;
-}
-
-/** Walk every tree the rule reads: one question per root, each its own step. */
-export async function fetchBridgeTrees(run: QueryRunner): Promise<BridgeTrees> {
-  const tree = async (root: string, label: string): Promise<Set<string>> => {
-    await run.step();
-    return fetchClassTree(run.sparql, root, label);
-  };
-  run.phase('Reading what a bridge or an engineering work is...');
-  const types = {} as Record<BridgeType, ReadonlySet<string>>;
-  const work = new Set<string>();
-  for (const type of BRIDGE_TYPES) {
-    types[type] = await tree(TYPE_ROOT[type], `${type} classes`);
-    for (const cls of types[type]) work.add(cls);
-  }
-  run.phase('Reading what is no engineering work to visit...');
-  const kills: Record<string, ReadonlySet<string>> = {};
-  for (const [key, { root }] of Object.entries(KILLS)) kills[key] = await tree(root, `${key} classes`);
-  const others: Record<string, ReadonlySet<string>> = {};
-  for (const [key, { root }] of Object.entries(OTHER_KINDS)) others[key] = await tree(root, `${key} classes`);
-  return {
-    work, types, kills, others,
-    archaeologicalSite: await tree(ARCHAEOLOGICAL_SITE_ROOT, 'archaeological sites'),
-    canal: await tree(CANAL.root, 'canal classes'),
-    powerStation: await tree(POWER_STATION, 'power station classes'),
-  };
-}
+/**
+ * Bridges & engineering marvels, declared (#2318): what names a work is every
+ * class under a type's root. A canal no class of the kind names is refused
+ * with its own reason (#1948); an archaeological site no bridge class names
+ * (Aqua Marcia, the tunnel of Eupalinos) is Archaeology's; a lock or a lift
+ * that is a power station's dam is a dam. A street is no refusal: Prague
+ * files the Charles Bridge as one.
+ */
+export const BRIDGES_DECLARATION: PlaceKindDeclaration<BridgeType> = {
+  name: 'bridges and engineering works',
+  what: 'a bridge or an engineering work',
+  logPrefix: '[Bridges]',
+  tag: 'engineering',
+  types: BRIDGE_TYPES,
+  fallback: 'bridge',
+  pool: BRIDGE_ROOTS,
+  place: { roots: Object.values(TYPE_ROOT) },
+  typeClasses: Object.fromEntries(Object.entries(TYPE_ROOT).map(([type, root]) => [type, { roots: [root] }])),
+  kills: KILLS,
+  others: OTHER_KINDS,
+  noClass: { reason: 'no bridge or engineering class', unless: [CANAL] },
+  trees: {
+    archaeologicalSite: { roots: [ARCHAEOLOGICAL_SITE_ROOT] },
+    powerStation: { roots: [POWER_STATION] },
+  },
+  exceptions: [
+    { refuse: 'untyped', when: 'archaeologicalSite', unlessTyped: ['bridge'], reason: 'an archaeological site, not a standing work' },
+  ],
+  retype: { to: 'dam', from: WATERWAY_TYPES, whenTree: 'powerStation', whenType: 'dam' },
+};

@@ -12,8 +12,7 @@ import type { PoolEntity } from '../publicArt/queries.js';
 import type { KindShare } from '../places/gather.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { emptyContainment } from '../places/containment.js';
-import type { SquareTrees } from './classes.js';
-import { classifySquares } from './kind.js';
+import { classifySquares, type SquareTrees } from './kind.js';
 
 describe('classifySquares', () => {
   const SQUARE = 'Q174782';
@@ -27,7 +26,7 @@ describe('classifySquares', () => {
       worship: none, palace: none, bridge: none, archaeologicalSite: none, agora: none, bullring: new Set([BULLRING]),
       railwayLine: none, motorway: none, river: none,
     },
-    canal: none,
+    noClass: {}, shared: {}, named: { canal: none },
   };
   const entity = (qid: string, label: string, sitelinks: number): PoolEntity => ({
     qid, label, description: null, lat: 41, lon: 12, onEarth: true, imageUrl: null, itemPictures: [],
