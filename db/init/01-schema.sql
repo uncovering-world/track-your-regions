@@ -3139,7 +3139,7 @@ COMMENT ON COLUMN experience_kind_memberships.external_id IS 'The id the source 
 COMMENT ON COLUMN experience_kind_memberships.type IS
   'The type within this membership''s kind, where the kind has types a traveller still browses together '
   '(ADR-0045): ''cultural''/''natural''/''mixed'' for World Heritage, ''cathedral'', ''holy site'' and the rest '
-  'for a place of worship, ''site''/''museum'' for archaeology; every kind''s list is frontend/src/utils/experienceTypes.ts. '
+  'for a place of worship, ''site''/''museum'' for archaeology; every kind''s list, each type with the word a reader sees for it, is packages/shared/src/placeTypes.ts. '
   'NULL for an art museum. One vocabulary per kind (#814), '
   'and the membership''s rather than the place''s, since a place in two kinds has a type in each (ADR-0084). '
   'A curator''s claim on it is ''type'' in this row''s curated_fields.';
