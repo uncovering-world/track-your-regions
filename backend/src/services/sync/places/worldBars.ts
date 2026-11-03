@@ -290,11 +290,14 @@ export async function readAtlas(
   return atlas;
 }
 
-/** The candidates a Wikivoyage edition uses; none while no usage build is in place. */
-export async function guidedOf(qids: string[], logPrefix: string): Promise<ReadonlySet<string>> {
+/**
+ * The candidates a Wikivoyage edition uses; null while no usage build is in
+ * place, which is no reading rather than no guide (ADR-0175 decision 6).
+ */
+export async function guidedOf(qids: string[], logPrefix: string): Promise<ReadonlySet<string> | null> {
   if (!(await latestUsage())) {
-    console.log(`${logPrefix} No Wikivoyage usage is built: no guide's use is read`);
-    return new Set();
+    console.log(`${logPrefix} No Wikivoyage usage is built: each place's guide is taken as last read`);
+    return null;
   }
   return usedByAGuide(qids);
 }

@@ -240,9 +240,10 @@ describe('public art in the place pass', () => {
     // kind offers stays public art (#1444).
     expect(mockedCollect.mock.calls[0][4]).toEqual(new Set(['Q19675']));
     // And what the street-art rule reads of the candidates it decides (#2035),
-    // asked through the gather's own door.
+    // asked through the gather's own door, with what the source last read for
+    // a guide this run cannot (ADR-0175 decision 6, #2267).
     expect(vi.mocked(streetArtCandidates)).toHaveBeenCalledWith(SHARE, PUBLIC_ART_RULE);
-    expect(vi.mocked(readStreetArt)).toHaveBeenCalledWith(expect.any(Function), ['Q1630131'], SHARE.facts);
+    expect(vi.mocked(readStreetArt)).toHaveBeenCalledWith(expect.any(Function), ['Q1630131'], SHARE.facts, history.memory);
     expect(mockedCollect.mock.calls[0][5]).toBe(STREET_ART_READ);
     expect(fetched.fetchedCount).toBe(5);
     expect(fetched.filtered).toEqual([refusal]);

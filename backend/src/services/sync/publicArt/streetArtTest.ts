@@ -96,8 +96,8 @@ export interface StreetArtFacts {
   excludedRoots: string[];
   /** Whether Atlas Obscura has an entry for it (`P7772`). */
   atlasObscura: boolean;
-  /** Whether a Wikivoyage guide names it. */
-  guided: boolean;
+  /** Whether a Wikivoyage guide names it; null when it cannot be read, this run or before. */
+  guided: boolean | null;
   /** A year's readers; null when no year can be read. */
   readers: number | null;
   /** Whether Wikidata says it was demolished or dissolved (`P576`). */
@@ -119,7 +119,7 @@ export type StreetArtResult =
 function marksOf(e: StreetArtFacts): string[] {
   return [
     ...(e.atlasObscura ? ['an Atlas Obscura entry'] : []),
-    ...(e.guided ? ['a Wikivoyage guide'] : []),
+    ...(e.guided === true ? ['a Wikivoyage guide'] : []),
     ...(e.readers !== null && e.readers >= READERS_MARK ? [`${e.readers.toLocaleString('en')} readers a year`] : []),
   ];
 }
@@ -140,7 +140,9 @@ function otherKind(e: StreetArtFacts, trees: PublicArtTrees): string | null {
  * Fame first: a newcomer below the line is quietly out, so a category's tail
  * reaches no changeset. Then what it is, whether it still stands, and whether
  * there is anywhere to stand. Readers that cannot be read admit nothing new,
- * and keep a held place on its other marks, as the guided line does.
+ * and keep a held place on its other marks, as the guided line does. A guide
+ * that cannot be read, this run or before, is no mark for a newcomer and keeps
+ * a held place (ADR-0175 decision 6).
  */
 export function streetArtVerdict(e: StreetArtFacts, trees: PublicArtTrees): StreetArtResult {
   const marks = marksOf(e);
@@ -152,7 +154,7 @@ export function streetArtVerdict(e: StreetArtFacts, trees: PublicArtTrees): Stre
   if (e.lat === null || e.lon === null) return { pass: false, reason: 'no coordinate (P625): nowhere to stand' };
   if (!e.onEarth) return { pass: false, reason: 'not on Earth: its coordinate (P625) is on another globe' };
 
-  if (e.admitted && marks.length < STAY_MARKS && e.readers !== null) {
+  if (e.admitted && marks.length < STAY_MARKS && e.readers !== null && e.guided !== null) {
     return {
       pass: false,
       reason: `no Atlas Obscura entry, no Wikivoyage guide and ${e.readers.toLocaleString('en')} readers a year: `

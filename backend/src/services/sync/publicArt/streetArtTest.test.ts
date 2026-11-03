@@ -55,6 +55,15 @@ describe('the street-art line (#2035)', () => {
     );
   });
 
+  it('keeps a held place whose guide cannot be read, and counts no unread guide toward a newcomer (ADR-0175 decision 6)', () => {
+    expect(streetArtVerdict(facts({ admitted: true, atlasObscura: false, guided: null, readers: 3_210 }), trees))
+      .toEqual({ pass: true, type: 'street-art' });
+    // One known mark and an unread guide: below the two a newcomer enters with.
+    expect(streetArtVerdict(facts({ atlasObscura: false, guided: null }), trees)).toEqual({ pass: false, quiet: true });
+    // Two known marks enter whatever the guide.
+    expect(streetArtVerdict(facts({ guided: null }), trees)).toEqual({ pass: true, type: 'street-art' });
+  });
+
   it('keeps a held place whose readers cannot be read', () => {
     expect(streetArtVerdict(facts({ admitted: true, atlasObscura: false, guided: false, readers: null }), trees))
       .toEqual({ pass: true, type: 'street-art' });

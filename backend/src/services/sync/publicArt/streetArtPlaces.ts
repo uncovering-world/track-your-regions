@@ -16,7 +16,7 @@ import { admittedExternalIds } from '../admission.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureItemsInCategories } from '../wikipediaStructure.js';
 import { yearlyReaders } from '../places/candidates.js';
-import { guidedOf } from '../places/worldBars.js';
+import { guidedOf, type WorldMemory } from '../places/worldBars.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 import {
   fetchItemsOfClasses, fetchItemsOfGenres, fetchRootsOfClasses, fetchStreetArtMarks, type StreetArtMarks,
@@ -56,22 +56,40 @@ export async function enterStreetArtPlaces(run: QueryRunner): Promise<string[]> 
 /** What the street-art line and rule read of the candidates they decide. */
 export interface StreetArtReading {
   marks: Map<string, StreetArtMarks>;
-  guided: ReadonlySet<string>;
+  /** The candidates a guide uses; null when no usage build is in place. */
+  guided: ReadonlySet<string> | null;
+  /**
+   * Each place's guide's mark as the source last read it (`membership_fame`,
+   * #2253), for a run that cannot read it (ADR-0175 decision 6).
+   */
+  guidedAsLastRead?: ReadonlyMap<string, boolean>;
   /** A year's readers; null when no year can be read. */
   readers: Map<string, number> | null;
   /** Which of `NOT_A_STREET_ART_PLACE` each of their classes is a kind of. */
   roots: Map<string, string[]>;
 }
 
-/** Read what the line and the rule ask of `qids`, the candidates the street-art rule decides. */
+/**
+ * Read what the line and the rule ask of `qids`, the candidates the street-art
+ * rule decides. `memory` is what the source's world tier last read, which
+ * answers a guide's mark this run cannot read.
+ */
 export async function readStreetArt(
-  sparql: SparqlFn, qids: string[], facts: ReadonlyMap<string, EntityFacts>,
+  sparql: SparqlFn, qids: string[], facts: ReadonlyMap<string, EntityFacts>, memory?: WorldMemory,
 ): Promise<StreetArtReading> {
   const classes = qids.flatMap((qid) => facts.get(qid)?.classes ?? []);
+  const guided = await guidedOf(qids, LOG_PREFIX);
   return {
     marks: await fetchStreetArtMarks(sparql, qids),
-    guided: await guidedOf(qids, LOG_PREFIX),
+    guided,
+    ...(guided === null && memory ? { guidedAsLastRead: memory.guided } : {}),
     readers: await yearlyReaders(qids, LOG_PREFIX),
     roots: await fetchRootsOfClasses(sparql, classes, Object.keys(NOT_A_STREET_ART_PLACE)),
   };
+}
+
+/** Whether a guide uses a candidate: this run's usage build, or as last read, or unknown — never no guide. */
+export function streetArtGuideOf(qid: string, reading: Pick<StreetArtReading, 'guided' | 'guidedAsLastRead'>): boolean | null {
+  if (reading.guided !== null) return reading.guided.has(qid);
+  return reading.guidedAsLastRead?.get(qid) ?? null;
 }

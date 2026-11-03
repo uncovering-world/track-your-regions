@@ -33,7 +33,7 @@ vi.mock('./streetArtQueries.js', () => ({
   fetchRootsOfClasses: mocks.fetchRootsOfClasses,
 }));
 
-import { enterStreetArtPlaces, readStreetArt } from './streetArtPlaces.js';
+import { enterStreetArtPlaces, readStreetArt, streetArtGuideOf } from './streetArtPlaces.js';
 import {
   NOT_A_PLACE_CATEGORY, NOT_A_STREET_ART_PLACE, STREET_ART_CATEGORY, GRAFFITI_WALL_CLASSES, STREET_ART_GENRES,
 } from './streetArtTest.js';
@@ -89,5 +89,29 @@ describe('what the street-art line reads (#2035)', () => {
     expect(await readStreetArt(sparql, ['Q1630131', 'Q2035001', 'Q2035002'], facts)).toEqual({ marks, guided, readers, roots });
     expect(mocks.fetchStreetArtMarks).toHaveBeenCalledWith(sparql, ['Q1630131', 'Q2035001', 'Q2035002']);
     expect(mocks.fetchRootsOfClasses).toHaveBeenCalledWith(sparql, ['Q42948', 'Q2977'], Object.keys(NOT_A_STREET_ART_PLACE));
+  });
+
+  it("takes each place's guide as last read when no usage build is in place (ADR-0175 decision 6)", async () => {
+    mocks.fetchStreetArtMarks.mockResolvedValue(new Map());
+    mocks.guidedOf.mockResolvedValue(null);
+    mocks.yearlyReaders.mockResolvedValue(new Map());
+    mocks.fetchRootsOfClasses.mockResolvedValue(new Map());
+    const memory = { bars: null, readers: new Map(), guided: new Map([['Q1630131', true]]) };
+
+    const reading = await readStreetArt(sparql, ['Q1630131', 'Q2035001'], new Map(), memory);
+
+    expect(reading.guided).toBeNull();
+    expect(streetArtGuideOf('Q1630131', reading)).toBe(true);
+    // Never read: unknown, never no guide.
+    expect(streetArtGuideOf('Q2035001', reading)).toBeNull();
+  });
+
+  it("asks no memory while the usage build answers", async () => {
+    mocks.guidedOf.mockResolvedValue(new Set(['Q1630131']));
+    const memory = { bars: null, readers: new Map(), guided: new Map([['Q2035001', true]]) };
+
+    const reading = await readStreetArt(sparql, ['Q1630131', 'Q2035001'], new Map(), memory);
+
+    expect(streetArtGuideOf('Q2035001', reading)).toBe(false);
   });
 });
