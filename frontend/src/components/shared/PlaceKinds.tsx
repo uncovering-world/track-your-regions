@@ -11,10 +11,12 @@
  * with the override every pinned refusal has. An arrival and a rule's refusal
  * are answered on the review page, and say so. A kind no run offers the place
  * in is added at the foot (`PlaceKindAdd`, #2035), and an added one says who
- * added it.
+ * added it. A kind that shows a crowded city's best known offers the crowded
+ * city's window on the place's membership — "Squares around (22)", #2282 —
+ * as the place's review card does, over this dialog.
  */
 
-import { useState } from 'react';
+import { useState, type ComponentType } from 'react';
 import { Alert, Box, Button, Chip, Stack, TextField, Typography } from '@mui/material';
 import { alpha, type Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +29,10 @@ import { displayNameOf } from '../../utils/displayName';
 import { typeLabelFor } from '../../utils/experienceTypes';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { PlaceKindAdd } from './PlaceKindAdd';
+import { aroundLabel } from '../curation/crowding/crowdingWords';
+
+/** The crowded city's window over the dialog, on one membership: `LazyCrowdingWindow`, handed in. */
+export type CrowdingWindowOpener = ComponentType<{ memberships: readonly number[]; onClose: (message?: string) => void }>;
 
 /** The line under a kind's name: its type, then where it stands. */
 function standingLine(kind: PlaceKindStanding): string {
@@ -64,15 +70,18 @@ function useKindSettled(experienceId: number, regionId: number | null): () => vo
   };
 }
 
-function KindRow({ experienceId, kind, onlyOffered, regionId }: {
+function KindRow({ experienceId, kind, onlyOffered, regionId, crowdingWindow: CrowdingWindow }: {
   experienceId: number;
   kind: PlaceKindStanding;
   /** Whether this is the one kind that offers the place: taken out, readers see it nowhere. */
   onlyOffered: boolean;
   regionId: number | null;
+  crowdingWindow?: CrowdingWindowOpener;
 }) {
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState('');
+  const [around, setAround] = useState(false);
+  const [applied, setApplied] = useState<string | null>(null);
   const settled = useKindSettled(experienceId, regionId);
   const takeOut = useMutation({
     mutationFn: () => keepOutOfKind(experienceId, { membershipId: kind.membershipId, note: note.trim() || undefined }),
@@ -117,6 +126,11 @@ function KindRow({ experienceId, kind, onlyOffered, regionId }: {
             </>
           )}
         </Box>
+        {kind.crowding && CrowdingWindow && (
+          <Button size="small" variant="outlined" color="inherit" onClick={() => setAround(true)} sx={{ flexShrink: 0 }}>
+            {aroundLabel({ kind_id: kind.kindId, kind_name: kind.kindName, kind_type: kind.type }, kind.crowding)}
+          </Button>
+        )}
         {kind.canAnswer && kind.state === 'offered' && !asking && (
           <Button size="small" variant="outlined" color="error" onClick={() => setAsking(true)}>Take out…</Button>
         )}
@@ -162,12 +176,29 @@ function KindRow({ experienceId, kind, onlyOffered, regionId }: {
         </Stack>
       )}
       {failed && <Alert severity="error" sx={{ py: 0, mt: 1 }}>{(failed as Error).message}</Alert>}
+      {applied && <Alert severity="success" onClose={() => setApplied(null)} sx={{ py: 0, mt: 1 }}>{applied}</Alert>}
+      {around && CrowdingWindow && (
+        <CrowdingWindow
+          memberships={[kind.membershipId]}
+          onClose={message => {
+            setAround(false);
+            if (!message) return;
+            setApplied(message);
+            settled();
+          }}
+        />
+      )}
     </Box>
   );
 }
 
 /** The Kinds section of a place's curation dialog; nothing until its kinds are read. */
-export function PlaceKinds({ experienceId, regionId }: { experienceId: number; regionId: number | null }) {
+export function PlaceKinds({ experienceId, regionId, crowdingWindow }: {
+  experienceId: number;
+  regionId: number | null;
+  /** The crowded city's window a kind row opens (#2282); absent, no row offers it. */
+  crowdingWindow?: CrowdingWindowOpener;
+}) {
   const kinds = useQuery({
     queryKey: queryKeys.curation.placeKinds(experienceId),
     queryFn: () => fetchPlaceKinds(experienceId),
@@ -195,6 +226,7 @@ export function PlaceKinds({ experienceId, regionId }: { experienceId: number; r
             kind={kind}
             onlyOffered={kind.state === 'offered' && offered === 1}
             regionId={regionId}
+            crowdingWindow={crowdingWindow}
           />
         ))}
         {addable.length > 0 && (

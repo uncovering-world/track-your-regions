@@ -13,7 +13,9 @@ vi.mock('./AddExperienceDialog', () => ({
   AddExperienceDialog: ({ open }: { open: boolean }) => <p>add dialog, {open ? 'open' : 'closed'}</p>,
 }));
 vi.mock('./CurationDialog', () => ({
-  CurationDialog: () => <p>curation dialog</p>,
+  CurationDialog: ({ crowdingWindow }: { crowdingWindow?: unknown }) => (
+    <p>curation dialog{crowdingWindow ? ', with the crowded city’s window' : ''}</p>
+  ),
 }));
 
 describe('LazyAddExperienceDialog', () => {
@@ -34,7 +36,7 @@ describe('LazyAddExperienceDialog', () => {
 describe('LazyCurationDialog', () => {
   it('mounts only while there is an experience to curate', async () => {
     const { rerender } = render(<LazyCurationDialog experience={null} regionId={null} curatesRegion onClose={() => {}} />);
-    expect(screen.queryByText('curation dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText(/curation dialog/)).not.toBeInTheDocument();
 
     rerender(
       <LazyCurationDialog
@@ -44,6 +46,7 @@ describe('LazyCurationDialog', () => {
         onClose={() => {}}
       />,
     );
-    expect(await screen.findByText('curation dialog')).toBeInTheDocument();
+    // The window a kind row opens (#2282) is handed in from here, not imported by the dialog's chunk.
+    expect(await screen.findByText('curation dialog, with the crowded city’s window')).toBeInTheDocument();
   });
 });
