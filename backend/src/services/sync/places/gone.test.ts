@@ -19,7 +19,8 @@ const PRESERVED = 'Q56557591';
 const PROPOSED = 'Q811683';
 
 const facts = (over: Partial<StandingFacts>): StandingFacts => ({
-  ended: false, endedYear: null, use: [], conservation: [], heritage: false, ...over,
+  ended: false, endedYear: null, endedAt: null, use: [], conservation: [], heritage: false,
+  designatedSince: [], inceptions: [], placedSince: [], events: [], ...over,
 });
 
 describe('goneReason', () => {
@@ -71,8 +72,43 @@ describe('fetchStandingFacts on the live service', () => {
       { e: e('Q10288'), use: e(OPEN_TO_THE_PUBLIC), herit: e('Q29048715') },
     ] as SparqlBinding[];
     const answer = await fetchStandingFacts(() => Promise.resolve(rows), ['Q5482413', 'Q10288']);
-    expect(answer.get('Q5482413')).toEqual({ ended: true, endedYear: 2024, use: [TEMPORARILY_CLOSED], conservation: [], heritage: false });
-    expect(answer.get('Q10288')).toEqual({ ended: false, endedYear: null, use: [OPEN_TO_THE_PUBLIC], conservation: [], heritage: true });
+    expect(answer.get('Q5482413')).toEqual(facts({
+      ended: true, endedYear: 2024, endedAt: { year: 2024, month: 3, day: 26, precision: 9 }, use: [TEMPORARILY_CLOSED],
+    }));
+    expect(answer.get('Q10288')).toEqual(facts({ use: [OPEN_TO_THE_PUBLIC], heritage: true, designatedSince: [null] }));
+  });
+
+  it('reads the year of an end the service writes with its sign', async () => {
+    const rows: SparqlBinding[] = [
+      { e: { value: 'http://www.wikidata.org/entity/Q5482413' }, end: { value: '+2024-03-26T00:00:00Z' } },
+    ];
+    const answer = await fetchStandingFacts(() => Promise.resolve(rows), ['Q5482413']);
+    expect(answer.get('Q5482413')?.endedYear).toBe(2024);
+  });
+
+  it('reads each time with its precision, one statement a row (#2280)', async () => {
+    const e = (qid: string) => ({ type: 'uri', value: `http://www.wikidata.org/entity/${qid}` });
+    const lit = (value: string) => ({ type: 'literal', value });
+    // The Arch of Neutrality: ended 2010, set up again 2010 and placed since 2010 at its new site.
+    const rows: SparqlBinding[] = [
+      { e: e('Q2564552'), end: lit('2010-01-01T00:00:00Z'), endPrecision: lit('9') },
+      { e: e('Q2564552'), inception: lit('1998-01-01T00:00:00Z'), inceptionPrecision: lit('9') },
+      { e: e('Q2564552'), inception: lit('2010-01-01T00:00:00Z'), inceptionPrecision: lit('9') },
+      { e: e('Q2564552'), placedSince: lit('2010-01-01T00:00:00Z'), placedSincePrecision: lit('9') },
+      // The Robert Edward Lee sculpture's designation, twice in the answer, counts once.
+      { e: e('Q15272827'), herit: e('Q19558910'), heritSince: lit('1997-05-16T00:00:00Z'), heritSincePrecision: lit('11') },
+      { e: e('Q15272827'), herit: e('Q19558910'), heritSince: lit('1997-05-16T00:00:00Z'), heritSincePrecision: lit('11') },
+      { e: e('Q15272827'), event: e('Q331483') },
+    ] as SparqlBinding[];
+    const answer = await fetchStandingFacts(() => Promise.resolve(rows), ['Q2564552', 'Q15272827']);
+    const y2010 = { year: 2010, month: 1, day: 1, precision: 9 };
+    expect(answer.get('Q2564552')).toEqual(facts({
+      ended: true, endedYear: 2010, endedAt: y2010,
+      inceptions: [{ year: 1998, month: 1, day: 1, precision: 9 }, y2010], placedSince: [y2010],
+    }));
+    expect(answer.get('Q15272827')).toEqual(facts({
+      heritage: true, designatedSince: [{ year: 1997, month: 5, day: 16, precision: 11 }], events: ['Q331483'],
+    }));
   });
 });
 
