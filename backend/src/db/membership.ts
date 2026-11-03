@@ -409,15 +409,36 @@ export function rowKindSelectSql(membership = 'm', kind = 'k'): string {
  * region list of Europe (661 places) building it as `jsonb` cost 9 ms more.
  */
 export function placeKindsSql(experience = 'e', shownOnly = false, withFame = false): string {
-  const fame = withFame ? `, 'fame', (SELECT pf.score FROM ${FAME} pf WHERE pf.membership_id = pk.id)` : '';
-  return `(SELECT COALESCE(json_agg(json_build_object(
-             'kind_id', pk.kind_id, 'kind_name', pkk.name, 'kind_priority', pkk.display_priority,
-             'type', pk.type, 'source_id', pk.source_id, 'external_id', pk.external_id,
-             'source_membership', pk.source_membership${fame})
-           ORDER BY pkk.display_priority, pk.kind_id), '[]'::json)
+  return `(SELECT COALESCE(${kindsAggregateSql(withFame)}, '[]'::json)
          FROM ${MEMBERSHIPS} pk JOIN ${KINDS} pkk ON pkk.id = pk.kind_id
         WHERE pk.experience_id = ${experience}.id
           AND ${shownOnly ? membershipShownSql('pk') : membershipOfferedSql('pk')})`;
+}
+
+/** A place's kinds as `placeKindsSql` aggregates them over `pk` and `pkk`: one entry per membership, in the kinds' order. */
+function kindsAggregateSql(withFame = false): string {
+  const fame = withFame ? `, 'fame', (SELECT pf.score FROM ${FAME} pf WHERE pf.membership_id = pk.id)` : '';
+  return `json_agg(json_build_object(
+             'kind_id', pk.kind_id, 'kind_name', pkk.name, 'kind_priority', pkk.display_priority,
+             'type', pk.type, 'source_id', pk.source_id, 'external_id', pk.external_id,
+             'source_membership', pk.source_membership${fame})
+           ORDER BY pkk.display_priority, pk.kind_id)`;
+}
+
+/**
+ * `placeKindsSql`'s shown kinds for many places at once, as a derived table of
+ * `(experience_id, kinds)` for a `LEFT JOIN` on the place, over the places
+ * `places` names (a `SELECT` of ids): a place with no shown kind has no row,
+ * which the reader reads as `'[]'`. For a read whose rows repeat a place, so
+ * the kinds are read once a place rather than once a row: the world map's
+ * markers show a serial site once for each of its parts' points (#2301).
+ */
+export function shownKindsByPlaceSql(places: string): string {
+  return `(SELECT pk.experience_id, ${kindsAggregateSql()} AS kinds
+         FROM ${MEMBERSHIPS} pk JOIN ${KINDS} pkk ON pkk.id = pk.kind_id
+        WHERE pk.experience_id IN (${places})
+          AND ${membershipShownSql('pk')}
+        GROUP BY pk.experience_id)`;
 }
 
 /** The source whose run alone writes a place's description: UNESCO (ADR-0149). */

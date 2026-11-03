@@ -31,7 +31,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { placeKindsSql, placeShownSql } from '../../db/membership.js';
+import { placeKindsSql, placeShownSql, shownKindsByPlaceSql } from '../../db/membership.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
@@ -168,6 +168,15 @@ describe('getWorldPoints', () => {
       expect((await ask({ detail: 'markers' })).sql).toContain(placeKindsSql('e', true));
       expect((await ask({ detail: 'markers', folded: 'true' })).sql).toContain(placeKindsSql('e', true));
       expect((await ask()).sql).not.toContain(placeKindsSql('e', true));
+    });
+
+    it("reads a serial site's kinds once a site for its parts' markers, not once a point (#2301)", async () => {
+      const [own, parts] = (await ask({ detail: 'markers' })).sql.split('UNION ALL');
+      expect(own).toContain(placeKindsSql('e', true));
+      expect(parts).not.toContain(placeKindsSql('e', true));
+      expect(parts).toContain(`LEFT JOIN ${shownKindsByPlaceSql('SELECT whole_id FROM experience_parts')} wk ON wk.experience_id = e.id`);
+      expect(parts).toContain(`COALESCE(wk.kinds, '[]'::json) AS kinds`);
+      expect((await ask()).sql).not.toContain(' wk ');
     });
 
     it("reads whether an unfolded marker's point is placed only roughly, and a folded or overview one's never (#1912)", async () => {
