@@ -42,9 +42,11 @@ export interface GoOptions {
  * one. A handler firing there and spreading its rendered `address` would build
  * on the stale one and undo the write that just landed. The functional form is
  * handed the latest instead, so "the same place, in Discover" means that
- * whenever it is asked.
+ * whenever it is asked. It answers null where the latest address leaves it
+ * nothing to write: a correction meant for a place the reader has since left
+ * (#2257).
  */
-export type GoTarget = AppAddress | ((current: AppAddress) => AppAddress);
+export type GoTarget = AppAddress | ((current: AppAddress) => AppAddress | null);
 
 export function useAppAddress() {
   const location = useLocation();
@@ -91,6 +93,7 @@ export function useAppAddress() {
     // function there is asking about a place on a page that has none.
     if (typeof target === 'function' && current === null) return;
     const asked = typeof target === 'function' ? target(current!) : target;
+    if (asked === null) return;
     // A part belongs to its card (#1271): a write that changes the card and
     // leaves the part as it found it is not about that part, and carrying it
     // over would name a part of one object under another's address.

@@ -25,7 +25,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { Region } from '../types';
 import { fetchRegionAncestors } from '../api';
 import type { AppAddress } from '../utils/appUrl';
-import type { GoOptions } from './useAppAddress';
+import type { GoOptions, GoTarget } from './useAppAddress';
 import { queryKeys } from '../api/queryKeys';
 
 export interface SelectRegionOptions {
@@ -35,7 +35,7 @@ export interface SelectRegionOptions {
 
 interface AddressedRegionInput {
   address: AppAddress | null;
-  go: (next: AppAddress, options?: GoOptions) => void;
+  go: (target: GoTarget, options?: GoOptions) => void;
   isCustomWorldView: boolean;
   /** The session is still being restored; no read bounded by identity goes out yet. */
   authLoading: boolean;
@@ -85,11 +85,6 @@ function completeSelectionFromAncestor(selected: Region, ancestor: Region): Part
 export function useAddressedRegion({ address, go, isCustomWorldView, authLoading }: AddressedRegionInput) {
   const [selectedRegion, setSelectedRegionState] = useState<Region | null>(null);
   const [regionBreadcrumbs, setRegionBreadcrumbs] = useState<Region[]>([]);
-  // Read through a ref by the setter, so the setter keeps one identity across
-  // the addresses it writes: the map's click handler and the list's row handler
-  // are built on it.
-  const addressRef = useRef(address);
-  addressRef.current = address;
 
   const urlRegionId = address?.regionId ?? null;
   const urlWorldViewId = address?.worldViewId ?? null;
@@ -181,17 +176,24 @@ export function useAddressedRegion({ address, go, isCustomWorldView, authLoading
       return;
     }
     // Not there, not visible, or not this world view: one silence for all three.
+    // On the latest address, and only while it still names the region asked
+    // for: the read can answer after the reader has moved on (#2257).
     setRestoreId(null);
-    go({ ...address, regionId: null, experienceId: null, kindId: null }, { replace: true });
+    go(at => (at.regionId === restoreId ? { ...at, regionId: null, experienceId: null, kindId: null } : null),
+      { replace: true });
   }, [restoreId, regionAncestors, ancestorsFailed, address, urlWorldViewId, go]);
 
   // Bring the slug up to date once the name is known: in place, since it is a
   // correction and not a step. `go` keeps the card's slug, which is not known
-  // here.
+  // here. Asked again on every address, since a write that names the region
+  // without its slug leaves it to this. Written on the latest address, and only
+  // while it still names this region: the effect can run after the reader's
+  // next step, and the address this render holds would then undo it (#2257).
   useEffect(() => {
     if (address === null || address.regionId === null) return;
     if (!selectedRegion || selectedRegion.id !== address.regionId || !selectedRegion.name) return;
-    go(address, { replace: true, names: { region: selectedRegion.name } });
+    const regionId = address.regionId;
+    go(at => (at.regionId === regionId ? at : null), { replace: true, names: { region: selectedRegion.name } });
   }, [address, selectedRegion, go]);
 
   /**
@@ -201,16 +203,16 @@ export function useAddressedRegion({ address, go, isCustomWorldView, authLoading
   const setSelectedRegion = useCallback((region: Region | null, options?: SelectRegionOptions) => {
     setSelectedRegionState(region);
     if (!region) setRegionBreadcrumbs([]);
-    // A click outranks a restore still in flight.
+    // A click outranks a restore still in flight. Built on the latest address,
+    // which a write just before the click may have moved past what any render
+    // holds (#2257).
     setRestoreId(null);
-    const at = addressRef.current;
-    if (at === null) return;
-    go({
+    go(at => ({
       ...at,
       regionId: region?.id ?? null,
       experienceId: null,
       kindId: options?.kindId ?? null,
-    }, { names: { region: region?.name } });
+    }), { names: { region: region?.name } });
   }, [go]);
 
   /**

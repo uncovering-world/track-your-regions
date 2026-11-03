@@ -104,6 +104,33 @@ describe('useAppAddress', () => {
     await waitFor(() => expect(result.current.at).toBe('/discover/wv/5'));
   });
 
+  it('writes nothing where a function target finds nothing to write (#2257)', async () => {
+    // The slug correction for a region the reader has already left: Malta's
+    // list is closed back to Europe before Malta's name arrives. Built on the
+    // address the late render held, the correction would put the list back;
+    // asked of the latest address, it finds another region there and stands down.
+    const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/discover/wv/5/r/7100?kind=1') });
+    const malta = result.current.address!;
+
+    act(() => {
+      result.current.go({ ...malta, regionId: 6737, kindId: null }, { names: { region: 'Europe' } });
+      result.current.go(at => (at.regionId === malta.regionId ? at : null), { replace: true, names: { region: 'Malta' } });
+    });
+
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/6737-europe'));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(result.current.at).toBe('/discover/wv/5/r/6737-europe');
+  });
+
+  it('brings the slug of the region it still names up to date, in place', async () => {
+    const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/discover/wv/5/r/7100?kind=1') });
+
+    act(() => { result.current.go(at => (at.regionId === 7100 ? at : null), { replace: true, names: { region: 'Malta' } }); });
+
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta?kind=1'));
+    expect(result.current.type).toBe('REPLACE');
+  });
+
   it('follows a navigation made from outside it', async () => {
     // The other half of the write-ahead ref: what `go` wrote is authoritative
     // only until the location moves on its own — Back, a link, the legacy
