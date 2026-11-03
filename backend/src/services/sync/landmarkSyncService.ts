@@ -383,7 +383,7 @@ async function fetchLandmarkItems(
   if (classifier.surroundings) {
     const surroundingsHeld = await admittedExternalIds(sourceId, undefined, 'surroundings');
     const surroundings = await classifier.surroundings.arrivals(
-      run, sparql, gathered, new Set(items.map((item) => item.qid)), await surroundingsPool(), surroundingsHeld,
+      run, sparql, gathered, new Set(items.map((item) => item.qid)), await surroundingsPool(), surroundingsHeld, history.memory,
     );
     mergeSurroundings(items, filtered, surroundings, (item) => item.qid, surroundingsHeld);
     // Not read this run (`surroundings.skipped`): its rows stay as they are.

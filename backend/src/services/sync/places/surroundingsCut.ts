@@ -23,6 +23,12 @@
  * test read at the stay share and the other two whole, since their reference is
  * its own neighbours'.
  *
+ * Where no Wikivoyage usage build is in place the guides' test is not read,
+ * and never read as no guide (ADR-0175 decision 6): nothing new enters by a
+ * guide, and a held place that passes no other test keeps its place unless no
+ * guide used it when last read, the world tier's memory of it
+ * (`WorldMemory.guided`, `membership_fame.guides_read_at`).
+ *
  * The numbers are the register's (`SURROUNDINGS_REGISTER` in
  * `admissionRegister.ts`, ADR-0175 decision 5), each with its derivation,
  * never a reader's or an admin's control.
@@ -95,9 +101,17 @@ export const SURROUNDINGS_CUT: SurroundingsCut = {
 /** A candidate's own signals. */
 export interface SurroundingsCandidate {
   editions: number;
-  guideEditions: number;
+  /** The Wikivoyage editions that use it; null where no usage build is in place, so no guide's use is read this run. */
+  guideEditions: number | null;
   /** A year's readers, by the counter the world bars read with. */
   readers: number;
+  /**
+   * Where no guide's use is read this run, whether a guide used the place when
+   * last read (`WorldMemory.guided`, ADR-0175 decision 6), or null where no
+   * build was ever read for it. Read of a place the tier holds alone: no new
+   * place enters by a guide the run did not read.
+   */
+  guidedAsLastRead?: boolean | null;
 }
 
 /** A candidate's neighbours, of its own density within the radius: the group's size and the best places' signals, highest first. */
@@ -141,8 +155,8 @@ function doorsOf(
     && candidate.editions >= cut.editionsShare * reference.editions) doors.push('its editions');
   if (around.groupSize >= cut.readersGroupFloor && reference.readers !== null && candidate.readers > 0
     && candidate.readers >= readersShare * reference.readers) doors.push('its readers');
-  if (around.groupSize >= cut.guideGroupFloor && reference.guide !== null && candidate.guideEditions > 0
-    && candidate.guideEditions >= cut.guideShare * reference.guide) doors.push('the guides');
+  if (around.groupSize >= cut.guideGroupFloor && reference.guide !== null && candidate.guideEditions !== null
+    && candidate.guideEditions > 0 && candidate.guideEditions >= cut.guideShare * reference.guide) doors.push('the guides');
   return doors;
 }
 
@@ -174,19 +188,8 @@ export function surroundingsVerdict(
   if (around.groupSize < smallest) {
     return { in: false, reason: `${around.groupSize} places of its density within ${cut.radiusKm} km, under the floor of ${smallest}: too few to measure against` };
   }
-  const reference: SurroundingsReferences = {
-    editions: medianOf(around.topEditions.filter((n) => n > 0).slice(0, cut.best)),
-    guide: medianOf(around.topGuideEditions.filter((n) => n > 0).slice(0, cut.best)),
-    readers: medianOf(around.topReaders.filter((n) => n > 0).slice(0, cut.best)),
-  };
-  const editions = reference.editions === null ? 'no place is read in any Wikipedia edition'
-    : `the ${cut.best} best are read in ${fmt(reference.editions)} Wikipedia editions at the median`;
-  const readers = reference.readers === null ? 'no place has a reader'
-    : `the best have ${fmt(reference.readers)} readers a year at the median`;
-  const guide = reference.guide === null ? 'no Wikivoyage edition uses any place here'
-    : `the best are used by ${fmt(reference.guide)} Wikivoyage editions at the median, this place by ${fmt(candidate.guideEditions)}`;
-  const within = `within ${cut.radiusKm} km, ${fmt(around.groupSize)} places of its density: ${editions}, this place in ${fmt(candidate.editions)}; `
-    + `${readers}, this place ${fmt(candidate.readers)}; ${guide}`;
+  const reference = referencesOf(candidate, around, cut);
+  const within = surroundingsInWords(candidate, around, reference, cut, held);
   const enters = doorsOf(candidate, around, reference, cut, cut.readersShare);
   // A held place under the new-place floor is kept by the stay alone, and its note says so.
   const underFloor = candidate.readers < cut.minReaders;
@@ -196,17 +199,71 @@ export function surroundingsVerdict(
     return { in: true, reference, note: `Stays in the surroundings tier ${doorsInWords(stays)}, the readers test read at `
       + `${fmt(cut.stayReadersShare * cut.readersShare)} times the reference for a place it holds: ${within} (ADR-0175, ADR-0181)` };
   }
+  // The guides' test is the one the run could not read: a held place a guide
+  // used when last read, or that no build was ever read for, keeps its place
+  // where the test reads its area; one no guide used when last read falls.
+  if (held && candidate.guideEditions === null && candidate.guidedAsLastRead !== false && around.groupSize >= cut.guideGroupFloor) {
+    return { in: true, reference, note: `Kept in the surroundings tier, the guides' test unread: ${within} (ADR-0175 decision 6, ADR-0181)` };
+  }
   return { in: false, reason: `below the surroundings tier's cut: ${within}` };
+}
+
+/** The three references off the best of the neighbours; no guide reference where no guide's use is read, the neighbours' as the candidate's. */
+function referencesOf(candidate: SurroundingsCandidate, around: Surroundings, cut: SurroundingsCut): SurroundingsReferences {
+  const best = (values: readonly number[]) => medianOf(values.filter((n) => n > 0).slice(0, cut.best));
+  return {
+    editions: best(around.topEditions),
+    guide: candidate.guideEditions === null ? null : best(around.topGuideEditions),
+    readers: best(around.topReaders),
+  };
+}
+
+/** The candidate against its references in words, for the note and the reason. */
+function surroundingsInWords(
+  candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut, held: boolean,
+): string {
+  const editions = reference.editions === null ? 'no place is read in any Wikipedia edition'
+    : `the ${cut.best} best are read in ${fmt(reference.editions)} Wikipedia editions at the median`;
+  const readers = reference.readers === null ? 'no place has a reader'
+    : `the best have ${fmt(reference.readers)} readers a year at the median`;
+  let guide = reference.guide === null ? 'no Wikivoyage edition uses any place here'
+    : `the best are used by ${fmt(reference.guide)} Wikivoyage editions at the median, this place by ${fmt(candidate.guideEditions ?? 0)}`;
+  if (candidate.guideEditions === null) guide = `no Wikivoyage usage is built, so no guide's use is read${held ? guidesAsLastRead(candidate.guidedAsLastRead) : ''}`;
+  return `within ${cut.radiusKm} km, ${fmt(around.groupSize)} places of its density: ${editions}, this place in ${fmt(candidate.editions)}; `
+    + `${readers}, this place ${fmt(candidate.readers)}; ${guide}`;
+}
+
+/** A held place's guide mark as last read, as the clause the cut's words close on where no guide's use is read this run. */
+function guidesAsLastRead(guided: boolean | null | undefined): string {
+  if (guided === true) return '; a Wikivoyage edition used this place when last read';
+  if (guided === false) return '; no Wikivoyage edition used this place when last read';
+  return '; no guide\'s use was ever read of this place';
 }
 
 /**
  * Why a place of a type that needs a guide (a tunnel, a dam, a lock) is
  * refused where no Wikivoyage edition uses it, or null where its type needs
  * none or a guide uses it. Read once the kind's rule has typed the place, and
- * for a place the tier holds as for a new one.
+ * for a place the tier holds as for a new one. Where no usage build is in
+ * place (`guideEditions` null), a place the tier holds is read by its guide
+ * mark as last read, and kept where no build was ever read for it; a new
+ * place does not enter, since nothing the run read says a guide uses it
+ * (ADR-0175 decision 6).
  */
-export function needsAGuide(type: string, guideEditions: number, cut: SurroundingsCut = SURROUNDINGS_CUT): string | null {
-  if (!cut.guideForTypes.includes(type) || guideEditions > 0) return null;
-  return `a ${type} enters the surroundings tier only while a Wikivoyage edition uses it, and none does: `
-    + 'the readership of its article does not say people go to see it (ADR-0175)';
+export function needsAGuide(
+  type: string, guide: Pick<SurroundingsCandidate, 'guideEditions' | 'guidedAsLastRead'>, held = false,
+  cut: SurroundingsCut = SURROUNDINGS_CUT,
+): string | null {
+  if (!cut.guideForTypes.includes(type)) return null;
+  const why = 'the readership of its article does not say people go to see it (ADR-0175)';
+  if (guide.guideEditions !== null) {
+    return guide.guideEditions > 0 ? null : `a ${type} enters the surroundings tier only while a Wikivoyage edition uses it, and none does: ${why}`;
+  }
+  if (!held) {
+    return `a ${type} enters the surroundings tier only when a Wikivoyage edition uses it, and no Wikivoyage usage is built `
+      + `to read whether one does: ${why}; nothing new enters by a guide the run did not read (ADR-0175 decision 6)`;
+  }
+  if (guide.guidedAsLastRead !== false) return null;
+  return `a ${type} stays in the surroundings tier only while a Wikivoyage edition uses it, and none did when last read `
+    + `(no Wikivoyage usage is built this run): ${why}`;
 }

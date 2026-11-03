@@ -645,6 +645,8 @@ async function surroundingsSitesOf(
     admitted: new Set([...sites.sites.keys(), ...museumNames.keys()]),
     holds: new Set([...deps.admittedSites, ...deps.admittedMuseums, ...held]),
     nameOf: (qid) => museumNames.get(qid) ?? sites.read.labels.get(qid),
+    // What the source last read, for the guides a run without a usage build cannot read (ADR-0175 decision 6).
+    memory: deps.siteWorld?.history?.memory,
   });
   return { ...read, held };
 }

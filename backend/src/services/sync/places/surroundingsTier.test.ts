@@ -116,6 +116,83 @@ describe('the surroundings tier over a kind', () => {
     expect(filtered).toEqual([{ externalId: 'Q646091', name: 'Warnow Tunnel', reason: expect.stringMatching(/^a tunnel enters the surroundings tier only while a Wikivoyage edition uses it, and none does/) }]);
   });
 
+  describe('where no Wikivoyage usage is built (ADR-0175 decision 6)', () => {
+    // The Finse Tunnel (Q5450940) and the Eschbach Dam (Q896077), held by the guides alone, with the medians of their
+    // admission notes on the dev catalogue (the lists schematic); Rostock's Warnow Tunnel (Q646091), never admitted,
+    // clears the editions test. Without the build the pool counts no guide, the neighbours' as the candidates'.
+    const FINSE = 'Q5450940';
+    const ESCHBACH = 'Q896077';
+    const WARNOW = 'Q646091';
+    const finseAround = { groupSize: 1_089, topEditions: [36, 30, 24, 20, 17, 15, 12, 10, 9, 8], topGuideEditions: [],
+      topReaders: [232_735, 120_000, 80_000, 50_000, 36_000, 30_235, 20_000, 15_000, 10_000, 9_000] };
+    const eschbachAround = { groupSize: 28_467, topEditions: [60, 50, 40, 30, 25, 23, 22, 20, 18, 16], topGuideEditions: [],
+      topReaders: [2_000_000, 900_000, 500_000, 300_000, 170_000, 156_714, 140_000, 120_000, 110_000, 100_000] };
+    const warnowAround = { groupSize: 1_013, topEditions: [12, 12, 11, 11, 9, 9, 9, 7, 7, 6], topGuideEditions: [],
+      topReaders: [20_583, 16_442, 16_301, 14_016, 13_699, 13_665, 13_452, 12_956, 12_698, 11_627] };
+    const unbuilt: SurroundingsPool = {
+      rows: new Map([
+        [FINSE, row(FINSE, TOWER, 5, 0, 5_320)], [ESCHBACH, row(ESCHBACH, TOWER, 5, 0, 6_774)], [WARNOW, row(WARNOW, TOWER, 9, 0, 12_698)],
+      ]),
+      around: new Map([['all', new Map([[FINSE, finseAround], [ESCHBACH, eschbachAround], [WARNOW, warnowAround]])]]),
+      seconds: 0,
+      unreadGuides: 'No Wikivoyage usage is built',
+    };
+    // What the Bridges source last read of them: a guide used both held places.
+    const memory = { bars: null, readers: new Map(), guided: new Map([[FINSE, true], [ESCHBACH, true], [WARNOW, true]]) };
+    const typed: SurroundingsKind<typeof trees> = { ...surroundings, verdict: (e) => ({ pass: true, type: e.qid === ESCHBACH ? 'dam' : 'tunnel' }) };
+    beforeEach(() => {
+      gatherModule.shareOf.mockImplementation((g: unknown, k: { name?: string }) => (g === 'gathered-by-id'
+        ? { trees, pool: new Map([[FINSE, entity(FINSE, 'Finse Tunnel', 5)], [ESCHBACH, entity(ESCHBACH, 'Eschbach Dam', 5)], [WARNOW, entity(WARNOW, 'Warnow Tunnel', 9)]]),
+          facts: new Map() }
+        : gathered.shares.get(k as never)));
+    });
+
+    it('keeps the tunnel and the dam it holds by their guides as last read, and says in its line that it read them from memory', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const { items, filtered } = await surroundingsReader(typed, ON)
+        .arrivals(run, sparql, gathered as never, new Set(), unbuilt, new Set([FINSE, ESCHBACH]), memory);
+      expect(items.map((i) => [i.qid, i.type])).toEqual([[FINSE, 'tunnel'], [ESCHBACH, 'dam']]);
+      expect(items[0].readershipNote).toMatch(/^Kept in the surroundings tier, the guides' test unread: within 150 km, 1,089 places of its density: .*a Wikivoyage edition used this place when last read/);
+      // The Warnow Tunnel enters by its editions, and is no sight while nothing the run read says a guide uses it.
+      expect(filtered).toEqual([{ externalId: WARNOW, name: 'Warnow Tunnel', reason: expect.stringMatching(/^a tunnel enters the surroundings tier only when a Wikivoyage edition uses it, and no Wikivoyage usage is built/) }]);
+      expect(log.mock.calls.map(([line]) => String(line)).some((line) => line.includes('no Wikivoyage usage is built, so the guides of the places it holds are as last read'))).toBe(true);
+      log.mockRestore();
+    });
+
+    it('admits no new place by a guide: the Finse Tunnel, not held, is no candidate the cut passes', async () => {
+      const { items, filtered } = await surroundingsReader(typed, ON)
+        .arrivals(run, sparql, gathered as never, new Set([WARNOW]), unbuilt, new Set(), memory);
+      expect(items).toEqual([]);
+      expect(filtered).toEqual([]);
+      expect(gatherModule.gatherPlaces).not.toHaveBeenCalled();
+    });
+
+    it('lets a held tunnel no guide used when last read fall with the cut\'s reason', async () => {
+      const { items, filtered } = await surroundingsReader(typed, ON).arrivals(run, sparql, gathered as never, new Set([WARNOW]), unbuilt,
+        new Set([FINSE]), { ...memory, guided: new Map([[FINSE, false]]) });
+      expect(items).toEqual([]);
+      expect(filtered).toEqual([{ externalId: FINSE, name: 'Finse Tunnel', reason: expect.stringMatching(/^below the surroundings tier's cut: .*no Wikivoyage edition used this place when last read$/) }]);
+    });
+
+    it('reads the build, not the memory, where the build is in place', async () => {
+      // The same places with their guides read: the Warnow Tunnel, guided in memory, is refused by what the build reads.
+      const built: SurroundingsPool = {
+        rows: new Map([[FINSE, row(FINSE, TOWER, 5, 1, 5_320)], [WARNOW, row(WARNOW, TOWER, 9, 0, 12_698)]]),
+        around: new Map([['all', new Map([
+          [FINSE, { ...finseAround, topGuideEditions: [5, 4, 4, 3, 3, 3, 3, 2, 2, 2] }],
+          [WARNOW, { ...warnowAround, topGuideEditions: [5, 4, 3, 3, 2, 2, 2, 2, 2, 2] }],
+        ])]]),
+        seconds: 0,
+      };
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const { items, filtered } = await surroundingsReader(typed, ON).arrivals(run, sparql, gathered as never, new Set(), built, new Set([FINSE]), memory);
+      expect(items.map((i) => [i.qid, i.readershipNote])).toEqual([[FINSE, expect.stringMatching(/^In the surroundings tier by the guides: /)]]);
+      expect(filtered).toEqual([{ externalId: WARNOW, name: 'Warnow Tunnel', reason: expect.stringMatching(/^a tunnel enters the surroundings tier only while a Wikivoyage edition uses it, and none does/) }]);
+      expect(log.mock.calls.map(([line]) => String(line)).some((line) => line.includes('as last read'))).toBe(false);
+      log.mockRestore();
+    });
+  });
+
   it('reads nothing while the switch is off, and says why', async () => {
     const result = await surroundingsReader(surroundings, { ...ON, enabled: false }).arrivals(run, sparql, gathered as never, new Set(), pool, new Set());
     expect(result.items).toEqual([]);

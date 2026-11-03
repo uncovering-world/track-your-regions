@@ -26,8 +26,9 @@ import type { PoolEntity } from '../publicArt/queries.js';
 import type { SubjectRunner } from '../publicArt/subjects.js';
 import { gatherPlaces, shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from './gather.js';
 import { placeLandmark } from './candidates.js';
-import { needsAGuide, SURROUNDINGS_CUT, surroundingsVerdict, type SurroundingsCut } from './surroundingsCut.js';
-import type { SurroundingsGroup, SurroundingsPool } from './surroundingsPool.js';
+import { needsAGuide, SURROUNDINGS_CUT, surroundingsVerdict, type SurroundingsCandidate, type SurroundingsCut } from './surroundingsCut.js';
+import type { SurroundingsGroup, SurroundingsPool, SurroundingsPoolRow } from './surroundingsPool.js';
+import type { WorldMemory } from './worldBars.js';
 
 /**
  * The kind's verdict on a survivor of the cut. Where the kind's rule answers
@@ -99,16 +100,17 @@ export interface SurroundingsReader {
   classes(gathered: GatheredPlaces): ReadonlySet<string>;
   /** The neighbourhoods the cut reads for this kind (`surroundingsGroups`). */
   groups(gathered: GatheredPlaces, cut: SurroundingsCut): SurroundingsGroup[];
+  /** `memory` is what the source last read (`worldMemory.ts`), for the guides a run without a usage build cannot read. */
   arrivals(run: SubjectRunner, sparql: SparqlFn, gathered: GatheredPlaces, worldAdmitted: ReadonlySet<string>,
-    pool: SurroundingsPool | null, held: ReadonlySet<string>): Promise<SurroundingsArrivals>;
+    pool: SurroundingsPool | null, held: ReadonlySet<string>, memory?: WorldMemory): Promise<SurroundingsArrivals>;
 }
 
 export function surroundingsReader<Trees, Context = undefined>(surroundings: SurroundingsKind<Trees, Context>, cut: SurroundingsCut = SURROUNDINGS_CUT): SurroundingsReader {
   return {
     classes: (gathered) => surroundings.classesOf(shareOf(gathered, surroundings.kind).trees),
     groups: (gathered, cut) => surroundingsGroups(surroundings, shareOf(gathered, surroundings.kind).trees, cut),
-    arrivals: (run, sparql, gathered, worldAdmitted, pool, held) =>
-      surroundingsArrivals(run, sparql, surroundings, shareOf(gathered, surroundings.kind).trees, worldAdmitted, surroundingsLandmark, pool, held, cut),
+    arrivals: (run, sparql, gathered, worldAdmitted, pool, held, memory) =>
+      surroundingsArrivals(run, sparql, surroundings, shareOf(gathered, surroundings.kind).trees, worldAdmitted, surroundingsLandmark, pool, held, cut, memory),
   };
 }
 
@@ -170,10 +172,32 @@ export function surroundingsGroups<Trees>(surroundings: SurroundingsKind<Trees, 
   return [...byType].map(([type, classes]) => ({ key: `${groupOf(surroundings)}:${type}`, classes }));
 }
 
+/**
+ * A pool row's signals as the cut reads them: its guide editions this run, or,
+ * where no usage build is in place, none read, and a place the tier holds by
+ * whether a guide used it when last read (ADR-0175 decision 6).
+ */
+function candidateOf(row: SurroundingsPoolRow, pool: SurroundingsPool, held: boolean, memory?: WorldMemory): SurroundingsCandidate {
+  const signals = { editions: row.editions, readers: row.readers };
+  if (!pool.unreadGuides) return { ...signals, guideEditions: row.guideEditions };
+  return { ...signals, guideEditions: null, ...(held ? { guidedAsLastRead: memory?.guided.get(row.qid) ?? null } : {}) };
+}
+
+/** A survivor's guide signals, for the types that need a guide: as the cut read them, or no guide where the pool holds no row. */
+function guideOf(qid: string, pool: SurroundingsPool, held: boolean, memory?: WorldMemory): Pick<SurroundingsCandidate, 'guideEditions' | 'guidedAsLastRead'> {
+  const row = pool.rows.get(qid);
+  return row ? candidateOf(row, pool, held, memory) : { guideEditions: 0 };
+}
+
+/** The run line's clause where the guides were read from memory: no usage build is in place. */
+function guidesClause(pool: SurroundingsPool): string {
+  return pool.unreadGuides ? '; no Wikivoyage usage is built, so the guides of the places it holds are as last read and no new place enters by a guide' : '';
+}
+
 /** The candidates of the kind's classes the cut admits, with the notes they clear it by. */
 function survivorsOf<Trees>(
   surroundings: SurroundingsKind<Trees, unknown>, trees: Trees, worldAdmitted: ReadonlySet<string>, pool: SurroundingsPool,
-  held: ReadonlySet<string>, cut: SurroundingsCut,
+  held: ReadonlySet<string>, cut: SurroundingsCut, memory?: WorldMemory,
 ): { survivors: string[]; notes: Map<string, string>; fell: Map<string, string>; candidates: number } {
   const classes = surroundings.classesOf(trees);
   const survivors: string[] = [];
@@ -191,9 +215,7 @@ function survivorsOf<Trees>(
       ?? (held.has(row.qid) ? { groupSize: 0, topEditions: [], topGuideEditions: [], topReaders: [] } : undefined);
     if (!near) continue;
     candidates += 1;
-    const verdict = surroundingsVerdict(
-      { editions: row.editions, guideEditions: row.guideEditions, readers: row.readers }, near, cut, held.has(row.qid),
-    );
+    const verdict = surroundingsVerdict(candidateOf(row, pool, held.has(row.qid), memory), near, cut, held.has(row.qid));
     if (verdict.in) { survivors.push(row.qid); notes.set(row.qid, verdict.note); }
     // A row this tier admitted before that no longer clears the cut falls with
     // the cut's own reason, rather than the sweep's generic one.
@@ -207,7 +229,10 @@ function survivorsOf<Trees>(
  * the cut admits that the world tier did not (`worldAdmitted`), the kind's
  * rule passed, as rows of the surroundings tier with the cut's note for the
  * curator. `pool` is the pass's surroundings pool, or null where the run read the
- * live service and none could be read.
+ * live service and none could be read. `memory` is what the source's runs last
+ * read (`worldMemory.ts`): where the pool reads no guide's use, a place the
+ * tier holds is read by whether a guide used it when last read (ADR-0175
+ * decision 6).
  */
 export async function surroundingsArrivals<Trees, Context, T>(
   run: SubjectRunner,
@@ -219,6 +244,7 @@ export async function surroundingsArrivals<Trees, Context, T>(
   pool: SurroundingsPool | null,
   held: ReadonlySet<string>,
   cut: SurroundingsCut = SURROUNDINGS_CUT,
+  memory?: WorldMemory,
 ): Promise<SurroundingsArrivals<T>> {
   const { logPrefix } = surroundings;
   if (!cut.enabled) {
@@ -236,11 +262,11 @@ export async function surroundingsArrivals<Trees, Context, T>(
     return { ...none<T>(), skipped: pool.unread };
   }
   const { survivors, notes, fell, candidates } = survivorsOf(
-    surroundings as SurroundingsKind<Trees, unknown>, trees, worldAdmitted, pool, held, cut,
+    surroundings as SurroundingsKind<Trees, unknown>, trees, worldAdmitted, pool, held, cut, memory,
   );
   console.log(`${logPrefix} Surroundings tier: ${candidates.toLocaleString('en')} candidates of the kind's classes at ${cut.minLanguages}+ editions `
     + `and ${(cut.stayReadersShare * cut.minReaders).toLocaleString('en')}+ readers, `
-    + `${survivors.length.toLocaleString('en')} clear the cut within ${cut.radiusKm} km, ${fell.size} it held fell`);
+    + `${survivors.length.toLocaleString('en')} clear the cut within ${cut.radiusKm} km, ${fell.size} it held fell${guidesClause(pool)}`);
   if (!survivors.length && !fell.size) return none<T>();
 
   // The survivors asked about by id, with everything the kind's rule reads of a
@@ -262,8 +288,9 @@ export async function surroundingsArrivals<Trees, Context, T>(
       continue;
     }
     // A tunnel, a dam or a lock the cut admits by its readers or editions is
-    // still no sight until a guide says people go to see it (ADR-0175).
-    const unguided = needsAGuide(verdict.type, pool.rows.get(qid)?.guideEditions ?? 0, cut);
+    // still no sight until a guide says people go to see it (ADR-0175), and
+    // without a usage build a held one is read by its guide as last read.
+    const unguided = needsAGuide(verdict.type, guideOf(qid, pool, held.has(qid), memory), held.has(qid), cut);
     if (unguided) {
       filtered.push({ externalId: qid, name: entity.label, reason: unguided });
       continue;

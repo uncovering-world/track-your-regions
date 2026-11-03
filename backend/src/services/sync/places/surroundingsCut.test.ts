@@ -202,15 +202,100 @@ describe('the surroundings tier on real places (ADR-0175 decision 3, ADR-0181)',
   });
 });
 
+// Two places the tier holds by the guides alone, with the medians of their admission notes on the dev catalogue
+// (the lists schematic): the Finse Tunnel (Q5450940), on the Bergen Line, used by the English Wikivoyage, and the
+// Eschbach Dam (Q896077) in Remscheid, used by the German and English ones.
+const finse: Surroundings = {
+  groupSize: 1_089,
+  topEditions: [36, 30, 24, 20, 17, 15, 12, 10, 9, 8],
+  topGuideEditions: [5, 4, 4, 3, 3, 3, 3, 2, 2, 2],
+  topReaders: [232_735, 120_000, 80_000, 50_000, 36_000, 30_235, 20_000, 15_000, 10_000, 9_000],
+};
+const eschbach: Surroundings = {
+  groupSize: 28_467,
+  topEditions: [60, 50, 40, 30, 25, 23, 22, 20, 18, 16],
+  topGuideEditions: [7, 6, 5, 4, 4, 3, 3, 2, 2, 2],
+  topReaders: [2_000_000, 900_000, 500_000, 300_000, 170_000, 156_714, 140_000, 120_000, 110_000, 100_000],
+};
+const finseTunnel = { editions: 5, readers: 5_320 };
+const eschbachDam = { editions: 5, readers: 6_774 };
+
+describe('the cut where no Wikivoyage usage is built (ADR-0175 decision 6)', () => {
+  it('admits by the guides with the build in place, as the catalogue holds them', () => {
+    expect(surroundingsVerdict({ ...finseTunnel, guideEditions: 1 }, finse)).toEqual({
+      in: true, reference: { editions: 16, guide: 3, readers: 33_117.5 },
+      note: 'In the surroundings tier by the guides: within 150 km, 1,089 places of its density: the 10 best are read in 16 '
+        + 'Wikipedia editions at the median, this place in 5; the best have 33,117.5 readers a year at the median, this place 5,320; '
+        + 'the best are used by 3 Wikivoyage editions at the median, this place by 1 (ADR-0171, ADR-0175, ADR-0181)',
+    });
+    const dam = surroundingsVerdict({ ...eschbachDam, guideEditions: 2 }, eschbach, SURROUNDINGS_CUT, true);
+    expect(dam.in && dam.note).toMatch(/^In the surroundings tier by the guides: within 150 km, 28,467 places .* the best are used by 3\.5 Wikivoyage editions at the median, this place by 2 /);
+  });
+
+  it('keeps a held place a guide used when last read, and one no build was ever read for, naming the test it could not read', () => {
+    const tunnel = surroundingsVerdict({ ...finseTunnel, guideEditions: null, guidedAsLastRead: true }, { ...finse, topGuideEditions: [] }, SURROUNDINGS_CUT, true);
+    expect(tunnel).toEqual({
+      in: true, reference: { editions: 16, guide: null, readers: 33_117.5 },
+      note: 'Kept in the surroundings tier, the guides\' test unread: within 150 km, 1,089 places of its density: the 10 best are read in 16 '
+        + 'Wikipedia editions at the median, this place in 5; the best have 33,117.5 readers a year at the median, this place 5,320; '
+        + 'no Wikivoyage usage is built, so no guide\'s use is read; a Wikivoyage edition used this place when last read (ADR-0175 decision 6, ADR-0181)',
+    });
+    const dam = surroundingsVerdict({ ...eschbachDam, guideEditions: null, guidedAsLastRead: true }, eschbach, SURROUNDINGS_CUT, true);
+    expect(dam.in && dam.note).toMatch(/^Kept in the surroundings tier, the guides' test unread: /);
+    // The neighbours' guide editions the pool counted without a build are no reading either: no reference is set off them.
+    expect(dam.in && dam.reference.guide).toBeNull();
+    const neverRead = surroundingsVerdict({ ...eschbachDam, guideEditions: null, guidedAsLastRead: null }, eschbach, SURROUNDINGS_CUT, true);
+    expect(neverRead.in && neverRead.note).toMatch(/no guide's use was ever read of this place \(ADR-0175 decision 6, ADR-0181\)$/);
+  });
+
+  it('lets a held place no guide used when last read fall by the tests it read, and says so', () => {
+    const v = surroundingsVerdict({ ...finseTunnel, guideEditions: null, guidedAsLastRead: false }, finse, SURROUNDINGS_CUT, true);
+    expect(v).toEqual({ in: false, reason: expect.stringMatching(
+      /^below the surroundings tier's cut: .*no Wikivoyage usage is built, so no guide's use is read; no Wikivoyage edition used this place when last read$/) });
+  });
+
+  it('keeps no held place in an area too small for the guides\' test, which the build would not read either', () => {
+    const small: Surroundings = { ...finse, groupSize: 4 };
+    expect(surroundingsVerdict({ ...finseTunnel, guideEditions: null, guidedAsLastRead: true }, small, SURROUNDINGS_CUT, true).in).toBe(false);
+  });
+
+  it('admits no new place by a guide, and a new one by the tests it read', () => {
+    // A new place two guides use where the best are used by five passes the guides' test alone with the build, and nothing without it.
+    expect(surroundingsVerdict({ editions: 7, guideEditions: 2, readers: read }, kyoto).in).toBe(true);
+    const v = surroundingsVerdict({ editions: 7, guideEditions: null, readers: read }, kyoto);
+    expect(v).toEqual({ in: false, reason: expect.stringMatching(/no Wikivoyage usage is built, so no guide's use is read$/) });
+    // A guide mark as last read lets no new place in.
+    expect(surroundingsVerdict({ editions: 7, guideEditions: null, readers: read, guidedAsLastRead: true }, kyoto).in).toBe(false);
+    // Its editions still admit it.
+    const editions = surroundingsVerdict({ editions: 38, guideEditions: null, readers: read }, kyoto);
+    expect(editions.in && editions.note).toMatch(/^In the surroundings tier by its editions: /);
+  });
+});
+
 describe('the types that need a guide', () => {
   it('refuses a tunnel, a dam or a lock no Wikivoyage edition uses, and lets one a guide uses through', () => {
     // Rostock's Warnow Tunnel: nine editions, 12,698 readers, no guide.
-    expect(needsAGuide('tunnel', 0)).toMatch(/^a tunnel enters the surroundings tier only while a Wikivoyage edition uses it, and none does/);
+    expect(needsAGuide('tunnel', { guideEditions: 0 })).toMatch(/^a tunnel enters the surroundings tier only while a Wikivoyage edition uses it, and none does/);
     // The Kurobe Dam, used by the Bengali, English and Japanese Wikivoyages; the Finse Tunnel by the English one.
-    expect(needsAGuide('dam', 3)).toBeNull();
-    expect(needsAGuide('tunnel', 1)).toBeNull();
-    expect(needsAGuide('lock', 0)).not.toBeNull();
+    expect(needsAGuide('dam', { guideEditions: 3 })).toBeNull();
+    expect(needsAGuide('tunnel', { guideEditions: 1 })).toBeNull();
+    expect(needsAGuide('lock', { guideEditions: 0 })).not.toBeNull();
     // A bridge needs none.
-    expect(needsAGuide('bridge', 0)).toBeNull();
+    expect(needsAGuide('bridge', { guideEditions: 0 })).toBeNull();
+  });
+
+  it('reads a held one by its guide as last read where no usage is built, and lets no new one in (ADR-0175 decision 6)', () => {
+    // The Finse Tunnel and the Eschbach Dam, held, a guide using each when last read: they stay.
+    expect(needsAGuide('tunnel', { guideEditions: null, guidedAsLastRead: true }, true)).toBeNull();
+    expect(needsAGuide('dam', { guideEditions: null, guidedAsLastRead: true }, true)).toBeNull();
+    // Held and never read by a build: unknown, never no guide.
+    expect(needsAGuide('dam', { guideEditions: null, guidedAsLastRead: null }, true)).toBeNull();
+    // Held, and no guide used it when last read: it falls as it would have then.
+    expect(needsAGuide('lock', { guideEditions: null, guidedAsLastRead: false }, true))
+      .toMatch(/^a lock stays in the surroundings tier only while a Wikivoyage edition uses it, and none did when last read/);
+    // New: nothing the run read says a guide uses it.
+    expect(needsAGuide('tunnel', { guideEditions: null }))
+      .toMatch(/^a tunnel enters the surroundings tier only when a Wikivoyage edition uses it, and no Wikivoyage usage is built/);
+    expect(needsAGuide('bridge', { guideEditions: null })).toBeNull();
   });
 });

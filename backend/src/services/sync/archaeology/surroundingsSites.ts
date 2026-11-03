@@ -34,6 +34,7 @@ import type { KindShare } from '../places/gather.js';
 import { surroundingsArrivals, type SurroundingsKind, type SurroundingsRuleVerdict } from '../places/surroundingsTier.js';
 import { SURROUNDINGS_CUT, type SurroundingsCut } from '../places/surroundingsCut.js';
 import type { SurroundingsPool } from '../places/surroundingsPool.js';
+import type { WorldMemory } from '../places/worldBars.js';
 import { ARCHAEOLOGY_SURROUNDINGS_REGISTER } from '../places/admissionRegister.js';
 import { OSM_KEEP_WKT, type ArchaeologyTrees } from './classes.js';
 import type { SiteRefusalGroup } from './siteTest.js';
@@ -82,6 +83,8 @@ export interface SurroundingsSitesInput {
   /** The names of the places `admitted` and `holds` name, where the run knows them. */
   nameOf: (qid: string) => string | undefined;
   cut?: SurroundingsCut;
+  /** What the source last read (`worldMemory.ts`), for the guides a run without a usage build cannot read. */
+  memory?: WorldMemory;
 }
 
 export interface SurroundingsSites {
@@ -192,7 +195,7 @@ export async function collectSurroundingsSites(input: SurroundingsSitesInput): P
       if (!answer?.pass || !answer.judged.verdict.pass) throw new Error(`A surroundings-tier site the rule did not pass reached the writer: ${entity.qid}`);
       return siteCandidateOf(entity, answer.judged.verdict, { classes, objects: answer.judged.objects, readAt: input.read.readAt, note });
     },
-    input.pool, input.held, input.cut ?? SURROUNDINGS_CUT,
+    input.pool, input.held, input.cut ?? SURROUNDINGS_CUT, input.memory,
   );
   const groupOf = (qid: string): SiteRefusalGroup => {
     const answer = decided.get(qid);
