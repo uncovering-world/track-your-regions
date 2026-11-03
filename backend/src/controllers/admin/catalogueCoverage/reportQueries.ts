@@ -106,6 +106,11 @@ export type CalibrationRow = Pick<CoverageCalibrationEntriesRow, 'kind_slug' | '
    * does not offer, or for a work the name of the treasure no such venue shows; else null.
    */
   held_as: string | null;
+  /**
+   * Offered, by a place that holds the item rather than by the item itself (#2151): the name of
+   * that place, the J. Paul Getty Museum for the Getty Center; null where the item is offered as itself.
+   */
+  offered_as: string | null;
   /** What the latest real, closed run of one of the kind's sources said when it refused the item; null where none did. */
   refused_for: string | null;
 };
@@ -332,9 +337,36 @@ const UNNAMED_SQL = `
    ORDER BY rd.region_slug, sitelinks NULLS LAST, rd.name`;
 
 /**
+ * The places that hold a calibration entry's item (#2151): what Wikidata says
+ * the entry is part of (`P361`) or stands in (`P276`), or what says it has the
+ * entry as a part (`P527`). A museum is often two items, the place a guide names
+ * and the institution its works name in their collection, and Art Museums admits
+ * the institution: the J. Paul Getty Museum has the Getty Center as a part, and
+ * the Getty Center is offered through it. Only that way round. A place that is a
+ * part of the entry offers a part, not the entry: Songo Mnara is a part of Kilwa
+ * Kisiwani's listing and another island. Read off the copy of Wikidata
+ * (`wikidata_claims`); without one, no entry is held another way.
+ */
+const ENTRY_WHOLES_SQL = `
+    SELECT wc.subject AS entry_item, wc.value_item AS whole
+      FROM wikidata_claims wc
+     WHERE wc.property IN ('P361', 'P276') AND wc.rank >= 0 AND wc.value_item IS NOT NULL
+       AND wc.subject IN (SELECT wikidata_id FROM coverage_calibration_entries)
+    UNION
+    SELECT wc.value_item, wc.subject
+      FROM wikidata_claims wc
+     WHERE wc.property = 'P527' AND wc.rank >= 0
+       AND wc.value_item IN (SELECT wikidata_id FROM coverage_calibration_entries)`;
+
+/** The same, empty, for a deployment with no copy of Wikidata. */
+const NO_WHOLES_SQL = `SELECT NULL::text AS entry_item, NULL::text AS whole WHERE false`;
+
+/**
  * Where each top of a calibration list stands to its kind (#1864): offered when a place known
  * by the item (`KNOWN_AS_SQL`, the identifiers the survey lists match by) has a counted
- * membership in the kind; admitted when its arrival waits in the review queue
+ * membership in the kind, or when the kind offers a place that holds the item
+ * (`ENTRY_WHOLES_SQL`), which is then named (`offered_as`) unless the item's own place is
+ * offered; admitted when its arrival waits in the review queue
  * (`arrivalWaitingSql`, the queue's own fragment: admitted, unread, not marked missing — the
  * line let it through and a curator will see it; a place a curator passed that no longer
  * stands, or an arrival the next run marked missing, waits for nobody and stays held); held when
@@ -351,8 +383,15 @@ const UNNAMED_SQL = `
  * subquery per entry over the whole `known_as` union ran it once per top, with no index, and
  * the report is read on every Catalogue Checks collect.
  */
-const CALIBRATION_SQL = `
+const calibrationSql = (wholes: string) => `
   WITH known_as AS (${KNOWN_AS_SQL}
+  ), entry_items AS (
+    -- An entry's own item, and each place that holds it (ENTRY_WHOLES_SQL).
+    SELECT c.kind_slug, c.slug, c.wikidata_id AS item, true AS own FROM coverage_calibration_entries c
+    UNION
+    SELECT c.kind_slug, c.slug, w.whole, false
+      FROM coverage_calibration_entries c JOIN (${wholes}) w ON w.entry_item = c.wikidata_id
+     WHERE w.whole <> c.wikidata_id
   ), latest_run AS (
     SELECT DISTINCT ON (s.kind_id) s.kind_id, l.id AS log_id
       FROM experience_sync_logs l
@@ -360,14 +399,20 @@ const CALIBRATION_SQL = `
      WHERE NOT l.is_dry_run AND l.status IN ('success', 'partial') AND s.is_active
      ORDER BY s.kind_id, l.id DESC
   ), holding AS (
+    -- Admitted, crowded and held are said of the entry's own item; offered also of a
+    -- place that holds it, which is then named (offered_as).
     SELECT c.kind_slug, c.slug,
            bool_or(COALESCE(counted.offered, false)) AS offered,
-           bool_or(COALESCE(counted.admitted, false)) AS admitted,
-           bool_or(COALESCE(counted.crowded, false)) AS crowded,
-           (array_agg(e.name ORDER BY k.own DESC, e.id))[1] AS held_as
+           bool_or(ei.own AND COALESCE(counted.admitted, false)) AS admitted,
+           bool_or(ei.own AND COALESCE(counted.crowded, false)) AS crowded,
+           (array_agg(e.name ORDER BY k.own DESC, e.id) FILTER (WHERE ei.own))[1] AS held_as,
+           CASE WHEN NOT bool_or(ei.own AND COALESCE(counted.offered, false))
+                THEN (array_agg(e.name ORDER BY e.id) FILTER (WHERE NOT ei.own AND COALESCE(counted.offered, false)))[1]
+           END AS offered_as
       FROM coverage_calibration_entries c
       JOIN coverage_kinds ck ON ck.slug = c.kind_slug AND ck.form = 'place'
-      JOIN known_as k ON k.id = c.wikidata_id
+      JOIN entry_items ei ON (ei.kind_slug, ei.slug) = (c.kind_slug, c.slug)
+      JOIN known_as k ON k.id = ei.item
       JOIN experiences e ON e.id = k.experience_id
       LEFT JOIN LATERAL (
         SELECT bool_or(${countedMembershipSql('m', 'e')}) AS offered,
@@ -399,12 +444,16 @@ const CALIBRATION_SQL = `
          COALESCE(h.admitted, false) AS admitted,
          COALESCE(h.crowded, false) AS crowded,
          COALESCE(h.held_as, w.held_as) AS held_as,
+         h.offered_as,
          r.error AS refused_for
     FROM coverage_calibration_entries c
     LEFT JOIN holding h ON (h.kind_slug, h.slug) = (c.kind_slug, c.slug)
     LEFT JOIN works w ON (w.kind_slug, w.slug) = (c.kind_slug, c.slug)
     LEFT JOIN refusals r ON r.kind_slug = c.kind_slug AND r.external_id = c.wikidata_id
    ORDER BY c.kind_slug, c.slug`;
+
+const CALIBRATION_SQL = calibrationSql(ENTRY_WHOLES_SQL);
+const CALIBRATION_WITHOUT_CLAIMS_SQL = calibrationSql(NO_WHOLES_SQL);
 
 const CALIBRATION_SOURCES_SQL = `
   SELECT s.slug, s.name, s.url, to_char(s.read, 'YYYY-MM-DD') AS read, s.note
@@ -417,6 +466,9 @@ export const SAME_SPOT_METRES = 250;
 /** Read everything the report is built from, for every region or for `regionSlugs`. */
 export async function readCoverageFacts(regionSlugs?: string[]): Promise<CoverageFacts> {
   const only = regionSlugs ?? null;
+  // The places that hold an entry are read off the copy of Wikidata, where there is one.
+  const claims = await pool.query<{ present: boolean }>(`SELECT to_regclass('workbench.wikidata_claims') IS NOT NULL AS present`);
+  const calibrationStatement = claims.rows[0]?.present ? CALIBRATION_SQL : CALIBRATION_WITHOUT_CLAIMS_SQL;
   const [kinds, regions, expectations, matches, nearby, judgements, unnamed, calibration, calibrationSources] = await Promise.all([
     pool.query<KindRow>(KINDS_SQL),
     pool.query<RegionRow>(REGIONS_SQL, [only]),
@@ -426,7 +478,7 @@ export async function readCoverageFacts(regionSlugs?: string[]): Promise<Coverag
     pool.query<JudgementRow>(JUDGEMENTS_SQL, [only]),
     pool.query<UnnamedRow>(UNNAMED_SQL, [only]),
     // A kind's list is the whole world's, so a region never narrows it.
-    pool.query<CalibrationRow>(CALIBRATION_SQL),
+    pool.query<CalibrationRow>(calibrationStatement),
     pool.query<CalibrationSourceRow>(CALIBRATION_SOURCES_SQL),
   ]);
   return {

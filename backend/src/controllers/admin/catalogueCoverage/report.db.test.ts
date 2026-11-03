@@ -35,7 +35,20 @@ const UNESCO = '96001';
 const TOPS = {
   refusedByRun: 'Q96000050', underLine: 'Q96000051', outOfReach: 'Q96000052', pendingMissing: 'Q96000053',
   findNotHeld: 'Q96000054', findUnderLine: 'Q96000055',
+  // Held through the offered dig (#2151): a temple that is part of it, and a hall it has as a part; and a whole the dig is a part of.
+  partOfDig: 'Q96000056', digHasIt: 'Q96000057', wholeOfDig: 'Q96000058',
 } as const;
+
+/** What the copy of Wikidata says holds what (#2151): the temple and the hall are in the dig, the dig is in the whole. */
+const CLAIMS = [
+  { subject: TOPS.partOfDig, property: 'P361', value: QID.offered },
+  { subject: QID.offered, property: 'P527', value: TOPS.digHasIt },
+  { subject: QID.offered, property: 'P361', value: TOPS.wholeOfDig },
+];
+
+async function clearClaims(): Promise<void> {
+  await pool.query('DELETE FROM workbench.wikidata_claims WHERE statement_id LIKE $1', ['db-lane-coverage-%']);
+}
 const HERITAGE_ITEM = 'Q96000040';
 // The offered dig stands at 50 N 10 E; a degree of latitude is 111.2 km.
 const AT = { lat: 50, lon: 10 };
@@ -157,6 +170,9 @@ async function files(): Promise<CoverageFiles> {
       { slug: 'lost-top', name: 'Lost top', wikidata: QID.lost, sources: ['coverage-surveys'], sitelinks: 45, note: '' },
       // Unread, and marked missing by the next run: no curator will see it, so held and named.
       { slug: 'pending-missing-top', name: 'Pending and missing', wikidata: TOPS.pendingMissing, sources: ['coverage-surveys'], sitelinks: 44, note: '' },
+      { slug: 'part-of-dig', name: 'Temple in the dig', wikidata: TOPS.partOfDig, sources: ['coverage-surveys'], sitelinks: 70, note: '' },
+      { slug: 'dig-has-it', name: 'Hall of the dig', wikidata: TOPS.digHasIt, sources: ['coverage-surveys'], sitelinks: 65, note: '' },
+      { slug: 'whole-of-dig', name: 'Whole of the dig', wikidata: TOPS.wholeOfDig, sources: ['coverage-surveys'], sitelinks: 49, note: '' },
     ]], ['notable-works', [
       // A kind of work stands by its treasure (#1988): shown by an offered venue, held where no venue a reader may go to shows it.
       { slug: 'find-on-view', name: 'Find on view', wikidata: WORKS.shown, sources: ['coverage-surveys'], sitelinks: 60, note: '' },
@@ -222,12 +238,20 @@ beforeAll(async () => {
     [PLACES.crowded],
   );
   await runs();
+  await clearClaims();
+  for (const [index, claim] of CLAIMS.entries()) {
+    await pool.query(
+      `INSERT INTO workbench.wikidata_claims (subject, property, statement_id, rank, value_item) VALUES ($1, $2, $3, 0, $4)`,
+      [claim.subject, claim.property, `db-lane-coverage-${index}`, claim.value],
+    );
+  }
   await replaceCoverage(await files());
   report = await coverageReport([REGION]);
 });
 
 afterAll(async () => {
   await clearCatalogue();
+  await clearClaims();
   await clearExpectations();
   // The two runs this spec logged, and their changes with them.
   await pool.query('DELETE FROM experience_sync_logs WHERE id >= $1 AND source_id = 5 AND completed_at >= NOW() - interval \'2 days\'', [runLogId]);
@@ -329,9 +353,11 @@ describe('the coverage report on a real database', () => {
   it('stands each top of the calibration list: offered, admitted and waiting for a curator, refused by the latest run with its reason, under the line, out of reach (#1864)', () => {
     const archaeology = report.liveKinds.find(kind => kind.slug === 'archaeology');
     // The pending dig is admitted and waits for a curator: the line holds it, so it is counted and not named.
-    expect(archaeology?.calibration).toMatchObject({ entries: 7, offered: 1, admitted: 1, bySource: [{ slug: 'coverage-surveys', named: 7, offered: 1 }] });
+    expect(archaeology?.calibration).toMatchObject({ entries: 10, offered: 3, admitted: 1, bySource: [{ slug: 'coverage-surveys', named: 10, offered: 3 }] });
     expect(archaeology?.calibration?.misses.map(miss => [miss.slug, miss.standing, miss.detail])).toEqual([
       ['refused-by-run', 'refused', 'a water system, not a site'],
+      // The dig is a part of it, and a part is not the whole (#2151).
+      ['whole-of-dig', 'absent', null],
       ['lost-top', 'held', `Place ${PLACES.lost}`],
       ['pending-missing-top', 'held', `Place ${PLACES.pendingMissing}`],
       // The older run's refusal is not the catalogue's last word on it.
@@ -339,6 +365,14 @@ describe('the coverage report on a real database', () => {
       ['under-the-line', 'under_line', null],
     ]);
     expect(report.liveKinds.find(kind => kind.slug === 'world-heritage')?.calibration).toBeNull();
+  });
+
+  it('offers a top through a place that holds it, by part of, location or has part, under both names, and never through a part of it (#2151)', () => {
+    const archaeology = report.liveKinds.find(kind => kind.slug === 'archaeology')?.calibration;
+    expect(archaeology?.offeredAs.map(top => [top.slug, top.detail])).toEqual([
+      ['part-of-dig', `Place ${PLACES.offered}`],
+      ['dig-has-it', `Place ${PLACES.offered}`],
+    ]);
   });
 
   it('stands each find of a kind of work by its treasure: shown by a venue a reader may go to, held unshown, absent, under every line (#1988)', () => {

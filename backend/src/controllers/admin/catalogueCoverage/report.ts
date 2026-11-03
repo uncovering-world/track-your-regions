@@ -168,7 +168,10 @@ export interface CalibrationTop {
   sitelinks: number | null;
   sources: string[];
   standing: CalibrationStanding;
-  /** For a held one, the catalogue place that holds it, or for a work the treasure no venue shows; the run's reason, for a refused one. */
+  /**
+   * For a held one, the catalogue place that holds it, or for a work the treasure no venue shows; the run's
+   * reason, for a refused one; for one offered by a place that holds it (#2151), that place.
+   */
   detail: string | null;
 }
 
@@ -188,6 +191,12 @@ export interface KindCalibration {
   admitted: number;
   /** Every top the kind does not offer, the most known first. */
   misses: CalibrationTop[];
+  /**
+   * The tops offered by a place that holds them rather than as themselves (#2151), each with
+   * that place's name (`detail`), so a reader of the report sees both: the Getty Center,
+   * offered as the J. Paul Getty Museum. Counted in `offered`.
+   */
+  offeredAs: CalibrationTop[];
   bySource: CalibrationBySource[];
 }
 
@@ -495,6 +504,7 @@ function calibrationOf(kind: KindRow, rows: CalibrationRow[], line: number | nul
   if (own.length === 0) return null;
   // What the miss is told by: the place that holds a held one, the run's reason for a refused one.
   const detailOf = (row: CalibrationRow, standing: CalibrationStanding): string | null => {
+    if (standing === 'offered') return row.offered_as;
     if (standing === 'held') return row.held_as;
     if (standing === 'refused') return row.refused_for;
     return null;
@@ -527,6 +537,7 @@ function calibrationOf(kind: KindRow, rows: CalibrationRow[], line: number | nul
     // The admitted are the line's passes, counted rather than named: a list of waiting
     // arrivals would bury the misses the list is there to show.
     misses: tops.filter(top => top.standing !== 'offered' && top.standing !== 'admitted').sort(byFame),
+    offeredAs: tops.filter(top => top.standing === 'offered' && top.detail !== null).sort(byFame),
     bySource: [...bySource.values()].sort((a, b) => b.named - a.named || a.slug.localeCompare(b.slug)),
   };
 }
