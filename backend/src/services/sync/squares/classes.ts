@@ -10,6 +10,7 @@
 
 import { fetchClassTree, type QueryRunner } from '../wikidataQueries.js';
 import type { PoolRoot } from '../places/gather.js';
+import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /**
  * A thoroughfare (Q83620) is asked for by itself and not by its tree: Moscow
@@ -37,8 +38,8 @@ export const SQUARE_ROOTS: readonly PoolRoot[] = [
  * the Spanish Steps are a stairway, the National Mall a square though it is
  * an avenue too, the Promenade des Anglais a promenade though it is a street.
  */
-export const SQUARE_TYPES = ['stairway', 'square', 'promenade', 'street'] as const;
-export type SquareType = (typeof SQUARE_TYPES)[number];
+export const SQUARE_TYPES = typeValues('squares-and-streets');
+export type SquareType = PlaceTypeOf<'squares-and-streets'>;
 
 /** Each type and the roots whose trees name it; a bare thoroughfare is a street. */
 const TYPE_ROOTS: Readonly<Record<SquareType, readonly string[]>> = {

@@ -11,6 +11,7 @@
 
 import { fetchClassTree, type QueryRunner } from '../wikidataQueries.js';
 import type { PoolRoot } from '../places/gather.js';
+import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 const PARK = 'Q22698';
 const GARDEN = 'Q1107656';
@@ -41,8 +42,8 @@ export const PARK_ROOTS: readonly PoolRoot[] = [
  * is a botanical garden though a garden too, the Jardin du Luxembourg a garden
  * though an urban park too (an urban garden), Central Park a park.
  */
-export const PARK_TYPES = ['botanical-garden', 'garden', 'park'] as const;
-export type ParkType = (typeof PARK_TYPES)[number];
+export const PARK_TYPES = typeValues('parks-and-gardens');
+export type ParkType = PlaceTypeOf<'parks-and-gardens'>;
 
 /** Never a place to visit: gone, or not built yet. The Hanging Gardens of Babylon are destroyed. */
 export const KILLS: Readonly<Record<string, { root: string; reason: string }>> = {

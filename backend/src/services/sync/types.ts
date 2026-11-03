@@ -2,11 +2,7 @@
  * Types for experience sync services
  */
 
-import type { MonumentType, PublicArtType } from './publicArt/kindRules.js';
-import type { TowerType } from './towers/classes.js';
-import type { BridgeType } from './bridges/classes.js';
-import type { SquareType } from './squares/classes.js';
-import type { ParkType } from './parks/classes.js';
+import type { PlaceTypeOf, TypedKindSlug } from '@tyr/shared/placeTypes';
 import type { Operation } from '../operationProgress.js';
 import type { FieldChange } from './changeSet.js';
 
@@ -298,6 +294,13 @@ export interface LandmarkCast {
 }
 
 /**
+ * The kinds a landmark record carries a type of: every typed kind but the three
+ * filled by records of their own (UNESCO's, Places of worship's, Archaeology's),
+ * so a new place kind's types join the record by its vocabulary alone.
+ */
+type LandmarkKindSlug = Exclude<TypedKindSlug, 'world-heritage' | 'places-of-worship' | 'archaeology'>;
+
+/**
  * Raw landmark record from Wikidata SPARQL query
  */
 export interface WikidataLandmark {
@@ -328,10 +331,11 @@ export interface WikidataLandmark {
   sitelinks: number;
   countryLabel: string | null;
   /**
-   * The type within the kind the run fills, in that kind's own vocabulary.
-   * Parks & gardens' is here for its dry run (#2254); no source writes it yet.
+   * The type within the kind the run fills, in that kind's own vocabulary
+   * (`@tyr/shared/placeTypes`). Parks & gardens' is here for its dry run
+   * (#2254); no source writes it yet.
    */
-  type: PublicArtType | MonumentType | TowerType | BridgeType | SquareType | ParkType;
+  type: PlaceTypeOf<LandmarkKindSlug>;
   /** The tier that admitted it where it is not the world's: ADR-0171's surroundings tier (#2178). */
   tier?: 'surroundings';
   /**

@@ -65,6 +65,7 @@ export {
   SITE_KILL_BY_NAME,
   OSM_KEEP_WKT,
 } from './siteClasses.js';
+import type { PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /**
  * What a reader filters an archaeology place by (ADR-0058 decision 1).
@@ -74,7 +75,7 @@ export {
  * first slice, which filled only `museum`, so that the writers already knew
  * about the type the site door would bring (#581 PR 2 built that door).
  */
-export type ArchaeologyType = 'site' | 'museum';
+export type ArchaeologyType = PlaceTypeOf<'archaeology'>;
 
 /**
  * The roots of the museum door: walked as trees by `fetchArchaeologyTrees`.
