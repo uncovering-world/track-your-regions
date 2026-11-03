@@ -499,6 +499,18 @@ A place is known by the same identifiers the survey lists match by (`KNOWN_AS_SQ
 by the same `countedMembershipSql`, in the kind the list belongs to. A kind's list is the whole
 world's, so `--region` never narrows it.
 
+A top is also offered when the kind offers a place that holds it (#2151, `ENTRY_WHOLES_SQL`): the
+top's item is *part of* (P361) or *located in* (P276) the place's, or the place's item *has part*
+(P527) the top's, read off the copy of Wikidata (`workbench.wikidata_claims`; a database without
+it counts the top's own item alone). The Getty Center is offered as the J. Paul Getty Museum, the
+Temples of Baalbek as Baalbek, the Hollywood Walk of Fame as Hollywood Boulevard. The report names
+such a top under both names, *offered as a place that holds it*, whenever its own item is not
+offered. Only that direction counts: a place that is part of the top offers a part of it, not
+the top, so the Kilwa Kisiwani ruins are not offered by Songo Mnara, nor the Zuiderzee Works by
+the Afsluitdijk. Wikidata's containment is taken as it stands; the Western Wall, part of the
+Al-Aqsa compound there, is offered as Masjid Al-Aqsa while its own arrival waits for a curator.
+Admitted, crowded and held are said of the top's own item only.
+
 A kind of work has no catalogue kind (#1988). A work is offered where a treasure its item names
 is shown by a venue a reader may go to (`venuesShowingSql`, the fragment a survey's work is matched
 by). It is held where such a treasure exists and no such venue shows it, and the treasure is
