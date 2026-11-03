@@ -3,9 +3,10 @@
  * worship, Squares & streets, Monuments & memorials, Public art, Towers,
  * Bridges & engineering marvels, and Archaeology's sites (ADR-0179) — lives
  * here, with how it was derived, the evidence and the date. The runs read it
- * (`worldBars.ts`, `surroundingsCut.ts`, `archaeology/surroundingsSites.ts`) and so
- * does the coverage report (`report.ts`); no kind module states a line of its
- * own.
+ * (`worldBars.ts`, `surroundingsCut.ts`, `archaeology/surroundingsSites.ts`); no
+ * kind module states a line of its own. It holds the frame's parameters and no
+ * value per kind (#2321): a kind's bars are what its run reads off its own pool,
+ * kept on the run's sync log, and the coverage report reads them from there.
  *
  * A parameter changes only by the method of decision 5, which
  * `docs/tech/filling-a-kind.md` § 11 spells out: the frozen metrics on the
@@ -13,6 +14,8 @@
  * states, and one read of a control group no tuning has read. Moving a value
  * here without that is moving a picked line back in.
  */
+
+import type { PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /** One parameter of the frame: its value, and what a person reads before moving it. */
 export interface Parameter<T> {
@@ -115,7 +118,7 @@ export const SURROUNDINGS_REGISTER = {
   readersGroupFloor: derived(25,
     'The readers test reads an area of 25 places or more, as the editions test does.',
     'Results, The point'),
-  guideForTypes: derived(['tunnel', 'dam', 'lock'] as readonly string[],
+  guideForTypes: derived<readonly PlaceTypeOf<'bridges-and-engineering'>[]>(['tunnel', 'dam', 'lock'],
     'A tunnel, a dam or a lock enters the surroundings tier only when a Wikivoyage edition uses it, and stays only while one still does: 370 places out, noise 9.1 % to 6.5 %, recall and canon unmoved.',
     'Results, The noise is in the regional tier of two kinds'),
   stayReadersShare: derived(0.8,
@@ -168,32 +171,4 @@ export const WORLD_FRAME: WorldFrame = {
   guideEditions: WORLD_REGISTER.guideEditions.value,
   atlasObscura: WORLD_REGISTER.atlasObscura.value,
   stayShare: WORLD_REGISTER.stayShare.value,
-};
-
-/** The coverage slugs of the kinds the frame admits by: the six of ADR-0175 and Archaeology's sites (ADR-0179). */
-export type FrameKindSlug =
-  | 'places-of-worship' | 'squares-and-streets' | 'monuments-and-memorials'
-  | 'public-art' | 'towers' | 'bridges-and-engineering' | 'archaeology';
-
-/**
- * Each kind's bars as the review read them on its pool (the readership year to
- * 2026-09, the dump of 2026-10-19): the evidence of the levels above, never a
- * line a run admits by — a run computes its own bars from its own pool. The
- * coverage report reads the editions bar, since a survey entry carries
- * editions and no readers (`report.ts`).
- */
-export const MEASURED_BARS: Parameter<Readonly<Record<FrameKindSlug, { editions: number; readers: number; guidedReaders: number }>>> = {
-  value: {
-    towers: { editions: 19, readers: 64_996, guidedReaders: 12_838 },
-    'bridges-and-engineering': { editions: 17, readers: 56_955, guidedReaders: 13_757 },
-    'squares-and-streets': { editions: 15, readers: 44_480, guidedReaders: 10_963 },
-    'places-of-worship': { editions: 16, readers: 49_634, guidedReaders: 10_577 },
-    'public-art': { editions: 17, readers: 93_029, guidedReaders: 20_871 },
-    'monuments-and-memorials': { editions: 18, readers: 85_409, guidedReaders: 16_719 },
-    // Over the 12,603 sites of Archaeology's pool, its museums aside: they stay works-first (ADR-0058).
-    archaeology: { editions: 34, readers: 150_543, guidedReaders: 25_421 },
-  },
-  derivation: "The three quantiles above read on each kind's pool: the six kinds' in the review's extract, Archaeology's sites in its own (ADR-0179).",
-  evidence: `docs/decisions/0175-a-place-kind-admits-by-quantiles-of-its-own-pool.md, decision 1; ${ARCHAEOLOGY_REPORT} § The bars`,
-  date: DERIVED,
 };

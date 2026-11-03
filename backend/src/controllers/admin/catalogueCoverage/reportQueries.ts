@@ -23,12 +23,22 @@ import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { arrivalWaitingSql } from '../../experience/waitingCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
 import { placePointsSql } from '../../../db/placePoints.js';
+import { PLACE_PASS } from '../../../services/sync/passes.js';
 
 export type KindRow = Pick<CoverageKindsRow, 'slug' | 'name' | 'form' | 'status' | 'experience_kind_id' | 'issue_number' | 'in_venue'> & {
   /** The sitelinks a place needs to enter this kind's world tier, where its source states one. */
   enter_sitelinks: number | null;
   /** For a kind of work, the finds' line a source row states: a find under it links to no venue. */
   find_enter_sitelinks: number | null;
+  /**
+   * The editions bar of the kind's last real, closed run that read its pool (`world_bars` on its
+   * sync log), where the kind admits by the world bars and such a run exists; null otherwise. A
+   * later run that read no pool writes no bars and keeps its places as they stand, so the bar
+   * last read is the one they stand by (ADR-0175 decision 6).
+   */
+  world_editions: number | null;
+  /** Whether a source of the place pass fills the kind, so its places enter by the world bars (ADR-0175) rather than by a line its source row states. */
+  by_world_bars: boolean;
   /** How many places of a kind and type a crowded city shows (ADR-0172), from the kind's `experience_kinds` row; null where it shows all. */
   crowding_limit: number | null;
   /** The radius `crowding_limit` is counted within, in kilometres; set with it or not at all. */
@@ -137,6 +147,15 @@ const KINDS_SQL = `
          (SELECT MIN((s.api_config->>'findEnterSitelinks')::int)
             FROM experience_sources s
            WHERE ck.form = 'work' AND s.is_active) AS find_enter_sitelinks,
+         (SELECT (l.world_bars->>'editions')::int
+            FROM experience_sync_logs l
+            JOIN experience_sources s ON s.id = l.source_id
+           WHERE s.kind_id = ck.experience_kind_id AND s.is_active
+             AND NOT l.is_dry_run AND l.status IN ('success', 'partial')
+             AND jsonb_typeof(l.world_bars->'editions') = 'number'
+           ORDER BY l.id DESC LIMIT 1) AS world_editions,
+         EXISTS (SELECT 1 FROM experience_sources s
+                  WHERE s.kind_id = ck.experience_kind_id AND s.is_active AND s.id = ANY($1::int[])) AS by_world_bars,
          (SELECT k.crowding_limit FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_limit,
          (SELECT k.crowding_radius_km FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_radius_km,
          COALESCE((SELECT k.crowding_exempt_types FROM experience_kinds k WHERE k.id = ck.experience_kind_id), '{}') AS crowding_exempt_types
@@ -470,7 +489,7 @@ export async function readCoverageFacts(regionSlugs?: string[]): Promise<Coverag
   const claims = await pool.query<{ present: boolean }>(`SELECT to_regclass('workbench.wikidata_claims') IS NOT NULL AS present`);
   const calibrationStatement = claims.rows[0]?.present ? CALIBRATION_SQL : CALIBRATION_WITHOUT_CLAIMS_SQL;
   const [kinds, regions, expectations, matches, nearby, judgements, unnamed, calibration, calibrationSources] = await Promise.all([
-    pool.query<KindRow>(KINDS_SQL),
+    pool.query<KindRow>(KINDS_SQL, [PLACE_PASS]),
     pool.query<RegionRow>(REGIONS_SQL, [only]),
     pool.query<ExpectationRow>(EXPECTATIONS_SQL, [only]),
     pool.query<MatchRow>(MATCHES_SQL, [only]),
