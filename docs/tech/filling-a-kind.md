@@ -899,10 +899,18 @@ Every number of the frame lives in one module,
 `backend/src/services/sync/places/admissionRegister.ts`, and nowhere else: `WORLD_REGISTER`,
 `SURROUNDINGS_REGISTER` for the surroundings tier and
 `ARCHAEOLOGY_SURROUNDINGS_REGISTER` for Archaeology's two conditions of that tier. Each parameter carries its value, the one sentence that says how it was
-derived, the evidence (the report and its section) and the date. The runs read the values
-(`WORLD_FRAME`, `SURROUNDINGS_CUT`), and so does the coverage report: a survey entry carries its
-editions and no readers, so the report reads each kind's editions bar as the review measured it
-(`MEASURED_BARS`), and a top under it may still enter on its readers. No kind module declares a
+derived, the evidence (the report and its section) and the date. The register holds the frame's
+parameters and no value per kind (#2321). The runs read the values (`WORLD_FRAME`,
+`SURROUNDINGS_CUT`) and write the bars each run admitted by on its sync log
+(`experience_sync_logs.world_bars`). The coverage report reads a kind's editions bar from there, its
+last real, closed run that read its pool (`world_editions` in `catalogueCoverage/reportQueries.ts`;
+a run that read none keeps its places by the bars last read, ADR-0175 decision 6), so a new kind's
+line appears with its first run and no register edit; a kind that has not run has no line, except
+Archaeology, which keeps its museums' line. A survey
+entry carries its editions and no readers, so a top under that bar may still enter on its readers.
+The types the surroundings tier asks a guide of (`guideForTypes`) are typed by Bridges & engineering
+marvels' declared vocabulary (`@tyr/shared/placeTypes`), so a type it names that the kind does not
+declare fails the build. No kind module declares a
 line of its own, and a kind that enters later takes the shared levels and is measured on its own
 canon list before its first run (ADR-0175 decision 4).
 
