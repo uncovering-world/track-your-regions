@@ -18706,7 +18706,7 @@
           "outrankedBy"
         ],
         "additionalProperties": false,
-        "description": "How crowded a card's city is (ADR-0172, ADR-0180)."
+        "description": "How crowded a membership's city is (ADR-0172, ADR-0180): on a review card, and on a kind of a place's curation dialog."
       },
       "ChangePasswordBody": {
         "type": "object",
@@ -31617,6 +31617,17 @@
           "canAnswer": {
             "type": "boolean",
             "description": "Whether the caller's scope reaches this kind's source, so they may take it out or put it back."
+          },
+          "crowding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CardCrowding"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How crowded the place's city is in this kind (#2282), so the row offers the crowded city's window over its type. Null for a kind with no display rule, a type its kind exempts, a place holding a work a reader is shown, or a place with no point."
           }
         },
         "required": [
@@ -31630,7 +31641,8 @@
           "answeredAt",
           "note",
           "curatorName",
-          "canAnswer"
+          "canAnswer",
+          "crowding"
         ],
         "additionalProperties": false,
         "description": "One kind of a place, with where it stands (#2022)."

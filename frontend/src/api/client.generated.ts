@@ -4443,7 +4443,7 @@ export interface VisitQuestion {
 }
 
 /**
- * How crowded a card's city is (ADR-0172, ADR-0180).
+ * How crowded a membership's city is (ADR-0172, ADR-0180): on a review card, and on a kind of a place's curation dialog.
  */
 export interface CardCrowding {
   /**
@@ -6186,6 +6186,8 @@ export interface PlaceKindStanding {
   curatorName: string | null;
   /** Whether the caller's scope reaches this kind's source, so they may take it out or put it back. */
   canAnswer: boolean;
+  /** How crowded the place's city is in this kind (#2282), so the row offers the crowded city's window over its type. Null for a kind with no display rule, a type its kind exempts, a place holding a work a reader is shown, or a place with no point. */
+  crowding: CardCrowding | null;
 }
 
 /**

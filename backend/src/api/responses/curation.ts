@@ -201,6 +201,19 @@ export const ArrivalAnsweredWithKind = z.strictObject({
 }).describe('An arrival answered with the kind it belongs in instead (#2213).');
 export type ArrivalAnsweredWithKind = z.infer<typeof ArrivalAnsweredWithKind>;
 
+// Here rather than beside the review card it was made for: the place's kinds read it too, and `reviewQueue.ts` imports this module.
+export const CardCrowding = z.strictObject({
+  limit: z.number().int().describe('How many better-known places of a type shadow a place in this kind.'),
+  radiusKm: z.number().describe('The radius they are counted within.'),
+  around: z.number().int().describe(
+    'How many places of the kind and type lie within the radius, the place itself included: what the window lists.'),
+  shadowed: z.boolean().describe('Whether the display shadows it: in the tail now, or for a new arrival, once passed.'),
+  outrankedBy: z.number().int().nullable().describe(
+    'For a shadowed place, how many places of its type within the radius count above it, as the recount stored it'
+    + ' (`membership_crowding`, ADR-0180); null for a place the display shows.'),
+}).describe("How crowded a membership's city is (ADR-0172, ADR-0180): on a review card, and on a kind of a place's curation dialog.");
+export type CardCrowding = z.infer<typeof CardCrowding>;
+
 /** Where one kind of a place stands, as the place's card says it. */
 export const PlaceKindState = z.enum(['offered', 'waiting', 'kept-out', 'refused']);
 
@@ -222,6 +235,10 @@ export const PlaceKindStanding = z.strictObject({
     + ' the caller\'s regions, as in the curation log.',
   ),
   canAnswer: z.boolean().describe("Whether the caller's scope reaches this kind's source, so they may take it out or put it back."),
+  crowding: CardCrowding.nullable().describe(
+    "How crowded the place's city is in this kind (#2282), so the row offers the crowded city's window over its type."
+    + ' Null for a kind with no display rule, a type its kind exempts, a place holding a work a reader is shown, or a'
+    + ' place with no point.'),
 }).describe('One kind of a place, with where it stands (#2022).');
 
 export const AddableKind = z.strictObject({

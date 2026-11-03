@@ -29,7 +29,7 @@ const mockedAdd = vi.mocked(addToKind);
 
 const WORSHIP: PlaceKindStanding = {
   membershipId: 3529, kindId: 4, kindName: 'Places of worship', type: 'temple', state: 'offered',
-  reason: null, added: false, answeredAt: null, note: null, curatorName: null, canAnswer: true,
+  reason: null, added: false, answeredAt: null, note: null, curatorName: null, canAnswer: true, crowding: null,
 };
 const ARCHAEOLOGY: PlaceKindStanding = {
   ...WORSHIP, membershipId: 5039, kindId: 5, kindName: 'Archaeology', type: null,
