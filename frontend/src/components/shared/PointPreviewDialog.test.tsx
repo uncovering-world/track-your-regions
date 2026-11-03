@@ -12,13 +12,22 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render as renderPlain, screen, fireEvent } from '@testing-library/react';
+import { render as renderPlain, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import * as webgl from '../../utils/webgl';
 
-/** What the mocked map hands `onLoad`: the map the framing rule is asked to move. */
-const THE_MAP = { id: 'the-map' };
+/**
+ * What the mocked map hands `onLoad`: the map the framing rule is asked to
+ * move, and the screen the labels are laid out on, at a zoom where a metre is
+ * about a pixel (`PinsOnMap`).
+ */
+const THE_MAP = {
+  id: 'the-map',
+  project: ([lng, lat]: [number, number]) => ({ x: lng * 100_000, y: -lat * 100_000 }),
+  on: () => undefined,
+  off: () => undefined,
+};
 
 vi.mock('react-map-gl/maplibre', async () => {
   const { useEffect } = await import('react');
@@ -81,8 +90,8 @@ import { frameGeoJson } from '../../utils/mapUtils';
  * Caravanserai, 451 m apart.
  */
 const BISOTUN = [
-  { latitude: 34.3883, longitude: 47.4367, label: 'Bisotun (this card) · World Heritage Sites' },
-  { latitude: 34.3845, longitude: 47.4349, label: 'Bisotūn · part of The Persian Caravanserai' },
+  { latitude: 34.3883, longitude: 47.4367, label: 'Bisotun (this card)', detail: 'World Heritage Sites' },
+  { latitude: 34.3845, longitude: 47.4349, label: 'Bisotūn', detail: 'part of The Persian Caravanserai' },
 ];
 
 const place = {
@@ -106,7 +115,8 @@ describe('PointPreviewDialog', () => {
     render(<PointPreviewDialog open onClose={() => {}} name="Bilbao" latitude={43.27} longitude={-2.94} />);
 
     expect(screen.getByTestId('the-map')).toBeInTheDocument();
-    expect(screen.getByTestId('the-marker')).toBeInTheDocument();
+    // The pin and its label, which names the place.
+    expect(screen.getAllByTestId('the-marker')).toHaveLength(2);
     expect(screen.queryByTestId('the-form')).toBeNull();
     expect(screen.queryByText(/Bilbao Fine Arts Museum/)).toBeNull();
   });
@@ -127,6 +137,25 @@ describe('PointPreviewDialog', () => {
     expect(screen.getByText('37.9397, 27.3408 → 37.9406, 27.3394 · a proposed move of 158 m north-west')).toBeInTheDocument();
     // Named in the legend on the map and again in the rows of links under it.
     expect(screen.getAllByText('readers see')).toHaveLength(2);
+    expect(screen.getAllByText('the run proposes')).toHaveLength(2);
+  });
+
+  it('joins an article\'s pin on the point a run proposes to that pin, rather than covering it (#2273)', async () => {
+    // Monte San Giorgio, the run's 1.6 km move: an article stating the proposed point itself.
+    mockArticlePoint.mockResolvedValue({
+      article: 'https://en.wikipedia.org/wiki/Monte_San_Giorgio', coordinate: { latitude: 45.902, longitude: 8.923 },
+    });
+    render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Monte San Giorgio" latitude={45.8889} longitude={8.9139}
+        movedTo={{ latitude: 45.902, longitude: 8.923 }} placesOf={[198]}
+      />,
+    );
+
+    // The article's row arrives; on the map its label stands beside the proposed pin.
+    expect((await screen.findAllByText('Wikipedia')).length).toBe(2);
+    // The stored pin, the proposed pin, the arrowhead and the article's label: no pin of its own.
+    expect(screen.getAllByTestId('the-marker')).toHaveLength(4);
     expect(screen.getAllByText('the run proposes')).toHaveLength(2);
   });
 
@@ -156,9 +185,12 @@ describe('PointPreviewDialog', () => {
     // Each pin and its label on the map; nothing drawn between them.
     expect(screen.getAllByTestId('the-marker')).toHaveLength(4);
     expect(screen.queryByTestId('the-line')).toBeNull();
-    // Whose each pin is: on the map, in the legend and in the row of links under the map.
-    expect(screen.getAllByText('Bisotun (this card) · World Heritage Sites')).toHaveLength(3);
-    expect(screen.getAllByText('Bisotūn · part of The Persian Caravanserai')).toHaveLength(3);
+    // Whose each pin is: on the map and in the row of links under it. What each place is,
+    // in its row alone (#2273), and no legend over the labelled pins.
+    expect(screen.getAllByText('Bisotun (this card)')).toHaveLength(2);
+    expect(screen.getAllByText('Bisotūn')).toHaveLength(2);
+    expect(screen.getAllByText('World Heritage Sites')).toHaveLength(1);
+    expect(screen.getAllByText('part of The Persian Caravanserai')).toHaveLength(1);
     expect(screen.queryByText('the run proposes')).toBeNull();
     expect(screen.queryByText('readers see')).toBeNull();
     // The title says how the two stand to each other (the pass measured 451 m between the
@@ -178,7 +210,7 @@ describe('PointPreviewDialog', () => {
     expect(frameGeoJson).toHaveBeenCalledWith(
       THE_MAP,
       { type: 'MultiPoint', coordinates: [[47.4367, 34.3883], [47.4349, 34.3845]] },
-      { padding: { top: 70, bottom: 130, left: 70, right: 70 }, duration: 0, maxZoom: 17 },
+      { padding: { top: 80, bottom: 100, left: 90, right: 90 }, duration: 0, maxZoom: 17 },
     );
   });
 
@@ -191,8 +223,9 @@ describe('PointPreviewDialog', () => {
 
     expect(frameGeoJson).not.toHaveBeenCalled();
     expect(screen.getAllByTestId('the-marker')).toHaveLength(2);
-    // One pin needs no legend; the row under the map still names it.
-    expect(screen.getAllByText('Bisotūn · part of The Persian Caravanserai')).toHaveLength(2);
+    // One pin needs no legend: the title, its label and the row under the map name it, and the row says what it is.
+    expect(screen.getAllByText('Bisotūn')).toHaveLength(3);
+    expect(screen.getByText('part of The Persian Caravanserai')).toBeInTheDocument();
   });
 
   it('links each point it draws in OpenStreetMap and Google Maps, on every look', () => {
@@ -250,8 +283,44 @@ describe('PointPreviewDialog', () => {
       />,
     );
 
-    expect(screen.getAllByTestId('the-marker')).toHaveLength(1);
+    // One pin and its label: no second pin, no line, no legend.
+    expect(screen.getAllByTestId('the-marker')).toHaveLength(2);
     expect(screen.queryByTestId('the-line')).toBeNull();
+    expect(screen.queryByText('readers see')).toBeNull();
+  });
+
+  it('draws a place and its article on one point as one pin, named for both (#2273)', async () => {
+    // The near-places card for the Cathedral of Santiago de Compostela (Q205136): its
+    // article's point is its own coordinate, from one Wikidata statement, and the Historic
+    // Centre stands 30 m north-west.
+    mockArticlePoint.mockImplementation(async (id: number) => (id === 1
+      ? { article: 'https://en.wikipedia.org/wiki/Santiago_de_Compostela_Cathedral', coordinate: { latitude: 42.8806, longitude: -8.5444 } }
+      : { article: null, coordinate: null }));
+    render(
+      <PointPreviewDialog
+        open onClose={() => {}} name="Cathedral of Santiago de Compostela" latitude={42.8806} longitude={-8.5444}
+        placesOf={[1, 2]}
+        pins={[
+          { latitude: 42.8806, longitude: -8.5444, label: 'Cathedral of Santiago de Compostela', own: true, detail: 'Places of worship' },
+          { latitude: 42.8807, longitude: -8.5447, label: 'Historic Centre of Santiago de Compostela', detail: 'part of Santiago de Compostela (Old Town)' },
+        ]}
+      />,
+    );
+
+    // One label for the cathedral and its article: the name, which the map may cut short,
+    // "(this card)", which it never cuts, and the article's point; the whole as hover text.
+    const joined = 'Cathedral of Santiago de Compostela (this card), and Wikipedia\'s point for Santiago de Compostela Cathedral';
+    const label = await screen.findByTitle(joined);
+    // On the map the article is "Wikipedia's point"; which article, the hover text and its row say.
+    expect(label).toHaveTextContent("Cathedral of Santiago de Compostela (this card), and Wikipedia's point");
+    expect(within(label).getByText('(this card)', { exact: false })).toBeInTheDocument();
+    // Two pins on the map, each with its label: the cathedral's carries its article.
+    expect(screen.getAllByTestId('the-marker')).toHaveLength(4);
+    // The card's own place is marked in its row too.
+    expect(screen.getByText('Cathedral of Santiago de Compostela (this card)')).toBeInTheDocument();
+    // Each claim keeps its own row under the map.
+    expect(screen.getByText('Wikipedia: Santiago de Compostela Cathedral')).toBeInTheDocument();
+    expect(screen.getByText('part of Santiago de Compostela (Old Town)')).toBeInTheDocument();
   });
 
   it('opens on the form where the place may be corrected, and never shows the map beside it', () => {
@@ -341,7 +410,7 @@ describe('what stands at each pin, and where the article says the place is (#220
 
     expect(await screen.findByText('here: Αχιλλέα (street) · Άγιος Παύλος')).toBeInTheDocument();
     expect(await screen.findByText('here: building at 6 Π. Παπαγεωργίου · Kamara')).toBeInTheDocument();
-    // The article's pin is labelled on the map, in the legend and in its row.
+    // The article's pin is labelled on the map and in its row.
     expect(screen.getAllByText('Wikipedia').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(/What stands at each point/)).toBeInTheDocument();
     expect(mockArticlePoint).toHaveBeenCalledWith(40144);
@@ -377,8 +446,8 @@ describe('what stands at each pin, and where the article says the place is (#220
     mockArticlePoint.mockResolvedValue({ article: 'https://en.wikipedia.org/wiki/Behistun_Inscription', coordinate: { latitude: 34.3906, longitude: 47.4361 } });
     render(<PointPreviewDialog open onClose={() => {}} name="Bisotun" latitude={BISOTUN[0].latitude} longitude={BISOTUN[0].longitude} pins={BISOTUN} placesOf={[63, 64]} />);
     const rows = await screen.findAllByText('Wikipedia: Behistun Inscription');
-    // The map's label, the legend and the row under the map: one pin, said three times.
-    expect(rows).toHaveLength(3);
+    // The map's label and the row under the map: one pin, said twice.
+    expect(rows).toHaveLength(2);
   });
 
   it('asks nothing for a reader\'s dialog, which names no places', () => {
