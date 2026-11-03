@@ -86,7 +86,7 @@ export function heldRowKey(row: HeldRowRef): string {
  * #1720). Every other field is a fact of the place, answered once for every
  * kind's run that proposes the same value.
  */
-const KIND_FIELDS: ReadonlySet<string> = new Set(['type']);
+export const KIND_FIELDS: ReadonlySet<string> = new Set(['type']);
 
 /**
  * An answer recorded for a source answers only that source's runs; one with no
@@ -298,7 +298,7 @@ export async function answeredHeldRows(
  * One row per (experience, part, field) — and, for a kind's field, per source
  * (ADR-0125) — for the reason 022 gives: this is the
  * standing answer, not a history. Who answered what and when is the curation
- * log's, written in the same transaction by both callers.
+ * log's, written in the same transaction by every caller.
  *
  * Replaced rather than kept because the newer answer is the one that holds: a
  * curator who refuses a value and later publishes the same one has changed their

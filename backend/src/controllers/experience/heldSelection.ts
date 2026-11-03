@@ -35,7 +35,7 @@ import { pictureCreditPartner } from '@tyr/shared/pictures';
  * own type would have TypeScript promise a boolean the database does not have.
  * The same reason `publishHeldFields.ts` keeps its own `ProposedField`.
  */
-interface ProposedField {
+export interface ProposedField {
   field: string;
   new?: unknown;
   held?: boolean;
