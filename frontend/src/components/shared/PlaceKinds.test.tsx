@@ -19,6 +19,16 @@ vi.mock('../../api/curation', () => ({
   addToKind: vi.fn(),
 }));
 
+/** The crowded city's window, as the row opens it: on which membership, and what it reports on close. */
+function CrowdingWindowStub({ memberships, onClose }: { memberships: readonly number[]; onClose: (message?: string) => void }) {
+  return (
+    <div data-testid="crowding-window">
+      {`around ${memberships.join(',')}`}
+      <button type="button" onClick={() => onClose('1 place kept in the list: Schloßplatz.')}>apply and close</button>
+    </div>
+  );
+}
+
 import { addToKind, fetchPlaceKinds, keepOutOfKind, setExperienceAdmission } from '../../api/curation';
 import { PlaceKinds } from './PlaceKinds';
 
@@ -37,7 +47,11 @@ const ARCHAEOLOGY: PlaceKindStanding = {
 
 function show(experienceId = 13761) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><PlaceKinds experienceId={experienceId} regionId={5} /></QueryClientProvider>);
+  render(
+    <QueryClientProvider client={client}>
+      <PlaceKinds experienceId={experienceId} regionId={5} crowdingWindow={CrowdingWindowStub} />
+    </QueryClientProvider>,
+  );
 }
 
 describe("a place's kinds on its curation dialog", () => {
@@ -46,6 +60,27 @@ describe("a place's kinds on its curation dialog", () => {
     mockedKeepOut.mockReset();
     mockedPutBack.mockReset();
     mockedAdd.mockReset();
+  });
+
+  it('opens the crowded city’s window from a kind that shows a crowded city’s best known', async () => {
+    // Schloßplatz in Berlin: a square of Squares & streets, 22 squares within 10 km, and in Public art, which has no rule.
+    const SQUARES: PlaceKindStanding = {
+      ...WORSHIP, membershipId: 14, kindId: 9, kindName: 'Squares & streets', type: 'square',
+      crowding: { limit: 10, radiusKm: 10, around: 22, shadowed: true, outrankedBy: 13 },
+    };
+    const PUBLIC_ART: PlaceKindStanding = { ...WORSHIP, membershipId: 15, kindId: 3, kindName: 'Public art', type: null };
+    mockedKinds.mockResolvedValue({ kinds: [SQUARES, PUBLIC_ART], addable: [] });
+    show(1014);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Squares around (22)' }));
+    expect(screen.getAllByRole('button', { name: /around \(/ })).toHaveLength(1);
+    expect(screen.getByTestId('crowding-window')).toHaveTextContent('around 14');
+
+    fireEvent.click(screen.getByRole('button', { name: 'apply and close' }));
+    expect(screen.queryByTestId('crowding-window')).toBeNull();
+    expect(screen.getByText('1 place kept in the list: Schloßplatz.')).toBeTruthy();
+    // The kinds are read again: an answer can publish the place or move it to the shadow.
+    await waitFor(() => expect(mockedKinds).toHaveBeenCalledTimes(2));
   });
 
   it('lists each kind with its type and where it stands', async () => {
