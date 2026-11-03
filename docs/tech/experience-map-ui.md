@@ -384,9 +384,10 @@ WebGL context by construction (MUI mounts nothing while it is closed):
   the proposed one as the pin, an arrow between them, at the zoom the move asks for (`moveView`,
   `utils/moveDescription.ts`); the legend says *readers see* and *the run proposes*.
 - **Points that are not a move** (`pins`, #2202): two places that may be one, or two sources' points
-  of one place. Each pin is labelled on the map with whose it is (`LabelledPin`,
-  `PointPreviewPins.tsx`), in a colour of its own (`PIN_COLOURS`), and the legend says the same;
-  no arrow is drawn and nothing is called a proposal, since no run proposes anything there. The
+  of one place. Each pin is labelled on the map with whose it is (`PinsOnMap`,
+  `PointPreviewPins.tsx`), in a colour of its own (`PIN_COLOURS`); what the place is, its kinds
+  and the site it is part of, is said in its row under the map (`MapPin.detail`, #2273). No
+  arrow is drawn and nothing is called a proposal, since no run proposes anything there. The
   title says how two pins stand to each other (*451 m apart*). The map frames every pin by the one
   framing rule (`frameGeoJson`, § How a crossing region is told from a global one in
   `geometry-columns.md`, #674) once it has loaded, with the ceiling `PINS_MAX_ZOOM` in place of a
@@ -395,14 +396,31 @@ WebGL context by construction (MUI mounts nothing while it is closed):
   (`pinsView`, measured by `focusFromGeoJson`, so two pins either side of the antimeridian are
   centred between them), at the zoom their span asks for.
 
+**Every pin can be seen and its label read** (#2273, `pinLayout.ts`). The labelled pins, a place's
+own and its Wikipedia article's point (#2206) among them, are laid out on screen whenever the camera
+moves. Pins within a pin's width of each other (`SAME_POINT_PX`) are drawn as one pin whose label
+names each: the Cathedral of Santiago de Compostela and its article's point, which come from one
+Wikidata statement and stand on one metre, read *Cathedral of Santiago de Compostela (this card),
+and Wikipedia's point*, with a dot of each pin's colour, where the article's pin used to cover the
+cathedral's; which article it is, its row and the hover text say. A label names the place and
+nothing else, is cut short past 360 px with the whole as its hover text, the name first and never
+*(this card)*, and hangs under its pin, or above, right or
+left of it, on the first side where it covers no other pin or label and stays on the canvas
+(`labelSides`). A move's two pins are in the layout too (`drawnElsewhere`): an article's pin on the
+point the run proposes joins that pin rather than covering it, and every label avoids both. No legend
+stands over labelled pins, since the rows under the map are the key; a move, whose two pins carry no
+label, keeps its legend. The basemap is OpenStreetMap's standard tiles drawn muted
+(`MUTED_MAP_STYLE`, `constants/mapStyles.ts`): faded and greyed, its streets and squares stay
+readable, and its crosses and café icons no longer compete with the pins.
+
 Under the map, every look lists each point it drew — whose it is, its coordinate, and the links that
 open it in OpenStreetMap and Google Maps (`PinLinks`, built by `utils/mapsLink.ts`, ADR-0115). The
 device's own maps app and the visitor's choice of one (`OpenInMapsLink`) are not offered there: a
 curator checks a pin against another map at a desk.
 
 Who opens the third look: the near-places card (`MergeProposalsCard.tsx`, `pairPins`) on *Show both
-on the map*, this card's place first — *Bisotun (this card) · World Heritage Sites* beside *Bisotūn ·
-part of The Persian Caravanserai*, the caravanserai at the foot of the rock 451 m off — and the
+on the map*, this card's place first — *Bisotun (this card)*, a World Heritage site, beside *Bisotūn*,
+part of The Persian Caravanserai, the caravanserai at the foot of the rock 451 m off — and the
 other alone where the card's own place has no point; and the sources card (`SourcesCard.tsx`,
 `BothPoints`) on *see both points on the map*, one pin per point labelled with every source that
 gives it (#2212) and the one readers see first; there each pin's row offers *keep this point* (`MapPin.action`), the same
@@ -441,7 +459,7 @@ two claims put a place, not what stands at either point, so a dialog that names 
   dialog names several places (*Wikipedia: Behistun Inscription*), so the near-places pair's two
   articles say whose each point is, and two places whose articles put them on one point are one pin
   named for both — in a colour no claim's pin wears (`ARTICLE_PIN_COLOUR`: Wikipedia's own
-  near-black read as the second source's brown), on the map, in the legend and in a row of its own
+  near-black read as the second source's brown), on the map and in a row of its own
   with its ground: the primary coordinate of the article the place
   links to (`metadata.wikipediaUrl`), read by `GET /api/geocode/article-point/:id`
   (`services/wikipediaCoordinate.ts`), and the map frames it with the rest once it arrives. On dev
