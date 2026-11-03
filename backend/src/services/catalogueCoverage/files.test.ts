@@ -248,15 +248,16 @@ describe('the calibration lists (#1864)', () => {
     expect(problemsOf(files({ calibrationSources: [source()] }))).toEqual([]);
   });
 
-  it('refuses a list for a kind the register lacks, one only proposed, or one that holds neither a place nor a work', () => {
+  it('refuses a list for a kind the register lacks, or one that holds neither a place nor a work', () => {
     expect(problemsOf(calibrated({ digs: [top()] }))).toEqual(['calibration/digs.jsonl: no kind digs in kinds.jsonl']);
-    expect(problemsOf(calibrated({ markets: [top()] }))).toEqual([
-      'calibration/markets.jsonl: markets is only proposed: a fame line is a live kind\'s to calibrate',
-    ]);
     const liveActivity = KINDS.map(kind => (kind.slug === 'on-site-activities' ? { ...kind, status: 'live' } : kind));
     expect(problemsOf(files({ kinds: liveActivity, calibrationSources: [source()], calibration: { 'on-site-activities': [top()] } }))).toEqual([
       'calibration/on-site-activities.jsonl: on-site-activities is a kind of activity: a calibration list names places or works, by their Wikidata items',
     ]);
+  });
+
+  it('takes a proposed kind\'s list: its canon is written before its first run, so the dry run is read against it (#2254)', () => {
+    expect(problemsOf(calibrated({ markets: [top()] }))).toEqual([]);
   });
 
   it('takes a list for a live kind of work: the finds a museum is admitted for (#1988)', () => {

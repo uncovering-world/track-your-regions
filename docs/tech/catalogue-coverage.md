@@ -26,7 +26,7 @@ db/catalogue-coverage/
 ├── expectations/<region>.jsonl  ← what a traveller expects in that region
 ├── judgements.jsonl             ← why each gap between the lists and the catalogue stands, judged once (ADR-0116)
 ├── calibration-sources.jsonl    ← the reference lists a kind's tops are named by (#1864)
-└── calibration/<kind>.jsonl     ← the tops a traveller expects of that live kind: what its fame line is checked on
+└── calibration/<kind>.jsonl     ← the tops a traveller expects of that kind: what its fame line is checked on
 ```
 
 No directory is named `coverage/`: `.gitignore` ignores that name, and a file under it is
@@ -178,10 +178,12 @@ judged either; the review queue answers it.
 ### `calibration-sources.jsonl` and `calibration/<kind>.jsonl`: the tops a traveller expects of a kind
 
 A kind's fame line is chosen, and re-checked, on the kind's own calibration list, never copied
-from another kind's (`docs/tech/filling-a-kind.md` § 2, #1864). One list per live kind of place
+from another kind's (`docs/tech/filling-a-kind.md` § 2, #1864). One list per kind of place
 or of work, named by the kind's slug: Notable works' list holds the finds a traveller goes to a
-museum to see, since a find's line decides which museum shows it (#1988). An entry is one of the
-kind's tops nobody who knows it would dispute,
+museum to see, since a find's line decides which museum shows it (#1988). A proposed kind may
+have its list before its first run, so that the dry run of its declaration is read against a
+canon (#2254). The report reads a live kind's list alone. An entry is one of the kind's tops
+nobody who knows it would dispute,
 identified by its Wikidata item, and names the sources that call it a top. The register of those
 sources is `calibration-sources.jsonl`, so a slug on an entry is one a person can read again.
 
@@ -254,8 +256,7 @@ It refuses:
   carries its id. A component of a serial property, such as one temple of Kyoto's, is filed
   under what it is;
 - in the register of reference lists: a slug used twice; in a calibration list: a file named by a
-  slug the register of kinds lacks, by a kind only proposed, or by a kind that holds neither a
-  place nor a work; a
+  slug the register of kinds lacks, or by a kind that holds neither a place nor a work; a
   slug or a Wikidata id used twice in one list; an entry with no source, naming a source twice,
   or naming one `calibration-sources.jsonl` does not have; a list with no register beside it. A
   directory with no `calibration/` has calibrated nothing and may do without the register;

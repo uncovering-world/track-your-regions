@@ -4,7 +4,7 @@
  * `db/catalogue-coverage/` holds the register of kinds of experience, the surveyed
  * regions, per region the list of what a traveller expects there, the ledger of
  * the gaps between the lists and the catalogue that a person has judged (ADR-0116),
- * and per live kind the calibration list of the tops a traveller expects of it, with
+ * and per kind the calibration list of the tops a traveller expects of it, with
  * the register of the reference lists that name them (#1864). The files are
  * the source of truth and are written by hand and by a survey, so this reader is the
  * one place that refuses a wrong line: it reads everything, collects every problem
@@ -176,7 +176,7 @@ export interface CoverageFiles {
   judgements: CoverageJudgement[];
   /** The reference lists the calibration entries are named by; empty when there is no `calibration-sources.jsonl`. */
   calibrationSources: CalibrationSource[];
-  /** Each live kind's calibration list, by the kind's slug, in file order; a kind with no list is absent. */
+  /** Each kind's calibration list, live or proposed, by the kind's slug, in file order; a kind with no list is absent. */
   calibration: Map<string, CalibrationEntry[]>;
 }
 
@@ -440,9 +440,11 @@ function checkCalibrationSources(rows: Row<CalibrationSource>[], problems: strin
 }
 
 /**
- * One kind's calibration list (#1864): the file is named by a live kind of place or of
- * work (#1988: a work's fame line admits the venue that shows it), each entry is one item
- * once, and each entry names reference lists the register has.
+ * One kind's calibration list (#1864): the file is named by a kind of place or of work
+ * (#1988: a work's fame line admits the venue that shows it), each entry is one item
+ * once, and each entry names reference lists the register has. The kind may be only
+ * proposed: its canon is written before its first run, so that the dry run of its
+ * declaration is read against it (#2254), and the report reads a live kind's list alone.
  */
 function checkCalibrationList(
   file: string, kindSlug: string, rows: Row<CalibrationEntry>[],
@@ -451,8 +453,6 @@ function checkCalibrationList(
   const kind = kinds.get(kindSlug);
   if (!kind) {
     problems.push(`${file}: no kind ${kindSlug} in kinds.jsonl`);
-  } else if (kind.status !== 'live') {
-    problems.push(`${file}: ${kindSlug} is only proposed: a fame line is a live kind's to calibrate`);
   } else if (kind.form !== 'place' && kind.form !== 'work') {
     problems.push(`${file}: ${kindSlug} is a kind of ${kind.form}: a calibration list names places or works, by their Wikidata items`);
   }
