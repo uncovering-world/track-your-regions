@@ -26,12 +26,13 @@ import {
   type PublicArtTrees,
 } from './classes.js';
 import type { SubjectFacts } from './subjects.js';
+import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
-/** The types the two kinds file a row under, disjoint so a value names its kind (`experienceTypes.ts`). */
-const PUBLIC_ART_TYPES = ['sculpture', 'fountain', 'street-art', 'clock'] as const;
-const MONUMENT_TYPES = ['memorial', 'monument', 'arch', 'column', 'obelisk'] as const;
-export type PublicArtType = (typeof PUBLIC_ART_TYPES)[number];
-export type MonumentType = (typeof MONUMENT_TYPES)[number];
+/** The types the two kinds file a row under, disjoint so a value names its kind (`@tyr/shared/placeTypes`). */
+const PUBLIC_ART_TYPES = typeValues('public-art');
+const MONUMENT_TYPES = typeValues('monuments-and-memorials');
+export type PublicArtType = PlaceTypeOf<'public-art'>;
+export type MonumentType = PlaceTypeOf<'monuments-and-memorials'>;
 
 /** What the rule reads of a candidate to decide its kind. */
 export interface KindFacts {

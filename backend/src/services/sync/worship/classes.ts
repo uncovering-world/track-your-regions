@@ -23,6 +23,7 @@ import {
 } from '../publicArt/classes.js';
 import { MUSEUM_ROOT, SACRED_MOUNTAIN_ROOT, SACRED_PLACE_ROOT } from './holyPlaces.js';
 import { READING_ROOM_CLASSES } from '../museum/artTest.js';
+import type { PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /** `P279*` under structure of worship (Q1370598): 1267 classes (measured 2026-09-09; 1265 on 2026-09-04). */
 export { WORSHIP_ROOT } from '../publicArt/classes.js';
@@ -250,10 +251,7 @@ export const RETREAT_CLASSES: Record<string, string> = {
 };
 
 /** What a reader filters a place of worship by. */
-export type WorshipType =
-  | 'cathedral' | 'monastery' | 'mosque' | 'synagogue'
-  | 'chapel' | 'church' | 'shrine' | 'temple'
-  | 'sacred mountain' | 'holy site';
+export type WorshipType = PlaceTypeOf<'places-of-worship'>;
 
 /**
  * The classes each type is read from, in precedence order, and which of them

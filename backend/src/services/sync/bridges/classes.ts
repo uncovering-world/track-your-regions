@@ -16,6 +16,7 @@
 
 import { fetchClassTree, type QueryRunner } from '../wikidataQueries.js';
 import type { PoolRoot } from '../places/gather.js';
+import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /** The roots the candidates are asked by, in fame bands on the live service. */
 export const BRIDGE_ROOTS: readonly PoolRoot[] = [
@@ -40,10 +41,8 @@ export const BRIDGE_ROOTS: readonly PoolRoot[] = [
  * (`POWER_STATION`): the Dnieper's hydroelectric plants pass ships too and
  * are dams.
  */
-export const BRIDGE_TYPES = [
-  'aqueduct', 'bridge', 'inclined-plane', 'boat-lift', 'lock-flight', 'lock', 'dam', 'tunnel',
-] as const;
-export type BridgeType = (typeof BRIDGE_TYPES)[number];
+export const BRIDGE_TYPES = typeValues('bridges-and-engineering');
+export type BridgeType = PlaceTypeOf<'bridges-and-engineering'>;
 
 /** The types of a canal's works a traveller stops at (#1947): a lift or a lock that generates power is filed as a dam (`bridgeType`). */
 export const WATERWAY_TYPES: readonly BridgeType[] = ['inclined-plane', 'boat-lift', 'lock-flight', 'lock'];

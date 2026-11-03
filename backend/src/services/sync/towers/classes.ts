@@ -10,6 +10,7 @@
 
 import { fetchClassTree, type QueryRunner } from '../wikidataQueries.js';
 import type { PoolRoot } from '../places/gather.js';
+import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /** The roots the candidates are asked by, in fame bands on the live service. */
 export const TOWER_ROOTS: readonly PoolRoot[] = [
@@ -25,8 +26,8 @@ export const TOWER_ROOTS: readonly PoolRoot[] = [
 ];
 
 /** The types a tower is filed under, the most telling first (`towerType`). */
-export const TOWER_TYPES = ['pagoda', 'minaret', 'clock-tower', 'bell-tower', 'observation-tower', 'fortified-tower', 'tower'] as const;
-export type TowerType = (typeof TOWER_TYPES)[number];
+export const TOWER_TYPES = typeValues('towers');
+export type TowerType = PlaceTypeOf<'towers'>;
 
 /** Each type but the last, and the roots whose trees name it. */
 const TYPE_ROOTS: Readonly<Record<Exclude<TowerType, 'tower'>, readonly string[]>> = {
