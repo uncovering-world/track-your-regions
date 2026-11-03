@@ -15,7 +15,7 @@
  * dependency would otherwise re-run on each address it writes.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { buildAppUrl, legacyRedirect, parseAppUrl, slugsOf, type AppAddress } from '../utils/appUrl';
 
@@ -48,6 +48,38 @@ export interface GoOptions {
  */
 export type GoTarget = AppAddress | ((current: AppAddress) => AppAddress | null);
 
+/**
+ * What `go` last wrote and the location the hook last saw, kept once per router
+ * (#2308). Every instance of the hook writes through one `go` of its own, and a
+ * write moves the router's location only once React renders it; kept per
+ * instance, the latest address of one instance lagged another's write, and a
+ * relative write through it put back the address the other had just left (the
+ * header's switch to Discover undone by the slug correction).
+ */
+interface LatestAddress {
+  /** What `go` last wrote, ahead of what any render is holding (`GoTarget`). */
+  written: string;
+  /** The location a render last saw, which tells a navigation from outside `go`. */
+  seen: string;
+}
+
+const LatestAddressContext = createContext<LatestAddress | null>(null);
+
+/**
+ * One latest address for every `useAppAddress` under it, mounted once inside
+ * the router (`App.tsx`). A hook outside it keeps its own, which is what a
+ * test rendering one hook under a bare router gets.
+ */
+export function AppAddressProvider({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const latest = useRef<LatestAddress | null>(null);
+  if (latest.current === null) {
+    const at = `${location.pathname}${location.search}`;
+    latest.current = { written: at, seen: at };
+  }
+  return createElement(LatestAddressContext.Provider, { value: latest.current }, children);
+}
+
 export function useAppAddress() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -66,11 +98,13 @@ export function useAppAddress() {
   // the previous location while the router's own update is still in its
   // transition, and taking the render's value there would put the stale URL
   // back and let the next relative write undo the first.
-  const currentRef = useRef(current);
-  const lastLocationRef = useRef(current);
-  if (current !== lastLocationRef.current) {
-    lastLocationRef.current = current;
-    currentRef.current = current;
+  // Shared by every instance under the router's `AppAddressProvider` (#2308).
+  const shared = useContext(LatestAddressContext);
+  const own = useRef<LatestAddress>({ written: current, seen: current });
+  const latest = shared ?? own.current;
+  if (current !== latest.seen) {
+    latest.seen = current;
+    latest.written = current;
   }
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
@@ -87,7 +121,7 @@ export function useAppAddress() {
   const go = useCallback((target: GoTarget, options?: GoOptions) => {
     // The latest address this hook knows: the one it last wrote, which is ahead
     // of what any render is holding inside the window described on `GoTarget`.
-    const [currentPath, currentQuery = ''] = currentRef.current.split('?');
+    const [currentPath, currentQuery = ''] = latest.written.split('?');
     const current = parseAppUrl(currentPath, currentQuery);
     // Off the map there is no address to change relatively; a caller passing a
     // function there is asking about a place on a page that has none.
@@ -110,14 +144,14 @@ export function useAppAddress() {
       point: options?.names?.point ?? (current?.pointId === next.pointId ? kept.point : ''),
     };
     const url = buildAppUrl(next, names);
-    if (url === currentRef.current) return;
+    if (url === latest.written) return;
     // A write made while the page is still at a legacy address replaces it:
     // the redirect above was about to, and a push here would leave the `?wv=`
     // form behind as a step in history.
     const replace = options?.replace === true || onLegacyRef.current;
-    currentRef.current = url;
+    latest.written = url;
     navigateRef.current(url, { replace });
-  }, []);
+  }, [latest]);
 
   return useMemo(() => ({ address, go }), [address, go]);
 }

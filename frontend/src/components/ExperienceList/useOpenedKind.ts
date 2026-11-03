@@ -7,7 +7,7 @@
  * selection has actually moved — closed, or another place chosen from the map
  * or the address. Not on any render where the selection merely has not arrived
  * yet: the selection is the address, which the router delivers in a
- * transition (`useAppAddress.ts` § `currentRef`), so the render right after a
+ * transition (`useAppAddress.ts` § `GoTarget`), so the render right after a
  * click still reads the previous selection, and a reset there would throw the
  * clicked kind away before the card opened.
  */
