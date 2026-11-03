@@ -6753,10 +6753,14 @@ acceptance (`findPointHints`, `services/sync/pointHints.ts`) and kept in `experi
 replaced per point each pass, since the card reads no workbench table (ADR-0124). The objects that
 carry a reference are found by it through an index on the layer (`osm_objects_ref_whc`, migration
 158), which a layer build copies onto the table it swaps in. A hint within `COPIED_COORDINATE_M` of
-the point is the point copied and is left out. The card draws the point, the hint picked and the
-site's other places on one map (`ComponentItemsMap`), with the whole minute's cell around a rounded
-point, and answers through the curator's correction of the point (`editLocation`): *Move here* to a
-hint, *Place it by hand* in the correction dialog, or *Keep the list's point*, which is the same
+the point is the point copied and is left out. The card draws the point being read, the hint picked and
+the site's other places on one map (`ComponentItemsMap`), with the whole minute's cell around a
+rounded point. The card starts on the first point, and a curator reads them in any order: a click
+on a point's row, or its *Show it on the map*, picks it and the map follows, a hint's own *Show on
+the map* picks that hint, and the points not answered stay asked while the card stays in the queue.
+An answer to one point names it in the page's notice, and the card re-reads its points without it,
+on the next one open (#2244). The card answers through the curator's correction of the point
+(`editLocation`): *Move here* to a hint, *Place it by hand* in the correction dialog, or *Keep the list's point*, which is the same
 correction at the point's own coordinate. Each is a claim on the coordinate, which clears the mark
 and closes the question, and a later run keeps it. Until then a reader is told (#1912): the reader reads carry `approximate` on each point
 (`ExperienceLocation`, `experienceLocationController.ts`), the map draws the pin as a ring and the
