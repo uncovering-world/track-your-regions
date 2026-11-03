@@ -33,6 +33,7 @@ import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import type { MapPin } from '../shared/PointPreviewPins';
 import { JEV_SURE } from './ComponentItemsCard';
 import { ItemHeader, messageFor, partOfLead } from './queueCard';
+import { CuratePlaceButton } from './CuratePlaceButton';
 
 type Pair = NonNullable<ReviewQueueItem['merge_pairs']>[number];
 type Answer = AnswerMergeProposalsBody['answers'][number]['answer'];
@@ -227,6 +228,7 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
             {pair.otherKinds.map(kind => <Chip key={kind} label={kind} size="small" variant="outlined" />)}
             {pair.otherPartOf && <Chip label={`${partOfLead()}${pair.otherPartOf}`} size="small" variant="outlined" />}
             {pair.exact && <Chip label="same name, same spot" size="small" color="success" variant="outlined" />}
+            <CuratePlaceButton placeId={pair.otherId} name={pair.otherName} />
           </Stack>
           <Typography variant="body2" color="text.secondary">
             {distanceLabel(pair.distanceM)} apart · {similarityWords(pair)}

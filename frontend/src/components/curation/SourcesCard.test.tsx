@@ -93,7 +93,7 @@ const LIBERTY = {
 const GUACHIMONTONES = {
   ...RILA, id: 35451, external_id: 'part:7546', name: 'Zona nucleo 02, Zona arqueológica Los Guachimontones de Teuchitlán',
   part_of: {
-    name: 'Agave Landscape and Ancient Industrial Facilities of Tequila', unesco_id: '1209',
+    id: 33017, name: 'Agave Landscape and Ancient Industrial Facilities of Tequila', unesco_id: '1209',
     unesco_url: 'https://whc.unesco.org/en/list/1209', component_ref: '1209-002',
   },
   source_views: [{
