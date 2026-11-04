@@ -70,7 +70,7 @@ export function PictureWithCredit({ url, credit, alt, width = 250 }: PictureWith
       />
       {/* Under the picture that is on screen and under nothing else: the early
           return above is what keeps this line off a frame that did not arrive. */}
-      <ImageCreditLine credit={credit} />
+      <ImageCreditLine credit={credit} surface="line" />
     </Box>
   );
 }

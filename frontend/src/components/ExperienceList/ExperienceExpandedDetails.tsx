@@ -302,7 +302,7 @@ function ExperienceExpandedDetailsComponent({
           credit under nothing would be a line about an image the reader cannot see. */}
       {thumbnailUrl && imageReady && (
         <Box sx={{ mt: -1.5, mb: 1.5 }}>
-          <ImageCreditLine credit={experience.image_credit} />
+          <ImageCreditLine credit={experience.image_credit} surface="line" />
         </Box>
       )}
 

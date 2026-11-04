@@ -9,14 +9,13 @@
  *
  * The credit rides in on the preview object (`ArtworkPreview`) rather than being
  * looked up here: the map has no work in scope, and a 500 px Commons photograph
- * with nobody named under it is exactly what CC BY and CC BY-SA forbid. Shown
- * whole, with no `redundantWith` — the list row that opened this has the work's
- * own line to be redundant against, and this has nothing but the picture.
+ * with nobody named under it is exactly what CC BY and CC BY-SA forbid. A
+ * full-size view, so the credit is shown whole (ADR-0182).
  */
 
 import { useState } from 'react';
 import { Box } from '@mui/material';
-import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { ImageCreditLine, needsCredit } from '../shared/ImageCreditLine';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
 
 export function ArtworkPreviewOverlay({ preview }: { preview: ArtworkPreview | null }) {
@@ -28,7 +27,8 @@ export function ArtworkPreviewOverlay({ preview }: { preview: ArtworkPreview | n
   // nothing to show, and since the failure is remembered per URL it would do so
   // on every later hover of the same work.
   if (!preview || failedUrl === preview.url) return null;
-  const named = !!(preview.credit?.author || preview.credit?.license);
+  // The strip only where a credit is owed: a public-domain picture's would be empty (ADR-0182).
+  const named = needsCredit(preview.credit);
 
   return (
     <Box
@@ -68,7 +68,7 @@ export function ArtworkPreviewOverlay({ preview }: { preview: ArtworkPreview | n
           photograph is worse than no bar at all. */}
       {named && (
         <Box sx={{ mt: 1, px: 1, py: 0.25, maxWidth: '60%', borderRadius: 1, bgcolor: 'rgba(255, 255, 255, 0.85)' }}>
-          <ImageCreditLine credit={preview.credit} />
+          <ImageCreditLine credit={preview.credit} surface="full" />
         </Box>
       )}
     </Box>

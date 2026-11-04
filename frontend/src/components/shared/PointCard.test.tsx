@@ -125,7 +125,8 @@ describe('PointCard', () => {
     renderCard(8192);
     expect(await screen.findByRole('heading', { name: 'Spitz' })).toBeInTheDocument();
     expect(screen.getByText("The whole site's picture; this place has none of its own")).toBeInTheDocument();
-    expect(screen.getByText(/Gerhard Schauber/)).toBeInTheDocument();
+    // The site's picture is public domain, which asks for no credit (ADR-0182).
+    expect(screen.queryByText(/Gerhard Schauber/)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Wikidata/ })).not.toBeInTheDocument();
   });
 

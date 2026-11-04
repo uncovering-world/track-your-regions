@@ -39,8 +39,7 @@ const VISITATION: WorkToCorrect = {
   artistsCurated: false,
   year: 1517,
   imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Visitation.jpg',
-  // Commons names the painter as the author of a photograph of a painting, which
-  // is why the rows that show this pass `redundantWith`.
+  // Commons names the painter as the author of a photograph of a painting.
   imageCredit: {
     author: 'Raphael',
     license: 'Public domain',

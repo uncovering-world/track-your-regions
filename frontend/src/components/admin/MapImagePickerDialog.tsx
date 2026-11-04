@@ -124,7 +124,7 @@ export function MapImagePickerDialog({
                     }}
                   />
                   {/* A candidate that failed to load is not drawn, and neither is its credit. */}
-                  <ImageCreditLine credit={credits.get(url)} />
+                  <ImageCreditLine credit={credits.get(url)} surface="line" />
                   {isSelected && (
                     <Box
                       sx={{

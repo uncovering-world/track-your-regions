@@ -112,7 +112,9 @@ describe("a site's candidate component items", () => {
     const pictures = document.querySelectorAll('img');
     expect(pictures).toHaveLength(1);
     expect(pictures[0].getAttribute('src')).toContain('Castrul_Buciumi.jpg');
-    expect(screen.getByText(/A photographer/)).toBeTruthy();
+    // A dense row: the credit is the © on the thumbnail, which opens enlarged (ADR-0182).
+    expect(screen.getByRole('button', { name: /^Picture credit: © A photographer/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /enlarge the picture$/ })).toBeTruthy();
   });
 
   it("counts and sends only its own site's answers when it is drawn for another site (#1397)", async () => {

@@ -56,7 +56,8 @@ describe('the crowded-city window', () => {
     expect(await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' })).toBeInTheDocument();
     expect(mockedWindow).toHaveBeenCalledWith(SCHLOSSPLATZ, null);
     const names = screen.getAllByRole('row').slice(1).map(row => row.textContent ?? '');
-    expect(names[0]).toMatch(/^1Alexanderplatz/);
+    // The © is the credit badge on Alexanderplatz's thumbnail.
+    expect(names[0]).toMatch(/^1©Alexanderplatz/);
     // The line stands between Hackescher Markt, the tenth, and Frankfurter Tor.
     expect(names[10]).toMatch(/^The rule’s 10 end here/);
     expect(names[11]).toMatch(/^11Frankfurter Tor/);
@@ -84,9 +85,13 @@ describe('the crowded-city window', () => {
     const alexanderplatz = rowOf('Alexanderplatz');
     expect(alexanderplatz.getByRole('img', { name: 'Alexanderplatz' })).toHaveAttribute(
       'src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg?width=120');
-    expect(alexanderplatz.getByRole('link', { name: 'Wladyslaw Sojka' }))
+    // A dense row: the credit is the badge on the thumbnail, opening the full credit (ADR-0182).
+    fireEvent.click(alexanderplatz.getByRole('button', { name: 'Picture credit: © Wladyslaw Sojka · FAL' }));
+    const credit = await screen.findByRole('presentation');
+    expect(within(credit).getByRole('link', { name: 'Wladyslaw Sojka' }))
       .toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Berlin_-_Alexanderplatz1.jpg');
-    expect(alexanderplatz.getByRole('link', { name: 'FAL' })).toHaveAttribute('href', 'http://artlibre.org/licence/lal/en');
+    expect(within(credit).getByRole('link', { name: 'FAL' })).toHaveAttribute('href', 'http://artlibre.org/licence/lal/en');
+    fireEvent.keyDown(credit, { key: 'Escape' });
     expect(alexanderplatz.getByRole('link', { name: 'Wikipedia' }))
       .toHaveAttribute('href', 'https://en.wikipedia.org/wiki/Alexanderplatz');
 
@@ -103,9 +108,21 @@ describe('the crowded-city window', () => {
 
     const alexanderplatz = rowOf('Alexanderplatz');
     expect(alexanderplatz.queryByRole('img')).toBeNull();
-    expect(alexanderplatz.queryByText('Wladyslaw Sojka')).toBeNull();
-    expect(alexanderplatz.queryByText('FAL')).toBeNull();
+    expect(alexanderplatz.queryByRole('button', { name: /Picture credit/ })).toBeNull();
+    expect(alexanderplatz.queryByRole('button', { name: /enlarge the picture/ })).toBeNull();
     expect(alexanderplatz.getByRole('link', { name: 'Wikipedia' })).toBeInTheDocument();
+  });
+
+  it('opens a row’s picture enlarged, with its full credit, without bringing the row into view', async () => {
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+
+    fireEvent.click(rowOf('Alexanderplatz').getByRole('button', { name: 'Alexanderplatz — enlarge the picture' }));
+
+    const enlarged = await screen.findByRole('dialog', { name: 'Alexanderplatz' });
+    expect(within(enlarged).getByRole('img', { name: 'Alexanderplatz' })).toHaveAttribute(
+      'src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg?width=960');
+    expect(within(enlarged).getByRole('link', { name: 'Wladyslaw Sojka' })).toBeInTheDocument();
   });
 
   it('draws no picture, and so no credit, from a host the product may not draw from', async () => {
@@ -119,7 +136,7 @@ describe('the crowded-city window', () => {
     await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
 
     expect(rowOf('Alexanderplatz').queryByRole('img')).toBeNull();
-    expect(rowOf('Alexanderplatz').queryByText('Wladyslaw Sojka')).toBeNull();
+    expect(rowOf('Alexanderplatz').queryByRole('button', { name: /Picture credit/ })).toBeNull();
   });
 
   it('keeps the map in view while the list scrolls, beside it on a wide screen (#2345)', async () => {

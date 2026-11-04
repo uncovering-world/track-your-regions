@@ -27,22 +27,26 @@ function Tile({ picture, chosen, onPick }: { picture: NearbyPicture; chosen: boo
   if (!src || failed) return null;
   return (
     <Box sx={{ width: 120 }}>
-      <Box
-        component="button"
-        type="button"
-        onClick={onPick}
-        aria-pressed={chosen}
-        aria-label={`Use ${picture.file}, ${picture.distanceM} m from the point`}
-        sx={{
-          p: 0, border: 2, borderColor: chosen ? 'primary.main' : 'transparent', borderRadius: 1,
-          cursor: 'pointer', display: 'block', bgcolor: 'transparent',
-        }}
-      >
-        <Box component="img" src={src} alt="" loading="lazy" onError={() => setFailed(true)}
-          sx={{ width: 116, height: 88, objectFit: 'cover', borderRadius: 0.5, display: 'block' }} />
+      {/* A grid of candidates, so the credit is the badge on the picture (ADR-0182),
+          beside the button that picks it rather than inside it. */}
+      <Box sx={{ position: 'relative' }}>
+        <Box
+          component="button"
+          type="button"
+          onClick={onPick}
+          aria-pressed={chosen}
+          aria-label={`Use ${picture.file}, ${picture.distanceM} m from the point`}
+          sx={{
+            p: 0, border: 2, borderColor: chosen ? 'primary.main' : 'transparent', borderRadius: 1,
+            cursor: 'pointer', display: 'block', bgcolor: 'transparent',
+          }}
+        >
+          <Box component="img" src={src} alt="" loading="lazy" onError={() => setFailed(true)}
+            sx={{ width: 116, height: 88, objectFit: 'cover', borderRadius: 0.5, display: 'block' }} />
+        </Box>
+        <ImageCreditLine credit={picture.credit} surface="badge" />
       </Box>
       <Typography variant="caption" color="text.secondary" display="block">{picture.distanceM} m away</Typography>
-      <ImageCreditLine credit={picture.credit} />
     </Box>
   );
 }

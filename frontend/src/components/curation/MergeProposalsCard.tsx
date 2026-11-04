@@ -24,11 +24,10 @@ import {
 } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
-import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { distanceLabel } from '../../utils/moveDescription';
 import { plural } from '../../utils/plural';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
-import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { DenseThumbnail } from '../shared/DenseThumbnail';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import type { MapPin } from '../shared/PointPreviewPins';
 import { JEV_SURE } from './ComponentItemsCard';
@@ -81,19 +80,6 @@ function similarityWords(pair: Pair): string {
   return `names ${Math.round(pair.nameSimilarity * 100)} % alike`;
 }
 
-/** The other place's picture with its credit under it — or the room it would take, so the rows line up. */
-function OtherPicture({ pair }: { pair: Pair }) {
-  const [failed, setFailed] = useState(false);
-  const src = pair.otherImageUrl ? toThumbnailUrl(extractImageUrl(pair.otherImageUrl) ?? '', 120) : '';
-  if (!src || failed) return <Box sx={{ width: 64, flexShrink: 0 }} />;
-  return (
-    <Box sx={{ width: 64, flexShrink: 0 }}>
-      <Box component="img" src={src} alt="" loading="lazy" onError={() => setFailed(true)}
-        sx={{ width: 64, height: 56, objectFit: 'cover', borderRadius: 0.5, display: 'block' }} />
-      <ImageCreditLine credit={pair.otherImageCredit} />
-    </Box>
-  );
-}
 
 /** An item as a link, with its label and description from the local subset where it has them. */
 function ItemText({ item, label, description }: { item: string; label: string | null; description: string | null }) {
@@ -224,7 +210,8 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
   return (
     <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, px: 1.5, py: 1 }}>
       <Stack direction="row" spacing={1.25} alignItems="flex-start">
-        <OtherPicture pair={pair} />
+        {/* The other place's picture, its credit the badge on it; the room is kept so the rows line up. */}
+        <DenseThumbnail imageUrl={pair.otherImageUrl} title={pair.otherName} credit={pair.otherImageCredit} reserve />
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Typography variant="body1" sx={{ fontWeight: 600 }}>{pair.otherName}</Typography>

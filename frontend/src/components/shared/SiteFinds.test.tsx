@@ -78,12 +78,13 @@ describe('SiteFinds', () => {
 
   it('hangs the credit on the picture, and takes it down with the picture', () => {
     renderFinds([find()]);
-    expect(screen.getByText(/Gleb Simonov/)).toBeInTheDocument();
+    // A dense row: the credit is the © on the thumbnail (ADR-0182).
+    expect(screen.getByRole('button', { name: /^Picture credit: © Gleb Simonov/ })).toBeInTheDocument();
 
     fireEvent.error(screen.getByRole('img', { name: 'Mask of Agamemnon' }));
 
     // A photographer named under nothing credits nobody (#557).
-    expect(screen.queryByText(/Gleb Simonov/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Picture credit/ })).not.toBeInTheDocument();
   });
 
   it('opens the larger picture over the map only where a surface has a map to draw on', () => {
