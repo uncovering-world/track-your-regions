@@ -37,7 +37,7 @@ the policy page is the authority.
 | Nominatim | live, interactive | **partly** (one credit missing) | #2356 |
 | Overpass API and its mirrors | live, fallback | yes, one gap | #2356 |
 | QLever (OSM planet) | live, small batches | yes | — |
-| tile.openstreetmap.org | browser | **no** (credit, test lanes) | #2350, #2351, #651 |
+| tile.openstreetmap.org | browser | **no** (test lanes) | #2351, #651 |
 | CARTO basemap style | browser | **no** (no key) | #651 |
 | fonts.openmaptiles.org | browser | no terms published | — |
 | planet.openstreetmap.org | dump | yes | — |
@@ -199,8 +199,13 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
 
   The [attribution guidelines](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines) ask
   for the credit visible without interaction and linked to the copyright page.
+- *Credit:* every map that draws the tiles uses one source, `OSM_RASTER_SOURCE` in
+  `frontend/src/constants/mapStyles.ts`, which carries `OSM_ATTRIBUTION` (linked to the copyright
+  page), and keeps its attribution control on: in full on Discover and the location picker, and at
+  MapLibre's responsive default on the react-map-gl maps, which folds the credit behind its ⓘ on a
+  map 640 px wide or less after the first drag (#2350; `mapStyles.test.ts` holds that only the
+  shared source names the tiles and that no map turns the control off).
 - ***Does not comply***:
-  - no tile map shows the OpenStreetMap credit (#2350);
   - the smoke and Lighthouse lanes load the maps headless, fetching tiles on every pull request (#2351);
   - the policy does not let an app depend on this server at all, which is #651's question.
 

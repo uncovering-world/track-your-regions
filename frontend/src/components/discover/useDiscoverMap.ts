@@ -76,7 +76,8 @@ export function useDiscoverMap({
       style: MAP_STYLE,
       center: [15, 30],
       zoom: 2,
-      attributionControl: false,
+      // The tiles' credit, shown in full rather than behind a button (#2350).
+      attributionControl: { compact: false },
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
