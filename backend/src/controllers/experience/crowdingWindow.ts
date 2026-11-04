@@ -382,9 +382,7 @@ export async function getCrowdingPlace(
  * The arrivals a crowded city would shadow, grouped by region, kind and type:
  * "Berlin · Squares & streets · square: 11 new". The review queue asks about
  * none of them (`arrivalOpenSql`), so this is where they are asked, each group
- * opening its region's list (`getCrowdingGroup`). Each group names its
- * arrivals best known first, for the window around one arrival that the web
- * reads until it moves to the region's list (`crowdingAroundWindow.ts`).
+ * opening its region's list (`getCrowdingGroup`).
  *
  * An arrival is grouped under its leaf (`groupLeafSql`); one no world view
  * places is grouped under none. A region asked for (#2349) keeps the groups
@@ -403,15 +401,13 @@ export async function listShadowedArrivals(
   else if (within) regionKept = 'leaf.region_id IS NOT NULL';
   const result = await pool.query<{
     region_id: number | null; region_name: string | null; world_view_id: number | null;
-    kind_id: number; kind_name: string; type: string | null; arrivals: number; membership_ids: number[];
+    kind_id: number; kind_name: string; type: string | null; arrivals: number;
   }>(`${CURATOR_SCOPED_REGIONS_CTE}${within ? regionSubtreeCte('$4') : ''}
     SELECT leaf.region_id, leaf.region_name, leaf.world_view_id,
-           m.kind_id, k.name AS kind_name, m.type, count(*)::int AS arrivals,
-           array_agg(m.id ORDER BY f.score DESC NULLS LAST, m.id) AS membership_ids
+           m.kind_id, k.name AS kind_name, m.type, count(*)::int AS arrivals
       FROM ${MEMBERSHIPS} m
       JOIN experiences e ON e.id = m.experience_id
       JOIN ${KINDS} k ON k.id = m.kind_id AND k.crowding_limit IS NOT NULL
-      LEFT JOIN ${FAME} f ON f.membership_id = m.id
       ${groupLeafSql({ isAdmin: '$3', worldView: '$2', within })}
      WHERE m.curation_state = 'pending' AND ${membershipAdmittedSql('m')} AND e.missing_since IS NULL
        AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}
@@ -428,7 +424,6 @@ export async function listShadowedArrivals(
       kindName: row.kind_name,
       type: row.type,
       arrivals: row.arrivals,
-      membershipIds: row.membership_ids,
     })),
   };
 }
