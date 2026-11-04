@@ -744,13 +744,24 @@ function regionFilter(
     predicate: `EXISTS (SELECT 1 FROM experience_regions er
                          JOIN region_subtree rs ON rs.id = er.region_id
                         WHERE er.experience_id = k.id)`,
-    cte: `
+    cte: regionSubtreeCte(bind(regionId)),
+  };
+}
+
+/**
+ * `region_subtree`: the region `regionParam` binds and every region under it,
+ * appended to a `WITH RECURSIVE` prelude. What "within a region" means
+ * wherever a curator filters by one — the queue's Region chip and the crowded
+ * cities' (#2349) — so a place lies within a region when it is placed in the
+ * region or anywhere under it.
+ */
+export function regionSubtreeCte(regionParam: string): string {
+  return `
 , region_subtree AS (
-    SELECT r.id FROM regions r WHERE r.id = ${bind(regionId)}
+    SELECT r.id FROM regions r WHERE r.id = ${regionParam}
     UNION
     SELECT r.id FROM regions r JOIN region_subtree p ON r.parent_region_id = p.id
-  )`,
-  };
+  )`;
 }
 
 /** The page, the total under the filter, and the facets, as one row of JSON. */

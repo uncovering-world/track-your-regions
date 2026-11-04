@@ -13706,6 +13706,23 @@
               "exclusiveMinimum": 0,
               "maximum": 2147483647
             }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "none"
+                },
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                }
+              ]
+            }
           }
         ],
         "responses": {

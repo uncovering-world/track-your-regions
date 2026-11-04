@@ -32,6 +32,11 @@ const BASE = 9_282_100;
 const SAN_LUIGI = BASE + 50;
 const NEUES_MUSEUM = BASE + 51;
 const ADMIN = '00000000-0000-4000-8000-000000092821';
+/** A public world view that splits Berlin into its districts, as Wikivoyage does (#2349). */
+const DISTRICTS_VIEW = 92_821;
+const GERMANY = BASE + 60;
+const BERLIN = BASE + 61;
+const BRANDENBURG = BASE + 62;
 const CURATOR = '00000000-0000-4000-8000-000000092822';
 
 let adminId = 0;
@@ -111,6 +116,7 @@ async function shadowedSquares(base: number): Promise<string[]> {
 
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id >= $1 AND id < $2', [BASE, BASE + 100]);
+  await pool.query('DELETE FROM world_views WHERE id = $1', [DISTRICTS_VIEW]);
   await pool.query("DELETE FROM treasures WHERE external_id = 'Q928215-calling'");
   await pool.query('DELETE FROM curator_assignments WHERE assigned_by IN (SELECT id FROM users WHERE uuid = $1)', [ADMIN]);
   await pool.query('DELETE FROM users WHERE uuid = ANY($1::text[])', [[ADMIN, CURATOR]]);
@@ -391,5 +397,70 @@ describe('the arrivals a crowded city shadows', () => {
     const berlin = groups.find(group => group.membershipIds.includes(id('Schloßplatz')))!;
     expect(berlin).toMatchObject({ kindId: 9, type: 'square', arrivals: 11 });
     expect(berlin.membershipIds.slice(0, 3)).toEqual([id('Frankfurter Tor'), id('Rosa-Luxemburg-Platz'), id('Schloßplatz')]);
+  });
+
+  describe('within a region (#2349)', () => {
+    /** The district each new square lies in. */
+    const DISTRICT_OF: Record<string, string> = {
+      'Frankfurter Tor': 'Friedrichshain-Kreuzberg',
+      'Rosa-Luxemburg-Platz': 'Mitte',
+      Schloßplatz: 'Mitte',
+      'Kottbusser Tor': 'Friedrichshain-Kreuzberg',
+      Hermannplatz: 'Neukölln',
+      Wittenbergplatz: 'Tempelhof-Schöneberg',
+      'Strausberger Platz': 'Friedrichshain-Kreuzberg',
+      'Großer Stern': 'Mitte',
+      Mehringplatz: 'Friedrichshain-Kreuzberg',
+      Savignyplatz: 'Charlottenburg-Wilmersdorf',
+      Winterfeldtplatz: 'Tempelhof-Schöneberg',
+    };
+    const districts = [...new Set(Object.values(DISTRICT_OF))];
+    const district = new Map(districts.map((name, index) => [name, BASE + 70 + index]));
+    const read = (region?: number | 'none') => listShadowedArrivals({ query: { region }, caller: admin() });
+    const named = async (region?: number | 'none') => (await read(region)).groups.map(group => [group.regionName, group.arrivals]);
+
+    // Germany over Berlin and Brandenburg, Berlin over its districts. Each
+    // square is placed in its district and every region above it, as the
+    // catalogue's assignment holds a place's ancestors beside its leaf.
+    beforeEach(async () => {
+      await pool.query(
+        "INSERT INTO world_views (id, name, is_default, is_public) VALUES ($1, 'Berlin by district', false, true)",
+        [DISTRICTS_VIEW]);
+      await pool.query(
+        `INSERT INTO regions (id, world_view_id, name, parent_region_id, is_leaf) VALUES
+           ($1, $4, 'Germany', NULL, false), ($2, $4, 'Berlin', $1, false), ($3, $4, 'Brandenburg', $1, true)`,
+        [GERMANY, BERLIN, BRANDENBURG, DISTRICTS_VIEW]);
+      for (const [name, regionId] of district) {
+        await pool.query(
+          'INSERT INTO regions (id, world_view_id, name, parent_region_id, is_leaf) VALUES ($1, $2, $3, $4, true)',
+          [regionId, DISTRICTS_VIEW, name, BERLIN]);
+      }
+      for (const [square, name] of Object.entries(DISTRICT_OF)) {
+        await pool.query(
+          `INSERT INTO experience_regions (experience_id, region_id, assignment_type)
+           SELECT $1, unnest($2::int[]), 'auto'`,
+          [squares.get(square)!.place, [district.get(name)!, BERLIN, GERMANY]]);
+      }
+    });
+
+    it("reads a city's groups by the districts within it, each square under its own", async () => {
+      expect(await named(BERLIN)).toEqual([
+        ['Friedrichshain-Kreuzberg', 4], ['Mitte', 3], ['Tempelhof-Schöneberg', 2],
+        ['Charlottenburg-Wilmersdorf', 1], ['Neukölln', 1],
+      ]);
+      expect(await named(GERMANY)).toEqual(await named(BERLIN));
+      const mitte = (await read(BERLIN)).groups.find(group => group.regionId === district.get('Mitte'))!;
+      expect(mitte.membershipIds).toEqual([id('Rosa-Luxemburg-Platz'), id('Schloßplatz'), id('Großer Stern')]);
+    });
+
+    it('reads a leaf as its own group alone', async () => {
+      expect(await named(district.get('Mitte'))).toEqual([['Mitte', 3]]);
+    });
+
+    it('reads nothing of a region no new square lies in, nor of the unplaced while every square is placed', async () => {
+      expect(await read(BRANDENBURG)).toEqual({ groups: [] });
+      expect(await read('none')).toEqual({ groups: [] });
+      expect(await named()).toEqual(await named(BERLIN));
+    });
   });
 });

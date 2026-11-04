@@ -4,7 +4,7 @@
  * arrivals the city's display would shadow, grouped for the review page.
  *
  * GET /api/experiences/review/crowding/around/:membershipId?type=
- * GET /api/experiences/review/crowding/arrivals?worldViewId=
+ * GET /api/experiences/review/crowding/arrivals?worldViewId=&region=
  *
  * Whether a place belongs in a city's list or in its shadow is a question of
  * priorities among its neighbours, not of the place alone (the maintainer,
@@ -35,7 +35,7 @@ import type {
 } from '../../types/index.js';
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import type { CrowdingPin } from './membershipWriter.js';
-import { queueScopeSql } from './reviewQueueKeys.js';
+import { queueScopeSql, regionSubtreeCte } from './reviewQueueKeys.js';
 
 /** The most rows one window lists: the densest type on dev, Rome's churches, holds about 150. */
 const WINDOW_ROWS_MAX = 500;
@@ -260,15 +260,25 @@ async function readCentre(membershipId: number): Promise<Centre | undefined> {
  * a leaf of each world view that covers it, and counting it under each would
  * count it twice. An arrival no world view places is grouped under none. A
  * world view only an admin reads names its regions to an admin alone.
+ *
+ * A region asked for (#2349) keeps the groups within it: each arrival placed
+ * in the region or under it, as the queue's Region chip reads "within"
+ * (`regionSubtreeCte`), grouped under its leaf there — Berlin's squares by
+ * Berlin's districts, a leaf's under the leaf itself. `none` keeps the
+ * arrivals grouped under no region.
  */
 export async function listShadowedArrivals(
   { query, caller }: { query: z.output<typeof shadowedArrivalsQuerySchema>; caller: Express.User },
 ): Promise<ShadowedArrivals> {
   const isAdmin = caller.role === 'admin';
+  const within = typeof query.region === 'number';
+  let regionKept = 'TRUE';
+  if (query.region === 'none') regionKept = 'leaf.region_id IS NULL';
+  else if (within) regionKept = 'leaf.region_id IS NOT NULL';
   const result = await pool.query<{
     region_id: number | null; region_name: string | null; world_view_id: number | null;
     kind_id: number; kind_name: string; type: string | null; arrivals: number; membership_ids: number[];
-  }>(`${CURATOR_SCOPED_REGIONS_CTE}
+  }>(`${CURATOR_SCOPED_REGIONS_CTE}${within ? regionSubtreeCte('$4') : ''}
     SELECT leaf.region_id, leaf.region_name, leaf.world_view_id,
            m.kind_id, k.name AS kind_name, m.type, count(*)::int AS arrivals,
            array_agg(m.id ORDER BY f.score DESC NULLS LAST, m.id) AS membership_ids
@@ -280,6 +290,7 @@ export async function listShadowedArrivals(
         SELECT r.id AS region_id, r.name AS region_name, r.world_view_id
           FROM experience_regions er
           JOIN regions r ON r.id = er.region_id AND r.is_leaf
+          ${within ? 'JOIN region_subtree rs ON rs.id = r.id' : ''}
           JOIN world_views wv ON wv.id = r.world_view_id
          WHERE er.experience_id = e.id
            AND (wv.is_public OR $3::boolean)
@@ -288,10 +299,10 @@ export async function listShadowedArrivals(
          LIMIT 1) leaf ON TRUE
      WHERE m.curation_state = 'pending' AND ${membershipAdmittedSql('m')} AND e.missing_since IS NULL
        AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}
-       AND ${queueScopeSql(isAdmin, 'm.source_id')}
+       AND ${queueScopeSql(isAdmin, 'm.source_id')} AND ${regionKept}
      GROUP BY leaf.region_id, leaf.region_name, leaf.world_view_id, m.kind_id, k.name, k.display_priority, m.type
      ORDER BY count(*) DESC, leaf.region_name, k.display_priority, m.type`,
-    [caller.id, query.worldViewId ?? null, isAdmin],
+    [caller.id, query.worldViewId ?? null, isAdmin, ...(within ? [query.region] : [])],
   );
   return {
     groups: result.rows.map(row => ({

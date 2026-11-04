@@ -7999,6 +7999,7 @@ export type GetExperiencesReviewCrowdingArrivalsParams = {
    * @exclusiveMinimum 0
    */
   worldViewId?: number;
+  region?: 'none' | number;
 };
 
 export type GetExperiencesByIdFindLinksCandidatesParams = {
