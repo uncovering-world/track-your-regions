@@ -30,9 +30,12 @@ import {
   WORSHIP_ROOT,
   type PublicArtTrees,
 } from './classes.js';
-import { publicArtVerdict, type PublicArtFacts } from './publicArtTest.js';
+import { publicArtVerdict, type FiledAsMonument, type PublicArtFacts } from './publicArtTest.js';
 import { streetArtVerdict } from './streetArtTest.js';
-import { enterStreetArtPlaces, streetArtGuideOf, type StreetArtReading } from './streetArtPlaces.js';
+import { enterStreetArtPlaces, STREET_ART_ENTRANCE, streetArtGuideOf, type StreetArtReading } from './streetArtPlaces.js';
+import {
+  categoryNote, enterMonumentCategories, filedAsMonument, MONUMENTS_CATEGORY_ENTRANCE, type MonumentCategoryReading,
+} from './monumentCategories.js';
 import type { KindFacts, KindRule } from './kindRules.js';
 import { CAST_GROUP, emptyFacts, fetchCastGroupPool, type PoolEntity, type EntityFacts } from './queries.js';
 import { attachCasts, fetchCastItems } from './castGroups.js';
@@ -83,8 +86,10 @@ export interface GatheredPublicArt {
   containers: Containment;
   /** What the candidates depict, by item id. */
   subjects: Map<string, SubjectFacts>;
-  /** The candidates the street-art entrance named (`enterStreetArtPlaces`). */
+  /** The candidates the entrances named: the street-art places' and the monuments categories'. */
   entered: ReadonlySet<string>;
+  /** The candidates each entrance named, by its name (`STREET_ART_ENTRANCE`, `MONUMENTS_CATEGORY_ENTRANCE`). */
+  enteredBy: ReadonlyMap<string, ReadonlySet<string>>;
   /** The ones of those no class question named and no source of the pass admits. */
   enteredOnly: ReadonlySet<string>;
 }
@@ -146,9 +151,14 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
     enter: fetchCastGroupPool,
     attach: readCastGroups,
   },
-  // The street-art places no class names (#2035): Public art decides them by
-  // their own rule, Monuments & memorials skips the ones it does not admit.
-  entrance: enterStreetArtPlaces,
+  // The street-art places no class names (#2035), which Public art decides by
+  // their own rule, and the monuments English Wikipedia files that Wikidata
+  // types as something else (#2171), which Monuments & memorials decides by its
+  // frame. Each kind skips what only the other's entrance named.
+  entrances: {
+    [STREET_ART_ENTRANCE]: enterStreetArtPlaces,
+    [MONUMENTS_CATEGORY_ENTRANCE]: enterMonumentCategories,
+  },
   // Both kinds admit by the world bars over their own pools (ADR-0175): a
   // public clock with a show is read in few languages — the
   // Rathaus-Glockenspiel has 7 editions — and is a candidate whatever its count.
@@ -220,10 +230,28 @@ function kindFactsOf(known: EntityFacts, subjects: Map<string, SubjectFacts>): K
  * graffiti category also files stays the kind's.
  */
 export function streetArtCandidates(gathered: GatheredPublicArt, rule: KindRule): string[] {
-  return [...gathered.entered].filter((qid) => {
-    const known = gathered.facts.get(qid) ?? emptyFacts();
-    return !rule.admits(kindFactsOf(known, gathered.subjects), gathered.trees);
-  });
+  return enteredUnadmitted(gathered, STREET_ART_ENTRANCE, rule);
+}
+
+/**
+ * The candidates the monuments categories decide rather than the kind's
+ * classes (#2171): the ones that entrance named that no class of the kind
+ * admits. A memorial a category also files stays the kind's.
+ */
+export function monumentCategoryCandidates(gathered: GatheredPublicArt, rule: KindRule): string[] {
+  return enteredUnadmitted(gathered, MONUMENTS_CATEGORY_ENTRANCE, rule);
+}
+
+/** What `entrance` named that no class of the kind `rule` names admits. */
+function enteredUnadmitted(gathered: GatheredPublicArt, entrance: string, rule: KindRule): string[] {
+  return [...(gathered.enteredBy.get(entrance) ?? [])].filter((qid) => noClassAdmits(gathered, rule, qid));
+}
+
+/** Whether no class or fact of the kind `rule` names admits `qid`, by what the share read of it. */
+export function noClassAdmits(
+  { facts, subjects, trees }: Pick<GatheredPublicArt, 'facts' | 'subjects' | 'trees'>, rule: KindRule, qid: string,
+): boolean {
+  return !rule.admits(kindFactsOf(facts.get(qid) ?? emptyFacts(), subjects), trees);
 }
 
 /** The street-art rule's verdict on one candidate, read off the gather and the reading. */
@@ -245,12 +273,16 @@ function streetArtVerdictOf(entity: PoolEntity, gathered: GatheredPublicArt, rea
   }, gathered.trees);
 }
 
-/** The kind's verdict on one candidate of the share, read off the gathered facts. */
+/**
+ * The kind's verdict on one candidate of the share, read off the gathered
+ * facts; `filed` where the monuments categories alone name it (#2171).
+ */
 export function publicArtVerdictOf(
   entity: PoolEntity,
-  { trees, facts, containers, subjects }: GatheredPublicArt,
+  { trees, facts, containers, subjects }: Pick<GatheredPublicArt, 'trees' | 'facts' | 'containers' | 'subjects'>,
   rule: KindRule,
   offered?: ReadonlySet<string>,
+  filed?: FiledAsMonument,
 ) {
   const known = facts.get(entity.qid) ?? emptyFacts();
   return publicArtVerdict({
@@ -266,7 +298,7 @@ export function publicArtVerdictOf(
     onEarth: entity.onEarth,
     lat: entity.lat,
     lon: entity.lon,
-  }, trees, rule, offered);
+  }, trees, rule, offered, filed);
 }
 
 /**
@@ -321,8 +353,11 @@ function streetArtDecision(
 
 /**
  * The kind's own decision on a candidate: its verdict, then the world bars. A
- * candidate only the street-art entrance named is not the kind's: the gather
- * leaves every row a source of the pass holds out of `enteredOnly`.
+ * candidate only an entrance the kind does not read named is not the kind's:
+ * the gather leaves every row a source of the pass holds out of `enteredOnly`.
+ * `entered` is what the entrances this classification reads named, whose
+ * refusals are named back; `filed` is given where the monuments categories
+ * alone name the candidate, and the curator's note names them (#2171).
  */
 function kindDecision(
   entity: PoolEntity,
@@ -331,6 +366,8 @@ function kindDecision(
   held: boolean,
   verdict: ReturnType<typeof publicArtVerdictOf>,
   tier: WorldTier,
+  entered: ReadonlySet<string>,
+  filed?: FiledAsMonument,
 ): Decision {
   const known = gathered.facts.get(entity.qid) ?? emptyFacts();
   // On a refusal of a row the source admits, the type the classes read: a
@@ -339,8 +376,8 @@ function kindDecision(
   const type = held ? { type: rule.type(kindFactsOf(known, gathered.subjects), gathered.trees) } : {};
   const c = candidateOf(entity);
   if (!verdict.pass) {
-    // What the street-art entrance named is named back: a category filed it.
-    if (!namesRefusal(c, held, tier) && !gathered.entered.has(entity.qid)) return null;
+    // What an entrance the kind reads named is named back: a category filed it.
+    if (!namesRefusal(c, held, tier) && !entered.has(entity.qid)) return null;
     return { refused: {
       externalId: entity.qid, name: entity.label, reason: verdict.reason, ...type,
       // Where it is held, for the kind that holds that place to take it (ADR-0102).
@@ -357,12 +394,16 @@ function kindDecision(
   if ('fell' in stands) {
     return { refused: { externalId: entity.qid, name: entity.label, reason: stands.fell, ...type }, ...handOver };
   }
-  const note = tier.noteOf(c, stands);
+  const note = [filed ? categoryNote(filed) : undefined, tier.noteOf(c, stands)].filter(Boolean).join(' ');
   // The museum's changeset names the reason, and here this kind admits the
   // work: the reason says so rather than reading as a refusal.
   const admitted = handOver && { handOver: { ...handOver.handOver, reason: `taken as ${rule.noun} at its other casts; a cast ${handOver.handOver.reason}` } };
   return {
-    item: { ...landmarkOf(entity, entity.lat, entity.lon, known, verdict), ...(note ? { readershipNote: note } : {}) },
+    item: {
+      ...landmarkOf(entity, entity.lat, entity.lon, known, verdict),
+      ...(note ? { readershipNote: note } : {}),
+      ...(filed ? { wikipediaCategories: filed.categories } : {}),
+    },
     ...admitted,
   };
 }
@@ -373,6 +414,18 @@ const candidateOf = (entity: PoolEntity): WorldCandidate => ({ qid: entity.qid, 
 export type PublicArtShare = GatheredPublicArt & { admissionPool: ReadonlySet<string> | null };
 
 /**
+ * What a kind reads of the candidates its entrances name, for the kind that
+ * reads them: Public art the street-art places' line and rule (#2035),
+ * Monuments & memorials what the verdict asks of a candidate the monuments
+ * categories alone name (#2171). Without one, what only that entrance named is
+ * not the kind's and is skipped.
+ */
+export interface EntranceReadings {
+  streetArt?: StreetArtReading | null;
+  monuments?: MonumentCategoryReading | null;
+}
+
+/**
  * Decide what of the gather is of the kind `rule` names: the candidates that
  * pass it and reach the world bars over the kind's own pool (ADR-0175), and
  * the refusals worth naming, with the reason each gave.
@@ -380,10 +433,11 @@ export type PublicArtShare = GatheredPublicArt & { admissionPool: ReadonlySet<st
  * `admitted` is what the source holds as admitted before the run, so the stay
  * share has something to hold. `offered` is the places another kind offers a
  * reader, which decides whether a work outdoors on a venue's grounds is
- * stranded there (#1444). `streetArt` is what the street-art rule reads of the
- * candidates it decides (`streetArtCandidates`), for the kind that holds them;
- * without it, a candidate only the street-art entrance named is not this
- * kind's and is skipped. `world` hands a run the source's history, for what
+ * stranded there (#1444). `entrances` is what the kind reads of what its
+ * entrances name (`EntranceReadings`): the street-art rule's reading of the
+ * candidates it decides (`streetArtCandidates`), and the monuments categories'
+ * of theirs (`monumentCategoryCandidates`), decided by the kind's own frame
+ * with the category in place of a class. `world` hands a run the source's history, for what
  * it cannot read (ADR-0175 decision 6), and a test the world's signals and
  * the bars where it is not about the pool (`WorldOptions`). Items
  * come back most famous first, which is the order the run writes them in and
@@ -395,17 +449,27 @@ export async function classifyPublicArt(
   admitted: ReadonlySet<string>,
   sparql: SparqlFn,
   offered?: ReadonlySet<string>,
-  streetArt: StreetArtReading | null = null,
+  { streetArt = null, monuments = null }: EntranceReadings = {},
   world?: WorldOptions,
 ): Promise<CollectedPublicArt> {
   const { pool } = gathered;
   const decidedAsStreetArt = new Set(streetArt ? streetArtCandidates(gathered, rule) : []);
+  const filedOf = new Map(monuments
+    ? monumentCategoryCandidates(gathered, rule).map((qid) => [qid, filedAsMonument(qid, gathered.facts.get(qid)?.classes ?? [], monuments)])
+    : []);
+  // What the entrances this classification reads named: their refusals are named back.
+  const entered = new Set([
+    ...(streetArt ? gathered.enteredBy.get(STREET_ART_ENTRANCE) ?? [] : []),
+    ...(monuments ? gathered.enteredBy.get(MONUMENTS_CATEGORY_ENTRANCE) ?? [] : []),
+  ]);
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
-  // The kind's own candidates: not what the entrance alone brought, which is
-  // the street-art rule's or nobody's.
+  // The kind's own candidates: not what an entrance alone brought, which is
+  // the street-art rule's or nobody's, unless the monuments categories named
+  // it, whose candidates the kind's frame decides with the category in place
+  // of a class (#2171).
   const verdicts = new Map(candidates
-    .filter((entity) => !gathered.enteredOnly.has(entity.qid))
-    .map((entity) => [entity.qid, publicArtVerdictOf(entity, gathered, rule, offered)]));
+    .filter((entity) => !gathered.enteredOnly.has(entity.qid) || filedOf.has(entity.qid))
+    .map((entity) => [entity.qid, publicArtVerdictOf(entity, gathered, rule, offered, filedOf.get(entity.qid))]));
   const tier = await openWorldTier({
     pool: candidates.filter((entity) => verdicts.get(entity.qid)?.pass && inPool(gathered, entity.qid, entity)).map(candidateOf),
     qids: [...verdicts.keys()],
@@ -422,7 +486,7 @@ export async function classifyPublicArt(
       ? streetArtDecision(entity, gathered, streetArt, held) : undefined;
     if (byStreetArt !== undefined) return byStreetArt;
     const verdict = verdicts.get(entity.qid);
-    return verdict ? kindDecision(entity, gathered, rule, held, verdict, tier) : null;
+    return verdict ? kindDecision(entity, gathered, rule, held, verdict, tier, entered, filedOf.get(entity.qid)) : null;
   };
   const items: WikidataLandmark[] = [];
   const filtered: FilteredEntity[] = [];

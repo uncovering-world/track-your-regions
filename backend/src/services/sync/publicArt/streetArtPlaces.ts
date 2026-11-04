@@ -31,6 +31,9 @@ const LOG_PREFIX = '[Landmark Sync]';
 /** The source that holds street-art places: Public art's (`LANDMARK_SOURCE_ID`). */
 const PUBLIC_ART_SOURCE_ID = 3;
 
+/** The entrance's name on the kind's share (`KindShare.enteredBy`). */
+export const STREET_ART_ENTRANCE = 'street art';
+
 /** Every item the street-art entrance names. */
 export async function enterStreetArtPlaces(run: QueryRunner): Promise<string[]> {
   const named = new Set<string>();

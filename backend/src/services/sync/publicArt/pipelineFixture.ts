@@ -163,5 +163,5 @@ export async function collectPublicArt(
   run: QueryRunner, admitted: ReadonlySet<string>, offered?: ReadonlySet<string>, rule: KindRule = PUBLIC_ART_RULE,
   read: WorldRead = UNREAD,
 ) {
-  return classifyPublicArt(await gatherPublicArt(run, admitted), rule, admitted, run.sparql, offered, null, { read, bars: BARS });
+  return classifyPublicArt(await gatherPublicArt(run, admitted), rule, admitted, run.sparql, offered, {}, { read, bars: BARS });
 }

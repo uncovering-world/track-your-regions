@@ -293,9 +293,10 @@ function qidArray(qids: string[]): string {
 // organisation, a hall of fame, a sculpture garden, a burial class — is asked
 // of the stored classes against the same pinned floor the rule reads
 // (`COMMEMORATIVE_FLOOR`); a burial class is lifted by a commemorative form
-// too, which that kind reads from the genre as well (#1832), and a constant
-// cannot see the genre, so that one is asked of the rule's own answer, as a
-// building veto is. Public art lifts none of them.
+// too, which that kind reads from the genre as well (#1832), and by English
+// Wikipedia's monuments categories (#2171), and a constant can see neither, so
+// that one is asked of the rule's own answer, as a building veto is. Public
+// art lifts none of them.
 const REFUSED_OUTRIGHT = qidArray([
   ...Object.keys(WORSHIP_CLASSES),
   ...Object.keys(KILL_CLASSES).filter((qid) => !MEMORIAL_LIFTED_KILLS[qid]),
@@ -407,7 +408,8 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
                  OR (
                    -- A burial class: Public art never lifts it, and Monuments &
                    -- memorials only where a commemorative class stands with it,
-                   -- or a form, which its stored answer says.
+                   -- or a form or the monuments categories, which its stored
+                   -- answer says.
                    m.facts->'wikidataClasses' ?| ${BURIAL}
                    AND (m.source_id = 3 OR NOT (
                      COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE)

@@ -36,6 +36,13 @@ vi.mock('./publicArt/pipeline.js', () => ({
   classifyPublicArt: vi.fn(),
   PUBLIC_ART_KIND: { name: 'public art' },
   streetArtCandidates: vi.fn(),
+  monumentCategoryCandidates: vi.fn(() => []),
+  noClassAdmits: vi.fn(() => true),
+}));
+// What the monuments categories' candidates are read for (#2171); its own spec is monumentCategories.test.ts.
+vi.mock('./publicArt/monumentCategories.js', () => ({
+  readMonumentCategories: vi.fn(async () => ({ categories: new Map(), classObjects: new Map(), roots: new Map() })),
+  filedAsMonument: vi.fn(), categoryNote: vi.fn(),
 }));
 // The surroundings tier is its own module's (`surroundingsTier.test.ts`); here it brings nothing.
 const surroundingsArrivals = vi.hoisted(() => vi.fn(async () => ({ items: [], filtered: [] } as { items: never[]; filtered: never[]; skipped?: string })));
@@ -136,8 +143,9 @@ import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { writeExperienceLocations } from './locationWriter.js';
 import { withCache } from './wikidataCache.js';
-import { classifyPublicArt, PUBLIC_ART_KIND, streetArtCandidates } from './publicArt/pipeline.js';
+import { classifyPublicArt, monumentCategoryCandidates, PUBLIC_ART_KIND, streetArtCandidates } from './publicArt/pipeline.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
+import { readMonumentCategories } from './publicArt/monumentCategories.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { ARCHAEOLOGY_SITE_KIND } from './archaeology/sites.js';
 import { gatherPlaces } from './places/gather.js';
@@ -250,7 +258,7 @@ describe('public art in the place pass', () => {
     // a guide this run cannot (ADR-0175 decision 6, #2267).
     expect(vi.mocked(streetArtCandidates)).toHaveBeenCalledWith(SHARE, PUBLIC_ART_RULE);
     expect(vi.mocked(readStreetArt)).toHaveBeenCalledWith(expect.any(Function), ['Q1630131'], SHARE.facts, history.memory);
-    expect(mockedCollect.mock.calls[0][5]).toBe(STREET_ART_READ);
+    expect(mockedCollect.mock.calls[0][5]).toEqual({ streetArt: STREET_ART_READ, monuments: null });
     expect(fetched.fetchedCount).toBe(5);
     expect(fetched.filtered).toEqual([refusal]);
     // And what it admits is asked whether it still stands, through the gather's door (#2259).
@@ -304,9 +312,14 @@ describe('public art in the place pass', () => {
     await monuments.fetchItems(progress(), []);
     expect(mockedAdmitted).toHaveBeenCalledWith(6, undefined, 'world');
     expect(mockedCollect.mock.calls[0][1]).toBe(MONUMENTS_RULE);
-    // Monuments & memorials holds no street-art place (#2035).
+    // Monuments & memorials holds no street-art place (#2035), and decides what
+    // the monuments categories alone name (#2171), read through the gather's door.
     expect(vi.mocked(readStreetArt)).not.toHaveBeenCalled();
-    expect(mockedCollect.mock.calls[0][5]).toBeNull();
+    expect(vi.mocked(monumentCategoryCandidates)).toHaveBeenCalledWith(SHARE, MONUMENTS_RULE);
+    expect(vi.mocked(readMonumentCategories)).toHaveBeenCalledWith(expect.any(Function), [], SHARE.facts);
+    expect(mockedCollect.mock.calls[0][5]).toEqual({
+      streetArt: null, monuments: { categories: new Map(), classObjects: new Map(), roots: new Map() },
+    });
     // A place its sibling offers is not another kind's (#1444).
     expect(vi.mocked(placesOtherSourcesOffer)).toHaveBeenCalledWith([3, 6]);
     expect(art.sourceId).toBe(3);
@@ -395,6 +408,10 @@ describe('public art in the place pass', () => {
       creators: ['Kārlis Zāle'],
       sitelinksCount: 41,
     });
+    // A place the monuments categories named keeps them on its membership, for a run that cannot read them (#2171).
+    expect(params.metadata).not.toHaveProperty('wikipediaCategories');
+    await config.processItem(landmark({ qid: 'Q83497', wikipediaCategories: ['Monuments and memorials in South Dakota'] }), progress(), context);
+    expect(mockedUpsert.mock.calls[1][0].metadata).toMatchObject({ wikipediaCategories: ['Monuments and memorials in South Dakota'] });
   });
 
   it('reads and writes what a street-art place holds in Public art alone, its pictures credited (#2055)', async () => {
@@ -540,6 +557,20 @@ describe('Public art\'s and Monuments\' part in the surroundings tier (#2178)', 
     // A public clock is a clock before anything else it is.
     expect(typeOf([CLOCK, SCULPTURE], trees)).toBe('clock');
     expect(typeOf([SCULPTURE], trees)).toBe('sculpture');
+  });
+
+  it('measures in Monuments & memorials what the monuments categories alone name, and reads them for its rule (#2171)', async () => {
+    vi.mocked(monumentCategoryCandidates).mockReturnValueOnce(['Q83497']);
+    expect([...publicArtSurroundings(MONUMENTS_RULE).named!(SHARE as never)]).toEqual(['Q83497']);
+    // Public art measures nothing beside its classes.
+    expect(publicArtSurroundings(PUBLIC_ART_RULE).named).toBeUndefined();
+
+    const rushmore = { qid: 'Q83497' } as never;
+    const sparql = vi.fn();
+    const context = await publicArtSurroundings(MONUMENTS_RULE).context!([rushmore], SHARE as never, sparql, new Set(['Q83497']));
+    expect(vi.mocked(readMonumentCategories)).toHaveBeenCalledWith(sparql, ['Q83497'], SHARE.facts);
+    expect([...context.filed.keys()]).toEqual(['Q83497']);
+    expect(context.offered).toEqual(new Set(['Q19675']));
   });
 
   it('keeps each rule\'s kind neighbourhood under its own key, though both read one gather kind', () => {

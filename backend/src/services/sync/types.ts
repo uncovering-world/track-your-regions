@@ -361,6 +361,13 @@ export interface WikidataLandmark {
    * Absent on a row the line admits.
    */
   readershipNote?: string;
+  /**
+   * The English Wikipedia categories that named the place where no class of
+   * the kind does (#2171): Monuments & memorials' monuments categories.
+   * Stored as the membership's `facts.wikipediaCategories`, so a later run
+   * keeps the place by them when it cannot read the categories again.
+   */
+  wikipediaCategories?: string[];
 }
 
 /**

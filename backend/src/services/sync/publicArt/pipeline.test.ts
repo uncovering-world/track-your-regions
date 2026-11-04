@@ -12,12 +12,19 @@ import { describe, it, expect, vi } from 'vitest';
 // Wikipedia's categories unless a test names one, and no held street-art place.
 vi.mock('../../dumps/wikipedia/structureTables.js', () => ({ latestStructure: vi.fn(async () => null) }));
 vi.mock('../wikipediaStructure.js', () => ({ structureItemsInCategories: vi.fn(async () => []) }));
-vi.mock('../admission.js', () => ({ admittedExternalIds: vi.fn(async () => new Set()) }));
+vi.mock('../admission.js', () => ({
+  admittedExternalIds: vi.fn(async () => new Set()),
+  // The places Monuments & memorials holds by the monuments categories (#2171): none unless a test names one.
+  admittedWithFact: vi.fn(async () => new Map()),
+  heldByOtherSources: vi.fn(async () => new Set()),
+}));
 
-import { classifyPublicArt, type PublicArtShare } from './pipeline.js';
-import type { StreetArtReading } from './streetArtPlaces.js';
+import { classifyPublicArt, type EntranceReadings, type PublicArtShare } from './pipeline.js';
+import { STREET_ART_ENTRANCE, type StreetArtReading } from './streetArtPlaces.js';
+import { MONUMENTS_CATEGORY_ENTRANCE, type MonumentCategoryReading } from './monumentCategories.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureItemsInCategories } from '../wikipediaStructure.js';
+import { admittedWithFact } from '../admission.js';
 import { belowWorldBars, guidedBarNote, type WorldRead } from '../places/worldBars.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './kindRules.js';
 import { emptyFacts } from './queries.js';
@@ -56,8 +63,8 @@ function withAdmissionPool(
 /** Classify a gather at the fixture's bars, with what the world reads of it. */
 const classifyAt = (
   gathered: PublicArtShare, rule: KindRule, admitted: ReadonlySet<string>,
-  { read = UNREAD, streetArt = null }: { read?: WorldRead; streetArt?: StreetArtReading | null } = {},
-) => classifyPublicArt(gathered, rule, admitted, noQuestion, undefined, streetArt, { read, bars: BARS });
+  { read = UNREAD, streetArt = null, monuments = null }: { read?: WorldRead } & EntranceReadings = {},
+) => classifyPublicArt(gathered, rule, admitted, noQuestion, undefined, { streetArt, monuments }, { read, bars: BARS });
 
 describe('collectPublicArt', () => {
   it('reads a group of casts as one place with a point at every cast, entering through them where it has no point (#880)', async () => {
@@ -671,6 +678,112 @@ describe('the street-art places (#2035)', () => {
   it('reads the genre alone when no copy of the categories is built', async () => {
     const gathered = await gatherPublicArt(doorTo(world), new Set());
     expect([...gathered.entered]).toEqual([HOSIER_LANE]);
+  });
+});
+
+describe('the monuments English Wikipedia files and Wikidata types as something else (#2171)', () => {
+  const MOUNTAIN = 'Q8502';
+  const BUILT_STRUCTURE = 'Q811979';
+  const MEMORIAL = 'Q5003624';
+  const MOUNT_RUSHMORE = 'Q83497';
+  const PATUXAI = 'Q1442518';
+  const KHACHKAR = 'Q654476';
+  const world: World = {
+    entities: [
+      // Named by the category alone: typed a mountain and a built structure.
+      { qid: MOUNT_RUSHMORE, label: 'Mount Rushmore', under: '', sitelinks: 96, coord: 'Point(-103.4592 43.8789)', classes: [MOUNTAIN] },
+      { qid: PATUXAI, label: 'Patuxai', under: '', sitelinks: 25, coord: 'Point(102.6186 17.9706)', classes: [BUILT_STRUCTURE] },
+      // A class of thousands of items, with no point of its own.
+      { qid: KHACHKAR, label: 'khachkar', under: '', sitelinks: 50, classes: ['Q18783400'] },
+      // A structure the category files that no bar reaches: out, and nothing is said.
+      { qid: 'Q2171001', label: 'A local war memorial hall', under: '', sitelinks: 3, classes: [BUILT_STRUCTURE] },
+      // A memorial a class of the kind names, which a category also files: the kind's own, with no category note.
+      { qid: 'Q2171002', label: 'A filed memorial', under: MEMORIAL, sitelinks: 30, classes: [MEMORIAL] },
+    ],
+  };
+  const monuments: MonumentCategoryReading = {
+    categories: new Map([
+      [MOUNT_RUSHMORE, ['Monuments and memorials in South Dakota']],
+      [PATUXAI, ['Monuments and memorials in Laos']],
+    ]),
+    classObjects: new Map([[KHACHKAR, { instances: 8781, subclass: true }]]),
+    roots: new Map(),
+  };
+  const gathered = async () => {
+    // The street-art entrance reads no copy here; the monuments categories read one.
+    vi.mocked(latestStructure).mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ dumpDate: '2026-10-01', swappedAt: new Date(), needs: {} as never });
+    vi.mocked(structureItemsInCategories).mockResolvedValueOnce([MOUNT_RUSHMORE, PATUXAI, KHACHKAR, 'Q2171001', 'Q2171002']);
+    return gatherPublicArt(doorTo(world), new Set());
+  };
+
+  it('names what the categories file by their entrance, apart from the street-art places', async () => {
+    const share = await gathered();
+    expect([...share.enteredBy.get(MONUMENTS_CATEGORY_ENTRANCE)!].sort())
+      .toEqual([KHACHKAR, MOUNT_RUSHMORE, PATUXAI, 'Q2171001', 'Q2171002'].sort());
+    expect([...share.enteredBy.get(STREET_ART_ENTRANCE)!]).toEqual([]);
+    expect([...share.enteredOnly].sort()).toEqual([KHACHKAR, MOUNT_RUSHMORE, PATUXAI, 'Q2171001'].sort());
+  });
+
+  it('admits for a curator what the frame admits, the category named in the note, and refuses a type of place by name', async () => {
+    const { items, filtered } = await classifyAt(await gathered(), MONUMENTS_RULE, new Set(), { monuments });
+    expect(items.map((i) => [i.qid, i.type, i.artwork, i.readershipNote])).toEqual([
+      [MOUNT_RUSHMORE, 'monument', true,
+        'Named by English Wikipedia\'s "Monuments and memorials in South Dakota"; no class of Wikidata names it a monument or memorial.'],
+      ['Q2171002', 'memorial', false, undefined],
+      [PATUXAI, 'monument', true,
+        'Named by English Wikipedia\'s "Monuments and memorials in Laos"; no class of Wikidata names it a monument or memorial.'],
+    ]);
+    // The category's long tail under every bar is out quietly; a refusal by the rule is named, since the category filed it.
+    expect(filtered).toEqual([{
+      externalId: KHACHKAR, name: 'khachkar',
+      reason: 'a type of place, not one place: Wikidata names 8,781 items as instances of it (#2248): not a monument or memorial',
+    }]);
+  });
+
+  describe('a place the source holds by the categories (ADR-0175 decision 6)', () => {
+    const held = new Set([MOUNT_RUSHMORE]);
+    const lastRead = new Map([[MOUNT_RUSHMORE, ['Monuments and memorials in South Dakota']]]);
+    // What readMonumentCategories hands the classifier for it: the categories it was last read under.
+    const asLastRead: MonumentCategoryReading = { ...monuments, categories: lastRead };
+    const gatherHeld = async (copy: string[] | null, heldByCategories: Map<string, string[]>) => {
+      vi.mocked(latestStructure).mockResolvedValueOnce(null);
+      if (copy) {
+        vi.mocked(latestStructure).mockResolvedValueOnce({ dumpDate: '2026-10-01', swappedAt: new Date(), needs: {} as never });
+        vi.mocked(structureItemsInCategories).mockResolvedValueOnce(copy);
+      } else {
+        vi.mocked(latestStructure).mockResolvedValueOnce(null);
+      }
+      vi.mocked(admittedWithFact).mockResolvedValueOnce(heldByCategories);
+      return gatherPublicArt(doorTo(world), held);
+    };
+    const stays = (rows: { items: { qid: string; readershipNote?: string; wikipediaCategories?: string[] }[] }) =>
+      rows.items.find((i) => i.qid === MOUNT_RUSHMORE);
+
+    it('stays when no copy of the categories is built, judged by the categories it was last read under', async () => {
+      const kept = stays(await classifyAt(await gatherHeld(null, lastRead), MONUMENTS_RULE, held, { monuments: asLastRead }));
+      expect(kept?.wikipediaCategories).toEqual(['Monuments and memorials in South Dakota']);
+      // Without the source's own record of it, the entrance does not name it, and its classes refuse it.
+      const lost = await classifyAt(await gatherHeld(null, new Map()), MONUMENTS_RULE, held, { monuments: asLastRead });
+      expect(stays(lost)).toBeUndefined();
+      expect(lost.filtered).toContainEqual(expect.objectContaining({ externalId: MOUNT_RUSHMORE, reason: 'no monument or memorial class' }));
+    });
+
+    it('stays when English Wikipedia no longer files it under a monuments category', async () => {
+      expect(stays(await classifyAt(await gatherHeld([PATUXAI], lastRead), MONUMENTS_RULE, held, { monuments: asLastRead }))).toBeDefined();
+      const lost = await classifyAt(await gatherHeld([PATUXAI], new Map()), MONUMENTS_RULE, held, { monuments: asLastRead });
+      expect(lost.filtered).toContainEqual(expect.objectContaining({ externalId: MOUNT_RUSHMORE, reason: 'no monument or memorial class' }));
+    });
+  });
+
+  it('is neither Public art\'s to decide nor Monuments & memorials\' without the reading', async () => {
+    const share = await gathered();
+    const art = await classifyAt(share, PUBLIC_ART_RULE, new Set(), { streetArt: { marks: new Map(), guided: new Set(), readers: new Map(), roots: new Map() } });
+    const ids = (rows: { items: { qid: string }[]; filtered: { externalId: string }[] }) =>
+      [...rows.items.map((i) => i.qid), ...rows.filtered.map((f) => f.externalId)];
+    // Public art says nothing of what the categories alone name; the memorial is a class candidate it refuses as before.
+    expect(ids(art)).toEqual(['Q2171002']);
+    expect(ids(await classifyAt(share, MONUMENTS_RULE, new Set()))).toEqual(['Q2171002']);
   });
 });
 

@@ -75,6 +75,7 @@ const share = (): KindShare<BridgeTrees> => ({
   subjects: new Map(),
   entered: new Set(),
   enteredOnly: new Set(),
+  enteredBy: new Map(),
   admissionPool: new Set(WORKS.map((e) => e.qid)),
 });
 const sparql: SparqlFn = () => Promise.reject(new Error('no question reaches Wikidata here'));

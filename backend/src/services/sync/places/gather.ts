@@ -85,12 +85,15 @@ export interface PlaceKind<Trees> {
    */
   admissionPool?: boolean;
   /**
-   * Candidates named by what they are filed under rather than by a class
-   * (#2035): a street-art place is typed a wall, a road or a tunnel, and the
-   * category or genre it is filed under is what names it. Only this kind sees
-   * the ones no class question named, and its classifier decides them.
+   * Candidates named by what they are filed under rather than by a class, by
+   * the door that names them: a street-art place is typed a wall, a road or a
+   * tunnel, and the category or genre it is filed under is what names it
+   * (#2035); a monument Wikidata types a mountain is filed under English
+   * Wikipedia's monuments categories (#2171). Only this kind sees the ones no
+   * class question named, and its classifier decides them, each rule by the
+   * doors it reads (`KindShare.enteredBy`).
    */
-  entrance?(run: QueryRunner): Promise<string[]>;
+  entrances?: Readonly<Record<string, (run: QueryRunner) => Promise<string[]>>>;
 }
 
 /** A kind's share of the gather: its trees, and its candidates with what is known of them. */
@@ -108,8 +111,10 @@ export interface KindShare<Trees> {
   containers: Containment;
   /** What its candidates depict, by item id; empty for a kind that reads none. */
   subjects: Map<string, SubjectFacts>;
-  /** The rows of `pool` its entrance named (`entrance`); empty for a kind that has none. */
+  /** The rows of `pool` its entrances named (`entrances`); empty for a kind that has none. */
   entered: Set<string>;
+  /** The rows of `pool` each entrance named, by the entrance's name; empty for a kind that has none. */
+  enteredBy: ReadonlyMap<string, ReadonlySet<string>>;
   /**
    * The rows of `entered` that are candidates by the entrance alone: no class
    * question of the kind named them and the kind does not admit them.
@@ -226,20 +231,21 @@ async function askedClasses(run: QueryRunner, requests: GatherRequest[]) {
 
 /**
  * A kind's candidates: what the pool named by one of the kind's classes, the
- * entity's own, every row the kind admits, and every row its entrance named.
+ * entity's own, every row the kind admits, and every row one of its entrances named.
  */
 function candidatesOf(
   classes: ReadonlySet<string>,
   admitted: ReadonlySet<string>,
-  named: ReadonlySet<string>,
+  doors: ReadonlyMap<string, ReadonlySet<string>>,
   shared: Map<string, PoolEntity>,
   own: Map<string, PoolEntity> | undefined,
   byId: Map<string, PoolEntity>,
   facts: Map<string, EntityFacts>,
 ): {
   pool: Map<string, PoolEntity>; byId: Set<string>; facts: Map<string, EntityFacts>; entered: Set<string>; enteredOnly: Set<string>;
-  admissionPool: Set<string> | null;
+  enteredBy: Map<string, Set<string>>; admissionPool: Set<string> | null;
 } {
+  const named = new Set([...doors.values()].flatMap((ids) => [...ids]));
   const pooled = withOwn(shared, own);
   const byClass = (qid: string) => (facts.get(qid)?.classes ?? []).some((c) => classes.has(c));
   const wanted = (qid: string) => admitted.has(qid) || named.has(qid);
@@ -260,9 +266,10 @@ function candidatesOf(
   }
   const entered = new Set([...pool.keys()].filter((qid) => named.has(qid)));
   const enteredOnly = new Set([...entered].filter((qid) => !admitted.has(qid) && !byClass(qid)));
+  const enteredBy = new Map([...doors].map(([door, ids]) => [door, new Set([...ids].filter((qid) => pool.has(qid)))]));
   // What a class question of the kind named at a pool's floor: the pool the world bars are read over.
   const admissionPool = own ? new Set([...pool.keys()].filter((qid) => pooled.has(qid) && byClass(qid))) : null;
-  return { pool, byId: askedById, facts: known, entered, enteredOnly, admissionPool };
+  return { pool, byId: askedById, facts: known, entered, enteredOnly, enteredBy, admissionPool };
 }
 
 /**
@@ -292,14 +299,17 @@ async function collectAdmissionPools(
   return out;
 }
 
-/** The ids each kind's entrance names (`entrance`), by kind. */
-async function collectEntrances(run: QueryRunner, requests: GatherRequest[]): Promise<Map<PlaceKind<unknown>, Set<string>>> {
-  const out = new Map<PlaceKind<unknown>, Set<string>>();
+/** The ids each kind's entrances name (`entrances`), by kind and by entrance. */
+async function collectEntrances(run: QueryRunner, requests: GatherRequest[]): Promise<Map<PlaceKind<unknown>, Map<string, Set<string>>>> {
+  const out = new Map<PlaceKind<unknown>, Map<string, Set<string>>>();
   for (const { kind } of requests) {
-    if (!kind.entrance) continue;
-    run.phase(`Reading what names ${kind.name} beside its classes...`);
-    await run.step();
-    out.set(kind, new Set(await kind.entrance(run)));
+    const doors = new Map<string, Set<string>>();
+    for (const [door, enter] of Object.entries(kind.entrances ?? {})) {
+      run.phase(`Reading what names ${kind.name} beside its classes: ${door}...`);
+      await run.step();
+      doors.set(door, new Set(await enter(run)));
+    }
+    if (doors.size) out.set(kind, doors);
   }
   return out;
 }
@@ -322,7 +332,7 @@ export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]
   // its kind's own reason rather than the sweep's.
   const byId = await collectById(run, [...admitted].filter((qid) => !pooled.has(qid)), 'admitted rows');
   const named = await collectEntrances(run, requests);
-  const namedIds = new Set([...named.values()].flatMap((ids) => [...ids]));
+  const namedIds = new Set([...named.values()].flatMap((doors) => [...doors.values()].flatMap((ids) => [...ids])));
   for (const [qid, entity] of await collectById(run, [...namedIds].filter((qid) => !pooled.has(qid) && !byId.has(qid)), 'the places an entrance named')) {
     byId.set(qid, entity);
   }
@@ -333,7 +343,7 @@ export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]
 
   const shares = new Map<PlaceKind<unknown>, KindShare<unknown>>();
   for (const { kind, admitted: ids } of requests) {
-    const share = candidatesOf(classesOf.get(kind)!, ids, named.get(kind) ?? new Set(), pooled, low.get(kind), byId, facts);
+    const share = candidatesOf(classesOf.get(kind)!, ids, named.get(kind) ?? new Map(), pooled, low.get(kind), byId, facts);
     shares.set(kind, { trees: trees.get(kind), ...share, containers: emptyContainment(), subjects: new Map() });
   }
 

@@ -26,8 +26,11 @@ import type { FetchResult, FilteredEntity, ProcessItemResult, SyncRunContext, Sy
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import {
-  classifyPublicArt, PUBLIC_ART_KIND, publicArtVerdictOf, streetArtCandidates, type GatheredPublicArt,
+  classifyPublicArt, monumentCategoryCandidates, noClassAdmits, PUBLIC_ART_KIND, publicArtVerdictOf, streetArtCandidates,
+  type GatheredPublicArt,
 } from './publicArt/pipeline.js';
+import { categoryNote, filedAsMonument, readMonumentCategories } from './publicArt/monumentCategories.js';
+import type { FiledAsMonument } from './publicArt/publicArtTest.js';
 import { mergeSurroundings, surroundingsReader, type SurroundingsKind, type SurroundingsReader } from './places/surroundingsTier.js';
 import { goneWorkReason, refuseGone, type StandingFacts } from './places/gone.js';
 import { worldHistory, type WorldHistory } from './places/worldMemory.js';
@@ -99,6 +102,19 @@ interface ClassifierOptions {
    * what their rule asks, and writes the works they hold (#2055).
    */
   streetArt?: boolean;
+  /**
+   * The kind decides what English Wikipedia's monuments categories alone name
+   * (#2171), by its own frame with the category in place of a class.
+   */
+  monumentCategories?: boolean;
+}
+
+/** What Public art's or Monuments & memorials' rule reads in the surroundings tier beside a survivor's own facts. */
+interface SurroundingsContext {
+  /** The places a kind outside the two offers a reader (#1444). */
+  offered: ReadonlySet<string>;
+  /** The survivors the monuments categories alone name, with what the verdict reads of them (#2171). */
+  filed: ReadonlyMap<string, FiledAsMonument>;
 }
 
 /**
@@ -107,7 +123,8 @@ interface ClassifierOptions {
  * kind's own rule over the survivors, with what holds them and what they
  * depict read by id, as the pool's candidates are judged.
  */
-export function publicArtSurroundings(rule: KindRule): SurroundingsKind<PublicArtTrees, ReadonlySet<string>> {
+export function publicArtSurroundings(rule: KindRule): SurroundingsKind<PublicArtTrees, SurroundingsContext> {
+  const categories = rule === MONUMENTS_RULE;
   return {
     kind: PUBLIC_ART_KIND,
     // Each rule's neighbourhood under its own key: both read one gather kind.
@@ -119,13 +136,29 @@ export function publicArtSurroundings(rule: KindRule): SurroundingsKind<PublicAr
     classesOf: (trees) => (rule === PUBLIC_ART_RULE
       ? new Set([...trees.sculptural, ...trees.fountain, ...Object.keys(PUBLIC_CLOCK_CLASSES), ...Object.keys(STREET_ART_CLASSES)])
       : trees.admitting),
+    // What Monuments & memorials measures beside its classes: what the
+    // monuments categories named that no class of the kind admits (#2171).
+    ...(categories ? { named: (share) => new Set(monumentCategoryCandidates(share as GatheredPublicArt, rule)) } : {}),
     // The type the rule itself files a place under, from its classes alone.
     typeOf: (classes, trees) => rule.type({ classes: [...classes], commemorates: [], genres: [], subjects: [] }, trees),
-    context: () => placesOtherSourcesOffer(PUBLIC_ART_SOURCES),
-    verdict: (entity, share, offered) => {
-      const verdict = publicArtVerdictOf(entity, share as GatheredPublicArt, rule, offered);
+    context: async (survivors, share, sparql, named) => {
+      const offered = await placesOtherSourcesOffer(PUBLIC_ART_SOURCES);
+      // A survivor the categories named is decided by them only where no class
+      // of the kind admits it now, as in the world tier.
+      const byCategory = survivors.map((entity) => entity.qid)
+        .filter((qid) => named.has(qid) && noClassAdmits(share as GatheredPublicArt, rule, qid));
+      const reading = byCategory.length ? await readMonumentCategories(sparql, byCategory, share.facts) : null;
+      const filed = new Map(reading ? byCategory.map((qid) => [qid, filedAsMonument(qid, share.facts.get(qid)?.classes ?? [], reading)]) : []);
+      return { offered, filed };
+    },
+    verdict: (entity, share, { offered, filed }) => {
+      const asFiled = filed.get(entity.qid);
+      const verdict = publicArtVerdictOf(entity, share as GatheredPublicArt, rule, offered, asFiled);
       return verdict.pass
-        ? { pass: true, type: verdict.type, artwork: verdict.artwork, creators: share.facts.get(entity.qid)?.creators ?? [] }
+        ? {
+          pass: true, type: verdict.type, artwork: verdict.artwork, creators: share.facts.get(entity.qid)?.creators ?? [],
+          ...(asFiled ? { note: categoryNote(asFiled), wikipediaCategories: asFiled.categories } : {}),
+        }
         : verdict;
     },
     logPrefix: LOG_PREFIX,
@@ -137,7 +170,7 @@ export function publicArtSurroundings(rule: KindRule): SurroundingsKind<PublicAr
  * the public-art share, then the world bars over the kind's own pool
  * (ADR-0175), with the street-art places where the kind holds them.
  */
-function publicArtClassifier(rule: KindRule, { streetArt = false }: ClassifierOptions = {}): PlaceClassifier {
+function publicArtClassifier(rule: KindRule, { streetArt = false, monumentCategories = false }: ClassifierOptions = {}): PlaceClassifier {
   return {
     // The places a kind outside these two offers a reader, so a work outdoors
     // on a venue no such kind offers stays public art rather than being
@@ -148,7 +181,10 @@ function publicArtClassifier(rule: KindRule, { streetArt = false }: ClassifierOp
       const streetArtRead = streetArt
         ? await readStreetArt(sparql, streetArtCandidates(share, rule), share.facts, history?.memory)
         : null;
-      return classifyPublicArt(share, rule, admitted, sparql, offered, streetArtRead, { history });
+      const monumentsRead = monumentCategories
+        ? await readMonumentCategories(sparql, monumentCategoryCandidates(share, rule), share.facts)
+        : null;
+      return classifyPublicArt(share, rule, admitted, sparql, offered, { streetArt: streetArtRead, monuments: monumentsRead }, { history });
     },
     types: rule.types,
     tag: 'outdoor',
@@ -166,7 +202,7 @@ function publicArtClassifier(rule: KindRule, { streetArt = false }: ClassifierOp
 /** The classifier each public-art source decides by: Public art alone holds the street-art places. */
 const PUBLIC_ART_CLASSIFIERS: Readonly<Record<number, PlaceClassifier>> = {
   [LANDMARK_SOURCE_ID]: publicArtClassifier(PUBLIC_ART_RULE, { streetArt: true }),
-  6: publicArtClassifier(MONUMENTS_RULE),
+  6: publicArtClassifier(MONUMENTS_RULE, { monumentCategories: true }),
 };
 
 /**
@@ -275,6 +311,10 @@ async function upsertLandmarkExperience(
     // are written whole every pass (`kindFacts.ts`), so a note the door no
     // longer asks leaves with the pass that stops sending it.
     ...(landmark.readershipNote ? { admissionNote: landmark.readershipNote } : {}),
+    // The monuments categories that named a place no class of the kind does
+    // (#2171): what the entrance keeps it in place by on a run that cannot
+    // read them (`heldByCategory`).
+    ...(landmark.wikipediaCategories ? { wikipediaCategories: landmark.wikipediaCategories } : {}),
     // The tier that admitted it, where it is not the world's (ADR-0171).
     ...(landmark.tier ? { tier: landmark.tier } : {}),
     // `creator` is who made the sculpture; this is who photographed it. Two

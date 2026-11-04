@@ -52,6 +52,7 @@ describe('classifySquares', () => {
     subjects: new Map(),
     entered: new Set(),
     enteredOnly: new Set(),
+    enteredBy: new Map(),
     admissionPool: new Set(rows.map(([e]) => e.qid)),
   };
   const sparql: SparqlFn = () => Promise.reject(new Error('no question reaches Wikidata here'));

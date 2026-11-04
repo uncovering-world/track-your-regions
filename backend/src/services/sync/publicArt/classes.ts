@@ -422,7 +422,10 @@ export const KILL_CLASSES: Record<string, string> = {
   // an event that is an item of its own stays: Oradour-sur-Glane's war
   // memorial is typed nothing but a war memorial. No commemorative class
   // lifts these, read off the event classes the subset's memorial items
-  // carried on 2026-11-02.
+  // carried on 2026-11-02, and those English Wikipedia's monuments categories
+  // file on 2026-11-04 (#2171): ValuJet Flight 592 is an aviation accident,
+  // the Burr–Hamilton duel a duel, the Kamila Skolimowska Memorial an
+  // athletics meeting, the Firdos Square statue destruction a destruction.
   Q1253136: 'liturgical drama',
   Q7725634: 'literary work',
   Q200538: 'party',
@@ -433,6 +436,13 @@ export const KILL_CLASSES: Record<string, string> = {
   Q216169: 'execution by firing squad',
   Q178561: 'battle',
   Q188055: 'siege',
+  Q744913: 'aviation accident',
+  Q191503: 'duel',
+  Q132821: 'murder',
+  Q13406554: 'sports competition',
+  Q18608583: 'recurring sporting event',
+  Q11783626: 'athletics meeting',
+  Q17781833: 'destruction',
   // Attractions and lists.
   Q194195: 'amusement park',
   Q974968: 'miniature park',
@@ -451,6 +461,21 @@ export const KILL_CLASSES: Record<string, string> = {
   Q9444: 'rainforest',
   Q820477: 'mine',
   Q124714: 'spring',
+};
+
+/**
+ * A vessel and its wreck (`P279*`), refused where English Wikipedia's
+ * monuments categories alone name the candidate (#2171): USS Indianapolis is
+ * a heavy cruiser and USS Oklahoma a battleship, filed as memorials of their
+ * sinking, and their wrecks lie where no visitor goes. A wreck a visitor can
+ * reach is no kind's yet (#2341). Not a kill: the USS Arizona Memorial is
+ * typed a shipwreck beside its memorial classes, and a class of the kind
+ * names it. A vessel the item also types a museum stays: a museum ship is
+ * boarded.
+ */
+export const VESSEL_ROOTS: Record<string, string> = {
+  Q11446: 'ship',
+  Q852190: 'shipwreck',
 };
 
 /**
