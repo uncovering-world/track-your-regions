@@ -85,8 +85,10 @@ That read matches an entry by its Wikidata item, as the report does; an entry wi
 or a promenade Wikidata has no item for — is counted apart as one no rule could have admitted or
 missed, never as found or as missed; its note says what was searched.
 A control region becomes an ordinary one only by a decision recorded on the issue that promotes it,
-since a list once read by tuning is a control no longer. On 2026-11-01 the control regions are Bangkok,
-Lisbon and Cape Town.
+since a list once read by tuning is a control no longer. Bangkok, Lisbon and Cape Town were the
+control regions from 2026-11-01. Their misses were traced to causes in #2255, and the maintainer
+made them ordinary regions on 2026-11-04 (#2325). Since then the control regions are Seoul, Kraków
+and Quito, surveyed by agents that had read no catalogue.
 
 ### `expectations/<region>.jsonl`: what a traveller expects there
 
