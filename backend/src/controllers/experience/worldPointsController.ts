@@ -31,6 +31,10 @@
  * | markers, a central-European box | 1 470 | 33 kB |
  * | every property over the whole catalogue | 8 830 | 267 kB |
  *
+ * No tier carries a picture: a URL and a credit per point would outweigh the
+ * marker read many times over, so the hover card asks for the one object the
+ * pointer rests on (`experiencePictureController`, #927).
+ *
  * The last row is what a single-tier endpoint would cost on the first screen.
  * The central-European row is *less* than the 66 kB vector tile covering the
  * same extent — per-feature framing is most of a tile's weight at marker zoom.

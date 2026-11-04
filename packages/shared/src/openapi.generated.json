@@ -12612,6 +12612,60 @@
         }
       }
     },
+    "/api/experiences/{id}/picture": {
+      "get": {
+        "operationId": "getExperiencesByIdPicture",
+        "summary": "Read one place's picture and its credit",
+        "tags": [
+          "experiences"
+        ],
+        "x-access": "public",
+        "security": [],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "locationId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperiencePicture"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/treasures": {
       "get": {
         "operationId": "getExperiencesByIdTreasures",
@@ -25174,6 +25228,71 @@
         ],
         "additionalProperties": false,
         "description": "An object's own points."
+      },
+      "ExperiencePicture": {
+        "type": "object",
+        "properties": {
+          "image_url": {
+            "description": "A Commons file or a file we host; null where there is none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_credit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whose photograph it is, shown with it; null where none was found."
+          },
+          "point": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "image_url": {
+                    "description": "A Commons file or a file we host; null where there is none.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "image_credit": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/ImageCredit"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Whose photograph it is, shown with it; null where none was found."
+                  }
+                },
+                "required": [
+                  "image_url",
+                  "image_credit"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The asked point's own picture, a serial site's part's among them (`pointPictureSql`); null where no point was asked or the place does not show it."
+          }
+        },
+        "required": [
+          "image_url",
+          "image_credit",
+          "point"
+        ],
+        "additionalProperties": false
       },
       "ExperienceRegionRef": {
         "type": "object",
