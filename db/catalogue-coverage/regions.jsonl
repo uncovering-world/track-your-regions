@@ -19,6 +19,9 @@
 {"slug": "salvador", "name": "Salvador da Bahia", "country": "Brazil", "lat": -12.973, "lon": -38.51, "radius_km": 85, "surveyed": "2026-10-02"}
 {"slug": "berlin", "name": "Berlin", "country": "Germany", "lat": 52.52, "lon": 13.405, "radius_km": 40, "surveyed": "2026-10-16"}
 {"slug": "moscow", "name": "Moscow", "country": "Russia", "lat": 55.756, "lon": 37.617, "radius_km": 75, "surveyed": "2026-10-16"}
-{"slug": "bangkok", "name": "Bangkok", "country": "Thailand", "lat": 13.75, "lon": 100.5, "radius_km": 90, "surveyed": "2026-11-01", "role": "control"}
-{"slug": "lisbon", "name": "Lisbon", "country": "Portugal", "lat": 38.714, "lon": -9.139, "radius_km": 40, "surveyed": "2026-11-01", "role": "control"}
-{"slug": "cape-town", "name": "Cape Town", "country": "South Africa", "lat": -33.925, "lon": 18.424, "radius_km": 75, "surveyed": "2026-11-01", "role": "control"}
+{"slug": "bangkok", "name": "Bangkok", "country": "Thailand", "lat": 13.75, "lon": 100.5, "radius_km": 90, "surveyed": "2026-11-01"}
+{"slug": "lisbon", "name": "Lisbon", "country": "Portugal", "lat": 38.714, "lon": -9.139, "radius_km": 40, "surveyed": "2026-11-01"}
+{"slug": "cape-town", "name": "Cape Town", "country": "South Africa", "lat": -33.925, "lon": 18.424, "radius_km": 75, "surveyed": "2026-11-01"}
+{"slug": "seoul", "name": "Seoul", "country": "South Korea", "lat": 37.5665, "lon": 126.978, "radius_km": 60, "surveyed": "2026-11-04", "role": "control"}
+{"slug": "krakow", "name": "Kraków", "country": "Poland", "lat": 50.0617, "lon": 19.9373, "radius_km": 70, "surveyed": "2026-11-04", "role": "control"}
+{"slug": "quito", "name": "Quito", "country": "Ecuador", "lat": -0.22, "lon": -78.512, "radius_km": 90, "surveyed": "2026-11-04", "role": "control"}
