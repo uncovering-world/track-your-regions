@@ -823,6 +823,17 @@ A quantile is read the way the review read it: the values sorted ascending, and 
 `round(q × (n − 1))`. A place the last run admitted stays while it reaches 0.8 of any of the
 three bars. The run's log names the three bars it used, as numbers, for each kind.
 
+**Over time.** The bars are recomputed from the pool at every run, so their numbers follow the
+year's readership. The quantile levels and the stay share are values of the register, and they move
+only by § 11.3's method: no schedule re-derives them and no run moves them. The evidence that the
+levels held as readership drifted is
+[2026-11-02 — The admission frame over two readership years](../research/2026-11-02-the-admission-frame-over-two-readership-years.md).
+It compares the years ending 2025-09 and 2026-09 at ADR-0175's point. Quantile bars changed 10.6 % of
+the admitted set, and bars frozen as numbers changed 11.3 %. The stay at 0.8 brought it to 5.6 %.
+Survey recall and canon held on both years. The surroundings tier's floors (3,000 readers to enter,
+2,400 to stay) are numbers, not quantiles, so they do not follow a drift. That reading predates the
+neighbourhood of ADR-0181.
+
 **What a run cannot read** it takes as last read, never as zero (ADR-0175 decision 6,
 `places/worldMemory.ts`). Three rules:
 
