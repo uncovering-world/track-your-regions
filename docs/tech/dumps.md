@@ -1155,7 +1155,13 @@ and how its last build ended: *Verified*, *Failed* or *Cancelled* (or
 of the host's, § The OpenStreetMap layer), when, the
 dump's date — a day, or for the pageview files the month their counts cover
 (`datedBy`) — its size and lines, and what verified it (`sha1 matched`,
-`size matched`); a failed build's error sits under its row. The other builds
+`size matched`). A failed build's reason sits under its chip, and is left out
+where it only restates the chip (`reasonBeyondChip` in `DumpsPanel.tsx`); a refused
+start, and the failure of a re-derive, a sample or a trial, which the row shows no
+chip for, sit under the actions. A row's actions take one line (`rowActions`): the
+one most often wanted as a button (*Build newest* where something is built from
+the dump, *Verify newest* otherwise), the rest in a menu with each one's
+explanation, so the table fits a laptop's width. The other builds
 among its last three (`recentBuilds`) open under the row. The row's build is
 the newest *verify* or *keep*, an update that brought the OpenStreetMap
 layer's current planet forward included; such updates are counted apart from
