@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { toThumbnailUrl, extractImageUrl } from './imageUrl';
 
 describe('toThumbnailUrl', () => {
@@ -127,11 +127,21 @@ describe('extractImageUrl', () => {
     expect(extractImageUrl('{broken json')).toBeNull();
   });
 
-  it('prepends API URL for local image paths', () => {
-    const result = extractImageUrl('/images/experiences/unesco/123.jpg');
-    expect(result).toContain('/images/experiences/unesco/123.jpg');
-    // Should have API URL prefix (defaults to http://localhost:3001 in test)
-    expect(result).toContain('localhost:3001');
+  it('prepends API URL for local image paths', async () => {
+    // The base is pinned here rather than taken from the environment: the
+    // container shape of the unit lane sets VITE_API_URL to the compose
+    // service, the host shape leaves the default, and a spec has to give both
+    // the same verdict (#743). The module reads the base once, on import.
+    vi.stubEnv('VITE_API_URL', 'https://api.example.test');
+    vi.resetModules();
+    try {
+      const { extractImageUrl: extractWithBase } = await import('./imageUrl');
+      expect(extractWithBase('/images/experiences/unesco/123.jpg'))
+        .toBe('https://api.example.test/images/experiences/unesco/123.jpg');
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 
   it('passes through trusted remote URLs', () => {

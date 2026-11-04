@@ -342,12 +342,27 @@ run_backend_db_vitest() {
   backend_vitest_exec "$out_path" "--config vitest.db.config.ts"
 }
 
+# The frontend suite's report-parser specs (perf/, tests/) import their parsers
+# from the repository's scripts/, which docker-compose.yml mounts at /scripts in
+# the frontend service. A container made before that mount fails them on an
+# import that cannot resolve, reported as if the parser were wrong (#743), so
+# the mount is checked before the run, as the backend's are.
+require_frontend_repo_mounts() {
+  if ! compose exec -T frontend sh -lc '[ -e /scripts/lighthouse-summary.mjs ]'; then
+    echo "The frontend container is missing the /scripts mount the unit suite reads." >&2
+    echo "Recreate the test stack so docker-compose.yml's current volumes apply:" >&2
+    echo "  npm run test:stack:down && npm run test:stack:up" >&2
+    exit 1
+  fi
+}
+
 run_frontend_vitest() {
   local out_path="$1"
   local coverage_flag="${2:-}"
   local report_path="/tmp/frontend-vitest-report.json"
 
   ensure_up
+  require_frontend_repo_mounts
   compose exec -T frontend sh -lc "npx vitest run --reporter=default --reporter=json --outputFile='${report_path}' ${coverage_flag}"
   compose exec -T frontend sh -lc "cat '${report_path}'" > "$out_path"
 }
