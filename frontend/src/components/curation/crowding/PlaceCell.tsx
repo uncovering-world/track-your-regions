@@ -11,23 +11,28 @@
 
 import type { ReactNode } from 'react';
 import { Box, Link, Stack, Typography } from '@mui/material';
-import type { CrowdingWindowRow } from '../../../api/crowding';
+import type { CrowdingGroupPlace } from '../../../api/crowding';
 import { safeHref } from '../../../utils/safeHref';
 import { DenseThumbnail } from '../../shared/DenseThumbnail';
 import { ReaderEditionBeside } from '../../shared/WikipediaArticleLink';
 
-/** The place's name, its picture with its credit and its article, around what the table says of it (`children`). */
-export function PlaceCell({ row, children }: { row: CrowdingWindowRow; children: ReactNode }) {
+/** The place's name, its picture with its credit and its article, around what the list says of it (`children`). */
+export function PlaceCell({ row, title, children }: {
+  row: Pick<CrowdingGroupPlace, 'name' | 'imageUrl' | 'imageCredit' | 'wikipediaUrl'>;
+  /** The name as the row draws it, a button that opens the place; the plain name where absent. */
+  title?: ReactNode;
+  children?: ReactNode;
+}) {
   const articleHref = safeHref(row.wikipediaUrl);
 
   return (
     <Stack direction="row" spacing={1} alignItems="flex-start">
       <DenseThumbnail imageUrl={row.imageUrl} title={row.name} credit={row.imageCredit} width={48} height={48} />
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>{row.name}</Typography>
+        {title ?? <Typography variant="body2" sx={{ fontWeight: 600 }}>{row.name}</Typography>}
         {children}
         {articleHref && (
-          // A click on the row brings its dot into the map's view; one on its article only opens the article.
+          // A click on the row's name opens the place's circle; one on its article only opens the article.
           <Stack direction="row" spacing={1} onClick={event => event.stopPropagation()}>
             <Link href={articleHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
               Wikipedia
