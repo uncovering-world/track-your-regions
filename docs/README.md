@@ -31,6 +31,7 @@ decided. § Where things live says what goes where.
 | [experiences.md](tech/experiences.md) | Experience sources, sync, region assignment, API |
 | [filling-a-kind.md](tech/filling-a-kind.md) | How a kind is filled in three tiers — what a source of each tier must provide, how a candidate is found, judged (the scorecard, the terms) and kept, the source families' verdicts, the rules tried on the canon (ADR-0048, ADR-0178), and Wikipedia readership measured as a second world-tier door and a signal for the surroundings tier's cut (ADR-0055 to ADR-0057, in draft) |
 | [dumps.md](tech/dumps.md) | Public dumps — the shared pipeline bulk reads go through: the catalog of dumps, how the newest complete file is found and verified, stream or local copy, the host's rules, the build ledger and the admin panel (ADR-0101) |
+| [external-services.md](tech/external-services.md) | Outside services: every service the backend, the browser or a script calls, its operator's rules, the code that calls it, whether it complies and the open issues (#1308, ADR-0148) |
 | [experience-map-ui.md](tech/experience-map-ui.md) | Map Mode + Discover Mode marker layers, hover/selection sync, multi-location behavior |
 | [addresses.md](tech/addresses.md) | The URL grammar — what a link carries, ids vs slugs, push vs replace, silent degradation, where it is implemented |
 | [world-views.md](tech/world-views.md) | Custom regional hierarchies, geometry computation |
