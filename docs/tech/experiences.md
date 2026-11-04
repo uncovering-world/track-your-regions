@@ -941,7 +941,10 @@ and reasons, and the tier a run recorded on its changeset.
   the kind, a mosque among mosques, by `SurroundingsKind.typeOf`: a candidate is measured in the group of the type the kind's own rule
   gives its classes, and a group's neighbours are the places carrying any of the classes the rule
   files under that type, so the Trevi Fountain, a sculpture and a fountain, counts among the
-  sculptures' neighbours too); Public art and Monuments & memorials read one gather kind, and each
+  sculptures' neighbours too. The group is the classes' type alone, never a type a run reads
+  later from more than the classes: a broadcast mast Towers files `mast` from OpenStreetMap's layer
+  (§ Towers, #2275), such as the KDLT tower, is measured among the observation towers, since its
+  only class is "television tower"); Public art and Monuments & memorials read one gather kind, and each
   keys its groups by its own rule's name (`SurroundingsKind.group`); the pool reads one neighbourhood per
   group (`SurroundingsGroup`, `surroundingsGroups`), keyed `all`, the kind's group (its name, or its rule's for the two public-art sources) or `<group>:<type>`: parameters for the admission
   review's experiments (#2177), not a reader's or an admin's control, and shaped so a later decision can
@@ -4802,7 +4805,7 @@ chosen from, is [`docs/sources/global/wikidata-towers.md`](../sources/global/wik
 **The rule** is `TOWERS_DECLARATION` (`towers/classes.ts`), read by `places/declaredKind.ts`, in order:
 
 1. what is no place to visit is refused (`GONE` and `KILLS`): destroyed or demolished, proposed,
-   under construction, a guyed mast, ruins;
+   under construction, ruins. A mast is never refused for being one (#2275);
 2. what another kind holds is refused (`OTHER_KINDS`): a lighthouse, a bridge, a city gate or a
    gate tower (ADR-0131 decision 2), a sculpture, a skyscraper, an office building or a tower
    block, which wait for Skyscrapers (#1857). A TV or observation tower that Wikidata also calls
@@ -4827,13 +4830,51 @@ chosen from, is [`docs/sources/global/wikidata-towers.md`](../sources/global/wik
 8. a candidate with no point on Earth is refused.
 
 **The type** (`towerType`) is the first of `pagoda`, `minaret`, `clock-tower`, `bell-tower`,
-`observation-tower` and `fortified-tower` its classes name, and `tower` otherwise. A church tower
-and a steeple are bell towers (the Giralda, Pisa), and a TV tower is an observation tower, since
-its deck is what it is visited for.
+`mast`, `observation-tower` and `fortified-tower` its classes name, and `tower` otherwise. A church
+tower and a steeple are bell towers (the Giralda, Pisa), a guyed mast is a mast (the KVLY-TV mast),
+and a TV tower is an observation tower, since its deck is what it is visited for.
 
-A broadcast mast Wikidata types only `television tower` is not told from a TV tower with a deck:
-the KXTV/KOVR and KDLT masts carry exactly the class Almaty Tower, Avala Tower, the Rheinturm and
-Tallinn's TV tower carry, and no `guyed mast` (#2272). The rule refuses a mast only by that class.
+**A broadcast mast is a mast** (#2275, `fileMasts` in `towers/masts.ts`). Seeing a structure that
+tall from the ground is a reason to go, so Towers keeps the masts under a type of their own rather
+than refusing them. Wikidata's classes cannot tell one from a tower people go up: the KXTV/KOVR and
+KDLT masts carry exactly the class Almaty Tower, Avala Tower, the Rheinturm and Tallinn's TV tower
+carry. So once the tiers and the gone refusal have decided (the classifier's `retype`, called by
+`fetchLandmarkItems` in `landmarkSyncService.ts`), the run reads again each admitted tower its
+classes filed as an `observation-tower` or a `tower` (`RETYPED`; a pagoda, a minaret, a clock, bell
+or fortified tower keeps its type whatever stands beside it) and files it `mast` where `mastSign`
+says, in order:
+
+1. **OpenStreetMap maps it as a mast.** An object of the layer that carries the item, by its
+   `wikidata` tag or as the object Wikidata names (`P11693`, `P10689`), is `man_made=mast`; where
+   none carries it, on a layer that vouches for that miss and for an item with a transmitter class,
+   the nearest `mast`, `tower` or `communications_tower` within 250 m that carries no item is
+   (`NEAREST_METRES`; the Nador transmitter's guyed mast stands 218 m from its point). A rooftop
+   mast beside a campanile says nothing of the campanile: the Leaning Tower of Pisa stands 222 m from
+   a communication mast. A
+   guyed construction (`tower:construction=guyed_*`) counts too, on an object with no
+   `tower:type=observation` and no `tourism` tag, since Rozhledna Holedná and Hýlačka are guyed
+   lattice lookouts people climb. A plain `lattice` never counts: the Cairo Tower is one.
+2. **A transmitter nothing marks as visited.** The item carries transmitter classes alone
+   (`TRANSMITTER_CLASSES`, `towers/classes.ts`), no object of a layer that vouches for its misses
+   carries it, and it states none of the visit statements (`VISIT_PROPERTIES`,
+   `subset/towers.ts`): elevators, a category of the view, an Atlas Obscura place ID, a website,
+   floors. The masts of the United States came into OpenStreetMap from GNIS as plain towers with no
+   item (KFVS, the KCCI Tower). Missing visit statements alone would misfile visited towers
+   (Turkmenistan, Montjuïc and Baku carry none), so they serve only here.
+
+The layer is read in one statement for the run (`layerStructuresReader`, `osm/localOsm.ts`): the
+objects carrying each item, and the nearest structure of each item no object carries, the box
+around its point answered by the spatial index first. The statements come from the run's own door,
+the subset (`subsetMastStatements`) or the live service (`fetchMastStatements`). The layer alone is
+asked, never a live door: where none is in place, only the guyed-mast class files a mast, through the type the
+verdict reads from the classes, and `fileMasts` files none, as the run's log says; on a layer too old to vouch for its misses the second step files nothing. A mast is filed,
+never refused. Measured on the 516 towers admitted on the dev catalogue (2026-11-03), the rule files
+eleven as masts (KDLT, KOBR-TV, KRDK-TV, KXTV/KOVR, Nackasändaren, the Hoyt Radio Tower, Lakihegy,
+the Nador transmitter, the KCCI Tower, KFVS and the Griffin Television Tower) and none of the TV
+towers people go up. The Griffin tower was demolished in 2015 with no end stated on Wikidata, so it
+is a curator's refusal rather than a rule's. The source record holds the measurement and the
+properties read ([`wikidata-towers.md`](../sources/global/wikidata-towers.md) § Masts), and the
+tagging docs are read in [`openstreetmap-planet.md`](../sources/global/openstreetmap-planet.md).
 
 **The world bars** (ADR-0175, `classifyByWorldBars` in `places/worldTier.ts`, read off the pool by
 `places/worldBars.ts`): a tower the rule passes enters at the kind's own pool's 97th percentile of
