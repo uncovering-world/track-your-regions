@@ -16,18 +16,42 @@ vi.mock('../../../api/crowdingAnswers', async importOriginal => ({
   answerCrowding: vi.fn(),
   fetchCrowdingWindow: vi.fn(),
 }));
+vi.mock('../../../api/reviewQueue', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../../api/reviewQueue')>()),
+  searchReviewRegions: vi.fn(),
+}));
 // The map needs WebGL; the list and the answers are what is tested here.
 vi.mock('./CrowdingMap', () => ({ CrowdingMap: () => <div data-testid="crowding-map" /> }));
 
 import { fetchShadowedArrivals } from '../../../api/crowding';
 import { answerCrowding, fetchCrowdingWindow } from '../../../api/crowdingAnswers';
+import { searchReviewRegions } from '../../../api/reviewQueue';
+import type { ShadowedArrivalsGroup } from '../../../api/crowding';
 import { CrowdedCities } from './CrowdedCities';
 import type { GroupStagings } from './crowdedGroups';
-import { aroundSchlossplatz, BERLIN_SQUARES, NOLLENDORFPLATZ, ROME_CHURCHES, SCHLOSSPLATZ } from './crowdingFixtures';
+import {
+  aroundSchlossplatz, BERLIN_SQUARES, FRANKFURTER_TOR, NOLLENDORFPLATZ, ROME_CHURCHES, SCHLOSSPLATZ,
+} from './crowdingFixtures';
 
 const mockedArrivals = vi.mocked(fetchShadowedArrivals);
 const mockedWindow = vi.mocked(fetchCrowdingWindow);
 const mockedAnswer = vi.mocked(answerCrowding);
+const mockedRegionSearch = vi.mocked(searchReviewRegions);
+
+/**
+ * The read as the server answers it: the whole list, or the groups within the
+ * region asked for (#2349), here each group's own region or the region `under`
+ * names it under.
+ */
+function serve(groups: ShadowedArrivalsGroup[], under: Record<number, number[]> = {}) {
+  mockedArrivals.mockImplementation(async (region?: number | 'none') => ({
+    groups: region === undefined
+      ? groups
+      : groups.filter(group => (region === 'none'
+        ? group.regionId === null
+        : group.regionId === region || (under[region] ?? []).includes(group.regionId ?? -1))),
+  }));
+}
 
 /** The tab as the page holds it: the address's group, and the staging the page keeps. */
 function renderTab(initial: string | null = null) {
@@ -72,7 +96,9 @@ async function pick(chip: string, row: RegExp) {
 }
 
 beforeEach(() => {
-  mockedArrivals.mockReset().mockResolvedValue({ groups: [BERLIN_SQUARES, ROME_CHURCHES] });
+  mockedArrivals.mockReset();
+  serve([BERLIN_SQUARES, ROME_CHURCHES]);
+  mockedRegionSearch.mockReset().mockResolvedValue([]);
   mockedWindow.mockReset().mockResolvedValue(aroundSchlossplatz);
   mockedAnswer.mockReset();
 });
@@ -116,7 +142,10 @@ describe('the crowded cities tab', () => {
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
 
+    // Rome is a leaf: the server keeps its one group, as the list named it.
     await pick('Region', /Rome/);
+    expect(mockedArrivals).toHaveBeenLastCalledWith(8);
+    expect(await screen.findByText('Rome · churches')).toBeInTheDocument();
     expect(screen.queryByText('Berlin · squares')).toBeNull();
     expect(screen.getByText('3 new')).toBeInTheDocument();
     await waitFor(() => expect(onSelect).toHaveBeenLastCalledWith('8-4-church', { replace: true }));
@@ -125,10 +154,73 @@ describe('the crowded cities tab', () => {
     expect(await screen.findByText('Berlin · squares')).toBeInTheDocument();
   });
 
+  it('searches every region, and shows the groups within the one found (#2349)', async () => {
+    // A world view that splits Berlin into its districts: the list names the
+    // districts, never Berlin, which only the search finds.
+    const mitte = { ...BERLIN_SQUARES, regionId: 71, regionName: 'Mitte', arrivals: 3, membershipIds: [SCHLOSSPLATZ] };
+    const kreuzberg = { ...BERLIN_SQUARES, regionId: 72, regionName: 'Friedrichshain-Kreuzberg', arrivals: 4, membershipIds: [FRANKFURTER_TOR] };
+    serve([ROME_CHURCHES, kreuzberg, mitte], { 70: [71, 72] });
+    mockedRegionSearch.mockResolvedValue([
+      { id: 70, name: 'Berlin', path: 'Europe > Germany > Berlin', worldViewId: 2, worldView: 'Wikivoyage Regions' },
+    ]);
+    renderTab();
+    await screen.findByText('Rome · churches');
+
+    fireEvent.click(screen.getByRole('button', { name: (accessible: string) => accessible.startsWith('Region') }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search a region' }), { target: { value: 'berl' } });
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /^Berlin/ }));
+    expect(mockedRegionSearch).toHaveBeenCalledWith('berl');
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+
+    expect(mockedArrivals).toHaveBeenLastCalledWith(70);
+    expect(await screen.findByText('Mitte · squares')).toBeInTheDocument();
+    expect(screen.getByText('Friedrichshain-Kreuzberg · squares')).toBeInTheDocument();
+    expect(screen.queryByText('Rome · churches')).toBeNull();
+    expect(screen.getByText('7 new')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: (accessible: string) => accessible.startsWith('Region') })).toHaveTextContent('Region: Berlin');
+
+    // Its row stands at the top of the menu, counted, with its path, and clears it.
+    fireEvent.click(screen.getByRole('button', { name: (accessible: string) => accessible.startsWith('Region') }));
+    const berlin = screen.getAllByRole('menuitemradio')[0];
+    expect(berlin).toHaveAccessibleName(/^Berlin/);
+    expect(berlin).toHaveAttribute('aria-checked', 'true');
+    expect(berlin).toHaveTextContent('Europe > Germany > Berlin · Wikivoyage Regions');
+    expect(berlin).toHaveTextContent('7');
+    fireEvent.click(berlin);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(await screen.findByText('Rome · churches')).toBeInTheDocument();
+    expect(screen.getByText('Mitte · squares')).toBeInTheDocument();
+    expect(screen.getByText('10 new')).toBeInTheDocument();
+  });
+
+  it('restores the whole list when the searched region is cleared by Clear all (#2349)', async () => {
+    const mitte = { ...BERLIN_SQUARES, regionId: 71, regionName: 'Mitte', arrivals: 3, membershipIds: [SCHLOSSPLATZ] };
+    serve([ROME_CHURCHES, mitte], { 70: [71] });
+    mockedRegionSearch.mockResolvedValue([
+      { id: 70, name: 'Berlin', path: 'Europe > Germany > Berlin', worldViewId: 2, worldView: 'Wikivoyage Regions' },
+    ]);
+    renderTab();
+    await screen.findByText('Rome · churches');
+
+    fireEvent.click(screen.getByRole('button', { name: (accessible: string) => accessible.startsWith('Region') }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search a region' }), { target: { value: 'berl' } });
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /^Berlin/ }));
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(await screen.findByText('Mitte · squares')).toBeInTheDocument();
+    expect(screen.queryByText('Rome · churches')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+    expect(await screen.findByText('Rome · churches')).toBeInTheDocument();
+    expect(screen.getByText('Mitte · squares')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: (accessible: string) => accessible.startsWith('Region') })).toHaveTextContent(/^Region$/);
+  });
+
   it('counts a kind under the region chosen, and dims one that would leave nothing', async () => {
     renderTab();
     await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
     await pick('Region', /Berlin/);
+    await screen.findByText('Berlin · squares');
 
     fireEvent.click(screen.getByRole('button', { name: (accessible: string) => accessible.startsWith('Kind') }));
     expect(screen.getByRole('menuitemcheckbox', { name: /Squares & streets/ })).toHaveTextContent('11');

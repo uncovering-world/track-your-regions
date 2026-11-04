@@ -21,7 +21,11 @@ export type {
 export type CrowdingAnswer = CrowdingAnswersBodyAnswersItem['answer'];
 export type CrowdingAnswerRow = CrowdingAnswersBodyAnswersItem;
 
-/** The new arrivals a crowded city would shadow, which the queue's sections do not ask about. */
-export function fetchShadowedArrivals(): Promise<ShadowedArrivals> {
-  return getExperiencesReviewCrowdingArrivals();
+/**
+ * The new arrivals a crowded city would shadow, which the queue's sections do
+ * not ask about; within a region where one is named (#2349), or the arrivals
+ * no region places for `none`.
+ */
+export function fetchShadowedArrivals(region?: number | 'none'): Promise<ShadowedArrivals> {
+  return getExperiencesReviewCrowdingArrivals(region === undefined ? undefined : { region });
 }
