@@ -5,17 +5,31 @@
  * of them. A map that declares a style of its own is not reached.
  */
 
-import type { StyleSpecification } from 'maplibre-gl';
+import type { RasterSourceSpecification, StyleSpecification } from 'maplibre-gl';
+
+/**
+ * The credit OpenStreetMap's tiles carry on every map that draws them (#2350):
+ * the tile usage policy asks for it clearly on the map, and the attribution
+ * guidelines ask for it visible without interaction and linked to the
+ * copyright page. MapLibre's attribution control shows a source's
+ * `attribution`, so a map that draws these tiles keeps that control on.
+ */
+export const OSM_ATTRIBUTION =
+  '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
+
+/** OpenStreetMap's standard tiles, with their credit: the one source every map that draws them uses. */
+export const OSM_RASTER_SOURCE: RasterSourceSpecification = {
+  type: 'raster',
+  tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+  tileSize: 256,
+  attribution: OSM_ATTRIBUTION,
+};
 
 export const MAP_STYLE = {
   version: 8 as const,
   glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
   sources: {
-    osm: {
-      type: 'raster' as const,
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-    },
+    osm: OSM_RASTER_SOURCE,
   },
   layers: [{ id: 'osm-tiles', type: 'raster' as const, source: 'osm' }],
 } satisfies StyleSpecification;

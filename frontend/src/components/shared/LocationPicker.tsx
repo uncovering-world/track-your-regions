@@ -34,6 +34,7 @@ import { parseCoordinates, formatCoordinates } from '../../utils/coordinateParse
 import { searchPlaces, aiGeocode, type PlaceResult } from '../../api/geocode';
 import { isWebGLAvailable } from '../../utils/webgl';
 import { MapUnavailable } from './MapUnavailable';
+import { OSM_RASTER_SOURCE } from '../../constants/mapStyles';
 
 type Mode = 'map' | 'search' | 'coords' | 'ai';
 
@@ -66,13 +67,7 @@ const MODES: { key: Mode; label: string; icon: React.ReactNode }[] = [
 
 const MAP_STYLE: maplibregl.StyleSpecification = {
   version: 8,
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-    },
-  },
+  sources: { osm: OSM_RASTER_SOURCE },
   layers: [{ id: 'osm-tiles', type: 'raster', source: 'osm' }],
 };
 
@@ -196,7 +191,8 @@ export function LocationPicker({
       style: MAP_STYLE,
       center: value ? [value.lng, value.lat] : [0, 20],
       zoom: value ? initialZoom : 1.5,
-      attributionControl: false,
+      // The tiles' credit, shown in full rather than behind a button (#2350).
+      attributionControl: { compact: false },
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
