@@ -30,3 +30,8 @@ and says so in its first lines.
 | [2026-10-30 — What signals other than Wikipedia editions find under a kind's line](2026-10-30-what-other-signals-find-under-a-kinds-editions-line.md) | #1997 |
 | [2026-10-31 — A place measured against its surroundings: the unit and the bar of a global source's regional tier](2026-10-31-a-places-surroundings-as-the-regional-tiers-unit.md) | #2154, ADR-0171 |
 | [2026-11-02 — One admission frame for the place kinds: every bar derived, verified as a traveller](2026-11-02-one-admission-frame-for-the-place-kinds.md) | #2177, ADR-0175 |
+| [2026-11-02 — Archaeology's sites in the place kinds' admission frame](2026-11-02-archaeologys-sites-in-the-admission-frame.md) | #2286, ADR-0179 |
+| [2026-11-02 — A surroundings neighbourhood that follows density](2026-11-02-a-surroundings-neighbourhood-that-follows-density.md) | #2297, ADR-0181 |
+| [2026-11-02 — The admission frame over two readership years](2026-11-02-the-admission-frame-over-two-readership-years.md) | #2177 |
+| [2026-11-03 — A guide for a bridge in the surroundings tier](2026-11-03-a-guide-for-a-bridge-in-the-surroundings-tier.md) | #2324 |
+| [2026-11-03 — A proposed kind filled by its declaration alone: Parks & gardens as a dry run](2026-11-03-a-proposed-kind-filled-by-its-declaration.md) | #2254, #2317, #2318, #2319, #2320, #2321 |
