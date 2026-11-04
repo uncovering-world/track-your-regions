@@ -83,11 +83,13 @@ interface LayerRow {
   wkt: string | null;
 }
 
-/** A row of the layer as the object both live doors answer with, from the layer as of `currentTo`. */
-function objectOf(row: LayerRow, currentTo: string): OsmObject {
+/** A row of the layer as the object both live doors answer with, from the layer as of `currentTo`, with the tags of `keys`. */
+function objectOf(
+  row: Pick<LayerRow, 'osm_type' | 'osm_id' | 'tags' | 'geometry_type' | 'wkt'>, currentTo: string, keys: readonly string[] = OSM_TAG_KEYS,
+): OsmObject {
   const kind = KINDS[row.osm_type.trim()];
   const tags: Record<string, string> = {};
-  for (const key of OSM_TAG_KEYS) {
+  for (const key of keys) {
     const value = row.tags[key];
     if (typeof value === 'string') tags[key] = value;
   }
@@ -209,5 +211,121 @@ export function localDigsReader(live: OsmDoor, tags: DigTags, now: () => Date = 
     }
     if (digs.byItem.size === 0 && digs.byArticle.size === 0) throw new OsmEmptyEnumerationError();
     return digs;
+  };
+}
+
+/** A place asked of `layerStructuresReader`: its item, its point, and the objects the item says it is mapped as (`node/123`). */
+export interface StructureQuestion {
+  qid: string;
+  lat: number;
+  lon: number;
+  refs: readonly string[];
+}
+
+/**
+ * What the layer maps for one place: every object that carries its item, by
+ * its `wikidata` tag or as an object the item names, and, where none does, the
+ * nearest structure within the radius that carries no item.
+ */
+export interface MappedStructure {
+  carried: OsmObject[];
+  nearest: (OsmObject & { metres: number }) | null;
+}
+
+/** The structures read, and whether the layer vouches for its misses (`layerVouches`): only then is "no object carries the item" a fact. */
+export interface StructuresRead {
+  byItem: Map<string, MappedStructure>;
+  missesAreFacts: boolean;
+}
+
+/** What a structures read asks for: the `man_made` values a structure is, the tags it keeps, and how far a nearest one may stand. */
+export interface StructureTags {
+  manMade: readonly string[];
+  keys: readonly string[];
+  radiusMetres: number;
+}
+
+/** Metres in a degree of latitude, near enough for a search box. */
+const METRES_PER_DEGREE = 111_000;
+
+const REF = /^(node|way|relation)\/(\d+)$/;
+const LAYER_TYPES: Record<OsmKind, string> = { node: 'N', way: 'W', relation: 'R' };
+
+interface StructureRow {
+  found: 'carried' | 'nearest';
+  qid: string;
+  osm_type: string;
+  osm_id: string;
+  tags: Record<string, string>;
+  metres: number | null;
+}
+
+/**
+ * The structures the layer maps at each place, in one statement for the whole
+ * batch: the objects that carry its item, by the `wikidata` tag or as the
+ * object the item names (`refs`: Wikidata's OpenStreetMap node and way ids),
+ * and, for a place no object carries, the nearest object whose `man_made` is
+ * one of `tags.manMade` within `tags.radiusMetres` and that carries no item,
+ * since an object naming another item is that item's. The box around each
+ * point is what the spatial index answers before any distance is measured, as
+ * the point hints ask (`pointHints.ts`). Null where no layer is in place.
+ *
+ * The layer alone: an object it finds is the answer whatever its age, and a
+ * miss is a fact only while the layer vouches for one (ADR-0134 decision 4).
+ * No live door is asked, since a structure's nearest neighbour is no question
+ * either live door answers.
+ */
+export function layerStructuresReader(now: () => Date = () => new Date()) {
+  return async (places: readonly StructureQuestion[], tags: StructureTags): Promise<StructuresRead | null> => {
+    const layer = await layerInPlace();
+    if (!layer) return null;
+    const asked = places.filter((place) => isQid(place.qid));
+    const byItem = new Map<string, MappedStructure>(asked.map((place) => [place.qid, { carried: [], nearest: null }]));
+    if (!asked.length) return { byItem, missesAreFacts: layerVouches(layer, now()) };
+    const refs = asked.flatMap((place) => place.refs.flatMap((ref) => {
+      const match = REF.exec(ref);
+      return match ? [{ qid: place.qid, type: LAYER_TYPES[match[1] as OsmKind], id: match[2] }] : [];
+    }));
+    const result = await pool.query<StructureRow>(
+      `WITH asked AS (
+         SELECT a.qid, ST_SetSRID(ST_MakePoint(a.lon, a.lat), 4326) AS at
+           FROM unnest($1::text[], $2::float8[], $3::float8[]) AS a(qid, lat, lon)
+       ), stated AS (
+         SELECT * FROM unnest($4::text[], $5::text[], $6::bigint[]) AS s(qid, osm_type, osm_id)
+       ), carried AS (
+         SELECT a.qid, o.osm_type, o.osm_id, o.tags FROM asked a JOIN osm_objects o ON o.wikidata = a.qid
+         UNION
+         SELECT s.qid, o.osm_type, o.osm_id, o.tags FROM stated s
+           JOIN osm_objects o ON o.osm_type = s.osm_type AND o.osm_id = s.osm_id
+       )
+       SELECT 'carried' AS found, qid, osm_type, osm_id::text AS osm_id, tags, NULL::float8 AS metres FROM carried
+       UNION ALL
+       SELECT 'nearest', a.qid, n.osm_type, n.osm_id::text, n.tags, n.metres
+         FROM asked a
+        CROSS JOIN LATERAL (
+          SELECT o.osm_type, o.osm_id, o.tags, ST_Distance(o.geom::geography, a.at::geography) AS metres
+            FROM osm_objects o
+           -- The box first, wider in longitude as the meridians close towards the poles.
+           WHERE o.geom && ST_Expand(a.at, $8 / greatest(cos(radians(ST_Y(a.at))), 0.05), $8)
+             AND o.wikidata IS NULL
+             AND o.tags->>'man_made' = ANY($7::text[])
+             AND ST_DWithin(o.geom::geography, a.at::geography, $9)
+           ORDER BY metres, o.osm_type, o.osm_id
+           LIMIT 1) n
+        WHERE NOT EXISTS (SELECT 1 FROM carried c WHERE c.qid = a.qid)
+        ORDER BY qid, found, osm_type, osm_id`,
+      [
+        asked.map((place) => place.qid), asked.map((place) => place.lat), asked.map((place) => place.lon),
+        refs.map((ref) => ref.qid), refs.map((ref) => ref.type), refs.map((ref) => ref.id),
+        tags.manMade, tags.radiusMetres / METRES_PER_DEGREE, tags.radiusMetres,
+      ],
+    );
+    for (const row of result.rows) {
+      const object = objectOf({ ...row, geometry_type: null, wkt: null }, layer.currentTo, tags.keys);
+      const mapped = byItem.get(row.qid)!;
+      if (row.found === 'carried') mapped.carried.push(object);
+      else mapped.nearest = { ...object, metres: Number(row.metres) };
+    }
+    return { byItem, missesAreFacts: layerVouches(layer, now()) };
   };
 }
