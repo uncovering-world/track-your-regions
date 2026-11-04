@@ -155,7 +155,7 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
 
     await writeExperienceLocations(1, [A]);
 
-    // `requires_curation` is false on the three sources that predate the gate, so an ungated run
+    // A source can be ungated (`requires_curation` false: the World Heritage list), so an ungated run
     // has to behave exactly as it did before this existed — not merely reach the
     // same rows, but ask the same questions. The state comes back from the
     // insert's own RETURNING, so this cannot disagree with what was written.

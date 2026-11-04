@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { writeExperienceLocations } from './locationWriter.js';
 
@@ -6,7 +6,8 @@ import { writeExperienceLocations } from './locationWriter.js';
  * The pairing of a run's points with the stored ones finds the complete match
  * (#549, ADR-0117), against PostgreSQL. The fixture is the Bronze Horseman as
  * Wikidata gives it: one item, Q672444, with two coordinates under one
- * reference, under the ungated Public art source. The geometry is
+ * reference, under the Public art source, ungated for the fixture (a fresh
+ * database seeds it gated, #2335) and given its gate back after. The geometry is
  * the issue's: the run's two points stand 15 m apart; the stored first point is
  * halfway between them, 7.5 m from each, and the stored second point 9 m from
  * the run's eastern one. The run lists them in the other order from the stored
@@ -46,6 +47,17 @@ const RUN = [
   { name: null, externalRef: REF, ...at(0, 0) },
 ];
 
+/** The gate Public art held before the fixture ungated it. */
+let gated: boolean;
+
+beforeAll(async () => {
+  // The pairing under test is an ungated run's: its points land `auto`.
+  gated = (await pool.query<{ requires_curation: boolean }>(
+    "SELECT requires_curation FROM experience_sources WHERE name = 'Public art'",
+  )).rows[0].requires_curation;
+  await pool.query("UPDATE experience_sources SET requires_curation = FALSE WHERE name = 'Public art'");
+});
+
 beforeEach(async () => {
   await clear();
   const row = (await pool.query<{ id: number; kind_id: number; requires_curation: boolean }>(
@@ -73,6 +85,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await clear();
+  await pool.query("UPDATE experience_sources SET requires_curation = $1 WHERE name = 'Public art'", [gated]);
   await pool.end();
 });
 

@@ -2657,37 +2657,18 @@ COMMENT ON COLUMN experience_sources.display_priority IS 'Display order in exper
 ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS new_badge_days INTEGER NOT NULL DEFAULT 30;
 COMMENT ON COLUMN experience_sources.new_badge_days IS 'How long an object keeps the "New" chip after it becomes visible to readers. Per source, because sources have different cadences. Counted from published_at, not from the run that found the row: under a gate those are a curator week apart (#529).';
 
--- The curation gate (ADR-0025). This is the
--- per-source decision: does what a run brings in wait for a person, or publish
--- on arrival. The default is `true` so a source nobody has decided about does
--- not publish unread.
---
--- The three sources that predate the gate are the exception, and creating the
--- column is the only moment at which they can be given their answer. So the
--- two happen inside one guard, atomically, in both schema homes: whichever of
--- this file and migration 018 reaches a database first creates the column and
--- names those three in the same breath, and every later application of either
--- file sees the column and does nothing. That is what keeps an admin's later
--- decision safe -- `true` on a source they chose to gate survives any number of
--- re-applications -- and it is also why the guard cannot be `ADD COLUMN IF NOT
--- EXISTS`: on a database that predates the column, the `DEFAULT true` backfill
--- would gate all three, and a separate `UPDATE` outside the guard would then be
--- either unsafe (resetting the admin) or skipped (leaving them gated).
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'experience_sources' AND column_name = 'requires_curation'
-    ) THEN
-        ALTER TABLE experience_sources
-            ADD COLUMN requires_curation BOOLEAN NOT NULL DEFAULT true;
-        UPDATE experience_sources SET requires_curation = false
-         WHERE name IN ('UNESCO World Heritage Sites', 'Top Art Museums', 'Public Art & Monuments');
-    END IF;
-END $$;
+-- The curation gate (ADR-0025): does what a run brings in wait for a person, or
+-- publish on arrival. The default is `true` so a source nobody has decided
+-- about does not publish unread; each seed below states its own answer, and
+-- every place source is seeded gated save the World Heritage list (#2335).
+ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS requires_curation BOOLEAN NOT NULL DEFAULT true;
 COMMENT ON COLUMN experience_sources.requires_curation IS 'Does a run from this source wait for a curator before its rows reach a reader (ADR-0025). Only an admin sets it; no run ever changes it.';
 
--- Seed UNESCO as the first source, filling the World Heritage kind
+-- Seed UNESCO as the first source, filling the World Heritage kind. Its one
+-- source ungated: the World Heritage list is UNESCO's own official list, an
+-- inscription a decision of the World Heritage Committee, not a community's
+-- edit to be read first, so what the run brings publishes on arrival. Every
+-- other place source is seeded gated (#2335).
 INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     'UNESCO World Heritage Sites',
@@ -3666,6 +3647,8 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region_rows
 -- name is the reader's (ADR-0045 decision 8, #818); it was seeded as "Top Art
 -- Museums" — the works-first selection rule's name — until migration 045
 -- renamed it.
+-- Gated on arrival, as every place source but the World Heritage list:
+-- Wikidata is community-edited, so a run's first rows wait for a person.
 INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     'Art Museums',
@@ -3673,13 +3656,14 @@ VALUES (
     'https://query.wikidata.org/sparql',
     '{}'::jsonb,
     2,
-    false,
+    true,
     (SELECT id FROM experience_kinds WHERE name = 'Art Museums')
 )
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed the public-art source, filling the Public art kind. Seeded as "Public
--- Art & Monuments" until migration 144 split the kind by purpose (#1807).
+-- Art & Monuments" until migration 144 split the kind by purpose (#1807). Gated
+-- on arrival, as every place source but the World Heritage list (#2335).
 INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
     'Public art',
@@ -3687,7 +3671,7 @@ VALUES (
     'https://query.wikidata.org/sparql',
     '{}'::jsonb,
     3,
-    false,
+    true,
     (SELECT id FROM experience_kinds WHERE name = 'Public art')
 )
 ON CONFLICT (name) DO NOTHING;

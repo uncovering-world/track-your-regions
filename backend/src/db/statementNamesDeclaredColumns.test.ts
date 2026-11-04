@@ -56,10 +56,9 @@ function declaredColumns(schema: string): Schema {
     }
     tables.set(table, columns);
   }
-  // `ALTER TABLE t ADD COLUMN IF NOT EXISTS c …` on one line, or the guarded
-  // form inside a DO block (`requires_curation`, which cannot be IF NOT EXISTS
-  // because of what its backfill would do on a re-application). Comment lines
-  // are dropped first: one of them quotes the clause.
+  // `ALTER TABLE t ADD COLUMN IF NOT EXISTS c …` on one line, or split over two
+  // (`ALTER TABLE t` on one line, `ADD COLUMN IF NOT EXISTS c …` on the next).
+  // Comment lines are dropped first, so a comment that quotes the clause names no column.
   const code = schema.split('\n').filter((line) => !line.trim().startsWith('--')).join('\n');
   for (const [, table, body] of code.matchAll(/\bALTER TABLE (\w+)\b([^;]*);/g)) {
     for (const [, column] of body.matchAll(/\bADD COLUMN(?: IF NOT EXISTS)?\s+(\w+)/g)) {
@@ -356,8 +355,7 @@ describe('the schema as read', () => {
     expect(tables.get('experience_kind_memberships')).toContain('type');
     // `ALTER TABLE world_views ADD COLUMN IF NOT EXISTS is_public …`
     expect(tables.get('world_views')).toContain('is_public');
-    // The guarded form: `ALTER TABLE experience_sources` on one line and
-    // `ADD COLUMN requires_curation …` on the next, inside a DO block.
+    // `ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS requires_curation …`
     expect(tables.get('experience_sources')).toContain('requires_curation');
     // A constraint line is not a column.
     expect(tables.get('experiences')).not.toContain('CONSTRAINT');
