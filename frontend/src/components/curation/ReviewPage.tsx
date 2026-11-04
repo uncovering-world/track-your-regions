@@ -134,7 +134,9 @@ export function ReviewPage() {
     if (view === 'questions' && crowdStaged > 0) setLeavingCrowd(true);
     else go({ view, crowd: null });
   };
-  const openCrowd = useCallback((crowd: string, opts?: { replace?: boolean }) => go({ crowd }, opts), [go]);
+  // A group opened opens on its region's list; a place opened in it is a step of its own (#2358).
+  const openCrowd = useCallback((crowd: string, opts?: { replace?: boolean }) => go({ crowd, crowdPlace: null }, opts), [go]);
+  const openCrowdPlace = useCallback((crowdPlace: number | null) => go({ crowdPlace }), [go]);
 
   /**
    * The selected row is the address's, when the list still holds it.
@@ -430,7 +432,9 @@ export function ReviewPage() {
       {!questionsOpen && (
         <LazyCrowdedCities
           selected={address.crowd}
+          selectedPlace={address.crowdPlace}
           onSelect={openCrowd}
+          onSelectPlace={openCrowdPlace}
           stagings={crowdStagings}
           onStagings={setCrowdStagings}
           onApplied={() => {

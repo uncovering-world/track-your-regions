@@ -1,24 +1,33 @@
 /**
- * The crowded-city window's own calls (ADR-0180, #2282): the window around a
- * place, and a curator's answers to it, applied together
+ * The crowded-city window's own calls (ADR-0180, #2282, #2358): a region's
+ * places of a kind and type as its page shows them, one place in its own
+ * circle, and a curator's answers, applied together
  * (`POST /api/experiences/review/crowding/answers`). Its own module so that
  * only the window's chunk carries them; the review page's read, the arrivals
  * a crowded city would shadow, is `crowding.ts`.
  */
 
 import {
-  getExperiencesReviewCrowdingAroundByMembershipId, postExperiencesReviewCrowdingAnswers,
-  type CrowdingAnswered, type CrowdingWindow,
+  getExperiencesReviewCrowdingGroup, getExperiencesReviewCrowdingPlaceByMembershipId,
+  postExperiencesReviewCrowdingAnswers,
+  type CrowdingAnswered, type CrowdingGroup, type CrowdingPlaceView,
 } from './client.generated';
 import type { CrowdingAnswerRow } from './crowding';
+import type { CrowdGroupRef } from '../utils/appUrl';
 
 /**
- * Every place of the membership's kind and type within the kind's radius, best
- * known first. `type` reads another type of the kind around the same place.
- * A kind with no display rule answers 409.
+ * Every place of the group's kind and type in its region and under it, best
+ * known first: shown, shadowed and new. A kind with no display rule answers 409.
  */
-export function fetchCrowdingWindow(membershipId: number, type?: string | null): Promise<CrowdingWindow> {
-  return getExperiencesReviewCrowdingAroundByMembershipId(membershipId, type ? { type } : undefined);
+export function fetchCrowdingGroup(group: CrowdGroupRef): Promise<CrowdingGroup> {
+  return getExperiencesReviewCrowdingGroup({
+    region: group.regionId ?? 'none', kind: group.kindId, ...(group.type ? { type: group.type } : {}),
+  });
+}
+
+/** A place in its own circle: the places of its type within the radius, and those it is compared with. */
+export function fetchCrowdingPlace(membershipId: number): Promise<CrowdingPlaceView> {
+  return getExperiencesReviewCrowdingPlaceByMembershipId(membershipId);
 }
 
 /** The most answers one request takes: a bigger staging is sent a page at a time. */
