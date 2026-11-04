@@ -20,10 +20,10 @@ vi.mock('../../api/curation', () => ({
 }));
 
 /** The crowded city's window, as the row opens it: on which membership, and what it reports on close. */
-function CrowdingWindowStub({ memberships, onClose }: { memberships: readonly number[]; onClose: (message?: string) => void }) {
+function CrowdingWindowStub({ membershipId, onClose }: { membershipId: number; onClose: (message?: string) => void }) {
   return (
     <div data-testid="crowding-window">
-      {`around ${memberships.join(',')}`}
+      {`around ${membershipId}`}
       <button type="button" onClick={() => onClose('1 place kept in the list: Schloßplatz.')}>apply and close</button>
     </div>
   );

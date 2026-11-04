@@ -1,8 +1,10 @@
 /**
- * The crowded-city window (#2282) on Berlin's squares around Schloßplatz:
- * the rows and the rule's line, each place's picture, credit and article, the
- * map held in view, answers staged and applied together with one Apply, the
- * report by name, and a step through a group of arrivals.
+ * The crowded-city window (#2282, #2358) opened from Schloßplatz's card: the
+ * place in its own circle within Berlin's squares, what it is compared with,
+ * the way back to the region's list as Berlin's page shows it, each place's
+ * picture, credit and article, the answers by standing, a hover's reason, the
+ * map held in view, and answers staged and applied together with the Apply
+ * bar's summary and the report by name.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -13,74 +15,159 @@ import { createTheme } from '@mui/material';
 vi.mock('../../../api/crowdingAnswers', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../api/crowdingAnswers')>()),
   answerCrowding: vi.fn(),
-  fetchCrowdingWindow: vi.fn(),
+  fetchCrowdingGroup: vi.fn(),
+  fetchCrowdingPlace: vi.fn(),
 }));
-// The map needs WebGL; the list and the answers are what is tested here.
-vi.mock('./CrowdingMap', () => ({ CrowdingMap: () => <div data-testid="crowding-map" /> }));
+// The map needs WebGL; the list, the card and the answers are what is tested here.
+vi.mock('./CrowdingMap', () => ({ CrowdingMap: () => <div data-testid="crowding-map" />, CrowdingLegend: () => null }));
 
-import { answerCrowding, CrowdingPartlyApplied, fetchCrowdingWindow } from '../../../api/crowdingAnswers';
+import { answerCrowding, CrowdingPartlyApplied, fetchCrowdingGroup, fetchCrowdingPlace } from '../../../api/crowdingAnswers';
 import { crowdingLayout, HELD_MIN_HEIGHT } from './CrowdingWindow';
 import { CrowdingWindowDialog } from './CrowdingWindowDialog';
-import { aroundSchlossplatz, FRANKFURTER_TOR, NOLLENDORFPLATZ, SCHLOSSPLATZ } from './crowdingFixtures';
+import {
+  ALEXANDERPLATZ_LOOK, berlinGroup, berlinSquares, NOLLENDORFPLATZ, ROSA_LUXEMBURG_PLATZ, SCHLOSSPLATZ, schlossplatzCircle,
+} from './crowdingFixtures';
 
-const mockedWindow = vi.mocked(fetchCrowdingWindow);
+const mockedGroup = vi.mocked(fetchCrowdingGroup);
+const mockedPlace = vi.mocked(fetchCrowdingPlace);
+const mockedAnswer = vi.mocked(answerCrowding);
 /** The theme's breakpoints are MUI's own. */
 const theme = createTheme();
-const mockedAnswer = vi.mocked(answerCrowding);
+const TITLE = 'Berlin · Squares & streets · square';
 
-function renderWindow(memberships: number[] = [SCHLOSSPLATZ], onClose = vi.fn()) {
+function renderWindow(onClose = vi.fn()) {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <CrowdingWindowDialog memberships={memberships} groupName={memberships.length > 1 ? 'Berlin · squares' : undefined} onClose={onClose} />
+      <CrowdingWindowDialog membershipId={SCHLOSSPLATZ} onClose={onClose} />
     </QueryClientProvider>,
   );
   return onClose;
 }
 
-/** The list's row of one place, by its name. */
+/** The window open on the region's list, from the card's place. */
+async function inRegion() {
+  fireEvent.click(await screen.findByRole('button', { name: `← ${TITLE}, the whole region` }));
+  await screen.findByText(/^On the region page · /);
+}
+
+/** The region list's row of one place, by its name. */
 function rowOf(name: string) {
-  const cell = screen.getAllByText(name).find(element => element.closest('tbody'));
-  return within(cell!.closest('tr')!);
+  const { membershipId } = berlinSquares.find(place => place.name === name)!;
+  return within(screen.getByTestId(`crowding-place-${membershipId}`));
 }
 
 beforeEach(() => {
-  mockedWindow.mockReset();
+  mockedGroup.mockReset();
+  mockedPlace.mockReset();
   mockedAnswer.mockReset();
-  mockedWindow.mockResolvedValue(aroundSchlossplatz);
+  mockedGroup.mockResolvedValue(berlinGroup);
+  mockedPlace.mockResolvedValue(schlossplatzCircle);
 });
 
-describe('the crowded-city window', () => {
-  it('lists every square around the card’s place, best known first, with the line where the rule’s ten end', async () => {
+describe('the window opened from a card', () => {
+  it('opens the card’s place in its own circle, within its region’s group', async () => {
     renderWindow();
 
-    expect(await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' })).toBeInTheDocument();
-    expect(mockedWindow).toHaveBeenCalledWith(SCHLOSSPLATZ, null);
-    const names = screen.getAllByRole('row').slice(1).map(row => row.textContent ?? '');
-    // The © is the credit badge on Alexanderplatz's thumbnail.
-    expect(names[0]).toMatch(/^1©Alexanderplatz/);
-    // The line stands between Hackescher Markt, the tenth, and Frankfurter Tor.
-    expect(names[10]).toMatch(/^The rule’s 10 end here/);
-    expect(names[11]).toMatch(/^11Frankfurter Tor/);
-    expect(rowOf('Schloßplatz').getByText('new · the rule shadows it')).toBeInTheDocument();
-    expect(rowOf('Schloßplatz').getByText('the card’s place')).toBeInTheDocument();
-    expect(rowOf('Leipziger Platz').getByText('shadowed')).toBeInTheDocument();
-    expect(rowOf('Leipziger Platz').getByText('counts above Schloßplatz')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: TITLE, level: 2 })).toBeInTheDocument();
+    expect(mockedPlace).toHaveBeenCalledWith(SCHLOSSPLATZ);
+    expect(mockedGroup).toHaveBeenCalledWith(berlinGroup.group);
+    expect(screen.getByText(/^The rule shadows it: 13 better-known squares stand within 10 km of it\./)).toBeInTheDocument();
+    expect(screen.getByText('The answer is about Schloßplatz alone. Every other square keeps its own standing.')).toBeInTheDocument();
+
+    const compared = within(screen.getByRole('region', { name: 'What it is compared with' }));
+    expect(compared.getByText('What it is compared with · the 13 better known within 10 km')).toBeInTheDocument();
+    expect(compared.getByRole('button', { name: 'Alexanderplatz' })).toBeInTheDocument();
+    expect(compared.getByText('0.7 km')).toBeInTheDocument();
+    expect(compared.queryByRole('button', { name: 'Kulturforum' })).toBeNull();
+    expect(compared.getByText(/^For the rule to show it, fewer than 10 squares better known than it/)).toBeInTheDocument();
   });
 
-  it('offers no pin on a place holding works, which is always shown', async () => {
+  it('answers the open place alone, with the answers its standing takes', async () => {
     renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
 
-    const kulturforum = rowOf('Kulturforum');
-    expect(kulturforum.getByRole('button', { name: 'List' })).toBeDisabled();
-    expect(kulturforum.getByRole('button', { name: 'Shadow' })).toBeDisabled();
-    expect(kulturforum.getByRole('button', { name: 'Don’t take' })).toBeEnabled();
-    expect(kulturforum.getByText('holds works · always shown')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show anyway' }));
+    expect(screen.getByRole('button', { name: 'Show anyway' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Keep shadowed' })).toBeInTheDocument();
+    expect(screen.getByText(/^1 answer staged: show Schloßplatz anyway\. The region page will show 12 squares/)).toBeInTheDocument();
   });
 
-  it('shows what each place is: its picture with its credit, and its article; a row without them shows neither (#2345)', async () => {
+  it('says how many of the places it is compared with it does not list', async () => {
+    // Two of the thirteen above it are new arrivals of another curator's scope: counted, not named.
+    mockedPlace.mockResolvedValue({
+      ...schlossplatzCircle,
+      around: schlossplatzCircle.around.filter(entry => entry.name !== 'Frankfurter Tor' && entry.name !== 'Rosa-Luxemburg-Platz'),
+      comparedUnlisted: 2,
+    });
     renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    const compared = within(screen.getByRole('region', { name: 'What it is compared with' }));
+    expect(compared.getByText('What it is compared with · the 13 better known within 10 km')).toBeInTheDocument();
+    expect(compared.queryByRole('button', { name: 'Frankfurter Tor' })).toBeNull();
+    expect(compared.getByText('and 2 not listed here: outside your scope, or no longer offered by their source')).toBeInTheDocument();
+  });
+
+  it('shows the place’s picture with its credit as a line, and opens it enlarged (ADR-0182)', async () => {
+    mockedPlace.mockResolvedValue({ ...schlossplatzCircle, place: { ...schlossplatzCircle.place, ...ALEXANDERPLATZ_LOOK } });
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    expect(screen.getByRole('img', { name: 'Schloßplatz' })).toHaveAttribute(
+      'src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg?width=250');
+    expect(screen.getByRole('link', { name: 'Wladyslaw Sojka' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schloßplatz — enlarge the picture' }));
+    const enlarged = await screen.findByRole('dialog', { name: 'Schloßplatz' });
+    expect(within(enlarged).getByRole('img', { name: 'Schloßplatz' })).toHaveAttribute(
+      'src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg?width=960');
+  });
+
+  it('opens a place it is compared with in that place’s own circle', async () => {
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    fireEvent.click(within(screen.getByRole('region', { name: 'What it is compared with' })).getByRole('button', { name: 'Potsdamer Platz' }));
+    await waitFor(() => expect(mockedPlace).toHaveBeenLastCalledWith(2));
+  });
+
+  it('returns to the region’s list as its page shows it: the page first, then the shadowed tail', async () => {
+    renderWindow();
+    await inRegion();
+
+    expect(screen.getByText('On the region page · 11, and 1 new that would be — best known first')).toBeInTheDocument();
+    expect(screen.getByText('Shadowed · 3, in the list’s tail')).toBeInTheDocument();
+    expect(rowOf('Alexanderplatz').getByText('the best known here')).toBeInTheDocument();
+    expect(rowOf('Leipziger Platz').getByText('11 better known within 10 km')).toBeInTheDocument();
+    expect(rowOf('Rosa-Luxemburg-Platz').getByText('New')).toBeInTheDocument();
+  });
+
+  it('offers each place the answers its standing takes', async () => {
+    renderWindow();
+    await inRegion();
+
+    const buttons = (name: string) => rowOf(name).queryAllByRole('button').map(button => button.textContent).slice(1);
+    expect(buttons('Nollendorfplatz')).toEqual(['Shadow']);
+    expect(buttons('Leipziger Platz')).toEqual(['Show anyway', 'Keep shadowed']);
+    expect(buttons('Rosa-Luxemburg-Platz')).toEqual(['Publish', 'Shadow', 'Don’t take']);
+    expect(buttons('Schloßplatz')).toEqual(['Show anyway', 'Keep shadowed', 'Don’t take']);
+    expect(buttons('Kulturforum')).toEqual([]);
+    expect(rowOf('Kulturforum').getByText('Always shown: it holds works')).toBeInTheDocument();
+  });
+
+  it('says on a hover why a place stands where it stands', async () => {
+    renderWindow();
+    await inRegion();
+
+    expect(screen.getByLabelText(
+      'Shadowed: 11 better-known squares stand within 10 km of it: Alexanderplatz, Potsdamer Platz, Gendarmenmarkt, …',
+    )).toBe(screen.getByTestId('crowding-place-12'));
+  });
+
+  it('shows what each place is: its picture with its credit, and its article; a place without them shows neither (#2345)', async () => {
+    renderWindow();
+    await inRegion();
 
     const alexanderplatz = rowOf('Alexanderplatz');
     expect(alexanderplatz.getByRole('img', { name: 'Alexanderplatz' })).toHaveAttribute(
@@ -90,7 +177,6 @@ describe('the crowded-city window', () => {
     const credit = await screen.findByRole('presentation');
     expect(within(credit).getByRole('link', { name: 'Wladyslaw Sojka' }))
       .toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Berlin_-_Alexanderplatz1.jpg');
-    expect(within(credit).getByRole('link', { name: 'FAL' })).toHaveAttribute('href', 'http://artlibre.org/licence/lal/en');
     fireEvent.keyDown(credit, { key: 'Escape' });
     expect(alexanderplatz.getByRole('link', { name: 'Wikipedia' }))
       .toHaveAttribute('href', 'https://en.wikipedia.org/wiki/Alexanderplatz');
@@ -102,20 +188,19 @@ describe('the crowded-city window', () => {
 
   it('takes the credit away with a picture that fails to load, and keeps the article', async () => {
     renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await inRegion();
 
     fireEvent.error(rowOf('Alexanderplatz').getByRole('img', { name: 'Alexanderplatz' }));
 
-    const alexanderplatz = rowOf('Alexanderplatz');
-    expect(alexanderplatz.queryByRole('img')).toBeNull();
-    expect(alexanderplatz.queryByRole('button', { name: /Picture credit/ })).toBeNull();
-    expect(alexanderplatz.queryByRole('button', { name: /enlarge the picture/ })).toBeNull();
-    expect(alexanderplatz.getByRole('link', { name: 'Wikipedia' })).toBeInTheDocument();
+    expect(rowOf('Alexanderplatz').queryByRole('img')).toBeNull();
+    expect(rowOf('Alexanderplatz').queryByRole('button', { name: /Picture credit/ })).toBeNull();
+    expect(rowOf('Alexanderplatz').queryByRole('button', { name: /enlarge the picture/ })).toBeNull();
+    expect(rowOf('Alexanderplatz').getByRole('link', { name: 'Wikipedia' })).toBeInTheDocument();
   });
 
-  it('opens a row’s picture enlarged, with its full credit, without bringing the row into view', async () => {
+  it('opens a row’s picture enlarged, with its full credit, without opening the place', async () => {
     renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await inRegion();
 
     fireEvent.click(rowOf('Alexanderplatz').getByRole('button', { name: 'Alexanderplatz — enlarge the picture' }));
 
@@ -123,29 +208,14 @@ describe('the crowded-city window', () => {
     expect(within(enlarged).getByRole('img', { name: 'Alexanderplatz' })).toHaveAttribute(
       'src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg?width=960');
     expect(within(enlarged).getByRole('link', { name: 'Wladyslaw Sojka' })).toBeInTheDocument();
-  });
-
-  it('draws no picture, and so no credit, from a host the product may not draw from', async () => {
-    mockedWindow.mockResolvedValue({
-      ...aroundSchlossplatz,
-      rows: aroundSchlossplatz.rows.map(row => (row.name === 'Alexanderplatz'
-        ? { ...row, imageUrl: 'https://whc.unesco.org/uploads/sites/gallery/original/site_0001.jpg' }
-        : row)),
-    });
-    renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-
-    expect(rowOf('Alexanderplatz').queryByRole('img')).toBeNull();
-    expect(rowOf('Alexanderplatz').queryByRole('button', { name: /Picture credit/ })).toBeNull();
+    expect(mockedPlace).not.toHaveBeenCalledWith(1);
   });
 
   it('keeps the map in view while the list scrolls, beside it on a wide screen (#2345)', async () => {
     renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await inRegion();
 
     expect(within(screen.getByTestId('crowding-map-pane')).getByTestId('crowding-map')).toBeInTheDocument();
-    // The dialog sets the map beside the list from a medium width and holds it at the top of its
-    // content; the list scrolls in its own box. Below that the dialog is a phone's full screen.
     expect(crowdingLayout('dialog', theme)).toEqual({
       body: {},
       mapPane: { p: 2, position: { md: 'sticky' }, top: { md: 0 } },
@@ -155,70 +225,97 @@ describe('the crowded-city window', () => {
   });
 
   it('holds a lower map over the list on a tall enough laptop screen, and beside it on the widest (#2345)', () => {
-    // A laptop's width, on a screen tall enough for the least map, three rows and the Apply bar:
-    // a 1440 by 900 laptop shows about 780 px inside the browser.
     const held = '@media (min-width:900px) and (max-width:1535.95px) and (min-height:740px)';
     expect(HELD_MIN_HEIGHT).toBe(740);
     const page = crowdingLayout('page', theme);
 
-    // From the widest screens the map stands beside the list and holds just below the top, as
-    // the page's list of cities does; the list runs on with the page.
     expect(page.mapPane).toMatchObject({ position: { xl: 'sticky' }, top: { xl: 16 } });
-    // On such a laptop screen the map is lower, as tall as the screen leaves room for between
-    // 160 and 280 px, and the map and the list together stand no taller than the screen above
-    // the Apply bar, never leaving the list fewer than three rows: the list scrolls in its own
-    // box under the map, so its header row is never under the map.
     expect(page.mapFrame).toEqual({ height: 420, [held]: { height: 'clamp(160px, calc(100vh - 573px), 280px)' } });
     expect(page.body).toEqual({ [held]: { maxHeight: 'max(calc(100vh - 140px), 593px)' } });
     expect(page.list).toEqual({
       flexGrow: 1, minWidth: 0, minHeight: 0, overflow: 'auto', [held]: { minHeight: 137 },
     });
-    // On a shorter laptop screen (1366 by 768, or one at 200 % zoom) and on a phone, nothing
-    // is held or capped: the full map stands over the list and the page scrolls both.
     expect(Object.keys(page.body as object)).toEqual([held]);
     expect(page.mapPane).not.toHaveProperty('position.md');
   });
+});
 
-  it('applies the staged answers together and reports each by name', async () => {
+describe('answers applied together', () => {
+  it('sums the staged answers up with the count the region page will show, and reports each by name', async () => {
     mockedAnswer.mockResolvedValue({
       answered: [
         { membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'list', pin: 'list', published: true, refused: false },
+        { membershipId: ROSA_LUXEMBURG_PLATZ, experienceId: 1013, name: 'Rosa-Luxemburg-Platz', answer: 'publish', pin: null, published: true, refused: false },
         { membershipId: NOLLENDORFPLATZ, experienceId: 1009, name: 'Nollendorfplatz', answer: 'shadow', pin: 'shadow', published: false, refused: false },
       ],
-      refused: [{ membershipId: FRANKFURTER_TOR, experienceId: 1011, name: 'Frankfurter Tor', status: 409, error: 'This place is a new arrival now — reload to publish it with its answer' }],
+      refused: [],
       outOfScope: 0,
       placementFailed: [],
     });
     const onClose = renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
 
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show anyway' }));
+    await inRegion();
+    fireEvent.click(rowOf('Rosa-Luxemburg-Platz').getByRole('button', { name: 'Publish' }));
     fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
-    fireEvent.click(rowOf('Frankfurter Tor').getByRole('button', { name: 'Don’t take' }));
-    expect(rowOf('Schloßplatz').getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText(/New here: 2, answered 2\. Changed among those already in: 1\./)).toBeInTheDocument();
+    expect(rowOf('Schloßplatz').getByRole('button', { name: 'Show anyway' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(
+      '3 answers staged: show Schloßplatz anyway, publish Rosa-Luxemburg-Platz, shadow Nollendorfplatz. '
+        + 'The region page will show 12 squares, before the rule recounts their neighbours.',
+    )).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply 3 answers' }));
 
     await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith([
       { membershipId: SCHLOSSPLATZ, answer: 'list' },
+      { membershipId: ROSA_LUXEMBURG_PLATZ, answer: 'publish' },
       { membershipId: NOLLENDORFPLATZ, answer: 'shadow' },
-      { membershipId: FRANKFURTER_TOR, answer: 'refuse' },
     ]));
-    expect(await screen.findByText('1 place kept in the list (1 new, published): Schloßplatz.')).toBeInTheDocument();
-    expect(screen.getByText('1 place kept in the shadow: Nollendorfplatz.')).toBeInTheDocument();
-    expect(screen.getByText(/^Frankfurter Tor refused — This place is a new arrival now/)).toBeInTheDocument();
+    expect(await screen.findByText('1 place shown anyway (1 new, published): Schloßplatz.')).toBeInTheDocument();
+    expect(screen.getByText('1 place published and left to the rule: Rosa-Luxemburg-Platz.')).toBeInTheDocument();
     // The staging is cleared and the city read again.
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
-    await waitFor(() => expect(mockedWindow).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockedGroup).toHaveBeenCalledTimes(2));
 
     fireEvent.click(screen.getByRole('button', { name: 'Close the window' }));
     expect(onClose).toHaveBeenCalledWith(expect.stringContaining('Schloßplatz'));
   });
 
+  it('returns to the region’s list once the open place is not taken', async () => {
+    mockedAnswer.mockResolvedValue({
+      answered: [{ membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'refuse', pin: null, published: false, refused: true }],
+      refused: [],
+      outOfScope: 0,
+      placementFailed: [],
+    });
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Don’t take' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
+    expect(await screen.findByText('On the region page · 11, and 1 new that would be — best known first')).toBeInTheDocument();
+  });
+
+  it('returns to the region’s list once a partly applied Apply refused the open place', async () => {
+    // The first page refused Schloßplatz, and a later page failed.
+    mockedAnswer.mockRejectedValue(new CrowdingPartlyApplied({
+      answered: [{ membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'refuse', pin: null, published: false, refused: true }],
+      refused: [],
+      outOfScope: 0,
+      placementFailed: [],
+    }, new Error('The connection was lost')));
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Don’t take' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
+    expect(await screen.findByText('On the region page · 11, and 1 new that would be — best known first')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Schloßplatz', level: 3 })).toBeNull();
+  });
+
   it('keeps the answers a failed later page never sent staged, and clears only the ones it settled', async () => {
-    // Rome's churches can pass the 100-answer page: the first page applies, the second fails.
     mockedAnswer.mockRejectedValue(new CrowdingPartlyApplied({
       answered: [{ membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'list', pin: 'list', published: true, refused: false }],
       refused: [],
@@ -226,13 +323,12 @@ describe('the crowded-city window', () => {
       placementFailed: [],
     }, new Error('The connection was lost')));
     renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await inRegion();
 
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Show anyway' }));
     fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply 2 answers' }));
 
-    // Schloßplatz was settled; Nollendorfplatz was never sent and stays staged to send again.
     expect(await screen.findByRole('button', { name: 'Apply 1 answer' })).toBeEnabled();
     expect(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' })).toHaveAttribute('aria-pressed', 'true');
   });
@@ -241,14 +337,13 @@ describe('the crowded-city window', () => {
     let finish: (value: Awaited<ReturnType<typeof answerCrowding>>) => void = () => {};
     mockedAnswer.mockReturnValue(new Promise(resolve => { finish = resolve; }));
     renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await inRegion();
 
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Show anyway' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
     await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith([{ membershipId: SCHLOSSPLATZ, answer: 'list' }]));
     // Staged while the first Apply's pages go.
     fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
-
     finish({
       answered: [{ membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'list', pin: 'list', published: true, refused: false }],
       refused: [],
@@ -257,58 +352,21 @@ describe('the crowded-city window', () => {
     });
     expect(await screen.findByRole('button', { name: 'Apply 1 answer' })).toBeEnabled();
     expect(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' })).toHaveAttribute('aria-pressed', 'true');
-    expect(rowOf('Schloßplatz').getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  it('says why an answer is not offered where a curator can hover it', async () => {
-    renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-
-    // A disabled button takes no pointer events: the reason is on the element around it.
-    const list = rowOf('Kulturforum').getByRole('button', { name: 'List' });
-    expect(list.closest('span[title]')?.getAttribute('title')).toMatch(/works/);
+    expect(rowOf('Schloßplatz').getByRole('button', { name: 'Show anyway' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('takes a staged answer back with a second press and with Reset', async () => {
     renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await inRegion();
 
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Shadow' }));
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Keep shadowed' }));
     expect(screen.getByRole('button', { name: 'Apply 1 answer' })).toBeEnabled();
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Shadow' }));
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Keep shadowed' }));
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
 
-    fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Don’t take' }));
+    fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
     expect(mockedAnswer).not.toHaveBeenCalled();
-  });
-
-  it('switches to another type of the kind around the same place', async () => {
-    renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Street · 9' }));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(SCHLOSSPLATZ, 'street'));
-  });
-
-  it('takes no new answer on the squares still shown while the streets load', async () => {
-    renderWindow();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-    mockedWindow.mockReturnValueOnce(new Promise(() => {}));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Street · 9' }));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(SCHLOSSPLATZ, 'street'));
-    expect(rowOf('Nollendorfplatz').getByRole('button', { name: 'List' })).toBeDisabled();
-  });
-
-  it('steps through a group of shadowed arrivals', async () => {
-    renderWindow([SCHLOSSPLATZ, FRANKFURTER_TOR]);
-    expect(await screen.findByText('Berlin · squares: arrival 1 of 2')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(FRANKFURTER_TOR, null));
-    expect(screen.getByText('Berlin · squares: arrival 2 of 2')).toBeInTheDocument();
   });
 });
