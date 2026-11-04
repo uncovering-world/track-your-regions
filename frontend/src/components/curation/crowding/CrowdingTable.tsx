@@ -3,12 +3,14 @@
  * around the window's place, best known first, each with what the rule reads
  * of it and the three answers a curator gives it.
  *
- * A row carries readers a year, Wikipedia editions, whether a guide uses it,
- * its score and the rule's count — how many places of its type within the
- * radius count above it. A line marks where the rule's ten end: from the
- * first row the rule shadows down. The standing chip says where the place
- * stands now, the pin chip what a curator kept it as, with the rule's own
- * reading beside it where the two differ, so a pin never hides the rule.
+ * A row shows what the place is, its picture with its credit and its
+ * Wikipedia article (`PlaceCell`, #2345), and carries readers a year,
+ * Wikipedia editions, whether a guide uses it, its score and the rule's
+ * count — how many places of its type within the radius count above it. A
+ * line marks where the rule's ten end: from the first row the rule shadows
+ * down. The standing chip says where the place stands now, the pin chip what
+ * a curator kept it as, with the rule's own reading beside it where the two
+ * differ, so a pin never hides the rule.
  */
 
 import {
@@ -19,6 +21,7 @@ import type { CrowdingAnswer, CrowdingWindowRow } from '../../../api/crowding';
 import {
   answersOffered, chosenAnswer, drawnStanding, ruleLineAt, type DrawnStanding, type Staging,
 } from './crowdingStaging';
+import { PlaceCell } from './PlaceCell';
 import { outrankedWords, pinChip, standingChip } from './rowWords';
 
 /** A standing's colour, the map's and the chip's: listed blue, shadowed grey, new orange, refused red. */
@@ -149,20 +152,21 @@ export function CrowdingTable({ rows, centreId, centreName, typeWord, radiusKm, 
                 onClick={() => { onHover(row.membershipId); onShow(row.membershipId); }}
               >
                 <TableCell>{index + 1}</TableCell>
-                <TableCell sx={{ minWidth: 180 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{row.name}</Typography>
-                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.25 }}>
-                    <Chip size="small" label={standing === row.standing ? standingChip(row) : `${standingChip(row)} → ${standingWord(standing)}`}
-                      color={STANDING_COLOR[standing]} variant={standing === 'shadowed' ? 'outlined' : 'filled'} />
-                    {pin && <Chip size="small" variant="outlined" label={pin} />}
-                    {row.holdsWorks && <Chip size="small" variant="outlined" label="holds works · always shown" />}
-                  </Stack>
-                  {row.membershipId === centreId && (
-                    <Typography variant="caption" color="text.secondary" display="block">the card’s place</Typography>
-                  )}
-                  {row.outranksCentre && (
-                    <Typography variant="caption" color="text.secondary" display="block">counts above {centreName}</Typography>
-                  )}
+                <TableCell sx={{ minWidth: 230 }}>
+                  <PlaceCell row={row}>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.25 }}>
+                      <Chip size="small" label={standing === row.standing ? standingChip(row) : `${standingChip(row)} → ${standingWord(standing)}`}
+                        color={STANDING_COLOR[standing]} variant={standing === 'shadowed' ? 'outlined' : 'filled'} />
+                      {pin && <Chip size="small" variant="outlined" label={pin} />}
+                      {row.holdsWorks && <Chip size="small" variant="outlined" label="holds works · always shown" />}
+                    </Stack>
+                    {row.membershipId === centreId && (
+                      <Typography variant="caption" color="text.secondary" display="block">the card’s place</Typography>
+                    )}
+                    {row.outranksCentre && (
+                      <Typography variant="caption" color="text.secondary" display="block">counts above {centreName}</Typography>
+                    )}
+                  </PlaceCell>
                 </TableCell>
                 <TableCell align="right">{numberCell(row.readers)}</TableCell>
                 <TableCell align="right">{numberCell(row.wikipediaEditions)}</TableCell>
