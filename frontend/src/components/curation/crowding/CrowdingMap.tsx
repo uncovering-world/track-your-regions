@@ -1,40 +1,53 @@
 /**
- * The crowded-city window's map (ADR-0180, #2282): every row as a numbered
- * dot coloured by where it stands — in the list, shadowed, new, or not taken
- * once an answer is staged — the window's place ringed, and the kind's radius
- * drawn around it as a dashed circle.
+ * The crowded-city window's map (ADR-0180, #2282, #2358), in one of its two
+ * views.
  *
- * The camera frames the circle (`frameGeoJson`, which handles a circle over
- * the antimeridian), so the dots are read where the rule counts them. A dot
- * and its row light up together: the pointer on either sets the hovered
- * membership, and a click on a dot scrolls its row into view. A hover only
- * lights a dot, so the map stays still while the pointer reads down the list;
- * a click on a row whose dot is off the map brings it into view at the same
- * zoom (`showDot`). Zoom buttons stand in for the mouse wheel.
+ * - **The region's list**: every place of the group as a dot coloured by where
+ *   it stands — on the region page, shadowed, new, or not taken once an answer
+ *   is staged — framed on the group's places.
+ * - **A place's circle**: the kind's radius around the place, drawn on the
+ *   sphere as a dashed circle (`radiusCircle`) and framed (`frameGeoJson`,
+ *   which handles a circle over the antimeridian); the better-known places
+ *   inside it that it is compared with marked, the others faded, the place
+ *   itself ringed.
  *
- * One map per window, mounted with the dialog, so one WebGL context at a time.
+ * A dot and its row light up together: the pointer on either sets the hovered
+ * membership. A hover over a dot says why the place stands where it does, or,
+ * in a circle, how far it lies; a click opens the place's own circle. Zoom
+ * buttons stand in for the mouse wheel. One map per window, so one WebGL
+ * context at a time.
  */
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Box, Typography, type SxProps, type Theme } from '@mui/material';
+import { Box, Stack, Tooltip, Typography, type SxProps, type Theme } from '@mui/material';
 import { Layer, Marker, NavigationControl, Source, type MapRef } from 'react-map-gl/maplibre';
-import type { CrowdingWindow, CrowdingWindowRow } from '../../../api/crowding';
+import type { CrowdingGroupPlace, CrowdingPlaceView } from '../../../api/crowding';
 import { MAP_STYLE } from '../../../constants/mapStyles';
 import { frameGeoJson } from '../../../utils/mapUtils';
 import { GuardedMap } from '../../shared/GuardedMap';
 import { drawnStanding, type DrawnStanding, type Staging } from './crowdingStaging';
+import { distanceWords, whyWords, type RuleWords } from './rowWords';
 
+/** A dot's look: fill, edge and size. A shadowed place is hollow, so it reads apart without its colour. */
+interface Look { fill: string; edge: string; size: number; ring?: string }
 
-/** A dot's fill and edge by standing: a shadowed place is hollow, so it reads apart without its colour. */
-const DOT: Record<DrawnStanding, { fill: string; edge: string; ink: string }> = {
-  listed: { fill: 'primary.main', edge: 'primary.main', ink: 'common.white' },
-  shadowed: { fill: 'background.paper', edge: 'grey.600', ink: 'text.primary' },
-  new: { fill: 'warning.main', edge: 'warning.main', ink: 'common.white' },
-  refused: { fill: 'error.main', edge: 'error.main', ink: 'common.white' },
+const STANDING_LOOK: Record<DrawnStanding, Look> = {
+  shown: { fill: 'primary.main', edge: 'primary.main', size: 12 },
+  shadowed: { fill: 'background.paper', edge: 'grey.600', size: 12 },
+  new: { fill: 'warning.main', edge: 'warning.main', size: 12 },
+  refused: { fill: 'error.main', edge: 'error.main', size: 12 },
 };
+
+/** In a place's circle: what it is compared with, what is not, and the place itself. */
+const COMPARED_LOOK: Look = { fill: 'primary.main', edge: 'common.white', size: 12, ring: 'primary.dark' };
+const FADED_LOOK: Look = { fill: 'grey.400', edge: 'grey.400', size: 8 };
+const PLACE_LOOK: Look = { fill: 'common.white', edge: 'warning.main', size: 18 };
 
 /** The Earth's mean radius, in kilometres: the sphere the circle is drawn on. */
 const EARTH_KM = 6371.0088;
+
+/** The closest a group's places are framed: a group of one place is shown among its streets. */
+const GROUP_MAX_ZOOM = 14;
 
 /**
  * The circle of `radiusKm` around a point, as a polygon of `steps` points
@@ -59,125 +72,160 @@ export function radiusCircle(latitude: number, longitude: number, radiusKm: numb
   return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } };
 }
 
-/**
- * Brings a point into the map's view at the zoom it has: nothing moves when it
- * is in view already, so a curator reading down the list keeps the frame they
- * chose, and an off-screen dot is centred rather than zoomed out to.
- */
-export function showDot(map: Pick<MapRef, 'getBounds' | 'easeTo'> | null, longitude: number, latitude: number): void {
-  if (!map) return;
-  if (map.getBounds().contains([longitude, latitude])) return;
-  map.easeTo({ center: [longitude, latitude], duration: 400 });
-}
+/** One dot to draw: where, how, and what a hover says of it. */
+interface Drawn { id: number; name: string; latitude: number; longitude: number; look: Look; says: string; layer: number }
 
-function Dot({ row, number, standing, isCentre, hovered, onHover, onPick }: {
-  row: CrowdingWindowRow;
-  number: number;
-  standing: DrawnStanding;
-  isCentre: boolean;
+function Dot({ dot, hovered, onHover, onOpen }: {
+  dot: Drawn;
   hovered: boolean;
   onHover: (membershipId: number | null) => void;
-  onPick: (membershipId: number) => void;
+  onOpen: (membershipId: number) => void;
 }) {
-  const look = DOT[standing];
+  const { look } = dot;
   return (
-    <Box
-      component="button"
-      type="button"
-      title={row.name}
-      aria-label={`${number}. ${row.name}`}
-      onMouseEnter={() => onHover(row.membershipId)}
-      onMouseLeave={() => onHover(null)}
-      onFocus={() => onHover(row.membershipId)}
-      onBlur={() => onHover(null)}
-      onClick={() => onPick(row.membershipId)}
-      sx={{
-        width: 22, height: 22, p: 0, borderRadius: '50%', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 11, fontWeight: 700, lineHeight: 1,
-        bgcolor: look.fill, color: look.ink, border: 2, borderColor: look.edge,
-        outline: isCentre ? 3 : 0, outlineStyle: 'solid', outlineColor: 'primary.dark',
-        transform: hovered ? 'scale(1.45)' : undefined,
-        boxShadow: hovered ? 4 : 1,
-        transition: 'transform 120ms',
-      }}
-    >
-      {number}
-    </Box>
+    <Tooltip title={dot.says} disableInteractive>
+      <Box
+        component="button"
+        type="button"
+        aria-label={dot.name}
+        onMouseEnter={() => onHover(dot.id)}
+        onMouseLeave={() => onHover(null)}
+        onFocus={() => onHover(dot.id)}
+        onBlur={() => onHover(null)}
+        onClick={() => onOpen(dot.id)}
+        sx={{
+          width: look.size, height: look.size, p: 0, borderRadius: '50%', cursor: 'pointer', boxSizing: 'border-box',
+          bgcolor: look.fill, border: look === PLACE_LOOK ? 4 : 2, borderColor: look.edge,
+          outline: look.ring ? 2 : 0, outlineStyle: 'solid', outlineColor: look.ring ?? 'transparent',
+          transform: hovered ? 'scale(1.6)' : undefined,
+          boxShadow: hovered ? 4 : 1,
+          transition: 'transform 120ms',
+        }}
+      />
+    </Tooltip>
   );
 }
 
-export function CrowdingMap({ around, staging, hovered, shown, frame: frameSx, onHover, onPick }: {
-  around: CrowdingWindow;
+/** What the map draws: a group's places, or a place's circle. */
+export type CrowdingMapView =
+  | { kind: 'region'; places: readonly CrowdingGroupPlace[]; rule: RuleWords; typeExempt: boolean }
+  | { kind: 'place'; view: CrowdingPlaceView };
+
+/** The dots of a view, the hovered one over the rest. */
+function dotsOf(view: CrowdingMapView, staging: Staging): Drawn[] {
+  if (view.kind === 'region') {
+    return view.places.map(place => ({
+      id: place.membershipId, name: place.name, latitude: place.latitude, longitude: place.longitude,
+      look: STANDING_LOOK[drawnStanding(place, staging)], says: `${place.name}: ${whyWords(place, view.rule, view.typeExempt)}`,
+      layer: 0,
+    }));
+  }
+  const { place, around } = view.view;
+  return [
+    ...around.map(entry => ({
+      id: entry.membershipId, name: entry.name, latitude: entry.latitude, longitude: entry.longitude,
+      look: entry.compared ? COMPARED_LOOK : FADED_LOOK,
+      says: `${entry.name}, ${distanceWords(entry.distanceM)}${entry.compared ? ': better known, compared with it' : ': not compared'}`,
+      layer: entry.compared ? 1 : 0,
+    })),
+    {
+      id: place.membershipId, name: place.name, latitude: place.latitude, longitude: place.longitude,
+      look: PLACE_LOOK, says: place.name, layer: 2,
+    },
+  ];
+}
+
+function Swatch({ look, label }: { look: Look; label: string }) {
+  return (
+    <Stack direction="row" spacing={0.75} alignItems="center">
+      <Box sx={{
+        width: look.size, height: look.size, borderRadius: '50%', boxSizing: 'border-box',
+        bgcolor: look.fill, border: 2, borderColor: look.edge,
+        outline: look.ring ? 2 : 0, outlineStyle: 'solid', outlineColor: look.ring ?? 'transparent',
+      }} />
+      <Typography variant="caption">{label}</Typography>
+    </Stack>
+  );
+}
+
+/** The map's legend, so the colours read the same on the map and in the list. */
+export function CrowdingLegend({ view }: { view: 'region' | 'place' }) {
+  return (
+    <Stack direction="row" columnGap={2} rowGap={0.5} flexWrap="wrap">
+      {view === 'region' ? (
+        <>
+          <Swatch look={STANDING_LOOK.shown} label="on the region page" />
+          <Swatch look={STANDING_LOOK.shadowed} label="shadowed" />
+          <Swatch look={STANDING_LOOK.new} label="new, waiting for a curator" />
+          <Swatch look={STANDING_LOOK.refused} label="not taken" />
+        </>
+      ) : (
+        <>
+          <Swatch look={PLACE_LOOK} label="the place" />
+          <Swatch look={COMPARED_LOOK} label="better known, within its circle: what it is compared with" />
+          <Swatch look={FADED_LOOK} label="not compared" />
+        </>
+      )}
+    </Stack>
+  );
+}
+
+export function CrowdingMap({ view, staging, hovered, frame: frameSx, onHover, onOpen }: {
+  view: CrowdingMapView;
   /** The map's height, lower where the window holds it over the list on a laptop (`crowdingLayout`). */
   frame: SxProps<Theme>;
   staging: Staging;
   hovered: number | null;
-  /** The row a click asked to show, with a count so the same row can be asked again. */
-  shown: { id: number; n: number } | null;
   onHover: (membershipId: number | null) => void;
-  onPick: (membershipId: number) => void;
+  onOpen: (membershipId: number) => void;
 }) {
   const map = useRef<MapRef>(null);
-  const { centre, kind } = around;
+  const place = view.kind === 'place' ? view.view.place : null;
+  const radiusKm = view.kind === 'place' ? view.view.kind.radiusKm : null;
   const ring = useMemo(
-    () => radiusCircle(centre.latitude, centre.longitude, kind.radiusKm),
-    [centre.longitude, centre.latitude, kind.radiusKm],
+    () => (place && radiusKm !== null ? radiusCircle(place.latitude, place.longitude, radiusKm) : null),
+    [place, radiusKm],
   );
-  const frame = useCallback(() => frameGeoJson(map.current, ring, { padding: 16, duration: 0 }), [ring]);
-  // A new place to stand on (a step through a group of arrivals) moves the camera with it.
+  const places = view.kind === 'region' ? view.places : null;
+  const spread = useMemo<GeoJSON.Feature<GeoJSON.MultiPoint> | null>(() => (places && places.length > 0
+    ? { type: 'Feature', properties: {}, geometry: { type: 'MultiPoint', coordinates: places.map(p => [p.longitude, p.latitude]) } }
+    : null), [places]);
+  // The region's places framed, or the place's circle: a view opened moves the camera with it.
+  const frame = useCallback(() => {
+    if (ring) frameGeoJson(map.current, ring, { padding: 16, duration: 400 });
+    else if (spread) frameGeoJson(map.current, spread, { padding: 24, duration: 400, maxZoom: GROUP_MAX_ZOOM });
+  }, [ring, spread]);
   useEffect(() => { frame(); }, [frame]);
-  // A row clicked in the list is on the map: a dot in view stays put, one off it is brought into view at the same zoom.
-  useEffect(() => {
-    const row = shown === null ? undefined : around.rows.find(r => r.membershipId === shown.id);
-    if (row) showDot(map.current, row.longitude, row.latitude);
-  }, [shown, around.rows]);
 
-  /** The hovered dot over every other, the window's place over the rest. */
-  const layerOf = (id: number) => {
-    if (id === hovered) return 2;
-    return id === centre.membershipId ? 1 : 0;
-  };
+  const dots = dotsOf(view, staging);
   // The hovered dot last, so it is drawn over its neighbours rather than under them.
-  const order = around.rows.map((row, index) => ({ row, number: index + 1 }));
-  const drawn = [...order.filter(({ row }) => row.membershipId !== hovered), ...order.filter(({ row }) => row.membershipId === hovered)];
+  const drawn = [...dots.filter(dot => dot.id !== hovered), ...dots.filter(dot => dot.id === hovered)];
+  const start = place ?? places?.[0];
 
   return (
-    <Box>
-      <Box sx={[{ position: 'relative', borderRadius: 1, overflow: 'hidden', border: 1, borderColor: 'divider' }, ...(Array.isArray(frameSx) ? frameSx : [frameSx])]}>
-        <GuardedMap
-          ref={map}
-          initialViewState={{ longitude: centre.longitude, latitude: centre.latitude, zoom: 10 }}
-          mapStyle={MAP_STYLE}
-          style={{ width: '100%', height: '100%' }}
-          onLoad={frame}
-          unavailableCompact
-          unavailableDetail="The list beside it holds every place and its distance; the answers need no map."
-        >
-          <NavigationControl position="top-right" showCompass={false} />
+    <Box sx={[{ position: 'relative', borderRadius: 1, overflow: 'hidden', border: 1, borderColor: 'divider' }, ...(Array.isArray(frameSx) ? frameSx : [frameSx])]}>
+      <GuardedMap
+        ref={map}
+        initialViewState={{ longitude: start?.longitude ?? 0, latitude: start?.latitude ?? 0, zoom: start ? 10 : 1 }}
+        mapStyle={MAP_STYLE}
+        style={{ width: '100%', height: '100%' }}
+        onLoad={frame}
+        unavailableCompact
+        unavailableDetail="The list beside it holds every place; the answers need no map."
+      >
+        <NavigationControl position="top-right" showCompass={false} />
+        {ring && (
           <Source id="crowding-radius" type="geojson" data={ring}>
-            <Layer id="crowding-radius-line" type="line" paint={{ 'line-color': '#5f6b7a', 'line-width': 2, 'line-dasharray': [2, 2] }} />
+            <Layer id="crowding-radius-line" type="line" paint={{ 'line-color': '#e07b00', 'line-width': 2, 'line-dasharray': [2, 2] }} />
           </Source>
-          {drawn.map(({ row, number }) => (
-            <Marker key={row.membershipId} latitude={row.latitude} longitude={row.longitude}
-              style={{ zIndex: layerOf(row.membershipId) }}>
-              <Dot
-                row={row}
-                number={number}
-                standing={drawnStanding(row, staging)}
-                isCentre={row.membershipId === centre.membershipId}
-                hovered={row.membershipId === hovered}
-                onHover={onHover}
-                onPick={onPick}
-              />
-            </Marker>
-          ))}
-        </GuardedMap>
-      </Box>
-      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-        The dashed circle is {kind.radiusKm} km around {centre.name}: the rule counts each place’s better-known
-        neighbours within {kind.radiusKm} km of that place.
-      </Typography>
+        )}
+        {drawn.map(dot => (
+          <Marker key={dot.id} latitude={dot.latitude} longitude={dot.longitude}
+            style={{ zIndex: dot.id === hovered ? 3 : dot.layer }}>
+            <Dot dot={dot} hovered={dot.id === hovered} onHover={onHover} onOpen={onOpen} />
+          </Marker>
+        ))}
+      </GuardedMap>
     </Box>
   );
 }

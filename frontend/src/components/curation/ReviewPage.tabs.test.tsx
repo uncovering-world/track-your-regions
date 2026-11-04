@@ -37,7 +37,7 @@ vi.mock('./crowding/LazyCrowdedCities', () => ({
       <button type="button" onClick={() => onSelect('7-9-square', { replace: true })}>open the first group</button>
       <button
         type="button"
-        onClick={() => onStagings(new Map([['7-9-square', new Map([[14, { answer: 'list', name: 'Schloßplatz', arriving: true }]])]]))}
+        onClick={() => onStagings(new Map([['7-9-square', new Map([[14, { answer: 'list', name: 'Schloßplatz', standing: 'new', crowded: true }]])]]))}
       >
         stage an answer
       </button>

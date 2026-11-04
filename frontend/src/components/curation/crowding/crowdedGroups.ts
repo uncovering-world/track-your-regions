@@ -7,12 +7,12 @@
  */
 
 import type { ShadowedArrivalsGroup } from '../../../api/crowding';
-import { crowdKeyOf } from '../../../utils/appUrl';
+import { crowdGroupOf, crowdKeyOf, type CrowdGroupRef } from '../../../utils/appUrl';
 import { typePluralWord } from '../../../utils/experienceTypes';
 import type { FilterOption } from '../feed/FilterChip';
 import type { Staging } from './crowdingStaging';
 
-/** "Berlin · squares": the group's region and its type's plural, which the window steps through. */
+/** "Berlin · squares": the group's region and its type's plural, as its line in the list names it. */
 export function groupName(group: ShadowedArrivalsGroup): string {
   return `${group.regionName ?? 'No region'} · ${typePluralWord(group.kindId, group.kindName, group.type).toLowerCase()}`;
 }
@@ -128,9 +128,25 @@ export function kindOptions(
   return options(all, within, kindWord, group => group.kindName, key => filters.kinds.includes(key));
 }
 
-/** The group the address names, where the filtered list still holds it; else the list's first, so the window is never empty. */
-export function groupShown(groups: readonly ShadowedArrivalsGroup[], key: string | null): ShadowedArrivalsGroup | undefined {
-  return groups.find(group => crowdKeyOf(group) === key) ?? groups[0];
+/**
+ * The group the window shows: the one the address names where the chips keep
+ * it, or where the whole list does not hold it at all (#2358) — a link to any
+ * group, or one whose last arrival was answered, still has its region's list.
+ * A group the chips hide gives way to the first one they keep, so a chip
+ * changes what is open, and the window is never empty while the list holds a
+ * group.
+ */
+export function groupShown(
+  visible: readonly ShadowedArrivalsGroup[], groups: readonly ShadowedArrivalsGroup[], key: string | null,
+): CrowdGroupRef | undefined {
+  const named = crowdGroupOf(key);
+  if (named) {
+    const namedKey = crowdKeyOf(named);
+    const kept = visible.some(group => crowdKeyOf(group) === namedKey);
+    const listed = groups.some(group => crowdKeyOf(group) === namedKey);
+    if (kept || !listed) return named;
+  }
+  return visible[0];
 }
 
 /**
