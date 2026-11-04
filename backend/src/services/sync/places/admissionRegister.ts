@@ -37,6 +37,13 @@ const derived = <T>(value: T, derivation: string, section: string): Parameter<T>
 
 const NEIGHBOURHOOD_REPORT = 'docs/research/2026-11-02-a-surroundings-neighbourhood-that-follows-density.md';
 
+const TWO_YEAR_REPORT = 'docs/research/2026-11-02-the-admission-frame-over-two-readership-years.md';
+
+/** A value the two-year reading of #2177 confirmed, at ADR-0175's point. */
+const heldOverTwoYears = <T>(value: T, derivation: string, section: string): Parameter<T> => ({
+  value, derivation, evidence: `${TWO_YEAR_REPORT} § ${section}`, date: DERIVED,
+});
+
 const BRIDGES_REPORT = 'docs/research/2026-11-03-a-guide-for-a-bridge-in-the-surroundings-tier.md';
 
 /** A value the bridges measurement of #2324 moved, on the 2177 harness at the live point (ADR-0181). */
@@ -73,9 +80,9 @@ export const WORLD_REGISTER = {
   atlasObscura: derived(true,
     'An Atlas Obscura place ID (P7772) marks a place as a guide does: 147 more places (Florence\'s Porcellino, Munich\'s Glockenspiel), canon 0.850 to 0.852, noise unchanged, the control figure unchanged.',
     'Results, The point'),
-  stayShare: derived(0.8,
-    'A place the last run admitted stays while it reaches 0.8 of any bar: the churn between the two half-years of one readership year falls from 12.3 % to 8.9 %.',
-    'Results, Checks at the point'),
+  stayShare: heldOverTwoYears(0.8,
+    'A place the last run admitted stays while it reaches 0.8 of any bar: between the readership years ending 2025-09 and 2026-09 the share of the set that changes falls from 10.6 % to 5.6 %, where between the two half-years of one year it fell from 12.3 % to 8.9 %.',
+    'Results, Churn by form'),
 } as const;
 
 /**
