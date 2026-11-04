@@ -9,7 +9,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { chordOfKm, densityOf, kmOfChord, SphereIndex, surroundingsOf, type NeighbourSignals, type SpherePoint } from './surroundingsNeighbourhood.js';
+import {
+  chordOfKm, densityNear, densityOf, kmOfChord, SphereIndex, surroundingsNear, surroundingsOf, type NeighbourSignals, type SpherePoint,
+} from './surroundingsNeighbourhood.js';
 import { SURROUNDINGS_CUT, surroundingsVerdict } from './surroundingsCut.js';
 
 /** A degree of latitude in km, on the sphere the distances are read on. */
@@ -29,6 +31,36 @@ function grid(lat: number, lon: number, side: number, stepKm: number): SpherePoi
   }
   return out;
 }
+
+describe('a place measured against the index without being one of its points (#2171)', () => {
+  // Places a kilometre apart along a meridian, and a named place standing where the middle one stands.
+  const line = meridian(50, 10, 41, 1);
+  const signals: NeighbourSignals[] = line.map((_, i) => ({ editions: i, guideEditions: 0, readers: 1_000 * i }));
+  const shape = { radiusKm: 150, best: 3, densityRatio: 4 };
+
+  it('reads its density and surroundings as a point of the index there would, itself among them', () => {
+    const index = new SphereIndex(line);
+    const density = Float64Array.from(line.map((_, i) => densityOf(index, i, 20)));
+    const place = { ...line[20], editions: 99, guideEditions: 5, readers: 500_000 };
+    // Its twentieth-nearest place of the index is ten kilometres off, as the middle point's twentieth other is.
+    expect(densityNear(index, place, 20)).toBeCloseTo(densityOf(index, 20, 20), 6);
+    const near = surroundingsNear(index, signals, density, { ...place, density: densityNear(index, place, 20) }, shape);
+    // Every place of the line, and itself: its own signals lead.
+    expect(near.groupSize).toBe(line.length + 1);
+    expect(near.topEditions).toEqual([99, 40, 39]);
+    expect(near.topGuideEditions).toEqual([5]);
+  });
+
+  it('is no neighbour of any point of the index: their surroundings are the index\'s alone', () => {
+    const index = new SphereIndex(line);
+    const density = Float64Array.from(line.map((_, i) => densityOf(index, i, 20)));
+    const before = surroundingsOf(index, signals, density, 20, shape);
+    // A named place is measured from outside the index, so nothing it is changes the middle point's surroundings.
+    surroundingsNear(index, signals, density, { ...line[20], editions: 99, guideEditions: 5, readers: 500_000, density: 10 }, shape);
+    expect(surroundingsOf(index, signals, density, 20, shape)).toEqual(before);
+    expect(before.groupSize).toBe(line.length);
+  });
+});
 
 describe('the sphere index', () => {
   it('finds every point within a distance and the k-th nearest one, as a scan of every pair does', () => {

@@ -38,7 +38,7 @@ import type { WorldMemory } from './worldBars.js';
  * the catalogue checks read the rule's own answer.
  */
 export type SurroundingsRuleVerdict =
-  | { pass: true; type: string; artwork?: boolean; creators?: string[] }
+  | { pass: true; type: string; artwork?: boolean; creators?: string[]; note?: string }
   | { pass: false; reason: string };
 
 /** A passing verdict, as a builder reads it. */
@@ -57,6 +57,13 @@ export interface SurroundingsKind<Trees, Context = undefined> {
   /** The classes whose instances are the kind's surroundings-tier candidates. */
   classesOf(trees: Trees): ReadonlySet<string>;
   /**
+   * The items the kind measures beside its classes' instances: what an entrance
+   * of the kind named that its verdict decides by the entrance (#2171, the
+   * monuments categories' Mount Rushmore, typed a mountain). They join the
+   * pass's pool, and the kind's group where groups are read by kind or type.
+   */
+  named?(share: KindShare<Trees>): ReadonlySet<string>;
+  /**
    * The type the kind's own rule files a place of `classes` under, for a cut
    * that measures a place among its type's (`neighbours: 'type'`): the rule's
    * answer, with its precedence (a fountain before a sculpture, a clock before
@@ -67,9 +74,11 @@ export interface SurroundingsKind<Trees, Context = undefined> {
    * What the kind's rule needs beside the share, read once per run (what other
    * kinds offer, say), with the survivors of the cut and the share the gather
    * read of them in hand: a kind whose rule reads a source of its own reads it
-   * here, of the survivors alone (Archaeology's map, ADR-0179).
+   * here, of the survivors alone (Archaeology's map, ADR-0179). `sparql` is the
+   * run's door, and `named` the survivors' share of what the kind measures
+   * beside its classes (`named`), whose verdict reads its entrance.
    */
-  context?(survivors: readonly PoolEntity[], share: KindShare<Trees>): Promise<Context>;
+  context?(survivors: readonly PoolEntity[], share: KindShare<Trees>, sparql: SparqlFn, named: ReadonlySet<string>): Promise<Context>;
   /** The kind's own verdict on a survivor of the cut, read off what the gather asked about it by id. */
   verdict(entity: PoolEntity, share: KindShare<Trees>, context: Context): SurroundingsRuleVerdict;
   logPrefix: string;
@@ -85,19 +94,25 @@ export interface SurroundingsArrivals<T = WikidataLandmark> {
 /** A row of the kind's own shape from a survivor: the entity, the classes its rule read, the rule's verdict, the cut's note. */
 export type SurroundingsBuilder<T> = (entity: PoolEntity, classes: string[], verdict: SurroundingsPass, note: string) => T;
 
-/** A landmark of the surroundings tier, as the place sources write one, with what the kind's rule answered beside its type. */
+/**
+ * A landmark of the surroundings tier, as the place sources write one, with
+ * what the kind's rule answered beside its type, and the rule's own note before
+ * the cut's where it has one (the category that named it, #2171).
+ */
 export const surroundingsLandmark: SurroundingsBuilder<WikidataLandmark> = (entity, classes, verdict, note) => ({
   ...placeLandmark(entity, classes, verdict.type as WikidataLandmark['type']),
   ...(verdict.artwork === undefined ? {} : { artwork: verdict.artwork }),
   ...(verdict.creators === undefined ? {} : { creators: verdict.creators }),
   tier: 'surroundings',
-  readershipNote: note,
+  readershipNote: verdict.note ? `${verdict.note} ${note}` : note,
 });
 
 /** The surroundings tier as a classifier carries it: the kind's part, with its trees read off the pass's gather. */
 export interface SurroundingsReader {
   /** The classes whose instances the kind measures: its share of the pass's pool. */
   classes(gathered: GatheredPlaces): ReadonlySet<string>;
+  /** The items it measures beside them (`SurroundingsKind.named`), which join the pass's pool. */
+  named(gathered: GatheredPlaces): ReadonlySet<string>;
   /** The neighbourhoods the cut reads for this kind (`surroundingsGroups`). */
   groups(gathered: GatheredPlaces, cut: SurroundingsCut): SurroundingsGroup[];
   /** `memory` is what the source last read (`worldMemory.ts`), for the guides a run without a usage build cannot read. */
@@ -106,11 +121,14 @@ export interface SurroundingsReader {
 }
 
 export function surroundingsReader<Trees, Context = undefined>(surroundings: SurroundingsKind<Trees, Context>, cut: SurroundingsCut = SURROUNDINGS_CUT): SurroundingsReader {
+  const named = (gathered: GatheredPlaces) => surroundings.named?.(shareOf(gathered, surroundings.kind)) ?? new Set<string>();
   return {
     classes: (gathered) => surroundings.classesOf(shareOf(gathered, surroundings.kind).trees),
-    groups: (gathered, cut) => surroundingsGroups(surroundings, shareOf(gathered, surroundings.kind).trees, cut),
+    named,
+    groups: (gathered, cut) => surroundingsGroups(surroundings, shareOf(gathered, surroundings.kind).trees, cut, named(gathered)),
     arrivals: (run, sparql, gathered, worldAdmitted, pool, held, memory) =>
-      surroundingsArrivals(run, sparql, surroundings, shareOf(gathered, surroundings.kind).trees, worldAdmitted, surroundingsLandmark, pool, held, cut, memory),
+      surroundingsArrivals(run, sparql, surroundings, shareOf(gathered, surroundings.kind).trees, worldAdmitted, surroundingsLandmark, pool, held, cut, memory,
+        named(gathered)),
   };
 }
 
@@ -156,10 +174,18 @@ export function surroundingsGroupKey<Trees>(
   return type === null ? null : `${groupOf(surroundings)}:${type}`;
 }
 
-/** The neighbourhoods the pool reads for a kind under the cut: the whole pool, the kind's places, or one group per type. */
-export function surroundingsGroups<Trees>(surroundings: SurroundingsKind<Trees, unknown>, trees: Trees, cut: SurroundingsCut): SurroundingsGroup[] {
+/**
+ * The neighbourhoods the pool reads for a kind under the cut: the whole pool,
+ * the kind's places, or one group per type. What the kind measures beside its
+ * classes (`named`) is of the kind's group, and of the type the rule files a
+ * place of none of its classes under.
+ */
+export function surroundingsGroups<Trees>(
+  surroundings: SurroundingsKind<Trees, unknown>, trees: Trees, cut: SurroundingsCut, named: ReadonlySet<string> = new Set(),
+): SurroundingsGroup[] {
+  const items = named.size ? { items: named } : {};
   if (cut.neighbours === 'all') return [{ key: 'all', classes: null }];
-  if (cut.neighbours === 'kind') return [{ key: groupOf(surroundings), classes: surroundings.classesOf(trees) }];
+  if (cut.neighbours === 'kind') return [{ key: groupOf(surroundings), classes: surroundings.classesOf(trees), ...items }];
   // Each class of the kind goes to the type the rule files a place of that class
   // under, so a type's neighbours are the places of the classes the rule types so.
   const byType = new Map<string, Set<string>>();
@@ -169,7 +195,8 @@ export function surroundingsGroups<Trees>(surroundings: SurroundingsKind<Trees, 
     if (!byType.has(type)) byType.set(type, new Set());
     byType.get(type)!.add(cls);
   }
-  return [...byType].map(([type, classes]) => ({ key: `${groupOf(surroundings)}:${type}`, classes }));
+  const unclassed = surroundings.typeOf?.([], trees) ?? null;
+  return [...byType].map(([type, classes]) => ({ key: `${groupOf(surroundings)}:${type}`, classes, ...(type === unclassed ? items : {}) }));
 }
 
 /**
@@ -194,10 +221,10 @@ function guidesClause(pool: SurroundingsPool): string {
   return pool.unreadGuides ? '; no Wikivoyage usage is built, so the guides of the places it holds are as last read and no new place enters by a guide' : '';
 }
 
-/** The candidates of the kind's classes the cut admits, with the notes they clear it by. */
+/** The candidates of the kind's classes, and the items it measures beside them, the cut admits, with the notes they clear it by. */
 function survivorsOf<Trees>(
   surroundings: SurroundingsKind<Trees, unknown>, trees: Trees, worldAdmitted: ReadonlySet<string>, pool: SurroundingsPool,
-  held: ReadonlySet<string>, cut: SurroundingsCut, memory?: WorldMemory,
+  held: ReadonlySet<string>, cut: SurroundingsCut, memory?: WorldMemory, named: ReadonlySet<string> = new Set(),
 ): { survivors: string[]; notes: Map<string, string>; fell: Map<string, string>; candidates: number } {
   const classes = surroundings.classesOf(trees);
   const survivors: string[] = [];
@@ -205,7 +232,7 @@ function survivorsOf<Trees>(
   const fell = new Map<string, string>();
   let candidates = 0;
   for (const row of pool.rows.values()) {
-    if (worldAdmitted.has(row.qid) || !row.classes.some((c) => classes.has(c))) continue;
+    if (worldAdmitted.has(row.qid) || !(row.classes.some((c) => classes.has(c)) || named.has(row.qid))) continue;
     const key = surroundingsGroupKey(surroundings, trees, row.classes, cut);
     // A row this tier held that has no surroundings any more (under the cut's
     // languages, under the readers a held place stays at, or of no type where
@@ -261,7 +288,8 @@ async function guidedOnly<P extends { qid: string; entity: PoolEntity; verdict: 
  * live service and none could be read. `memory` is what the source's runs last
  * read (`worldMemory.ts`): where the pool reads no guide's use, a place the
  * tier holds is read by whether a guide used it when last read (ADR-0175
- * decision 6).
+ * decision 6). `named` is what the kind measures beside its classes
+ * (`SurroundingsKind.named`).
  */
 export async function surroundingsArrivals<Trees, Context, T>(
   run: SubjectRunner,
@@ -274,6 +302,7 @@ export async function surroundingsArrivals<Trees, Context, T>(
   held: ReadonlySet<string>,
   cut: SurroundingsCut = SURROUNDINGS_CUT,
   memory?: WorldMemory,
+  named: ReadonlySet<string> = new Set(),
 ): Promise<SurroundingsArrivals<T>> {
   const { logPrefix } = surroundings;
   if (!cut.enabled) {
@@ -291,7 +320,7 @@ export async function surroundingsArrivals<Trees, Context, T>(
     return { ...none<T>(), skipped: pool.unread };
   }
   const { survivors, notes, fell, candidates } = survivorsOf(
-    surroundings as SurroundingsKind<Trees, unknown>, trees, worldAdmitted, pool, held, cut, memory,
+    surroundings as SurroundingsKind<Trees, unknown>, trees, worldAdmitted, pool, held, cut, memory, named,
   );
   console.log(`${logPrefix} Surroundings tier: ${candidates.toLocaleString('en')} candidates of the kind's classes at ${cut.minLanguages}+ editions `
     + `and ${(cut.stayReadersShare * cut.minReaders).toLocaleString('en')}+ readers, `
@@ -305,7 +334,8 @@ export async function surroundingsArrivals<Trees, Context, T>(
   const gathered = await gatherPlaces(run, [{ kind: byId, admitted: new Set([...survivors, ...fell.keys()]) }]);
   const share = shareOf(gathered, byId);
   const asked = survivors.flatMap((qid) => share.pool.get(qid) ?? []);
-  const context = (surroundings.context ? await surroundings.context(asked, share) : undefined) as Context;
+  const namedSurvivors = new Set(survivors.filter((qid) => named.has(qid)));
+  const context = (surroundings.context ? await surroundings.context(asked, share, sparql, namedSurvivors) : undefined) as Context;
   const items: T[] = [];
   const filtered: FilteredEntity[] = [];
   const passed: { qid: string; entity: PoolEntity; verdict: Extract<ReturnType<typeof surroundings.verdict>, { pass: true }> }[] = [];

@@ -123,7 +123,8 @@ export function passKinds(): readonly PassKind[] {
 }
 
 /**
- * The pass's surroundings pool: every place kind's classes, and the museum tree
+ * The pass's surroundings pool: every place kind's classes, what a kind
+ * measures beside them (`SurroundingsReader.named`), and the museum tree
  * beside them. Museums are no kind of the pass, but ADR-0171's measurement
  * counted them among a place's neighbours, and they set the references: the
  * Tretyakov Gallery, used by seven Wikivoyage editions, lifts Moscow's guide
@@ -132,9 +133,13 @@ export function passKinds(): readonly PassKind[] {
  */
 async function surroundingsPoolOf(gathered: GatheredPlaces, sparql: SparqlFn, run: SubjectRunner): Promise<SurroundingsPool> {
   const museums = await fetchClassTree(sparql, MUSEUM_ROOT, 'museum classes');
+  const readers = passKinds().flatMap((kind) => kind.surroundings());
   const groups = SURROUNDINGS_CUT.neighbours === 'all' ? [{ key: 'all', classes: null }]
-    : passKinds().flatMap((kind) => kind.surroundings().flatMap((reader) => reader.groups(gathered, SURROUNDINGS_CUT)));
-  return readSurroundingsPool(new Set([...gathered.classes, ...museums]), SURROUNDINGS_CUT, groups, run);
+    : readers.flatMap((reader) => reader.groups(gathered, SURROUNDINGS_CUT));
+  // What a kind measures beside its classes joins the pool too: the monuments
+  // English Wikipedia files and Wikidata types as something else (#2171).
+  const items = new Set(readers.flatMap((reader) => [...reader.named(gathered)]));
+  return readSurroundingsPool({ classes: new Set([...gathered.classes, ...museums]), items }, SURROUNDINGS_CUT, groups, run);
 }
 
 /** Every row a set of sources' world tier admits before the run: the surroundings tier's rows are its own step's (#2178). */
