@@ -532,7 +532,8 @@ classes, #1989), read against the same pinned floor the rule reads (`COMMEMORATI
 the burial classes (`BURIAL_CLASSES`), which Monuments & memorials lets a commemorative form lift
 too, read from the genre (#1832) — and answers a
 building class the way the rule does, by an artwork class, and a burial class by a
-commemorative class or a commemorative form, which only Monuments & memorials reads (a Public
+commemorative class, a commemorative form or English Wikipedia's monuments categories (#2171),
+which only Monuments & memorials reads (a Public
 art admission of a lifted kill is reported whatever stands with it): not approximated, but read from the
 rule's own answer, which the run stores beside the classes (`wikidataArtwork`, on each kind's
 own membership; a place both kinds admit is named by the first of the two, Public art's
