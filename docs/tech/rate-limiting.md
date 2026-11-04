@@ -32,10 +32,19 @@ Unauthenticated endpoints serving the main UI. Applied to all `optionalAuth` and
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `publicReadLimiter` | 1 min | 60 | World view/region reads, experience browsing, kinds, treasures, geometries |
+| `pictureHoverLimiter` | 1 min | 120 | `GET /api/experiences/:id/picture` (#927) |
 
 **Files using this limiter:**
 - `worldViewRoutes.ts` — every `optional` read (the list, regions, geometries, members, hull params, and the `POST …/division-usage` read)
 - `experienceRoutes.ts` — `GET /kinds`, `GET /region-counts`, `GET /by-region/:id`, `GET /`, `GET /:id`, `GET /:id/locations`, `GET /:id/treasures`, `GET /:id/finds`
+
+`pictureHoverLimiter` is a public read with a budget of its own: the world map's
+hover card asks for one place's picture each time the pointer rests on a pin
+(`useWorldPointInteractions`), which a visitor exploring a city does dozens of
+times a minute. Under `publicReadLimiter` those rests would spend the reads the
+region lists and cards need — the reason `experienceCardQueries.ts` warms
+nothing on hover. Each one reads one indexed row, so its ceiling is twice the
+public read's, and it is fixed rather than read from the environment.
 
 ### 4. Authenticated user (generous)
 
