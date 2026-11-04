@@ -16,7 +16,7 @@ row:
   wikidata_link: tag
   coordinates: all
   languages: [name and name:xx tags]
-  signal: "what the object is tagged as — historic, place, archaeological_site, ruins, boundary, man_made, tourism"
+  signal: "what the object is tagged as — historic, place, archaeological_site, ruins, boundary, man_made (with tower:type and tower:construction), tourism"
 terms:
   licence: "ODbL 1.0"
   database_right: share-alike
@@ -65,7 +65,9 @@ derivative database and is offered under ODbL too (ADR-0134 decision 7). The ODb
 community guidelines that ADR-0059 decision 4 asks a record to quote were read for the first OSM
 connector: `openstreetmap-qlever.md` § What was read on 2026-09-14. They bind the data, whichever door
 it is read through. Its tagging docs covered `wikidata`, `historic=archaeological_site` and that
-tag's secondary key `archaeological_site=*` (with `site_type`, its deprecated spelling). The other keys ADR-0134 decision 2 selects, such as `tourism`, `man_made`,
+tag's secondary key `archaeological_site=*` (with `site_type`, its deprecated spelling). The masts
+and towers Towers reads are covered in § The tagging docs of masts and towers below. The other keys
+ADR-0134 decision 2 selects, such as `tourism` beyond its presence, the other `man_made` values,
 `heritage`, `amenity=place_of_worship` and the protected `boundary` values, have no tagging-doc
 reading yet. Each is owed one before a reader asks by it.
 
@@ -82,7 +84,9 @@ style writes no `user`, `uid` or `changeset` (ADR-0134 decision 2).
 **Status.** `adopted` by #1437. The Archaeology run (`experience_sources` id 5) and its visit questions
 read OpenStreetMap from the layer while a fresh one is in place (`OSM_READER` unset, ADR-0134). The
 misses the layer cannot vouch for are asked live: of Overpass by the run, of the QLever mirror by its
-visit questions.
+visit questions. The Towers run (`experience_sources` id 7) reads the layer alone, to tell a broadcast
+mast from a tower people go up (#2275, § The tagging docs of masts and towers): it asks no live door,
+and where no layer is in place it files no tower as a mast by the map.
 
 **Scorecard notes.**
 - **Completeness: 2.** Every object mapped as of the layer's replication timestamp.
@@ -90,3 +94,41 @@ visit questions.
   the mapped object, which is not always the item the catalogue holds (ADR-0059 decision 4).
 - **Terms: 1.** Share-alike, met by ADR-0059's separable provenance.
 - **Cadence: 2.** Daily diffs; the layer's own interval is set in the admin panel (ADR-0134 decision 6).
+
+## The tagging docs of masts and towers (read on 2026-11-04, #2275)
+
+Read on the OpenStreetMap wiki, whose `/wiki/` pages are open to every agent
+([`site-access.md`](../site-access.md)) and whose text is under CC BY-SA 2.0. Towers reads four tags
+of an object: `man_made`, `tower:type`, `tower:construction` and whether it carries `tourism`.
+
+- **`man_made=mast`** (<https://wiki.openstreetmap.org/wiki/Tag:man_made%3Dmast>): "A mast is a
+  vertical structure built to hold, for example, antennas." A mast "only offers ladder steps to climb
+  it on the outside", where a tower "is accessible and provides platforms", and "High masts may be
+  fastened to ground with guy wires." Being "supported by external guys and anchors" is, the page
+  says, "the only existing definite feature that could be used to differentiate masts and towers."
+- **`man_made=tower`** (<https://wiki.openstreetmap.org/wiki/Tag:man_made%3Dtower>): "A tower is a
+  large free-standing structure which is higher than it is wide", using "no additional external
+  guying and anchoring structures." `viewpoint=yes` says "The tower has a very nice view."
+- **`man_made=communications_tower`**
+  (<https://wiki.openstreetmap.org/wiki/Tag:man_made%3Dcommunications_tower>): "A huge tower for
+  transmitting radio applications", "distinguished by their very large size, and status as a local
+  monument or landmark", "typically >= 100 m". OSM maps the Tallinn, Vilnius and Collserola towers
+  and the Rheinturm so. Towers reads it as a structure beside a point, never as a mast.
+- **`tower:type`** (<https://wiki.openstreetmap.org/wiki/Key:tower:type>): "Describes the type of
+  tower or mast." `communication` is listed for masts ("Communication mast") and towers
+  ("Communication tower"); `observation` ("Observation tower") only for towers.
+- **`tower:construction`** (<https://wiki.openstreetmap.org/wiki/Key:tower:construction>):
+  "Describes the construction of a tower or mast." For a mast: `guyed_lattice` ("Mast constructed
+  from steel in a lattice/truss structure supported by wires to the ground"), `guyed_tube` ("Mast
+  constructed from a solid tube supported by wires to the ground"), `lattice` and `freestanding`.
+  For a tower: `lattice`, `freestanding`, `dish` and `dome`. The guyed values are documented for
+  masts alone.
+
+**What the measurement found** (2026-11-03, read-only on the dev box; the record of the Towers source
+holds the rest, [`wikidata-towers.md`](wikidata-towers.md) § Masts). `man_made=mast` on an object
+that carries the item names no tower a visitor goes up. A guyed construction on a `man_made=tower`
+does: Rozhledna Holedná and Hýlačka are guyed lattice lookouts tagged `tower:type=observation`, so the
+rule reads a guyed construction only on an object with no `tower:type=observation` and no `tourism`
+tag. A plain `lattice` is the Cairo Tower's and Sapporo's construction, and is never read. The masts
+of the United States came into OSM from GNIS as plain `man_made=tower` nodes with no item (KFVS, the
+KCCI Tower), which no tag tells from a tower.
