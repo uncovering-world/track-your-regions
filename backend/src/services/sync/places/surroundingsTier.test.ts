@@ -270,6 +270,51 @@ describe('the surroundings tier over a kind', () => {
     });
   });
 
+  it('measures what the kind names beside its classes, and hands its rule which survivors those are (#2171)', async () => {
+    // Q9, Mount Rushmore as the pool holds it: typed a mountain, named by the kind's entrance.
+    const MOUNTAIN = 'Q8502';
+    const named: SurroundingsPool = {
+      ...pool,
+      rows: new Map([...pool.rows, ['Q9', row('Q9', MOUNTAIN, 20, 2, 30_000)]]),
+      around: new Map([['all', new Map([...pool.around.get('all')!, ['Q9', around]])]]),
+    };
+    gatherModule.shareOf.mockImplementation((g: unknown, k: { name?: string }) => (g === 'gathered-by-id'
+      ? { trees, pool: new Map([['Q2', entity('Q2', 'Asinelli Tower', 9)], ['Q9', entity('Q9', 'Mount Rushmore', 20)]]),
+        facts: new Map([['Q2', { classes: [TOWER] }], ['Q9', { classes: [MOUNTAIN] }]]) }
+      : gathered.shares.get(k as never)));
+    const context = vi.fn(async (_survivors: readonly PoolEntity[], _share: unknown, _sparql: unknown, filed: ReadonlySet<string>) => filed);
+    const byEntrance: SurroundingsKind<typeof trees, ReadonlySet<string>> = {
+      ...surroundings,
+      named: () => new Set(['Q9']),
+      context,
+      verdict: (e, _share, filed) => (filed.has(e.qid)
+        ? { pass: true, type: 'tower', note: 'Named by a category.' }
+        : { pass: true, type: 'tower' }),
+    };
+    const reader = surroundingsReader(byEntrance, ON);
+    expect([...reader.named(gathered as never)]).toEqual(['Q9']);
+    const { items } = await reader.arrivals(run, sparql, gathered as never, new Set(['Q1']), named, new Set());
+    const [, requests] = gatherModule.gatherPlaces.mock.calls[0];
+    expect([...requests[0].admitted].sort()).toEqual(['Q2', 'Q4', 'Q9']);
+    expect([...context.mock.calls[0][3]]).toEqual(['Q9']);
+    // The rule's note before the cut's.
+    expect(items.find((i) => i.qid === 'Q9')?.readershipNote).toMatch(/^Named by a category\. In the surroundings tier by /);
+    // Without the entrance, a mountain is no candidate of the kind.
+    gatherModule.gatherPlaces.mockClear();
+    await surroundingsReader(surroundings, ON).arrivals(run, sparql, gathered as never, new Set(['Q1']), named, new Set());
+    expect([...gatherModule.gatherPlaces.mock.calls[0][1][0].admitted].sort()).toEqual(['Q2', 'Q4']);
+  });
+
+  it('puts what the kind names beside its classes in the kind\'s group, and in the type of a place of none of its classes', () => {
+    const byEntrance = { ...surroundings, named: () => new Set(['Q9']) };
+    const items = new Set(['Q9']);
+    expect(surroundingsGroups(byEntrance, trees, { ...ON, neighbours: 'kind' }, items))
+      .toEqual([{ key: 'towers', classes: trees.tower, items }]);
+    expect(surroundingsGroups(byEntrance, trees, { ...ON, neighbours: 'type' }, items)).toEqual([
+      { key: 'towers:tower', classes: new Set([TOWER]), items }, { key: 'towers:bell-tower', classes: new Set([BELL]) },
+    ]);
+  });
+
   it('asks nothing by id when no candidate clears the cut', async () => {
     const thin: SurroundingsPool = { ...pool, around: new Map([['all', new Map()]]) };
     const result = await surroundingsReader(surroundings, ON).arrivals(run, sparql, gathered as never, new Set(), thin, new Set());

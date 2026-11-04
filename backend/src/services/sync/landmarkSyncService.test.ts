@@ -41,7 +41,8 @@ vi.mock('./publicArt/pipeline.js', () => ({
 const surroundingsArrivals = vi.hoisted(() => vi.fn(async () => ({ items: [], filtered: [] } as { items: never[]; filtered: never[]; skipped?: string })));
 vi.mock('./places/surroundingsTier.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./places/surroundingsTier.js')>()),
-  surroundingsReader: vi.fn(() => ({ arrivals: surroundingsArrivals })),
+  // What a kind measures beside its classes joins the pass's pool (#2171): nothing here.
+  surroundingsReader: vi.fn(() => ({ arrivals: surroundingsArrivals, named: () => new Set() })),
 }));
 // What the source's world tier last read (ADR-0175 decision 6) is its own module's (`places/worldMemory.ts`).
 const history = vi.hoisted(() => ({ memory: { bars: null, readers: new Map(), guided: new Map() }, keep: vi.fn() }));
@@ -65,6 +66,7 @@ vi.mock('./places/gather.js', () => ({
 // worshipSyncService.test.ts and archaeologySyncService.test.ts.
 vi.mock('./worshipSyncService.js', () => ({
   WORSHIP_SOURCE_ID: 4,
+  WORSHIP_SURROUNDINGS: {},
   worshipSource: vi.fn(() => ({ sourceId: 4 })),
 }));
 vi.mock('./archaeologySyncService.js', () => ({ archaeologySource: vi.fn(() => ({ sourceId: 5 })) }));

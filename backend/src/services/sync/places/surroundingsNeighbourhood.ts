@@ -38,6 +38,13 @@ export interface SpherePoint {
   lon: number;
 }
 
+/** A point's unit vector. */
+function unitVector(p: SpherePoint): Float64Array {
+  const lat = (p.lat * Math.PI) / 180;
+  const lon = (p.lon * Math.PI) / 180;
+  return Float64Array.of(Math.cos(lat) * Math.cos(lon), Math.cos(lat) * Math.sin(lon), Math.sin(lat));
+}
+
 /**
  * A static k-d tree over points on the sphere, held as unit vectors: a range
  * question (every point within a chord) and a nearest-neighbour one (the
@@ -55,13 +62,7 @@ export class SphereIndex {
   constructor(points: readonly SpherePoint[]) {
     const n = points.length;
     this.at = new Float64Array(3 * n);
-    points.forEach((p, i) => {
-      const lat = (p.lat * Math.PI) / 180;
-      const lon = (p.lon * Math.PI) / 180;
-      this.at[3 * i] = Math.cos(lat) * Math.cos(lon);
-      this.at[3 * i + 1] = Math.cos(lat) * Math.sin(lon);
-      this.at[3 * i + 2] = Math.sin(lat);
-    });
+    points.forEach((p, i) => { this.at.set(unitVector(p), 3 * i); });
     this.ids = Int32Array.from({ length: n }, (_, i) => i);
     this.coords = this.at.slice();
     if (n > 0) this.build(0, n - 1, 0);
@@ -73,56 +74,81 @@ export class SphereIndex {
 
   /** Every point within `chord` of point `i`, itself included, with its squared chord. */
   forEachWithin(i: number, chord: number, visit: (j: number, chordSquared: number) => void): void {
+    this.within(this.at, 3 * i, chord, visit);
+  }
+
+  /**
+   * Every point of the tree within `chord` of a point that is not one of the
+   * tree's — a place measured against the tree's points without being one of
+   * them (#2171) — with its squared chord.
+   */
+  forEachNear(point: SpherePoint, chord: number, visit: (j: number, chordSquared: number) => void): void {
+    this.within(unitVector(point), 0, chord, visit);
+  }
+
+  /** The chord from point `i` to the `k`-th nearest point of the tree, itself counted first (at nought). */
+  kthChord(i: number, k: number): number {
+    return this.kth(this.at, 3 * i, k);
+  }
+
+  /** The chord from a point that is not one of the tree's to the `k`-th nearest point of the tree. */
+  kthChordNear(point: SpherePoint, k: number): number {
+    return this.kth(unitVector(point), 0, k);
+  }
+
+  /** The range question about the query vector at `q[o..o+2]`. */
+  private within(q: Float64Array, o: number, chord: number, visit: (j: number, chordSquared: number) => void): void {
     const r2 = chord * chord;
     const stack = [0, this.ids.length - 1, 0];
     while (stack.length) {
       const axis = stack.pop()!, right = stack.pop()!, left = stack.pop()!;
       if (right - left <= LEAF) {
-        this.scan(i, left, right, r2, visit);
+        this.scan(q, o, left, right, r2, visit);
         continue;
       }
       const m = (left + right) >> 1;
-      this.scan(i, m, m, r2, visit);
-      const q = this.at[3 * i + axis];
+      this.scan(q, o, m, m, r2, visit);
+      const qa = q[o + axis];
       const c = this.coords[3 * m + axis];
       const next = (axis + 1) % 3;
-      if (q - chord <= c) stack.push(left, m - 1, next);
-      if (q + chord >= c) stack.push(m + 1, right, next);
+      if (qa - chord <= c) stack.push(left, m - 1, next);
+      if (qa + chord >= c) stack.push(m + 1, right, next);
     }
   }
 
-  /** The chord from point `i` to the `k`-th nearest point of the tree, itself counted first (at nought). */
-  kthChord(i: number, k: number): number {
-    const best = new Float64Array(k).fill(Infinity);
-    this.nearest(i, 0, this.ids.length - 1, 0, best);
-    return Math.sqrt(best[k - 1]);
+  /** The nearest-neighbour question about the query vector at `q[o..o+2]`. */
+  private kth(q: Float64Array, o: number, k: number): number {
+    if (k < 1 || this.ids.length === 0) return Infinity;
+    const best = new Float64Array(Math.min(k, this.ids.length)).fill(Infinity);
+    this.nearest(q, o, 0, this.ids.length - 1, 0, best);
+    return Math.sqrt(best[best.length - 1]);
   }
 
-  /** The squared chord from the tree's point at `p` to point `i`. */
-  private squared(p: number, i: number): number {
-    const dx = this.coords[3 * p] - this.at[3 * i];
-    const dy = this.coords[3 * p + 1] - this.at[3 * i + 1];
-    const dz = this.coords[3 * p + 2] - this.at[3 * i + 2];
+  /** The squared chord from the tree's point at `p` to the query vector at `q[o..o+2]`. */
+  private squared(p: number, q: Float64Array, o: number): number {
+    const dx = this.coords[3 * p] - q[o];
+    const dy = this.coords[3 * p + 1] - q[o + 1];
+    const dz = this.coords[3 * p + 2] - q[o + 2];
     return dx * dx + dy * dy + dz * dz;
   }
 
-  /** Visits the tree's points at `left..right` within the squared chord `r2` of point `i`. */
-  private scan(i: number, left: number, right: number, r2: number, visit: (j: number, chordSquared: number) => void): void {
+  /** Visits the tree's points at `left..right` within the squared chord `r2` of the query vector. */
+  private scan(q: Float64Array, o: number, left: number, right: number, r2: number, visit: (j: number, chordSquared: number) => void): void {
     for (let p = left; p <= right; p++) {
-      const d2 = this.squared(p, i);
+      const d2 = this.squared(p, q, o);
       if (d2 <= r2) visit(this.ids[p], d2);
     }
   }
 
-  /** Keeps the `best.length` smallest squared chords to point `i` seen, smallest first. */
-  private nearest(i: number, left: number, right: number, axis: number, best: Float64Array): void {
+  /** Keeps the `best.length` smallest squared chords to the query vector seen, smallest first. */
+  private nearest(q: Float64Array, o: number, left: number, right: number, axis: number, best: Float64Array): void {
     if (right - left <= LEAF) {
-      for (let p = left; p <= right; p++) offer(best, this.squared(p, i));
+      for (let p = left; p <= right; p++) offer(best, this.squared(p, q, o));
       return;
     }
     const m = (left + right) >> 1;
-    offer(best, this.squared(m, i));
-    const delta = this.at[3 * i + axis] - this.coords[3 * m + axis];
+    offer(best, this.squared(m, q, o));
+    const delta = q[o + axis] - this.coords[3 * m + axis];
     const next = (axis + 1) % 3;
     // The near side first, so the far one is mostly pruned by what it found.
     const below = delta < 0;
@@ -130,8 +156,8 @@ export class SphereIndex {
     const nearEnd = below ? m - 1 : right;
     const far = below ? m + 1 : left;
     const farEnd = below ? right : m - 1;
-    this.nearest(i, near, nearEnd, next, best);
-    if (delta * delta <= best[best.length - 1]) this.nearest(i, far, farEnd, next, best);
+    this.nearest(q, o, near, nearEnd, next, best);
+    if (delta * delta <= best[best.length - 1]) this.nearest(q, o, far, farEnd, next, best);
   }
 
   /** Sorts the tree's slice `left..right` around its median on `axis`, then each half on the next axis. */
@@ -217,6 +243,15 @@ export function densityOf(index: SphereIndex, i: number, k: number): number {
   return Math.max(kmOfChord(index.kthChord(i, Math.min(k + 1, index.size))), DENSITY_FLOOR_KM);
 }
 
+/**
+ * The density of a place that is not one of the index's points, as
+ * `densityOf` reads one that is: the distance to its `k`-th nearest point of
+ * the index, floored at `DENSITY_FLOOR_KM`.
+ */
+export function densityNear(index: SphereIndex, point: SpherePoint, k: number): number {
+  return Math.max(kmOfChord(index.kthChordNear(point, Math.min(k, index.size))), DENSITY_FLOOR_KM);
+}
+
 /** A pool place's signals, as the references read them. */
 export interface NeighbourSignals {
   editions: number;
@@ -256,23 +291,52 @@ export function surroundingsOf(
   index: SphereIndex, signals: readonly NeighbourSignals[], density: Float64Array, i: number, shape: NeighbourhoodShape,
   inGroup?: (j: number) => boolean,
 ): Surroundings {
-  const own = density[i];
+  const tally = surroundingsTally(density[i], shape);
+  index.forEachWithin(i, chordOfKm(shape.radiusKm), (j) => {
+    if (j === i) tally.add(signals[j]);
+    else if (!inGroup || inGroup(j)) tally.neighbour(density[j], signals[j]);
+  });
+  return tally.result();
+}
+
+/**
+ * The surroundings of a place measured against the index without being one of
+ * its points (#2171): what English Wikipedia's monuments categories alone
+ * name is measured among the places of the live kinds, and counts in no other
+ * place's surroundings. Read as `surroundingsOf` reads a point of the index,
+ * the place itself among them with its own density and signals.
+ */
+export function surroundingsNear(
+  index: SphereIndex, signals: readonly NeighbourSignals[], density: Float64Array,
+  place: SpherePoint & NeighbourSignals & { density: number }, shape: NeighbourhoodShape, inGroup?: (j: number) => boolean,
+): Surroundings {
+  const tally = surroundingsTally(place.density, shape);
+  tally.add(place);
+  index.forEachNear(place, chordOfKm(shape.radiusKm), (j) => {
+    if (!inGroup || inGroup(j)) tally.neighbour(density[j], signals[j]);
+  });
+  return tally.result();
+}
+
+/** A candidate's surroundings as they are counted: the candidate, then each neighbour of its own density. */
+function surroundingsTally(own: number, shape: NeighbourhoodShape) {
   const low = 1 / shape.densityRatio;
   let groupSize = 0;
   const topEditions: number[] = [];
   const topGuideEditions: number[] = [];
   const topReaders: number[] = [];
-  index.forEachWithin(i, chordOfKm(shape.radiusKm), (j) => {
-    if (j !== i) {
-      if (inGroup && !inGroup(j)) return;
-      const ratio = density[j] / own;
-      if (!(ratio >= low && ratio <= shape.densityRatio)) return;
-    }
+  const add = (s: NeighbourSignals) => {
     groupSize += 1;
-    const s = signals[j];
     keepBest(topEditions, s.editions, shape.best);
     keepBest(topGuideEditions, s.guideEditions, shape.best);
     keepBest(topReaders, s.readers, shape.best);
-  });
-  return { groupSize, topEditions, topGuideEditions, topReaders };
+  };
+  return {
+    add,
+    neighbour: (density: number, s: NeighbourSignals) => {
+      const ratio = density / own;
+      if (ratio >= low && ratio <= shape.densityRatio) add(s);
+    },
+    result: (): Surroundings => ({ groupSize, topEditions, topGuideEditions, topReaders }),
+  };
 }

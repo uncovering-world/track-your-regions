@@ -79,7 +79,7 @@ afterAll(async () => {
 
 describe('the surroundings pool read from the subset (#2178)', () => {
   it('holds the kinds\' items with a point whatever their editions, counted as the runs count them, and the surroundings of those with the cut\'s languages and readers', async () => {
-    const surroundings = await readSurroundingsPool(new Set([TOWER]), CUT, [{ key: 'all', classes: null }], undefined, year, built);
+    const surroundings = await readSurroundingsPool({ classes: new Set([TOWER]) }, CUT, [{ key: 'all', classes: null }], undefined, year, built);
     const all = surroundings.around.get('all')!;
     // Every tower with a point is of the pool, the one-edition tower too; the mast is another class.
     expect([...surroundings.rows.keys()].sort()).toEqual([TWO_TOWERS, PISA, GARISENDA, ASINELLI, PRENDIPARTE, ONE_WIKI].sort());
@@ -101,18 +101,31 @@ describe('the surroundings pool read from the subset (#2178)', () => {
     // Pisa stands alone among the places of its density.
     expect(all.get(PISA)).toEqual({ groupSize: 1, topEditions: [11], topGuideEditions: [4], topReaders: [2_000_000] });
     // In a plain circle of the same radius, Pisa is among the Asinelli's neighbours and sets its best.
-    const circle = await readSurroundingsPool(new Set([TOWER]), { ...CUT, densityRatio: Infinity }, [{ key: 'all', classes: null }], undefined, year);
+    const circle = await readSurroundingsPool({ classes: new Set([TOWER]) }, { ...CUT, densityRatio: Infinity }, [{ key: 'all', classes: null }], undefined, year);
     expect(circle.around.get('all')!.get(ASINELLI)).toEqual({ groupSize: 6, topEditions: [11, 10, 9], topGuideEditions: [4, 3, 1], topReaders: [2_000_000, 90_000, 30_000] });
     expect(surroundings.seconds).toBeGreaterThanOrEqual(0);
   });
 
   it('reads a group over its own classes alone: a neighbourhood of masts holds no tower', async () => {
-    const surroundings = await readSurroundingsPool(new Set([TOWER, MAST]), CUT,
+    const surroundings = await readSurroundingsPool({ classes: new Set([TOWER, MAST]) }, CUT,
       [{ key: 'towers', classes: new Set([TOWER]) }, { key: 'masts', classes: new Set([MAST]) }], undefined, year);
     // The Asinelli's neighbours among towers alone: the five Bologna towers; the mast is not counted.
     expect(surroundings.around.get('towers')!.get(ASINELLI)?.groupSize).toBe(5);
     // The mast has five sitelinks but no Wikipedia edition, so it is under the cut's languages and gets no surroundings.
     expect(surroundings.around.get('masts')!.size).toBe(0);
+  });
+
+  it('holds an item named beside the classes with every class it carries, and counts it in no one\'s surroundings (#2171)', async () => {
+    const MAST_ITEM = 'Q99999902';
+    const surroundings = await readSurroundingsPool({ classes: new Set([TOWER]), items: new Set([MAST_ITEM]) }, CUT,
+      [{ key: 'towers', classes: new Set([TOWER]), items: new Set([MAST_ITEM]) }], undefined, year);
+    // A mast is no class of the pool, and the item is held all the same, typed as it is.
+    expect(surroundings.rows.get(MAST_ITEM)).toEqual({ qid: MAST_ITEM, editions: 0, guideEditions: 0, readers: 0, classes: [MAST], lat: 44.49, lon: 11.35 });
+    // It has no Wikipedia edition, so it is under the cut's languages and gets no surroundings of its own.
+    expect(surroundings.around.get('towers')!.has(MAST_ITEM)).toBe(false);
+    // And it is no neighbour of anyone: it stands among Bologna's towers, and the Asinelli's surroundings are what they are without it.
+    const without = await readSurroundingsPool({ classes: new Set([TOWER]) }, CUT, [{ key: 'towers', classes: new Set([TOWER]) }], undefined, year);
+    expect(surroundings.around.get('towers')!.get(ASINELLI)).toEqual(without.around.get('towers')!.get(ASINELLI));
   });
 
   it('reports its progress and stops between batches when the run is cancelled', async () => {
@@ -122,7 +135,7 @@ describe('the surroundings pool read from the subset (#2178)', () => {
       phase: (m: string) => { phases.push(m); },
       step: async () => { steps += 1; if (steps > 1) throw new Error('Sync cancelled'); },
     };
-    await expect(readSurroundingsPool(new Set([TOWER]), SURROUNDINGS_CUT, [{ key: 'all', classes: null }], run, year)).rejects.toThrow('Sync cancelled');
+    await expect(readSurroundingsPool({ classes: new Set([TOWER]) }, SURROUNDINGS_CUT, [{ key: 'all', classes: null }], run, year)).rejects.toThrow('Sync cancelled');
     expect(phases[0]).toMatch(/Building the surroundings tier's pool/);
     // And it leaves no table behind when stopped.
     const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'surroundings_pool'");
@@ -130,7 +143,7 @@ describe('the surroundings pool read from the subset (#2178)', () => {
   });
 
   it('reads no surroundings where no year of readers is read, says why, and leaves no table behind', async () => {
-    const surroundings = await readSurroundingsPool(new Set([TOWER]), SURROUNDINGS_CUT, [{ key: 'all', classes: null }], undefined, async () => null);
+    const surroundings = await readSurroundingsPool({ classes: new Set([TOWER]) }, SURROUNDINGS_CUT, [{ key: 'all', classes: null }], undefined, async () => null);
     expect(surroundings.rows.size).toBe(0);
     expect(surroundings.around.size).toBe(0);
     expect(surroundings.unread).toMatch(/^No year of readers is read/);
@@ -139,14 +152,14 @@ describe('the surroundings pool read from the subset (#2178)', () => {
   });
 
   it('reads the pool where no Wikivoyage usage is built, and says its guides are not read (ADR-0175 decision 6)', async () => {
-    const surroundings = await readSurroundingsPool(new Set([TOWER]), CUT, [{ key: 'all', classes: null }], undefined, year, async () => false);
+    const surroundings = await readSurroundingsPool({ classes: new Set([TOWER]) }, CUT, [{ key: 'all', classes: null }], undefined, year, async () => false);
     expect(surroundings.unread).toBeUndefined();
     expect(surroundings.unreadGuides).toMatch(/^No Wikivoyage usage is built, so no guide's use is read/);
     expect(surroundings.around.get('all')!.has(ASINELLI)).toBe(true);
   });
 
   it('leaves no table behind once the read is over', async () => {
-    await readSurroundingsPool(new Set([TOWER]), SURROUNDINGS_CUT, [{ key: 'all', classes: null }], undefined, year);
+    await readSurroundingsPool({ classes: new Set([TOWER]) }, SURROUNDINGS_CUT, [{ key: 'all', classes: null }], undefined, year);
     const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'surroundings_pool'");
     expect(left.rows).toEqual([]);
   });

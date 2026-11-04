@@ -34,7 +34,7 @@ import { NOT_WIKIPEDIA } from '../subset/kit.js';
 import type { SurroundingsCut, Surroundings } from './surroundingsCut.js';
 import { yearlyReadersOfMany } from './candidates.js';
 import { latestUsage } from '../../dumps/wikivoyage/usageTables.js';
-import { densityOf, SphereIndex, surroundingsOf } from './surroundingsNeighbourhood.js';
+import { densityNear, densityOf, SphereIndex, surroundingsNear, surroundingsOf } from './surroundingsNeighbourhood.js';
 
 /** An item as the pool holds it. */
 export interface SurroundingsPoolRow {
@@ -54,6 +54,22 @@ export interface SurroundingsGroup {
   key: string;
   /** The classes of the group's places; the whole pool for `all`. */
   classes: ReadonlySet<string> | null;
+  /** The items of the group beside its classes' instances (`PoolMembers.items`). */
+  items?: ReadonlySet<string>;
+}
+
+/**
+ * What the pool holds: every item of `classes` with a point, and every one of
+ * `items` with a point whatever its classes — what an entrance named that the
+ * kind decides by the entrance (#2171: Mount Rushmore, typed a mountain, is a
+ * monument by English Wikipedia's category). An item of `items` of none of
+ * `classes` is measured against the pool's places and is no neighbour of any:
+ * the entrance names towns, roads and airports its kind's rule refuses after,
+ * and the surroundings of every other place stay what the classes make them.
+ */
+export interface PoolMembers {
+  classes: ReadonlySet<string>;
+  items?: ReadonlySet<string>;
 }
 
 /** The pass's surroundings pool, read once: the rows, and each group's surroundings of every row with the cut's languages. */
@@ -106,11 +122,11 @@ const UNREAD_GUIDES = 'No Wikivoyage usage is built, so no guide\'s use is read:
   + 'as last read, and admits no new place by a guide (ADR-0175 decision 6)';
 
 /**
- * Build the pool for `classes` and read every group's candidates' surroundings,
+ * Build the pool of `members` and read every group's candidates' surroundings,
  * in one session that leaves nothing behind.
  */
 export async function readSurroundingsPool(
-  classes: ReadonlySet<string>, cut: SurroundingsCut, groups: readonly SurroundingsGroup[], run?: SurroundingsPoolRun,
+  members: PoolMembers, cut: SurroundingsCut, groups: readonly SurroundingsGroup[], run?: SurroundingsPoolRun,
   readers: PoolReaders = yearOfReaders, usageBuilt: UsageBuilt = usageInPlace,
 ): Promise<SurroundingsPool> {
   const started = Date.now();
@@ -120,19 +136,22 @@ export async function readSurroundingsPool(
     await run?.step();
     // Asked before the pool counts the guides, so the answer is of the usage it counted.
     const guides = await usageBuilt() ? {} : { unreadGuides: UNREAD_GUIDES };
-    await createPool(client, classes);
+    await createPool(client, members);
     if (!(await readPoolReaders(client, readers, run))) {
       return { rows: new Map(), around: new Map(), seconds: Math.round((Date.now() - started) / 1000),
         unread: 'No year of readers is read, so the surroundings tier\'s readers\' floor and readers test cannot be read: '
           + 'the tier is not read this run, and its places keep their standing (ADR-0175 decision 6)' };
     }
-    const result = await client.query<{ qid: string; editions: number; guide_editions: number; readers: string; classes: string[]; lat: number; lon: number }>(
-      `SELECT qid, editions, guide_editions, readers, classes, lat, lon FROM ${TABLE}`,
-    );
-    const list: SurroundingsPoolRow[] = result.rows.map((r) => ({
+    const result = await client.query<{
+      qid: string; editions: number; guide_editions: number; readers: string; classes: string[]; lat: number; lon: number; of_classes: boolean;
+    }>(`SELECT qid, editions, guide_editions, readers, classes, lat, lon, of_classes FROM ${TABLE}`);
+    const rowOf = (r: (typeof result.rows)[number]): SurroundingsPoolRow => ({
       qid: r.qid, editions: r.editions, guideEditions: r.guide_editions, readers: Number(r.readers), classes: r.classes, lat: r.lat, lon: r.lon,
-    }));
-    const rows = new Map(list.map((row) => [row.qid, row]));
+    });
+    // The neighbours are the classes' items alone; an item named beside them is measured, never a neighbour.
+    const list: SurroundingsPoolRow[] = result.rows.filter((r) => r.of_classes).map(rowOf);
+    const named: SurroundingsPoolRow[] = result.rows.filter((r) => !r.of_classes).map(rowOf);
+    const rows = new Map([...list, ...named].map((row) => [row.qid, row]));
     const index = new SphereIndex(list);
     const density = await densitiesOf(index, cut, run);
     // The verdict refuses a place under the languages, or under the readers a
@@ -140,10 +159,16 @@ export async function readSurroundingsPool(
     const floor = cut.stayReadersShare * cut.minReaders;
     const around = new Map<string, ReadonlyMap<string, Surroundings>>();
     for (const group of groups) {
-      const inGroup = (row: SurroundingsPoolRow) => group.classes === null || row.classes.some((c) => group.classes!.has(c));
-      const candidates = list.flatMap((row, i) => (row.editions >= cut.minLanguages && row.readers >= floor && inGroup(row) ? [i] : []));
-      around.set(group.key, await readSurroundings({ index, list, density }, candidates, cut,
-        group.classes === null ? undefined : (j) => inGroup(list[j]), run));
+      const inGroup = (row: SurroundingsPoolRow) => group.classes === null || row.classes.some((c) => group.classes!.has(c))
+        || group.items?.has(row.qid) === true;
+      const measured = (row: SurroundingsPoolRow) => row.editions >= cut.minLanguages && row.readers >= floor && inGroup(row);
+      const candidates = list.flatMap((row, i) => (measured(row) ? [i] : []));
+      const neighbours = group.classes === null ? undefined : (j: number) => inGroup(list[j]);
+      const surroundings = await readSurroundings({ index, list, density }, candidates, cut, neighbours, run);
+      for (const row of named.filter(measured)) {
+        surroundings.set(row.qid, surroundingsNear(index, list, density, { ...row, density: densityNear(index, row, cut.densityNeighbours) }, cut, neighbours));
+      }
+      around.set(group.key, surroundings);
     }
     return { rows, around, seconds: Math.round((Date.now() - started) / 1000), ...guides };
   } finally {
@@ -152,7 +177,7 @@ export async function readSurroundingsPool(
   }
 }
 
-async function createPool(client: PoolClient, classes: ReadonlySet<string>): Promise<void> {
+async function createPool(client: PoolClient, { classes, items = new Set() }: PoolMembers): Promise<void> {
   await client.query(
     `CREATE TEMP TABLE ${TABLE} AS
      WITH points AS (
@@ -166,12 +191,17 @@ async function createPool(client: PoolClient, classes: ReadonlySet<string>): Pro
         ORDER BY p.subject, p.rank DESC, p.statement_id
      ),
      members AS (
-       SELECT c.subject AS qid, array_agg(DISTINCT c.value_item) AS classes
+       -- an item of the classes carries the classes it is of, as before; one
+       -- named beside them and of none carries every class it has, which the
+       -- kind's verdict and the type it is measured among read
+       SELECT c.subject AS qid,
+              array_agg(DISTINCT c.value_item) FILTER (WHERE c.value_item = ANY($1::text[])) AS own,
+              array_agg(DISTINCT c.value_item) AS all_classes
          FROM wikidata_claims c
-        WHERE c.property = 'P31' AND c.rank >= 0 AND c.value_item = ANY($1::text[])
+        WHERE c.property = 'P31' AND c.rank >= 0 AND (c.value_item = ANY($1::text[]) OR c.subject = ANY($3::text[]))
         GROUP BY c.subject
      )
-     SELECT e.id AS qid, ed.n AS editions, m.classes, pt.lat, pt.lon,
+     SELECT e.id AS qid, ed.n AS editions, coalesce(m.own, m.all_classes) AS classes, m.own IS NOT NULL AS of_classes, pt.lat, pt.lon,
             coalesce(g.n, 0) AS guide_editions, 0::bigint AS readers
        FROM wikidata_entities e
        JOIN members m ON m.qid = e.id
@@ -180,7 +210,7 @@ async function createPool(client: PoolClient, classes: ReadonlySet<string>): Pro
        JOIN LATERAL (SELECT count(*)::int AS n FROM wikidata_sitelinks l
                       WHERE l.id = e.id AND l.site LIKE '%wiki' AND l.site <> ALL($2::text[])) ed ON true
        LEFT JOIN (SELECT item, count(DISTINCT site)::int AS n FROM wikivoyage_usage GROUP BY item) g ON g.item = e.id`,
-    [[...classes], NOT_WIKIPEDIA],
+    [[...classes], NOT_WIKIPEDIA, [...items]],
   );
 }
 
