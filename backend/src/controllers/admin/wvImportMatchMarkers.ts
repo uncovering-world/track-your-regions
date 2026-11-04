@@ -4,6 +4,7 @@
  * numbered map (`wvImportMatchGeometryController.ts`).
  */
 
+import { actionApiFetch } from '../../services/wikimediaApi.js';
 import { pool } from '../../db/index.js';
 import { parseMarkers, parseGeoTag } from '../../services/wikivoyageExtract/markerParser.js';
 import { resolveMarkerCoordinates } from '../../services/worldViewImport/pointMatcher.js';
@@ -43,10 +44,9 @@ export async function fetchMarkersForDivisions(
     url.searchParams.set('prop', 'wikitext');
     url.searchParams.set('format', 'json');
 
-    const resp = await fetch(url.toString(), {
+    const resp = await actionApiFetch(url.toString(), {
       headers: { 'User-Agent': userAgent() },
-      signal: AbortSignal.timeout(15000),
-    });
+    }, { retryHeld: true, timeoutMs: 15000 });
 
     if (!resp.ok) return { points, divisionsWithPoints };
 

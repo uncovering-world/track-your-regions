@@ -15,6 +15,7 @@
  * from the point in the same answer, under the project's User-Agent.
  */
 
+import { actionApiFetch } from '../wikimediaApi.js';
 import { namesAPictureFile } from '@tyr/shared/pictures';
 import { abortOn } from './sourceRetry.js';
 import { commonsFilePath } from './componentItemQueries.js';
@@ -88,12 +89,12 @@ export async function commonsPicturesNear(
     iiprop: 'extmetadata',
     iiextmetadatafilter: CREDIT_EXTMETADATA,
   });
-  const { signal, release } = abortOn(NEARBY_TIMEOUT_MS);
+  const { signal, release } = abortOn(null);
   try {
-    const response = await fetch(`${COMMONS_API}?${params}`, {
+    const response = await actionApiFetch(`${COMMONS_API}?${params}`, {
       headers: { Accept: 'application/json', 'User-Agent': userAgent },
       signal,
-    });
+    }, { timeoutMs: NEARBY_TIMEOUT_MS });
     if (!response.ok) throw new Error(`Commons answered ${response.status}`);
     const data = await response.json() as { query?: { pages?: GeoPage[] }; error?: { code?: string; info?: string } };
     // MediaWiki answers a refused request with 200 and an `error`: that is no answer, not "nothing nearby".

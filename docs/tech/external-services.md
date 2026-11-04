@@ -30,7 +30,7 @@ the policy page is the authority.
 | Service | Route | Complies | Open |
 |---|---|---|---|
 | Wikidata Query Service | live, small; bulk from the subset | yes (#1307) | — |
-| Wikimedia Action API (Wikidata, Commons, Wikipedia, Wikivoyage) | live, small | **no** | #2352 |
+| Wikimedia Action API (Wikidata, Commons, Wikipedia, Wikivoyage) | live, small | yes, within one process | — |
 | Commons thumbnails (`Special:FilePath`) | browser | yes | — |
 | dumps.wikimedia.org | dump | **partly** | #2353, #2355 |
 | maps.wikimedia.org geoshapes | none since #2084 | — | — |
@@ -102,13 +102,24 @@ the policy page is the authority.
   - Wikivoyage: `wikivoyageExtract/fetcher.ts` (the AI *suggest children* review),
     `worldViewImport/pointMatcher.ts` `fetchWikitextForPage`, `wvImportMapshapeController.ts`,
     `wvImportMatchMarkers.ts` and the coverage `lookup`. The bulk extraction reads the dump (#2089).
-- *Complies* on identification, batching and `Retry-After` (`sourceRetry.ts`).
-- ***Does not comply*** (#2352):
-  - no process-wide turn, so chains of different sources, the import and the lookup overlap;
-  - no 5 s pause after a slow request;
-  - POST reads without the header;
-  - no `maxlag` sent;
-  - the import's live reads drop a 429.
+- *Complies.* Every caller sends through one turn for the process (`services/wikimediaApi.ts`
+  `actionApiFetch`, #2352):
+  - one request at a time;
+  - a quarter of a second between quick answers, and 5 s after one that took over a second;
+  - a 429's or 503's `Retry-After`, or 5 s where it names none, holds every caller back;
+  - a POST read carries `Promise-Non-Write-API-Action: true`;
+  - `maxlag` goes only where the caller reads its refusal (a 200 with an `error` of `maxlag`) and
+    can wait it out: the shared MediaWiki transport when its wait budget covers the first wait a
+    refusal asks for (a run, not a curator's Save or card) and the coverage `lookup`; the picture
+    credits, the Commons map files and the import's point matcher do not send it yet;
+  - the turn is held until the answer's body has arrived, which the pause after a slow answer counts;
+  - a request's timeout starts when its turn is given, not while it waits for it (`timeoutMs`), and a
+    caller's abort stops its wait for the turn;
+  - the import's live reads, which have no retry of their own, ask once more after the hold
+    (`retryHeld`).
+
+  Identification, batching and the callers' own retries are as before (`sourceRetry.ts`). The turn
+  is per process: the coverage `lookup` runs as a process of its own and keeps its own.
 - *What reaches a model:* English Wikipedia leads read from the `extracts` API (`articleLeads`,
   1,500 characters) are sent to Jev for a visit reading (#1996). The text is CC BY-SA. The read is
   flagged `modelInput`, so a site's `ai-input=no` signal would stop it, and enwiki states none.

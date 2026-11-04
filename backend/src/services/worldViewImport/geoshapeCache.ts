@@ -1,4 +1,5 @@
 import { pool } from '../../db/index.js';
+import { actionApiFetch } from '../wikimediaApi.js';
 import type { PoolClient } from 'pg';
 import { userAgent } from '../../config/userAgent.js';
 import { assertRobotsAllow, RobotsRefusal } from '../robots/robotsSignals.js';
@@ -147,10 +148,11 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
       formatversion: '2',
     }).toString();
     await assertRobotsAllow(url.toString());
-    const response = await fetch(url, {
+    const response = await actionApiFetch(url, {
       headers: { 'User-Agent': USER_AGENT },
-      signal: AbortSignal.timeout(15000),
-    });
+    // No maxlag: a lag refusal here would read as a map that is not there for this
+    // run, and this read has no retry to wait one out.
+    }, { timeoutMs: 15000 });
 
     if (!response.ok) {
       console.warn(`[GeoshapeCache] Commons HTTP ${response.status} for ${commonsFile}`);

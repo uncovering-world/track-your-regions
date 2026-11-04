@@ -25,6 +25,7 @@
  * rule, one wording for a refusal.
  */
 
+import { actionApiFetch } from '../wikimediaApi.js';
 import {
   withRetries, abortOn, exponentialBackoff, backoffFromRetryAfter, RetrySignal, WaitBudget,
   type SourceWait,
@@ -123,6 +124,14 @@ export interface CategoryOptions {
   budget?: WaitBudget;
   /** The door, for the test; defaults to global fetch. */
   fetchImpl?: typeof fetch;
+  /**
+   * Whether the request sends `maxlag` (#2352): only where the caller can wait a
+   * lag refusal out. Unset, that is a caller whose wait budget still covers the
+   * first wait a refusal asks for; a curator's Save or card, asked with no
+   * patience (`WaitBudget(0)`), sends none, since a lag refusal would lose what
+   * it reads.
+   */
+  unattended?: boolean;
   /**
    * How long one ask may take, `CATEGORY_TIMEOUT_MS` unless a caller names a
    * shorter one: a run waits out a slow Wikipedia, while a curator's card
@@ -226,7 +235,8 @@ function redirectedWikipedia(response: Response, from: string): string | null {
 async function postWikipedia(
   endpoint: string, body: URLSearchParams, options: CategoryOptions, signal: AbortSignal,
 ): Promise<Response> {
-  const send = (url: string) => (options.fetchImpl ?? fetch)(url, {
+  // In the process's one Action API turn (#2352), with maxlag where the caller can wait a lag refusal out.
+  const send = (url: string) => actionApiFetch(url, {
     method: 'POST',
     headers: {
       'Accept': 'application/json',
@@ -236,6 +246,9 @@ async function postWikipedia(
     body,
     signal,
     redirect: 'manual',
+  }, {
+    fetchImpl: options.fetchImpl, unattended: options.unattended === true, isCancelled: options.isCancelled,
+    timeoutMs: options.timeoutMs ?? CATEGORY_TIMEOUT_MS,
   });
   await assertRobotsAllow(endpoint, { modelInput: options.modelInput });
   const first = await send(endpoint);
@@ -248,7 +261,7 @@ async function askWikipedia(
   params: Record<string, string>, options: CategoryOptions, attempt: number,
 ): Promise<CategoryAnswer> {
   const body = new URLSearchParams(params);
-  const { signal, release } = abortOn(options.timeoutMs ?? CATEGORY_TIMEOUT_MS, options.isCancelled);
+  const { signal, release } = abortOn(null, options.isCancelled);
   try {
     const response = await postWikipedia(options.endpoint ?? ENWIKI_API, body, options, signal);
     if (!response.ok) await handleHttpError(response, attempt);
@@ -277,7 +290,11 @@ export async function askWikipediaOnce(
   params: Record<string, string>, options: CategoryOptions, budget: WaitBudget, what: string,
 ): Promise<CategoryAnswer> {
   try {
-    return await withRetries((attempt) => askWikipedia(params, options, attempt), {
+    // maxlag only where the budget covers the first wait a lag refusal asks for: with less,
+    // withRetries refuses that wait and the read is lost to a lag it could have outlasted.
+    const firstWait = exponentialBackoff(0, CATEGORY_BACKOFF_CEILING_MS);
+    const asked = { ...options, unattended: options.unattended ?? budget.remainingMs >= firstWait };
+    return await withRetries((attempt) => askWikipedia(params, asked, attempt), {
       logPrefix: LOG_PREFIX, retries: CATEGORY_MAX_RETRIES, budget,
       isCancelled: options.isCancelled, onWait: options.onWait, classify,
     });

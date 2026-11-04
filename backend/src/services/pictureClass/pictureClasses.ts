@@ -12,6 +12,7 @@
  * not classed and uncached, so the next card asks again.
  */
 
+import { actionApiFetch } from '../wikimediaApi.js';
 import { userAgent } from '../../config/userAgent.js';
 import { assertRobotsAllow } from '../robots/robotsSignals.js';
 import { batchTitles, commonsFileName } from '../sync/imageCredit.js';
@@ -75,10 +76,9 @@ async function askCommons(names: string[], deps: Required<Pick<ClassifierDeps, '
   });
   const address = `${COMMONS_API}?${params}`;
   await deps.robots(address);
-  const response = await deps.fetch(address, {
+  const response = await actionApiFetch(address, {
     headers: { Accept: 'application/json', 'User-Agent': userAgent() },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
+  }, { fetchImpl: deps.fetch, timeoutMs: TIMEOUT_MS });
   if (!response.ok) throw new Error(`Commons API error ${response.status}`);
   const data = await response.json() as { query?: { pages?: CommonsPage[] } };
   return data.query?.pages ?? [];

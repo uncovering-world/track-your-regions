@@ -8,6 +8,7 @@
  * Less precise than geoshape matching (score base = 500 vs 1000).
  */
 
+import { actionApiFetch } from '../wikimediaApi.js';
 import { pool } from '../../db/index.js';
 import { parseMarkers, parseGeoTag } from '../wikivoyageExtract/markerParser.js';
 import type { ParsedMarker } from '../wikivoyageExtract/markerParser.js';
@@ -48,10 +49,9 @@ async function fetchWikidataP625Batch(qids: string[]): Promise<WikidataEntities 
   url.searchParams.set('format', 'json');
 
   await assertRobotsAllow(url.toString());
-  const resp = await fetch(url.toString(), {
+  const resp = await actionApiFetch(url.toString(), {
     headers: { 'User-Agent': USER_AGENT },
-    signal: AbortSignal.timeout(30000),
-  });
+  }, { retryHeld: true, timeoutMs: 30000 });
   if (!resp.ok) {
     console.warn(`[PointMatcher] Wikidata API HTTP ${resp.status}`);
     return null;
@@ -156,10 +156,9 @@ async function fetchWikitextForPage(pageTitle: string): Promise<string> {
     url.searchParams.set('format', 'json');
 
     await assertRobotsAllow(url.toString());
-    const resp = await fetch(url.toString(), {
+    const resp = await actionApiFetch(url.toString(), {
       headers: { 'User-Agent': USER_AGENT },
-      signal: AbortSignal.timeout(30000),
-    });
+    }, { retryHeld: true, timeoutMs: 30000 });
     if (!resp.ok) {
       console.warn(`[PointMatcher] Wikivoyage API HTTP ${resp.status} for "${pageTitle}"`);
       return '';

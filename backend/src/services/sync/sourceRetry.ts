@@ -117,11 +117,12 @@ export async function interruptibleDelay(
  * interval behind for every request it abandoned.
  */
 export function abortOn(
-  timeoutMs: number,
+  timeoutMs: number | null,
   isCancelled?: () => boolean,
 ): { signal: AbortSignal; release: () => void } {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  // Null leaves the timeout to the transport that sends: the Action API's turn starts it once the turn is given (#2352).
+  const timeout = timeoutMs === null ? undefined : setTimeout(() => controller.abort(), timeoutMs);
   // A pool band can take most of a minute, and the run is over long before it
   // answers. Aborting hands the socket back rather than waiting out a request
   // whose result nobody will read.

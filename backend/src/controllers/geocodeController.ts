@@ -9,6 +9,7 @@
  * screen, never as the curator types: the policy forbids auto-complete.
  */
 
+import { actionApiFetch } from '../services/wikimediaApi.js';
 import type { z } from 'zod/v4';
 import type { ImageSuggestion, PlaceSearch } from '../api/responses/geocode.js';
 import { badRequest, failure, notFound } from '../middleware/errorHandler.js';
@@ -241,10 +242,10 @@ async function lookupByName(name: string, signal: AbortSignal): Promise<ItemFact
   url.searchParams.set('limit', '3');
   url.searchParams.set('format', 'json');
 
-  const response = await fetch(url.toString(), {
+  const response = await actionApiFetch(url.toString(), {
     headers: { 'User-Agent': USER_AGENT },
     signal,
-  });
+  }, {});
   if (!response.ok) return null;
 
   const data = await response.json() as {

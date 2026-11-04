@@ -24,19 +24,11 @@ import { WaitBudget } from './sourceRetry.js';
 const FILE_PATH = 'http://commons.wikimedia.org/wiki/Special:FilePath/Church%20Of%20Our%20Lady%20Bruges.jpg';
 
 function answer(pages: unknown[]): Response {
-  return {
-    ok: true,
-    status: 200,
-    text: async () => JSON.stringify({ query: { pages } }),
-    json: async () => ({ query: { pages } }),
-    headers: new Headers(),
-  } as unknown as Response;
+  return new Response(JSON.stringify({ query: { pages } }), { status: 200 });
 }
 
 function httpError(status: number): Response {
-  return {
-    ok: false, status, text: async () => 'commons said no', headers: new Headers(),
-  } as unknown as Response;
+  return new Response('commons said no', { status });
 }
 
 const OPTIONS = () => ({ userAgent: 'Test/1.0', budget: new WaitBudget(20000) });

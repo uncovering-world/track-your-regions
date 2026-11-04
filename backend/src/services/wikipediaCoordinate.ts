@@ -17,6 +17,7 @@
  * `Retry-After`; an answer is kept for a day, by article.
  */
 
+import { actionApiFetch } from './wikimediaApi.js';
 import { userAgent } from '../config/userAgent.js';
 
 // No bot marker: a curator opened the dialog and waits on it.
@@ -67,10 +68,9 @@ export async function articleCoordinate(url: string): Promise<ArticleCoordinate 
   })) endpoint.searchParams.set(name, value);
   let answer: ArticleCoordinate | null = null;
   try {
-    const response = await fetch(endpoint.toString(), {
+    const response = await actionApiFetch(endpoint.toString(), {
       headers: { 'User-Agent': USER_AGENT, 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    }, { timeoutMs: REQUEST_TIMEOUT_MS });
     // A refusal or an outage is no coordinate this time, and not remembered.
     if (!response.ok) return null;
     const body = await response.json() as {

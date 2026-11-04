@@ -9,9 +9,14 @@
  * and a batch the API refuses outright.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { resetActionApiTurn } from '../wikimediaApi.js';
+
 import { askWikipediaOnce, fetchWikipediaCategories, enwikiTitleOf } from './wikipediaCategories.js';
 import { WaitBudget, type SourceWait } from './sourceRetry.js';
+
+// Each spec starts with the Action API's turn free: a 429 an earlier one answered holds the next (#2352).
+beforeEach(() => { resetActionApiTurn(); });
 
 const answer = (pages: Record<string, string[]>) => async () => new Response(JSON.stringify({
   query: { pages: Object.fromEntries(Object.entries(pages).map(([title, cats], i) => [
@@ -318,6 +323,31 @@ describe('enwikiTitleOf', () => {
   it('reads an article a row holds without the s, which isStorableHttpUrl allows', () => {
     expect(enwikiTitleOf('http://en.wikipedia.org/wiki/Pergamon_Museum')).toBe('Pergamon Museum');
     expect(enwikiTitleOf('ftp://en.wikipedia.org/wiki/Pergamon_Museum')).toBeNull();
+  });
+});
+
+describe('askWikipediaOnce and maxlag (#2352)', () => {
+  const bodyOf = async (budget: WaitBudget) => {
+    let body: URLSearchParams | undefined;
+    const fetchImpl: typeof fetch = async (_url, init) => {
+      body = new URLSearchParams(String(init?.body));
+      return new Response(JSON.stringify({ query: { pages: [] } }), { status: 200 });
+    };
+    await askWikipediaOnce({ action: 'query', titles: 'Louvre' }, { userAgent: 'test', fetchImpl }, budget, 'a test');
+    return body;
+  };
+
+  it('sends maxlag where the caller can wait a lag refusal out', async () => {
+    expect((await bodyOf(new WaitBudget(60_000)))?.get('maxlag')).toBe('5');
+  });
+
+  it('sends none for a caller with no patience, a curator\'s Save or card', async () => {
+    expect((await bodyOf(new WaitBudget(0)))?.get('maxlag')).toBeNull();
+  });
+
+  it('sends none where the budget left is shorter than the first wait a lag refusal asks for', async () => {
+    expect((await bodyOf(new WaitBudget(4_999)))?.get('maxlag')).toBeNull();
+    expect((await bodyOf(new WaitBudget(5_000)))?.get('maxlag')).toBe('5');
   });
 });
 

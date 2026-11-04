@@ -6,6 +6,7 @@
  * color-coded region assignments.
  */
 
+import { actionApiFetch } from '../../services/wikimediaApi.js';
 import { pool } from '../../db/index.js';
 import { parseMapshapes } from '../../services/wikivoyageExtract/parser.js';
 import { pageNameFromUrl } from '../../services/wikivoyageExtract/pageCopy.js';
@@ -43,10 +44,9 @@ async function fetchWikitext(pageTitle: string): Promise<string | null> {
   url.searchParams.set('rvslots', 'main');
   url.searchParams.set('format', 'json');
 
-  const resp = await fetch(url.toString(), {
+  const resp = await actionApiFetch(url.toString(), {
     headers: { 'User-Agent': USER_AGENT },
-    signal: AbortSignal.timeout(15000),
-  });
+  }, { retryHeld: true, timeoutMs: 15000 });
   if (!resp.ok) return null;
 
   const data = await resp.json() as Record<string, unknown>;

@@ -369,16 +369,10 @@ describe('editExperience and the picture credit', () => {
 
   it('claims the credit when it resolved one', async () => {
     queueQueries({ lockedCurated: [] });
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      headers: new Headers(),
-      text: async () => '',
-      json: async () => ({ query: { pages: [{
-        title: 'File:Bruges.jpg',
-        imageinfo: [{ extmetadata: { Artist: { value: 'Jane Doe' } } }],
-      }] } }),
-    })));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ query: { pages: [{
+      title: 'File:Bruges.jpg',
+      imageinfo: [{ extmetadata: { Artist: { value: 'Jane Doe' } } }],
+    }] } }), { status: 200 })));
 
     await editWith({
       imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Bruges.jpg',
