@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { writeExperienceLocations } from './locationWriter.js';
 
@@ -13,8 +13,10 @@ import { writeExperienceLocations } from './locationWriter.js';
  * own 752 m apart. Wikidata holds two coordinates for the cave, one of them
  * rounded to the arc-minute, and each source reads a different one. The
  * second point is laid down as that earlier run wrote it, since a run writing
- * it now takes the first instead (the last case). Ids and references are the
- * fixture's own, deleted before and after.
+ * it now takes the first instead (the last case). Public art writes as an
+ * ungated run here, its points landing `auto`: the fixture ungates it (a fresh
+ * database seeds it gated, #2335) and gives it its gate back after. Ids and
+ * references are the fixture's own, deleted before and after.
  */
 
 const ALTAMIRA = 9470;
@@ -52,6 +54,16 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id = $1 OR external_id = $2', [ALTAMIRA, QID]);
 }
 
+/** The gate Public art held before the fixture ungated it. */
+let publicArtGated: boolean;
+
+beforeAll(async () => {
+  publicArtGated = (await pool.query<{ requires_curation: boolean }>(
+    "SELECT requires_curation FROM experience_sources WHERE name = 'Public art'",
+  )).rows[0].requires_curation;
+  await pool.query("UPDATE experience_sources SET requires_curation = FALSE WHERE name = 'Public art'");
+});
+
 beforeEach(async () => {
   await clear();
   const sources = await pool.query<{ id: number; kind_id: number; name: string }>(
@@ -86,6 +98,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await clear();
+  await pool.query("UPDATE experience_sources SET requires_curation = $1 WHERE name = 'Public art'", [publicArtGated]);
   await pool.end();
 });
 

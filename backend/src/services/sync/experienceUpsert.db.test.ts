@@ -925,26 +925,34 @@ describe("a kind's own fact, on its membership (ADR-0153, #1775)", () => {
   )).rows[0].facts;
 
   it('is written on the run\'s membership and left off the place', async () => {
-    await upsertExperienceRecord({
-      ...params(artMuseums, LOUVRE_QID, 'Louvre Museum'),
-      metadata: { wikidataQid: LOUVRE_QID, website: 'https://www.louvre.fr/', artworkCount: 12, admissionNote: null },
-    });
+    // An ungated run, whose write lands rather than waiting for a curator: a
+    // fresh database seeds Art Museums gated (#2335), so the spec ungates it.
+    const gated = (await pool.query<{ r: boolean }>('SELECT requires_curation AS r FROM experience_sources WHERE id = $1', [artMuseums])).rows[0].r;
+    await pool.query('UPDATE experience_sources SET requires_curation = FALSE WHERE id = $1', [artMuseums]);
+    try {
+      await upsertExperienceRecord({
+        ...params(artMuseums, LOUVRE_QID, 'Louvre Museum'),
+        metadata: { wikidataQid: LOUVRE_QID, website: 'https://www.louvre.fr/', artworkCount: 12, admissionNote: null },
+      });
 
-    const place = (await pool.query<{ metadata: Record<string, unknown> }>(
-      'SELECT metadata FROM experiences WHERE id = $1', [LOUVRE],
-    )).rows[0].metadata;
-    expect(place).toMatchObject({ website: 'https://www.louvre.fr/' });
-    expect(place).not.toHaveProperty('artworkCount');
-    expect(await factsOf(artMuseums)).toEqual({ artworkCount: 12, admissionNote: null });
-    // The other kind's membership of the place holds none of it.
-    expect(await factsOf(archaeology)).toEqual({});
+      const place = (await pool.query<{ metadata: Record<string, unknown> }>(
+        'SELECT metadata FROM experiences WHERE id = $1', [LOUVRE],
+      )).rows[0].metadata;
+      expect(place).toMatchObject({ website: 'https://www.louvre.fr/' });
+      expect(place).not.toHaveProperty('artworkCount');
+      expect(await factsOf(artMuseums)).toEqual({ artworkCount: 12, admissionNote: null });
+      // The other kind's membership of the place holds none of it.
+      expect(await factsOf(archaeology)).toEqual({});
 
-    // The run's facts are compared with its own membership's: the same pass again changes nothing.
-    const again = await upsertExperienceRecord({
-      ...params(artMuseums, LOUVRE_QID, 'Louvre Museum'),
-      metadata: { wikidataQid: LOUVRE_QID, website: 'https://www.louvre.fr/', artworkCount: 12, admissionNote: null },
-    });
-    expect(again.changeSet.changedFields.map(f => f.field)).not.toContain('metadata.artworkCount');
+      // The run's facts are compared with its own membership's: the same pass again changes nothing.
+      const again = await upsertExperienceRecord({
+        ...params(artMuseums, LOUVRE_QID, 'Louvre Museum'),
+        metadata: { wikidataQid: LOUVRE_QID, website: 'https://www.louvre.fr/', artworkCount: 12, admissionNote: null },
+      });
+      expect(again.changeSet.changedFields.map(f => f.field)).not.toContain('metadata.artworkCount');
+    } finally {
+      await pool.query('UPDATE experience_sources SET requires_curation = $2 WHERE id = $1', [artMuseums, gated]);
+    }
   });
 
   it('is refused on the place by the database, every key of it', async () => {

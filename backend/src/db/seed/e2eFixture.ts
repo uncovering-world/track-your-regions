@@ -10,7 +10,7 @@
  * Two things the lane needs beside the three visible places (#852): a curator
  * who can sign in — the review page is behind `requireCurator`, and no smoke
  * spec signed in before — and something for them to answer: two arrivals under
- * the one gated source `01-schema.sql` seeds (Places of worship,
+ * a gated source `01-schema.sql` seeds (Places of worship,
  * `requires_curation`), `pending` on their memberships, so the review feed opens
  * on exactly two questions and a batch answer has a batch.
  */

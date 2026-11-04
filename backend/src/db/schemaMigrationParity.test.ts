@@ -140,29 +140,11 @@ const splitMigrationRaw = readFileSync(
 const splitMigration = collapse(renamedBy055(splitMigrationRaw));
 
 /**
- * The three sources that predate the gate and must keep publishing on arrival,
- * by the names they had when the gate arrived (migration 018). The guard in
- * both files names them so, and must: a database that reaches it has never run
- * a later migration, so it still holds these names.
+ * The sources a fresh database publishes from on arrival (#2335): the World
+ * Heritage list, UNESCO's own official list, and the record of its components,
+ * which no run of its own writes. Every other seeded source is gated.
  */
-const SOURCES_BEFORE_THE_GATE = [
-  'UNESCO World Heritage Sites',
-  'Top Art Museums',
-  'Public Art & Monuments',
-];
-
-/**
- * The same three rows as `01-schema.sql` seeds them today. Two differ: the
- * museum row is seeded as "Art Museums" since migration 045 renamed it
- * (ADR-0045 §8, #818), and the public-art row as "Public art" since migration
- * 144 split its kind by purpose (#1807), so a fresh database never holds the
- * old names and the seed, not the guard, is where their gate is decided.
- */
-const SEEDED_SOURCES = [
-  'UNESCO World Heritage Sites',
-  'Art Museums',
-  'Public art',
-];
+const UNGATED_SOURCES = ['UNESCO World Heritage Sites', 'World Heritage components'];
 
 /** Where 018 constrained the state column: the object and its three parts. */
 const STATE_TABLES = ['experiences', 'experience_locations', 'experience_treasures', 'treasures'];
@@ -255,81 +237,25 @@ describe('the curation gate exists in both schema homes', () => {
     }
   });
 
-  it('both files state the truth about the three sources that predate the gate', () => {
-    // Leaving them `true` would not record that they publish unread,
-    // it would silently change it — every arrival from the next run invisible
-    // with nobody having decided anything. Named one at a time rather than
-    // blanket-updated, so a source added between either file being written and
-    // being applied is not silently trusted.
-    for (const sql of [schema, migration]) {
-      expect(sql).toContain(
-        'UPDATE experience_sources SET requires_curation = false WHERE name IN (',
-      );
-      for (const name of SOURCES_BEFORE_THE_GATE) {
-        expect(sql).toContain(`'${name}'`);
-      }
-    }
-  });
-
-  it('seeds the museum row under its reader-facing name and keeps the gate guard under its old one', () => {
+  it('seeds the museum row under its reader-facing name', () => {
     // Migration 045 renamed "Top Art Museums" to "Art Museums" (ADR-0045 §8, #818).
     // The seed is where a fresh database learns the row, so it carries the new name;
-    // the guard is reached only by a database that predates migration 018, which
-    // still holds the old name — so both files keep the guard as it was, and the
-    // new name never appears in the migration written before the rename.
+    // a seed still carrying the old one would give a fresh database the row under
+    // both names. The migration written before the rename never names the new one.
     expect(sourceSeeds.length).toBeGreaterThan(0);
     expect(sourceSeeds.some(seed => seed.includes("VALUES ( 'Art Museums',"))).toBe(true);
-    // The old name survives in the schema only inside the guard: a seed still
-    // carrying it would give a fresh database the row under both names.
     for (const seed of sourceSeeds) {
       expect(seed).not.toContain("'Top Art Museums'");
     }
-    expect(schema).not.toContain("'Art Museums', 'Public Art & Monuments')");
     expect(migration).not.toContain("'Art Museums'");
   });
 
-  it('creates the gate column and answers for the three predating sources in one guard, identically in both files', () => {
-    // The whole ordering problem lives here. `schema_migrations` records which
-    // migrations a database has seen (ADR-0041) and nothing records when
-    // `01-schema.sql` was last re-applied to it, so which of these two files
-    // reached the column first is still unknown, and either can be the one:
-    //
-    //  - an unguarded UPDATE re-runs after an admin has gated a source and
-    //    silently un-gates it;
-    //  - an UPDATE guarded only on the column existing is skipped when the other
-    //    file created the column first, leaving all three gated by the
-    //    `DEFAULT true` backfill — and the next run of each publishing nothing a
-    //    reader can see.
-    //
-    // Creating the column and naming those three inside one guard is what makes
-    // both orders and any number of re-applications come out the same. Asserted
-    // as one block, byte-identical in both files, because a copy that drifted in
-    // either direction is the bug.
-    const named = SOURCES_BEFORE_THE_GATE.map(name => `'${name}'`).join(', ');
-    const guard =
-      `DO $$ BEGIN ` +
-      `IF NOT EXISTS ( SELECT 1 FROM information_schema.columns ` +
-      `WHERE table_name = 'experience_sources' AND column_name = 'requires_curation' ` +
-      `) THEN ` +
-      `ALTER TABLE experience_sources ` +
-      `ADD COLUMN requires_curation BOOLEAN NOT NULL DEFAULT true; ` +
-      `UPDATE experience_sources SET requires_curation = false ` +
-      `WHERE name IN (${named}); ` +
-      `END IF; ` +
-      `END $$;`;
-    expect(schema).toContain(guard);
-    expect(migration).toContain(guard);
-  });
-
-  it('never sets requires_curation outside that guard', () => {
-    // An `ADD COLUMN IF NOT EXISTS` for this one column, or a second `UPDATE`
-    // anywhere, reintroduces exactly the ordering hole the guard closes.
-    for (const sql of [schema, migration]) {
-      expect(sql).not.toContain(
-        'ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS requires_curation',
-      );
-      expect(sql.match(/UPDATE experience_sources SET requires_curation/g) ?? []).toHaveLength(1);
-    }
+  it('ungates no source by an update in the schema: each seed states its gate', () => {
+    // A fresh database learns every source's gate from its seed (#2335): the
+    // schema adds the column gated by default, and an UPDATE of it anywhere in the
+    // schema would silently overrule a seed. Migration 018's guard is its own.
+    expect(schema).toContain('ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS requires_curation BOOLEAN NOT NULL DEFAULT true;');
+    expect(schema).not.toMatch(/UPDATE experience_sources SET requires_curation/);
   });
 
   it('every seeded source decides its own gate in 01-schema.sql', () => {
@@ -345,13 +271,15 @@ describe('the curation gate exists in both schema homes', () => {
     for (const seed of seeds) {
       expect(seed).toContain('requires_curation');
     }
-    // Naming the column is not enough: a seed that names it and passes `true`
-    // would gate a source on every fresh database while the migrated one keeps
-    // publishing from it. The three that predate the gate must say `false`.
-    for (const name of SEEDED_SOURCES) {
-      const seed = seeds.find(statement => statement.includes(`'${name}'`));
-      expect(seed, `${name} is not seeded`).toBeDefined();
-      expect(seed, `${name} is seeded gated`).toContain('false');
+    // Naming the column is not enough: what the seed passes is the gate a fresh
+    // database runs with. Every place source is gated on arrival but the World
+    // Heritage list, UNESCO's own official list, and its components' record, a
+    // virtual kind that offers nothing to hold back (#2335, ADR-0156).
+    for (const seed of seeds) {
+      const name = /VALUES \( (?:\d+, )?'([^']+)'/.exec(seed)?.[1];
+      expect(name, `a seed names no source: ${seed.slice(0, 80)}`).toBeDefined();
+      const gated = !UNGATED_SOURCES.includes(name!);
+      expect(seed, `${name} is seeded ${gated ? 'ungated' : 'gated'}`).toMatch(gated ? /, true, \(SELECT|, true, \d+ ?\)/ : /, false, \(SELECT|, false, \d+ ?\)/);
     }
   });
 
