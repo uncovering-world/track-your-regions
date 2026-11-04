@@ -777,6 +777,16 @@ export interface FindSiteLinksRow {
   decided_at: Date | null;
 }
 
+/** The table `gathered_work_venues`. */
+export interface GatheredWorkVenuesRow {
+  work_qid: string;
+  work_label: string;
+  sitelinks: number;
+  venue_qid: string;
+  property: string;
+  read_at: Date;
+}
+
 /** The table `geometry_computations`. */
 export interface GeometryComputationsRow {
   id: number;
@@ -1409,6 +1419,7 @@ export const RELATION_SCHEMAS = {
   experience_visit_suggestions: "public",
   experiences: "public",
   find_site_links: "public",
+  gathered_work_venues: "workbench",
   geometry_computations: "public",
   import_runs: "public",
   membership_crowding: "public",
@@ -1842,6 +1853,9 @@ export const CHECK_VALUES = {
   find_site_links: {
     origin: ["coordinate", "curator"],
     state: ["proposed", "confirmed", "refused"],
+  },
+  gathered_work_venues: {
+    property: ["P195", "P276"],
   },
   geometry_computations: {
     status: ["queued", "running", "success", "failed", "cancelled"],

@@ -83,6 +83,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   experience_visit_questions: 'serving',
   experience_visit_suggestions: 'serving',
   experiences: 'serving',
+  gathered_work_venues: 'workbench',
   geometry_computations: 'serving',
   import_runs: 'serving',
   membership_crowding: 'serving',
