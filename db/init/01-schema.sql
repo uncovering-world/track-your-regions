@@ -5429,6 +5429,19 @@ CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikidata_redirects (
 CREATE INDEX IF NOT EXISTS idx_wikidata_redirects_target ON workbench.wikidata_redirects (target);
 COMMENT ON TABLE workbench.wikidata_redirects IS 'An item Wikidata redirected to another (ADR-0143 decision 3, #1895): the redirect page''s item and the item it points to, from wikidatawiki''s redirect and page tables of one run. A lookup of a place by its item is widened to the items redirected to or from it (withRedirects in backend/src/db/experienceWriter.ts), so a place registered under an item Wikidata has since merged away is still found. Built whole by the wikidata-redirects keeper; read by the runs and the catalogue checks, never by a reader route.';
 
+-- Where the place pass's famous works lie (#1821). See db/migrations/216.
+CREATE TABLE IF NOT EXISTS workbench.gathered_work_venues (
+    work_qid TEXT NOT NULL,
+    work_label TEXT NOT NULL,
+    sitelinks INTEGER NOT NULL,
+    venue_qid TEXT NOT NULL,
+    property TEXT NOT NULL CHECK (property IN ('P195', 'P276')),
+    read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (work_qid, venue_qid, property)
+);
+CREATE INDEX IF NOT EXISTS idx_gathered_work_venues_venue ON workbench.gathered_work_venues (venue_qid);
+COMMENT ON TABLE workbench.gathered_work_venues IS 'Where each famous work of the place pass''s gather of works lies (#1821): every work at ICONIC_RELEASE Wikipedia editions or more that the gather read, not lost and not of unknown whereabouts, and the venues its collection (P195) and location (P276) statements name now, read by the placement''s rule (currentValues, whereaboutsUnknown in museum/placement.ts). Replaced whole by each pass that reads works (places/gatheredWorkVenues.ts), whatever any kind then shows of it, so a work no kind shows still lies in its place; read by the catalogue check that names a place no kind offers holding a famous work, never by a reader route.';
+
 -- The Wikidata items each Wikivoyage edition uses (#1768). See db/migrations/135.
 CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_usage_builds (
     build_id INTEGER PRIMARY KEY REFERENCES workbench.dump_builds(id),
