@@ -42,6 +42,7 @@ import { getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FetchResult, SyncServiceConfig } from './syncContract.js';
 import { readsSubset } from './subset/reader.js';
 import { shareOf, type PlaceGather } from './places/gather.js';
+import { sharedWorksOf } from './places/sharedWorks.js';
 import { ARCHAEOLOGY_SITE_KIND } from './archaeology/sites.js';
 import type { SyncProgress, SyncRunOptions } from './types.js';
 import { admittedExternalIds } from './admission.js';
@@ -168,6 +169,8 @@ async function fetchArchaeologyItems(
           // The sites, and the trees both doors read, come from the pass's
           // gather (#1820); every other question goes through this run's doors.
           sites: async () => shareOf((await gather(progress)).gathered, ARCHAEOLOGY_SITE_KIND),
+          // Its finds are a share of the pass's one gather of works (#1821).
+          works: sharedWorksOf(gather, progress),
           siteWorld: { history },
           // The pass's surroundings pool, read once for every place kind (ADR-0171).
           surroundings: async () => ({ pool: await (await gather(progress)).surroundings(), held: surroundingsSites }),

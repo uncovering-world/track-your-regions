@@ -14,7 +14,10 @@ import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
-import type { FilteredEntity, ProcessItemResult, SyncRunContext } from './syncContract.js';
+import type { FilteredEntity, ProcessItemResult, SyncRunContext, SyncServiceConfig } from './syncContract.js';
+import type { PlaceGather } from './places/gather.js';
+import { sharedWorksOf } from './places/sharedWorks.js';
+import type { SharedWorks } from './museum/worksGather.js';
 import type { ChangeSetResult } from './changeSet.js';
 import type {
   SyncProgress,
@@ -247,6 +250,7 @@ function creditPatch(externalId: string, imageUrl: string | null): { imageCredit
 async function fetchMuseumItems(
   progress: SyncProgress,
   refreshCache: boolean,
+  works?: SharedWorks,
 ): Promise<{
   items: CollectedMuseum[];
   fetchedCount: number;
@@ -268,6 +272,10 @@ async function fetchMuseumItems(
   const sparql = await wikidataRunDoor(MUSEUM_SOURCE_ID, progress, () => collectingSparql(progress, refreshCache));
   const { items, fetched, filtered, refusedContents } = await collectTier1Museums({
     sparql,
+    // In the place pass, its works are a share of the pass's one gather of
+    // works (#1821); what the venue-side read asks after them goes through this
+    // source's own door.
+    works,
     previousPlacements,
     // What other kinds refused as held at a museum (ADR-0102).
     handOvers: await readHandOvers(MUSEUM_SOURCE_ID),
@@ -500,13 +508,14 @@ async function processMuseum(
 // =============================================================================
 
 /**
- * Main sync function - fetches top museums from Wikidata and upserts to database
+ * Art Museums as a run's source: in the place pass (#1821), with its works a
+ * share of the pass's one gather of works; alone, with a gather of its own.
  */
-export function syncMuseums(
-  triggeredBy: number | null,
-  options: SyncRunOptions = {},
-): Promise<void> {
-  return orchestrateSync<CollectedMuseum>({
+export function museumSource(
+  gather: ((progress: SyncProgress) => Promise<PlaceGather>) | null,
+  options: SyncRunOptions,
+): SyncServiceConfig<CollectedMuseum> {
+  return {
     sourceId: MUSEUM_SOURCE_ID,
     logPrefix: LOG_PREFIX,
     // The list length is a property of the data — the museums holding an iconic work — but it
@@ -527,11 +536,24 @@ export function syncMuseums(
     // The one place the run's options reach the collection: everything else the
     // orchestrator threads for us, but the cache is a property of *this* run
     // rather than of the source.
-    fetchItems: (progress) => fetchMuseumItems(progress, options.refreshCache === true),
+    fetchItems: (progress) => fetchMuseumItems(
+      progress, options.refreshCache === true, gather ? sharedWorksOf(gather, progress) : undefined,
+    ),
     processItem: processMuseum,
     getItemName: (m) => m.details?.museumLabel || m.label,
     getItemId: (m) => m.qid,
-  }, triggeredBy, options);
+  };
+}
+
+/**
+ * Art Museums alone, gathering its own works: what a spec runs. The admin
+ * panel starts the place pass, of which Art Museums is a source (`PLACE_PASS`).
+ */
+export function syncMuseums(
+  triggeredBy: number | null,
+  options: SyncRunOptions = {},
+): Promise<void> {
+  return orchestrateSync<CollectedMuseum>(museumSource(null, options), triggeredBy, options);
 }
 
 /**

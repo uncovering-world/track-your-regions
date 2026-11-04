@@ -68,6 +68,8 @@ vi.mock('./worshipSyncService.js', () => ({
   worshipSource: vi.fn(() => ({ sourceId: 4 })),
 }));
 vi.mock('./archaeologySyncService.js', () => ({ archaeologySource: vi.fn(() => ({ sourceId: 5 })) }));
+// The pass's last member, whose run is `museum/pipeline.test.ts`'s and `museumSyncService.*.test.ts`'.
+vi.mock('./museumSyncService.js', () => ({ museumSource: vi.fn(() => ({ sourceId: 2 })) }));
 vi.mock('./archaeology/sites.js', () => ({ ARCHAEOLOGY_SITE_KIND: { name: 'archaeological sites' } }));
 vi.mock('./archaeology/runDoors.js', () => ({ ARCHAEOLOGY_SOURCE_ID: 5 }));
 // The pass's fifth to seventh members, whose rules and lines are
@@ -117,6 +119,8 @@ vi.mock('./wikidataUtils.js', () => ({
   waitMessage: vi.fn(),
   WIKIDATA_USER_AGENT: 'test',
   wikidataDoor: vi.fn(() => vi.fn()),
+  // Read at load by the subset's readers, which the pass's gather of works imports (#1821).
+  LABEL_LANGS: 'en',
 }));
 vi.mock('./imageCredit.js', () => ({
   fetchCommonsCredits: vi.fn().mockResolvedValue(new Map()),
@@ -306,9 +310,9 @@ describe('public art in the place pass', () => {
     expect(art.sourceId).toBe(3);
   });
 
-  it('runs Places of worship, Archaeology, Towers, Bridges and Squares after the public-art kinds, from the one gather they read (#1820, #1854, #1860, #1867)', async () => {
+  it('runs Places of worship, Archaeology, Towers, Bridges, Squares and Art Museums after the public-art kinds, from the one gather they read (#1820, #1854, #1860, #1867, #1821)', async () => {
     await syncPlacePass(1, {});
-    expect(mockedOrchestrate.mock.calls.map((call) => (call[0] as { sourceId: number }).sourceId)).toEqual([3, 6, 4, 5, 7, 8, 9]);
+    expect(mockedOrchestrate.mock.calls.map((call) => (call[0] as { sourceId: number }).sourceId)).toEqual([3, 6, 4, 5, 7, 8, 9, 2]);
 
     const { worshipSource } = await import('./worshipSyncService.js');
     const gather = vi.mocked(worshipSource).mock.calls[0][0];

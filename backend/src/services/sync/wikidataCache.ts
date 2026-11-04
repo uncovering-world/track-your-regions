@@ -170,9 +170,11 @@ export async function setCacheTtl(
  * nothing, and a source that caches nothing says exactly that.
  */
 export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
-  // Art Museums. Every kind but World Heritage also keeps what the visit
-  // witnesses of its offered places read (#1770): their statements, the map
-  // and the photographs.
+  // Art Museums: in the place pass, its works' pool, closures, statements and
+  // lost tree ask under source 3's, with the pass's gather of works (#1821);
+  // the venue-side read asks under its own id. Every kind but World Heritage
+  // also keeps what the visit witnesses of its offered places read (#1770):
+  // their statements, the map and the photographs.
   2: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
   // Public art, whose place pass gathers for every place kind and keeps the
   // answers under this source (ADR-0132 decision 5, #1820).
@@ -180,13 +182,16 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   // Monuments & memorials: its visit witnesses ask under its own id, the
   // gather under source 3's.
   6: ['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos'],
-  // Places of worship: its works and its visit witnesses ask under its own
-  // id, its places under source 3's.
+  // Places of worship: its places and its works' pool, closures, statements
+  // and lost tree ask under source 3's, with the pass's gathers (#1820,
+  // #1821); its venue-side read and its visit witnesses under its own id.
   4: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
   // Archaeology. The museum import's whole set, plus what OpenStreetMap maps
   // at each site candidate (#581), and how many photographs Commons holds of a
-  // place its readership door opens for (#1768). Its site candidates ask
-  // under source 3's, with the place pass's gather (#1820).
+  // place its readership door opens for (#1768). Its site candidates and its
+  // finds' pool ask under source 3's, with the place pass's gathers (#1820,
+  // #1821); its museums, the facts of its finds and the finds under its floor
+  // under its own id.
   5: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
   // Towers: its visit witnesses ask under its own id, the gather under source
   // 3's.

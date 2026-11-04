@@ -7,17 +7,20 @@
  * memorials by their kinds' rules, Places of worship by its door one,
  * Archaeology by its site door, Towers, Bridges & engineering marvels and
  * Squares & streets by their rules, each then by the world bars over its own
- * pool (ADR-0175, ADR-0179, `worldBars.ts`). What a kind reads beyond its
- * places — worship's works and the second door they open, Archaeology's
- * museums and finds, and the map and the Wikipedias its site door asks —
- * stays in its own run, through its own doors.
+ * pool (ADR-0175, ADR-0179, `worldBars.ts`). Art Museums runs last, with no
+ * place of its own: the works of Art Museums, Places of worship and
+ * Archaeology are one gather of works the pass reads when the first of them
+ * asks (#1821, `passWorks.ts`), each kind taking its own share. What a kind
+ * reads beyond that — the venue-side read of what a venue holds,
+ * Archaeology's museums and the finds under its floor, and the map and the
+ * Wikipedias its site door asks — stays in its own run, through its own doors.
  */
 
 import type { SyncProgress, SyncRunOptions } from '../types.js';
 import { admittedExternalIds } from '../admission.js';
 import { wikidataRunDoor } from '../subset/runDoor.js';
 import { passMember, runSyncPass, sharedGather, type PassMember } from '../syncPass.js';
-import { PLACE_PASS, PUBLIC_ART_SOURCES } from '../passes.js';
+import { ART_MUSEUMS_SOURCE_ID, PLACE_PASS, PUBLIC_ART_SOURCES } from '../passes.js';
 import { collectingSparql, liveSparql, placeSource, publicArtSource } from '../landmarkSyncService.js';
 import { TOWERS_CLASSIFIER, TOWERS_KIND, TOWERS_SOURCE_ID } from '../towers/kind.js';
 import { BRIDGES_CLASSIFIER, BRIDGES_KIND, BRIDGES_SOURCE_ID } from '../bridges/kind.js';
@@ -30,8 +33,12 @@ import { PUBLIC_ART_KIND } from '../publicArt/pipeline.js';
 import { WORSHIP_KIND } from '../worship/places.js';
 import { delay, SPARQL_DELAY_MS } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
-import { fetchClassTree, MUSEUM_ROOT, type SparqlFn } from '../wikidataQueries.js';
+import { fetchClassTree, MUSEUM_ROOT, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import { gatherPlaces, type GatheredPlaces, type GatherRequest, type PlaceGather, type PlaceKind } from './gather.js';
+import type { GatheredWorks } from '../museum/worksGather.js';
+import { gatherPassWorks, readMuseumClasses } from './passWorks.js';
+import { fetchTreasureClasses } from '../worship/queries.js';
+import { museumSource } from '../museumSyncService.js';
 import { surroundingsReader, type SurroundingsReader } from './surroundingsTier.js';
 import { publicArtSurroundings, type PlaceClassifier } from '../landmarkSyncService.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE } from '../publicArt/kindRules.js';
@@ -43,8 +50,8 @@ import type { SubjectRunner } from '../publicArt/subjects.js';
 interface PassKind {
   /** The sources it fills, in the pass's order (`PLACE_PASS`). */
   sourceIds: readonly number[];
-  /** The share it reads, with the rows its world tier admits before the run asked for by id. */
-  request(): Promise<GatherRequest>;
+  /** The share it reads, with the rows its world tier admits before the run asked for by id; none for a kind with no place of its own (Art Museums). */
+  request?(): Promise<GatherRequest>;
   /**
    * Its neighbourhoods in the surroundings pool; none where the kind has no surroundings tier.
    * Read when the pool is built, so a run that builds none reads none.
@@ -104,6 +111,13 @@ export function passKinds(): readonly PassKind[] {
     pointKind(TOWERS_SOURCE_ID, TOWERS_KIND, TOWERS_CLASSIFIER),
     pointKind(BRIDGES_SOURCE_ID, BRIDGES_KIND, BRIDGES_CLASSIFIER),
     pointKind(SQUARES_SOURCE_ID, SQUARES_KIND, SQUARES_CLASSIFIER),
+    {
+      // Art Museums gathers no place: its museums are the venues its works lie
+      // in, and its works are a share of the pass's one gather of works (#1821).
+      sourceIds: [ART_MUSEUMS_SOURCE_ID],
+      surroundings: () => [],
+      members: (gather, options) => [passMember(museumSource(gather, options))],
+    },
   ];
   return kinds;
 }
@@ -154,18 +168,47 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
       },
     };
     const requests: GatherRequest[] = [];
-    for (const kind of passKinds()) requests.push(await kind.request());
+    for (const kind of passKinds()) if (kind.request) requests.push(await kind.request());
     const gathered = await gatherPlaces(run, requests);
     // The surroundings tier's pool (ADR-0171, #2178), read once for the pass over
     // every place kind's classes together — a church is measured against the
     // digs and towers around it, as the measurement measured it — and only
     // where the run reads the subset.
     let surroundings: Promise<SurroundingsPool | null> | undefined;
+    let works: Promise<GatheredWorks> | undefined;
+    let museumClasses: Promise<ReadonlySet<string>> | undefined;
+    let treasures: Promise<Record<string, string>> | undefined;
+    // The gather of works is read when a works kind first asks, in that kind's
+    // run, not in the run that made this gather: its phases go to the asking
+    // run's section, and a Cancel of it stops the read.
+    const runnerOf = (asking: SyncProgress): QueryRunner => ({
+      sparql,
+      phase: (message) => { asking.statusMessage = message; },
+      step: async () => {
+        if (asking.cancel) throw new Error('Sync cancelled');
+        if (!readsSubset(sparql)) await delay(SPARQL_DELAY_MS);
+      },
+    });
+    const treasureClasses = (asking: SyncProgress) => {
+      treasures ??= fetchTreasureClasses(runnerOf(asking));
+      return treasures;
+    };
     return {
       gathered, sparql, run,
       surroundings: () => {
         surroundings ??= SURROUNDINGS_CUT.enabled && readsSubset(sparql) ? surroundingsPoolOf(gathered, sparql, run) : Promise.resolve(null);
         return surroundings;
+      },
+      works: {
+        gathered: (asking) => {
+          works ??= treasureClasses(asking).then((classes) => gatherPassWorks(gathered, runnerOf(asking), classes));
+          return works;
+        },
+        museumClasses: (asking) => {
+          museumClasses ??= readMuseumClasses(runnerOf(asking));
+          return museumClasses;
+        },
+        treasureClasses,
       },
     };
   });

@@ -48,7 +48,6 @@ import { realKindSql } from '../../db/membership.js';
 import { waitingCountsBySource } from '../experience/waitingCounts.js';
 import {
   syncUnescoSites,
-  syncMuseums,
   fixMuseumImages,
   fixUnescoImages,
   syncPlacePass,
@@ -109,8 +108,9 @@ const syncRegistry: Record<
   (triggeredBy: number | null, options: SyncRunOptions) => Promise<void>
 > = {
   1: syncUnescoSites,
-  2: syncMuseums,
   // The place pass (ADR-0132, #1820): a start of any of them runs them all.
+  // Art Museums is its last source, for the one gather of works (#1821).
+  2: syncPlacePass,
   3: syncPlacePass,
   6: syncPlacePass,
   4: syncPlacePass,

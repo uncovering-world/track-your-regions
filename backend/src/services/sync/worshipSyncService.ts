@@ -55,6 +55,7 @@ import { readershipDoorFor } from './readershipDoor.js';
 import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 import { shareOf, type PlaceGather } from './places/gather.js';
+import { sharedWorksOf } from './places/sharedWorks.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { mergeSurroundings, surroundingsArrivals, type SurroundingsKind } from './places/surroundingsTier.js';
 import { refuseGone } from './places/gone.js';
@@ -239,9 +240,11 @@ async function fetchWorshipItems(
     handOvers: await readHandOvers(WORSHIP_SOURCE_ID),
     // What English Wikipedia files in each admitted place's collection (ADR-0166).
     articleHoldings: await articleHoldingsReader(LOG_PREFIX),
-    // The places come from the pass's gather (#1820); the works, below, are
-    // read through this source's own door.
+    // The places come from the pass's gather (#1820), and the works are a share
+    // of its one gather of works (#1821); what the venue-side read asks after
+    // them goes through this source's own door.
     places: async () => shareOf((await gather(progress)).gathered, WORSHIP_KIND),
+    works: sharedWorksOf(gather, progress),
     // A work below the line the world reads (ADR-0056), while the gate is on.
     openDoor: await readershipDoorFor(WORSHIP_SOURCE_ID, line.enterSitelinks, LOG_PREFIX),
     onPhase: (message) => { progress.statusMessage = message; },
