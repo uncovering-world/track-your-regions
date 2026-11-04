@@ -805,9 +805,14 @@ export const crowdingWindowQuerySchema = z.object({
   type: z.string().min(1).max(COLUMN_WIDTHS.experience_kind_memberships.type).optional(),
 });
 
-/** The world view whose leaf regions group the shadowed arrivals; the first public one placing each where absent. */
+/**
+ * The world view whose leaf regions group the shadowed arrivals, the first
+ * public one placing each where absent; and the region whose groups are read
+ * (#2349): the groups of the leaves within it, or of no region for `none`.
+ */
 export const shadowedArrivalsQuerySchema = z.object({
   worldViewId: rowIdSchema.optional(),
+  region: z.union([z.literal('none'), rowIdSchema]).optional(),
 });
 
 /**
