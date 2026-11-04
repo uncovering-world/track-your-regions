@@ -22,12 +22,12 @@
  *
  * Commons hands the credit over for free once asked: `extmetadata` for up to
  * 50 files in one request, which is their documented ceiling — with `Artist`,
+ * `Attribution` (the credit the photographer asked for), `AttributionRequired`,
  * `LicenseShortName` and `LicenseUrl` for each.
  *
- * `Artist` arrives as HTML, because it is a wiki field. It is reduced to text
- * here rather than in the browser: it is stored, so it would otherwise be
- * user-supplied markup sitting in our database waiting for the one component
- * that renders something without escaping it.
+ * `Artist` and `Attribution` arrive as HTML, because they are wiki fields, and
+ * are reduced to text and read as a name in `creditAuthor.ts` before anything
+ * is stored.
  */
 
 import {
@@ -44,6 +44,7 @@ import { pool } from '../../db/index.js';
 import { sourcePlacesSql } from '../../db/membership.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 import { assertRobotsAllow } from '../robots/robotsSignals.js';
+import { authorText, creditText, requestedAuthor, storedAuthor } from './creditAuthor.js';
 
 const LOG_PREFIX = '[Image Credit]';
 
@@ -74,10 +75,6 @@ const CREDIT_TIMEOUT_MS = 30000;
 const CREDIT_MAX_RETRIES = 4;
 const CREDIT_BACKOFF_CEILING_MS = 60000;
 
-/** Long enough that a name is a name; short enough that a wiki template is not a paragraph. */
-const CREDIT_MAX_CHARS = 200;
-/** What is even scanned: a credit hiding past 2 kB of markup is not a credit. */
-const CREDIT_INPUT_MAX_CHARS = 2000;
 
 /**
  * A credit as the database holds it: the names, and which picture they are for.
@@ -109,6 +106,14 @@ export interface ImageCredit {
   licenseUrl: string | null;
   /** Where the full terms live — the file page on Commons, or the site's own page. */
   detailsUrl: string | null;
+  /**
+   * Whether the licence asks for the author to be named: Commons'
+   * `AttributionRequired`, false for public domain and CC0 (ADR-0182).
+   *
+   * Absent on a credit stored before it was read, and null where Commons did
+   * not say: the drawing side then reads the licence's name instead.
+   */
+  attributionRequired?: boolean | null;
 }
 
 /**
@@ -161,96 +166,54 @@ export function commonsFilePage(url: string | null | undefined): string | null {
   return name ? `${COMMONS_FILE_PAGE}File:${encodeURIComponent(name.replace(/ /g, '_'))}` : null;
 }
 
-/**
- * The entities a wiki text field actually carries, decoded in **one** pass.
- *
- * One pass and not a chain of replacements, which CodeQL names a
- * double-unescape (js/double-escaping). A chain re-reads its own output:
- * `&amp;lt;` becomes `&lt;` when the ampersand is decoded, and the next
- * replacement then turns that into `<`. So `&amp;lt;b&amp;gt;` — a wiki page
- * displaying the literal text `<b>` — would come out as real markup this
- * function had just finished stripping. A single scan with a
- * lookup cannot do that: the `&` it writes is behind the cursor.
- */
-const ENTITIES: Record<string, string> = {
-  '&nbsp;': ' ',
-  '&amp;': '&',
-  '&lt;': '<',
-  '&gt;': '>',
-  '&quot;': '"',
-  '&apos;': "'",
-  '&#39;': "'",
-  '&#039;': "'",
-};
 
 /**
- * A wiki HTML field as text.
- *
- * Tags dropped, entities decoded, whitespace collapsed, and the result bounded:
- * an `Artist` field can be a whole template with a table in it, and a credit
- * line is one line. Each pattern is anchored on a character class that cannot
- * cross its own delimiter, so none of them can backtrack.
+ * Whether the licence asks for a credit, as Commons says it (`AttributionRequired`):
+ * "false" for public domain and CC0, "true" for CC BY and the rest, and nothing
+ * we can read is no answer.
  */
-export function creditText(html: string | null | undefined): string | null {
-  if (!html) return null;
-  const text = html
-    // Bounded before anything scans it: the field is somebody else's wiki markup
-    // and the answer is one line either way, so the work is capped by
-    // construction rather than by trusting each pattern to stay linear.
-    .slice(0, CREDIT_INPUT_MAX_CHARS)
-    // eslint-disable-next-line sonarjs/slow-regex -- negated class `[^>]*` cannot match past `>`, so the quantifier is committed and cannot backtrack across tag boundaries; the input is capped above regardless
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&(?:nbsp|amp|lt|gt|quot|apos|#0?39);/g, (entity) => ENTITIES[entity] ?? entity)
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!text) return null;
-  return text.length > CREDIT_MAX_CHARS ? `${text.slice(0, CREDIT_MAX_CHARS).trimEnd()}…` : text;
+function attributionRequired(value: string | null | undefined): boolean | null {
+  const said = value?.trim().toLowerCase();
+  if (said === 'true') return true;
+  if (said === 'false') return false;
+  return null;
 }
 
-/** The sentence Commons writes into `Artist` when the uploader named nobody. */
-const NO_AUTHOR_PREFIX = 'No machine-readable author provided.';
-const ASSUMED_SUFFIXES = ['assumed (based on copyright claims).', 'assumed (based on copyright claims)'];
+/** What a credit is read from: the file's `extmetadata`, under these keys. */
+export const CREDIT_EXTMETADATA = 'Artist|Attribution|AttributionRequired|LicenseShortName|LicenseUrl';
 
 /**
- * An `Artist` field as the name of whoever took the picture.
+ * A file's credit out of its `extmetadata` — the one reading, for the run's
+ * credits and for the pictures offered near a point alike.
  *
- * `creditText`, and then one thing it cannot know: where the uploader named
- * nobody, Commons writes a sentence in place of a name — "No machine-readable
- * author provided. Roybb95~commonswiki assumed (based on copyright claims)." —
- * and a reader told that under the Sydney Opera House is told that a machine
- * could not read something. The name between the two halves is the whole of
- * what Commons claims, so it is what the credit says; the account name is kept
- * as Commons spells it, `~commonswiki` included, since that is who the file
- * page names. A field that is nothing but the sentence names nobody, and the
- * line falls back to the licence alone, as it does for a file with no author.
+ * The author is the credit the photographer asked for where they asked for
+ * one, and the `Artist` field otherwise (ADR-0182).
  */
-export function authorText(html: string | null | undefined): string | null {
-  return assumedAuthor(creditText(html));
-}
-
-/**
- * The sentence reduced to the name it assumes, on text already reduced from
- * markup — which is what a stored credit holds, and why this is its own step:
- * `creditText` a second time would decode the entities it already decoded.
- */
-function assumedAuthor(text: string | null): string | null {
-  if (!text?.startsWith(NO_AUTHOR_PREFIX)) return text;
-  let rest = text.slice(NO_AUTHOR_PREFIX.length).trim();
-  const suffix = ASSUMED_SUFFIXES.find((s) => rest.endsWith(s));
-  if (suffix) rest = rest.slice(0, rest.length - suffix.length).trim();
-  return rest || null;
+export function creditFromExtmetadata(
+  meta: Record<string, { value?: string } | undefined>,
+  detailsUrl: string | null,
+): ImageCredit {
+  return {
+    author: requestedAuthor(meta.Attribution?.value) ?? authorText(meta.Artist?.value),
+    license: creditText(meta.LicenseShortName?.value),
+    licenseUrl: safeHttpUrl(meta.LicenseUrl?.value),
+    detailsUrl,
+    attributionRequired: attributionRequired(meta.AttributionRequired?.value),
+  };
 }
 
 /**
  * A stored credit as a run resends it for the same picture: the author read the
- * way a fetched one is (`assumedAuthor`). The UNESCO collector asks Commons
- * only about files new to a row, so a credit stored before the sentence was
- * reduced would otherwise keep it for as long as the row keeps its picture
- * (#747). Not for a claimed picture: the upsert keeps that row's stored credit
- * whatever is sent, so a reduced one would read as a change on every run.
+ * way a fetched one is (`storedAuthor`). The UNESCO collector
+ * asks Commons only about files new to a row, so a credit stored before the
+ * reading changed would otherwise keep the old text for as long as the row
+ * keeps its picture (#747, #2346). Tags a cut left open are dropped, and the
+ * entities are not decoded again: stored text is decoded already. Not for a
+ * claimed picture: the upsert keeps that row's stored credit whatever is sent,
+ * so a reduced one would read as a change on every run.
  */
 function resent(credit: ImageCredit): ImageCredit {
-  const author = assumedAuthor(credit.author);
+  const author = credit.author && storedAuthor(credit.author);
   return author === credit.author ? credit : { ...credit, author };
 }
 
@@ -260,8 +223,8 @@ function resent(credit: ImageCredit): ImageCredit {
  * An allowlist of two schemes rather than a blacklist of the dangerous ones:
  * `LicenseUrl` is a field on a wiki page that anybody may edit, it is stored
  * here and later rendered as an `href`, and `javascript:` is only the best-known
- * of the schemes a blacklist has to remember. `Artist` two functions above is
- * reduced to text for the same reason; this is the same care applied to the
+ * of the schemes a blacklist has to remember. `Artist` is reduced
+ * to text (`creditAuthor.ts`) for the same reason; this is the same care applied to the
  * other half of the same answer.
  *
  * Which two schemes those are is not decided here. `isStorableHttpUrl` holds
@@ -370,7 +333,7 @@ async function askCommons(
     formatversion: '2',
     prop: 'imageinfo',
     iiprop: 'extmetadata',
-    iiextmetadatafilter: 'Artist|LicenseShortName|LicenseUrl',
+    iiextmetadatafilter: CREDIT_EXTMETADATA,
     titles: names.map((n) => `File:${n}`).join('|'),
   });
   await assertRobotsAllow(`${COMMONS_API}?${params}`);
@@ -582,12 +545,7 @@ function readCredit(page: CommonsPage): { name: string; credit: ImageCredit } | 
   const meta = page.imageinfo?.[0]?.extmetadata ?? {};
   return {
     name: page.title.replace(/^File:/, ''),
-    credit: {
-      author: authorText(meta.Artist?.value),
-      license: creditText(meta.LicenseShortName?.value),
-      licenseUrl: safeHttpUrl(meta.LicenseUrl?.value),
-      detailsUrl: null,
-    },
+    credit: creditFromExtmetadata(meta, null),
   };
 }
 

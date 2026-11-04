@@ -18,7 +18,7 @@
 import { namesAPictureFile } from '@tyr/shared/pictures';
 import { abortOn } from './sourceRetry.js';
 import { commonsFilePath } from './componentItemQueries.js';
-import { authorText, creditText, safeHttpUrl, type ImageCredit } from './imageCredit.js';
+import { CREDIT_EXTMETADATA, creditFromExtmetadata, type ImageCredit } from './imageCredit.js';
 
 const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
 const COMMONS_FILE_PAGE = 'https://commons.wikimedia.org/wiki/';
@@ -60,12 +60,7 @@ export function readNearby(pages: readonly GeoPage[]): NearbyPicture[] {
       file,
       url: commonsFilePath(file),
       distanceM: Math.round(distance),
-      credit: {
-        author: authorText(meta.Artist?.value),
-        license: creditText(meta.LicenseShortName?.value),
-        licenseUrl: safeHttpUrl(meta.LicenseUrl?.value),
-        detailsUrl: `${COMMONS_FILE_PAGE}File:${encodeURIComponent(file.replace(/ /g, '_'))}`,
-      },
+      credit: creditFromExtmetadata(meta, `${COMMONS_FILE_PAGE}File:${encodeURIComponent(file.replace(/ /g, '_'))}`),
     });
   }
   return pictures.sort((a, b) => a.distanceM - b.distanceM || a.file.localeCompare(b.file)).slice(0, NEARBY_SHOWN);
@@ -91,7 +86,7 @@ export async function commonsPicturesNear(
     codistancefrompoint: at,
     colimit: 'max',
     iiprop: 'extmetadata',
-    iiextmetadatafilter: 'Artist|LicenseShortName|LicenseUrl',
+    iiextmetadatafilter: CREDIT_EXTMETADATA,
   });
   const { signal, release } = abortOn(NEARBY_TIMEOUT_MS);
   try {

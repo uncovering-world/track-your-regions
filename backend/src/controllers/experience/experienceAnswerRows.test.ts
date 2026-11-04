@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Experience, ExperienceDetail } from '../../api/responses/experiences.js';
 import {
-  experienceDetailOf, experienceOf, treasureOf, type ExperienceDetailRow, type ExperienceListRow, type TreasureRow,
+  creditOf, experienceDetailOf, experienceOf, treasureOf, type ExperienceDetailRow, type ExperienceListRow, type TreasureRow,
 } from './experienceAnswerRows.js';
 
 /** The Acropolis's one kind, as `placeKindsSql` builds it. */
@@ -68,6 +68,13 @@ describe('experienceOf', () => {
   });
 });
 
+describe('creditOf', () => {
+  it('keeps whether Commons says the credit is owed, so a reader drops one it is not', () => {
+    expect(creditOf({ author: null, license: 'No restrictions', licenseUrl: null, detailsUrl: null, attributionRequired: false }))
+      .toEqual({ author: null, license: 'No restrictions', licenseUrl: null, detailsUrl: null, attributionRequired: false });
+  });
+});
+
 describe('treasureOf', () => {
   it('serves a stored credit and find spot by their declared keys only', () => {
     const work = treasureOf({
@@ -82,7 +89,7 @@ describe('treasureOf', () => {
       wikipedia_url: 'https://en.wikipedia.org/wiki/Mask_of_Agamemnon',
       wikipedia_read: true,
     } as TreasureRow);
-    expect(work.image_credit).toEqual({ author: 'A photographer', license: 'CC BY 2.0', licenseUrl: null, detailsUrl: null });
+    expect(work.image_credit).toEqual({ author: 'A photographer', license: 'CC BY 2.0', licenseUrl: null, detailsUrl: null, attributionRequired: null });
     expect(work.found_at).toEqual({ qid: 'Q131594', label: 'Mycenae' });
     expect(work.wikipedia_url).toBe('https://en.wikipedia.org/wiki/Mask_of_Agamemnon');
     expect(work.wikipedia_read).toBe(true);

@@ -118,7 +118,9 @@ describe('getSiteFinds', () => {
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).toContain("t.metadata->'imageCredit' AS image_credit");
     expect(sql).toMatch(/ORDER BY t\.sitelinks_count DESC, t\.id/);
-    expect(res.json).toHaveBeenCalledWith({ experienceId: 14730, finds: [find], total: 1 });
+    // The answer names every key of the credit, the flag of whether it is owed among them.
+    const served = { ...find, image_credit: { ...find.image_credit, attributionRequired: null } };
+    expect(res.json).toHaveBeenCalledWith({ experienceId: 14730, finds: [served], total: 1 });
   });
 });
 
