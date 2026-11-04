@@ -17,15 +17,17 @@ describe('the kinds of the place pass (#2320)', () => {
     expect(passKinds().flatMap((kind) => kind.members(gather, {}).map((member) => member.sourceId))).toEqual(PLACE_PASS);
   });
 
-  it('each ask the gather for a share of their own', async () => {
-    const requests = await Promise.all(passKinds().map((kind) => kind.request()));
-    expect(new Set(requests.map((request) => request.kind)).size).toBe(passKinds().length);
+  it('each ask the gather for a share of their own, all but Art Museums, which gathers no place', async () => {
+    const asking = passKinds().filter((kind) => kind.request);
+    expect(passKinds().filter((kind) => !kind.request).flatMap((kind) => kind.sourceIds)).toEqual([2]);
+    const requests = await Promise.all(asking.map((kind) => kind.request!()));
+    expect(new Set(requests.map((request) => request.kind)).size).toBe(asking.length);
     for (const request of requests) expect(request.admitted.size).toBe(0);
   });
 
-  it('give the surroundings pool the neighbourhoods of every kind with a surroundings tier, Archaeology alone asking the map instead', () => {
+  it('give the surroundings pool the neighbourhoods of every kind with a surroundings tier, Archaeology asking the map instead and Art Museums having none', () => {
     const without = passKinds().filter((kind) => kind.surroundings().length === 0).flatMap((kind) => kind.sourceIds);
-    expect(without).toEqual([5]);
+    expect(without).toEqual([5, 2]);
     const publicArt = passKinds().find((kind) => kind.sourceIds.includes(3));
     expect(publicArt?.surroundings()).toHaveLength(2);
   });

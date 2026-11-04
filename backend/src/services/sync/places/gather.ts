@@ -33,6 +33,7 @@ import { loadSubjects, type SubjectFacts, type SubjectRunner } from '../publicAr
 import type { SurroundingsPool } from './surroundingsPool.js';
 import { readsSubset } from '../subset/reader.js';
 import { WORLD_FRAME } from './admissionRegister.js';
+import type { PassWorks } from '../museum/worksGather.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
@@ -148,6 +149,8 @@ export interface PlaceGather {
   run: SubjectRunner;
   /** The pass's surroundings pool (ADR-0171), read once on first ask; null where the run read the live service. */
   surroundings: () => Promise<SurroundingsPool | null>;
+  /** The pass's one gather of works (#1821), read on first ask through the same door. */
+  works: PassWorks;
 }
 
 /** One kind's share, typed by its declaration. */

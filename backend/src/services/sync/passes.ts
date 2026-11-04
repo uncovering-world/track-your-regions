@@ -14,12 +14,23 @@
 export const PUBLIC_ART_SOURCES: readonly number[] = [3, 6];
 
 /**
- * The place pass (#1820): one gather of the candidate places of every
- * Wikidata place kind (`places/gather.ts`), classified by Public art,
- * Monuments & memorials, Places of worship, Archaeology's sites, Towers,
- * Bridges & engineering marvels and Squares & streets, in that order.
+ * The Wikidata place kinds (#1820): one gather of their candidate places
+ * (`places/gather.ts`), classified by Public art, Monuments & memorials,
+ * Places of worship, Archaeology's sites, Towers, Bridges & engineering
+ * marvels and Squares & streets, in that order.
  */
-export const PLACE_PASS: readonly number[] = [...PUBLIC_ART_SOURCES, 4, 5, 7, 8, 9];
+export const PLACE_KIND_SOURCES: readonly number[] = [...PUBLIC_ART_SOURCES, 4, 5, 7, 8, 9];
+
+/** Art Museums: a works kind with no place of its own to gather, its museums the venues its works lie in. */
+export const ART_MUSEUMS_SOURCE_ID = 2;
+
+/**
+ * The place pass: the place kinds, then Art Museums, which joins them for the
+ * one gather of works it shares with Places of worship and Archaeology
+ * (#1821, `museum/worksGather.ts`). Last, so it reads the works the earlier
+ * kinds of the same pass refused as held at a museum (ADR-0102).
+ */
+export const PLACE_PASS: readonly number[] = [...PLACE_KIND_SOURCES, ART_MUSEUMS_SOURCE_ID];
 
 const SYNC_PASSES: ReadonlyArray<readonly number[]> = [PLACE_PASS];
 

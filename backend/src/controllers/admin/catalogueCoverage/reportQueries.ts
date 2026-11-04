@@ -23,7 +23,7 @@ import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { arrivalWaitingSql } from '../../experience/waitingCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
 import { placePointsSql } from '../../../db/placePoints.js';
-import { PLACE_PASS } from '../../../services/sync/passes.js';
+import { PLACE_KIND_SOURCES } from '../../../services/sync/passes.js';
 
 export type KindRow = Pick<CoverageKindsRow, 'slug' | 'name' | 'form' | 'status' | 'experience_kind_id' | 'issue_number' | 'in_venue'> & {
   /** The sitelinks a place needs to enter this kind's world tier, where its source states one. */
@@ -489,7 +489,7 @@ export async function readCoverageFacts(regionSlugs?: string[]): Promise<Coverag
   const claims = await pool.query<{ present: boolean }>(`SELECT to_regclass('workbench.wikidata_claims') IS NOT NULL AS present`);
   const calibrationStatement = claims.rows[0]?.present ? CALIBRATION_SQL : CALIBRATION_WITHOUT_CLAIMS_SQL;
   const [kinds, regions, expectations, matches, nearby, judgements, unnamed, calibration, calibrationSources] = await Promise.all([
-    pool.query<KindRow>(KINDS_SQL, [PLACE_PASS]),
+    pool.query<KindRow>(KINDS_SQL, [PLACE_KIND_SOURCES]),
     pool.query<RegionRow>(REGIONS_SQL, [only]),
     pool.query<ExpectationRow>(EXPECTATIONS_SQL, [only]),
     pool.query<MatchRow>(MATCHES_SQL, [only]),
