@@ -27722,6 +27722,13 @@
               "string",
               "null"
             ]
+          },
+          "attributionRequired": {
+            "description": "Whether the licence asks for the author to be named (Commons' `AttributionRequired`): false for public domain and CC0, which show no credit. Absent on a credit stored before it was read, and null where Commons did not say; the licence's name decides then.",
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
@@ -27731,7 +27738,7 @@
           "detailsUrl"
         ],
         "additionalProperties": false,
-        "description": "Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043)."
+        "description": "Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043, ADR-0182)."
       },
       "ImageSuggestion": {
         "type": "object",

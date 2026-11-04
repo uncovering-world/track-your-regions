@@ -10,14 +10,15 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  authorText,
   batchTitles,
   commonsFileName,
   commonsFilePage,
-  creditText,
+  creditFromExtmetadata,
   creditToWrite,
   fetchCommonsCredits,
 } from './imageCredit.js';
+import { authorText, cleanAuthor, creditText } from './creditAuthor.js';
+import { FEARLESS_GIRL, FUJI, IPATIEV, PHUKTAL, VALLICELLA } from './imageCredit.fixtures.js';
 import { WaitBudget } from './sourceRetry.js';
 
 const FILE_PATH = 'http://commons.wikimedia.org/wiki/Special:FilePath/Church%20Of%20Our%20Lady%20Bruges.jpg';
@@ -252,6 +253,103 @@ describe('what a run writes about the photographer', () => {
   });
 });
 
+/**
+ * An author field that is a template rather than a name (#2346).
+ *
+ * Read off Commons verbatim (`imageCredit.fixtures.ts`): these five reached the
+ * line raw before, as the sentence around the name, an e-mail address, the
+ * licence's hidden cells, or a tag the input cap cut open.
+ */
+describe('an author field that is a template, not a name', () => {
+  const PAGE = 'https://commons.wikimedia.org/wiki/File:Example.jpg';
+
+  it("reads the photographer's name out of their template, without the e-mail address", () => {
+    // Phuktal Monastery: "This Photo was taken by Timothy A. Gonsalves. Feel
+    // free to use my photos … send me an email tagooty@yahoo.com …". The
+    // initial's full stop is not the sentence's.
+    expect(creditFromExtmetadata(PHUKTAL, PAGE).author).toBe('Timothy A. Gonsalves');
+  });
+
+  it('reads the name and not the credit line the template asks for around it', () => {
+    // The Ipatiev Monastery: "… Please credit this with : Photo : Anton Zelenov in
+    // the immediate vicinity of the image." The line says "© Anton Zelenov".
+    expect(creditFromExtmetadata(IPATIEV, PAGE).author).toBe('Anton Zelenov');
+  });
+
+  it('names nobody where the author field holds only the licence', () => {
+    // Mount Fuji: the licence's hidden cells ("Public domain Public domain false
+    // false") and then its text; nothing in it is a person.
+    const credit = creditFromExtmetadata(FUJI, PAGE);
+    expect(credit.author).toBeNull();
+    expect(credit.license).toBe('Public domain');
+    expect(credit.attributionRequired).toBe(false);
+  });
+
+  it('drops a tag the input cap cut open, rather than showing it as text', () => {
+    // Santa Maria in Vallicella: a 5.6 kB template, cut at 2 kB inside
+    // `<a class="external text" data-mw-original-href=…`.
+    const credit = creditFromExtmetadata(VALLICELLA, PAGE);
+    expect(credit.author).toBe('Wolfgang Moroder');
+    expect(authorText(VALLICELLA.Artist.value)).not.toMatch(/[<>]/);
+  });
+
+  it('uses the credit the photographer asked for, without the licence and the address beside it', () => {
+    // Fearless Girl's `Attribution`: "C.Suthorn / cc-by-sa-4.0 /
+    // commons.wikimedia.org (Note the three necessary links …)". The line names
+    // the licence and links the file page itself.
+    const credit = creditFromExtmetadata(FEARLESS_GIRL, PAGE);
+    expect(credit.author).toBe('C.Suthorn');
+    expect(credit.license).toBe('CC BY-SA 4.0');
+    expect(credit.attributionRequired).toBe(true);
+  });
+
+  it('records whether the licence asks for a credit, and nothing where Commons did not say', () => {
+    expect(creditFromExtmetadata(PHUKTAL, PAGE).attributionRequired).toBe(true);
+    expect(creditFromExtmetadata({ Artist: { value: 'Jane Doe' } }, PAGE).attributionRequired).toBeNull();
+  });
+
+  it('decodes an escaped tag before it strips tags', () => {
+    expect(creditText('&lt;a href="https://example.org"&gt;Jane Doe&lt;/a&gt;')).toBe('Jane Doe');
+  });
+
+  it('keeps a plain name exactly as it is', () => {
+    // The common case, and the one a re-read must leave alone: a changed name
+    // is a change the run files.
+    for (const name of ['Carl Montgomery', 'Stefan Kühn', 'Dr. Avishai Teicher', 'J. R. R. Tolkien', '江戸村のとくぞう']) {
+      expect(cleanAuthor(name)).toBe(name);
+    }
+    expect(cleanAuthor('Photo credit: Andreas Praefcke')).toBe('Andreas Praefcke');
+    expect(cleanAuthor('© Raimond Spekking')).toBe('Raimond Spekking');
+  });
+
+  it('cleans a credit stored with the old reading when a run resends it', () => {
+    // As the development database held them on 2026-11-04. The UNESCO run asks
+    // Commons only about files new to a row, so the stored text is cleaned
+    // where it is resent; and once clean it stays as it is.
+    const SAME = 'http://commons.wikimedia.org/wiki/Special:FilePath/Same.jpg';
+    const stored = (author: string, license = 'CC BY-SA 4.0') => ({
+      credit: { author, license, licenseUrl: null, detailsUrl: null },
+      hasCredit: true, imageUrl: SAME, imageClaimed: false,
+    });
+    const resentAuthor = (author: string, license?: string) =>
+      creditToWrite(undefined, stored(author, license), SAME).imageCredit?.author;
+    expect(resentAuthor('This Photo was taken by Timothy A. Gonsalves . Feel free to use my photos, but please mention '
+      + 'me as the author. I would much appreciate if you send me an email tagooty@yahoo.com or write on my talk pa…'))
+      .toBe('Timothy A. Gonsalves');
+    expect(resentAuthor('This photo was taken by Anton Zelenov . Please credit this with : Photo : Anton Zelenov in the '
+      + 'immediate vicinity of the image. If you use one of my photos, please email me (account needed) or leave m…',
+    'CC BY-SA 3.0')).toBe('Anton Zelenov');
+    expect(resentAuthor('Public domain Public domain false false I, the copyright holder of this work, release this '
+      + 'work into the public domain . This applies worldwide. In some countries this may not be legally possible; if…',
+    'Public domain')).toBeNull();
+    expect(resentAuthor('This Photo was taken by Wolfgang Moroder . Feel free to use my photos, but please mention me as '
+      + 'the author and send me a <a class="external text" data-mw-original-href="http://commons.wikimedia.org/w/…',
+    'CC BY-SA 3.0')).toBe('Wolfgang Moroder');
+    const clean = stored('Michielvd', 'CC BY-SA 3.0');
+    expect(creditToWrite(undefined, clean, SAME).imageCredit).toBe(clean.credit);
+  });
+});
+
 describe('fetchCommonsCredits', () => {
   const page = {
     title: 'File:Church Of Our Lady Bruges.jpg',
@@ -274,6 +372,7 @@ describe('fetchCommonsCredits', () => {
       license: 'CC BY 2.0',
       licenseUrl: 'https://creativecommons.org/licenses/by/2.0',
       detailsUrl: 'https://commons.wikimedia.org/wiki/File:Church_Of_Our_Lady_Bruges.jpg',
+      attributionRequired: null,
     });
   });
 

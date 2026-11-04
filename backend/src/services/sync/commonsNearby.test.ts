@@ -29,6 +29,7 @@ describe('the Commons files offered near a point', () => {
       credit: {
         author: 'Mikkoau', license: 'CC BY-SA 4.0', licenseUrl: null,
         detailsUrl: 'https://commons.wikimedia.org/wiki/File:Paimion_parantola_ravintola.jpg',
+        attributionRequired: null,
       },
     });
   });

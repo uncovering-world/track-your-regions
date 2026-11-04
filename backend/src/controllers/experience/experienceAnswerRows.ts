@@ -36,6 +36,7 @@ export function creditOf(credit: ImageCredit | null): ImageCredit | null {
     license: credit.license ?? null,
     licenseUrl: credit.licenseUrl ?? null,
     detailsUrl: credit.detailsUrl ?? null,
+    attributionRequired: credit.attributionRequired ?? null,
   };
 }
 

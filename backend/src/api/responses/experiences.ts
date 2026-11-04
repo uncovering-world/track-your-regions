@@ -42,7 +42,11 @@ export const ImageCredit = z.strictObject({
   licenseUrl: z.string().nullable(),
   detailsUrl: z.string().nullable()
     .describe("The file page or the site's own page for the object: where the full terms are."),
-}).describe('Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043).');
+  attributionRequired: z.boolean().nullable().optional()
+    .describe('Whether the licence asks for the author to be named (Commons\' `AttributionRequired`): false for public'
+      + ' domain and CC0, which show no credit. Absent on a credit stored before it was read, and null where Commons'
+      + ' did not say; the licence\'s name decides then.'),
+}).describe('Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043, ADR-0182).');
 export type ImageCredit = z.infer<typeof ImageCredit>;
 
 export const WorkVenue = z.strictObject({
