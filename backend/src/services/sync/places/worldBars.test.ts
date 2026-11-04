@@ -66,7 +66,7 @@ describe('worldBars', () => {
       .toEqual([0.97, 0.98, 0.9, 0.8]);
     for (const parameter of Object.values(WORLD_REGISTER)) {
       expect(parameter.derivation.length).toBeGreaterThan(20);
-      expect(parameter.evidence).toMatch(/^docs\/research\/2026-11-02-one-admission-frame-for-the-place-kinds\.md § /);
+      expect(parameter.evidence).toMatch(/^docs\/research\/(2026-11-02-one-admission-frame-for-the-place-kinds|2026-11-02-the-admission-frame-over-two-readership-years)\.md § /);
       expect(parameter.date).toBe('2026-11-02');
     }
   });
