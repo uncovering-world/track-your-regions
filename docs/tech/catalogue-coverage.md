@@ -348,6 +348,10 @@ kind (`coverage_expectation_kinds.type`).
   Monuments & memorials, Towers, Bridges & engineering marvels, and Squares & streets. Under any
   other kind the type is null, and so it is for an entry with no item, an item whose classes the
   subset does not hold, or classes no type of the kind fits; with no subset built nothing is typed.
+  The type is the classes' alone. Where a run reads a type from more than the classes, the filing
+  and the catalogue can differ: Towers files a broadcast mast `mast` from OpenStreetMap's layer
+  (`towers/masts.ts`, #2275), so the KDLT tower, whose only class is "television tower", is an
+  `observation-tower` as a filing and a `mast` in the catalogue.
   The load's last line says how many filings were typed and how many were not, and why.
 
 The load also checks what the reader cannot see: that every `experience_kinds` row has a live
