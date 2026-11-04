@@ -13,6 +13,7 @@ import { MEMBERSHIPS, placeOfferedSql } from '../../../db/membership.js';
 import { linkedForReaderSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import { unreadLinkSql } from '../../experience/waitingCounts.js';
 import { count, text, type AssertionRow, type CatalogueAssertion } from './assertion.js';
+import { ICONIC_SITELINKS } from '../../../services/sync/museum/tier1.js';
 
 /**
  * A work no reader can reach: no place a reader is offered holds it through a
@@ -83,4 +84,73 @@ const workNoOfferedPlaceHolds: CatalogueAssertion = {
   },
 };
 
-export const workAssertions: CatalogueAssertion[] = [workNoOfferedPlaceHolds];
+/**
+ * Whether a reader is offered the place a Wikidata item names: a membership
+ * keyed by the item, or a place that item identifies in the registry
+ * (`place_identifiers`), as a World Heritage site whose membership is keyed by
+ * its listing is identified by its item.
+ */
+const itemOfferedSql = (item: string): string => `(
+  EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m JOIN experiences e ON e.id = m.experience_id
+           WHERE m.external_id = ${item} AND ${placeOfferedSql('e')})
+  OR EXISTS (SELECT 1 FROM place_identifiers pi JOIN experiences e ON e.id = pi.experience_id
+              WHERE pi.scheme = 'wikidata' AND pi.value = ${item} AND pi.identifies AND ${placeOfferedSql('e')}))`;
+
+/** A town or city (Q486972) and an administrative area (Q56061): where a statement put a work, not a place to visit. */
+const HUMAN_SETTLEMENT = 'Q486972';
+const ADMINISTRATIVE_AREA = 'Q56061';
+
+/**
+ * A place no kind offers that holds a famous work no kind shows (#1821).
+ *
+ * The rule above sees only the works some kind once wrote. The place pass
+ * reads every kind's works once, and keeps where each famous one lies
+ * whatever any kind then shows (`workbench.gathered_work_venues`,
+ * `places/gatheredWorkVenues.ts`), so this sees the rest: the Voynich
+ * manuscript at the Beinecke Library, the Book of Kells at Trinity College's
+ * library, the Codex Gigas at the National Library of Sweden, places no kind
+ * is drawn to hold. A work shown on an offered place's card, or offered as a
+ * place of its own, is no loss; a venue that is a town or an administrative
+ * area is where a statement put the work, not a place to visit, and is left
+ * out. One row per place, its works named most famous first. Empty until a
+ * place pass has read works.
+ */
+const worksInNoOfferedPlace: CatalogueAssertion = {
+  id: 'works-in-no-offered-place',
+  area: 'objects',
+  title: 'Places no kind offers that hold a famous work no kind shows',
+  kind: 'watch',
+  meaning:
+    `A work at ${ICONIC_SITELINKS} Wikipedia editions or more that no reader can find: no kind shows it on a `
+    + 'place\'s card, and it is no place of its own. Each row is a place its collection or location statement '
+    + 'names that no kind offers, a library, a gallery or a chapel no kind is drawn to hold. Watch the list: '
+    + 'a place on it is a kind\'s gap, or a place a curator could add. Empty until a place pass has read works.',
+  sql: `WITH unshown AS (
+          SELECT DISTINCT g.work_qid, g.work_label, g.sitelinks, g.venue_qid
+            FROM workbench.gathered_work_venues g
+           WHERE g.sitelinks >= ${ICONIC_SITELINKS}
+             AND NOT ${itemOfferedSql('g.work_qid')}
+             AND NOT EXISTS (SELECT 1 FROM treasures t
+                               JOIN experience_treasures et ON et.treasure_id = t.id
+                               JOIN experiences e ON e.id = et.experience_id
+                              WHERE t.external_id = g.work_qid AND ${publishedContentSql('t')}
+                                AND ${linkedForReaderSql('e', 'et')}))
+        SELECT u.venue_qid,
+               COALESCE((SELECT w.entity->'labels'->>'en' FROM workbench.wikidata_entities w WHERE w.id = u.venue_qid),
+                        u.venue_qid) AS venue_name,
+               count(*)::int AS works,
+               max(u.sitelinks) AS top_sitelinks,
+               string_agg(u.work_label, '; ' ORDER BY u.sitelinks DESC, u.work_qid) AS work_names
+          FROM (SELECT DISTINCT work_qid, work_label, sitelinks, venue_qid FROM unshown) u
+         WHERE NOT ${itemOfferedSql('u.venue_qid')}
+           AND NOT EXISTS (SELECT 1 FROM workbench.wikidata_claims c
+                             JOIN workbench.wikidata_class_closure k ON k.class = c.value_item
+                            WHERE c.subject = u.venue_qid AND c.property = 'P31' AND c.rank >= 0
+                              AND k.ancestor IN ('${HUMAN_SETTLEMENT}', '${ADMINISTRATIVE_AREA}'))
+         GROUP BY u.venue_qid
+         ORDER BY max(u.sitelinks) DESC, u.venue_qid`,
+  describe: row => `${text(row, 'venue_name')} (${text(row, 'venue_qid')}) holds ${count(row, 'works')} famous `
+    + `work(s) no kind shows: ${text(row, 'work_names')}`,
+};
+
+export const workAssertions: CatalogueAssertion[] = [workNoOfferedPlaceHolds, worksInNoOfferedPlace];
