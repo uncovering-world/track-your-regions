@@ -213,6 +213,17 @@ services:
       # image, so an edit reaches Vite's watcher the way ./frontend/src does,
       # its exports map included (#1706, the backend's mount above).
       - ./packages/shared:/packages/shared:ro,z
+      # The unit lane's container shape runs Vitest here, and its include list
+      # reaches perf/ and tests/ as well as src/. Their report-parser specs
+      # import the parsers from the repository's own scripts/ (`../../scripts/`),
+      # which from /app/perf and /app/tests is /scripts, the backend's mount
+      # above. Without it the specs failed to load, as if the parser were wrong,
+      # while the host lane and CI stayed green (#743). perf/ and tests/ are
+      # mounted over the image's copy for the reason src/ is: a spec edited on
+      # the host is the one the lane runs.
+      - ./scripts:/scripts:ro,z
+      - ./frontend/perf:/app/perf:ro,z
+      - ./frontend/tests:/app/tests:ro,z
     depends_on:
       - backend
 
