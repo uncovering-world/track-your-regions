@@ -16,7 +16,7 @@ row:
   wikidata_link: itself
   coordinates: all
   languages: [all]
-  signal: "Wikipedia editions of the tower and a year of its readers"
+  signal: "Wikipedia editions of the tower and a year of its readers; for a mast, its OpenStreetMap ids (P11693, P10689) and its visit statements (P1301, P8933, P7772, P856, P1101)"
 terms:
   licence: "CC0 1.0"
   database_right: waived
@@ -205,3 +205,62 @@ it rather than by a door of their own. On the review's extract the bars came to 
 64,996 readers and 12,838 with a mark. The levels live in
 `backend/src/services/sync/places/admissionRegister.ts`, and a run computes its own bars from its
 pool ([filling-a-kind.md § 11](../../tech/filling-a-kind.md#11-the-place-kinds-admission-frame-and-how-a-number-of-it-moves)).
+
+## Masts (2026-11-03, #2275)
+
+A broadcast mast is filed under a type of its own, `mast`, rather than refused or called an
+observation tower: seeing a structure that tall from the ground is a reason to go. Wikidata's classes
+cannot tell a mast from a tower people go up. The KXTV/KOVR mast (Q365315), the KRDK-TV mast (Q354380)
+and the KDLT tower (Q1442026) carry "television tower" (Q11166728) alone, as the Almaty Tower, Avala,
+the Cairo Tower, the Rheinturm and the Tallinn, Riga and Vilnius towers do. "Transmitter mast"
+(Q1068623) sits on Sydney Tower, the Skytree, Tokyo Tower and the Donauturm, and "lattice tower"
+(Q1440476) on the Eiffel Tower. "Guyed mast" (Q5622819) is on ten items. It was a refusal and now names
+the `mast` type, so the KVLY-TV mast is a mast. English Wikipedia's "Radio masts and towers in …"
+categories hold masts and visited towers alike.
+
+So the type is read again once the run has decided, from OpenStreetMap's layer
+([`openstreetmap-planet.md`](openstreetmap-planet.md) § The tagging docs of masts and towers) and from
+these statements of the item, read best rank, from the subset or the live service:
+
+| property | what it is | what the rule reads it for |
+|---|---|---|
+| `P11693` | OpenStreetMap node ID | the object the item says it is mapped as, beside the objects carrying its `wikidata` tag |
+| `P10689` | OpenStreetMap way ID | the same, for a way |
+| `P1301` | number of elevators | a visit statement: a tower people go up states it, a mast does not |
+| `P8933` | category for the view from the item | a visit statement |
+| `P7772` | Atlas Obscura place ID | a visit statement |
+| `P856` | official website | a visit statement |
+| `P1101` | floors above ground | a visit statement |
+
+The visit statements are read only in the second step below. Missing visit statements alone would
+misfile visited towers: Turkmenistan, Montjuïc and Baku carry none of them.
+
+**The rule.**
+1. An OpenStreetMap object that carries the item, by its `wikidata` tag or as the object `P11693` or
+   `P10689` names, is `man_made=mast`. Where none carries it, on a layer that vouches for that miss,
+   the nearest mast or tower object within 250 m that carries no item is, for an item with a
+   transmitter class: the Leaning Tower of Pisa stands 222 m from a communication mast. A guyed construction counts too, on an object with no
+   `tower:type=observation` and no `tourism` tag.
+2. The item carries transmitter classes alone (television tower Q11166728, transmitter mast
+   Q1068623, radio transmitter Q190157, communication tower Q1798641, transmitter station Q5367899,
+   each checked on the subset on 2026-11-04), no object of a layer that vouches for its misses carries
+   it, and it states none of the visit statements above.
+
+Only a tower the classes filed as an observation tower or a plain tower is read again: a pagoda, a
+minaret or a clock, bell or fortified tower keeps its type whatever stands beside it.
+
+**What it files.** Over the 516 towers admitted on the dev catalogue, measured read-only against the
+layer current to 2026-11-03 and the subset: 468 have an object carrying their item. The first step
+files eight as masts: KDLT, KOBR-TV, KRDK-TV, KXTV/KOVR, Nackasändaren, the Hoyt Radio Tower,
+Lakihegy, and the Nador transmitter by the guyed mast 218 m from its point. The second files three:
+the KCCI Tower, KFVS and the Griffin Television Tower. That is eleven, and none of Almaty, Avala,
+Cairo, the Rheinturm, Riga, Tallinn, Vilnius, Collserola, the Sky Tower or Turkmenistan; the guyed
+lookouts Rozhledna Holedná and Hýlačka stay observation towers. Pyongyang holds no Towers membership
+on dev.
+
+**What the rule cannot see.** The second step is fragile: once a mapper tags KFVS's node with its
+item, only the first step reads it, and that node is a plain `man_made=tower` from GNIS. The Griffin
+Television Tower was demolished in 2015, and English Wikipedia files it under "Buildings and
+structures demolished in 2015", but Wikidata states no end of existence (`P576`), so the gone
+refusal misses it. It is a curator's refusal, or a fix on Wikidata, not a rule.
+
