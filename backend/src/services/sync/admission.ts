@@ -196,6 +196,45 @@ export async function admittedExternalIds(sourceId: number, type?: string, tier?
 }
 
 /**
+ * Each row `sourceId` holds as admitted whose membership carries the fact
+ * `key`, with that fact's value: what an entrance admitted the row by, for the
+ * entrance to keep it in place when it cannot read that again (ADR-0175
+ * decision 6) — the monuments categories that named a monument (#2171).
+ */
+export async function admittedWithFact(sourceId: number, key: string): Promise<Map<string, unknown>> {
+  const result = await pool.query<{ external_id: string; value: unknown }>(
+    `SELECT m.external_id, m.facts -> $2 AS value
+     FROM ${SOURCE_MEMBERSHIPS}
+     WHERE m.source_id = $1
+       AND m.admission = 'admitted'
+       AND e.is_manual = FALSE
+       AND m.facts ? $2`,
+    [sourceId, key],
+  );
+  return new Map(result.rows.map((row) => [row.external_id, row.value]));
+}
+
+/**
+ * Which of `items` identify a place another source holds as admitted: a place
+ * of another kind, found by its Wikidata item as the run's upsert finds it
+ * (`place_identifiers`). What an entrance names that is already offered in
+ * another kind is no arrival of its own (#2171): whether such a place belongs
+ * in a second kind is a recommendation of its own (#2342).
+ */
+export async function heldByOtherSources(sourceId: number, items: readonly string[]): Promise<Set<string>> {
+  if (!items.length) return new Set();
+  const result = await pool.query<{ value: string }>(
+    `SELECT DISTINCT pi.value
+       FROM place_identifiers pi
+       JOIN ${MEMBERSHIPS} o ON o.experience_id = pi.experience_id
+      WHERE pi.scheme = 'wikidata' AND pi.identifies AND pi.value = ANY($2::text[])
+        AND o.source_id <> $1 AND o.admission = 'admitted'`,
+    [sourceId, [...items]],
+  );
+  return new Set(result.rows.map((row) => row.value));
+}
+
+/**
  * Rows this mechanism may not touch, over the membership `m` and its place
  * `e` — the aliases every statement here joins under.
  *

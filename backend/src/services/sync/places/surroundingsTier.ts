@@ -38,7 +38,7 @@ import type { WorldMemory } from './worldBars.js';
  * the catalogue checks read the rule's own answer.
  */
 export type SurroundingsRuleVerdict =
-  | { pass: true; type: string; artwork?: boolean; creators?: string[]; note?: string }
+  | { pass: true; type: string; artwork?: boolean; creators?: string[]; note?: string; wikipediaCategories?: string[] }
   | { pass: false; reason: string };
 
 /** A passing verdict, as a builder reads it. */
@@ -103,6 +103,7 @@ export const surroundingsLandmark: SurroundingsBuilder<WikidataLandmark> = (enti
   ...placeLandmark(entity, classes, verdict.type as WikidataLandmark['type']),
   ...(verdict.artwork === undefined ? {} : { artwork: verdict.artwork }),
   ...(verdict.creators === undefined ? {} : { creators: verdict.creators }),
+  ...(verdict.wikipediaCategories === undefined ? {} : { wikipediaCategories: verdict.wikipediaCategories }),
   tier: 'surroundings',
   readershipNote: verdict.note ? `${verdict.note} ${note}` : note,
 });
@@ -329,7 +330,7 @@ export async function surroundingsArrivals<Trees, Context, T>(
 
   // The survivors asked about by id, with everything the kind's rule reads of a
   // candidate: a kind with no pool question of its own, so the gather reads them alone.
-  const byId: PlaceKind<Trees> = { ...surroundings.kind, poolClasses: () => ({ broad: [], narrow: [] }), admissionPool: false, entrance: undefined, editions: undefined };
+  const byId: PlaceKind<Trees> = { ...surroundings.kind, poolClasses: () => ({ broad: [], narrow: [] }), admissionPool: false, entrances: undefined, editions: undefined };
   run.phase(`Asking about the ${survivors.length} places the surroundings cut admits...`);
   const gathered = await gatherPlaces(run, [{ kind: byId, admitted: new Set([...survivors, ...fell.keys()]) }]);
   const share = shareOf(gathered, byId);

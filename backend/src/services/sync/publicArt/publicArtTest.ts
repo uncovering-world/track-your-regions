@@ -37,6 +37,7 @@ import { formsOf, type KindRule, type MonumentType, type PublicArtType } from '.
 import { REMAINS_ON_SHOW } from '../museum/worksCollector.js';
 import type { ContainerFact } from '../places/containment.js';
 import type { SubjectFacts } from './subjects.js';
+import type { ClassObject } from './monumentCategoryQueries.js';
 
 export interface PublicArtFacts {
   qid: string;
@@ -71,6 +72,23 @@ export interface PublicArtFacts {
   onEarth: boolean;
   lat: number | null;
   lon: number | null;
+}
+
+/**
+ * What says a candidate is a monument where no class of the kind does: English
+ * Wikipedia files it under a *Monuments and memorials in/of …* category, which
+ * the monuments-category entrance read (#2171). Mount Rushmore is typed a
+ * mountain, Patuxai a built structure and the Monument to the Battle of the
+ * Nations a heritage ensemble; the category is the witness that each is
+ * visited as a monument, and the class does not refuse it.
+ */
+export interface FiledAsMonument {
+  /** The categories that file it, as English Wikipedia titles them. */
+  categories: string[];
+  /** Where the item is itself a class, what makes it one (#2248). */
+  classObject?: ClassObject;
+  /** The vessel root (`VESSEL_ROOTS`) a class of it is a kind of, named, where one is. */
+  vessel?: string;
 }
 
 export type PublicArtResult =
@@ -280,10 +298,12 @@ function vetoes(e: PublicArtFacts, trees: PublicArtTrees, memorialLifts: boolean
  * (`MEMORIAL_LIFTED_KILLS`, #1989): Yad Vashem is an archive and a research
  * institute, Anıtkabir a mausoleum, and each is the memorial a traveller goes
  * to. The class is read off the pinned floor (`COMMEMORATIVE_FLOOR`), not the
- * walked tree, so the catalogue check reads the same list.
+ * walked tree, so the catalogue check reads the same list. Where `filed`, the
+ * monuments categories lift the burial kills as a form does (#2171): the Che
+ * Guevara Mausoleum is typed nothing but a mausoleum.
  */
-function kills(e: PublicArtFacts, memorialLifts: boolean): string[] {
-  const form = memorialLifts && formsOf(e).some((c) => COMMEMORATIVE_FORMS[c]);
+function kills(e: PublicArtFacts, memorialLifts: boolean, filed: boolean): string[] {
+  const form = memorialLifts && (filed || formsOf(e).some((c) => COMMEMORATIVE_FORMS[c]));
   const memorial = memorialLifts && e.classes.some((c) => COMMEMORATIVE_FLOOR[c]);
   return named(
     e.classes.filter((c) => !(form && BURIAL_CLASSES[c]) && !(memorial && MEMORIAL_LIFTED_KILLS[c])),
@@ -303,6 +323,25 @@ function otherPlace(e: PublicArtFacts, trees: PublicArtTrees): string | null {
   const answered = e.depicts.length > 0
     || e.classes.some((c) => trees.artwork.has(c) && !trees.fountain.has(c));
   return answered ? null : place;
+}
+
+/**
+ * Why a candidate only the monuments categories name is still not a monument
+ * or memorial (#2171), or nothing: a type rather than one place — the khachkar
+ * and the cairn are classes of thousands of items (#2248) — or a ship or its
+ * wreck, which no kind holds yet. A vessel the item also types a museum is
+ * boarded, and stays.
+ */
+function filedRefusal(e: PublicArtFacts, filed: FiledAsMonument, trees: PublicArtTrees, not: string): string | null {
+  const { classObject, vessel } = filed;
+  if (classObject) {
+    const why = classObject.instances > 0
+      ? `Wikidata names ${classObject.instances.toLocaleString('en')} items as instances of it`
+      : 'Wikidata makes it a subclass of another class';
+    return `a type of place, not one place: ${why} (#2248): ${not}`;
+  }
+  if (vessel && !e.classes.some((c) => trees.museum.has(c))) return `a ${vessel}, which no kind holds yet: ${not}`;
+  return null;
 }
 
 /**
@@ -426,44 +465,64 @@ function castsShown(
 }
 
 /**
+ * What the entity is, when that refuses it, before whether it is ours: a kill
+ * class names the thing better than "no public-art class" would, so it is
+ * asked first. Not the museum rule's `kill-list:` prefix: the review page
+ * translates that one and explains it as curatorial departments and museum
+ * networks, which is nobody's reason for turning down a mausoleum. This form
+ * reaches the card as it is.
+ */
+function whatItIs(e: PublicArtFacts, trees: PublicArtTrees, rule: KindRule, filed: boolean): string | null {
+  const not = `not ${rule.noun}`;
+  if (e.classes.some((c) => trees.worship.has(c))) return `a place of worship, ${not}`;
+  const killed = kills(e, rule.memorialLifts, filed);
+  if (killed.length) return `${not}: ${killed.join('; ')}`;
+  // The works-first kinds' one exception by name holds here too: a destroyed
+  // work whose remains are what a traveller stands in front of.
+  if (!REMAINS_ON_SHOW[e.qid] && e.classes.some((c) => trees.lost.has(c))) {
+    return `${not}: lost or destroyed, nothing to stand in front of`;
+  }
+  return null;
+}
+
+/**
+ * Why the entity is not of the kind, or nothing: no class of the kind names
+ * it — or, where the monuments categories name it in place of a class
+ * (`filed`, #2171), it is a type or a vessel rather than one place.
+ */
+function ofTheKind(e: PublicArtFacts, trees: PublicArtTrees, rule: KindRule, filed?: FiledAsMonument): string | null {
+  if (filed) return filedRefusal(e, filed, trees, `not ${rule.noun}`);
+  return rule.admits(e, trees) ? null : rule.noClass;
+}
+
+/**
  * Whether an entity is of the kind `rule` names, and why not.
  *
  * `offered` is the item ids of the places another kind offers a reader. Given, a
  * work stranded outdoors on a venue none of them is stays this kind's
  * (`strandedOutdoors`); omitted, every venue refusal stands.
+ *
+ * `filed` is given for a candidate English Wikipedia's monuments categories
+ * name and no class of the kind does (#2171): the category answers whether it
+ * is of the kind, the place it is before it is a monument and the vetoes of a
+ * building, a cemetery and a museum, and lifts the burial kills as a form
+ * does. What stays is what the category cannot answer: a place of worship, the
+ * other kills — an organisation, an event, a camp, a settlement — a lost
+ * work, a type rather than one place, a ship or its wreck, a museum's work,
+ * and a place with no point on Earth.
  */
 export function publicArtVerdict(
-  e: PublicArtFacts, trees: PublicArtTrees, rule: KindRule, offered?: ReadonlySet<string>,
+  e: PublicArtFacts, trees: PublicArtTrees, rule: KindRule, offered?: ReadonlySet<string>, filed?: FiledAsMonument,
 ): PublicArtResult {
   const not = `not ${rule.noun}`;
-  // What it is, before whether it is ours: a kill class names the thing
-  // better than "no public-art class" would, so it is asked first.
-  if (e.classes.some((c) => trees.worship.has(c))) {
-    return { pass: false, reason: `a place of worship, ${not}` };
-  }
-  // Not the museum rule's `kill-list:` prefix: the review page translates
-  // that one and explains it as curatorial departments and museum networks,
-  // which is nobody's reason for turning down a mausoleum. This form reaches
-  // the card as it is.
-  const killed = kills(e, rule.memorialLifts);
-  if (killed.length) {
-    return { pass: false, reason: `${not}: ${killed.join('; ')}` };
-  }
-  // The works-first kinds' one exception by name holds here too: a destroyed
-  // work whose remains are what a traveller stands in front of.
-  if (!REMAINS_ON_SHOW[e.qid] && e.classes.some((c) => trees.lost.has(c))) {
-    return { pass: false, reason: `${not}: lost or destroyed, nothing to stand in front of` };
-  }
-
-  if (!rule.admits(e, trees)) {
-    return { pass: false, reason: rule.noClass };
-  }
+  const refused = whatItIs(e, trees, rule, filed !== undefined) ?? ofTheKind(e, trees, rule, filed);
+  if (refused) return { pass: false, reason: refused };
 
   if (!e.onEarth) {
     return { pass: false, reason: 'not on Earth: its coordinate (P625) is on another globe' };
   }
 
-  const place = otherPlace(e, trees);
+  const place = filed ? null : otherPlace(e, trees);
   if (place) {
     return { pass: false, reason: `a ${place}, which no kind holds yet: ${not}` };
   }
@@ -475,7 +534,9 @@ export function publicArtVerdict(
       : { pass: false, reason: another.reason };
   }
 
-  const answered = rule.answersVeto(e, trees);
+  // The category answers a building's veto as an artwork class does, and the
+  // row says so (`artwork`), so the catalogue check reads the same answer.
+  const answered = filed !== undefined || rule.answersVeto(e, trees);
   if (!answered) {
     const vetoed = vetoes(e, trees, rule.memorialLifts);
     if (vetoed.length) {
