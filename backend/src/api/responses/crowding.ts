@@ -14,6 +14,7 @@
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
 import { PlacementFailure } from './curation.js';
+import { ImageCredit } from './experiences.js';
 
 const CrowdingPin = z.enum(CHECK_VALUES.experience_kind_memberships.crowding_pin)
   .describe("A curator's answer: list keeps the place among what a reader is shown and counts it as one of the ten; "
@@ -26,6 +27,9 @@ export const CrowdingWindowRow = z.strictObject({
   latitude: z.number(),
   longitude: z.number(),
   distanceM: z.number().int().describe("How far the place lies from the window's centre, in metres."),
+  wikipediaUrl: z.string().nullable().describe('The Wikipedia article the place holds, as its card links it (#2345).'),
+  imageUrl: z.string().nullable().describe("The place's picture, as stored: the row draws a thumbnail of it (#2345)."),
+  imageCredit: ImageCredit.nullable().describe('Whose photograph the picture is, shown with it.'),
   readers: z.number().int().nullable().describe('Readers a year of its Wikipedia articles; null before its first measurement.'),
   guideEditions: z.number().int().nullable().describe('The Wikivoyage editions that use its item.'),
   guideUsed: z.boolean().nullable().describe('Whether a guide uses it: what its fame reads of the guides (ADR-0177).'),

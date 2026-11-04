@@ -5179,6 +5179,18 @@ export interface CrowdingWindowRow {
      * @maximum 9007199254740991
      */
   distanceM: number;
+  /**
+     * The Wikipedia article the place holds, as its card links it (#2345).
+     * @nullable
+     */
+  wikipediaUrl: string | null;
+  /**
+     * The place's picture, as stored: the row draws a thumbnail of it (#2345).
+     * @nullable
+     */
+  imageUrl: string | null;
+  /** Whose photograph the picture is, shown with it. */
+  imageCredit: ImageCredit | null;
   /** Readers a year of its Wikipedia articles; null before its first measurement. */
   readers: number | null;
   /** The Wikivoyage editions that use its item. */
