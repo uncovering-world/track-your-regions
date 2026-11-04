@@ -12,11 +12,13 @@ import type { DigTags, KeepWkt } from './types.js';
  * - a dig named only by its article;
  * - a `ruins=no` object, which is no dig.
  *
+ * The structures read (#2275) adds masts and towers beside it.
+ *
  * Overpass, the live door, answers for Troy.
  */
 
 const { pool } = await import('../../../db/index.js');
-const { layerVouches, localDigsReader, localOsmReader } = await import('./localOsm.js');
+const { layerStructuresReader, layerVouches, localDigsReader, localOsmReader } = await import('./localOsm.js');
 
 const STONEHENGE = 'Q39671';
 const POMPEII = 'Q43332';
@@ -160,5 +162,65 @@ describe('the layer as a door (ADR-0134)', () => {
     expect(layerVouches({ currentTo: '2026-10-22T00:00:00Z' }, now)).toBe(true);
     expect(layerVouches({ currentTo: '2026-10-21T23:59:59Z' }, now)).toBe(false);
     expect(layerVouches(null, now)).toBe(false);
+  });
+});
+
+describe('the structures the layer maps at a place (#2275)', () => {
+  const KXTV = 'Q365315';
+  const KOBR = 'Q753669';
+  const NADOR = 'Q2091534';
+  const KFVS = 'Q753662';
+  const TAGS = { manMade: ['mast', 'tower'], keys: ['man_made', 'tower:construction'], radiusMetres: 250 };
+  // 218 m north of the Nador point, as the guyed mast stands from the item's coordinate.
+  const metresNorth = (metres: number) => 35 + metres / 111_320;
+
+  async function structures(age: number | null): Promise<void> {
+    await layer(age);
+    const rows: Array<[string, number, Record<string, string>, string | null, string]> = [
+      ['N', 100, { man_made: 'mast', 'tower:construction': 'guyed_lattice', name: 'KXTV/KOVR', wikidata: KXTV }, KXTV, 'POINT(-121.5 38.26)'],
+      // No item tag: the object Wikidata names (P11693).
+      ['N', 101, { man_made: 'mast', name: 'KOBR' }, null, 'POINT(-104.5 33.0)'],
+      ['N', 102, { man_made: 'mast', 'tower:construction': 'guyed_lattice' }, null, `POINT(-3 ${metresNorth(218)})`],
+      // Nearer, but another item's, and something that is no structure at all.
+      ['N', 103, { man_made: 'tower', wikidata: 'Q99998' }, 'Q99998', `POINT(-3 ${metresNorth(50)})`],
+      ['N', 104, { man_made: 'chimney' }, null, `POINT(-3 ${metresNorth(10)})`],
+      // Beyond the radius.
+      ['N', 105, { man_made: 'tower' }, null, `POINT(-89.5 ${37 + 300 / 111_320})`],
+    ];
+    for (const [type, id, tags, wikidata, wkt] of rows) {
+      await pool.query('INSERT INTO osm_objects VALUES ($1, $2, $3, $4, NULL, ST_GeomFromText($5, 4326))', [type, id, tags, wikidata, wkt]);
+    }
+  }
+
+  const places = [
+    { qid: KXTV, lat: 38.26, lon: -121.5, refs: [] },
+    { qid: KOBR, lat: 33.0, lon: -104.5, refs: ['node/101'] },
+    { qid: NADOR, lat: 35, lon: -3, refs: [] },
+    { qid: KFVS, lat: 37, lon: -89.5, refs: [] },
+  ];
+
+  it('answers the objects that carry each item, by its tag or as the object it names, and else the nearest structure of no item', async () => {
+    await structures(2);
+    const read = (await layerStructuresReader()(places, TAGS))!;
+    expect(read.missesAreFacts).toBe(true);
+    expect(read.byItem.get(KXTV)).toEqual({
+      carried: [{ ref: 'node/100', kind: 'node', tags: { man_made: 'mast', 'tower:construction': 'guyed_lattice' }, geometryType: null, wkt: null,
+        source: { door: 'local', asOf: currentTo.toISOString() } }],
+      nearest: null,
+    });
+    expect(read.byItem.get(KOBR)!.carried.map((object) => object.ref)).toEqual(['node/101']);
+    const nador = read.byItem.get(NADOR)!;
+    expect(nador.carried).toEqual([]);
+    expect(nador.nearest).toMatchObject({ ref: 'node/102', tags: { man_made: 'mast', 'tower:construction': 'guyed_lattice' } });
+    expect(nador.nearest!.metres).toBeGreaterThan(210);
+    expect(nador.nearest!.metres).toBeLessThan(226);
+    expect(read.byItem.get(KFVS)).toEqual({ carried: [], nearest: null });
+  });
+
+  it('says a stale layer\'s misses are no facts, and answers nothing where no layer is in place', async () => {
+    await structures(9);
+    expect((await layerStructuresReader()(places, TAGS))!.missesAreFacts).toBe(false);
+    await structures(null);
+    expect(await layerStructuresReader()(places, TAGS)).toBeNull();
   });
 });
