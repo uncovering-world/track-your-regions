@@ -1,12 +1,14 @@
 /**
  * The crowded-city window (#2282) on Berlin's squares around Schloßplatz:
- * the rows and the rule's line, answers staged and applied together with one
- * Apply, the report by name, and a step through a group of arrivals.
+ * the rows and the rule's line, each place's picture, credit and article, the
+ * map held in view, answers staged and applied together with one Apply, the
+ * report by name, and a step through a group of arrivals.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createTheme } from '@mui/material';
 
 vi.mock('../../../api/crowdingAnswers', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../api/crowdingAnswers')>()),
@@ -17,10 +19,13 @@ vi.mock('../../../api/crowdingAnswers', async importOriginal => ({
 vi.mock('./CrowdingMap', () => ({ CrowdingMap: () => <div data-testid="crowding-map" /> }));
 
 import { answerCrowding, CrowdingPartlyApplied, fetchCrowdingWindow } from '../../../api/crowdingAnswers';
+import { crowdingLayout, HELD_MIN_HEIGHT } from './CrowdingWindow';
 import { CrowdingWindowDialog } from './CrowdingWindowDialog';
 import { aroundSchlossplatz, FRANKFURTER_TOR, NOLLENDORFPLATZ, SCHLOSSPLATZ } from './crowdingFixtures';
 
 const mockedWindow = vi.mocked(fetchCrowdingWindow);
+/** The theme's breakpoints are MUI's own. */
+const theme = createTheme();
 const mockedAnswer = vi.mocked(answerCrowding);
 
 function renderWindow(memberships: number[] = [SCHLOSSPLATZ], onClose = vi.fn()) {
@@ -70,6 +75,91 @@ describe('the crowded-city window', () => {
     expect(kulturforum.getByRole('button', { name: 'Shadow' })).toBeDisabled();
     expect(kulturforum.getByRole('button', { name: 'Don’t take' })).toBeEnabled();
     expect(kulturforum.getByText('holds works · always shown')).toBeInTheDocument();
+  });
+
+  it('shows what each place is: its picture with its credit, and its article; a row without them shows neither (#2345)', async () => {
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+
+    const alexanderplatz = rowOf('Alexanderplatz');
+    expect(alexanderplatz.getByRole('img', { name: 'Alexanderplatz' })).toHaveAttribute(
+      'src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg?width=120');
+    expect(alexanderplatz.getByRole('link', { name: 'Wladyslaw Sojka' }))
+      .toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:Berlin_-_Alexanderplatz1.jpg');
+    expect(alexanderplatz.getByRole('link', { name: 'FAL' })).toHaveAttribute('href', 'http://artlibre.org/licence/lal/en');
+    expect(alexanderplatz.getByRole('link', { name: 'Wikipedia' }))
+      .toHaveAttribute('href', 'https://en.wikipedia.org/wiki/Alexanderplatz');
+
+    const potsdamerPlatz = rowOf('Potsdamer Platz');
+    expect(potsdamerPlatz.queryByRole('img')).toBeNull();
+    expect(potsdamerPlatz.queryByRole('link')).toBeNull();
+  });
+
+  it('takes the credit away with a picture that fails to load, and keeps the article', async () => {
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+
+    fireEvent.error(rowOf('Alexanderplatz').getByRole('img', { name: 'Alexanderplatz' }));
+
+    const alexanderplatz = rowOf('Alexanderplatz');
+    expect(alexanderplatz.queryByRole('img')).toBeNull();
+    expect(alexanderplatz.queryByText('Wladyslaw Sojka')).toBeNull();
+    expect(alexanderplatz.queryByText('FAL')).toBeNull();
+    expect(alexanderplatz.getByRole('link', { name: 'Wikipedia' })).toBeInTheDocument();
+  });
+
+  it('draws no picture, and so no credit, from a host the product may not draw from', async () => {
+    mockedWindow.mockResolvedValue({
+      ...aroundSchlossplatz,
+      rows: aroundSchlossplatz.rows.map(row => (row.name === 'Alexanderplatz'
+        ? { ...row, imageUrl: 'https://whc.unesco.org/uploads/sites/gallery/original/site_0001.jpg' }
+        : row)),
+    });
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+
+    expect(rowOf('Alexanderplatz').queryByRole('img')).toBeNull();
+    expect(rowOf('Alexanderplatz').queryByText('Wladyslaw Sojka')).toBeNull();
+  });
+
+  it('keeps the map in view while the list scrolls, beside it on a wide screen (#2345)', async () => {
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+
+    expect(within(screen.getByTestId('crowding-map-pane')).getByTestId('crowding-map')).toBeInTheDocument();
+    // The dialog sets the map beside the list from a medium width and holds it at the top of its
+    // content; the list scrolls in its own box. Below that the dialog is a phone's full screen.
+    expect(crowdingLayout('dialog', theme)).toEqual({
+      body: {},
+      mapPane: { p: 2, position: { md: 'sticky' }, top: { md: 0 } },
+      mapFrame: { height: 420 },
+      list: expect.objectContaining({ overflow: 'auto', minHeight: 0, maxHeight: { md: '65vh' } }),
+    });
+  });
+
+  it('holds a lower map over the list on a tall enough laptop screen, and beside it on the widest (#2345)', () => {
+    // A laptop's width, on a screen tall enough for the least map, three rows and the Apply bar:
+    // a 1440 by 900 laptop shows about 780 px inside the browser.
+    const held = '@media (min-width:900px) and (max-width:1535.95px) and (min-height:740px)';
+    expect(HELD_MIN_HEIGHT).toBe(740);
+    const page = crowdingLayout('page', theme);
+
+    // From the widest screens the map stands beside the list and holds just below the top, as
+    // the page's list of cities does; the list runs on with the page.
+    expect(page.mapPane).toMatchObject({ position: { xl: 'sticky' }, top: { xl: 16 } });
+    // On such a laptop screen the map is lower, as tall as the screen leaves room for between
+    // 160 and 280 px, and the map and the list together stand no taller than the screen above
+    // the Apply bar, never leaving the list fewer than three rows: the list scrolls in its own
+    // box under the map, so its header row is never under the map.
+    expect(page.mapFrame).toEqual({ height: 420, [held]: { height: 'clamp(160px, calc(100vh - 573px), 280px)' } });
+    expect(page.body).toEqual({ [held]: { maxHeight: 'max(calc(100vh - 140px), 593px)' } });
+    expect(page.list).toEqual({
+      flexGrow: 1, minWidth: 0, minHeight: 0, overflow: 'auto', [held]: { minHeight: 137 },
+    });
+    // On a shorter laptop screen (1366 by 768, or one at 200 % zoom) and on a phone, nothing
+    // is held or capped: the full map stands over the list and the page scrolls both.
+    expect(Object.keys(page.body as object)).toEqual([held]);
+    expect(page.mapPane).not.toHaveProperty('position.md');
   });
 
   it('applies the staged answers together and reports each by name', async () => {

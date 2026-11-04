@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, type SxProps, type Theme } from '@mui/material';
 import { Layer, Marker, NavigationControl, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { CrowdingWindow, CrowdingWindowRow } from '../../../api/crowding';
 import { MAP_STYLE } from '../../../constants/mapStyles';
@@ -24,8 +24,6 @@ import { frameGeoJson } from '../../../utils/mapUtils';
 import { GuardedMap } from '../../shared/GuardedMap';
 import { drawnStanding, type DrawnStanding, type Staging } from './crowdingStaging';
 
-/** The map's height beside the list. */
-const MAP_HEIGHT = 420;
 
 /** A dot's fill and edge by standing: a shadowed place is hollow, so it reads apart without its colour. */
 const DOT: Record<DrawnStanding, { fill: string; edge: string; ink: string }> = {
@@ -109,8 +107,10 @@ function Dot({ row, number, standing, isCentre, hovered, onHover, onPick }: {
   );
 }
 
-export function CrowdingMap({ around, staging, hovered, shown, onHover, onPick }: {
+export function CrowdingMap({ around, staging, hovered, shown, frame: frameSx, onHover, onPick }: {
   around: CrowdingWindow;
+  /** The map's height, lower where the window holds it over the list on a laptop (`crowdingLayout`). */
+  frame: SxProps<Theme>;
   staging: Staging;
   hovered: number | null;
   /** The row a click asked to show, with a count so the same row can be asked again. */
@@ -144,7 +144,7 @@ export function CrowdingMap({ around, staging, hovered, shown, onHover, onPick }
 
   return (
     <Box>
-      <Box sx={{ height: MAP_HEIGHT, position: 'relative', borderRadius: 1, overflow: 'hidden', border: 1, borderColor: 'divider' }}>
+      <Box sx={[{ position: 'relative', borderRadius: 1, overflow: 'hidden', border: 1, borderColor: 'divider' }, ...(Array.isArray(frameSx) ? frameSx : [frameSx])]}>
         <GuardedMap
           ref={map}
           initialViewState={{ longitude: centre.longitude, latitude: centre.latitude, zoom: 10 }}

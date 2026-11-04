@@ -14,6 +14,9 @@ export function squareRow(over: Partial<CrowdingWindowRow> & Pick<CrowdingWindow
     latitude: 52.52,
     longitude: 13.4,
     distanceM: 1200,
+    wikipediaUrl: null,
+    imageUrl: null,
+    imageCredit: null,
     readers: 20000,
     guideEditions: 1,
     guideUsed: true,
@@ -44,9 +47,22 @@ export const LEIPZIGER_PLATZ = 12;
 export const SCHLOSSPLATZ = 14;
 export const KULTURFORUM = 15;
 
+/** Alexanderplatz's article and picture, as the dev catalogue holds them (#2345); the other squares hold none here. */
+export const ALEXANDERPLATZ_LOOK: Pick<CrowdingWindowRow, 'wikipediaUrl' | 'imageUrl' | 'imageCredit'> = {
+  wikipediaUrl: 'https://en.wikipedia.org/wiki/Alexanderplatz',
+  imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg',
+  imageCredit: {
+    author: 'Wladyslaw Sojka',
+    license: 'FAL',
+    licenseUrl: 'http://artlibre.org/licence/lal/en',
+    detailsUrl: 'https://commons.wikimedia.org/wiki/File:Berlin_-_Alexanderplatz1.jpg',
+  },
+};
+
 export const berlinSquares: CrowdingWindowRow[] = [
   ...LISTED.map((name, index) => squareRow({
     membershipId: index + 1, name, score: 0.95 - index * 0.02, outrankedBy: index,
+    ...(index === 0 ? ALEXANDERPLATZ_LOOK : {}),
   })),
   squareRow({
     membershipId: FRANKFURTER_TOR, name: 'Frankfurter Tor', score: 0.74, outrankedBy: 10,
