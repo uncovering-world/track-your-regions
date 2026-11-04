@@ -1,7 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { answerCrowding } from './crowdingAnswers.js';
-import { getCrowdingWindow } from './crowdingAroundWindow.js';
 import { getCrowdingGroup, getCrowdingPlace, listShadowedArrivals } from './crowdingWindow.js';
 import { attachCrowding } from './reviewQueueCrowding.js';
 import type { ReviewQueueItem } from '../../api/responses/reviewQueue.js';
@@ -164,8 +163,6 @@ const id = (name: string) => squares.get(name)!.membership;
 const group = (caller = admin()) => getCrowdingGroup({ query: { region: BERLIN, kind: SQUARES, type: 'square' }, caller });
 const circle = (name: string, caller = admin(), worldViewId?: number) =>
   getCrowdingPlace({ params: { membershipId: id(name) }, query: { worldViewId }, caller });
-const window = (name: string, caller = admin()) =>
-  getCrowdingWindow({ params: { membershipId: id(name) }, query: {}, caller });
 type Answer = 'list' | 'shadow' | 'publish' | 'refuse' | 'clear';
 const answer = (answers: Array<{ membershipId: number; answer: Answer }>, caller = admin()) =>
   answerCrowding({ body: { answers, note: 'Judged on the window' }, caller });
@@ -628,69 +625,3 @@ describe('the arrivals a crowded city shadows', () => {
     });
   });
 });
-
-describe('the window around one membership, until the web reads the region\'s list (#2358)', () => {
-  it("lists every square around the Schloßplatz, best known first, with the rule's count and standing", async () => {
-    const read = await window('Schloßplatz');
-    expect(read.kind).toMatchObject({ id: 9, limit: 10, radiusKm: 10 });
-    expect(read.type).toBe('square');
-    expect(read.types).toEqual([{ type: 'square', places: BERLIN_SQUARES.length, exempt: false }]);
-    expect(read.rows.map(row => row.name)).toEqual(BERLIN_SQUARES.map(([name]) => name));
-
-    const row = (name: string) => read.rows.find(r => r.name === name)!;
-    expect(row('Alexanderplatz')).toMatchObject({ standing: 'listed', crowded: false, outrankedBy: 0, pinnable: true, canAnswer: true });
-    expect(row('Leipziger Platz')).toMatchObject({ standing: 'shadowed', crowded: true, ruleCrowded: true });
-    expect(row('Schloßplatz')).toMatchObject({
-      standing: 'new', crowded: true, ruleCrowded: true, outrankedBy: 13, readers: 17802, guideUsed: false, pin: null,
-    });
-  });
-
-  it("carries each place's article and its picture with the picture's credit, and nothing for a place without (#2345)", async () => {
-    // Alexanderplatz as the development catalogue holds it.
-    const credit = {
-      author: 'Wladyslaw Sojka', license: 'FAL',
-      licenseUrl: 'http://artlibre.org/licence/lal/en',
-      detailsUrl: 'https://commons.wikimedia.org/wiki/File:Berlin_-_Alexanderplatz1.jpg',
-    };
-    await pool.query(
-      `UPDATE experiences SET image_url = $2,
-              metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('wikipediaUrl', $3::text, 'imageCredit', $4::jsonb)
-        WHERE id = $1`,
-      [squares.get('Alexanderplatz')!.place,
-        'http://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg',
-        'https://en.wikipedia.org/wiki/Alexanderplatz', JSON.stringify(credit)]);
-
-    const read = await window('Schloßplatz');
-    expect(read.rows.find(row => row.name === 'Alexanderplatz')).toMatchObject({
-      wikipediaUrl: 'https://en.wikipedia.org/wiki/Alexanderplatz',
-      imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg',
-      imageCredit: credit,
-    });
-    expect(read.rows.find(row => row.name === 'Leipziger Platz')).toMatchObject({
-      wikipediaUrl: null, imageUrl: null, imageCredit: null,
-    });
-  });
-
-  it('names the places that shadow the window\'s place (#2228)', async () => {
-    const read = await window('Schloßplatz');
-    expect(read.rows.filter(row => row.outranksCentre).map(row => row.name))
-      .toEqual(BERLIN_SQUARES.slice(0, 13).map(([name]) => name));
-  });
-
-  it("refuses a curator whose scope does not reach the window's place", async () => {
-    await pool.query(
-      `INSERT INTO curator_assignments (user_id, scope_type, source_id, assigned_by) VALUES ($1, 'source', 2, $2)`,
-      [curatorId, adminId]);
-    await expect(window('Schloßplatz', { id: curatorId, role: 'curator' } as Express.User))
-      .rejects.toMatchObject({ statusCode: 403 });
-  });
-});
-
-describe('the arrivals a crowded city shadows, for the window around one arrival', () => {
-  it('names each group\'s arrivals best known first', async () => {
-    const { groups } = await listShadowedArrivals({ query: {}, caller: admin() });
-    const berlin = groups.find(group => group.membershipIds.includes(id('Schloßplatz')))!;
-    expect(berlin.membershipIds.slice(0, 3)).toEqual([id('Frankfurter Tor'), id('Rosa-Luxemburg-Platz'), id('Schloßplatz')]);
-  });
-});
-
