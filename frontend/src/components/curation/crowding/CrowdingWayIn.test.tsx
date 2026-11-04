@@ -10,7 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('./LazyCrowdingWindow', () => ({
-  LazyCrowdingWindow: ({ memberships }: { memberships: number[] }) => <div data-testid="window">{memberships.join(',')}</div>,
+  LazyCrowdingWindow: ({ membershipId }: { membershipId: number }) => <div data-testid="window">{membershipId}</div>,
 }));
 
 import type { ReviewQueueItem } from '../../../api/reviewQueue';

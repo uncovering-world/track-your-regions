@@ -6,8 +6,9 @@
  *
  * Read off the card's own `crowding`, which the queue's page carries: nothing
  * is asked of the server until the curator opens the window, so a page of
- * cards spends none of the request budget the answers share. The window
- * names the places that outrank this one.
+ * cards spends none of the request budget the answers share. The window opens
+ * on the region's list of the place's group with the place open in its own
+ * circle (#2358), which names the places that outrank it.
  *
  * The window is its own chunk (`LazyCrowdingWindow`), fetched when the
  * curator opens it: the review page carries only this line and its button.
@@ -38,7 +39,7 @@ export function CrowdingWayIn({ item, onDone }: {
       </Button>
       {open && (
         <LazyCrowdingWindow
-          memberships={[membershipId]}
+          membershipId={membershipId}
           onClose={message => {
             setOpen(false);
             if (message) onDone(message, item.id);

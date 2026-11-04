@@ -31,8 +31,8 @@ import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { PlaceKindAdd } from './PlaceKindAdd';
 import { aroundLabel } from '../curation/crowding/crowdingWords';
 
-/** The crowded city's window over the dialog, on one membership: `LazyCrowdingWindow`, handed in. */
-export type CrowdingWindowOpener = ComponentType<{ memberships: readonly number[]; onClose: (message?: string) => void }>;
+/** The crowded city's window over the dialog, open on one membership's group with it selected: `LazyCrowdingWindow`, handed in. */
+export type CrowdingWindowOpener = ComponentType<{ membershipId: number; onClose: (message?: string) => void }>;
 
 /** The line under a kind's name: its type, then where it stands. */
 function standingLine(kind: PlaceKindStanding): string {
@@ -179,7 +179,7 @@ function KindRow({ experienceId, kind, onlyOffered, regionId, crowdingWindow: Cr
       {applied && <Alert severity="success" onClose={() => setApplied(null)} sx={{ py: 0, mt: 1 }}>{applied}</Alert>}
       {around && CrowdingWindow && (
         <CrowdingWindow
-          memberships={[kind.membershipId]}
+          membershipId={kind.membershipId}
           onClose={message => {
             setAround(false);
             if (!message) return;
