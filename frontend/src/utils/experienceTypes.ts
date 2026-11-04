@@ -75,8 +75,8 @@ const ARCHAEOLOGY: TypeVocabulary = {
 
 const TOWERS: TypeVocabulary = {
   options: TOWERS_TYPES,
-  what: 'What kind of tower it is, read from Wikidata’s classes: a pagoda, a minaret or a clock tower before a bell tower, a TV tower as an observation tower, and a tower otherwise.',
-  whenItChanges: 'Retyped on Wikidata. The same tower either way; the filter chip it answers to changes.',
+  what: 'What kind of tower it is, read from Wikidata’s classes: a pagoda, a minaret or a clock tower before a bell tower, a TV tower as an observation tower, and a tower otherwise. A broadcast mast, seen from the ground and never gone up, is a mast where OpenStreetMap maps it as one, or where it is a transmitter whose record states nothing a visited tower does.',
+  whenItChanges: 'Retyped on Wikidata, or remapped on OpenStreetMap for a mast. The same tower either way; the filter chip it answers to changes.',
 };
 
 const BRIDGES: TypeVocabulary = {
