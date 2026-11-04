@@ -5116,6 +5116,215 @@ export interface ReviewAnswerResult {
   placementFailed: ReviewAnswerResultPlacementFailedItem[];
 }
 
+export type CrowdingGroupGroup = {
+  /** The region; null for the places no region places. */
+  regionId: number | null;
+  /** @nullable */
+  regionName: string | null;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kindId: number;
+  /** @nullable */
+  type: string | null;
+};
+
+export type CrowdingGroupKind = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /**
+     * How many better-known places of a type shadow a place.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  limit: number;
+  /** The radius they are counted within. */
+  radiusKm: number;
+};
+
+/**
+ * Where it stands now: on the region page, in its tail, or a new arrival nobody has passed.
+ */
+export type CrowdingGroupPlaceStanding = typeof CrowdingGroupPlaceStanding[keyof typeof CrowdingGroupPlaceStanding];
+
+
+export const CrowdingGroupPlaceStanding = {
+  shown: 'shown',
+  shadowed: 'shadowed',
+  new: 'new',
+} as const;
+
+export type CrowdingGroupPlacePin = typeof CrowdingGroupPlacePin[keyof typeof CrowdingGroupPlacePin] | null;
+
+
+export const CrowdingGroupPlacePin = {
+  list: 'list',
+  shadow: 'shadow',
+} as const;
+
+/**
+ * One place of a crowded city's group, as its region page would show it.
+ */
+export interface CrowdingGroupPlace {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  /**
+     * The Wikipedia article the place holds, as its card links it (#2345).
+     * @nullable
+     */
+  wikipediaUrl: string | null;
+  /**
+     * The place's picture, as stored: the row draws a thumbnail of it (#2345).
+     * @nullable
+     */
+  imageUrl: string | null;
+  /** Whose photograph the picture is, shown with it. */
+  imageCredit: ImageCredit | null;
+  /**
+     * Its fame among its kind and type worldwide (ADR-0172); null before it is scored.
+     * @nullable
+     */
+  score: number | null;
+  /** Where it stands now: on the region page, in its tail, or a new arrival nobody has passed. */
+  standing: CrowdingGroupPlaceStanding;
+  /** In the tail now, or for a new arrival, once passed. */
+  crowded: boolean;
+  /** How many places of its type within the radius count above it as the rule counts them, whatever its own pin (`crowding_above()`): read for a place in the tail or pinned, null for an unpinned place the region page shows, which fewer than the limit outrank, and for a type its kind exempts. */
+  outrankedBy: number | null;
+  /** The names of the best known of those, three at most, best known first: what a hover names. Published places only; empty where the count is not read. */
+  betterKnown: string[];
+  /** Where the rule puts it whatever its own pin says: in the tail, or not. */
+  ruleCrowded: boolean;
+  pin: CrowdingGroupPlacePin;
+  /** It holds a work a reader is shown, so it is always shown and takes no pin (ADR-0173). */
+  holdsWorks: boolean;
+  /** Whether it may take a pin: not while it holds works or its type is exempt. */
+  pinnable: boolean;
+  /** Whether the caller's scope reaches it, so an answer about it is taken. */
+  canAnswer: boolean;
+}
+
+/**
+ * A crowded city as its region page shows one kind and type (#2358): what a curator sorts.
+ */
+export interface CrowdingGroup {
+  group: CrowdingGroupGroup;
+  kind: CrowdingGroupKind;
+  /** The kind never hides a place of this type (ADR-0179): nothing here takes a pin. */
+  typeExempt: boolean;
+  /** Every place of the kind and type in the region and under it, best known first: shown, shadowed and new. */
+  places: CrowdingGroupPlace[];
+  /** More places stand in the group than one read lists. */
+  truncated: boolean;
+}
+
+/**
+ * The place's group: the leaf region it is listed under, as the shadowed arrivals are grouped.
+ */
+export type CrowdingPlaceViewGroup = {
+  /** The region; null for the places no region places. */
+  regionId: number | null;
+  /** @nullable */
+  regionName: string | null;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kindId: number;
+  /** @nullable */
+  type: string | null;
+};
+
+export type CrowdingPlaceViewKind = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /**
+     * How many better-known places of a type shadow a place.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  limit: number;
+  /** The radius they are counted within. */
+  radiusKm: number;
+};
+
+/**
+ * Where it stands now: on the region page, in its tail, or a new arrival nobody has passed.
+ */
+export type CrowdingPlaceViewAroundItemStanding = typeof CrowdingPlaceViewAroundItemStanding[keyof typeof CrowdingPlaceViewAroundItemStanding];
+
+
+export const CrowdingPlaceViewAroundItemStanding = {
+  shown: 'shown',
+  shadowed: 'shadowed',
+  new: 'new',
+} as const;
+
+export type CrowdingPlaceViewAroundItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  /**
+     * How far it lies from the place, in metres.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  distanceM: number;
+  /** Where it stands now: on the region page, in its tail, or a new arrival nobody has passed. */
+  standing: CrowdingPlaceViewAroundItemStanding;
+  /** It counts above the place (`crowding_above()`): what the place is compared with. */
+  compared: boolean;
+};
+
+/**
+ * A place of a crowded city in its own circle (#2358): what the rule compares it with.
+ */
+export interface CrowdingPlaceView {
+  place: CrowdingGroupPlace;
+  /** The place's group: the leaf region it is listed under, as the shadowed arrivals are grouped. */
+  group: CrowdingPlaceViewGroup;
+  kind: CrowdingPlaceViewKind;
+  typeExempt: boolean;
+  /** Every other place of its kind and type within the radius, best known first. */
+  around: CrowdingPlaceViewAroundItem[];
+  /**
+     * How many of the places it is compared with `around` leaves out: new arrivals outside the caller's scope, and ones whose source no longer lists them, which the rule counts and the review queue does not show.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  comparedUnlisted: number;
+}
+
 /**
  * The place the window opened on.
  */
@@ -5318,6 +5527,7 @@ export type CrowdingAnswersBodyAnswersItemAnswer = typeof CrowdingAnswersBodyAns
 export const CrowdingAnswersBodyAnswersItemAnswer = {
   list: 'list',
   shadow: 'shadow',
+  publish: 'publish',
   refuse: 'refuse',
   clear: 'clear',
 } as const;
@@ -5347,6 +5557,7 @@ export type CrowdingAnsweredAnsweredItemAnswer = typeof CrowdingAnsweredAnswered
 export const CrowdingAnsweredAnsweredItemAnswer = {
   list: 'list',
   shadow: 'shadow',
+  publish: 'publish',
   refuse: 'refuse',
   clear: 'clear',
 } as const;
@@ -8022,6 +8233,34 @@ export const GetExperiencesReviewQueueSort = {
   date: 'date',
   question: 'question',
 } as const;
+
+export type GetExperiencesReviewCrowdingGroupParams = {
+  region: 'none' | number;
+  /**
+   * For `none`: the world view whose leaves place a place, as the shadowed arrivals' read takes it.
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  worldViewId?: number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  kind: number;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  type?: string;
+};
+
+export type GetExperiencesReviewCrowdingPlaceByMembershipIdParams = {
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  worldViewId?: number;
+};
 
 export type GetExperiencesReviewCrowdingAroundByMembershipIdParams = {
   /**
@@ -11755,6 +11994,72 @@ return apiFetch<ReviewAnswerResult>(getPostExperiencesReviewAnswerUrl(),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(reviewAnswerBody)
+  }
+);}
+
+
+
+export const getGetExperiencesReviewCrowdingGroupUrl = (params: GetExperiencesReviewCrowdingGroupParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/review/crowding/group?${stringifiedParams}` : `/api/experiences/review/crowding/group`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Every place of a kind and type in a region, as its page shows them, best known first, with the rule's count and the curator's pin
+ */
+export const getExperiencesReviewCrowdingGroup = async (params: GetExperiencesReviewCrowdingGroupParams, options?: Parameters<typeof apiFetch>[1]): Promise<CrowdingGroup> => {
+
+  return apiFetch<CrowdingGroup>(getGetExperiencesReviewCrowdingGroupUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesReviewCrowdingPlaceByMembershipIdUrl = (membershipId: number,
+    params?: GetExperiencesReviewCrowdingPlaceByMembershipIdParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/review/crowding/place/${encodeURIComponent(String(membershipId))}?${stringifiedParams}` : `/api/experiences/review/crowding/place/${encodeURIComponent(String(membershipId))}`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary A place of a crowded city in its own circle: the places of its type within the radius, and those it is compared with
+ */
+export const getExperiencesReviewCrowdingPlaceByMembershipId = async (membershipId: number,
+    params?: GetExperiencesReviewCrowdingPlaceByMembershipIdParams, options?: Parameters<typeof apiFetch>[1]): Promise<CrowdingPlaceView> => {
+
+  return apiFetch<CrowdingPlaceView>(getGetExperiencesReviewCrowdingPlaceByMembershipIdUrl(membershipId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 

@@ -13678,6 +13678,153 @@
         }
       }
     },
+    "/api/experiences/review/crowding/group": {
+      "get": {
+        "operationId": "getExperiencesReviewCrowdingGroup",
+        "summary": "Every place of a kind and type in a region, as its page shows them, best known first, with the rule's count and the curator's pin",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "region",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "none"
+                },
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                }
+              ]
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "worldViewId",
+            "schema": {
+              "description": "For `none`: the world view whose leaves place a place, as the shadowed arrivals' read takes it.",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "description": "For `none`: the world view whose leaves place a place, as the shadowed arrivals' read takes it."
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrowdingGroup"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/review/crowding/place/{membershipId}": {
+      "get": {
+        "operationId": "getExperiencesReviewCrowdingPlaceByMembershipId",
+        "summary": "A place of a crowded city in its own circle: the places of its type within the radius, and those it is compared with",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "membershipId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "worldViewId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrowdingPlaceView"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/review/crowding/around/{membershipId}": {
       "get": {
         "operationId": "getExperiencesReviewCrowdingAroundByMembershipId",
@@ -21257,6 +21404,7 @@
                   "enum": [
                     "list",
                     "shadow",
+                    "publish",
                     "refuse",
                     "clear"
                   ]
@@ -21412,6 +21560,7 @@
                   "enum": [
                     "list",
                     "shadow",
+                    "publish",
                     "refuse",
                     "clear"
                   ]
@@ -21431,6 +21580,407 @@
         "required": [
           "answers"
         ]
+      },
+      "CrowdingGroup": {
+        "type": "object",
+        "properties": {
+          "group": {
+            "type": "object",
+            "properties": {
+              "regionId": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The region; null for the places no region places."
+              },
+              "regionName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kindId": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "regionId",
+              "regionName",
+              "kindId",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "kind": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "name": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "How many better-known places of a type shadow a place."
+              },
+              "radiusKm": {
+                "type": "number",
+                "description": "The radius they are counted within."
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "limit",
+              "radiusKm"
+            ],
+            "additionalProperties": false
+          },
+          "typeExempt": {
+            "type": "boolean",
+            "description": "The kind never hides a place of this type (ADR-0179): nothing here takes a pin."
+          },
+          "places": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CrowdingGroupPlace"
+            },
+            "description": "Every place of the kind and type in the region and under it, best known first: shown, shadowed and new."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "More places stand in the group than one read lists."
+          }
+        },
+        "required": [
+          "group",
+          "kind",
+          "typeExempt",
+          "places",
+          "truncated"
+        ],
+        "additionalProperties": false,
+        "description": "A crowded city as its region page shows one kind and type (#2358): what a curator sorts."
+      },
+      "CrowdingGroupPlace": {
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "wikipediaUrl": {
+            "description": "The Wikipedia article the place holds, as its card links it (#2345).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imageUrl": {
+            "description": "The place's picture, as stored: the row draws a thumbnail of it (#2345).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imageCredit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whose photograph the picture is, shown with it."
+          },
+          "score": {
+            "description": "Its fame among its kind and type worldwide (ADR-0172); null before it is scored.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "standing": {
+            "type": "string",
+            "enum": [
+              "shown",
+              "shadowed",
+              "new"
+            ],
+            "description": "Where it stands now: on the region page, in its tail, or a new arrival nobody has passed."
+          },
+          "crowded": {
+            "type": "boolean",
+            "description": "In the tail now, or for a new arrival, once passed."
+          },
+          "outrankedBy": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many places of its type within the radius count above it as the rule counts them, whatever its own pin (`crowding_above()`): read for a place in the tail or pinned, null for an unpinned place the region page shows, which fewer than the limit outrank, and for a type its kind exempts."
+          },
+          "betterKnown": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The names of the best known of those, three at most, best known first: what a hover names. Published places only; empty where the count is not read."
+          },
+          "ruleCrowded": {
+            "type": "boolean",
+            "description": "Where the rule puts it whatever its own pin says: in the tail, or not."
+          },
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "list",
+                  "shadow"
+                ],
+                "description": "A curator's answer: list keeps the place among what a reader is shown and counts it as one of the ten; shadow keeps it in the tail and never counts it (ADR-0180)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "holdsWorks": {
+            "type": "boolean",
+            "description": "It holds a work a reader is shown, so it is always shown and takes no pin (ADR-0173)."
+          },
+          "pinnable": {
+            "type": "boolean",
+            "description": "Whether it may take a pin: not while it holds works or its type is exempt."
+          },
+          "canAnswer": {
+            "type": "boolean",
+            "description": "Whether the caller's scope reaches it, so an answer about it is taken."
+          }
+        },
+        "required": [
+          "membershipId",
+          "experienceId",
+          "name",
+          "latitude",
+          "longitude",
+          "wikipediaUrl",
+          "imageUrl",
+          "imageCredit",
+          "score",
+          "standing",
+          "crowded",
+          "outrankedBy",
+          "betterKnown",
+          "ruleCrowded",
+          "pin",
+          "holdsWorks",
+          "pinnable",
+          "canAnswer"
+        ],
+        "additionalProperties": false,
+        "description": "One place of a crowded city's group, as its region page would show it."
+      },
+      "CrowdingPlaceView": {
+        "type": "object",
+        "properties": {
+          "place": {
+            "$ref": "#/components/schemas/CrowdingGroupPlace"
+          },
+          "group": {
+            "type": "object",
+            "properties": {
+              "regionId": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The region; null for the places no region places."
+              },
+              "regionName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kindId": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "type": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "regionId",
+              "regionName",
+              "kindId",
+              "type"
+            ],
+            "additionalProperties": false,
+            "description": "The place's group: the leaf region it is listed under, as the shadowed arrivals are grouped."
+          },
+          "kind": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "name": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "How many better-known places of a type shadow a place."
+              },
+              "radiusKm": {
+                "type": "number",
+                "description": "The radius they are counted within."
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "limit",
+              "radiusKm"
+            ],
+            "additionalProperties": false
+          },
+          "typeExempt": {
+            "type": "boolean"
+          },
+          "around": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "membershipId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "experienceId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "name": {
+                  "type": "string"
+                },
+                "latitude": {
+                  "type": "number"
+                },
+                "longitude": {
+                  "type": "number"
+                },
+                "distanceM": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "How far it lies from the place, in metres."
+                },
+                "standing": {
+                  "type": "string",
+                  "enum": [
+                    "shown",
+                    "shadowed",
+                    "new"
+                  ],
+                  "description": "Where it stands now: on the region page, in its tail, or a new arrival nobody has passed."
+                },
+                "compared": {
+                  "type": "boolean",
+                  "description": "It counts above the place (`crowding_above()`): what the place is compared with."
+                }
+              },
+              "required": [
+                "membershipId",
+                "experienceId",
+                "name",
+                "latitude",
+                "longitude",
+                "distanceM",
+                "standing",
+                "compared"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Every other place of its kind and type within the radius, best known first."
+          },
+          "comparedUnlisted": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How many of the places it is compared with `around` leaves out: new arrivals outside the caller's scope, and ones whose source no longer lists them, which the rule counts and the review queue does not show."
+          }
+        },
+        "required": [
+          "place",
+          "group",
+          "kind",
+          "typeExempt",
+          "around",
+          "comparedUnlisted"
+        ],
+        "additionalProperties": false,
+        "description": "A place of a crowded city in its own circle (#2358): what the rule compares it with."
       },
       "CrowdingWindow": {
         "type": "object",

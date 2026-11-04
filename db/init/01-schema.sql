@@ -6454,23 +6454,23 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
        AND et.curation_state <> 'pending' AND t.curation_state <> 'pending')
 $$;
 
--- How many candidates of a kind and type within `within_km` of `at_point`
--- count above a membership whose fame is `above_score`: the better known and the ones a
--- curator keeps in the list (ADR-0180), never one a curator keeps in the
--- shadow nor one holding a work a reader is shown (ADR-0173). The
--- membership's own pin is not read, so the count says where the rule puts it
--- whatever a curator answered: the recount crowds an unpinned scored
--- membership out at crowding_limit, and the curator's window shows the number
--- beside the pin. A membership with no score is outranked by pins alone.
--- A set-returning SQL function, so the planner inlines it into the recount's
--- lateral join as if it were spelled there: as a scalar function called per
--- candidate, a full recount took 5.7 s on the development catalogue against
--- 2.1 s.
-CREATE OR REPLACE FUNCTION crowding_better(
+-- The candidates of a kind and type within `within_km` of `at_point` that
+-- count above a membership whose fame is `above_score`: the better known and
+-- the ones a curator keeps in the list (ADR-0180), never one a curator keeps in
+-- the shadow nor one holding a work a reader is shown (ADR-0173). The
+-- membership's own pin is not read, so the set says where the rule puts it
+-- whatever a curator answered. A membership with no score is outranked by pins
+-- alone. What the curator's window lists as the places a place is compared
+-- with (ADR-0183, #2358), and what crowding_better() counts, so the two never differ.
+-- A set-returning SQL function, so the planner inlines it, and through
+-- crowding_better() into the recount's lateral join, as if it were spelled
+-- there: as a scalar function called per candidate, a full recount took 5.7 s
+-- on the development catalogue against 2.1 s.
+CREATE OR REPLACE FUNCTION crowding_above(
   of_kind integer, of_type text, of_member integer, at_point geometry, within_km double precision, above_score real
-) RETURNS TABLE (better integer)
+) RETURNS TABLE (membership_id integer)
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
-  SELECT count(*)::int
+  SELECT d.id
     FROM experience_kind_memberships d
     JOIN experiences de ON de.id = d.experience_id
     LEFT JOIN membership_fame df ON df.membership_id = d.id
@@ -6481,6 +6481,17 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
      AND d.crowding_pin IS DISTINCT FROM 'shadow'
      AND (d.crowding_pin = 'list' OR df.score > above_score)
      AND NOT place_shows_works(de.id)
+$$;
+
+-- How many candidates count above a membership (crowding_above()): the recount
+-- crowds an unpinned scored membership out at crowding_limit, and the
+-- curator's window shows the number beside the pin. Set-returning for the
+-- same reason as crowding_above(), which the planner inlines through it.
+CREATE OR REPLACE FUNCTION crowding_better(
+  of_kind integer, of_type text, of_member integer, at_point geometry, within_km double precision, above_score real
+) RETURNS TABLE (better integer)
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+  SELECT count(*)::int FROM crowding_above(of_kind, of_type, of_member, at_point, within_km, above_score)
 $$;
 
 -- The same count for one membership, by its id: what the curator's window and
