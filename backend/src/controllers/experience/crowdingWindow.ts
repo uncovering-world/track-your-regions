@@ -22,6 +22,7 @@
 
 import type { z } from 'zod/v4';
 import type { CrowdingWindow, ShadowedArrivals } from '../../api/responses/crowding.js';
+import type { ImageCredit } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import {
   FAME, KINDS, MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql,
@@ -61,6 +62,9 @@ interface WindowRow {
   latitude: number;
   longitude: number;
   distance_m: number;
+  wikipedia_url: string | null;
+  image_url: string | null;
+  image_credit: ImageCredit | null;
   readers: number | null;
   guide_editions: number | null;
   wikipedia_editions: number | null;
@@ -139,6 +143,10 @@ export async function getCrowdingWindow(
       SELECT m.id AS membership_id, e.id AS experience_id, e.name,
              ST_Y(e.location) AS latitude, ST_X(e.location) AS longitude,
              round(ST_Distance(e.location::geography, centre.point::geography))::int AS distance_m,
+             -- What the place is, as its review card shows it (#2345): its article,
+             -- its picture and whose photograph that is, which the row draws together.
+             e.metadata->>'wikipediaUrl' AS wikipedia_url, e.image_url,
+             e.metadata->'imageCredit' AS image_credit,
              f.readers, f.guide_editions, f.wikipedia_editions, f.score,
              crowding_outranked_by(m.id) AS outranked_by,
              m.curation_state = 'pending' AS arriving,
@@ -198,6 +206,9 @@ export async function getCrowdingWindow(
         latitude: row.latitude,
         longitude: row.longitude,
         distanceM: row.distance_m,
+        wikipediaUrl: row.wikipedia_url,
+        imageUrl: row.image_url,
+        imageCredit: row.image_credit,
         readers: row.readers,
         guideEditions: row.guide_editions,
         guideUsed: row.guide_editions === null ? null : row.guide_editions > 0,

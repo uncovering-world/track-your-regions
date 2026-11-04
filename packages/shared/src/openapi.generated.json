@@ -21522,6 +21522,31 @@
             "maximum": 9007199254740991,
             "description": "How far the place lies from the window's centre, in metres."
           },
+          "wikipediaUrl": {
+            "description": "The Wikipedia article the place holds, as its card links it (#2345).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imageUrl": {
+            "description": "The place's picture, as stored: the row draws a thumbnail of it (#2345).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imageCredit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whose photograph the picture is, shown with it."
+          },
           "readers": {
             "anyOf": [
               {
@@ -21646,6 +21671,9 @@
           "latitude",
           "longitude",
           "distanceM",
+          "wikipediaUrl",
+          "imageUrl",
+          "imageCredit",
           "readers",
           "guideEditions",
           "guideUsed",

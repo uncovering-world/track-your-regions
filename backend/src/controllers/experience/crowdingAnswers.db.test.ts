@@ -243,6 +243,32 @@ describe('the window over a crowded city', () => {
     });
   });
 
+  it("carries each place's article and its picture with the picture's credit, and nothing for a place without (#2345)", async () => {
+    // Alexanderplatz as the development catalogue holds it.
+    const credit = {
+      author: 'Wladyslaw Sojka', license: 'FAL',
+      licenseUrl: 'http://artlibre.org/licence/lal/en',
+      detailsUrl: 'https://commons.wikimedia.org/wiki/File:Berlin_-_Alexanderplatz1.jpg',
+    };
+    await pool.query(
+      `UPDATE experiences SET image_url = $2,
+              metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('wikipediaUrl', $3::text, 'imageCredit', $4::jsonb)
+        WHERE id = $1`,
+      [squares.get('Alexanderplatz')!.place,
+        'http://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg',
+        'https://en.wikipedia.org/wiki/Alexanderplatz', JSON.stringify(credit)]);
+
+    const read = await window('Schloßplatz');
+    expect(read.rows.find(row => row.name === 'Alexanderplatz')).toMatchObject({
+      wikipediaUrl: 'https://en.wikipedia.org/wiki/Alexanderplatz',
+      imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg',
+      imageCredit: credit,
+    });
+    expect(read.rows.find(row => row.name === 'Leipziger Platz')).toMatchObject({
+      wikipediaUrl: null, imageUrl: null, imageCredit: null,
+    });
+  });
+
   it('names the places that shadow the window\'s place (#2228)', async () => {
     const read = await window('Schloßplatz');
     expect(read.rows.filter(row => row.outranksCentre).map(row => row.name))
