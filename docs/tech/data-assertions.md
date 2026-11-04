@@ -81,6 +81,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | objects | A public-art row admitted with a class the rule refuses | invariant |
 | objects | An archaeology site standing on the same ground as a World Heritage row | watch |
 | objects | A work no place a reader is offered holds | watch |
+| objects | Places no kind offers that hold a famous work no kind shows | watch |
 | pictures | A stored picture on a host whose terms do not let us show it | invariant |
 | pictures | A picture shown with nobody credited | invariant |
 | coverage | A place or work travellers are sent to, well known by its kind's own rule, that the kind does not offer | invariant |
@@ -131,6 +132,31 @@ membership under the same item). Each row names the venues that hold the work,
 which is where the refusal that lost it is found. A work a kind refused as held at a place
 another kind admits is taken by that kind's next run (ADR-0102), so it leaves
 the list then; what stays is a work whose place no kind admits.
+
+**Places no kind offers that hold a famous work no kind shows** (`workAssertions.ts`,
+#1821) sees what the rule above cannot: a work no kind ever wrote. The place pass
+reads the works of every works kind once (§ A works kind is a classifier over the
+gather of works in `experiences.md`) and keeps where each work at 18 Wikipedia
+editions or more lies, whatever any kind then shows of it
+(`workbench.gathered_work_venues`, written by `places/gatheredWorkVenues.ts`, every
+venue its collection and location statements name, replaced whole by each pass).
+The check reads it at 22 editions, the Art Museums line, and lists one row per
+place no kind offers, with the works it holds that no kind shows on a card and
+that are no place of their own. A venue that is a town or an administrative area
+(`Q486972`, `Q56061` in the subset's class closure) is where a statement put the
+work, not a place to visit, and is left out: Munich for the Carmina Burana, France
+for Monet's *Water Lilies*. Measured on the development subset on 2026-11-04, 22
+places: the Beinecke Library (the Voynich manuscript), Trinity College Dublin's
+library (the Book of Kells), the National Library of Sweden (the Codex Gigas), the
+British Library (the Codex Sinaiticus, the Lindisfarne Gospels), Prague's Old Town
+Hall (its astronomical clock), the Bavarian State Library (the Carmina Burana) and
+the Courtauld (*The Card Players*) among them: libraries and a gallery no kind is
+drawn to hold. A few rows are where a statement names something that is not a place to
+visit (Mons Hadley for *Fallen Astronaut*, the old Cotton library for the
+Lindisfarne Gospels). Each property is read by the placement's rule: its preferred
+values where it has any, and nothing of a work whose current whereabouts are
+unknown (#868), so a former holder is not named as holding a stolen work. A watch: a row is a kind's gap or a place a curator could add. Empty
+until a place pass has read works.
 
 **A stored picture the product may not show** is ADR-0043's own invariant over
 live rows: every `image_url` names a Commons file or a file we host, because the
