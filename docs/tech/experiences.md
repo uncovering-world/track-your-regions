@@ -5354,7 +5354,7 @@ Maggiore, and crowds out 51 more of its churches.
   - the world points and their kind filter (`kindMembershipJoinSql`);
   - every kind and region count (`countedMembershipSql`), and so the coverage report;
   - the queue's arrivals (`arrivalOpenSql`, `arrivalWaitingSql`): a crowded-out arrival asks
-    nothing in the queue's sections until it rises into the ten; the crowding window's group read
+    nothing in the queue's sections until it rises into the ten; the crowded cities' arrivals read
     asks it (below).
 
   Search, the card (`readableByIdSql`) and a visit (`claimablePlaceSql`) keep the offered set. A
@@ -5371,11 +5371,31 @@ Maggiore, and crowds out 51 more of its churches.
   marker's kinds leave the crowded one out (`membershipShownSql`, read per row by
   `placeKindsSql(experience, true)` and once a site for a serial site's parts' markers by
   `shownKindsByPlaceSql`, #2301).
-- **A curator sorts a crowded city in one window** ([ADR-0180](../decisions/0180-a-curator-keeps-a-place-of-a-crowded-city-in-its-list-or-its-shadow.md), #2282).
-  Whether a place belongs in a city's list or its shadow is a question of priorities among its
-  neighbours, so the window (`GET /review/crowding/around/:membershipId`, `crowdingAroundWindow.ts`) lists
-  every place of the kind and type within the radius of the card's place, best known first, with
-  the rule's count for each (`crowding_outranked_by(membership)`) and its standing.
+- **A curator sorts a crowded city in one window** ([ADR-0180](../decisions/0180-a-curator-keeps-a-place-of-a-crowded-city-in-its-list-or-its-shadow.md), [ADR-0183](../decisions/0183-a-crowded-city-is-answered-on-its-regions-list-and-a-place-in-its-own-circle.md), #2282, #2358).
+  What a curator decides is what a region's page shows, and an answer is a pin on the place
+  itself, so the window is the region's list as a reader sees it: one region, one kind and one
+  type, "Lazio · Places of worship · church". A click on a place opens it in its own circle.
+  - **The region's list** (`GET /review/crowding/group?region=&kind=&type=`, `getCrowdingGroup`
+    in `crowdingWindow.ts`) reads every place of the kind and type placed in the region or under
+    it, through the queue's own subtree walk (`regionSubtreeCte`), less what a curator rejected
+    from the region (`notRejectedInSql`), as the region's page holds them; `none` reads the places
+    no leaf of a public world view places (`groupLeafSql`, the world view named where one is), the
+    arrivals read's own `none`, so every arrival that group counts is answered in it, and a place's
+    circle names no region for such a place. Each carries its standing (`shown`, `shadowed` or `new`), whether it is
+    crowded out (for a new arrival, once passed), its fame (`membership_fame.score`, the list's
+    order), its point, its picture, the picture's credit and its article. For a place in the tail
+    or pinned it carries the rule's count (`outrankedBy`) and the names of the three best known of
+    those above it (`betterKnown`, published places only), both through `crowding_above()`; an
+    unpinned place the page shows has fewer than the limit above it and carries neither, which its
+    circle says exactly. On dev (2026-11-04) Lazio's churches are 127 places: 18 shown, 28
+    shadowed and 81 new, 70 of which the rule would shadow, and the read took 317 ms warm, most of
+    it the count above each of the tail's places.
+  - **A place's circle** (`GET /review/crowding/place/:membershipId`, `getCrowdingPlace`) reads
+    the place with its exact count, the group it is listed under (its leaf, as the shadowed
+    arrivals are grouped, `groupLeafSql`), and every other place of its kind and type within the
+    radius (`aroundSql`, the review card's count), each marked `compared` where it counts above the
+    place. What it is compared with is `crowding_above()` itself: the set `crowding_better()`
+    counts, so the list and the count are one rule. On dev it took 4 ms around the Pantheon.
   - **The answer is a pin on the membership** (`experience_kind_memberships.crowding_pin`, written
     by `setCrowdingPin` in `membershipWriter.ts` and by no run). `list`: never crowded out, and it
     counts as one of the ten above every place the curator did not keep there. `shadow`: always
@@ -5383,99 +5403,124 @@ Maggiore, and crowds out 51 more of its churches.
     Kottbusser Tor brings itself into Berlin's squares and pushes Hackescher Markt, the tenth, out;
     Nollendorfplatz kept in the shadow lets Frankfurter Tor up. A place holding works and a type its
     kind exempts take no pin, and a refused membership's pin is not read.
-  - **The rule's reading stays beside the pin.** `crowding_better()` counts what stands above a
-    membership, other places' pins included and its own pin unread, so the window says where the
-    rule would put a pinned place (`crowding_outranked_by(membership)` is the same count by id). It
-    is a set-returning SQL function so that the recount's lateral join inlines it: called as a
-    scalar per candidate, a full recount took 5.7 s on dev against 2.1 s. The recount crowds out an
-    unpinned scored membership at the limit, a shadow pin whatever its count, and never a list pin;
-    `membership_crowding.outranked_by` may then be under the limit, zero included.
-    `crowding_better()` counts the set `crowding_above()` lists (ADR-0183, migration 217), so a
-    place's circle (`GET /review/crowding/place/:membershipId`) lists what it is compared with
-    through the rule itself, less what the curator may not see, which it counts
-    (`comparedUnlisted`); the planner inlines the inner function through the outer.
+  - **The rule's reading stays beside the pin.** `crowding_above()` lists what stands above a
+    membership, other places' pins included and its own pin unread, and `crowding_better()` counts
+    it (ADR-0183), so the window says where the rule would put a pinned place
+    (`crowding_outranked_by(membership)` is the same count by id). Both are set-returning SQL
+    functions so that the planner inlines them, the inner through the outer, into the recount's
+    lateral join: called as a scalar per candidate, a full recount took 5.7 s on dev against
+    2.1 s, and an EXPLAIN of the recount shows no function scan (migration 217). The recount
+    crowds out an unpinned scored membership at the limit, a shadow pin whatever its count, and
+    never a list pin; `membership_crowding.outranked_by` may then be under the limit, zero
+    included.
   - **Answers apply together** (`POST /review/crowding/answers`, `crowdingAnswers.ts`), each place its
     own act. Keeping a new arrival in the list or the shadow publishes it with the pin in the same
-    transaction (`publishUnderLock`'s `alsoUnderLock`); `publish` publishes it with no pin, as its
-    card does, so the rule places it, and is refused on a place published already (ADR-0183);
-    *don't take* refuses it as its card does, clearing any pin. A pin's change recounts around the place as it commits
+    transaction (`publishUnderLock`'s `alsoUnderLock`); `publish` publishes it with no pin, so the
+    rule places it, and is refused on a place published already (ADR-0183); *don't take* refuses it as its
+    card does, clearing any pin. A pin's change recounts around the place as it commits
     (`crowding_follows_membership_change` reads `crowding_pin`), and the curation log records it
     (`crowding_answered`) with the rule's count and verdict at the time.
   - **The shadowed arrivals are asked in a group of their own** (`GET /review/crowding/arrivals`):
     the queue's sections still leave a crowded-out arrival out (`arrivalOpenSql`), and this read
     groups them by leaf region, kind and type, "Berlin · Squares & streets · square: 11 new", each
-    group opening the window on its best-known arrival. `?region=` keeps the groups within a
-    region (#2349): an arrival placed in the region or under it, read through the queue's own
-    subtree walk (`regionSubtreeCte`, `reviewQueueKeys.ts`), grouped under its leaf there, so a
-    city split into districts answers a group per district and a leaf answers its own; `none`
-    keeps the arrivals no region places.
-  - **Which places shadow a place** (#2228) is the window opened on it: the rows marked
-    `outranksCentre` are the ones its own count counts.
+    group opening its region's list. `?region=` keeps the groups within a region (#2349): an
+    arrival placed in the region or under it, read through the queue's own subtree walk
+    (`regionSubtreeCte`, `reviewQueueKeys.ts`), grouped under its leaf there, so a city split into
+    districts answers a group per district and a leaf answers its own; `none` keeps the arrivals
+    no leaf of a public world view places. An arrival is grouped under a leaf a curator did not
+    reject it from, and one rejected from every leaf that places it is not counted, as no leaf's
+    list holds it (`notRejectedInSql`).
+  - **Which places shadow a place** (#2228) is its circle: the places marked `compared`.
   - **A review card says how crowded its city is** without reading the window
     (`attachCrowding`, `reviewQueueCrowding.ts`), and so does a kind row of a place's curation
     dialog (`listPlaceKinds`): both ask `crowdingOf`, one statement over their memberships, so a
-    row and a card say the number the window lists. Each card of the queue's page carries
-    `crowding`: the kind's limit and radius, how many places of its kind and type the window would
-    list (`around`, through the window's own `aroundSql`), whether the display shadows it and, if
-    it does, the count the recount stored above it (`membership_crowding.outranked_by`). It is null
-    for a kind with no rule, an exempt type, a place holding works, a place with no point, or a
-    card about no membership. It is one statement per page over the page's memberships. On dev
-    (2026-11-02), the 25 best-known churches of Lazio cost 10 ms and fifty cost 20 ms, nearly all
-    of it the count around each centre, about 337 places in a Roman 10 km box. Counting
-    `crowding_better()` again, rather than reading the stored count, put 100 ms more on the fifty,
-    since it tests every place within 10 km for works.
+    row and a card say the number the place's circle draws. Each card of the queue's page carries
+    `crowding`: the kind's limit and radius, how many places of its kind and type stand within the
+    radius, the place among them (`around`, through the circle's own `aroundSql`), whether the
+    display shadows it and, if it does, the count the recount stored above it
+    (`membership_crowding.outranked_by`). It is null for a kind with no rule, an exempt type, a
+    place holding works, a place with no point, or a card about no membership. It is one statement
+    per page over the page's memberships. On dev (2026-11-02), the 25 best-known churches of Lazio
+    cost 10 ms and fifty cost 20 ms, nearly all of it the count around each centre, about 337
+    places in a Roman 10 km box. Counting `crowding_better()` again, rather than reading the stored
+    count, put 100 ms more on the fifty, since it tests every place within 10 km for works.
   - **The curator's side** lives in `frontend/src/components/curation/crowding/`:
     - `CrowdingWayIn` is the way in on a review card of a membership (`GatedSection`,
       `PinQuestionCard`, `VisitQuestionCard`, `KindMissingCard`). It reads the card's `crowding`
       and nothing else, so no card reads the window before a curator opens it. The button says
       "Squares around (22)" from `around`. On a shadowed place, `shadowLine` (`crowdingWords.ts`)
       says "Shadowed in Squares & streets: 13 better-known squares within 10 km outrank it" from
-      `outrankedBy`. The window opened on it names them: the rows that count above its place.
-      A place's curation dialog offers the same button on each kind row that carries `crowding`
-      (`PlaceKinds`), opening the window over the dialog on that membership. The dialog's lazy
-      wrapper (`LazyCurationDialog`) hands it `LazyCrowdingWindow` rather than the dialog importing
-      it: a dialog chunk that imports the shell's lazy helpers makes Rolldown re-cut the startup
-      chunks, moving the code the shell shares with the dialog into the entry chunk.
-    - `CrowdingWindow` is the window, drawn in one of two frames: `CrowdingWindowDialog` over a review
-      card, its own chunk behind `LazyCrowdingWindow`, so the review queue's chunk carries only the
-      ways in, and the *Crowded cities* tab's pane, in the page. The window reads, stages, applies
-      and reports, and hands its parts — heading, map and list, report, Apply — to its frame, which
-      lays them out and keeps the staging. A dialog sets the map beside the list from a medium
-      width and scrolls the list on its own; a pane, narrower, only on the widest screens, where
-      the list runs on with the page; from a medium width an Apply bar is pinned to the foot of
-      the screen. The map stays in view while the list scrolls (`crowdingLayout`, #2345).
-      Beside the list its pane is sticky: in the page it holds just below the top, as the list of
-      cities beside it does, since the review page's header scrolls away with the page; in a dialog
-      at the top of the dialog's content, which scrolls on a short screen. A page pane on a laptop,
-      from a medium width to the widest, stacks a lower map over the list and stands no taller than
-      the screen above the Apply bar, so the list scrolls in its own box beneath the map, its header
-      row at the box's top and no row passing under the map. The map is as tall as the screen
-      leaves room for, between 160 and 280 px, and the layout holds only on a screen tall enough
-      for the least map with its pane, the header and three rows of the list and the Apply bar
-      (`HELD_MIN_HEIGHT`), which a 1440 by 900 laptop is; neither the map's height nor the cap
-      ever leaves the list fewer than three rows, and the list keeps its header and a row
-      whatever the pane takes. A shorter laptop screen (1366 by 768, or a laptop at 200 % zoom)
-      and a phone stand the map over the list, and both scroll with the page.
-      `CrowdingTable` holds the rows, the rule's line
-      (`ruleLineAt`: before the first row the rule shadows) and each row's List, Shadow, Don't take
-      and Clear. Each row shows what its place is (`PlaceCell`, #2345): the place's picture as a
-      48 px `DenseThumbnail` of its 120 px `Special:FilePath` copy, its credit the © badge on it, a
-      press opening it at 960 px with the full credit (ADR-0182), the badge and the press drawn only
-      while the thumbnail is on screen and taken away with a picture that fails to load, and a *Wikipedia* link to its article with the reader's edition
-      beside it (`ReaderEditionBeside`), as the review card links it. A row whose place holds no
-      picture or no article omits it. The read carries them as the card reads them, off the place's
-      own columns: `wikipediaUrl` (`metadata.wikipediaUrl`), `imageUrl` and `imageCredit`
-      (`metadata.imageCredit`). `CrowdingMap` draws the rows as numbered dots coloured by standing, the card's place
-      ringed, and the radius as a circle drawn on the sphere (`radiusCircle`) and framed with
-      `frameGeoJson`. A row and its dot share the hovered membership. `@turf/turf`'s `circle` is not
-      used: imported from the window's chunk, it put 19 kB into the visitor's entry chunk.
-    - `crowdingStaging.ts` is the staging: which answers a row takes (`answersOffered`, from
-      `pinnable` and `canAnswer`), what a press stages, how a staged row is drawn and what the report
-      says. Staged answers are kept across a type switch and a step to another place, and one Apply
-      sends them all (`answerCrowding` in `api/crowdingAnswers.ts`, a hundred to a request). The
-      window then re-reads every window and the shadowed arrivals, and hands the report to its
-      frame: the dialog passes it to its opener on close, and the tab has the page refresh the
-      queue and the lists at once.
+      `outrankedBy`. The window opens on the region's list of the place's group with the place
+      open in its circle, which names them. A place's curation dialog offers the same button on
+      each kind row that carries `crowding` (`PlaceKinds`), opening the window over the dialog on
+      that membership. The dialog's lazy wrapper (`LazyCurationDialog`) hands it
+      `LazyCrowdingWindow` rather than the dialog importing it: a dialog chunk that imports the
+      shell's lazy helpers makes Rolldown re-cut the startup chunks, moving the code the shell
+      shares with the dialog into the entry chunk.
+    - `CrowdingWindow` is the window, drawn in one of two frames: `CrowdingWindowDialog` over a
+      review card, its own chunk behind `LazyCrowdingWindow`, so the review queue's chunk carries
+      only the ways in, and the *Crowded cities* tab's pane, in the page. The dialog reads the
+      card's place first, for the group it is listed under, and keeps the place open in its own
+      state; the tab keeps it in the address. The window reads, stages, applies and reports, and
+      hands its parts — heading, map and list or card, report, Apply — to its frame, which lays
+      them out and keeps the staging. A dialog sets the map beside the list from a medium width
+      and scrolls the list on its own; a pane, narrower, only on the widest screens, where the
+      list runs on with the page; from a medium width an Apply bar is pinned to the foot of the
+      screen. The map stays in view while the list scrolls (`crowdingLayout`, #2345). Beside the
+      list its pane is sticky: in the page it holds just below the top, as the list of groups
+      beside it does, since the review page's header scrolls away with the page; in a dialog at
+      the top of the dialog's content, which scrolls on a short screen. A page pane on a laptop,
+      from a medium width to the widest, stacks a lower map over the list and stands no taller
+      than the screen above the Apply bar, so the list scrolls in its own box beneath the map, its
+      header row at the box's top and no row passing under the map. The map is as tall as the
+      screen leaves room for, between 160 and 280 px, and the layout holds only on a screen tall
+      enough for the least map with its pane, the header and three rows of the list and the Apply
+      bar (`HELD_MIN_HEIGHT`), which a 1440 by 900 laptop is; neither the map's height nor the cap
+      ever leaves the list fewer than three rows, and the list keeps its header and a row whatever
+      the pane takes. A shorter laptop screen (1366 by 768, or a laptop at 200 % zoom) and a phone
+      stand the map over the list, and both scroll with the page.
+    - `RegionList` is the region's list: "On the region page · 18, and 11 new that would be — best
+      known first", then "Shadowed · 28, in the list's tail", a new arrival where the rule would put
+      it once passed (`listPart`) and counted apart in the page's header, since the page shows it
+      only once a curator passes it; the tail holds a curator's shadow pins as well as the rule's. Each row shows what its place is (`PlaceCell`, #2345): the
+      place's picture as a 48 px `DenseThumbnail` of its 120 px `Special:FilePath` copy, its credit
+      the © badge on it, a press opening it at 960 px with the full credit (ADR-0182), the badge and
+      the press drawn only while the thumbnail is on screen and taken away with a picture that fails
+      to load, and a *Wikipedia* link to its
+      article with the reader's edition beside it (`ReaderEditionBeside`), as the review card
+      links it. A row whose place holds no picture or no article omits it. Under the name, a note
+      (`placeNote`: "the best known here", "11 better known within 10 km"), and beside it the
+      answers its standing takes (`AnswerButtons`). A hover says why the place stands where it
+      does (`whyWords`: "Shadowed: 11 better-known squares stand within 10 km of it:
+      Alexanderplatz, Potsdamer Platz, Gendarmenmarkt, …"), and a click on its name opens its
+      circle.
+    - `PlaceView` is a place's circle: its card, with its picture and its credit as a line under it
+      (ADR-0182), a press opening it at 960 px with the full credit (`PictureLightbox`), its article, the rule's reading with its exact count (`ruleReading`) and its
+      own answers, about it alone; then what it is compared with, best known first, each with its
+      distance and each opening its own circle, and how many of them it does not list
+      (`comparedUnlisted`): "and 2 not listed here: outside your scope, or no longer offered by
+      their source" — new arrivals the curator's scope leaves out, and ones whose source no longer
+      offers them, which is all an admin meets. A link above the title returns to the region's list.
+    - `CrowdingMap` draws the region's places as dots coloured by standing, shown, shadowed, new
+      or, once an answer is staged, not taken, framed on the group's places with `frameGeoJson`;
+      in a place's circle, the radius as a dashed circle drawn on the sphere (`radiusCircle`) and
+      framed, the place ringed, what it is compared with marked and the rest faded. A hover over a
+      dot says why the place stands where it does, a click opens its circle, and a row and its dot
+      share the hovered membership. `@turf/turf`'s `circle` is not used: imported from the
+      window's chunk, it put 19 kB into the visitor's entry chunk.
+    - `crowdingStaging.ts` is the staging: which answers a place takes by where it stands
+      (`answersOffered`: a shown place *Shadow*; a shadowed one *Show anyway* or *Keep shadowed*; a
+      new arrival the rule would show *Publish*, *Shadow* or *Don't take*, and one it would shadow
+      *Show anyway*, *Keep shadowed* or *Don't take*; *Back to the rule* where a pin is held), what a
+      press stages, how a staged place is drawn, what the Apply bar says (`applySummary`: "3
+      answers staged: show Schloßplatz anyway, publish Rosa-Luxemburg-Platz, shadow
+      Nollendorfplatz. The region page will show 12 squares, before the rule recounts their
+      neighbours") and what the report says. Staged answers are kept across the region's list and
+      its places' circles, and one Apply sends them all (`answerCrowding` in
+      `api/crowdingAnswers.ts`, a hundred to a request). The window then re-reads every group and
+      circle and the shadowed arrivals, returns to the region's list where its place was not
+      taken, and hands the report to its frame: the dialog passes it to its opener on close, and
+      the tab has the page refresh the queue and the lists at once.
     - `CrowdedCities` is the review page's *Crowded cities* tab (`view=crowded`,
       `docs/tech/addresses.md` § The review page), a chunk of its own behind `LazyCrowdedCities`,
       fetched when the tab is opened: the review page carries the two tabs, their counts, the
@@ -5495,25 +5540,23 @@ Maggiore, and crowds out 51 more of its churches.
       than it counts. Above them sits a
       searched region the list names no group under, counted and with its path, so the
       chip says "Germany" and offers the row to clear it by; the Kind chip counts within the region
-      once its read answers. On the right, the window in a pane on the open group's
-      `membershipIds`, best known first, with Previous and Next through them. The open group is
-      the address's `crowd` (`crowdKeyOf`), and `groupShown` opens the first group the chips keep
-      where it names none the list holds, as a replace. On a narrow screen one side shows at a
-      time.
+      once its read answers. On the right, the window in a pane on the open group's region. The
+      open group is the address's `crowd` (`crowdKeyOf`, read back by `crowdGroupOf`) where the
+      chips keep it, or where the whole list does not hold it, so a group whose last arrival an
+      Apply answered stays open with its report, and a link opens any group; `groupShown` opens
+      the first group the chips keep where the address names none or one they hide, as a replace,
+      so a chip changes what is open. The place open in its circle is the
+      address's `place`, a push. On a narrow screen one side shows at a time.
     - The tab's staged answers are kept by group (`GroupStagings`, `crowdedGroups.ts`) and by the
       review page, so Back off the tab keeps them. A window stages into its own group, and its
       Apply sends that group's only: nothing staged in Berlin goes with Rome's Apply. A group left,
       by its line or by Back, keeps its answers; its line says "1 staged", and the Apply bar names
       every other group holding some ("1 answer staged in Berlin · squares") with *Open*, which
-      clears the chips where they hide that group. An Apply sends the answers as they stood when
-      it was pressed, so one staged while it runs stays staged. While it runs no other group opens,
-      and its report is kept by group, so a group whose last arrival it answers hands its report
-      to the group the tab moves to, and to that one alone, until another group's Apply reports.
-      There the newer of the two reports is shown, so one the group held from an earlier Apply
-      gives way, and where the Apply answered the last group out of the list, its report is said
-      over the empty list. Leaving the tab for *Questions*, which shows
-      none of them, with answers staged opens `LeaveStagedDialog`: stay and apply them, or discard
-      them.
+      clears the chips where they hide that group. An Apply
+      sends the answers as they stood when it was pressed, so one staged while it runs stays
+      staged. While it runs no other group opens, and its report is kept by its group. Leaving the
+      tab for *Questions*, which shows none of them, with answers staged opens
+      `LeaveStagedDialog`: stay and apply them, or discard them.
 
 ### Lifecycle filtering
 
@@ -5901,8 +5944,7 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 | POST | `/api/experiences/review/answer` | `{ rows: [{ kind, id, runId }] (1–100), answer: 'accept' \| 'reject' \| 'lost' }` — one answer to a page of review rows (#852). `kind` is the queue's own word (`QUEUE_KINDS`: `conflict`, `sources`, `waiting`, `withdrawn`, `refused`, `missing`, `component-items`, `merge-proposals`, `pin-question`, `visit-question`, `approximate-points`, `approximate-unhinted`, `find-sites`; a `pin-question`, `approximate-points`, `approximate-unhinted` or `find-sites` row is refused by either answer, since a pin is one person's answer to one place, where a component stands is read off its card's map, and a find's point is read one find at a time; a `visit-question` row names the membership it asks about and keeps the place on *reject*, while *accept*, the refusal, is refused, since it pins `admission` and only the card does that (ADR-0067 decision 2); a `sources` row is scoped by every source of the place and can only keep what readers see; a `component-items` row is scoped by a source that places the points, never by the membership the client names, confirms the exact candidates on *accept* and turns every open one down on *reject*; a `merge-proposals` row is scoped by a source of either place, makes one place of the exact pairs on *accept* and keeps every open pair two on *reject*, each pair its own act), `runId` the run the curator saw the question asked by, which the held and conflict writers compare with the pointer under the lock. Each row goes to the `*UnderLock` writer its single-row card calls — `reviewAnswerDispatch.ts` is the table of what each answer does per kind, and a `waiting` row's sub-kinds are read from the membership rather than trusted from the client; `lost` is refused on any row but `missing` and `withdrawn` (every open point of the row, each through the point writer). On a `refused` row *accept* keeps the row out (`confirm`) and *reject* puts it back (`override`), and neither pins `admission` (ADR-0067): a batch confirmation closes the question with `admission_answered_at`, a batch put-back is admitted until the next run applies the rule again, and only the refusal card's own answer claims `admission`. Scope per object; one transaction and one audit row per object; a row that refuses, throws or is out of scope is one line in the report and the rest are answered. Answers `ReviewAnswerResult` (ADR-0066): `{ answer, answered: [{ kind, id, name, answer, did }], refused: [{ kind, id, name, error }], outOfScope, placementFailed: [{ id, name, worldViews }] }`, where `did` counts what the answer did (`published`, `locations`, `treasureLinks`, `treasures`, `withdrawalsReleased`, `fields` — the parts' rows counted with the object's — `points`, `pointsRefused`, `items`, `pairs`, `visitQuestions`). Carries `authenticatedLimiter`: up to a hundred publishes, and a verdict on a withdrawn row re-places the object once per point |
 | GET | `/api/experiences/review/crowding/group` | `?region=&kind=&type=` — a crowded city as its region page shows it ([ADR-0180](../decisions/0180-a-curator-keeps-a-place-of-a-crowded-city-in-its-list-or-its-shadow.md), #2358, `getCrowdingGroup` in `crowdingWindow.ts`): every place of the kind and type placed in the region or under it, less what a curator rejected from the region, or, for `region=none`, placed by no leaf of a public world view (of `worldViewId` where one is named), as the shadowed arrivals' `none` group reads it, so every arrival that group counts is listed here; `type` absent reads a kind's places with none. Best known first, a thousand at most (`truncated`), each with its standing (`shown`, `shadowed`, `new`), whether it is crowded out (`crowded`), its fame (`score`), its point, its Wikipedia article, picture and the picture's credit (`wikipediaUrl`, `imageUrl`, `imageCredit`, #2345), its pin, whether it holds works and may take a pin, whether the caller may answer it, and, for a place in the tail or pinned, the rule's count (`outrankedBy`, `crowding_above()`), where the rule puts it whatever its pin (`ruleCrowded`) and the three best known above it (`betterKnown`); the kind's limit and radius. Any curator reads it; an unread arrival outside the caller's scope is not listed. 404 for a region of a world view the caller may not read, 409 for a kind with no rule. Limited (`authenticatedLimiter`) |
 | GET | `/api/experiences/review/crowding/place/:membershipId` | `?worldViewId=` — a place of a crowded city in its own circle (#2358, `getCrowdingPlace`): the place in the group read's shape with its exact count, the group it is listed under (its leaf in the world view named, else in the first public one placing it, as the group and arrivals reads take `worldViewId`; null where that view has no leaf for it, the group read's `none`), and every other place of its kind and type within the kind's radius (`aroundSql`), best known first, each with its distance, standing and whether it counts above the place (`compared`, `crowding_above()`: what it is compared with, #2228). The rule also counts a new arrival outside the caller's scope and one whose source no longer lists it; the circle lists neither and says how many it leaves out (`comparedUnlisted`). An unread arrival outside the caller's scope is not listed, and is a 404 as the place itself. 409 for a kind with no rule or a place with no point. Limited (`authenticatedLimiter`) |
-| GET | `/api/experiences/review/crowding/around/:membershipId` | `?type=` — the window over a crowded city ([ADR-0180](../decisions/0180-a-curator-keeps-a-place-of-a-crowded-city-in-its-list-or-its-shadow.md), #2282, `crowdingAroundWindow.ts`): every place of the membership's kind and type within the kind's radius of its place, best known first, each with its readers, editions, guide use, score, the rule's count (`outrankedBy`, `crowding_outranked_by()`), its standing (`listed`, `shadowed`, `new`), where the rule puts it whatever its pin (`ruleCrowded`), its pin, whether it holds works and may take a pin, whether it counts above the window's place (`outranksCentre`: the places that shadow it, #2228), whether the caller may answer it, and its Wikipedia article, picture and the picture's credit (`wikipediaUrl`, `imageUrl`, `imageCredit`, #2345); the kind's limit and radius, and its types around the place with a count each. `type` switches to another type of the kind around the same place. A curator in scope of the membership reads it; an unread arrival outside the caller's scope is not listed. 409 for a kind with no rule. Limited (`authenticatedLimiter`) |
-| GET | `/api/experiences/review/crowding/arrivals` | `?worldViewId=&region=` — the arrivals a crowded city would shadow, which no queue section asks about, grouped by leaf region, kind and type with a count and the arrivals' memberships best known first (#2282, `listShadowedArrivals`). An arrival is grouped under a leaf of the world view named, else of the first public world view that places it; `region` keeps the groups within a region, each arrival under its leaf there, or with `none` the arrivals no region places (#2349); within the caller's scope |
+| GET | `/api/experiences/review/crowding/arrivals` | `?worldViewId=&region=` — the arrivals a crowded city would shadow, which no queue section asks about, grouped by leaf region, kind and type with a count (#2282, `listShadowedArrivals`). An arrival is grouped under a leaf of the world view named, else of the first public world view that places it; `region` keeps the groups within a region, each arrival under its leaf there, or with `none` the arrivals no region places (#2349); within the caller's scope |
 | POST | `/api/experiences/review/crowding/answers` | `{ answers: [{ membershipId, answer: 'list' \| 'shadow' \| 'publish' \| 'refuse' \| 'clear' }] (1–100), note? }` — a curator's answers to a crowded city, applied together (#2282, `crowdingAnswers.ts`), each place its own act under its own lock and scope check. `list` and `shadow` pin the membership, publishing a new arrival with the pin in the publish's own transaction (`publishUnderLock`'s `alsoUnderLock`); `publish` publishes a new arrival with no pin, so the rule places it, and is refused (409) on a place published already, asked again under the place's lock so an arrival another curator published meanwhile is refused too; `refuse` refuses it as its card does (`refuseArrivalUnderLock`, `keepOutUnderLock`), clearing a pin it held; `clear` hands it back to the rule. A place holding works or of an exempt type is refused a pin by name, 409. Each pin's change is a `crowding_answered` log row with what the rule said at the time. Answers `{ answered, refused, outOfScope, placementFailed }`. Limited (`authenticatedLimiter`) |
 | POST | `/api/experiences/:id/component-items` | `{ answers: [{ proposalId, answer: 'accepted' \| 'refused' }] (1–500, each candidate once) }` — a curator's answer to the candidate Wikidata items the finder proposed for a serial site's components (#1272, `componentItemController.ts`). Scoped to a curator of any source whose membership places such a point (`componentItemsScope`), as the queue admits the site. A confirmed candidate's item is written on the point as the curator's choice with what the item gives it — its picture with the credit, only a Commons file and only credited, and its English description, read before the lock from Wikidata's API and from Commons — a turned-down one is kept so it is never proposed again, the confirmed point's other candidates and the item's other candidacies on the site are cleared, and the act is one log row (`component_items_answered`). Re-asked under the site's lock, with the confirmed items locked by name so two sites cannot confirm one item: a candidate answered meanwhile, a point that gained its item, an item recorded on another point since, or two confirmations for one point are 409 with nothing written. Answers `ComponentItemsAnswered`: `{ experienceId, accepted, refused, pictured }`. `authenticatedLimiter` |
 | POST | `/api/experiences/:id/component-item-suggestions` | Jev's judgement of the site's open candidate items (#1272, `componentItemSuggestionController.ts`), in the same scope as the answer. For each open candidate, the stored judgement made for the candidate as it stands (`askedSql`: label, distance, similarity, basis), or a new one: the candidates not yet judged go to Jev in **one call**, a `choice` question per candidate — *same*, the item is the component; *other*, another place — and every answer is recorded in `experience_component_item_suggestions` with its confidence, one row per question carrying its share of the call's input tokens, a refused answer with no judgement so the candidate is not paid for again. Answers `ComponentItemSuggestions`: `{ configured, suggestions: [{ proposalId, judgement, confidence }] }`; `configured: false` and no suggestions on a deployment without `JEV_API_KEY`; a failed call answers the stored judgements alone. Never applied: the card shows it beside the candidate and a curator decides. `authenticatedLimiter` |
