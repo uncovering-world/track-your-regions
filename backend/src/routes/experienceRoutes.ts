@@ -80,6 +80,7 @@ import {
   ExperienceKinds,
   WikipediaEditions,
   ExperienceLocationsResponse,
+  ExperiencePicture,
   ExperienceSearch,
   ExperiencesByRegionResponse,
   ExperienceTreasuresResponse,
@@ -98,6 +99,7 @@ import {
   listKinds,
   searchExperiences,
   getExperienceLocations,
+  getExperiencePicture,
   getExperienceTreasures,
   getSiteFinds,
   getWorldPoints,
@@ -142,13 +144,14 @@ import {
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
 import { getWikipediaEditions } from '../controllers/experience/wikipediaEditionsController.js';
-import { publicReadLimiter, searchLimiter, authenticatedLimiter } from '../middleware/rateLimiter.js';
+import { publicReadLimiter, searchLimiter, authenticatedLimiter, pictureHoverLimiter } from '../middleware/rateLimiter.js';
 import {
   experienceSearchQuerySchema,
   experiencesByRegionQuerySchema,
   regionTailQuerySchema,
   experienceRegionCountsQuerySchema,
   experienceLocationsQuerySchema,
+  experiencePictureQuerySchema,
   worldPointsQuerySchema,
   regionLocationsQuerySchema,
   idParamSchema,
@@ -315,6 +318,17 @@ export const experienceReadRoutes = [
     scope: ({ query }) => (query.regionId === undefined ? undefined : { regionId: query.regionId }),
     response: ExperienceLocationsResponse,
     handler: getExperienceLocations,
+  }),
+  // One place's picture and its credit, for the world map's hover card once
+  // the pointer rests on a pin (#927). Public: it serves only what a reader is
+  // offered, and answers everyone the same.
+  defineRoute({
+    method: 'get', path: '/:id/picture', access: 'public', cache: 'shared-revalidate', limiter: pictureHoverLimiter,
+    summary: 'Read one place\'s picture and its credit',
+    params: idParamSchema,
+    query: experiencePictureQuerySchema,
+    response: ExperiencePicture,
+    handler: getExperiencePicture,
   }),
   // Treasures (artworks, artifacts) of an experience (`optional`: a curator or
   // admin reaching a gated museum from the queue sees its unread treasures too —

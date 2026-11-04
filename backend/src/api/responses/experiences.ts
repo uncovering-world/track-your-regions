@@ -49,6 +49,22 @@ export const ImageCredit = z.strictObject({
 }).describe('Who a picture is credited to, as `ImageCreditLine` draws it (ADR-0043, ADR-0182).');
 export type ImageCredit = z.infer<typeof ImageCredit>;
 
+/**
+ * One place's picture and its credit, for a card that shows nothing else of it
+ * (the world map's hover card, #927): light on purpose, since it is asked once
+ * per pin the pointer rests on.
+ */
+const PictureWithCredit = {
+  image_url: z.string().nullable().describe('A Commons file or a file we host; null where there is none.'),
+  image_credit: ImageCredit.nullable().describe('Whose photograph it is, shown with it; null where none was found.'),
+};
+export const ExperiencePicture = z.strictObject({
+  ...PictureWithCredit,
+  point: z.strictObject(PictureWithCredit).nullable()
+    .describe('The asked point\'s own picture, a serial site\'s part\'s among them (`pointPictureSql`); null where no point was asked or the place does not show it.'),
+});
+export type ExperiencePicture = z.infer<typeof ExperiencePicture>;
+
 export const WorkVenue = z.strictObject({
   id: z.number().int(),
   name: z.string(),

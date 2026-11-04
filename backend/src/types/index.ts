@@ -324,6 +324,11 @@ export const experienceLocationsQuerySchema = z.object({
   regionId: rowIdSchema.optional(),
 });
 
+/** Which of the place's points the hover card is on, so a part's own picture is the one shown (#927). */
+export const experiencePictureQuerySchema = z.object({
+  locationId: rowIdSchema.optional(),
+});
+
 export const regionLocationsQuerySchema = z.object({
   includeChildren: booleanStringSchema.default('true'),
   // Follows the list: markers for the rows it is showing.

@@ -115,6 +115,19 @@ export const publicReadLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later' },
 });
 
+/**
+ * The world map's hover card asking for one place's picture once the pointer
+ * rests on a pin (#927): its own budget, so a visitor running the pointer over
+ * a dense map spends none of the reads the region lists and cards share.
+ */
+export const pictureHoverLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120, // rests per minute per IP: twice the public read's, since a rest costs one indexed row
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' },
+});
+
 // =============================================================================
 // Authenticated User Rate Limiter
 // =============================================================================
