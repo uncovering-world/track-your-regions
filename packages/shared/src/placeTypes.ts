@@ -72,12 +72,17 @@ export const MONUMENTS_TYPES = [
   { value: 'monument', label: 'Monument' },
 ] as const satisfies readonly PlaceTypeEntry[];
 
-/** Read in this order (`towerType`): a pagoda, a minaret or a clock tower before a bell tower, a tower otherwise. */
+/**
+ * Read in this order (`towerType`): a pagoda, a minaret or a clock tower before a bell tower, a guyed mast before
+ * an observation tower, a tower otherwise. A mast the map tells from a tower people go up is filed `mast` once the
+ * run has decided (#2275).
+ */
 export const TOWERS_TYPES = [
   { value: 'pagoda', label: 'Pagoda' },
   { value: 'minaret', label: 'Minaret' },
   { value: 'clock-tower', label: 'Clock tower' },
   { value: 'bell-tower', label: 'Bell tower' },
+  { value: 'mast', label: 'Mast' },
   { value: 'observation-tower', label: 'Observation tower' },
   { value: 'fortified-tower', label: 'Fortified tower' },
   { value: 'tower', label: 'Tower' },

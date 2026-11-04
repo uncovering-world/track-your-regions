@@ -44,7 +44,7 @@ export interface Refusal {
  * The gone and the unbuilt, refused by every kind before anything else: the
  * Hanging Gardens of Babylon are destroyed, a tower that is a proposal is no
  * tower to climb. Declared once (#2318); a kind adds what else is no place to
- * visit for it (a bare mast, ruins) in its own `kills`.
+ * visit for it (ruins) in its own `kills`.
  */
 export const GONE: Readonly<Record<string, Refusal>> = {
   destroyed: { root: 'Q19860854', reason: 'destroyed or demolished' },

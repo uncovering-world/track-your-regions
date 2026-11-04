@@ -2,7 +2,7 @@
  * What Towers admits and what it leaves to another kind (#1854), asked on real
  * entities with the classes Wikidata gave them on 2026-10-22 (the clocks and
  * the building complexes on 2026-10-30, #2136; the sea forts on the subset of
- * 2026-11-02, #2272), so a rule that passes here has been tried on the places
+ * 2026-11-02, #2272; the KVLY-TV mast on the subset of 2026-11-04, #2275), so a rule that passes here has been tried on the places
  * a traveller would name.
  */
 
@@ -63,6 +63,7 @@ const trees: TowerTrees = {
     minaret: new Set([MINARET]),
     'clock-tower': new Set([CLOCK_TOWER]),
     'bell-tower': new Set([BELL_TOWER, CHURCH_TOWER, STEEPLE]),
+    mast: new Set([GUYED_MAST]),
     'observation-tower': new Set([OBSERVATION_TOWER, TELEVISION_TOWER]),
     'fortified-tower': new Set([FORTIFIED_TOWER, MAUNSELL_FORT, MARTELLO_TOWER]),
   },
@@ -72,7 +73,7 @@ const trees: TowerTrees = {
     skyscraper: new Set([SKYSCRAPER]),
     officeBuilding: none, towerBlock: none,
   },
-  kills: { destroyed: new Set([DESTROYED]), proposed: none, guyedMast: new Set([GUYED_MAST]), ruins: none },
+  kills: { destroyed: new Set([DESTROYED]), proposed: none, ruins: none },
   noClass: {}, shared: {},
   named: {
     publicClock: new Set(Object.keys(PUBLIC_CLOCK_CLASSES)),
@@ -104,6 +105,8 @@ describe('towerVerdict', () => {
     ['Monar Jonban, a mausoleum with minarets', [MAUSOLEUM, MINARET], 'minaret'],
     ['the Oriental Pearl Tower, a TV tower Wikidata also calls a skyscraper', [SKYSCRAPER, OBSERVATION_TOWER, TELEVISION_TOWER], 'observation-tower'],
     ['Hoằng Phúc pagoda, whose fame is the line\'s to judge', [PAGODA], 'pagoda'],
+    // #2275: a mast is a tower of its own type, never refused for being one.
+    ['the KVLY-TV mast, a guyed mast before a communication tower', [GUYED_MAST, LATTICE_TOWER, COMMUNICATION_TOWER], 'mast'],
   ])('admits %s', (_name, classes, type) => {
     expect(towerVerdict(at(classes), trees)).toEqual({ pass: true, type });
   });

@@ -26,6 +26,21 @@ export const TOWER_ROOTS: readonly PoolRoot[] = [
   { qid: 'Q2455293', label: 'drum tower' },
 ];
 
+/**
+ * The classes a broadcast transmitter carries, each checked on the dev subset
+ * on 2026-11-04 (#2275): a tower that carries these alone, and that nothing on
+ * the map or among its statements marks as visited, is a mast (`masts.ts`).
+ * Classes, not trees: "transmitter mast" also sits on Sydney Tower and the
+ * Skytree beside an observation tower's class.
+ */
+export const TRANSMITTER_CLASSES: Readonly<Record<string, string>> = {
+  Q11166728: 'television tower',
+  Q1068623: 'transmitter mast',
+  Q190157: 'radio transmitter',
+  Q1798641: 'communication tower',
+  Q5367899: 'transmitter station',
+};
+
 /** The types a tower is filed under, the most telling first (`towerType`). */
 export const TOWER_TYPES = typeValues('towers');
 export type TowerType = PlaceTypeOf<'towers'>;
@@ -37,6 +52,9 @@ const TYPE_ROOTS: Readonly<Record<Exclude<TowerType, 'tower'>, readonly string[]
   'clock-tower': ['Q853854'],
   // A campanile and a drum tower are bell towers to a reader.
   'bell-tower': ['Q200334', 'Q1864226', 'Q2455293'],
+  // A guyed mast (#2275): the KVLY-TV mast is seen from the ground, never climbed.
+  // Most masts carry no class that says so, and are filed by `masts.ts`.
+  mast: ['Q5622819'],
   // A TV tower is climbed for its deck: the CN Tower is both.
   'observation-tower': ['Q1440300', 'Q11166728'],
   'fortified-tower': ['Q81917'],
@@ -61,9 +79,11 @@ const OTHER_KINDS: PlaceKindDeclaration<TowerType>['others'] = {
   towerBlock: { root: 'Q18142', reason: 'a tower block, not a tower', unlessTyped: ['observation-tower'] },
 };
 
-/** Never a place to visit as a tower, beside the gone and the unbuilt: a bare mast, ruins. */
+/**
+ * Never a place to visit as a tower, beside the gone and the unbuilt: ruins.
+ * A mast is a tower of its own type, never refused for being one (#2275).
+ */
 const KILLS: PlaceKindDeclaration<TowerType>['kills'] = {
-  guyedMast: { root: 'Q5622819', reason: 'a guyed mast, not a tower one visits' },
   ruins: { root: 'Q109607', reason: 'ruins: an archaeological site, not a tower' },
 };
 

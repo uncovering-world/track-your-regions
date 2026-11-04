@@ -85,6 +85,11 @@ export interface PlaceClassifier {
   contents?: PlaceContents;
   /** How the kind reads a place Wikidata says is gone: a place's (`goneReason`, #2259) unless it names its own. */
   gone?: (facts: StandingFacts) => string | null;
+  /**
+   * A type read from more than the classes, once the tiers and the gone refusal have
+   * decided: Towers files a broadcast mast as a mast from OpenStreetMap's layer (#2275).
+   */
+  retype?: (items: WikidataLandmark[], sparql: SparqlFn) => Promise<unknown>;
 }
 
 /** What a kind of the pass reads beside its rule and the world bars. */
@@ -398,6 +403,7 @@ async function fetchLandmarkItems(
   // A work removed, destroyed or taken down is refused too, where the kind holds works (#2280).
   await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX,
     classifier.gone);
+  await classifier.retype?.(items, sparql);
   // What the admitted places hold, read before the first is written, so the
   // coverage floor is measured over the whole run (ADR-0044).
   const held = await classifier.contents?.read(items, sparql, progress);
