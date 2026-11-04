@@ -470,10 +470,10 @@ moment the arrival is published.
 None of this changes an ungated run: every point such a run inserts lands `auto`, so the pairing
 statement is skipped outright when the insert returned no `pending` row, and the two housekeeping
 statements match nothing. Verified by running the same fixture on both sides of the commit:
-identical return values and identical rows. `requires_curation` is false on World Heritage, Art Museums and Public art, the
-sources that predate Places of worship, which is a fact about the data rather than a property to rely on — an
-admin gates a source in one click, and from then on this paragraph describes only the sources they
-left alone.
+identical return values and identical rows. A fresh database seeds every place source gated but the World Heritage list, UNESCO's own
+official list, and its components' record (#2335), which is a fact about the seed rather than a
+property to rely on — an admin switches a source's gate in one click, and from then on this
+paragraph describes only the sources they left ungated.
 
 `missing_since` here is a machine observation, exactly as it is on an experience. What a reader
 sees does not change, because a withdrawn point used to be deleted and so left every list the
@@ -7483,7 +7483,10 @@ values read before the lock can name a version that was already gone when the ed
 
 `requires_curation` was read by four services from the day the gate landed and written by
 nobody: the schema sets it, migration 018 seeded it `false` on all three sources, and gating one
-meant hand-written SQL against production. Three things closed that.
+meant hand-written SQL against production. Three things closed that. A fresh database no longer
+starts that way: `01-schema.sql` seeds every place source gated but the World Heritage list,
+UNESCO's own official list, and the record of its components (#2335), and no longer ungates the
+three by an update when it creates the column.
 
 **The switch.** `PUT /api/admin/sync/sources/:sourceId/curation-gate`, admin-only like
 everything on that router, and beside the other source writes because the gate is a property

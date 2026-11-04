@@ -340,8 +340,9 @@ on a database already renamed changes nothing (#814, Epic #815).
 `045-the-museum-row-reads-art-museums.sql` renames the museum source row from "Top Art Museums"
 — the works-first selection rule's name — to "Art Museums", the kind's name a reader browses by
 (ADR-0045 decision 8, #818). Every surface that shows the row's name follows without a code
-change; `01-schema.sql` seeds the new name, while its `requires_curation` guard keeps the old
-one on purpose — a database that reaches that guard predates migration 018 and this file alike.
+change; `01-schema.sql` seeds the new name. Migration 018's `requires_curation` guard keeps the
+old one on purpose — a database that reaches that guard predates migration 018 and this file alike;
+the schema file no longer carries that guard (#2335).
 It runs before the next re-application of `01-schema.sql`, whose seed would otherwise
 add a second museum row beside one still carrying the old name — and a database found in
 that state is refused with an error rather than renamed around, so the duplicate is removed
