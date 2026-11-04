@@ -1,7 +1,7 @@
 # ADR-0180: A curator keeps a place of a crowded city in its list or its shadow
 
 **Date:** 2026-11-02
-**Status:** Accepted
+**Status:** Accepted — decision 3 narrowed by [ADR-0183](0183-a-crowded-city-is-answered-on-its-regions-list-and-a-place-in-its-own-circle.md)
 
 ---
 
