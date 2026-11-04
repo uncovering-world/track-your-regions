@@ -74,7 +74,9 @@ import { getPictureClasses } from '../controllers/experience/pictureClassesContr
 import { getRegionTail } from '../controllers/experience/experienceTailController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
-import { CrowdingAnswered, CrowdingWindow, ShadowedArrivals } from '../api/responses/crowding.js';
+import {
+  CrowdingAnswered, CrowdingGroup, CrowdingPlaceView, CrowdingWindow, ShadowedArrivals,
+} from '../api/responses/crowding.js';
 import {
   ExperienceDetail,
   ExperienceKinds,
@@ -139,6 +141,8 @@ import {
   unrefuseContents,
   answerReviewRows,
   answerCrowding,
+  getCrowdingGroup,
+  getCrowdingPlace,
   getCrowdingWindow,
   listShadowedArrivals,
   markNewBadgesSeen,
@@ -179,6 +183,9 @@ import {
   refuseContentsBodySchema,
   reviewAnswerBodySchema,
   crowdingAnswersBodySchema,
+  crowdingGroupQuerySchema,
+  crowdingPlaceParamSchema,
+  crowdingPlaceQuerySchema,
   crowdingWindowParamSchema,
   crowdingWindowQuerySchema,
   shadowedArrivalsQuerySchema,
@@ -529,13 +536,34 @@ export const experienceCurationRoutes = [
     response: ReviewAnswerResult,
     handler: answerReviewRows,
   }),
-  // A crowded city, judged in one window (#2282, ADR-0180): every place of a
-  // kind and type around a place, the arrivals the display would shadow, which
-  // the queue asks nothing about, and the answers applied together. Under
-  // `review/crowding/`, so `/:id/…` cannot take them. The window counts the rule
-  // for each of up to 500 rows, and the answers publish or refuse a page of
-  // places at most, each re-placed and recounted as it commits: both are
-  // limited on § 5's criterion, as the batch answer is.
+  // A crowded city, judged in one window (#2282, #2358, ADR-0180): a region's
+  // places of a kind and type as its page shows them, one place in its own
+  // circle, the arrivals the display would shadow, which the queue asks nothing
+  // about, and the answers applied together. Under `review/crowding/`, so
+  // `/:id/…` cannot take them. The group counts the rule for each of its tail's
+  // places, up to a thousand, the circle for each of up to 500 places, and the
+  // answers publish or refuse a page of places at most, each re-placed and
+  // recounted as it commits: all three are limited on § 5's criterion, as the
+  // batch answer is.
+  defineRoute({
+    method: 'get', path: '/review/crowding/group', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'Every place of a kind and type in a region, as its page shows them, best known first, with the rule\'s count and the curator\'s pin',
+    query: crowdingGroupQuerySchema,
+    response: CrowdingGroup,
+    handler: getCrowdingGroup,
+  }),
+  defineRoute({
+    method: 'get', path: '/review/crowding/place/:membershipId', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'A place of a crowded city in its own circle: the places of its type within the radius, and those it is compared with',
+    params: crowdingPlaceParamSchema,
+    query: crowdingPlaceQuerySchema,
+    response: CrowdingPlaceView,
+    handler: getCrowdingPlace,
+  }),
+  // The window around one membership, which the web's current window reads
+  // until it moves to the region's list and a place's circle (#2358).
   defineRoute({
     method: 'get', path: '/review/crowding/around/:membershipId', access: 'curator', cache: 'no-store',
     limiter: authenticatedLimiter,

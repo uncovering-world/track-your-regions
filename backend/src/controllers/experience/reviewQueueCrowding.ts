@@ -2,8 +2,9 @@
  * How crowded a membership's city is (ADR-0180, #2282), for a review card and
  * for a kind row of a place's curation dialog: for each membership in a kind
  * with the display rule, the kind's limit and radius,
- * how many places of its kind and type the crowded-city window would list
- * around it, whether the display shadows it, and, for a shadowed one, how many
+ * how many places of its kind and type stand within the radius of it, the place
+ * itself among them, as its circle in the crowded-city window draws them
+ * (#2358), whether the display shadows it, and, for a shadowed one, how many
  * the recount counted above it.
  *
  * The card offers "Squares around (22)" and says a shadowed place is shadowed
@@ -12,8 +13,8 @@
  * which the answers share, on reads nobody asked for.
  *
  * One statement per read, over its memberships only: a page of cards, once
- * they are built, or a place's kinds. The count goes through the window's own predicate
- * (`aroundSql`), so the button's number is the window's. The count above a
+ * they are built, or a place's kinds. The count goes through the circle's own predicate
+ * (`aroundSql`), so the button's number is the circle's. The count above a
  * shadowed place is the one the recount stored (`membership_crowding`), not
  * `crowding_better()` again: on dev that took 100 of the 125 ms a page of
  * fifty Roman churches cost, testing each place within 10 km for works.
@@ -40,7 +41,7 @@ interface CrowdingRow {
 /**
  * How crowded each membership's city is, by membership; a membership the rule
  * does not reach is absent. The one count behind a card's button and a kind
- * row's, so the two say the number the window lists.
+ * row's, so the two say the number the place's circle draws.
  */
 export async function crowdingOf(
   membershipIds: readonly number[],

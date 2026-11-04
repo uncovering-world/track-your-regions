@@ -102,8 +102,15 @@ interface PublishRequest {
  */
 function refusedBeforeWriting(
   row: { admission: string; curationState: string },
-  { fieldsOnly }: { fieldsOnly?: true },
+  { fieldsOnly, arrivalOnly = false }: { fieldsOnly?: true; arrivalOnly?: boolean },
 ): string | null {
+  // A caller answering an arrival as such (the crowded city's `publish`, #2358) has its state
+  // asked again here, under the lock: one another curator published meanwhile, perhaps with a
+  // pin, is answered already, and publishing it again would report a publication its pin
+  // contradicts.
+  if (arrivalOnly && row.curationState !== 'pending') {
+    return 'Already answered: this place was published meanwhile — reload';
+  }
   // ADR-0025 decision 4, "Admission is asked before publication": whether an
   // object belongs in this catalogue at all is a question a source's own rule
   // answers (ADR-0024), and whether anyone has looked at it yet is a different
@@ -461,7 +468,8 @@ async function planHeldAnswer(
  * Its caller drains the pairing marks the publish left (`drainPairing`, #1950), a
  * batch once after its loop. `alsoUnderLock` is a caller's own writes in the
  * same transaction, before it commits: a crowding pin the publish answers
- * (ADR-0180).
+ * (ADR-0180). `arrivalOnly` refuses, under the lock, a membership that is no
+ * longer an arrival.
  */
 export async function publishUnderLock(
   experienceId: number,
@@ -469,6 +477,7 @@ export async function publishUnderLock(
   logRegionId: number | null,
   body: PublishRequest,
   alsoUnderLock?: UnderLock,
+  { arrivalOnly = false }: { arrivalOnly?: boolean } = {},
 ): Promise<{ result?: PublishResult; refusal?: PublishRefusal }> {
   const { locationIds, treasureIds, contentsOnly: bareContentsOnly, expectedSyncLogId } = body;
   const selection = selectionOf(body);
@@ -560,7 +569,7 @@ export async function publishUnderLock(
     // dense — and both are about the row, not about the request.
     const refusal = refusedBeforeWriting(
       { admission: before.admission as string, curationState: before.curation_state as string },
-      { fieldsOnly },
+      { fieldsOnly, arrivalOnly },
     );
     if (refusal) return await refuse(409, refusal);
 

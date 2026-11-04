@@ -28,7 +28,8 @@ export type DrawnStanding = CrowdingWindowRow['standing'] | 'refused';
 /** Which answers a row takes. A place holding works or of an exempt type takes no pin, and a pin is cleared only where one is held. */
 export function answersOffered(row: CrowdingWindowRow): Record<CrowdingAnswer, boolean> {
   const pinnable = row.canAnswer && row.pinnable;
-  return { list: pinnable, shadow: pinnable, refuse: row.canAnswer, clear: row.canAnswer && row.pin !== null };
+  // Publishing an arrival with no pin (#2358) is the region list's answer; this window keeps an arrival with a pin.
+  return { list: pinnable, shadow: pinnable, publish: false, refuse: row.canAnswer, clear: row.canAnswer && row.pin !== null };
 }
 
 /**
@@ -93,6 +94,7 @@ export function answerRows(staging: Staging): CrowdingAnswerRow[] {
 const DID: Record<CrowdingAnswer, string> = {
   list: 'kept in the list',
   shadow: 'kept in the shadow',
+  publish: 'published and left to the rule',
   refuse: 'not taken',
   clear: 'handed back to the rule',
 };
