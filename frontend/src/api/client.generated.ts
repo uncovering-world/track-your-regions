@@ -2774,6 +2774,31 @@ export interface ExperienceLocationsResponse {
 }
 
 /**
+ * The asked point's own picture, a serial site's part's among them (`pointPictureSql`); null where no point was asked or the place does not show it.
+ */
+export type ExperiencePicturePoint = {
+  /**
+     * A Commons file or a file we host; null where there is none.
+     * @nullable
+     */
+  image_url: string | null;
+  /** Whose photograph it is, shown with it; null where none was found. */
+  image_credit: ImageCredit | null;
+} | null;
+
+export interface ExperiencePicture {
+  /**
+     * A Commons file or a file we host; null where there is none.
+     * @nullable
+     */
+  image_url: string | null;
+  /** Whose photograph it is, shown with it; null where none was found. */
+  image_credit: ImageCredit | null;
+  /** The asked point's own picture, a serial site's part's among them (`pointPictureSql`); null where no point was asked or the place does not show it. */
+  point: ExperiencePicturePoint;
+}
+
+/**
  * A museum that hangs a work, as a curator correcting the work is told of it.
  */
 export interface WorkVenue {
@@ -7902,6 +7927,14 @@ export type GetExperiencesByIdLocationsParams = {
   regionId?: number;
 };
 
+export type GetExperiencesByIdPictureParams = {
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  locationId?: number;
+};
+
 export type GetExperiencesReviewPinsParams = {
   /**
    * @maximum 2147483647
@@ -11137,6 +11170,39 @@ export const getExperiencesByIdLocations = async (id: number,
     params?: GetExperiencesByIdLocationsParams, options?: Parameters<typeof apiFetch>[1]): Promise<ExperienceLocationsResponse> => {
 
   return apiFetch<ExperienceLocationsResponse>(getGetExperiencesByIdLocationsUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesByIdPictureUrl = (id: number,
+    params?: GetExperiencesByIdPictureParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/${encodeURIComponent(String(id))}/picture?${stringifiedParams}` : `/api/experiences/${encodeURIComponent(String(id))}/picture`
+}
+
+/**
+ * @summary Read one place's picture and its credit
+ */
+export const getExperiencesByIdPicture = async (id: number,
+    params?: GetExperiencesByIdPictureParams, options?: Parameters<typeof apiFetch>[1]): Promise<ExperiencePicture> => {
+
+  return apiFetch<ExperiencePicture>(getGetExperiencesByIdPictureUrl(id,params),
   {
     ...options,
     method: 'GET'

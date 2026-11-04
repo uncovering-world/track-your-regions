@@ -15,6 +15,7 @@ describe('queryKeys', () => {
     const { experience, experiences, regions, discover, curation, visited, admin } = queryKeys;
     const pairs: [readonly unknown[], readonly unknown[]][] = [
       [experience.one(1), experience.all],
+      [experience.picture(1, 9), experience.one(1)],
       [experience.locations(1), experience.locationsAll],
       [experience.locationsIn(1, 7), experience.locations(1)],
       [experience.contents(1), experience.contentsAll],

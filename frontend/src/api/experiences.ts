@@ -9,12 +9,13 @@
 
 import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import type {
-  ExperienceDetail, ExperienceKinds, ExperienceLocationsResponse, ExperienceSearch, ExperiencesByRegionResponse,
+  ExperienceDetail, ExperienceKinds, ExperienceLocationsResponse, ExperiencePicture, ExperienceSearch, ExperiencesByRegionResponse,
   ExperienceTreasuresResponse, NewBadgesSeen, RegionExperienceCounts, RegionExperienceLocation,
   RegionExperienceLocationsResponse, RegionTailResponse, SiteFindsResponse,
 } from './client.generated';
 import {
-  getExperiencesById, getExperiencesByIdFinds, getExperiencesByIdLocations, getExperiencesByIdTreasures,
+  getExperiencesById, getExperiencesByIdFinds, getExperiencesByIdLocations, getExperiencesByIdPicture,
+  getExperiencesByIdTreasures,
   getExperiencesByRegionByRegionId, getExperiencesByRegionByRegionIdLocations,
   getExperiencesByRegionByRegionIdTail, getExperiencesKinds,
   getExperiencesRegionCounts, getExperiencesSearch, postExperiencesNewBadgesSeen,
@@ -24,7 +25,7 @@ import {
 // and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
-  Experience, ExperienceDetail, ExperienceKind, ExperienceKinds, ExperienceLocationsResponse,
+  Experience, ExperienceDetail, ExperienceKind, ExperienceKinds, ExperienceLocationsResponse, ExperiencePicture,
   ExperienceLocationWithState, ExperienceRegionRef, ExperienceSearch, ExperienceSearchResult,
   ExperiencesByRegionResponse, ExperiencesByRegionResponseCrowdedOutItem, ExperienceTreasure,
   ExperienceTreasuresResponse, ImageCredit, LinkedPlace, NewBadgesSeen, RegionExperienceCount,
@@ -119,6 +120,11 @@ export async function searchExperiences(
  */
 export async function fetchExperienceKinds(): Promise<ExperienceKinds> {
   return getExperiencesKinds();
+}
+
+/** One object's picture and its credit, and the point's own where a point is named, for a card that shows nothing else of it (#927). */
+export async function fetchExperiencePicture(experienceId: number, locationId: number | null): Promise<ExperiencePicture> {
+  return getExperiencesByIdPicture(experienceId, locationId === null ? undefined : { locationId });
 }
 
 /**
