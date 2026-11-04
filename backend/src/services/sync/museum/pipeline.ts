@@ -6,9 +6,10 @@
  * decides where each one actually hangs, and then admits the venues holding them — so every
  * row has a reason that can be named.
  *
- * The stages every works-first kind shares — the class closure, the banded pool, the venue
- * statements, the venue graph, placement and folds — live in `worksCollector.ts`, parameterised
- * by roots, pinned classes and a `VenueRule`. What stays here is the museum's own tail: the art
+ * The stages every works-first kind shares are two files: the class closure, the banded pool,
+ * the venue statements and the lost tree are the gather of works (`worksGather.ts`, #1821), read
+ * once for every kind that asks, and the kind's own keep, venue graph, placement and folds are
+ * `worksCollector.ts`, parameterised by roots, pinned classes and a `VenueRule`. What stays here is the museum's own tail: the art
  * test that tells a museum from a church Wikidata also calls one, the tier that decides which
  * admitted venue is worth a visit, and the wiring that composes the two halves.
  */
@@ -24,14 +25,12 @@ import {
   collectWorks,
   heldBy,
   withEnglishArticles,
-  MUSEUM_BROAD_ROOTS,
-  MUSEUM_WHOLE_ROOTS,
-  MUSEUM_PINNED_CLASSES,
-  MUSEUM_PINNED_EDITION_CLASSES,
-  EDITION_ROOT,
+  worksOf,
+  MUSEUM_WORKS,
   type UnseenWork,
   type WorksCollectorOptions,
 } from './worksCollector.js';
+import type { SharedWorks } from './worksGather.js';
 import { holdingReason, keptElsewhere, readVenueSide, refusedHoldingReason, type HandOver } from './venueSide.js';
 import { fetchMuseumClasses, type PoolWork, type RawStatement } from './queries.js';
 import type { ClosureOptions } from '../classClosure.js';
@@ -52,6 +51,8 @@ export interface PipelineDeps {
   previousPlacements: Record<string, string[]>;
   /** Injected by the test; fetched from Wikidata (the `P279*` tree under museum) otherwise. */
   museumClasses?: ReadonlySet<string>;
+  /** The pass's gather of works (#1821), which this kind's works are a share of; absent, the run gathers its own. */
+  works?: SharedWorks;
   closure?: ClosureOptions;
   onPhase?: (message: string) => void;
   /** Throws to abandon the run; called before every query. */
@@ -360,7 +361,7 @@ function makeRun(deps: PipelineDeps): QueryRunner {
 export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineResult> {
   const run = makeRun(deps);
 
-  let museumClasses = deps.museumClasses;
+  let museumClasses = deps.museumClasses ?? await deps.works?.museumClasses();
   if (!museumClasses) {
     run.phase('Fetching the classes a museum can be...');
     await run.step();
@@ -369,17 +370,13 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
 
   const rule = museumRule(museumClasses);
   const options: WorksCollectorOptions = {
-    broadRoots: MUSEUM_BROAD_ROOTS,
-    wholeRoots: MUSEUM_WHOLE_ROOTS,
-    pinned: MUSEUM_PINNED_CLASSES,
-    pinnedEditionClasses: MUSEUM_PINNED_EDITION_CLASSES,
-    editionRoot: EDITION_ROOT,
+    ...MUSEUM_WORKS,
     noun: MUSEUM_NOUN,
     rule,
     closure: deps.closure,
     logPrefix: LOG_PREFIX,
   };
-  const collected = await collectWorks(run, options);
+  const collected = deps.works ? await worksOf(run, await deps.works.gathered(), options) : await collectWorks(run, options);
 
   // The second door (ADR-0056): a work below the line the world reads admits
   // its holder as a work at the line does.

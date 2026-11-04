@@ -1,18 +1,17 @@
 /**
- * The stages every works-first kind shares: find the classes a work of its kind can be, collect
- * the pool of works, keep the ones this kind calls its own, read the venue statements they
- * carry, build the venue graph those statements name, place each work in the venue that
- * survives resolution, and fold the venues that are one visit.
+ * The stages every works kind shares over its share of the gather of works
+ * (`worksGather.ts`, #1821): keep the works this kind calls its own, add the
+ * ones it names under the pool's floor, build the venue graph their
+ * statements name under the kind's own rule, place each work in the venue
+ * that survives resolution, and fold the venues that are one visit.
  *
- * These are the stages every works-first kind shares: a kind that admits churches for the works
- * they hold — relics, tombs — needs them with its own `VenueRule` and its own extra classes,
- * asked whole beside the narrow ones without a closure. `collectWorks`
- * parameterises the whole thing; a caller supplies its roots, its pinned classes and its rule,
- * and gets back the pool, the graph and the placements to do its own tail with — the museum's
- * art test and tier among them, still in `pipeline.ts`.
+ * A kind that admits churches for the works they hold — relics, tombs — needs
+ * them with its own `VenueRule`; `worksOf` parameterises the whole thing, and
+ * a caller gets back the pool, the graph and the placements to do its own tail
+ * with — the museum's art test and tier among them, still in `pipeline.ts`.
  */
 
-import { boundedClosure, type ClosureOptions } from '../classClosure.js';
+import { collectStatements, gatherWorks, worksShare, type GatheredWorks, type WorksRequest } from './worksGather.js';
 import { placeArtwork, whereaboutsUnknown } from './placement.js';
 import type { VenueRule } from './venueTest.js';
 import type { Fold } from './venueFolds.js';
@@ -24,17 +23,8 @@ import {
   applyFolds,
   type VenueGraph,
 } from './venueGraph.js';
+import type { PoolWork, RawStatement } from './queries.js';
 import {
-  fetchBroadPool,
-  fetchClassPool,
-  fetchVenueStatements,
-  type PoolWork,
-  type RawStatement,
-} from './queries.js';
-import {
-  fetchSubclasses,
-  fetchClassTree,
-  chunk,
   fetchEnglishArticles,
   unique,
   type QueryRunner,
@@ -133,26 +123,16 @@ export const EDITION_ROOT = 'Q11060274';
  */
 export const MUSEUM_PINNED_EDITION_CLASSES = new Set(['Q28890616', 'Q28913685', 'Q11835431']);
 
-/**
- * The root of the classes a work that no longer exists carries: `lost artwork`
- * (Q4140840), whose `P279*` tree is `destroyed artwork`, `lost sculpture` and
- * `lost painting` (measured 2026-09-12: four classes, read whole by
- * `fetchClassTree` and never pinned, so a class Wikidata adds under it counts).
- *
- * A work in it admits no venue and is nobody's treasure (#868): the Isabella
- * Stewart Gardner Museum was in the world tier for *The Storm on the Sea of
- * Galilee*, stolen in 1990 and never found, and a traveller who went for it
- * would find an empty frame. Read off the work's own classes rather than off
- * the class it was collected under, because the closure under `painting`
- * reaches `lost painting` but not `lost artwork`: *Portrait of a Courtesan* is
- * a `painting` and a `lost artwork`, and arrives typed `painting`. A theft
- * (`P793`) is deliberately not read — 414 of 425 theft events carry no end
- * time, and most of those works were recovered long ago.
- *
- * Places of worship reads the same tree through the same stage: the Statue of
- * Zeus at Olympia opens no door for its temple (ADR-0052 decision 3).
- */
-export const LOST_WORK_ROOT = 'Q4140840';
+/** What Art Museums asks the gather of works for (#1821); Places of worship asks it too, with its relics and tombs beside it. */
+export const MUSEUM_WORKS: WorksRequest = {
+  broadRoots: MUSEUM_BROAD_ROOTS,
+  wholeRoots: MUSEUM_WHOLE_ROOTS,
+  pinned: MUSEUM_PINNED_CLASSES,
+  pinnedEditionClasses: MUSEUM_PINNED_EDITION_CLASSES,
+  editionRoot: EDITION_ROOT,
+};
+
+export { LOST_WORK_ROOT } from './worksGather.js';
 
 /**
  * Works of the lost tree whose remains are on show, kept by name with the
@@ -174,23 +154,10 @@ export const REMAINS_ON_SHOW: Record<string, string> = {
 /** Why a work of the pool is placed nowhere: its whereabouts, or its class. */
 export const WHEREABOUTS_UNKNOWN = 'whereabouts unknown';
 
-const CLASS_BATCH = 25;
-const STATEMENT_BATCH = 50;
 /** The width of `treasures.treasure_type`. */
 const TREASURE_TYPE_MAX = 50;
 
-export interface WorksCollectorOptions {
-  /** The broad roots asked in fame bands, with the treasure type their label gives. */
-  broadRoots: { qid: string; type: string }[];
-  /** Roots narrow enough to take whole (drawing, print, …). */
-  wholeRoots: { qid: string; type: string }[];
-  /** Classes no closure reaches, pinned by name: the label is the type the venue-side read gives a work. */
-  pinned: Record<string, string>;
-  /** Classes asked whole beside the narrow ones, without a closure: a kind's own roots (relic, tomb). */
-  extraClasses?: Record<string, string>;
-  /** Pinned classes that are editions. */
-  pinnedEditionClasses: ReadonlySet<string>;
-  editionRoot: string;
+export interface WorksCollectorOptions extends WorksRequest {
   /**
    * What this kind calls the things it collects, singular and plural, for the
    * phase lines a person watches: `work of art`/`artworks` for a museum,
@@ -199,7 +166,6 @@ export interface WorksCollectorOptions {
    */
   noun: { work: string; works: string };
   rule: VenueRule;
-  closure?: ClosureOptions;
   logPrefix: string;
   /**
    * What else the kind needs to know about each work of the pool before it can
@@ -293,100 +259,13 @@ export interface UnseenWork {
   wouldBe: string[];
 }
 
-interface ArtworkClasses {
-  all: string[];
-  /** Classes whose works exist in editions rather than as a single original. */
-  edition: ReadonlySet<string>;
-}
-
-async function artworkClassesOf(
-  run: QueryRunner,
-  opts: WorksCollectorOptions,
-): Promise<ArtworkClasses> {
-  run.phase(`Finding the classes a ${opts.noun.work} can be...`);
-  const artworkRoots = [...opts.broadRoots, ...opts.wholeRoots];
-  const { classes, refused, byRoot } = await boundedClosure(
-    artworkRoots.map((r) => r.qid),
-    async (qids) => {
-      await run.step();
-      return fetchSubclasses(run.sparql, qids);
-    },
-    opts.closure,
-  );
-  for (const r of refused) {
-    console.log(
-      `${opts.logPrefix} Class closure stopped at ${r.root} hop ${r.hop}: ${r.offered} classes offered`,
-    );
-  }
-  const all = [...new Set([...classes, ...Object.keys(opts.pinned)])];
-  const edition = new Set([...(byRoot[opts.editionRoot] ?? []), ...opts.pinnedEditionClasses]);
-  console.log(`${opts.logPrefix} Artwork classes: ${all.length} (${edition.size} of them editions)`);
-  return { all, edition };
-}
-
-/**
- * A narrow class names a work better than the root it also instantiates, so it wins the type;
- * everything else fills a gap rather than overwriting an answer.
- */
-function mergeWork(existing: PoolWork, incoming: PoolWork, broadTypes: ReadonlySet<string>): void {
-  if (broadTypes.has(existing.type) && !broadTypes.has(incoming.type)) {
-    existing.type = incoming.type;
-    // The qid travels with the label it explains, or the medium test would be
-    // answered about a class the reader is not being shown.
-    existing.typeQid = incoming.typeQid;
-  }
-  if (!existing.imageUrl) existing.imageUrl = incoming.imageUrl;
-  // A list, and still a gap being filled rather than an answer overwritten: both
-  // answers are the same work's `P170` statements, and a short one can only come
-  // from a truncated pool, which `failIfTruncated` refuses outright.
-  if (existing.creators.length === 0) existing.creators = incoming.creators;
-  if (existing.year === null) existing.year = incoming.year;
-  if (incoming.sitelinks > existing.sitelinks) existing.sitelinks = incoming.sitelinks;
-}
-
-async function collectPool(
-  run: QueryRunner,
-  classes: string[],
-  opts: WorksCollectorOptions,
-): Promise<Map<string, PoolWork>> {
-  const broadTypes = new Set([...opts.broadRoots, ...opts.wholeRoots].map((r) => r.type).concat('artwork'));
-  const pool = new Map<string, PoolWork>();
-  const add = (works: PoolWork[]) => {
-    for (const work of works) {
-      const existing = pool.get(work.qid);
-      if (existing) mergeWork(existing, work, broadTypes);
-      else pool.set(work.qid, { ...work });
-    }
-  };
-
-  // Each broad root paces and reports its own bands: they are minutes apart, not seconds.
-  for (const root of opts.broadRoots) {
-    add(await fetchBroadPool(run, root));
-  }
-
-  // Everything the broad fetch did not already cover: the whole roots the closure found, and any
-  // extra classes asked without a closure at all — a kind's own roots, such as relic or tomb.
-  // Deduped: an extra class the closure also reached would otherwise be asked for twice.
-  const narrow = classes.filter((c) => !opts.broadRoots.some((r) => r.qid === c));
-  const extra = Object.keys(opts.extraClasses ?? {});
-  const batches = chunk(unique([...narrow, ...extra]), CLASS_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Fetching narrow classes of ${opts.noun.works} ${i + 1}/${batches.length}...`);
-    await run.step();
-    add(await fetchClassPool(run, batches[i]));
-  }
-
-  console.log(`${opts.logPrefix} Pool: ${pool.size} works`);
-  return pool;
-}
-
 /**
  * Cut the pool down to the works this kind keeps, in place.
  *
- * Between the pool and the statements, and deliberately: the statements are the
- * expensive stage — one query per fifty works — so a work dropped here is a
- * question never asked. A kind with no `keep` leaves with the pool it
- * collected, and one with no `workFacts` decides on the pool row alone.
+ * Between the pool and the placement, and deliberately: a kind decides on the
+ * pool row and the facts it asks for, before any venue is walked for a work it
+ * drops. A kind with no `keep` leaves with the pool it collected, and one with
+ * no `workFacts` decides on the pool row alone.
  */
 async function keepOurs(
   run: QueryRunner,
@@ -411,56 +290,6 @@ async function keepOurs(
     `${opts.logPrefix} Kept ${pool.size} of ${collected} pool works as ${opts.noun.works}`,
   );
   return refused;
-}
-
-async function collectStatements(
-  run: QueryRunner,
-  workQids: string[],
-): Promise<Map<string, RawStatement[]>> {
-  const byWork = new Map<string, RawStatement[]>();
-  const batches = chunk(workQids, STATEMENT_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Reading venue statements ${i + 1}/${batches.length}...`);
-    await run.step();
-    for (const statement of await fetchVenueStatements(run.sparql, batches[i])) {
-      const held = byWork.get(statement.work) ?? [];
-      held.push(statement);
-      byWork.set(statement.work, held);
-    }
-  }
-  return byWork;
-}
-
-/**
- * Which works of the pool no longer exist, by the lost-tree class each carries.
- *
- * The tree is asked whole (`fetchClassTree`, four classes) and then asked for
- * its works the way a narrow class is (`fetchClassPool`, one cached question,
- * 27 rows at the pool's floor on 2026-09-12); what that answer has in common
- * with the pool is lost. Intersected rather than added: a lost work that is
- * not otherwise a work of this kind is nobody's business here, and the class
- * pool's label — `lost painting`, `destroyed artwork` — is the reason a person
- * reads.
- */
-async function collectLost(
-  run: QueryRunner,
-  pool: Map<string, PoolWork>,
-  opts: WorksCollectorOptions,
-): Promise<{ lost: Map<string, string>; tree: ReadonlySet<string> }> {
-  run.phase(`Asking which ${opts.noun.works} no longer exist...`);
-  await run.step();
-  const tree = await fetchClassTree(run.sparql, LOST_WORK_ROOT, 'lost artwork classes');
-  const lost = new Map<string, string>();
-  // A step before each query, as every other stage takes one: the pause and the
-  // cancel check land between the two questions, not only before the first.
-  await run.step();
-  for (const work of await fetchClassPool(run, [...tree])) {
-    if (pool.has(work.qid)) lost.set(work.qid, work.type);
-  }
-  // The tree travels with the answer: the venue-side read asks it of an
-  // object's own classes, since that object was never in the class pool the
-  // question above is intersected with.
-  return { lost, tree };
 }
 
 /**
@@ -580,13 +409,38 @@ async function addUnderFloor(
   console.log(`${opts.logPrefix} Under the pool's floor: ${joining.size} read at the door's bar, joining the pool`);
 }
 
-export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions): Promise<WorksCollection> {
-  const classes = await artworkClassesOf(run, opts);
-  const pool = await collectPool(run, classes.all, opts);
+/**
+ * A kind's works out of the gather (`worksGather.ts`, #1821): its share, the
+ * works it keeps of it and those it names under the pool's floor, placed in
+ * the venues its own rule walks to, and folded.
+ *
+ * The venue graph stays the kind's: what the walk follows depends on the
+ * kind's rule (a place of worship's chapel, a museum's rooms), so one graph
+ * for every kind would answer a fold or a house differently. The walk itself
+ * is the one resolver of #1819.
+ */
+export async function worksOf(
+  run: QueryRunner, gathered: GatheredWorks, opts: WorksCollectorOptions,
+): Promise<WorksCollection> {
+  const { pool, classes, narrowAndExtra } = worksShare(gathered, opts);
+  console.log(
+    `${opts.logPrefix} Artwork classes: ${classes.all.length} (${classes.edition.size} of them editions); `
+    + `${pool.size} works as ${opts.noun.works}`,
+  );
   const refusedByKeep = await keepOurs(run, pool, opts);
   await addUnderFloor(run, pool, refusedByKeep, opts);
-  const statements = await collectStatements(run, [...pool.keys()]);
-  const { lost, tree: lostClasses } = await collectLost(run, pool, opts);
+  // The gather read the statements of its pool; a work joining under the floor is read here.
+  const unread = [...pool.keys()].filter((qid) => !gathered.statements.has(qid) && !gathered.pool.has(qid));
+  const joined = unread.length ? await collectStatements(run, unread) : new Map<string, RawStatement[]>();
+  const statements = new Map<string, RawStatement[]>();
+  for (const qid of pool.keys()) {
+    const own = gathered.statements.get(qid) ?? joined.get(qid);
+    if (own) statements.set(qid, own);
+  }
+  const lost = new Map([...pool.keys()].flatMap((qid) => {
+    const type = gathered.lostPool.get(qid);
+    return type === undefined ? [] : [[qid, type] as const];
+  }));
   // An unknown value names no venue to load.
   const seeds = unique(
     [...statements.values()].flat().map((s) => s.venue).filter((v): v is string => v !== null),
@@ -607,8 +461,13 @@ export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions
   return {
     pool, statements, graph, editionClasses: classes.edition, resolver, placed, unseen, folds,
     afterFolds: applyFolds(placed, folds),
-    askedClasses: new Set([...classes.all, ...Object.keys(opts.extraClasses ?? {})]),
-    lostClasses,
+    askedClasses: new Set([...classes.all, ...narrowAndExtra]),
+    lostClasses: gathered.lostClasses,
     refusedByKeep,
   };
+}
+
+/** One kind's works, gathered for it alone: what a run outside a pass, and a spec, reads. */
+export async function collectWorks(run: QueryRunner, opts: WorksCollectorOptions): Promise<WorksCollection> {
+  return worksOf(run, await gatherWorks(run, [opts], { logPrefix: opts.logPrefix, noun: opts.noun }), opts);
 }

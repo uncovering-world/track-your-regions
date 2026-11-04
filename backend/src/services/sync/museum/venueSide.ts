@@ -545,7 +545,8 @@ export async function readVenueSide(
       ? placedAt.filter((venue) => named.has(venue) || named.has(survivorOf(collection.folds, venue)))
       : placedAt;
     // The lost tree asked of the object's own classes, since it was never in
-    // the class pool `collectLost` intersects with; the label is its own class's.
+    // the gather's pool (`GatheredWorks.lostPool`, which `worksOf` intersects
+    // with the kind's share); the label is its own class's.
     const lost = new Map<string, string>();
     for (const [cls, label] of details.get(qid)?.classes ?? []) {
       if (collection.lostClasses.has(cls)) lost.set(qid, label);
