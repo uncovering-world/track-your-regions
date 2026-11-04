@@ -18,6 +18,7 @@
  * also read from standard input, one per line, when none is given.
  */
 
+import { actionApiFetch } from '../services/wikimediaApi.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -63,7 +64,8 @@ class ApiRefusal extends Error {}
 async function ask(api: string, url: string, attempt: number): Promise<{ answer: Record<string, unknown> } | { failure: string; wait: number }> {
   const patience = 2000 * (attempt + 1);
   await assertRobotsAllow(url);
-  const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+  // The script's own process keeps the Action API's turn for itself (#2352).
+  const response = await actionApiFetch(url, { headers: { 'User-Agent': USER_AGENT } }, { unattended: true });
   if (!response.ok) {
     // A 429 says when to come back; anything else is waited out a little longer each time.
     return { failure: `HTTP ${response.status}`, wait: Number(response.headers.get('retry-after')) * 1000 || patience };

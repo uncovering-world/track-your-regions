@@ -30,6 +30,7 @@
  * is stored.
  */
 
+import { actionApiFetch } from '../wikimediaApi.js';
 import {
   withRetries,
   abortOn,
@@ -337,12 +338,12 @@ async function askCommons(
     titles: names.map((n) => `File:${n}`).join('|'),
   });
   await assertRobotsAllow(`${COMMONS_API}?${params}`);
-  const { signal, release } = abortOn(timeoutMs, isCancelled);
+  const { signal, release } = abortOn(null, isCancelled);
   try {
-    const response = await fetch(`${COMMONS_API}?${params}`, {
+    const response = await actionApiFetch(`${COMMONS_API}?${params}`, {
       headers: { 'Accept': 'application/json', 'User-Agent': userAgent },
       signal,
-    });
+    }, { isCancelled, timeoutMs });
     if (!response.ok) await handleHttpError(response, attempt, CREDIT_MAX_RETRIES);
     const data = await response.json() as { query?: { pages?: CommonsPage[] } };
     return data.query?.pages ?? [];

@@ -12,13 +12,10 @@ const HERMITAGE = 'https://commons.wikimedia.org/wiki/Special:FilePath/Hermitage
 const SUN_STONE = 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Aztec_Solar_Disk_Calendar.svg';
 
 function commons(pages: Array<{ title: string; mime?: string; categories?: string; missing?: boolean }>) {
-  return vi.fn(async () => ({
-    ok: true,
-    json: async () => ({ query: { pages: pages.map(page => ({
-      title: page.title, missing: page.missing,
-      imageinfo: page.missing ? undefined : [{ mime: page.mime, extmetadata: page.categories === undefined ? {} : { Categories: { value: page.categories } } }],
-    })) } }),
-  })) as unknown as typeof fetch;
+  return vi.fn(async () => new Response(JSON.stringify({ query: { pages: pages.map(page => ({
+    title: page.title, missing: page.missing,
+    imageinfo: page.missing ? undefined : [{ mime: page.mime, extmetadata: page.categories === undefined ? {} : { Categories: { value: page.categories } } }],
+  })) } }), { status: 200 })) as unknown as typeof fetch;
 }
 
 describe("what a card's pictures are, asked of Commons", () => {

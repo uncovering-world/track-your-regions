@@ -8,6 +8,7 @@
  * locks but needs call ordering for rate limiting).
  */
 
+import { actionApiFetch } from '../wikimediaApi.js';
 import { userAgent } from '../../config/userAgent.js';
 import { assertRobotsAllow, RobotsRefusal } from '../robots/robotsSignals.js';
 
@@ -90,10 +91,9 @@ export class WikivoyageFetcher {
     url.searchParams.set('format', 'json');
 
     await assertRobotsAllow(url.toString());
-    return fetch(url.toString(), {
+    return actionApiFetch(url.toString(), {
       headers: { 'User-Agent': USER_AGENT },
-      signal: AbortSignal.timeout(30000),
-    });
+    }, { timeoutMs: 30000 });
   }
 
   /** Interpret response status and convert it into a success or retry outcome. */

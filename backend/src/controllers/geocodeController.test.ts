@@ -7,7 +7,7 @@ vi.stubGlobal('fetch', fetchMock);
 vi.spyOn(console, 'error').mockImplementation(() => {});
 
 function reply(body: unknown) {
-  fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(body) });
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(body), { status: 200 }));
 }
 
 /** Each handler with its query as the route hands it over, parsed by its schema. */
@@ -42,7 +42,7 @@ describe('searchPlaces', () => {
   });
 
   it("passes Nominatim's refusal on with its status", async () => {
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve([]) });
+    fetchMock.mockResolvedValueOnce(new Response('[]', { status: 429 }));
     await expect(search({ q: 'Qolşärif Mosque' }))
       .rejects.toMatchObject({ statusCode: 429, message: 'Nominatim request failed' });
   });
@@ -143,14 +143,14 @@ describe('suggestImage', () => {
 
   it('answers 404 without asking again when the query service throttles the only layer it has', async () => {
     // The spatial layer around the Kazan Kremlin is the one that asks SPARQL.
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 429, text: () => Promise.resolve('slow down') });
+    fetchMock.mockResolvedValueOnce(new Response('slow down', { status: 429 }));
     await expect(suggest({ lat: '55.7987', lng: '49.1064' }))
       .rejects.toMatchObject({ statusCode: 404, message: 'No image found' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('skips the throttled spatial layer and still finds the place by its name', async () => {
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 429, text: () => Promise.resolve('slow down') });
+    fetchMock.mockResolvedValueOnce(new Response('slow down', { status: 429 }));
     reply({ search: [{ id: 'Q603622', label: 'Kazan Kremlin' }] });
     reply({
       entities: {

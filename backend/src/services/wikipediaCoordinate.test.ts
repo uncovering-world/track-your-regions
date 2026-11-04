@@ -13,9 +13,9 @@ let articleCoordinate: typeof Coordinate.articleCoordinate;
 
 const ACHEIROPOIETOS = 'https://en.wikipedia.org/wiki/Church_of_the_Acheiropoietos';
 const BRANCUSI = 'https://en.wikipedia.org/wiki/Sculptural_Ensemble_of_Constantin_Br%C3%A2ncu%C8%99i_at_T%C3%A2rgu_Jiu';
-const pages = (coordinates?: unknown[]) => ({
-  ok: true, status: 200, json: async () => ({ query: { pages: [{ title: 't', ...(coordinates ? { coordinates } : {}) }] } }),
-});
+const pages = (coordinates?: unknown[]) => new Response(
+  JSON.stringify({ query: { pages: [{ title: 't', ...(coordinates ? { coordinates } : {}) }] } }), { status: 200 },
+);
 
 beforeEach(async () => {
   vi.stubGlobal('fetch', fetchMock);
@@ -69,7 +69,8 @@ describe('articleCoordinate', () => {
   it('asks nothing for a link that is not an article, and remembers no refusal', async () => {
     expect(await articleCoordinate('https://example.com/wiki/Petra')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({}) });
+    // Retry-After: 0, so the process's turn holds nobody back here (#2352).
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'Retry-After': '0' } }));
     expect(await articleCoordinate(ACHEIROPOIETOS)).toBeNull();
     fetchMock.mockResolvedValueOnce(pages([{ lat: 40.63, lon: 22.94, primary: true }]));
     expect(await articleCoordinate(ACHEIROPOIETOS)).toEqual({ latitude: 40.63, longitude: 22.94 });

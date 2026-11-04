@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { resetActionApiTurn } from '../wikimediaApi.js';
+
+// Each spec starts with the Action API's turn free: a 429 an earlier one answered holds the next (#2352).
+beforeEach(() => { resetActionApiTurn(); });
 
 const poolQuery = vi.fn();
 vi.mock('../../db/index.js', () => ({ pool: { query: (...args: unknown[]) => poolQuery(...args) } }));
