@@ -4,7 +4,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import type { ExperienceTreasure } from '../../api/experiences';
 import { toThumbnailUrl } from '../../utils/imageUrl';
-import { creditLabel, ImageCreditLine } from '../shared/ImageCreditLine';
+import { ImageCreditLine, needsCredit } from '../shared/ImageCreditLine';
 import { FindOriginLine } from '../shared/FindOriginLine';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
@@ -63,12 +63,9 @@ export function ContentTile({ content, placeKinds, isViewed, isAuthenticated, on
     // year: the raw column hovered the Borghese Gladiator as "(-100)" beside a
     // dialog that reads "100 BC" (#731).
     yearLabel(content.year) ? ` (${yearLabel(content.year)})` : '',
-    // Whose photograph, always — the tile itself only draws the credit where it
-    // carries something the row does not, and a reader wondering about a picture
-    // should not have to guess which rule kept it off. Silent where there is no
-    // picture drawn, for the reason the credit below gives.
-    thumbUrl ? creditLabel(content.image_credit) : '',
   ].join('');
+  // The credit is the badge on the picture (ADR-0182), so the name strip leaves it room.
+  const badged = !!thumbUrl && needsCredit(content.image_credit);
 
   const face = (
     <>
@@ -118,6 +115,7 @@ export function ContentTile({ content, placeKinds, isViewed, isAuthenticated, on
           right: 0,
           bgcolor: 'rgba(0,0,0,0.6)',
           px: 0.5,
+          pr: badged ? 2.5 : 0.5,
           py: 0.25,
         }}
       >
@@ -176,13 +174,14 @@ export function ContentTile({ content, placeKinds, isViewed, isAuthenticated, on
           renders its checkbox only when there is somebody to record for. */}
       {/* On the outer element, not on the name strip: `Tooltip` binds its listeners
           to its own child, and the strip is a plain `<div>` that never takes focus.
-          Bound there, the artist, the year and the credit are shown to a pointer
+          Bound there, the artist and the year are shown to a pointer
           and to nobody else — on a tile that is itself a focus stop. The
           strip is `noWrap` besides, so a long name is cut there too.
           `describeChild` because the tile already carries an `aria-label` saying
           what the press will do: without it MUI writes the title into that
           attribute, and the announcement becomes the description instead of the
           action. */}
+      <Box sx={{ position: 'relative' }}>
       <Tooltip title={tip} describeChild>
       {isAuthenticated ? (
         <ButtonBase
@@ -199,26 +198,18 @@ export function ContentTile({ content, placeKinds, isViewed, isAuthenticated, on
         <Box sx={frame}>{face}</Box>
       )}
       </Tooltip>
-      {/* Under the tile rather than over it: the picture is 100 px square with the
-          work’s name already across its foot, and a second line in that strip
-          would be a photographer’s name clipped mid-word, which credits nobody.
-          `redundantWith` for the same reason the list rows use it — most of these
-          are photographs of paintings, free to reuse and credited to the painter
-          the tooltip already names.
-          Hung on `thumbUrl` and not on the credit: `toThumbnailUrl` answers with an
-          empty string for a host we do not trust, and the tile then draws the name
-          placeholder above — a photographer named under a picture nobody is looking
-          at is credited for nothing. Every treasure image stored today is a
-          `Special:FilePath` URL, so this guards the next source, not this one. */}
+      {/* Beside the tile's own control, not inside it: the tile is a button that
+          marks the work seen, and the badge is a button of its own. Hung on
+          `thumbUrl`, so a picture that failed or a host we do not trust draws
+          no credit beside the name placeholder. */}
+      {thumbUrl && <ImageCreditLine credit={content.image_credit} surface="badge" />}
+      </Box>
       {/* Where it comes from, in the words Map mode's row uses (#885): an
           archaeology museum's holdings are objects taken from somewhere, and a
           tile naming only the museum tells a traveller the smaller half of what
-          the thing is (ADR-0058). Under the tile and not inside it, for the
-          reason the credit is: the square is 100 px with the name already across
-          its foot. Above the credit, because it is a fact about the object and
-          the credit is a fact about the photograph. */}
+          the thing is (ADR-0058). Under the tile and not inside it: the square
+          is 100 px with the name already across its foot. */}
       <FindOriginLine content={content} sx={{ fontSize: '0.6rem', mt: 0.25 }} />
-      {thumbUrl && <ImageCreditLine credit={content.image_credit} redundantWith={content.artists} />}
     </Box>
   );
 }

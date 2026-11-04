@@ -41,10 +41,9 @@ import { queryKeys } from '../../api/queryKeys';
 import { findComponentItems } from '../../api/admin';
 import { useAuth } from '../../hooks/useAuth';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
-import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
-import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { DenseThumbnail } from '../shared/DenseThumbnail';
 import { ComponentItemsMap, MAP_HEIGHT, type MapFocus, type SitePoint } from './ComponentItemsMap';
 import { ItemHeader, messageFor } from './queueCard';
 
@@ -146,17 +145,10 @@ function focusOf(candidate: Candidate): MapFocus | null {
   };
 }
 
-/** A component's own picture, with its credit under it — or the room it would take, so the part-cards line up. */
+/** A component's own picture, its credit the badge on it — or the room it would take, so the part-cards line up. */
 function PartPicture({ point }: { point: SitePoint | undefined }) {
-  const [failed, setFailed] = useState(false);
-  const src = point?.imageUrl ? toThumbnailUrl(extractImageUrl(point.imageUrl) ?? '', 120) : '';
-  if (!src || failed) return <Box sx={{ width: 64, flexShrink: 0 }} />;
   return (
-    <Box sx={{ width: 64, flexShrink: 0 }}>
-      <Box component="img" src={src} alt="" loading="lazy" onError={() => setFailed(true)}
-        sx={{ width: 64, height: 56, objectFit: 'cover', borderRadius: 0.5, display: 'block' }} />
-      <ImageCreditLine credit={point?.imageCredit} />
-    </Box>
+    <DenseThumbnail imageUrl={point?.imageUrl} title={point?.name ?? 'The component'} credit={point?.imageCredit} reserve />
   );
 }
 

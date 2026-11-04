@@ -96,16 +96,16 @@ describe('a work in the contents grid', () => {
     // a screen-reader user than announcing nothing.
     renderTile({}, false, false);
 
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Mesha Stele/ })).not.toBeInTheDocument();
     // The work itself is still there to look at, credit and all.
     expect(screen.getByAltText('Mesha Stele')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Mbzt' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Picture credit: © Mbzt/ })).toBeInTheDocument();
   });
 
   it('hangs the work\'s details on the element a keyboard can reach', async () => {
     // `Tooltip` binds its listeners to its own child. Bound to the name strip — a
-    // plain div that never takes focus — the artist, the year and the credit were
-    // shown to a pointer alone, on a tile that is a focus stop.
+    // plain div that never takes focus — the artist and the year were shown to a
+    // pointer alone, on a tile that is a focus stop.
     //
     // Reached the way a keyboard reaches it: MUI opens on focus only for
     // `:focus-visible`, which a scripted focus satisfies. Bound to the inner
@@ -114,7 +114,7 @@ describe('a work in the contents grid', () => {
 
     act(() => screen.getByRole('button', { name: /Mesha Stele/ }).focus());
 
-    expect(await screen.findByRole('tooltip')).toHaveTextContent(/Mesha.*840.*Mbzt/);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(/Mesha.*840/);
   });
 
   it('hovers the year the way a person writes one', async () => {
@@ -137,10 +137,13 @@ describe('a work in the contents grid', () => {
       .toBeInTheDocument();
   });
 
-  it('names the photographer under the picture it draws', () => {
+  it('names the photographer on the picture it draws, as a badge beside the tile’s own control', () => {
     renderTile();
 
-    expect(screen.getByRole('link', { name: 'Mbzt' })).toBeInTheDocument();
+    // A works grid: the credit is the © on the picture (ADR-0182), a button of
+    // its own rather than one nested in the tile's.
+    const badge = screen.getByRole('button', { name: /^Picture credit: © Mbzt/ });
+    expect(screen.getByRole('button', { name: /Mesha Stele — mark as seen/ })).not.toContainElement(badge);
   });
 
   it('takes the credit away with a picture that did not arrive', () => {
@@ -148,7 +151,7 @@ describe('a work in the contents grid', () => {
 
     fireEvent.error(screen.getByAltText('Mesha Stele'));
 
-    expect(screen.queryByRole('link', { name: 'Mbzt' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Picture credit/ })).not.toBeInTheDocument();
     // The tile stays, and stays operable: the work is still there to be marked.
     expect(screen.getByRole('button', { name: /Mesha Stele/ })).toBeInTheDocument();
   });

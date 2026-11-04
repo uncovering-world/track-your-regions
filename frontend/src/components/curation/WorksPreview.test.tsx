@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { WorksPreview, type CountedWork } from './WorksPreview';
 
 /** Onze-Lieve-Vrouwekathedraal's three, as the catalogue holds them. */
@@ -130,7 +130,9 @@ describe('WorksPreview', () => {
       </WorksPreview>,
     );
 
-    expect(screen.getByRole('tooltip').textContent).toContain('Mbzt · CC BY-SA 4.0');
+    // A dense row: the credit is the © on the thumbnail (ADR-0182).
+    expect(within(screen.getByRole('tooltip')).getByRole('button', { name: 'Picture credit: © Mbzt · CC BY-SA 4.0' }))
+      .toBeInTheDocument();
   });
 
   it('credits nobody for a work it draws no picture of', async () => {
@@ -181,8 +183,6 @@ describe('WorksPreview', () => {
     // this test was first written. What does not pass either way is the warning.
     expect(warned.mock.calls.flat().join(' ')).not.toMatch(/same key/i);
 
-    // The thumbnails are decorative (`alt=""`), so they carry no `img` role —
-    // reached through the tooltip's own node instead.
     const tip = screen.getByRole('tooltip');
     const shown = () => Array.from(tip.querySelectorAll('img'));
     const [first, second] = shown();
@@ -193,7 +193,7 @@ describe('WorksPreview', () => {
     // One credit gone with its picture, one still standing beside a picture that
     // is there — rather than both, or the wrong one.
     expect(shown()).toEqual([second]);
-    expect(screen.getAllByText(/Mbzt/)).toHaveLength(1);
+    expect(within(tip).getAllByRole('button', { name: /Picture credit: © Mbzt/ })).toHaveLength(1);
     warned.mockRestore();
   });
 

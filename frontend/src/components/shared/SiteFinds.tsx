@@ -4,7 +4,6 @@ import type { SiteFind } from '../../api/experiences';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 import { yearLabel } from '../../utils/yearLabel';
-import { ImageCreditLine } from './ImageCreditLine';
 import { PlaceLink } from './PlaceLink';
 import { WorkThumbnail } from './WorkThumbnail';
 
@@ -128,6 +127,7 @@ function FindRow({ find, onPreview }: {
         failed={failed}
         onFailed={() => setFailed(true)}
         onPreview={onPreview}
+        enlargeUrl={find.image_url}
       />
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }} noWrap>
@@ -148,9 +148,6 @@ function FindRow({ find, onPreview }: {
             </Fragment>
           ))}
         </Typography>
-        {/* Hung on the picture that is actually on screen. No `redundantWith`:
-            a find has no maker the row names, so a credit never repeats one. */}
-        {url && !failed && <ImageCreditLine credit={find.image_credit} />}
       </Box>
     </Box>
   );

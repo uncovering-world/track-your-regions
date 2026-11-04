@@ -1,20 +1,30 @@
 /**
- * Who took the picture above this line.
+ * Who took the picture on screen, said as the surface it sits on allows (ADR-0182).
  *
- * The catalogue shows photographs it does not host — UNESCO's and Wikimedia
- * Commons', on the objects and on the works inside them — and a share of the
- * Commons ones are CC BY or CC BY-SA, which of a page that merely shows a picture
- * ask one thing: that the author is named wherever the work appears (ShareAlike
- * binds adaptations, which showing a photograph is not). Until this component existed the
- * catalogue named nobody, which is not a styling gap: it is the one term those
- * licences ask for.
+ * The catalogue shows Wikimedia Commons photographs, and most of them are CC BY
+ * or CC BY-SA, which ask one thing of a page that merely shows a picture: that
+ * the author is credited. CC BY 4.0 § 3(a)(2) lets that be done "in any
+ * reasonable manner based on the medium, means, and context", a link to a page
+ * that holds the credit included; public domain and CC0 ask nothing. So the
+ * credit is as large as the surface gives room for, and no larger:
  *
- * Deliberately quiet. A credit is an obligation to the photographer, not a
- * caption for the reader, so it sits under the image in the smallest type the
- * theme has and never competes with the object's own name.
+ * - `badge` — a dense row or tile (a review card's list, the crowded-city
+ *   window, a works grid): a small © on the thumbnail that opens the full credit
+ *   and the file page. The caller's frame around the picture is `position:
+ *   relative`, since the badge sits in its corner.
+ * - `line` — a card (the place card, the hover cards): one line, "© Author ·
+ *   Licence", cut with an ellipsis, whole on hover and focus, the author linked
+ *   to the file page.
+ * - `full` — a full-size view (an enlargement, the preview over the map): the
+ *   whole credit, wrapping.
+ *
+ * A picture whose licence asks for no credit shows none on any surface
+ * (`needsCredit`). And a credit is drawn only beside the picture that is on
+ * screen: every caller hangs it on its picture having arrived.
  */
 
-import { Box, Link, Typography, type TypographyProps } from '@mui/material';
+import { useState, type ReactNode } from 'react';
+import { Box, ButtonBase, Link, Popover, Tooltip, Typography, type TypographyProps } from '@mui/material';
 import type { ImageCredit } from '../../api/experiences';
 // The server already stores nothing but `http`/`https` here, and `safeHref`
 // checks again: these values come from a wiki field anybody may edit, they
@@ -23,33 +33,12 @@ import type { ImageCredit } from '../../api/experiences';
 // — the credit still names whom it must, without offering a link.
 import { safeHref } from '../../utils/safeHref';
 
-/**
- * The licence, linked to its own terms where the source gave a URL.
- *
- * `rel="noopener"` and `nofollow` because the URL comes from an outside source:
- * Commons hands us the licence URL from the file's own metadata, and a link the
- * catalogue did not choose is not a link the catalogue vouches for.
- */
-function License({ credit }: { credit: ImageCredit }) {
-  if (!credit.license) return null;
-  const href = safeHref(credit.licenseUrl);
-  return href
-    ? (
-      <Link
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer nofollow"
-        color="inherit"
-        underline="hover"
-      >
-        {credit.license}
-      </Link>
-    )
-    : <>{credit.license}</>;
-}
+/** Where a credit is drawn: on a dense row's thumbnail, as a card's line, or under a full-size view. */
+export type CreditSurface = 'badge' | 'line' | 'full';
 
 /**
- * The licences that ask for nothing in return.
+ * The licences that ask for nothing in return, for a credit stored before the
+ * run read Commons' own answer (`attributionRequired`).
  *
  * Written as the short names Commons answers with, because that is what is
  * stored: `LicenseShortName` is a display string, not a code. The list is
@@ -60,135 +49,160 @@ function License({ credit }: { credit: ImageCredit }) {
 const NO_ATTRIBUTION_REQUIRED = /^(public domain|pdm|pd-|cc0)/i;
 
 /**
- * Whether this credit tells a dense row something its own text does not.
+ * Whether a credit is owed for this picture at all.
  *
- * Most of the Commons files behind the artworks are public-domain reproductions
- * of paintings, and for one of those Commons names the *painter* as the file's
- * author — so the credit under *The Night Watch* would read "Rembrandt · Public
- * domain" beside a line that already says "Rembrandt · 1642 · painting". A row
- * repeating itself teaches a reader to stop reading the line, which is the last
- * thing an attribution should do.
- *
- * So on the dense surfaces the line appears where it carries something: a
- * licence that asks to be honoured — the minority that are CC BY or CC BY-SA —
- * or a photographer who is not the artist already named. The large views take no
- * `redundantWith` and always show it: there the picture is the subject, and
- * there is room.
- *
- * A work names every one of its makers (#720), so the question is whether the
- * credit names somebody the row does not — **any** of them, not the first. The
- * Baptism of Christ is Leonardo and Verrocchio, and a photograph credited to
- * Verrocchio beside a row reading "Leonardo da Vinci and Andrea del Verrocchio"
- * repeats the row exactly as the single-name case did.
+ * Commons says so per file (`AttributionRequired`, read by the run): false for
+ * public domain and CC0. Where the stored credit predates that reading, the
+ * licence's name decides. A credit naming nobody and no licence says nothing,
+ * and an empty line under a picture would read as "nobody took this".
  */
-export function creditAddsBeyond(
-  credit: ImageCredit | null | undefined,
-  artist: string | readonly string[] | null | undefined,
-): boolean {
+export function needsCredit(credit: ImageCredit | null | undefined): credit is ImageCredit {
   if (!credit || (!credit.author && !credit.license)) return false;
-  if (!credit.license || !NO_ATTRIBUTION_REQUIRED.test(credit.license.trim())) return true;
-  // A free licence and no new name says nothing the row needs. Compared loosely,
-  // because "Leonardo da Vinci" and "leonardo  da vinci" are one person.
-  const same = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
-  const named = (typeof artist === 'string' ? [artist] : artist ?? []).map(same);
-  return !!credit.author && !named.includes(same(credit.author));
+  if (typeof credit.attributionRequired === 'boolean') return credit.attributionRequired;
+  return !credit.license || !NO_ATTRIBUTION_REQUIRED.test(credit.license.trim());
 }
 
 /**
  * The credit as words — `author · licence` — for a place that renders text rather
  * than a component.
  *
- * The one sentence the line below renders, so that a credit reads the same
- * wherever it is said: under the picture, in a tooltip, and in the history line
- * that records an edit taking the picture away (#801), the one screen a
- * removed photographer's name survives. `null` where nobody is named, rather
- * than an empty string, so a caller says "(empty)" or nothing in its own words.
+ * The sentence the curation history prints for an edit that took a picture
+ * away (#801), the one screen a removed photographer's name survives, so it is
+ * said whatever the licence: it records a value, it does not credit a picture.
+ * `null` where nobody is named, rather than an empty string, so a caller says
+ * "(empty)" or nothing in its own words.
  */
 export function creditSentence(credit?: ImageCredit | null): string | null {
   if (!credit || (!credit.author && !credit.license)) return null;
   return [credit.author, credit.license].filter(Boolean).join(' · ');
 }
 
+/** The credit as the line reads it, for its hover and the badge's name: "© Author · Licence". */
+function creditWords(credit: ImageCredit): string {
+  const author = credit.author ?? (safeHref(credit.detailsUrl) ? AUTHOR_ON_FILE_PAGE : null);
+  return [author && `© ${author}`, credit.license].filter(Boolean).join(' · ');
+}
+
+/** What the line says where the file page names the author and the credit read none. */
+const AUTHOR_ON_FILE_PAGE = 'Author on the file page';
+
 /**
- * The same credit as a fragment of plain text, for somewhere a component cannot go.
- *
- * One caller today: the tooltip on Discover's 100 px contents tile, which is
- * already a string and is the only place that picture's photographer can be
- * named — the tile itself is a square of image with the work's name across its
- * foot, and a second line there would be a name clipped mid-word. Carries its
- * own separator, and is empty where there is nobody to name, so a caller can
- * concatenate it unconditionally.
+ * A stored URL as a link, or its words alone where `safeHref` refuses it.
+ * `nofollow` and `noopener`, because Commons hands us the URL from the file's
+ * own metadata, and a link the catalogue did not choose is not one it vouches for.
  */
-export function creditLabel(credit?: ImageCredit | null): string {
-  const sentence = creditSentence(credit);
-  return sentence ? ` — image: ${sentence}` : '';
+function OutsideLink({ url, children }: { url: string | null | undefined; children: ReactNode }) {
+  const href = safeHref(url);
+  if (!href) return <>{children}</>;
+  return (
+    <Link href={href} target="_blank" rel="noopener noreferrer nofollow" color="inherit" underline="hover"
+      onClick={(event) => event.stopPropagation()}>
+      {children}
+    </Link>
+  );
+}
+
+/**
+ * "© Author · Licence": the author linked to the file page, the licence to its
+ * terms. Where the credit read no author but the file page states one, the line
+ * points there in its place — the link is the credit CC 4.0 accepts.
+ */
+function CreditWords({ credit }: { credit: ImageCredit }) {
+  const authorText = credit.author ?? (safeHref(credit.detailsUrl) ? AUTHOR_ON_FILE_PAGE : null);
+  return (
+    <>
+      {authorText && <>© <OutsideLink url={credit.detailsUrl}>{authorText}</OutsideLink></>}
+      {authorText && credit.license ? ' · ' : null}
+      {credit.license && <OutsideLink url={credit.licenseUrl}>{credit.license}</OutsideLink>}
+    </>
+  );
+}
+
+/**
+ * The © on a dense row's thumbnail, and the full credit it opens.
+ *
+ * A button rather than a hover: a touch screen has no hover, and a keyboard
+ * reaches a button. The popover holds the credit with its links and the file
+ * page, and Escape or a click outside closes it. Its clicks stop at the badge,
+ * because the rows it sits on answer a click of their own (a crowded-city row
+ * brings its dot into view, a tile marks a work seen).
+ */
+function CreditBadge({ credit }: { credit: ImageCredit }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <ButtonBase
+        aria-label={`Picture credit: ${creditWords(credit)}`}
+        aria-haspopup="dialog"
+        aria-expanded={anchor ? 'true' : 'false'}
+        onClick={(event) => {
+          event.stopPropagation();
+          setAnchor(event.currentTarget);
+        }}
+        sx={{
+          position: 'absolute', right: 2, bottom: 2, zIndex: 1, width: 16, height: 16, borderRadius: '50%',
+          fontSize: 11, lineHeight: 1, color: 'common.white', bgcolor: 'rgba(0, 0, 0, 0.55)',
+          '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.75)' },
+        }}
+      >
+        ©
+      </ButtonBase>
+      <Popover
+        open={!!anchor}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        onClick={(event) => event.stopPropagation()}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        slotProps={{ paper: { sx: { p: 1, maxWidth: 280 } } }}
+      >
+        <Typography variant="caption" component="div" sx={{ wordBreak: 'break-word' }}>
+          <CreditWords credit={credit} />
+        </Typography>
+        {safeHref(credit.detailsUrl) && (
+          <Typography variant="caption" component="div" sx={{ mt: 0.5 }}>
+            <OutsideLink url={credit.detailsUrl}>The file on Wikimedia Commons</OutsideLink>
+          </Typography>
+        )}
+      </Popover>
+    </>
+  );
 }
 
 interface ImageCreditLineProps {
   credit?: ImageCredit | null;
-  /**
-   * The work's own makers, where the surface already names them.
-   *
-   * **Passing the prop at all** opts this line into the "only where it adds" rule
-   * above — the dense lists do, the large views do not. Presence and not value:
-   * `redundantWith={row.artists}` on a row whose makers are `undefined` is still
-   * a dense row asking for the rule, and reading the value would have made it a
-   * large view by accident, printing the repetition `creditAddsBeyond` exists to
-   * remove.
-   *
-   * A list or one name: a work carries every maker the source names (#720), and
-   * the object-level surfaces that pass this still have a single string.
-   */
-  redundantWith?: string | readonly string[] | null;
+  /** The surface the picture sits on; see the file's header. */
+  surface: CreditSurface;
   /**
    * What to paint the line, for a surface that is not the page's own background.
    *
-   * The default is the theme's quietest text, which is the whole point of this
-   * component — and is unreadable on a dark one. `WorksPreview` renders its rows
-   * inside a MUI `Tooltip`, whose default surface is `grey[700]` at 92% with
-   * white text and which this theme does not override; `text.secondary` there is
-   * near-black on near-black, so that caller passes `inherit` and every part of
-   * the line — the author link and the licence link included, both already
-   * `color="inherit"` — follows the tooltip's own colour.
+   * The default is the theme's quietest text, which is unreadable on a dark
+   * surface; such a caller passes `inherit`, and every part of the line — its
+   * links included — follows the surface's own colour.
    */
   color?: TypographyProps['color'];
 }
 
-export function ImageCreditLine(props: ImageCreditLineProps) {
-  const { credit, color = 'text.secondary' } = props;
-  // Nothing to say is said by saying nothing: an empty credit line under a
-  // picture would read as "nobody took this".
-  if (!credit || (!credit.author && !credit.license)) return null;
-  // `in` and not `!== undefined`: the two differ exactly where a caller passes an
-  // artist that happens to be undefined, and there the caller is a dense row that
-  // asked for the rule. See the prop's own note.
-  if ('redundantWith' in props && !creditAddsBeyond(credit, props.redundantWith)) return null;
-
-  const detailsHref = safeHref(credit.detailsUrl);
-  const author = credit.author && (detailsHref
-    ? (
-      <Link
-        href={detailsHref}
-        target="_blank"
-        rel="noopener noreferrer nofollow"
-        color="inherit"
-        underline="hover"
-      >
-        {credit.author}
-      </Link>
-    )
-    : credit.author);
-
+export function ImageCreditLine({ credit, surface, color = 'text.secondary' }: ImageCreditLineProps) {
+  if (!needsCredit(credit)) return null;
+  if (surface === 'badge') return <CreditBadge credit={credit} />;
+  const words = <CreditWords credit={credit} />;
+  if (surface === 'full') {
+    return (
+      <Typography variant="caption" component={Box} color={color}
+        sx={{ display: 'block', mt: 0.5, lineHeight: 1.3, wordBreak: 'break-word' }}>
+        {words}
+      </Typography>
+    );
+  }
+  // A line with no link inside takes the focus itself, so a keyboard still
+  // reaches the whole text the ellipsis cut.
+  const linked = !!safeHref(credit.detailsUrl) || (!!credit.license && !!safeHref(credit.licenseUrl));
   return (
-    <Typography
-      variant="caption"
-      component={Box}
-      color={color}
-      sx={{ display: 'block', mt: 0.5, lineHeight: 1.3, wordBreak: 'break-word' }}
-    >
-      {author}
-      {author && credit.license ? ' · ' : null}
-      <License credit={credit} />
-    </Typography>
+    <Tooltip title={creditWords(credit)} describeChild>
+      <Typography variant="caption" component={Box} color={color} tabIndex={linked ? undefined : 0}
+        sx={{ display: 'block', mt: 0.5, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {words}
+      </Typography>
+    </Tooltip>
   );
 }

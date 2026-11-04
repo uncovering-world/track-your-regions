@@ -203,7 +203,7 @@ export function PointCard({
               onError={() => setFailedSrc(pictureSrc)}
               sx={{ width: '100%', height: 250, objectFit: 'contain', borderRadius: 1, mt: 1.5, bgcolor: 'grey.100' }}
             />
-            <ImageCreditLine credit={picture.imageCredit} />
+            <ImageCreditLine credit={picture.imageCredit} surface="line" />
           </>
         )}
         {pictureSrc && failedSrc !== pictureSrc && picture.pictureOfObject && (

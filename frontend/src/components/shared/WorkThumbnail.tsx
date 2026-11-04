@@ -1,6 +1,9 @@
-import { Box } from '@mui/material';
+import { useState } from 'react';
+import { Box, ButtonBase } from '@mui/material';
 import type { ImageCredit } from '../../api/experiences';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
+import { ImageCreditLine } from './ImageCreditLine';
+import { PictureLightbox } from './PictureLightbox';
 
 /**
  * A work's 48 px picture in a list row, and the larger copy it opens over the
@@ -13,11 +16,14 @@ import type { ArtworkPreview } from '../../hooks/useExperienceContext';
  * cannot unmount the element carrying `onMouseLeave` — the only thing that
  * closes the map's overlay. Only the `<img>` answers to `failed`.
  *
- * `failed` is the row's state rather than this component's, because the credit
- * line the row draws beside the name has to answer to the same failure: a
- * photographer named under a picture that did not arrive credits nobody (#557).
+ * A dense row, so the picture's credit is the © badge on it, and a press on
+ * the picture opens it enlarged with the full credit where the row hands over
+ * the stored address (`enlargeUrl`, ADR-0182). Both go with a picture that
+ * failed to load: a photographer named beside a picture that did not arrive
+ * credits nobody (#557). `failed` is the row's state, so the row can answer to
+ * the same failure.
  */
-export function WorkThumbnail({ url, previewUrl, alt, credit, failed, onFailed, onPreview, dim }: {
+export function WorkThumbnail({ url, previewUrl, alt, credit, failed, onFailed, onPreview, dim, enlargeUrl }: {
   /**
    * The normalised URL — `toThumbnailUrl`'s answer, never the stored one — or
    * `''` for a host the product may not draw from, which renders nothing:
@@ -34,7 +40,7 @@ export function WorkThumbnail({ url, previewUrl, alt, credit, failed, onFailed, 
    */
   previewUrl?: string;
   alt: string;
-  /** Whose photograph, so the overlay drawn on the map can say so. */
+  /** Whose photograph: the badge on the thumbnail, the enlargement and the overlay drawn on the map say so. */
   credit?: ImageCredit | null;
   failed: boolean;
   onFailed: () => void;
@@ -45,9 +51,24 @@ export function WorkThumbnail({ url, previewUrl, alt, credit, failed, onFailed, 
   onPreview?: (preview: ArtworkPreview | null) => void;
   /** Drawn faded — a work this reader has already seen. */
   dim?: boolean;
+  /** The picture as stored: given, a press on the thumbnail opens it enlarged (`PictureLightbox`). */
+  enlargeUrl?: string | null;
 }) {
+  const [open, setOpen] = useState(false);
   if (!url) return null;
   const previews = !!onPreview && !!previewUrl && !failed;
+  const picture = !failed && (
+    <Box
+      component="img"
+      src={url}
+      alt={alt}
+      loading="lazy"
+      sx={{ maxWidth: 48, maxHeight: 48, objectFit: 'contain', borderRadius: 0.5, display: 'block' }}
+      // State rather than `style.display = 'none'`: hiding the element left
+      // the credit standing beside a picture that is not there.
+      onError={onFailed}
+    />
+  );
   return (
     <Box
       sx={{
@@ -57,6 +78,7 @@ export function WorkThumbnail({ url, previewUrl, alt, credit, failed, onFailed, 
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        position: 'relative',
         bgcolor: 'grey.100',
         borderRadius: 0.5,
         cursor: previews ? 'pointer' : 'default',
@@ -70,17 +92,15 @@ export function WorkThumbnail({ url, previewUrl, alt, credit, failed, onFailed, 
       // not open costs nothing, and this is the only thing that closes one.
       onMouseLeave={onPreview ? () => onPreview(null) : undefined}
     >
-      {!failed && (
-        <Box
-          component="img"
-          src={url}
-          alt={alt}
-          loading="lazy"
-          sx={{ maxWidth: 48, maxHeight: 48, objectFit: 'contain', borderRadius: 0.5 }}
-          // State rather than `style.display = 'none'`: hiding the element left
-          // the credit below it standing under a picture that is not there.
-          onError={onFailed}
-        />
+      {picture && enlargeUrl ? (
+        <ButtonBase aria-label={`${alt} — enlarge the picture`} onClick={() => setOpen(true)}
+          sx={{ borderRadius: 0.5, cursor: 'zoom-in' }}>
+          {picture}
+        </ButtonBase>
+      ) : picture}
+      {picture && <ImageCreditLine credit={credit} surface="badge" />}
+      {picture && enlargeUrl && (
+        <PictureLightbox open={open} onClose={() => setOpen(false)} imageUrl={enlargeUrl} title={alt} credit={credit} />
       )}
     </Box>
   );

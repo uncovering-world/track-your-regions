@@ -253,7 +253,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             />
             {/* Under the picture rather than over it: the credit belongs to the
                 photograph, and this is the largest the catalogue ever shows one. */}
-            <ImageCreditLine credit={experience.image_credit} />
+            <ImageCreditLine credit={experience.image_credit} surface="line" />
           </Box>
         )}
 

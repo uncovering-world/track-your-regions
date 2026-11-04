@@ -129,7 +129,7 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
             The whole site's picture; this part has none of its own
           </Typography>
         )}
-        {image && <ImageCreditLine credit={hoverPreview.imageCredit} />}
+        {image && <ImageCreditLine credit={hoverPreview.imageCredit} surface="line" />}
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
           {hoverPreview.experienceName}
         </Typography>

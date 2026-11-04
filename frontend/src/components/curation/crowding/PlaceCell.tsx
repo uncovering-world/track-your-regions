@@ -4,33 +4,25 @@
  * cannot tell it from its name, so the row shows the place's picture as a
  * thumbnail and links its Wikipedia article, as its review card does.
  *
- * The picture's credit is drawn under the name only while the thumbnail is on
- * screen: a photographer named beside a picture that failed to load credits
- * nobody (CLAUDE.md § Experience Images). The failure is held by the picture's
- * address, so a row read again with another picture draws it afresh.
+ * A dense row, so the picture's credit is the © badge on the thumbnail, and a
+ * press on the thumbnail opens it enlarged with the full credit (ADR-0182) —
+ * both only while the thumbnail is on screen (`DenseThumbnail`).
  */
 
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Box, Link, Stack, Typography } from '@mui/material';
 import type { CrowdingWindowRow } from '../../../api/crowding';
-import { extractImageUrl, toThumbnailUrl } from '../../../utils/imageUrl';
 import { safeHref } from '../../../utils/safeHref';
-import { ImageCreditLine } from '../../shared/ImageCreditLine';
+import { DenseThumbnail } from '../../shared/DenseThumbnail';
 import { ReaderEditionBeside } from '../../shared/WikipediaArticleLink';
-import { WorkThumbnail } from '../../shared/WorkThumbnail';
 
 /** The place's name, its picture with its credit and its article, around what the table says of it (`children`). */
 export function PlaceCell({ row, children }: { row: CrowdingWindowRow; children: ReactNode }) {
-  const [failedFor, setFailedFor] = useState<string | null>(null);
-  const image = extractImageUrl(row.imageUrl);
-  // `''` for a host the product may not draw from: the thumbnail then draws nothing, and no credit is said.
-  const thumbnail = image ? toThumbnailUrl(image, 120) : '';
-  const failed = thumbnail !== '' && failedFor === thumbnail;
   const articleHref = safeHref(row.wikipediaUrl);
 
   return (
     <Stack direction="row" spacing={1} alignItems="flex-start">
-      <WorkThumbnail url={thumbnail} alt={row.name} failed={failed} onFailed={() => setFailedFor(thumbnail)} />
+      <DenseThumbnail imageUrl={row.imageUrl} title={row.name} credit={row.imageCredit} width={48} height={48} />
       <Box sx={{ minWidth: 0 }}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>{row.name}</Typography>
         {children}
@@ -44,8 +36,6 @@ export function PlaceCell({ row, children }: { row: CrowdingWindowRow; children:
             <ReaderEditionBeside article={row.wikipediaUrl} />
           </Stack>
         )}
-        {/* A dense row: a public-domain picture nobody is named for adds no line. No maker is named here. */}
-        {thumbnail && !failed && <ImageCreditLine credit={row.imageCredit} redundantWith={null} />}
       </Box>
     </Stack>
   );

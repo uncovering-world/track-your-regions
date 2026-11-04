@@ -67,7 +67,7 @@ export function DiscoverHoverCard() {
       )}
       <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         {/* Wherever the work appears, including here. */}
-        {picture && <ImageCreditLine credit={hoverPreview.imageCredit} />}
+        {picture && <ImageCreditLine credit={hoverPreview.imageCredit} surface="line" />}
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
           {hoverPreview.experienceName}
         </Typography>

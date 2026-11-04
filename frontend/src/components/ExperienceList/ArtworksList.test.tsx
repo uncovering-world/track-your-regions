@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { ExperienceTreasure } from '../../api/experiences';
 
 const setArtworkPreview = vi.fn();
@@ -231,10 +231,22 @@ describe('a work that was dug up somewhere', () => {
 describe('a work whose picture does not arrive', () => {
   beforeEach(() => setArtworkPreview.mockReset());
 
-  it('names the photographer while the picture is on screen', () => {
+  it('names the photographer while the picture is on screen, as the badge on it', () => {
     renderList();
 
-    expect(screen.getByText(/Mbzt/)).toBeInTheDocument();
+    // A dense row: the credit is the © on the thumbnail (ADR-0182).
+    expect(screen.getByRole('button', { name: /^Picture credit: © Mbzt/ })).toBeInTheDocument();
+  });
+
+  it('opens the picture enlarged, with its full credit', async () => {
+    renderList();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mesha Stele — enlarge the picture' }));
+
+    const enlarged = await screen.findByRole('dialog', { name: 'Mesha Stele' });
+    expect(within(enlarged).getByRole('img', { name: 'Mesha Stele' }))
+      .toHaveAttribute('src', expect.stringContaining('width=960'));
+    expect(enlarged).toHaveTextContent('© Mbzt · CC BY-SA 4.0');
   });
 
   it('takes the credit away with the picture that failed', () => {
@@ -242,12 +254,14 @@ describe('a work whose picture does not arrive', () => {
     fireEvent.error(screen.getByAltText('Mesha Stele'));
 
     // A photographer named under no photograph is credited for nothing.
-    expect(screen.queryByText(/Mbzt/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Picture credit/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /enlarge the picture/ })).not.toBeInTheDocument();
   });
 
   it('still closes the map overlay when the picture fails under the pointer', () => {
     const { container } = renderList();
-    const frame = container.querySelector('img')!.parentElement!;
+    // The thumbnail's frame, which outlives the picture: the press inside it does not.
+    const frame = container.querySelector('img')!.closest('div')!;
 
     fireEvent.mouseEnter(frame);
     // The 500 px copy, sized once from the stored value: `toThumbnailUrl`
@@ -271,7 +285,8 @@ describe('a work whose picture does not arrive', () => {
 
   it('offers no preview once the picture is known to have failed', () => {
     const { container } = renderList();
-    const frame = container.querySelector('img')!.parentElement!;
+    // The thumbnail's frame, which outlives the picture: the press inside it does not.
+    const frame = container.querySelector('img')!.closest('div')!;
 
     fireEvent.error(screen.getByAltText('Mesha Stele'));
     setArtworkPreview.mockReset();

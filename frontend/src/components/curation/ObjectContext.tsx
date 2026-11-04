@@ -15,7 +15,7 @@
 
 import { useState } from 'react';
 import {
-  Box, Button, ButtonBase, Chip, Dialog, DialogContent, DialogTitle, Link, Stack, Typography,
+  Box, Button, ButtonBase, Chip, Link, Stack, Typography,
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
@@ -23,6 +23,7 @@ import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
 import { safeHref } from '../../utils/safeHref';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { PictureLightbox } from '../shared/PictureLightbox';
 import { DescriptionCreditLine } from '../shared/DescriptionText';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { proposedPoint } from './MoveFact';
@@ -89,7 +90,6 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   // one 403 turning every card after it into a photoless card. Keyed by URL it
   // cannot: a different picture is a different key.
   const [cardFailedFor, setCardFailedFor] = useState<string | null>(null);
-  const [fullFailedFor, setFullFailedFor] = useState<string | null>(null);
   // Keyed by the object for the same reason: a click on one card's "+49 regions"
   // must not unfold the next card's.
   const [regionsShownFor, setRegionsShownFor] = useState<number | null>(null);
@@ -103,7 +103,6 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   // portal's photograph until *Fix pictures* has been run on that database (ADR-0043) —
   // so this guard is what keeps those cards photoless rather than broken.
   const cardFailed = !!image && cardFailedFor === image;
-  const fullFailed = !!image && fullFailedFor === image;
   const thumbnail = image && !cardFailed ? toThumbnailUrl(image, 120) : '';
   // An object made of several places has no coordinate of its own (ADR-0095): the
   // stored point is only the anchor of one of its places, so its number is not shown.
@@ -179,13 +178,12 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
       <Box sx={{ minWidth: 0 }}>
         {/* First line of the text column rather than under the 96×72 frame: a
             caption there would set the width of the picture's own column, and a
-            photographer's name is longer than the picture is wide. No
-            `redundantWith` — a card names an object, not an artist, so there is
-            nothing here for the credit to repeat.
+            photographer's name is longer than the picture is wide. A card, so one
+            clamped line, whole on hover and focus (ADR-0182).
             Hung on the thumbnail rather than on the credit alone: a row whose
             `image_url` is a local path draws no picture here (see above), and a
             photographer named under no photograph credits them for nothing. */}
-        {thumbnail && <ImageCreditLine credit={item.image_credit} />}
+        {thumbnail && <ImageCreditLine credit={item.image_credit} surface="line" />}
         {/* What the picture is, where it is no photograph (#2192): Banqiao Dam's is a map. */}
         {thumbnail && <PictureClassMark experienceId={item.id} url={image} />}
         {description && (
@@ -292,38 +290,10 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
         )}
       </Box>
 
-      {image && (
-        <Dialog open={showImage} onClose={() => setShowImage(false)} maxWidth="md">
-          <DialogTitle sx={{ pb: 1 }}>{item.name}</DialogTitle>
-          <DialogContent sx={{ pt: 0 }}>
-            {!fullFailed && (
-              <Box
-                component="img"
-                // Keyed like the card's thumbnail (#844).
-                key={image}
-                src={toThumbnailUrl(image, 960)}
-                alt={item.name}
-                sx={{ width: '100%', height: 'auto', display: 'block' }}
-                onError={() => setFullFailedFor(image)}
-              />
-            )}
-            {/* And again under the enlargement, which is where the picture is
-                actually being looked at — a credit on the card the reader
-                scrolled past does not follow the photograph onto this screen.
-                Gated on this copy's own arrival: the card's 120 px and this 960 px
-                are two requests, and the credit belongs to whichever is drawn. */}
-            {!fullFailed && <ImageCreditLine credit={item.image_credit} />}
-            {/* Said rather than left blank: the curator opened this deliberately, so
-                an empty white box under the object's name reads as a rendering fault
-                on the one screen whose job is deciding whether a picture is right. */}
-            {fullFailed && (
-              <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-                This picture could not be loaded. Its source may no longer be serving it.
-              </Typography>
-            )}
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* The enlargement, where the picture is actually looked at, carries the
+          full credit under its own 960 px copy (`PictureLightbox`, ADR-0182). */}
+      <PictureLightbox open={showImage} onClose={() => setShowImage(false)} imageUrl={image} title={item.name}
+        credit={item.image_credit} />
 
       {hasPoint && (
         <PointPreviewDialog

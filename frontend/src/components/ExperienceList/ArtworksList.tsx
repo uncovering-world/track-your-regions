@@ -6,7 +6,6 @@ import { useAuth } from '../../hooks/useAuth';
 import { useViewedTreasures } from '../../hooks/useVisitedExperiences';
 import type { ExperienceTreasure } from '../../api/experiences';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
-import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { WorkThumbnail } from '../shared/WorkThumbnail';
 import { FindOriginLine } from '../shared/FindOriginLine';
 import { creatorsBrief } from '../../utils/creatorList';
@@ -101,6 +100,7 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
         onFailed={() => setFailed(true)}
         onPreview={setArtworkPreview}
         dim={isViewed}
+        enlargeUrl={content.image_url}
       />
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography
@@ -142,15 +142,6 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
             makers-and-date line a painting fills and a find usually leaves
             empty. */}
         <FindOriginLine content={content} />
-        {/* `redundantWith` because the line above already names the makers, and
-            Commons names the painter as the author of a photograph of a painting —
-            so on most rows this would repeat a maker and add a licence that asks
-            for nothing. It draws where it carries something: a CC BY or CC BY-SA
-            photograph, or a photographer who is none of them. See
-            `creditAddsBeyond`. Hung on the picture that is actually on screen. */}
-        {url && !failed && (
-          <ImageCreditLine credit={content.image_credit} redundantWith={content.artists} />
-        )}
         {/* The word that says a curator already answered for one of this work's
             fields — without it a title somebody fixed reads as the source's. */}
         {claimLabel(content.curated_fields) && (

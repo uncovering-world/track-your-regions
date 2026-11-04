@@ -11,11 +11,9 @@
  * which is a different question and a longer read.
  */
 
-import { useState } from 'react';
 import { Box, Link, Stack, Tooltip, Typography } from '@mui/material';
-import { toThumbnailUrl } from '../../utils/imageUrl';
 import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
-import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { DenseThumbnail } from '../shared/DenseThumbnail';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import type { CountedWork } from '../../api/reviewQueue';
@@ -50,19 +48,6 @@ function subtitle(work: CountedWork): string {
  * opens a work the same way this list shows one.
  */
 export function WorkCard({ work }: { work: CountedWork }) {
-  // A plain flag is safe wherever the parent keys the child, as it does here — by
-  // the work's own id — `NOT NULL UNIQUE` in the schema, so there is no fallback
-  // to write — and a different work is therefore a different instance that cannot
-  // inherit this one's refusal. The *name* would not do: `treasures.name` is a
-  // Wikidata label with no uniqueness about it, and this list is a museum's
-  // best-known dozen, which is exactly where labels collide — the Getty holds two
-  // works called `Spring` inside its twelve. Keyed by name, a duplicate would let
-  // one of them take the other's refusal: a picture that loaded, credited under a
-  // frame that did not, which is the inversion the flag exists to prevent. The
-  // surfaces that hold *one* instance across many pictures — the hover cards, the
-  // queue card, its publish preview, the map overlay — remember which URL failed
-  // instead.
-  const [failed, setFailed] = useState(false);
   const line = subtitle(work);
   // Where a work goes when a curator does not recognise it. The preview showed a
   // thumbnail and stopped, which answers "what does it look like" and not "what is
@@ -75,29 +60,13 @@ export function WorkCard({ work }: { work: CountedWork }) {
   // with the item itself linked from the name beside it.
   const link = wikidataItemUrl(work.externalId);
   const article = wikipediaArticleUrl(work.externalId);
-  // The normalised URL decides whether there is a picture at all: `toThumbnailUrl` answers
-  // with an empty string for a host we do not trust, and `src=""` is not "no image" — the
-  // browser resolves it against the page and draws a broken thumbnail. Every treasure image
-  // stored today is on commons.wikimedia.org, so this guards the next source, not this one.
-  const thumbnail = work.imageUrl && !failed ? toThumbnailUrl(work.imageUrl, 120) : '';
   return (
     <Stack direction="row" spacing={1} alignItems="center">
-      {thumbnail && (
-        // A plain <img> and a thumbnail width, as everywhere an experience's picture is
-        // shown: these are remote Wikimedia URLs, and asking for the full file to draw it
-        // at 48 pixels would fetch megabytes per hover.
-        <Box
-          component="img"
-          src={thumbnail}
-          alt=""
-          loading="lazy"
-          sx={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }}
-          // Without this the frame keeps the browser's broken-image glyph with a
-          // photographer's name under it, inside a tooltip a curator cannot
-          // dismiss to check.
-          onError={() => setFailed(true)}
-        />
-      )}
+      {/* The picture at thumbnail size, its credit the badge on it (ADR-0182). Not
+          opened enlarged here: these rows live inside a tooltip, which closes as
+          the pointer leaves and would take a dialog opened from it along. */}
+      <DenseThumbnail imageUrl={work.imageUrl} title={work.name} credit={work.imageCredit} width={48} height={48}
+        enlarge={false} />
       <Box sx={{ minWidth: 0 }}>
         {/* The name opens where the work came from, when the id says where that is. The
             tooltip stays open while the pointer is inside it, so the link is reachable —
@@ -137,19 +106,6 @@ export function WorkCard({ work }: { work: CountedWork }) {
               </Link>
             )}
           </Typography>
-        )}
-        {/* The line above already names the artist, and Commons names the painter
-            as the author of a photograph of a painting — so this draws only where
-            it carries something the row does not: a licence asking to be honoured,
-            or a photographer who is none of the makers. Hung on the thumbnail, since a
-            name under no picture credits nobody for nothing.
-            `color="inherit"` because these rows live inside a `Tooltip` and nowhere
-            else: MUI's default tooltip is grey[700] at 92% with white text, this
-            theme overrides none of it, and the component's own `text.secondary`
-            would be near-black on near-black — the neighbouring `Typography`s take
-            `color="inherit"` for the same reason. */}
-        {thumbnail && (
-          <ImageCreditLine credit={work.imageCredit} redundantWith={work.artists} color="inherit" />
         )}
       </Box>
     </Stack>

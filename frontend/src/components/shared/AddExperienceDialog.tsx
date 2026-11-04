@@ -55,13 +55,12 @@ import {
 } from '../../api/experiences';
 import { assignExperienceToRegion, createManualExperience } from '../../api/curation';
 import { searchPlaces, suggestImageUrl, type PlaceResult, type ImageSuggestion } from '../../api/geocode';
-import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { useEditForm } from '../../hooks/useEditForm';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LocationPicker } from './LocationPicker';
 import { LoadingSpinner } from './LoadingSpinner';
 import { EmptyState } from './EmptyState';
-import { ImageCreditLine } from './ImageCreditLine';
+import { DenseThumbnail } from './DenseThumbnail';
 import { PictureWithCredit } from './PictureWithCredit';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { queryKeys } from '../../api/queryKeys';
@@ -221,28 +220,14 @@ function LookupOutcome({ entity, namesake, found, locationMissed }: {
 }
 
 /**
- * A search hit's picture and its lines, including whose photograph it is.
- *
- * Its own component because the row holds state: whether the picture arrived.
- * Most of what this dialog searches is UNESCO, where four URLs in five answered
- * 403 until ADR-0043 replaced the portal's photographs with Commons files
- * (#557); a picture can still fail — and hiding the `<img>` while leaving the
- * credit would name a photographer under nothing.
+ * A search hit's picture and its lines. A dense row, so the picture's credit is
+ * the badge on its 40 px thumbnail, and a press opens it enlarged with the full
+ * credit (`DenseThumbnail`, ADR-0182) — both only while the picture is on screen.
  */
-function SearchResultBody({ exp, imageUrl }: { exp: ExperienceSearchResult; imageUrl: string }) {
-  const [failed, setFailed] = useState(false);
-  const shown = failed ? '' : imageUrl;
+function SearchResultBody({ exp }: { exp: ExperienceSearchResult }) {
   return (
     <>
-      {shown && (
-        <Box
-          component="img"
-          src={shown}
-          alt=""
-          sx={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }}
-          onError={() => setFailed(true)}
-        />
-      )}
+      <DenseThumbnail imageUrl={exp.image_url} title={exp.name} credit={exp.image_credit} width={40} height={40} />
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <ListItemText
           primary={exp.name}
@@ -251,11 +236,6 @@ function SearchResultBody({ exp, imageUrl }: { exp: ExperienceSearchResult; imag
           secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
           sx={{ my: 0 }}
         />
-        {/* Hung on the picture that is actually on screen: these rows show one at
-            40 px, and a small picture is still the picture being shown. Nothing
-            here names an artist, so the credit has nothing to repeat and always
-            draws. */}
-        {shown && <ImageCreditLine credit={exp.image_credit} />}
       </Box>
     </>
   );
@@ -832,14 +812,6 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
             {searchResults && searchResults.results.length > 0 && (
               <List dense disablePadding sx={{ maxHeight: 400, overflowY: 'auto' }}>
                 {searchResults.results.map((exp) => {
-                  // The normalised URL decides whether there is a picture, not the stored
-                  // one: `toThumbnailUrl` answers with an empty string for a host we do
-                  // not trust, and `src=""` is not "no image" — the browser resolves it
-                  // against the page and draws a broken thumbnail. The rule
-                  // `ObjectContext` states, applied to the row that shows the same
-                  // objects — and it is what keeps a credit off a picture nobody sees.
-                  const thumbnail = extractImageUrl(exp.image_url);
-                  const imageUrl = thumbnail ? toThumbnailUrl(thumbnail, 120) : '';
                   return (
                     <ListItem
                       key={exp.id}
@@ -860,7 +832,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                         </Button>
                       }
                     >
-                      <SearchResultBody exp={exp} imageUrl={imageUrl} />
+                      <SearchResultBody exp={exp} />
                     </ListItem>
                   );
                 })}

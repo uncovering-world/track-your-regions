@@ -70,7 +70,7 @@ export function RegionMapPicture({ worldViewId, url, width, alt, sx }: RegionMap
   return (
     <>
       <Box component="img" key={src} src={src} alt={alt} sx={sx} onError={() => setFailedFor(src)} />
-      <ImageCreditLine credit={credit} />
+      <ImageCreditLine credit={credit} surface="full" />
     </>
   );
 }
@@ -84,5 +84,5 @@ export function RegionMapPicture({ worldViewId, url, width, alt, sx }: RegionMap
  */
 export function RegionMapCreditLine({ worldViewId, url }: { worldViewId: number | undefined; url: string | null | undefined }) {
   const credit = useRegionMapCredits(worldViewId, url ? [url] : []).get(url ?? '');
-  return <ImageCreditLine credit={credit} />;
+  return <ImageCreditLine credit={credit} surface="full" />;
 }

@@ -39,8 +39,7 @@ import { claimLabel as workClaimLabel } from '../../utils/workClaims';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { wikipediaArticleUrl } from '../../utils/wikidataLinks';
-import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
-import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { DenseThumbnail } from '../shared/DenseThumbnail';
 import { PictureClassMark } from './PictureClassMark';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { WorkPreviewDialog } from '../shared/WorkPreviewDialog';
@@ -113,16 +112,10 @@ export function RowAnswer({ busy, onPublish, onRefuse, asChange = false }: {
 }
 
 function Thumb({ work, experienceId }: { work: PendingWork; experienceId: number }) {
-  const [failed, setFailed] = useState(false);
-  const src = work.imageUrl ? toThumbnailUrl(extractImageUrl(work.imageUrl) ?? '', 120) : '';
-  if (!src || failed) return <Box sx={{ width: 44, height: 56, flexShrink: 0 }} />;
   return (
     <Box sx={{ width: 64, flexShrink: 0 }}>
-      <Box component="img" src={src} alt="" loading="lazy" onError={() => setFailed(true)}
-        sx={{ width: 64, height: 56, objectFit: 'cover', borderRadius: 0.5, display: 'block' }} />
-      {/* Under the picture that is on screen: a dense row, so only where the
-          photographer is not the maker the row already names. */}
-      <ImageCreditLine credit={work.imageCredit} redundantWith={work.artists} />
+      {/* A dense row: the credit is the badge on the picture, which opens enlarged (ADR-0182). */}
+      <DenseThumbnail imageUrl={work.imageUrl} title={work.name ?? 'The work'} credit={work.imageCredit} reserve />
       {/* A work's picture is meant to show the work; a drawn rendering is said to be one (#2192). */}
       <PictureClassMark experienceId={experienceId} url={work.imageUrl} />
     </Box>
