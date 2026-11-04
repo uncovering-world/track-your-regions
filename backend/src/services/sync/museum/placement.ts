@@ -48,7 +48,13 @@ export function whereaboutsUnknown(statements: VenueStatement[]): boolean {
   return statements.some((s) => s.property === 'P195' && s.rank === 'preferred' && s.venue === null);
 }
 
-function currentValues(statements: VenueStatement[], property: VenueStatement['property'],
+/**
+ * A property's current values: its preferred ones where one of them resolves,
+ * every value of it otherwise, so a residue normal-rank value is dropped beside
+ * a preferred one. Exported for where a famous work lies (`places/gatheredWorkVenues.ts`),
+ * which reads the statements by the same rule with no venue graph to resolve against.
+ */
+export function currentValues(statements: VenueStatement[], property: VenueStatement['property'],
                        resolve: (q: string) => string | null): string[] {
   // An unknown value is not a venue to resolve or to fall back to.
   const ofProperty = statements.filter((s) => s.property === property);

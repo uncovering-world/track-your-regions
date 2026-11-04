@@ -12,6 +12,7 @@ import { findsWorks } from '../archaeology/finds.js';
 import { ARCHAEOLOGY_SITE_KIND } from '../archaeology/sites.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import { shareOf, type GatheredPlaces } from './gather.js';
+import { writeGatheredWorkVenues } from './gatheredWorkVenues.js';
 
 /**
  * The works every works kind of the pass asks for. Places of worship's treasure
@@ -27,7 +28,10 @@ export async function gatherPassWorks(
     worshipWorks(treasureClasses),
     findsWorks(shareOf(gathered, ARCHAEOLOGY_SITE_KIND).trees),
   ];
-  return gatherWorks(run, requests, { logPrefix: '[Place pass]', noun: WORK_NOUN });
+  const works = await gatherWorks(run, requests, { logPrefix: '[Place pass]', noun: WORK_NOUN });
+  // Where each famous work lies, whatever any kind then shows of it (#1821).
+  await writeGatheredWorkVenues(works, '[Place pass]');
+  return works;
 }
 
 /** The museum tree every works kind's rule reads, once for the pass. */

@@ -41,7 +41,7 @@ describe('the catalogue assertions as a set', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('holds exactly seven watches, each a count that is expected to be non-zero', () => {
+  it('holds exactly eight watches, each a count that is expected to be non-zero', () => {
     // ADR-0022 makes the first a count: a traveller who stood somewhere stood
     // there. The second is #668's anchor rule: a scattered territory's box centre
     // is open water, legitimately, so its rows are a number to watch rather than
@@ -54,12 +54,15 @@ describe('the catalogue assertions as a set', () => {
     // #1903's: the list gives these rough points, and the count coming down as
     // curators place them is the news. The last is #1444's: a work a museum
     // gave back, or one lost to history, is rightly on no card, and the number
-    // moving is what says a refusal took a museum's works with it.
+    // moving is what says a refusal took a museum's works with it. The eighth is
+    // #1821's: a library or a chapel no kind is drawn to hold is a gap to watch,
+    // not a row that is wrong.
     const watches = everyAssertion.filter(a => a.kind === 'watch').map(a => a.id);
     expect(watches).toEqual([
       'visits-on-places-no-reader-is-shown', 'anchor-far-from-its-region',
       'work-makers-unconfirmed', 'archaeology-site-twin-of-a-world-heritage-row',
       'rough-points-with-a-hint', 'rough-points-with-no-hint', 'work-no-offered-place-holds',
+      'works-in-no-offered-place',
     ]);
   });
 
