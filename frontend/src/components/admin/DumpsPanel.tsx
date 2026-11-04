@@ -14,10 +14,11 @@
 
 import { Fragment, useState } from 'react';
 import {
-  Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, Collapse, IconButton, LinearProgress, Paper, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Tooltip, Typography,
+  Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, Collapse, IconButton, LinearProgress, ListItemText, Menu, MenuItem,
+  Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,7 +33,7 @@ import { WikidataCopyCard } from './WikidataCopyCard';
 import { formatDateTime, formatDuration, formatRelativeTime } from '../../utils/dateFormat';
 
 /** One column grid for every table on the page, so the groups and the earlier builds line up. */
-const COLUMN_WIDTHS = ['34%', '14%', '10%', '8%', '7%', '11%', '16%'];
+const COLUMN_WIDTHS = ['30%', '18%', '10%', '8%', '7%', '11%', '16%'];
 
 function Columns() {
   return <colgroup>{COLUMN_WIDTHS.map((width, i) => <col key={i} style={{ width }} />)}</colgroup>;
@@ -68,24 +69,60 @@ function outcomeLabel(build: DumpBuild): string {
   return readsTheDump(build) ? OUTCOME.success.label : 'Built';
 }
 
+/**
+ * What a build that did not end well says beyond its chip, or nothing: a
+ * reason that only restates the chip (*Cancelled.* beside *Cancelled*) says
+ * nothing more (#1494).
+ */
+export function reasonBeyondChip(build: DumpBuild): string | null {
+  if (build.status === 'success' || !build.error) return null;
+  const fold = (text: string) => {
+    let t = text.trim().toLowerCase();
+    while (t.endsWith('.') || t.endsWith('!')) t = t.slice(0, -1);
+    return t;
+  };
+  return fold(build.error) === fold(outcomeLabel(build)) ? null : build.error;
+}
+
+/** A build's chip and when it ended, and, under them, why it failed: the reason stays with the status it explains. */
 function Outcome({ build }: { build: DumpBuild }) {
   const when = build.finishedAt ?? build.startedAt;
+  const reason = reasonBeyondChip(build);
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Chip
-        size="small"
-        label={outcomeLabel(build)}
-        color={OUTCOME[build.status].color}
-      />
-      <Tooltip title={formatDateTime(when)}>
-        <Typography variant="body2" color="text.secondary">{formatRelativeTime(when)}</Typography>
-      </Tooltip>
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Chip
+          size="small"
+          label={outcomeLabel(build)}
+          color={OUTCOME[build.status].color}
+        />
+        <Tooltip title={formatDateTime(when)}>
+          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{formatRelativeTime(when)}</Typography>
+        </Tooltip>
+      </Box>
+      {reason && <Typography variant="caption" color="error" display="block" sx={{ mt: 0.5 }}>{reason}</Typography>}
     </Box>
   );
 }
 
+/** A build's size, or the local copy's it read where it measured none, or a dash where nothing was measured. */
+function BuildSize({ bytes, copyBytes }: { bytes: number; copyBytes: number }) {
+  if (bytes > 0) return <>{size(bytes)}</>;
+  if (copyBytes === 0) return <>—</>;
+  return (
+    <Tooltip title="The local copy this build read; the build ended before it measured the file">
+      <span>{size(copyBytes)}</span>
+    </Tooltip>
+  );
+}
+
 /** The numbers of one build, as cells: the dump's date, its size, its lines, what verified it. */
-function BuildFigures({ build, datedBy }: { build: DumpBuild; datedBy: DumpsDumpsItem['datedBy'] }) {
+function BuildFigures({ build, datedBy, localCopy }: {
+  build: DumpBuild; datedBy: DumpsDumpsItem['datedBy']; localCopy?: DumpsDumpsItem['localCopy'];
+}) {
+  // A build that read the local copy and measured nothing still read a file of a known size (#1494):
+  // the copy it named, not any build on disk, since a download to disk is `local` too.
+  const copyBytes = build.bytes === 0 && localCopy && build.fileName === localCopy.fileName ? localCopy.bytes : 0;
   return (
     <>
       <TableCell>
@@ -93,7 +130,7 @@ function BuildFigures({ build, datedBy }: { build: DumpBuild; datedBy: DumpsDump
           ? <Tooltip title={build.fileName ?? ''}><span>{dumpDate(build.dumpDate, datedBy)}</span></Tooltip>
           : '—'}
       </TableCell>
-      <TableCell align="right">{build.bytes > 0 ? size(build.bytes) : '—'}</TableCell>
+      <TableCell align="right"><BuildSize bytes={build.bytes} copyBytes={copyBytes} /></TableCell>
       <TableCell align="right">
         <Tooltip title={`${build.lines.toLocaleString('en')} lines`}>
           <span>{build.lines > 0 ? compact.format(build.lines) : '—'}</span>
@@ -117,7 +154,8 @@ function howBuilt(build: DumpBuild): string {
   if (build.kind === 'sample') return 'Sample cut from the local copy';
   if (build.kind === 'trial') return 'Trial on the sample, kept nothing';
   if (build.broughtForward) return 'Brought forward from what is kept';
-  return build.mode === 'local' ? 'From the local copy' : 'Streamed from the host';
+  // `local` is a build that reads a file on the server's disk, downloaded for it or kept from before.
+  return build.mode === 'local' ? 'From a copy on disk' : 'Streamed from the host';
 }
 
 function EarlierBuilds({ builds, datedBy }: { builds: DumpBuild[]; datedBy: DumpsDumpsItem['datedBy'] }) {
@@ -130,7 +168,6 @@ function EarlierBuilds({ builds, datedBy }: { builds: DumpBuild[]; datedBy: Dump
             <TableCell>
               {howBuilt(build)}
               {build.finishedAt && `${build.status === 'success' ? ' in' : ', ended after'} ${formatDuration(build.startedAt, build.finishedAt)}`}
-              {build.error && <Typography variant="caption" color="error" display="block">{build.error}</Typography>}
               {build.outcome && <Typography variant="caption" display="block">{build.outcome}</Typography>}
             </TableCell>
             <TableCell><Outcome build={build} /></TableCell>
@@ -191,6 +228,96 @@ function Kept({ dump, derived }: { dump: DumpsDumpsItem; derived: DumpBuild | un
   );
 }
 
+/** One thing a dump's row can start: its words, what it does, and the call. */
+interface RowAction {
+  label: string;
+  hint: string;
+  run: () => void;
+  disabled: boolean;
+}
+
+/**
+ * What a dump's row can start, the one a person most often wants first: a dump
+ * something is built from builds its newest file, any other verifies it. The
+ * rest follow in the order the panel always listed them.
+ */
+export function rowActions(input: {
+  dump: DumpsDumpsItem; copy: DumpsDumpsItem['localCopy']; copyDate: string | null; replaces: string;
+  verify: () => void; build: (from: DumpBuildFrom) => void; rederive: () => void; cutSample: () => void; trial: () => void;
+  pending: boolean;
+}): RowAction[] {
+  const { dump, copy, copyDate, replaces, pending } = input;
+  const verify: RowAction = {
+    label: 'Verify newest', run: input.verify, disabled: pending,
+    hint: replaces || 'Download the newest file and check that it arrived whole',
+  };
+  const out: RowAction[] = [];
+  if (dump.keeps) {
+    out.push({ label: 'Build newest', run: () => input.build('newest'), disabled: pending, hint: replaces || 'Build from the newest file of the dump' });
+    out.push(verify);
+  } else {
+    out.push(verify);
+  }
+  if (dump.keeps?.fromCopy && copy) {
+    out.push({
+      label: `Build ${copyDate} copy`, run: () => input.build('local'), disabled: pending,
+      hint: `Build from ${copy.fileName} (${size(copy.bytes)}) without downloading the newest dump`,
+    });
+  }
+  if (dump.keeps?.built && dump.keeps.rederives) {
+    out.push({
+      label: 'Derive again', run: input.rederive, disabled: pending,
+      hint: 'Rebuild the claims, labels, links and class tree from the items the subset already holds, without reading the dump again: for a change to how they are made',
+    });
+  }
+  if (dump.keeps?.samples && copy) {
+    out.push({
+      label: 'Cut a sample', run: input.cutSample, disabled: pending,
+      hint: `Copy the first part of ${copy.fileName} into a small file of its own, so a change to the build can be tried in minutes instead of hours`,
+    });
+  }
+  if (dump.keeps?.samples && dump.sample) {
+    out.push({
+      label: 'Try the build', run: input.trial, disabled: pending,
+      hint: 'Run every step of the build on the sample, say what it kept and how long each step took, then throw the result away. The subset the runs read is not touched.',
+    });
+  }
+  return out;
+}
+
+/** A row's actions on one line: the first as a button, the rest in a menu, so the row keeps one height (#1494). */
+function RowActions({ actions }: { actions: RowAction[] }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [first, ...rest] = actions;
+  if (!first) return null;
+  return (
+    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+      <Tooltip title={first.hint}>
+        <span><Button size="small" variant="outlined" onClick={first.run} disabled={first.disabled}>{first.label}</Button></span>
+      </Tooltip>
+      {rest.length > 0 && (
+        <>
+          <IconButton size="small" aria-label="More actions" onClick={(e) => setAnchor(e.currentTarget)}>
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
+          <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)}>
+            {rest.map((action) => (
+              <MenuItem
+                key={action.label}
+                disabled={action.disabled}
+                onClick={() => { setAnchor(null); action.run(); }}
+                sx={{ maxWidth: 420, whiteSpace: 'normal' }}
+              >
+                <ListItemText primary={action.label} secondary={action.hint} />
+              </MenuItem>
+            ))}
+          </Menu>
+        </>
+      )}
+    </Box>
+  );
+}
+
 function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.dumps });
@@ -219,8 +346,18 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const earlier = ended.filter(build => build !== last);
   const newest = ended[0];
   const refused = start.error ?? keep.error ?? rederive.error ?? cutSample.error ?? trial.error;
-  const problem = refused ? (refused as Error).message : (!running && newest?.status !== 'success' && newest?.error) || null;
-  const ruled = !problem && !open;
+  // A refused start is the answer to a button, so it stands under the actions; a failed build's
+  // reason stands under its chip (`Outcome`), and one of a build the row shows no chip for
+  // (a re-derive, a sample, a trial) under the actions too.
+  const unshownFailure = !running && newest && newest !== last ? reasonBeyondChip(newest) : null;
+  const problem = refused ? (refused as Error).message : unshownFailure;
+  const ruled = !open;
+  const actions = rowActions({
+    dump, copy, copyDate, replaces,
+    verify: () => start.mutate('newest'), build: (from) => keep.mutate(from),
+    rederive: () => rederive.mutate(), cutSample: () => cutSample.mutate(), trial: () => trial.mutate(),
+    pending: start.isPending || keep.isPending || rederive.isPending || cutSample.isPending || trial.isPending,
+  });
   return (
     <Fragment>
       <TableRow sx={{ verticalAlign: 'top', '& > td': ruled ? {} : { borderBottom: 'none' } }}>
@@ -239,51 +376,12 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
             <TableCell>
               {last ? <Outcome build={last} /> : <Typography variant="body2" color="text.secondary">Never built</Typography>}
             </TableCell>
-            {last ? <BuildFigures build={last} datedBy={dump.datedBy} /> : <TableCell colSpan={4} />}
+            {last ? <BuildFigures build={last} datedBy={dump.datedBy} localCopy={dump.localCopy} /> : <TableCell colSpan={4} />}
           </>
         )}
         <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
           {running && <Button size="small" color="inherit" onClick={() => cancel.mutate()} disabled={cancel.isPending}>Cancel</Button>}
-          {!running && (
-            <Box sx={{ display: 'inline-flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
-              <Tooltip title={replaces}>
-                <Button size="small" variant="outlined" onClick={() => start.mutate('newest')} disabled={start.isPending}>Verify newest</Button>
-              </Tooltip>
-              {dump.keeps && (
-                <Tooltip title={replaces}>
-                  <Button size="small" variant="contained" onClick={() => keep.mutate('newest')} disabled={keep.isPending}>Build newest</Button>
-                </Tooltip>
-              )}
-              {dump.keeps?.fromCopy && copy && (
-                <Tooltip title={`Build from ${copy.fileName} (${size(copy.bytes)}) without downloading the newest dump`}>
-                  <Button size="small" variant="contained" color="secondary" onClick={() => keep.mutate('local')} disabled={keep.isPending}>
-                    Build {copyDate} copy
-                  </Button>
-                </Tooltip>
-              )}
-              {dump.keeps?.built && dump.keeps.rederives && (
-                <Tooltip title="Rebuild the claims, labels, links and class tree from the items the subset already holds, without reading the dump again: for a change to how they are made">
-                  <Button size="small" variant="outlined" color="secondary" onClick={() => rederive.mutate()} disabled={rederive.isPending}>
-                    Derive again
-                  </Button>
-                </Tooltip>
-              )}
-              {dump.keeps?.samples && copy && (
-                <Tooltip title={`Copy the first part of ${copy.fileName} into a small file of its own, so a change to the build can be tried in minutes instead of hours`}>
-                  <Button size="small" variant="outlined" color="inherit" onClick={() => cutSample.mutate()} disabled={cutSample.isPending}>
-                    Cut a sample
-                  </Button>
-                </Tooltip>
-              )}
-              {dump.keeps?.samples && dump.sample && (
-                <Tooltip title="Run every step of the build on the sample, say what it kept and how long each step took, then throw the result away. The subset the runs read is not touched.">
-                  <Button size="small" variant="outlined" color="inherit" onClick={() => trial.mutate()} disabled={trial.isPending}>
-                    Try the build
-                  </Button>
-                </Tooltip>
-              )}
-            </Box>
-          )}
+          {!running && <RowActions actions={actions} />}
           <Tooltip title={earlier.length ? 'Earlier builds' : 'No earlier builds'}>
             <span>
               <IconButton size="small" onClick={() => setOpen(!open)} disabled={!earlier.length} aria-label="Earlier builds">
@@ -291,16 +389,13 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
               </IconButton>
             </span>
           </Tooltip>
+          {problem && (
+            <Typography variant="caption" color="error" display="block" sx={{ mt: 0.5, whiteSpace: 'normal', textAlign: 'right' }}>
+              {problem}
+            </Typography>
+          )}
         </TableCell>
       </TableRow>
-      {problem && (
-        <TableRow sx={{ '& > td': open ? { borderBottom: 'none' } : {} }}>
-          <TableCell />
-          <TableCell colSpan={6} sx={{ pt: 0 }}>
-            <Typography variant="body2" color="error">{problem}</Typography>
-          </TableCell>
-        </TableRow>
-      )}
       {open && (
         <TableRow>
           <TableCell colSpan={7} sx={{ p: 0 }}>
