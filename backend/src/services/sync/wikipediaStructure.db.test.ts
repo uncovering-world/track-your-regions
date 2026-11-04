@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
 import {
-  forgetCollectionShelves, structureCategories, structureCategoryReads, structureCollectionItems, structureItemsInCategories,
+  forgetCollectionShelves, structureCategories, structureCategoriesOfItems, structureCategoryReads, structureCollectionItems,
+  structureItemsInCategories,
 } from './wikipediaStructure.js';
 import { NOT_A_PLACE_CATEGORY, STREET_ART_CATEGORY } from './publicArt/streetArtTest.js';
 
@@ -119,6 +120,15 @@ describe("English Wikipedia's categories, read from the copy (#1440)", () => {
     expect(await structureItemsInCategories('ARCHAEOLOGICAL_MUSEUMS', '^$')).toEqual(['Q98461', 'Q98462']);
     expect(await structureItemsInCategories(STREET_ART_CATEGORY, NOT_A_PLACE_CATEGORY)).toEqual(['Q98465']);
     expect(await structureItemsInCategories('street_art', '^$')).toEqual(['Q98466']);
+    // With no exception given, every matching category counts (#2171).
+    expect(await structureItemsInCategories('ARCHAEOLOGICAL_MUSEUMS')).toEqual(['Q98461', 'Q98462']);
+  });
+
+  it('names the matching categories each item is filed directly under, as the API titles them (#2171)', async () => {
+    const filed = await structureCategoriesOfItems(['Q98461', 'Q98465', 'Q99999999'], '^Fixture_archaeological_museums_in_');
+    // The Museum of Atlantis is filed under the Atlantis category and Museums in Atlantis; only the first matches.
+    expect([...filed]).toEqual([['Q98461', ['Fixture archaeological museums in Atlantis']]]);
+    expect(await structureCategoriesOfItems([], '.')).toEqual(new Map());
   });
 
   it('names what a museum\'s collection shelves file, and nothing its staff shelf or its own category holds (ADR-0166)', async () => {

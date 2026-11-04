@@ -73,21 +73,45 @@ export async function structureCategories(titles: string[]): Promise<Map<string,
 
 /**
  * The Wikidata item of every article filed directly under a category whose
- * title matches `match` and not `except` (case-insensitive POSIX regular
- * expressions over the title as the dump writes it, underscores for spaces).
+ * title matches `match` and not `except`, where one is given (case-insensitive
+ * POSIX regular expressions over the title as the dump writes it, underscores
+ * for spaces).
  */
-export async function structureItemsInCategories(match: string, except: string): Promise<string[]> {
+export async function structureItemsInCategories(match: string, except: string | null = null): Promise<string[]> {
   const result = await pool.query<{ item: string }>(
     `SELECT DISTINCT i.item
        FROM enwiki_categories c
        JOIN enwiki_category_links l ON l.category = c.id AND NOT l.subcat
        JOIN enwiki_pages p ON p.id = l.page AND p.namespace = 0
        JOIN enwiki_page_items i ON i.page = p.id
-      WHERE c.title ~* $1 AND c.title !~* $2
+      WHERE c.title ~* $1 AND ($2::text IS NULL OR c.title !~* $2)
       ORDER BY i.item`,
     [match, except],
   );
   return result.rows.map(row => row.item);
+}
+
+/**
+ * The categories matching `match` that each of `items` is filed directly
+ * under, by item, titled as the API titles them (spaces, no `Category:`
+ * prefix): what names a candidate an entrance brought by its category, for
+ * the note a curator reads. An item filed under none has no entry.
+ */
+export async function structureCategoriesOfItems(items: string[], match: string): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (!items.length) return out;
+  const result = await pool.query<{ item: string; title: string }>(
+    `SELECT DISTINCT i.item, c.title
+       FROM enwiki_page_items i
+       JOIN enwiki_pages p ON p.id = i.page AND p.namespace = 0
+       JOIN enwiki_category_links l ON l.page = p.id AND NOT l.subcat
+       JOIN enwiki_categories c ON c.id = l.category
+      WHERE i.item = ANY($1::text[]) AND c.title ~* $2
+      ORDER BY i.item, c.title`,
+    [items, match],
+  );
+  for (const row of result.rows) out.set(row.item, [...(out.get(row.item) ?? []), shown(row.title)]);
+  return out;
 }
 
 /**
