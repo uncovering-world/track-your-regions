@@ -116,6 +116,22 @@ export interface PoolWork {
    * placed it by Wikidata's statements, absent where the run read no shelves.
    */
   placedBy?: 'wikipedia' | null;
+  /**
+   * The classes the pool knows the work by, for the one gather of works
+   * (`worksGather.ts`, #1821): each kind's share of a pool gathered for several
+   * kinds is the works one of whose classes that kind asked for, typed as that
+   * kind's own questions would have typed them. On the subset, every best-ranked
+   * `P31` of the item in its own order, labelled where a pool question asked it;
+   * on the live service, every asked class a row named, in row order, with the
+   * row's label. Absent where the work came from no pool question.
+   */
+  classes?: PoolClass[];
+}
+
+/** A class a pool work carries, with its label where a pool question asked it. */
+export interface PoolClass {
+  qid: string;
+  label: string | null;
 }
 
 /**
@@ -258,6 +274,16 @@ function addCreator(into: PoolWork, seen: Set<string>, row: SparqlBinding): void
   into.creators.push(label);
 }
 
+/** The class a pool row named, once per work, in row order (`PoolWork.classes`). */
+function addRowClass(work: PoolWork, row: SparqlBinding, fallbackQid: string | null): void {
+  const qid = typeQidOf(row, fallbackQid);
+  if (!qid) return;
+  const classes = (work.classes ??= []);
+  if (classes.some((c) => c.qid === qid)) return;
+  const label = row.clsLabel?.value;
+  classes.push({ qid, label: label && !isQid(label) ? label : null });
+}
+
 /**
  * The works one answer describes, one entry per work.
  *
@@ -298,6 +324,7 @@ export function parsePool(rows: SparqlBinding[], fallbackType: string, fallbackQ
       work.imageUrl = preferredPicture(work.imageUrl, row.img?.value || null);
     }
     addCreator(work, seenCreators.get(qid)!, row);
+    addRowClass(work, row, fallbackQid);
   }
   return [...works.values()];
 }

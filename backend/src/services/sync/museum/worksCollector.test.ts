@@ -68,10 +68,9 @@ describe('collectWorks', () => {
     expect(out.afterFolds.Q1268253).toEqual(['Q568938']);
   });
 
-  it('keeps only the works a kind wants, and asks no statements about the rest', async () => {
+  it('keeps only the works a kind wants, and places none of the rest', async () => {
     // Archaeology collects the art pool and keeps the finds in it: a sculpture of
-    // 1510 with no discovery place is nobody's find, and reading its venues would
-    // be a question asked about a work already dropped.
+    // 1510 with no discovery place is nobody's find, and is placed nowhere.
     const sparql = makeSparql();
     const run = { sparql, phase: () => {}, step: async () => {} };
     const asked: string[][] = [];
@@ -98,13 +97,12 @@ describe('collectWorks', () => {
     // A work no rule dropped is collected as it always was.
     expect(out.pool.has('Q207947')).toBe(true);
 
-    // A dropped work costs no statement query: the venue statements are asked of
-    // what survived the keep, not of the pool that was collected.
+    // The venue statements are the gather's, read once of the whole pool (#1821):
+    // the gather serves every kind, and what one kind drops another may show.
+    // Nothing is asked twice: the kind's own stage reads no statement again.
     const statementQueries = sparql.mock.calls
       .map((c) => String(c[0])).filter((q) => q.includes('p:P195'));
-    expect(statementQueries.length).toBeGreaterThan(0);
-    expect(statementQueries.some((q) => q.includes('Q12418'))).toBe(false);
-    expect(statementQueries.some((q) => q.includes('Q207947'))).toBe(true);
+    expect(statementQueries.filter((q) => q.includes('Q207947'))).toHaveLength(1);
   });
 
   it('places a work nobody can see nowhere, and says why (#868)', async () => {

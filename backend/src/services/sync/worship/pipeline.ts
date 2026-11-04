@@ -40,14 +40,12 @@ import {
   collectWorks,
   heldBy,
   withEnglishArticles,
-  MUSEUM_BROAD_ROOTS,
-  MUSEUM_WHOLE_ROOTS,
-  MUSEUM_PINNED_CLASSES,
-  MUSEUM_PINNED_EDITION_CLASSES,
-  EDITION_ROOT,
+  worksOf,
+  MUSEUM_WORKS,
   type WorksCollection,
   type WorksCollectorOptions,
 } from '../museum/worksCollector.js';
+import type { SharedWorks, WorksRequest } from '../museum/worksGather.js';
 import {
   holdingReason, keptElsewhere, readVenueSide, refusedHoldingReason, type HandOver,
 } from '../museum/venueSide.js';
@@ -121,6 +119,8 @@ export interface CollectedWorship {
 
 export interface WorshipPipelineDeps {
   sparql: SparqlFn;
+  /** The pass's gather of works (#1821), which this kind's works are a share of; absent, the run gathers its own. */
+  works?: SharedWorks;
   /** Where the previous run left each work, so this run can say what it moved. */
   previousPlacements: Record<string, string[]>;
   /** What the source holds as admitted before the run, so the stay line has something to hold. */
@@ -329,6 +329,14 @@ function itemOf(
   };
 }
 
+/**
+ * What Places of worship asks the gather of works for (#1821): what Art
+ * Museums asks, and its own treasures' classes beside it (relic, tomb, …).
+ */
+export function worshipWorks(extraClasses: Record<string, string>): WorksRequest {
+  return { ...MUSEUM_WORKS, extraClasses };
+}
+
 // =============================================================================
 // The pipeline
 // =============================================================================
@@ -340,10 +348,11 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   run.phase('Reading what the world reads of the places...');
   const byFame = await classifyPlacesByFame(share, deps.admitted, deps.sparql, deps.placeWorld);
 
-  const extraClasses = await fetchTreasureClasses(run);
+  // In a pass, the treasure classes the gather of works was asked for (#1821).
+  const extraClasses = await deps.works?.treasureClasses() ?? await fetchTreasureClasses(run);
   run.phase('Fetching the classes a museum can be...');
   await run.step();
-  const museumClasses = await fetchMuseumClasses(run.sparql);
+  const museumClasses = await deps.works?.museumClasses() ?? await fetchMuseumClasses(run.sparql);
 
   // The veto that keeps a church from being called a museum is off: here the
   // church is the venue, and the noun is what a refusal will be named with.
@@ -352,18 +361,13 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
     classes: trees.worship, siteVeto: false, noun: 'place of worship', readingRooms: trees.readingRooms,
   };
   const options: WorksCollectorOptions = {
-    broadRoots: MUSEUM_BROAD_ROOTS,
-    wholeRoots: MUSEUM_WHOLE_ROOTS,
-    pinned: MUSEUM_PINNED_CLASSES,
-    extraClasses,
-    pinnedEditionClasses: MUSEUM_PINNED_EDITION_CLASSES,
-    editionRoot: EDITION_ROOT,
+    ...worshipWorks(extraClasses),
     noun: WORSHIP_NOUN,
     rule,
     closure: deps.closure,
     logPrefix: LOG_PREFIX,
   };
-  const collected = await collectWorks(run, options);
+  const collected = deps.works ? await worksOf(run, await deps.works.gathered(), options) : await collectWorks(run, options);
   // A fold may only hand a chapel's works to a place this kind could admit.
   const faithsOf: FaithsOf = (qid) => share.facts.get(qid)?.religions;
   let works = foldsOntoAdmitted(collected, new Set(byFame.places.keys()), trees, faithsOf);

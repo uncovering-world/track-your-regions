@@ -15,7 +15,7 @@
  * (`whereaboutsUnknown`, #868): a work whose location is Wikidata's *unknown value* is not hung
  * at the older venue its other statements still remember. The collector asks that first and
  * places such a work nowhere; a work that no longer exists at all is the collector's other
- * question (`LOST_WORK_ROOT` in `worksCollector.ts`), read off its classes rather than its venues.
+ * question (`LOST_WORK_ROOT` in `worksGather.ts`), read off its classes rather than its venues.
  */
 export interface VenueStatement {
   /** The entity named, or `null` for an unknown value (`RawStatement.venue` in `queries.ts`). */

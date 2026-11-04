@@ -97,11 +97,17 @@ export async function subsetWorkPool(
   const kept = await entitiesOf(result.rows.map(row => row.subject));
   const terms = await poolTerms(kept, root ? [] : classes);
   const asked = new Set(classes);
+  const labelOf = (qid: string): string | null => {
+    const label = asked.has(qid) ? terms.get(qid)?.label : null;
+    return label && !isQid(label) ? label : null;
+  };
   return [...kept].map(([id, work]) => {
-    if (root) return poolWork(id, work, terms, { label: root.type, qid: root.qid });
-    const cls = itemsOf(bestStatements(work.entity.claims.P31)).find(qid => asked.has(qid)) ?? null;
-    const label = cls ? terms.get(cls)?.label : null;
-    return poolWork(id, work, terms, { label: label && !isQid(label) ? label : 'artwork', qid: cls });
+    const own = itemsOf(bestStatements(work.entity.claims.P31));
+    // Every class, in the item's own order, for a gather several kinds share (`PoolWork.classes`).
+    const withClasses = (made: PoolWork): PoolWork => ({ ...made, classes: own.map(qid => ({ qid, label: labelOf(qid) })) });
+    if (root) return withClasses(poolWork(id, work, terms, { label: root.type, qid: root.qid }));
+    const cls = own.find(qid => asked.has(qid)) ?? null;
+    return withClasses(poolWork(id, work, terms, { label: (cls && labelOf(cls)) ?? 'artwork', qid: cls }));
   });
 }
 

@@ -128,8 +128,13 @@ const monaLisaRow = {
 
 describe('Art Museums read from the subset (#1460)', () => {
   it('pools the works of a broad root and of narrow classes, held to Wikipedia editions', async () => {
-    expect(await fetchBroadPool(run, { qid: PAINTING, type: 'painting' })).toEqual([monaLisaRow]);
-    expect(await fetchClassPool(door, [PAINTING])).toEqual([monaLisaRow]);
+    // A pool row carries every class the item is, for a gather several kinds share
+    // (`PoolWork.classes`, #1821): labelled where a narrow question asked it, and not
+    // by a broad root's question, which types its works by the root's own word.
+    expect(await fetchBroadPool(run, { qid: PAINTING, type: 'painting' }))
+      .toEqual([{ ...monaLisaRow, classes: [{ qid: PAINTING, label: null }] }]);
+    expect(await fetchClassPool(door, [PAINTING]))
+      .toEqual([{ ...monaLisaRow, classes: [{ qid: PAINTING, label: 'painting' }] }]);
     // A class no kept item is an instance of pools nothing; the Louvre, an instance of museum, pools as a live run would.
     expect(await fetchClassPool(door, [FRANCE])).toEqual([]);
   });

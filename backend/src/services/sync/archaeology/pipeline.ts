@@ -75,9 +75,11 @@ import { fetchMuseumClasses } from '../museum/queries.js';
 import {
   collectWorks,
   withEnglishArticles,
+  worksOf,
   type WorksCollection,
   type WorksCollectorOptions,
 } from '../museum/worksCollector.js';
+import type { SharedWorks } from '../museum/worksGather.js';
 import { holdingReason, keptElsewhere, refusedHoldingReason, type HandOver } from '../museum/venueSide.js';
 import { fetchWorksByIds } from '../museum/venueSideQueries.js';
 import type { ArticleHoldingsReader } from '../museum/articleHoldings.js';
@@ -163,6 +165,8 @@ export interface CollectedArchaeology {
 }
 
 export interface ArchaeologyPipelineDeps {
+  /** The pass's gather of works (#1821), which this kind's works are a share of; absent, the run gathers its own. */
+  works?: SharedWorks;
   /**
    * The item ids of the works another kind shows a reader on a card (ADR-0103):
    * a famous find there makes no question here. Read by the run
@@ -434,13 +438,13 @@ export async function collectArchaeology(
 
   run.phase('Fetching the classes a museum can be...');
   await run.step();
-  const museumClasses = await fetchMuseumClasses(run.sparql);
+  const museumClasses = await deps.works?.museumClasses() ?? await fetchMuseumClasses(run.sparql);
 
   const reader = findFactsReader();
   const options = findsOptions(deps, {
     trees, rule: museumRule(museumClasses), workFacts: reader.workFacts,
   });
-  const collected = await collectWorks(run, options);
+  const collected = deps.works ? await worksOf(run, await deps.works.gathered(), options) : await collectWorks(run, options);
 
   const findLine = contentsLine(deps.line);
   // A find under the finds' line the world reads counts as one at it (ADR-0164).

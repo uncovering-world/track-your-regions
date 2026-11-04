@@ -41,6 +41,7 @@ import {
   type ArchaeologyTrees,
 } from './classes.js';
 import { EDITION_ROOT, type WorkFacts, type WorksCollectorOptions } from '../museum/worksCollector.js';
+import type { WorksRequest } from '../museum/worksGather.js';
 import type { PoolWork } from '../museum/queries.js';
 import type { VenueRule } from '../museum/venueTest.js';
 
@@ -112,14 +113,8 @@ export function findReason(
  * same, since the collector asks the tree which of its classes are editions and
  * a root it cannot name is a question with no answer.
  */
-export function findsCollectorOptions(input: {
-  trees: ArchaeologyTrees;
-  rule: VenueRule;
-  logPrefix: string;
-  workFacts: WorksCollectorOptions['workFacts'];
-  underFloor?: WorksCollectorOptions['underFloor'];
-}): WorksCollectorOptions {
-  const { trees, rule, logPrefix, workFacts, underFloor } = input;
+/** What Archaeology asks the gather of works for (#1821): sculpture and statue, and its finds' classes; no painting. */
+export function findsWorks(trees: ArchaeologyTrees): WorksRequest {
   return {
     broadRoots: ANCIENT_ART_ROOTS,
     wholeRoots: ANCIENT_ART_WHOLE,
@@ -130,6 +125,19 @@ export function findsCollectorOptions(input: {
     },
     pinnedEditionClasses: new Set<string>(),
     editionRoot: EDITION_ROOT,
+  };
+}
+
+export function findsCollectorOptions(input: {
+  trees: ArchaeologyTrees;
+  rule: VenueRule;
+  logPrefix: string;
+  workFacts: WorksCollectorOptions['workFacts'];
+  underFloor?: WorksCollectorOptions['underFloor'];
+}): WorksCollectorOptions {
+  const { trees, rule, logPrefix, workFacts, underFloor } = input;
+  return {
+    ...findsWorks(trees),
     noun: { work: 'find', works: 'finds' },
     rule,
     logPrefix,
