@@ -10,7 +10,10 @@
  * The open group is the address's (`crowd`, `utils/appUrl.ts`), and the first
  * one the filters keep when it names none, so the right side is never empty.
  * The Region and Kind filters are this tab's alone and not in the address: a
- * group is a link, a narrowing of a list this short is not.
+ * group is a link, a narrowing of a list this short is not. The Region chip
+ * searches every region as the queue's does (#2349), and a region picked is
+ * read by the server, which keeps the groups within it: Berlin holds the
+ * groups of its districts.
  *
  * The staged answers are kept by group and by the page, so a window's Apply
  * sends its own city's only, and a city left, by a line or by Back, keeps its
@@ -34,11 +37,12 @@ import { LoadingSpinner } from '../../shared/LoadingSpinner';
 import { FilterChip } from '../feed/FilterChip';
 import { QueueLine } from '../feed/QueueLine';
 import { KIND_COLOR } from '../feed/rowSpecific';
+import { useRegionChipSearch } from '../feed/useRegionChipSearch';
 import { CrowdingReport, CrowdingWindow, type CrowdingOutcome } from './CrowdingWindow';
 import type { Staging } from './crowdingStaging';
 import {
-  arrivalsIn, filterGroups, groupName, groupShown, kindOptions, NO_CROWD_FILTERS, regionOptions, stagedElsewhere,
-  stagingIn, withStaging, type CrowdFilters, type GroupStagings, type StagedElsewhere,
+  arrivalsIn, everyGroup, filterGroups, groupName, groupShown, kindOptions, NO_CROWD_FILTERS, regionAsked, regionOptions,
+  stagedElsewhere, stagingIn, withStaging, type CrowdFilters, type GroupStagings, type StagedElsewhere,
 } from './crowdedGroups';
 import { useShadowedArrivals } from './useShadowedArrivals';
 
@@ -131,6 +135,9 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
   const narrow = useMediaQuery(theme.breakpoints.down('md'));
   const read = useShadowedArrivals();
   const [filters, setFilters] = useState<CrowdFilters>(NO_CROWD_FILTERS);
+  // The groups within the region picked, read by the server (#2349): the whole list's own request where none is.
+  const regionRead = useShadowedArrivals(regionAsked(filters));
+  const regionSearch = useRegionChipSearch(regionAsked(filters) ?? null);
   // On a narrow screen: whether the window is the side shown, rather than the list.
   const [onWindow, setOnWindow] = useState(false);
   // While an Apply runs no other city opens: the Apply's report and staging belong to the city it was pressed in.
@@ -142,8 +149,14 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
   const [reports, setReports] = useState<ReadonlyMap<string, HeldReport>>(new Map());
   const reportCount = useRef(0);
 
-  const groups = read.data?.groups ?? [];
-  const visible = filterGroups(groups, filters);
+  // Both reads answered: the whole list, and the one within the region picked.
+  const loaded = read.isSuccess && regionRead.isSuccess;
+  const loading = read.isLoading || regionRead.isLoading;
+  const failed = read.error ?? regionRead.error;
+  const all = read.data?.groups ?? [];
+  const within = regionRead.data?.groups ?? [];
+  const groups = everyGroup(all, within);
+  const visible = filterGroups(within, filters);
   const shown = groupShown(visible, selected);
   const shownKey = shown ? crowdKeyOf(shown) : null;
 
@@ -164,7 +177,7 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
   // later group shows it.
   const listed = groups.map(crowdKeyOf).join('\n');
   useEffect(() => {
-    if (!read.isSuccess || shownKey === null) return;
+    if (!loaded || shownKey === null) return;
     const keys = new Set(listed.split('\n'));
     setReports(all => {
       const newest = newestGone(all, keys);
@@ -174,7 +187,7 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
       if (!own || own.at < newest.at) kept.set(shownKey, { ...newest, moved: true });
       return kept;
     });
-  }, [listed, shownKey, read.isSuccess]);
+  }, [listed, shownKey, loaded]);
   const onOutcome = useCallback((next: CrowdingOutcome | null) => {
     if (shownKey === null) return;
     reportCount.current += 1;
@@ -191,7 +204,7 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
   }, [shownKey]);
   // The last group answered out of the list leaves no window to say what its Apply did.
   const listedKeys = new Set(listed.split('\n'));
-  const loose = read.isSuccess && shownKey === null ? newestGone(reports, listedKeys) : undefined;
+  const loose = loaded && shownKey === null ? newestGone(reports, listedKeys) : undefined;
 
   const open = (group: ShadowedArrivalsGroup) => {
     const key = crowdKeyOf(group);
@@ -200,14 +213,27 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
   };
   /** Another city with answers staged, opened from the Apply bar: out from under the chips where they hide it. */
   const openStaged = (entry: StagedElsewhere) => {
-    if (entry.group && !visible.includes(entry.group)) setFilters(NO_CROWD_FILTERS);
+    if (entry.group && !visible.some(group => crowdKeyOf(group) === entry.key)) setFilters(NO_CROWD_FILTERS);
     onSelect(entry.key);
     setOnWindow(true);
   };
   const elsewhere = stagedElsewhere(stagings, groups, shownKey);
 
-  const regions = regionOptions(groups, filters);
-  const kinds = kindOptions(groups, filters);
+  // Counted within the region once its read answers; until then the counts are not claimed.
+  const regions = regionOptions(all, regionRead.data?.groups, filters);
+  const kinds = kindOptions(all, regionRead.data?.groups, filters);
+  // One region at a time, the one picked clearing on a second pick. A region the search
+  // found that the list does not name keeps its row, so the chip can say it (#2349); the
+  // only row of the menu the list does not name is the one picked, cleared here first.
+  const pickRegion = (key: string) => {
+    if (filters.region === key) {
+      setFilters({ ...filters, region: null, searched: null });
+      return;
+    }
+    const onList = regions.some(option => option.key === key);
+    const found = regionSearch.found.find(option => option.key === key);
+    setFilters({ ...filters, region: key, searched: onList ? null : found ?? null });
+  };
   const filtered = filters.region !== null || filters.kinds.length > 0;
   const showList = !narrow || !onWindow;
   const showWindow = shown !== undefined && (!narrow || onWindow);
@@ -227,14 +253,15 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
             options={regions}
             pending={read.isLoading}
             single
-            onToggle={key => setFilters({ ...filters, region: filters.region === key ? null : key })}
+            onToggle={pickRegion}
+            search={regionSearch}
           />
           <FilterChip
             label="Kind"
             value={kinds.filter(option => option.checked).map(option => option.label).join(', ')}
             active={filters.kinds.length > 0}
             options={kinds}
-            pending={read.isLoading}
+            pending={loading}
             onToggle={key => setFilters({
               ...filters,
               kinds: filters.kinds.includes(key) ? filters.kinds.filter(k => k !== key) : [...filters.kinds, key],
@@ -251,10 +278,10 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
         </Box>
       </Box>
 
-      {read.isLoading && <LoadingSpinner padding={4} />}
-      {read.isError && (
+      {loading && <LoadingSpinner padding={4} />}
+      {failed && (
         <Alert severity="error">
-          Could not read the crowded cities{read.error instanceof Error ? `: ${read.error.message}` : '.'}
+          Could not read the crowded cities{failed instanceof Error ? `: ${failed.message}` : '.'}
         </Alert>
       )}
       {loose && (
@@ -264,7 +291,7 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
           sx={{ mb: 2 }}
         />
       )}
-      {read.isSuccess && visible.length === 0 && (
+      {loaded && visible.length === 0 && (
         <Alert severity="success">
           {filtered
             ? 'No crowded city matches. Clear a filter.'

@@ -154,7 +154,7 @@ export const queryKeys = {
     /** Every page of the queue, under whatever filter: what an answer invalidates. */
     reviewQueueAll: ['curation', 'reviewQueue'] as const,
     reviewQueue: (...page: readonly unknown[]) => ['curation', 'reviewQueue', ...page] as const,
-    /** The regions the review feed's Region chip found by name (#1920), for the text typed. */
+    /** The regions a review Region chip found by name (#1920, #2349), for the text typed. */
     reviewRegionSearch: (query: string) => ['curation', 'reviewRegionSearch', query] as const,
     /** The admission pins in scope (#1369): every one, or one place's. What a hand-back invalidates. */
     admissionPinsAll: ['curation', 'admissionPins'] as const,
@@ -168,8 +168,10 @@ export const queryKeys = {
     crowdingWindowAll: ['curation', 'crowdingWindow'] as const,
     /** The window around one membership, on the type asked for (`null`: the membership's own). */
     crowdingWindow: (membershipId: Id, type: string | null) => ['curation', 'crowdingWindow', membershipId, type] as const,
-    /** The new arrivals a crowded city would shadow, by region, kind and type (#2282). */
+    /** The new arrivals a crowded city would shadow, by region, kind and type (#2282): every read of them, what an Apply invalidates. */
     shadowedArrivals: ['curation', 'shadowedArrivals'] as const,
+    /** Those within one region, or placed in none (#2349). */
+    shadowedArrivalsWithin: (region: number | 'none') => ['curation', 'shadowedArrivals', region] as const,
   },
 
   /** Per user: each key names the caller. */
