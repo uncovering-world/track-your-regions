@@ -75,6 +75,8 @@ export const queryKeys = {
   experience: {
     all: ['experience'] as const,
     one: (id: Id) => ['experience', id] as const,
+    /** One object's picture and credit on one of its points, for the world map's hover card (#927): under `one`, so what makes the object stale reaches it. */
+    picture: (id: Id, locationId: Id) => ['experience', id, 'picture', locationId ?? null] as const,
     /** Where a card id leads now, which a merge may have moved (#1247): never the card's own detail. */
     survivor: (id: Id) => ['experience', 'survivor', id] as const,
     locationsAll: ['experience-locations'] as const,

@@ -215,7 +215,7 @@ export function WorldExperiencePoints({ kindId, folded, kindNameOf }: WorldExper
   }, [queryClient, go, isCustomWorldView, selectedWorldView?.id]);
 
   useWorldPointInteractions({
-    mapRef, kindNameOf, setHoverPreview, setHoverData, openPoint,
+    mapRef, queryClient, kindNameOf, setHoverPreview, setHoverData, openPoint,
   });
 
   /**
