@@ -553,7 +553,7 @@ export async function queryWithdrawn(
       AND ${withdrawnContainerOpenSql('e')}
       AND ${scopeFilter} ${sourceFilter}
       AND e.id = ANY($${params.length + 1}::int[])
-    GROUP BY e.id, e.external_id, e.name, mk.kind_id, kd.name
+    GROUP BY e.id, e.external_id, e.name, mk.kind_id, kd.name, mk.type
     ORDER BY e.id
   `, [...params, ids]);
 }
