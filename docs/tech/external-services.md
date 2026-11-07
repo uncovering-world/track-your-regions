@@ -121,7 +121,8 @@ the policy page is the authority.
   Identification, batching and the callers' own retries are as before (`sourceRetry.ts`). The turn
   is per process: the coverage `lookup` runs as a process of its own and keeps its own.
 - *What reaches a model:* English Wikipedia leads read from the `extracts` API (`articleLeads`,
-  1,500 characters) are sent to Jev for a visit reading (#1996). The text is CC BY-SA. The read is
+  1,500 characters) are sent to Jev for a visit reading (#1996) and for a kind reading (#2342). The
+  text is CC BY-SA. The read is
   flagged `modelInput`, so a site's `ai-input=no` signal would stop it, and enwiki states none.
 
 **Commons thumbnails** (`commons.wikimedia.org/wiki/Special:FilePath/…?width=N`, drawn by the
@@ -275,7 +276,8 @@ diffs, `dumps/osm/planetCurrent.ts`).
 **Jev** (`api.typesafe.ai/v1/systemone`, `services/jev/jevClient.ts`, keyed).
 - *Sent:* catalogue data — names, countries, kinds, each source's values, a picture's file name and
   credit, coordinates, an OSM tag — and up to 1,500 characters of an English Wikipedia lead for a
-  visit reading. No user's data.
+  visit reading and a kind reading, the kind reading with the catalogue's kinds and the coverage
+  register's planned place kinds and their definitions. No user's data.
 - *Rules:* the [Master Customer Agreement](https://typesafe.ai/legal/mca) and the acceptable use
   policy, updated 2026-09-23:
   - the customer holds the rights to what it sends;
