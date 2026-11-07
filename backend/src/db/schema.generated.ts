@@ -214,6 +214,14 @@ export interface DumpBuildsRow {
   outcome: string | null;
 }
 
+/** The table `dump_newest_on_host`. */
+export interface DumpNewestOnHostRow {
+  dump: string;
+  newest_date: Date | null;
+  asked_at: Date;
+  answered: boolean;
+}
+
 /** The table `email_verification_tokens`. */
 export interface EmailVerificationTokensRow {
   id: number;
@@ -1379,6 +1387,7 @@ export const RELATION_SCHEMAS = {
   curator_queue_set_aside: "public",
   data_assertion_acceptances: "public",
   dump_builds: "workbench",
+  dump_newest_on_host: "workbench",
   email_verification_tokens: "public",
   enwiki_categories: "workbench",
   enwiki_category_links: "workbench",
@@ -1549,6 +1558,9 @@ export const COLUMN_WIDTHS = {
     mode: 10,
     checksum_kind: 10,
     status: 20,
+  },
+  dump_newest_on_host: {
+    dump: 60,
   },
   email_verification_tokens: {
     token_hash: 255,
