@@ -618,6 +618,23 @@ describe('the arrivals a crowded city shadows', () => {
       expect(await named(district.get('Mitte'))).toEqual([['Mitte', 3]]);
     });
 
+    it('groups an arrival under a district it was not rejected from, and counts none it was rejected from everywhere', async () => {
+      const schlossplatz = squares.get('Schloßplatz')!.place;
+      const reject = (name: string) => pool.query(
+        'INSERT INTO experience_rejections (experience_id, region_id, rejected_by) VALUES ($1, $2, $3)',
+        [schlossplatz, district.get(name), adminId]);
+      await pool.query("INSERT INTO experience_regions (experience_id, region_id, assignment_type) VALUES ($1, $2, 'auto')",
+        [schlossplatz, district.get('Neukölln')]);
+      await reject('Mitte');
+      expect(await named(BERLIN)).toEqual([
+        ['Friedrichshain-Kreuzberg', 4], ['Mitte', 2], ['Neukölln', 2], ['Tempelhof-Schöneberg', 2],
+        ['Charlottenburg-Wilmersdorf', 1],
+      ]);
+      await reject('Neukölln');
+      expect(await named(district.get('Mitte'))).toEqual([['Mitte', 2]]);
+      expect(await named(district.get('Neukölln'))).toEqual([['Neukölln', 1]]);
+    });
+
     it('reads nothing of a region no new square lies in, nor of the unplaced while every square is placed', async () => {
       expect(await read(BRANDENBURG)).toEqual({ groups: [] });
       expect(await read('none')).toEqual({ groups: [] });

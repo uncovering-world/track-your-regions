@@ -90,7 +90,8 @@ export function aroundSql(isAdmin: boolean, at: AroundAt = { kind: '$2', point: 
 }
 
 /**
- * The leaf region a place is grouped under, as `leaf`: a leaf of the world view
+ * The leaf region a place is grouped under, as `leaf`: one a curator did not
+ * reject the place from, where it has one, then a leaf of the world view
  * asked for, or else of the first public world view that places it. A place
  * lies in a leaf of each world view that covers it, and counting it under each
  * would count it twice. A world view only an admin reads names its regions to
@@ -106,7 +107,7 @@ function groupLeafSql({ isAdmin, worldView, within }: { isAdmin: string; worldVi
          WHERE er.experience_id = e.id
            AND (wv.is_public OR ${isAdmin}::boolean)
            AND (${worldView}::int IS NULL OR r.world_view_id = ${worldView}::int)
-         ORDER BY r.world_view_id, r.id
+         ORDER BY ${notRejectedInSql('r.id')} DESC, r.world_view_id, r.id
          LIMIT 1) leaf ON TRUE`;
 }
 
@@ -389,7 +390,10 @@ export async function getCrowdingPlace(
  * within it: each arrival placed in the region or under it, as the queue's
  * Region chip reads "within" (`regionSubtreeCte`), grouped under its leaf
  * there — Berlin's squares by Berlin's districts, a leaf's under the leaf
- * itself. `none` keeps the arrivals grouped under no region.
+ * itself. `none` keeps the arrivals grouped under no region. An arrival is
+ * grouped under a leaf a curator did not reject it from where it has one
+ * (`groupLeafSql`), and not counted where it has none, since a leaf's list
+ * does not hold a place rejected from it (`getCrowdingGroup`).
  */
 export async function listShadowedArrivals(
   { query, caller }: { query: z.output<typeof shadowedArrivalsQuerySchema>; caller: Express.User },
@@ -412,6 +416,7 @@ export async function listShadowedArrivals(
      WHERE m.curation_state = 'pending' AND ${membershipAdmittedSql('m')} AND e.missing_since IS NULL
        AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}
        AND ${queueScopeSql(isAdmin, 'm.source_id')} AND ${regionKept}
+       AND (leaf.region_id IS NULL OR ${notRejectedInSql('leaf.region_id')})
      GROUP BY leaf.region_id, leaf.region_name, leaf.world_view_id, m.kind_id, k.name, k.display_priority, m.type
      ORDER BY count(*) DESC, leaf.region_name, k.display_priority, m.type`,
   [caller.id, query.worldViewId ?? null, isAdmin, ...(within ? [query.region] : [])]);
