@@ -340,6 +340,8 @@ describe('the location a lookup fills in', () => {
     lookUpIn('Czechia', 'Old Town Hall');
 
     expect(await screen.findByText(/Found: Stará radnice/)).toBeInTheDocument();
+    // OpenStreetMap's data, shown with its credit (#2356).
+    expect(screen.getByText('Found by Nominatim · © OpenStreetMap contributors')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
