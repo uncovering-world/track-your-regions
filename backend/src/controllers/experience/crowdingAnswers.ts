@@ -2,15 +2,17 @@
  * A curator's answers to a crowded city, applied together (ADR-0180, #2282).
  *
  * POST /api/experiences/review/crowding/answers
- *   { answers: [{ membershipId, answer: 'list' | 'shadow' | 'refuse' | 'clear' }], note? }
+ *   { answers: [{ membershipId, answer: 'list' | 'shadow' | 'publish' | 'refuse' | 'clear' }], note? }
  *
- * The window (`crowdingWindow.ts`) shows every place of a type around a place,
- * and the curator gives each row one answer, applied with one click:
+ * The window (`crowdingWindow.ts`) shows every place of a type in a region, as
+ * its page shows them, and the curator gives each place one answer, applied
+ * with one click:
  *
  * | answer | a place a reader is shown, or in the tail | a new arrival |
  * |---|---|---|
  * | list | pinned in the list | published, pinned in the list |
  * | shadow | pinned in the shadow | published, pinned in the shadow |
+ * | publish | refused: it is published already | published with no pin, so the rule places it |
  * | refuse | taken out of the kind (`keepOutUnderLock`) | refused (`refuseArrivalUnderLock`) |
  * | clear | handed back to the rule | handed back to the rule, still unread |
  *
@@ -53,7 +55,9 @@ type Answered = CrowdingAnswered['answered'][number];
 type Outcome = { answered: Answered; placement?: CrowdingAnswered['placementFailed'][number] } | { refusal: AnswerRefusal };
 
 /** The pin each answer leaves; a refusal leaves none, since a refused place is no candidate. */
-const PIN_OF: Record<CrowdingAnswer, CrowdingPin | null> = { list: 'list', shadow: 'shadow', refuse: null, clear: null };
+const PIN_OF: Record<CrowdingAnswer, CrowdingPin | null> = {
+  list: 'list', shadow: 'shadow', publish: null, refuse: null, clear: null,
+};
 
 /**
  * Apply a curator's answers to a crowded city, one place at a time.
@@ -138,14 +142,18 @@ async function answerOne(who: Answerer, answer: CrowdingAnswer): Promise<Outcome
   if (!before) return refused(409, 'This place no longer holds that kind — reload');
   const arrival = before.curation_state === 'pending';
   if (answer === 'refuse') return refuseOne(who, arrival, before);
+  if (answer === 'publish' && !arrival) return refused(409, 'This place is published already — reload');
   if (answer === 'clear' || !arrival) return pinOne(who, answer);
-  // An arrival a curator keeps, in the list or in the shadow, is published with its pin.
-  const ruling = pinRefusal(before, answer);
+  // An arrival a curator keeps, in the list or in the shadow, is published with its pin;
+  // one published and left to the rule (#2358) is published as its card publishes it.
+  const ruling = answer === 'publish' ? null : pinRefusal(before, answer);
   if (ruling) return { refusal: ruling };
   if (before.missing) return refused(409, 'Its source no longer lists this place, so it is not published — answer it on its card');
   try {
     const outcome = await publishUnderLock(who.experienceId, who.userId, who.logRegionId,
-      { membershipId: who.membershipId }, pinUnder(who, answer));
+      { membershipId: who.membershipId }, answer === 'publish' ? undefined : pinUnder(who, answer),
+      // Read before the lock as an arrival; asked again under it, so one published meanwhile is refused.
+      { arrivalOnly: answer === 'publish' });
     if (outcome.refusal) return refused(outcome.refusal.status, outcome.refusal.error);
     const r = outcome.result!;
     return {

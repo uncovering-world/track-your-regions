@@ -20,7 +20,7 @@ const none: Staging = new Map();
 
 describe('which answers a row takes', () => {
   it('offers List, Shadow and Don’t take on a place with no pin, and no Clear', () => {
-    expect(answersOffered(row(NOLLENDORFPLATZ))).toEqual({ list: true, shadow: true, refuse: true, clear: false });
+    expect(answersOffered(row(NOLLENDORFPLATZ))).toEqual({ list: true, shadow: true, publish: false, refuse: true, clear: false });
   });
 
   it('offers Clear on a pinned place', () => {
@@ -28,12 +28,12 @@ describe('which answers a row takes', () => {
   });
 
   it('takes no pin on a place holding works, which is always shown, but may still be refused', () => {
-    expect(answersOffered(row(KULTURFORUM))).toEqual({ list: false, shadow: false, refuse: true, clear: false });
+    expect(answersOffered(row(KULTURFORUM))).toEqual({ list: false, shadow: false, publish: false, refuse: true, clear: false });
   });
 
   it('takes nothing outside the curator’s scope', () => {
     const outside = squareRow({ membershipId: 31, name: 'Mehringplatz', canAnswer: false, pin: 'shadow' });
-    expect(answersOffered(outside)).toEqual({ list: false, shadow: false, refuse: false, clear: false });
+    expect(answersOffered(outside)).toEqual({ list: false, shadow: false, publish: false, refuse: false, clear: false });
   });
 });
 

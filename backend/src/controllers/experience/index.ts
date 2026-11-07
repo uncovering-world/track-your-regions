@@ -34,6 +34,7 @@ export * from './curatorRefusalController.js';
 export * from './unrefuseContentsController.js';
 export * from './reviewAnswerController.js';
 export * from './crowdingWindow.js';
+export * from './crowdingAroundWindow.js';
 export * from './crowdingAnswers.js';
 export * from './publishController.js';
 export * from './experienceNewBadge.js';

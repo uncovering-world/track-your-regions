@@ -800,6 +800,19 @@ export const addToKindBodySchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
+/**
+ * `/review/crowding/group`: a crowded city's group (#2358), its region (for
+ * `none`, the places no leaf of a public world view places, or of the world
+ * view named), its kind and its type, absent for a kind's places with none.
+ */
+export const crowdingGroupQuerySchema = z.object({
+  region: z.union([z.literal('none'), rowIdSchema]),
+  worldViewId: rowIdSchema.optional()
+    .describe("For `none`: the world view whose leaves place a place, as the shadowed arrivals' read takes it."),
+  kind: rowIdSchema,
+  type: z.string().min(1).max(COLUMN_WIDTHS.experience_kind_memberships.type).optional(),
+});
+
 /** `/review/crowding/around/:membershipId`: the membership the crowding window opens on (#2282). */
 export const crowdingWindowParamSchema = z.object({
   membershipId: rowIdSchema,
@@ -808,6 +821,16 @@ export const crowdingWindowParamSchema = z.object({
 /** The type the window lists, for the switch between a kind's types; the centre's own where absent. */
 export const crowdingWindowQuerySchema = z.object({
   type: z.string().min(1).max(COLUMN_WIDTHS.experience_kind_memberships.type).optional(),
+});
+
+/** `/review/crowding/place/:membershipId`: the place a crowded city's window opens in its own circle (#2358). */
+export const crowdingPlaceParamSchema = z.object({
+  membershipId: rowIdSchema,
+});
+
+/** The world view whose leaves group the place, as the group and arrivals reads take it; the first public one placing it where absent. */
+export const crowdingPlaceQuerySchema = z.object({
+  worldViewId: rowIdSchema.optional(),
 });
 
 /**
@@ -822,13 +845,14 @@ export const shadowedArrivalsQuerySchema = z.object({
 
 /**
  * A curator's answers to a crowded city, applied together (#2282, ADR-0180):
- * keep a place in the list, keep it in the shadow, refuse it, or hand it back
- * to the rule. Bounded as the review answers are, a page at most.
+ * keep a place in the list, keep it in the shadow, publish a new arrival and
+ * leave it to the rule (#2358), refuse it, or hand it back to the rule.
+ * Bounded as the review answers are, a page at most.
  */
 export const crowdingAnswersBodySchema = z.object({
   answers: z.array(z.object({
     membershipId: bodyRowIdSchema,
-    answer: z.enum(['list', 'shadow', 'refuse', 'clear']),
+    answer: z.enum(['list', 'shadow', 'publish', 'refuse', 'clear']),
   })).min(1).max(100),
   note: z.string().max(1000).optional(),
 });
