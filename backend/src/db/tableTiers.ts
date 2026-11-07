@@ -42,6 +42,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   curator_queue_set_aside: 'serving',
   data_assertion_acceptances: 'serving',
   dump_builds: 'workbench',
+  dump_newest_on_host: 'workbench',
   email_verification_tokens: 'serving',
   enwiki_categories: 'workbench',
   enwiki_category_links: 'workbench',

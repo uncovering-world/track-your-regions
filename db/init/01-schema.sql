@@ -5225,6 +5225,18 @@ COMMENT ON COLUMN workbench.dump_builds.progress IS 'The running build''s progre
 COMMENT ON COLUMN workbench.dump_builds.cancel_requested_at IS 'When an admin asked the build to stop (#1467); the worker reads it with its heartbeat and cancels.';
 COMMENT ON TABLE workbench.dump_builds IS 'A build of a public dump (ADR-0101): the dump, the dated file, stream or local copy, the checksum it was verified against (or its size and a clean end of stream where none is published), the lines read and the outcome. A consumer commits only after verification.';
 
+-- The newest file the host lists for each dump, learnt by the dump worker
+-- (#1583, #2353): only the worker asks the host, so its connection cap is the
+-- one every request to dumps.wikimedia.org shares.
+CREATE TABLE IF NOT EXISTS workbench.dump_newest_on_host (
+    dump VARCHAR(60) PRIMARY KEY,
+    newest_date DATE,
+    asked_at TIMESTAMPTZ NOT NULL,
+    answered BOOLEAN NOT NULL
+);
+
+COMMENT ON TABLE workbench.dump_newest_on_host IS 'The newest complete file the host lists for each dump, as the dump worker last learnt it (#1583, #2353): its date (null while none was found), when the host was asked, and whether it answered; asked at most once a day, and a host that did not answer keeps the date it gave before. The admin panel reads it; only the worker asks the host, so every request to dumps.wikimedia.org shares one process''s connection cap.';
+
 -- A world view's geometry computation, queued for the dump worker (#1658,
 -- ADR-0122) through a ledger of its own, as a dump build is (ADR-0106).
 CREATE TABLE IF NOT EXISTS geometry_computations (
