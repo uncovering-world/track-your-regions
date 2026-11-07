@@ -273,6 +273,8 @@ export interface ReviewAddress {
   view: 'questions' | 'crowded';
   /** ?crowd=7-9-square — the crowded city's group open on that tab (`crowdKeyOf`); null on the queue's tab. */
   crowd: string | null;
+  /** ?place=4412 — the place of that group open in its own circle, by its membership (#2358); null in the region's list. */
+  crowdPlace: number | null;
 }
 
 export const EMPTY_REVIEW: ReviewAddress = {
@@ -286,6 +288,7 @@ export const EMPTY_REVIEW: ReviewAddress = {
   row: null,
   view: 'questions',
   crowd: null,
+  crowdPlace: null,
 };
 
 /**
@@ -343,9 +346,26 @@ const REVIEW_ROW = /^(conflicts|sources|waiting|withdrawn|refused|missing|compon
  * `8-4-holy site`, `none-4`. The address carries the space encoded
  * (`buildReviewUrl`).
  */
-export function crowdKeyOf(group: { regionId: number | null; kindId: number; type: string | null }): string {
+export function crowdKeyOf(group: CrowdGroupRef): string {
   const type = group.type ? `-${group.type}` : '';
   return `${group.regionId ?? 'none'}-${group.kindId}${type}`;
+}
+
+/** A crowded city's group: its region (null for the places no region places), its kind and its type. */
+export interface CrowdGroupRef { regionId: number | null; kindId: number; type: string | null }
+
+/**
+ * The group a key names (`crowdKeyOf`), so an address opens its region's list
+ * whether or not the list of groups holds it (#2358); null for one the
+ * address grammar does not read.
+ */
+export function crowdGroupOf(key: string | null): CrowdGroupRef | null {
+  const read = readCrowd(key);
+  const head = read === null ? null : CROWD_HEAD.exec(read);
+  if (read === null || !head) return null;
+  const [region, kind] = head[0].split('-');
+  const type = read.slice(head[0].length + 1);
+  return { regionId: region === 'none' ? null : Number(region), kindId: Number(kind), type: type === '' ? null : type };
 }
 
 /**
@@ -388,6 +408,7 @@ export function parseReviewUrl(search: string): ReviewAddress {
   const rawRegion = params.get('region');
   // An unknown tab reads as the queue's; a group is read only on the tab that shows it.
   const view = params.get('view') === 'crowded' ? 'crowded' : 'questions';
+  const crowd = view === 'crowded' ? readCrowd(params.get('crowd')) : null;
 
   return {
     q: normaliseReviewQ(params.get('q') ?? ''),
@@ -399,7 +420,9 @@ export function parseReviewUrl(search: string): ReviewAddress {
     showAside: params.get('aside') === 'show',
     row: readRow(params.get('row')),
     view,
-    crowd: view === 'crowded' ? readCrowd(params.get('crowd')) : null,
+    crowd,
+    // A place is read only within a group it belongs to.
+    crowdPlace: crowd === null ? null : readId(params.get('place')),
   };
 }
 
@@ -423,6 +446,7 @@ export function buildReviewUrl(a: ReviewAddress): string {
     parts.push('view=crowded');
     // Encoded as the search is: a type's space travels as `+`.
     if (a.crowd !== null) parts.push(new URLSearchParams({ crowd: a.crowd }).toString());
+    if (a.crowd !== null && a.crowdPlace !== null) parts.push(`place=${a.crowdPlace}`);
   }
   return parts.length > 0 ? `/review?${parts.join('&')}` : '/review';
 }

@@ -46,6 +46,7 @@ describe('fetchReviewQueue', () => {
       // The tab and its group are the page's own, never the queue's parameters.
       view: 'crowded',
       crowd: '7-9-square',
+      crowdPlace: 4412,
     };
 
     await fetchReviewQueue({

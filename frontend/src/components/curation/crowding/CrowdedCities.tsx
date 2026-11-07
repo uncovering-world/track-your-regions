@@ -1,31 +1,34 @@
 /**
- * The review page's *Crowded cities* tab (ADR-0180, #2282): the new arrivals
- * a crowded city would shadow, one line per region, kind and type on the left
- * — "Berlin · squares" — and the city's window on the right, open on the
- * group's best-known arrival with Previous and Next through the rest.
+ * The review page's *Crowded cities* tab (ADR-0180, #2282, #2358): the new
+ * arrivals a crowded city would shadow, one line per region, kind and type on
+ * the left — "Berlin · squares" — and on the right the window over that
+ * group's region as its page shows it, every place of the type, a place open
+ * in its own circle on a click.
  *
  * Whether such an arrival belongs in the list is a question about its
- * neighbours, so it is asked a city and a type at a time, in the window a
- * review card opens over itself (`CrowdingWindow`), drawn here in the page.
- * The open group is the address's (`crowd`, `utils/appUrl.ts`), and the first
- * one the filters keep when it names none, so the right side is never empty.
- * The Region and Kind filters are this tab's alone and not in the address: a
- * group is a link, a narrowing of a list this short is not. The Region chip
- * searches every region as the queue's does (#2349), and a region picked is
- * read by the server, which keeps the groups within it: Berlin holds the
- * groups of its districts.
+ * neighbours and about what the region's page shows, so it is asked a region
+ * and a type at a time, in the window a review card opens over itself
+ * (`CrowdingWindow`), drawn here in the page. The open group and the place
+ * open in it are the address's (`crowd` and `place`, `utils/appUrl.ts`); a
+ * group the address names opens where the filters keep it or where the list
+ * does not hold it at all, and the first one the filters keep opens otherwise,
+ * so the right side is never empty. The Region and Kind filters are this tab's alone and not in the
+ * address: a group is a link, a narrowing of a list this short is not. The
+ * Region chip searches every region as the queue's does (#2349), and a region
+ * picked is read by the server, which keeps the groups within it: Berlin
+ * holds the groups of its districts.
  *
  * The staged answers are kept by group and by the page, so a window's Apply
- * sends its own city's only, and a city left, by a line or by Back, keeps its
- * answers for the curator's return. Its line says how many wait there, and the
- * Apply bar of the city on screen names every other city holding some, with a
- * way to it. On a narrow screen one side shows at a time, the window with a way
- * back to the list.
+ * sends its own group's only, and a group left, by a line or by Back, keeps
+ * its answers for the curator's return. Its line says how many wait there,
+ * and the Apply bar of the group on screen names every other group holding
+ * some, with a way to it. On a narrow screen one side shows at a time, the
+ * window with a way back to the list.
  *
  * Its own chunk, which the review page loads when the tab is opened.
  */
 
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   Alert, Box, Button, Divider, List, ListItem, Paper, Stack, Typography, useMediaQuery, useTheme,
 } from '@mui/material';
@@ -38,29 +41,13 @@ import { FilterChip } from '../feed/FilterChip';
 import { QueueLine } from '../feed/QueueLine';
 import { KIND_COLOR } from '../feed/rowSpecific';
 import { useRegionChipSearch } from '../feed/useRegionChipSearch';
-import { CrowdingReport, CrowdingWindow, type CrowdingOutcome } from './CrowdingWindow';
+import { CrowdingWindow, type CrowdingOutcome } from './CrowdingWindow';
 import type { Staging } from './crowdingStaging';
 import {
   arrivalsIn, everyGroup, filterGroups, groupName, groupShown, kindOptions, NO_CROWD_FILTERS, regionAsked, regionOptions,
   stagedElsewhere, stagingIn, withStaging, type CrowdFilters, type GroupStagings, type StagedElsewhere,
 } from './crowdedGroups';
 import { useShadowedArrivals } from './useShadowedArrivals';
-
-/** A group's last report, and whether it came from a group the list no longer holds. */
-interface HeldReport {
-  /** When it was made, counted up per Apply on the tab: the newer of two reports wins a group. */
-  at: number;
-  outcome: CrowdingOutcome;
-  moved: boolean;
-}
-
-/** The newest report held by a group the list no longer holds, or none. */
-function newestGone(reports: ReadonlyMap<string, HeldReport>, listed: ReadonlySet<string>): HeldReport | undefined {
-  return [...reports]
-    .filter(([key]) => !listed.has(key))
-    .map(([, held]) => held)
-    .reduce<HeldReport | undefined>((newest, held) => (!newest || held.at > newest.at ? held : newest), undefined);
-}
 
 /** The stripe of a group's line: an arrival's, since every one of them is one. */
 const GROUP_COLOR = KIND_COLOR.arrival;
@@ -95,7 +82,7 @@ function GroupLine({ group, staged, selected, disabled, onClick }: {
   );
 }
 
-/** The other cities with answers staged, said over the Apply bar, each with the way to it. */
+/** The other groups with answers staged, said over the Apply bar, each with the way to it. */
 function StagedElsewhereLine({ entries, disabled, onOpen, onDiscard }: {
   entries: readonly StagedElsewhere[];
   disabled: boolean;
@@ -109,22 +96,26 @@ function StagedElsewhereLine({ entries, disabled, onOpen, onDiscard }: {
       {entries.map(entry => (
         <Box key={entry.key} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
           <Typography variant="body2">
-            {`${plural(entry.count, 'answer')} staged in ${entry.group ? groupName(entry.group) : 'a city no longer listed'}`}
+            {`${plural(entry.count, 'answer')} staged in ${entry.group ? groupName(entry.group) : 'a group no longer listed'}`}
           </Typography>
-          {entry.group
-            ? <Button size="small" disabled={disabled} onClick={() => onOpen(entry)}>Open</Button>
-            : <Button size="small" color="inherit" disabled={disabled} onClick={() => onDiscard(entry.key)}>Discard</Button>}
+          {/* A group the list no longer holds still has its region's list: it opens by its key. */}
+          <Button size="small" disabled={disabled} onClick={() => onOpen(entry)}>Open</Button>
+          {!entry.group && <Button size="small" color="inherit" disabled={disabled} onClick={() => onDiscard(entry.key)}>Discard</Button>}
         </Box>
       ))}
     </Box>
   );
 }
 
-export function CrowdedCities({ selected, onSelect, stagings, onStagings, onApplied }: {
+export function CrowdedCities({ selected, selectedPlace, onSelect, onSelectPlace, stagings, onStagings, onApplied }: {
   /** The group the address names (`crowd`), or null. */
   selected: string | null;
+  /** The place of that group the address opens in its own circle (`place`), or null. */
+  selectedPlace: number | null;
   /** A group opened: pushed when the curator picked it, replaced when the page did. */
   onSelect: (key: string, opts?: { replace?: boolean }) => void;
+  /** A place opened in its circle, or the region's list returned to: pushed. */
+  onSelectPlace: (membershipId: number | null) => void;
   /** The answers staged, by group: the page's to keep across the tabs. */
   stagings: GroupStagings;
   onStagings: Dispatch<SetStateAction<GroupStagings>>;
@@ -140,14 +131,11 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
   const regionSearch = useRegionChipSearch(regionAsked(filters) ?? null);
   // On a narrow screen: whether the window is the side shown, rather than the list.
   const [onWindow, setOnWindow] = useState(false);
-  // While an Apply runs no other city opens: the Apply's report and staging belong to the city it was pressed in.
+  // While an Apply runs no other group opens: the Apply's report and staging belong to the group it was pressed in.
   const [applying, setApplying] = useState(false);
-  // The last Apply's report, by group, each held by one group: an Apply that answers a
-  // group's every arrival takes the group out of the list, and its report then moves to the
-  // group the tab lands on, there alone, until another group's Apply reports. Where no group
-  // is left to land on, it is said over the empty list.
-  const [reports, setReports] = useState<ReadonlyMap<string, HeldReport>>(new Map());
-  const reportCount = useRef(0);
+  // The last Apply's report, by group: the window stays on its group after an Apply, even
+  // one that answers the group's last arrival out of the list, so the report stays with it.
+  const [reports, setReports] = useState<ReadonlyMap<string, CrowdingOutcome>>(new Map());
 
   // Both reads answered: the whole list, and the one within the region picked.
   const loaded = read.isSuccess && regionRead.isSuccess;
@@ -157,11 +145,11 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
   const within = regionRead.data?.groups ?? [];
   const groups = everyGroup(all, within);
   const visible = filterGroups(within, filters);
-  const shown = groupShown(visible, selected);
+  const shown = groupShown(visible, groups, selected);
   const shownKey = shown ? crowdKeyOf(shown) : null;
 
   // The address follows the group shown — the first one the filters keep, when it names
-  // none or one the list no longer holds — as a replace: the page moved, the curator did not.
+  // none or one they hide — as a replace: the page moved, the curator did not.
   useEffect(() => {
     if (shownKey !== null && shownKey !== selected) onSelect(shownKey, { replace: true });
   }, [shownKey, selected, onSelect]);
@@ -172,46 +160,22 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
     onStagings(all => withStaging(all, shownKey, typeof next === 'function' ? next(stagingIn(all, shownKey)) : next));
   }, [shownKey, onStagings]);
 
-  // A report whose group left the list is handed to the group shown, replacing that group's
-  // own where it is the newer of the two; either way it leaves the group that is gone, so no
-  // later group shows it.
-  const listed = groups.map(crowdKeyOf).join('\n');
-  useEffect(() => {
-    if (!loaded || shownKey === null) return;
-    const keys = new Set(listed.split('\n'));
-    setReports(all => {
-      const newest = newestGone(all, keys);
-      if (!newest) return all;
-      const kept = new Map([...all].filter(([key]) => keys.has(key)));
-      const own = kept.get(shownKey);
-      if (!own || own.at < newest.at) kept.set(shownKey, { ...newest, moved: true });
-      return kept;
-    });
-  }, [listed, shownKey, loaded]);
   const onOutcome = useCallback((next: CrowdingOutcome | null) => {
     if (shownKey === null) return;
-    reportCount.current += 1;
-    const at = reportCount.current;
     setReports(all => {
       const kept = new Map(all);
-      if (next) {
-        // A report moved here from a group that is gone has been read once a new one comes.
-        [...kept].forEach(([key, held]) => { if (held.moved) kept.delete(key); });
-        kept.set(shownKey, { outcome: next, moved: false, at });
-      } else kept.delete(shownKey);
+      if (next) kept.set(shownKey, next);
+      else kept.delete(shownKey);
       return kept;
     });
   }, [shownKey]);
-  // The last group answered out of the list leaves no window to say what its Apply did.
-  const listedKeys = new Set(listed.split('\n'));
-  const loose = loaded && shownKey === null ? newestGone(reports, listedKeys) : undefined;
 
   const open = (group: ShadowedArrivalsGroup) => {
     const key = crowdKeyOf(group);
     if (key !== shownKey) onSelect(key);
     setOnWindow(true);
   };
-  /** Another city with answers staged, opened from the Apply bar: out from under the chips where they hide it. */
+  /** Another group with answers staged, opened from the Apply bar: out from under the chips where they hide it. */
   const openStaged = (entry: StagedElsewhere) => {
     if (entry.group && !visible.some(group => crowdKeyOf(group) === entry.key)) setFilters(NO_CROWD_FILTERS);
     onSelect(entry.key);
@@ -236,14 +200,15 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
   };
   const filtered = filters.region !== null || filters.kinds.length > 0;
   const showList = !narrow || !onWindow;
-  const showWindow = shown !== undefined && (!narrow || onWindow);
+  const showWindow = shown !== undefined && (!narrow || onWindow || visible.length === 0);
 
   return (
     <Box>
       <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, maxWidth: 760 }}>
-          New places the rule would shadow once published, which the questions leave out. Each is sorted among the
-          places of its type around it, a city and a type at a time.
+          New places the rule would shadow once published, which the questions leave out. Each group opens its region
+          as the region page shows it: the places shown, the ones the rule shadows and the new ones, a region and a
+          type at a time.
         </Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
           <FilterChip
@@ -284,24 +249,17 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
           Could not read the crowded cities{failed instanceof Error ? `: ${failed.message}` : '.'}
         </Alert>
       )}
-      {loose && (
-        <CrowdingReport
-          outcome={loose.outcome}
-          onClose={() => setReports(all => new Map([...all].filter(([key]) => listedKeys.has(key))))}
-          sx={{ mb: 2 }}
-        />
-      )}
       {loaded && visible.length === 0 && (
-        <Alert severity="success">
+        <Alert severity="success" sx={{ mb: shown ? 2 : 0 }}>
           {filtered
             ? 'No crowded city matches. Clear a filter.'
             : 'Nothing waiting. No new place would arrive in a crowded city’s shadow.'}
         </Alert>
       )}
 
-      {visible.length > 0 && (
+      {(visible.length > 0 || shown) && (
         <Stack direction={{ xs: 'column', md: 'row' }} alignItems="flex-start">
-          {showList && (
+          {showList && visible.length > 0 && (
             <Box
               sx={{
                 width: { xs: '100%', md: 400 },
@@ -321,7 +279,7 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
               }}
               >
                 <Typography variant="caption" color="text.secondary">
-                  {`${plural(visible.length, 'group')} by city and type`}
+                  {`${plural(visible.length, 'group')} by region and type`}
                 </Typography>
               </Box>
               <List dense disablePadding aria-label="Crowded cities">
@@ -340,22 +298,23 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
             </Box>
           )}
           {showWindow && (
-            <Box sx={{ flexGrow: 1, minWidth: 0, width: { xs: '100%', md: 'auto' }, pl: { md: 2 } }}>
-              {narrow && (
+            <Box sx={{ flexGrow: 1, minWidth: 0, width: { xs: '100%', md: 'auto' }, pl: { md: visible.length > 0 ? 2 : 0 } }}>
+              {narrow && visible.length > 0 && (
                 <Button startIcon={<ArrowBackIcon />} size="small" onClick={() => setOnWindow(false)} sx={{ mb: 1 }}>
                   All crowded cities
                 </Button>
               )}
               <CrowdingWindow
-                // A group is its own window: its step through the arrivals and its type start afresh.
+                // A group is its own window: its hover and its reads start afresh.
                 key={shownKey}
-                memberships={shown.membershipIds}
-                groupName={groupName(shown)}
+                group={shown}
+                selected={selectedPlace}
+                onSelect={onSelectPlace}
                 titleId="crowded-city-title"
                 staging={stagingIn(stagings, shownKey ?? '')}
                 onStaging={onStaging}
                 onApplied={onApplied}
-                outcome={shownKey === null ? null : reports.get(shownKey)?.outcome ?? null}
+                outcome={shownKey === null ? null : reports.get(shownKey) ?? null}
                 onOutcome={onOutcome}
                 onApplying={setApplying}
                 layout="page"
@@ -388,7 +347,6 @@ export function CrowdedCities({ selected, onSelect, stagings, onStagings, onAppl
           )}
         </Stack>
       )}
-
     </Box>
   );
 }

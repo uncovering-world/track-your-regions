@@ -1,8 +1,10 @@
 /**
- * The review page's *Crowded cities* tab (#2282) on Berlin's squares and
- * Rome's churches: one line per city, kind and type, the first open by
- * default, the Region and Kind filters, the window in the page with its
- * Apply, and each city's staged answers kept to that city.
+ * The review page's *Crowded cities* tab (#2282, #2358) on Berlin's squares
+ * and Rome's churches: one line per region, kind and type, the first open by
+ * default, a group the address names open whether the list holds it or not,
+ * a place of it open in its own circle as the address says, the Region and
+ * Kind filters, the window in the page with its Apply, and each group's staged
+ * answers kept to that group.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -14,29 +16,49 @@ vi.mock('../../../api/crowding', () => ({ fetchShadowedArrivals: vi.fn() }));
 vi.mock('../../../api/crowdingAnswers', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../api/crowdingAnswers')>()),
   answerCrowding: vi.fn(),
-  fetchCrowdingWindow: vi.fn(),
+  fetchCrowdingGroup: vi.fn(),
+  fetchCrowdingPlace: vi.fn(),
 }));
 vi.mock('../../../api/reviewQueue', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../api/reviewQueue')>()),
   searchReviewRegions: vi.fn(),
 }));
 // The map needs WebGL; the list and the answers are what is tested here.
-vi.mock('./CrowdingMap', () => ({ CrowdingMap: () => <div data-testid="crowding-map" /> }));
+vi.mock('./CrowdingMap', () => ({ CrowdingMap: () => <div data-testid="crowding-map" />, CrowdingLegend: () => null }));
 
 import { fetchShadowedArrivals } from '../../../api/crowding';
-import { answerCrowding, fetchCrowdingWindow } from '../../../api/crowdingAnswers';
+import { answerCrowding, fetchCrowdingGroup, fetchCrowdingPlace } from '../../../api/crowdingAnswers';
 import { searchReviewRegions } from '../../../api/reviewQueue';
-import type { ShadowedArrivalsGroup } from '../../../api/crowding';
+import type { CrowdingGroup, ShadowedArrivalsGroup } from '../../../api/crowding';
 import { CrowdedCities } from './CrowdedCities';
 import type { GroupStagings } from './crowdedGroups';
 import {
-  aroundSchlossplatz, BERLIN_SQUARES, FRANKFURTER_TOR, NOLLENDORFPLATZ, ROME_CHURCHES, SCHLOSSPLATZ,
+  berlinGroup, berlinSquares, BERLIN_SQUARES, ROME_CHURCHES, SCHLOSSPLATZ, schlossplatzCircle, squarePlace,
 } from './crowdingFixtures';
 
 const mockedArrivals = vi.mocked(fetchShadowedArrivals);
-const mockedWindow = vi.mocked(fetchCrowdingWindow);
+const mockedGroup = vi.mocked(fetchCrowdingGroup);
+const mockedPlace = vi.mocked(fetchCrowdingPlace);
 const mockedAnswer = vi.mocked(answerCrowding);
 const mockedRegionSearch = vi.mocked(searchReviewRegions);
+
+const PANTHEON = 40;
+/** Rome's churches as Rome's page holds them: the Pantheon shown, Santa Maria Antiqua new and shadowed. */
+const romeGroup: CrowdingGroup = {
+  group: { regionId: 8, regionName: 'Rome', kindId: 4, type: 'church' },
+  kind: { id: 4, name: 'Places of worship', limit: 10, radiusKm: 10 },
+  typeExempt: false,
+  places: [
+    squarePlace({ membershipId: PANTHEON, name: 'Pantheon', score: 0.98 }),
+    squarePlace({
+      membershipId: 41, name: 'Santa Maria Antiqua', score: 0.4, standing: 'new', crowded: true, ruleCrowded: true,
+      outrankedBy: 33, betterKnown: ['St. Peter’s Basilica', 'Pantheon', 'Santa Maria Maggiore'],
+    }),
+  ],
+  truncated: false,
+};
+const BERLIN_TITLE = 'Berlin · Squares & streets · square';
+const ROME_TITLE = 'Rome · Places of worship · church';
 
 /**
  * The read as the server answers it: the whole list, or the groups within the
@@ -53,17 +75,21 @@ function serve(groups: ShadowedArrivalsGroup[], under: Record<number, number[]> 
   }));
 }
 
-/** The tab as the page holds it: the address's group, and the staging the page keeps. */
-function renderTab(initial: string | null = null) {
+/** The tab as the page holds it: the address's group and place, and the staging the page keeps. */
+function renderTab(initial: string | null = null, initialPlace: number | null = null) {
   const onSelect = vi.fn();
+  const onSelectPlace = vi.fn();
   const onApplied = vi.fn();
   function Page() {
     const [selected, setSelected] = useState<string | null>(initial);
+    const [place, setPlace] = useState<number | null>(initialPlace);
     const [stagings, setStagings] = useState<GroupStagings>(new Map());
     return (
       <CrowdedCities
         selected={selected}
-        onSelect={(key, opts) => { onSelect(key, opts); setSelected(key); }}
+        selectedPlace={place}
+        onSelect={(key, opts) => { onSelect(key, opts); setSelected(key); setPlace(null); }}
+        onSelectPlace={id => { onSelectPlace(id); setPlace(id); }}
         stagings={stagings}
         onStagings={setStagings}
         onApplied={onApplied}
@@ -75,16 +101,16 @@ function renderTab(initial: string | null = null) {
       <Page />
     </QueryClientProvider>,
   );
-  return { onSelect, onApplied };
+  return { onSelect, onSelectPlace, onApplied };
 }
 
 /** The list's line of one group, by its name. */
 const line = (name: string) => screen.getByRole('button', { name: (accessible: string) => accessible.startsWith(name) });
 
-/** The window's row of one place, by its name. */
+/** The region list's row of one place, by its name. */
 function rowOf(name: string) {
-  const cell = screen.getAllByText(name).find(element => element.closest('tbody'));
-  return within(cell!.closest('tr')!);
+  const { membershipId } = [...berlinSquares, ...romeGroup.places].find(place => place.name === name)!;
+  return within(screen.getByTestId(`crowding-place-${membershipId}`));
 }
 
 /** Picks one row of a filter chip's menu, and closes it the way a curator does. */
@@ -95,16 +121,19 @@ async function pick(chip: string, row: RegExp) {
   await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
 }
 
+const berlinOpen = () => screen.findByRole('heading', { name: BERLIN_TITLE, level: 2 });
+
 beforeEach(() => {
   mockedArrivals.mockReset();
   serve([BERLIN_SQUARES, ROME_CHURCHES]);
   mockedRegionSearch.mockReset().mockResolvedValue([]);
-  mockedWindow.mockReset().mockResolvedValue(aroundSchlossplatz);
+  mockedGroup.mockReset().mockImplementation(async group => (group.kindId === 4 ? romeGroup : berlinGroup));
+  mockedPlace.mockReset().mockResolvedValue(schlossplatzCircle);
   mockedAnswer.mockReset();
 });
 
 describe('the crowded cities tab', () => {
-  it('lists one line per city, kind and type, in the queue’s words', async () => {
+  it('lists one line per region, kind and type, in the queue’s words', async () => {
     renderTab();
 
     expect(await screen.findByText('Berlin · squares')).toBeInTheDocument();
@@ -113,28 +142,56 @@ describe('the crowded cities tab', () => {
     expect(screen.getByText('14 new')).toBeInTheDocument();
   });
 
-  it('opens the first group when the address names none, as a replace', async () => {
+  it('opens the first group’s region list when the address names none, as a replace', async () => {
     const { onSelect } = renderTab();
 
-    expect(await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' })).toBeInTheDocument();
+    expect(await berlinOpen()).toBeInTheDocument();
     expect(onSelect).toHaveBeenCalledWith('7-9-square', { replace: true });
-    expect(mockedWindow).toHaveBeenCalledWith(SCHLOSSPLATZ, null);
-    expect(screen.getByText('Berlin · squares: arrival 1 of 2')).toBeInTheDocument();
+    expect(mockedGroup).toHaveBeenCalledWith(expect.objectContaining({ regionId: 7, kindId: 9, type: 'square' }));
+    expect(screen.getByText(/^11 shown · 1 shadowed · 3 new\. As the region page shows it/)).toBeInTheDocument();
     expect(line('Berlin · squares')).toHaveClass('Mui-selected');
   });
 
   it('opens a group a curator picks, as a push', async () => {
     const { onSelect } = renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await berlinOpen();
 
     fireEvent.click(line('Rome · churches'));
     expect(onSelect).toHaveBeenLastCalledWith('8-4-church', undefined);
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(40, null));
+    expect(await screen.findByRole('heading', { name: ROME_TITLE, level: 2 })).toBeInTheDocument();
+  });
+
+  it('opens a group the address names though the list holds none of its arrivals', async () => {
+    const { onSelect } = renderTab('5-9-square');
+
+    await waitFor(() => expect(mockedGroup).toHaveBeenCalledWith({ regionId: 5, kindId: 9, type: 'square' }));
+    expect(onSelect).not.toHaveBeenCalled();
+    await screen.findByText('Berlin · squares');
+    expect(line('Berlin · squares')).not.toHaveClass('Mui-selected');
+  });
+
+  it('opens a place in its own circle on a click, as the address’s, and goes back to the region', async () => {
+    const { onSelectPlace } = renderTab();
+    await berlinOpen();
+
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Schloßplatz' }));
+    expect(onSelectPlace).toHaveBeenLastCalledWith(SCHLOSSPLATZ);
+    expect(await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 })).toBeInTheDocument();
+    expect(mockedPlace).toHaveBeenCalledWith(SCHLOSSPLATZ);
+
+    fireEvent.click(screen.getByRole('button', { name: `← ${BERLIN_TITLE}, the whole region` }));
+    expect(onSelectPlace).toHaveBeenLastCalledWith(null);
+    expect(await screen.findByText('On the region page · 11, and 1 new that would be — best known first')).toBeInTheDocument();
+  });
+
+  it('opens the place the address names', async () => {
+    renderTab('7-9-square', SCHLOSSPLATZ);
+    expect(await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 })).toBeInTheDocument();
   });
 
   it('narrows the list by region, counting what each region would leave, and opens what is left', async () => {
     const { onSelect } = renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await berlinOpen();
 
     fireEvent.click(screen.getByRole('button', { name: (accessible: string) => accessible.startsWith('Region') }));
     expect(screen.getByRole('menuitemradio', { name: /Berlin/ })).toHaveTextContent('11');
@@ -148,7 +205,9 @@ describe('the crowded cities tab', () => {
     expect(await screen.findByText('Rome · churches')).toBeInTheDocument();
     expect(screen.queryByText('Berlin · squares')).toBeNull();
     expect(screen.getByText('3 new')).toBeInTheDocument();
+    // The chip hides Berlin's squares, so the window opens what is left: Rome's churches.
     await waitFor(() => expect(onSelect).toHaveBeenLastCalledWith('8-4-church', { replace: true }));
+    expect(await screen.findByRole('heading', { name: ROME_TITLE, level: 2 })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
     expect(await screen.findByText('Berlin · squares')).toBeInTheDocument();
@@ -157,8 +216,8 @@ describe('the crowded cities tab', () => {
   it('searches every region, and shows the groups within the one found (#2349)', async () => {
     // A world view that splits Berlin into its districts: the list names the
     // districts, never Berlin, which only the search finds.
-    const mitte = { ...BERLIN_SQUARES, regionId: 71, regionName: 'Mitte', arrivals: 3, membershipIds: [SCHLOSSPLATZ] };
-    const kreuzberg = { ...BERLIN_SQUARES, regionId: 72, regionName: 'Friedrichshain-Kreuzberg', arrivals: 4, membershipIds: [FRANKFURTER_TOR] };
+    const mitte = { ...BERLIN_SQUARES, regionId: 71, regionName: 'Mitte', arrivals: 3 };
+    const kreuzberg = { ...BERLIN_SQUARES, regionId: 72, regionName: 'Friedrichshain-Kreuzberg', arrivals: 4 };
     serve([ROME_CHURCHES, kreuzberg, mitte], { 70: [71, 72] });
     mockedRegionSearch.mockResolvedValue([
       { id: 70, name: 'Berlin', path: 'Europe > Germany > Berlin', worldViewId: 2, worldView: 'Wikivoyage Regions' },
@@ -195,7 +254,7 @@ describe('the crowded cities tab', () => {
   });
 
   it('restores the whole list when the searched region is cleared by Clear all (#2349)', async () => {
-    const mitte = { ...BERLIN_SQUARES, regionId: 71, regionName: 'Mitte', arrivals: 3, membershipIds: [SCHLOSSPLATZ] };
+    const mitte = { ...BERLIN_SQUARES, regionId: 71, regionName: 'Mitte', arrivals: 3 };
     serve([ROME_CHURCHES, mitte], { 70: [71] });
     mockedRegionSearch.mockResolvedValue([
       { id: 70, name: 'Berlin', path: 'Europe > Germany > Berlin', worldViewId: 2, worldView: 'Wikivoyage Regions' },
@@ -218,7 +277,7 @@ describe('the crowded cities tab', () => {
 
   it('counts a kind under the region chosen, and dims one that would leave nothing', async () => {
     renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await berlinOpen();
     await pick('Region', /Berlin/);
     await screen.findByText('Berlin · squares');
 
@@ -235,68 +294,56 @@ describe('the crowded cities tab', () => {
       placementFailed: [],
     });
     const { onApplied } = renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await berlinOpen();
 
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Show anyway' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
 
     await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith([{ membershipId: SCHLOSSPLATZ, answer: 'list' }]));
-    expect(await screen.findByText('1 place kept in the list (1 new, published): Schloßplatz.')).toBeInTheDocument();
+    expect(await screen.findByText('1 place shown anyway (1 new, published): Schloßplatz.')).toBeInTheDocument();
     expect(onApplied).toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
   });
 
-  it('keeps each city’s answers to itself: Apply sends the city’s own, and a city left keeps them', async () => {
+  it('keeps each group’s answers to itself: Apply sends the group’s own, and a group left keeps them', async () => {
     mockedAnswer.mockResolvedValue({ answered: [], refused: [], outOfScope: 0, placementFailed: [] });
     renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
+    await berlinOpen();
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Show anyway' }));
     expect(line('Berlin · squares')).toHaveTextContent('1 staged');
 
-    // To Rome, asked nothing: Berlin's answer is not Rome's to apply, and Rome's bar says where it waits.
+    // To Rome: Berlin's answer is not Rome's to apply, and Rome's bar says where it waits.
     fireEvent.click(line('Rome · churches'));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(40, null));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await screen.findByRole('heading', { name: ROME_TITLE, level: 2 });
     expect(await screen.findByText('1 answer staged in Berlin · squares')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
-    fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
+    fireEvent.click(rowOf('Santa Maria Antiqua').getByRole('button', { name: 'Keep shadowed' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
-    await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith([{ membershipId: NOLLENDORFPLATZ, answer: 'shadow' }]));
+    await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith([{ membershipId: 41, answer: 'shadow' }]));
 
     // Back to Berlin from the bar: its answer is still there, and goes with its own Apply.
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(SCHLOSSPLATZ, null));
+    await berlinOpen();
     expect(await screen.findByRole('button', { name: 'Apply 1 answer' })).toBeEnabled();
-    expect(rowOf('Schloßplatz').getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+    expect(rowOf('Schloßplatz').getByRole('button', { name: 'Show anyway' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText(/staged in/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
     await waitFor(() => expect(mockedAnswer).toHaveBeenLastCalledWith([{ membershipId: SCHLOSSPLATZ, answer: 'list' }]));
   });
 
-  it('opens a city with answers staged from the bar though the chips hide it', async () => {
-    renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
-    await pick('Region', /Rome/);
-    expect(screen.queryByText('Berlin · squares')).toBeNull();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Open' }));
-    expect(await screen.findByText('Berlin · squares')).toBeInTheDocument();
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(SCHLOSSPLATZ, null));
-  });
-
   it('opens a group whose type is two words, as a link names it', async () => {
     // Places of worship's holy sites in Jerusalem: `holy site` holds a space.
-    const holySites = { ...ROME_CHURCHES, regionId: 21, regionName: 'Jerusalem', type: 'holy site', arrivals: 2, membershipIds: [70, 71] };
+    const holySites = { ...ROME_CHURCHES, regionId: 21, regionName: 'Jerusalem', type: 'holy site', arrivals: 2 };
     mockedArrivals.mockResolvedValue({ groups: [BERLIN_SQUARES, holySites] });
     const { onSelect } = renderTab('21-4-holy site');
 
-    await waitFor(() => expect(mockedWindow).toHaveBeenCalledWith(70, null));
+    await waitFor(() => expect(mockedGroup).toHaveBeenCalledWith({ regionId: 21, kindId: 4, type: 'holy site' }));
+    await screen.findByText('Jerusalem · holy sites');
     expect(line('Jerusalem · holy sites')).toHaveClass('Mui-selected');
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('keeps an Apply’s report when the Apply answers the group out of the list', async () => {
+  it('stays on its group and keeps its report when the Apply answers the group’s last arrival', async () => {
     mockedAnswer.mockResolvedValue({
       answered: [{ membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'list', pin: 'list', published: true, refused: false }],
       refused: [],
@@ -304,119 +351,26 @@ describe('the crowded cities tab', () => {
       placementFailed: [],
     });
     const { onSelect } = renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await berlinOpen();
     // Read again after the Apply, Berlin's squares have no arrival left to ask about.
     mockedArrivals.mockResolvedValue({ groups: [ROME_CHURCHES] });
 
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Show anyway' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
 
-    await waitFor(() => expect(onSelect).toHaveBeenLastCalledWith('8-4-church', { replace: true }));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(40, null));
-    expect(await screen.findByText('1 place kept in the list (1 new, published): Schloßplatz.')).toBeInTheDocument();
-  });
-
-  it('shows the newer report where a group that is gone lands on one holding an older report', async () => {
-    const berlinReport = '1 place kept in the list (1 new, published): Schloßplatz.';
-    const romeReport = '1 place kept in the shadow: Nollendorfplatz.';
-    mockedArrivals.mockResolvedValue({ groups: [ROME_CHURCHES, BERLIN_SQUARES] });
-    renderTab();
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(40, null));
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-
-    // Some answers on Rome's churches: Rome stays listed and keeps its report.
-    mockedAnswer.mockResolvedValueOnce({
-      answered: [{ membershipId: NOLLENDORFPLATZ, experienceId: 1009, name: 'Nollendorfplatz', answer: 'shadow', pin: 'shadow', published: false, refused: false }],
-      refused: [], outOfScope: 0, placementFailed: [],
-    });
-    fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
-    expect(await screen.findByText(romeReport)).toBeInTheDocument();
-
-    // Berlin's squares all answered: Berlin leaves the list, and the tab lands on Rome.
-    await waitFor(() => expect(line('Berlin · squares')).not.toHaveClass('Mui-disabled'));
-    fireEvent.click(line('Berlin · squares'));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(SCHLOSSPLATZ, null));
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-    mockedAnswer.mockResolvedValueOnce({
-      answered: [{ membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'list', pin: 'list', published: true, refused: false }],
-      refused: [], outOfScope: 0, placementFailed: [],
-    });
-    mockedArrivals.mockResolvedValue({ groups: [ROME_CHURCHES] });
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
-
+    expect(await screen.findByText('1 place shown anyway (1 new, published): Schloßplatz.')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText('Berlin · squares')).toBeNull());
-    expect(await screen.findByText(berlinReport)).toBeInTheDocument();
-    expect(screen.queryByText(romeReport)).toBeNull();
+    expect(screen.getByRole('heading', { name: BERLIN_TITLE, level: 2 })).toBeInTheDocument();
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  it('says what the Apply did over the empty list when it answers the last group out of it', async () => {
-    mockedArrivals.mockResolvedValue({ groups: [BERLIN_SQUARES] });
-    mockedAnswer.mockResolvedValue({
-      answered: [{ membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'list', pin: 'list', published: true, refused: false }],
-      refused: [], outOfScope: 0, placementFailed: [],
-    });
-    renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-
-    mockedArrivals.mockResolvedValue({ groups: [] });
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
-
-    expect(await screen.findByText(/Nothing waiting/)).toBeInTheDocument();
-    expect(screen.getByText('1 place kept in the list (1 new, published): Schloßplatz.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(screen.queryByText('1 place kept in the list (1 new, published): Schloßplatz.')).toBeNull();
-  });
-
-  it('shows a report moved from a group that is gone on the group it moved to alone', async () => {
-    const KYOTO_TEMPLES = { ...ROME_CHURCHES, regionId: 30, regionName: 'Kyoto', type: 'temple', arrivals: 33, membershipIds: [90, 91] };
-    mockedArrivals.mockResolvedValue({ groups: [BERLIN_SQUARES, ROME_CHURCHES, KYOTO_TEMPLES] });
-    mockedAnswer.mockResolvedValueOnce({
-      answered: [{ membershipId: SCHLOSSPLATZ, experienceId: 1014, name: 'Schloßplatz', answer: 'list', pin: 'list', published: true, refused: false }],
-      refused: [], outOfScope: 0, placementFailed: [],
-    });
-    renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-    const berlinReport = '1 place kept in the list (1 new, published): Schloßplatz.';
-
-    // The Apply answers Berlin's last arrival: the list loses Berlin, and its report moves to Rome.
-    mockedArrivals.mockResolvedValue({ groups: [ROME_CHURCHES, KYOTO_TEMPLES] });
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(40, null));
-    expect(await screen.findByText(berlinReport)).toBeInTheDocument();
-
-    // Kyoto, with no report of its own, does not show Berlin's.
-    fireEvent.click(line('Kyoto · temples'));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(90, null));
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-    expect(screen.queryByText(berlinReport)).toBeNull();
-
-    // Kyoto's own Apply reports; back on Rome, Berlin's report has been read and is gone.
-    mockedAnswer.mockResolvedValueOnce({
-      answered: [{ membershipId: NOLLENDORFPLATZ, experienceId: 1009, name: 'Nollendorfplatz', answer: 'shadow', pin: 'shadow', published: false, refused: false }],
-      refused: [], outOfScope: 0, placementFailed: [],
-    });
-    fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
-    expect(await screen.findByText('1 place kept in the shadow: Nollendorfplatz.')).toBeInTheDocument();
-    await waitFor(() => expect(line('Rome · churches')).not.toHaveClass('Mui-disabled'));
-    fireEvent.click(line('Rome · churches'));
-    await waitFor(() => expect(mockedWindow).toHaveBeenLastCalledWith(40, null));
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
-    expect(screen.queryByText(berlinReport)).toBeNull();
-    expect(screen.queryByText('1 place kept in the shadow: Nollendorfplatz.')).toBeNull();
-  });
-
-  it('opens no other city while an Apply runs', async () => {
+  it('opens no other group while an Apply runs', async () => {
     let finish: (value: Awaited<ReturnType<typeof answerCrowding>>) => void = () => {};
     mockedAnswer.mockReturnValue(new Promise(resolve => { finish = resolve; }));
     renderTab();
-    await screen.findByRole('heading', { name: 'Squares around Schloßplatz · 10 km' });
+    await berlinOpen();
 
-    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'List' }));
+    fireEvent.click(rowOf('Schloßplatz').getByRole('button', { name: 'Show anyway' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
     await waitFor(() => expect(line('Rome · churches')).toHaveClass('Mui-disabled'));
 
@@ -428,6 +382,6 @@ describe('the crowded cities tab', () => {
     mockedArrivals.mockResolvedValue({ groups: [] });
     renderTab();
     expect(await screen.findByText(/Nothing waiting/)).toBeInTheDocument();
-    expect(mockedWindow).not.toHaveBeenCalled();
+    expect(mockedGroup).not.toHaveBeenCalled();
   });
 });

@@ -5325,168 +5325,6 @@ export interface CrowdingPlaceView {
   comparedUnlisted: number;
 }
 
-/**
- * The place the window opened on.
- */
-export type CrowdingWindowCentre = {
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  membershipId: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  experienceId: number;
-  name: string;
-  latitude: number;
-  longitude: number;
-  /** @nullable */
-  type: string | null;
-};
-
-export type CrowdingWindowKind = {
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  id: number;
-  name: string;
-  /**
-     * How many better-known places of a type shadow a place.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  limit: number;
-  /** The radius they are counted within, and the window drawn within. */
-  radiusKm: number;
-};
-
-export type CrowdingWindowTypesItem = {
-  /** @nullable */
-  type: string | null;
-  /**
-     * How many places of the type lie within the radius.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  places: number;
-  exempt: boolean;
-};
-
-/**
- * Where it stands now: in the list a reader is shown, in the tail, or a new arrival nobody has passed.
- */
-export type CrowdingWindowRowStanding = typeof CrowdingWindowRowStanding[keyof typeof CrowdingWindowRowStanding];
-
-
-export const CrowdingWindowRowStanding = {
-  listed: 'listed',
-  shadowed: 'shadowed',
-  new: 'new',
-} as const;
-
-export type CrowdingWindowRowPin = typeof CrowdingWindowRowPin[keyof typeof CrowdingWindowRowPin] | null;
-
-
-export const CrowdingWindowRowPin = {
-  list: 'list',
-  shadow: 'shadow',
-} as const;
-
-/**
- * One place of the type around the window's place.
- */
-export interface CrowdingWindowRow {
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  membershipId: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  experienceId: number;
-  name: string;
-  latitude: number;
-  longitude: number;
-  /**
-     * How far the place lies from the window's centre, in metres.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  distanceM: number;
-  /**
-     * The Wikipedia article the place holds, as its card links it (#2345).
-     * @nullable
-     */
-  wikipediaUrl: string | null;
-  /**
-     * The place's picture, as stored: the row draws a thumbnail of it (#2345).
-     * @nullable
-     */
-  imageUrl: string | null;
-  /** Whose photograph the picture is, shown with it. */
-  imageCredit: ImageCredit | null;
-  /** Readers a year of its Wikipedia articles; null before its first measurement. */
-  readers: number | null;
-  /** The Wikivoyage editions that use its item. */
-  guideEditions: number | null;
-  /**
-     * Whether a guide uses it: what its fame reads of the guides (ADR-0177).
-     * @nullable
-     */
-  guideUsed: boolean | null;
-  wikipediaEditions: number | null;
-  /**
-     * Its fame among its kind and type worldwide (ADR-0172); null before it is scored.
-     * @nullable
-     */
-  score: number | null;
-  /** How many places of its type within the radius count above it as the rule counts them, whatever its own pin: the better known and those kept in the list, less those kept in the shadow and those holding works. The rule shadows it at the kind's limit. Null for a type its kind exempts. */
-  outrankedBy: number | null;
-  /** Where it stands now: in the list a reader is shown, in the tail, or a new arrival nobody has passed. */
-  standing: CrowdingWindowRowStanding;
-  /** In the tail now, or for a new arrival, once passed. */
-  crowded: boolean;
-  /** Where the rule puts it whatever its own pin says: in the tail, or not. */
-  ruleCrowded: boolean;
-  pin: CrowdingWindowRowPin;
-  /** It holds a work a reader is shown, so it is always shown and takes no pin (ADR-0173). */
-  holdsWorks: boolean;
-  /** Whether it may take a pin: not while it holds works or its type is exempt. */
-  pinnable: boolean;
-  /**
-     * Whether it is counted above the window's place: the places that shadow it (#2228). Null on another type's window.
-     * @nullable
-     */
-  outranksCentre: boolean | null;
-  /** Whether the caller's scope reaches it, so an answer about it is taken. */
-  canAnswer: boolean;
-}
-
-/**
- * A crowded city around a place, for a curator to sort into the list and the shadow (#2282).
- */
-export interface CrowdingWindow {
-  /** The place the window opened on. */
-  centre: CrowdingWindowCentre;
-  kind: CrowdingWindowKind;
-  /**
-     * The type the rows are of.
-     * @nullable
-     */
-  type: string | null;
-  /** The kind never hides a place of this type (ADR-0179): nothing in this window takes a pin. */
-  typeExempt: boolean;
-  /** The types of the kind around the place, for a switch between them: types are judged apart. */
-  types: CrowdingWindowTypesItem[];
-  /** Every place of the type within the radius, best known first. */
-  rows: CrowdingWindowRow[];
-}
-
 export type ShadowedArrivalsGroupsItem = {
   /** The leaf region the arrivals lie in; null where no world view places them. */
   regionId: number | null;
@@ -5506,12 +5344,6 @@ export type ShadowedArrivalsGroupsItem = {
      * @maximum 9007199254740991
      */
   arrivals: number;
-  /**
-     * The arrivals, best known first: the window opens on the first.
-     * @items.minimum -9007199254740991
-     * @items.maximum 9007199254740991
-     */
-  membershipIds: number[];
 };
 
 /**
@@ -8260,14 +8092,6 @@ export type GetExperiencesReviewCrowdingPlaceByMembershipIdParams = {
    * @exclusiveMinimum 0
    */
   worldViewId?: number;
-};
-
-export type GetExperiencesReviewCrowdingAroundByMembershipIdParams = {
-  /**
-   * @minLength 1
-   * @maxLength 100
-   */
-  type?: string;
 };
 
 export type GetExperiencesReviewCrowdingArrivalsParams = {
@@ -12055,40 +11879,6 @@ export const getExperiencesReviewCrowdingPlaceByMembershipId = async (membership
     params?: GetExperiencesReviewCrowdingPlaceByMembershipIdParams, options?: Parameters<typeof apiFetch>[1]): Promise<CrowdingPlaceView> => {
 
   return apiFetch<CrowdingPlaceView>(getGetExperiencesReviewCrowdingPlaceByMembershipIdUrl(membershipId,params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getGetExperiencesReviewCrowdingAroundByMembershipIdUrl = (membershipId: number,
-    params?: GetExperiencesReviewCrowdingAroundByMembershipIdParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : String(value))
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/api/experiences/review/crowding/around/${encodeURIComponent(String(membershipId))}?${stringifiedParams}` : `/api/experiences/review/crowding/around/${encodeURIComponent(String(membershipId))}`
-}
-
-/**
- * Requires a curator or an admin.
- * @summary Every place of a kind and type around a place in a crowded city, best known first, with the rule's count and the curator's pin
- */
-export const getExperiencesReviewCrowdingAroundByMembershipId = async (membershipId: number,
-    params?: GetExperiencesReviewCrowdingAroundByMembershipIdParams, options?: Parameters<typeof apiFetch>[1]): Promise<CrowdingWindow> => {
-
-  return apiFetch<CrowdingWindow>(getGetExperiencesReviewCrowdingAroundByMembershipIdUrl(membershipId,params),
   {
     ...options,
     method: 'GET'

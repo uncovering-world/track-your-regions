@@ -3,6 +3,7 @@ import {
   buildAppUrl,
   buildReviewUrl,
   cardUrl,
+  crowdGroupOf,
   crowdKeyOf,
   EMPTY_REVIEW,
   legacyRedirect,
@@ -357,7 +358,7 @@ describe('review address', () => {
       expect(buildReviewUrl({ ...EMPTY_REVIEW, sort: 'date' })).toBe('/review');
     });
 
-    it('writes every field in a stable key order: sort, q, source, kind, region, run, aside, row, view, crowd', () => {
+    it('writes every field in a stable key order: sort, q, source, kind, region, run, aside, row, view, crowd, place', () => {
       const full: ReviewAddress = {
         q: 'memorial',
         sort: 'question',
@@ -369,11 +370,30 @@ describe('review address', () => {
         row: 'waiting:600',
         view: 'crowded',
         crowd: '7-9-square',
+        crowdPlace: 4412,
       };
       expect(buildReviewUrl(full)).toBe(
         '/review?sort=question&q=memorial&source=1,3&kind=arrival,refused&region=6737&run=98&aside=show&row=waiting:600'
-          + '&view=crowded&crowd=7-9-square',
+          + '&view=crowded&crowd=7-9-square&place=4412',
       );
+    });
+
+    it('writes and reads a place of a group, and no place without its group (#2358)', () => {
+      const crowded = { ...EMPTY_REVIEW, view: 'crowded' as const, crowd: '7-9-square' };
+      expect(buildReviewUrl({ ...crowded, crowdPlace: 4412 })).toBe('/review?view=crowded&crowd=7-9-square&place=4412');
+      expect(parseReviewUrl('?view=crowded&crowd=7-9-square&place=4412')).toEqual({ ...crowded, crowdPlace: 4412 });
+      expect(buildReviewUrl({ ...crowded, crowd: null, crowdPlace: 4412 })).toBe('/review?view=crowded');
+      expect(parseReviewUrl('?view=crowded&place=4412')).toEqual({ ...crowded, crowd: null });
+      expect(parseReviewUrl('?view=crowded&crowd=7-9-square&place=rome')).toEqual(crowded);
+    });
+
+    it('reads a group back from its key, and nothing from a key the grammar does not read', () => {
+      expect(crowdGroupOf('7-9-square')).toEqual({ regionId: 7, kindId: 9, type: 'square' });
+      expect(crowdGroupOf('none-4')).toEqual({ regionId: null, kindId: 4, type: null });
+      expect(crowdGroupOf('12-7-bell-tower')).toEqual({ regionId: 12, kindId: 7, type: 'bell-tower' });
+      expect(crowdGroupOf('8-4-holy site')).toEqual({ regionId: 8, kindId: 4, type: 'holy site' });
+      expect(crowdGroupOf('berlin-9')).toBeNull();
+      expect(crowdGroupOf(null)).toBeNull();
     });
 
     it('writes a crowded city’s group only on its own tab', () => {
@@ -442,6 +462,7 @@ describe('review address', () => {
         row: 'waiting:600',
         view: 'crowded',
         crowd: '7-9-square',
+        crowdPlace: 4412,
       },
     ];
 

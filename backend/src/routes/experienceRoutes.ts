@@ -74,9 +74,7 @@ import { getPictureClasses } from '../controllers/experience/pictureClassesContr
 import { getRegionTail } from '../controllers/experience/experienceTailController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
-import {
-  CrowdingAnswered, CrowdingGroup, CrowdingPlaceView, CrowdingWindow, ShadowedArrivals,
-} from '../api/responses/crowding.js';
+import { CrowdingAnswered, CrowdingGroup, CrowdingPlaceView, ShadowedArrivals } from '../api/responses/crowding.js';
 import {
   ExperienceDetail,
   ExperienceKinds,
@@ -143,7 +141,6 @@ import {
   answerCrowding,
   getCrowdingGroup,
   getCrowdingPlace,
-  getCrowdingWindow,
   listShadowedArrivals,
   markNewBadgesSeen,
 } from '../controllers/experience/index.js';
@@ -186,8 +183,6 @@ import {
   crowdingGroupQuerySchema,
   crowdingPlaceParamSchema,
   crowdingPlaceQuerySchema,
-  crowdingWindowParamSchema,
-  crowdingWindowQuerySchema,
   shadowedArrivalsQuerySchema,
   newBadgesSeenBodySchema,
   lifecycleStateBodySchema,
@@ -561,17 +556,6 @@ export const experienceCurationRoutes = [
     query: crowdingPlaceQuerySchema,
     response: CrowdingPlaceView,
     handler: getCrowdingPlace,
-  }),
-  // The window around one membership, which the web's current window reads
-  // until it moves to the region's list and a place's circle (#2358).
-  defineRoute({
-    method: 'get', path: '/review/crowding/around/:membershipId', access: 'curator', cache: 'no-store',
-    limiter: authenticatedLimiter,
-    summary: 'Every place of a kind and type around a place in a crowded city, best known first, with the rule\'s count and the curator\'s pin',
-    params: crowdingWindowParamSchema,
-    query: crowdingWindowQuerySchema,
-    response: CrowdingWindow,
-    handler: getCrowdingWindow,
   }),
   defineRoute({
     method: 'get', path: '/review/crowding/arrivals', access: 'curator', cache: 'no-store',

@@ -41,7 +41,7 @@ function report(names: string[], over: Partial<ReviewAnswerResult> = {}): Review
 
 const ADDRESS = {
   q: '', sourceIds: [4], kinds: [], regionId: null, runId: null, showAside: false,
-  sort: 'date' as const, row: 'waiting:1', view: 'questions' as const, crowd: null,
+  sort: 'date' as const, row: 'waiting:1', view: 'questions' as const, crowd: null, crowdPlace: null,
 };
 
 beforeEach(() => {

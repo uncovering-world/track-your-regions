@@ -813,16 +813,6 @@ export const crowdingGroupQuerySchema = z.object({
   type: z.string().min(1).max(COLUMN_WIDTHS.experience_kind_memberships.type).optional(),
 });
 
-/** `/review/crowding/around/:membershipId`: the membership the crowding window opens on (#2282). */
-export const crowdingWindowParamSchema = z.object({
-  membershipId: rowIdSchema,
-});
-
-/** The type the window lists, for the switch between a kind's types; the centre's own where absent. */
-export const crowdingWindowQuerySchema = z.object({
-  type: z.string().min(1).max(COLUMN_WIDTHS.experience_kind_memberships.type).optional(),
-});
-
 /** `/review/crowding/place/:membershipId`: the place a crowded city's window opens in its own circle (#2358). */
 export const crowdingPlaceParamSchema = z.object({
   membershipId: rowIdSchema,

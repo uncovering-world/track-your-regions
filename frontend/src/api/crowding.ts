@@ -1,9 +1,9 @@
 /**
- * A crowded city, as a curator reads it (ADR-0180, #2282): the types of the
- * window over every place of a kind and type around a place, and the read the
- * review page makes itself, the new arrivals the display would shadow. The
- * window's own calls, its read and the answers, are `crowdingAnswers.ts`,
- * which only the window's chunk loads.
+ * A crowded city, as a curator reads it (ADR-0180, #2282, #2358): the types of
+ * the window over a region's places of a kind and type and of one place in its
+ * own circle, and the read the review page makes itself, the new arrivals the
+ * display would shadow. The window's own calls, its reads and the answers, are
+ * `crowdingAnswers.ts`, which only the window's chunk loads.
  */
 
 import {
@@ -13,11 +13,12 @@ import {
 
 // What every call here answers is declared once, as a backend schema (ADR-0066).
 export type {
-  CrowdingAnswered, CrowdingWindow, CrowdingWindowRow, ShadowedArrivals,
+  CrowdingAnswered, CrowdingGroup, CrowdingGroupPlace, CrowdingPlaceView,
+  CrowdingPlaceViewAroundItem as CrowdingAroundPlace, ShadowedArrivals,
   ShadowedArrivalsGroupsItem as ShadowedArrivalsGroup,
 } from './client.generated';
 
-/** One row's answer: keep it in the list or the shadow, refuse it, or hand it back to the rule. */
+/** One place's answer: keep it in the list or the shadow, publish it to the rule, refuse it, or hand it back to the rule. */
 export type CrowdingAnswer = CrowdingAnswersBodyAnswersItem['answer'];
 export type CrowdingAnswerRow = CrowdingAnswersBodyAnswersItem;
 
