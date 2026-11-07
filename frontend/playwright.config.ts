@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { NO_UNSERVED_BASEMAP_FLAG } from './tests/unservedBasemap.mjs';
 
 const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5173';
 
@@ -57,6 +58,10 @@ export default defineConfig({
     // retry absorbed it and the run reported the spec as flaky, which is
     // the outcome that window is now allowed to have.
     actionTimeout: 15000,
+    // No spec asks OpenStreetMap's tile servers (#2351): the OSMF tile policy
+    // does not allow headless bots, so their hosts do not resolve here and the
+    // maps draw the regions over an empty background.
+    launchOptions: { args: [NO_UNSERVED_BASEMAP_FLAG] },
   },
   projects: [
     {
