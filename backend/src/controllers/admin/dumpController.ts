@@ -17,7 +17,7 @@ import { newestLocalCopy } from '../../services/dumps/localCopies.js';
 import { newestSample } from '../../services/dumps/samples.js';
 import { buildProgress, cancelBuild, isoDay, startBuild, type DumpBuildProgress } from '../../services/dumps/buildQueue.js';
 import { keeperOf, whatTheKeptNeeds } from '../../services/dumps/keepers.js';
-import { newestDump, type Newest } from '../../services/dumps/newestOnHost.js';
+import { NOT_ASKED, newestDumps, type Newest } from '../../services/dumps/newestOnHost.js';
 import {
   closeOrphanedBuilds, recentBuilds, type BuildKind, type BuildRequestRecord, type DumpBuildRow,
 } from '../../services/dumps/ledger.js';
@@ -27,17 +27,16 @@ import type { dumpBuildBodySchema, dumpKeyParamSchema, dumpScheduleBodySchema } 
 type DumpParams = z.output<typeof dumpKeyParamSchema>;
 type DumpBuildBody = z.output<typeof dumpBuildBodySchema>;
 
-/** Whether the host was asked for its newest dump since the backend started, and whether it answered. */
+/** Whether the worker has asked the host for its newest dump, and whether it answered. */
 function checkedOf(newest: Newest): 'not-yet' | 'answered' | 'unreachable' {
   if (newest.askedAt === null) return 'not-yet';
   return newest.answered ? 'answered' : 'unreachable';
 }
 
-async function keepsOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps'][number]['keeps']> {
+async function keepsOf(key: Dumps['dumps'][number]['key'], newest: Newest): Promise<Dumps['dumps'][number]['keeps']> {
   const keeper = keeperOf(key);
   if (!keeper) return null;
   const built = await keeper.latest();
-  const newest = newestDump(key);
   return {
     title: keeper.title,
     built: built ? { dumpDate: built.dumpDate, swappedAt: built.swappedAt.toISOString() } : null,
@@ -67,13 +66,14 @@ export async function listDumps(): Promise<Dumps> {
   // A build that stopped beating shows as the failure it is, not as running.
   await closeOrphanedBuilds();
   const builds = await recentBuilds();
+  const newest = await newestDumps();
   // One dump at a time: each asks the database a few things, and asked all at
   // once they took a connection each, enough to exhaust the pool under the API
   // contract lane's concurrent requests.
   const keeps: Array<Awaited<ReturnType<typeof keepsOf>>> = [];
   const progress: Array<Awaited<ReturnType<typeof buildProgress>>> = [];
   for (const dump of DUMPS) {
-    keeps.push(await keepsOf(dump.key));
+    keeps.push(await keepsOf(dump.key, newest.get(dump.key) ?? NOT_ASKED));
     progress.push(await buildProgress(dump.key));
   }
   const dir = process.env.DUMPS_DIR?.trim();

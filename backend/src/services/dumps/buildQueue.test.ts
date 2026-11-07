@@ -28,7 +28,7 @@ vi.mock('./keepers.js', () => ({
     return null;
   },
 }));
-vi.mock('./newestOnHost.js', () => ({ newestDump: () => ({ date: '2026-10-01', askedAt: new Date(), answered: true }) }));
+vi.mock('./newestOnHost.js', () => ({ newestDump: async () => ({ date: '2026-10-01', askedAt: new Date(), answered: true }) }));
 
 const { buildProgress, startBuild } = await import('./buildQueue.js');
 

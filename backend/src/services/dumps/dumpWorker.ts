@@ -11,6 +11,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { BuildAlreadyRunning, claimNextBuild, closeOrphanedBuilds } from './ledger.js';
 import { runBuild } from './buildRun.js';
 import { queueScheduledUpdate } from './osm/layerSchedule.js';
+import { askDueDumps } from './newestOnHost.js';
 
 /**
  * What the worker's builds are run by: its host name, which compose fixes
@@ -24,6 +25,8 @@ export const WORKER_RUNNER = `worker:${hostname()}`;
 const POLL_EVERY_MS = 3_000;
 /** How often an idle worker asks whether a scheduled update is due (`layerSchedule.ts`). */
 const SCHEDULE_EVERY_MS = 10 * 60 * 1000;
+/** How often the worker looks for a dump whose newest file on the host it last learnt a day ago (`newestOnHost.ts`). */
+const NEWEST_EVERY_MS = 10 * 60 * 1000;
 
 /** Run the oldest queued build, if any; answers whether there was one. */
 export async function runNextBuild(stop: AbortSignal): Promise<boolean> {
@@ -48,10 +51,24 @@ export async function queueWhatIsDue(stop: AbortSignal): Promise<void> {
   }
 }
 
+/**
+ * Learn the newest file on the host of each dump a day after it was last
+ * learnt, until `stop` aborts: beside the builds rather than between them, so
+ * a build that runs for hours does not leave the panel's dates a day stale.
+ * Its requests share the process's connections with the build's (#2353).
+ */
+export async function newestLoop(stop: AbortSignal, everyMs = NEWEST_EVERY_MS): Promise<void> {
+  while (!stop.aborted) {
+    await askDueDumps(stop).catch(error => console.error('[Dumps] The worker could not learn the newest dumps:', error));
+    await sleep(everyMs, undefined, { signal: stop }).catch(() => undefined);
+  }
+}
+
 /** Take and run queued builds until `stop` aborts, and between them queue the updates a schedule makes due. */
 export async function workLoop(stop: AbortSignal): Promise<void> {
   const closed = await closeOrphanedBuilds({ runner: WORKER_RUNNER });
   if (closed > 0) console.log(`[Dumps] Closed ${closed} build(s) the worker's previous run left`);
+  const newest = newestLoop(stop);
   let scheduledAt = 0;
   while (!stop.aborted) {
     if (Date.now() - scheduledAt >= SCHEDULE_EVERY_MS) {
@@ -64,4 +81,5 @@ export async function workLoop(stop: AbortSignal): Promise<void> {
     });
     if (!ran) await sleep(POLL_EVERY_MS, undefined, { signal: stop }).catch(() => undefined);
   }
+  await newest;
 }

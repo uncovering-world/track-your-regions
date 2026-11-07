@@ -70,12 +70,19 @@ async function connection(url: string, signal?: AbortSignal): Promise<() => void
  * One request to a dump host, asked of the host's `robots.txt` first. A
  * redirect is followed without a second check: the hosts redirect to the file
  * they hand out (the planet's S3 bucket), never to another publisher.
+ * `timeoutMs`, where given, bounds the request once it holds a connection, the
+ * body's read included, and never the wait for one: a check queued behind a
+ * build's hours-long download has not been answered late, it has not asked
+ * yet (#2353).
  */
-async function request(url: string, init: RequestInit = {}): Promise<{ response: Response; release: () => void }> {
+async function request(url: string, init: RequestInit = {}, timeoutMs?: number): Promise<{ response: Response; release: () => void }> {
   await assertRobotsAllow(url);
   const release = await connection(url, init.signal ?? undefined);
   try {
-    const response = await fetch(url, { ...init, headers: { ...init.headers, 'User-Agent': USER_AGENT }, redirect: 'follow' });
+    const signals = [init.signal, timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs)]
+      .filter((signal): signal is AbortSignal => !!signal);
+    const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+    const response = await fetch(url, { ...init, signal, headers: { ...init.headers, 'User-Agent': USER_AGENT }, redirect: 'follow' });
     return { response, release };
   } catch (error) {
     release();
@@ -83,9 +90,9 @@ async function request(url: string, init: RequestInit = {}): Promise<{ response:
   }
 }
 
-/** A host's page as text: a listing, a checksum file, a status file. */
-export async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
-  const { response, release } = await request(url, { signal });
+/** A host's page as text: a listing, a checksum file, a status file; `timeoutMs` as `request` takes it. */
+export async function fetchText(url: string, signal?: AbortSignal, timeoutMs?: number): Promise<string> {
+  const { response, release } = await request(url, { signal }, timeoutMs);
   try {
     if (response.status === 404) throw new NotOnHost(`${url} answered 404`);
     if (!response.ok) throw new Error(`${url} answered ${response.status}`);
@@ -95,9 +102,9 @@ export async function fetchText(url: string, signal?: AbortSignal): Promise<stri
   }
 }
 
-/** The size the host answers for a file, or null where it has none. */
-export async function sizeOf(url: string, signal?: AbortSignal): Promise<number | null> {
-  const { response, release } = await request(url, { method: 'HEAD', signal });
+/** The size the host answers for a file, or null where it has none; `timeoutMs` as `request` takes it. */
+export async function sizeOf(url: string, signal?: AbortSignal, timeoutMs?: number): Promise<number | null> {
+  const { response, release } = await request(url, { method: 'HEAD', signal }, timeoutMs);
   release();
   if (!response.ok) return null;
   const length = Number(response.headers.get('content-length'));
