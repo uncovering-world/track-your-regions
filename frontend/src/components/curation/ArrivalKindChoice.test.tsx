@@ -4,6 +4,7 @@
  * kind's vocabulary, whether it stays — and what one press sends and says.
  */
 
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -22,12 +23,21 @@ const MONUMENT = 9791;
 
 let client: QueryClient;
 
-function renderChoice(onDone = vi.fn()) {
+/** The card's part: it holds whether the form is open, and opens it with a kind where Jev's reading named one. */
+function Card({ onDone, initialKindId }: { onDone: (message: string) => void; initialKindId?: number }) {
+  const [open, setOpen] = useState(initialKindId !== undefined);
+  return (
+    <ArrivalKindChoice experienceId={MONUMENT} name="Monument to Peter I" membershipId={501}
+      arrivingKind="Public art" initialKindId={initialKindId} disabled={false} open={open}
+      onOpen={() => setOpen(true)} onClose={() => setOpen(false)} onDone={onDone} />
+  );
+}
+
+function renderChoice(onDone = vi.fn(), initialKindId?: number) {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <ArrivalKindChoice experienceId={MONUMENT} name="Monument to Peter I" membershipId={501}
-        arrivingKind="Public art" disabled={false} onDone={onDone} />
+      <Card onDone={onDone} initialKindId={initialKindId} />
     </QueryClientProvider>,
   );
   return onDone;
@@ -92,6 +102,25 @@ describe('an arrival answered with another kind', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add to Monuments & memorials' }));
     await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith(MONUMENT, expect.objectContaining({ stays: true })));
+  });
+});
+
+describe("the form opened from Jev's reading (#2342)", () => {
+  it('opens with the kind Jev named chosen, and asks only for its type', async () => {
+    renderChoice(vi.fn(), 7);
+    await kindsRead();
+
+    expect(screen.getByRole('combobox', { name: 'Kind' })).toHaveTextContent('Towers');
+    expect(screen.getByRole('button', { name: 'Move to Towers' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Belongs in another kind…' })).toBeInTheDocument();
+  });
+
+  it('chooses nothing where the place cannot be put into the kind Jev named', async () => {
+    renderChoice(vi.fn(), 3);
+    await kindsRead();
+
+    expect(screen.getByRole('button', { name: 'Move' })).toBeDisabled();
   });
 });
 
