@@ -6815,71 +6815,6 @@ export interface MergeProposalTakenBack {
   catalogue: boolean;
 }
 
-export type ViewSuggestionsSuggestionsItemField = typeof ViewSuggestionsSuggestionsItemField[keyof typeof ViewSuggestionsSuggestionsItemField];
-
-
-export const ViewSuggestionsSuggestionsItemField = {
-  name: 'name',
-  subtitle: 'subtitle',
-  imageUrl: 'imageUrl',
-  location: 'location',
-  wikipediaUrl: 'wikipediaUrl',
-} as const;
-
-export type ViewSuggestionsSuggestionsItem = {
-  field: ViewSuggestionsSuggestionsItemField;
-  /**
-     * The view Jev would show.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  membershipId: number;
-  /** Its confidence, 0 to 1. */
-  confidence: number;
-};
-
-/**
- * Jev's suggested answer to the sources card (#1260), per field it could answer; never applied.
- */
-export interface ViewSuggestions {
-  /** Whether this deployment asks Jev at all. False: no suggestion, nothing else changes. */
-  configured: boolean;
-  suggestions: ViewSuggestionsSuggestionsItem[];
-}
-
-/**
- * `same`: the item is the component; `other`: another place.
- */
-export type ComponentItemSuggestionsSuggestionsItemJudgement = typeof ComponentItemSuggestionsSuggestionsItemJudgement[keyof typeof ComponentItemSuggestionsSuggestionsItemJudgement];
-
-
-export const ComponentItemSuggestionsSuggestionsItemJudgement = {
-  same: 'same',
-  other: 'other',
-} as const;
-
-export type ComponentItemSuggestionsSuggestionsItem = {
-  /**
-     * The candidate judged.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  proposalId: number;
-  /** `same`: the item is the component; `other`: another place. */
-  judgement: ComponentItemSuggestionsSuggestionsItemJudgement;
-  /** Its confidence, 0 to 1. */
-  confidence: number;
-};
-
-/**
- * Jev's judgement of the candidate items of a site's components (#1272), per candidate it could judge; never applied.
- */
-export interface ComponentItemSuggestions {
-  /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
-  configured: boolean;
-  suggestions: ComponentItemSuggestionsSuggestionsItem[];
-}
-
 /**
  * What the full OpenStreetMap answered about a rough point's namesakes (#2243).
  */
@@ -6898,125 +6833,6 @@ export interface PointNamesakesAnswer {
   found: number;
   /** False where the point had been asked already with its name and coordinate, and the kept answer stands. */
   asked: boolean;
-}
-
-/**
- * Where the hint comes from.
- */
-export type PointHintSuggestionsSuggestionsItemSource = typeof PointHintSuggestionsSuggestionsItemSource[keyof typeof PointHintSuggestionsSuggestionsItemSource];
-
-
-export const PointHintSuggestionsSuggestionsItemSource = {
-  item: 'item',
-  'osm-ref': 'osm-ref',
-  'osm-name': 'osm-name',
-  candidate: 'candidate',
-} as const;
-
-/**
- * `same`: the hint is where the component stands; `other`: another place.
- */
-export type PointHintSuggestionsSuggestionsItemJudgement = typeof PointHintSuggestionsSuggestionsItemJudgement[keyof typeof PointHintSuggestionsSuggestionsItemJudgement];
-
-
-export const PointHintSuggestionsSuggestionsItemJudgement = {
-  same: 'same',
-  other: 'other',
-} as const;
-
-export type PointHintSuggestionsSuggestionsItem = {
-  /**
-     * The roughly placed point the hint is for.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  locationId: number;
-  /** Where the hint comes from. */
-  source: PointHintSuggestionsSuggestionsItemSource;
-  /** The hint's own id: an OpenStreetMap object's (`W194252618`) or a Wikidata item's. */
-  ref: string;
-  /** `same`: the hint is where the component stands; `other`: another place. */
-  judgement: PointHintSuggestionsSuggestionsItemJudgement;
-  /** Its confidence, 0 to 1. */
-  confidence: number;
-};
-
-/**
- * Jev's judgement of the hints of where a site's roughly placed components stand (#1913), per hint it could judge; never applied.
- */
-export interface PointHintSuggestions {
-  /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
-  configured: boolean;
-  suggestions: PointHintSuggestionsSuggestionsItem[];
-}
-
-/**
- * `one`: the two are one place; `two`: two places; `part_of`: one lies within the other, which one being the curator's to say.
- */
-export type MergeProposalSuggestionsSuggestionsItemJudgement = typeof MergeProposalSuggestionsSuggestionsItemJudgement[keyof typeof MergeProposalSuggestionsSuggestionsItemJudgement];
-
-
-export const MergeProposalSuggestionsSuggestionsItemJudgement = {
-  one: 'one',
-  two: 'two',
-  part_of: 'part_of',
-} as const;
-
-export type MergeProposalSuggestionsSuggestionsItem = {
-  /**
-     * The pair judged.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  proposalId: number;
-  /** `one`: the two are one place; `two`: two places; `part_of`: one lies within the other, which one being the curator's to say. */
-  judgement: MergeProposalSuggestionsSuggestionsItemJudgement;
-  /** Its confidence, 0 to 1. */
-  confidence: number;
-};
-
-/**
- * Jev's judgement of the pairs of near places with similar names a place is the lower id of (#1249), per pair it could judge; never applied.
- */
-export interface MergeProposalSuggestions {
-  /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
-  configured: boolean;
-  suggestions: MergeProposalSuggestionsSuggestionsItem[];
-}
-
-/**
- * `visit`: something to see or enter; `part`: a part of a larger place; `object`: a thing kept elsewhere; `nothing`: little or nothing visible; `not-a-place`: a culture, a kingdom or a group of sites; `other-kind`: visited for something the place's kinds do not offer.
- */
-export type VisitSuggestionSuggestionReading = typeof VisitSuggestionSuggestionReading[keyof typeof VisitSuggestionSuggestionReading];
-
-
-export const VisitSuggestionSuggestionReading = {
-  visit: 'visit',
-  part: 'part',
-  object: 'object',
-  nothing: 'nothing',
-  'not-a-place': 'not-a-place',
-  'other-kind': 'other-kind',
-} as const;
-
-/**
- * None where the place is not arriving, or Jev could not read it.
- */
-export type VisitSuggestionSuggestion = {
-  /** `visit`: something to see or enter; `part`: a part of a larger place; `object`: a thing kept elsewhere; `nothing`: little or nothing visible; `not-a-place`: a culture, a kingdom or a group of sites; `other-kind`: visited for something the place's kinds do not offer. */
-  reading: VisitSuggestionSuggestionReading;
-  /** Its confidence, 0 to 1. */
-  confidence: number;
-} | null;
-
-/**
- * Jev's reading of what a visitor finds at a place arriving for a curator (#1768); never applied.
- */
-export interface VisitSuggestion {
-  /** Whether this deployment asks Jev at all. False: no reading, nothing else changes. */
-  configured: boolean;
-  /** None where the place is not arriving, or Jev could not read it. */
-  suggestion: VisitSuggestionSuggestion;
 }
 
 export interface RefuseArrivalBody {
@@ -7491,6 +7307,190 @@ export interface PublishResult {
      * @minItems 1
      */
   placementFailedWorldViews?: PlacementFailure[];
+}
+
+export type ViewSuggestionsSuggestionsItemField = typeof ViewSuggestionsSuggestionsItemField[keyof typeof ViewSuggestionsSuggestionsItemField];
+
+
+export const ViewSuggestionsSuggestionsItemField = {
+  name: 'name',
+  subtitle: 'subtitle',
+  imageUrl: 'imageUrl',
+  location: 'location',
+  wikipediaUrl: 'wikipediaUrl',
+} as const;
+
+export type ViewSuggestionsSuggestionsItem = {
+  field: ViewSuggestionsSuggestionsItemField;
+  /**
+     * The view Jev would show.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+};
+
+/**
+ * Jev's suggested answer to the sources card (#1260), per field it could answer; never applied.
+ */
+export interface ViewSuggestions {
+  /** Whether this deployment asks Jev at all. False: no suggestion, nothing else changes. */
+  configured: boolean;
+  suggestions: ViewSuggestionsSuggestionsItem[];
+}
+
+/**
+ * `same`: the item is the component; `other`: another place.
+ */
+export type ComponentItemSuggestionsSuggestionsItemJudgement = typeof ComponentItemSuggestionsSuggestionsItemJudgement[keyof typeof ComponentItemSuggestionsSuggestionsItemJudgement];
+
+
+export const ComponentItemSuggestionsSuggestionsItemJudgement = {
+  same: 'same',
+  other: 'other',
+} as const;
+
+export type ComponentItemSuggestionsSuggestionsItem = {
+  /**
+     * The candidate judged.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  proposalId: number;
+  /** `same`: the item is the component; `other`: another place. */
+  judgement: ComponentItemSuggestionsSuggestionsItemJudgement;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+};
+
+/**
+ * Jev's judgement of the candidate items of a site's components (#1272), per candidate it could judge; never applied.
+ */
+export interface ComponentItemSuggestions {
+  /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
+  configured: boolean;
+  suggestions: ComponentItemSuggestionsSuggestionsItem[];
+}
+
+/**
+ * Where the hint comes from.
+ */
+export type PointHintSuggestionsSuggestionsItemSource = typeof PointHintSuggestionsSuggestionsItemSource[keyof typeof PointHintSuggestionsSuggestionsItemSource];
+
+
+export const PointHintSuggestionsSuggestionsItemSource = {
+  item: 'item',
+  'osm-ref': 'osm-ref',
+  'osm-name': 'osm-name',
+  candidate: 'candidate',
+} as const;
+
+/**
+ * `same`: the hint is where the component stands; `other`: another place.
+ */
+export type PointHintSuggestionsSuggestionsItemJudgement = typeof PointHintSuggestionsSuggestionsItemJudgement[keyof typeof PointHintSuggestionsSuggestionsItemJudgement];
+
+
+export const PointHintSuggestionsSuggestionsItemJudgement = {
+  same: 'same',
+  other: 'other',
+} as const;
+
+export type PointHintSuggestionsSuggestionsItem = {
+  /**
+     * The roughly placed point the hint is for.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  locationId: number;
+  /** Where the hint comes from. */
+  source: PointHintSuggestionsSuggestionsItemSource;
+  /** The hint's own id: an OpenStreetMap object's (`W194252618`) or a Wikidata item's. */
+  ref: string;
+  /** `same`: the hint is where the component stands; `other`: another place. */
+  judgement: PointHintSuggestionsSuggestionsItemJudgement;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+};
+
+/**
+ * Jev's judgement of the hints of where a site's roughly placed components stand (#1913), per hint it could judge; never applied.
+ */
+export interface PointHintSuggestions {
+  /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
+  configured: boolean;
+  suggestions: PointHintSuggestionsSuggestionsItem[];
+}
+
+/**
+ * `one`: the two are one place; `two`: two places; `part_of`: one lies within the other, which one being the curator's to say.
+ */
+export type MergeProposalSuggestionsSuggestionsItemJudgement = typeof MergeProposalSuggestionsSuggestionsItemJudgement[keyof typeof MergeProposalSuggestionsSuggestionsItemJudgement];
+
+
+export const MergeProposalSuggestionsSuggestionsItemJudgement = {
+  one: 'one',
+  two: 'two',
+  part_of: 'part_of',
+} as const;
+
+export type MergeProposalSuggestionsSuggestionsItem = {
+  /**
+     * The pair judged.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  proposalId: number;
+  /** `one`: the two are one place; `two`: two places; `part_of`: one lies within the other, which one being the curator's to say. */
+  judgement: MergeProposalSuggestionsSuggestionsItemJudgement;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+};
+
+/**
+ * Jev's judgement of the pairs of near places with similar names a place is the lower id of (#1249), per pair it could judge; never applied.
+ */
+export interface MergeProposalSuggestions {
+  /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
+  configured: boolean;
+  suggestions: MergeProposalSuggestionsSuggestionsItem[];
+}
+
+/**
+ * `visit`: something to see or enter; `part`: a part of a larger place; `object`: a thing kept elsewhere; `nothing`: little or nothing visible; `not-a-place`: a culture, a kingdom or a group of sites; `other-kind`: visited for something the place's kinds do not offer.
+ */
+export type VisitSuggestionSuggestionReading = typeof VisitSuggestionSuggestionReading[keyof typeof VisitSuggestionSuggestionReading];
+
+
+export const VisitSuggestionSuggestionReading = {
+  visit: 'visit',
+  part: 'part',
+  object: 'object',
+  nothing: 'nothing',
+  'not-a-place': 'not-a-place',
+  'other-kind': 'other-kind',
+} as const;
+
+/**
+ * None where the place is not arriving, or Jev could not read it.
+ */
+export type VisitSuggestionSuggestion = {
+  /** `visit`: something to see or enter; `part`: a part of a larger place; `object`: a thing kept elsewhere; `nothing`: little or nothing visible; `not-a-place`: a culture, a kingdom or a group of sites; `other-kind`: visited for something the place's kinds do not offer. */
+  reading: VisitSuggestionSuggestionReading;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+} | null;
+
+/**
+ * Jev's reading of what a visitor finds at a place arriving for a curator (#1768); never applied.
+ */
+export interface VisitSuggestion {
+  /** Whether this deployment asks Jev at all. False: no reading, nothing else changes. */
+  configured: boolean;
+  /** None where the place is not arriving, or Jev could not read it. */
+  suggestion: VisitSuggestionSuggestion;
 }
 
 /**
@@ -12885,56 +12885,6 @@ export const postExperiencesByIdMergeProposalsByProposalIdTakeBack = async (id: 
 
 
 
-export const getPostExperiencesByIdViewSuggestionsUrl = (id: number,) => {
-
-
-
-
-  return `/api/experiences/${encodeURIComponent(String(id))}/view-suggestions`
-}
-
-/**
- * Requires a curator or an admin.
- * @summary Ask Jev which source's view of each disputed field a place should show; a suggestion, never applied
- */
-export const postExperiencesByIdViewSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ViewSuggestions> => {
-
-  return apiFetch<ViewSuggestions>(getPostExperiencesByIdViewSuggestionsUrl(id),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-export const getPostExperiencesByIdComponentItemSuggestionsUrl = (id: number,) => {
-
-
-
-
-  return `/api/experiences/${encodeURIComponent(String(id))}/component-item-suggestions`
-}
-
-/**
- * Requires a curator or an admin.
- * @summary Ask Jev whether each candidate item is the component it was proposed for; a suggestion, never applied
- */
-export const postExperiencesByIdComponentItemSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemSuggestions> => {
-
-  return apiFetch<ComponentItemSuggestions>(getPostExperiencesByIdComponentItemSuggestionsUrl(id),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
 export const getPostExperiencesByIdPointNamesakesByLocationIdUrl = (id: number,
     locationId: number,) => {
 
@@ -12952,81 +12902,6 @@ export const postExperiencesByIdPointNamesakesByLocationId = async (id: number,
     locationId: number, options?: Parameters<typeof apiFetch>[1]): Promise<PointNamesakesAnswer> => {
 
   return apiFetch<PointNamesakesAnswer>(getPostExperiencesByIdPointNamesakesByLocationIdUrl(id,locationId),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-export const getPostExperiencesByIdPointHintSuggestionsUrl = (id: number,) => {
-
-
-
-
-  return `/api/experiences/${encodeURIComponent(String(id))}/point-hint-suggestions`
-}
-
-/**
- * Requires a curator or an admin.
- * @summary Ask Jev whether each hint is where a roughly placed component stands; a suggestion, never applied
- */
-export const postExperiencesByIdPointHintSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<PointHintSuggestions> => {
-
-  return apiFetch<PointHintSuggestions>(getPostExperiencesByIdPointHintSuggestionsUrl(id),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-export const getPostExperiencesByIdMergeProposalSuggestionsUrl = (id: number,) => {
-
-
-
-
-  return `/api/experiences/${encodeURIComponent(String(id))}/merge-proposal-suggestions`
-}
-
-/**
- * Requires a curator or an admin.
- * @summary Ask Jev whether each pair of near places is one place, two places or one part of the other; a suggestion, never applied
- */
-export const postExperiencesByIdMergeProposalSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<MergeProposalSuggestions> => {
-
-  return apiFetch<MergeProposalSuggestions>(getPostExperiencesByIdMergeProposalSuggestionsUrl(id),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-export const getPostExperiencesByIdVisitSuggestionUrl = (id: number,) => {
-
-
-
-
-  return `/api/experiences/${encodeURIComponent(String(id))}/visit-suggestion`
-}
-
-/**
- * Requires a curator or an admin.
- * @summary Ask Jev what a visitor finds at an arriving place; a suggestion, never applied
- */
-export const postExperiencesByIdVisitSuggestion = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<VisitSuggestion> => {
-
-  return apiFetch<VisitSuggestion>(getPostExperiencesByIdVisitSuggestionUrl(id),
   {
     ...options,
     method: 'POST'
@@ -13386,6 +13261,131 @@ export const deleteExperiencesByIdRemoveFromRegionByRegionId = async (id: number
   {
     ...options,
     method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdViewSuggestionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/view-suggestions`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev which source's view of each disputed field a place should show; a suggestion, never applied
+ */
+export const postExperiencesByIdViewSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ViewSuggestions> => {
+
+  return apiFetch<ViewSuggestions>(getPostExperiencesByIdViewSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdComponentItemSuggestionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/component-item-suggestions`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev whether each candidate item is the component it was proposed for; a suggestion, never applied
+ */
+export const postExperiencesByIdComponentItemSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemSuggestions> => {
+
+  return apiFetch<ComponentItemSuggestions>(getPostExperiencesByIdComponentItemSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdPointHintSuggestionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/point-hint-suggestions`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev whether each hint is where a roughly placed component stands; a suggestion, never applied
+ */
+export const postExperiencesByIdPointHintSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<PointHintSuggestions> => {
+
+  return apiFetch<PointHintSuggestions>(getPostExperiencesByIdPointHintSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdMergeProposalSuggestionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/merge-proposal-suggestions`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev whether each pair of near places is one place, two places or one part of the other; a suggestion, never applied
+ */
+export const postExperiencesByIdMergeProposalSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<MergeProposalSuggestions> => {
+
+  return apiFetch<MergeProposalSuggestions>(getPostExperiencesByIdMergeProposalSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdVisitSuggestionUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/visit-suggestion`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev what a visitor finds at an arriving place; a suggestion, never applied
+ */
+export const postExperiencesByIdVisitSuggestion = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<VisitSuggestion> => {
+
+  return apiFetch<VisitSuggestion>(getPostExperiencesByIdVisitSuggestionUrl(id),
+  {
+    ...options,
+    method: 'POST'
 
 
   }

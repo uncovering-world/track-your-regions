@@ -20,13 +20,9 @@ import {
   AdmissionPins,
   AdmissionPinHandedBack,
   ComponentItemsAnswered,
-  ComponentItemSuggestions,
-  PointHintSuggestions,
   PointNamesakesAnswer,
   MergeProposalsAnswered,
   MergeProposalTakenBack,
-  MergeProposalSuggestions,
-  VisitSuggestion,
   CurationLog,
   PointItemTakenBack,
   DeclineHeldResult,
@@ -42,7 +38,6 @@ import {
   NearbyPictures,
   WebsiteChecks, PictureClasses,
   ViewsChosen,
-  ViewSuggestions,
   PublishResult,
   RefuseArrivalResult,
   RefuseContentsResult,
@@ -61,18 +56,13 @@ import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
 import { takeBackMergeProposalAnswer } from '../controllers/experience/mergeProposalTakeBackController.js';
-import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
-import { suggestPointHints } from '../controllers/experience/pointHintSuggestionController.js';
 import { askNamesakes } from '../controllers/experience/pointNamesakesController.js';
 import { searchReviewRegions } from '../controllers/experience/reviewRegionSearchController.js';
-import { suggestMergeProposals } from '../controllers/experience/mergeProposalSuggestionController.js';
-import { suggestVisit } from '../controllers/experience/visitSuggestionController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { getWebsiteChecks } from '../controllers/experience/websiteChecksController.js';
 import { getPictureClasses } from '../controllers/experience/pictureClassesController.js';
 import { getRegionTail } from '../controllers/experience/experienceTailController.js';
-import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
 import { CrowdingAnswered, CrowdingGroup, CrowdingPlaceView, ShadowedArrivals } from '../api/responses/crowding.js';
 import {
@@ -861,29 +851,6 @@ export const experienceCurationRoutes = [
     response: MergeProposalTakenBack,
     handler: takeBackMergeProposalAnswer,
   }),
-  // Jev's suggestion for that card (#1260): the stored one for the views as
-  // they stand, or a new one asked for — a POST, since a call may be paid for.
-  defineRoute({
-    method: 'post', path: '/:id/view-suggestions', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
-    summary: 'Ask Jev which source\'s view of each disputed field a place should show; a suggestion, never applied',
-    params: idParamSchema,
-    response: ViewSuggestions,
-    handler: suggestViews,
-  }),
-  // Jev's judgement of a site's candidate component items (#1272): the stored
-  // one for each candidate as it stands, or a new one asked for — one call for
-  // the card's candidates, a POST since it may be paid for.
-  defineRoute({
-    method: 'post', path: '/:id/component-item-suggestions', access: 'curator', cache: 'no-store',
-    limiter: authenticatedLimiter,
-    summary: "Ask Jev whether each candidate item is the component it was proposed for; a suggestion, never applied",
-    params: idParamSchema,
-    response: ComponentItemSuggestions,
-    handler: suggestComponentItems,
-  }),
-  // Jev's judgement of the hints of where a site's roughly placed components
-  // stand (#1913): the stored one for each hint as it stands, or a new one
-  // asked for — one call for the card's hints, a POST since it may be paid for.
   // A rough point's namesakes asked of the full OpenStreetMap from the card
   // (#2243): a live question to the public Overpass instances, limited as the
   // card's other live reads are.
@@ -894,35 +861,6 @@ export const experienceCurationRoutes = [
     params: pointNamesakesParamsSchema,
     response: PointNamesakesAnswer,
     handler: askNamesakes,
-  }),
-  defineRoute({
-    method: 'post', path: '/:id/point-hint-suggestions', access: 'curator', cache: 'no-store',
-    limiter: authenticatedLimiter,
-    summary: 'Ask Jev whether each hint is where a roughly placed component stands; a suggestion, never applied',
-    params: idParamSchema,
-    response: PointHintSuggestions,
-    handler: suggestPointHints,
-  }),
-  // Jev's judgement of a place's pairs of near places with similar names
-  // (#1249): the stored one for each pair as it stands, or a new one asked for
-  // — one call for the card's pairs, a POST since it may be paid for.
-  defineRoute({
-    method: 'post', path: '/:id/merge-proposal-suggestions', access: 'curator', cache: 'no-store',
-    limiter: authenticatedLimiter,
-    summary: 'Ask Jev whether each pair of near places is one place, two places or one part of the other; a suggestion, never applied',
-    params: idParamSchema,
-    response: MergeProposalSuggestions,
-    handler: suggestMergeProposals,
-  }),
-  // Jev's reading of what a visitor finds at an arriving place (#1768): the
-  // stored one for the place as it stands, or a new one asked for — a POST,
-  // since a call may be paid for.
-  defineRoute({
-    method: 'post', path: '/:id/visit-suggestion', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
-    summary: 'Ask Jev what a visitor finds at an arriving place; a suggestion, never applied',
-    params: idParamSchema,
-    response: VisitSuggestion,
-    handler: suggestVisit,
   }),
 
   // The no that the two gated kinds without one lacked (#852, ADR-0053): keeping

@@ -15417,106 +15417,6 @@
         }
       }
     },
-    "/api/experiences/{id}/view-suggestions": {
-      "post": {
-        "operationId": "postExperiencesByIdViewSuggestions",
-        "summary": "Ask Jev which source's view of each disputed field a place should show; a suggestion, never applied",
-        "tags": [
-          "experiences"
-        ],
-        "description": "Requires a curator or an admin.",
-        "x-access": "curator",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 2147483647
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The answer.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ViewSuggestions"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/experiences/{id}/component-item-suggestions": {
-      "post": {
-        "operationId": "postExperiencesByIdComponentItemSuggestions",
-        "summary": "Ask Jev whether each candidate item is the component it was proposed for; a suggestion, never applied",
-        "tags": [
-          "experiences"
-        ],
-        "description": "Requires a curator or an admin.",
-        "x-access": "curator",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 2147483647
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The answer.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ComponentItemSuggestions"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/experiences/{id}/point-namesakes/{locationId}": {
       "post": {
         "operationId": "postExperiencesByIdPointNamesakesByLocationId",
@@ -15560,156 +15460,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PointNamesakesAnswer"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/experiences/{id}/point-hint-suggestions": {
-      "post": {
-        "operationId": "postExperiencesByIdPointHintSuggestions",
-        "summary": "Ask Jev whether each hint is where a roughly placed component stands; a suggestion, never applied",
-        "tags": [
-          "experiences"
-        ],
-        "description": "Requires a curator or an admin.",
-        "x-access": "curator",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 2147483647
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The answer.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PointHintSuggestions"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/experiences/{id}/merge-proposal-suggestions": {
-      "post": {
-        "operationId": "postExperiencesByIdMergeProposalSuggestions",
-        "summary": "Ask Jev whether each pair of near places is one place, two places or one part of the other; a suggestion, never applied",
-        "tags": [
-          "experiences"
-        ],
-        "description": "Requires a curator or an admin.",
-        "x-access": "curator",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 2147483647
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The answer.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MergeProposalSuggestions"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/experiences/{id}/visit-suggestion": {
-      "post": {
-        "operationId": "postExperiencesByIdVisitSuggestion",
-        "summary": "Ask Jev what a visitor finds at an arriving place; a suggestion, never applied",
-        "tags": [
-          "experiences"
-        ],
-        "description": "Requires a curator or an admin.",
-        "x-access": "curator",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 2147483647
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The answer.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VisitSuggestion"
                 }
               }
             }
@@ -16340,6 +16090,256 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RegionMembershipResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/view-suggestions": {
+      "post": {
+        "operationId": "postExperiencesByIdViewSuggestions",
+        "summary": "Ask Jev which source's view of each disputed field a place should show; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewSuggestions"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/component-item-suggestions": {
+      "post": {
+        "operationId": "postExperiencesByIdComponentItemSuggestions",
+        "summary": "Ask Jev whether each candidate item is the component it was proposed for; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComponentItemSuggestions"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/point-hint-suggestions": {
+      "post": {
+        "operationId": "postExperiencesByIdPointHintSuggestions",
+        "summary": "Ask Jev whether each hint is where a roughly placed component stands; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PointHintSuggestions"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/merge-proposal-suggestions": {
+      "post": {
+        "operationId": "postExperiencesByIdMergeProposalSuggestions",
+        "summary": "Ask Jev whether each pair of near places is one place, two places or one part of the other; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeProposalSuggestions"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/visit-suggestion": {
+      "post": {
+        "operationId": "postExperiencesByIdVisitSuggestion",
+        "summary": "Ask Jev what a visitor finds at an arriving place; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitSuggestion"
                 }
               }
             }

@@ -13,6 +13,7 @@ import { aiRoutes } from './aiRoutes.js';
 import { authRoutes } from './authRoutes.js';
 import { divisionRoutes } from './divisionRoutes.js';
 import { experienceCurationRoutes, experienceReadRoutes } from './experienceRoutes.js';
+import { experienceSuggestionRoutes } from './experienceSuggestionRoutes.js';
 import { geocodeRoutes } from './geocodeRoutes.js';
 import { healthRoutes } from './healthRoutes.js';
 import { userRoutes } from './userRoutes.js';
@@ -35,6 +36,6 @@ export const MOUNTS: readonly Mount[] = [
   // The reads first: none of them is a route of a method and a shape a
   // curation route shares, and `routerOf` refuses any order in which one would
   // answer for another.
-  { prefix: '/api/experiences', routes: [...experienceReadRoutes, ...experienceCurationRoutes] },
+  { prefix: '/api/experiences', routes: [...experienceReadRoutes, ...experienceCurationRoutes, ...experienceSuggestionRoutes] },
   { prefix: '/api/geocode', routes: geocodeRoutes },
 ];
