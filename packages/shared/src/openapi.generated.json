@@ -23577,7 +23577,8 @@
                 "type": "string",
                 "enum": [
                   "md5",
-                  "sha1"
+                  "sha1",
+                  "sha256"
                 ]
               },
               {

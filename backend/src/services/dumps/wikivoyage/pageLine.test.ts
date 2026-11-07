@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { PageReader, unescapeXml, type DumpPage } from './pageLine.js';
 
 /**
- * Reading English Wikivoyage's `pages-articles` XML (#2089), in the shape the
- * 20261001 dump writes a page: the page's own id before its revision's, a
- * redirect's target as an attribute, and a text over many lines.
+ * Reading English Wikivoyage's XML content export (#2089, #2355), in the
+ * shape the 2026-10-01 export writes a page: the page's own id before its
+ * revision's, a redirect's target as an attribute, and a text over many lines.
  */
 
 const page = (lines: string[]) => ['  <page>', ...lines, '  </page>'];

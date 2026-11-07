@@ -4,8 +4,9 @@ import type { DumpConsumer } from '../read.js';
 
 /**
  * English Wikivoyage's pages kept from its dump (#2089), against PostgreSQL,
- * with the files' lines stood in, shaped as the 20261001 run wrote its
- * `pages-articles` XML and its `page_props` table: the Algeria article with
+ * with the files' lines stood in, shaped as the 2026-10-01 content export
+ * writes its XML (#2355) and the 20261001 run its `page_props` table: the
+ * Algeria article with
  * its item, the Alger redirect, a template the build passes over, and an
  * article whose page properties name no item.
  */
@@ -15,14 +16,21 @@ const DATE = '20261001';
 const ALGERIA_ITEM = 'Q99208901';
 const TEMPLATE_ITEM = 'Q99208902';
 
+/** A file of the wiki's run, the page properties. */
 const file = (suffix: string): DumpFile => ({
   key: 'wikivoyage-pages', fileName: `enwikivoyage-${DATE}-${suffix}`,
   url: `https://dumps.wikimedia.org/enwikivoyage/${DATE}/enwikivoyage-${DATE}-${suffix}`,
-  date: '2026-10-01', checksum: { kind: 'sha1', value: 'a'.repeat(40) }, expectedBytes: 100,
-  compression: suffix.endsWith('.bz2') ? 'bzip2' : 'gzip',
+  date: '2026-10-01', checksum: { kind: 'sha1', value: 'a'.repeat(40) }, expectedBytes: 100, compression: 'gzip',
 });
-const ARTICLES = 'pages-articles.xml.bz2';
+/** The build's own file, the month's content export. */
+const ARTICLES: DumpFile = {
+  key: 'wikivoyage-pages', fileName: 'enwikivoyage-2026-10-01-p1p221280.xml.bz2',
+  url: 'https://dumps.wikimedia.org/other/mediawiki_content_current/enwikivoyage/2026-10-01/xml/bzip2/enwikivoyage-2026-10-01-p1p221280.xml.bz2',
+  date: '2026-10-01', checksum: { kind: 'sha256', value: 'c'.repeat(64) }, expectedBytes: 100, compression: 'bzip2',
+};
 const PROPS = 'page_props.sql.gz';
+/** The run directories the build asked for page properties in. */
+const propsAskedOf: string[] = [];
 
 const page = (lines: string[]) => ['  <page>', ...lines, '  </page>'];
 const XML = [
@@ -55,7 +63,7 @@ let articleLines: number | null = null;
 vi.mock('../read.js', () => ({
   readDump: vi.fn(async (dumpFile: DumpFile, consumer: DumpConsumer) => {
     const all = dumpFile.fileName.endsWith(PROPS) ? PROPS_LINES : XML;
-    const lines = dumpFile.fileName.endsWith(ARTICLES) && articleLines !== null ? all.slice(0, articleLines) : all;
+    const lines = dumpFile.fileName === ARTICLES.fileName && articleLines !== null ? all.slice(0, articleLines) : all;
     for (const line of lines) await consumer.line(line);
     if (dumpFile.fileName === damaged) {
       await consumer.abort();
@@ -67,8 +75,10 @@ vi.mock('../read.js', () => ({
 }));
 vi.mock('../catalog.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../catalog.js')>(),
-  wikiRunFile: vi.fn(async (_read: unknown, _key: unknown, _wiki: string, _dir: string, _job: string, suffix: string) =>
-    (propsFinished ? file(suffix) : null)),
+  wikiRunFile: vi.fn(async (_read: unknown, _key: unknown, _wiki: string, dir: string, _job: string, suffix: string) => {
+    propsAskedOf.push(dir);
+    return propsFinished ? file(suffix) : null;
+  }),
 }));
 
 const { pool } = await import('../../../db/index.js');
@@ -85,7 +95,7 @@ async function newBuild(): Promise<number> {
   )).rows[0].id;
 }
 
-const build = () => buildPages(file(ARTICLES), { buildId, signal: new AbortController().signal, onPhase: () => undefined });
+const build = () => buildPages(ARTICLES, { buildId, signal: new AbortController().signal, onPhase: () => undefined });
 const kept = async () => (await pool.query(
   'SELECT title, page_id, redirect_to, wikitext, wikidata_id FROM wikivoyage_pages ORDER BY title',
 )).rows;
@@ -121,6 +131,8 @@ describe("English Wikivoyage's pages from its dump (#2089)", () => {
       .toEqual([{ articles: 2, redirects: 1, items: 1 }]);
     expect(await latestPages()).toMatchObject({ dumpDate: '2026-10-01', needs: 'nothing' });
     expect(result.summary).toContain('kept 2 articles and 1 redirects');
+    // The export of 2026-10-01 is read with the page properties of the run of the same date.
+    expect(propsAskedOf.at(-1)).toBe('20261001');
   });
 
   it('replaces the pages in place whole on the next build', async () => {
@@ -144,7 +156,7 @@ describe("English Wikivoyage's pages from its dump (#2089)", () => {
   it('leaves the pages in place where the article file fails its checksum or ends inside a text', async () => {
     await build();
     buildId = await newBuild();
-    damaged = file(ARTICLES).fileName;
+    damaged = ARTICLES.fileName;
     await expect(build()).rejects.toThrow('checksum mismatch');
 
     damaged = null;
