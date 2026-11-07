@@ -42,7 +42,7 @@ indexes onto its copy.
 | `wikipedia-redirects` | `enwiki/<date>/enwiki-<date>-redirect.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{redirect,page}.sql.gz` of every counted edition | the sha1 and size each edition's `dumpstatus.json` gives (`wikipediaTableFile`) |
 | `wikidata-redirects` | `wikidatawiki/<date>/wikidatawiki-<date>-redirect.sql.gz`, and its build reads `wikidatawiki-<date>-page.sql.gz` of the same run | the sha1 and size the run's `dumpstatus.json` gives (`wikipediaTableFile`) |
 | `wikivoyage-usage` | `enwikivoyage/<date>/enwikivoyage-<date>-wbc_entity_usage.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{wbc_entity_usage,page}.sql.gz` of every Wikivoyage edition, English Wikivoyage's page table included | the sha1 and size each edition's `dumpstatus.json` gives its `wbcentityusagetable` job (`wikiRunFile`) |
-| `wikivoyage-pages` | `enwikivoyage/<date>/enwikivoyage-<date>-pages-articles.xml.bz2`, and its build reads `enwikivoyage-<date>-page_props.sql.gz` of the same run | the sha1 and size the run's `dumpstatus.json` gives its `articlesdump` and `pagepropstable` jobs (`wikiRunFile`) |
+| `wikivoyage-pages` | `other/mediawiki_content_current/enwikivoyage/<YYYY-MM-DD>/xml/bzip2/enwikivoyage-<YYYY-MM-DD>-p<first>p<last>.xml.bz2`, the month's MediaWiki Content File Export in one part (#2355), and its build reads `enwikivoyage/<YYYYMMDD>/enwikivoyage-<YYYYMMDD>-page_props.sql.gz` of the wiki's run of the same date | the sha256 the export's `SHA256SUMS` gives, which is written only once the whole export is, and the host's `Content-Length`; the page properties by the sha1 and size the run's `dumpstatus.json` gives its `pagepropstable` job (`wikiRunFile`) |
 | `osm-planet` | `planet.openstreetmap.org/pbf/planet-<yymmdd>.osm.pbf`, the weekly planet named by its Monday | the md5 in `planet-<yymmdd>.osm.pbf.md5` beside it, and the host's `Content-Length` |
 
 Each descriptor's `resolve()` reads the host's own listing (for the planet,
@@ -153,8 +153,11 @@ room for it; a machine without one streams.
 **One copy per dump** (`localCopies.ts`, #1456). Every file the catalog names
 carries its date as the second part of its name
 (`wikidata-20261005-all.json.gz`, `enwiki-20261001-page.sql.gz`,
-`pageviews-202609-user.bz2`), and `copyOf` reads a name's dump and date, with
-its leftovers: a ranged download's `.part` and state, a subset build's terms
+`pageviews-202609-user.bz2`), save a content export's part, whose date is
+dashed and followed by the page range it holds, which moves from month to month
+(`enwikivoyage-2026-10-01-p1p221280.xml.bz2`, read as the dump
+`enwikivoyage-*-p*.xml.bz2` of `20261001`). `copyOf` reads a name's dump and
+date, with its leftovers: a ranged download's `.part` and state, a subset build's terms
 spool and first-pass result. A dump dated by day keeps one copy: once a copy
 is verified, `readDump` removes the older copies of its dump (`olderCopies`,
 matched by the catalog's `isFileName`); before a download, it removes them
@@ -827,13 +830,24 @@ tree, where two runs a few days apart against the live Action API built
 different ones (`docs/tech/world-view-import.md` § The copy the extraction
 reads).
 
-The build first finds the same run's `page_props` table, verified by the sha1
-and size its `pagepropstable` job gives, and reads it from the host as a
-stream, about 1.6 MB on 2026-10-01: each page's `wikibase_item`, kept only
-where it is an item id (`Q…`). A run that has not finished it fails the build
-and the pages in place stay. Then it reads the run's `pages-articles` XML, the
-build's own file, about 132 MB of bzip2 on 2026-10-01, a line at a time
-(`PageReader`, `pageLine.ts`):
+The build first finds the `page_props` table of the wiki's run of the
+export's date (the export of 2026-10-01 goes with the run `20261001`),
+verified by the sha1 and size its `pagepropstable` job gives, and reads it
+from the host as a stream, about 1.6 MB on 2026-10-01: each page's
+`wikibase_item`, kept only where it is an item id (`Q…`). A run that has not
+finished it fails the build and the pages in place stay. Then it reads the
+build's own file, the month's MediaWiki Content File Export of the wiki's
+current revisions, about 193 MB of bzip2 on 2026-10-01, a line at a time
+(`PageReader`, `pageLine.ts`). The export is a monthly snapshot of every
+namespace as of 00:00 UTC on the 1st, published about a week later in the
+legacy dumps' own `export-0.11` schema. `resolve()` refuses an export the host
+splits into more than one part rather than read one of them. Compared on
+2026-10-01 with the run's `pages-articles` XML, which dumps.wikimedia.org calls
+deprecated, the export named the same 68 711 pages of namespace 0 as of its
+cutoff. The 17 pages only the legacy file held, its one renamed
+title and its 147 newer texts were all edits made after 00:00 UTC, while that
+run was being written. No page differed where both files held a revision
+from before the cutoff. The reader works the same on either file:
 
 - a page is `<page>` … `</page>`, and its id is the first `<id>`, before its
   revision's and its contributor's;
