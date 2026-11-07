@@ -505,11 +505,12 @@ export const UserSearchResults = z.array(UserSearchResult)
 export type UserSearchResults = z.infer<typeof UserSearchResults>;
 
 const JevQuestionUsage = z.strictObject({
-  question: z.enum(['views', 'componentItems', 'mergeProposals', 'visits', 'pointHints']).describe(
+  question: z.enum(['views', 'componentItems', 'mergeProposals', 'visits', 'pointHints', 'kinds']).describe(
     'Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), '
-    + 'an arriving place\'s card (#1768), or the Where is it? card\'s hints (#1913).',
+    + 'an arriving place\'s card on what a visitor finds (#1768), the Where is it? card\'s hints (#1913), or an '
+    + 'arriving place\'s card on which kind it belongs to (#2342).',
   ),
-  calls: z.number().int().describe('Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards and per hint on the Where is it? card.'),
+  calls: z.number().int().describe('Suggestions asked for: one call each on the sources card and per reading of an arriving place, one question each on the component-items and near-places cards and per hint on the Where is it? card.'),
   inputTokens: z.number().int(),
   usd: z.number(),
   compared: z.number().int().describe("Curators' answers for which Jev had suggested one for the same question."),

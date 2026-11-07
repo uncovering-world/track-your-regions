@@ -340,6 +340,13 @@ kind (`coverage_expectation_kinds.type`).
   kind lives only in `coverage_kinds`; a live kind's record there points at its
   `experience_kinds` row.
 - **Keys are the files' slugs**, so a reload keeps every key.
+- **The register is serving, the survey workbench** (ADR-0124). An arrival's card offers Jev the
+  live kinds and the planned place kinds with their definitions (#2342, `kindSuggestions.ts`), and
+  a table a curator route reads is serving, so `coverage_kinds` sits in `public` (migration 220)
+  while the other tables stay in `workbench`, their keys into it holding while the two tiers share
+  a database. A curator's answer that a place belongs to a planned kind
+  (`experience_planned_kind_answers`) names the kind by its slug with no key, so a load that
+  empties the register keeps it, and the kind's candidates are found by that slug once it is built.
 - **A filing carries its type** in the kind's own vocabulary: a church, a mosque, a temple, a
   bridge, a square (#2246). No file states it. The load computes it at every load, from the kind's
   rule of the day, with `readFilingTypes` (`backend/src/services/catalogueCoverage/entryTypes.ts`):

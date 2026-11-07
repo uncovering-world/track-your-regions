@@ -255,6 +255,16 @@ const VISIT_SUGGESTION_WRITE = 'experience_visit_suggestions is written by its w
   + 'named write to src/services/sync/visit/visitSuggestions.ts, taking the place\'s LockedExperience token.';
 const VISIT_SUGGESTION_WRITE_RULES = spelledWriteRules('experience_visit_suggestions', VISIT_SUGGESTION_WRITE);
 
+/** Jev's reading of which kind an arriving place belongs to (#2342): `kindSuggestions.ts`. */
+const KIND_SUGGESTION_WRITE = 'experience_kind_suggestions is written by its writer module only (ADR-0077): add a '
+  + 'named write to src/controllers/experience/kindSuggestions.ts, taking the place\'s LockedExperience token.';
+const KIND_SUGGESTION_WRITE_RULES = spelledWriteRules('experience_kind_suggestions', KIND_SUGGESTION_WRITE);
+
+/** A curator's answer whether a place belongs to a planned kind (#2342): `plannedKindAnswers.ts`. */
+const PLANNED_KIND_ANSWER_WRITE = 'experience_planned_kind_answers is written by its writer module only (ADR-0077): add '
+  + 'a named write to src/controllers/experience/plannedKindAnswers.ts, taking the place\'s LockedExperience token.';
+const PLANNED_KIND_ANSWER_WRITE_RULES = spelledWriteRules('experience_planned_kind_answers', PLANNED_KIND_ANSWER_WRITE);
+
 /**
  * A curator's question about a place with nothing to see (#1770): the run's
  * `visitQuestions.ts`, which raises it, and the curator's answer in
@@ -454,6 +464,7 @@ const SOURCE_RULE_FAMILIES = [
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
   VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES, FIND_SITE_LINK_WRITE_RULES,
+  KIND_SUGGESTION_WRITE_RULES, PLANNED_KIND_ANSWER_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
 ];
 
@@ -465,6 +476,7 @@ const TABLE_WRITE_FAMILIES = [
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, POINT_HINT_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   MERGE_SUGGESTION_WRITE_RULES,
   VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES, FIND_SITE_LINK_WRITE_RULES,
+  KIND_SUGGESTION_WRITE_RULES, PLANNED_KIND_ANSWER_WRITE_RULES,
 ];
 
 /**
@@ -723,6 +735,18 @@ export default [
     files: ['src/services/sync/visit/visitSuggestions.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(VISIT_SUGGESTION_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/controllers/experience/kindSuggestions.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(KIND_SUGGESTION_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/controllers/experience/plannedKindAnswers.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(PLANNED_KIND_ANSWER_WRITE_RULES),
     },
   },
   {

@@ -2,20 +2,23 @@
  * Jev's suggestions on the review queue's cards (ADR-0087), mounted at
  * /api/experiences with the curation routes (ADR-0071). Each is a POST,
  * since a call may be made and paid for; each answers what Jev suggests and
- * applies nothing, and a curator decides on the card.
+ * applies nothing, and a curator decides on the card. The one write here is a
+ * curator's answer about a planned kind, which no reader sees.
  */
 
 import { defineRoute } from '../api/route.js';
 import {
-  ComponentItemSuggestions, MergeProposalSuggestions, PointHintSuggestions, ViewSuggestions, VisitSuggestion,
+  ComponentItemSuggestions, KindSuggestion, MergeProposalSuggestions, PlannedKindAnswered, PointHintSuggestions,
+  ViewSuggestions, VisitSuggestion,
 } from '../api/responses/curation.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
+import { answerPlannedKind, suggestKind } from '../controllers/experience/kindSuggestionController.js';
 import { suggestMergeProposals } from '../controllers/experience/mergeProposalSuggestionController.js';
 import { suggestPointHints } from '../controllers/experience/pointHintSuggestionController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { suggestVisit } from '../controllers/experience/visitSuggestionController.js';
 import { authenticatedLimiter } from '../middleware/rateLimiter.js';
-import { idParamSchema } from '../types/index.js';
+import { idParamSchema, plannedKindAnswerBodySchema } from '../types/index.js';
 
 export const experienceSuggestionRoutes = [
   // Jev's suggestion for the card that asks which source's view a place shows
@@ -70,5 +73,25 @@ export const experienceSuggestionRoutes = [
     params: idParamSchema,
     response: VisitSuggestion,
     handler: suggestVisit,
+  }),
+  // Jev's reading of which kind, live or planned, an arriving place belongs
+  // to (#2342): the stored one for the place and the kinds as they stand, or
+  // a new one asked for — a POST, since a call may be paid for.
+  defineRoute({
+    method: 'post', path: '/:id/kind-suggestion', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Ask Jev which kind, live or planned, an arriving place belongs to; a suggestion, never applied',
+    params: idParamSchema,
+    response: KindSuggestion,
+    handler: suggestKind,
+  }),
+  // The curator's answer to that reading where it names a planned kind
+  // (#2342): one row written under the place's lock, which no reader sees.
+  defineRoute({
+    method: 'post', path: '/:id/planned-kind-answer', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Record whether an arriving place belongs to a kind the coverage register plans, for when it is built',
+    params: idParamSchema,
+    body: plannedKindAnswerBodySchema,
+    response: PlannedKindAnswered,
+    handler: answerPlannedKind,
   }),
 ];

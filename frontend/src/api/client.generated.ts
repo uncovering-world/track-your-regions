@@ -7494,6 +7494,109 @@ export interface VisitSuggestion {
 }
 
 /**
+ * `live`: a kind of the catalogue; `planned`: a place kind the coverage register plans; `none`: neither.
+ */
+export type KindSuggestionSuggestionReading = typeof KindSuggestionSuggestionReading[keyof typeof KindSuggestionSuggestionReading];
+
+
+export const KindSuggestionSuggestionReading = {
+  live: 'live',
+  planned: 'planned',
+  none: 'none',
+} as const;
+
+/**
+ * The place's membership in that kind, where it has one, so it cannot be put into it: `offered`, readers find it there; `arriving`, it waits there too, for a curator or behind better-known places of a crowded city; `kept_out`, a rule or a curator kept it out. Null where it has none.
+ */
+export type KindSuggestionSuggestionKindHeld = typeof KindSuggestionSuggestionKindHeld[keyof typeof KindSuggestionSuggestionKindHeld] | null;
+
+
+export const KindSuggestionSuggestionKindHeld = {
+  offered: 'offered',
+  arriving: 'arriving',
+  kept_out: 'kept_out',
+} as const;
+
+/**
+ * The live kind Jev names; null for any other reading.
+ */
+export type KindSuggestionSuggestionKind = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** The place's membership in that kind, where it has one, so it cannot be put into it: `offered`, readers find it there; `arriving`, it waits there too, for a curator or behind better-known places of a crowded city; `kept_out`, a rule or a curator kept it out. Null where it has none. */
+  held: KindSuggestionSuggestionKindHeld;
+} | null;
+
+/**
+ * The planned kind Jev names; null for any other reading.
+ */
+export type KindSuggestionSuggestionPlannedKind = {
+  /** The register's slug. */
+  slug: string;
+  name: string;
+  /** The issue that owns building it, where the register names one. */
+  issue: number | null;
+  /**
+     * A curator's answer whether the place belongs to it; null until answered.
+     * @nullable
+     */
+  belongs: boolean | null;
+} | null;
+
+/**
+ * None where the place is not arriving, or Jev could not read it.
+ */
+export type KindSuggestionSuggestion = {
+  /** `live`: a kind of the catalogue; `planned`: a place kind the coverage register plans; `none`: neither. */
+  reading: KindSuggestionSuggestionReading;
+  /** The live kind Jev names; null for any other reading. */
+  kind: KindSuggestionSuggestionKind;
+  /** The planned kind Jev names; null for any other reading. */
+  plannedKind: KindSuggestionSuggestionPlannedKind;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+} | null;
+
+/**
+ * Jev's reading of which kind, live or planned, a place arriving for a curator belongs to (#2342); never applied.
+ */
+export interface KindSuggestion {
+  /** Whether this deployment asks Jev at all. False: no reading, nothing else changes. */
+  configured: boolean;
+  /** None where the place is not arriving, or Jev could not read it. */
+  suggestion: KindSuggestionSuggestion;
+}
+
+export interface PlannedKindAnswerBody {
+  /**
+     * The planned kind's slug in the register.
+     * @maxLength 80
+     * @pattern ^[a-z0-9]+(-[a-z0-9]+)*$
+     */
+  plannedKind: string;
+  /** Whether the place belongs to that kind, as a candidate for when it is built. */
+  belongs: boolean;
+}
+
+/**
+ * A curator's answer whether a place belongs to a kind the coverage register plans (#2342).
+ */
+export interface PlannedKindAnswered {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /** The planned kind's slug in the register. */
+  plannedKind: string;
+  belongs: boolean;
+}
+
+/**
  * One place found by name.
  */
 export interface PlaceResult {
@@ -13388,6 +13491,71 @@ export const postExperiencesByIdVisitSuggestion = async (id: number, options?: P
     method: 'POST'
 
 
+  }
+);}
+
+
+
+export const getPostExperiencesByIdKindSuggestionUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/kind-suggestion`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev which kind, live or planned, an arriving place belongs to; a suggestion, never applied
+ */
+export const postExperiencesByIdKindSuggestion = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<KindSuggestion> => {
+
+  return apiFetch<KindSuggestion>(getPostExperiencesByIdKindSuggestionUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdPlannedKindAnswerUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/planned-kind-answer`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Record whether an arriving place belongs to a kind the coverage register plans, for when it is built
+ */
+export const postExperiencesByIdPlannedKindAnswer = async (id: number,
+    plannedKindAnswerBody: PlannedKindAnswerBody, options?: Parameters<typeof apiFetch>[1]): Promise<PlannedKindAnswered> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<PlannedKindAnswered>(getPostExperiencesByIdPlannedKindAnswerUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(plannedKindAnswerBody)
   }
 );}
 

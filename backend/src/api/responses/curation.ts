@@ -659,6 +659,37 @@ export const VisitSuggestion = z.strictObject({
 }).describe("Jev's reading of what a visitor finds at a place arriving for a curator (#1768); never applied.");
 export type VisitSuggestion = z.infer<typeof VisitSuggestion>;
 
+export const KindSuggestion = z.strictObject({
+  configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no reading, nothing else changes.'),
+  suggestion: z.strictObject({
+    reading: z.enum(CHECK_VALUES.experience_kind_suggestions.reading)
+      .describe('`live`: a kind of the catalogue; `planned`: a place kind the coverage register plans; `none`: neither.'),
+    kind: z.strictObject({
+      id: z.number().int(),
+      name: z.string(),
+      held: z.enum(['offered', 'arriving', 'kept_out']).nullable().describe(
+        'The place\'s membership in that kind, where it has one, so it cannot be put into it: `offered`, readers find it there; '
+        + '`arriving`, it waits there too, for a curator or behind better-known places of a crowded city; '
+        + '`kept_out`, a rule or a curator kept it out. Null where it has none.'),
+    }).nullable().describe('The live kind Jev names; null for any other reading.'),
+    plannedKind: z.strictObject({
+      slug: z.string().describe("The register's slug."),
+      name: z.string(),
+      issue: z.number().int().nullable().describe('The issue that owns building it, where the register names one.'),
+      belongs: z.boolean().nullable().describe("A curator's answer whether the place belongs to it; null until answered."),
+    }).nullable().describe('The planned kind Jev names; null for any other reading.'),
+    confidence: z.number().describe('Its confidence, 0 to 1.'),
+  }).nullable().describe('None where the place is not arriving, or Jev could not read it.'),
+}).describe("Jev's reading of which kind, live or planned, a place arriving for a curator belongs to (#2342); never applied.");
+export type KindSuggestion = z.infer<typeof KindSuggestion>;
+
+export const PlannedKindAnswered = z.strictObject({
+  experienceId: z.number().int(),
+  plannedKind: z.string().describe("The planned kind's slug in the register."),
+  belongs: z.boolean(),
+}).describe("A curator's answer whether a place belongs to a kind the coverage register plans (#2342).");
+export type PlannedKindAnswered = z.infer<typeof PlannedKindAnswered>;
+
 export const NearbyPicture = z.strictObject({
   file: z.string().describe("The file's name on Wikimedia Commons."),
   url: z.string().describe('The address the catalogue stores a picture by: what a pick sends as `imageUrl`.'),

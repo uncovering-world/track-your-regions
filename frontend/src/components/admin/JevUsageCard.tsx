@@ -39,6 +39,7 @@ const QUESTION_WORDS: Record<JevUsage['byQuestion'][number]['question'], string>
   pointHints: 'whether a hint is where a roughly placed component stands',
   mergeProposals: 'what two near places with alike names are',
   visits: 'what a visitor finds at an arriving place',
+  kinds: 'which kind, live or planned, an arriving place belongs to',
 };
 
 export function JevUsageCard() {
