@@ -600,7 +600,7 @@ export const DumpsDumpsItemKeepsNeeds = {
 } as const;
 
 /**
- * Whether the host has been asked for its newest dump since the backend started, and whether it answered the last time.
+ * Whether the dump worker has asked the host for its newest dump, and whether it answered the last time.
  */
 export type DumpsDumpsItemKeepsNewestChecked = typeof DumpsDumpsItemKeepsNewestChecked[keyof typeof DumpsDumpsItemKeepsNewestChecked];
 
@@ -637,11 +637,11 @@ export type DumpsDumpsItemKeeps = {
   /** What the copy needs (#1583): nothing; a re-derive, the code now making its derived tables differently; a build from the newer dump the host lists; or a build from the dump, none being in place or the code now keeping or writing it differently. */
   needs: DumpsDumpsItemKeepsNeeds;
   /**
-     * The newest complete dump the host lists, YYYY-MM-DD, as last learnt (asked at most once a day); null while not known.
+     * The newest complete dump the host lists, YYYY-MM-DD, as the dump worker last learnt it (asked at most once a day); null while not known.
      * @nullable
      */
   newestDumpDate: string | null;
-  /** Whether the host has been asked for its newest dump since the backend started, and whether it answered the last time. */
+  /** Whether the dump worker has asked the host for its newest dump, and whether it answered the last time. */
   newestChecked: DumpsDumpsItemKeepsNewestChecked;
   /** Whether what is kept can be derived again without the dump, which decides whether "Derive again" is offered. */
   rederives: boolean;

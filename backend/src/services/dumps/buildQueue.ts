@@ -86,7 +86,7 @@ async function fileToFind(descriptor: DumpDescriptor, keeper: Keeper | null, kin
   if (kind !== 'keep') throw new Error(`Only a keeping build keeps a year ending on a named month; a ${kind} build reads the newest file`);
   if (from !== 'newest') throw new Error('A year ending on a named month is read from the host, not from the local copy');
   if (descriptor.datedBy !== 'month') throw new Error(`${descriptor.key} is dated by day, not by month: its build keeps no year ending on one`);
-  await keeper?.refuseYearEnd?.(windowEnd, newestDump(descriptor.key).date);
+  await keeper?.refuseYearEnd?.(windowEnd, (await newestDump(descriptor.key)).date);
   // The build reads the eleven months before it by name.
   return pageviewsFileName(`${windowEnd}-01`);
 }

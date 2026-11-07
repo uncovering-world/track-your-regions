@@ -441,7 +441,7 @@ export function DumpsPanel() {
     queryKey: queryKeys.admin.dumps,
     queryFn: getDumps,
     // A queued or running build is polled every three seconds; the worker writes its progress every five.
-    // While the backend has not yet asked the host for its newest dump, every ten, until it has (#1583).
+    // While the dump worker has not yet asked the host for its newest dump, every ten, until it has (#1583, #2353).
     refetchInterval: (query) => {
       const all = query.state.data?.dumps ?? [];
       if (all.some(d => inFlight(d.progress))) return 3000;

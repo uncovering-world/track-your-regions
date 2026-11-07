@@ -83,9 +83,9 @@ export const Dumps = z.strictObject({
       needs: z.enum(['nothing', 'recompute', 'newer-dump', 'rebuild'])
         .describe('What the copy needs (#1583): nothing; a re-derive, the code now making its derived tables differently; a build from the newer dump the host lists; or a build from the dump, none being in place or the code now keeping or writing it differently.'),
       newestDumpDate: z.string().nullable()
-        .describe('The newest complete dump the host lists, YYYY-MM-DD, as last learnt (asked at most once a day); null while not known.'),
+        .describe('The newest complete dump the host lists, YYYY-MM-DD, as the dump worker last learnt it (asked at most once a day); null while not known.'),
       newestChecked: z.enum(['not-yet', 'answered', 'unreachable'])
-        .describe('Whether the host has been asked for its newest dump since the backend started, and whether it answered the last time.'),
+        .describe('Whether the dump worker has asked the host for its newest dump, and whether it answered the last time.'),
       rederives: z.boolean().describe('Whether what is kept can be derived again without the dump, which decides whether "Derive again" is offered.'),
       samples: z.boolean().describe('Whether a sample of the local copy can be cut and the build tried on it, which decides whether "Cut a sample" and "Try the build" are offered.'),
       fromCopy: z.boolean().describe('Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered.'),
