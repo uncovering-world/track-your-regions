@@ -335,9 +335,18 @@ export async function updatePasswordHash(userId: number, passwordHash: string): 
 }
 
 /**
+ * How long the breached-password check may take, the answer's body included,
+ * before a registration or a password change goes on without it (#2356).
+ */
+export const BREACH_CHECK_TIMEOUT_MS = 3000;
+
+/**
  * Check if a password appears in the Have I Been Pwned breached password database.
- * Uses k-Anonymity: only the first 5 characters of the SHA-1 hash are sent to HIBP.
- * Returns the breach count (0 means not found / safe).
+ * Uses k-Anonymity: only the first 5 characters of the SHA-1 hash are sent to HIBP,
+ * with `Add-Padding`, which pads the answer with suffixes counted 0 so its size
+ * says nothing of the prefix; a padded line is no breach.
+ * Returns the breach count (0 means not found / safe). Fails open: a host that
+ * is down, refuses or does not answer within `BREACH_CHECK_TIMEOUT_MS` answers 0.
  */
 export async function checkBreachedPassword(password: string): Promise<number> {
   // eslint-disable-next-line sonarjs/hashing -- SHA-1 is mandated by the Have I Been Pwned k-Anonymity API protocol; only the first 5 hex chars of the digest are sent to the service. The hash is never stored and never used as a password verifier.
@@ -347,7 +356,8 @@ export async function checkBreachedPassword(password: string): Promise<number> {
 
   try {
     const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
-      headers: { 'User-Agent': userAgent() },
+      headers: { 'User-Agent': userAgent(), 'Add-Padding': 'true' },
+      signal: AbortSignal.timeout(BREACH_CHECK_TIMEOUT_MS),
     });
 
     if (!response.ok) return 0; // Fail open — don't block registration if HIBP is down
@@ -356,7 +366,9 @@ export async function checkBreachedPassword(password: string): Promise<number> {
     for (const line of text.split('\n')) {
       const [hashSuffix, count] = line.trim().split(':');
       if (hashSuffix === suffix) {
-        return parseInt(count) || 1;
+        // A padded line counts 0 and is no breach; a match whose count cannot be read still is one.
+        const breaches = Number.parseInt(count, 10);
+        return Number.isFinite(breaches) ? breaches : 1;
       }
     }
 
