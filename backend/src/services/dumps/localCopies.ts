@@ -2,9 +2,12 @@
  * The local copies of a dump in `DUMPS_DIR`, told apart by their date
  * (#1456). Every file the catalog names carries its date as the second part
  * of its name — `wikidata-20261005-all.json.gz`, `enwiki-20261001-page.sql.gz`,
- * `pageviews-202609-user.bz2`, `planet-261012.osm.pbf` — and `copyOf` reads a name's dump and date,
- * with its leftovers: a ranged download's `.part` and its state, and a subset
- * build's terms spool and first-pass result (`.scope`).
+ * `pageviews-202609-user.bz2`, `planet-261012.osm.pbf` — or, for a content
+ * export's part, a dashed date and the page range the part holds, which moves
+ * from month to month: `enwikivoyage-2026-10-01-p1p221280.xml.bz2` (#2355).
+ * `copyOf` reads a name's dump and date, with its leftovers: a ranged
+ * download's `.part` and its state, and a subset build's terms spool and
+ * first-pass result (`.scope`).
  *
  * A dump dated by day keeps one copy: a newer file replaces the older one,
  * since the full entities dump is 156 GB and two of them do not fit where one
@@ -27,8 +30,14 @@ export interface Copy {
   date: string;
 }
 
+/** A content export's part: the date dashed, then the page range, which is part of no copy's identity. */
+const EXPORT_PART = /^([a-z]+)-(\d{4})-(\d{2})-(\d{2})-p\d+p\d+(\..+)$/;
+
 export function copyOf(name: string): Copy | null {
-  const match = DATED.exec(baseName(name));
+  const base = baseName(name);
+  const part = EXPORT_PART.exec(base);
+  if (part) return { dump: `${part[1]}-*-p*${part[5]}`, date: `${part[2]}${part[3]}${part[4]}` };
+  const match = DATED.exec(base);
   return match ? { dump: `${match[1]}-*${match[3]}`, date: match[2] } : null;
 }
 

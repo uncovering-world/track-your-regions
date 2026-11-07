@@ -8,7 +8,8 @@
  * while a 100 GB download is in flight, and on 2026-10-13 Wikidata's
  * `latest-all.json.gz` was a 38-byte stub while the new dump was written. A
  * file counts as complete when its host has published its checksum (Wikidata's
- * `sha1sums.txt`, a Wikipedia run's `dumpstatus.json`); the monthly pageview
+ * `sha1sums.txt`, a Wikipedia run's `dumpstatus.json`, a content export's
+ * `SHA256SUMS`); the monthly pageview
  * files have none, so their size and a clean end of the compressed stream are
  * what verifies them (`read.ts`).
  *
@@ -37,7 +38,7 @@ export interface DumpFile {
   url: string;
   /** The dump's own date, `YYYY-MM-DD`. */
   date: string;
-  checksum: { kind: 'sha1' | 'md5'; value: string } | null;
+  checksum: { kind: 'sha1' | 'md5' | 'sha256'; value: string } | null;
   expectedBytes: number | null;
   /**
    * How the file's text is decoded to lines, or `none` for a binary file a
@@ -108,6 +109,15 @@ export function sha1Of(sums: string, fileName: string): string | null {
   for (const line of sums.split('\n')) {
     const [hash, name] = line.trim().split(/\s+/);
     if (name === fileName && /^[0-9a-f]{40}$/.test(hash ?? '')) return hash;
+  }
+  return null;
+}
+
+/** The sha256 a `SHA256SUMS` gives a file, or null where it lists none. */
+export function sha256Of(sums: string, fileName: string): string | null {
+  for (const line of sums.split('\n')) {
+    const [hash, name] = line.trim().split(/\s+/);
+    if (name === fileName && /^[0-9a-f]{64}$/.test(hash ?? '')) return hash;
   }
   return null;
 }
@@ -207,32 +217,69 @@ const wikivoyageUsage: DumpDescriptor = {
   },
 };
 
-/** The job of a wiki's run that writes its articles' current text, and the file it writes. */
-export const ARTICLES_JOB = 'articlesdump';
-export const ARTICLES_SUFFIX = 'pages-articles.xml.bz2';
 /** The job that writes a wiki's page properties, among them each page's Wikidata item. */
 export const PAGE_PROPS_JOB = 'pagepropstable';
 
 /**
+ * Where MediaWiki Content File Exports publish every wiki's current revisions
+ * (#2355): one dated directory a month, `<wiki>/<YYYY-MM-DD>/xml/bzip2/`, as of
+ * 00:00 UTC on the 1st and published about a week later, with a `SHA256SUMS`
+ * that appears only once the whole export is written. dumps.wikimedia.org calls
+ * the XML dumps of a wiki's own run deprecated and names these their
+ * replacement (https://wikitech.wikimedia.org/wiki/MediaWiki_Content_File_Exports).
+ */
+export const CONTENT_CURRENT = `${WIKIMEDIA_DUMPS}/other/mediawiki_content_current`;
+
+/** An export's part: the wiki, the export's date, and the page ids it holds, both ends inclusive. */
+const CONTENT_PART = /^enwikivoyage-(\d{4}-\d{2}-\d{2})-p\d+p\d+\.xml\.bz2$/;
+
+/** The dated directories an exports listing names (`2026-10-01/`), newest first. */
+export function contentDirectories(html: string): string[] {
+  const dates = [...html.matchAll(/href="(\d{4}-\d{2}-\d{2})\/"/g)].map(m => m[1]);
+  return [...new Set(dates)].sort().reverse();
+}
+
+/**
  * English Wikivoyage's articles, the build's own file: a build reads it and
- * the same run's page properties, and keeps every article's text and item,
- * which the world-view extraction reads instead of the live wiki (#2089).
+ * the same date's page properties of the wiki's own run, and keeps every
+ * article's text and item, which the world-view extraction reads instead of
+ * the live wiki (#2089). Read from the content exports since #2355; a wiki this
+ * size is one part, and an export the host splits into more is refused by name
+ * rather than read in part.
  */
 const wikivoyagePages: DumpDescriptor = {
   key: 'wikivoyage-pages',
   source: 'Wikivoyage editions',
   title: 'English Wikivoyage\'s articles',
   datedBy: 'day',
-  about: 'Every article of English Wikivoyage with its current text, and every redirect with its target. A build reads this '
-    + 'and the same run\'s page properties, and keeps each page with its Wikidata item: the copy the world-view extraction '
-    + 'reads a region\'s page from, so two extractions of one copy agree (#2089).',
-  isFileName: datedName('enwikivoyage-', 8, `-${ARTICLES_SUFFIX}`),
-  async resolve(read, _size, only) {
-    const base = `${WIKIMEDIA_DUMPS}/enwikivoyage`;
-    for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
-      if (only && !only(`enwikivoyage-${dir}-${ARTICLES_SUFFIX}`)) continue;
-      const file = await wikiRunFile(read, 'wikivoyage-pages', 'enwikivoyage', dir, ARTICLES_JOB, ARTICLES_SUFFIX, 'bzip2');
-      if (file) return file;
+  about: 'Every page of English Wikivoyage with its current text, as MediaWiki Content File Exports write it on the 1st '
+    + 'of each month; a build keeps the articles and redirects with their Wikidata items from the same date\'s page '
+    + 'properties: the copy the world-view extraction reads a region\'s page from, so two extractions of one copy agree '
+    + '(#2089, #2355).',
+  isFileName: name => CONTENT_PART.test(name),
+  async resolve(read, size, only) {
+    const base = `${CONTENT_CURRENT}/enwikivoyage`;
+    for (const date of contentDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
+      const dir = `${base}/${date}/xml/bzip2`;
+      let sums: string;
+      try {
+        sums = await read(`${dir}/SHA256SUMS`);
+      } catch (error) {
+        if (error instanceof NotOnHost) continue;
+        throw error;
+      }
+      const parts = sums.split('\n').map(line => line.trim().split(/\s+/)[1] ?? '')
+        .filter(name => CONTENT_PART.exec(name)?.[1] === date);
+      if (parts.length === 0) continue;
+      if (parts.length > 1) {
+        throw new Error(`English Wikivoyage's ${date} export is in ${parts.length} parts, and this build reads one`);
+      }
+      const fileName = safeFileName(parts[0]);
+      if (only && !only(fileName)) continue;
+      const sha256 = sha256Of(sums, fileName);
+      if (!sha256) continue;
+      const url = `${dir}/${fileName}`;
+      return { key: 'wikivoyage-pages', fileName, url, date, checksum: { kind: 'sha256', value: sha256 }, expectedBytes: await size(url), compression: 'bzip2' };
     }
     return null;
   },
