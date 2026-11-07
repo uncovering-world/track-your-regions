@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import lighthouse, { desktopConfig } from 'lighthouse';
 import { computeMedianRun, filterToValidRuns } from 'lighthouse/core/lib/median-run.js';
 import { launch } from 'chrome-launcher';
+import { withoutUnservedBasemap } from '../tests/unservedBasemap.mjs';
 import {
   evaluateAssertions, gotSuccessfulRequestMatching, hasFailures, pageExpectations, validateAssertions,
 } from './assertions.mjs';
@@ -81,8 +82,10 @@ await assertProductionBuild(urls[0]);
 const manifest = [];
 const assertionResults = [];
 
+// No run asks OpenStreetMap's tile servers (#2351): the basemap's requests fail
+// on the machine, so every count and byte line below reads a page without them.
 const chrome = await launch({
-  chromeFlags: budgets.chromeFlags ?? ['--headless=new'],
+  chromeFlags: withoutUnservedBasemap(budgets.chromeFlags ?? ['--headless=new']),
   chromePath: process.env.CHROME_PATH,
 });
 try {
