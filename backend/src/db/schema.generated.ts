@@ -389,6 +389,22 @@ export interface ExperienceKindMembershipsRow {
   crowding_pin: string | null;
 }
 
+/** The table `experience_kind_suggestions`. */
+export interface ExperienceKindSuggestionsRow {
+  id: number;
+  experience_id: number;
+  asked: unknown;
+  article_lead: string | null;
+  reading: string | null;
+  kind_id: number | null;
+  planned_kind: string | null;
+  confidence: string;
+  probabilities: unknown;
+  model: string;
+  input_tokens: number;
+  asked_at: Date;
+}
+
 /** The table `experience_kinds`. */
 export interface ExperienceKindsRow {
   id: number;
@@ -517,6 +533,16 @@ export interface ExperiencePartsRow {
   membership_id: number | null;
   external_ref: string | null;
   created_at: Date;
+}
+
+/** The table `experience_planned_kind_answers`. */
+export interface ExperiencePlannedKindAnswersRow {
+  id: number;
+  experience_id: number;
+  planned_kind: string;
+  belongs: boolean;
+  curator_id: number | null;
+  answered_at: Date;
 }
 
 /** The table `experience_point_hint_suggestions`. */
@@ -1381,7 +1407,7 @@ export const RELATION_SCHEMAS = {
   coverage_expectation_kinds: "workbench",
   coverage_expectations: "workbench",
   coverage_judgements: "workbench",
-  coverage_kinds: "workbench",
+  coverage_kinds: "public",
   coverage_regions: "workbench",
   curator_assignments: "public",
   curator_queue_set_aside: "public",
@@ -1401,6 +1427,7 @@ export const RELATION_SCHEMAS = {
   experience_hand_overs: "public",
   experience_held_decisions: "public",
   experience_kind_memberships: "public",
+  experience_kind_suggestions: "public",
   experience_kinds: "public",
   experience_location_placements: "public",
   experience_location_regions: "public",
@@ -1411,6 +1438,7 @@ export const RELATION_SCHEMAS = {
   experience_pairing_due: "public",
   experience_pairing_rule: "public",
   experience_parts: "public",
+  experience_planned_kind_answers: "public",
   experience_point_hint_suggestions: "public",
   experience_point_hints: "public",
   experience_point_name_asks: "public",
@@ -1601,6 +1629,11 @@ export const COLUMN_WIDTHS = {
     source_membership: 10,
     crowding_pin: 10,
   },
+  experience_kind_suggestions: {
+    reading: 7,
+    planned_kind: 80,
+    model: 40,
+  },
   experience_kinds: {
     name: 255,
   },
@@ -1629,6 +1662,9 @@ export const COLUMN_WIDTHS = {
   },
   experience_parts: {
     reason: 20,
+  },
+  experience_planned_kind_answers: {
+    planned_kind: 80,
   },
   experience_point_hint_suggestions: {
     source: 10,
@@ -1802,6 +1838,9 @@ export const CHECK_VALUES = {
     crowding_pin: ["list", "shadow"],
     curation_state: ["pending", "auto", "verified"],
     source_membership: ["present", "former"],
+  },
+  experience_kind_suggestions: {
+    reading: ["live", "planned", "none"],
   },
   experience_locations: {
     approximate: ["whole-minute", "shared"],

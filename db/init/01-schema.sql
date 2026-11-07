@@ -5684,6 +5684,47 @@ COMMENT ON COLUMN experience_visit_suggestions.asked IS 'The place as the questi
 COMMENT ON COLUMN experience_visit_suggestions.article_lead IS 'The lead of the place''s Wikipedia article Jev read, as it was when asked; null where none could be read.';
 COMMENT ON COLUMN experience_visit_suggestions.input_tokens IS 'What the call cost: Jev is priced per input token, output free.';
 
+-- Jev's reading of which kind, live or planned, an arriving place belongs to,
+-- and a curator's answer about a planned one (#2342, ADR-0087). See
+-- db/migrations/220.
+CREATE TABLE IF NOT EXISTS experience_kind_suggestions (
+    id SERIAL PRIMARY KEY,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    asked JSONB NOT NULL,
+    article_lead TEXT,
+    reading VARCHAR(7) CHECK (reading IN ('live', 'planned', 'none')),
+    kind_id INTEGER REFERENCES experience_kinds(id),
+    planned_kind VARCHAR(80),
+    confidence NUMERIC(4, 3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    probabilities JSONB NOT NULL,
+    model VARCHAR(40) NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    asked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT experience_kind_suggestions_names_its_kind CHECK (
+        (kind_id IS NOT NULL) = (reading IS NOT DISTINCT FROM 'live')
+        AND (planned_kind IS NOT NULL) = (reading IS NOT DISTINCT FROM 'planned'))
+);
+CREATE INDEX IF NOT EXISTS idx_experience_kind_suggestions_place
+    ON experience_kind_suggestions(experience_id, asked_at DESC);
+COMMENT ON TABLE experience_kind_suggestions IS 'Jev''s reading of which kind an arriving place belongs to (#2342, ADR-0087): live, a kind of the catalogue (kind_id); planned, a place kind the coverage register proposes (planned_kind, its slug); none, no kind live or planned; null, an answer the client refused. One row per call, each for the place and the kinds offered as recorded in asked, and stale once either changes. Never applied.';
+COMMENT ON COLUMN experience_kind_suggestions.asked IS 'The place as the question was built from it, its name, countries, description, the map''s tag and its article, with a digest of the kinds Jev was offered, as askedSql states them.';
+COMMENT ON COLUMN experience_kind_suggestions.planned_kind IS 'The register''s slug of a planned kind (coverage_kinds.slug). No key: the register is reloaded from its files, and a planned kind keeps its slug once built.';
+COMMENT ON COLUMN experience_kind_suggestions.input_tokens IS 'What the call cost: Jev is priced per input token, output free.';
+
+CREATE TABLE IF NOT EXISTS experience_planned_kind_answers (
+    id SERIAL PRIMARY KEY,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    planned_kind VARCHAR(80) NOT NULL,
+    belongs BOOLEAN NOT NULL,
+    curator_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    answered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (experience_id, planned_kind)
+);
+CREATE INDEX IF NOT EXISTS idx_experience_planned_kind_answers_kind
+    ON experience_planned_kind_answers(planned_kind) WHERE belongs;
+COMMENT ON TABLE experience_planned_kind_answers IS 'A curator''s answer to Jev''s reading that a place belongs to a kind the coverage register plans (#2342): belongs, the place is a candidate of that kind for when it is built; not, it is not. One row per place and planned kind, the latest answer.';
+COMMENT ON COLUMN experience_planned_kind_answers.planned_kind IS 'The register''s slug of the planned kind (coverage_kinds.slug). No key: the register is reloaded from its files, and a kind keeps its slug once built, which is when its candidates are listed.';
+
 -- A curator's question about a place a kind offers where the visit witnesses
 -- and Jev's reading both say a visitor finds nothing there (#1770, ADR-0087,
 -- ADR-0128 decision 3). See db/migrations/137.
@@ -6205,7 +6246,12 @@ COMMENT ON COLUMN data_assertion_acceptances.accepted_count IS 'The number the a
 -- proposed kind has none.
 --
 -- Keys are the files' own slugs, so a reload keeps every key it had.
-CREATE TABLE IF NOT EXISTS workbench.coverage_kinds (
+--
+-- The register of kinds is serving, the rest of the survey workbench
+-- (ADR-0124): an arrival's card offers Jev the register's live and planned
+-- kinds with their definitions (#2342), and a table a curator route reads is
+-- serving. The survey's keys into it hold while the two tiers share a database.
+CREATE TABLE IF NOT EXISTS coverage_kinds (
     slug VARCHAR(80) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     form VARCHAR(20) NOT NULL CHECK (form IN ('place', 'work', 'food', 'drink', 'event', 'route', 'activity', 'title', 'person', 'species', 'object', 'sound')),
@@ -6221,7 +6267,7 @@ CREATE TABLE IF NOT EXISTS workbench.coverage_kinds (
 -- One record per catalogue kind: two records claiming Archaeology would count
 -- every expectation of it twice.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_kinds_experience_kind
-    ON workbench.coverage_kinds(experience_kind_id) WHERE experience_kind_id IS NOT NULL;
+    ON coverage_kinds(experience_kind_id) WHERE experience_kind_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS workbench.coverage_regions (
     slug VARCHAR(80) PRIMARY KEY,
@@ -6259,7 +6305,7 @@ CREATE INDEX IF NOT EXISTS idx_coverage_expectations_location
 CREATE TABLE IF NOT EXISTS workbench.coverage_expectation_kinds (
     region_slug VARCHAR(80) NOT NULL,
     expectation_slug VARCHAR(120) NOT NULL,
-    kind_slug VARCHAR(80) NOT NULL REFERENCES workbench.coverage_kinds(slug) ON DELETE CASCADE,
+    kind_slug VARCHAR(80) NOT NULL REFERENCES coverage_kinds(slug) ON DELETE CASCADE,
     type TEXT,
     PRIMARY KEY (region_slug, expectation_slug, kind_slug),
     CONSTRAINT coverage_expectation_kinds_entry FOREIGN KEY (region_slug, expectation_slug) REFERENCES workbench.coverage_expectations(region_slug, slug) ON DELETE CASCADE
@@ -6268,10 +6314,10 @@ CREATE TABLE IF NOT EXISTS workbench.coverage_expectation_kinds (
 CREATE INDEX IF NOT EXISTS idx_coverage_expectation_kinds_kind
     ON workbench.coverage_expectation_kinds(kind_slug);
 
-COMMENT ON TABLE workbench.coverage_kinds IS 'The register of kinds of experience, live and proposed, loaded from db/catalogue-coverage/kinds.jsonl (ADR-0081). A copy: the file is the source of truth.';
-COMMENT ON COLUMN workbench.coverage_kinds.form IS 'What a member of the kind is. An expectation is filed only under a kind whose form is its own type.';
-COMMENT ON COLUMN workbench.coverage_kinds.in_venue IS 'True when a member exists only inside a place: a work shown there, something done there. An expectation filed under such a kind names its venue.';
-COMMENT ON COLUMN workbench.coverage_kinds.issue_number IS 'The issue that owns building a proposed kind. Its priority and order live there, never here (ADR-0079).';
+COMMENT ON TABLE coverage_kinds IS 'The register of kinds of experience, live and proposed, loaded from db/catalogue-coverage/kinds.jsonl (ADR-0081). A copy: the file is the source of truth.';
+COMMENT ON COLUMN coverage_kinds.form IS 'What a member of the kind is. An expectation is filed only under a kind whose form is its own type.';
+COMMENT ON COLUMN coverage_kinds.in_venue IS 'True when a member exists only inside a place: a work shown there, something done there. An expectation filed under such a kind names its venue.';
+COMMENT ON COLUMN coverage_kinds.issue_number IS 'The issue that owns building a proposed kind. Its priority and order live there, never here (ADR-0079).';
 COMMENT ON TABLE workbench.coverage_regions IS 'The surveyed regions, loaded from db/catalogue-coverage/regions.jsonl (ADR-0081).';
 COMMENT ON TABLE workbench.coverage_expectations IS 'What two or more independent sources recommend in a surveyed region, loaded from db/catalogue-coverage/expectations/ (ADR-0081). Identified by wikidata_id, same_as and unesco_id, never by name.';
 COMMENT ON COLUMN workbench.coverage_expectations.same_as IS 'Other Wikidata items that are this same place: a building and the museum inside it.';
@@ -6288,7 +6334,7 @@ COMMENT ON COLUMN workbench.coverage_expectation_kinds.type IS 'The type the ent
 CREATE TABLE IF NOT EXISTS workbench.coverage_judgements (
     region_slug VARCHAR(80) NOT NULL REFERENCES workbench.coverage_regions(slug) ON DELETE CASCADE,
     entry_slug VARCHAR(120),
-    kind_slug VARCHAR(80) REFERENCES workbench.coverage_kinds(slug) ON DELETE CASCADE,
+    kind_slug VARCHAR(80) REFERENCES coverage_kinds(slug) ON DELETE CASCADE,
     row_wikidata_id VARCHAR(20) CHECK (row_wikidata_id ~ '^Q[1-9][0-9]*$'),
     cause VARCHAR(20) NOT NULL CHECK (cause IN ('rule-defect', 'door-missing', 'kind-missing', 'part-of-offered', 'offered-elsewhere', 'not-a-must', 'worth-a-visit')),
     issue_number INTEGER CHECK (issue_number > 0),
@@ -6334,7 +6380,7 @@ CREATE TABLE IF NOT EXISTS workbench.coverage_calibration_sources (
 );
 
 CREATE TABLE IF NOT EXISTS workbench.coverage_calibration_entries (
-    kind_slug VARCHAR(80) NOT NULL REFERENCES workbench.coverage_kinds(slug) ON DELETE CASCADE,
+    kind_slug VARCHAR(80) NOT NULL REFERENCES coverage_kinds(slug) ON DELETE CASCADE,
     slug VARCHAR(120) NOT NULL,
     name TEXT NOT NULL,
     wikidata_id VARCHAR(20) NOT NULL CHECK (wikidata_id ~ '^Q[1-9][0-9]*$'),

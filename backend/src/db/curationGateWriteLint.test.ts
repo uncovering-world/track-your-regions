@@ -38,6 +38,8 @@ const MERGE_PROPOSAL = /^experience_merge_proposals is written by its writer mod
 const MERGE_SUGGESTION = /^experience_merge_suggestions is written by its writer module only/;
 const VISIT_SUGGESTION = /^experience_visit_suggestions is written by its writer module only/;
 const VISIT_QUESTION = /^experience_visit_questions is written by its writer modules only/;
+const KIND_SUGGESTION = /^experience_kind_suggestions is written by its writer module only/;
+const PLANNED_KIND_ANSWER = /^experience_planned_kind_answers is written by its writer module only/;
 
 const draws = async (code: string, file: string, message: RegExp) =>
   (await reported(code, file)).some(m => message.test(m));
@@ -93,6 +95,12 @@ describe('the curation gate lint rules', () => {
     ["a question about a place with nothing to see raised by a handler", VISIT_QUESTION,
       'export const q = `INSERT INTO experience_visit_questions (membership_id) VALUES ($1)`;\n',
       'src/controllers/experience/visitSuggestionController.ts'],
+    ["Jev's reading of a place's kind recorded by a handler", KIND_SUGGESTION,
+      'export const q = `INSERT INTO experience_kind_suggestions (experience_id) VALUES ($1)`;\n',
+      'src/controllers/experience/kindSuggestionController.ts'],
+    ["a curator's answer about a planned kind written by a handler", PLANNED_KIND_ANSWER,
+      'export const q = `INSERT INTO experience_planned_kind_answers (experience_id) VALUES ($1)`;\n',
+      'src/controllers/experience/kindSuggestionController.ts'],
     ['a pair of near places answered by a handler', MERGE_PROPOSAL,
       "export const q = `UPDATE experience_merge_proposals SET answer = 'two' WHERE id = $1`;\n",
       'src/controllers/experience/mergeProposalController.ts'],
@@ -131,6 +139,12 @@ describe('the curation gate lint rules', () => {
     ["the writer of Jev's reading of a place", VISIT_SUGGESTION,
       'export const q = `INSERT INTO experience_visit_suggestions (experience_id) VALUES ($1)`;\n',
       'src/services/sync/visit/visitSuggestions.ts'],
+    ["the writer of Jev's reading of a place's kind", KIND_SUGGESTION,
+      'export const q = `INSERT INTO experience_kind_suggestions (experience_id) VALUES ($1)`;\n',
+      'src/controllers/experience/kindSuggestions.ts'],
+    ["the writer of a curator's answer about a planned kind", PLANNED_KIND_ANSWER,
+      'export const q = `INSERT INTO experience_planned_kind_answers (experience_id) VALUES ($1)`;\n',
+      'src/controllers/experience/plannedKindAnswers.ts'],
     ["the run that raises a question about a place with nothing to see", VISIT_QUESTION,
       'export const q = `INSERT INTO experience_visit_questions (membership_id) VALUES ($1)`;\n',
       'src/services/sync/visit/visitQuestions.ts'],

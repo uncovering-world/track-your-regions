@@ -16357,6 +16357,116 @@
         }
       }
     },
+    "/api/experiences/{id}/kind-suggestion": {
+      "post": {
+        "operationId": "postExperiencesByIdKindSuggestion",
+        "summary": "Ask Jev which kind, live or planned, an arriving place belongs to; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KindSuggestion"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/planned-kind-answer": {
+      "post": {
+        "operationId": "postExperiencesByIdPlannedKindAnswer",
+        "summary": "Record whether an arriving place belongs to a kind the coverage register plans, for when it is built",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlannedKindAnswerBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannedKindAnswered"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/geocode/search": {
       "get": {
         "operationId": "getGeocodeSearch",
@@ -28405,15 +28515,16 @@
                     "componentItems",
                     "mergeProposals",
                     "visits",
-                    "pointHints"
+                    "pointHints",
+                    "kinds"
                   ],
-                  "description": "Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), an arriving place's card (#1768), or the Where is it? card's hints (#1913)."
+                  "description": "Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), an arriving place's card on what a visitor finds (#1768), the Where is it? card's hints (#1913), or an arriving place's card on which kind it belongs to (#2342)."
                 },
                 "calls": {
                   "type": "integer",
                   "minimum": -9007199254740991,
                   "maximum": 9007199254740991,
-                  "description": "Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards and per hint on the Where is it? card."
+                  "description": "Suggestions asked for: one call each on the sources card and per reading of an arriving place, one question each on the component-items and near-places cards and per hint on the Where is it? card."
                 },
                 "inputTokens": {
                   "type": "integer",
@@ -28535,6 +28646,144 @@
         ],
         "additionalProperties": false,
         "description": "A place put into a kind no run offers it in, by a curator from its card (#2035)."
+      },
+      "KindSuggestion": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "Whether this deployment asks Jev at all. False: no reading, nothing else changes."
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "reading": {
+                    "type": "string",
+                    "enum": [
+                      "live",
+                      "planned",
+                      "none"
+                    ],
+                    "description": "`live`: a kind of the catalogue; `planned`: a place kind the coverage register plans; `none`: neither."
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "held": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "offered",
+                                  "arriving",
+                                  "kept_out"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "The place's membership in that kind, where it has one, so it cannot be put into it: `offered`, readers find it there; `arriving`, it waits there too, for a curator or behind better-known places of a crowded city; `kept_out`, a rule or a curator kept it out. Null where it has none."
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "held"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The live kind Jev names; null for any other reading."
+                  },
+                  "plannedKind": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string",
+                            "description": "The register's slug."
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "issue": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "The issue that owns building it, where the register names one."
+                          },
+                          "belongs": {
+                            "description": "A curator's answer whether the place belongs to it; null until answered.",
+                            "type": [
+                              "boolean",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "name",
+                          "issue",
+                          "belongs"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The planned kind Jev names; null for any other reading."
+                  },
+                  "confidence": {
+                    "type": "number",
+                    "description": "Its confidence, 0 to 1."
+                  }
+                },
+                "required": [
+                  "reading",
+                  "kind",
+                  "plannedKind",
+                  "confidence"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None where the place is not arriving, or Jev could not read it."
+          }
+        },
+        "required": [
+          "configured",
+          "suggestion"
+        ],
+        "additionalProperties": false,
+        "description": "Jev's reading of which kind, live or planned, a place arriving for a curator belongs to (#2342); never applied."
       },
       "LearnedRule": {
         "type": "object",
@@ -32125,6 +32374,49 @@
         ],
         "additionalProperties": false,
         "description": "A world view whose regions the publication could not recompute."
+      },
+      "PlannedKindAnswerBody": {
+        "type": "object",
+        "properties": {
+          "plannedKind": {
+            "type": "string",
+            "maxLength": 80,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "description": "The planned kind's slug in the register."
+          },
+          "belongs": {
+            "type": "boolean",
+            "description": "Whether the place belongs to that kind, as a candidate for when it is built."
+          }
+        },
+        "required": [
+          "plannedKind",
+          "belongs"
+        ]
+      },
+      "PlannedKindAnswered": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "plannedKind": {
+            "type": "string",
+            "description": "The planned kind's slug in the register."
+          },
+          "belongs": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "experienceId",
+          "plannedKind",
+          "belongs"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's answer whether a place belongs to a kind the coverage register plans (#2342)."
       },
       "PointHintSuggestions": {
         "type": "object",

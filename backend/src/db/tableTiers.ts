@@ -6,8 +6,9 @@
  *   carries these. A table a reader or curator route reads is serving,
  *   whatever made it: the region tree reads an imported region's source
  *   (`region_import_state`), the editor the import's open suggestions
- *   (`region_match_suggestions`), and a world view's page the state of its
- *   geometry computation (`geometry_computations`). So is a table a serving
+ *   (`region_match_suggestions`), a world view's page the state of its
+ *   geometry computation (`geometry_computations`), and an arrival's card the
+ *   register of kinds Jev is offered (`coverage_kinds`). So is a table a serving
  *   table references, which a deployment of the serving tables has to carry
  *   for the key to hold: `region_import_state` references the import run that
  *   made it (`import_runs`).
@@ -36,7 +37,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   coverage_expectation_kinds: 'workbench',
   coverage_expectations: 'workbench',
   coverage_judgements: 'workbench',
-  coverage_kinds: 'workbench',
+  coverage_kinds: 'serving',
   coverage_regions: 'workbench',
   curator_assignments: 'serving',
   curator_queue_set_aside: 'serving',
@@ -56,6 +57,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   experience_hand_overs: 'serving',
   experience_held_decisions: 'serving',
   experience_kind_memberships: 'serving',
+  experience_kind_suggestions: 'serving',
   experience_kinds: 'serving',
   experience_location_placements: 'serving',
   experience_location_regions: 'serving',
@@ -69,6 +71,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   find_site_links: 'serving',
   separated_visit_questions: 'serving',
   experience_parts: 'serving',
+  experience_planned_kind_answers: 'serving',
   experience_point_hint_suggestions: 'serving',
   experience_point_hints: 'serving',
   experience_point_name_asks: 'serving',

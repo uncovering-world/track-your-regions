@@ -876,6 +876,15 @@ export const arrivalKindBodySchema = addToKindBodySchema.extend({
   stays: z.boolean().describe('Whether the place also stays in the kind that brought it: published there, else kept out of it.'),
 });
 
+/**
+ * A curator's answer to Jev's reading that an arriving place belongs to a kind
+ * the coverage register plans (#2342): the planned kind by its slug, and yes or no.
+ */
+export const plannedKindAnswerBodySchema = z.object({
+  plannedKind: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(80).describe("The planned kind's slug in the register."),
+  belongs: z.boolean().describe('Whether the place belongs to that kind, as a candidate for when it is built.'),
+});
+
 /** A curator keeping out an arrival (#852, ADR-0053): the note is all there is to send. */
 export const refuseArrivalBodySchema = z.object({
   note: z.string().max(1000).optional(),

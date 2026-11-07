@@ -1,9 +1,9 @@
 /**
  * What Jev has cost, and how often curators chose what it suggested (#1260,
- * #1272, #1249, #1768, #1913).
+ * #1272, #1249, #1768, #1913, #2342).
  * GET /api/admin/jev/usage
  *
- * Five questions are asked of it, counted apart and added up. The sources
+ * Six questions are asked of it, counted apart and added up. The sources
  * card's: the rows of `experience_view_suggestions`, one per call, and the
  * agreement compares each curator's choice of a source with the newest
  * suggestion made for the same views — a choice that kept the place's own
@@ -30,12 +30,18 @@
  * `experience_point_hint_suggestions`, one per hint judged, and the agreement
  * compares each point a curator has placed with the newest judgement of each
  * of its hints — a placement within `HINT_TAKEN_M` of the hint against *same*,
- * one elsewhere, the list's point kept included, against *other*.
+ * one elsewhere, the list's point kept included, against *other*. The kind
+ * an arriving place belongs to (#2342): the rows of
+ * `experience_kind_suggestions`, one per call, and the agreement compares the
+ * place's newest reading with what a curator did after it — a planned kind
+ * with their answer about it (*belongs* agrees); a live kind, once the arrival
+ * is answered, with whether the place is published in that kind; *none*, once
+ * answered, with an arrival kept out and no kind added.
  */
 
 import type { JevUsage } from '../../api/responses/admin.js';
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipAdmittedSql } from '../../db/membership.js';
 import { jevConfigured, JEV_USD_PER_MILLION_INPUT_TOKENS } from '../../services/jev/jevClient.js';
 import { askedSql } from '../experience/componentItemSuggestions.js';
 import { HINT_TAKEN_M } from '../experience/pointHintSuggestions.js';
@@ -152,12 +158,48 @@ export async function getJevUsage(): Promise<JevUsage> {
      -- A curator's placement only: until then the question is open.
      WHERE g.judgement IS NOT NULL AND el.curated_fields ? 'location'
   `);
+  const kinds = await pool.query<Counted>(`
+    SELECT (SELECT count(*) FROM experience_kind_suggestions)::int AS calls,
+           (SELECT COALESCE(sum(input_tokens), 0) FROM experience_kind_suggestions)::float8 AS input_tokens,
+           count(*)::int AS compared,
+           count(*) FILTER (WHERE v.agreed)::int AS agreed
+      FROM (SELECT DISTINCT ON (s.experience_id) s.experience_id, s.reading, s.kind_id, s.planned_kind, s.asked_at
+              FROM experience_kind_suggestions s
+             WHERE s.reading IS NOT NULL
+             ORDER BY s.experience_id, s.asked_at DESC, s.id DESC) g
+      CROSS JOIN LATERAL (
+        SELECT EXISTS (SELECT 1 FROM experience_curation_log l
+                        WHERE l.experience_id = g.experience_id AND l.action IN ('arrival_refused', 'kind_added')
+                          AND l.created_at >= g.asked_at)
+            OR EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m
+                        WHERE m.experience_id = g.experience_id AND m.published_at >= g.asked_at) AS answered
+      ) a
+      CROSS JOIN LATERAL (
+        SELECT CASE g.reading
+                 WHEN 'planned' THEN (SELECT p.belongs FROM experience_planned_kind_answers p
+                                       WHERE p.experience_id = g.experience_id AND p.planned_kind = g.planned_kind
+                                         AND p.answered_at >= g.asked_at)
+                 WHEN 'live' THEN CASE WHEN a.answered THEN EXISTS (
+                   SELECT 1 FROM ${MEMBERSHIPS} m
+                    WHERE m.experience_id = g.experience_id AND m.kind_id = g.kind_id
+                      AND ${membershipAdmittedSql('m')} AND m.published_at IS NOT NULL) END
+                 ELSE CASE WHEN a.answered THEN
+                   EXISTS (SELECT 1 FROM experience_curation_log l
+                            WHERE l.experience_id = g.experience_id AND l.action = 'arrival_refused'
+                              AND l.created_at >= g.asked_at)
+                   AND NOT EXISTS (SELECT 1 FROM experience_curation_log l
+                                    WHERE l.experience_id = g.experience_id AND l.action = 'kind_added'
+                                      AND l.created_at >= g.asked_at) END
+               END AS agreed
+      ) v
+     WHERE v.agreed IS NOT NULL
+  `);
   const visits = arrivals.rows[0];
   const asked = questions.rows[0];
   const byQuestion = [
     figures('views', views.rows[0]), figures('componentItems', items.rows[0]), figures('mergeProposals', pairs.rows[0]),
     figures('visits', { ...visits, compared: visits.compared + asked.compared, agreed: visits.agreed + asked.agreed }),
-    figures('pointHints', hints.rows[0]),
+    figures('pointHints', hints.rows[0]), figures('kinds', kinds.rows[0]),
   ];
   const inputTokens = byQuestion.reduce((sum, q) => sum + q.inputTokens, 0);
   return {
