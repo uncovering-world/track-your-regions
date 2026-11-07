@@ -14,8 +14,9 @@
 
 import type { z } from 'zod/v4';
 import type { PointNamesakesAnswer } from '../../api/responses/curation.js';
-import { createError, notFound } from '../../middleware/errorHandler.js';
+import { createError, failure, notFound } from '../../middleware/errorHandler.js';
 import { askPointNamesakes } from '../../services/sync/pointNamesakes.js';
+import { OverpassBusyError } from '../../services/sync/osm/overpassOsm.js';
 import type { pointNamesakesParamsSchema } from '../../types/index.js';
 import { componentItemsScope } from './componentItemController.js';
 
@@ -25,7 +26,12 @@ export async function askNamesakes(
   const { permitted, found } = await componentItemsScope(caller.id, caller.role, id);
   if (!found) throw notFound('Experience not found');
   if (!permitted) throw createError('You do not have curator permissions for this experience', 403);
-  const answer = await askPointNamesakes(id, locationId, caller.id);
+  // A run's question holding the process's Overpass turn is a busy service, not a fault.
+  const answer = await askPointNamesakes(id, locationId, caller.id).catch((error: unknown) => {
+    // A sentence this codebase wrote, so the answer keeps it in production too (`failure`).
+    if (error instanceof OverpassBusyError) throw failure(error.message, 503);
+    throw error;
+  });
   if (!answer) throw notFound('No open roughly placed point of this place has that id');
   return { locationId, ...answer };
 }
