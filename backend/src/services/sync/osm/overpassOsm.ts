@@ -360,8 +360,50 @@ export class OverpassInstancesClosedError extends Error {
 }
 
 /**
- * The public instances' manners, for any question in Overpass QL: the pause
- * between two questions, the retries and a wait budget (the run's, or one per
+ * The process's one turn at the public instances (#2356): every asker, the
+ * run's and the card's, waits for the question before it to end and then the
+ * pause after it, so a curator's click during an Archaeology run is queued
+ * rather than sent beside it. The instances ask scripts not to run in parallel
+ * (https://wiki.openstreetmap.org/wiki/Overpass_API).
+ */
+let overpassTurn: Promise<void> = Promise.resolve();
+let overpassLastAt: number | null = null;
+
+/** Back to a fresh process, for a spec. */
+export function resetOverpassTurn(): void {
+  overpassTurn = Promise.resolve();
+  overpassLastAt = null;
+}
+
+/**
+ * The question before this one held the process's turn for longer than the
+ * caller would wait (`turnWaitMs`): a curator's question behind a run's long
+ * enumeration, which is answered "busy" rather than held for minutes.
+ */
+export class OverpassBusyError extends Error {
+  constructor() {
+    super('OpenStreetMap is busy with another question; ask again in a few minutes');
+  }
+}
+
+/**
+ * Wait for `previous` to end, a second at a time, so a cancelled caller stops
+ * waiting within a second, and for no longer than `limitMs` where one is given.
+ */
+async function waitForTurn(previous: Promise<void>, isCancelled: () => boolean, now: () => number, limitMs?: number): Promise<void> {
+  let ended = false;
+  previous.then(() => { ended = true; }, () => { ended = true; });
+  const until = limitMs === undefined ? Infinity : now() + limitMs;
+  while (!ended) {
+    if (isCancelled()) throw new Error('Sync cancelled');
+    if (now() >= until) throw new OverpassBusyError();
+    await Promise.race([previous, new Promise((resolve) => { setTimeout(resolve, 1000); })]);
+  }
+}
+
+/**
+ * The public instances' manners, for any question in Overpass QL: the
+ * process's one turn and the pause between two questions, the retries and a wait budget (the run's, or one per
  * question where the asker serves many, `questionBudget`), and the instances
  * in order, an instance that turned the caller away never asked again by it. Answers the elements as Overpass sent them; `overpassOsmDoor`
  * reads them as rows, and a rough point's namesakes (`pointNamesakes.ts`,
@@ -371,10 +413,14 @@ export function overpassAsker(
   progress: { cancel: boolean; statusMessage: string },
   budget: WaitBudget,
   logPrefix: string = LOG_PREFIX_DEFAULT,
-  options: { fetchImpl?: typeof fetch; now?: () => number } = {},
+  options: {
+    fetchImpl?: typeof fetch;
+    now?: () => number;
+    /** How long a question waits for the process's turn before it is answered busy; unbounded where unset (a run's). */
+    turnWaitMs?: number;
+  } = {},
 ): (query: string, questionBudget?: WaitBudget) => Promise<OverpassElement[]> {
   const now = options.now ?? Date.now;
-  let lastAnsweredAt: number | null = null;
   let current = 0;
   const closures: string[] = [];
   const isCancelled = () => progress.cancel;
@@ -421,16 +467,25 @@ export function overpassAsker(
   };
 
   return async (query: string, questionBudget: WaitBudget = budget): Promise<OverpassElement[]> => {
-    if (lastAnsweredAt !== null) {
-      const due = lastAnsweredAt + OVERPASS_PAUSE_MS - now();
-      if (due > 0) await interruptibleDelay(due, isCancelled);
-    }
+    const previous = overpassTurn;
+    let done!: () => void;
+    const mine = new Promise<void>((resolve) => { done = resolve; });
+    overpassTurn = previous.then(() => mine);
     try {
-      return await askInOrder(query, questionBudget);
+      await waitForTurn(previous, isCancelled, now, options.turnWaitMs);
+      if (overpassLastAt !== null) {
+        const due = overpassLastAt + OVERPASS_PAUSE_MS - now();
+        if (due > 0) await interruptibleDelay(due, isCancelled);
+      }
+      try {
+        return await askInOrder(query, questionBudget);
+      } finally {
+        // Measured from the end of the exchange, answered or not: a refusal held
+        // a slot for as long as an answer did.
+        overpassLastAt = now();
+      }
     } finally {
-      // Measured from the end of the exchange, answered or not: a refusal held
-      // a slot for as long as an answer did.
-      lastAnsweredAt = now();
+      done();
     }
   };
 }

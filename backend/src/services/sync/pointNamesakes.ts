@@ -36,7 +36,11 @@ import { overpassAsker, OverpassInstancesClosedError } from './osm/overpassOsm.j
 import type { OverpassElement } from './osm/overpassGeometry.js';
 import { WaitBudget } from './sourceRetry.js';
 
-/** How long one curator's question may wait on the instances, retries included. */
+/**
+ * How long one curator's question may wait on the instances, retries included,
+ * and, apart from that, for the process's Overpass turn, which a run's question
+ * may hold (`OverpassBusyError`, #2356).
+ */
 const ASK_WAIT_BUDGET_MS = 30000;
 /** The run time the question declares: a dense city's 2 km took 17 s on the day it was measured. */
 const ASK_TIMEOUT_S = 60;
@@ -107,7 +111,7 @@ let queue: Promise<unknown> = Promise.resolve();
 let cardAsker = newCardAsker();
 
 function newCardAsker(): ReturnType<typeof overpassAsker> {
-  return overpassAsker({ cancel: false, statusMessage: '' }, new WaitBudget(ASK_WAIT_BUDGET_MS), LOG_PREFIX);
+  return overpassAsker({ cancel: false, statusMessage: '' }, new WaitBudget(ASK_WAIT_BUDGET_MS), LOG_PREFIX, { turnWaitMs: ASK_WAIT_BUDGET_MS });
 }
 
 /**

@@ -7,11 +7,11 @@
  * The query text is asserted for the reason the mirror's is: the geometry
  * rule is a rule about what crosses the wire, and only the text shows it.
  */
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   OVERPASS_INSTANCES, OVERPASS_PAUSE_MS, OVERPASS_RATE_LIMIT_PAUSE_MS, OVERPASS_QUERY_MAXSIZE_B,
   OVERPASS_QUERY_TIMEOUT_S, OVERPASS_ENUMERATION_TIMEOUT_S, declaredTimeoutMs, overpassBatchQuery, overpassDigsQueries,
-  overpassAsker, overpassOsmDoor, OverpassInstancesClosedError, rowsOf,
+  overpassAsker, overpassOsmDoor, OverpassBusyError, OverpassInstancesClosedError, resetOverpassTurn, rowsOf,
 } from './overpassOsm.js';
 import type { OverpassElement } from './overpassGeometry.js';
 import { foldOsmRows, type DigTags, type KeepWkt, type OsmObject } from './types.js';
@@ -123,6 +123,7 @@ describe('rowsOf', () => {
 });
 
 describe('overpassOsmDoor', () => {
+  beforeEach(() => { resetOverpassTurn(); });
   afterEach(() => { vi.useRealTimers(); });
 
   const answer = (elements: OverpassElement[], remark?: string) => ({
@@ -201,6 +202,63 @@ describe('overpassOsmDoor', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await second;
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps one pace for the process: a card question waits for the run question before it and the pause after (#2356)', async () => {
+    vi.useFakeTimers();
+    let release: (() => void) | undefined;
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise((resolve) => {
+      release = () => resolve(answer([]));
+    }));
+    const run = overpassOsmDoor(progress(), new WaitBudget(60000), '[Run]', { fetchImpl });
+    const card = overpassAsker(progress(), new WaitBudget(0), '[Card]', { fetchImpl });
+
+    const first = run.send('the run question');
+    await vi.advanceTimersByTimeAsync(10);
+    const second = card('the card question', new WaitBudget(30000));
+    await vi.advanceTimersByTimeAsync(5000);
+    // The run's question is still in flight, so the card's is not sent beside it.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    (release as () => void)();
+    await first;
+    await vi.advanceTimersByTimeAsync(OVERPASS_PAUSE_MS - 1000);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    (release as () => void)();
+    await second;
+  });
+
+  it('answers a card question busy once it has waited its limit for the turn, and sends nothing', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => undefined));
+    const run = overpassOsmDoor(progress(), new WaitBudget(60000), '[Run]', { fetchImpl });
+    const card = overpassAsker(progress(), new WaitBudget(0), '[Card]', { fetchImpl, turnWaitMs: 30000 });
+
+    run.send('the run enumeration').catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(10);
+    const second = card('the card question', new WaitBudget(30000));
+    const refused = expect(second).rejects.toBeInstanceOf(OverpassBusyError);
+    await vi.advanceTimersByTimeAsync(31000);
+    await refused;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops waiting for the turn when the caller is cancelled, and sends nothing', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => undefined));
+    const run = overpassOsmDoor(progress(), new WaitBudget(60000), '[Run]', { fetchImpl });
+    const cardProgress = progress();
+    const card = overpassAsker(cardProgress, new WaitBudget(0), '[Card]', { fetchImpl });
+
+    run.send('the run question').catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(10);
+    const second = card('the card question', new WaitBudget(30000));
+    const refused = expect(second).rejects.toThrow('Sync cancelled');
+    cardProgress.cancel = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    await refused;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('never sends a second question while the first is in flight', async () => {
