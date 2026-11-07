@@ -137,16 +137,24 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
 
 **dumps.wikimedia.org.**
 - *Rules* (its front page): the User-Agent policy is enforced, downloads are rate-limited and capped
-  at 3 connections per address, and a client that evades the limits can be blocked. The XML dumps
-  are deprecated and sunset in January 2027. `robots.txt` answers 404.
+  at 3 connections per address, and a client that evades the limits can be blocked. The front page
+  calls the XML dumps deprecated and names [MediaWiki Content File
+  Exports](https://wikitech.wikimedia.org/wiki/MediaWiki_Content_File_Exports) their replacement.
+  `robots.txt` answers 404.
+- *End dates of what the catalogue reads* ([Legacy content dumps
+  sunset](https://wikitech.wikimedia.org/wiki/Legacy_content_dumps_sunset), read 2026-11-07):
+  - the legacy XML dumps the sunset names stop after January 2027: current pages, full history and
+    the stub files. The catalogue reads none of them;
+  - `pages-articles` XML is not among them, and the sunset page says any change to it will be
+    announced separately. The catalogue does not read it: English Wikivoyage's articles come from
+    the monthly content export (`wikivoyage-pages`);
+  - the SQL table dumps, the Wikidata JSON dumps and the pageview files have no end date; the
+    sunset page says SQL, RDF and JSON dumps do not change.
 - *Code:* `services/dumps/fetch.ts` (`downloadTo` with ranged parts, bot UA with the purpose
   *public dump builds*, `HOST_CONNECTIONS = 3`, no retry loop), the descriptors in `dumps/catalog.ts`,
   and `dumps/newestOnHost.ts` (once a day per dump, from the backend).
-- *Partly complies*:
-  - the connection cap is counted per process, so the worker's download and the backend's check
-    can pass it together (#2353);
-  - the Wikivoyage extraction reads `pages-articles.xml.bz2` (`ARTICLES_SUFFIX`), which the
-    sunset ends (#2355).
+- *Partly complies*: the connection cap is counted per process, so the worker's download and the
+  backend's check can pass it together (#2353).
 
 **maps.wikimedia.org geoshapes.** The [Maps Terms of Use](https://foundation.wikimedia.org/wiki/Policy:Maps_Terms_of_Use)
 (read 2026-10-26) allow no third-party service outside the Wikimedia projects. No call remains:
