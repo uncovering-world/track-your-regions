@@ -1,7 +1,8 @@
 /**
- * English Wikivoyage's articles, read from its `pages-articles` XML dump a
- * line at a time (#2089): what the world-view extraction reads instead of
- * asking the Action API page by page.
+ * English Wikivoyage's articles, read from its XML content export a line at
+ * a time (#2089, #2355): what the world-view extraction reads instead of
+ * asking the Action API page by page. The export writes the legacy dumps'
+ * `export-0.11` schema and every namespace.
  *
  * A page is `<page>` … `</page>`: its `<title>`, its namespace `<ns>`, its id
  * (the first `<id>`, before the revision's own), a `<redirect title="…" />`

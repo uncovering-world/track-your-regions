@@ -1767,7 +1767,7 @@ export const CHECK_VALUES = {
     scope_type: ["region", "source", "global"],
   },
   dump_builds: {
-    checksum_kind: ["md5", "sha1"],
+    checksum_kind: ["md5", "sha1", "sha256"],
     mode: ["stream", "local"],
     status: ["queued", "running", "success", "failed", "cancelled"],
   },

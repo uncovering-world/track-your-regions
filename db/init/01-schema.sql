@@ -5198,7 +5198,7 @@ CREATE TABLE IF NOT EXISTS workbench.dump_builds (
     mode VARCHAR(10) NOT NULL CHECK (mode IN ('stream', 'local')),
     bytes BIGINT NOT NULL DEFAULT 0,
     expected_bytes BIGINT,
-    checksum_kind VARCHAR(10) CHECK (checksum_kind IN ('md5', 'sha1')),
+    checksum_kind VARCHAR(10) CHECK (checksum_kind IN ('md5', 'sha1', 'sha256')),
     checksum_expected TEXT,
     checksum_actual TEXT,
     lines BIGINT NOT NULL DEFAULT 0,
@@ -5476,7 +5476,7 @@ CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_pages (
     wikitext TEXT NOT NULL,
     wikidata_id TEXT CHECK (wikidata_id ~ '^Q[0-9]+$')
 );
-COMMENT ON TABLE workbench.wikivoyage_pages IS 'A page of English Wikivoyage''s namespace 0 (#2089), from the run''s pages-articles dump: its title as the wiki writes it, its page id, the title it redirects to (null for an article, the target''s section dropped), its wikitext, and the Wikidata item its page properties name. The world-view extraction reads a region''s page, its Regions section and whether a linked page exists from here, so two extractions of one copy build the same tree.';
+COMMENT ON TABLE workbench.wikivoyage_pages IS 'A page of English Wikivoyage''s namespace 0 (#2089), from the month''s content export (MediaWiki Content File Exports, #2355): its title as the wiki writes it, its page id, the title it redirects to (null for an article, the target''s section dropped), its wikitext, and the Wikidata item its page properties name. The world-view extraction reads a region''s page, its Regions section and whether a linked page exists from here, so two extractions of one copy build the same tree.';
 
 -- The OpenStreetMap layer (#1437, ADR-0134). See db/migrations/145.
 CREATE TABLE IF NOT EXISTS workbench.osm_layer_builds (

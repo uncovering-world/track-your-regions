@@ -3,9 +3,10 @@
  * world-view extraction reads a region's page from, instead of the live
  * Action API, whose answers changed between two runs.
  *
- * The build reads the run's `pages-articles` XML, the build's own file, and
- * the same run's `page_props` table, each verified by the checksum and size
- * its status file gives. It keeps every page of namespace 0, an article with
+ * The build reads the month's MediaWiki Content File Export of the wiki's
+ * current revisions, the build's own file, verified by the sha256 and size the
+ * host publishes beside it (#2355), and the `page_props` table of the wiki's
+ * run of the same date, verified by its status file's sha1 and size. It keeps every page of namespace 0, an article with
  * its wikitext or a redirect with its target, and the Wikidata item its page
  * properties name (`wikibase_item`). It is swapped in only whole: a file that
  * fails, a run that has not finished its page properties, or a cancel, drops
@@ -28,8 +29,13 @@ const PAGE_PROPS_SUFFIX = 'page_props.sql.gz';
 const PAGES_PER_WRITE = 500;
 const ITEM = /^Q[1-9]\d*$/;
 
-/** The dated directory of the run `own` comes from: `enwikivoyage-20261001-pages-articles.xml.bz2` gives `20261001`. */
-const directoryOf = (own: DumpFile) => own.fileName.slice('enwikivoyage-'.length, 'enwikivoyage-'.length + 8);
+/**
+ * The wiki's own run of the export's date, whose page properties name each
+ * page's item: the export of 2026-10-01 is read with the run `20261001`, which
+ * the wiki starts on the same 1st. Its SQL tables are not among the dumps the
+ * legacy sunset ends (#2355).
+ */
+const directoryOf = (own: DumpFile) => own.date.replaceAll('-', '');
 
 /** The Wikidata item of every page that names one, by page id, from the run's page properties. */
 async function itemsByPage(own: DumpFile, options: TableBuildOptions): Promise<{ items: Map<number, string>; bytes: number; lines: number }> {
@@ -48,7 +54,7 @@ async function itemsByPage(own: DumpFile, options: TableBuildOptions): Promise<{
   return { items, bytes: result.bytes, lines: result.lines };
 }
 
-/** Keep English Wikivoyage's pages from `own`, its `pages-articles` file, and swap them in once both files are read and verified. */
+/** Keep English Wikivoyage's pages from `own`, its content export, and swap them in once both files are read and verified. */
 export async function buildPages(own: DumpFile, options: TableBuildOptions): Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }> {
   if (options.trial) throw new Error('English Wikivoyage\'s pages have no trial build: they are kept from the whole file');
   const props = await itemsByPage(own, options);

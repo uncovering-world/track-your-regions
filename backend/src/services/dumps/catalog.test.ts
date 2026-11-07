@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { datedDirectories, dumpNamed, md5Of, NotOnHost, sha1Of, wikipediaTableFile, wikiRunFile, type TextReader } from './catalog.js';
+import {
+  contentDirectories, datedDirectories, dumpNamed, md5Of, NotOnHost, sha1Of, sha256Of, wikipediaTableFile, wikiRunFile, type TextReader,
+} from './catalog.js';
 
 /**
  * Finding the newest complete file of each dump (ADR-0101): a dated directory
@@ -76,24 +78,53 @@ describe('the dump catalog', () => {
     expect(usage.isFileName('dewikivoyage-20261001-wbc_entity_usage.sql.gz')).toBe(false);
   });
 
-  it("takes English Wikivoyage's articles from the newest run that has finished them, read as bzip2 (#2089)", async () => {
-    const base = 'https://dumps.wikimedia.org/enwikivoyage';
-    const status = (state: string) => JSON.stringify({ jobs: { articlesdump: { status: state, files: {
-      'enwikivoyage-20261001-pages-articles.xml.bz2': { size: 131539958, sha1: SHA },
-    } } } });
-    const read = pages({
-      [`${base}/`]: '<a href="20260920/">a</a><a href="20261001/">b</a>',
-      [`${base}/20261001/dumpstatus.json`]: status('done'),
-    });
+  it("takes English Wikivoyage's articles from the newest content export whose SHA256SUMS is out, read as bzip2 (#2355)", async () => {
+    const base = 'https://dumps.wikimedia.org/other/mediawiki_content_current/enwikivoyage';
+    const SHA256 = 'c'.repeat(64);
+    const part = 'enwikivoyage-2026-10-01-p1p221280.xml.bz2';
+    const listing = '<a href="2026-09-01/">a</a><a href="2026-10-01/">b</a><a href="2026-11-01/">c</a>';
+    const sums = { [`${base}/2026-10-01/xml/bzip2/SHA256SUMS`]: `${SHA256}  ${part}\n` };
+    // The November export is still being written: its SHA256SUMS is not out yet.
+    const writing: TextReader = async (url) => {
+      if (url === `${base}/2026-11-01/xml/bzip2/SHA256SUMS`) throw new NotOnHost(url);
+      return pages({ [`${base}/`]: listing, ...sums })(url);
+    };
+    const sizes = async (url: string) => (url === `${base}/2026-10-01/xml/bzip2/${part}` ? 193141695 : null);
     const articles = dumpNamed('wikivoyage-pages')!;
-    expect(await articles.resolve(read, noSize)).toMatchObject({
-      key: 'wikivoyage-pages', fileName: 'enwikivoyage-20261001-pages-articles.xml.bz2', date: '2026-10-01',
-      expectedBytes: 131539958, checksum: { kind: 'sha1', value: SHA }, compression: 'bzip2',
+    expect(await articles.resolve(writing, sizes)).toEqual({
+      key: 'wikivoyage-pages', fileName: part, url: `${base}/2026-10-01/xml/bzip2/${part}`, date: '2026-10-01',
+      expectedBytes: 193141695, checksum: { kind: 'sha256', value: SHA256 }, compression: 'bzip2',
     });
-    const running = pages({ [`${base}/`]: '<a href="20261001/">b</a>', [`${base}/20261001/dumpstatus.json`]: status('in-progress') });
-    expect(await articles.resolve(running, noSize)).toBeNull();
-    expect(articles.isFileName('enwikivoyage-20261001-pages-articles.xml.bz2')).toBe(true);
-    expect(articles.isFileName('enwikivoyage-20261001-pages-meta-current.xml.bz2')).toBe(false);
+    expect(articles.isFileName(part)).toBe(true);
+    expect(articles.isFileName('enwikivoyage-20261001-pages-articles.xml.bz2')).toBe(false);
+    expect(articles.isFileName('dewikivoyage-2026-10-01-p1p9000.xml.bz2')).toBe(false);
+  });
+
+  it("refuses an export the host split into parts rather than read one of them", async () => {
+    const base = 'https://dumps.wikimedia.org/other/mediawiki_content_current/enwikivoyage';
+    const read = pages({
+      [`${base}/`]: '<a href="2026-10-01/">b</a>',
+      [`${base}/2026-10-01/xml/bzip2/SHA256SUMS`]:
+        `${'c'.repeat(64)}  enwikivoyage-2026-10-01-p1p100000.xml.bz2\n${'d'.repeat(64)}  enwikivoyage-2026-10-01-p100001p221280.xml.bz2\n`,
+    });
+    await expect(dumpNamed('wikivoyage-pages')!.resolve(read, noSize)).rejects.toThrow('in 2 parts');
+  });
+
+  it('fails on a host error other than a missing file, which is no answer about which export is newest', async () => {
+    const base = 'https://dumps.wikimedia.org/other/mediawiki_content_current/enwikivoyage';
+    const read: TextReader = async (url) => {
+      if (url === `${base}/`) return '<a href="2026-10-01/">b</a>';
+      throw new Error('503 Service Unavailable');
+    };
+    await expect(dumpNamed('wikivoyage-pages')!.resolve(read, noSize)).rejects.toThrow('503');
+  });
+
+  it("reads a file's sha256 from a SHA256SUMS, and nothing for a file it does not list", () => {
+    const sums = `${'c'.repeat(64)}  a.xml.bz2\n${'d'.repeat(63)}  b.xml.bz2\n`;
+    expect(sha256Of(sums, 'a.xml.bz2')).toBe('c'.repeat(64));
+    expect(sha256Of(sums, 'b.xml.bz2')).toBeNull();
+    expect(contentDirectories('<a href="../">..</a><a href="2026-09-01/">x</a><a href="2026-10-01/">y</a><a href="SHA256SUMS">z</a>'))
+      .toEqual(['2026-10-01', '2026-09-01']);
   });
 
   it('refuses a wiki name that is not a database name before building a URL from it', async () => {
