@@ -186,7 +186,10 @@ and the build says so.
 enforces the Wikimedia User-Agent policy; it publishes no `robots.txt`.
 `fetch.ts` holds at most `HOST_CONNECTIONS` (3) open per host from this
 process (eight to `planet.openstreetmap.org`, whose S3 bucket the OSM wiki
-calls unlimited, `CONNECTIONS_OF`), sends the bot `userAgent()` with the purpose `public dump builds` on
+calls unlimited, `CONNECTIONS_OF`). The dump worker is the one process that
+asks a dump host anything: its builds and its daily check of the newest
+dumps (`newestOnHost.ts`) share that one count, and the backend opens no
+connection to a dump host at all (#2353). `fetch.ts` sends the bot `userAgent()` with the purpose `public dump builds` on
 every request, follows redirects, and never retries: a failed request fails
 the build, and an admin starts it again. A read opens one connection and a
 download into the local copy up to the host's cap. The worker runs one build at a
@@ -1151,11 +1154,13 @@ is `whatTheKeptNeeds` (`keepers.ts`). It reads two things:
   raised by hand with any change to what the derived tables hold. A re-derive
   records the build's scope and writing with the code's derivations. A row
   from before the rules were recorded is read as current.
-- The newest dump the host lists (`newestOnHost.ts`). It is asked at most once
-  a day, in the background, so the page never waits on the host. Until it has
-  been asked since the backend started (`newestChecked: 'not-yet'`) the card
-  says it is checking rather than "Up to date", and the page asks again every
-  ten seconds. When the host did not answer (`unreachable`), the card says a
+- The newest dump the host lists (`newestOnHost.ts`). The dump worker asks
+  the host, at most once a day per dump, beside the build it may be running
+  (`newestLoop`, every ten minutes it looks for a dump whose answer is a day
+  old), and keeps what it learnt in `workbench.dump_newest_on_host`; the page
+  reads that and never waits on the host. Until the worker has asked
+  (`newestChecked: 'not-yet'`) the card says it is checking rather than
+  "Up to date", and the page asks again every ten seconds. When the host did not answer (`unreachable`), the card says a
   newer dump may be out.
 
 Everything else sits in the collapsed section *For developers*: every dump,
