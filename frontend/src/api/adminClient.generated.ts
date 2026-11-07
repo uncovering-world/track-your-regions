@@ -810,6 +810,7 @@ export type DumpBuildChecksumKind = typeof DumpBuildChecksumKind[keyof typeof Du
 export const DumpBuildChecksumKind = {
   md5: 'md5',
   sha1: 'sha1',
+  sha256: 'sha256',
 } as const;
 
 export type DumpBuildStatus = typeof DumpBuildStatus[keyof typeof DumpBuildStatus];
