@@ -476,6 +476,9 @@ runs (2 008 881 B, plus 10 %) failed the next unrelated pull request at
 repository decides. So these pages are **gated on what they fetch from every
 host but the basemap's**, `requests-except:openstreetmap.org:size` and `:count`
 (`frontend/perf/assertions.mjs`, this lane's own form beside Lighthouse CI's).
+What follows is how these pages measured while the lanes still fetched the
+tiles; since #2351 no run does, and § Budgets and the ratchet rule says what
+the totals' lines read now.
 Across all eighteen CI runs of the region and card pages, on #1641, #1644 and
 #1646, that measured 677.9–682.9 kB on 44–82 requests. The total, basemap
 included, is still read on every run at `warn`, because a visitor pays for
@@ -1280,18 +1283,30 @@ The rule:
   and a budget moved on a bump says so in its "Set from" cell (#656). The
   baselines in the table above were measured with Lighthouse 13.4.1 driving
   the Chromium of `mcr.microsoft.com/playwright:v1.58.2-jammy`.
-- **A byte line gates what the repository serves.** A page whose total
-  includes the OpenStreetMap basemap's raster tiles is gated on everything
-  else it fetched (`requests-except:openstreetmap.org:size` and `:count`),
-  and its total is read at `warn`, because a visitor pays for the tiles but a
-  public server renders them. All four pages of the CI lane are gated so
+- **No run fetches the OpenStreetMap basemap** (#2351). The OSMF tile usage
+  policy does not allow headless bots that pan or zoom, so the Lighthouse
+  runner, in CI and in `perf:local`, launches Chrome with the tile servers'
+  hosts unresolvable (`withoutUnservedBasemap`, `frontend/tests/unservedBasemap.mjs`),
+  as the Playwright specs do. A tile request fails on the machine with
+  `net::ERR_NAME_NOT_RESOLVED` and brings no bytes, and the maps draw the
+  regions over an empty background. Everything else a page loads is what a
+  reader loads, so since #2351 a page's total is what the repository serves.
+- **A byte line gates what the repository serves.** A page that draws the
+  OpenStreetMap basemap is gated on everything else it fetched
+  (`requests-except:openstreetmap.org:size` and `:count`), and its total is
+  read at `warn`. The lines were set while the lanes still fetched the tiles,
+  because a visitor pays for the tiles but a public server renders them; the
+  totals' `warn` lines still carry the tiles' bytes as margin until they are
+  next measured. All four pages of the CI lane are gated so
   since #2290 (the region and card pages since #669). On the map view and
   Discover the tiles moved by up to 1.7 kB between runs of one head, while
   what the app served moved by 5 B, so a line on the total left 0.1 % of
   headroom that the tiles alone could spend. The lines without the basemap
   stand 4.3 % over the heaviest run measured (685 827 B), as other byte
-  lines stand about 5 % over theirs. #651, which moves the basemap off
-  OpenStreetMap's public server, would let the totals gate again. The local
+  lines stand about 5 % over theirs. The totals can gate again once their
+  lines are measured without the tiles, which no run fetches since #2351;
+  until then those lines carry the tiles' bytes as margin. #651 is the app's
+  own dependence on OpenStreetMap's public server. The local
   run keeps its total lines: there the root's line stands 47 kB over the
   page, and its tiles moved by 0.3 kB across the three runs of `perf:local`
   on 2026-11-03 (50.8 kB on the map root, 122.5 kB on Discover).
