@@ -40,6 +40,7 @@ import { ArrivedTable, RowAnswer } from './ArrivedTable';
 import { movedPointGroups } from './movedPointGroups';
 import { sectionKind, sharedKinds, type GatedGroup } from './gatedGroup';
 import { VisitReadingLine } from './VisitReadingLine';
+import { KindReadingLine, suggestedKindOf, useKindReading } from './KindReadingLine';
 import { ArrivalKindChoice } from './ArrivalKindChoice';
 import { CrowdingWayIn } from './crowding/CrowdingWayIn';
 
@@ -86,6 +87,11 @@ export function GatedSection({ group, heading, onDone }: {
   // the next waiting row remounts it, and a part of one object is never
   // corrected under the next object's name or id.
   const [openPart, setOpenPart] = useState<HeldPart | null>(null);
+  // Whether the arrival's "Belongs in another kind…" is open, and the kind it
+  // opened with: the live kind Jev's reading names (#2342), where it named one
+  // the form can offer.
+  const [kindChoice, setKindChoice] = useState<{ kindId?: number } | null>(null);
+  const kindReading = useKindReading(group.id, item.name, Boolean(arrival));
 
   const proposed = held?.proposed ?? [];
   // The credit beside the danger fields: whose photograph readers see today, for a
@@ -377,6 +383,10 @@ export function GatedSection({ group, heading, onDone }: {
             name={item.name}
             membershipId={arrival.membership_id}
             arrivingKind={arrival.kind_name}
+            initialKindId={kindChoice?.kindId}
+            open={kindChoice !== null}
+            onOpen={() => setKindChoice({ kindId: suggestedKindOf(kindReading, arrival.kind_id) })}
+            onClose={() => setKindChoice(null)}
             disabled={answering}
             onDone={message => { invalidateExperiences(queryClient, { experienceId: group.id }); onDone(message); }}
           />
@@ -402,6 +412,11 @@ export function GatedSection({ group, heading, onDone }: {
           question, because it answers what the run's witnesses cannot — a part
           of a larger place, an object, a culture. Never chosen for the curator. */}
       {arrival && <VisitReadingLine experienceId={group.id} name={item.name} />}
+
+      {/* Jev's reading of which kind it belongs to (#2342): a live kind is the
+          one the third answer above opens with; a planned kind asks whether
+          the place belongs there, for when the kind is built. */}
+      {arrival && <KindReadingLine experienceId={group.id} name={item.name} arrivingKindId={arrival.kind_id} />}
 
       {/* The place among its neighbours of its type (#2282), where its kind shows a crowded city. */}
       <CrowdingWayIn item={item} onDone={onDone} />

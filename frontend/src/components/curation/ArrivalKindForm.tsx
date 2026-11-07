@@ -25,13 +25,15 @@ export function arrivalKindOutcome(name: string, kindId: number, type: string | 
   return `${name}: added to ${into}; its arrival in ${result.fromKind} still waits — ${result.arrivalWaits ?? 'the publish was refused'}`;
 }
 
-export function ArrivalKindForm({ experienceId, name, membershipId, arrivingKind, disabled, onDone, onCancel }: {
+export function ArrivalKindForm({ experienceId, name, membershipId, arrivingKind, initialKindId, disabled, onDone, onCancel }: {
   experienceId: number;
   name: string;
   /** The arrival's membership, the one the answer is about. */
   membershipId: number | null | undefined;
   /** The kind that brought the place, by name. */
   arrivingKind: string;
+  /** The kind chosen when the form opens; chosen only where the place can be put into it. */
+  initialKindId?: number;
   disabled: boolean;
   onDone: (message: string) => void;
   onCancel: () => void;
@@ -39,7 +41,7 @@ export function ArrivalKindForm({ experienceId, name, membershipId, arrivingKind
   const kindLabel = useId();
   const typeLabel = useId();
   const queryClient = useQueryClient();
-  const [kindId, setKindId] = useState<number | ''>('');
+  const [kindId, setKindId] = useState<number | ''>(initialKindId ?? '');
   const [type, setType] = useState('');
   const [stays, setStays] = useState(false);
   const [note, setNote] = useState('');
@@ -76,7 +78,8 @@ export function ArrivalKindForm({ experienceId, name, membershipId, arrivingKind
             <InputLabel id={kindLabel}>Kind</InputLabel>
             <Select
               labelId={kindLabel}
-              value={kindId}
+              // A preset kind the place cannot be put into (it is in it already) is no choice.
+              value={kind ? kindId : ''}
               // Until the place's kinds are read there is nothing to choose from.
               disabled={!kinds.data}
               label="Kind"

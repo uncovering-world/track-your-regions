@@ -13,7 +13,7 @@ import type {
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeProposalTakenBack, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointHintSuggestions, PointItemTakenBack, PublishResult,
-  ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
+  ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, KindSuggestion, PlannedKindAnswered, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
   WebsiteChecks, PointNamesakesAnswer, KeptOutOfKind, KindAddedToPlace, ArrivalAnsweredWithKind, PlaceKindStandings, PictureClasses,
 } from './client.generated';
 import {
@@ -25,6 +25,7 @@ import {
   postExperiencesByIdComponentItemSuggestions, postExperiencesByIdPointHintSuggestions,
   postExperiencesByIdMergeProposals, type AnswerMergeProposalsBody, postExperiencesByIdMergeProposalSuggestions,
   postExperiencesByIdVisitSuggestion, postExperiencesByIdVisitQuestion, type VisitQuestionAnswerBody,
+  postExperiencesByIdKindSuggestion, postExperiencesByIdPlannedKindAnswer, type PlannedKindAnswerBody,
   getExperiencesByIdKinds, postExperiencesByIdKeepOut, type KeepOutOfKindBody,
   postExperiencesByIdKinds, type AddToKindBody, postExperiencesByIdArrivalKind, type ArrivalKindBody,
   postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody,
@@ -52,7 +53,7 @@ export type {
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPicture,
   NearbyPictures, PointNamesakesAnswer, WebsiteCheckResult, WebsiteChecks, PictureClassResult, PictureClasses,
   AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
-  PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PlaceIdentifier, PlaceIdentifiers, IdentifierSettled, IdentifierVerdictBody, PointItemTakenBack, MergeProposalTakenBack, ViewsChosen, ViewSuggestions, VisitQuestionAnswerBody, VisitQuestionAnswered, VisitSuggestion, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
+  PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PlaceIdentifier, PlaceIdentifiers, IdentifierSettled, IdentifierVerdictBody, PointItemTakenBack, MergeProposalTakenBack, ViewsChosen, ViewSuggestions, VisitQuestionAnswerBody, VisitQuestionAnswered, VisitSuggestion, KindSuggestion, PlannedKindAnswerBody, PlannedKindAnswered, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
   KeepOutOfKindBody, KeptOutOfKind, PlaceKindStanding, PlaceKindStandings,
@@ -582,6 +583,20 @@ export async function suggestMergeProposals(experienceId: number): Promise<Merge
  */
 export async function suggestVisit(experienceId: number): Promise<VisitSuggestion> {
   return postExperiencesByIdVisitSuggestion(experienceId);
+}
+
+/**
+ * Jev's reading of which kind, live or planned, an arriving place belongs to
+ * (#2342), with its confidence. A suggestion only; a POST since the server may
+ * ask Jev, which is paid for per call.
+ */
+export async function suggestKind(experienceId: number): Promise<KindSuggestion> {
+  return postExperiencesByIdKindSuggestion(experienceId);
+}
+
+/** A curator's answer whether an arriving place belongs to a kind the register plans (#2342). */
+export async function answerPlannedKind(experienceId: number, body: PlannedKindAnswerBody): Promise<PlannedKindAnswered> {
+  return postExperiencesByIdPlannedKindAnswer(experienceId, body);
 }
 
 /**

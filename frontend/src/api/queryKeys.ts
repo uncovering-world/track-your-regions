@@ -104,6 +104,7 @@ export const queryKeys = {
     mergeProposalSuggestions: (id: Id, pairs: string) => ['experience', 'merge-proposal-suggestions', id, pairs] as const,
     /** Jev's reading of an arriving place (#1768), for the place as the card shows it (serialised). */
     visitSuggestion: (id: Id, place: string) => ['experience', 'visit-suggestion', id, place] as const,
+    kindSuggestion: (id: Id, place: string) => ['experience', 'kind-suggestion', id, place] as const,
     /** The Commons pictures geotagged near one point (#1341). */
     nearbyPictures: (locationId: Id) => ['experience', 'nearby-pictures', locationId] as const,
     /** Whether the official websites a place's review card shows still answer (#2165). */
