@@ -185,6 +185,11 @@ function LookupOutcome({ entity, namesake, found, locationMissed }: {
     match = (
       <>
         Found: {found}
+        {/* Nominatim's answer is OpenStreetMap data under the ODbL, credited
+            where it is shown, as the location picker credits its search (#2356). */}
+        <Box component="span" sx={{ display: 'block', color: 'text.secondary' }}>
+          Found by Nominatim · © OpenStreetMap contributors
+        </Box>
         {namesake && (
           <Box component="span" sx={{ display: 'block' }}>
             No item matched the place: <strong>{namesake.label}</strong> ({namesake.wikidataId}) only shares its name
