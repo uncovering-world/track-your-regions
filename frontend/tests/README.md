@@ -14,6 +14,15 @@ This folder contains automated tests for the frontend.
   performance budgets. What the extension says is what runs them: a
   `.spec.ts` under `tests/e2e/` is Playwright's, a `.test.mjs` is Vitest's.
 
+## No basemap from OpenStreetMap's servers
+
+No headless run asks `tile.openstreetmap.org`, whose tile usage policy does
+not allow headless bots (#2351). `playwright.config.ts` and the Lighthouse
+runner launch Chrome with that host unresolvable (`unservedBasemap.mjs`), so
+the maps draw the regions over an empty background, and
+`unservedBasemap.test.mjs` holds that every host `OSM_RASTER_SOURCE` draws
+from is on the list.
+
 ## Prerequisites
 
 1. Install dependencies:

@@ -37,7 +37,7 @@ the policy page is the authority.
 | Nominatim | live, interactive | **partly** (one credit missing) | #2356 |
 | Overpass API and its mirrors | live, fallback | yes, one gap | #2356 |
 | QLever (OSM planet) | live, small batches | yes | — |
-| tile.openstreetmap.org | browser | **no** (test lanes) | #2351, #651 |
+| tile.openstreetmap.org | browser | **no** (the app depends on it) | #651 |
 | CARTO basemap style | browser | **no** (no key) | #651 |
 | fonts.openmaptiles.org | browser | no terms published | — |
 | planet.openstreetmap.org | dump | yes | — |
@@ -216,9 +216,11 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
   MapLibre's responsive default on the react-map-gl maps, which folds the credit behind its ⓘ on a
   map 640 px wide or less after the first drag (#2350; `mapStyles.test.ts` holds that only the
   shared source names the tiles and that no map turns the control off).
-- ***Does not comply***:
-  - the smoke and Lighthouse lanes load the maps headless, fetching tiles on every pull request (#2351);
-  - the policy does not let an app depend on this server at all, which is #651's question.
+- *Headless runs:* none asks it. The smoke and Lighthouse lanes, and `perf:local`, launch Chrome
+  with the tile hosts unresolvable (`frontend/tests/unservedBasemap.mjs`, #2351), so a tile
+  request fails on the machine.
+- ***Does not comply***: the policy does not let an app depend on this server at all, which is
+  #651's question.
 
 **CARTO's Positron style** (`basemaps.cartocdn.com/gl/positron-gl-style/style.json`, drawn by the
 admin and editor maps that name it: `CoverageMapPreview`, `GapAnalysis`'s `COVERAGE_MAP_STYLE`,
