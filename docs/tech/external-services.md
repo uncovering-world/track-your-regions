@@ -34,8 +34,8 @@ the policy page is the authority.
 | Commons thumbnails (`Special:FilePath`) | browser | yes | — |
 | dumps.wikimedia.org | dump | yes | — |
 | maps.wikimedia.org geoshapes | none since #2084 | — | — |
-| Nominatim | live, interactive | **partly** (one credit missing) | #2356 |
-| Overpass API and its mirrors | live, fallback | yes, one gap | #2356 |
+| Nominatim | live, interactive | yes | — |
+| Overpass API and its mirrors | live, fallback | yes | — |
 | QLever (OSM planet) | live, small batches | yes | — |
 | tile.openstreetmap.org | browser | **no** (the app depends on it) | #651 |
 | CARTO basemap style | browser | **no** (no key) | #651 |
@@ -45,7 +45,7 @@ the policy page is the authority.
 | Jev (TypeSafe) | live, keyed | yes | — |
 | OpenAI | live, keyed, admin only | unverified: the usage policies are unread | a person reads them |
 | Place websites (the review card's check) | live, per card | **gap** | #2354 |
-| Have I Been Pwned (Pwned Passwords) | live, per registration | yes, one gap | #2356 |
+| Have I Been Pwned (Pwned Passwords) | live, per registration | yes | — |
 | Google and Apple sign-in | OAuth | owed before deploy | #1177 |
 | SMTP provider | per deployment | not chosen | — |
 | LiteLLM price list (raw.githubusercontent.com) | one file, by an admin | yes | — |
@@ -181,9 +181,9 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
   - The location picker and the add dialog search on Enter or a button only (the decision of
     2026-10-09).
   - The import's geocode match runs per region on an admin's click.
-- *Partly complies*: everything above holds, but the add dialog's result shows no OpenStreetMap
-  credit, which the attribution rule asks for (#2356). There is no switch to turn the service off
-  without a deploy.
+  - Wherever a result is shown it is credited "© OpenStreetMap contributors": the location
+    picker's search list and the add dialog's *Found* line (`LookupOutcome`).
+- *Complies.* There is no switch to turn the service off without a deploy.
 
 **Overpass API** (`overpass-api.de`, then `maps.mail.ru`, then `overpass.private.coffee`;
 `services/sync/osm/overpassOsm.ts` `OVERPASS_INSTANCES`).
@@ -198,11 +198,12 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
     large operations, attribution.
 - *Code:* used when `OSM_READER=overpass` or as the mirror's fallback (ADR-0134, `oneDoorPerRun.ts`),
   and by the card's *Ask OpenStreetMap by name* (`pointNamesakes.ts`):
-  - one request at a time per asker, a 5 s pause;
+  - one request at a time for the process, whichever asker sends it, and a 5 s pause after it
+    (`overpassAsker`, its module-level turn): a curator's click during a run waits its turn, at most
+    30 s, and is then answered that OpenStreetMap is busy (`turnWaitMs`, `OverpassBusyError`);
   - every query declares its `[timeout:]` and `[maxsize:]` (`OVERPASS_QUERY_TIMEOUT_S`, `OVERPASS_ENUMERATION_TIMEOUT_S` and `OVERPASS_QUERY_MAXSIZE_B` in `overpassOsm.ts`, `ASK_TIMEOUT_S` in `pointNamesakes.ts`);
   - 30 s after a 429, `Retry-After` honoured, bot UA, POST, a day's cache.
-- *Complies*, with one gap: the run's asker and the card's pace separately, so two requests can be
-  in flight (#2356).
+- *Complies.*
 
 **QLever** (`qlever.dev/api/osm-planet`, `services/sync/osm/qleverOsm.ts`, the default OSM reader).
 - *Rules* ([usage information](https://github.com/ad-freiburg/qlever/wiki/Usage-and-privacy-information-for-the-QLever-SPARQL-endpoints)):
@@ -316,8 +317,10 @@ admin only).
 `authService.ts` `checkBreachedPassword`).
 - *Rules* ([API v3](https://haveibeenpwned.com/API/v3)): an honest User-Agent, no key and no rate
   limit for the range API, optional `Add-Padding`.
-- *Code:* only the first 5 hex characters of the SHA-1 leave the server, and the check fails open.
-- *Complies.* There is no timeout, and no padding is sent (#2356).
+- *Code:* only the first 5 hex characters of the SHA-1 leave the server, with `Add-Padding` (a padded
+  line, counted 0, is no breach), under a 3 s timeout (`BREACH_CHECK_TIMEOUT_MS`), and the check fails
+  open on a timeout, a refusal or an error, so it never holds a registration or a password change.
+- *Complies.*
 
 **Google and Apple sign-in** (`auth/strategies/google.ts`, `apple.ts`).
 - *Code:* minimal scopes (profile and email; name and email), used for login only.
