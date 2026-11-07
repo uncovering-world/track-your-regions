@@ -32,7 +32,7 @@ the policy page is the authority.
 | Wikidata Query Service | live, small; bulk from the subset | yes (#1307) | — |
 | Wikimedia Action API (Wikidata, Commons, Wikipedia, Wikivoyage) | live, small | yes, within one process | — |
 | Commons thumbnails (`Special:FilePath`) | browser | yes | — |
-| dumps.wikimedia.org | dump | **partly** | #2353, #2355 |
+| dumps.wikimedia.org | dump | yes | — |
 | maps.wikimedia.org geoshapes | none since #2084 | — | — |
 | Nominatim | live, interactive | **partly** (one credit missing) | #2356 |
 | Overpass API and its mirrors | live, fallback | yes, one gap | #2356 |
@@ -152,9 +152,12 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
     sunset page says SQL, RDF and JSON dumps do not change.
 - *Code:* `services/dumps/fetch.ts` (`downloadTo` with ranged parts, bot UA with the purpose
   *public dump builds*, `HOST_CONNECTIONS = 3`, no retry loop), the descriptors in `dumps/catalog.ts`,
-  and `dumps/newestOnHost.ts` (once a day per dump, from the backend).
-- *Partly complies*: the connection cap is counted per process, so the worker's download and the
-  backend's check can pass it together (#2353).
+  and `dumps/newestOnHost.ts` (once a day per dump).
+- *Where the cap is kept:* in the dump worker, the one process that asks the host anything. Its
+  builds and its daily check of the newest dumps share the one count `fetch.ts` keeps, and the
+  backend reads what the worker learnt (`workbench.dump_newest_on_host`) and opens no connection
+  to the host (#2353).
+- *Complies.*
 
 **maps.wikimedia.org geoshapes.** The [Maps Terms of Use](https://foundation.wikimedia.org/wiki/Policy:Maps_Terms_of_Use)
 (read 2026-10-26) allow no third-party service outside the Wikimedia projects. No call remains:
