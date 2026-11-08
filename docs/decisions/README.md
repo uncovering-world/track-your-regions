@@ -197,12 +197,13 @@ and accepted by it.
 | [0176](0176-a-place-kinds-pool-starts-at-three-sitelinks.md) | A place kind's pool starts at three sitelinks of any Wikimedia site | Accepted | 2026-11-02 |
 | [0177](0177-a-crowded-city-reads-a-guides-use-as-a-presence.md) | A crowded city reads a guide's use as a presence, not a count | Accepted | 2026-11-02 |
 | [0178](0178-a-kind-is-filled-in-three-tiers-the-world-a-places-surroundings-and-its-region.md) | A kind is filled in three tiers: the world, a place's surroundings and its region | Accepted | 2026-11-02 |
-| [0179](0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md) | Archaeology's sites admit by the frame, and its surroundings tier asks the map for a ruin | Accepted | 2026-11-02 |
+| [0179](0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md) | Archaeology's sites admit by the frame, and its surroundings tier asks the map for a ruin | Accepted — decision 3 narrowed by [0185](0185-archaeology-reads-a-world-heritage-listing-as-a-mark-and-as-the-map.md) | 2026-11-02 |
 | [0180](0180-a-curator-keeps-a-place-of-a-crowded-city-in-its-list-or-its-shadow.md) | A curator keeps a place of a crowded city in its list or its shadow | Accepted — decision 3 narrowed by [0183](0183-a-crowded-city-is-answered-on-its-regions-list-and-a-place-in-its-own-circle.md) | 2026-11-02 |
 | [0181](0181-the-surroundings-tier-measures-a-place-against-neighbours-of-its-own-density-within-150-km.md) | The surroundings tier measures a place against neighbours of its own density within 150 km | Accepted | 2026-11-02 |
 | [0182](0182-a-pictures-credit-is-as-large-as-its-surface-and-none-where-the-licence-asks-none.md) | A picture's credit is as large as its surface, and none where the licence asks none | Accepted | 2026-11-04 |
 | [0183](0183-a-crowded-city-is-answered-on-its-regions-list-and-a-place-in-its-own-circle.md) | A crowded city is answered on its region's list, and a place in its own circle | Accepted | 2026-11-04 |
 | [0184](0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md) | A readers' floor is the readers of a fixed rank among the year's items | Accepted | 2026-11-08 |
+| [0185](0185-archaeology-reads-a-world-heritage-listing-as-a-mark-and-as-the-map.md) | Archaeology reads a World Heritage listing as a mark and as the map | Accepted | 2026-11-08 |
 | [0186](0186-the-point-dialog-draws-eoxs-open-sentinel-2-mosaic-and-a-keyed-detailed-source-waits-for-an-account.md) | The point dialog draws EOX's open Sentinel-2 mosaic, and a keyed detailed source waits for an account | Accepted | 2026-11-08 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
