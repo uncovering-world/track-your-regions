@@ -14,8 +14,6 @@ import { fetchMyAccount } from '../../api/auth';
 import { LazyAddExperienceDialog, LazyCurationDialog } from '../shared/lazyCurationDialogs';
 import {
   Box,
-  Select,
-  MenuItem,
   Chip,
   Breadcrumbs,
   Link,
@@ -24,9 +22,11 @@ import HomeIcon from '@mui/icons-material/Home';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import { useDiscoverExperiences } from '../../hooks/useDiscoverExperiences';
 import { useAuth } from '../../hooks/useAuth';
+import { useNavigation } from '../../hooks/useNavigation';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { HoverProvider } from '../../hooks/useHoverContext';
 import { DiscoverRegionList } from './DiscoverRegionList';
+import { DiscoverWorldViewSelect } from './DiscoverWorldViewSelect';
 import { DiscoverExperienceView } from './DiscoverExperienceView';
 import { ExperienceDetailPanel } from './ExperienceDetailPanel';
 import { DiscoverPointCard } from './DiscoverPointCard';
@@ -74,6 +74,7 @@ export function DiscoverPage() {
   } = useDiscoverExperiences();
 
   const { isCurator, isAdmin } = useAuth();
+  const { isLoading: worldViewsLoading } = useNavigation();
 
   // Fetch curator scopes (for determining which regions show "+" button)
   const { data: curatorScopes } = useQuery({
@@ -174,27 +175,12 @@ export function DiscoverPage() {
           bgcolor: 'background.paper',
         }}
       >
-        {/* World view selector */}
-        {worldViewsHere.length > 1 && (
-          <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-            <Select
-              value={selectedWorldView?.id || ''}
-              onChange={(e) => {
-                const wv = worldViewsHere.find(w => w.id === e.target.value);
-                if (wv) changeWorldView(wv);
-              }}
-              size="small"
-              fullWidth
-              sx={{ fontSize: '0.85rem' }}
-            >
-              {worldViewsHere.map(wv => (
-                <MenuItem key={wv.id} value={wv.id} sx={{ fontSize: '0.85rem' }}>
-                  {wv.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </Box>
-        )}
+        <DiscoverWorldViewSelect
+          worldViews={worldViewsHere}
+          selected={selectedWorldView}
+          loading={worldViewsLoading}
+          onChange={changeWorldView}
+        />
 
         {/* Breadcrumbs */}
         <Box sx={{ px: 1.5, py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}>
