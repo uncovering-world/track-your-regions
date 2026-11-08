@@ -23,7 +23,7 @@
 {"slug": "victory-column-berlin", "name": "Victory Column (Berlin)", "wikidata": "Q154987", "sources": ["travel-canon"], "sitelinks": 43, "note": ""}
 {"slug": "voelkerschlachtdenkmal", "name": "Monument to the Battle of the Nations", "wikidata": "Q699448", "sources": ["travel-canon"], "sitelinks": 33, "note": ""}
 {"slug": "hermannsdenkmal", "name": "Hermannsdenkmal", "wikidata": "Q664245", "sources": ["travel-canon"], "sitelinks": 26, "note": ""}
-{"slug": "altare-della-patria", "name": "Altare della Patria (Vittoriano)", "wikidata": "Q506234", "sources": ["travel-canon"], "sitelinks": 42, "note": "A building raised as a monument, with the Tomb of the Unknown Soldier."}
+{"slug": "altare-della-patria", "name": "Altare della Patria (Vittoriano)", "wikidata": "Q506234", "sources": ["travel-canon"], "sitelinks": 42, "note": "A building raised as a monument, with the Tomb of the Unknown Soldier. Wikidata types it only as museums, which no kind's classes reach (#2146); English Wikipedia's monuments categories name it (#2171), and as a museum it waits for History museums (#882)."}
 {"slug": "arch-of-constantine", "name": "Arch of Constantine", "wikidata": "Q5786", "sources": ["travel-canon"], "sitelinks": 47, "note": "An ancient triumphal arch; the archaeology kind may hold it too."}
 {"slug": "arch-of-titus", "name": "Arch of Titus", "wikidata": "Q723887", "sources": ["travel-canon"], "sitelinks": 42, "note": "An ancient triumphal arch on the Roman Forum; the archaeology kind may hold it too."}
 {"slug": "padrao-dos-descobrimentos", "name": "Monument to the Discoveries", "wikidata": "Q1133712", "sources": ["travel-canon"], "sitelinks": 31, "note": ""}
@@ -31,7 +31,7 @@
 {"slug": "lion-monument-lucerne", "name": "Lion Monument (Lucerne)", "wikidata": "Q688214", "sources": ["travel-canon"], "sitelinks": 24, "note": ""}
 {"slug": "scott-monument", "name": "Scott Monument", "wikidata": "Q2502213", "sources": ["travel-canon"], "sitelinks": 17, "note": "The monument in Edinburgh, not the one in Glasgow."}
 {"slug": "canadian-national-vimy-memorial", "name": "Canadian National Vimy Memorial", "wikidata": "Q2561040", "sources": ["travel-canon"], "sitelinks": 13, "note": "The memorial, not the park around it."}
-{"slug": "auschwitz-birkenau-memorial", "name": "Auschwitz-Birkenau State Museum", "wikidata": "Q819729", "sources": ["travel-canon"], "sitelinks": 22, "note": "A former camp kept as the memorial and museum of its victims; the camp itself was not made to commemorate, but the place is visited as a memorial and both sources name it so."}
+{"slug": "auschwitz-birkenau-memorial", "name": "Auschwitz-Birkenau State Museum", "wikidata": "Q819729", "sources": ["travel-canon"], "sitelinks": 22, "note": "A former camp kept as the memorial and museum of its victims; the camp itself was not made to commemorate, but the place is visited as a memorial and both sources name it so. Typed only a museum, which no kind's classes reach (#2146): a top for the proposed Historical sites."}
 {"slug": "warsaw-uprising-monument", "name": "Warsaw Uprising Monument", "wikidata": "Q450966", "sources": ["travel-canon"], "sitelinks": 16, "note": "The monument on Krasinski Square; a second item of the same name lies about a kilometre away and is not it."}
 {"slug": "shoes-on-the-danube-bank", "name": "Shoes on the Danube Bank", "wikidata": "Q473811", "sources": ["travel-canon"], "sitelinks": 23, "note": ""}
 {"slug": "freedom-monument-riga", "name": "Freedom Monument (Riga)", "wikidata": "Q337179", "sources": ["travel-canon"], "sitelinks": 42, "note": ""}
@@ -54,7 +54,7 @@
 {"slug": "genghis-khan-equestrian-statue", "name": "Genghis Khan Equestrian Statue", "wikidata": "Q1165021", "sources": ["travel-canon"], "sitelinks": 25, "note": "At Tsonjin Boldog, about 54 km east of Ulaanbaatar."}
 {"slug": "monas", "name": "National Monument (Monas), Jakarta", "wikidata": "Q145151", "sources": ["travel-canon"], "sitelinks": 31, "note": ""}
 {"slug": "independence-monument-phnom-penh", "name": "Independence Monument (Phnom Penh)", "wikidata": "Q1108673", "sources": ["travel-canon"], "sitelinks": 12, "note": ""}
-{"slug": "choeung-ek", "name": "Choeung Ek Genocidal Center", "wikidata": "Q1075734", "sources": ["travel-canon"], "sitelinks": 25, "note": "The killing field kept as a memorial, with its memorial stupa; the item describes the mass grave the memorial stands on."}
+{"slug": "choeung-ek", "name": "Choeung Ek Genocidal Center", "wikidata": "Q1075734", "sources": ["travel-canon"], "sitelinks": 25, "note": "The killing field kept as a memorial, with its memorial stupa; the item describes the mass grave the memorial stands on. Typed only a killing field, a class of execution sites no kind's classes reach (#2146): a top for the proposed Historical sites."}
 {"slug": "patuxai", "name": "Patuxai", "wikidata": "Q1442518", "sources": ["travel-canon"], "sitelinks": 24, "note": ""}
 {"slug": "african-renaissance-monument", "name": "African Renaissance Monument", "wikidata": "Q470763", "sources": ["travel-canon"], "sitelinks": 33, "note": ""}
 {"slug": "maqam-echahid", "name": "Maqam Echahid (Martyrs' Memorial), Algiers", "wikidata": "Q3056085", "sources": ["travel-canon"], "sitelinks": 12, "note": ""}

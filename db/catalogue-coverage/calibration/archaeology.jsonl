@@ -18,7 +18,7 @@
 {"slug": "pyramids-of-meroe", "name": "Pyramids of Meroë", "wikidata": "Q456939", "sources": ["travel-canon"], "sitelinks": 7, "note": ""}
 {"slug": "great-zimbabwe", "name": "Great Zimbabwe", "wikidata": "Q209217", "sources": ["travel-canon"], "sitelinks": 73, "note": ""}
 {"slug": "aksum-northern-stelae-field", "name": "Aksum: Northern Stelae Field", "wikidata": "Q15534122", "sources": ["travel-canon"], "sitelinks": 0, "note": "The stelae field is what a visitor to Aksum's ruins stands in; the item for the modern town of Axum is not the site."}
-{"slug": "kilwa-kisiwani", "name": "Ruins of Kilwa Kisiwani", "wikidata": "Q15726282", "sources": ["travel-canon"], "sitelinks": 4, "note": "The item is the World Heritage property, which also takes in the ruins of Songo Mnara on the next island; the item for the island of Kilwa Kisiwani is not the ruins."}
+{"slug": "kilwa-kisiwani", "name": "Ruins of Kilwa Kisiwani", "wikidata": "Q15726282", "sources": ["travel-canon"], "sitelinks": 4, "note": "The item is the World Heritage property, which also takes in the ruins of Songo Mnara on the next island; the item for the island of Kilwa Kisiwani is not the ruins. Wikidata types it only a heritage site, which no kind's classes reach and none could ask by (#2146); World Heritage Sites offers it."}
 {"slug": "petra", "name": "Petra", "wikidata": "Q5788", "sources": ["travel-canon"], "sitelinks": 102, "note": ""}
 {"slug": "jerash", "name": "Jerash (Gerasa)", "wikidata": "Q56072866", "sources": ["travel-canon"], "sitelinks": 9, "note": "The ancient city of Gerasa, not the modern city of Jerash."}
 {"slug": "baalbek", "name": "Temples of Baalbek", "wikidata": "Q14524645", "sources": ["travel-canon"], "sitelinks": 4, "note": "The temple ruins, not the modern city of Baalbek."}
@@ -47,21 +47,21 @@
 {"slug": "konark-sun-temple", "name": "Konark Sun Temple", "wikidata": "Q752091", "sources": ["travel-canon"], "sitelinks": 54, "note": "A ruined temple no longer in worship; both sources name it among India's ancient or heritage sites."}
 {"slug": "sigiriya", "name": "Sigiriya", "wikidata": "Q272153", "sources": ["travel-canon"], "sitelinks": 58, "note": ""}
 {"slug": "anuradhapura", "name": "Anuradhapura", "wikidata": "Q5724", "sources": ["travel-canon"], "sitelinks": 72, "note": "The item covers the sacred city and the archaeological site as well as the modern town; the lookup found no separate item for the ancient city."}
-{"slug": "polonnaruwa", "name": "Polonnaruwa", "wikidata": "Q394443", "sources": ["travel-canon"], "sitelinks": 49, "note": "The lookup found no separate item for the ancient city, so the item is the town that holds its ruins."}
+{"slug": "polonnaruwa", "name": "Polonnaruwa", "wikidata": "Q394443", "sources": ["travel-canon"], "sitelinks": 49, "note": "The lookup found no separate item for the ancient city, so the item is the town that holds its ruins. No kind's classes reach a town (#2146); World Heritage Sites offers the ancient city under this item."}
 {"slug": "angkor", "name": "Angkor", "wikidata": "Q163607", "sources": ["travel-canon"], "sitelinks": 78, "note": "The archaeological park as a whole; Angkor Wat, its one temple still in worship, is also a place of worship, and Ta Prohm is part of this entry."}
 {"slug": "bagan", "name": "Bagan", "wikidata": "Q29317", "sources": ["travel-canon"], "sitelinks": 65, "note": ""}
-{"slug": "ayutthaya", "name": "Ayutthaya Historical Park", "wikidata": "Q1025100", "sources": ["travel-canon"], "sitelinks": 42, "note": ""}
-{"slug": "sukhothai", "name": "Sukhothai Historical Park", "wikidata": "Q423654", "sources": ["travel-canon"], "sitelinks": 34, "note": ""}
+{"slug": "ayutthaya", "name": "Ayutthaya Historical Park", "wikidata": "Q1025100", "sources": ["travel-canon"], "sitelinks": 42, "note": "Typed only a historical park of Thailand (Q17334112), a class Archaeology asks its sites by since #2146."}
+{"slug": "sukhothai", "name": "Sukhothai Historical Park", "wikidata": "Q423654", "sources": ["travel-canon"], "sitelinks": 34, "note": "Typed only a historical park of Thailand (Q17334112), a class Archaeology asks its sites by since #2146."}
 {"slug": "my-son", "name": "Mỹ Sơn", "wikidata": "Q391406", "sources": ["travel-canon"], "sitelinks": 49, "note": ""}
 {"slug": "borobudur", "name": "Borobudur", "wikidata": "Q42798", "sources": ["travel-canon"], "sitelinks": 88, "note": "Also a place of worship; Touropia and Matador name it among the world's ancient ruins and Lonely Planet's Italian edition among its ancient monuments."}
 {"slug": "terracotta-army", "name": "Terracotta Army", "wikidata": "Q47672", "sources": ["travel-canon"], "sitelinks": 88, "note": "The pits and their museum at the mausoleum of the First Qin Emperor; one entry for the site and its museum."}
 {"slug": "mogao-caves", "name": "Mogao Caves", "wikidata": "Q43286", "sources": ["travel-canon"], "sitelinks": 64, "note": ""}
-{"slug": "longmen-grottoes", "name": "Longmen Grottoes", "wikidata": "Q273834", "sources": ["travel-canon"], "sitelinks": 49, "note": ""}
-{"slug": "yungang-grottoes", "name": "Yungang Grottoes", "wikidata": "Q308805", "sources": ["travel-canon"], "sitelinks": 50, "note": ""}
-{"slug": "ming-tombs", "name": "Ming tombs", "wikidata": "Q41135", "sources": ["travel-canon"], "sitelinks": 46, "note": ""}
+{"slug": "longmen-grottoes", "name": "Longmen Grottoes", "wikidata": "Q273834", "sources": ["travel-canon"], "sitelinks": 49, "note": "Typed a grotto and a Chinese AAAAA-rated attraction, which no kind's classes reach (#2146); World Heritage Sites offers it. A grotto is not asked by: the class also names sea caves and garden grottoes."}
+{"slug": "yungang-grottoes", "name": "Yungang Grottoes", "wikidata": "Q308805", "sources": ["travel-canon"], "sitelinks": 50, "note": "Typed a grotto and a Chinese AAAAA-rated attraction, which no kind's classes reach (#2146); World Heritage Sites offers it. A grotto is not asked by: the class also names sea caves and garden grottoes."}
+{"slug": "ming-tombs", "name": "Ming tombs", "wikidata": "Q41135", "sources": ["travel-canon"], "sitelinks": 46, "note": "Typed a cemetery, which no kind's classes reach (#2146): a top for the proposed Tombs & mausoleums."}
 {"slug": "machu-picchu", "name": "Machu Picchu", "wikidata": "Q676203", "sources": ["travel-canon"], "sitelinks": 132, "note": ""}
 {"slug": "sacsayhuaman", "name": "Sacsayhuamán", "wikidata": "Q828336", "sources": ["travel-canon"], "sitelinks": 37, "note": ""}
-{"slug": "ollantaytambo", "name": "Ollantaytambo", "wikidata": "Q916382", "sources": ["travel-canon"], "sitelinks": 35, "note": "The lookup found no separate item for the Inca fortress and temple hill, so the item is the town that holds them; the entry means the archaeological site."}
+{"slug": "ollantaytambo", "name": "Ollantaytambo", "wikidata": "Q916382", "sources": ["travel-canon"], "sitelinks": 35, "note": "The lookup found no separate item for the Inca fortress and temple hill, so the item is the town that holds them; the entry means the archaeological site. No kind's classes reach a town (#2146). Wikidata's item for the ruins is the Sun Temple (Q48785045) with two Wikipedia editions, so the entry keeps the town; Archaeology's map entrance is the door that could name it."}
 {"slug": "chan-chan", "name": "Chan Chan", "wikidata": "Q277540", "sources": ["travel-canon"], "sitelinks": 50, "note": ""}
 {"slug": "nazca-lines", "name": "Nazca Lines", "wikidata": "Q2620036", "sources": ["travel-canon"], "sitelinks": 67, "note": ""}
 {"slug": "caral", "name": "Caral", "wikidata": "Q219279", "sources": ["travel-canon"], "sitelinks": 44, "note": ""}
@@ -81,7 +81,7 @@
 {"slug": "mesa-verde", "name": "Mesa Verde National Park", "wikidata": "Q237128", "sources": ["travel-canon"], "sitelinks": 54, "note": ""}
 {"slug": "chaco-canyon", "name": "Chaco Culture National Historical Park", "wikidata": "Q732463", "sources": ["travel-canon"], "sitelinks": 49, "note": ""}
 {"slug": "national-museum-of-anthropology", "name": "National Museum of Anthropology, Mexico City", "wikidata": "Q524249", "sources": ["travel-canon"], "sitelinks": 41, "note": ""}
-{"slug": "rapa-nui", "name": "Rapa Nui National Park (Easter Island moai)", "wikidata": "Q1763364", "sources": ["travel-canon"], "sitelinks": 37, "note": ""}
+{"slug": "rapa-nui", "name": "Rapa Nui National Park (Easter Island moai)", "wikidata": "Q1763364", "sources": ["travel-canon"], "sitelinks": 37, "note": "Typed a national park, which no kind's classes reach (#2146); World Heritage Sites offers it."}
 {"slug": "acropolis-of-athens", "name": "Acropolis of Athens", "wikidata": "Q131013", "sources": ["travel-canon"], "sitelinks": 93, "note": ""}
 {"slug": "delphi", "name": "Delphi", "wikidata": "Q75459", "sources": ["travel-canon"], "sitelinks": 80, "note": ""}
 {"slug": "olympia", "name": "Olympia", "wikidata": "Q38888", "sources": ["travel-canon"], "sitelinks": 80, "note": "The ancient sanctuary; the item covers the archaeological site."}
