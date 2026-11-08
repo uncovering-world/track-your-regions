@@ -40503,6 +40503,13 @@
               "null"
             ]
           },
+          "replacedRef": {
+            "description": "The reference the source now lists this same part under, where it renumbered it (#2182). Null where the reference is the same or nothing replaced it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "curatedFields": {
             "type": "array",
             "items": {
@@ -40518,7 +40525,8 @@
           "latitude",
           "longitude",
           "visited",
-          "replacedMetres"
+          "replacedMetres",
+          "replacedRef"
         ],
         "additionalProperties": false,
         "description": "A point the object lost, waiting on its own verdict."

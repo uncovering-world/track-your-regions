@@ -3869,6 +3869,11 @@ export interface WithdrawnPoint {
      * @nullable
      */
   replacedMetres: number | null;
+  /**
+     * The reference the source now lists this same part under, where it renumbered it (#2182). Null where the reference is the same or nothing replaced it.
+     * @nullable
+     */
+  replacedRef: string | null;
   curatedFields?: string[];
 }
 
