@@ -20,12 +20,13 @@ const mocks = vi.hoisted(() => ({
   fetchRootsOfClasses: vi.fn(),
   guidedOf: vi.fn(),
   yearlyReaders: vi.fn(),
+  yearlyReadersAtRank: vi.fn(async () => 10_000 as number | null),
 }));
 vi.mock('../../dumps/wikipedia/structureTables.js', () => ({ latestStructure: mocks.latestStructure }));
 vi.mock('../wikipediaStructure.js', () => ({ structureItemsInCategories: mocks.structureItemsInCategories }));
 vi.mock('../admission.js', () => ({ admittedExternalIds: mocks.admittedExternalIds }));
 vi.mock('../places/worldBars.js', () => ({ guidedOf: mocks.guidedOf }));
-vi.mock('../places/candidates.js', () => ({ yearlyReaders: mocks.yearlyReaders }));
+vi.mock('../places/candidates.js', () => ({ yearlyReaders: mocks.yearlyReaders, yearlyReadersAtRank: mocks.yearlyReadersAtRank }));
 vi.mock('./streetArtQueries.js', () => ({
   fetchItemsOfGenres: mocks.fetchItemsOfGenres,
   fetchItemsOfClasses: mocks.fetchItemsOfClasses,
@@ -35,7 +36,7 @@ vi.mock('./streetArtQueries.js', () => ({
 
 import { enterStreetArtPlaces, readStreetArt, streetArtGuideOf } from './streetArtPlaces.js';
 import {
-  NOT_A_PLACE_CATEGORY, NOT_A_STREET_ART_PLACE, STREET_ART_CATEGORY, GRAFFITI_WALL_CLASSES, STREET_ART_GENRES,
+  NOT_A_PLACE_CATEGORY, NOT_A_STREET_ART_PLACE, READERS_MARK_RANK, STREET_ART_CATEGORY, GRAFFITI_WALL_CLASSES, STREET_ART_GENRES,
 } from './streetArtTest.js';
 
 const sparql = vi.fn<SparqlFn>(async () => []);
@@ -86,9 +87,23 @@ describe('what the street-art line reads (#2035)', () => {
       ['Q2035001', { classes: ['Q2977'] }],
     ]) as unknown as ReadonlyMap<string, EntityFacts>;
 
-    expect(await readStreetArt(sparql, ['Q1630131', 'Q2035001', 'Q2035002'], facts)).toEqual({ marks, guided, readers, roots });
+    expect(await readStreetArt(sparql, ['Q1630131', 'Q2035001', 'Q2035002'], facts)).toEqual({ marks, guided, readers, readersMark: 10_000, roots });
+    expect(mocks.yearlyReadersAtRank).toHaveBeenCalledWith(READERS_MARK_RANK);
     expect(mocks.fetchStreetArtMarks).toHaveBeenCalledWith(sparql, ['Q1630131', 'Q2035001', 'Q2035002']);
     expect(mocks.fetchRootsOfClasses).toHaveBeenCalledWith(sparql, ['Q42948', 'Q2977'], Object.keys(NOT_A_STREET_ART_PLACE));
+  });
+
+  it('reads no readers where the year yields no mark: readers are no mark against nothing (ADR-0184)', async () => {
+    mocks.fetchStreetArtMarks.mockResolvedValue(new Map());
+    mocks.guidedOf.mockResolvedValue(new Set());
+    mocks.yearlyReaders.mockResolvedValue(new Map([['Q1630131', 40_000]]));
+    mocks.fetchRootsOfClasses.mockResolvedValue(new Map());
+    mocks.yearlyReadersAtRank.mockResolvedValueOnce(null);
+
+    const reading = await readStreetArt(sparql, ['Q1630131'], new Map());
+
+    expect(reading.readers).toBeNull();
+    expect(reading.readersMark).toBe(0);
   });
 
   it("takes each place's guide as last read when no usage build is in place (ADR-0175 decision 6)", async () => {

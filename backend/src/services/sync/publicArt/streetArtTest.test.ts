@@ -27,7 +27,7 @@ const trees = buildTrees({
 });
 
 const facts = (over: Partial<StreetArtFacts>): StreetArtFacts => ({
-  qid: 'Q1630131', classes: [WALL], excludedRoots: [], atlasObscura: true, guided: true, readers: 40_000,
+  qid: 'Q1630131', classes: [WALL], excludedRoots: [], atlasObscura: true, guided: true, readers: 40_000, readersMark: 10_000,
   ended: false, admitted: false, onEarth: true, lat: 50.0862, lon: 14.4073, ...over,
 });
 
@@ -44,6 +44,12 @@ describe('the street-art line (#2035)', () => {
   it('leaves a newcomer below the line out quietly, and one whose readers cannot be read', () => {
     expect(streetArtVerdict(facts({ guided: false, readers: 9_999 }), trees)).toEqual({ pass: false, quiet: true });
     expect(streetArtVerdict(facts({ readers: null }), trees)).toEqual({ pass: false, quiet: true });
+  });
+
+  it('reads the readers mark the year yields, so a year read less asks fewer readers (ADR-0184)', () => {
+    const quieterYear = facts({ qid: 'Q5500657', classes: [RAILWAY_TUNNEL], atlasObscura: false, readers: 9_000 });
+    expect(streetArtVerdict(quieterYear, trees)).toEqual({ pass: false, quiet: true });
+    expect(streetArtVerdict({ ...quieterYear, readersMark: 8_647 }, trees)).toEqual({ pass: true, type: 'street-art' });
   });
 
   it('keeps a held place on one mark, and lets it fall with none', () => {
