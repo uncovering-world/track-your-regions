@@ -10,14 +10,15 @@ const wikivoyage = {
 } as unknown as WorldView;
 const gadm = { id: 1, name: 'GADM', description: null, source: null, isDefault: true, isPublic: true, tileVersion: 1 } as unknown as WorldView;
 
-vi.mock('../hooks/useNavigation', () => ({
-  useNavigation: () => ({
-    worldViews: [gadm, wikivoyage],
-    selectedWorldView: wikivoyage,
-    setSelectedWorldView: vi.fn(),
-    invalidateTileCache: vi.fn(),
-  }),
-}));
+const loaded = () => ({
+  worldViews: [gadm, wikivoyage] as WorldView[],
+  selectedWorldView: wikivoyage as WorldView | null,
+  setSelectedWorldView: vi.fn(),
+  invalidateTileCache: vi.fn(),
+  isLoading: false,
+});
+const navigation = vi.hoisted(() => ({ state: null as unknown }));
+vi.mock('../hooks/useNavigation', () => ({ useNavigation: () => navigation.state }));
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ isAdmin: true }) }));
 
 const createWorldView = vi.fn();
@@ -29,6 +30,8 @@ vi.mock('../api', () => ({
 }));
 
 const { HierarchySwitcher } = await import('./HierarchySwitcher');
+
+beforeEach(() => { navigation.state = loaded(); });
 
 function renderSwitcher() {
   render(
@@ -107,5 +110,36 @@ describe('the create dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(await screen.findByText('Admin access required')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The switcher holds its place while the world views load (#2376): rendered
+ * late, it pushed the search and the region list 56 px down, the map view's
+ * whole layout shift.
+ */
+describe('the world view select before the world views load', () => {
+  it('holds the select\'s place while the world views load', () => {
+    navigation.state = { ...loaded(), worldViews: [], selectedWorldView: null, isLoading: true };
+    renderSwitcher();
+    expect(screen.getByTestId('world-view-select-placeholder')).toBeInTheDocument();
+    expect(screen.queryByLabelText('World View')).not.toBeInTheDocument();
+  });
+
+  it('holds it too between the load and the selection', () => {
+    navigation.state = { ...loaded(), selectedWorldView: null };
+    renderSwitcher();
+    expect(screen.getByTestId('world-view-select-placeholder')).toBeInTheDocument();
+  });
+
+  it('shows nothing for a catalogue that holds no world view, and the select once one is chosen', () => {
+    navigation.state = { ...loaded(), worldViews: [], selectedWorldView: null };
+    const { unmount } = render(<QueryClientProvider client={new QueryClient()}><HierarchySwitcher /></QueryClientProvider>);
+    expect(screen.queryByTestId('world-view-select-placeholder')).not.toBeInTheDocument();
+    unmount();
+    navigation.state = loaded();
+    renderSwitcher();
+    expect(screen.queryByTestId('world-view-select-placeholder')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('World View')).toBeInTheDocument();
   });
 });
