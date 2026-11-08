@@ -15,14 +15,14 @@
 import { admittedExternalIds } from '../admission.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureItemsInCategories } from '../wikipediaStructure.js';
-import { yearlyReaders } from '../places/candidates.js';
+import { yearlyReaders, yearlyReadersAtRank } from '../places/candidates.js';
 import { guidedOf, type WorldMemory } from '../places/worldBars.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 import {
   fetchItemsOfClasses, fetchItemsOfGenres, fetchRootsOfClasses, fetchStreetArtMarks, type StreetArtMarks,
 } from './streetArtQueries.js';
 import {
-  NOT_A_PLACE_CATEGORY, NOT_A_STREET_ART_PLACE, STREET_ART_CATEGORY, GRAFFITI_WALL_CLASSES, STREET_ART_GENRES,
+  NOT_A_PLACE_CATEGORY, NOT_A_STREET_ART_PLACE, READERS_MARK_RANK, STREET_ART_CATEGORY, GRAFFITI_WALL_CLASSES, STREET_ART_GENRES,
 } from './streetArtTest.js';
 import type { EntityFacts } from './queries.js';
 
@@ -66,8 +66,10 @@ export interface StreetArtReading {
    * #2253), for a run that cannot read it (ADR-0175 decision 6).
    */
   guidedAsLastRead?: ReadonlyMap<string, boolean>;
-  /** A year's readers; null when no year can be read. */
+  /** A year's readers; null when no year can be read, or the mark the year yields cannot. */
   readers: Map<string, number> | null;
+  /** The readers a mark of fame takes this year (`READERS_MARK_RANK`, ADR-0184); 0 where no year is read. */
+  readersMark: number;
   /** Which of `NOT_A_STREET_ART_PLACE` each of their classes is a kind of. */
   roots: Map<string, string[]>;
 }
@@ -82,11 +84,14 @@ export async function readStreetArt(
 ): Promise<StreetArtReading> {
   const classes = qids.flatMap((qid) => facts.get(qid)?.classes ?? []);
   const guided = await guidedOf(qids, LOG_PREFIX);
+  // A year whose mark cannot be read is no year read: readers are no mark against nothing.
+  const readersMark = await yearlyReadersAtRank(READERS_MARK_RANK);
   return {
     marks: await fetchStreetArtMarks(sparql, qids),
     guided,
     ...(guided === null && memory ? { guidedAsLastRead: memory.guided } : {}),
-    readers: await yearlyReaders(qids, LOG_PREFIX),
+    readers: readersMark === null ? null : await yearlyReaders(qids, LOG_PREFIX),
+    readersMark: readersMark ?? 0,
     roots: await fetchRootsOfClasses(sparql, classes, Object.keys(NOT_A_STREET_ART_PLACE)),
   };
 }

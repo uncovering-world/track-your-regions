@@ -80,8 +80,12 @@ export const NOT_A_STREET_ART_PLACE: Readonly<Record<string, string>> = {
   Q2385804: 'an educational institution',
 };
 
-/** A year's readers that count as a mark of fame. */
-export const READERS_MARK = 10_000;
+/**
+ * The year's readers that count as a mark of fame: what the item at this rank
+ * among the year's items is read (ADR-0184), 10,000 on the year to September
+ * 2026, so the mark follows the level of readership rather than a count.
+ */
+export const READERS_MARK_RANK = 424_028;
 /** The marks a newcomer enters with. */
 export const ENTER_MARKS = 2;
 /** The marks a place the source holds keeps its place on. */
@@ -100,6 +104,8 @@ export interface StreetArtFacts {
   guided: boolean | null;
   /** A year's readers; null when no year can be read. */
   readers: number | null;
+  /** The year's readers at `READERS_MARK_RANK`: what counts as a mark of fame this year. */
+  readersMark: number;
   /** Whether Wikidata says it was demolished or dissolved (`P576`). */
   ended: boolean;
   /** Whether the source holds it as admitted before the run. */
@@ -120,7 +126,7 @@ function marksOf(e: StreetArtFacts): string[] {
   return [
     ...(e.atlasObscura ? ['an Atlas Obscura entry'] : []),
     ...(e.guided === true ? ['a Wikivoyage guide'] : []),
-    ...(e.readers !== null && e.readers >= READERS_MARK ? [`${e.readers.toLocaleString('en')} readers a year`] : []),
+    ...(e.readers !== null && e.readers >= e.readersMark ? [`${e.readers.toLocaleString('en')} readers a year`] : []),
   ];
 }
 
@@ -158,7 +164,7 @@ export function streetArtVerdict(e: StreetArtFacts, trees: PublicArtTrees): Stre
     return {
       pass: false,
       reason: `no Atlas Obscura entry, no Wikivoyage guide and ${e.readers.toLocaleString('en')} readers a year: `
-        + `below the street-art line (${ENTER_MARKS} of those to enter, with ${READERS_MARK.toLocaleString('en')} `
+        + `below the street-art line (${ENTER_MARKS} of those to enter, with ${e.readersMark.toLocaleString('en')} `
         + `readers a year; ${STAY_MARKS} to stay)`,
     };
   }

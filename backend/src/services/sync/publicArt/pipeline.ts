@@ -265,6 +265,7 @@ function streetArtVerdictOf(entity: PoolEntity, gathered: GatheredPublicArt, rea
     atlasObscura: marks?.atlasObscura ?? false,
     guided: streetArtGuideOf(entity.qid, reading),
     readers: reading.readers === null ? null : reading.readers.get(entity.qid) ?? 0,
+    readersMark: reading.readersMark,
     ended: marks?.ended ?? false,
     admitted: held,
     onEarth: entity.onEarth,

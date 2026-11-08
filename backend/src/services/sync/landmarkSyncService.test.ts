@@ -174,7 +174,8 @@ const GATHERED = {
   pooled: 0, classes: new Set<string>() };
 /** What the street-art rule read of its candidates: the Lennon Wall in Prague, with an Atlas Obscura entry. */
 const STREET_ART_READ = {
-  marks: new Map([['Q1630131', { atlasObscura: true, ended: false }]]), guided: new Set<string>(), readers: null, roots: new Map(),
+  marks: new Map([['Q1630131', { atlasObscura: true, ended: false }]]), guided: new Set<string>(), readers: null,
+  readersMark: 0, roots: new Map(),
 };
 const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
 const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;

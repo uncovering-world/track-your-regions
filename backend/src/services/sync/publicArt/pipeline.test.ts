@@ -592,6 +592,7 @@ describe('the street-art places (#2035)', () => {
     ]),
     guided: new Set([LENNON_WALL, 'Q9']),
     readers: new Map([[LENNON_WALL, 120_000], [HOSIER_LANE, 40_000], ['Q9', 50_000], ['Q6', 900]]),
+    readersMark: 10_000,
     roots: new Map(),
     ...over,
   });
@@ -622,6 +623,19 @@ describe('the street-art places (#2035)', () => {
       // Named by a class of the kind too: it keeps the kind's reason.
       { externalId: 'Q7', name: 'A sprayed monument', reason: 'no public-art class' },
     ]);
+  });
+
+  it('reads a newcomer\'s readers against the year\'s mark, not a fixed count (ADR-0184)', async () => {
+    // Hosier Lane has an Atlas Obscura entry and no guide: its 9,000 readers are its second mark only where the year's mark is lower.
+    const readers = new Map([[HOSIER_LANE, 9_000]]);
+    withCopy();
+    const quieter = await classifyAt(await gatherPublicArt(doorTo(world), new Set()), PUBLIC_ART_RULE, new Set(),
+      { streetArt: reading({ readers, readersMark: 8_647 }) });
+    expect(quieter.items.map((i) => i.qid)).toContain(HOSIER_LANE);
+    withCopy();
+    const busier = await classifyAt(await gatherPublicArt(doorTo(world), new Set()), PUBLIC_ART_RULE, new Set(),
+      { streetArt: reading({ readers, readersMark: 10_000 }) });
+    expect(busier.items.map((i) => i.qid)).not.toContain(HOSIER_LANE);
   });
 
   it('keeps a held street-art place on one mark, and refuses it by the line below that', async () => {
@@ -778,7 +792,7 @@ describe('the monuments English Wikipedia files and Wikidata types as something 
 
   it('is neither Public art\'s to decide nor Monuments & memorials\' without the reading', async () => {
     const share = await gathered();
-    const art = await classifyAt(share, PUBLIC_ART_RULE, new Set(), { streetArt: { marks: new Map(), guided: new Set(), readers: new Map(), roots: new Map() } });
+    const art = await classifyAt(share, PUBLIC_ART_RULE, new Set(), { streetArt: { marks: new Map(), guided: new Set(), readers: new Map(), readersMark: 10_000, roots: new Map() } });
     const ids = (rows: { items: { qid: string }[]; filtered: { externalId: string }[] }) =>
       [...rows.items.map((i) => i.qid), ...rows.filtered.map((f) => f.externalId)];
     // Public art says nothing of what the categories alone name; the memorial is a class candidate it refuses as before.
