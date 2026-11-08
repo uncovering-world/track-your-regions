@@ -50,6 +50,7 @@ function point(over: Partial<Point> = {}): Point {
     longitude: -2.93785,
     visited: false,
     replacedMetres: null,
+    replacedRef: null,
     ...over,
   };
 }
@@ -120,6 +121,12 @@ describe('withdrawalStory', () => {
     // decision — and which a curator would otherwise settle by comparing references.
     expect(withdrawalStory(point({ replacedMetres: 1200 }), 1)).toMatch(/1 km away now/);
     expect(withdrawalStory(point({ replacedMetres: 1200 }), 1)).toMatch(/moved rather than/);
+  });
+
+  it('names the number a renumbered part is listed under now (#2182)', () => {
+    // Western Tien-Shan's Bashkizilsay area, 1490-013 before and 1490-011 now, 3.5 km on.
+    const story = withdrawalStory(point({ externalRef: '1490-013', replacedMetres: 3532, replacedRef: '1490-011' }), 11);
+    expect(story).toMatch(/lists this same part as 1490-011 4 km away now/);
   });
 
   it('says a centimetre is the same place written more precisely, not a move', () => {

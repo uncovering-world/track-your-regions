@@ -274,7 +274,7 @@ describe('queueRows', () => {
         kind: 'withdrawn',
         withdrawn_points: [
           {
-            id: 1, name: null, externalRef: null, missingSince: '2026-09-01', latitude: null, longitude: null, visited: false, replacedMetres: null,
+            id: 1, name: null, externalRef: null, missingSince: '2026-09-01', latitude: null, longitude: null, visited: false, replacedMetres: null, replacedRef: null,
           },
         ],
       })],
