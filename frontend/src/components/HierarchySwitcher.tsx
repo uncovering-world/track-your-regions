@@ -39,6 +39,9 @@ import { ChunkBoundary } from './shared/ChunkBoundary';
 import { queryKeys } from '../api/queryKeys';
 import { plural } from '../utils/plural';
 
+/** The height of the small *World View* select, which its placeholder holds while the world views load. */
+const SELECT_HEIGHT = 40;
+
 // The editor is an admin's tool: loaded the first time it is opened, so a
 // visitor's bundle carries none of it (#643).
 const WorldViewEditor = lazyChunk(() => import('./WorldViewEditor').then(m => ({ default: m.WorldViewEditor })));
@@ -46,7 +49,7 @@ const WorldViewEditor = lazyChunk(() => import('./WorldViewEditor').then(m => ({
 export function HierarchySwitcher() {
   // The server already filters by visibility (a route's world view scope and
   // getWorldViews); whatever arrived here is what this user may see.
-  const { worldViews, selectedWorldView, setSelectedWorldView, invalidateTileCache } = useNavigation();
+  const { worldViews, selectedWorldView, setSelectedWorldView, invalidateTileCache, isLoading } = useNavigation();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [editorOpen, setEditorOpen] = useState(false);
@@ -130,11 +133,14 @@ export function HierarchySwitcher() {
   // Check if selected world view is custom (not GADM)
   const isCustomWorldView = selectedWorldView && !selectedWorldView.isDefault;
 
-  // Don't render until we have world views loaded and a valid selection
-  // Also ensure the selected value exists in the worldViews array
+  // The select needs the world views loaded and a valid selection. Until then
+  // its place is held at its own height (#2376): rendered late, it pushed the
+  // search and the region list 56 px down under the reader, the map view's
+  // whole layout shift. A catalogue that holds no world view shows nothing.
   const selectedValueExists = selectedWorldView && worldViews.some(w => w.id === selectedWorldView.id);
-  if (worldViews.length === 0 || !selectedWorldView || !selectedValueExists) {
-    return null;
+  if (!selectedWorldView || !selectedValueExists) {
+    if (!isLoading && worldViews.length === 0) return null;
+    return <Box sx={{ height: SELECT_HEIGHT, mb: 2 }} aria-hidden data-testid="world-view-select-placeholder" />;
   }
 
   return (
