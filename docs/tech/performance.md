@@ -523,6 +523,13 @@ a catalogue that holds no world view. Each map's OpenStreetMap credit is named
 in its corner from the map's creation (#2364), so the credit's arrival moves
 nothing either.
 
+Discover's shift, 0.010, had the same shape. Its own *World View* select appeared once the
+world views loaded, and the breadcrumbs, the kinds' counts and the region tree moved 54 px down
+at about 0.8–1 s. That is one entry of 0.0104 per load, measured with the same observer on
+2026-11-08. `DiscoverWorldViewSelect` now draws the select empty and disabled while the world
+views load, holding its height, and keeps it once they have: disabled and naming the one world
+view where there is only one, rather than taking it away and moving the panel back up (#2378).
+
 ### Local run — 2026-09-09
 
 `npm run perf:local` on the same laptop, against the dev stack's production
