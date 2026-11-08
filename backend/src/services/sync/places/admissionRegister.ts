@@ -152,6 +152,12 @@ export const SURROUNDINGS_REGISTER = {
   stayReadersShare: derived(0.8,
     'A surroundings-tier place stays while it keeps two editions, reaches 0.8 of the readers\' floor (2,400 a year on the year it was derived on) and passes one test, the readers test read at 0.8 and the others whole.',
     'Results, Checks at the point'),
+  stayEditionsShare: {
+    value: 0.8,
+    derivation: 'A surroundings-tier place stays while its editions reach 0.8 of the reference, as its readers do: a pool that gains a class moves the reference of every place near the class\'s items with nothing changed about the place (#2380 dropped Wat Wang Wiwekaram, 5 editions against 5.5, when Mueang Sing joined its neighbours at 149 km).',
+    evidence: 'docs/decisions/0187-a-held-surroundings-tier-place-stays-at-0-8-of-its-editions-reference.md § Measurement',
+    date: '2026-11-08',
+  } satisfies Parameter<number>,
 } as const;
 
 const ARCHAEOLOGY_REPORT = 'docs/research/2026-11-02-archaeologys-sites-in-the-admission-frame.md';

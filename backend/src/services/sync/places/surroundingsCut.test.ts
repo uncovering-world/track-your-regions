@@ -121,7 +121,7 @@ describe('surroundingsVerdict', () => {
     expect(SURROUNDINGS_CUT).toEqual({
       enabled: true, neighbours: 'all', radiusKm: 150, densityNeighbours: 20, densityRatio: 4, best: 10,
       guideShare: 0.25, editionsShare: 1, readersShare: 1.5, guideGroupFloor: 5, editionsGroupFloor: 25, readersGroupFloor: 25,
-      minLanguages: 2, minReaders: 3_000, minReadersRank: 889_568, guideForTypes: ['tunnel', 'dam', 'lock', 'bridge'], heritageForTypes: ['bridge'], stayReadersShare: 0.8,
+      minLanguages: 2, minReaders: 3_000, minReadersRank: 889_568, guideForTypes: ['tunnel', 'dam', 'lock', 'bridge'], heritageForTypes: ['bridge'], stayReadersShare: 0.8, stayEditionsShare: 0.8,
     });
   });
 });
@@ -205,7 +205,22 @@ describe('the surroundings tier on real places (ADR-0175 decision 3, ADR-0181)',
     expect(surroundingsVerdict(read26, ottawa).in).toBe(false);
     const held = surroundingsVerdict(read26, ottawa, SURROUNDINGS_CUT, true);
     expect(held.in).toBe(true);
-    if (held.in) expect(held.note).toMatch(/^Stays in the surroundings tier by its readers, the readers test read at 1\.2 times the reference for a place it holds: /);
+    if (held.in) expect(held.note).toMatch(/^Stays in the surroundings tier by its readers, the readers test read at 1\.2 times the reference and the editions test at 0\.8 for a place it holds: /);
+  });
+
+  it('keeps a place it holds while its editions reach 0.8 of the reference, as a pool that gains a class moves it (ADR-0187)', () => {
+    // Wat Wang Wiwekaram at Sangkhla Buri: 5 editions, and the median of its ten best rose from 5 to 5.5
+    // when Mueang Sing (9 editions) joined its neighbours at 149 km. Its readers stay under both shares.
+    const sangkhla: Surroundings = {
+      groupSize: 41, topEditions: [9, 8, 7, 6, 6, 5, 5, 5, 4, 4], topGuideEditions: [1], topReaders: [40_000, 20_000, 12_000, 10_217, 9_000],
+    };
+    const wat = { editions: 5, guideEditions: 0, readers: 4_602 };
+    expect(surroundingsVerdict(wat, sangkhla).in).toBe(false);
+    const held = surroundingsVerdict(wat, sangkhla, SURROUNDINGS_CUT, true);
+    expect(held.in).toBe(true);
+    if (held.in) expect(held.note).toMatch(/^Stays in the surroundings tier by its editions/);
+    // Four editions are under 0.8 of the reference too: the Chaliang temple beside Si Satchanalai falls.
+    expect(surroundingsVerdict({ ...wat, editions: 4 }, sangkhla, SURROUNDINGS_CUT, true).in).toBe(false);
   });
 });
 
