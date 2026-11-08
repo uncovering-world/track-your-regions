@@ -6,8 +6,9 @@ import {
   ARCHAEOLOGICAL_PARK, SITE_ROOT, SETTLEMENT_ROOT, SHIPWRECK_ROOT, RUIN_HISTORIC,
   RUIN_KEYS, LIVING_PLACE, PROTECTED_BOUNDARY, SITE_CLASSES, SITE_KILL_CLASSES,
   SITE_KILL_UNLESS_SITE, SITE_KILL_NATURAL, SITE_KILL_BY_NAME, OSM_KEEP_WKT,
-  CENSUS_BOUNDARY, FORTIFICATION_ROOT, PALACE_ROOT, WORSHIP_STRUCTURE_ROOT,
+  CENSUS_BOUNDARY, FORTIFICATION_ROOT, PALACE_ROOT, WORSHIP_STRUCTURE_ROOT, SITE_POOL_CLASSES,
 } from './classes.js';
+import { archaeologyTypeOf } from './surroundingsSites.js';
 
 describe('archaeology classes', () => {
   it('names the two museum roots the survey used', () => {
@@ -38,6 +39,14 @@ describe('archaeology classes', () => {
     expect(trees.fortification.has(FORTIFICATION_ROOT)).toBe(true);
     expect(trees.palace.has(PALACE_ROOT)).toBe(true);
     expect(trees.worship.has(WORSHIP_STRUCTURE_ROOT)).toBe(true);
+  });
+
+  it('asks the site pool by Thailand\'s historical parks beside the site tree, which no subclass chain reaches (#2146)', () => {
+    const trees = buildArchaeologyTrees({ museum: [], park: [], naturalHistory: [], artefact: [], site: ['Q839954'] });
+    expect(SITE_POOL_CLASSES).toEqual({ Q17334112: 'historical park of Thailand' });
+    expect(trees.site.has('Q17334112')).toBe(true);
+    // Sukhothai Historical Park carries that class and nothing else: a site, not a museum.
+    expect(archaeologyTypeOf(['Q17334112'], trees)).toBe('site');
   });
 
   it('names the site door\'s signals as the measurement found them', () => {

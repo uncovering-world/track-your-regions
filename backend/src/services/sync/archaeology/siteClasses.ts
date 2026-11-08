@@ -238,6 +238,23 @@ export const SITE_CLASSES: Record<string, string> = {
 };
 
 /**
+ * Classes the site pool asks by beside the tree under `archaeological site`,
+ * which no subclass chain on Wikidata puts under it (#2146). Thailand's Fine
+ * Arts Department designates its restored ancient cities *historical parks*,
+ * and Wikidata files that class under `protected area`: Ayutthaya and
+ * Sukhothai, which the travel canon names, carry it and no site class. Read off
+ * the local subset on 2026-11-08, the class has ten instances with a point,
+ * eight of them carried by no site class: Ayutthaya, Sukhothai, Si Satchanalai,
+ * Kamphaeng Phet, Si Thep, Phu Phra Bat, Mueang Sing and Phra Nakhon Khiri. The
+ * last is a hilltop palace of the 1860s and its temples rather than a ruin; the
+ * review queue answers it, since every arrival of Archaeology waits for a
+ * curator.
+ */
+export const SITE_POOL_CLASSES: Record<string, string> = {
+  Q17334112: 'historical park of Thailand',
+};
+
+/**
  * Refused whatever else the item says: the class names the thing better than
  * "archaeological site" does, and names something nobody stands in.
  *

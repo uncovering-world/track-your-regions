@@ -31,6 +31,7 @@ import {
   FORTIFICATION_ROOT,
   PALACE_ROOT,
   WORSHIP_STRUCTURE_ROOT,
+  SITE_POOL_CLASSES,
 } from './siteClasses.js';
 
 export {
@@ -59,6 +60,7 @@ export {
   CENSUS_BOUNDARY,
   LIVING_PLACE,
   SITE_CLASSES,
+  SITE_POOL_CLASSES,
   SITE_KILL_CLASSES,
   SITE_KILL_UNLESS_SITE,
   SITE_KILL_NATURAL,
@@ -434,7 +436,7 @@ export interface ArchaeologyTrees {
   artefact: ReadonlySet<string>;
   /** Every class that makes an object no find (`NOT_A_FIND`, its natural-history roots walked). */
   notAFind: ReadonlySet<string>;
-  /** Every class under `archaeological site`: the site pool's own tree (`SITE_ROOT`). */
+  /** Every class under `archaeological site`, and the classes asked beside it (`SITE_POOL_CLASSES`): the site pool's own tree (`SITE_ROOT`). */
   site: ReadonlySet<string>;
   /** Every class under `human settlement`: which branch a candidate came in on. */
   settlement: ReadonlySet<string>;
@@ -516,7 +518,7 @@ export function buildArchaeologyTrees(fetched: {
     // The six below are optional, as `notAFind` above is, so that a caller
     // judging only museums — every test of the museum door — need not state
     // a tree it never reads.
-    site: new Set([...(fetched.site ?? []), SITE_ROOT]),
+    site: new Set([...(fetched.site ?? []), SITE_ROOT, ...Object.keys(SITE_POOL_CLASSES)]),
     settlement: new Set([...(fetched.settlement ?? []), SETTLEMENT_ROOT]),
     shipwreck: new Set([...(fetched.shipwreck ?? []), SHIPWRECK_ROOT]),
     fortification: new Set([...(fetched.fortification ?? []), FORTIFICATION_ROOT]),
