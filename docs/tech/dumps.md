@@ -581,7 +581,9 @@ earlier year built before any current one is not taken for it, and the counted
 editions (`countedEditions`, `wikipedia/redirectBuild.ts`) are summed over the
 current year's months alone, since two years' views would carry an edition
 over the line; `readershipYear()` and every read over it (`readWorks`,
-`readAtLeast`) are unchanged, and `workReadership.db.test.ts` holds them to it.
+`readAtLeast`, and `readersAtRank`, the readers of the item at a rank, which a
+readers' floor is stated as, ADR-0184) are unchanged, and
+`workReadership.db.test.ts` holds them to it.
 A month holds one window, so two years never share one: the queue refuses a
 year whose twelve overlap the year in place, the year to come — the twelve
 ending on the newest month the host lists, which the next current build reads

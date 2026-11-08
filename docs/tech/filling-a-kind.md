@@ -203,8 +203,9 @@ OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the un
 - the unit is the place's own surroundings: the places within 150 km of it whose density — the
   distance to their 20th-nearest place — is within a factor of 4 of its own, so a place on a dense
   core's edge is measured against the edge ([ADR-0181](../decisions/0181-the-surroundings-tier-measures-a-place-against-neighbours-of-its-own-density-within-150-km.md));
-- a place under the world line enters when it has a Wikipedia article in two languages and
-  3,000 readers a year, and one of three tests passes: the Wikivoyage editions that use it reach
+- a place under the world line enters when it has a Wikipedia article in two languages and the
+  readers' floor, the readers of the 889,568th most read item of the year (3,000 on the year to
+  September 2026, [ADR-0184](../decisions/0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md)), and one of three tests passes: the Wikivoyage editions that use it reach
   a quarter of the median of its 10 best neighbours by Wikivoyage's use, among 5 places or more;
   its Wikipedia editions reach the median of its 10 best neighbours by Wikipedia editions, among 25
   places or more; or its readers reach one and a half times the median of its 10 best neighbours
@@ -212,7 +213,8 @@ OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the un
   § 11);
 - a tunnel, a dam, a lock or a bridge enters, and stays, only while a Wikivoyage edition uses it, a
   bridge also while a heritage designation holds (#2324);
-- a place the tier holds stays while it keeps two editions and 2,400 readers and passes one test,
+- a place the tier holds stays while it keeps two editions and 0.8 of the floor (2,400 on that year)
+  and passes one test,
   the readers test read at 0.8 of its share, 1.2 times the reference (ADR-0175 decision 2);
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
 - the place pass reads it after the world tier has decided, for the six place kinds of § 11, from
@@ -830,9 +832,11 @@ levels held as readership drifted is
 [2026-11-02 — The admission frame over two readership years](../research/2026-11-02-the-admission-frame-over-two-readership-years.md).
 It compares the years ending 2025-09 and 2026-09 at ADR-0175's point. Quantile bars changed 10.6 % of
 the admitted set, and bars frozen as numbers changed 11.3 %. The stay at 0.8 brought it to 5.6 %.
-Survey recall and canon held on both years. The surroundings tier's floors (3,000 readers to enter,
-2,400 to stay) are numbers, not quantiles, so they do not follow a drift. That reading predates the
-neighbourhood of ADR-0181.
+Survey recall and canon held on both years. That reading predates the neighbourhood of ADR-0181,
+and it read the surroundings tier's floors as numbers. They are now the readers of a fixed rank
+among the year's items ([ADR-0184](../decisions/0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md)): the floor follows the level of readership. Derived on the
+earlier year at 3,000, the rank reads 2,728 on the later one, the 9 % the tier's places fell at the
+median, and holds the count of items over it.
 
 **What a run cannot read** it takes as last read, never as zero (ADR-0175 decision 6,
 `places/worldMemory.ts`). Three rules:
@@ -884,7 +888,9 @@ density is within a factor of 4 of its own, a place's density being its distance
 20th-nearest place of the pool (`places/surroundingsNeighbourhood.ts`). A monastery 95 km from the
 Kremlin is measured against the Moscow region's places, not against Moscow's core. The reference of
 each test is the median of the ten best neighbours. It enters with at least two Wikipedia editions
-and 3,000 readers a year when one test passes:
+and the year's readers' floor when one test passes. The floor is the readers of the 889,568th most
+read item that year, 3,000 on the year to September 2026 ([ADR-0184](../decisions/0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md), read with the pool's year,
+`SurroundingsPool.minReaders`):
 
 - **Wikivoyage:** the editions that use it reach a quarter of the reference, in an area of at
   least 5 places;
@@ -894,7 +900,7 @@ and 3,000 readers a year when one test passes:
 
 A tunnel, a dam, a lock or a bridge enters only when a Wikivoyage edition uses it, a bridge also
 when a heritage designation holds (the Luding Bridge, #2324). A place the tier holds
-stays while it keeps two editions, reaches 2,400 readers and passes one test, the readers test
+stays while it keeps two editions, reaches 0.8 of the floor (2,400 on that year) and passes one test, the readers test
 read at 0.8 of its share (1.2 times the reference) and the other two whole; a tunnel, dam, lock or
 bridge stays only while a guide still uses it (a bridge, or its designation). With no year of readers the tier is not read and its places keep their standing;
 with no Wikivoyage usage build it is read, and the guides of the places it holds are as last read (above). Its arrivals
