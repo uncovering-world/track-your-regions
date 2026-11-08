@@ -405,3 +405,28 @@ describe('what a change means, in one line', () => {
     ['name', 'description', 'metadata.criteria', 'metadata.imageCredit'].forEach(field => expect(meaningOf(field).event, field).toBeUndefined());
   });
 });
+
+describe('whom a place commemorates (#2144)', () => {
+  // The Monument to Minin and Pozharsky (Q187531) depicts Dmitry Pozharsky (Q15756) and Kuzma Minin (Q469785).
+  const POZHARSKY = { item: 'Q15756', label: 'Dmitry Pozharsky', articleUrl: 'https://en.wikipedia.org/wiki/Dmitry_Pozharsky' };
+  const MININ = { item: 'Q469785', label: 'Kuzma Minin', articleUrl: null };
+  const both = { via: 'depicts', subjects: [POZHARSKY, MININ] };
+
+  it('names the subjects as the card does, each linked to its article where it has one', () => {
+    expect(fieldLabel('metadata.commemorates')).toBe('commemorates');
+    expect(said('metadata.commemorates', both)).toBe('Dmitry Pozharsky, Kuzma Minin');
+    expect(screen.getByRole('link', { name: 'Dmitry Pozharsky' }).getAttribute('href')).toBe(POZHARSKY.articleUrl);
+    expect(screen.queryByRole('link', { name: 'Kuzma Minin' })).toBeNull();
+  });
+
+  it('says who a proposal adds and drops, and where the proposed names were read', () => {
+    expect(change('metadata.commemorates', undefined, both))
+      .toBe('Added: Dmitry Pozharsky, Kuzma Minin. Read from Wikidata’s “depicts”, a person the work shows.');
+    expect(change('metadata.commemorates', both, { via: 'depicts', subjects: [POZHARSKY] })).toBe('Removed: Kuzma Minin. Read from Wikidata’s “depicts”, a person the work shows.');
+    expect(change('metadata.commemorates', both, undefined)).toBe('Removed: Dmitry Pozharsky, Kuzma Minin.');
+  });
+
+  it('is a fact readers see, so publishing it changes the card', () => {
+    expect(meaningOf('metadata.commemorates').unseen).toBeUndefined();
+  });
+});

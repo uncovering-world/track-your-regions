@@ -2594,6 +2594,20 @@ export type ExperienceDetailPartOf = {
 } | null;
 
 /**
+ * One person or event a place commemorates (#2144).
+ */
+export interface CommemoratedSubject {
+  /** The subject's Wikidata item. */
+  qid: string;
+  label: string;
+  /**
+     * Its English Wikipedia article, or null where it has none.
+     * @nullable
+     */
+  article_url: string | null;
+}
+
+/**
  * One object, as its own page reads it.
  */
 export interface ExperienceDetail {
@@ -2634,6 +2648,8 @@ export interface ExperienceDetail {
      * @nullable
      */
   date_inscribed: string | null;
+  /** Whom or what the place commemorates, off its `metadata.commemorates` (#2144): the Lincoln Memorial names Abraham Lincoln. Empty where the runs of Public art and Monuments & memorials name nobody. */
+  commemorates: CommemoratedSubject[];
   created_at: string | null;
   updated_at: string | null;
   source_membership: ExperienceDetailSourceMembership;

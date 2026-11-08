@@ -40,6 +40,7 @@ import type { VisitedStatus } from '../../api/visited';
 import { experienceContentsQuery, experienceDetailsQuery, siteFindsQuery } from '../../api/experienceCardQueries';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
+import { CommemoratesLine } from '../shared/CommemoratesLine';
 import { DescriptionText } from '../shared/DescriptionText';
 import { PlaceLinks } from '../shared/PlaceLinks';
 import { descriptionBeyondSubtitle } from '../shared/PlaceSubtitle';
@@ -343,6 +344,9 @@ function ExperienceExpandedDetailsComponent({
           Inscribed: {details.date_inscribed}
         </Typography>
       )}
+
+      {/* Whom or what it commemorates (#2144), from the same detail read. */}
+      <CommemoratesLine subjects={details?.commemorates} />
 
       {/* How much ground it covers, and whose map says so (ADR-0059). Rendered
           from the detail read the card already issues. */}

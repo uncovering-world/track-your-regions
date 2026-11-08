@@ -25,7 +25,7 @@ import {
 // and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
-  Experience, ExperienceDetail, ExperienceKind, ExperienceKinds, ExperienceLocationsResponse, ExperiencePicture,
+  CommemoratedSubject, Experience, ExperienceDetail, ExperienceKind, ExperienceKinds, ExperienceLocationsResponse, ExperiencePicture,
   ExperienceLocationWithState, ExperienceRegionRef, ExperienceSearch, ExperienceSearchResult,
   ExperiencesByRegionResponse, ExperiencesByRegionResponseCrowdedOutItem, ExperienceTreasure,
   ExperienceTreasuresResponse, ImageCredit, LinkedPlace, NewBadgesSeen, RegionExperienceCount,
