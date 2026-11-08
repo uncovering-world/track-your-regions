@@ -20151,6 +20151,32 @@
         "additionalProperties": false,
         "description": "What a colour-match run matched: each cluster's divisions and region, and the map of it."
       },
+      "CommemoratedSubject": {
+        "type": "object",
+        "properties": {
+          "qid": {
+            "type": "string",
+            "description": "The subject's Wikidata item."
+          },
+          "label": {
+            "type": "string"
+          },
+          "article_url": {
+            "description": "Its English Wikipedia article, or null where it has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "qid",
+          "label",
+          "article_url"
+        ],
+        "additionalProperties": false,
+        "description": "One person or event a place commemorates (#2144)."
+      },
       "ComponentItemProposal": {
         "type": "object",
         "properties": {
@@ -25037,6 +25063,13 @@
               "null"
             ]
           },
+          "commemorates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommemoratedSubject"
+            },
+            "description": "Whom or what the place commemorates, off its `metadata.commemorates` (#2144): the Lincoln Memorial names Abraham Lincoln. Empty where the runs of Public art and Monuments & memorials name nobody."
+          },
           "created_at": {
             "anyOf": [
               {
@@ -25204,6 +25237,7 @@
           "image_credit",
           "metadata",
           "date_inscribed",
+          "commemorates",
           "created_at",
           "updated_at",
           "source_membership",

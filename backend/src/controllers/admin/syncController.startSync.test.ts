@@ -15,7 +15,8 @@ vi.mock('../../services/sync/index.js', async (importOriginal) => ({
   syncPlacePass: vi.fn(async () => undefined),
 }));
 // A pass of two sources, as the Public Art split will make it (#1807).
-vi.mock('../../services/sync/passes.js', () => ({
+vi.mock('../../services/sync/passes.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/sync/passes.js')>()),
   passOf: (sourceId: number) => ([3, 6].includes(sourceId) ? [3, 6] : [sourceId]),
 }));
 vi.mock('./afterRun.js', () => ({

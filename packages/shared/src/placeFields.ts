@@ -90,6 +90,13 @@ export const PLACE_FIELDS: Readonly<Record<string, PlaceField>> = {
   // UNESCO's page about the site, a link a traveller reads like a website, which
   // places no World Heritage membership holds keep too (ADR-0138).
   'metadata.unescoUrl': place('shown'),
+  // Whom or what the place commemorates, the line "Commemorates: Abraham
+  // Lincoln" on its card in Map mode and in Discover (#2144): the place's,
+  // whichever kind's run read it, so a memorial church keeps it under Places of
+  // worship. Only Public art's and Monuments & memorials' runs write it, and
+  // every other source keeps it as the place holds it while one of theirs
+  // admits the place (`WRITTEN_BY_SOURCES`, ADR-0190).
+  'metadata.commemorates': place('shown'),
 
   // The inscription, the World Heritage kind's: a delisted site loses it with
   // its membership.

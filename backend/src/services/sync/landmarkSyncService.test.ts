@@ -57,6 +57,9 @@ vi.mock('./places/worldMemory.js', () => ({ worldHistory: vi.fn(async () => hist
 vi.mock('./places/surroundingsPool.js', () => ({ readSurroundingsPool: vi.fn(async () => ({ rows: new Map(), around: new Map(), seconds: 0 })) }));
 // Whether a place still stands is its own module's (`places/gone.test.ts`, #2259); here nothing is gone.
 vi.mock('./places/gone.js', () => ({ refuseGone: vi.fn(async () => 0), goneWorkReason: vi.fn(() => null) }));
+// Whom or what a place commemorates is its own module's (`places/commemorates.test.ts`, #2144); here it names nobody.
+const readCommemorates = vi.hoisted(() => vi.fn(async () => new Map()));
+vi.mock('./places/commemorates.js', () => ({ readCommemorates, commemorationWiki: vi.fn(async () => ({})) }));
 // The museum tree joins the pool's classes (ADR-0171); the spec asks Wikidata nothing.
 vi.mock('./wikidataQueries.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('./wikidataQueries.js')>()), fetchClassTree: vi.fn(async () => new Set<string>()) }));
 // What the street-art rule reads (#2035); its own spec is streetArtPlaces.test.ts.
@@ -352,6 +355,21 @@ describe('public art in the place pass', () => {
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q91274']);
   });
 
+  it('reads no subjects for Towers and writes no commemorates, which every run but the public-art kinds\' keeps (#2144)', async () => {
+    const towers = await configOf({}, 7);
+    vi.clearAllMocks();
+    mockedAdmitted.mockResolvedValue(new Set(['Q91274']));
+    vi.mocked(TOWERS_CLASSIFIER.classify).mockResolvedValue({
+      items: [landmark({ qid: 'Q91274', label: 'Galata Tower', type: 'tower', classes: ['Q12518'] })], fetched: 1, filtered: [],
+    });
+    const fetched = await towers.fetchItems(progress(), []);
+    expect(readCommemorates).not.toHaveBeenCalled();
+    expect(fetched.items[0]).not.toHaveProperty('commemorates');
+    const context: SyncRunContext = { dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null };
+    await towers.processItem(fetched.items[0], progress(), context);
+    expect(mockedUpsert.mock.calls[0][0].metadata).not.toHaveProperty('commemorates');
+  });
+
   it('keeps its answers by default and asks the source afresh when told to', async () => {
     const config = await configOf({ refreshCache: true });
     await config.fetchItems(progress(), []);
@@ -413,6 +431,22 @@ describe('public art in the place pass', () => {
     expect(params.metadata).not.toHaveProperty('wikipediaCategories');
     await config.processItem(landmark({ qid: 'Q83497', wikipediaCategories: ['Monuments and memorials in South Dakota'] }), progress(), context);
     expect(mockedUpsert.mock.calls[1][0].metadata).toMatchObject({ wikipediaCategories: ['Monuments and memorials in South Dakota'] });
+  });
+
+  it('reads whom each admitted place commemorates through the gather\'s door, and writes it as the place\'s own (#2144)', async () => {
+    const lincoln = { via: 'commemorates', subjects: [{ item: 'Q91', label: 'Abraham Lincoln', articleUrl: 'https://en.wikipedia.org/wiki/Abraham_Lincoln' }] };
+    readCommemorates.mockResolvedValueOnce(new Map([['Q337179', lincoln]]));
+    const config = await configOf();
+    const fetched = await config.fetchItems(progress(), []);
+    expect((readCommemorates.mock.calls[0] as unknown[])[0]).toEqual([expect.objectContaining({ qid: 'Q337179' })]);
+    expect((readCommemorates.mock.calls[0] as unknown[])[1]).toEqual(expect.any(Function));
+    expect(fetched.items[0].commemorates).toEqual(lincoln);
+    const context: SyncRunContext = { dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null };
+    await config.processItem(fetched.items[0], progress(), context);
+    expect(mockedUpsert.mock.calls[0][0].metadata.commemorates).toEqual(lincoln);
+    // A place the reading names nobody for sends no value.
+    await config.processItem(landmark({ qid: 'Q82425' }), progress(), context);
+    expect(mockedUpsert.mock.calls[1][0].metadata).not.toHaveProperty('commemorates');
   });
 
   it('reads and writes what a street-art place holds in Public art alone, its pictures credited (#2055)', async () => {

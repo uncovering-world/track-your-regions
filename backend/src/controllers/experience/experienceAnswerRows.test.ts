@@ -42,6 +42,16 @@ describe('experienceDetailOf', () => {
     expect(ExperienceDetail.safeParse(JSON.parse(JSON.stringify(karnak))).success).toBe(true);
   });
 
+  it('serves whom the place commemorates by its declared keys, and none where it holds no such value (#2144)', () => {
+    // The Lincoln Memorial (Q213559) commemorates Abraham Lincoln (Q91).
+    const lincoln = { item: 'Q91', label: 'Abraham Lincoln', articleUrl: 'https://en.wikipedia.org/wiki/Abraham_Lincoln', extra: 1 };
+    const memorial = experienceDetailOf({ ...ACROPOLIS, metadata: { commemorates: { via: 'commemorates', subjects: [lincoln] } } }, []);
+    expect(memorial.commemorates).toEqual([{ qid: 'Q91', label: 'Abraham Lincoln', article_url: 'https://en.wikipedia.org/wiki/Abraham_Lincoln' }]);
+    expect(ExperienceDetail.safeParse(JSON.parse(JSON.stringify(memorial))).success).toBe(true);
+    expect(experienceDetailOf(ACROPOLIS, []).commemorates).toEqual([]);
+    expect(experienceDetailOf({ ...ACROPOLIS, metadata: null }, []).commemorates).toEqual([]);
+  });
+
   it('serves each kind of the place by its declared keys only', () => {
     const detail = experienceDetailOf({
       ...ACROPOLIS, kinds: [{ ...ACROPOLIS_IN_ARCHAEOLOGY, admission: 'admitted' } as typeof ACROPOLIS_IN_ARCHAEOLOGY],
