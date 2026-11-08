@@ -104,7 +104,7 @@ export function typeFilings(
 const FACT_BATCH = 500;
 
 /** A runner over the subset's door: the subset is our own database, so nothing is paced and nothing is shown. */
-function subsetRunner(): QueryRunner {
+export function subsetRunner(): QueryRunner {
   return { sparql: subsetOnlyDoor(), phase: () => {}, step: async () => {} };
 }
 

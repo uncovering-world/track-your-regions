@@ -24,6 +24,7 @@ import { arrivalWaitingSql } from '../../experience/waitingCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
 import { placePointsSql } from '../../../db/placePoints.js';
 import { PLACE_KIND_SOURCES } from '../../../services/sync/passes.js';
+import { readClassReach, type ClassReach } from '../../../services/catalogueCoverage/classReach.js';
 
 export type KindRow = Pick<CoverageKindsRow, 'slug' | 'name' | 'form' | 'status' | 'experience_kind_id' | 'issue_number' | 'in_venue'> & {
   /** The sitelinks a place needs to enter this kind's world tier, where its source states one. */
@@ -137,6 +138,8 @@ export interface CoverageFacts {
   unnamed: UnnamedRow[];
   calibration: CalibrationRow[];
   calibrationSources: CalibrationSourceRow[];
+  /** Which kinds' classes reach each top's item (#2146), read off the local Wikidata subset; null where none is built. */
+  classReach: ClassReach | null;
 }
 
 const KINDS_SQL = `
@@ -500,6 +503,8 @@ export async function readCoverageFacts(regionSlugs?: string[]): Promise<Coverag
     pool.query<CalibrationRow>(calibrationStatement),
     pool.query<CalibrationSourceRow>(CALIBRATION_SOURCES_SQL),
   ]);
+  // A top's class reach is read once the tops are known, off the subset's copy of the kinds' trees.
+  const classReach = await readClassReach(calibration.rows.map(row => row.wikidata_id));
   return {
     kinds: kinds.rows,
     regions: regions.rows,
@@ -510,6 +515,7 @@ export async function readCoverageFacts(regionSlugs?: string[]): Promise<Coverag
     unnamed: unnamed.rows,
     calibration: calibration.rows,
     calibrationSources: calibrationSources.rows,
+    classReach,
   };
 }
 

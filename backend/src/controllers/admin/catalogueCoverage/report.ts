@@ -19,10 +19,12 @@
  *   not worth a visit that a kind still offers;
  * - per live kind with a calibration list (#1864), how many of the tops a
  *   traveller expects of it a reader sees, and why each miss stands: held for a
- *   curator, refused by the kind's last run with its reason, or absent, under
- *   the kind's editions line or out of its classes' reach.
+ *   curator, refused by the kind's last run with its reason, reached by no
+ *   kind's classes or by another kind's alone (#2146), or absent, under the
+ *   kind's editions line or a candidate no run named.
  */
 
+import type { ClassReach } from '../../../services/catalogueCoverage/classReach.js';
 import { ROW_CAUSES, type Cause } from '../../../services/catalogueCoverage/files.js';
 import { ICONIC_SITELINKS } from '../../../services/sync/museum/tier1.js';
 import {
@@ -154,11 +156,17 @@ export interface JudgedCause {
  * (ADR-0172) or a curator's shadow (ADR-0180), which the display decides and no line does; held, in the catalogue and
  * neither offered by this kind nor waiting for a curator in it (refused by name
  * earlier, offered by another kind alone, passed and no longer standing, or
- * marked missing before anyone read it); absent,
- * which is under the kind's editions line where the list's sitelinks say so,
- * else out of its classes' reach.
+ * marked missing before anyone read it); unreached, no kind's class question
+ * names its item, so it is a candidate nowhere, and the item's own classes are
+ * named (#2146); other_classes, its kind's classes do not reach the item and
+ * another kind's do, which are named; absent, which is under the kind's
+ * editions line where the list's sitelinks say so, else a candidate its classes
+ * reach, or whose reach cannot be read, that no run named — under the readers' line, which the run records
+ * nowhere. Class reach is read only for a kind the place pass asks by class and
+ * an item whose classes the local Wikidata subset holds; elsewhere an absent top
+ * is told by the line alone.
  */
-export type CalibrationStanding = 'offered' | 'admitted' | 'crowded' | 'held' | 'refused' | 'under_line' | 'absent';
+export type CalibrationStanding = 'offered' | 'admitted' | 'crowded' | 'held' | 'refused' | 'unreached' | 'other_classes' | 'under_line' | 'absent';
 
 export interface CalibrationTop {
   slug: string;
@@ -169,7 +177,8 @@ export interface CalibrationTop {
   standing: CalibrationStanding;
   /**
    * For a held one, the catalogue place that holds it, or for a work the treasure no venue shows; the run's
-   * reason, for a refused one; for one offered by a place that holds it (#2151), that place.
+   * reason, for a refused one; for one offered by a place that holds it (#2151), that place; for an
+   * unreached one, the classes its item carries; for one only other kinds' classes reach, those kinds.
    */
   detail: string | null;
 }
@@ -484,28 +493,46 @@ function unnamedByRegion(
 const byFame = (a: CalibrationTop, b: CalibrationTop): number =>
   (b.sitelinks ?? -1) - (a.sitelinks ?? -1) || a.name.localeCompare(b.name);
 
-function standingOf(row: CalibrationRow, line: number | null): CalibrationStanding {
+/**
+ * Which kinds' classes reach a top's item, where that can be said: the kind's classes were
+ * read and the subset holds the item's classes. Null where it cannot.
+ */
+function reachOf(kind: KindRow, row: CalibrationRow, reach: ClassReach | null) {
+  if (reach === null || kind.experience_kind_id === null || !reach.kinds.has(kind.experience_kind_id)) return null;
+  const item = reach.items.get(row.wikidata_id);
+  return item ? { ...item, own: item.reachedBy.includes(kind.experience_kind_id) } : null;
+}
+
+function standingOf(row: CalibrationRow, line: number | null, reach: ReturnType<typeof reachOf>): CalibrationStanding {
   if (row.offered) return 'offered';
   if (row.refused_for !== null) return 'refused';
   if (row.admitted) return 'admitted';
   if (row.crowded) return 'crowded';
   if (row.held_as !== null) return 'held';
+  // Before the line: a top no class of its kind names is a candidate of no run, however known.
+  if (reach !== null && !reach.own) return reach.reachedBy.length === 0 ? 'unreached' : 'other_classes';
   return line !== null && row.sitelinks !== null && row.sitelinks < line ? 'under_line' : 'absent';
 }
 
 /** A live kind against its own list (#1864), or null where it has none. */
-function calibrationOf(kind: KindRow, rows: CalibrationRow[], line: number | null, sourceNames: Map<string, string>): KindCalibration | null {
+function calibrationOf(
+  kind: KindRow, rows: CalibrationRow[], line: number | null, sourceNames: Map<string, string>, reach: ClassReach | null, kindNames: Map<number, string>,
+): KindCalibration | null {
   const own = rows.filter(row => row.kind_slug === kind.slug);
   if (own.length === 0) return null;
-  // What the miss is told by: the place that holds a held one, the run's reason for a refused one.
-  const detailOf = (row: CalibrationRow, standing: CalibrationStanding): string | null => {
+  // What the miss is told by: the place that holds a held one, the run's reason for a refused one,
+  // the classes an unreached one carries, the kinds whose classes reach one its own do not.
+  const detailOf = (row: CalibrationRow, standing: CalibrationStanding, reached: ReturnType<typeof reachOf>): string | null => {
     if (standing === 'offered') return row.offered_as;
     if (standing === 'held') return row.held_as;
     if (standing === 'refused') return row.refused_for;
+    if (standing === 'unreached') return reached?.classes.map(cls => (cls.label === null ? cls.qid : `${cls.label} (${cls.qid})`)).join(', ') ?? null;
+    if (standing === 'other_classes') return [...new Set(reached?.reachedBy.map(id => kindNames.get(id) ?? `kind ${id}`))].join(', ');
     return null;
   };
   const tops: CalibrationTop[] = own.map((row) => {
-    const standing = standingOf(row, line);
+    const reached = reachOf(kind, row, reach);
+    const standing = standingOf(row, line, reached);
     return {
       slug: row.slug,
       name: row.name,
@@ -513,7 +540,7 @@ function calibrationOf(kind: KindRow, rows: CalibrationRow[], line: number | nul
       sitelinks: row.sitelinks,
       sources: row.sources,
       standing,
-      detail: detailOf(row, standing),
+      detail: detailOf(row, standing, reached),
     };
   });
   const bySource = new Map<string, CalibrationBySource>();
@@ -616,6 +643,7 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
     .sort((a, b) => b.regions - a.regions || b.expected - a.expected || a.slug.localeCompare(b.slug));
 
   const sourceNames = new Map(facts.calibrationSources.map(source => [source.slug, source.name]));
+  const kindNames = new Map(facts.kinds.filter(kind => kind.experience_kind_id !== null).map(kind => [kind.experience_kind_id as number, kind.name]));
   // A gap a live kind still has, over or under the line, in its tail or not: a judgement on
   // any other gap is stale. A gap in the tail is reported missing nowhere, and a judgement on
   // it stays, since the tail moves with the list.
@@ -647,7 +675,7 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
         wellKnownMissing,
         judgedByCause: judgedByCause(wellKnownMissing),
         belowLineMissing: absent.length - wellKnown.length,
-        calibration: calibrationOf(kind, facts.calibration, calibrationLineOf(kind), sourceNames),
+        calibration: calibrationOf(kind, facts.calibration, calibrationLineOf(kind), sourceNames, facts.classReach, kindNames),
       };
     })
     .sort((a, b) => a.slug.localeCompare(b.slug));
@@ -663,7 +691,6 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
       kindName: kinds.get(row.kind_slug as string)?.name ?? (row.kind_slug as string),
     }));
 
-  const kindNames = new Map(facts.kinds.filter(kind => kind.experience_kind_id !== null).map(kind => [kind.experience_kind_id as number, kind.name]));
   const { unnamed, stale: staleRowJudgements } = unnamedByRegion(facts, kindNames, new Map(regions.map(region => [region.slug, region.name])));
 
   return { regions, proposedKinds, liveKinds, expectations, staleJudgements, unnamed, staleRowJudgements };

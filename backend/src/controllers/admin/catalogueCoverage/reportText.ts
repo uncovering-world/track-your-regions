@@ -97,6 +97,8 @@ const STANDING_WORDS: Record<Exclude<CalibrationStanding, 'offered' | 'admitted'
   crowded: 'in a crowded city\'s tail: ten better known of its type within 10 km, or a curator\'s shadow',
   held: 'in the catalogue, not offered by this kind',
   refused: 'refused by the last run',
+  unreached: 'absent, no kind\'s classes reach it; its classes are',
+  other_classes: 'absent, outside this kind\'s classes; reached by the classes of',
   under_line: 'absent, under the editions line',
   absent: 'absent, not a candidate the last run named',
 };

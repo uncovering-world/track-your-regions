@@ -213,6 +213,23 @@ async function collectFacts(run: QueryRunner, qids: string[]): Promise<Map<strin
   return facts;
 }
 
+/**
+ * Every class a kind's candidates are asked by, broad and narrow together:
+ * what makes an entity a candidate of the kind by a class it carries itself
+ * (`namedByClass`). The coverage report reads a top's class reach with it
+ * (#2146), so the report and the gather cannot disagree on which kind's
+ * classes reach an item.
+ */
+export function kindClasses<Trees>(kind: PlaceKind<Trees>, trees: Trees): Set<string> {
+  const asked = kind.poolClasses(trees);
+  return new Set([...asked.broad.map((root) => root.qid), ...asked.narrow]);
+}
+
+/** Whether a class question of a kind asking by `classes` names an entity carrying `own`: one of its own classes is one of them. */
+export function namedByClass(classes: ReadonlySet<string>, own: readonly string[]): boolean {
+  return own.some((cls) => classes.has(cls));
+}
+
 /** Every kind's trees, and the classes the pool is asked by: the broad roots once each, then the rest. */
 async function askedClasses(run: QueryRunner, requests: GatherRequest[]) {
   const trees = new Map<PlaceKind<unknown>, unknown>();
@@ -221,9 +238,8 @@ async function askedClasses(run: QueryRunner, requests: GatherRequest[]) {
   for (const { kind } of requests) {
     const kindTrees = await kind.trees(run);
     trees.set(kind, kindTrees);
-    const asked = kind.poolClasses(kindTrees);
-    for (const root of asked.broad) roots.set(root.qid, root);
-    classesOf.set(kind, new Set([...asked.broad.map((root) => root.qid), ...asked.narrow]));
+    for (const root of kind.poolClasses(kindTrees).broad) roots.set(root.qid, root);
+    classesOf.set(kind, kindClasses(kind, kindTrees));
   }
   const narrow = new Set([...classesOf.values()].flatMap((classes) => [...classes]).filter((qid) => !roots.has(qid)));
   return { trees, classesOf, roots: [...roots.values()], narrow: [...narrow] };
@@ -247,7 +263,7 @@ function candidatesOf(
 } {
   const named = new Set([...doors.values()].flatMap((ids) => [...ids]));
   const pooled = withOwn(shared, own);
-  const byClass = (qid: string) => (facts.get(qid)?.classes ?? []).some((c) => classes.has(c));
+  const byClass = (qid: string) => namedByClass(classes, facts.get(qid)?.classes ?? []);
   const wanted = (qid: string) => admitted.has(qid) || named.has(qid);
   const pool = new Map([...pooled].filter(([qid]) => wanted(qid) || byClass(qid)));
   for (const [qid, entity] of byId) if (wanted(qid)) pool.set(qid, entity);
