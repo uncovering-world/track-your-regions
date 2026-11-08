@@ -62,3 +62,35 @@ export const MUTED_MAP_STYLE = {
     paint: { 'raster-saturation': -0.7, 'raster-contrast': -0.15, 'raster-brightness-min': 0.12 },
   }],
 } satisfies StyleSpecification;
+
+/**
+ * EOX's Sentinel-2 cloudless mosaic of 2025, with the credit its licence asks
+ * for (CC BY-NC-SA 4.0: the maker, the Copernicus data it is made of, the
+ * licence), on a non-commercial product only (ADR-0186). About 10 m a pixel:
+ * a tell, a walled town or an excavated field reads from it, a single building
+ * does not, so its tiles stop at zoom 14 and MapLibre draws them larger past it.
+ */
+export const EOX_ATTRIBUTION =
+  '<a href="https://cloudless.eox.at" target="_blank" rel="noopener noreferrer">EOxCloudless 2025</a> by EOX IT Services GmbH'
+  + ' (contains modified Copernicus Sentinel data 2025),'
+  + ' <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>';
+
+const EOX_IMAGERY_SOURCE: RasterSourceSpecification = {
+  type: 'raster',
+  tiles: ['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025_3857/default/g/{z}/{y}/{x}.jpg'],
+  tileSize: 256,
+  maxzoom: 14,
+  attribution: EOX_ATTRIBUTION,
+};
+
+/**
+ * The ground from above, for the point dialog's satellite view (#2204):
+ * whether a pin stands on the ruins or in the modern town beside them. No
+ * OpenStreetMap tile is asked for while it is drawn.
+ */
+export const SATELLITE_MAP_STYLE = {
+  version: 8 as const,
+  glyphs: MAP_STYLE.glyphs,
+  sources: { eox: EOX_IMAGERY_SOURCE },
+  layers: [{ id: 'eox-imagery', type: 'raster' as const, source: 'eox' }],
+} satisfies StyleSpecification;

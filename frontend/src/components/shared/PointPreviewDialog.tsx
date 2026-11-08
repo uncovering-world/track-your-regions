@@ -54,6 +54,14 @@
  * legend stands over labelled pins; a move, whose two pins carry no label, keeps one.
  * The basemap is drawn muted (`MUTED_MAP_STYLE`), so the pins are its strongest marks.
  *
+ * **The ground can be looked at from above** (#2204). A switch over the map turns the
+ * street basemap into EOX's Sentinel-2 mosaic (`SATELLITE_MAP_STYLE`, ADR-0186): whether
+ * both pins of Kunya-Urgench's move stand in the modern town or the ruins, whether a pin
+ * at Larsa is on the tell, is read from the ground, not from streets. It swaps the style
+ * of the one map, so the context stays one and the camera stays where the curator left
+ * it; the pins, the arrow and the outlines are drawn again on top. The map opens on the
+ * streets every time, and no imagery tile is asked for until the switch is pressed.
+ *
  * **Every look ends in the way to each point on another map.** Under the map, each point
  * the dialog draws is a row — whose it is, its coordinate, and the links that open it in
  * OpenStreetMap and Google Maps (`PinLinks`) — so a curator checks the pin against another
@@ -68,11 +76,11 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Dialog, DialogContent, DialogTitle, IconButton, Typography } from '@mui/material';
+import { Box, Dialog, DialogContent, DialogTitle, IconButton, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { Layer, Marker, Source } from 'react-map-gl/maplibre';
 import { GuardedMap } from './GuardedMap';
-import { MUTED_MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../constants/mapStyles';
+import { MUTED_MAP_STYLE, OSM_ATTRIBUTION_CONTROL, SATELLITE_MAP_STYLE } from '../../constants/mapStyles';
 import { PointCorrection, type PlaceToCorrect } from './PointCorrection';
 import {
   PIN_COLOURS, PINS_MAX_ZOOM, PinLegend, PinLinks, PinsOnMap, pinColour, pinsApart, pinsGeoJson, pinsView, type MapPin,
@@ -227,6 +235,22 @@ function Drawn({ claims, references, move, movedTo, latitude, longitude, map }: 
   return <PinsOnMap pins={[...claims, ...references]} map={map} />;
 }
 
+type Ground = 'streets' | 'satellite';
+
+/** The street basemap or the ground from above (#2204, ADR-0186), over the map's top left corner. */
+function BasemapSwitch({ ground, onChange }: { ground: Ground; onChange: (ground: Ground) => void }) {
+  return (
+    <ToggleButtonGroup
+      size="small" exclusive value={ground} aria-label="basemap"
+      onChange={(_event, value: Ground | null) => { if (value) onChange(value); }}
+      sx={{ position: 'absolute', top: 12, left: 12, bgcolor: 'background.paper', boxShadow: 1 }}
+    >
+      <ToggleButton value="streets" sx={{ py: 0.25, px: 1.25, textTransform: 'none' }}>Map</ToggleButton>
+      <ToggleButton value="satellite" sx={{ py: 0.25, px: 1.25, textTransform: 'none' }}>Satellite</ToggleButton>
+    </ToggleButtonGroup>
+  );
+}
+
 const NO_PLACES: readonly number[] = [];
 
 export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, pins, correction, placesOf }: {
@@ -276,8 +300,9 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
   const apart = several ? pinsApart(several) : null;
   const outlines = usePlaceOutlines(places, looking);
   const [loadedMap, setLoadedMap] = useState<MapLike | null>(null);
-  // A closed dialog's map is gone; the next opening loads its own.
-  useEffect(() => { if (!open) setLoadedMap(null); }, [open]);
+  const [ground, setGround] = useState<Ground>('streets');
+  // A closed dialog's map is gone; the next opening loads its own, on the streets.
+  useEffect(() => { if (!open) { setLoadedMap(null); setGround('streets'); } }, [open]);
   useFrameWithOutlines(open ? loadedMap : null, outlines, drawn, { padding: PINS_PADDING, maxZoom: PINS_MAX_ZOOM }, references.length);
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -320,7 +345,9 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
             {open && (
               <GuardedMap
                 initialViewState={view}
-                mapStyle={MUTED_MAP_STYLE}
+                mapStyle={ground === 'satellite' ? SATELLITE_MAP_STYLE : MUTED_MAP_STYLE}
+                // Built once with the map: over the imagery the corner keeps OpenStreetMap's
+                // credit, whose data the outlines and the rows still draw, and EOX's joins it.
                 attributionControl={OSM_ATTRIBUTION_CONTROL}
                 style={{ width: '100%', height: '100%' }}
                 unavailableCompact
@@ -339,6 +366,10 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
                   claims={claims} references={references} move={move} movedTo={movedTo}
                   latitude={latitude} longitude={longitude} map={loadedMap}
                 />
+                {/* Inside the map, so it is offered as soon as the map exists — not after the
+                    street tiles load, which may never happen when their server is down — and not
+                    over the stand-in of a map that could not start. */}
+                <BasemapSwitch ground={ground} onChange={setGround} />
               </GuardedMap>
             )}
             {/* A move's two pins carry no label of their own: the legend names them. */}
