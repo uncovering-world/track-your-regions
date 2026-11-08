@@ -924,7 +924,10 @@ and reasons, and the tier a run recorded on its changeset.
   Public art) — on its classifier (`surroundings`, a `SurroundingsReader`) or, for Places of worship,
   `WORSHIP_SURROUNDINGS` in `worshipSyncService.ts`.
 - **The cut** (`places/surroundingsCut.ts`, `surroundingsVerdict`): a candidate with at least `minLanguages`
-  Wikipedia editions and `minReaders` readers a year enters when one of three tests passes, each
+  Wikipedia editions and `minReaders` readers a year — the year's readers of the item at
+  `minReadersRank` among every item the year keeps (`readersAtRank`), which the pool reads with its
+  year (`SurroundingsPool.minReaders`) and the tier measures against (`yearCut`, ADR-0184) — enters
+  when one of three tests passes, each
   against the median of the `best` highest of its neighbours among the places that carry the signal:
   its editions reach `editionsShare` of the editions reference, in a group of at least
   `editionsGroupFloor` places; its readers reach `readersShare` of the readers reference, in a group of
@@ -948,8 +951,9 @@ and reasons, and the tier a run recorded on its changeset.
   reads its numbers from the register (`SURROUNDINGS_REGISTER` in `places/admissionRegister.ts`, ADR-0175
   decisions 2 and 3, ADR-0181): 150 km, a density at the 20th-nearest place and a ratio of 4, the 10
   best, a Wikivoyage share of a quarter, the editions reference whole and the readers reference at one
-  and a half, groups of 5, 25 and 25 places, two editions, 3,000 readers a year, a guide for tunnels,
-  dams, locks and bridges, a bridge also kept by a heritage designation, and a stay at 0.8 (2,400 readers, 0.8 of the readers share). Two more
+  and a half, groups of 5, 25 and 25 places, two editions, the readers of the 889,568th most read
+  item of the year (3,000 a year on the year to September 2026, ADR-0184), a guide for tunnels,
+  dams, locks and bridges, a bridge also kept by a heritage designation, and a stay at 0.8 (2,400 readers on that year, 0.8 of the readers share). Two more
   the review's experiments turned: **`enabled`**, on since #2252 (off, the pass reads no pool and
   every kind's part says so),
   and **`neighbours`**, whose places set the references: `all` (every place kind's and the museums',
@@ -3003,7 +3007,10 @@ source of the pass holds.
 
 The line is fame read three ways at once, since a lane is read in few languages: an Atlas Obscura
 entry (`P7772`, the only way the catalogue reads Atlas Obscura), a Wikivoyage guide naming it
-(`guidedOf`) and 10,000 readers a year (`yearlyReaders`). A newcomer needs two of the three, a
+(`guidedOf`) and a year's readers (`yearlyReaders`) at the mark the year yields: the readers of the
+424,028th most read item that year (`READERS_MARK_RANK`, read with the candidates' readers as
+`StreetArtReading.readersMark`), 10,000 on the year to September 2026 (ADR-0184). A year whose mark
+cannot be read reads no readers. A newcomer needs two of the three, a
 place the source holds keeps its place on one, and readers that cannot be read admit nothing new
 and keep a held place. A guide that cannot be read is no guide only once it has been read so
 (ADR-0175 decision 6, #2267): without the Wikivoyage usage build `guidedOf` answers null, and each
