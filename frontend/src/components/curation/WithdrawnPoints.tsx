@@ -129,16 +129,18 @@ function distanceLabel(metres: number): string {
  */
 export function withdrawalStory(point: WithdrawnPoint, offeredLocations: number): string {
   const metres = point.replacedMetres;
+  // The number it is listed under now, where the source renumbered it (#2182).
+  const as = point.replacedRef ? ` as ${point.replacedRef}` : '';
   // The distance inside which a rewrite is the same place, not a move
   // (ADR-0027 decision 2). Inclusive, matching the `ST_DWithin` the writer and
   // migration 026 both use: the writer's own tolerance (`@tyr/shared/moves`),
   // so a rewrite it forgave is never called a move here.
   if (metres !== null && metres <= LOCATION_UNCHANGED_METERS) {
-    return `The source still lists this part, ${distanceLabel(metres)} from here — that is the `
+    return `The source still lists this part${as}, ${distanceLabel(metres)} from here — that is the `
       + 'same place written more precisely, not a move. Readers never lost it.';
   }
   if (metres !== null) {
-    return `The source lists this same part ${distanceLabel(metres)} away now, so it moved `
+    return `The source lists this same part${as} ${distanceLabel(metres)} away now, so it moved `
       + 'rather than went. Readers already see the new spot.';
   }
   if (offeredLocations === 0) {
