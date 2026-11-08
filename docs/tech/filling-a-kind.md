@@ -923,6 +923,10 @@ Tyre). In the surroundings tier the listing stands in for the map, unless a plac
 admits is part of it (`heldPartsOf`, `P361` or `P527` off the subset): Sabratha and the Moidams of
 Charaideo enter, and Mérida's listing beside the theatre the kind holds does not. Neither door opens
 for an archaeology museum, an old town or a part of a place the kind holds (`listingOpensTheDoors`).
+A site the map shows neither by its item nor by a listing passes where a ruin or dig is mapped within
+2 km under its name, without its item (`namedRuinsNear`,
+[ADR-0188](../decisions/0188-a-ruin-mapped-near-a-site-under-its-name-shows-the-site.md)): on a
+sample of the refused, it returned 16 of 38 ruins and none of 24 wrong places.
 
 ### 11.2 The register
 
