@@ -1,7 +1,7 @@
 # ADR-0179: Archaeology's sites admit by the frame, and its surroundings tier asks the map for a ruin
 
 **Date:** 2026-11-02
-**Status:** Accepted — decision 3 narrowed by [ADR-0185](0185-archaeology-reads-a-world-heritage-listing-as-a-mark-and-as-the-map.md)
+**Status:** Accepted — decision 3 narrowed by [ADR-0185](0185-archaeology-reads-a-world-heritage-listing-as-a-mark-and-as-the-map.md); decision 3 narrowed again by [ADR-0188](0188-a-ruin-mapped-near-a-site-under-its-name-shows-the-site.md)
 
 ---
 
