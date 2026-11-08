@@ -228,7 +228,10 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
   page), and keeps its attribution control on: in full on Discover and the location picker, and at
   MapLibre's responsive default on the react-map-gl maps, which folds the credit behind its ⓘ on a
   map 640 px wide or less after the first drag (#2350; `mapStyles.test.ts` holds that only the
-  shared source names the tiles and that no map turns the control off).
+  shared source names the tiles and that no map turns the control off). Every map on the shared
+  styles names the credit in its control from its creation (`OSM_ATTRIBUTION_CONTROL`, #2364), so
+  it is in the corner before the tiles load and their arrival does not widen the corner under the
+  reader; MapLibre drops the source's copy as a duplicate.
 - *Headless runs:* none asks it. The smoke and Lighthouse lanes, and `perf:local`, launch Chrome
   with the tile hosts unresolvable (`frontend/tests/unservedBasemap.mjs`, #2351), so a tile
   request fails on the machine.
