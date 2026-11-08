@@ -914,12 +914,20 @@ admits in the same run. Together they bring the noise among the additions from 1
 leave the canon at 0.876; on the world tier they would cost Palenque and Calakmul, and Giza, Karnak
 and Stonehenge.
 
+A site the World Heritage List inscribes is read twice more ([ADR-0185](../decisions/0185-archaeology-reads-a-world-heritage-listing-as-a-mark-and-as-the-map.md)). In the world tier the
+listing is a guide's mark, so the readers' bar of a marked place applies (Qaryat al-Faw, Liangzhu,
+Tyre). In the surroundings tier the listing stands in for the map, unless a place the kind holds or
+admits is part of it (`heldPartsOf`, `P361` or `P527` off the subset): Sabratha and the Moidams of
+Charaideo enter, and Mérida's listing beside the theatre the kind holds does not. Neither door opens
+for an archaeology museum, an old town or a part of a place the kind holds (`listingOpensTheDoors`).
+
 ### 11.2 The register
 
 Every number of the frame lives in one module,
 `backend/src/services/sync/places/admissionRegister.ts`, and nowhere else: `WORLD_REGISTER`,
-`SURROUNDINGS_REGISTER` for the surroundings tier and
-`ARCHAEOLOGY_SURROUNDINGS_REGISTER` for Archaeology's two conditions of that tier. Each parameter carries its value, the one sentence that says how it was
+`SURROUNDINGS_REGISTER` for the surroundings tier, `ARCHAEOLOGY_SURROUNDINGS_REGISTER` for
+Archaeology's conditions on that tier (the map, a held place's parts, a World Heritage listing for
+the map) and `ARCHAEOLOGY_WORLD_REGISTER` for its listing as a mark in the world tier. Each parameter carries its value, the one sentence that says how it was
 derived, the evidence (the report and its section) and the date. The register holds the frame's
 parameters and no value per kind (#2321). The runs read the values (`WORLD_FRAME`,
 `SURROUNDINGS_CUT`) and write the bars each run admitted by on its sync log

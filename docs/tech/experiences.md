@@ -3670,12 +3670,19 @@ judged the item, its facts and map read now otherwise — and to two conditions 
 declared in the register (`ARCHAEOLOGY_SURROUNDINGS_REGISTER`):
 - **the map shows the place**: an OpenStreetMap object carrying the item that the rule reads as a
   ruin or a dig, or as the village it lifts a dig over (`UNMAPPED_REASON`); Diepkloof Rock Shelter,
-  mapped as a rock, is refused;
+  mapped as a rock, is refused. A site the World Heritage List inscribes (`P757`, or `P1435` naming
+  it) passes without one (`listedStandsForTheMap`, ADR-0185), unless a place the kind holds or admits
+  this run is part of it (`heldPartsOf`, a `P361` to it or a `P527` from it off the subset,
+  `heldPartReason`): Sabratha enters, Mérida's listing beside the theatre the kind holds is refused;
 - **a part of a place the kind holds is not a place of its own**: a `P361` naming a place the kind
   holds or admits this run (`partOfReason`); the Forum of Pompeii is refused as part of Pompeii.
 
 Neither is asked of the world tier, where they would cost Palenque and Calakmul, and Giza, Karnak and
-Stonehenge. A row of the tier carries `metadata.tier = 'surroundings'`, the cut's note on its card beside
+Stonehenge. The world tier reads the listing instead as a guide's mark (`ARCHAEOLOGY_WORLD_REGISTER.listedIsAMark`,
+`openWorldTier`'s `listed`, ADR-0185): a listed site read 12,000 times a year clears the bar of a
+marked place as one a guide uses would, and a refusal names "the World Heritage List inscribes it". Neither door opens for an archaeology museum, an old town or a part (`P361`) of a place the kind
+holds (`listingOpensTheDoors`): the Museum of Paestum, the Old City of Hebron and the Palace of
+Knossos stay as the rest of the rule leaves them. A row of the tier carries `metadata.tier = 'surroundings'`, the cut's note on its card beside
 the map's, and no badge (`badgesAdmitted`). Where the tier is not read — the live service, or no year
 of readers — its rows stand as they are (`FetchResult.spareTier`, `CollectedArchaeology.surroundingsSkipped`).
 Measured on dev on 2026-11-02 (the report under ADR-0179): 2,062 sites held, 1,169 in the world tier
