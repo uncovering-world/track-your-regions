@@ -513,6 +513,16 @@ navigation's initial state in `App.tsx`), and the line is held while the
 addressed region loads. Three runs on the mini PC on 2026-10-19 measured
 0.00005 on each.
 
+The map view's own shift, about 0.006 on the mini PC, was the navigation's
+*World View* select arriving once the world views loaded. It pushed the search
+and the region list 56 px down at about 400 ms: the select's 40 px and its
+16 px margin, measured with a `layout-shift` observer in headless Chromium on
+2026-11-08. `HierarchySwitcher` now holds the select's place with a placeholder
+of its height while the world views load (#2376), and renders nothing only for
+a catalogue that holds no world view. Each map's OpenStreetMap credit is named
+in its corner from the map's creation (#2364), so the credit's arrival moves
+nothing either.
+
 ### Local run — 2026-09-09
 
 `npm run perf:local` on the same laptop, against the dev stack's production
