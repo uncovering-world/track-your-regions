@@ -413,6 +413,20 @@ label, keeps its legend. The basemap is OpenStreetMap's standard tiles drawn mut
 (`MUTED_MAP_STYLE`, `constants/mapStyles.ts`): faded and greyed, its streets and squares stay
 readable, and its crosses and café icons no longer compete with the pins.
 
+**The ground can be seen from above** (#2204, ADR-0186). A *Map / Satellite* switch over the map
+(top left, shown as soon as the map exists, without waiting for its tiles) swaps the map's style for `SATELLITE_MAP_STYLE`
+(`constants/mapStyles.ts`): EOX's cloudless Sentinel-2 mosaic of 2025, about 10 m a pixel, tiles
+to zoom 14 and drawn larger beyond it. It is a style swap on the one map, not a second map: the
+dialog still holds one WebGL context, the camera stays where the curator left it, and react-map-gl
+draws the outlines, the arrow and the pins again on top once the new style has loaded. The dialog
+opens on the streets every time, so no imagery tile is asked for until the switch is pressed. The
+imagery's credit (`EOX_ATTRIBUTION`: EOX, the Copernicus Sentinel data, CC BY-NC-SA 4.0) is on its
+source, so MapLibre's control shows it while the imagery is drawn; the control is built once with
+the map, so OpenStreetMap's credit stays in the corner beside it; that line runs the map's whole
+width over the imagery, which is why a move's legend stands in the top right corner. What the mosaic settles: a field
+of ruins, a tell or a town (Kunya-Urgench's move, Larsa). What it does not: a single building or a
+small dig, which waits for a detailed keyed source (ADR-0186 decision 4).
+
 Under the map, every look lists each point it drew — whose it is, its coordinate, and the links that
 open it in OpenStreetMap and Google Maps (`PinLinks`, built by `utils/mapsLink.ts`, ADR-0115). The
 device's own maps app and the visitor's choice of one (`OpenInMapsLink`) are not offered there: a

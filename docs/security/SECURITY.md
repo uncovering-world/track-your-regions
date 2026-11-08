@@ -232,8 +232,9 @@ contacts no third-party origin. What a page draws still can: the visitor's map
 fetches its basemap tiles from `tile.openstreetmap.org` and its label glyphs from
 `fonts.openmaptiles.org` (`MAP_STYLE`, `frontend/src/constants/mapStyles.ts`),
 the admin's and editor's preview maps their basemap from
-`basemaps.cartocdn.com`, and the pictures come from Wikimedia Commons
-(ADR-0043).
+`basemaps.cartocdn.com`, the point dialog's satellite view its imagery from
+`tiles.maps.eox.at`, only once a curator presses *Satellite* (ADR-0186), and
+the pictures come from Wikimedia Commons (ADR-0043).
 
 ## cv-python Hardening (V5/V8/V13/V16)
 
