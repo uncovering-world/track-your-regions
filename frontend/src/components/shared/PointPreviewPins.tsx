@@ -253,13 +253,16 @@ export function PinsOnMap({ pins, map, drawnElsewhere = [] }: {
 /**
  * Which pin is which, on the map, for a move: its two pins carry no label of
  * their own. Every other look labels its pins, and the rows under the map are
- * the key, so it draws none (#2273).
+ * the key, so it draws none (#2273). It stands in the top right corner: the
+ * bottom is the attribution's, which over the satellite imagery runs the
+ * map's whole width (#2204), and the top left holds the basemap switch. On a
+ * phone's width it stands below the switch's row, so the two never meet.
  */
 export function PinLegend({ entries }: { entries: ReadonlyArray<{ colour: string; label: string }> }) {
   return (
     <Box
       sx={{
-        position: 'absolute', left: 12, bottom: 12, px: 1, py: 0.5, borderRadius: 1, maxWidth: '70%',
+        position: 'absolute', right: 12, top: { xs: 56, sm: 12 }, px: 1, py: 0.5, borderRadius: 1, maxWidth: '70%',
         bgcolor: 'background.paper', boxShadow: 1, fontSize: 12, lineHeight: 1.5,
       }}
     >

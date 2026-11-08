@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  MAP_STYLE, MAPLIBRE_ATTRIBUTION, MUTED_MAP_STYLE, OSM_ATTRIBUTION, OSM_ATTRIBUTION_CONTROL, OSM_RASTER_SOURCE,
+  EOX_ATTRIBUTION, MAP_STYLE, MAPLIBRE_ATTRIBUTION, MUTED_MAP_STYLE, OSM_ATTRIBUTION, OSM_ATTRIBUTION_CONTROL, OSM_RASTER_SOURCE, SATELLITE_MAP_STYLE,
 } from './mapStyles';
 
 // The tiles' URL as a pattern, since a host matched as a substring reads like a URL check, which this is not.
@@ -51,7 +51,8 @@ describe('the OpenStreetMap credit', () => {
     expect(drawing.length).toBeGreaterThan(5);
     expect(drawing.filter((path) => !SOURCES[path].includes('OSM_ATTRIBUTION_CONTROL'))).toEqual([]);
     for (const path of drawing) {
-      const maps = (SOURCES[path].match(/mapStyle=\{(?:MAP_STYLE|MUTED_MAP_STYLE)\}|style: (?:MAP_STYLE|MUTED_MAP_STYLE),/g) ?? []).length;
+      // A map that swaps its style counts once: the point dialog's satellite switch (#2204).
+      const maps = (SOURCES[path].match(/mapStyle=\{[^}]*\b(?:MAP_STYLE|MUTED_MAP_STYLE)\}|style: (?:MAP_STYLE|MUTED_MAP_STYLE),/g) ?? []).length;
       const credited = (SOURCES[path].match(/attributionControl(?:=\{|: \{ \.\.\.)OSM_ATTRIBUTION_CONTROL/g) ?? []).length;
       expect([path, credited]).toEqual([path, maps]);
     }
@@ -60,5 +61,19 @@ describe('the OpenStreetMap credit', () => {
   it('is never hidden by a map that turns its attribution control off', () => {
     const hides = (text: string) => ['attributionControl: false', 'attributionControl={false}'].some((form) => text.includes(form));
     expect(filesWhere(hides)).toEqual([]);
+  });
+});
+
+describe('the satellite imagery credit (#2204, ADR-0186)', () => {
+  it('names the maker, the Copernicus data and the licence, linked', () => {
+    expect(EOX_ATTRIBUTION).toContain('href="https://cloudless.eox.at"');
+    expect(EOX_ATTRIBUTION).toContain('EOX IT Services GmbH');
+    expect(EOX_ATTRIBUTION).toContain('modified Copernicus Sentinel data 2025');
+    expect(EOX_ATTRIBUTION).toContain('href="https://creativecommons.org/licenses/by-nc-sa/4.0/"');
+  });
+
+  it('comes with the imagery, and no OpenStreetMap tile is drawn under it', () => {
+    expect(Object.values(SATELLITE_MAP_STYLE.sources).map((source) => source.attribution)).toEqual([EOX_ATTRIBUTION]);
+    expect(Object.values(SATELLITE_MAP_STYLE.sources)).not.toContain(OSM_RASTER_SOURCE);
   });
 });
