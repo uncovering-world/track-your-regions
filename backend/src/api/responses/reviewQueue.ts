@@ -200,6 +200,10 @@ export const WithdrawnPoint = z.strictObject({
     'How far away the source now offers this same part, in metres, rounded to two decimals. Null where it offers it'
     + ' nowhere.',
   ),
+  replacedRef: z.string().nullable().describe(
+    'The reference the source now lists this same part under, where it renumbered it (#2182). Null where the reference'
+    + ' is the same or nothing replaced it.',
+  ),
   curatedFields: z.array(z.string()).optional(),
 }).describe('A point the object lost, waiting on its own verdict.');
 export type WithdrawnPoint = z.infer<typeof WithdrawnPoint>;

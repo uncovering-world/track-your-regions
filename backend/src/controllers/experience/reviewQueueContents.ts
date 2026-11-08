@@ -36,7 +36,7 @@ import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
-import { answeringPlaceSql, pointsShownSql, someoneVisitedPointSql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointOfPartSql, pointsShownSql, someoneVisitedPointSql } from '../../db/placePoints.js';
 
 /**
  * The held fields of an object's parts, as the held card carries them.
@@ -442,6 +442,18 @@ export async function queryContents(
 export async function queryWithdrawn(
   { scopeFilter, sourceFilter, params, ids }: QueueQueryContext,
 ): Promise<QueryResult> {
+  // What replaces the withdrawn point `el` as the same component: a point of
+  // its reference. A part's point is replaced on its own part, where a serial
+  // site's component lands when it moves, under its old number or a new one,
+  // or by a point of its reference and name: a renumbered list gives a dropped
+  // component's number to another, so Western Tien-Shan's Karabastau area,
+  // dropped as 1490-003, is not "35 km away now" as the Boraldaitau area that
+  // number names now (#2182).
+  const sameComponentSql = `(CASE WHEN ${pointOfPartSql('el')}
+                         THEN moved.experience_id = el.experience_id
+                              OR (moved.external_ref IS NOT DISTINCT FROM el.external_ref
+                                  AND name_match_key(moved.name) = name_match_key(el.name))
+                         ELSE moved.external_ref IS NOT DISTINCT FROM el.external_ref END)`;
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name, mk.type AS kind_type,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
@@ -540,7 +552,22 @@ export async function queryWithdrawn(
                    SELECT 1 FROM ${pointsShownSql('e.id', 'pausing')}
                    WHERE pausing.withdrawal_deferred_for_location_id = moved.id
                  )
-                 AND moved.external_ref IS NOT DISTINCT FROM el.external_ref
+                 AND ${sameComponentSql}
+             ),
+             -- The number the source lists the part under now, where it renumbered
+             -- it as well as moved it (#2182), so the card can say where it went:
+             -- the nearest replacement's, as the distance is.
+             'replacedRef', (
+               SELECT NULLIF(moved.external_ref, el.external_ref)
+               FROM ${pointsShownSql('e.id', 'moved')}
+               WHERE ${offeredLocationSql('moved')}
+                 AND NOT EXISTS (
+                   SELECT 1 FROM ${pointsShownSql('e.id', 'pausing')}
+                   WHERE pausing.withdrawal_deferred_for_location_id = moved.id
+                 )
+                 AND ${sameComponentSql}
+               ORDER BY ST_Distance(el.location::geography, moved.location::geography), moved.id
+               LIMIT 1
              )
            ) ORDER BY el.missing_since DESC, el.id) AS withdrawn_points,
            NULL::jsonb AS proposed
