@@ -26,7 +26,7 @@ import type { PoolEntity } from '../publicArt/queries.js';
 import type { SubjectRunner } from '../publicArt/subjects.js';
 import { gatherPlaces, shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from './gather.js';
 import { placeLandmark } from './candidates.js';
-import { needsAGuide, SURROUNDINGS_CUT, surroundingsVerdict, type SurroundingsCandidate, type SurroundingsCut } from './surroundingsCut.js';
+import { needsAGuide, SURROUNDINGS_CUT, surroundingsVerdict, yearCut, type SurroundingsCandidate, type SurroundingsCut } from './surroundingsCut.js';
 import type { SurroundingsGroup, SurroundingsPool, SurroundingsPoolRow } from './surroundingsPool.js';
 import type { WorldMemory } from './worldBars.js';
 
@@ -320,12 +320,14 @@ export async function surroundingsArrivals<Trees, Context, T>(
     console.log(`${logPrefix} ${pool.unread}`);
     return { ...none<T>(), skipped: pool.unread };
   }
+  // The readers' floor is what the pool's year yields at the cut's rank (ADR-0184).
+  const yearly = yearCut(cut, pool.minReaders);
   const { survivors, notes, fell, candidates } = survivorsOf(
-    surroundings as SurroundingsKind<Trees, unknown>, trees, worldAdmitted, pool, held, cut, memory, named,
+    surroundings as SurroundingsKind<Trees, unknown>, trees, worldAdmitted, pool, held, yearly, memory, named,
   );
-  console.log(`${logPrefix} Surroundings tier: ${candidates.toLocaleString('en')} candidates of the kind's classes at ${cut.minLanguages}+ editions `
-    + `and ${(cut.stayReadersShare * cut.minReaders).toLocaleString('en')}+ readers, `
-    + `${survivors.length.toLocaleString('en')} clear the cut within ${cut.radiusKm} km, ${fell.size} it held fell${guidesClause(pool)}`);
+  console.log(`${logPrefix} Surroundings tier: ${candidates.toLocaleString('en')} candidates of the kind's classes at ${yearly.minLanguages}+ editions `
+    + `and ${(yearly.stayReadersShare * yearly.minReaders).toLocaleString('en')}+ readers (a floor of ${yearly.minReaders.toLocaleString('en')} this year), `
+    + `${survivors.length.toLocaleString('en')} clear the cut within ${yearly.radiusKm} km, ${fell.size} it held fell${guidesClause(pool)}`);
   if (!survivors.length && !fell.size) return none<T>();
 
   // The survivors asked about by id, with everything the kind's rule reads of a
@@ -350,7 +352,7 @@ export async function surroundingsArrivals<Trees, Context, T>(
     }
     passed.push({ qid, entity, verdict });
   }
-  const { kept, refused } = await guidedOnly(passed, pool, held, cut, memory);
+  const { kept, refused } = await guidedOnly(passed, pool, held, yearly, memory);
   filtered.push(...refused);
   for (const { qid, entity, verdict } of kept) items.push(build(entity, share.facts.get(qid)?.classes ?? [], verdict, notes.get(qid) ?? ''));
   for (const [qid, reason] of fell) {

@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
 import { readershipWindow } from './readershipBuild.js';
-import { burstsAmong, readAtLeast, readershipYear, readWorks } from './workReadership.js';
+import { burstsAmong, readAtLeast, readersAtRank, readershipYear, readWorks } from './workReadership.js';
 
 /**
  * A work's year read back from the readership tables (ADR-0055, ADR-0056),
@@ -15,7 +15,8 @@ import { burstsAmong, readAtLeast, readershipYear, readWorks } from './workReade
 const WORK = 'Q99157401';
 const FILLER = 'Q99157402';
 const SPIKE = 'Q99157403';
-const ITEMS = [WORK, FILLER, SPIKE];
+const TOP = 'Q99157404';
+const ITEMS = [WORK, FILLER, SPIKE, TOP];
 const months = readershipWindow('2026-09-01');
 let pageviewsBuild = 0;
 let redirectsBuild = 0;
@@ -120,6 +121,24 @@ describe('a work read back from the readership year', () => {
     // 23,999.5 still names the work at 24,000 and 24,000.5 no longer does.
     expect(await among(23_999.5, 3)).toEqual([WORK, FILLER, SPIKE]);
     expect(await among(24_000.5, 3)).toEqual([FILLER, SPIKE]);
+  });
+
+  it('reads the readers of an item at a rank once, over the counted editions, and nothing past the last item (ADR-0184)', async () => {
+    // Read more than anything else the database keeps, in English and in West Frisian, which no door counts.
+    await read(TOP, 'enwiki', () => 1_000_000_000, () => 0);
+    await read(TOP, 'fywiki', () => 1_000_000_000, () => 0);
+    const year = (await readershipYear())!;
+    expect(await readersAtRank(year, 1)).toBe(12_000_000_000);
+    // The year's rank is read once: the item gone, the rank still reads what it read.
+    await pool.query('DELETE FROM readership_months WHERE item = $1', [TOP]);
+    expect(await readersAtRank(year, 1)).toBe(12_000_000_000);
+    expect(await readersAtRank(year, 1_000_000_000)).toBeNull();
+    // A new redirects build folds the year again, and the rank is read again over it.
+    await pool.query(
+      `INSERT INTO wikipedia_redirect_builds (build_id, dump_date, editions) VALUES ($1, '2026-11-01', '{}')`,
+      [pageviewsBuild],
+    );
+    expect(await readersAtRank(year, 1)).toBeLessThan(12_000_000_000);
   });
 
   it('reads nothing while a month is not folded with the redirects in place', async () => {

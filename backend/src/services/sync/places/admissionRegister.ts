@@ -51,6 +51,16 @@ const bridgesMeasured = <T>(value: T, derivation: string, section: string): Para
   value, derivation, evidence: `${BRIDGES_REPORT} § ${section}`, date: '2026-11-03',
 });
 
+const RANK_RECORD = 'docs/decisions/0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md';
+
+/** A readers' floor restated as a rank of the year's items (ADR-0184): the rank, and the count it yielded on the year it was derived on. */
+export interface ReadersRank { rank: number; yieldedThen: number }
+
+/** A value ADR-0184 restated as a rank, derived on the readership year to September 2026. */
+const rankedOnTheYear = (value: ReadersRank, derivation: string): Parameter<ReadersRank> => ({
+  value, derivation, evidence: `${RANK_RECORD} § Measurement`, date: '2026-11-08',
+});
+
 /** A value the neighbourhood measurement of #2297 moved (ADR-0181). */
 const remeasured = <T>(value: T, derivation: string, section: string): Parameter<T> => ({
   value, derivation, evidence: `${NEIGHBOURHOOD_REPORT} § ${section}`, date: DERIVED,
@@ -111,9 +121,10 @@ export const SURROUNDINGS_REGISTER = {
   minLanguages: derived(2,
     'A surroundings-tier place has a Wikipedia article in two languages or more, as ADR-0171 asked.',
     'Results, The point'),
-  minReaders: derived(3_000,
-    'At least 3,000 readers a year: a floor of 10,000 costs 1,100 places for 0.2 points of noise, and a floor of 1,000 doubles the noise.',
-    'Results, The point'),
+  minReaders: rankedOnTheYear({ rank: 889_568, yieldedThen: 3_000 },
+    'At least the readers of the 889,568th most read item of the year, 3,000 on the year to September 2026 (a floor of 10,000 '
+    + 'cost 1,100 places for 0.2 points of noise, and one of 1,000 doubled the noise, #2177): a rank follows the level of '
+    + 'readership, where a count admitted 5.3 % fewer items a year later and the rank the same number.'),
   guideShare: remeasured(0.25,
     'The Wikivoyage test passes at a quarter of the reference, in an area of five places or more: half shows 10,551 places and 279 demanded against 12,653 and 299, and per kind the share moves demand by 2 to 16 places where the neighbourhood moves it by 0 to 3.',
     'Per kind'),
@@ -139,7 +150,7 @@ export const SURROUNDINGS_REGISTER = {
     'A bridge with a heritage designation (P1435) that still holds counts as one a guide uses: it keeps 20 sights no list names, the Anping, Luding and Kawarau Gorge bridges among them, at the same noise (the maintainer\'s choice, 2026-11-03).',
     'The heritage exception'),
   stayReadersShare: derived(0.8,
-    'A surroundings-tier place stays while it keeps two editions, reaches 0.8 of the readers\' floor (2,400 a year) and passes one test, the readers test read at 0.8 and the others whole.',
+    'A surroundings-tier place stays while it keeps two editions, reaches 0.8 of the readers\' floor (2,400 a year on the year it was derived on) and passes one test, the readers test read at 0.8 and the others whole.',
     'Results, Checks at the point'),
 } as const;
 

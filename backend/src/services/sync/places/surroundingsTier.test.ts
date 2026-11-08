@@ -81,6 +81,13 @@ describe('the surroundings tier over a kind', () => {
     expect(filtered).toEqual([{ externalId: 'Q4', name: 'A mast', reason: 'not a tower: a mast' }]);
   });
 
+  it('measures against the readers\' floor the pool\'s year yields, not the count the rank yielded when derived (ADR-0184)', async () => {
+    // A year so read that its floor is 10,000: the Asinelli's 8,000 readers and the mast's 6,000 are under it.
+    const { items } = await surroundingsReader(surroundings, ON).arrivals(run, sparql, gathered as never, new Set(['Q1']), { ...pool, minReaders: 10_000 }, new Set());
+    expect(items).toEqual([]);
+    expect(gatherModule.gatherPlaces).not.toHaveBeenCalled();
+  });
+
   it('reads nothing where the run read the live service and no pool could be read, and says why', async () => {
     const result = await surroundingsReader(surroundings, ON).arrivals(run, sparql, gathered as never, new Set(), null, new Set());
     expect(result.items).toEqual([]);

@@ -8,7 +8,7 @@
 
 import type { WikidataLandmark } from '../types.js';
 import type { PoolEntity } from '../publicArt/queries.js';
-import { editionShares, readershipYear, readWorks } from '../../dumps/readership/workReadership.js';
+import { editionShares, readersAtRank, readershipYear, readWorks } from '../../dumps/readership/workReadership.js';
 import { chunk } from '../wikidataQueries.js';
 
 /**
@@ -23,6 +23,16 @@ export async function yearlyReaders(qids: string[], logPrefix: string): Promise<
     return null;
   }
   return (await readWorks(year, qids)).views;
+}
+
+/**
+ * The readers of the item at `rank` among every item the year keeps
+ * (`readersAtRank`, ADR-0184): what a readers' floor stated as a rank comes
+ * to this year. Null when no year is folded, or the year keeps fewer items.
+ */
+export async function yearlyReadersAtRank(rank: number): Promise<number | null> {
+  const year = await readershipYear();
+  return year ? readersAtRank(year, rank) : null;
 }
 
 const MANY_BATCH = 5_000;

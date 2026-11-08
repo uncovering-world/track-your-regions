@@ -32,7 +32,8 @@
  *
  * The numbers are the register's (`SURROUNDINGS_REGISTER` in
  * `admissionRegister.ts`, ADR-0175 decision 5), each with its derivation,
- * never a reader's or an admin's control.
+ * never a reader's or an admin's control. The readers' floor is a rank among
+ * the year's items, so its count follows the level of readership (ADR-0184).
  */
 
 import { SURROUNDINGS_REGISTER } from './admissionRegister.js';
@@ -72,8 +73,15 @@ export interface SurroundingsCut {
   readersGroupFloor: number;
   /** The fewest Wikipedia editions a place must have, whatever its surroundings. */
   minLanguages: number;
-  /** The fewest readers a year a place must have, whatever its surroundings. */
+  /**
+   * The fewest readers a year a place must have, whatever its surroundings:
+   * what the year's readers of the item at `minReadersRank` come to, read with
+   * the pool's year (`SurroundingsPool.minReaders`, ADR-0184), and the count
+   * the rank yielded when it was derived until a year is read.
+   */
   minReaders: number;
+  /** The rank among the year's items whose readers set `minReaders`. */
+  minReadersRank: number;
   /** The types of a kind's rule (a tunnel, a dam, a lock, a bridge) that enter and stay only while a Wikivoyage edition uses the place. */
   guideForTypes: readonly string[];
   /** The types of `guideForTypes` for which a heritage designation that holds counts as a guide's use (a bridge). */
@@ -96,11 +104,17 @@ export const SURROUNDINGS_CUT: SurroundingsCut = {
   editionsGroupFloor: SURROUNDINGS_REGISTER.editionsGroupFloor.value,
   readersGroupFloor: SURROUNDINGS_REGISTER.readersGroupFloor.value,
   minLanguages: SURROUNDINGS_REGISTER.minLanguages.value,
-  minReaders: SURROUNDINGS_REGISTER.minReaders.value,
+  minReaders: SURROUNDINGS_REGISTER.minReaders.value.yieldedThen,
+  minReadersRank: SURROUNDINGS_REGISTER.minReaders.value.rank,
   guideForTypes: SURROUNDINGS_REGISTER.guideForTypes.value,
   heritageForTypes: SURROUNDINGS_REGISTER.heritageForTypes.value,
   stayReadersShare: SURROUNDINGS_REGISTER.stayReadersShare.value,
 };
+
+/** The cut with the readers' floor the pool's year yields, where the pool read one (ADR-0184). */
+export function yearCut(cut: SurroundingsCut, minReaders: number | undefined): SurroundingsCut {
+  return minReaders === undefined ? cut : { ...cut, minReaders };
+}
 
 /** A candidate's own signals. */
 export interface SurroundingsCandidate {
