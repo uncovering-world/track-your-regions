@@ -13,6 +13,7 @@
 import { pool } from '../../../db/index.js';
 import { countedEditions } from '../wikipedia/redirectBuild.js';
 import { latestReadership, readershipWindow } from './readershipBuild.js';
+import { redirectsInPlace } from './readershipMonth.js';
 
 /** ADR-0055 decision 3: a pair is judged on its phone share from this many views a year. */
 export const AUTOMATED_FROM_VIEWS = 5_000;
@@ -119,6 +120,39 @@ export async function readAtLeast(year: ReadershipYear, views: number, belowEdit
     [year.editions, year.months, Math.ceil(views), belowEditions],
   );
   return result.rows.map(row => row.item);
+}
+
+/** The ranks asked of a year, each read once per fold of it: the year's sum over every item is half a minute's read. */
+const ranksRead = new Map<string, Promise<number | null>>();
+
+/**
+ * ADR-0184: the year's readers of the item at `rank` (1 the most read) among
+ * every item the year keeps, over the editions a door counts, or null where
+ * fewer items are kept. A readers' floor stated as a rank follows the level of
+ * readership, as the world tier's quantile bars do, and no class a kind asks
+ * by moves it. Read once per year, rank and fold: a new redirects build folds
+ * the same months again (#1650), and the floor is read again over the new
+ * sums. The sum is the raw one, before decision 3 sets any pair aside.
+ * Decision 3 judges no pair under 5,000 views a year, so the surroundings
+ * floor of 3,000 reads the same either way; at the street-art mark of 10,000
+ * the raw sum puts the rank's count slightly higher than a filtered one would.
+ */
+export async function readersAtRank(year: ReadershipYear, rank: number): Promise<number | null> {
+  const key = `${await redirectsInPlace()}|${year.months.join()}|${year.editions.join()}|${rank}`;
+  let read = ranksRead.get(key);
+  if (!read) {
+    read = pool.query<{ views: string }>(
+      `SELECT views FROM (SELECT sum(views) AS views FROM readership_months
+                           WHERE site = ANY($1::text[]) AND month = ANY($2::date[])
+                           GROUP BY item) items
+        ORDER BY views DESC OFFSET $3 LIMIT 1`,
+      [year.editions, year.months, rank - 1],
+    ).then(result => (result.rows.length ? Number(result.rows[0].views) : null));
+    // A failed read is asked again, never remembered.
+    read.catch(() => ranksRead.delete(key));
+    ranksRead.set(key, read);
+  }
+  return read;
 }
 
 /** One month of a work's series: its views and, where the month kept it, the views of each day. */

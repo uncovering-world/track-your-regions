@@ -28,9 +28,11 @@ const ONE_WIKI = 'Q99999901';
 // A year of readers, as the readership year would hand them: the Prendiparte is read in no counted edition.
 const YEAR = new Map([[TWO_TOWERS, 90_000], [ASINELLI, 30_000], [GARISENDA, 12_000], [PISA, 2_000_000], [ONE_WIKI, 800]]);
 let asked: string[] = [];
+const readersOf = (qids: readonly string[]) => new Map(qids.filter((q) => YEAR.has(q)).map((q) => [q, YEAR.get(q)!]));
+// The year's readers' floor where the rank yields the count it was derived at.
 const year: PoolReaders = async (qids) => {
   asked = [...qids];
-  return new Map(qids.filter((q) => YEAR.has(q)).map((q) => [q, YEAR.get(q)!]));
+  return { readers: readersOf(qids), minReaders: 3_000 };
 };
 
 // A usage build in place, as the fixture's usage rows stand for one.
@@ -142,6 +144,22 @@ describe('the surroundings pool read from the subset (#2178)', () => {
     expect(left.rows).toEqual([]);
   });
 
+  it('measures against the readers\' floor the year yields at the cut\'s rank, and hands it to the cut (ADR-0184)', async () => {
+    let rankAsked = 0;
+    // A year read so much that its floor is 40,000: a held place stays at 32,000.
+    const busyYear: PoolReaders = async (qids, rank) => {
+      rankAsked = rank;
+      return { readers: readersOf(qids), minReaders: 40_000 };
+    };
+    const surroundings = await readSurroundingsPool({ classes: new Set([TOWER]) }, CUT, [{ key: 'all', classes: null }], undefined, busyYear, built);
+    expect(rankAsked).toBe(SURROUNDINGS_CUT.minReadersRank);
+    expect(surroundings.minReaders).toBe(40_000);
+    // The Asinelli's 30,000 cleared the floor of 3,000 and are under this year's 32,000; the Two Towers' 90,000 are not.
+    const all = surroundings.around.get('all')!;
+    expect(all.has(ASINELLI)).toBe(false);
+    expect(all.has(TWO_TOWERS)).toBe(true);
+  });
+
   it('reads no surroundings where no year of readers is read, says why, and leaves no table behind', async () => {
     const surroundings = await readSurroundingsPool({ classes: new Set([TOWER]) }, SURROUNDINGS_CUT, [{ key: 'all', classes: null }], undefined, async () => null);
     expect(surroundings.rows.size).toBe(0);
@@ -149,6 +167,13 @@ describe('the surroundings pool read from the subset (#2178)', () => {
     expect(surroundings.unread).toMatch(/^No year of readers is read/);
     const left = await pool.query("SELECT 1 FROM pg_tables WHERE tablename = 'surroundings_pool'");
     expect(left.rows).toEqual([]);
+  });
+
+  it('reads no surroundings where the year keeps fewer items than the floor\'s rank, and says so (ADR-0184)', async () => {
+    const short: PoolReaders = async (qids) => ({ readers: readersOf(qids), minReaders: null });
+    const surroundings = await readSurroundingsPool({ classes: new Set([TOWER]) }, CUT, [{ key: 'all', classes: null }], undefined, short, built);
+    expect(surroundings.around.size).toBe(0);
+    expect(surroundings.unread).toMatch(/^The year keeps fewer items than the readers' floor's rank \(889,568\)/);
   });
 
   it('reads the pool where no Wikivoyage usage is built, and says its guides are not read (ADR-0175 decision 6)', async () => {

@@ -5,7 +5,8 @@
  * its editions, as ADR-0171's measurement counted it — with its Wikipedia
  * editions, the Wikivoyage editions that use it and a year of its readers (the
  * counter the world bars read with, ADR-0175 decision 3), built in one
- * temporary table for the session and read into the run's memory; then each
+ * temporary table for the session and read into the run's memory, with the
+ * readers' floor the same year yields at the cut's rank (ADR-0184); then each
  * place's density over the whole pool, and, for every item with the cut's
  * languages and the readers a held place stays at, its neighbours of its own
  * density within the radius and the best places' signals (ADR-0181,
@@ -31,8 +32,8 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../../../db/index.js';
 import { NOT_WIKIPEDIA } from '../subset/kit.js';
-import type { SurroundingsCut, Surroundings } from './surroundingsCut.js';
-import { yearlyReadersOfMany } from './candidates.js';
+import { yearCut, type SurroundingsCut, type Surroundings } from './surroundingsCut.js';
+import { yearlyReadersAtRank, yearlyReadersOfMany } from './candidates.js';
 import { latestUsage } from '../../dumps/wikivoyage/usageTables.js';
 import { densityNear, densityOf, SphereIndex, surroundingsNear, surroundingsOf } from './surroundingsNeighbourhood.js';
 
@@ -82,6 +83,12 @@ export interface SurroundingsPool {
   /** Why the pool was not read, when it was not: the rows and the surroundings are then empty. */
   unread?: string;
   /**
+   * The readers' floor the pool's year yields (`SurroundingsCut.minReadersRank`,
+   * ADR-0184), which the cut reads in place of the count the rank yielded when
+   * it was derived (`yearCut`); absent where the pool was not read.
+   */
+  minReaders?: number;
+  /**
    * Why no guide's use is read, when no Wikivoyage usage build is in place:
    * the rows' and the surroundings' guide editions are then no reading, and
    * the tier reads its held places' guides as last read (ADR-0175 decision 6).
@@ -107,10 +114,20 @@ export interface SurroundingsPoolRun {
   step: () => Promise<void>;
 }
 
-/** A year's readers of the pool's items, or null when no year is read. */
-export type PoolReaders = (qids: readonly string[], run?: SurroundingsPoolRun) => Promise<ReadonlyMap<string, number> | null>;
+/**
+ * A year of readers: each pool item's, and the readers of the item at the
+ * floor's rank, null where the year keeps fewer items than the rank; null
+ * altogether when no year is read.
+ */
+export type PoolReaders = (qids: readonly string[], rank: number, run?: SurroundingsPoolRun)
+  => Promise<{ readers: ReadonlyMap<string, number>; minReaders: number | null } | null>;
 
-const yearOfReaders: PoolReaders = (qids, run) => yearlyReadersOfMany(qids, '[Surroundings pool]', run?.step);
+const yearOfReaders: PoolReaders = async (qids, rank, run) => {
+  const readers = await yearlyReadersOfMany(qids, '[Surroundings pool]', run?.step);
+  if (!readers) return null;
+  run?.phase('Reading the readers\' floor the year yields...');
+  return { readers, minReaders: await yearlyReadersAtRank(rank) };
+};
 
 /** Whether a Wikivoyage usage build is in place, so the guide editions the pool counts are a reading. */
 type UsageBuilt = () => Promise<boolean>;
@@ -137,11 +154,16 @@ export async function readSurroundingsPool(
     // Asked before the pool counts the guides, so the answer is of the usage it counted.
     const guides = await usageBuilt() ? {} : { unreadGuides: UNREAD_GUIDES };
     await createPool(client, members);
-    if (!(await readPoolReaders(client, readers, run))) {
+    const minReaders = await readPoolReaders(client, readers, cut.minReadersRank, run);
+    if (minReaders === undefined || minReaders === null) {
+      const why = minReaders === undefined
+        ? 'No year of readers is read, so the surroundings tier\'s readers\' floor and readers test cannot be read'
+        : `The year keeps fewer items than the readers' floor's rank (${cut.minReadersRank.toLocaleString('en')}), `
+          + 'so the surroundings tier\'s readers\' floor cannot be read (ADR-0184)';
       return { rows: new Map(), around: new Map(), seconds: Math.round((Date.now() - started) / 1000),
-        unread: 'No year of readers is read, so the surroundings tier\'s readers\' floor and readers test cannot be read: '
-          + 'the tier is not read this run, and its places keep their standing (ADR-0175 decision 6)' };
+        unread: `${why}: the tier is not read this run, and its places keep their standing (ADR-0175 decision 6)` };
     }
+    const yearly = yearCut(cut, minReaders);
     const result = await client.query<{
       qid: string; editions: number; guide_editions: number; readers: string; classes: string[]; lat: number; lon: number; of_classes: boolean;
     }>(`SELECT qid, editions, guide_editions, readers, classes, lat, lon, of_classes FROM ${TABLE}`);
@@ -153,24 +175,24 @@ export async function readSurroundingsPool(
     const named: SurroundingsPoolRow[] = result.rows.filter((r) => !r.of_classes).map(rowOf);
     const rows = new Map([...list, ...named].map((row) => [row.qid, row]));
     const index = new SphereIndex(list);
-    const density = await densitiesOf(index, cut, run);
+    const density = await densitiesOf(index, yearly, run);
     // The verdict refuses a place under the languages, or under the readers a
     // held place stays at, before it reads the surroundings: none are read for it.
-    const floor = cut.stayReadersShare * cut.minReaders;
+    const floor = yearly.stayReadersShare * yearly.minReaders;
     const around = new Map<string, ReadonlyMap<string, Surroundings>>();
     for (const group of groups) {
       const inGroup = (row: SurroundingsPoolRow) => group.classes === null || row.classes.some((c) => group.classes!.has(c))
         || group.items?.has(row.qid) === true;
-      const measured = (row: SurroundingsPoolRow) => row.editions >= cut.minLanguages && row.readers >= floor && inGroup(row);
+      const measured = (row: SurroundingsPoolRow) => row.editions >= yearly.minLanguages && row.readers >= floor && inGroup(row);
       const candidates = list.flatMap((row, i) => (measured(row) ? [i] : []));
       const neighbours = group.classes === null ? undefined : (j: number) => inGroup(list[j]);
-      const surroundings = await readSurroundings({ index, list, density }, candidates, cut, neighbours, run);
+      const surroundings = await readSurroundings({ index, list, density }, candidates, yearly, neighbours, run);
       for (const row of named.filter(measured)) {
-        surroundings.set(row.qid, surroundingsNear(index, list, density, { ...row, density: densityNear(index, row, cut.densityNeighbours) }, cut, neighbours));
+        surroundings.set(row.qid, surroundingsNear(index, list, density, { ...row, density: densityNear(index, row, yearly.densityNeighbours) }, yearly, neighbours));
       }
       around.set(group.key, surroundings);
     }
-    return { rows, around, seconds: Math.round((Date.now() - started) / 1000), ...guides };
+    return { rows, around, minReaders, seconds: Math.round((Date.now() - started) / 1000), ...guides };
   } finally {
     await client.query(`DROP TABLE IF EXISTS ${TABLE}`).catch(() => undefined);
     client.release();
@@ -216,19 +238,22 @@ async function createPool(client: PoolClient, { classes, items = new Set() }: Po
 
 /**
  * A year of readers of every pool item with a Wikipedia article, written into
- * the session's pool; false, with nothing written, when no year is read.
+ * the session's pool, and the readers' floor that year yields at `rank`, null
+ * where it cannot be read; undefined, with nothing written, when no year is read.
  */
-async function readPoolReaders(client: PoolClient, readers: PoolReaders, run?: SurroundingsPoolRun): Promise<boolean> {
+async function readPoolReaders(
+  client: PoolClient, readers: PoolReaders, rank: number, run?: SurroundingsPoolRun,
+): Promise<number | null | undefined> {
   const read = (await client.query<{ qid: string }>(`SELECT qid FROM ${TABLE} WHERE editions > 0`)).rows.map((r) => r.qid);
   run?.phase(`Reading a year of readers of the surroundings pool's ${read.length.toLocaleString('en')} items with an article...`);
-  const year = await readers(read, run);
-  if (!year) return false;
-  const qids = [...year.keys()];
+  const year = await readers(read, rank, run);
+  if (!year) return undefined;
+  const qids = [...year.readers.keys()];
   await client.query(
     `UPDATE ${TABLE} p SET readers = r.n FROM unnest($1::text[], $2::bigint[]) AS r(qid, n) WHERE p.qid = r.qid`,
-    [qids, qids.map((qid) => year.get(qid))],
+    [qids, qids.map((qid) => year.readers.get(qid))],
   );
-  return true;
+  return year.minReaders;
 }
 
 /** Lets the run's other work through between two batches of the pool's arithmetic, which holds the event loop while it runs. */

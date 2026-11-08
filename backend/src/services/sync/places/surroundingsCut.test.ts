@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { medianOf, needsAGuide, surroundingsVerdict, SURROUNDINGS_CUT, type Surroundings } from './surroundingsCut.js';
+import { medianOf, needsAGuide, surroundingsVerdict, SURROUNDINGS_CUT, yearCut, type Surroundings } from './surroundingsCut.js';
 
 // A schematic of a Kyoto temple's neighbours: editions 60, 55, 50, 44, 40, 36, 33, 30, 28, 26 (median 38);
 // guide use 8, 7, 6, 6, 5, 5, 4, 4, 3, 3 (median 5, a quarter of it 1.25); readers median 300,000.
@@ -117,12 +117,19 @@ describe('surroundingsVerdict', () => {
     expect(surroundingsVerdict({ editions: 7, guideEditions: 1, readers: read }, kyoto, SURROUNDINGS_CUT, true).in).toBe(false);
   });
 
-  it('takes its numbers from the register, and is on (ADR-0175 decision 3, ADR-0181)', () => {
+  it('takes its numbers from the register, the readers\' floor as a rank of the year\'s items, and is on (ADR-0175 decision 3, ADR-0181, ADR-0184)', () => {
     expect(SURROUNDINGS_CUT).toEqual({
       enabled: true, neighbours: 'all', radiusKm: 150, densityNeighbours: 20, densityRatio: 4, best: 10,
       guideShare: 0.25, editionsShare: 1, readersShare: 1.5, guideGroupFloor: 5, editionsGroupFloor: 25, readersGroupFloor: 25,
-      minLanguages: 2, minReaders: 3_000, guideForTypes: ['tunnel', 'dam', 'lock', 'bridge'], heritageForTypes: ['bridge'], stayReadersShare: 0.8,
+      minLanguages: 2, minReaders: 3_000, minReadersRank: 889_568, guideForTypes: ['tunnel', 'dam', 'lock', 'bridge'], heritageForTypes: ['bridge'], stayReadersShare: 0.8,
     });
+  });
+});
+
+describe('yearCut', () => {
+  it('reads the floor the pool\'s year yields in place of the count the rank yielded when derived, and the cut as it is without one (ADR-0184)', () => {
+    expect(yearCut(SURROUNDINGS_CUT, 2_728)).toEqual({ ...SURROUNDINGS_CUT, minReaders: 2_728 });
+    expect(yearCut(SURROUNDINGS_CUT, undefined)).toBe(SURROUNDINGS_CUT);
   });
 });
 
