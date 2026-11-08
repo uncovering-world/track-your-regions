@@ -33,7 +33,7 @@ import { WorldLayerControls } from './regionMap/WorldLayerControls';
 import { MapUnavailable } from './shared/MapUnavailable';
 import { ArtworkPreviewOverlay } from './regionMap/ArtworkPreviewOverlay';
 import { isWebGLAvailable } from '../utils/webgl';
-import { MAP_STYLE } from '../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../constants/mapStyles';
 import { useRegionMetadata } from './regionMap/useRegionMetadata';
 import { useTileUrls } from './regionMap/useTileUrls';
 import { useMapFeatureState } from './regionMap/useMapFeatureState';
@@ -322,6 +322,7 @@ export function RegionMapVT() {
         }}
         style={{ width: '100%', height: '100%' }}
         mapStyle={MAP_STYLE}
+        attributionControl={OSM_ATTRIBUTION_CONTROL}
         onClick={handleMapClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}

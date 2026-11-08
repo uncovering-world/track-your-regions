@@ -19,7 +19,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import { Source, Layer, NavigationControl, type MapRef, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from './shared/GuardedMap';
 import * as turf from '@turf/turf';
-import { MAP_STYLE } from '../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../constants/mapStyles';
 import { frameGeoJson, smartFitBounds } from '../utils/mapUtils';
 import type { AnchorPoint, FocusBbox } from '../api/regions';
 import { plural } from '../utils/plural';
@@ -329,6 +329,7 @@ export function CustomBoundaryDialog({
             }}
             style={{ width: '100%', height: '100%' }}
             mapStyle={MAP_STYLE}
+            attributionControl={OSM_ATTRIBUTION_CONTROL}
             onClick={handleMapClick}
             onLoad={() => setMapLoaded(true)}
             cursor={step === 'draw' ? 'crosshair' : 'grab'}

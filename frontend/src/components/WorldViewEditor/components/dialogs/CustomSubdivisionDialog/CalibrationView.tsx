@@ -17,7 +17,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { Marker, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as Map } from '../../../../shared/GuardedMap';
 import * as turf from '@turf/turf';
-import { MAP_STYLE } from '../../../../../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../../../../constants/mapStyles';
 
 type CalibrationStep = 'west' | 'east' | 'south' | 'north';
 
@@ -445,6 +445,7 @@ export function CalibrationView({
             }}
             style={{ width: '100%', height: '100%' }}
             mapStyle={MAP_STYLE}
+            attributionControl={OSM_ATTRIBUTION_CONTROL}
           >
             <NavigationControl position="top-right" showCompass={false} />
 

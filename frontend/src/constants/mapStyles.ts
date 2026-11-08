@@ -17,6 +17,20 @@ import type { RasterSourceSpecification, StyleSpecification } from 'maplibre-gl'
 export const OSM_ATTRIBUTION =
   '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
 
+/** MapLibre's own credit, which its attribution control shows unless told otherwise. */
+export const MAPLIBRE_ATTRIBUTION = '<a href="https://maplibre.org/" target="_blank">MapLibre</a>';
+
+/**
+ * The attribution control of every map that draws `OSM_RASTER_SOURCE` (#2364).
+ * MapLibre adds a source's credit to the control only once the source has
+ * loaded, so the corner widened under the reader on every map, a layout shift
+ * of its own. Named here from the map's creation, the credit is in the corner
+ * from the first frame; when the source loads, MapLibre drops its copy as a
+ * duplicate, and the text does not change. MapLibre's credit is named beside
+ * it, since a custom attribution replaces the default.
+ */
+export const OSM_ATTRIBUTION_CONTROL = { customAttribution: [MAPLIBRE_ATTRIBUTION, OSM_ATTRIBUTION] };
+
 /** OpenStreetMap's standard tiles, with their credit: the one source every map that draws them uses. */
 export const OSM_RASTER_SOURCE: RasterSourceSpecification = {
   type: 'raster',

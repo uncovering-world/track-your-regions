@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Box, Stack, Tooltip, Typography, type SxProps, type Theme } from '@mui/material';
 import { Layer, Marker, NavigationControl, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { CrowdingGroupPlace, CrowdingPlaceView } from '../../../api/crowding';
-import { MAP_STYLE } from '../../../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../../constants/mapStyles';
 import { frameGeoJson } from '../../../utils/mapUtils';
 import { GuardedMap } from '../../shared/GuardedMap';
 import { drawnStanding, type DrawnStanding, type Staging } from './crowdingStaging';
@@ -208,6 +208,7 @@ export function CrowdingMap({ view, staging, hovered, frame: frameSx, onHover, o
         ref={map}
         initialViewState={{ longitude: start?.longitude ?? 0, latitude: start?.latitude ?? 0, zoom: start ? 10 : 1 }}
         mapStyle={MAP_STYLE}
+        attributionControl={OSM_ATTRIBUTION_CONTROL}
         style={{ width: '100%', height: '100%' }}
         onLoad={frame}
         unavailableCompact
