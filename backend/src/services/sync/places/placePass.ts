@@ -50,8 +50,12 @@ import type { SubjectRunner } from '../publicArt/subjects.js';
 interface PassKind {
   /** The sources it fills, in the pass's order (`PLACE_PASS`). */
   sourceIds: readonly number[];
-  /** The share it reads, with the rows its world tier admits before the run asked for by id; none for a kind with no place of its own (Art Museums). */
-  request?(): Promise<GatherRequest>;
+  /**
+   * The share it reads: the place kind whose classes name its candidates, and the rows its
+   * world tier admits before the run, asked for by id. None for a kind with no place of its
+   * own (Art Museums).
+   */
+  share?: { kind: PlaceKind<unknown>; admitted(): Promise<ReadonlySet<string>> };
   /**
    * Its neighbourhoods in the surroundings pool; none where the kind has no surroundings tier.
    * Read when the pool is built, so a run that builds none reads none.
@@ -65,7 +69,7 @@ interface PassKind {
 function pointKind<Trees>(sourceId: number, kind: PlaceKind<Trees>, classifier: PlaceClassifier): PassKind {
   return {
     sourceIds: [sourceId],
-    request: async () => ({ kind: kind as PlaceKind<unknown>, admitted: await admittedBy([sourceId]) }),
+    share: { kind: kind as PlaceKind<unknown>, admitted: () => admittedBy([sourceId]) },
     surroundings: () => (classifier.surroundings ? [classifier.surroundings] : []),
     members: (gather) => [passMember(placeSource(sourceId, gather, classifier))],
   };
@@ -86,13 +90,13 @@ export function passKinds(): readonly PassKind[] {
     {
       // Public art and Monuments & memorials: one share, each kind's own rule (#1807).
       sourceIds: PUBLIC_ART_SOURCES,
-      request: async () => ({ kind: PUBLIC_ART_KIND as PlaceKind<unknown>, admitted: await admittedBy(PUBLIC_ART_SOURCES) }),
+      share: { kind: PUBLIC_ART_KIND as PlaceKind<unknown>, admitted: () => admittedBy(PUBLIC_ART_SOURCES) },
       surroundings: () => [surroundingsReader(publicArtSurroundings(PUBLIC_ART_RULE)), surroundingsReader(publicArtSurroundings(MONUMENTS_RULE))],
       members: (gather) => PUBLIC_ART_SOURCES.map((sourceId) => passMember(publicArtSource(sourceId, gather))),
     },
     {
       sourceIds: [WORSHIP_SOURCE_ID],
-      request: async () => ({ kind: WORSHIP_KIND as PlaceKind<unknown>, admitted: await admittedBy([WORSHIP_SOURCE_ID]) }),
+      share: { kind: WORSHIP_KIND as PlaceKind<unknown>, admitted: () => admittedBy([WORSHIP_SOURCE_ID]) },
       surroundings: () => [surroundingsReader(WORSHIP_SURROUNDINGS)],
       members: (gather, options) => [passMember(worshipSource(gather, options))],
     },
@@ -101,10 +105,10 @@ export function passKinds(): readonly PassKind[] {
       // museum door asks after (`ArchaeologyPipelineDeps.admittedSites`). Its
       // surroundings tier asks the map for a ruin (ADR-0179), not this pool.
       sourceIds: [ARCHAEOLOGY_SOURCE_ID],
-      request: async () => ({
+      share: {
         kind: ARCHAEOLOGY_SITE_KIND as PlaceKind<unknown>,
-        admitted: await admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site', 'world'),
-      }),
+        admitted: () => admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site', 'world'),
+      },
       surroundings: () => [],
       members: (gather, options) => [passMember(archaeologySource(gather, options))],
     },
@@ -120,6 +124,16 @@ export function passKinds(): readonly PassKind[] {
     },
   ];
   return kinds;
+}
+
+/**
+ * The place kinds the pass asks its candidates by class, each with the kinds of the catalogue
+ * it fills: a source fills the `experience_kinds` row of its own id, and Public art and
+ * Monuments & memorials share one. What the coverage report reads a top's class reach from
+ * (#2146), so a kind that joins the pass is read there by the same entry.
+ */
+export function gatheredPlaceKinds(): { kindIds: readonly number[]; kind: PlaceKind<unknown> }[] {
+  return passKinds().flatMap(({ sourceIds, share }) => (share ? [{ kindIds: sourceIds, kind: share.kind }] : []));
 }
 
 /**
@@ -173,7 +187,7 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
       },
     };
     const requests: GatherRequest[] = [];
-    for (const kind of passKinds()) if (kind.request) requests.push(await kind.request());
+    for (const { share } of passKinds()) if (share) requests.push({ kind: share.kind, admitted: await share.admitted() });
     const gathered = await gatherPlaces(run, requests);
     // The surroundings tier's pool (ADR-0171, #2178), read once for the pass over
     // every place kind's classes together — a church is measured against the

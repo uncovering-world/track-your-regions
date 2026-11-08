@@ -48,6 +48,7 @@ const facts = (over: Partial<CoverageFacts>): CoverageFacts => ({
   unnamed: [],
   calibration: [],
   calibrationSources: [],
+  classReach: null,
   ...over,
 });
 const top = (slug: string, over: Partial<CalibrationRow> = {}): CalibrationRow => ({
@@ -406,6 +407,61 @@ describe('a live kind against its own calibration list (#1864)', () => {
     expect(text).toContain('in the catalogue, not offered by this kind: A dig nobody read yet)');
     expect(text).toContain("santa-sabina (Q12115; 28 sitelinks; wonders; in a crowded city's tail: ten better known of its type within 10 km, or a curator's shadow)");
     expect(text).not.toContain('World Heritage Sites [world-heritage]: 0 of');
+  });
+});
+
+describe('a top no kind\'s classes reach (#2146)', () => {
+  const reachedBy = (kinds: number[]) => ({ reachedBy: kinds, classes: [{ qid: 'Q811979', label: 'built structure' }] });
+  const calibration = [
+    // Reached by its own kind's classes, and named by no run: a candidate under the readers' line.
+    top('choquequirao', { sitelinks: 26 }),
+    // Typed only "built structure": a candidate nowhere, however well known.
+    top('neptunes-staircase', { sitelinks: 30 }),
+    // Reached by Public art's classes and not Archaeology's.
+    top('a-statue', { sitelinks: 30 }),
+    // Under the line, and reached by no class: the reach decides first.
+    top('moray', { sitelinks: 5 }),
+    // The subset does not hold its classes: told by the line alone.
+    top('unknown-item', { sitelinks: 40 }),
+    // Held by the catalogue: what holds it is said before its reach.
+    top('coricancha', { held_as: 'Coricancha', sitelinks: 29 }),
+  ];
+  const reach = {
+    kinds: new Set([3, 5]),
+    items: new Map([
+      [calibration[0].wikidata_id, reachedBy([5])],
+      [calibration[1].wikidata_id, reachedBy([])],
+      [calibration[2].wikidata_id, reachedBy([3])],
+      [calibration[3].wikidata_id, reachedBy([])],
+      [calibration[5].wikidata_id, reachedBy([])],
+    ]),
+  };
+  const standings = (classReach: CoverageFacts['classReach']) => buildCoverageReport(facts({ calibration, classReach }))
+    .liveKinds.find(live => live.slug === 'archaeology')?.calibration?.misses.map(miss => [miss.slug, miss.standing, miss.detail]);
+
+  it('names it apart from a refusal and a candidate under the line, with the classes its item carries', () => {
+    expect(standings(reach)).toEqual([
+      ['unknown-item', 'absent', null],
+      ['a-statue', 'other_classes', 'Public art'],
+      ['neptunes-staircase', 'unreached', 'built structure (Q811979)'],
+      ['coricancha', 'held', 'Coricancha'],
+      ['choquequirao', 'absent', null],
+      ['moray', 'unreached', 'built structure (Q811979)'],
+    ]);
+  });
+
+  it('says nothing of reach where no subset was read, or for a kind whose classes were not', () => {
+    expect(standings(null)?.map(([slug, standing]) => [slug, standing])).toEqual([
+      ['unknown-item', 'absent'], ['a-statue', 'absent'], ['neptunes-staircase', 'absent'], ['coricancha', 'held'],
+      ['choquequirao', 'absent'], ['moray', 'under_line'],
+    ]);
+    expect(standings({ ...reach, kinds: new Set([3]) })?.find(([slug]) => slug === 'neptunes-staircase')?.[1]).toBe('absent');
+  });
+
+  it('says it as text', () => {
+    const text = renderCoverageReport(buildCoverageReport(facts({ calibration, classReach: reach })));
+    expect(text).toContain("neptunes-staircase (Q18110; 30 sitelinks; coverage-surveys; absent, no kind's classes reach it; its classes are: built structure (Q811979))");
+    expect(text).toContain("a-statue (Q897; 30 sitelinks; coverage-surveys; absent, outside this kind's classes; reached by the classes of: Public art)");
   });
 });
 

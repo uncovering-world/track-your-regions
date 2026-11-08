@@ -4,7 +4,7 @@ import { PLACE_PASS } from '../passes.js';
 // What a world tier admitted before the run is read from the database; none here.
 vi.mock('../admission.js', () => ({ admittedExternalIds: vi.fn(async () => new Set<string>()) }));
 
-import { passKinds } from './placePass.js';
+import { gatheredPlaceKinds, passKinds } from './placePass.js';
 
 describe('the kinds of the place pass (#2320)', () => {
   const gather = () => Promise.reject(new Error('not read'));
@@ -18,11 +18,14 @@ describe('the kinds of the place pass (#2320)', () => {
   });
 
   it('each ask the gather for a share of their own, all but Art Museums, which gathers no place', async () => {
-    const asking = passKinds().filter((kind) => kind.request);
-    expect(passKinds().filter((kind) => !kind.request).flatMap((kind) => kind.sourceIds)).toEqual([2]);
-    const requests = await Promise.all(asking.map((kind) => kind.request!()));
-    expect(new Set(requests.map((request) => request.kind)).size).toBe(asking.length);
-    for (const request of requests) expect(request.admitted.size).toBe(0);
+    const asking = passKinds().flatMap((kind) => (kind.share ? [kind.share] : []));
+    expect(passKinds().filter((kind) => !kind.share).flatMap((kind) => kind.sourceIds)).toEqual([2]);
+    expect(new Set(asking.map((share) => share.kind)).size).toBe(asking.length);
+    for (const admitted of await Promise.all(asking.map((share) => share.admitted()))) expect(admitted.size).toBe(0);
+  });
+
+  it('name each kind they gather by class with the kinds of the catalogue it fills, for the coverage report\'s class reach (#2146)', () => {
+    expect(gatheredPlaceKinds().map(({ kindIds }) => kindIds)).toEqual([[3, 6], [4], [5], [7], [8], [9]]);
   });
 
   it('give the surroundings pool the neighbourhoods of every kind with a surroundings tier, Archaeology asking the map instead and Art Museums having none', () => {

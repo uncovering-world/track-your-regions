@@ -14,6 +14,10 @@ function regionArgs(argv: string[]): string[] {
  */
 async function main(): Promise<void> {
   const asked = regionArgs(process.argv);
+  // The kinds' class trees are walked by the runs' own code (#2146), which logs what it meets:
+  // those lines go to stderr, so stdout carries the report alone and `--json` stays data.
+  const print = console.log.bind(console);
+  console.log = console.error.bind(console);
   const report = await coverageReport(asked.length > 0 ? asked : undefined);
   await pool.end();
   // A slug that matched nothing is a typing mistake, and a report narrowed to nothing says nothing.
@@ -26,7 +30,7 @@ async function main(): Promise<void> {
     console.error('No surveyed region is loaded. Run the load first.');
     process.exit(1);
   }
-  console.log(process.argv.includes('--json') ? JSON.stringify(report, null, 2) : renderCoverageReport(report));
+  print(process.argv.includes('--json') ? JSON.stringify(report, null, 2) : renderCoverageReport(report));
   process.exit(0);
 }
 
