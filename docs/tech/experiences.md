@@ -5133,6 +5133,78 @@ Measured on the development subset on 2026-10-23, read-only in the dev container
 419 candidates, and the source would admit 326 and refuse 28, with 109 of the 114 places the line
 was chosen on among the admitted.
 
+### Whom or what a place commemorates (#2144)
+
+**What the card shows.** A place Public art or Monuments & memorials offers
+(`PUBLIC_ART_SOURCES` in `passes.ts`) carries whom or what it commemorates where one of six steps
+names anyone, and its card says so in one line, "Commemorates: Abraham Lincoln", each name linked
+to its English Wikipedia article where it has one (`CommemoratesLine`). Towers, Bridges &
+engineering marvels and Squares & streets read none of it, though their runs are the same
+`placeSource`: their `named after` names the engineer or the patron rather than whom the place was
+raised to remember. The Eiffel Tower is named after Gustave Eiffel and the Marco Polo Bridge after
+Marco Polo, who described it, and neither commemorates them.
+
+**The reading** (`places/commemorates.ts`, `readCommemorates`) runs in `fetchLandmarkItems` for the
+two public-art sources once the kind has decided,
+after the gone refusal and any retyping, over the run's admitted places. The first step that names
+anyone answers, and a later step is not read for that place:
+
+1. `P547` *commemorates*, every item value: the Lincoln Memorial → Abraham Lincoln.
+2. English Wikipedia's *Monuments and memorials to X*, *Memorials to X* or *Monuments to X*
+   category of the place's article (`MEMORIALS_CATEGORY`): X, a name with a capital first letter
+   and a leading *the* dropped, is resolved to the article titled X exactly, and that article to
+   its item. The Statue of Unity is filed under *Memorials to Vallabhbhai Patel*. A class of people
+   is written with a small letter in a category title (*Statues of military personnel*) and names
+   nobody.
+3. `P921` *main subject*, a value that is a person or an event: the Hermannsdenkmal → Arminius.
+4. `P138` *named after*, the same: the Alexander Column → Alexander I of Russia. The Brandenburg
+   Gate's namesake is a town, so it names nobody.
+5. *Statues of X* (`STATUES_CATEGORY`), resolved as in step 2.
+6. `P180` *depicts*, a person only: Nelson's Column → Horatio Nelson, not the lions or the
+   battles on its plinth. Its *Monuments and memorials to Horatio Nelson* names a title that is a
+   redirect, which the copy holds no page for.
+
+Statements are read at their best rank, in the item's order, and a category's subjects by item
+id. A person is `P31` human (Q5); an event carries a point in time (`P585`), a start (`P580`) or an
+end (`P582`). A value with no label in any of the label service's languages is not taken. A
+subject's article is Wikidata's English sitelink (`fetchEnglishArticles`), or, for one a category
+named, the article its title resolved to.
+
+Wikidata is read through the run's door: the subset's twins are `subsetSubjectClaims` and
+`subsetSubjectKinds` (`subset/commemorates.ts`), which read `P547`, `P921`, `P138` and `P180` off
+the kept entity's claims, since `wikidata_claims` keeps place properties only. A value the subset
+did not keep is neither a person nor an event there. The live twins, `fetchSubjectClaims` and
+`fetchSubjectKinds`, have no statement order, so the live answer is sorted by item id. English
+Wikipedia's categories come from the copy of its structure where one is built (`structureCategories`,
+`structureArticleItems` in `wikipediaStructure.ts`), and from the live API otherwise
+(`fetchWikipediaCategories`, `resolveWikipediaArticles`), which follows a redirect where the copy
+finds no page (`commemorationWiki`).
+
+**Where it is stored.** `metadata.commemorates` on the place, `{ via, subjects: [{ item, label,
+articleUrl }] }`, with `via` naming the step that answered (`COMMEMORATION_STEPS` in
+`@tyr/shared/commemorates`). It is absent where no step names anyone. It is a field of the place,
+shown (`@tyr/shared/placeFields`): a memorial church keeps it under Places of worship whichever kind's
+run read it. The object read serves it as `ExperienceDetail.commemorates`, `[{ qid, label,
+article_url }]`, empty where the place holds none (`commemoratedOf` in `experienceAnswerRows.ts`).
+
+**The gate.** Under a gated source a new, changed or removed value is a held proposal, as a website
+is. Two values are the same when they name the same items (`sameSubjects`, read by
+`sameMetadataValue` in `changeSet.ts`): a label or an article Wikidata re-words, another order, or
+another step naming the same people proposes nothing. The review card names the subjects as the
+card does and says who a proposal adds and drops and which step read them (`metadata.commemorates`
+in `fieldMeaning.tsx`).
+
+**The keep rule.** Only Public art's and Monuments & memorials' runs write the field, and every
+Wikidata source is one family, so it is kept per source rather than per family:
+`WRITTEN_BY_SOURCES` in `fieldFamilies.ts` names the sources that write a key
+(`PUBLIC_ART_SOURCES` for this one), and a run of any other source writes it as the place holds
+it while a membership of one of those sources stands on the place and admits it (`fieldsOfOthers`,
+[ADR-0190](../decisions/0190-a-place-field-some-sources-read-is-kept-while-one-of-them-stands.md)).
+A memorial church's Places of worship run or a Towers run of a memorial tower therefore never
+proposes removing what Monuments & memorials' run wrote. Once neither kind admits the place — a
+refusal leaves the membership listed — the other run's record, which has no subjects, goes to the
+gate as a removal.
+
 ### Shared patterns
 
 - Every outbound call says who is calling through `userAgent()` (`backend/src/config/userAgent.ts`), which is the one place the header is built. The shape is the one Wikimedia's User-Agent policy states — `<client>/<version> (<contact information>)` — the version comes from `backend/package.json`, and a run asks for the `bot` marker the policy wants for automated agents, which a curator's own lookup does not carry — the marker names the traffic, not who set it going. The contact is a website and a mailbox that answer; `USER_AGENT_CONTACT` lets a deployment that is not this one publish its own. It matters more than politeness: the policy answers a caller without a working contact by blocking it "without notice", and the OSM Foundation's Nominatim policy refuses a stock agent outright, so the header is a dependency of filling the catalogue. It used to be written at each call site, which drifted into six spellings naming a repository, an account and a domain that do not exist (#864); `userAgentOneSource.test.ts` fails the gate if a second home appears
