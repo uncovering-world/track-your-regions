@@ -28,6 +28,7 @@ import type { ReactNode } from 'react';
 import { Chip, Link, Stack, Tooltip } from '@mui/material';
 import { isEmptyValue } from '@tyr/shared/equality';
 import { placeFieldUnseen } from '@tyr/shared/placeFields';
+import { commemoratesOf, type CommemorationStep } from '@tyr/shared/commemorates';
 import type { ImageCredit } from '../../api/experiences';
 import type { ChangedField } from '../../api/reviewQueue';
 import { parseCriteria } from '../../utils/unescoCriteria';
@@ -291,6 +292,45 @@ function qidLabel(value: unknown): ReactNode {
   // a stored link as going through it.
   const href = safeHref(wikidataItemUrl(value));
   return href ? <ExternalLink href={href}>{`${String(value)} (Wikidata)`}</ExternalLink> : String(value ?? '');
+}
+
+/** Where each step of the reading of whom a place commemorates found its subjects (#2144). */
+const COMMEMORATION_SOURCE: Readonly<Record<CommemorationStep, string>> = {
+  'commemorates': 'Wikidata’s “commemorates” statement',
+  'memorials-category': 'English Wikipedia’s “Monuments and memorials to …” category of the place’s article',
+  'main-subject': 'Wikidata’s “main subject”, a person or an event',
+  'named-after': 'Wikidata’s “named after”, a person or an event',
+  'statues-category': 'English Wikipedia’s “Statues of …” category of the place’s article',
+  'depicts': 'Wikidata’s “depicts”, a person the work shows',
+};
+
+/** The subjects as the card's line names them: each linked to its article where it has one. */
+function commemoratesLabel(value: unknown): ReactNode {
+  const stored = commemoratesOf(value);
+  if (!stored) return 'nobody named';
+  return stored.subjects.map((subject, i) => {
+    const href = safeHref(subject.articleUrl);
+    return (
+      <span key={subject.item}>
+        {i > 0 && ', '}
+        {href ? <ExternalLink href={href}>{subject.label}</ExternalLink> : subject.label}
+      </span>
+    );
+  });
+}
+
+/** Who a proposal adds and drops, and where the proposed names were read. */
+function describeCommemorates(before: unknown, after: unknown): string | null {
+  const [was, is] = [commemoratesOf(before), commemoratesOf(after)];
+  const names = (value: typeof was, others: typeof was) => (value?.subjects ?? [])
+    .filter(subject => !(others?.subjects ?? []).some(other => other.item === subject.item)).map(subject => subject.label);
+  const added = names(is, was);
+  const removed = names(was, is);
+  const parts = [];
+  if (added.length) parts.push(`Added: ${added.join(', ')}.`);
+  if (removed.length) parts.push(`Removed: ${removed.join(', ')}.`);
+  if (is) parts.push(`Read from ${COMMEMORATION_SOURCE[is.via]}.`);
+  return parts.length ? parts.join(' ') : null;
 }
 
 /** The credit ODbL asks for wherever OpenStreetMap's data is shown (ADR-0059 decision 3). */
@@ -572,6 +612,13 @@ const MEANINGS: Record<string, FieldMeaning> = {
     what: 'The World Heritage Centre’s page about the site, on whc.unesco.org, where the official description, maps and documents are.',
     whenItChanges: SOURCE_LINK_CHANGE,
     render: urlLabel,
+  },
+  'metadata.commemorates': {
+    label: 'commemorates',
+    what: 'Whom or what the place commemorates: the line “Commemorates: …” on its card, each name linked to its Wikipedia article. Read from Wikidata’s “commemorates” first, then English Wikipedia’s “Monuments and memorials to …” categories, the main subject or the namesake where it is a person or an event, the “Statues of …” categories, and last the person a statue depicts. The Lincoln Memorial commemorates Abraham Lincoln, Nelson’s Column Horatio Nelson.',
+    whenItChanges: 'A name added or dropped on Wikidata or in a category. Check each name against the place: a namesake can be the pope who paid for a fountain rather than whom it honours, and a statue can show someone it was not raised to.',
+    render: commemoratesLabel,
+    describeChange: describeCommemorates,
   },
   'metadata.wikipediaUrl': {
     label: 'Wikipedia',

@@ -51,6 +51,7 @@ import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
+import { CommemoratesLine } from '../shared/CommemoratesLine';
 import { DescriptionText } from '../shared/DescriptionText';
 import { ContentsSection } from './ContentsSection';
 import { locationLabel, pointOfRow } from '../../utils/locationLabel';
@@ -312,6 +313,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             Inscribed: {details.date_inscribed}
           </Typography>
         )}
+
+        {/* Whom or what it commemorates, the line Map mode's card carries too (#2144). */}
+        <CommemoratesLine subjects={details?.commemorates} mb={2} />
 
         {/* The same line Map mode's card carries: one place described two ways
             is two claims about one thing (#731's rule, one level up). */}
