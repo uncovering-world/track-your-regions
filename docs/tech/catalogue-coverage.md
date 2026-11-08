@@ -218,8 +218,8 @@ kept under `docs/local/`, since a guide's selection is its publisher's
 | `name` | For a person. Never used to match anything |
 | `wikidata` | Its Wikidata id; every entry has one |
 | `sources` | The register's slugs: `travel-canon` for an entry the canon admitted — two independent sources named it, the compiler's own list counting as one, and which guides they were is kept under `docs/local/` — and beside it the slug of every named list the register holds that also names it (a federation's members, an engineers' wonders list). One or more; the two-source rule is checked against the local record, not read off this field |
-| `sitelinks` | Its Wikipedia editions when the list was compiled, counted by the runs' own counter, `fetchWikipediaEditions` (`wikidataQueries.ts`; the subset's `subsetWikipediaEditions` where the subset keeps the item), or `null`. Recorded after the entry is chosen, never to choose it: the report reads it to tell an absent top under the kind's editions line from one the kind's classes do not reach |
-| `note` | Anything a later reader needs: why Wikidata's typing keeps the kind from reaching it |
+| `sitelinks` | Its Wikipedia editions when the list was compiled, counted by the runs' own counter, `fetchWikipediaEditions` (`wikidataQueries.ts`; the subset's `subsetWikipediaEditions` where the subset keeps the item), or `null`. Recorded after the entry is chosen, never to choose it: the report reads it to tell an absent top under the kind's editions line from a candidate over it |
+| `note` | Anything a later reader needs: why Wikidata's typing keeps the kind from reaching it, and, for a top no kind's classes reach, which way in it has: a class a kind should ask by, a proposed kind, or a door other than a class (#2146) |
 
 A line, in full:
 
@@ -506,12 +506,56 @@ the first that applies:
 | admitted | The kind admits a place known by the item and its arrival waits in the review queue (`arrivalWaitingSql`, the queue's own fragment: unread, not marked missing). Counted beside the offered, never named as a miss, since the line holds it |
 | crowded | The kind admits a place known by the item and a crowded city's tail holds it: ten better-known places of its type lie within 10 km (ADR-0172), or a curator keeps it in the shadow (ADR-0180). The display decides it, not the line; named as a miss, with no place |
 | held | A catalogue place known by the item exists and this kind neither offers it nor holds it for a curator: refused by name by an earlier run, offered by another kind alone, passed by a curator and no longer standing, or marked missing before anyone read it; the place is named |
-| absent, under the editions line | Nothing holds it and no run named it, and the list's `sitelinks` are under the kind's editions line: the surroundings or the regional tier's |
-| absent, not a candidate | Nothing holds it and no run named it, at or over the line, or with no count: the kind's classes do not reach it, or a candidate under the readers' line, which the run records nowhere |
+| absent, no kind's classes reach it | Nothing holds it and no run named it, and no kind's class question names its item (`unreached`, #2146): it is a candidate nowhere, however well known, and the report names the classes the item carries. Told apart from a refusal, which a run recorded, and from a candidate under the line, which its classes reach |
+| absent, outside this kind's classes | Nothing holds it and no run named it, and only another kind's classes reach its item (`other_classes`), which the report names: Balmy Alley, a street to Squares & streets and nothing Public art asks by |
+| absent, under the editions line | Nothing holds it and no run named it, its kind's classes reach it or its reach cannot be read, and the list's `sitelinks` are under the kind's editions line: the surroundings or the regional tier's |
+| absent, not a candidate | Nothing holds it and no run named it, its kind's classes reach it or its reach cannot be read, at or over the line or with no count: a candidate under the readers' line, which the run records nowhere |
 
 A place is known by the same identifiers the survey lists match by (`KNOWN_AS_SQL`), and offered
 by the same `countedMembershipSql`, in the kind the list belongs to. A kind's list is the whole
 world's, so `--region` never narrows it.
+
+**Which kinds' classes reach a top** (#2146) is read with the place gather's own code, never a copy
+of its classes: `readClassReach` (`backend/src/services/catalogueCoverage/classReach.ts`) walks the
+trees of every kind the place pass asks by class (`gatheredPlaceKinds` in `places/placePass.ts`),
+takes the classes each asks its candidates by (`kindClasses` in `places/gather.ts`, each kind's
+`trees` and `poolClasses`), and calls an item reached by a kind when one of its own classes is one
+of them (`namedByClass`), the test the gather decides a kind's share by. Public art and Monuments &
+memorials share one class question, so an item one reaches the other reaches. The trees and each
+item's classes are read off the local Wikidata subset through the door a run on the subset reads,
+so the report asks the query service nothing, and the walk adds a few seconds to a report. Reach is
+said only where it can be: of a kind the pass asks by class, which leaves out World Heritage, Art
+Museums and Notable works, whose places come in by inscription or through works; of an item whose
+classes the subset holds; and with a subset built. Elsewhere an absent top is told by the line
+alone, as before.
+
+Only a class question is read. Public art's street-art and monuments-category entrances, its groups
+of casts, and Archaeology's map name places no class names; a top they brought in is held or
+offered before its reach is asked, and one they name that no run kept reads as reached by no
+class. Its entry's `note` says which door is its. On the development catalogue of 2026-11-08,
+every top its own kind did not offer and no kind's classes reached was judged in its note one of
+four ways:
+
+- **a class a kind should ask by**, added where what it lets in was measured on the subset and is
+  the kind's alone: Thailand's *historical park* to Archaeology (Ayutthaya, Sukhothai;
+  `SITE_POOL_CLASSES`), *descent* to Squares & streets (Andriyivskyy Descent; `DESCENT`). A class
+  that would let in what is not the kind's is named in the note and left out: *road junction*
+  (Piccadilly Circus) names motorway interchanges, *path* (the Philosopher's Path) long trails,
+  *flood control* (the Delta Works) the Sand Motor, *grotto* (Longmen, Yungang) sea caves;
+- **a kind that does not exist yet**, already in the register: Tombs & mausoleums for the Ming
+  tombs, Historical sites for Choeung Ek and Auschwitz, Natural landmarks for Uluru and the Batu
+  Caves, Markets for Chandni Chowk, Neighbourhoods & districts for Dōtonbori, Skyscrapers for the
+  Torre Latinoamericana, an office tower named for its deck;
+- **a wrong item or a wrong typing**, corrected where the subset holds the right one, else on
+  Wikidata. MaestraPeace is entered as the Women's Building's non-profit, and neither the mural nor
+  the building has an item the subset keeps, so it stays as it is; Wikidata types the Kuala Lumpur
+  Tower, a telecommunications tower with no occupied floors, a skyscraper, which is the item's
+  fault and not a kind to add;
+- **a door other than a class**: the street-art entrance for the districts known for their murals,
+  Wynwood, Shoreditch, Comuna 13, Cerro Alegre and the Arts District of Los Angeles (#2035);
+  World Heritage's inscription for Kilwa Kisiwani, Polonnaruwa and Rapa Nui; a door naming a
+  canal's works by what they are filed under for Neptune's Staircase and the Fonseranes Locks,
+  which Wikidata types only *built structure*.
 
 A top is also offered when the kind offers a place that holds it (#2151, `ENTRY_WHOLES_SQL`): the
 top's item is *part of* (P361) or *located in* (P276) the place's, or the place's item *has part*

@@ -3617,7 +3617,11 @@ dispatches on `item.type`.
 narrowed by #581's second slice. The pool is Wikidata's `archaeological site` tree — 590 classes,
 1,960 items with a coordinate at the pool's floor of 15 sitelinks, measured 2026-09-14 — asked
 with the root in fame bands and the rest of the tree in batches, the worship pool's shape, as the
-place pass's gather asks it (`ARCHAEOLOGY_SITE_KIND`, § Several kinds from one gather). The
+place pass's gather asks it (`ARCHAEOLOGY_SITE_KIND`, § Several kinds from one gather). Beside the
+tree it asks by the classes no subclass chain puts under it (`SITE_POOL_CLASSES`, #2146): Thailand's
+*historical park*, which Wikidata files under protected areas, and which Ayutthaya and Sukhothai
+carry and no site class; on the subset of 2026-11-08 it brings eight parks, seven of them ancient
+sites and the eighth Phra Nakhon Khiri, a hilltop palace of the 1860s, which a curator answers. The
 classes alone cannot decide anything: the tree holds Athens (through `free city`), Cairo and
 Damascus, while Troy carries `city-state, polis, Bronze Age settlement, settlement site` and no
 class that says dig. **So OpenStreetMap is the judge**, and the verdict runs in five steps — what
@@ -5049,7 +5053,11 @@ arrivals wait for a curator. The source record, with the reading its line was ch
 **The candidates** are asked by five roots with their trees, square, street, promenade, stairs and
 pedestrian zone, and by a sixth, thoroughfare (`THOROUGHFARE`), asked by itself and not by its
 tree: Moscow files the Arbat as a thoroughfare and nothing narrower, while the tree beneath it
-holds every motorway, railway and bridge (`SQUARE_ROOTS`, `squares/classes.ts`).
+holds every motorway, railway and bridge (`SQUARE_ROOTS`, `squares/classes.ts`). A descent
+(`DESCENT`), a street running down a slope, is asked by itself the same way (#2146): Kyiv files
+Andriyivskyy Descent as a descent and nothing else, and on the subset of 2026-11-08 the class
+brings 22 streets no other class of the kind named, Kyiv's descents with those of Kharkiv and
+Homiel among them.
 
 **The rule** is `SQUARES_DECLARATION` (`squares/classes.ts`), read by `places/declaredKind.ts`, in order:
 
@@ -5076,7 +5084,7 @@ A neighbourhood is no refusal: Wikidata files a shopping street under neighbourh
 Street and Fifth Avenue are streets a visitor walks.
 
 **The type** (`squareType`) is the first of `stairway`, `square`, `promenade` and `street` its
-classes name, and `street` for a bare thoroughfare: the Spanish Steps are a stairway, and the
+classes name, and `street` for a bare thoroughfare or a descent: the Spanish Steps are a stairway, and the
 National Mall a square though an avenue too.
 
 **The world bars** are the frame's over the kind's own pool (ADR-0175, `classifyByWorldBars`, as
