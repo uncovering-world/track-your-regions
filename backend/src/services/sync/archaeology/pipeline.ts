@@ -113,7 +113,7 @@ import {
 } from './museumVerdict.js';
 export type { CollectedArchaeologyMuseum } from './museumVerdict.js';
 import { collectSitesByFame, type OsmReader, type SiteEntrance } from './sites.js';
-import { collectSurroundingsSites, type SurroundingsSites } from './surroundingsSites.js';
+import { collectSurroundingsSites, type SurroundingsSites, type SurroundingsSitesInput } from './surroundingsSites.js';
 import type { DoorWork, ReadershipDoor, UnderFloorReader } from '../readershipDoor.js';
 import type { WorldOptions } from '../places/worldTier.js';
 import type { SurroundingsPool } from '../places/surroundingsPool.js';
@@ -240,6 +240,14 @@ export interface ArchaeologyPipelineDeps {
    * no surroundings tier is read, which leaves its rows as they stand.
    */
   surroundings?: () => Promise<{ pool: SurroundingsPool | null; held: ReadonlySet<string> }>;
+  /**
+   * The sites the source's surroundings tier holds before the run, known
+   * without reading the pool: a listing that is part of one opens no door of
+   * ADR-0185 in the world tier either.
+   */
+  surroundingsHeld?: ReadonlySet<string>;
+  /** The held parts of a World Heritage listing the map does not show (ADR-0185); the subset's where none is handed in. */
+  heldParts?: SurroundingsSitesInput['heldParts'];
   /**
    * The readership door over the finds pool (ADR-0164), or none: the source's
    * curator gate is off, or a test asks no readership.
@@ -543,7 +551,7 @@ export async function collectArchaeology(
     digs: deps.osmDigs,
     resolveArticles: deps.resolveArticles,
     categories: deps.categories,
-  }, deps.siteWorld, new Set([...deps.admittedSites, ...deps.admittedMuseums]));
+  }, deps.siteWorld, new Set([...deps.admittedSites, ...deps.admittedMuseums, ...(deps.surroundingsHeld ?? [])]));
   // The surroundings tier after the world tier has decided (ADR-0171, ADR-0179).
   const surroundings = await surroundingsSitesOf(deps, run, trees, sites, items);
 
@@ -651,6 +659,7 @@ async function surroundingsSitesOf(
     nameOf: (qid) => museumNames.get(qid) ?? sites.read.labels.get(qid),
     // What the source last read, for the guides a run without a usage build cannot read (ADR-0175 decision 6).
     memory: deps.siteWorld?.history?.memory,
+    heldParts: deps.heldParts,
   });
   return { ...read, held };
 }

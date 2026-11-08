@@ -174,6 +174,7 @@ async function fetchArchaeologyItems(
           siteWorld: { history },
           // The pass's surroundings pool, read once for every place kind (ADR-0171).
           surroundings: async () => ({ pool: await (await gather(progress)).surroundings(), held: surroundingsSites }),
+          surroundingsHeld: surroundingsSites,
           shownElsewhere,
           line,
           // What other kinds refused as held at a museum (ADR-0102).
