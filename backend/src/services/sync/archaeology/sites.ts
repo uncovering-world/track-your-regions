@@ -37,6 +37,7 @@ import type { KeepWkt, OsmObject, OsmReaderName } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import type { FilteredEntity } from '../syncContract.js';
 import { inPool, namesRefusal, openWorldTier, type WorldOptions, type WorldTier } from '../places/worldTier.js';
+import { ARCHAEOLOGY_WORLD_REGISTER } from '../places/admissionRegister.js';
 import type { WorldCandidate } from '../places/worldBars.js';
 
 const LOG_PREFIX = '[Archaeology Sync]';
@@ -158,6 +159,25 @@ export interface SiteReading {
   labels: ReadonlyMap<string, string>;
   /** When the map was read, for a site whose objects name no source of their own. */
   readAt: string;
+  /** The candidates the World Heritage List inscribes (`P757`, or `P1435` naming it), as the facts read them (ADR-0185). */
+  listed: ReadonlySet<string>;
+}
+
+/** An old town (`Q676050`): every World Heritage listing typed one is a living city, Vilnius's and Florence's as Hebron's. */
+const OLD_TOWN = 'Q676050';
+
+/**
+ * Whether a candidate's World Heritage listing opens ADR-0185's doors: it is
+ * inscribed, and it is not an archaeology museum, which the kind admits by its
+ * finds (the National Archaeological Museum of Paestum), not an old town, a
+ * living city (Hebron, Mazagan), and not part (`P361`) of a place the kind
+ * holds, whose visit it is (the Palace of Knossos, Baalbek's Temple of Jupiter).
+ */
+export function listingOpensTheDoors(
+  facts: Pick<SiteFactsRow, 'classes' | 'worldHeritage'>, parents: readonly string[], holds: ReadonlySet<string>, trees: ArchaeologyTrees,
+): boolean {
+  return facts.worldHeritage && !facts.classes.includes(OLD_TOWN) && !facts.classes.some((cls) => trees.museum.has(cls))
+    && !parents.some((parent) => holds.has(parent));
 }
 
 /** The rule's verdict on one candidate, and the objects it was read off. */
@@ -504,7 +524,9 @@ function retypedRefusal(entity: PoolEntity, held: boolean, tier: WorldTier): Sit
  * step 4, and be written as a site. A row the surroundings tier holds is that
  * tier's (`surroundingsSites.ts`). `world` hands a run the source's history, for
  * what it cannot read (ADR-0175 decision 6), and a test the world's signals
- * and the bars where it is not about the pool (`WorldOptions`).
+ * and the bars where it is not about the pool (`WorldOptions`). `holds` is
+ * every place the kind holds, its museums among them: a listing that is part
+ * of one opens no door of ADR-0185.
  */
 export async function collectSitesByFame(
   run: QueryRunner,
@@ -513,6 +535,7 @@ export async function collectSitesByFame(
   osm: OsmReader,
   entrance: SiteEntrance,
   world?: WorldOptions,
+  holds: ReadonlySet<string> = admitted,
 ): Promise<SitesByFame> {
   const { trees } = share;
   const { pool, byId, byOsm, named, byArticleOnly } = await collectPool(run, share, admitted, entrance);
@@ -565,6 +588,10 @@ export async function collectSitesByFame(
     const read = objectsOf(entity.qid, row, trees, byOsm, objects, named);
     verdicts.set(entity.qid, { verdict: judgeSite(entity, row, read, trees, namedByCategory.has(entity.qid)), objects: read });
   }
+  // A World Heritage listing is a guide's mark here (ADR-0185).
+  const listed = new Set(candidates.filter((entity) => listingOpensTheDoors(
+    facts.get(entity.qid) ?? emptyFacts(), share.facts.get(entity.qid)?.parents ?? [], holds, trees,
+  )).map((entity) => entity.qid));
   const tier = await openWorldTier({
     pool: candidates.filter((entity) => verdicts.get(entity.qid)?.verdict.pass && inPool(share, entity.qid, entity)).map(candidateOf),
     qids: candidates.map((entity) => entity.qid),
@@ -572,6 +599,7 @@ export async function collectSitesByFame(
     sparql: run.sparql,
     logPrefix: LOG_PREFIX,
     ...world,
+    ...(ARCHAEOLOGY_WORLD_REGISTER.listedIsAMark.value ? { listed } : {}),
   });
 
   const sites = new Map<string, SiteCandidate>();
@@ -593,5 +621,5 @@ export async function collectSitesByFame(
   // are counted too: two lines with the same number in them is one line a
   // reader has to reconcile with the other.
   const labels = new Map(candidates.map((entity) => [entity.qid, entity.label]));
-  return { sites, filtered, fetched: new Set(qids), read: { judged: verdicts, labels, readAt } };
+  return { sites, filtered, fetched: new Set(qids), read: { judged: verdicts, labels, readAt, listed } };
 }

@@ -76,18 +76,21 @@ export interface WorldOptions {
  * names the bars and what it kept.
  */
 export async function openWorldTier(
-  { pool, qids, poolRead, sparql, logPrefix, read, bars: given, history }: {
+  { pool, qids, poolRead, sparql, logPrefix, read, bars: given, history, listed }: {
     pool: readonly WorldCandidate[];
     qids: readonly string[];
     poolRead: boolean;
     sparql: SparqlFn;
     logPrefix: string;
+    /** The candidates whose World Heritage listing the kind reads as a guide's mark (Archaeology, ADR-0185). */
+    listed?: ReadonlySet<string>;
   } & WorldOptions,
 ): Promise<WorldTier> {
   const fresh = read ?? await readWorld(qids, logPrefix);
   const base = history ? { ...fresh, memory: history.memory } : fresh;
   const bars = given ?? barsToAdmitBy(poolRead ? worldBars(pool, base.readers) : null, base);
-  const signals: WorldRead = read ? base as WorldRead : { ...base, atlas: await readAtlas(sparql, qids, base, bars) };
+  const read_: WorldRead = read ? base as WorldRead : { ...base, atlas: await readAtlas(sparql, qids, base, bars) };
+  const signals: WorldRead = listed ? { ...read_, listed } : read_;
   console.log(barsLine(logPrefix, bars, base));
   if (bars) await history?.keep(bars);
   return {

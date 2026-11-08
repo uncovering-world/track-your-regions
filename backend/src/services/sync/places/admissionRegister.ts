@@ -156,14 +156,18 @@ export const SURROUNDINGS_REGISTER = {
 
 const ARCHAEOLOGY_REPORT = 'docs/research/2026-11-02-archaeologys-sites-in-the-admission-frame.md';
 
+const WORLD_HERITAGE_DOORS_RECORD = 'docs/decisions/0185-archaeology-reads-a-world-heritage-listing-as-a-mark-and-as-the-map.md';
+
 /**
- * Archaeology's two conditions on its surroundings tier (ADR-0179), read on the
- * kind's survivors of the cut after its rule (`archaeology/surroundingsSites.ts`).
+ * Archaeology's conditions on its surroundings tier, read on the kind's
+ * survivors of the cut after its rule (`archaeology/surroundingsSites.ts`): the
+ * map shows the place and a part of a held place is not one of its own
+ * (ADR-0179), and a World Heritage listing stands in for the map (ADR-0185).
  * The bare frame's surroundings tier brought 10.2 % noise to Archaeology, nearly
  * all of it finds spots with nothing to see, places gone or under water, and
- * parts of a site the kind already holds. Each holds for the surroundings tier
- * alone: on the world tier the first costs Palenque and Calakmul, the second
- * Giza, Karnak and Stonehenge.
+ * parts of a site the kind already holds. ADR-0179's hold for the surroundings
+ * tier alone: on the world tier the map would cost Palenque and Calakmul, the
+ * parts Giza, Karnak and Stonehenge.
  */
 export const ARCHAEOLOGY_SURROUNDINGS_REGISTER = {
   mapped: {
@@ -177,6 +181,26 @@ export const ARCHAEOLOGY_SURROUNDINGS_REGISTER = {
     derivation: 'A surroundings-tier site that is part (P361) of a place Archaeology holds or admits in the same run is not a place of its own: the Forum of Pompeii is Pompeii, the Temple of Olympian Zeus at Agrigento is the Valley of the Temples.',
     evidence: `${ARCHAEOLOGY_REPORT} § The point`,
     date: DERIVED,
+  } satisfies Parameter<boolean>,
+  listedStandsForTheMap: {
+    value: true,
+    derivation: 'A site the World Heritage List inscribes (P757, or P1435 naming it) is one the map shows for this tier, whatever OpenStreetMap tags carry its item, unless a place Archaeology holds or admits is part of it, or it is an archaeology museum, an old town or a part of a place the kind holds (ADR-0185 decision 3): of the 28 inscribed sites under the tree Archaeology missed on 2026-11-04, this lets in the Moidams of Charaideo, the Early Christian Necropolis of Pécs, SGang Gwaay, Sabratha and Red Bay, and keeps out Mérida, whose theatre and circus Archaeology holds.',
+    evidence: `${WORLD_HERITAGE_DOORS_RECORD} § Measurement`,
+    date: '2026-11-08',
+  } satisfies Parameter<boolean>,
+} as const;
+
+/**
+ * ADR-0185: Archaeology's world tier reads a World Heritage listing as a
+ * guide's mark, the readers' bar of a marked place applying, as it reads a
+ * Wikivoyage guide's use and an Atlas Obscura entry.
+ */
+export const ARCHAEOLOGY_WORLD_REGISTER = {
+  listedIsAMark: {
+    value: true,
+    derivation: 'A site the World Heritage List inscribes is marked as one a guide uses, unless it is an archaeology museum, an old town or a part of a place the kind holds (ADR-0185 decision 3): on 2026-11-04 it lets in Qaryat al-Faw, Liangzhu and Tyre, which no other door reached, with two duplicates of places held and no other noise.',
+    evidence: `${WORLD_HERITAGE_DOORS_RECORD} § Measurement`,
+    date: '2026-11-08',
   } satisfies Parameter<boolean>,
 } as const;
 

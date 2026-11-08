@@ -543,7 +543,7 @@ export async function collectArchaeology(
     digs: deps.osmDigs,
     resolveArticles: deps.resolveArticles,
     categories: deps.categories,
-  }, deps.siteWorld);
+  }, deps.siteWorld, new Set([...deps.admittedSites, ...deps.admittedMuseums]));
   // The surroundings tier after the world tier has decided (ADR-0171, ADR-0179).
   const surroundings = await surroundingsSitesOf(deps, run, trees, sites, items);
 
