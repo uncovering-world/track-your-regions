@@ -203,6 +203,7 @@ and accepted by it.
 | [0182](0182-a-pictures-credit-is-as-large-as-its-surface-and-none-where-the-licence-asks-none.md) | A picture's credit is as large as its surface, and none where the licence asks none | Accepted | 2026-11-04 |
 | [0183](0183-a-crowded-city-is-answered-on-its-regions-list-and-a-place-in-its-own-circle.md) | A crowded city is answered on its region's list, and a place in its own circle | Accepted | 2026-11-04 |
 | [0184](0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md) | A readers' floor is the readers of a fixed rank among the year's items | Accepted | 2026-11-08 |
+| [0186](0186-the-point-dialog-draws-eoxs-open-sentinel-2-mosaic-and-a-keyed-detailed-source-waits-for-an-account.md) | The point dialog draws EOX's open Sentinel-2 mosaic, and a keyed detailed source waits for an account | Accepted | 2026-11-08 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
