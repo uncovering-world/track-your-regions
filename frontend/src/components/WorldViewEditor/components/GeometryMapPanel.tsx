@@ -11,7 +11,7 @@ import {
 import { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../../shared/GuardedMap';
 import { useQuery } from '@tanstack/react-query';
-import { MAP_STYLE } from '../../../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../../constants/mapStyles';
 import { frameGeoJson, smartFitBounds } from '../../../utils/mapUtils';
 import {
   fetchRegionMemberGeometries,
@@ -430,6 +430,7 @@ export function GeometryMapPanel({
             initialViewState={{ longitude: 0, latitude: 30, zoom: 1 }}
             style={{ width: '100%', height: '100%' }}
             mapStyle={MAP_STYLE}
+            attributionControl={OSM_ATTRIBUTION_CONTROL}
             onLoad={() => setMapLoaded(true)}
           >
             <NavigationControl position="top-right" showCompass={false} />

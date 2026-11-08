@@ -23,7 +23,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Box, Typography } from '@mui/material';
 import { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
-import { MAP_STYLE } from '../../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../constants/mapStyles';
 import { useNearViewport } from '../../hooks/useNearViewport';
 import { moveView, shortWayLongitudeDelta } from '../../utils/moveDescription';
 import { GuardedMap } from '../shared/GuardedMap';
@@ -128,6 +128,7 @@ export function ComponentItemsMap({ sitePoints, focus, cell, noCandidate = 'The 
           ref={map}
           initialViewState={view}
           mapStyle={MAP_STYLE}
+          attributionControl={OSM_ATTRIBUTION_CONTROL}
           style={{ width: '100%', height: '100%' }}
           unavailableCompact
           unavailableDetail="Each candidate's distance is written beside it; the rest of this card needs no map."

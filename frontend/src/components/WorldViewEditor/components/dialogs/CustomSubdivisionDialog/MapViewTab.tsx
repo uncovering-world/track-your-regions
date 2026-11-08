@@ -30,7 +30,7 @@ import { NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as Map } from '../../../../shared/GuardedMap';
 import type { Region } from '../../../../../types';
 import type { RegionMember } from '../../../../../api/regions';
-import { MAP_STYLE } from '../../../../../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../../../../constants/mapStyles';
 import type { SubdivisionGroup } from './types';
 import { getGroupColor } from './types';
 import { mapDataWithColors, descendantDataWithColors } from './subdivisionMapColors';
@@ -540,6 +540,7 @@ export function MapViewTab({
               }}
               style={{ width: '100%', height: '100%' }}
               mapStyle={MAP_STYLE}
+              attributionControl={OSM_ATTRIBUTION_CONTROL}
               onLoad={() => setMapLoaded(true)}
               onClick={handleMapClick}
               onMouseMove={handleMapMouseMove}

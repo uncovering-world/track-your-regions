@@ -29,7 +29,7 @@ import { Source, Layer, NavigationControl, type MapRef, useMap } from 'react-map
 import { GuardedMap as Map } from '../../../../shared/GuardedMap';
 import { isWebGLAvailable } from '../../../../../utils/webgl';
 import type * as maplibregl from 'maplibre-gl';
-import { MAP_STYLE } from '../../../../../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../../../../constants/mapStyles';
 import { CalibrationView } from './CalibrationView';
 import { RegionMapCreditLine } from '../../../../admin/RegionMapPicture';
 import { useRemoteImageLoad, type RemoteImage } from './useRemoteImageLoad';
@@ -765,6 +765,7 @@ export function ImageOverlayDialog({
               }}
               style={{ width: '100%', height: '100%' }}
               mapStyle={MAP_STYLE}
+              attributionControl={OSM_ATTRIBUTION_CONTROL}
               onMouseDown={handleMapMouseDown}
               onMouseMove={handleMapMouseMove}
               onMouseUp={handleMapMouseUp}

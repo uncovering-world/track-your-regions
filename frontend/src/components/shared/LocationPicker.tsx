@@ -34,7 +34,7 @@ import { parseCoordinates, formatCoordinates } from '../../utils/coordinateParse
 import { searchPlaces, aiGeocode, type PlaceResult } from '../../api/geocode';
 import { isWebGLAvailable } from '../../utils/webgl';
 import { MapUnavailable } from './MapUnavailable';
-import { OSM_RASTER_SOURCE } from '../../constants/mapStyles';
+import { OSM_ATTRIBUTION_CONTROL, OSM_RASTER_SOURCE } from '../../constants/mapStyles';
 
 type Mode = 'map' | 'search' | 'coords' | 'ai';
 
@@ -192,7 +192,7 @@ export function LocationPicker({
       center: value ? [value.lng, value.lat] : [0, 20],
       zoom: value ? initialZoom : 1.5,
       // The tiles' credit, shown in full rather than behind a button (#2350).
-      attributionControl: { compact: false },
+      attributionControl: { ...OSM_ATTRIBUTION_CONTROL, compact: false },
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');

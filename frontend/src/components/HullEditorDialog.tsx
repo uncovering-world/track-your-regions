@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import { Source, Layer, NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from './shared/GuardedMap';
-import { MAP_STYLE } from '../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../constants/mapStyles';
 import { frameGeoJson, smartFitBounds } from '../utils/mapUtils';
 import {
   fetchRegionGeometry,
@@ -219,6 +219,7 @@ export function HullEditorDialog({
             initialViewState={{ longitude: 0, latitude: 20, zoom: 2 }}
             style={{ width: '100%', height: '100%' }}
             mapStyle={MAP_STYLE}
+            attributionControl={OSM_ATTRIBUTION_CONTROL}
             onLoad={() => setMapLoaded(true)}
             dragRotate={false}
           >

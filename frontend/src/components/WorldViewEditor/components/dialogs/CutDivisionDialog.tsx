@@ -29,7 +29,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import { Source, Layer, NavigationControl, type MapRef, type MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import { GuardedMap as MapGL } from '../../../shared/GuardedMap';
 import * as turf from '@turf/turf';
-import { MAP_STYLE } from '../../../../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../../../constants/mapStyles';
 import { frameGeoJson } from '../../../../utils/mapUtils';
 import type { ImageOverlaySettings } from './CustomSubdivisionDialog/ImageOverlayDialog';
 import {
@@ -533,6 +533,7 @@ export function CutDivisionDialog({
               initialViewState={{ longitude: 0, latitude: 20, zoom: 2 }}
               style={{ width: '100%', height: '100%' }}
               mapStyle={MAP_STYLE}
+              attributionControl={OSM_ATTRIBUTION_CONTROL}
               onClick={handleMapClick}
               onLoad={() => setMapLoaded(true)}
               cursor={mode === 'pan' ? 'grab' : 'crosshair'}

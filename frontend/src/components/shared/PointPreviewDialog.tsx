@@ -72,7 +72,7 @@ import { Box, Dialog, DialogContent, DialogTitle, IconButton, Typography } from 
 import CloseIcon from '@mui/icons-material/Close';
 import { Layer, Marker, Source } from 'react-map-gl/maplibre';
 import { GuardedMap } from './GuardedMap';
-import { MUTED_MAP_STYLE } from '../../constants/mapStyles';
+import { MUTED_MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../constants/mapStyles';
 import { PointCorrection, type PlaceToCorrect } from './PointCorrection';
 import {
   PIN_COLOURS, PINS_MAX_ZOOM, PinLegend, PinLinks, PinsOnMap, pinColour, pinsApart, pinsGeoJson, pinsView, type MapPin,
@@ -321,6 +321,7 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
               <GuardedMap
                 initialViewState={view}
                 mapStyle={MUTED_MAP_STYLE}
+                attributionControl={OSM_ATTRIBUTION_CONTROL}
                 style={{ width: '100%', height: '100%' }}
                 unavailableCompact
                 unavailableDetail="The coordinates are below; the rest of this card needs no map."

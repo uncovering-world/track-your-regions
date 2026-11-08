@@ -21,7 +21,7 @@
 import { useEffect } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { isWebGLAvailable } from '../../utils/webgl';
-import { MAP_STYLE } from '../../constants/mapStyles';
+import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../constants/mapStyles';
 import { addDiscoverMapLayers, LAYER_CLUSTERS } from './discoverMapLayers';
 import {
   SCENE_SOURCES, LAYER_MARKERS, LAYER_HIGHLIGHT_POINT, MARKER_LAYERS, addSplitPinImages,
@@ -77,7 +77,7 @@ export function useDiscoverMap({
       center: [15, 30],
       zoom: 2,
       // The tiles' credit, shown in full rather than behind a button (#2350).
-      attributionControl: { compact: false },
+      attributionControl: { ...OSM_ATTRIBUTION_CONTROL, compact: false },
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
