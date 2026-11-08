@@ -1,7 +1,7 @@
 # ADR-0175: A place kind admits by quantiles of its own pool, every bar derived and verified as a traveller
 
 **Date:** 2026-11-02
-**Status:** Accepted — decision 1 narrowed by [ADR-0176](0176-a-place-kinds-pool-starts-at-three-sitelinks.md); its regional tier named the surroundings tier by [ADR-0178](0178-a-kind-is-filled-in-three-tiers-the-world-a-places-surroundings-and-its-region.md); decision 3 narrowed for Archaeology by [ADR-0179](0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md); decision 3's neighbourhood and shares narrowed by [ADR-0181](0181-the-surroundings-tier-measures-a-place-against-neighbours-of-its-own-density-within-150-km.md); decision 3's readers' floor narrowed by [ADR-0184](0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md)
+**Status:** Accepted — decision 1 narrowed by [ADR-0176](0176-a-place-kinds-pool-starts-at-three-sitelinks.md); its regional tier named the surroundings tier by [ADR-0178](0178-a-kind-is-filled-in-three-tiers-the-world-a-places-surroundings-and-its-region.md); decision 3 narrowed for Archaeology by [ADR-0179](0179-archaeologys-sites-admit-by-the-frame-and-its-surroundings-tier-asks-the-map-for-a-ruin.md); decision 3's neighbourhood and shares narrowed by [ADR-0181](0181-the-surroundings-tier-measures-a-place-against-neighbours-of-its-own-density-within-150-km.md); decision 3's readers' floor narrowed by [ADR-0184](0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md); decision 2 narrowed for the editions test by [ADR-0187](0187-a-held-surroundings-tier-place-stays-at-0-8-of-its-editions-reference.md)
 
 ---
 
