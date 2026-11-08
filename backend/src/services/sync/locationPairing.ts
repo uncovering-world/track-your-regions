@@ -104,6 +104,53 @@ export function samePointSql(alias: string): string {
 }
 
 /**
+ * When a stored row is the component the source now lists under another
+ * number of the same inscription: the same name, folded (`name_match_key`), at
+ * the same point, within `LOCATION_UNCHANGED_METERS`, under a reference whose
+ * bare form differs (#2182). UNESCO renumbered Western Tien-Shan's components
+ * in place, so the Chatkal reserve's Maidantal area went from `1490-012` to
+ * `1490-010`, and by the reference alone it was a second part beside the
+ * reserve `1490-010` had named before. The name is what carries the identity
+ * across the renumbering, and the point is what keeps it from reaching a
+ * namesake elsewhere in the site; a name that names nothing (`names_nothing`)
+ * carries none. Only for the World Heritage run (`components`), whose
+ * references are component numbers; `false` for any other. Ranked below a
+ * reference match, so a component whose number stayed keeps its row first.
+ */
+export function renumberedSql(alias: string, components: boolean): string {
+  if (!components) return 'false';
+  return `(${alias}.external_ref IS NOT NULL AND i.external_ref IS NOT NULL
+             AND whc_ref_bare(${alias}.external_ref) <> whc_ref_bare(i.external_ref)
+             AND NOT names_nothing(i.name)
+             AND name_match_key(${alias}.name) = name_match_key(i.name)
+             AND ${withinUnchangedSql(alias)})`;
+}
+
+/**
+ * The withdrawals a run holds for its arrivals, paired by name first (#2182),
+ * as the CTE `by_name (old_id, new_id)` over the deferral's `withdrawn` and
+ * `arrived`: a serial site's component the list renumbered and moved is held
+ * by its own arrival. Western Tien-Shan's Boraldaitau area went from
+ * `1490-005` to `1490-003` and 85 km, and by the reference its arrival held
+ * the Karabastau area, which `1490-003` had named before. Numbered within the
+ * name, as the references are after it; a name that names nothing pairs
+ * nothing. Only for the World Heritage run (`components`), as the pairing's
+ * name pass is; empty for any other.
+ */
+export function heldByNameSql(components: boolean): string {
+  return `by_name AS (
+                SELECT w.id AS old_id, a.id AS new_id
+                FROM (SELECT id, name_match_key(name) AS name_key,
+                             row_number() OVER (PARTITION BY name_match_key(name) ORDER BY id) AS rn
+                        FROM withdrawn WHERE ${components} AND NOT names_nothing(name)) w
+                JOIN (SELECT id, name_match_key(name) AS name_key,
+                             row_number() OVER (PARTITION BY name_match_key(name) ORDER BY id) AS rn
+                        FROM arrived WHERE NOT names_nothing(name)) a
+                  ON a.name_key = w.name_key AND a.rn = w.rn
+              ),`;
+}
+
+/**
  * When a stored row lies within `LOCATION_UNCHANGED_METERS` of the point the
  * source is offering, whatever either is called: the geometry half of
  * `samePointSql` alone. Composed only for a point a reader already sees

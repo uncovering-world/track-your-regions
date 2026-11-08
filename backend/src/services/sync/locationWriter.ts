@@ -72,8 +72,10 @@
  *   would apply at once and leave a World Heritage site with nothing on the map.
  * - A component renumbered *and* moved changes the reference itself, so no match by
  *   reference is possible at all — and 787 of the 788 single-point UNESCO sites carry
- *   one. Whatever the references cannot pair is therefore paired by position. One
- *   renumbered at its point is not a withdrawal at all (ADR-0090).
+ *   one. A serial site's component is paired by its name first (`heldByNameSql`,
+ *   ADR-0189), and whatever neither the name nor the reference pairs is paired by
+ *   position. One renumbered at its point is not a withdrawal at all (ADR-0090, and
+ *   by its name ADR-0189).
  *
  * That makes the promise a count rather than a hope. Exactly
  * min(withdrawals, arrivals) withdrawals are held, so the points a reader can see
@@ -109,7 +111,7 @@ import {
 // stored row the point the source is offering, and what a kept row's own columns
 // say happened to it.
 import {
-  claimed, claimedPointSql, keptChanges, named, sameReferenceSql, samePointSql, withinUnchangedSql, NO_CHANGE,
+  claimed, claimedPointSql, heldByNameSql, keptChanges, named, renumberedSql, sameReferenceSql, samePointSql, withinUnchangedSql, NO_CHANGE,
 } from './locationPairing.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { lockExperience } from '../../db/experienceWriter.js';
@@ -431,10 +433,18 @@ export async function writeExperienceLocations(
    * then completed by `completePairing` (`locationMatching.ts`, ADR-0117), which
    * keeps every pair they made unless moving one is what lets another point pair.
    */
+  // A component the list renumbered at its point, by its name (#2182): the
+  // World Heritage run's references are component numbers, and no other
+  // source's are.
+  const byName = renumberedSql('el', run.components === true);
   const candidates = `${cte},
      candidate AS (
        SELECT i.ordinal, el.id AS location_id, el.missing_since,
               (el.external_ref IS NOT DISTINCT FROM i.external_ref) AS exact_ref,
+              -- Paired by its name across a renumbering (#2182), after every
+              -- pairing by reference: the two never meet, since a renumbered
+              -- reference differs in its bare form.
+              ${byName} AS by_name,
               -- A point a reader sees before a folded one on the same reference.
               el.merged_into_id IS NOT NULL AS folded,
               ST_Distance(el.location::geography,
@@ -446,23 +456,28 @@ export async function writeExperienceLocations(
              -- A folded point pairs on its reference alone: no reader sees it, so
              -- the source moving it is no move to ask about, and the ten metres
              -- would only let the point back in as a second pin.
-             OR (el.id = ANY(${folded}) AND ${sameReferenceSql('el')}))
+             OR (el.id = ANY(${folded}) AND ${sameReferenceSql('el')})
+             OR ${byName})
      )`;
   // The reference exactly before one read past its variant (ADR-0090 decision 3):
   // where a property's rows carry both numberings, the row the incoming reference
   // names outright is the candidate, not whichever is a centimetre nearer. One
   // statement of the order, read by the greedy pass and by its completion alike.
-  const preference = 'exact_ref DESC, folded, (missing_since IS NULL) DESC, metres, location_id';
+  const preference = 'exact_ref DESC, by_name, folded, (missing_since IS NULL) DESC, metres, location_id';
+  // A row two points chose goes to the one whose reference names it, then to
+  // one that does not need its name (#2182), then to the earlier: a component
+  // whose number stayed keeps its row before a namesake listed first under a
+  // new number takes it.
   const paired = `${candidates},
      best_row AS (
-       SELECT DISTINCT ON (ordinal) ordinal, location_id, metres
+       SELECT DISTINCT ON (ordinal) ordinal, location_id, metres, exact_ref, by_name
        FROM candidate
        ORDER BY ordinal, ${preference}
      ),
      paired AS (
        SELECT DISTINCT ON (location_id) ordinal, location_id, metres
        FROM best_row
-       ORDER BY location_id, ordinal
+       ORDER BY location_id, exact_ref DESC, by_name, ordinal
      )`;
   // Fast path, and the reason this is cheap to call on every object of every
   // run: ask in one round trip whether the stored rows already say exactly
@@ -979,7 +994,7 @@ export async function writeExperienceLocations(
               -- to prevent. Every other row the run touched is in the pairing by now,
               -- kept, resurrected or inserted, so none of them can reach this.
               withdrawn AS (
-                SELECT el.id, el.external_ref
+                SELECT el.id, el.external_ref, el.name
                 FROM experience_locations el
                 WHERE ${ownPointSql('el')}
                   -- Rows a reader can *see*, which is what a deferral slot is scarce for:
@@ -1028,7 +1043,7 @@ export async function writeExperienceLocations(
                   )
               ),
               arrived AS (
-                SELECT el.id, el.external_ref
+                SELECT el.id, el.external_ref, el.name
                 FROM experience_locations el
                 WHERE el.id = ANY($${withSource.length + 1}::int[])
                   -- The rule, in the one place the database enforces it: only a
@@ -1045,6 +1060,7 @@ export async function writeExperienceLocations(
                   AND el.curation_state = 'pending'
                   AND el.refused_at IS NULL
               ),
+              ${heldByNameSql(run.components === true)}
               -- Numbered within the reference and matched by position, because
               -- nine (experience_id, external_ref) pairs are duplicated across
               -- nine objects. Without the numbers both withdrawn rows would pair
@@ -1055,10 +1071,10 @@ export async function writeExperienceLocations(
                 SELECT w.id AS old_id, a.id AS new_id
                 FROM (SELECT id, external_ref,
                              row_number() OVER (PARTITION BY external_ref ORDER BY id) AS rn
-                        FROM withdrawn) w
+                        FROM withdrawn WHERE id NOT IN (SELECT old_id FROM by_name)) w
                 JOIN (SELECT id, external_ref,
                              row_number() OVER (PARTITION BY external_ref ORDER BY id) AS rn
-                        FROM arrived) a
+                        FROM arrived WHERE id NOT IN (SELECT new_id FROM by_name)) a
                   ON a.external_ref IS NOT DISTINCT FROM w.external_ref AND a.rn = w.rn
               ),
               -- Whatever the references could not pair, matched by position
@@ -1082,14 +1098,16 @@ export async function writeExperienceLocations(
               left_over AS (
                 SELECT w.id AS old_id, a.id AS new_id
                 FROM (SELECT id, row_number() OVER (ORDER BY id) AS rn FROM withdrawn
-                       WHERE id NOT IN (SELECT old_id FROM by_reference)) w
+                       WHERE id NOT IN (SELECT old_id FROM by_name UNION ALL SELECT old_id FROM by_reference)) w
                 JOIN (SELECT id, row_number() OVER (ORDER BY id) AS rn FROM arrived
-                       WHERE id NOT IN (SELECT new_id FROM by_reference)) a
+                       WHERE id NOT IN (SELECT new_id FROM by_name UNION ALL SELECT new_id FROM by_reference)) a
                   ON a.rn = w.rn
               )
          UPDATE experience_locations n
          SET withdrawal_deferred_for_location_id = m.old_id
-         FROM (SELECT old_id, new_id FROM by_reference
+         FROM (SELECT old_id, new_id FROM by_name
+               UNION ALL
+               SELECT old_id, new_id FROM by_reference
                UNION ALL
                SELECT old_id, new_id FROM left_over) m
          WHERE n.id = m.new_id`,

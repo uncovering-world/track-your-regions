@@ -26,6 +26,7 @@ import type { PoolClient } from 'pg';
 import type { LockedExperience } from './experienceWriter.js';
 import { COMPONENTS_KIND_ID, MEMBERSHIPS, placeHoldsRealKindSql } from './membership.js';
 import { pointOfPartSql, shownBySql } from './placePoints.js';
+import { publishedContentSql } from './readerPredicates.js';
 
 /** A field of a part this module writes, named as a place's claim and a held proposal name it. */
 export type PartField = 'image_url' | 'metadata.imageCredit' | 'subtitle' | 'metadata.wikipediaUrl';
@@ -120,7 +121,11 @@ export async function writePartFields(
  * then its site's name with the reference), unless a curator named the part
  * (`name` in its claims); its point's coordinate, since a place of one point
  * stands where its point does (ADR-0095); and its point's reference, for its
- * relation. A part that holds a kind of its own names and places itself
+ * relation. A part whose component moved holds the point it moved from beside
+ * the one it moved to until the old one goes (#2182), and follows the one a
+ * reader sees: a standing point before a withdrawn one, a published one
+ * before an arrival waiting for a curator, then the older.
+ * A part that holds a kind of its own names and places itself
  * (#1250), so it has no row. The point's name is the run's record of what the
  * list calls the component, behind the gate (ADR-0037), so a held rename
  * names the part only once it is published. The one statement of what
@@ -139,7 +144,8 @@ export function partFollowsSql(pointFilter: string): string {
             FROM (SELECT DISTINCT ON (el.experience_id) el.experience_id, el.name, el.location, el.external_ref
                     FROM experience_locations el
                    WHERE el.merged_into_id IS NULL AND ${pointOfPartSql('el')} AND ${pointFilter}
-                   ORDER BY el.experience_id, el.id) pt
+                   ORDER BY el.experience_id, el.missing_since IS NULL DESC,
+                            ${publishedContentSql('el')} DESC, el.id) pt
             JOIN experiences part ON part.id = pt.experience_id
            WHERE NOT ${placeHoldsRealKindSql('part.id')}`;
 }

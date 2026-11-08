@@ -91,8 +91,10 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
     // condition at all.
     const pair = only(statements, PAIR);
     expect(pair).toMatch(/left_over AS \(/);
-    expect(pair).toMatch(/WHERE id NOT IN \(SELECT old_id FROM by_reference\)/);
-    expect(pair).toMatch(/WHERE id NOT IN \(SELECT new_id FROM by_reference\)/);
+    // The name pass (#2182) comes first, and claims from both of the others.
+    expect(pair).toMatch(/WHERE id NOT IN \(SELECT old_id FROM by_name UNION ALL SELECT old_id FROM by_reference\)/);
+    expect(pair).toMatch(/WHERE id NOT IN \(SELECT new_id FROM by_name UNION ALL SELECT new_id FROM by_reference\)/);
+    expect(pair).toMatch(/FROM withdrawn WHERE id NOT IN \(SELECT old_id FROM by_name\)/);
     expect(pair).toMatch(/row_number\(\) OVER \(ORDER BY id\) AS rn FROM withdrawn/);
     // One row per arrival, from the two passes together, each an inner join — so
     // exactly min(withdrawals, arrivals) withdrawals are held, and the points a
