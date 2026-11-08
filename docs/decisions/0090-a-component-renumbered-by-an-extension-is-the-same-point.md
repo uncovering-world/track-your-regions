@@ -1,7 +1,7 @@
 # ADR-0090: A component renumbered by an extension is the same point
 
 **Date:** 2026-10-10
-**Status:** Accepted
+**Status:** Accepted — decision 1 extended to a renumbering within one inscription by [ADR-0189](0189-a-component-renumbered-or-moved-stays-its-part-found-by-its-name.md): a component of the same name at the same point is the same row under another number
 
 ---
 
