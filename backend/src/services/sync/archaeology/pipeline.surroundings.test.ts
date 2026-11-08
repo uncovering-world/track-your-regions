@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ARCHAEOLOGICAL_SITE, collect, world, type World } from './pipelineFixture.js';
-import { partOfReason, UNMAPPED_REASON } from './surroundingsSites.js';
+import { heldPartReason, partOfReason, UNMAPPED_REASON } from './surroundingsSites.js';
 import type { SurroundingsPool, SurroundingsPoolRow } from '../places/surroundingsPool.js';
 import type { CollectedArchaeologySite } from './proposal.js';
 
@@ -34,6 +34,10 @@ const GIZA = 'Q12508';
 const GIZA_NECROPOLIS = 'Q13217298';
 const ALTAMIRA = 'Q133575';
 const ALTAMIRA_SERIAL = 'Q899302';
+const SABRATHA = 'Q15052130'; // Archaeological Site of Sabratha, the World Heritage listing
+const MERIDA = 'Q15233334'; // Archaeological Ensemble of Mérida, the World Heritage listing
+const MERIDA_THEATRE = 'Q64850369'; // Roman Theatre, Amphitheatre, the Amphitheatre House: part of Mérida's listing
+const LOS_MILAGROS = 'Q3774528'; // Acueducto de los Milagros: part of Mérida's listing
 
 function surroundingsWorld(): World {
   const w = world();
@@ -59,6 +63,13 @@ function surroundingsWorld(): World {
     [ALTAMIRA]: {
       label: 'Cave of Altamira', classes: [CAVE_ART, STONE_AGE_SITE], sitelinks: 74, lat: 43.376944444444, lon: -4.11975,
       worldHeritage: true, parents: [ALTAMIRA_SERIAL],
+    },
+    // Two World Heritage listings no OpenStreetMap object carries the item of (ADR-0185).
+    [SABRATHA]: { label: 'Archaeological Site of Sabratha', classes: [ARCHAEOLOGICAL_SITE], sitelinks: 12, lat: 32.805, lon: 12.485, worldHeritage: true },
+    [MERIDA]: { label: 'Archaeological Ensemble of Mérida', classes: [ARCHAEOLOGICAL_SITE], sitelinks: 10, lat: 38.916, lon: -6.338, worldHeritage: true },
+    [MERIDA_THEATRE]: {
+      label: 'Roman Theatre, Amphitheatre, the Amphitheatre House', classes: [ARCHAEOLOGICAL_SITE], sitelinks: 3,
+      lat: 38.9156, lon: -6.3381, parents: [MERIDA],
     },
   });
   Object.assign(w.osm, {
@@ -94,6 +105,8 @@ const POOL = poolOf([
   { qid: DIEPKLOOF, editions: 16, guideEditions: 1, readers: 6_256, classes: [CAVE, ARCHAEOLOGICAL_SITE, ROCK_SHELTER] },
   { qid: WAT_RATCHABURANA, editions: 10, guideEditions: 4, readers: 24_439, classes: [WAT] },
   { qid: TIPON, editions: 13, guideEditions: 2, readers: 9_398, classes: [ARCHAEOLOGICAL_SITE] },
+  { qid: SABRATHA, editions: 12, guideEditions: 1, readers: 8_000, classes: [ARCHAEOLOGICAL_SITE] },
+  { qid: MERIDA, editions: 10, guideEditions: 1, readers: 7_000, classes: [ARCHAEOLOGICAL_SITE] },
 ]);
 
 const siteOf = (items: readonly { qid: string; type: string }[], qid: string) =>
@@ -135,6 +148,53 @@ describe('Archaeology\'s sites in the frame (ADR-0179)', () => {
     const out = await collect(surroundingsWorld(), { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
     expect(siteOf(out.items, DIEPKLOOF)).toBeUndefined();
     expect(out.filtered.find((row) => row.externalId === DIEPKLOOF)?.reason).toBe(UNMAPPED_REASON);
+  });
+
+  it('admits Sabratha to the surroundings tier: the World Heritage List stands in for a map that shows no ruin (ADR-0185)', async () => {
+    const out = await collect(surroundingsWorld(), { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
+    expect(siteOf(out.items, SABRATHA)?.tier).toBe('surroundings');
+  });
+
+  it('refuses Mérida\'s listing in the surroundings tier: its theatre is Archaeology\'s already (ADR-0185)', async () => {
+    const out = await collect(surroundingsWorld(), {
+      admittedSites: [POMPEII, MERIDA_THEATRE], surroundings: async () => ({ pool: POOL, held: new Set() }),
+    });
+    expect(siteOf(out.items, MERIDA)).toBeUndefined();
+    expect(out.filtered.find((row) => row.externalId === MERIDA)?.reason)
+      .toBe(heldPartReason(`Roman Theatre, Amphitheatre, the Amphitheatre House (${MERIDA_THEATRE})`));
+    // With no part of it held, the listing enters as Sabratha does.
+    const alone = await collect(surroundingsWorld(), { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
+    expect(siteOf(alone.items, MERIDA)?.tier).toBe('surroundings');
+  });
+
+  it('refuses no part in the name of a listing refused for its held part: Los Milagros enters beside the held theatre (ADR-0185)', async () => {
+    const w = surroundingsWorld();
+    w.sites[LOS_MILAGROS] = {
+      label: 'Acueducto de los Milagros', classes: [ARCHAEOLOGICAL_SITE], sitelinks: 15, lat: 38.9244, lon: -6.3497, parents: [MERIDA],
+    };
+    w.osm[LOS_MILAGROS] = [{ ref: 'way/24479963', tags: { historic: 'archaeological_site', name: 'Acueducto de los Milagros' } }];
+    const both = poolOf([
+      { qid: MERIDA, editions: 10, guideEditions: 1, readers: 7_000, classes: [ARCHAEOLOGICAL_SITE] },
+      { qid: LOS_MILAGROS, editions: 15, guideEditions: 1, readers: 9_000, classes: [ARCHAEOLOGICAL_SITE] },
+    ]);
+    const out = await collect(w, { admittedSites: [POMPEII, MERIDA_THEATRE], surroundings: async () => ({ pool: both, held: new Set() }) });
+    expect(siteOf(out.items, MERIDA)).toBeUndefined();
+    expect(siteOf(out.items, LOS_MILAGROS)?.tier).toBe('surroundings');
+  });
+
+  it('admits Mérida\'s listing and refuses its theatre as part of it, where both come through the cut (ADR-0185)', async () => {
+    // The theatre is mapped and held by nobody: read against each other, the two would refuse each other and neither enter.
+    const w = surroundingsWorld();
+    w.osm[MERIDA_THEATRE] = [{ ref: 'way/33284004', tags: { historic: 'archaeological_site', name: 'Teatro romano de Mérida' } }];
+    const both = poolOf([
+      { qid: MERIDA, editions: 10, guideEditions: 1, readers: 7_000, classes: [ARCHAEOLOGICAL_SITE] },
+      { qid: MERIDA_THEATRE, editions: 3, guideEditions: 1, readers: 6_000, classes: [ARCHAEOLOGICAL_SITE] },
+    ]);
+    const out = await collect(w, { admittedSites: [POMPEII], surroundings: async () => ({ pool: both, held: new Set() }) });
+    expect(siteOf(out.items, MERIDA)?.tier).toBe('surroundings');
+    expect(siteOf(out.items, MERIDA_THEATRE)).toBeUndefined();
+    expect(out.filtered.find((row) => row.externalId === MERIDA_THEATRE)?.reason)
+      .toBe(partOfReason(`Archaeological Ensemble of Mérida (${MERIDA})`));
   });
 
   it('leaves the surroundings tier as it stands where no surroundings pool was read (ADR-0175 decision 6)', async () => {

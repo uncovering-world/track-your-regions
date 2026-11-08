@@ -992,7 +992,20 @@ export function collect(w: World, opts: {
     underFloorFinds: opts.underFloorFinds,
     siteWorld: opts.siteWorld ?? SITE_WORLD,
     surroundings: opts.surroundings,
+    heldParts: heldPartsIn(w),
   });
+}
+
+/** The world's held parts of a listing, off the parents (`P361`) its sites name, as the subset's reader reads them. */
+function heldPartsIn(w: World) {
+  return async (wholes: readonly string[], holds: ReadonlySet<string>) => {
+    const out = new Map<string, string>();
+    for (const whole of wholes) {
+      const part = [...holds].find((qid) => w.sites[qid]?.parents?.includes(whole));
+      if (part) out.set(whole, part);
+    }
+    return out;
+  };
 }
 
 /**

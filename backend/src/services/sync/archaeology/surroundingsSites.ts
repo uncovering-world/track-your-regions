@@ -14,6 +14,12 @@
  *   of Pompeii is part (`P361`) of Pompeii, which the kind holds: the visit is
  *   Pompeii's.
  *
+ * A site the World Heritage List inscribes stands in for the map
+ * (ADR-0185): the Moidams of Charaideo and Sabratha are ruins a traveller goes
+ * to whose items no OpenStreetMap ruin carries. Unless a place the kind holds
+ * or admits is part of it: Mérida's listing beside the theatre and circus the
+ * kind already holds is the same visit twice.
+ *
  * Both are the surroundings tier's alone (`ARCHAEOLOGY_SURROUNDINGS_REGISTER`): on the
  * world tier the first would cost Palenque and Calakmul, the second Giza,
  * Karnak and Stonehenge, each part of a larger whole on Wikidata.
@@ -36,10 +42,11 @@ import { SURROUNDINGS_CUT, type SurroundingsCut } from '../places/surroundingsCu
 import type { SurroundingsPool } from '../places/surroundingsPool.js';
 import type { WorldMemory } from '../places/worldBars.js';
 import { ARCHAEOLOGY_SURROUNDINGS_REGISTER } from '../places/admissionRegister.js';
+import { heldPartsOf } from '../subset/heldParts.js';
 import { OSM_KEEP_WKT, type ArchaeologyTrees } from './classes.js';
 import type { SiteRefusalGroup } from './siteTest.js';
 import {
-  ARCHAEOLOGY_SITE_KIND, collectFacts, emptyFacts, judgeSite, placementOf, RETYPED_REASON, siteCandidateOf,
+  ARCHAEOLOGY_SITE_KIND, collectFacts, emptyFacts, judgeSite, listingOpensTheDoors, placementOf, RETYPED_REASON, siteCandidateOf,
   type JudgedSite, type OsmReader, type SiteCandidate, type SiteReading, type SiteRefusal,
 } from './sites.js';
 
@@ -82,6 +89,8 @@ export interface SurroundingsSitesInput {
   holds: ReadonlySet<string>;
   /** The names of the places `admitted` and `holds` name, where the run knows them. */
   nameOf: (qid: string) => string | undefined;
+  /** Each listed site of `wholes` that has a part among `holds`, with the part (`heldPartsOf`, the subset's). */
+  heldParts?: (wholes: readonly string[], holds: ReadonlySet<string>) => Promise<Map<string, string>>;
   cut?: SurroundingsCut;
   /** What the source last read (`worldMemory.ts`), for the guides a run without a usage build cannot read. */
   memory?: WorldMemory;
@@ -101,28 +110,39 @@ type Decided = { pass: true; judged: JudgedSite } | { pass: false; reason: strin
 export const UNMAPPED_REASON = 'no OpenStreetMap object carrying its item maps a ruin or a dig there: '
   + 'a site the surroundings tier admits is one the map shows (ADR-0179)';
 
+/** Why a listed surroundings-tier site with a part the kind holds is refused (ADR-0185). */
+export function heldPartReason(part: string): string {
+  return `the World Heritage listing of a place whose part ${part} Archaeology holds: no ruin on the map is its own, `
+    + 'and the listing beside its part is the same visit twice (ADR-0185)';
+}
+
 /** Why a surroundings-tier site that is part of a place the kind holds is refused (ADR-0179). */
 export function partOfReason(whole: string): string {
   return `part of ${whole} (P361), which Archaeology holds: in the surroundings tier a part is the whole's visit, not a place of its own (ADR-0179)`;
 }
 
+/** A survivor as judged: the rule's verdict and the map, and whether the World Heritage List inscribes it. */
+interface Judged { entity: PoolEntity; judged: JudgedSite; listed: boolean }
+
 /** The rule's verdict on each survivor: the world door's where it judged one, read now of the rest. */
 async function judgeSurvivors(
-  survivors: readonly PoolEntity[], input: SurroundingsSitesInput,
-): Promise<Map<string, { entity: PoolEntity; judged: JudgedSite }>> {
+  survivors: readonly PoolEntity[], share: KindShare<ArchaeologyTrees>, input: SurroundingsSitesInput,
+): Promise<Map<string, Judged>> {
   const { run, trees, read, osm } = input;
   const unread = survivors.filter((entity) => !read.judged.has(entity.qid));
   const facts = unread.length ? await collectFacts(run, unread.map((entity) => entity.qid), () => true) : new Map();
   const objects = unread.length ? await osm(unread.map((entity) => entity.qid), OSM_KEEP_WKT, run) : new Map();
-  const out = new Map<string, { entity: PoolEntity; judged: JudgedSite }>();
+  const out = new Map<string, Judged>();
   for (const entity of survivors) {
     const known = read.judged.get(entity.qid);
     if (known) {
-      out.set(entity.qid, { entity, judged: known });
+      out.set(entity.qid, { entity, judged: known, listed: read.listed.has(entity.qid) });
       continue;
     }
+    const row = facts.get(entity.qid) ?? emptyFacts();
     const mapped = objects.get(entity.qid) ?? [];
-    out.set(entity.qid, { entity, judged: { verdict: judgeSite(entity, facts.get(entity.qid) ?? emptyFacts(), mapped, trees), objects: mapped } });
+    const listed = listingOpensTheDoors(row, share.facts.get(entity.qid)?.parents ?? [], new Set([...input.holds, ...input.admitted]), trees);
+    out.set(entity.qid, { entity, judged: { verdict: judgeSite(entity, row, mapped, trees), objects: mapped }, listed });
   }
   return out;
 }
@@ -133,22 +153,42 @@ function wholeOf(qid: string, share: KindShare<ArchaeologyTrees>, holds: Readonl
   return (share.facts.get(qid)?.parents ?? []).find((parent) => parent !== qid && holds.has(parent));
 }
 
-/** One survivor's answer: the rule's, then where it stands and the two conditions of ADR-0179. */
+/** Whether a survivor the map does not show is one the World Heritage List stands in for (ADR-0185). */
+function listedForTheMap({ judged, listed }: Judged): boolean {
+  return ARCHAEOLOGY_SURROUNDINGS_REGISTER.listedStandsForTheMap.value && listed
+    && judged.verdict.pass && judged.verdict.osm.verdict === 'none';
+}
+
+/** A place by its name and item where the run knows the name, by its item otherwise. */
+function named(qid: string, nameOf: (qid: string) => string | undefined): string {
+  const name = nameOf(qid);
+  return name ? `${name} (${qid})` : qid;
+}
+
+/**
+ * The refusal of a survivor the map does not show (ADR-0179), unless the World
+ * Heritage List stands in for it and the kind holds no part of it (ADR-0185);
+ * null where the map shows it, or the listing stands in.
+ */
+function unmappedRefusal(one: Judged, nameOf: (qid: string) => string | undefined, heldPart?: string): Decided | null {
+  const { verdict } = one.judged;
+  if (!ARCHAEOLOGY_SURROUNDINGS_REGISTER.mapped.value || !verdict.pass || verdict.osm.verdict !== 'none') return null;
+  if (!listedForTheMap(one)) return { pass: false, reason: UNMAPPED_REASON, group: 'surroundings' };
+  return heldPart ? { pass: false, reason: heldPartReason(named(heldPart, nameOf)), group: 'surroundings' } : null;
+}
+
+/** One survivor's answer: the rule's, then where it stands, the two conditions of ADR-0179 and the listing's of ADR-0185. */
 function decideOne(
-  entity: PoolEntity, judged: JudgedSite, whole: string | undefined, nameOf: (qid: string) => string | undefined,
+  one: Judged, whole: string | undefined, nameOf: (qid: string) => string | undefined, heldPart?: string,
 ): Decided {
-  const { verdict } = judged;
+  const { verdict } = one.judged;
   if (!verdict.pass) return 'out' in verdict ? { pass: false, reason: RETYPED_REASON, group: 'class-or-name' } : verdict;
-  const at = placementOf(entity);
+  const at = placementOf(one.entity);
   if ('reason' in at) return { pass: false, reason: at.reason, group: 'placeless' };
-  if (ARCHAEOLOGY_SURROUNDINGS_REGISTER.mapped.value && verdict.osm.verdict === 'none') {
-    return { pass: false, reason: UNMAPPED_REASON, group: 'surroundings' };
-  }
-  if (whole) {
-    const name = nameOf(whole);
-    return { pass: false, reason: partOfReason(name ? `${name} (${whole})` : whole), group: 'surroundings' };
-  }
-  return { pass: true, judged };
+  const unmapped = unmappedRefusal(one, nameOf, heldPart);
+  if (unmapped) return unmapped;
+  if (whole) return { pass: false, reason: partOfReason(named(whole, nameOf)), group: 'surroundings' };
+  return { pass: true, judged: one.judged };
 }
 
 /**
@@ -157,13 +197,19 @@ function decideOne(
  * the part's own: a whole this step refuses as unmapped or placeless is held
  * by no one, and its part is not refused in its name.
  */
-function decide(
-  judged: ReadonlyMap<string, { entity: PoolEntity; judged: JudgedSite }>, share: KindShare<ArchaeologyTrees>, input: SurroundingsSitesInput,
-): Map<string, Decided> {
+async function decide(
+  judged: ReadonlyMap<string, Judged>, share: KindShare<ArchaeologyTrees>, input: SurroundingsSitesInput,
+): Promise<Map<string, Decided>> {
   const nameOf = (qid: string) => input.nameOf(qid) ?? judged.get(qid)?.entity.label;
-  const clearing = [...judged].filter(([, { entity, judged: j }]) => decideOne(entity, j, undefined, nameOf).pass).map(([qid]) => qid);
+  // A listing the map does not show stands in for it unless the kind holds or
+  // admits a part of it outside this step. Never against this step's own
+  // survivors, where a listing and its part would refuse each other; and read
+  // before the clearing, so a listing refused for its held part holds no one.
+  const listings = [...judged].filter(([, one]) => listedForTheMap(one)).map(([qid]) => qid);
+  const heldParts = await (input.heldParts ?? heldPartsOf)(listings, new Set([...input.holds, ...input.admitted]));
+  const clearing = [...judged].filter(([qid, one]) => decideOne(one, undefined, nameOf, heldParts.get(qid)).pass).map(([qid]) => qid);
   const holds = new Set([...input.holds, ...input.admitted, ...clearing]);
-  return new Map([...judged].map(([qid, { entity, judged: j }]) => [qid, decideOne(entity, j, wholeOf(qid, share, holds), nameOf)]));
+  return new Map([...judged].map(([qid, one]) => [qid, decideOne(one, wholeOf(qid, share, holds), nameOf, heldParts.get(qid))]));
 }
 
 /**
@@ -178,7 +224,7 @@ export async function collectSurroundingsSites(input: SurroundingsSitesInput): P
     classesOf: (trees) => trees.site,
     typeOf: archaeologyTypeOf,
     context: async (survivors, share) => {
-      for (const [qid, answer] of decide(await judgeSurvivors(survivors, input), share, input)) decided.set(qid, answer);
+      for (const [qid, answer] of await decide(await judgeSurvivors(survivors, share, input), share, input)) decided.set(qid, answer);
       return null;
     },
     verdict: (entity): SurroundingsRuleVerdict => {
