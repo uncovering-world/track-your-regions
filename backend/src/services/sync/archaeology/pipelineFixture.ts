@@ -212,6 +212,8 @@ export interface World {
   osm: Record<string, FixtureOsmObject[]>;
   /** What the enumeration answers (#895): by item and by `lang:Title`. Nothing unless a test says so. */
   osmDigs?: { byItem: Record<string, FixtureOsmObject[]>; byArticle: Record<string, FixtureOsmObject[]> };
+  /** The ruin the layer maps near a place under its name, by the place's item (ADR-0188). */
+  namedRuins?: Record<string, { ref: string; name: string }> | null;
   /** `lang:Title` → item, for the articles the enumeration carried. */
   articles?: Record<string, string>;
   /** What `?c wdt:P279* wd:<root>` answers. A root not named here answers with itself alone. */
@@ -993,6 +995,8 @@ export function collect(w: World, opts: {
     siteWorld: opts.siteWorld ?? SITE_WORLD,
     surroundings: opts.surroundings,
     heldParts: heldPartsIn(w),
+    namedRuins: async (places) => (w.namedRuins === null ? null
+      : new Map(places.flatMap((p) => (w.namedRuins?.[p.qid] ? [[p.qid, w.namedRuins[p.qid]] as const] : [])))),
   });
 }
 

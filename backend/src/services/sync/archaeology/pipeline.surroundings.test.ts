@@ -12,8 +12,8 @@
  * own area, so the cut lets every one through and the conditions decide.
  */
 import { describe, expect, it } from 'vitest';
-import { ARCHAEOLOGICAL_SITE, collect, world, type World } from './pipelineFixture.js';
-import { heldPartReason, partOfReason, UNMAPPED_REASON } from './surroundingsSites.js';
+import { ARCHAEOLOGICAL_MUSEUM, ARCHAEOLOGICAL_SITE, collect, world, type World } from './pipelineFixture.js';
+import { heldPartReason, namedRuinNote, partOfReason, UNMAPPED_REASON } from './surroundingsSites.js';
 import type { SurroundingsPool, SurroundingsPoolRow } from '../places/surroundingsPool.js';
 import type { CollectedArchaeologySite } from './proposal.js';
 
@@ -34,6 +34,12 @@ const GIZA = 'Q12508';
 const GIZA_NECROPOLIS = 'Q13217298';
 const ALTAMIRA = 'Q133575';
 const ALTAMIRA_SERIAL = 'Q899302';
+const PAESTUM_MUSEUM = 'Q3329487'; // National Archaeological Museum of Paestum, typed an archaeological museum and park
+// Dimini archaeological site: typed an archaeological culture as well as a settlement site and an archaeological site.
+const DIMINI = 'Q10262223';
+const ARCHAEOLOGICAL_CULTURE = 'Q465299';
+const SETTLEMENT_SITE = 'Q1708422';
+const ABELLINUM = 'Q318664'; // the Roman town at Atripalda, mapped as an area under its name without its item
 const SABRATHA = 'Q15052130'; // Archaeological Site of Sabratha, the World Heritage listing
 const MERIDA = 'Q15233334'; // Archaeological Ensemble of Mérida, the World Heritage listing
 const MERIDA_THEATRE = 'Q64850369'; // Roman Theatre, Amphitheatre, the Amphitheatre House: part of Mérida's listing
@@ -64,6 +70,12 @@ function surroundingsWorld(): World {
       label: 'Cave of Altamira', classes: [CAVE_ART, STONE_AGE_SITE], sitelinks: 74, lat: 43.376944444444, lon: -4.11975,
       worldHeritage: true, parents: [ALTAMIRA_SERIAL],
     },
+    [PAESTUM_MUSEUM]: {
+      label: 'National Archaeological Museum of Paestum', classes: [ARCHAEOLOGICAL_MUSEUM, ARCHAEOLOGICAL_SITE], sitelinks: 8,
+      lat: 40.42339, lon: 15.006858,
+    },
+    [DIMINI]: { label: 'Dimini archaeological site', classes: [ARCHAEOLOGICAL_CULTURE, SETTLEMENT_SITE, ARCHAEOLOGICAL_SITE], sitelinks: 6, lat: 39.361677, lon: 22.893062 },
+    [ABELLINUM]: { label: 'Abellinum', classes: [ARCHAEOLOGICAL_SITE], sitelinks: 5, lat: 40.92212, lon: 14.83123 },
     // Two World Heritage listings no OpenStreetMap object carries the item of (ADR-0185).
     [SABRATHA]: { label: 'Archaeological Site of Sabratha', classes: [ARCHAEOLOGICAL_SITE], sitelinks: 12, lat: 32.805, lon: 12.485, worldHeritage: true },
     [MERIDA]: { label: 'Archaeological Ensemble of Mérida', classes: [ARCHAEOLOGICAL_SITE], sitelinks: 10, lat: 38.916, lon: -6.338, worldHeritage: true },
@@ -106,6 +118,9 @@ const POOL = poolOf([
   { qid: WAT_RATCHABURANA, editions: 10, guideEditions: 4, readers: 24_439, classes: [WAT] },
   { qid: TIPON, editions: 13, guideEditions: 2, readers: 9_398, classes: [ARCHAEOLOGICAL_SITE] },
   { qid: SABRATHA, editions: 12, guideEditions: 1, readers: 8_000, classes: [ARCHAEOLOGICAL_SITE] },
+  { qid: ABELLINUM, editions: 5, guideEditions: 1, readers: 6_000, classes: [ARCHAEOLOGICAL_SITE] },
+  { qid: PAESTUM_MUSEUM, editions: 8, guideEditions: 1, readers: 9_000, classes: [ARCHAEOLOGICAL_MUSEUM, ARCHAEOLOGICAL_SITE] },
+  { qid: DIMINI, editions: 6, guideEditions: 1, readers: 6_000, classes: [ARCHAEOLOGICAL_CULTURE, SETTLEMENT_SITE, ARCHAEOLOGICAL_SITE] },
   { qid: MERIDA, editions: 10, guideEditions: 1, readers: 7_000, classes: [ARCHAEOLOGICAL_SITE] },
 ]);
 
@@ -195,6 +210,44 @@ describe('Archaeology\'s sites in the frame (ADR-0179)', () => {
     expect(siteOf(out.items, MERIDA_THEATRE)).toBeUndefined();
     expect(out.filtered.find((row) => row.externalId === MERIDA_THEATRE)?.reason)
       .toBe(partOfReason(`Archaeological Ensemble of Mérida (${MERIDA})`));
+  });
+
+  it('admits Abellinum where the map shows a ruin near it under its name, and says so on its card (ADR-0188)', async () => {
+    const ruin = { ref: 'way/228022534', name: "Area archeologica dell'antica Abellinum" };
+    const w = surroundingsWorld();
+    // No object carries the item; the map has the excavation under its name.
+    const unnamed = await collect(w, { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
+    expect(siteOf(unnamed.items, ABELLINUM)).toBeUndefined();
+    expect(unnamed.filtered.find((row) => row.externalId === ABELLINUM)?.reason).toBe(UNMAPPED_REASON);
+    w.namedRuins = { [ABELLINUM]: ruin };
+    const out = await collect(w, { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
+    const site = siteOf(out.items, ABELLINUM);
+    expect(site?.tier).toBe('surroundings');
+    expect(site?.admissionNote).toContain(namedRuinNote(ruin));
+  });
+
+  it('shows no archaeology museum by a ruin of its name: the Museum of Paestum stays out beside Paestum (ADR-0188)', async () => {
+    const w = surroundingsWorld();
+    w.namedRuins = { [PAESTUM_MUSEUM]: { ref: 'way/2', name: 'Paestum' } };
+    const out = await collect(w, { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
+    expect(out.items.find((item) => item.qid === PAESTUM_MUSEUM)).toBeUndefined();
+  });
+
+  it('shows Dimini by a ruin of its name, though Wikidata also types it an archaeological culture (ADR-0188)', async () => {
+    const w = surroundingsWorld();
+    w.namedRuins = { [DIMINI]: { ref: 'way/3', name: 'Dimini' } };
+    const out = await collect(w, { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
+    expect(siteOf(out.items, DIMINI)?.tier).toBe('surroundings');
+  });
+
+  it('keeps a held site the map showed by a named ruin where no layer is in place to read one (ADR-0175 decision 6)', async () => {
+    const w = surroundingsWorld();
+    w.namedRuins = null;
+    const out = await collect(w, { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set([ABELLINUM]) }) });
+    expect(siteOf(out.items, ABELLINUM)?.tier).toBe('surroundings');
+    // A site it does not hold is not let in on a name nobody read.
+    const fresh = await collect(w, { admittedSites: [POMPEII], surroundings: async () => ({ pool: POOL, held: new Set() }) });
+    expect(siteOf(fresh.items, ABELLINUM)).toBeUndefined();
   });
 
   it('leaves the surroundings tier as it stands where no surroundings pool was read (ADR-0175 decision 6)', async () => {

@@ -248,6 +248,8 @@ export interface ArchaeologyPipelineDeps {
   surroundingsHeld?: ReadonlySet<string>;
   /** The held parts of a World Heritage listing the map does not show (ADR-0185); the subset's where none is handed in. */
   heldParts?: SurroundingsSitesInput['heldParts'];
+  /** The ruin mapped near a place under its name (ADR-0188); the layer's where none is handed in. */
+  namedRuins?: SurroundingsSitesInput['namedRuins'];
   /**
    * The readership door over the finds pool (ADR-0164), or none: the source's
    * curator gate is off, or a test asks no readership.
@@ -660,6 +662,7 @@ async function surroundingsSitesOf(
     // What the source last read, for the guides a run without a usage build cannot read (ADR-0175 decision 6).
     memory: deps.siteWorld?.history?.memory,
     heldParts: deps.heldParts,
+    namedRuins: deps.namedRuins,
   });
   return { ...read, held };
 }

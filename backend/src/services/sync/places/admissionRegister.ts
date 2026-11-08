@@ -162,6 +162,8 @@ export const SURROUNDINGS_REGISTER = {
 
 const ARCHAEOLOGY_REPORT = 'docs/research/2026-11-02-archaeologys-sites-in-the-admission-frame.md';
 
+const NAMED_RUIN_RECORD = 'docs/decisions/0188-a-ruin-mapped-near-a-site-under-its-name-shows-the-site.md';
+
 const WORLD_HERITAGE_DOORS_RECORD = 'docs/decisions/0185-archaeology-reads-a-world-heritage-listing-as-a-mark-and-as-the-map.md';
 
 /**
@@ -188,6 +190,12 @@ export const ARCHAEOLOGY_SURROUNDINGS_REGISTER = {
     evidence: `${ARCHAEOLOGY_REPORT} § The point`,
     date: DERIVED,
   } satisfies Parameter<boolean>,
+  namedRuinWithinMetres: {
+    value: 2_000,
+    derivation: 'A site no OpenStreetMap object carries the item of is one the map shows where a ruin or dig it maps within 2 km is named with a whole word of the item\'s labels that no site\'s name carries by its kind: on a sample of 80 of the 674 places ADR-0179\'s map condition refused on 2026-11-08, it shows 16 of the 38 ruins a traveller visits (Abellinum, Candi Muara Takus, Necropoli Li Muri) and none of the 24 refused rightly; an unnamed ruin nearby showed 5 of those.',
+    evidence: `${NAMED_RUIN_RECORD} § Measurement`,
+    date: '2026-11-08',
+  } satisfies Parameter<number>,
   listedStandsForTheMap: {
     value: true,
     derivation: 'A site the World Heritage List inscribes (P757, or P1435 naming it) is one the map shows for this tier, whatever OpenStreetMap tags carry its item, unless a place Archaeology holds or admits is part of it, or it is an archaeology museum, an old town or a part of a place the kind holds (ADR-0185 decision 3): of the 28 inscribed sites under the tree Archaeology missed on 2026-11-04, this lets in the Moidams of Charaideo, the Early Christian Necropolis of Pécs, SGang Gwaay, Sabratha and Red Bay, and keeps out Mérida, whose theatre and circus Archaeology holds.',
