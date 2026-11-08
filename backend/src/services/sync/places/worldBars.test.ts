@@ -85,6 +85,17 @@ describe('worldStanding', () => {
     expect(worldStanding({ qid: 'Q3', editions: 9 }, read({ Q3: 12_000 }, [], ['Q3']), WORSHIP, false)).toEqual({ by: 'guided' });
   });
 
+  it('marks a site the World Heritage List inscribes as a guide does, for a kind that reads the listing (ADR-0185)', () => {
+    // Liangzhu, which no guide uses and Atlas Obscura does not list, read 12,000 times a year.
+    const liangzhu = { qid: 'Q15904183', editions: 9 };
+    const listed: WorldRead = { ...read({ Q15904183: 12_000 }), listed: new Set(['Q15904183']) };
+    expect(worldStanding(liangzhu, listed, WORSHIP, false)).toEqual({ by: 'guided' });
+    expect(worldStanding(liangzhu, read({ Q15904183: 12_000 }), WORSHIP, false)).toBe('out');
+    // A held one under every stay bar names the listing as its mark, and the bars name it too.
+    expect(belowWorldBars({ ...liangzhu, editions: 3 }, { ...read({ Q15904183: 500 }), listed: new Set(['Q15904183']) }, WORSHIP))
+      .toMatch(/the World Heritage List inscribes it: .* where a guide uses it, Atlas Obscura lists it or the World Heritage List inscribes it;/);
+  });
+
   it('keeps a place the last run admitted at 0.8 of any bar, and names the bars when it falls under all', () => {
     // 13 editions is 0.8 of 16: a held church stays on it, a new one does not enter.
     expect(worldStanding({ qid: 'Q4', editions: 13 }, read({ Q4: 1_000 }), WORSHIP, true)).toEqual({ by: 'editions' });

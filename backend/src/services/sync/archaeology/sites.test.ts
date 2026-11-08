@@ -16,7 +16,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildArchaeologyTrees, OSM_KEEP_WKT, SITE_ROOT } from './classes.js';
-import { ARCHAEOLOGY_SITE_KIND, collectSitesByFame, OsmAnswerFloorError, type OsmReader, type SiteEntrance } from './sites.js';
+import { ARCHAEOLOGY_SITE_KIND, collectSitesByFame, listingOpensTheDoors, OsmAnswerFloorError, type OsmReader, type SiteEntrance } from './sites.js';
 import { gatherPlaces, shareOf, type KindShare, type PlaceKind } from '../places/gather.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import { belowWorldBars, type WorldBars, type WorldRead } from '../places/worldBars.js';
@@ -375,8 +375,11 @@ describe('collectSitesByFame', () => {
     expect(falls.sites.size).toBe(0);
     expect(falls.filtered.find((row) => row.externalId === 'Q22647')).toEqual({
       externalId: 'Q22647', name: 'Troy', group: 'under-the-bars',
-      reason: belowWorldBars({ qid: 'Q22647', editions: 121 }, READ, bars),
+      reason: belowWorldBars({ qid: 'Q22647', editions: 121 }, { ...READ, listed: new Set(['Q22647']) }, bars),
     });
+    // Troy is on the World Heritage List, which this kind reads as a guide's mark (ADR-0185).
+    expect(falls.filtered.find((row) => row.externalId === 'Q22647')!.reason)
+      .toMatch(/the World Heritage List inscribes it: .* or the World Heritage List inscribes it;/);
     const fresh = await collect(run, await shareFor(run, new Set<string>()), new Set<string>(), osmReader([]), NO_ENTRANCE, { read: READ, bars });
     expect(fresh.filtered.map((row) => row.externalId)).toEqual(['Q1524']);
   });
@@ -770,5 +773,28 @@ describe('the OpenStreetMap entrance, on the rows the class pool named', () => {
     };
     await expect(collect(silentAboutThem, await shareFor(silentAboutThem, new Set<string>()), new Set<string>(), osmReader([]), { ...NO_ENTRANCE, digs: async () => digs }))
       .rejects.toThrow(/answered nothing about any of the/);
+  });
+});
+
+describe('whose World Heritage listing opens ADR-0185\'s doors', () => {
+  // The archaeology museum tree holds `archaeological museum` (Q3329412).
+  const trees = { museum: new Set(['Q3329412']) } as unknown as ArchaeologyTrees;
+  const KNOSSOS = 'Q173527';
+  const listed = (classes: string[]) => ({ classes, worldHeritage: true });
+
+  it('opens them for an inscribed site, and not for one the List does not inscribe', () => {
+    // The Archaeological Site of Sabratha: an archaeological site, nothing else.
+    expect(listingOpensTheDoors(listed(['Q839954']), [], new Set(), trees)).toBe(true);
+    expect(listingOpensTheDoors({ classes: ['Q839954'], worldHeritage: false }, [], new Set(), trees)).toBe(false);
+  });
+
+  it('keeps them shut for an archaeology museum, an old town and a part of a place the kind holds', () => {
+    // The National Archaeological Museum of Paestum: an archaeological museum and park; Archaeology admits a museum by its finds.
+    expect(listingOpensTheDoors(listed(['Q3329412', 'Q3363945']), [], new Set(), trees)).toBe(false);
+    // The Old City of Hebron and Mazagan: an old town is a living city.
+    expect(listingOpensTheDoors(listed(['Q15284', 'Q676050']), [], new Set(), trees)).toBe(false);
+    // The Palace of Knossos, part of Knossos, which Archaeology holds.
+    expect(listingOpensTheDoors(listed(['Q16560', 'Q839954']), [KNOSSOS], new Set([KNOSSOS]), trees)).toBe(false);
+    expect(listingOpensTheDoors(listed(['Q16560', 'Q839954']), [KNOSSOS], new Set(), trees)).toBe(true);
   });
 });

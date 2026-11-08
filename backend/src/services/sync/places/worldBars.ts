@@ -63,6 +63,11 @@ export interface WorldRead {
   readers: ReadonlyMap<string, number> | null;
   guided: ReadonlySet<string> | null;
   atlas: ReadonlySet<string>;
+  /**
+   * The items the kind reads a World Heritage listing of as a guide's mark
+   * (Archaeology, ADR-0185); none for every other kind.
+   */
+  listed?: ReadonlySet<string>;
   /** The readership year read this run, as `WorldBars.year` names it. */
   year?: string;
   memory?: WorldMemory;
@@ -133,8 +138,9 @@ function guideOf(qid: string, read: Omit<WorldRead, 'atlas'>): boolean | null {
 function signalsOf(c: WorldCandidate, read: WorldRead) {
   const readers = readersOf(c.qid, read);
   const atlas = read.atlas.has(c.qid);
+  const listed = read.listed?.has(c.qid) ?? false;
   const guide = guideOf(c.qid, read);
-  return { readers, atlas, guide, marked: atlas || guide === true };
+  return { readers, atlas, listed, guide, marked: atlas || listed || guide === true };
 }
 
 /**
@@ -194,28 +200,35 @@ export function reachesABar(c: WorldCandidate, read: WorldRead, bars: WorldBars 
 }
 
 /** The bars in words, for a reason and the run's log. */
-export function barsInWords(bars: WorldBars): string {
+export function barsInWords(bars: WorldBars, readsListings = false): string {
+  const marks = readsListings ? 'a guide uses it, Atlas Obscura lists it or the World Heritage List inscribes it'
+    : 'a guide uses it or Atlas Obscura lists it';
   const readers = bars.readers === null ? 'no readers\' bar (no year read)'
-    : `${fmt(bars.readers)} readers a year, or ${fmt(bars.guidedReaders!)} where a guide uses it or Atlas Obscura lists it`;
+    : `${fmt(bars.readers)} readers a year, or ${fmt(bars.guidedReaders!)} where ${marks}`;
   return `${bars.editions} Wikipedia editions, ${readers}`;
 }
 
+/** A World Heritage listing as a mark, in a reason's and a note's words (ADR-0185). */
+const WORLD_HERITAGE_MARK = 'the World Heritage List inscribes it';
+
 /** The refusal of a held place under every stay bar, with its signals and the bars named. */
 export function belowWorldBars(c: WorldCandidate, read: WorldRead, bars: WorldBars, frame: WorldFrame = WORLD_FRAME): string {
-  const { readers, marked, guide } = signalsOf(c, read);
+  const { readers, marked, guide, atlas } = signalsOf(c, read);
   let read_ = 'no year of readers read';
   if (readers !== null) read_ = `${fmt(readers)} readers a year${read.readers === null ? ' as last read' : ''}`;
   let marks = 'no guide uses it and Atlas Obscura does not list it';
-  if (marked) marks = guide ? 'a Wikivoyage guide uses it' : 'Atlas Obscura lists it';
+  if (marked) marks = guide ? 'a Wikivoyage guide uses it' : (atlas && 'Atlas Obscura lists it') || WORLD_HERITAGE_MARK;
   if (read.guided === null && guide !== null) marks += ' (the guides as last read)';
   return `${c.editions} Wikipedia editions and ${read_}, ${marks}: under the world tier's bars `
-    + `(${barsInWords(bars)}; a place held stays at ${frame.stayShare} of any)`;
+    + `(${barsInWords(bars, read.listed !== undefined)}; a place held stays at ${frame.stayShare} of any)`;
 }
 
 /** The curator's note on a place in by the third bar alone: the guide's mark, the readers, the bar. */
 export function guidedBarNote(c: WorldCandidate, read: WorldRead, bars: WorldBars): string {
-  const { readers, guide, atlas } = signalsOf(c, read);
-  const marks = [...(guide ? ['a Wikivoyage guide uses it'] : []), ...(atlas ? ['Atlas Obscura lists it'] : [])].join(' and ');
+  const { readers, guide, atlas, listed } = signalsOf(c, read);
+  const marks = [
+    ...(guide ? ['a Wikivoyage guide uses it'] : []), ...(atlas ? ['Atlas Obscura lists it'] : []), ...(listed ? [WORLD_HERITAGE_MARK] : []),
+  ].join(' and ');
   return `In the world tier by a guide's mark (${c.editions} Wikipedia editions, ${fmt(readers ?? 0)} readers a year): `
     + `${marks}, over the bar of ${fmt(bars.guidedReaders ?? 0)} for a marked place. Can a visitor see it there now?`;
 }
