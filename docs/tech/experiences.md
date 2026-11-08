@@ -3686,7 +3686,14 @@ declared in the register (`ARCHAEOLOGY_SURROUNDINGS_REGISTER`):
   mapped as a rock, is refused. A site the World Heritage List inscribes (`P757`, or `P1435` naming
   it) passes without one (`listedStandsForTheMap`, ADR-0185), unless a place the kind holds or admits
   this run is part of it (`heldPartsOf`, a `P361` to it or a `P527` from it off the subset,
-  `heldPartReason`): Sabratha enters, Mérida's listing beside the theatre the kind holds is refused;
+  `heldPartReason`): Sabratha enters, Mérida's listing beside the theatre the kind holds is refused.
+  A site neither shown by its item nor listed passes where the local layer maps a ruin or dig within
+  `namedRuinWithinMetres` (2 km) under its name: a whole word of four letters or more of any of its
+  Wikidata labels that is not one every site's name carries in the subset's languages
+  (`namedRuinsNear`, `GENERIC_WORDS`, ADR-0188), so Abellinum enters by *Area archeologica
+  dell'antica Abellinum*; never for an archaeology museum (`namedByARuin`).
+  Its card names the ruin (`namedRuinNote`). With no layer in place nothing
+  is read: no new site enters by a name, and a held one keeps its standing;
 - **a part of a place the kind holds is not a place of its own**: a `P361` naming a place the kind
   holds or admits this run (`partOfReason`); the Forum of Pompeii is refused as part of Pompeii.
 
