@@ -40,6 +40,7 @@ the policy page is the authority.
 | tile.openstreetmap.org | browser | **no** (the app depends on it) | #651 |
 | CARTO basemap style | browser | **no** (no key) | #651 |
 | fonts.openmaptiles.org | browser | no terms published | — |
+| tiles.maps.eox.at (EOxCloudless) | browser, on a curator's switch | yes (non-commercial, credited) | — |
 | planet.openstreetmap.org | dump | yes | — |
 | data.unesco.org (`whc001`) | live, one export a run | yes | — |
 | Jev (TypeSafe) | live, keyed | yes | — |
@@ -250,6 +251,18 @@ admin and editor maps that name it: `CoverageMapPreview`, `GapAnalysis`'s `COVER
 
 **fonts.openmaptiles.org** (the glyphs of `MAP_STYLE` and `CvMatchMap.tsx`). The host publishes no
 terms and no limits, and describes itself as the glyph backend for open map styles.
+
+**tiles.maps.eox.at** (`SATELLITE_MAP_STYLE` in `frontend/src/constants/mapStyles.ts`, the point
+dialog's satellite view, #2204, ADR-0186).
+- *Rules* ([EOxCloudless](https://cloudless.eox.at), read 2026-11-08): the 2018 to 2025 mosaics are
+  CC BY-NC-SA 4.0, free to use with the service endpoints as long as the licence's conditions are
+  followed; commercial use is a paid licence. The credit names EOX IT Services GmbH and the
+  modified Copernicus Sentinel data. No key, no published rate limit; `robots.txt` answers 400.
+- *Credit:* `EOX_ATTRIBUTION`, on the source, shown by the map's attribution control while the
+  imagery is drawn.
+- *Use:* tiles up to zoom 14 (the mosaic's native resolution), asked for only after a curator
+  presses *Satellite* in an open dialog; nothing is cached or stored. No headless run presses it.
+- *Complies*, while the product stays non-commercial (#769).
 
 **planet.openstreetmap.org** (`dumps/catalog.ts` `OSM_PLANET`, the weekly planet and the daily
 diffs, `dumps/osm/planetCurrent.ts`).
