@@ -940,8 +940,9 @@ and reasons, and the tier a run recorded on its changeset.
   read off the subset (`subsetStandingFacts`) for the bridges no guide uses alone: the Luding Bridge
   stays and the Astoria–Megler Bridge, a crossing people only drive across, does not (#2324). A place the tier
   holds stays while it keeps `minLanguages`, reaches `stayReadersShare` of `minReaders` and passes one
-  test, the readers test read at `stayReadersShare` and the other two whole, since their reference is
-  its own neighbours'; a place of a `guideForTypes` type stays only while a guide still uses it, a bridge
+  test, the readers test read at `stayReadersShare` and the editions test at `stayEditionsShare`, since
+  a pool that gains a class moves the editions reference with nothing changed about the place (ADR-0187),
+  and the guides' whole; a place of a `guideForTypes` type stays only while a guide still uses it, a bridge
   also while its heritage designation holds. Where no usage
   build is in place (`guideEditions` null, ADR-0175 decision 6), a held place that passes neither other
   test is kept, its note naming the guides' test it could not read, unless no guide used it when last

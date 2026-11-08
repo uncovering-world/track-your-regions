@@ -215,7 +215,9 @@ OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the un
   bridge also while a heritage designation holds (#2324);
 - a place the tier holds stays while it keeps two editions and 0.8 of the floor (2,400 on that year)
   and passes one test,
-  the readers test read at 0.8 of its share, 1.2 times the reference (ADR-0175 decision 2);
+  the readers test read at 0.8 of its share, 1.2 times the reference (ADR-0175 decision 2), and the
+  editions test at 0.8 of the reference, since a pool that gains a class moves it with nothing changed
+  about the place (ADR-0187);
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
 - the place pass reads it after the world tier has decided, for the six place kinds of § 11, from
   the local subset (`places/surroundingsTier.ts`, `SURROUNDINGS_CUT` in `places/surroundingsCut.ts`;
@@ -901,7 +903,8 @@ read item that year, 3,000 on the year to September 2026 ([ADR-0184](../decision
 A tunnel, a dam, a lock or a bridge enters only when a Wikivoyage edition uses it, a bridge also
 when a heritage designation holds (the Luding Bridge, #2324). A place the tier holds
 stays while it keeps two editions, reaches 0.8 of the floor (2,400 on that year) and passes one test, the readers test
-read at 0.8 of its share (1.2 times the reference) and the other two whole; a tunnel, dam, lock or
+read at 0.8 of its share (1.2 times the reference), the editions test at 0.8 of its reference (ADR-0187)
+and the guides' whole; a tunnel, dam, lock or
 bridge stays only while a guide still uses it (a bridge, or its designation). With no year of readers the tier is not read and its places keep their standing;
 with no Wikivoyage usage build it is read, and the guides of the places it holds are as last read (above). Its arrivals
 are gated as each kind gates arrivals.
