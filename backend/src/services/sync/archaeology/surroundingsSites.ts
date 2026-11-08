@@ -43,6 +43,7 @@ import type { SurroundingsPool } from '../places/surroundingsPool.js';
 import type { WorldMemory } from '../places/worldBars.js';
 import { ARCHAEOLOGY_SURROUNDINGS_REGISTER } from '../places/admissionRegister.js';
 import { heldPartsOf } from '../subset/heldParts.js';
+import { namedRuinsNear, type NamedRuin, type NamedRuins, type PlaceAt } from '../osm/namedRuinsNear.js';
 import { OSM_KEEP_WKT, type ArchaeologyTrees } from './classes.js';
 import type { SiteRefusalGroup } from './siteTest.js';
 import {
@@ -89,6 +90,8 @@ export interface SurroundingsSitesInput {
   holds: ReadonlySet<string>;
   /** The names of the places `admitted` and `holds` name, where the run knows them. */
   nameOf: (qid: string) => string | undefined;
+  /** The ruin mapped near each place under one of its names (`namedRuinsNear`, the layer's). */
+  namedRuins?: (places: readonly PlaceAt[], radiusM: number) => Promise<NamedRuins>;
   /** Each listed site of `wholes` that has a part among `holds`, with the part (`heldPartsOf`, the subset's). */
   heldParts?: (wholes: readonly string[], holds: ReadonlySet<string>) => Promise<Map<string, string>>;
   cut?: SurroundingsCut;
@@ -104,11 +107,16 @@ export interface SurroundingsSites {
 }
 
 /** A survivor's answer: the row to write, or the refusal with its group. */
-type Decided = { pass: true; judged: JudgedSite } | { pass: false; reason: string; group: SiteRefusalGroup };
+type Decided = { pass: true; judged: JudgedSite; namedRuin?: NamedRuin } | { pass: false; reason: string; group: SiteRefusalGroup };
 
 /** Why a surroundings-tier site the map does not show is refused (ADR-0179). */
 export const UNMAPPED_REASON = 'no OpenStreetMap object carrying its item maps a ruin or a dig there: '
   + 'a site the surroundings tier admits is one the map shows (ADR-0179)';
+
+/** What the card says of a site the map shows only by a ruin under its name (ADR-0188). */
+export function namedRuinNote(ruin: NamedRuin): string {
+  return `OpenStreetMap maps no object carrying its item, and maps ${ruin.name} (${ruin.ref}) nearby under its name (ADR-0188).`;
+}
 
 /** Why a listed surroundings-tier site with a part the kind holds is refused (ADR-0185). */
 export function heldPartReason(part: string): string {
@@ -122,7 +130,15 @@ export function partOfReason(whole: string): string {
 }
 
 /** A survivor as judged: the rule's verdict and the map, and whether the World Heritage List inscribes it. */
-interface Judged { entity: PoolEntity; judged: JudgedSite; listed: boolean }
+interface Judged {
+  entity: PoolEntity;
+  judged: JudgedSite;
+  listed: boolean;
+  /** The ruin the map shows near the place under its name, without its item (ADR-0188). */
+  namedRuin?: NamedRuin;
+  /** Whether no layer was in place to read a named ruin, so a held place keeps its standing (ADR-0175 decision 6). */
+  namedRuinUnread?: boolean;
+}
 
 /** The rule's verdict on each survivor: the world door's where it judged one, read now of the rest. */
 async function judgeSurvivors(
@@ -165,15 +181,23 @@ function named(qid: string, nameOf: (qid: string) => string | undefined): string
   return name ? `${name} (${qid})` : qid;
 }
 
+/** Whether a survivor is one the map does not show by its item (ADR-0179). */
+function unmappedByItem({ judged }: Judged): boolean {
+  return judged.verdict.pass && judged.verdict.osm.verdict === 'none';
+}
+
 /**
  * The refusal of a survivor the map does not show (ADR-0179), unless the World
- * Heritage List stands in for it and the kind holds no part of it (ADR-0185);
- * null where the map shows it, or the listing stands in.
+ * Heritage List stands in for it and the kind holds no part of it (ADR-0185),
+ * or the map shows a ruin near it under its name (ADR-0188); null where the
+ * map shows it, or the listing or the named ruin stands in.
  */
 function unmappedRefusal(one: Judged, nameOf: (qid: string) => string | undefined, heldPart?: string): Decided | null {
-  const { verdict } = one.judged;
-  if (!ARCHAEOLOGY_SURROUNDINGS_REGISTER.mapped.value || !verdict.pass || verdict.osm.verdict !== 'none') return null;
-  if (!listedForTheMap(one)) return { pass: false, reason: UNMAPPED_REASON, group: 'surroundings' };
+  if (!ARCHAEOLOGY_SURROUNDINGS_REGISTER.mapped.value || !unmappedByItem(one)) return null;
+  if (!listedForTheMap(one)) {
+    // With no layer to read a named ruin, a held site keeps the standing the map gave it when last read.
+    return one.namedRuin || one.namedRuinUnread ? null : { pass: false, reason: UNMAPPED_REASON, group: 'surroundings' };
+  }
   return heldPart ? { pass: false, reason: heldPartReason(named(heldPart, nameOf)), group: 'surroundings' } : null;
 }
 
@@ -188,7 +212,41 @@ function decideOne(
   const unmapped = unmappedRefusal(one, nameOf, heldPart);
   if (unmapped) return unmapped;
   if (whole) return { pass: false, reason: partOfReason(named(whole, nameOf)), group: 'surroundings' };
-  return { pass: true, judged: one.judged };
+  return { pass: true, judged: one.judged, ...(one.namedRuin && unmappedByItem(one) ? { namedRuin: one.namedRuin } : {}) };
+}
+
+/**
+ * Whether a ruin named for an item can show it (ADR-0188): not where the item
+ * is an archaeology museum, which the kind admits by its finds (the National
+ * Archaeological Museum of Paestum beside its site).
+ */
+function namedByARuin(classes: readonly string[], trees: ArchaeologyTrees): boolean {
+  return !classes.some((cls) => trees.museum.has(cls));
+}
+
+/**
+ * The survivors with the ruin the map shows near each one under its name, read
+ * only of those the map does not show by their item, no listing stands in for,
+ * and that are no archaeology museum (ADR-0188).
+ */
+async function withNamedRuins(
+  judged: ReadonlyMap<string, Judged>, share: KindShare<ArchaeologyTrees>, input: SurroundingsSitesInput,
+): Promise<Map<string, Judged>> {
+  const out = new Map(judged);
+  const radius = ARCHAEOLOGY_SURROUNDINGS_REGISTER.namedRuinWithinMetres.value;
+  if (!ARCHAEOLOGY_SURROUNDINGS_REGISTER.mapped.value || radius <= 0) return out;
+  const named = (qid: string) => namedByARuin(share.facts.get(qid)?.classes ?? [], input.trees);
+  const asked = [...judged.values()]
+    .filter((one) => unmappedByItem(one) && !listedForTheMap(one) && named(one.entity.qid) && one.entity.lat !== null && one.entity.lon !== null)
+    .map((one) => ({ qid: one.entity.qid, lat: one.entity.lat!, lon: one.entity.lon! }));
+  const found = await (input.namedRuins ?? namedRuinsNear)(asked, radius);
+  if (found === null) {
+    // No layer in place: no new site enters by a name, and a held one is not dropped for it.
+    for (const { qid } of asked) if (input.held.has(qid)) out.set(qid, { ...out.get(qid)!, namedRuinUnread: true });
+    return out;
+  }
+  for (const [qid, ruin] of found) out.set(qid, { ...out.get(qid)!, namedRuin: ruin });
+  return out;
 }
 
 /**
@@ -198,8 +256,9 @@ function decideOne(
  * by no one, and its part is not refused in its name.
  */
 async function decide(
-  judged: ReadonlyMap<string, Judged>, share: KindShare<ArchaeologyTrees>, input: SurroundingsSitesInput,
+  read: ReadonlyMap<string, Judged>, share: KindShare<ArchaeologyTrees>, input: SurroundingsSitesInput,
 ): Promise<Map<string, Decided>> {
+  const judged = await withNamedRuins(read, share, input);
   const nameOf = (qid: string) => input.nameOf(qid) ?? judged.get(qid)?.entity.label;
   // A listing the map does not show stands in for it unless the kind holds or
   // admits a part of it outside this step. Never against this step's own
@@ -239,7 +298,8 @@ export async function collectSurroundingsSites(input: SurroundingsSitesInput): P
     (entity, classes, _verdict, note) => {
       const answer = decided.get(entity.qid);
       if (!answer?.pass || !answer.judged.verdict.pass) throw new Error(`A surroundings-tier site the rule did not pass reached the writer: ${entity.qid}`);
-      return siteCandidateOf(entity, answer.judged.verdict, { classes, objects: answer.judged.objects, readAt: input.read.readAt, note });
+      const shown = answer.namedRuin ? `${note} ${namedRuinNote(answer.namedRuin)}` : note;
+      return siteCandidateOf(entity, answer.judged.verdict, { classes, objects: answer.judged.objects, readAt: input.read.readAt, note: shown });
     },
     input.pool, input.held, input.cut ?? SURROUNDINGS_CUT, input.memory,
   );
