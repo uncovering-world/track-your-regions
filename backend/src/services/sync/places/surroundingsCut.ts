@@ -21,8 +21,9 @@
  * also when a heritage designation holds (`needsAGuide`, #2324).
  * A place the tier admitted before stays while it keeps the cut's languages,
  * reaches the stay share of the readers' floor and passes one test, the readers
- * test read at the stay share and the other two whole, since their reference is
- * its own neighbours'.
+ * and editions tests read at their stay shares and the guides' whole: the
+ * neighbours an editions reference is read off move whenever the pool gains a
+ * class, with nothing changed about the place itself (ADR-0187).
  *
  * Where no Wikivoyage usage build is in place the guides' test is not read,
  * and never read as no guide (ADR-0175 decision 6): nothing new enters by a
@@ -88,6 +89,8 @@ export interface SurroundingsCut {
   heritageForTypes: readonly string[];
   /** The share of the readers' floor and of the readers test at which a place the tier holds stays. */
   stayReadersShare: number;
+  /** The share of the editions test at which a place the tier holds stays. */
+  stayEditionsShare: number;
 }
 
 export const SURROUNDINGS_CUT: SurroundingsCut = {
@@ -109,6 +112,7 @@ export const SURROUNDINGS_CUT: SurroundingsCut = {
   guideForTypes: SURROUNDINGS_REGISTER.guideForTypes.value,
   heritageForTypes: SURROUNDINGS_REGISTER.heritageForTypes.value,
   stayReadersShare: SURROUNDINGS_REGISTER.stayReadersShare.value,
+  stayEditionsShare: SURROUNDINGS_REGISTER.stayEditionsShare.value,
 };
 
 /** The cut with the readers' floor the pool's year yields, where the pool read one (ADR-0184). */
@@ -164,13 +168,14 @@ export function medianOf(values: readonly number[]): number | null {
 
 const fmt = (n: number) => n.toLocaleString('en', { maximumFractionDigits: 1 });
 
-/** The tests a candidate passes against its references, the readers test read at `readersShare` of its reference. */
+/** The tests a candidate passes against its references, the editions and readers tests read at the shares given. */
 function doorsOf(
-  candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut, readersShare: number,
+  candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut,
+  { editionsShare, readersShare }: { editionsShare: number; readersShare: number },
 ): string[] {
   const doors: string[] = [];
   if (around.groupSize >= cut.editionsGroupFloor && reference.editions !== null
-    && candidate.editions >= cut.editionsShare * reference.editions) doors.push('its editions');
+    && candidate.editions >= editionsShare * reference.editions) doors.push('its editions');
   if (around.groupSize >= cut.readersGroupFloor && reference.readers !== null && candidate.readers > 0
     && candidate.readers >= readersShare * reference.readers) doors.push('its readers');
   if (around.groupSize >= cut.guideGroupFloor && reference.guide !== null && candidate.guideEditions !== null
@@ -188,8 +193,8 @@ function doorsInWords(doors: readonly string[]): string {
  * Where a candidate stands against its surroundings. The references are read
  * off the best of its neighbours, the candidate's own among them: a
  * place that is itself the best of its area clears its own reference. A place
- * the tier holds (`held`) stays at the stay share of the readers' floor and of
- * the readers test (ADR-0175 decision 2).
+ * the tier holds (`held`) stays at the stay share of the readers' floor, of
+ * the readers test (ADR-0175 decision 2) and of the editions test (ADR-0187).
  */
 export function surroundingsVerdict(
   candidate: SurroundingsCandidate, around: Surroundings, cut: SurroundingsCut = SURROUNDINGS_CUT, held = false,
@@ -208,14 +213,16 @@ export function surroundingsVerdict(
   }
   const reference = referencesOf(candidate, around, cut);
   const within = surroundingsInWords(candidate, around, reference, cut, held);
-  const enters = doorsOf(candidate, around, reference, cut, cut.readersShare);
+  const enters = doorsOf(candidate, around, reference, cut, { editionsShare: cut.editionsShare, readersShare: cut.readersShare });
   // A held place under the new-place floor is kept by the stay alone, and its note says so.
   const underFloor = candidate.readers < cut.minReaders;
   if (enters.length && !underFloor) return { in: true, reference, note: `In the surroundings tier ${doorsInWords(enters)}: ${within} (ADR-0171, ADR-0175, ADR-0181)` };
-  const stays = held ? doorsOf(candidate, around, reference, cut, cut.stayReadersShare * cut.readersShare) : [];
+  const stay = { editionsShare: cut.stayEditionsShare * cut.editionsShare, readersShare: cut.stayReadersShare * cut.readersShare };
+  const stays = held ? doorsOf(candidate, around, reference, cut, stay) : [];
   if (stays.length) {
     return { in: true, reference, note: `Stays in the surroundings tier ${doorsInWords(stays)}, the readers test read at `
-      + `${fmt(cut.stayReadersShare * cut.readersShare)} times the reference for a place it holds: ${within} (ADR-0175, ADR-0181)` };
+      + `${fmt(stay.readersShare)} times the reference and the editions test at ${fmt(stay.editionsShare)} for a place it holds: `
+      + `${within} (ADR-0175, ADR-0181)` };
   }
   // The guides' test is the one the run could not read: a held place a guide
   // used when last read, or that no build was ever read for, keeps its place
