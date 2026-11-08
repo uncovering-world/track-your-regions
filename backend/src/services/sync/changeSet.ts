@@ -11,6 +11,7 @@
  */
 
 import { isEmptyValue, jsonEquals } from '@tyr/shared/equality';
+import { sameSubjects } from '@tyr/shared/commemorates';
 import { sameLabelSet } from './labelFold.js';
 import { isKindFact } from './kindFacts.js';
 import { sameTypography } from '@tyr/shared/labels';
@@ -325,11 +326,20 @@ function isSyncOwned(key: string): boolean {
  */
 export const METADATA_SET_KEYS: ReadonlySet<string> = new Set(['creators']);
 
+/**
+ * The metadata keys whose two values are the same when they name the same
+ * items: whom a place commemorates (#2144). A label or an article Wikidata
+ * re-words, or another step of the reading naming the same people, is no
+ * change a curator is asked about (`sameSubjects`).
+ */
+const ITEM_SET_KEYS: ReadonlySet<string> = new Set(['commemorates']);
+
 /** Whether a metadata key's two values say the same thing. */
 function sameMetadataValue(key: string, before: unknown, after: unknown): boolean {
   if (METADATA_SET_KEYS.has(key) && Array.isArray(before) && Array.isArray(after)) {
     return sameLabelSet(before.map(String), after.map(String));
   }
+  if (ITEM_SET_KEYS.has(key) && !isEmptyValue(before) && !isEmptyValue(after)) return sameSubjects(before, after);
   return jsonEquals(before, after);
 }
 

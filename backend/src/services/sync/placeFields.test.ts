@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PLACE_FIELDS, placeFieldMark } from '@tyr/shared/placeFields';
 import { computeChangeSet, SYNC_OWNED_METADATA_KEYS, type ExperienceSnapshot } from './changeSet.js';
-import { FAMILY_FIELDS } from './fieldFamilies.js';
+import { FAMILY_FIELDS, WRITTEN_BY_SOURCES } from './fieldFamilies.js';
 import { KIND_FACT_KEYS } from './kindFacts.js';
 
 /**
@@ -23,12 +23,13 @@ const OTHER_VALUES: ExperienceSnapshot = {
 
 /**
  * The metadata keys the runs write: each family's own on the place
- * (`FAMILY_FIELDS`), the keys a kind's run keeps on its membership, the keys a
- * run computes about its pass, and the two both families write and neither
- * owns, the Wikipedia article and the picture's credit.
+ * (`FAMILY_FIELDS`), the keys only some sources write (`WRITTEN_BY_SOURCES`),
+ * the keys a kind's run keeps on its membership, the keys a run computes about
+ * its pass, and the two both families write and neither owns, the Wikipedia
+ * article and the picture's credit.
  */
 const METADATA_KEYS = [...new Set([
-  ...FAMILY_FIELDS.unesco.metadata, ...FAMILY_FIELDS.wikidata.metadata, ...KIND_FACT_KEYS,
+  ...FAMILY_FIELDS.unesco.metadata, ...FAMILY_FIELDS.wikidata.metadata, ...Object.keys(WRITTEN_BY_SOURCES), ...KIND_FACT_KEYS,
   ...SYNC_OWNED_METADATA_KEYS, 'wikipediaUrl', 'imageCredit',
 ])];
 

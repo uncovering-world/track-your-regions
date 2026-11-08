@@ -2,8 +2,10 @@
  * English Wikipedia's categories read from the structure kept from its dumps
  * (#1440, ADR-0121), where a run would otherwise ask the live Action API:
  * what each article is filed under (`structureCategories`, the twin of
- * `fetchWikipediaCategories`), and what a category holds
- * (`structureCategoryReads`, the reads `fetchCategoryMembers` walks with).
+ * `fetchWikipediaCategories`), what a category holds
+ * (`structureCategoryReads`, the reads `fetchCategoryMembers` walks with), and
+ * the item of an article by its title (`structureArticleItems`, the twin of
+ * `resolveWikipediaArticles` on English Wikipedia).
  *
  * The answers are spelt as the API spells them, so the rules reading them do
  * not tell the two apart: a title with spaces; an article's categories
@@ -219,17 +221,25 @@ export function structureCategoryReads(): CategoryReads {
       );
       return result.rows.map(row => CATEGORY_PREFIX + shown(row.title));
     },
-    async articles(titles): Promise<Array<{ title: string; item: string }>> {
-      if (titles.length === 0) return [];
-      const result = await pool.query<{ title: string; item: string }>(
-        `SELECT p.title, i.item
-           FROM enwiki_pages p
-           JOIN enwiki_page_items i ON i.page = p.id
-          WHERE p.namespace = 0 AND p.title = ANY($1::text[])
-          ORDER BY p.title`,
-        [titles.map(stored)],
-      );
-      return result.rows.map(row => ({ title: shown(row.title), item: row.item }));
-    },
+    articles: structureArticleItems,
   };
+}
+
+/**
+ * The item of each article titled exactly as asked, title spelt as the API
+ * spells it: a missing page or a redirect has none. What the category walk
+ * resolves a member by, and what whom a place commemorates resolves a
+ * category's subject by (`places/commemorates.ts`).
+ */
+export async function structureArticleItems(titles: string[]): Promise<Array<{ title: string; item: string }>> {
+  if (titles.length === 0) return [];
+  const result = await pool.query<{ title: string; item: string }>(
+    `SELECT p.title, i.item
+       FROM enwiki_pages p
+       JOIN enwiki_page_items i ON i.page = p.id
+      WHERE p.namespace = 0 AND p.title = ANY($1::text[])
+      ORDER BY p.title`,
+    [titles.map(stored)],
+  );
+  return result.rows.map(row => ({ title: shown(row.title), item: row.item }));
 }

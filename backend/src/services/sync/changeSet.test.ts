@@ -523,6 +523,39 @@ describe("a monument's makers, which are a set and not a list", () => {
   });
 });
 
+describe('whom a place commemorates, which is a set of items (#2144)', () => {
+  // The Monument to Minin and Pozharsky (Q187531) depicts Dmitry Pozharsky
+  // (Q15756) and Kuzma Minin (Q469785), and names no one by `P547`.
+  const POZHARSKY = { item: 'Q15756', label: 'Dmitry Pozharsky', articleUrl: 'https://en.wikipedia.org/wiki/Dmitry_Pozharsky' };
+  const MININ = { item: 'Q469785', label: 'Kuzma Minin', articleUrl: 'https://en.wikipedia.org/wiki/Kuzma_Minin' };
+  const monument = (commemorates?: unknown) => snapshot({
+    name: 'Monument to Minin and Pozharsky',
+    metadata: { wikidataQid: 'Q187531', ...(commemorates === undefined ? {} : { commemorates }) },
+  });
+  const rows = (before: ExperienceSnapshot, after: ExperienceSnapshot, gate = HELD) => {
+    const changes = computeChangeSet(before, after, [], gate);
+    return [...changes.changedFields, ...changes.heldFields].filter(f => f.field === 'metadata.commemorates');
+  };
+
+  it('says nothing when the same people come back in another order, re-labelled, or by another step', () => {
+    const stored = monument({ via: 'depicts', subjects: [POZHARSKY, MININ] });
+    expect(rows(stored, monument({ via: 'depicts', subjects: [MININ, POZHARSKY] }))).toEqual([]);
+    expect(rows(stored, monument({ via: 'depicts', subjects: [{ ...MININ, label: 'Kuzma Minin (merchant)' }, { ...POZHARSKY, articleUrl: null }] }))).toEqual([]);
+    expect(rows(stored, monument({ via: 'main-subject', subjects: [POZHARSKY, MININ] }))).toEqual([]);
+  });
+
+  it('holds a person gained or dropped, a value arriving and a value removed, under the gate', () => {
+    const one = monument({ via: 'depicts', subjects: [POZHARSKY] });
+    const both = monument({ via: 'depicts', subjects: [POZHARSKY, MININ] });
+    expect(rows(one, both)).toHaveLength(1);
+    expect(rows(both, one)).toHaveLength(1);
+    expect(rows(monument(), both)).toEqual([expect.objectContaining({ old: undefined, new: both.metadata?.commemorates })]);
+    expect(rows(both, monument())).toHaveLength(1);
+    // Shown on the card, so a gated source's rewrite waits for a curator rather than passing as unseen.
+    expect(computeChangeSet(monument(), both, [], HELD).heldFields.map(f => f.field)).toContain('metadata.commemorates');
+  });
+});
+
 describe('a metadata key the run computes about its own pass', () => {
   // Run 64's Louvre card, as it stood: 122 works, and a sum over them that two
   // language links somewhere in the world had just moved.

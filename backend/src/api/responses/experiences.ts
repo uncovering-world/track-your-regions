@@ -291,6 +291,13 @@ export const MultiPolygon = z.strictObject({
 }).describe('An area on the map, one piece or several, in GeoJSON.');
 export type MultiPolygon = z.infer<typeof MultiPolygon>;
 
+export const CommemoratedSubject = z.strictObject({
+  qid: z.string().describe('The subject\'s Wikidata item.'),
+  label: z.string(),
+  article_url: z.string().nullable().describe('Its English Wikipedia article, or null where it has none.'),
+}).describe('One person or event a place commemorates (#2144).');
+export type CommemoratedSubject = z.infer<typeof CommemoratedSubject>;
+
 export const ExperienceDetail = z.strictObject({
   id: z.number().int(),
   source_id: z.number().int().describe('The source that brought the row, beside the kind it is shown under.'),
@@ -312,6 +319,10 @@ export const ExperienceDetail = z.strictObject({
     .describe("The source's metadata, as an open record until #574 settles its model."),
   date_inscribed: z.string().nullable()
     .describe('The year UNESCO inscribed the site, off its World Heritage membership: null for a site no membership holds, one a curator judged former (delisted), or one refused (#2068).'),
+  commemorates: z.array(CommemoratedSubject).describe(
+    'Whom or what the place commemorates, off its `metadata.commemorates` (#2144): the Lincoln Memorial names Abraham'
+    + ' Lincoln. Empty where the runs of Public art and Monuments & memorials name nobody.',
+  ),
   created_at: timestamp,
   updated_at: timestamp,
   source_membership: SourceMembership,

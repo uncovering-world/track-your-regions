@@ -20,8 +20,9 @@
  */
 
 import type { PoolClient } from 'pg';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipAdmittedSql } from '../../db/membership.js';
 import { viewStandsSql } from '../../db/sourceViews.js';
+import { PUBLIC_ART_SOURCES } from './passes.js';
 
 export type SourceFamily = 'unesco' | 'wikidata';
 
@@ -78,6 +79,30 @@ const KEPT_BY_EVERY_OTHER_FAMILY: Readonly<Record<SourceFamily, readonly string[
 };
 
 /**
+ * The place's fields only some sources write, by key, with the sources that
+ * write it (ADR-0190): a run of any other source writes the field as the place
+ * holds it while a writer's membership on the place stands and admits it, and as its own
+ * record has it — absent — once none does, so a value no writer stands behind
+ * goes to the gate as a removal. Whom or what a place commemorates is read by
+ * Public art's and Monuments & memorials' runs alone (#2144), and every
+ * Wikidata source is one family, so the rule is per source rather than per
+ * family: a memorial church's Places of worship run, which never reads it,
+ * would otherwise propose removing what Monuments & memorials' run wrote.
+ * Towers, Bridges & engineering marvels and Squares & streets read nothing of
+ * it either: their `named after` names the engineer or the patron, not whom
+ * the place was raised to remember, and the Eiffel Tower does not commemorate
+ * Gustave Eiffel, nor the Marco Polo Bridge (Lugou) Marco Polo.
+ */
+export const WRITTEN_BY_SOURCES: Readonly<Record<string, readonly number[]>> = {
+  commemorates: PUBLIC_ART_SOURCES,
+};
+
+/** The keys of `WRITTEN_BY_SOURCES` the run of `sourceId` does not write and a writer of which admits the place. */
+const keptFromSources = (sourceId: number, admittingSourceIds: readonly number[]): string[] => Object.entries(WRITTEN_BY_SOURCES)
+  .filter(([, writers]) => !writers.includes(sourceId) && admittingSourceIds.some(other => writers.includes(other)))
+  .map(([key]) => key);
+
+/**
  * The fields of the place that another family's standing membership brings
  * and the run's own family does not: those the run writes as the place holds
  * them. On a place no other source holds, only the fields another family alone
@@ -90,20 +115,34 @@ export async function otherFamiliesFields(
   sourceId: number,
 ): Promise<FamilyFields> {
   if (familyOf(sourceId) === null) return { columns: [], metadata: [] };
-  const result = await query.query<{ source_id: number }>(
-    `SELECT DISTINCT m.source_id FROM ${MEMBERSHIPS} m
-      WHERE m.experience_id = $1 AND m.source_id <> $2 AND ${viewStandsSql('m')}`,
+  // Whether the kind admits the place matters to the fields only some sources
+  // write (ADR-0190): a refusal leaves the membership listed, and a refused
+  // writer stands behind nothing it wrote.
+  const result = await query.query<{ source_id: number; admitted: boolean }>(
+    `SELECT m.source_id, bool_or(${membershipAdmittedSql('m')}) AS admitted FROM ${MEMBERSHIPS} m
+      WHERE m.experience_id = $1 AND m.source_id <> $2 AND ${viewStandsSql('m')}
+      GROUP BY m.source_id`,
     [placeId, sourceId],
   );
-  return fieldsOfOthers(sourceId, result.rows.map(row => row.source_id));
+  return fieldsOfOthers(
+    sourceId,
+    result.rows.map(row => row.source_id),
+    result.rows.filter(row => row.admitted).map(row => row.source_id),
+  );
 }
 
 /**
  * What the run of `sourceId` writes as the place holds it, given the other
- * sources with a standing membership on it: their families' fields. Split from
+ * sources with a standing membership on it: their families' fields, and the
+ * fields only some sources write where one of those admits the place
+ * (`admittingSourceIds`, every standing one unless told otherwise). Split from
  * the read so the sequence of runs can be stated without a database.
  */
-export function fieldsOfOthers(sourceId: number, otherSourceIds: readonly number[]): FamilyFields {
+export function fieldsOfOthers(
+  sourceId: number,
+  otherSourceIds: readonly number[],
+  admittingSourceIds: readonly number[] = otherSourceIds,
+): FamilyFields {
   const own = familyOf(sourceId);
   if (own === null) return { columns: [], metadata: [] };
   const others = new Set(otherSourceIds.map(familyOf).filter((f): f is SourceFamily => f !== null && f !== own));
@@ -113,6 +152,7 @@ export function fieldsOfOthers(sourceId: number, otherSourceIds: readonly number
       ...[...others].flatMap(family => FAMILY_FIELDS[family].metadata),
       ...(Object.keys(KEPT_BY_EVERY_OTHER_FAMILY) as SourceFamily[])
         .filter(family => family !== own).flatMap(family => KEPT_BY_EVERY_OTHER_FAMILY[family]),
+      ...keptFromSources(sourceId, admittingSourceIds),
     ])],
   };
 }

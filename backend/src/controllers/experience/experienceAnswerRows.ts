@@ -11,11 +11,12 @@
  */
 
 import type {
-  Experience, ExperienceDetail, ExperienceRegionRef, ExperienceSearchResult, ExperienceTreasure, ImageCredit,
+  CommemoratedSubject, Experience, ExperienceDetail, ExperienceRegionRef, ExperienceSearchResult, ExperienceTreasure, ImageCredit,
   LinkedPlace, PlaceKind, SiteFind, WorkVenue,
 } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { TextSource } from '@tyr/shared/textCredits';
+import { commemoratesOf } from '@tyr/shared/commemorates';
 
 type Membership = CheckValue<'experiences', 'source_membership'>;
 type Existence = CheckValue<'experiences', 'existence'>;
@@ -38,6 +39,15 @@ export function creditOf(credit: ImageCredit | null): ImageCredit | null {
     detailsUrl: credit.detailsUrl ?? null,
     attributionRequired: credit.attributionRequired ?? null,
   };
+}
+
+/**
+ * Whom or what a place commemorates, as `metadata.commemorates` stores it, key
+ * by key (`commemoratesOf`): none where the place holds no such value.
+ */
+function commemoratedOf(metadata: Record<string, unknown> | null): CommemoratedSubject[] {
+  return (commemoratesOf(metadata?.commemorates)?.subjects ?? [])
+    .map(subject => ({ qid: subject.item, label: subject.label, article_url: subject.articleUrl }));
 }
 
 /** Where a find was dug up, as `metadata.foundAt` stores it, key by key. */
@@ -193,6 +203,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     image_credit: creditOf(row.image_credit),
     metadata: row.metadata,
     date_inscribed: row.date_inscribed,
+    commemorates: commemoratedOf(row.metadata),
     created_at: iso(row.created_at),
     updated_at: iso(row.updated_at),
     source_membership: row.source_membership,

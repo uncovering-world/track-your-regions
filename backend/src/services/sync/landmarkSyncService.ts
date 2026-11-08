@@ -33,6 +33,7 @@ import { categoryNote, filedAsMonument, readMonumentCategories } from './publicA
 import type { FiledAsMonument } from './publicArt/publicArtTest.js';
 import { mergeSurroundings, surroundingsReader, type SurroundingsKind, type SurroundingsReader } from './places/surroundingsTier.js';
 import { goneWorkReason, refuseGone, type StandingFacts } from './places/gone.js';
+import { commemorationWiki, readCommemorates } from './places/commemorates.js';
 import { worldHistory, type WorldHistory } from './places/worldMemory.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
@@ -317,6 +318,11 @@ async function upsertLandmarkExperience(
     ...(landmark.wikipediaCategories ? { wikipediaCategories: landmark.wikipediaCategories } : {}),
     // The tier that admitted it, where it is not the world's (ADR-0171).
     ...(landmark.tier ? { tier: landmark.tier } : {}),
+    // Whom or what the place commemorates, the place's own and shown on its
+    // card (#2144). Absent where the reading names nobody, which on Public
+    // art's and Monuments & memorials' runs proposes removing a value the place
+    // held; every other run keeps it (`WRITTEN_BY_SOURCES`).
+    ...(landmark.commemorates ? { commemorates: landmark.commemorates } : {}),
     // `creator` is who made the sculpture; this is who photographed it. Two
     // different people, and only one of them has ever been named on the card.
     //
@@ -444,6 +450,17 @@ async function fetchLandmarkItems(
   await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX,
     classifier.gone);
   await classifier.retype?.(items, sparql);
+  // Whom or what each admitted place commemorates, once the kinds have decided
+  // (#2144): Public art's and Monuments & memorials' alone, whose writers
+  // `WRITTEN_BY_SOURCES` names. Every other kind keeps what the place holds.
+  if (PUBLIC_ART_SOURCES.includes(sourceId)) {
+    progress.statusMessage = 'Reading whom or what each place commemorates...';
+    const commemorated = await readCommemorates(items, sparql, await commemorationWiki(progress));
+    for (const item of items) {
+      const subjects = commemorated.get(item.qid);
+      if (subjects) item.commemorates = subjects;
+    }
+  }
   // What the admitted places hold, read before the first is written, so the
   // coverage floor is measured over the whole run (ADR-0044).
   const held = await classifier.contents?.read(items, sparql, progress);

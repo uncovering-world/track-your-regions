@@ -3,6 +3,7 @@
  */
 
 import type { PlaceTypeOf, TypedKindSlug } from '@tyr/shared/placeTypes';
+import type { Commemorates } from '@tyr/shared/commemorates';
 import type { Operation } from '../operationProgress.js';
 import type { FieldChange } from './changeSet.js';
 
@@ -368,6 +369,12 @@ export interface WikidataLandmark {
    * keeps the place by them when it cannot read the categories again.
    */
   wikipediaCategories?: string[];
+  /**
+   * Whom or what the place commemorates, read once the kind has decided
+   * (`places/commemorates.ts`, #2144): the place's own field, shown on its
+   * card. Absent where no step of the reading names anyone.
+   */
+  commemorates?: Commemorates;
 }
 
 /**
