@@ -21,6 +21,19 @@ import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 export const THOROUGHFARE = 'Q83620';
 
 /**
+ * A descent (Q3024290), "a descending road or path", asked for by itself as the
+ * thoroughfare it sits under is: Kyiv files Andriyivskyy Descent, the cobbled
+ * street a visitor walks down from St Andrew's Church to Podil, as a descent and
+ * nothing else (#2146). Read off the local subset on 2026-11-08, the class has
+ * 28 instances with a point and 22 no other class of the kind names, every one
+ * a street: Kyiv's descents, from Andriyivskyy (21 sitelinks) and Saint
+ * Volodymyr Descent to Borychiv Descent, others in Kharkiv and Homiel, two lanes
+ * of Sulignat in the Ain, and Kinen-zaka, a slope in Nagasaki; Odesa's descents
+ * were the kind's already, as streets.
+ */
+export const DESCENT = 'Q3024290';
+
+/**
  * The roots the candidates are asked by, in fame bands on the live service.
  * A label is singular: the progress line adds the plural.
  */
@@ -41,7 +54,7 @@ export const SQUARE_ROOTS: readonly PoolRoot[] = [
 export const SQUARE_TYPES = typeValues('squares-and-streets');
 export type SquareType = PlaceTypeOf<'squares-and-streets'>;
 
-/** Each type and the roots whose trees name it; a bare thoroughfare is a street. */
+/** Each type and the roots whose trees name it; a bare thoroughfare or a descent is a street. */
 const TYPE_ROOTS: Readonly<Record<SquareType, readonly string[]>> = {
   stairway: ['Q12511'],
   square: ['Q174782'],
@@ -82,8 +95,8 @@ const CANAL_ROOT = 'Q12284';
 
 /**
  * Squares & streets, declared (#2318): what names a square or a street is
- * every class under a type's roots and the bare thoroughfare, and a canal is
- * refused where no type names it.
+ * every class under a type's roots, the bare thoroughfare and a descent, and a
+ * canal is refused where no type names it.
  */
 export const SQUARES_DECLARATION: PlaceKindDeclaration<SquareType> = {
   name: 'squares and streets',
@@ -93,7 +106,7 @@ export const SQUARES_DECLARATION: PlaceKindDeclaration<SquareType> = {
   types: SQUARE_TYPES,
   fallback: 'street',
   pool: SQUARE_ROOTS,
-  place: { roots: Object.values(TYPE_ROOTS).flat(), classes: [THOROUGHFARE] },
+  place: { roots: Object.values(TYPE_ROOTS).flat(), classes: [THOROUGHFARE, DESCENT] },
   typeClasses: Object.fromEntries(Object.entries(TYPE_ROOTS).map(([type, roots]) => [type, { roots }])),
   others: OTHER_KINDS,
   noClass: { reason: 'no square or street class' },

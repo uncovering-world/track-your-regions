@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { squareVerdict, type SquareFacts, type SquareTrees } from './kind.js';
+import { DESCENT, SQUARES_DECLARATION } from './classes.js';
 
 const SQUARE = 'Q174782';
 const STREET = 'Q79007';
@@ -41,7 +42,7 @@ const squares = new Set([SQUARE]);
 const promenades = new Set([PROMENADE_CLASS]);
 const streets = new Set([STREET, PEDESTRIAN_ZONE, SHOPPING_STREET, AVENUE, AVENUE_CLASS, BOULEVARD, RAMBLA]);
 const trees: SquareTrees = {
-  place: new Set([THOROUGHFARE, ...stairways, ...squares, ...promenades, ...streets]),
+  place: new Set([THOROUGHFARE, DESCENT, ...stairways, ...squares, ...promenades, ...streets]),
   types: { stairway: stairways, square: squares, promenade: promenades, street: streets },
   kills: { destroyed: new Set([DESTROYED]), proposed: none, underConstruction: none },
   others: {
@@ -54,6 +55,12 @@ const trees: SquareTrees = {
 
 const at = (classes: string[]): SquareFacts => ({ classes, onEarth: true, lat: 1, lon: 1 });
 
+describe('what Squares & streets asks by', () => {
+  it('names a descent by itself, as it names the bare thoroughfare it sits under (#2146)', () => {
+    expect(SQUARES_DECLARATION.place.classes).toEqual([THOROUGHFARE, DESCENT]);
+  });
+});
+
 describe('squareVerdict', () => {
   it.each([
     ['Red Square', [SQUARE], 'square'],
@@ -61,6 +68,7 @@ describe('squareVerdict', () => {
     ['the Promenade des Anglais, a promenade before a street', [PROMENADE_CLASS, STREET], 'promenade'],
     ['the Arbat, a bare thoroughfare and a pedestrian zone', [THOROUGHFARE, PEDESTRIAN_ZONE], 'street'],
     ['Tverskaya Street, a bare thoroughfare', [THOROUGHFARE], 'street'],
+    ['Andriyivskyy Descent, a descent and nothing else (#2146)', [DESCENT], 'street'],
     ['Oxford Street, a shopping street that is also a road', [SHOPPING_STREET, ROAD], 'street'],
     ['the National Mall, a square though an avenue and a park too', [AVENUE, SQUARE, PARK], 'square'],
     ['Times Square, though a neighbourhood too', [SQUARE, NEIGHBOURHOOD], 'square'],
