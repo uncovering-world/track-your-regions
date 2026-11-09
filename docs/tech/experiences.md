@@ -2863,10 +2863,13 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    and David Smith's, Storm King, whose one recorded work is Andy Goldsworthy's, and the Hakone
    Open-Air Museum, Picasso's and Tumarkin's, stay refused (measured on the subset 2026-11-09: of
    the gardens with three Wikipedia editions or more, nine name a maker of themselves, and the
-   Cullen garden and the Tørskind Gravel Pit, which names two, are the two that do not pass), and a
-   museum's veto still refuses Millesgården, Carl Milles's garden and an art
-   museum, since the garden's own class, which Wikidata files under sculpture and under open-air
-   museum alike, neither answers a veto nor raises one (`publicArtVerdict`) (measured on the subset 2026-11-09: Park Güell, the Vigeland
+   Cullen garden and the Tørskind Gravel Pit, which names two, are the two that do not pass); such a
+   garden answers a building's or a museum's veto as an artwork class does (`publicArtVerdict`),
+   so one Wikidata types a museum besides is still its artist's — the Tarot Garden, a private
+   museum too, and Millesgården, Carl Milles's garden and an art museum — and a garden the
+   surroundings tier asks about by id is read the same way, since that gather keeps the kind's
+   `editions.attach` (`surroundingsTier.ts`), as Parikkala Sculpture Park, Veijo Rönkkönen's,
+   and Emmet Sullivan's Dinosaur Park are (measured on the subset 2026-11-09: Park Güell, the Vigeland
    installation, Millesgården and Matthias Braun's Betlém pass the maker test, and the one
    collection that does is the Donald M. Kendall Sculpture Gardens, its four recorded works all
    Henry Moore's; Betlém and the Kendall gardens sit below the admission pool's floor); the floor rather
