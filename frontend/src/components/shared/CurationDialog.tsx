@@ -1,7 +1,8 @@
 /**
  * CurationDialog — Shared dialog for curator actions on an experience.
  *
- * Supports editing (name, subtitle, description, type, picture, links), rejecting, and
+ * Supports editing (name, subtitle, description, type, picture, links, whom it
+ * commemorates), rejecting, and
  * unrejecting an experience within a region, and lists the places the object
  * is made of with the way to correct each (`CurationPlaces`). The edit's
  * fields are held by the form layer (`useEditForm`, ADR-0076), which decides
@@ -59,6 +60,7 @@ import { DescriptionCreditLine } from './DescriptionText';
 import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
 import { CurationHistory } from './CurationHistory';
+import { CommemoratesField } from './CommemoratesField';
 import { PlacePins } from './AdmissionPins';
 import { PlaceIdentifiers } from './PlaceIdentifiers';
 import { SiteFindQuestions } from './SiteFindQuestions';
@@ -117,7 +119,8 @@ function creditForPreview(editImageUrl: string, row: CurationTarget): ImageCredi
 
 /** What the edit form holds, named by the request body's keys (ADR-0076). */
 type EditFields = Required<Pick<Parameters<typeof editExperience>[1],
-  'name' | 'subtitle' | 'description' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl' | 'descriptionAdapted'>>;
+  'name' | 'subtitle' | 'description' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl' | 'descriptionAdapted'
+  | 'commemorates'>>;
 
 /** The source whose run writes a place's description (ADR-0149). */
 const UNESCO_SOURCE_ID = 1;
@@ -216,6 +219,10 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose,
       // Whose text the description is, for a place the UNESCO source holds: an
       // edit of UNESCO's unless the curator once said it is their own.
       descriptionAdapted: experience?.description_source === 'unesco',
+      // Whom the place commemorates, off the detail read, as the card names them
+      // (#2144): sent whole once changed, an emptied list included.
+      commemorates: (detailQuery.data?.commemorates ?? [])
+        .map(subject => ({ item: subject.qid, label: subject.label, articleUrl: subject.article_url })),
     },
     resetKey: experience?.id ?? null,
     tidy: { name: tidyLabel },
@@ -436,6 +443,12 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose,
             fullWidth
             size="small"
             placeholder="https://..."
+          />
+          <CommemoratesField
+            subjects={form.values.commemorates}
+            onChange={subjects => form.set('commemorates', subjects)}
+            error={form.errors.commemorates}
+            disabled={isPending}
           />
         </Box>
 

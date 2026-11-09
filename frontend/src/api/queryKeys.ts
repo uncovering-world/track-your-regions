@@ -159,6 +159,8 @@ export const queryKeys = {
     reviewQueue: (...page: readonly unknown[]) => ['curation', 'reviewQueue', ...page] as const,
     /** The regions a review Region chip found by name (#1920, #2349), for the text typed. */
     reviewRegionSearch: (query: string) => ['curation', 'reviewRegionSearch', query] as const,
+    /** The people and events a name finds on Wikidata, for whom a place commemorates (#2144). */
+    commemorationSearch: (query: string) => ['curation', 'commemorationSearch', query] as const,
     /** The admission pins in scope (#1369): every one, or one place's. What a hand-back invalidates. */
     admissionPinsAll: ['curation', 'admissionPins'] as const,
     admissionPins: (experienceId: Id | null) => ['curation', 'admissionPins', experienceId] as const,

@@ -15,6 +15,7 @@ import type {
   LocationStateResult, ManualExperienceCreated, MembershipSeparated, SeparationUndone, MergeProposalsAnswered, MergeProposalSuggestions, MergeProposalTakenBack, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointHintSuggestions, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, KindSuggestion, PlannedKindAnswered, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
   WebsiteChecks, PointNamesakesAnswer, KeptOutOfKind, KindAddedToPlace, ArrivalAnsweredWithKind, PlaceKindStandings, PictureClasses,
+  CommemorationCandidate,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -35,7 +36,7 @@ import {
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
   postExperiencesByIdUnrefuseContents, postExperiencesByIdUnreject, postExperiencesLocationsByLocationIdState,
   postExperiencesLocationsByLocationIdTakeBackItem, getExperiencesLocationsByLocationIdNearbyPictures,
-  getExperiencesByIdWebsiteChecks,
+  getExperiencesByIdWebsiteChecks, getExperiencesCommemoratesSearch,
   postExperiencesByIdPointNamesakesByLocationId,
   getExperiencesByIdPictureClasses,
   postExperiencesByIdMergeProposalsByProposalIdTakeBack,
@@ -58,6 +59,7 @@ export type {
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
   KeepOutOfKindBody, KeptOutOfKind, PlaceKindStanding, PlaceKindStandings,
   AddableKind, AddToKindBody, KindAddedToPlace, ArrivalKindBody, ArrivalAnsweredWithKind,
+  CommemorationCandidate, EditExperienceBodyCommemoratesItem,
 } from './client.generated';
 
 /**
@@ -471,6 +473,14 @@ export async function createManualExperience(data: CreateManualExperienceBody): 
 /**
  * Edit an experience's fields (curator)
  */
+/**
+ * The people and events a name finds on Wikidata, for a curator's list of whom
+ * a place commemorates (#2144): best match first, each with its description.
+ */
+export async function searchCommemorationSubjects(query: string): Promise<CommemorationCandidate[]> {
+  return (await getExperiencesCommemoratesSearch({ q: query })).candidates;
+}
+
 export async function editExperience(
   experienceId: number,
   data: EditExperienceBody,

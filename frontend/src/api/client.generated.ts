@@ -3088,6 +3088,14 @@ export interface AssignExperienceBody {
   regionId: number;
 }
 
+export type EditExperienceBodyCommemoratesItem = {
+  /** @pattern ^Q[1-9]\d*$ */
+  item: string;
+  label: string;
+  /** @nullable */
+  articleUrl: string | null;
+};
+
 export interface EditExperienceBody {
   name?: string;
   /** @maxLength 10000 */
@@ -3105,6 +3113,8 @@ export interface EditExperienceBody {
   websiteUrl?: string;
   wikipediaUrl?: string;
   descriptionAdapted?: boolean;
+  /** @maxItems 50 */
+  commemorates?: EditExperienceBodyCommemoratesItem[];
 }
 
 /**
@@ -3119,6 +3129,34 @@ export interface ExperienceEditResult {
   experienceId: number;
   /** Every field the curator now claims on the object, this edit's included. */
   curatedFields: string[];
+}
+
+/**
+ * A person or event a curator may add to whom a place commemorates (#2144).
+ */
+export interface CommemorationCandidate {
+  /** The Wikidata item. */
+  item: string;
+  /** Its English label, or the label Wikidata's search shows where it has none in English. */
+  label: string;
+  /**
+     * Its English description, which tells two people or events of one name apart; null where it has none.
+     * @nullable
+     */
+  description: string | null;
+  /**
+     * Its English Wikipedia article, or null where it has none.
+     * @nullable
+     */
+  articleUrl: string | null;
+}
+
+/**
+ * The Wikidata items a name finds, for a curator's list of whom a place commemorates.
+ */
+export interface CommemorationCandidates {
+  /** Best match first, as Wikidata's search ranks them; at most eight. */
+  candidates: CommemorationCandidate[];
 }
 
 /**
@@ -8102,6 +8140,15 @@ export type GetExperiencesByIdPictureParams = {
   locationId?: number;
 };
 
+export type GetExperiencesCommemoratesSearchParams = {
+  /**
+   * @minLength 2
+   * @maxLength 200
+   * @pattern ^[^\u0000]*$
+   */
+  q: string;
+};
+
 export type GetExperiencesReviewPinsParams = {
   /**
    * @maximum 2147483647
@@ -11618,7 +11665,7 @@ export const getPatchExperiencesByIdEditUrl = (id: number,) => {
 
 /**
  * Requires a curator or an admin.
- * @summary Edit an experience's name, text, type, tags, picture or links, kept against later syncs
+ * @summary Edit an experience's name, text, type, tags, picture, links or whom it commemorates, kept against later syncs
  */
 export const patchExperiencesByIdEdit = async (id: number,
     editExperienceBody: EditExperienceBody, options?: Parameters<typeof apiFetch>[1]): Promise<ExperienceEditResult> => {
@@ -11643,6 +11690,38 @@ return apiFetch<ExperienceEditResult>(getPatchExperiencesByIdEditUrl(id),
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(editExperienceBody)
+  }
+);}
+
+
+
+export const getGetExperiencesCommemoratesSearchUrl = (params: GetExperiencesCommemoratesSearchParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/commemorates/search?${stringifiedParams}` : `/api/experiences/commemorates/search`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Find people and events on Wikidata by name, for whom a place commemorates
+ */
+export const getExperiencesCommemoratesSearch = async (params: GetExperiencesCommemoratesSearchParams, options?: Parameters<typeof apiFetch>[1]): Promise<CommemorationCandidates> => {
+
+  return apiFetch<CommemorationCandidates>(getGetExperiencesCommemoratesSearchUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 

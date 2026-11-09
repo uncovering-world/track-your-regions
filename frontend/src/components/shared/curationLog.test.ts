@@ -235,6 +235,22 @@ describe('a verdict on a rule’s refusal', () => {
   });
 });
 
+describe('an edit of whom a place commemorates (#2144)', () => {
+  it('names the subjects on both sides of the arrow, and an emptied list as nobody', () => {
+    // The Monument to Minin and Pozharsky (Q187531) depicts Dmitry Pozharsky (Q15756) and Kuzma Minin (Q469785).
+    const both = { via: 'depicts', subjects: [
+      { item: 'Q15756', label: 'Dmitry Pozharsky', articleUrl: null },
+      { item: 'Q469785', label: 'Kuzma Minin', articleUrl: null },
+    ] };
+    const line = formatLogDetails(entry('edited', {
+      'metadata.commemorates': { old: both, new: { via: 'curator', subjects: [] } },
+    })) as string;
+
+    expect(line).not.toContain('[object Object]');
+    expect(line).toBe('metadata.commemorates: "Dmitry Pozharsky, Kuzma Minin" → "(nobody)"');
+  });
+});
+
 describe('an edit that replaced or removed the picture', () => {
   // Bamiyan's picture on the development catalogue, as the sync stored its credit.
   const PICTURE = 'http://commons.wikimedia.org/wiki/Special:FilePath/Bamiyan%20Valley2.jpg';
