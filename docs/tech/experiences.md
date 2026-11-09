@@ -2852,13 +2852,19 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    (Stutthof, Stonehenge, the commune of Le Gua, Madurodam), and a `P547` statement lifts no kill,
    a foundation that commemorates someone being no place to stand in front of; and save that, for
    Public art, a sculpture garden one artist made is a work of its own (`isOneArtistsGarden` in
-   `publicArt/gardens.ts`, #2037): Wikidata names the maker of no garden, so the run reads the
-   works the garden holds — standing in it, part of it or named as its parts — and who each names
-   as its maker (`readGardenMakers`, onto `EntityFacts.heldMakers`), and a garden at least two
-   of whose works name a maker, all the same one, lifts its kill and is filed a sculpture, its
-   artwork answer stored true; the Vigeland installation passes, while Storm King, whose one
-   recorded work is Andy Goldsworthy's, and the Hakone Open-Air Museum, Picasso's and Tumarkin's,
-   stay refused, and a museum's veto still refuses Millesgården, Carl Milles's garden and an art
+   `publicArt/gardens.ts`, #2037): the run reads the maker the garden names of itself (`P170`,
+   onto `EntityFacts.ownMakers`) and the works the garden holds — standing in it, part of it or
+   named as its parts — and who each names as its maker (`readGardenMakers`, onto
+   `EntityFacts.heldMakers`), and a garden whose own maker and whose works' makers are all one
+   artist, named by the garden itself or by at least two of its works, lifts its kill and is filed
+   a sculpture, its artwork answer stored true; the Tarot Garden, which names Niki de Saint
+   Phalle, and the Vigeland installation, which names nobody but holds Gustav Vigeland's works,
+   pass, while the Cullen Sculpture Garden, which names Isamu Noguchi and holds Ellsworth Kelly's
+   and David Smith's, Storm King, whose one recorded work is Andy Goldsworthy's, and the Hakone
+   Open-Air Museum, Picasso's and Tumarkin's, stay refused (measured on the subset 2026-11-09: of
+   the gardens with three Wikipedia editions or more, nine name a maker of themselves, and the
+   Cullen garden and the Tørskind Gravel Pit, which names two, are the two that do not pass), and a
+   museum's veto still refuses Millesgården, Carl Milles's garden and an art
    museum, since the garden's own class, which Wikidata files under sculpture and under open-air
    museum alike, neither answers a veto nor raises one (`publicArtVerdict`) (measured on the subset 2026-11-09: Park Güell, the Vigeland
    installation, Millesgården and Matthias Braun's Betlém pass the maker test, and the one
