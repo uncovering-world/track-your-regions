@@ -20226,7 +20226,7 @@
           "article_url"
         ],
         "additionalProperties": false,
-        "description": "One person or event a place commemorates (#2144)."
+        "description": "One person or event a place commemorates (#2144), or a holy figure a religious work depicts (#2404)."
       },
       "CommemorationCandidate": {
         "type": "object",
@@ -25281,6 +25281,13 @@
             },
             "description": "Whom or what the place commemorates, off its `metadata.commemorates` (#2144): the Lincoln Memorial names Abraham Lincoln. Empty where the runs of Public art and Monuments & memorials name nobody."
           },
+          "depicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommemoratedSubject"
+            },
+            "description": "The holy figure a religious work depicts, off its `metadata.depicts` (#2404): Christ the Redeemer names Jesus Christ, which is never whom it commemorates. Empty where the reading names none."
+          },
           "created_at": {
             "anyOf": [
               {
@@ -25449,6 +25456,7 @@
           "metadata",
           "date_inscribed",
           "commemorates",
+          "depicts",
           "created_at",
           "updated_at",
           "source_membership",
