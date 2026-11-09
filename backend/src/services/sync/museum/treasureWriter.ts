@@ -12,7 +12,7 @@ import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../../db/index.js';
 import { creditToWrite, type ImageCredit, type StoredCredit } from '../imageCredit.js';
 import { retirePassAfterNewContent } from '../curationDecay.js';
-import { pointHeldProposalAt, type WriteRun } from '../heldProposalPointer.js';
+import { proposeHeldParts, type WriteRun } from '../heldProposalPointer.js';
 import { workChanges } from '../contentsChangeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
 import { sameLabelSet } from '../labelFold.js';
@@ -751,6 +751,7 @@ export async function upsertVenueTreasures(
   // the works: the pointer names the run, not the work, and twelve held
   // attributions are one card.
   const pointAtRun = changed.some(entry => entry.fields.some(field => field.held));
+  let proposed = changed;
   // Both under the museum's lock, taken first in a statement of its own
   // (`db/locks.ts`): each chooses the membership rows it writes by their
   // state, and a statement's snapshot predates the lock it waits for — a lock
@@ -760,7 +761,7 @@ export async function upsertVenueTreasures(
   if (retirePass || pointAtRun) {
     await underMuseumLock(experienceId, async client => {
       if (retirePass) await retirePassAfterNewContent(client, experienceId);
-      if (pointAtRun) await pointHeldProposalAt(client, experienceId, run.syncLogId);
+      if (pointAtRun) proposed = await proposeHeldParts(client, experienceId, run, changed);
     });
   }
 
@@ -774,7 +775,7 @@ export async function upsertVenueTreasures(
   // Read off the statements that performed the writes, which is what keeps the
   // delta and the table from disagreeing: a held withdrawal is absent here
   // because the mark passed it over, and the link is still on show.
-  return { added, withdrawn, returned, changed };
+  return { added, withdrawn, returned, changed: proposed };
 }
 
 /**

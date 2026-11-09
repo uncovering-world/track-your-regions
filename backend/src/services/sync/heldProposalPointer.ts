@@ -4,14 +4,16 @@
  * `experience_kind_memberships.pending_change_sync_log_id` is what the
  * curator's held card resolves to find the proposal it shows — the
  * membership's since #822, on the membership the run's own source brought —
- * and three writers set it: the object upsert, for a field of the object's own
+ * and the writers set it: the object upsert, for a field of the object's own
  * the gate refused to write; the location writer, for a visible point's name
- * (ADR-0037); and the treasure writer, for a visible work's fields. One
- * statement rather than three, so the predicate cannot drift between them — a
- * membership a reader can see, under a gated source, brought by the source
- * whose run this is, and nothing else.
+ * (ADR-0037); the point content writer, for a visible point's picture, subtitle
+ * and article; and the treasure writer, for a visible work's fields — the
+ * writers of parts through `proposeHeldParts`. One statement rather than one
+ * per writer, so the predicate cannot drift between them — a membership a
+ * reader can see, under a gated source, brought by the source whose run this
+ * is, and nothing else.
  *
- * The three cooperate rather than compete, and the order is what makes that
+ * The writers cooperate rather than compete, and the order is what makes that
  * true. The object upsert runs first in every service and, where the object's
  * own fields propose nothing, **clears** the pointer (`experienceUpsert.ts`);
  * the content writers then set it again where they held something. So the
@@ -26,8 +28,8 @@
  * just held. The same rule the object upsert has always followed.
  *
  * Which membership: the one whose source is the run's, read off the run's own
- * log rather than passed in, since the content writers have an experience id
- * and no source id. A pending membership never carries a pointer — an
+ * log rather than passed in, so the pointer can only ever name a run of the
+ * membership's own source, whatever source a caller believes it writes for. A pending membership never carries a pointer — an
  * arrival is refreshed in place rather than held. A gated second membership of
  * a place another source made visible — a merged place (#1247) — is an arrival
  * whose run is held by the upsert (the hold asks whether a reader can see the
@@ -36,8 +38,10 @@
  * again, with a card.
  */
 
-import { MEMBERSHIPS, membershipVisibleSql } from '../../db/membership.js';
+import type { PoolClient } from 'pg';
+import { MEMBERSHIPS, membershipAdmittedSql, membershipVisibleSql, placeOfferedSql } from '../../db/membership.js';
 import type { QueryRunner } from './curationDecay.js';
+import type { ContentItemChange } from './types.js';
 
 /**
  * The run a content write belongs to, for the pointer a held field needs.
@@ -82,4 +86,46 @@ export async function pointHeldProposalAt(
         )`,
     [experienceId, syncLogId],
   );
+}
+
+/**
+ * What a part writer's run proposes of its rewrites, with the pointer they need.
+ *
+ * A held field of a point or a work is a proposal a curator finds through the
+ * place's pointer (ADR-0037), so the run points the place at itself. A gated
+ * run whose own membership refuses a place no kind offers proposes nothing
+ * about its parts: no reader sees the place, so the held fields leave the
+ * record and the place is not pointed at the run. Where some kind offers the
+ * place, its readers see every point and work shown on it, whichever kind
+ * placed them, and only the run that placed a part proposes about it, so the
+ * refusing run still asks about its own. `REFUSED_WRITER` in
+ * `experienceUpsert.ts` is the rule for the place's own fields, which every
+ * kind's run proposes.
+ *
+ * On the writer's client under the place's lock, for the reason
+ * `pointHeldProposalAt` gives.
+ */
+export async function proposeHeldParts(
+  client: PoolClient,
+  experienceId: number,
+  run: { sourceId: number; syncLogId: number | null },
+  changed: ContentItemChange[],
+): Promise<ContentItemChange[]> {
+  if (!changed.some(entry => entry.fields.some(field => field.held))) return changed;
+  const unseen = await client.query(
+    `SELECT 1 FROM experiences e
+       JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+       JOIN experience_sources c ON c.id = m.source_id
+      WHERE e.id = $1 AND m.source_id = $2
+        AND c.requires_curation AND NOT ${membershipAdmittedSql('m')}
+        AND NOT ${placeOfferedSql('e')}`,
+    [experienceId, run.sourceId],
+  );
+  if ((unseen.rowCount ?? 0) > 0) {
+    return changed
+      .map(entry => ({ ...entry, fields: entry.fields.filter(field => !field.held) }))
+      .filter(entry => entry.fields.length > 0);
+  }
+  await pointHeldProposalAt(client, experienceId, run.syncLogId);
+  return changed;
 }

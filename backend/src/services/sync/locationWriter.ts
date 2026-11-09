@@ -95,7 +95,7 @@
 
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
-import { pointHeldProposalAt, type WriteRun } from './heldProposalPointer.js';
+import { proposeHeldParts, type WriteRun } from './heldProposalPointer.js';
 import { tidyLabel } from '@tyr/shared/labels';
 import { approximateReasons } from '@tyr/shared/precision';
 import { settleShortMoves, shortMoveChange, type ShortMove } from './shortMoveWriter.js';
@@ -1235,15 +1235,14 @@ export async function writeExperienceLocations(
     // values the pairing carried in, since the arm above has already replaced
     // them: a point that moved 1.2 km and one whose name gained an en dash both
     // reach here, and only the first survives `contentsChangeSet`'s normalisation.
-    const changed = [...keptChanges(kept.rows), ...shortMoves.map(shortMoveChange)];
-
+    //
     // A held name is a proposal a curator has to be able to find, and the card
     // finds it through the object's pointer (ADR-0037). In the same transaction
     // as the hold, so no run can land between the two: a hold recorded with no
     // pointer is a proposal no screen can reach.
-    if (changed.some(entry => entry.fields.some(field => field.held))) {
-      await pointHeldProposalAt(client, experienceId, run.syncLogId);
-    }
+    const changed = await proposeHeldParts(
+      client, experienceId, run, [...keptChanges(kept.rows), ...shortMoves.map(shortMoveChange)],
+    );
 
     if (run.components) {
       // How precisely the list placed each component (#1853, `APPROXIMATE_REASONS`).
