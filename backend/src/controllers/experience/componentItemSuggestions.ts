@@ -39,12 +39,12 @@ export interface ComponentItemSuggestion {
   judgement: Judgement | null;
   confidence: number;
   probabilities: Record<string, number>;
-  /** This question's share of the call's input tokens. */
+  /** This question's share of the ask's input tokens, over every call it took. */
   inputTokens: number;
 }
 
 /**
- * Record the judgements of one call, a row per question, each for its
+ * Record the judgements of one ask, a row per question, each for its
  * candidate as the proposal states it now, under the site's lock. A proposal
  * that is not one of this site's points' — gone, or another site's — writes
  * nothing. Answers how many rows were written.

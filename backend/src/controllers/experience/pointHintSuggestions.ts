@@ -51,12 +51,12 @@ export interface PointHintSuggestion {
   judgement: HintJudgement | null;
   confidence: number;
   probabilities: Record<string, number>;
-  /** This question's share of the call's input tokens. */
+  /** This question's share of the ask's input tokens, over every call it took. */
   inputTokens: number;
 }
 
 /**
- * Record the judgements of one call, a row per question, each for its hint as
+ * Record the judgements of one ask, a row per question, each for its hint as
  * the card reads it now (`hints`, the `HINTS` query over the site's points),
  * under the site's lock. A hint no longer there, or a point that is not this
  * site's, writes nothing. Answers how many rows were written.

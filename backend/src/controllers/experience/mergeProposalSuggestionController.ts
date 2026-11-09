@@ -4,7 +4,8 @@
  *
  * For each open pair of the place the card is about, the stored judgement
  * where one was made for the pair as it stands, or a new one: the pairs not
- * yet judged go to Jev in one call, a `choice` question per pair — one place,
+ * yet judged go to Jev together, in as many calls as its context needs
+ * (`callsFor`), a `choice` question per pair — one place,
  * two places, or one part of the other — and each answer is stored with its
  * confidence and the pair it was about (`mergeProposalSuggestions.ts`). A
  * deployment without Jev answers that it has none. The judgement is shown
@@ -180,7 +181,7 @@ async function openPairsOf(anchorId: number): Promise<Anchor | null> {
     : null;
 }
 
-/** Record one call's judgements under the anchor's lock. */
+/** Record one ask's judgements under the anchor's lock. */
 async function store(anchorId: number, model: string, suggestions: readonly MergeSuggestion[]): Promise<void> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -205,8 +206,9 @@ function shown(pair: PairRow, judgement: PairJudgement | null, confidence: numbe
 }
 
 /**
- * The call's input tokens shared out over its questions, whole tokens each,
- * the remainder on the first: the rows added up are what the call cost.
+ * What the ask's calls cost in input tokens, shared out over its questions,
+ * whole tokens each, the remainder on the first: the rows added up are what
+ * the calls cost.
  */
 function sharedOut(inputTokens: number, count: number): number[] {
   const each = Math.floor(inputTokens / count);
@@ -214,7 +216,7 @@ function sharedOut(inputTokens: number, count: number): number[] {
 }
 
 /**
- * Ask Jev about the pairs not yet judged as they stand, in one call, and
+ * Ask Jev about the pairs not yet judged as they stand (`askJevChoices`), and
  * record every answer: a refused one with no judgement, so the same pair is
  * not paid for again. Answers what the card may show. A call that fails
  * leaves those pairs without a judgement; the next opening asks again.

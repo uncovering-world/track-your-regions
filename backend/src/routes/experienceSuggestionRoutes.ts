@@ -32,8 +32,8 @@ export const experienceSuggestionRoutes = [
     handler: suggestViews,
   }),
   // Jev's judgement of a site's candidate component items (#1272): the stored
-  // one for each candidate as it stands, or a new one asked for — one call for
-  // the card's candidates, a POST since it may be paid for.
+  // one for each candidate as it stands, or a new one asked for — the card's
+  // candidates asked together (`callsFor`), a POST since it may be paid for.
   defineRoute({
     method: 'post', path: '/:id/component-item-suggestions', access: 'curator', cache: 'no-store',
     limiter: authenticatedLimiter,
@@ -44,7 +44,8 @@ export const experienceSuggestionRoutes = [
   }),
   // Jev's judgement of the hints of where a site's roughly placed components
   // stand (#1913): the stored one for each hint as it stands, or a new one
-  // asked for — one call for the card's hints, a POST since it may be paid for.
+  // asked for — the card's hints asked together (`callsFor`), a POST since it
+  // may be paid for.
   defineRoute({
     method: 'post', path: '/:id/point-hint-suggestions', access: 'curator', cache: 'no-store',
     limiter: authenticatedLimiter,
@@ -55,7 +56,8 @@ export const experienceSuggestionRoutes = [
   }),
   // Jev's judgement of a place's pairs of near places with similar names
   // (#1249): the stored one for each pair as it stands, or a new one asked for
-  // — one call for the card's pairs, a POST since it may be paid for.
+  // — the card's pairs asked together (`callsFor`), a POST since it may be
+  // paid for.
   defineRoute({
     method: 'post', path: '/:id/merge-proposal-suggestions', access: 'curator', cache: 'no-store',
     limiter: authenticatedLimiter,

@@ -10,10 +10,12 @@
  * picks, a probability per option and a confidence; a curator decides, and
  * the answer is never applied on its own.
  *
- * One call carries one question or many (`askJevChoices`): the service's own
+ * One ask carries one question or many (`askJevChoices`): the service's own
  * guidance is to batch the questions of one decision into one call, which is
- * cheaper and faster than one call each, so a card's candidates (#1272) go in
- * one call with a question per candidate. A 429 or a 529 is backed off from
+ * cheaper and faster than one call each, so a card's candidates (#1272) go
+ * together, a question per candidate, in one call where Jev's context holds
+ * them and otherwise in as many as it needs (`callsFor`, #2398), none of them
+ * longer than the context. A 429 or a 529 is backed off from
  * once, as the service asks, after the delay it names or a short one of our
  * own; a second refusal ends the call.
  *
@@ -35,6 +37,24 @@ const BACKOFF_MS = 2_000;
  */
 const BACKOFF_CAP_MS = 5_000;
 const BACKED_OFF = new Set([429, 529]);
+/**
+ * What one call is filled to, in tokens by `estimatedTokens`: Jev reads 64k
+ * per request, the state and every question together (docs.typesafe.ai,
+ * models, `jev-latest`), and refuses a longer one with a 400. The margin
+ * covers the estimate's error and what Jev adds of its own to every call:
+ * on the development catalogue on 2026-11-09 a call of one hint cost about
+ * 600 tokens and each further hint about 310.
+ */
+const CALL_BUDGET_TOKENS = 40_000;
+/**
+ * UTF-8 bytes per token in the estimate: three, under English JSON's four or
+ * so, which is what the callers send — English instructions with short
+ * labels in any script. A call mostly in Arabic (two bytes a character) or
+ * Japanese (three) would be underestimated, since a character there takes a
+ * token or more; the gap between `CALL_BUDGET_TOKENS` and Jev's 64k covers
+ * the labels among the English, not such a call.
+ */
+const BYTES_PER_TOKEN = 3;
 
 /** What one million input tokens cost, in US dollars (docs.typesafe.ai/models). */
 export const JEV_USD_PER_MILLION_INPUT_TOKENS = 0.042;
@@ -88,7 +108,7 @@ export type JevChoiceOutcome =
   | { choice: string; probabilities: Record<string, number>; confidence: number }
   | { refused: true };
 
-/** The answers of one call, keyed as the questions were, with what the call cost. */
+/** The answers of one ask, over every call it took, keyed as the questions were, with what the calls cost. */
 export interface JevChoicesAnswer {
   answers: Record<string, JevChoiceOutcome>;
   model: string;
@@ -138,17 +158,43 @@ function outcomeOf(
   return { choice: answer.choice, probabilities: answer.probabilities ?? {}, confidence };
 }
 
+/** A rough count of the tokens `value` takes, from the bytes of its JSON (`BYTES_PER_TOKEN`). */
+function estimatedTokens(value: unknown): number {
+  return Math.ceil(Buffer.byteLength(JSON.stringify(value), 'utf8') / BYTES_PER_TOKEN);
+}
+
 /**
- * Ask several `choice` questions in one call, over one state. Throws where
- * the call itself fails; a question the service answered outside its options
- * comes back refused rather than failing the others, since the call was made
- * and paid for whatever each answer was.
+ * The questions of one decision as calls Jev's context holds: in their order,
+ * each call filled with the state and as many questions as stay within
+ * `CALL_BUDGET_TOKENS`, and a question too long for any call alone in one, so
+ * Jev refuses it alone. The Rock Art of the Mediterranean Basin's 238 hints,
+ * one call some 74k tokens long before and refused, go in several.
  */
-export async function askJevChoices(
+export function callsFor(
   state: Record<string, unknown>, questions: Record<string, JevChoiceAsked>,
+): Array<Record<string, JevChoiceAsked>> {
+  const base = estimatedTokens(state);
+  const calls: Array<Record<string, JevChoiceAsked>> = [];
+  let current: Record<string, JevChoiceAsked> = {};
+  let filled = base;
+  for (const [id, asked] of Object.entries(questions)) {
+    const size = estimatedTokens({ [id]: { type: 'choice', ...asked } });
+    if (Object.keys(current).length > 0 && filled + size > CALL_BUDGET_TOKENS) {
+      calls.push(current);
+      current = {};
+      filled = base;
+    }
+    current[id] = asked;
+    filled += size;
+  }
+  if (Object.keys(current).length > 0) calls.push(current);
+  return calls;
+}
+
+/** One call to Jev with these questions over the state, or a throw where the call fails. */
+async function askOneCall(
+  key: string, state: Record<string, unknown>, questions: Record<string, JevChoiceAsked>,
 ): Promise<JevChoicesAnswer> {
-  const key = process.env.JEV_API_KEY?.trim();
-  if (!key) throw new Error('Jev is not configured');
   const response = await send(key, JSON.stringify({
     model: MODEL,
     state,
@@ -163,6 +209,31 @@ export async function askJevChoices(
   const inputTokens = body.usage?.input_tokens ?? 0;
   const answers = Object.fromEntries(Object.entries(questions).map(([id, asked]) => [id, outcomeOf(asked, body.answers?.[id])]));
   return { answers, model, inputTokens };
+}
+
+/**
+ * Ask several `choice` questions over one state, in as many calls as Jev's
+ * context needs (`callsFor`), one after another so a curator's request makes
+ * no burst. The answers come back keyed as the questions were, and what the
+ * calls cost added up. Throws where a call fails, and asks nothing after it:
+ * the caller stores no answer then, so the next request asks again. A
+ * question the service answered outside its options comes back refused
+ * rather than failing the others, since the call was made and paid for
+ * whatever each answer was.
+ */
+export async function askJevChoices(
+  state: Record<string, unknown>, questions: Record<string, JevChoiceAsked>,
+): Promise<JevChoicesAnswer> {
+  const key = process.env.JEV_API_KEY?.trim();
+  if (!key) throw new Error('Jev is not configured');
+  const answered: JevChoicesAnswer = { answers: {}, model: MODEL, inputTokens: 0 };
+  for (const [i, call] of callsFor(state, questions).entries()) {
+    const one = await askOneCall(key, state, call);
+    Object.assign(answered.answers, one.answers);
+    answered.inputTokens += one.inputTokens;
+    if (i === 0) answered.model = one.model;
+  }
+  return answered;
 }
 
 /**

@@ -5,8 +5,9 @@
  *
  * For each open candidate of the site, the stored judgement where one was made
  * for the candidate as it stands, or a new one: the candidates not yet judged
- * go to Jev in one call, a `choice` question per candidate — the item is this
- * component, or another place — and each answer is stored with its confidence
+ * go to Jev together, in as many calls as its context needs (`callsFor`), a
+ * `choice` question per candidate — the item is this component, or another
+ * place — and each answer is stored with its confidence
  * and the candidate it was about (`componentItemSuggestions.ts`). A deployment
  * without Jev answers that it has none. The judgement is shown beside the
  * candidate and never applied: a curator decides. A POST because a call may be
@@ -122,7 +123,7 @@ async function openCandidates(
   return row ? { name: row.name, countries: row.countries ?? [], candidates: row.candidates ?? [] } : null;
 }
 
-/** Record one call's judgements under the site's lock. */
+/** Record one ask's judgements under the site's lock. */
 async function store(experienceId: number, model: string, suggestions: readonly ComponentItemSuggestion[]): Promise<void> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -147,8 +148,9 @@ function shown(candidate: CandidateRow, judgement: Judgement | null, confidence:
 }
 
 /**
- * The call's input tokens shared out over its questions, whole tokens each,
- * the remainder on the first: the rows added up are what the call cost.
+ * What the ask's calls cost in input tokens, shared out over its questions,
+ * whole tokens each, the remainder on the first: the rows added up are what
+ * the calls cost.
  */
 function sharedOut(inputTokens: number, count: number): number[] {
   const each = Math.floor(inputTokens / count);
@@ -156,7 +158,7 @@ function sharedOut(inputTokens: number, count: number): number[] {
 }
 
 /**
- * Ask Jev about the candidates not yet judged as they stand, in one call, and
+ * Ask Jev about the candidates not yet judged as they stand (`askJevChoices`), and
  * record every answer: a refused one with no judgement, so the same candidate
  * is not paid for again. Answers what the card may show. A call that fails
  * leaves those candidates without a judgement; the next opening asks again.
