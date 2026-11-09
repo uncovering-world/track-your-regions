@@ -2850,7 +2850,20 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    development run of 2026-10-30, ten places enter, every one a monument, while a camp, an
    archaeological site, a settlement, an amusement park and a landscape stay what they are
    (Stutthof, Stonehenge, the commune of Le Gua, Madurodam), and a `P547` statement lifts no kill,
-   a foundation that commemorates someone being no place to stand in front of; the floor rather
+   a foundation that commemorates someone being no place to stand in front of; and save that, for
+   Public art, a sculpture garden one artist made is a work of its own (`isOneArtistsGarden` in
+   `publicArt/gardens.ts`, #2037): Wikidata names the maker of no garden, so the run reads the
+   works the garden holds — standing in it, part of it or named as its parts — and who each names
+   as its maker (`readGardenMakers`, onto `EntityFacts.heldMakers`), and a garden at least two
+   of whose works name a maker, all the same one, lifts its kill and is filed a sculpture, its
+   artwork answer stored true; the Vigeland installation passes, while Storm King, whose one
+   recorded work is Andy Goldsworthy's, and the Hakone Open-Air Museum, Picasso's and Tumarkin's,
+   stay refused, and a museum's veto still refuses Millesgården, Carl Milles's garden and an art
+   museum, since the garden's own class, which Wikidata files under sculpture and under open-air
+   museum alike, neither answers a veto nor raises one (`publicArtVerdict`) (measured on the subset 2026-11-09: Park Güell, the Vigeland
+   installation, Millesgården and Matthias Braun's Betlém pass the maker test, and the one
+   collection that does is the Donald M. Kendall Sculpture Gardens, its four recorded works all
+   Henry Moore's; Betlém and the Kendall gardens sit below the admission pool's floor); the floor rather
    than the walked commemorative tree, so the catalogue check (`objectAssertions.ts`) reads the
    same list — and so is a lost or destroyed *work* — a class of the `P279*` tree under
    `lost artwork` (`LOST_WORK_ROOT`, the tree § Art Museums names under *Lost*, fetched by the

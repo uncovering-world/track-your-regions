@@ -534,7 +534,9 @@ too, read from the genre (#1832) — and answers a
 building class the way the rule does, by an artwork class, and a burial class by a
 commemorative class, a commemorative form or English Wikipedia's monuments categories (#2171),
 which only Monuments & memorials reads (a Public
-art admission of a lifted kill is reported whatever stands with it): not approximated, but read from the
+art admission of a lifted kill is reported whatever stands with it, save a sculpture garden whose
+stored artwork answer says Public art took it as one artist's work, #2037, with no other lifted
+kill beside it): not approximated, but read from the
 rule's own answer, which the run stores beside the classes (`wikidataArtwork`, on each kind's
 own membership; a place both kinds admit is named by the first of the two, Public art's
 before Monuments & memorials', whose reading trips the check)
