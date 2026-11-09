@@ -19,4 +19,19 @@ describe('whom a place commemorates, as stored (#2144)', () => {
       { via: 'main-subject', subjects: [{ ...MININ, label: 'Minin' }, { ...POZHARSKY, articleUrl: null }] })).toBe(true);
     expect(sameSubjects({ via: 'depicts', subjects: [POZHARSKY, MININ] }, { via: 'depicts', subjects: [POZHARSKY] })).toBe(false);
   });
+
+  it("keeps a curator's list, even one naming nobody, and a reading's only where it names someone", () => {
+    expect(commemoratesOf({ via: 'curator', subjects: [MININ] })).toEqual({ via: 'curator', subjects: [MININ] });
+    // The curator's word that the place commemorates nobody, which a run must not undo.
+    expect(commemoratesOf({ via: 'curator', subjects: [] })).toEqual({ via: 'curator', subjects: [] });
+    expect(commemoratesOf({ via: 'depicts', subjects: [] })).toBeNull();
+  });
+
+  it("reads a curator's empty list as naming nobody, as no value does", () => {
+    const nobody = { via: 'curator', subjects: [] };
+    expect(sameSubjects(nobody, undefined)).toBe(true);
+    expect(sameSubjects(nobody, null)).toBe(true);
+    expect(sameSubjects(nobody, { via: 'depicts', subjects: [POZHARSKY] })).toBe(false);
+    expect(sameSubjects({ via: 'curator', subjects: [POZHARSKY, MININ] }, { via: 'depicts', subjects: [MININ, POZHARSKY] })).toBe(true);
+  });
 });

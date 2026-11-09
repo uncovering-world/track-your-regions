@@ -12994,7 +12994,7 @@
     "/api/experiences/{id}/edit": {
       "patch": {
         "operationId": "patchExperiencesByIdEdit",
-        "summary": "Edit an experience's name, text, type, tags, picture or links, kept against later syncs",
+        "summary": "Edit an experience's name, text, type, tags, picture, links or whom it commemorates, kept against later syncs",
         "tags": [
           "experiences"
         ],
@@ -13034,6 +13034,57 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExperienceEditResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/commemorates/search": {
+      "get": {
+        "operationId": "getExperiencesCommemoratesSearch",
+        "summary": "Find people and events on Wikidata by name, for whom a place commemorates",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 200,
+              "pattern": "^[^\\u0000]*$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommemorationCandidates"
                 }
               }
             }
@@ -20177,6 +20228,58 @@
         "additionalProperties": false,
         "description": "One person or event a place commemorates (#2144)."
       },
+      "CommemorationCandidate": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The Wikidata item."
+          },
+          "label": {
+            "type": "string",
+            "description": "Its English label, or the label Wikidata's search shows where it has none in English."
+          },
+          "description": {
+            "description": "Its English description, which tells two people or events of one name apart; null where it has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "articleUrl": {
+            "description": "Its English Wikipedia article, or null where it has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "item",
+          "label",
+          "description",
+          "articleUrl"
+        ],
+        "additionalProperties": false,
+        "description": "A person or event a curator may add to whom a place commemorates (#2144)."
+      },
+      "CommemorationCandidates": {
+        "type": "object",
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommemorationCandidate"
+            },
+            "description": "Best match first, as Wikidata's search ranks them; at most eight."
+          }
+        },
+        "required": [
+          "candidates"
+        ],
+        "additionalProperties": false,
+        "description": "The Wikidata items a name finds, for a curator's list of whom a place commemorates."
+      },
       "ComponentItemProposal": {
         "type": "object",
         "properties": {
@@ -24569,6 +24672,34 @@
           },
           "descriptionAdapted": {
             "type": "boolean"
+          },
+          "commemorates": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "item": {
+                  "type": "string",
+                  "pattern": "^Q[1-9]\\d*$"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "articleUrl": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "item",
+                "label",
+                "articleUrl"
+              ],
+              "additionalProperties": false
+            }
           }
         }
       },

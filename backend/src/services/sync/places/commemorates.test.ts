@@ -20,6 +20,7 @@ import { subsetSubjectClaims, subsetSubjectKinds } from '../subset/commemorates.
 import { subsetEnglishArticles } from '../subset/kit.js';
 import { subsetOnlyDoor } from '../subset/reader.js';
 import type { SparqlFn } from '../wikidataQueries.js';
+import { MAX_COMMEMORATED_SUBJECTS } from '@tyr/shared/commemorates';
 import {
   categoryTitles, fetchSubjectClaims, fetchSubjectKinds, MEMORIALS_CATEGORY, readCommemorates, STATUES_CATEGORY, subjectsOfPlace,
   type CommemorationWiki, type SubjectClaims, type SubjectKind,
@@ -74,6 +75,14 @@ describe('the steps of the reading', () => {
   it('takes a memorials category before the main subject, with no article where the item has none', () => {
     expect(subjectsOfPlace(claims({ mainSubjects: [PATEL], depicts: [PATEL] }), { memorials: [PATEL], statues: [] }, KINDS, ARTICLES))
       .toEqual({ via: 'memorials-category', subjects: [{ item: PATEL, label: 'Sardar Vallabhbhai Patel', articleUrl: null }] });
+  });
+
+  it('keeps at most as many subjects as a curator may save back', () => {
+    // Synthetic items: a war memorial naming its dead one by one.
+    const dead = Array.from({ length: MAX_COMMEMORATED_SUBJECTS + 10 }, (_, i) => `Q${900000001 + i}`);
+    const kinds = new Map(dead.map((item, i) => [item, { label: `Soldier ${i + 1}`, human: true, event: false }]));
+    const read = subjectsOfPlace(claims({ commemorates: dead }), NOTHING_FILED, kinds, ARTICLES);
+    expect(read?.subjects.map((subject) => subject.item)).toEqual(dead.slice(0, MAX_COMMEMORATED_SUBJECTS));
   });
 
   it('takes a main subject that is a person or an event', () => {

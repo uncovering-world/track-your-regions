@@ -249,8 +249,25 @@ export function normalizeStorableUrl(value: string): string {
   return isStorableHttpUrl(value) ? new URL(value).href : value;
 }
 
+/**
+ * Is this an English Wikipedia article, over TLS? The one link a subject a place
+ * commemorates may carry (#2144): what a curator's correction stores is what
+ * the run stores, Wikidata's English sitelink, so no other host, no other
+ * protocol and no page that is not under `/wiki/` is a subject's article. Read
+ * off the parser, as every rule here is, so `JAVASCRIPT:` or a tab inside the
+ * scheme is no article either.
+ */
+export function isEnglishWikipediaArticleUrl(value: string): boolean {
+  if (!isStorableHttpUrl(value)) return false;
+  const url = new URL(value);
+  return isHttpsUrl(url) && url.hostname === 'en.wikipedia.org' && url.port === ''
+    && url.username === '' && url.password === ''
+    && url.pathname.startsWith('/wiki/') && url.pathname.length > '/wiki/'.length;
+}
+
 /** What a field says when it refuses, said once so both layers say the same thing. */
 export const STORABLE_HTTP_URL_MESSAGE = 'URL must be an absolute http(s) URL';
 export const DISPLAYABLE_PICTURE_URL_MESSAGE =
   'Image URL must be a Wikimedia Commons picture file or an /images/ path on this site';
 export const PICTURE_FETCH_URL_MESSAGE = 'Only Wikimedia Commons URLs are allowed';
+export const ENGLISH_WIKIPEDIA_ARTICLE_MESSAGE = 'An article must be an https://en.wikipedia.org/wiki/ page';

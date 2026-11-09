@@ -391,6 +391,39 @@ describe('editExperience and the picture credit', () => {
   });
 });
 
+/** An admin's edit with this body, answered through the declared route. */
+function editWith(body: Record<string, unknown>) {
+  const res = makeRes();
+  return { res, done: answerRoute(patchEdit,
+    { params: { id: String(EXPERIENCE_ID) }, body, user: ADMIN } as never,
+    res as never,
+  ) };
+}
+
+/** The UPDATE the transaction sent, or a failed expectation. */
+function update(): [string, unknown[]] {
+  const call = mockClientQuery.mock.calls.find(
+    ([sql]) => typeof sql === 'string' && sql.includes('UPDATE experiences'),
+  ) as [string, unknown[]] | undefined;
+  expect(call, 'expected an UPDATE').toBeDefined();
+  return call!;
+}
+
+/** The `curated_fields` array of the UPDATE, parsed. */
+function updatedClaims(): string[] {
+  const [, params] = update();
+  return JSON.parse(String(params.find((v) => typeof v === 'string' && v.startsWith('[')))) as string[];
+}
+
+/** The `details` of the audit row, parsed. */
+function audited(): Record<string, { old: unknown; new: unknown }> {
+  const insert = mockClientQuery.mock.calls.find(
+    ([sql]) => typeof sql === 'string' && sql.includes('experience_curation_log'),
+  ) as [string, unknown[]] | undefined;
+  expect(insert, 'expected an experience_curation_log insert').toBeDefined();
+  return JSON.parse(String(insert![1][3])) as Record<string, { old: unknown; new: unknown }>;
+}
+
 describe('editExperience and an emptied field', () => {
   // The catalogue holds nothing as NULL and never as '': the manual create
   // writes `|| null`, the picture repair clears with `SET image_url = NULL`,
@@ -400,22 +433,6 @@ describe('editExperience and an emptied field', () => {
   // would put the source's value straight back (#696).
   const OLD_PICTURE = 'https://whc.unesco.org/document/109141';
 
-  function editWith(body: Record<string, unknown>) {
-    const res = makeRes();
-    return { res, done: answerRoute(patchEdit, 
-      { params: { id: String(EXPERIENCE_ID) }, body, user: ADMIN } as never,
-      res as never,
-    ) };
-  }
-
-  /** The UPDATE the transaction sent, or a failed expectation. */
-  function update(): [string, unknown[]] {
-    const call = mockClientQuery.mock.calls.find(
-      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE experiences'),
-    ) as [string, unknown[]] | undefined;
-    expect(call, 'expected an UPDATE').toBeDefined();
-    return call!;
-  }
 
   /** What the UPDATE stores in one column, read off its own SET clause. */
   function stored(column: string): unknown {
@@ -428,20 +445,6 @@ describe('editExperience and an emptied field', () => {
     return params[parseInt(sql.slice(at + marker.length), 10) - 1];
   }
 
-  /** The `curated_fields` array of the UPDATE, parsed. */
-  function claims(): string[] {
-    const [, params] = update();
-    return JSON.parse(String(params.find((v) => typeof v === 'string' && v.startsWith('[')))) as string[];
-  }
-
-  /** The `details` of the audit row, parsed. */
-  function audited(): Record<string, { old: unknown; new: unknown }> {
-    const insert = mockClientQuery.mock.calls.find(
-      ([sql]) => typeof sql === 'string' && sql.includes('experience_curation_log'),
-    ) as [string, unknown[]] | undefined;
-    expect(insert, 'expected an experience_curation_log insert').toBeDefined();
-    return JSON.parse(String(insert![1][3])) as Record<string, { old: unknown; new: unknown }>;
-  }
 
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('offline'); }));
@@ -455,7 +458,7 @@ describe('editExperience and an emptied field', () => {
 
     expect(res.status).not.toHaveBeenCalledWith(400);
     expect(stored('image_url')).toBeNull();
-    expect(claims()).toContain('image_url');
+    expect(updatedClaims()).toContain('image_url');
     expect(audited().image_url).toEqual({ old: OLD_PICTURE, new: null });
   });
 
@@ -482,7 +485,7 @@ describe('editExperience and an emptied field', () => {
     await editWith({ description: '', type: '' }).done;
 
     expect(stored('description')).toBeNull();
-    expect(claims()).toEqual(expect.arrayContaining(['description']));
+    expect(updatedClaims()).toEqual(expect.arrayContaining(['description']));
     // The type within the kind is the membership's (ADR-0084): written there,
     // claimed there, the place's own column untouched.
     const membership = mockClientQuery.mock.calls.find(
@@ -568,5 +571,53 @@ describe('editExperience when the row goes before the lock', () => {
     const sent = mockClientQuery.mock.calls.map(([sql]) => String(sql));
     expect(sent.some(sql => sql.includes('UPDATE experiences'))).toBe(false);
     expect(sent.some(sql => sql.includes('experience_curation_log'))).toBe(false);
+  });
+});
+
+describe('editExperience and whom a place commemorates (#2144)', () => {
+  // India Gate's statement names World War I (Q361) and, as a stray, one person
+  // a traveller would not know as its subject; the curator keeps the war and
+  // drops her. Dmitry Pozharsky (Q15756) stands in for the stray.
+  const WAR = { item: 'Q361', label: 'World War I', articleUrl: 'https://en.wikipedia.org/wiki/World_War_I' };
+  const STRAY = { item: 'Q15756', label: 'Dmitry Pozharsky', articleUrl: null };
+
+  /** The metadata patch the UPDATE merges, parsed. */
+  function patch(): Record<string, unknown> {
+    const [sql, params] = update();
+    const at = sql.indexOf("metadata = COALESCE(metadata, '{}'::jsonb) || $");
+    expect(at).toBeGreaterThan(-1);
+    const index = parseInt(sql.slice(at + "metadata = COALESCE(metadata, '{}'::jsonb) || $".length), 10);
+    return JSON.parse(String(params[index - 1])) as Record<string, unknown>;
+  }
+
+  it("stores the curator's list as theirs and claims it, so the next run keeps it", async () => {
+    const before = { via: 'commemorates', subjects: [WAR, STRAY] };
+    queueQueries({ lockedCurated: ['metadata.website'], lockedRow: { metadata: { commemorates: before } } });
+
+    const { res, done } = editWith({ commemorates: [WAR] });
+    await done;
+
+    expect(res.status).not.toHaveBeenCalledWith(400);
+    expect(patch()).toEqual({ commemorates: { via: 'curator', subjects: [WAR] } });
+    expect(updatedClaims()).toEqual(['metadata.website', 'metadata.commemorates']);
+    expect(audited()['metadata.commemorates']).toEqual({ old: before, new: { via: 'curator', subjects: [WAR] } });
+  });
+
+  it('stores a list emptied of everyone as an empty list, claimed, rather than as no value', async () => {
+    // A claim protects only a key the row carries (`claimedMetadataKeys`), so
+    // "nobody" has to be a value for a run to keep it.
+    queueQueries({ lockedCurated: [] });
+
+    await editWith({ commemorates: [] }).done;
+
+    expect(patch()).toEqual({ commemorates: { via: 'curator', subjects: [] } });
+    expect(updatedClaims()).toContain('metadata.commemorates');
+  });
+
+  it('refuses a subject whose article is not an English Wikipedia page, and writes nothing', async () => {
+    queueQueries({ lockedCurated: [] });
+
+    await expect(editWith({ commemorates: [{ ...WAR, articleUrl: 'javascript:alert(1)' }] }).done).rejects.toThrow();
+    expect(mockClientQuery.mock.calls.some(([sql]) => String(sql).includes('UPDATE experiences'))).toBe(false);
   });
 });

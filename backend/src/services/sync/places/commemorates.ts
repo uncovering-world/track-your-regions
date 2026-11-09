@@ -36,7 +36,7 @@
  * none (`wikipediaStructure.ts`).
  */
 
-import type { CommemoratedSubject, Commemorates, CommemorationStep } from '@tyr/shared/commemorates';
+import { MAX_COMMEMORATED_SUBJECTS, type CommemoratedSubject, type Commemorates, type CommemorationStep } from '@tyr/shared/commemorates';
 import { chunk, fetchEnglishArticles, values, type SparqlFn } from '../wikidataQueries.js';
 import {
   delay, extractQid, isQid, LABEL_LANGS, SPARQL_DELAY_MS, SPARQL_WAIT_BUDGET_MS, WaitBudget, waitMessage, WIKIDATA_USER_AGENT,
@@ -119,7 +119,8 @@ const human: Accepts = (kind) => kind.human;
 
 /**
  * The subjects of one place: the accepted values of the first step that
- * accepts any, with their labels and articles, or null where no step does.
+ * accepts any, with their labels and articles, at most
+ * `MAX_COMMEMORATED_SUBJECTS` of them, or null where no step does.
  */
 export function subjectsOfPlace(
   claims: SubjectClaims,
@@ -141,7 +142,7 @@ export function subjectsOfPlace(
       const kind = kinds.get(item);
       if (kind && accepts(kind)) subjects.push({ item, label: kind.label, articleUrl: articles.get(item) ?? null });
     }
-    if (subjects.length) return { via, subjects };
+    if (subjects.length) return { via, subjects: subjects.slice(0, MAX_COMMEMORATED_SUBJECTS) };
   }
   return null;
 }
