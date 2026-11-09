@@ -486,6 +486,11 @@ export async function fetchAdmissionPool(
 export interface EntityFacts {
   /** Every `P31`. */
   classes: string[];
+  /**
+   * The `P31`s a preferred class outranks, which `classes` does not hold:
+   * read only to tell a column that is also a statue (`NOT_SCULPTURE_BY_ITSELF`).
+   */
+  outrankedClasses: string[];
   /** `P276`, a statement carrying an end time dropped: where it stands today. */
   locations: string[];
   /** `P361`, a statement carrying an end time dropped: what it is part of today. */
@@ -509,7 +514,8 @@ export interface EntityFacts {
 }
 
 export const emptyFacts = (): EntityFacts => ({
-  classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [], genres: [],
+  classes: [], outrankedClasses: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [],
+  genres: [],
 });
 
 /** Add the entity a binding names, when the binding is present and names one. */
@@ -548,9 +554,11 @@ export async function fetchEntityFacts(
   // has left says nothing about where it is today — the Horses of Saint Mark
   // carry nine ended locations and one collection that stands.
   const rows = await sparql(`
-    SELECT ?e ?cls ?loc ?parent ?coll ?creator ?creatorLabel ?commemorates ?depicts ?genre ?religion WHERE {
+    SELECT ?e ?cls ?normalCls ?loc ?parent ?coll ?creator ?creatorLabel ?commemorates ?depicts ?genre ?religion WHERE {
       VALUES ?e { ${values(qids)} }
       { ?e wdt:P31 ?cls } UNION {
+        ?e p:P31 [ ps:P31 ?normalCls ; wikibase:rank wikibase:NormalRank ]
+      } UNION {
         ${standing('?e', 'P276', '?loc')}
       } UNION {
         ${standing('?e', 'P361', '?parent')}
@@ -575,6 +583,7 @@ export async function fetchEntityFacts(
     const facts = out.get(qid);
     if (!facts) continue;
     pushEntity(facts.classes, row.cls);
+    pushEntity(facts.outrankedClasses, row.normalCls);
     pushEntity(facts.locations, row.loc);
     pushEntity(facts.parents, row.parent);
     pushEntity(facts.collections, row.coll);
@@ -590,6 +599,10 @@ export async function fetchEntityFacts(
       if (!seen) { seen = new Set(); seenCreators.set(qid, seen); }
       addCreator(facts, seen, row);
     }
+  }
+  // A normal-rank class is outranked only where it is not one `wdt:` reads.
+  for (const facts of out.values()) {
+    facts.outrankedClasses = facts.outrankedClasses.filter((cls) => !facts.classes.includes(cls));
   }
   return out;
 }

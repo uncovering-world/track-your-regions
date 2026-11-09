@@ -18,6 +18,7 @@ import {
   BIBLICAL_FIGURE_CLASS,
   HERITAGE_MONUMENT_CLASSES,
   NATION_CLASSES,
+  NOT_SCULPTURE_BY_ITSELF,
   OBELISK_CLASSES,
   PERSON_CLASS,
   PUBLIC_ART_GENRE,
@@ -37,6 +38,8 @@ export type MonumentType = PlaceTypeOf<'monuments-and-memorials'>;
 /** What the rule reads of a candidate to decide its kind. */
 export interface KindFacts {
   classes: string[];
+  /** The `P31`s a preferred class outranks, where they were read (`EntityFacts.outrankedClasses`). */
+  outrankedClasses?: string[];
   /** `P547`, whom or what the candidate commemorates. */
   commemorates: string[];
   /** `P136`, the genre the candidate is filed under. */
@@ -84,7 +87,9 @@ export const formsOf = (e: KindFacts): string[] => [...e.classes, ...e.genres];
 
 /**
  * Public art: a sculpture, a statue, a fountain, a mural, a public clock with
- * a show (`PUBLIC_CLOCK_CLASSES`). A fountain before a sculpture, since the
+ * a show (`PUBLIC_CLOCK_CLASSES`), and a column that is no sculpture by itself
+ * but which Wikidata also types one below its preferred class: the Column of
+ * Marcus Aurelius is a victory column first and a statue at normal rank. A fountain before a sculpture, since the
  * Trevi Fountain is typed both and is visited as the fountain; street art
  * before either. A public clock is filed as a clock, before anything else it
  * is: the Zytglogge is a gate tower too (#2140).
@@ -94,7 +99,8 @@ export const PUBLIC_ART_RULE: KindRule = {
   noClass: 'no public-art class',
   unanswered: 'not an artwork',
   admits: (e, trees) => has(e.classes, trees.sculptural) || has(e.classes, trees.fountain)
-    || has(e.classes, PUBLIC_CLOCK_CLASSES),
+    || has(e.classes, PUBLIC_CLOCK_CLASSES)
+    || (has(e.classes, NOT_SCULPTURE_BY_ITSELF) && has(e.outrankedClasses ?? [], trees.sculptural)),
   answersVeto: (e, trees) => has(e.classes, trees.artwork),
   memorialLifts: false,
   types: PUBLIC_ART_TYPES,

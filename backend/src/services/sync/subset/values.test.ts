@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { articleUrl, bestStatements, pictureUrl, picturesOf, standingStatements, wktOf, yearOf } from './values.js';
+import { articleUrl, bestStatements, outrankedStatements, pictureUrl, picturesOf, standingStatements, wktOf, yearOf } from './values.js';
 
 /** The values the syncs compare, spelled as WDQS spells them (#1459); the expected spellings are WDQS's own, from the run cache. */
 
@@ -40,6 +40,16 @@ describe('values spelled as the live service spells them (#1459)', () => {
     expect(standingStatements([louvre, ended, deprecated])).toEqual([louvre]);
     const preferred = { id: 'd', value: 'Q1', rank: 'preferred' as const };
     expect(bestStatements([louvre, preferred])).toEqual([preferred]);
+  });
+
+  it('reads the normal-rank statements a preferred one outranks, which wdt: drops (#1918)', () => {
+    // The Column of Marcus Aurelius: a victory column by preference, a statue at normal rank.
+    const column = { id: 'a', value: 'Q1930585', rank: 'preferred' as const };
+    const statue = { id: 'b', value: 'Q179700' };
+    const deprecated = { id: 'c', value: 'Q90', rank: 'deprecated' as const };
+    expect(outrankedStatements([column, statue, deprecated])).toEqual([statue]);
+    expect(outrankedStatements([statue, deprecated])).toEqual([]);
+    expect(outrankedStatements(undefined)).toEqual([]);
   });
 
   it('reads every picture of the best statements, in the order the first is kept by (#1778)', () => {

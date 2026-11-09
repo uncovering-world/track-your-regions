@@ -133,7 +133,9 @@ export function publicArtSurroundings(rule: KindRule): SurroundingsKind<PublicAr
     // The kind's own classes: Public art's are the sculptural and fountain trees,
     // the public clocks and street art — not the heritage senses of "monument",
     // which its rule refuses by name; Monuments' are every admitting class,
-    // since a statue raised to a person is a monument.
+    // since a statue raised to a person is a monument. A victory column that
+    // is a statue only below its preferred class enters Public art by the world
+    // tier alone, such as the Column of Marcus Aurelius, which is world-tier.
     classesOf: (trees) => (rule === PUBLIC_ART_RULE
       ? new Set([...trees.sculptural, ...trees.fountain, ...Object.keys(PUBLIC_CLOCK_CLASSES), ...Object.keys(STREET_ART_CLASSES)])
       : trees.admitting),

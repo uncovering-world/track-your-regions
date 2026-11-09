@@ -20,6 +20,16 @@ export function bestStatements(statements: CompactStatement[] | undefined): Comp
   return preferred.length ? preferred : all.filter(statement => statement.rank === undefined);
 }
 
+/**
+ * The normal-rank statements a preferred one outranks, which `wdt:` does not
+ * read: still true of the item, only not its main value. The Column of Marcus
+ * Aurelius is a victory column by preference and a statue at normal rank.
+ */
+export function outrankedStatements(statements: CompactStatement[] | undefined): CompactStatement[] {
+  const all = statements ?? [];
+  return all.some(statement => statement.rank === 'preferred') ? all.filter(statement => statement.rank === undefined) : [];
+}
+
 /** A value Wikidata records as *no value*, which WDQS writes as no triple at all. */
 export function isNoValue(value: CompactValue): boolean {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && value.novalue === true;

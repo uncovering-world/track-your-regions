@@ -43,6 +43,8 @@ export interface PublicArtFacts {
   qid: string;
   /** Every `P31` the entity carries. */
   classes: string[];
+  /** The `P31`s a preferred class outranks (`EntityFacts.outrankedClasses`). */
+  outrankedClasses?: string[];
   containers: ContainerFact[];
   /**
    * Whose collection the entity is in (`P195`), with what each owner is.

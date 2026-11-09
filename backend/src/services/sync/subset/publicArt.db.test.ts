@@ -270,7 +270,8 @@ describe('Public Art read from the subset (#1459)', () => {
 
   it('reads where a work stands today, who made it, whom it depicts and its genre', async () => {
     expect((await fetchEntityFacts(door, [MONA_LISA])).get(MONA_LISA)).toEqual({
-      classes: [PAINTING], locations: [LOUVRE], parents: [], collections: [], creators: ['Leonardo da Vinci'],
+      classes: [PAINTING], outrankedClasses: [], locations: [LOUVRE], parents: [], collections: [],
+      creators: ['Leonardo da Vinci'],
       commemorates: [], depicts: [LISA_DEL_GIOCONDO], genres: [PORTRAIT],
     });
   });

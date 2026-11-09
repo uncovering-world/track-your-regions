@@ -124,7 +124,10 @@ export const HERITAGE_SENSE_CLASSES: Record<string, string> = {
 /**
  * The commemorative forms: structures a traveller stands in front of, raised
  * to remember, pinned because no closure the run follows reaches them — they
- * sit under `monument`, whose tree is not walked. Each is an artwork for the
+ * sit under `monument`, whose tree is not walked. The victory column is the
+ * exception: Wikidata files it under sculpture too, so the sculpture walk
+ * reaches it, and Public art does not admit by it (`NOT_SCULPTURE_BY_ITSELF`).
+ * Each is an artwork for the
  * veto rule — an obelisk inside a museum's grounds is still an obelisk, which
  * is how Monas in Jakarta (typed museum too) stays. `cross` (Q40843) is
  * labelled a geometrical figure, and it is the class the Millennium Cross in
@@ -200,6 +203,24 @@ export const COLUMN_CLASSES: Record<string, string> = {
   Q11741382: 'Holy Trinity column',
   Q26789694: 'plague column',
 };
+
+/**
+ * The commemorative forms Wikidata files under sculpture that are no artwork
+ * by themselves (#1918): a victory column is a subclass of sculpture, so its
+ * first hop would offer Nelson's Column, the Alexander Column and Pompey's
+ * Pillar to Public art beside the fountains. They stay Monuments & memorials'
+ * (`COMMEMORATIVE_FORMS`). A column Wikidata also types a sculpture or a
+ * statue keeps reaching Public art by that class, as a work of sculpture in
+ * its own right: the Colonne Vendôme and its reliefs, the Siegessäule's Victoria,
+ * and the Column of Marcus Aurelius, which Wikidata types a statue below its
+ * preferred victory column (`PUBLIC_ART_RULE` reads that outranked class); so
+ * does a Holy Trinity column, a column with statues (Olomouc, Vienna's
+ * Pestsäule), which is no victory column.
+ */
+export const NOT_SCULPTURE_BY_ITSELF: Record<string, string> = {
+  Q1930585: 'victory column',
+};
+
 export const OBELISK_CLASSES: Record<string, string> = {
   Q170980: 'obelisk',
 };
@@ -625,7 +646,10 @@ export const LOST_CLASSES: Record<string, string> = {
 };
 
 export interface PublicArtTrees {
-  /** The sculpture and statue closures and the pinned sculptural classes. */
+  /**
+   * The sculpture and statue closures and the pinned sculptural classes, less
+   * the forms that are no artwork by themselves (`NOT_SCULPTURE_BY_ITSELF`).
+   */
   sculptural: ReadonlySet<string>;
   /** The fountain closure: a Public art row carrying one is typed `fountain`. */
   fountain: ReadonlySet<string>;
@@ -667,6 +691,7 @@ export function buildTrees(fetched: {
   lost: Iterable<string>;
 }): PublicArtTrees {
   const sculptural = new Set([...fetched.sculptural, ...Object.keys(SCULPTURAL_CLASSES)]);
+  for (const form of Object.keys(NOT_SCULPTURE_BY_ITSELF)) sculptural.delete(form);
   const fountain = new Set(fetched.fountain);
   const artwork = new Set([...sculptural, ...fountain, ...Object.keys(PUBLIC_CLOCK_CLASSES), ...Object.keys(COMMEMORATIVE_FORMS)]);
   const commemorative = new Set([...fetched.commemorative, ...Object.keys(MEMORIAL_CLASSES)]);
