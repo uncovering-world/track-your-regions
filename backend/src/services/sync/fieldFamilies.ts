@@ -95,6 +95,8 @@ const KEPT_BY_EVERY_OTHER_FAMILY: Readonly<Record<SourceFamily, readonly string[
  */
 export const WRITTEN_BY_SOURCES: Readonly<Record<string, readonly number[]>> = {
   commemorates: PUBLIC_ART_SOURCES,
+  // The holy figure a religious work depicts, read with it (#2404).
+  depicts: PUBLIC_ART_SOURCES,
 };
 
 /** The keys of `WRITTEN_BY_SOURCES` the run of `sourceId` does not write and a writer of which admits the place. */

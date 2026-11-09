@@ -282,6 +282,20 @@ function countriesOf(landmark: WikidataLandmark, casts: readonly LandmarkCast[] 
 }
 
 /**
+ * Whom or what the place commemorates, and the holy figure a religious work
+ * depicts, each the place's own and shown on its card (#2144, #2404). Each is
+ * absent where the reading names nobody, which on Public art's and Monuments &
+ * memorials' runs proposes removing a value the place held; every other run
+ * keeps it (`WRITTEN_BY_SOURCES`).
+ */
+function readingFields(landmark: WikidataLandmark): Pick<WikidataLandmark, 'commemorates' | 'depicts'> {
+  return {
+    ...(landmark.commemorates ? { commemorates: landmark.commemorates } : {}),
+    ...(landmark.depicts ? { depicts: landmark.depicts } : {}),
+  };
+}
+
+/**
  * Upsert a landmark as an experience + experience_location, in the kind
  * `sourceId` fills.
  */
@@ -320,11 +334,7 @@ async function upsertLandmarkExperience(
     ...(landmark.wikipediaCategories ? { wikipediaCategories: landmark.wikipediaCategories } : {}),
     // The tier that admitted it, where it is not the world's (ADR-0171).
     ...(landmark.tier ? { tier: landmark.tier } : {}),
-    // Whom or what the place commemorates, the place's own and shown on its
-    // card (#2144). Absent where the reading names nobody, which on Public
-    // art's and Monuments & memorials' runs proposes removing a value the place
-    // held; every other run keeps it (`WRITTEN_BY_SOURCES`).
-    ...(landmark.commemorates ? { commemorates: landmark.commemorates } : {}),
+    ...readingFields(landmark),
     // `creator` is who made the sculpture; this is who photographed it. Two
     // different people, and only one of them has ever been named on the card.
     //
@@ -452,15 +462,17 @@ async function fetchLandmarkItems(
   await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX,
     classifier.gone);
   await classifier.retype?.(items, sparql);
-  // Whom or what each admitted place commemorates, once the kinds have decided
-  // (#2144): Public art's and Monuments & memorials' alone, whose writers
-  // `WRITTEN_BY_SOURCES` names. Every other kind keeps what the place holds.
+  // Whom or what each admitted place commemorates, and the holy figure a
+  // religious work depicts, once the kinds have decided (#2144, #2404): Public
+  // art's and Monuments & memorials' alone, whose writers `WRITTEN_BY_SOURCES`
+  // names. Every other kind keeps what the place holds.
   if (PUBLIC_ART_SOURCES.includes(sourceId)) {
     progress.statusMessage = 'Reading whom or what each place commemorates...';
-    const commemorated = await readCommemorates(items, sparql, await commemorationWiki(progress));
+    const readings = await readCommemorates(items, sparql, await commemorationWiki(progress));
     for (const item of items) {
-      const subjects = commemorated.get(item.qid);
-      if (subjects) item.commemorates = subjects;
+      const reading = readings.get(item.qid);
+      if (reading?.commemorates) item.commemorates = reading.commemorates;
+      if (reading?.depicts) item.depicts = reading.depicts;
     }
   }
   // What the admitted places hold, read before the first is written, so the

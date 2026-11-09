@@ -9,11 +9,22 @@
  * Horatio Nelson (Q83235), a lion (Q140), battle (Q178561) and the battles of
  * the Nile (Q243979), Cape St. Vincent (Q373401) and Trafalgar (Q171416); the
  * Brandenburg Gate (Q82425) is named after Brandenburg an der Havel (Q3931).
+ *
+ * What a religious work shows (#2404), from the same subset on 2026-11-09:
+ * Christ the Redeemer (Q79961) is about Jesus Christ (Q302); the Column of
+ * Marcus Aurelius (Q265384) is named after him (Q1430) and depicts Paul the
+ * Apostle (Q9200), whose statue has stood on it since 1589; the Holy Trinity
+ * Column in Olomouc (Q742362) is filed under *Statues of Jesus* and *Statues
+ * of the Virgin Mary*; the Plague Column in Vienna (Q688614) commemorates the
+ * Holy Trinity (Q37090) and the plague (Q133780); the Republic Monument in
+ * Istanbul (Q1143790) depicts Atatürk (Q5152), Aralov (Q2636506), Voroshilov
+ * (Q186185), Çakmak (Q328331) and İnönü (Q183297); the Statue of St.
+ * Wenceslas (Q3497632) commemorates and depicts him (Q196527).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../subset/commemorates.js', () => ({ subsetSubjectClaims: vi.fn(), subsetSubjectKinds: vi.fn() }));
+vi.mock('../subset/commemorates.js', async (actual) => ({ ...(await actual<object>()), subsetSubjectClaims: vi.fn(), subsetSubjectKinds: vi.fn() }));
 vi.mock('../subset/kit.js', async (actual) => ({ ...(await actual<object>()), subsetEnglishArticles: vi.fn() }));
 
 import { subsetSubjectClaims, subsetSubjectKinds } from '../subset/commemorates.js';
@@ -22,8 +33,8 @@ import { subsetOnlyDoor } from '../subset/reader.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { MAX_COMMEMORATED_SUBJECTS } from '@tyr/shared/commemorates';
 import {
-  categoryTitles, fetchSubjectClaims, fetchSubjectKinds, MEMORIALS_CATEGORY, readCommemorates, STATUES_CATEGORY, subjectsOfPlace,
-  type CommemorationWiki, type SubjectClaims, type SubjectKind,
+  categoryTitles, CONCERNING_CATEGORIES, fetchSubjectClaims, fetchSubjectKinds, MAX_DEDICATED_FIGURES, MEMORIALS_CATEGORY, readCommemorates,
+  namedInPlace, readingOfPlace, STATUES_CATEGORY, type CommemorationWiki, type FiledSubjects, type SubjectClaims, type SubjectKind,
 } from './commemorates.js';
 
 const LINCOLN_MEMORIAL = 'Q213559';
@@ -43,12 +54,24 @@ const CAPE_ST_VINCENT = 'Q373401';
 const TRAFALGAR = 'Q171416';
 const BRANDENBURG_GATE = 'Q82425';
 const BRANDENBURG_AN_DER_HAVEL = 'Q3931';
+const JESUS = 'Q302';
+const MARCUS_AURELIUS = 'Q1430';
+const PAUL = 'Q9200';
+const HOLY_TRINITY = 'Q37090';
+const PLAGUE = 'Q133780';
+const WENCESLAS = 'Q196527';
+const REPUBLIC_FOUNDERS = ['Q5152', 'Q2636506', 'Q186185', 'Q328331', 'Q183297'];
+const TREPTOW_MEMORIAL = 'Q48441';
+const WW2 = 'Q362';
+const BATTLE_OF_BERLIN = 'Q154182';
 
 const article = (title: string) => `https://en.wikipedia.org/wiki/${title}`;
 const claims = (over: Partial<SubjectClaims> = {}): SubjectClaims => ({ commemorates: [], mainSubjects: [], namedAfter: [], depicts: [], ...over });
-const person = (label: string): SubjectKind => ({ label, human: true, event: false });
-const event = (label: string): SubjectKind => ({ label, human: false, event: true });
-const thing = (label: string): SubjectKind => ({ label, human: false, event: false });
+const NOT: Omit<SubjectKind, 'label'> = { human: false, event: false, holy: false, war: false, conflict: false, span: null };
+const person = (label: string): SubjectKind => ({ ...NOT, label, human: true });
+const event = (label: string): SubjectKind => ({ ...NOT, label, event: true });
+const thing = (label: string): SubjectKind => ({ ...NOT, label });
+const holy = (label: string, human = true): SubjectKind => ({ ...NOT, label, human, holy: true });
 
 const KINDS = new Map<string, SubjectKind>([
   [LINCOLN, person('Abraham Lincoln')],
@@ -62,9 +85,23 @@ const KINDS = new Map<string, SubjectKind>([
   [CAPE_ST_VINCENT, event('Battle of Cape St. Vincent')],
   [TRAFALGAR, event('Battle of Trafalgar')],
   [BRANDENBURG_AN_DER_HAVEL, thing('Brandenburg an der Havel')],
+  [JESUS, holy('Jesus Christ')],
+  [MARCUS_AURELIUS, person('Marcus Aurelius')],
+  [PAUL, holy('Paul the Apostle')],
+  [HOLY_TRINITY, holy('Holy Trinity', false)],
+  [PLAGUE, event('plague')],
+  [WENCESLAS, holy('Saint Wenceslaus I, Duke of Bohemia')],
+  ...REPUBLIC_FOUNDERS.map((item, i) => [item, person(`Founder ${i + 1}`)] as const),
+  [WW2, { ...event('World War II'), war: true, conflict: true, span: { from: 19390901, to: 19450902 } }],
+  [BATTLE_OF_BERLIN, { ...event('Battle of Berlin'), conflict: true, span: { from: 19450416, to: 19450502 } }],
 ]);
 const ARTICLES = new Map([[LINCOLN, article('Abraham_Lincoln')], [NELSON, article('Horatio_Nelson,_1st_Viscount_Nelson')]]);
-const NOTHING_FILED = { memorials: [], statues: [] };
+const NOTHING_FILED: FiledSubjects = { memorials: [], concerning: [], statues: [], statueCategories: 0 };
+const filedAs = (over: Partial<FiledSubjects>): FiledSubjects => ({ ...NOTHING_FILED, ...over });
+
+/** Whom the place commemorates, as the card's "Commemorates" line names them. */
+const subjectsOfPlace = (c: SubjectClaims, f: FiledSubjects, k: ReadonlyMap<string, SubjectKind>, a: ReadonlyMap<string, string>) =>
+  readingOfPlace(c, f, k, a).commemorates;
 
 describe('the steps of the reading', () => {
   it('takes every item Wikidata says the place commemorates first, whatever else it names', () => {
@@ -73,14 +110,14 @@ describe('the steps of the reading', () => {
   });
 
   it('takes a memorials category before the main subject, with no article where the item has none', () => {
-    expect(subjectsOfPlace(claims({ mainSubjects: [PATEL], depicts: [PATEL] }), { memorials: [PATEL], statues: [] }, KINDS, ARTICLES))
+    expect(subjectsOfPlace(claims({ mainSubjects: [PATEL], depicts: [PATEL] }), filedAs({ memorials: [PATEL] }), KINDS, ARTICLES))
       .toEqual({ via: 'memorials-category', subjects: [{ item: PATEL, label: 'Sardar Vallabhbhai Patel', articleUrl: null }] });
   });
 
   it('keeps at most as many subjects as a curator may save back', () => {
     // Synthetic items: a war memorial naming its dead one by one.
     const dead = Array.from({ length: MAX_COMMEMORATED_SUBJECTS + 10 }, (_, i) => `Q${900000001 + i}`);
-    const kinds = new Map(dead.map((item, i) => [item, { label: `Soldier ${i + 1}`, human: true, event: false }]));
+    const kinds = new Map(dead.map((item, i) => [item, person(`Soldier ${i + 1}`)]));
     const read = subjectsOfPlace(claims({ commemorates: dead }), NOTHING_FILED, kinds, ARTICLES);
     expect(read?.subjects.map((subject) => subject.item)).toEqual(dead.slice(0, MAX_COMMEMORATED_SUBJECTS));
   });
@@ -97,7 +134,7 @@ describe('the steps of the reading', () => {
   });
 
   it('takes a statues category before what is depicted', () => {
-    expect(subjectsOfPlace(claims({ depicts: [NELSON] }), { memorials: [], statues: [LINCOLN] }, KINDS, ARTICLES)?.via).toBe('statues-category');
+    expect(subjectsOfPlace(claims({ depicts: [NELSON] }), filedAs({ statues: [LINCOLN], statueCategories: 1 }), KINDS, ARTICLES)?.via).toBe('statues-category');
   });
 
   it('takes only the people a column depicts, not its lions or the battles on its plinth', () => {
@@ -113,12 +150,86 @@ describe('the steps of the reading', () => {
   });
 });
 
+describe('what a work shows (#2404)', () => {
+  it('reads a holy figure a statue is about as what it depicts, never as whom it commemorates', () => {
+    expect(readingOfPlace(claims({ mainSubjects: [JESUS] }), NOTHING_FILED, KINDS, ARTICLES)).toEqual({
+      commemorates: null,
+      depicts: { via: 'main-subject', subjects: [{ item: JESUS, label: 'Jesus Christ', articleUrl: null }] },
+    });
+  });
+
+  it('takes a holy figure that is no person as a main subject, where a dedication would take only a person or an event', () => {
+    const guanYin = 'Q715162';
+    const kinds = new Map([...KINDS, [guanYin, holy('Guan Yin', false)]]);
+    expect(readingOfPlace(claims({ mainSubjects: [guanYin] }), NOTHING_FILED, kinds, ARTICLES).depicts?.subjects.map((s) => s.item))
+      .toEqual([guanYin]);
+  });
+
+  it('reads the dedication and the figure on top side by side, and leaves a statement naming a holy figure a dedication', () => {
+    const column = readingOfPlace(claims({ namedAfter: [MARCUS_AURELIUS], depicts: [PAUL] }), NOTHING_FILED, KINDS, ARTICLES);
+    expect([column.commemorates?.via, column.commemorates?.subjects.map((s) => s.item)]).toEqual(['named-after', [MARCUS_AURELIUS]]);
+    expect([column.depicts?.via, column.depicts?.subjects.map((s) => s.item)]).toEqual(['depicts', [PAUL]]);
+    const plagueColumn = readingOfPlace(claims({ commemorates: [HOLY_TRINITY, PLAGUE] }), NOTHING_FILED, KINDS, ARTICLES);
+    expect(plagueColumn.commemorates?.subjects.map((s) => s.item)).toEqual([HOLY_TRINITY, PLAGUE]);
+    expect(plagueColumn.depicts).toBeNull();
+  });
+
+  it('does not say twice a figure the dedication already names', () => {
+    const statue = readingOfPlace(claims({ commemorates: [WENCESLAS], depicts: [WENCESLAS] }), NOTHING_FILED, KINDS, ARTICLES);
+    expect(statue.commemorates?.subjects.map((s) => s.item)).toEqual([WENCESLAS]);
+    expect(statue.depicts).toBeNull();
+  });
+
+  it('reads nothing off the statues categories of a group, not even the holy figure among them', () => {
+    // Olomouc: Statues of Jesus and Statues of the Virgin Mary, the second a title the copy resolves to nothing.
+    const olomouc = readingOfPlace(claims(), filedAs({ statues: [JESUS], statueCategories: 2 }), KINDS, ARTICLES);
+    expect(olomouc).toEqual({ commemorates: null, depicts: null });
+    expect(subjectsOfPlace(claims(), filedAs({ statues: [LINCOLN, NELSON], statueCategories: 2 }), KINDS, ARTICLES)).toBeNull();
+  });
+
+  it(`reads of a scene of more than ${MAX_DEDICATED_FIGURES} people only whom the place is named for, and all of four`, () => {
+    // The Republic Monument names none of its five founders; a monument named for the first is his.
+    expect(subjectsOfPlace(claims({ depicts: REPUBLIC_FOUNDERS }), NOTHING_FILED, KINDS, ARTICLES)).toBeNull();
+    expect(readingOfPlace(claims({ depicts: REPUBLIC_FOUNDERS }), NOTHING_FILED, KINDS, ARTICLES, 'Republic Monument').commemorates).toBeNull();
+    expect(readingOfPlace(claims({ depicts: REPUBLIC_FOUNDERS }), NOTHING_FILED, KINDS, ARTICLES, 'Founder Monument')
+      .commemorates?.subjects.map((s) => s.item)).toEqual(REPUBLIC_FOUNDERS);
+    expect(subjectsOfPlace(claims({ depicts: REPUBLIC_FOUNDERS.slice(0, MAX_DEDICATED_FIGURES) }), NOTHING_FILED, KINDS, ARTICLES)?.subjects)
+      .toHaveLength(MAX_DEDICATED_FIGURES);
+  });
+});
+
+describe('whom of a scene a place is named for', () => {
+  it('reads a depicted person by a name of four letters or more the place carries, whatever its case', () => {
+    // The Luther Monument in Worms (Q1877884) depicts Martin Luther (Q9554) and Jan Hus (Q43977) among seven others.
+    const luther = { item: 'Q9554', label: 'Martin Luther', articleUrl: null };
+    const hus = { item: 'Q43977', label: 'Jan Hus', articleUrl: null };
+    expect(namedInPlace([luther, hus], 'Luther monument Worms')).toEqual([luther]);
+    expect(namedInPlace([luther, hus], 'Reformation Monument')).toEqual([]);
+    expect(namedInPlace([luther, hus], undefined)).toEqual([]);
+  });
+});
+
 describe('the categories that name a subject', () => {
   it('reads X off the memorials and statues categories, a leading the dropped', () => {
     const filed = ['Memorials to Vallabhbhai Patel', 'Monuments and memorials to Horatio Nelson', 'Monuments to the Holocaust',
       'Monuments and memorials in London', 'Statues of Miguel de Cervantes'];
     expect(categoryTitles(filed, MEMORIALS_CATEGORY)).toEqual(['Vallabhbhai Patel', 'Horatio Nelson', 'Holocaust']);
     expect(categoryTitles(filed, STATUES_CATEGORY)).toEqual(['Miguel de Cervantes']);
+  });
+
+  it('reads X off the categories of what a memorial concerns, a class among them that the reading then takes for nobody', () => {
+    const filed = ['Monuments and memorials related to Napoleonic Wars', 'Warsaw Uprising monuments and memorials',
+      'World War I memorials in New Zealand', 'Military monuments and memorials', 'Monuments and memorials in Warsaw'];
+    expect([...new Set(CONCERNING_CATEGORIES.flatMap((pattern) => categoryTitles(filed, pattern)))])
+      .toEqual(['Napoleonic Wars', 'Warsaw Uprising', 'Military', 'World War I']);
+  });
+
+  it('takes a category of what a memorial concerns only where it names a person or an event', () => {
+    const military = 'Q8473';
+    const kinds = new Map([...KINDS, [military, thing('military')]]);
+    expect(subjectsOfPlace(claims(), filedAs({ concerning: [military] }), kinds, ARTICLES)).toBeNull();
+    expect(subjectsOfPlace(claims(), filedAs({ concerning: [military, TRAFALGAR] }), kinds, ARTICLES)?.subjects.map((s) => s.item))
+      .toEqual([TRAFALGAR]);
   });
 
   it('reads no class of people English Wikipedia writes with a small letter', () => {
@@ -131,6 +242,7 @@ describe('reading the places of a run', () => {
   const wiki = (categories: Record<string, string[]>, items: Record<string, string>): CommemorationWiki => ({
     categories: vi.fn(async (titles: string[]) => new Map(titles.map((t) => [t, categories[t] ?? []]))),
     articleItems: vi.fn(async (titles: string[]) => new Map(titles.flatMap((t) => (items[t] ? [[t, items[t]] as const] : [])))),
+    leads: vi.fn(async () => new Map<string, string>()),
   });
 
   beforeEach(() => {
@@ -142,6 +254,7 @@ describe('reading the places of a run', () => {
       [ALEXANDER_COLUMN, claims({ namedAfter: [ALEXANDER_I] })],
       [NELSONS_COLUMN, claims({ depicts: [NELSON, LION, BATTLE, NILE, CAPE_ST_VINCENT, TRAFALGAR] })],
       [BRANDENBURG_GATE, claims({ namedAfter: [BRANDENBURG_AN_DER_HAVEL] })],
+      [TREPTOW_MEMORIAL, claims({ commemorates: [WW2] })],
     ]));
     vi.mocked(subsetSubjectKinds).mockImplementation(async (ids) => new Map(ids.flatMap((id) => (KINDS.has(id) ? [[id, KINDS.get(id)!] as const] : []))));
     vi.mocked(subsetEnglishArticles).mockImplementation(async (ids) => new Map(ids.flatMap((id) => (ARTICLES.has(id) ? [[id, ARTICLES.get(id)!] as const] : []))));
@@ -161,7 +274,7 @@ describe('reading the places of a run', () => {
       { 'Statue of Unity': ['Memorials to Vallabhbhai Patel'], "Nelson's Column": ['Monuments and memorials to Horatio Nelson'] },
       { 'Vallabhbhai Patel': PATEL },
     );
-    const found = await readCommemorates(places, subsetOnlyDoor(), read);
+    const found = new Map([...await readCommemorates(places, subsetOnlyDoor(), read)].map(([qid, reading]) => [qid, reading.commemorates!]));
     expect(Object.fromEntries([...found].map(([qid, value]) => [qid, [value.via, value.subjects.map((s) => s.item)]]))).toEqual({
       [LINCOLN_MEMORIAL]: ['commemorates', [LINCOLN]],
       [STATUE_OF_UNITY]: ['memorials-category', [PATEL]],
@@ -170,14 +283,31 @@ describe('reading the places of a run', () => {
       [NELSONS_COLUMN]: ['depicts', [NELSON]],
     });
     expect(read.articleItems).toHaveBeenCalledWith(['Vallabhbhai Patel', 'Horatio Nelson']);
+    // No reading names a war, so no lead is asked for.
+    expect(read.leads).not.toHaveBeenCalled();
     // Patel's article is the one his category's title resolved to, where Wikidata's sitelink is not read.
     expect(found.get(STATUE_OF_UNITY)?.subjects[0].articleUrl).toBe(article('Vallabhbhai_Patel'));
+  });
+
+  it('narrows a war to the battle the lead of the place says it commemorates', async () => {
+    const read = wiki({}, { 'Battle of Berlin': BATTLE_OF_BERLIN });
+    vi.mocked(read.leads).mockResolvedValue(new Map([['Soviet War Memorial (Treptower Park)',
+      'The memorial commemorates the soldiers who fell in the [[Battle of Berlin]].']]));
+    const found = await readCommemorates([
+      { qid: TREPTOW_MEMORIAL, articleUrl: article('Soviet_War_Memorial_(Treptower_Park)') },
+      { qid: LINCOLN_MEMORIAL, articleUrl: article('Lincoln_Memorial') },
+    ], subsetOnlyDoor(), read);
+    expect(read.leads).toHaveBeenCalledWith(['Soviet War Memorial (Treptower Park)']);
+    expect(found.get(TREPTOW_MEMORIAL)?.commemorates).toEqual({
+      via: 'war-narrowed-by-lead', subjects: [{ item: BATTLE_OF_BERLIN, label: 'Battle of Berlin', articleUrl: article('Battle_of_Berlin') }],
+    });
+    expect(found.get(LINCOLN_MEMORIAL)?.commemorates?.via).toBe('commemorates');
   });
 
   it('asks no category of a place with no English article', async () => {
     const read = wiki({}, {});
     const found = await readCommemorates([{ qid: HERMANNSDENKMAL, articleUrl: null }], subsetOnlyDoor(), read);
-    expect(found.get(HERMANNSDENKMAL)?.via).toBe('main-subject');
+    expect(found.get(HERMANNSDENKMAL)?.commemorates?.via).toBe('main-subject');
     expect(read.categories).toHaveBeenCalledWith([]);
     expect(read.articleItems).not.toHaveBeenCalled();
   });
@@ -212,8 +342,20 @@ describe('the live twins', () => {
     ]);
     const answer = await fetchSubjectKinds(sparql, [NELSON, TRAFALGAR, LION, 'Q999999999']);
     expect(answer.get(NELSON)).toEqual(person('Horatio Nelson'));
+    expect(sparql.mock.calls[0][0]).toContain('wdt:P411');
     expect(answer.get(TRAFALGAR)).toEqual(event('Battle of Trafalgar'));
     expect(answer.get(LION)).toEqual(thing('lion'));
     expect(answer.has('Q999999999')).toBe(false);
+  });
+
+  it('read a holy figure, a war and its span', async () => {
+    const sparql = vi.fn<SparqlFn>(async () => [
+      { v: entity(JESUS), vLabel: { value: 'Jesus Christ' }, human: { value: 'true' }, holy: { value: 'true' } },
+      { v: entity(WW2), vLabel: { value: 'World War II' }, event: { value: 'true' }, war: { value: 'true' }, conflict: { value: 'true' },
+        start: { value: '1939-09-01T00:00:00Z' }, end: { value: '1945-09-02T00:00:00Z' } },
+    ]);
+    const answer = await fetchSubjectKinds(sparql, [JESUS, WW2]);
+    expect(answer.get(JESUS)).toEqual(holy('Jesus Christ'));
+    expect(answer.get(WW2)).toEqual(KINDS.get(WW2));
   });
 });
