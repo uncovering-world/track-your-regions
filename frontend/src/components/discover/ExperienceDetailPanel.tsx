@@ -314,8 +314,10 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
           </Typography>
         )}
 
-        {/* Whom or what it commemorates, the line Map mode's card carries too (#2144). */}
+        {/* Whom or what it commemorates, and the holy figure a religious work
+            depicts: the lines Map mode's card carries too (#2144, #2404). */}
         <CommemoratesLine subjects={details?.commemorates} mb={2} />
+        <CommemoratesLine subjects={details?.depicts} word="Depicts" mb={2} />
 
         {/* The same line Map mode's card carries: one place described two ways
             is two claims about one thing (#731's rule, one level up). */}

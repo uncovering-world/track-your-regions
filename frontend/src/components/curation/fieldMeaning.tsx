@@ -28,7 +28,7 @@ import type { ReactNode } from 'react';
 import { Chip, Link, Stack, Tooltip } from '@mui/material';
 import { isEmptyValue } from '@tyr/shared/equality';
 import { placeFieldUnseen } from '@tyr/shared/placeFields';
-import { commemoratesOf, type CommemorationVia } from '@tyr/shared/commemorates';
+import { commemoratesOf, depictsOf, type CommemorationVia } from '@tyr/shared/commemorates';
 import type { ImageCredit } from '../../api/experiences';
 import type { ChangedField } from '../../api/reviewQueue';
 import { parseCriteria } from '../../utils/unescoCriteria';
@@ -300,20 +300,29 @@ function qidLabel(value: unknown): ReactNode {
  */
 const COMMEMORATION_SOURCE: Readonly<Record<CommemorationVia, string>> = {
   'commemorates': 'Read from Wikidata’s “commemorates” statement',
-  'memorials-category': 'Read from English Wikipedia’s “Monuments and memorials to …” category of the place’s article',
-  'main-subject': 'Read from Wikidata’s “main subject”, a person or an event',
+  'memorials-category': 'Read from English Wikipedia’s “Monuments and memorials to …” category of the place’s article, or a category of what a memorial concerns (“… related to X”, “X monuments and memorials”, “X memorials in …”), there a person or an event',
+  'main-subject': 'Read from Wikidata’s “main subject”: a person or an event, or a holy figure a religious work shows',
   'named-after': 'Read from Wikidata’s “named after”, a person or an event',
   'statues-category': 'Read from English Wikipedia’s “Statues of …” category of the place’s article',
   'depicts': 'Read from Wikidata’s “depicts”, a person the work shows',
+  'war-narrowed-by-lead': 'Read as a war, narrowed to the battle or campaign the lead of the place’s English Wikipedia article links where it says what the place commemorates',
   'curator': 'Listed by a curator',
 };
 
 /** The subjects as the card's line names them: each linked to its article where it has one. */
 function commemoratesLabel(value: unknown): ReactNode {
-  const stored = commemoratesOf(value);
   // A curator's empty list is their word that the place commemorates nobody.
-  if (!stored?.subjects.length) return 'nobody named';
-  return stored.subjects.map((subject, i) => {
+  return subjectsLabel(commemoratesOf(value)?.subjects) ?? 'nobody named';
+}
+
+/** The holy figures a religious work depicts, as its card's "Depicts" line names them (#2404). */
+function depictsLabel(value: unknown): ReactNode {
+  return subjectsLabel(depictsOf(value)?.subjects) ?? 'no figure named';
+}
+
+function subjectsLabel(subjects: readonly { item: string; label: string; articleUrl: string | null }[] | undefined): ReactNode {
+  if (!subjects?.length) return null;
+  return subjects.map((subject, i) => {
     const href = safeHref(subject.articleUrl);
     return (
       <span key={subject.item}>
@@ -326,7 +335,16 @@ function commemoratesLabel(value: unknown): ReactNode {
 
 /** Who a proposal adds and drops, and where the proposed names were read. */
 function describeCommemorates(before: unknown, after: unknown): string | null {
-  const [was, is] = [commemoratesOf(before), commemoratesOf(after)];
+  return describeSubjects(commemoratesOf(before), commemoratesOf(after));
+}
+
+/** Which figures a proposal adds and drops, and where they were read. */
+function describeDepicts(before: unknown, after: unknown): string | null {
+  return describeSubjects(depictsOf(before), depictsOf(after));
+}
+
+function describeSubjects(was: { via: CommemorationVia; subjects: { item: string; label: string }[] } | null,
+  is: typeof was): string | null {
   const names = (value: typeof was, others: typeof was) => (value?.subjects ?? [])
     .filter(subject => !(others?.subjects ?? []).some(other => other.item === subject.item)).map(subject => subject.label);
   const added = names(is, was);
@@ -624,6 +642,13 @@ const MEANINGS: Record<string, FieldMeaning> = {
     whenItChanges: 'A name added or dropped on Wikidata or in a category. Check each name against the place: a namesake can be the pope who paid for a fountain rather than whom it honours, and a statue can show someone it was not raised to.',
     render: commemoratesLabel,
     describeChange: describeCommemorates,
+  },
+  'metadata.depicts': {
+    label: 'depicts',
+    what: 'The holy figure a religious work shows: the line “Depicts: …” on its card. Christ the Redeemer depicts Jesus Christ and the Tian Tan Buddha the Buddha; neither is said to commemorate them. Read where Wikidata’s main subject, a “Statues of …” category or Wikidata’s “depicts” names a deity or a canonised person.',
+    whenItChanges: 'A figure added or dropped on Wikidata or in a category. Check it is the figure the work shows, rather than a patron saint the place is only named after.',
+    render: depictsLabel,
+    describeChange: describeDepicts,
   },
   'metadata.wikipediaUrl': {
     label: 'Wikipedia',

@@ -345,8 +345,10 @@ function ExperienceExpandedDetailsComponent({
         </Typography>
       )}
 
-      {/* Whom or what it commemorates (#2144), from the same detail read. */}
+      {/* Whom or what it commemorates (#2144), and the holy figure a religious
+          work depicts (#2404), from the same detail read. */}
       <CommemoratesLine subjects={details?.commemorates} />
+      <CommemoratesLine subjects={details?.depicts} word="Depicts" />
 
       {/* How much ground it covers, and whose map says so (ADR-0059). Rendered
           from the detail read the card already issues. */}

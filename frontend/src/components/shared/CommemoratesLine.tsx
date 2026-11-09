@@ -1,7 +1,9 @@
 /**
  * Whom or what a place commemorates, on its card (#2144): "Commemorates:
  * Abraham Lincoln" on the Lincoln Memorial, "Commemorates: Dmitry Pozharsky,
- * Kuzma Minin" on their monument in Red Square.
+ * Kuzma Minin" on their monument in Red Square. The same line names the holy
+ * figure a religious work depicts under its own word (#2404): "Depicts: Jesus
+ * Christ" on Christ the Redeemer, which was not raised to remember him.
  *
  * One line for Map mode's expanded row and Discover's detail panel, so a place
  * says the same thing on both. Each subject is a link to its English Wikipedia
@@ -15,11 +17,16 @@ import { Link, Typography } from '@mui/material';
 import type { CommemoratedSubject } from '../../api/experiences';
 import { safeHref } from '../../utils/safeHref';
 
-export function CommemoratesLine({ subjects, mb = 1.5 }: { subjects: readonly CommemoratedSubject[] | null | undefined; mb?: number }) {
+export function CommemoratesLine({ subjects, mb = 1.5, word = 'Commemorates' }: {
+  subjects: readonly CommemoratedSubject[] | null | undefined;
+  mb?: number;
+  /** What the line says the place does with them. */
+  word?: 'Commemorates' | 'Depicts';
+}) {
   if (!subjects?.length) return null;
   return (
     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb }}>
-      {'Commemorates: '}
+      {`${word}: `}
       {subjects.map((subject, i) => {
         const href = safeHref(subject.article_url);
         return (

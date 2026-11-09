@@ -7,6 +7,13 @@ const POZHARSKY = { qid: 'Q15756', label: 'Dmitry Pozharsky', article_url: 'http
 const MININ = { qid: 'Q469785', label: 'Kuzma Minin', article_url: null };
 
 describe('CommemoratesLine', () => {
+  it('says what a religious work depicts under its own word (#2404)', () => {
+    // Christ the Redeemer (Q79961) depicts Jesus Christ (Q302).
+    render(<CommemoratesLine subjects={[{ qid: 'Q302', label: 'Jesus Christ', article_url: 'https://en.wikipedia.org/wiki/Jesus' }]} word="Depicts" />);
+    expect(screen.getByText(/^Depicts:/).textContent).toBe('Depicts: Jesus Christ');
+    expect(screen.queryByText(/Commemorates/)).toBeNull();
+  });
+
   it('names each subject, linked to its article where it has one and by name alone where it has none', () => {
     render(<CommemoratesLine subjects={[POZHARSKY, MININ]} />);
     expect(screen.getByText(/^Commemorates:/).textContent).toBe('Commemorates: Dmitry Pozharsky, Kuzma Minin');
