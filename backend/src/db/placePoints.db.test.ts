@@ -553,20 +553,17 @@ describe("a part's point with no picture of its own (#1946)", () => {
     expect(own.locations.find(l => l.id === karnakPoint)?.image_url).toBe(CHURCH);
   });
 
-  it("reads a part's picture off its row, never one left on its point (ADR-0156)", async () => {
-    const stale = 'http://commons.wikimedia.org/wiki/Special:FilePath/Karnak%20pylon%20fixture.jpg';
+  it("reads a part's picture off its row (ADR-0156)", async () => {
     await pool.query(
       `UPDATE experiences SET image_url = $2, metadata = jsonb_build_object('imageCredit', $3::jsonb) WHERE id = $1`,
       [KARNAK, CHURCH, JSON.stringify(CHURCH_CREDIT)],
     );
-    await pool.query('UPDATE experience_locations SET image_url = $2 WHERE id = $1', [karnakPoint, stale]);
 
     expect(await picturesOf(karnakPoint)).toEqual(Array(3).fill({ image_url: CHURCH, image_credit: CHURCH_CREDIT }));
   });
 });
 
 describe("a part's own article (#1963)", () => {
-  const TEMPLE = 'https://en.wikipedia.org/wiki/Karnak_fixture';
   const PLACE_ARTICLE = 'https://en.wikipedia.org/wiki/Karnak_place_fixture';
 
   /** The point's article on the object's own read and on both shapes of the region batch. */
@@ -584,15 +581,12 @@ describe("a part's own article (#1963)", () => {
     return reads.map(l => l?.wikipedia_url);
   }
 
-  it("reads a part's article off its row, never one left on its point, and never the site's (ADR-0156)", async () => {
+  it("reads a part's article off its row, and never the site's (ADR-0156)", async () => {
     // The site's own article is the whole's, and no part shows it.
     await pool.query(`UPDATE experiences SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('wikipediaUrl', 'https://en.wikipedia.org/wiki/Thebes') WHERE id = $1`, [SITE]);
     await pool.query(`UPDATE experiences SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('wikipediaUrl', $2::text) WHERE id = $1`, [KARNAK, PLACE_ARTICLE]);
     expect(await articlesOf(karnakPoint)).toEqual(Array(3).fill(PLACE_ARTICLE));
     expect(await articlesOf(luxorPoint)).toEqual(Array(3).fill(null));
-
-    await pool.query(`UPDATE experience_locations SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('wikipediaUrl', $2::text) WHERE id = $1`, [karnakPoint, TEMPLE]);
-    expect(await articlesOf(karnakPoint)).toEqual(Array(3).fill(PLACE_ARTICLE));
   });
 });
 

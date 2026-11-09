@@ -1,8 +1,11 @@
 /**
- * A curator's correction to one point: what it is called, where it is, its own
- * picture and its description (#1270). A serial site's part keeps its picture
- * and its line under the name on its own row, as its subtitle (ADR-0156
- * decision 3): correcting its point writes them there, with the claims.
+ * A curator's correction to one point: what it is called and where it is, and
+ * on a serial site's part its picture and its description (#1270). A part
+ * keeps its picture and its line under the name on its own row, as its
+ * subtitle (ADR-0156 decision 3): correcting its point writes them there, with
+ * the claims. A point of any other place holds no picture or text of its own,
+ * which its place holds (#2117), so an edit that gives it one is refused and
+ * the place is edited instead.
  *
  * The gate's third answer. Holding a coordinate for review while offering only
  * "take the source's point" and "keep the source's point" leaves a curator who
@@ -20,7 +23,7 @@ import type { PoolClient } from 'pg';
 import type { z } from 'zod/v4';
 import type { LocationEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { createError, notFound } from '../../middleware/errorHandler.js';
+import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
 import type { editLocationBodySchema, locationIdParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
@@ -33,8 +36,8 @@ import { answeringPlaceSql, pointOfPartSql } from '../../db/placePoints.js';
 import { placeOfferedSql } from '../../db/membership.js';
 import { writePartFields, type PartWrite } from '../../db/partFieldsWriter.js';
 
-/** What a curator may claim on a point — see `db/migrations/027`, and #1270 for the picture and description. */
-type Claim = 'name' | 'location' | 'image_url' | 'description';
+/** What a curator may claim on a point — see `db/migrations/027`; a part's picture and text are claimed on the part. */
+type Claim = 'name' | 'location';
 
 /** The claims this edit adds, kept in the order the column already holds. */
 function withClaims(stored: string[], added: Claim[]): string[] {
@@ -51,13 +54,11 @@ interface PointEdit {
   text: string | null | undefined;
 }
 
-/** The claims one edit takes, one per field it changes. */
-function claimsOf(edit: PointEdit): Claim[] {
+/** The claims one edit takes on the point, one per field of the point it changes. */
+function claimsOf(edit: Pick<PointEdit, 'name' | 'move'>): Claim[] {
   const claims: Claim[] = [];
   if (edit.name !== undefined) claims.push('name');
   if (edit.move) claims.push('location');
-  if (edit.picture !== undefined) claims.push('image_url');
-  if (edit.text !== undefined) claims.push('description');
   return claims;
 }
 
@@ -84,6 +85,16 @@ function partWriteOf(pointId: number, edit: PointEdit, credit: ImageCredit | nul
 }
 
 /**
+ * Refuse a picture or a text for a point that is no serial site's part: it
+ * holds none of its own, which its place holds (#2117).
+ */
+function refuseOwnContent(edit: PointEdit): void {
+  if (edit.picture !== undefined || edit.text !== undefined) {
+    throw badRequest('This point holds no picture or description of its own: they are its place\'s, edited on the place');
+  }
+}
+
+/**
  * A curator's correction of a serial site's part's point: the coordinate on
  * the point, the picture and text on the part (ADR-0156 decision 3), and the
  * name on the part where the point is called by it. A part shown in a kind of
@@ -107,7 +118,7 @@ async function correctPartPoint(
   await correctPoint(client, lock, locationId, {
     name: pointName ?? null, movesPoint: edit.move !== undefined,
     longitude: edit.move?.lon ?? null, latitude: edit.move?.lat ?? null,
-    curatedFields: withClaims(kept, claimsOf({ name: pointName, move: edit.move, picture: undefined, text: undefined })),
+    curatedFields: withClaims(kept, claimsOf({ name: pointName, move: edit.move })),
   });
   await writePartFields(client, lock, [partWriteOf(locationId, { ...edit, name: before.names_part ? edit.name : undefined }, credit)]);
 }
@@ -120,14 +131,15 @@ async function correctPartPoint(
  * touched it.
  */
 function editDetails(
-  before: { name: string | null; lon: number; lat: number; image_url: string | null; description: string | null; of_part: boolean },
+  before: { name: string | null; lon: number; lat: number; image_url: string | null; description: string | null },
   edit: PointEdit,
 ): Record<string, unknown> {
   return {
     ...(edit.name === undefined ? {} : { name: { old: before.name, new: edit.name } }),
     ...(edit.move ? { location: { old: { lon: before.lon, lat: before.lat }, new: edit.move } } : {}),
     ...(edit.picture === undefined ? {} : { image_url: { old: before.image_url, new: edit.picture } }),
-    ...(edit.text === undefined ? {} : { [before.of_part ? 'subtitle' : 'description']: { old: before.description, new: edit.text } }),
+    // Only a part's point takes a text (#2117), which is the part's subtitle.
+    ...(edit.text === undefined ? {} : { subtitle: { old: before.description, new: edit.text } }),
   };
 }
 
@@ -150,7 +162,7 @@ export async function editLocation(
   // The point carries no scope of its own: it is judged through the object
   // holding it, as a whole, which is where the regions and the memberships live.
   const found = await pool.query(
-    `SELECT ${answeringPlaceSql()} AS experience_id
+    `SELECT ${answeringPlaceSql()} AS experience_id, ${pointOfPartSql('el')} AS of_part
        FROM experience_locations el
        JOIN experiences e ON e.id = ${answeringPlaceSql()}
       WHERE el.id = $1`,
@@ -159,7 +171,8 @@ export async function editLocation(
   if (found.rows.length === 0) {
     throw notFound('Location not found');
   }
-  const { experience_id: experienceId } = found.rows[0];
+  const { experience_id: experienceId, of_part: ofPart } = found.rows[0];
+  if (!ofPart) refuseOwnContent(pointEdit);
 
   const { permitted, logRegionId } = await resolveExperienceScope(
     userId, userRole, experienceId as number, 'place',
@@ -215,8 +228,8 @@ export async function editLocation(
                    THEN part.name ELSE el.name END AS name,
               ${pointOfPartSql('el')} AND NOT ${placeOfferedSql('part')} AS names_part,
               el.curated_fields, ${pointOfPartSql('el')} AS of_part,
-              CASE WHEN ${pointOfPartSql('el')} THEN part.image_url ELSE el.image_url END AS image_url,
-              CASE WHEN ${pointOfPartSql('el')} THEN part.subtitle ELSE el.description END AS description,
+              CASE WHEN ${pointOfPartSql('el')} THEN part.image_url END AS image_url,
+              CASE WHEN ${pointOfPartSql('el')} THEN part.subtitle END AS description,
               ST_Y(el.location::geometry) AS lat, ST_X(el.location::geometry) AS lon
          FROM experience_locations el JOIN experiences part ON part.id = el.experience_id
         WHERE el.id = $1 FOR UPDATE OF el`,
@@ -233,9 +246,11 @@ export async function editLocation(
     if (before.of_part) {
       await correctPartPoint(client, object.lock, locationId, before, pointEdit, credit);
     } else {
+      // Asked again under the lock: a site's components can fold back into it
+      // between the first read and this one.
+      refuseOwnContent(pointEdit);
       await correctPoint(client, object.lock, locationId, {
         name: name ?? null, movesPoint, longitude: longitude ?? null, latitude: latitude ?? null,
-        picture, credit, description: text,
         curatedFields: withClaims(before.curated_fields ?? [], claimsOf(pointEdit)),
       });
     }

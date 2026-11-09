@@ -59,14 +59,15 @@ describe("what a review card's pictures are (#2192)", () => {
       { url: MAP, subject: { kind: 'place' } }, { url: ENGRAVING, subject: { kind: 'work', type: 'inscription' } },
     ]);
     // The pictures come from the place's rows, named by its id alone: its own, each
-    // source's, its proposals' (the place's and its works'), its points' and its works'.
+    // source's, its proposals' (the place's and its works'), and its works'. A point
+    // holds no picture of its own (#2117).
     const [sql, params] = mockedQuery.mock.calls[1];
     expect(params).toEqual([BANQIAO_DAM]);
     expect(sql).toContain('e.image_url');
     expect(sql).toContain('m.reported_image_url');
     expect(sql).toContain("f->>'field' = 'imageUrl'");
     expect(sql).toContain('pending_change_sync_log_id');
-    expect(sql).toContain('el.image_url');
+    expect(sql).not.toContain('el.image_url');
     expect(sql).toContain('t.image_url');
     expect(sql).toContain('$.fields[*] ? (@.field == "imageUrl").new');
     expect(sql).toContain('t.treasure_type');

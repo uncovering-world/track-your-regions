@@ -143,8 +143,10 @@ export const syncLogIdParamSchema = z.object({
 });
 
 /**
- * A curator's correction to one point: what it is called, where it is, which
- * picture it is shown by and what it says about itself (#1270).
+ * A curator's correction to one point: what it is called, where it is, and on
+ * a serial site's part which picture it is shown by and what it says about
+ * itself (#1270); a point of any other place is refused the last two, which
+ * its place holds (#2117).
  *
  * The coordinate arrives as a pair or not at all. Half a move is not a place —
  * a latitude written against the old longitude names somewhere nobody chose,

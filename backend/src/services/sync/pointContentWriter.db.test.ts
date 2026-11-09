@@ -134,12 +134,6 @@ describe("a component's own picture and subtitle, on its part (ADR-0156)", () =>
     expect(changed.find(entry => entry.item.ref === '1363-016')?.fields
       .find(field => field.field === 'metadata.imageCredit')?.new).toEqual(CREDIT);
     expect(flags('1363-015')).toEqual([['subtitle', false, true]]);
-    // The point says only where the part stands.
-    const points = await pool.query<{ image_url: string | null; description: string | null }>(
-      `SELECT el.image_url, el.description FROM experience_parts p JOIN experience_locations el ON el.experience_id = p.part_id
-        WHERE p.whole_id = $1`, [PILES],
-    );
-    expect(points.rows.every(row => row.image_url === null && row.description === null)).toBe(true);
   });
 
   it('holds a new credit for a picture a reader sees, and fills a missing one', async () => {

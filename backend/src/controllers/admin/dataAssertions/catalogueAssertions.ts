@@ -517,7 +517,8 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
          UNION ALL
         -- A component's own picture (#1270), on its part's row (ADR-0156),
         -- whose held credit rides in its site's contents record the way a
-        -- work's does in its museum's; any other point's own.
+        -- work's does in its museum's. A point of any other place holds none
+        -- (#2117).
         SELECT 'point', el.id, COALESCE(el.name, el.external_ref),
                split_part(split_part(shown.image_url, '//', 2), '/', 1),
                EXISTS (SELECT 1
@@ -536,12 +537,9 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                           AND NOT ${heldPartRefusedSql('e.id', "'locations'")}
                           AND jsonb_typeof(f -> 'new') = 'object') AS credit_waiting
           FROM experience_locations el
-          CROSS JOIN LATERAL (
-            SELECT CASE WHEN ${pointOfPartSql('el')} THEN part.image_url ELSE el.image_url END AS image_url,
-                   CASE WHEN ${pointOfPartSql('el')} THEN part.metadata ELSE el.metadata END AS metadata
-              FROM experiences part WHERE part.id = el.experience_id) shown
+          JOIN experiences shown ON shown.id = el.experience_id
          WHERE shown.image_url IS NOT NULL AND shown.image_url <> '' AND el.merged_into_id IS NULL
-           AND NOT (${pointOfPartSql('el')} AND ${placeHoldsRealKindSql('el.experience_id')})
+           AND ${pointOfPartSql('el')} AND NOT ${placeHoldsRealKindSql('el.experience_id')}
            AND ${drawableHostSql('shown.image_url')}
            AND shown.metadata->>'imageCredit' IS NULL
          ORDER BY 1, 3`,
@@ -597,8 +595,9 @@ function drawableHostSql(column: string): string {
  * ever draw. The remedy is one button, *Fix pictures* on the source's card in
  * the sync panel, which is why the sentence names it rather than a run.
  *
- * Every table that holds one, because each is shown: a work's photograph and a
- * component's own (#1270) are drawn on the same terms as the object's.
+ * Every table that holds one, because each is shown: a work's photograph is
+ * drawn on the same terms as the object's, and a component's own (#1270) is
+ * its part's row's, read with the objects' (ADR-0156 decision 3).
  */
 const pictureTheProductMayNotShow: CatalogueAssertion = {
   id: 'picture-the-product-may-not-show',
@@ -623,12 +622,7 @@ const pictureTheProductMayNotShow: CatalogueAssertion = {
           FROM treasures t
          WHERE t.image_url IS NOT NULL AND t.image_url <> ''
            AND NOT ${drawableHostSql('t.image_url')}
-         UNION ALL
-        SELECT 'point', el.id, COALESCE(el.name, el.external_ref),
-               split_part(split_part(el.image_url, '//', 2), '/', 1)
-          FROM experience_locations el
-         WHERE el.image_url IS NOT NULL AND el.image_url <> '' AND el.merged_into_id IS NULL
-           AND NOT ${drawableHostSql('el.image_url')}
+
          ORDER BY 1, 3`,
   describe: row =>
     `${text(row, 'row_name')}: a picture stored from ${text(row, 'host') || 'an unnamed host'}, `

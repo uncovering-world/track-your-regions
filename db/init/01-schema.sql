@@ -3405,14 +3405,6 @@ COMMENT ON COLUMN experience_locations.external_ref IS 'Source-specific referenc
 -- The point's own Wikidata item, where Wikidata has one (#1269).
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS wikidata_item VARCHAR(20);
 COMMENT ON COLUMN experience_locations.wikidata_item IS 'The Wikidata item this point is, where one is known, for a point whose place is not a serial site''s part: a World Heritage site''s own point, the item whose World Heritage Site ID (P757, any rank but a deprecated-only statement) equals external_ref, recorded by every run; null where no item or more than one carries the reference. A part''s item is its record''s in World Heritage components (wikidata_items, ADR-0156). A claim on it (''wikidata_item'' in curated_fields) is written when a curator accepts a proposed item on the review queue (#1272), and is never overridden by a run (#1269).';
--- The point's own picture, its credit and its description, from its Wikidata
--- item (#1270). See db/migrations/081.
-ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS image_url TEXT;
-ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS description TEXT;
-ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
-COMMENT ON COLUMN experience_locations.image_url IS 'The point''s own picture, a Wikimedia Commons file or, where a curator chose one, an /images/ path we host (ADR-0043), for a point whose place is not a serial site''s part: a part''s picture is its own row''s (ADR-0156 decision 3). NULL = the point shows its object''s picture, and says so (#1270).';
-COMMENT ON COLUMN experience_locations.description IS 'The point''s own one-line description, for a point whose place is not a serial site''s part: a part''s is its own row''s subtitle (ADR-0156 decision 3).';
-COMMENT ON COLUMN experience_locations.metadata IS 'Facts about the point that are not columns: imageCredit, the credit of image_url, for a point whose place is not a serial site''s part (ADR-0156 decision 3).';
 
 -- A candidate Wikidata item for a component no item records the reference of
 -- (#1272): a proposal for a curator, never a fact (ADR-0046). See
@@ -3530,7 +3522,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_refused ON experience_locati
 -- (#488), NOT NULL for the reason given on `treasures.curated_fields`. See
 -- db/migrations/027.
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
-COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location, image_url and description (#1270), and wikidata_item, written when a curator confirms a proposed item on the review queue (#1272) and respected by every run. Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
+COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location, and wikidata_item, written when a curator confirms a proposed item on the review queue (#1272) and respected by every run. Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
 
 -- A moved point is a withdrawal plus an insert, and under a gated source the two
 -- halves become visible at different moments: the insert lands `pending`, so

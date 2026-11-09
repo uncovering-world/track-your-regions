@@ -14,7 +14,8 @@ import {
 } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import {
-  overPlacePoints, placePointsSql, pointArticleSql, pointClaimsSql, pointItemSql, pointNameSql, pointPictureSql, pointSubtitleSql,
+  overPlacePoints, placePointsSql, pointArticleSql, pointClaimsSql, pointItemSql, pointNameSql, pointOfPartSql, pointPictureSql,
+  pointSubtitleSql,
 } from '../../db/placePoints.js';
 import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
@@ -39,8 +40,9 @@ import type {
  * column is JSONB, which the generated row types leave `unknown`: it is an array
  * of column names by its NOT NULL default and by every writer.
  */
-type LocationRow = Pick<ExperienceLocationsRow, 'id' | 'experience_id' | 'name' | 'external_ref' | 'ordinal' | 'created_at' | 'image_url'> & {
+type LocationRow = Pick<ExperienceLocationsRow, 'id' | 'experience_id' | 'name' | 'external_ref' | 'ordinal' | 'created_at'> & {
   approximate: ExperienceLocation['approximate'];
+  image_url: string | null;
   image_credit: ExperienceLocation['image_credit'];
   wikipedia_url: string | null;
   longitude: number;
@@ -292,8 +294,10 @@ export async function getExperienceLocations(
   const maySeeUnreadIdx = params.length + 1;
   params.push(maySeeUnread);
 
-  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'description' | 'wikidata_item'> & {
+  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'wikidata_item'> & {
     curation_state: CheckValue<'experience_locations', 'curation_state'>;
+    description: string | null;
+    is_part: boolean;
   }>(`
     SELECT
       el.id,
@@ -324,6 +328,7 @@ export async function getExperienceLocations(
       ${pointArticleSql('el')},
       ${pointSubtitleSql('el')},
       ${pointItemSql('el')} AS wikidata_item,
+      ${pointOfPartSql('el')} AS is_part,
       ${regionId ? `EXISTS(
         SELECT 1 FROM experience_location_regions elr
         WHERE elr.location_id = el.id AND elr.region_id = $2
@@ -342,6 +347,7 @@ export async function getExperienceLocations(
     refused_at: row.refused_at?.toISOString() ?? null,
     description: row.description,
     wikidata_item: row.wikidata_item,
+    is_part: row.is_part,
   }));
 
   return {

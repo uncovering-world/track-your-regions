@@ -162,8 +162,9 @@ async function lockPart(
     );
     const found = part.rows[0];
     if (found?.claims == null) {
-      // A point that is no part's keeps its own claims, its line's as the subtitle's.
-      return { id: row.id, curated_fields: (found?.own_claims ?? []).map(claim => (claim === 'description' ? 'subtitle' : claim)) };
+      // A point that is no part's keeps its own claims: its name and its
+      // coordinate, since it holds no picture or text of its own (#2117).
+      return { id: row.id, curated_fields: found?.own_claims ?? [] };
     }
     const pointClaims = (row.curated_fields ?? []).filter(claim => claim === 'name');
     return { id: row.id, curated_fields: [...pointClaims, ...found.claims.filter(claim => claim !== 'name')] };

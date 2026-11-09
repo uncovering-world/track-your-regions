@@ -64,13 +64,12 @@ export const SITE_POINTS = `(SELECT jsonb_agg(jsonb_build_object(
            'ref', sp.external_ref,
            'latitude', ST_Y(sp.location),
            'longitude', ST_X(sp.location),
-           -- A part's picture is its own row's (ADR-0156 decision 3).
+           -- A part's picture is its own row's (ADR-0156 decision 3); a point of
+           -- any other place holds none (#2117).
            'imageUrl', CASE WHEN ${pointOfPartSql('sp')}
-                            THEN (SELECT sp_part.image_url FROM experiences sp_part WHERE sp_part.id = sp.experience_id)
-                            ELSE sp.image_url END,
+                            THEN (SELECT sp_part.image_url FROM experiences sp_part WHERE sp_part.id = sp.experience_id) END,
            'imageCredit', CASE WHEN ${pointOfPartSql('sp')}
-                               THEN (SELECT sp_part.metadata -> 'imageCredit' FROM experiences sp_part WHERE sp_part.id = sp.experience_id)
-                               ELSE sp.metadata -> 'imageCredit' END)
+                               THEN (SELECT sp_part.metadata -> 'imageCredit' FROM experiences sp_part WHERE sp_part.id = sp.experience_id) END)
          ORDER BY sp.ordinal NULLS LAST, sp.id)
        FROM ${pointsShownSql('e.id', 'sp')}
       WHERE ${placeOfObjectSql('sp')})`;
