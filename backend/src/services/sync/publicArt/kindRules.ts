@@ -75,9 +75,9 @@ export interface KindRule {
   memorialLifts: boolean;
   /**
    * Whether a sculpture garden one artist made is of the kind
-   * (`isOneArtistsGarden`, #2037): it lifts the garden's kill and admits it,
-   * and answers no veto, so a garden that is also a museum stays the
-   * museum's (Millesgården).
+   * (`isOneArtistsGarden`, #2037): it lifts the garden's kill, admits it, and
+   * answers a building's or a museum's veto as an artwork class does (the
+   * Tarot Garden, Millesgården).
    */
   oneArtistsGardens: boolean;
   /** The type an admitted row is filed under. */

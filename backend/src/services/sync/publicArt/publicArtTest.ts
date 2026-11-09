@@ -549,26 +549,21 @@ export function publicArtVerdict(
   }
 
   // The category answers a building's veto as an artwork class does, and the
-  // row says so (`artwork`), so the catalogue check reads the same answer.
-  // Where the kind takes one artist's garden, the garden's own class neither
-  // answers a veto nor raises one: Wikidata files it under sculpture and under
-  // open-air museum alike, and the Vigeland installation, typed nothing else,
-  // is no museum, while Millesgården, typed an art museum too, stays the
-  // museum's. A memorial garden Monuments & memorials admits is answered as
-  // before.
-  const vetoFacts = rule.oneArtistsGardens ? { ...e, classes: e.classes.filter((c) => c !== SCULPTURE_GARDEN) } : e;
-  const answered = filed !== undefined || rule.answersVeto(vetoFacts, trees);
+  // row says so (`artwork`), so the catalogue check reads the same answer. So
+  // does a sculpture garden that is one artist's work, where the kind takes
+  // one: it is the artist's work whatever else Wikidata types it. The Tarot
+  // Garden is typed a private museum too, and Millesgården an art museum, and
+  // each is a garden of its maker's sculpture.
+  const answered = filed !== undefined || (rule.oneArtistsGardens && isOneArtistsGarden(e)) || rule.answersVeto(e, trees);
   if (!answered) {
-    const vetoed = vetoes(vetoFacts, trees, rule.memorialLifts);
+    const vetoed = vetoes(e, trees, rule.memorialLifts);
     if (vetoed.length) {
       return { pass: false, reason: `${rule.unanswered}, and typed: ${vetoed.join('; ')}` };
     }
   }
-  // Answered by the kind: an artwork class, a memorial that lifted every veto
-  // the place carries, or a garden that is one artist's work, which answered
-  // no veto but is the kind's art all the same.
-  const artwork = answered || (rule.memorialLifts && named(e.classes, VETO_CLASSES).length > 0)
-    || (rule.oneArtistsGardens && isOneArtistsGarden(e));
+  // Answered by the kind: an artwork class, a one artist's garden, or a
+  // memorial that lifted every veto the place carries.
+  const artwork = answered || (rule.memorialLifts && named(e.classes, VETO_CLASSES).length > 0);
 
   // Number.isFinite, not truthiness: a monument on the equator has a coordinate of 0.
   if (!Number.isFinite(e.lat) || !Number.isFinite(e.lon)) {
