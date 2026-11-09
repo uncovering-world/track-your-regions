@@ -334,6 +334,32 @@ describe("a crowded city as its region's page shows it (#2358)", () => {
     });
   });
 
+  it('carries what each place\'s score is made of, a signal no reading dates read as none (#2400)', async () => {
+    // Alexanderplatz with its readers and its guides read; Leipziger Platz as a
+    // place is before its first reading, ranked at the planted values.
+    await pool.query(
+      `UPDATE membership_fame SET readers_read_at = NOW(), guides_read_at = NOW() WHERE membership_id = $1`,
+      [id('Alexanderplatz')]);
+    await pool.query('UPDATE membership_fame SET guide_editions = 0, guides_read_at = NOW() WHERE membership_id = $1',
+      [id('Savignyplatz')]);
+
+    const listed = await group();
+    const alex = listed.places.find(row => row.name === 'Alexanderplatz')!;
+    expect(alex).toMatchObject({ readers: 209401, wikipediaEditions: 47, guideUsed: true });
+    expect(alex.score).toBeCloseTo(0.698, 3);
+    expect(listed.places.find(row => row.name === 'Leipziger Platz')).toMatchObject({
+      readers: null, guideUsed: null, wikipediaEditions: 18, score: expect.any(Number),
+    });
+    expect(listed.places.find(row => row.name === 'Savignyplatz')).toMatchObject({ guideUsed: false });
+
+    // The circle names the same numbers for every place it compares the place with.
+    const read = await circle('Schloßplatz');
+    expect(read.around.find(row => row.name === 'Alexanderplatz')).toMatchObject({
+      readers: alex.readers, wikipediaEditions: alex.wikipediaEditions, guideUsed: true, score: alex.score,
+    });
+    expect(read.around.find(row => row.name === 'Leipziger Platz')).toMatchObject({ readers: null, guideUsed: null });
+  });
+
   it("lists another scope's published squares unanswerable, and none of its new ones", async () => {
     await pool.query(
       `INSERT INTO curator_assignments (user_id, scope_type, source_id, assigned_by) VALUES ($1, 'source', 2, $2)`,

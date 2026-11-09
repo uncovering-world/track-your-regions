@@ -120,6 +120,9 @@ interface PlaceRow {
   wikipedia_url: string | null;
   image_url: string | null;
   image_credit: ImageCredit | null;
+  readers: number | null;
+  wikipedia_editions: number | null;
+  guide_used: boolean | null;
   score: number | null;
   arriving: boolean;
   crowded: boolean;
@@ -130,6 +133,25 @@ interface PlaceRow {
   better: number;
   better_known: string[] | null;
   can_answer: boolean;
+}
+
+/** What a place's score is made of and the score, as a row reads them (`FAME_SIGNALS`). */
+type Signals = Pick<PlaceRow, 'readers' | 'wikipedia_editions' | 'guide_used' | 'score'>;
+
+/**
+ * What a place's score is made of and the score itself, over its fame row `f`
+ * (#2400). A signal no reading is dated for is the zero the row is ranked at
+ * before its first reading, not a measurement (ADR-0175 decision 6), so it is
+ * read as null; a place with no fame row reads null throughout.
+ */
+const FAME_SIGNALS = `CASE WHEN f.readers_read_at IS NOT NULL THEN f.readers END AS readers,
+             f.wikipedia_editions,
+             CASE WHEN f.guides_read_at IS NOT NULL THEN f.guide_editions > 0 END AS guide_used,
+             f.score`;
+
+/** The signals of a row as the response names them. */
+function signalsOf(row: Signals): Pick<CrowdingGroupPlace, 'readers' | 'wikipediaEditions' | 'guideUsed' | 'score'> {
+  return { readers: row.readers, wikipediaEditions: row.wikipedia_editions, guideUsed: row.guide_used, score: row.score };
 }
 
 /**
@@ -150,7 +172,7 @@ function placeColumnsSql(isAdmin: boolean, radiusKm: string, reads: string): { c
              -- its picture and whose photograph that is, which the row draws together.
              e.metadata->>'wikipediaUrl' AS wikipedia_url, e.image_url,
              e.metadata->'imageCredit' AS image_credit,
-             f.score,
+             ${FAME_SIGNALS},
              m.curation_state = 'pending' AS arriving,
              ${membershipCrowdedSql('m')} AS crowded,
              m.crowding_pin AS pin,
@@ -186,7 +208,7 @@ function toPlace(row: PlaceRow, kind: KindRule, exempt: boolean): CrowdingGroupP
     wikipediaUrl: row.wikipedia_url,
     imageUrl: row.image_url,
     imageCredit: row.image_credit,
-    score: row.score,
+    ...signalsOf(row),
     standing: standingOf(row),
     crowded: row.crowded,
     outrankedBy,
@@ -332,13 +354,14 @@ export async function getCrowdingPlace(
        WHERE m.id = $2 AND ${membershipAdmittedSql('m')} AND ${hideLostSql('e')} AND ${listedSql(isAdmin)}`,
     [caller.id, membershipId, isAdmin, kind.crowding_radius_km, query.worldViewId ?? null]),
     // $1 the caller, $2 the kind, $3 the place, $4 the radius, $5 the type, $6 the membership.
-    pool.query<{
+    pool.query<Signals & {
       membership_id: number; experience_id: number; name: string; latitude: number; longitude: number;
       distance_m: number; arriving: boolean; crowded: boolean; compared: boolean;
     }>(`${CURATOR_SCOPED_REGIONS_CTE}${above}
       SELECT m.id AS membership_id, e.id AS experience_id, e.name,
              ST_Y(e.location) AS latitude, ST_X(e.location) AS longitude,
              round(ST_Distance(e.location::geography, centre.point::geography))::int AS distance_m,
+             ${FAME_SIGNALS},
              m.curation_state = 'pending' AS arriving,
              ${membershipCrowdedSql('m')} AS crowded,
              m.id IN (SELECT membership_id FROM above) AS compared
@@ -372,6 +395,7 @@ export async function getCrowdingPlace(
       latitude: row.latitude,
       longitude: row.longitude,
       distanceM: row.distance_m,
+      ...signalsOf(row),
       standing: standingOf(row),
       compared: !exempt && row.compared,
     })),

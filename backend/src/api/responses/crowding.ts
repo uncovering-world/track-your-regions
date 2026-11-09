@@ -31,6 +31,23 @@ const CrowdingKind = z.strictObject({
   radiusKm: z.number().describe('The radius they are counted within.'),
 });
 
+/**
+ * What a place's score is made of (ADR-0172), as `membership_fame` holds it, and
+ * the score itself: what a curator sorting list from shadow weighs a place by
+ * (#2400). A signal not read yet is null, never the zero the row is ranked at
+ * before its first reading (ADR-0175 decision 6).
+ */
+const FameSignals = {
+  readers: z.number().int().nullable()
+    .describe('Readers a year of its Wikipedia articles; null before its first measurement.'),
+  wikipediaEditions: z.number().int().nullable()
+    .describe('The Wikipedia editions with an article on it; null before it is measured.'),
+  guideUsed: z.boolean().nullable()
+    .describe('Whether a Wikivoyage edition uses its item: what its fame reads of the guides (ADR-0177); null before '
+      + 'the guides are read.'),
+  score: z.number().nullable().describe('Its fame among its kind and type worldwide (ADR-0172); null before it is scored.'),
+};
+
 const CrowdingGroupRef = z.strictObject({
   regionId: z.number().int().nullable().describe('The region; null for the places no region places.'),
   regionName: z.string().nullable(),
@@ -47,7 +64,7 @@ export const CrowdingGroupPlace = z.strictObject({
   wikipediaUrl: z.string().nullable().describe('The Wikipedia article the place holds, as its card links it (#2345).'),
   imageUrl: z.string().nullable().describe("The place's picture, as stored: the row draws a thumbnail of it (#2345)."),
   imageCredit: ImageCredit.nullable().describe('Whose photograph the picture is, shown with it.'),
-  score: z.number().nullable().describe('Its fame among its kind and type worldwide (ADR-0172); null before it is scored.'),
+  ...FameSignals,
   standing: CrowdingStanding,
   crowded: z.boolean().describe('In the tail now, or for a new arrival, once passed.'),
   outrankedBy: z.number().int().nullable()
@@ -87,6 +104,7 @@ export const CrowdingPlaceView = z.strictObject({
     latitude: z.number(),
     longitude: z.number(),
     distanceM: z.number().int().describe('How far it lies from the place, in metres.'),
+    ...FameSignals,
     standing: CrowdingStanding,
     compared: z.boolean().describe('It counts above the place (`crowding_above()`): what the place is compared with.'),
   })).describe('Every other place of its kind and type within the radius, best known first.'),

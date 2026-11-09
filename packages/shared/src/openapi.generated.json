@@ -21909,6 +21909,39 @@
             ],
             "description": "Whose photograph the picture is, shown with it."
           },
+          "readers": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Readers a year of its Wikipedia articles; null before its first measurement."
+          },
+          "wikipediaEditions": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Wikipedia editions with an article on it; null before it is measured."
+          },
+          "guideUsed": {
+            "description": "Whether a Wikivoyage edition uses its item: what its fame reads of the guides (ADR-0177); null before the guides are read.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "score": {
             "description": "Its fame among its kind and type worldwide (ADR-0172); null before it is scored.",
             "type": [
@@ -21990,6 +22023,9 @@
           "wikipediaUrl",
           "imageUrl",
           "imageCredit",
+          "readers",
+          "wikipediaEditions",
+          "guideUsed",
           "score",
           "standing",
           "crowded",
@@ -22116,6 +22152,46 @@
                   "maximum": 9007199254740991,
                   "description": "How far it lies from the place, in metres."
                 },
+                "readers": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Readers a year of its Wikipedia articles; null before its first measurement."
+                },
+                "wikipediaEditions": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The Wikipedia editions with an article on it; null before it is measured."
+                },
+                "guideUsed": {
+                  "description": "Whether a Wikivoyage edition uses its item: what its fame reads of the guides (ADR-0177); null before the guides are read.",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "score": {
+                  "description": "Its fame among its kind and type worldwide (ADR-0172); null before it is scored.",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
                 "standing": {
                   "type": "string",
                   "enum": [
@@ -22137,6 +22213,10 @@
                 "latitude",
                 "longitude",
                 "distanceM",
+                "readers",
+                "wikipediaEditions",
+                "guideUsed",
+                "score",
                 "standing",
                 "compared"
               ],
