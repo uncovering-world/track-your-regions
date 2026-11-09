@@ -2657,8 +2657,9 @@ still admits a panel on such a wall on its own (the Fraternal Kiss); a traveller
 one place, so how the kind holds a wall and its panels together is #1992's. **Monuments & memorials** (kind and source 6)
 is what was raised to remember: a memorial, a triumphal arch, a column, an obelisk, a monument —
 the Arc de Triomphe, Nelson's Column, the Lincoln Memorial, the Memorial to the Murdered Jews of
-Europe. One place may be both: the Motherland Calls is a statue and a memorial, Nelson's Column a
-column with a statue on it. Neither kind is a building Wikidata happens to call a monument, nor a
+Europe. One place may be both: the Motherland Calls is a statue and a memorial, the Colonne Vendôme
+a column Wikidata also types a sculpture, for its bronze reliefs; Nelson's Column, a victory column
+and nothing else, is a monument only (#1918). Neither kind is a building Wikidata happens to call a monument, nor a
 work that hangs inside one: a cathedral is a place of worship, a museum's sculpture is that
 museum's work, and a Pietà is St Peter's before it is Rome's (#753 is where a work a traveller
 goes to a church to see will live). These sources fill the kinds' **world tier** — what the world
@@ -2881,7 +2882,13 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    monuments and an exact match reaches nothing; and the Nestorian Stele's coordinate, which
    #804 took for the Stele Forest's, is its find spot forty kilometres away. **Whether it is of
    the kind** is asked after what it is and before where it stands (`KindRule.admits`): Public
-   art admits the sculptural closures, the fountain closure and `SCULPTURAL_CLASSES`; Monuments
+   art admits the sculptural closures, the fountain closure and `SCULPTURAL_CLASSES`, less the
+   forms that are no artwork by themselves (`NOT_SCULPTURE_BY_ITSELF`, #1918): Wikidata files the
+   victory column under sculpture, and Nelson's Column, the Alexander Column and Pompey's Pillar
+   are Monuments & memorials' alone, while a column Wikidata also types a sculpture or a statue
+   (the Colonne Vendôme; the Column of Marcus Aurelius, whose statue class ranks below its preferred
+   victory column, read as `outrankedClasses`) or a Holy Trinity column with its statues
+   (Olomouc, Vienna's Pestsäule) stays in both; Monuments
    & memorials the `commemorative` set, `COMMEMORATIVE_FORMS`, the two monument senses
    (`HERITAGE_MONUMENT_CLASSES`: monument, national monument — the Tsar Bell, the Krakus Mound)
    and anything that commemorates someone (`P547`): the Jefferson Memorial is typed nothing but a
