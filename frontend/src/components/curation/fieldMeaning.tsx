@@ -28,7 +28,7 @@ import type { ReactNode } from 'react';
 import { Chip, Link, Stack, Tooltip } from '@mui/material';
 import { isEmptyValue } from '@tyr/shared/equality';
 import { placeFieldUnseen } from '@tyr/shared/placeFields';
-import { commemoratesOf, type CommemorationStep } from '@tyr/shared/commemorates';
+import { commemoratesOf, type CommemorationVia } from '@tyr/shared/commemorates';
 import type { ImageCredit } from '../../api/experiences';
 import type { ChangedField } from '../../api/reviewQueue';
 import { parseCriteria } from '../../utils/unescoCriteria';
@@ -294,20 +294,25 @@ function qidLabel(value: unknown): ReactNode {
   return href ? <ExternalLink href={href}>{`${String(value)} (Wikidata)`}</ExternalLink> : String(value ?? '');
 }
 
-/** Where each step of the reading of whom a place commemorates found its subjects (#2144). */
-const COMMEMORATION_SOURCE: Readonly<Record<CommemorationStep, string>> = {
-  'commemorates': 'Wikidata’s “commemorates” statement',
-  'memorials-category': 'English Wikipedia’s “Monuments and memorials to …” category of the place’s article',
-  'main-subject': 'Wikidata’s “main subject”, a person or an event',
-  'named-after': 'Wikidata’s “named after”, a person or an event',
-  'statues-category': 'English Wikipedia’s “Statues of …” category of the place’s article',
-  'depicts': 'Wikidata’s “depicts”, a person the work shows',
+/**
+ * Who named the subjects of whom a place commemorates (#2144): where each step
+ * of the reading found them, or a curator who listed them by hand.
+ */
+const COMMEMORATION_SOURCE: Readonly<Record<CommemorationVia, string>> = {
+  'commemorates': 'Read from Wikidata’s “commemorates” statement',
+  'memorials-category': 'Read from English Wikipedia’s “Monuments and memorials to …” category of the place’s article',
+  'main-subject': 'Read from Wikidata’s “main subject”, a person or an event',
+  'named-after': 'Read from Wikidata’s “named after”, a person or an event',
+  'statues-category': 'Read from English Wikipedia’s “Statues of …” category of the place’s article',
+  'depicts': 'Read from Wikidata’s “depicts”, a person the work shows',
+  'curator': 'Listed by a curator',
 };
 
 /** The subjects as the card's line names them: each linked to its article where it has one. */
 function commemoratesLabel(value: unknown): ReactNode {
   const stored = commemoratesOf(value);
-  if (!stored) return 'nobody named';
+  // A curator's empty list is their word that the place commemorates nobody.
+  if (!stored?.subjects.length) return 'nobody named';
   return stored.subjects.map((subject, i) => {
     const href = safeHref(subject.articleUrl);
     return (
@@ -329,7 +334,7 @@ function describeCommemorates(before: unknown, after: unknown): string | null {
   const parts = [];
   if (added.length) parts.push(`Added: ${added.join(', ')}.`);
   if (removed.length) parts.push(`Removed: ${removed.join(', ')}.`);
-  if (is) parts.push(`Read from ${COMMEMORATION_SOURCE[is.via]}.`);
+  if (is) parts.push(`${COMMEMORATION_SOURCE[is.via]}.`);
   return parts.length ? parts.join(' ') : null;
 }
 

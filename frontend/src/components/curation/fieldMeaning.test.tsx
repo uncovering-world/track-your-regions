@@ -426,6 +426,15 @@ describe('whom a place commemorates (#2144)', () => {
     expect(change('metadata.commemorates', both, undefined)).toBe('Removed: Dmitry Pozharsky, Kuzma Minin.');
   });
 
+  it("says a curator's list is theirs, and reads their empty list as nobody named", () => {
+    expect(change('metadata.commemorates', both, { via: 'curator', subjects: [MININ] }))
+      .toBe('Removed: Dmitry Pozharsky. Listed by a curator.');
+    expect(said('metadata.commemorates', { via: 'curator', subjects: [] })).toBe('nobody named');
+    // A run proposing someone against the curator's "nobody": who it adds, and where it read them.
+    expect(change('metadata.commemorates', { via: 'curator', subjects: [] }, { via: 'depicts', subjects: [MININ] }))
+      .toBe('Added: Kuzma Minin. Read from Wikidata’s “depicts”, a person the work shows.');
+  });
+
   it('is a fact readers see, so publishing it changes the card', () => {
     expect(meaningOf('metadata.commemorates').unseen).toBeUndefined();
   });

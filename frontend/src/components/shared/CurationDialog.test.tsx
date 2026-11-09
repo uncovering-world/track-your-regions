@@ -36,6 +36,7 @@ vi.mock('../../api/curation', () => ({
   undoPlaceMerge: vi.fn(),
   undoSeparation: vi.fn(),
   takeBackPointItem: vi.fn(),
+  searchCommemorationSubjects: vi.fn(async () => []),
 }));
 vi.mock('../../api/experiences', () => ({
   fetchExperience: vi.fn(),
@@ -111,6 +112,16 @@ const bamiyan: Experience = {
   image_credit: null,
   danger_since: null,
 };
+
+/**
+ * The Type select: a combobox that is not a text box, which the Commemorates
+ * field's search is.
+ */
+function typeSelect(): HTMLElement {
+  const select = screen.getAllByRole('combobox').find(element => element.tagName !== 'INPUT');
+  expect(select, 'expected the Type select').toBeDefined();
+  return select!;
+}
 
 function renderDialog(experience: Experience = bamiyan, curatesRegion = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -289,7 +300,7 @@ describe('CurationDialog clearing a field', () => {
     await screen.findByDisplayValue(PORTAL_PAGE);
 
     // The one Select in the dialog; its label is not wired to it by id (#564).
-    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.mouseDown(typeSelect());
     fireEvent.click(screen.getByRole('option', { name: 'None' }));
     save();
 
@@ -337,7 +348,7 @@ describe('CurationDialog through the form layer', () => {
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Bamiyan Valley' } });
     save();
 
-    const select = screen.getByRole('combobox');
+    const select = typeSelect();
     await waitFor(() => expect(select).toHaveAccessibleDescription('Invalid option'));
   });
 
@@ -484,3 +495,41 @@ describe('where a find comes from, answered in the dialog (#2242)', () => {
   });
 });
 
+describe('CurationDialog and whom a place commemorates (#2144)', () => {
+  // The Monument to Minin and Pozharsky (Q187531) depicts Dmitry Pozharsky (Q15756) and Kuzma Minin (Q469785).
+  const pozharsky = { qid: 'Q15756', label: 'Dmitry Pozharsky', article_url: 'https://en.wikipedia.org/wiki/Dmitry_Pozharsky' };
+  const minin = { qid: 'Q469785', label: 'Kuzma Minin', article_url: null };
+
+  beforeEach(() => {
+    mockedEdit.mockReset();
+    mockedDetail.mockReset();
+  });
+
+  it('sends the list whole once a subject is removed, and nothing while it is untouched', async () => {
+    mockedDetail.mockResolvedValue({ ...bamiyan, metadata: {}, commemorates: [pozharsky, minin] });
+    mockedEdit.mockResolvedValue({ success: true, experienceId: bamiyan.id, curatedFields: ['metadata.commemorates'] });
+    renderDialog();
+    await screen.findByTitle('Remove Kuzma Minin');
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+
+    fireEvent.click(screen.getByTitle('Remove Kuzma Minin'));
+    save();
+
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledTimes(1));
+    expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, {
+      commemorates: [{ item: 'Q15756', label: 'Dmitry Pozharsky', articleUrl: 'https://en.wikipedia.org/wiki/Dmitry_Pozharsky' }],
+    });
+  });
+
+  it('sends an emptied list as one, the curator\'s word that the place commemorates nobody', async () => {
+    mockedDetail.mockResolvedValue({ ...bamiyan, metadata: {}, commemorates: [minin] });
+    mockedEdit.mockResolvedValue({ success: true, experienceId: bamiyan.id, curatedFields: ['metadata.commemorates'] });
+    renderDialog();
+
+    fireEvent.click(await screen.findByTitle('Remove Kuzma Minin'));
+    expect(screen.getByText('Nobody named')).toBeInTheDocument();
+    save();
+
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { commemorates: [] }));
+  });
+});
