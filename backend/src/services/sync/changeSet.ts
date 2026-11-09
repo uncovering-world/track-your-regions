@@ -974,3 +974,19 @@ export function computeChangeSet(
     heldFields,
   };
 }
+
+/**
+ * The change set of a run that proposes none of its rewrites: what it wrote
+ * stands, and what a claim or the gate refused is dropped rather than asked
+ * about. A gated run whose own membership refuses the place reports this
+ * (#2391), since no reader sees the place through it and the kind that offers
+ * the place asks its own question.
+ */
+export function nothingProposed(changeSet: ChangeSetResult): ChangeSetResult {
+  const { changedFields } = changeSet;
+  let significance: FieldSignificance | null = null;
+  if (changedFields.length > 0) {
+    significance = changedFields.some(f => f.significance === 'major') ? 'major' : 'minor';
+  }
+  return { ...changeSet, significance, curatedConflicts: [], heldFields: [] };
+}

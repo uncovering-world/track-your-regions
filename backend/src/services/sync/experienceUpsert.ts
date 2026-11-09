@@ -5,8 +5,8 @@
  * **The hold, and why the row is locked in a statement of its own.** A gated
  * source may not overwrite what a reader can already see (ADR-0025 decision
  * 5): the proposal is kept, filed as held, and a curator answers it. Whether a
- * reader can see the place is a question about its memberships since #822 —
- * some membership of it has been passed — and that lives on another table,
+ * reader can see the place is a question about its memberships since #822
+ * (`PLACE_HELD`) — and that lives on another table,
  * which neither an `ON CONFLICT DO UPDATE` nor the locking read itself can
  * see fresh: a statement's snapshot is taken before it waits for the row
  * lock, and once the lock is granted only the locked row is re-read
@@ -77,11 +77,11 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import {
-  MEMBERSHIPS, placeVisibleSql, membershipVisibleSql, sourcePlacesSql, withTypeClaim,
+  MEMBERSHIPS, membershipAdmittedSql, membershipVisibleSql, placeOfferedSql, placeVisibleSql, sourcePlacesSql, withTypeClaim,
 } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
-  claimedMetadataKeys, computeChangeSet, METADATA_SET_KEYS, passesAsUnseen, passingColumns, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS,
+  claimedMetadataKeys, computeChangeSet, METADATA_SET_KEYS, nothingProposed, passesAsUnseen, passingColumns, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS,
   type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
 import { capitalizedName, tidyLabel } from '@tyr/shared/labels';
@@ -195,16 +195,32 @@ export interface UpsertOutcome {
 }
 
 /**
- * The hold, as one SQL expression: the source is gated, and a reader can
- * already see the place — some membership of it has been passed. A place
- * still unread has nothing to protect, so it keeps being refreshed in place
- * and the curator reviews the newest state rather than whatever arrived first.
+ * The hold, as one SQL expression: the source is gated, and either a reader
+ * sees the place — some one membership of it is admitted and passed — or the
+ * run's own membership refuses a place a curator has passed. A place still
+ * unread has nothing to protect, so it keeps being refreshed in place and the
+ * curator reviews the newest state rather than whatever arrived first. A
+ * membership a curator passed and the kind refuses shows the place to nobody,
+ * so it holds nothing for another kind's run (#2391).
  *
- * Read off the place as `e`: under the lock by the read after it, and unlocked
- * by the preview, so the rule exists exactly once.
+ * Read off the place as `e` and the run's own membership as `sm`: under the
+ * lock by the read after it, and unlocked by the preview, so the rule exists
+ * exactly once.
  */
 const GATE = '(SELECT requires_curation FROM experience_sources WHERE id = $1)';
-const PLACE_HELD = `(${GATE} AND ${placeVisibleSql('e')})`;
+/** The run's own membership refuses the place; a run that has none yet refuses nothing. */
+const OWN_REFUSED = `COALESCE(NOT ${membershipAdmittedSql('sm')}, false)`;
+const PLACE_HELD = `(${GATE} AND (${placeOfferedSql('e')} OR (${OWN_REFUSED} AND ${placeVisibleSql('e')})))`;
+/**
+ * A gated run whose own membership refuses the place stands behind none of
+ * the place's fields (#2391): on a place a curator has passed it keeps them
+ * as the place holds them, as the hold does, and it proposes none of its
+ * rewrites (`nothingProposed`). Where
+ * another kind offers the place, that kind's run asks; where none does, no
+ * reader sees the place and nobody is asked. The run's own view is still
+ * recorded on its membership.
+ */
+const REFUSED_WRITER = `(${GATE} AND ${OWN_REFUSED})`;
 /**
  * The upsert's form: the answer the locked read gave, bound as `$17` and read
  * off its own CTE, so every guard below and the membership arm read one value.
@@ -261,6 +277,11 @@ const SNAPSHOT_COLUMNS = [
  */
 const MEMBERSHIP_TYPE_SELECT = `sm.type, sm.curated_fields ? 'type' AS type_claimed`;
 
+/** What the run proposes of its change set: nothing where its own membership refuses the place (`REFUSED_WRITER`). */
+function proposedBy(stored: Record<string, unknown> | null, changeSet: ChangeSetResult): ChangeSetResult {
+  return stored?.refused_writer ? nothingProposed(changeSet) : changeSet;
+}
+
 /**
  * The place a run writes, as it stands: `$1` the source, `place` an expression
  * naming the place, `externalId` the parameter of the id the source knows it
@@ -274,7 +295,7 @@ function storedPlaceSql(place: string, externalId: string): string {
   return `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
          ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT}, sm.facts AS own_facts,
          ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
-         ${PLACE_HELD} AS was_held
+         ${PLACE_HELD} AS was_held, ${REFUSED_WRITER} AS refused_writer
     FROM experiences e
     LEFT JOIN ${MEMBERSHIPS} sm ON sm.experience_id = e.id AND sm.source_id = $1 AND sm.external_id = ${externalId}
    WHERE e.id = ${place}`;
@@ -539,7 +560,7 @@ async function previewUpsert(sent: ExperienceUpsertParams): Promise<UpsertOutcom
     // a gate the proposal is what a curator is being asked about, so a preview
     // that reported "nothing would change" would hide the question. The hold
     // rides along so it lands in the bucket that says it was refused.
-    changeSet: computeChangeSet(snapshotFromRow(row), incoming, curatedFields, heldFromView),
+    changeSet: proposedBy(row, computeChangeSet(snapshotFromRow(row), incoming, curatedFields, heldFromView)),
     nameSnapshot: curatedFields.includes('name') || heldFromView
       ? (row.name as string)
       : written.name,
@@ -1086,7 +1107,7 @@ async function writeUnderLock(
   const row = result.rows[0];
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
   const incoming = snapshotFromParams(written, await incomingOutline(client, params, stored ?? null), shortMove);
-  const changeSet = computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held);
+  const changeSet = proposedBy(stored, computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held));
   fileKeyMove(changeSet, redirectedFrom, params.externalId);
 
   // A curator's pass covered the object that was there; a changed object has not
@@ -1132,10 +1153,13 @@ async function writeUnderLock(
   // "nothing is held" about a row that is holding something, and about the
   // gate-held case that is the whole reason the pointer exists. `significance` in
   // `changeSet.ts` weighs all three buckets for the same reason: the refused half
-  // is the half needing a decision, so it cannot be the hidden one.
-  const proposedAnything = wroteContent
+  // is the half needing a decision, so it cannot be the hidden one. A run whose
+  // own membership refuses the place proposes nothing (`REFUSED_WRITER`), though
+  // an outline it drew passes the hold and is written: a question on a
+  // membership that turned the place down is one no curator is meant to answer.
+  const proposedAnything = !stored?.refused_writer && (wroteContent
     || changeSet.curatedConflicts.length > 0
-    || changeSet.heldFields.length > 0;
+    || changeSet.heldFields.length > 0);
 
   if (wroteContent) {
     await client.query(

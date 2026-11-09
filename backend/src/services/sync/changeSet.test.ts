@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  claimedMetadataKeys, claimKeyFor, computeChangeSet, CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX,
+  claimedMetadataKeys, claimKeyFor, computeChangeSet, CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, nothingProposed,
   SYNC_OWNED_METADATA_KEYS,
   type ExperienceSnapshot,
 } from './changeSet.js';
@@ -964,5 +964,27 @@ describe('the extent', () => {
   it('reads a snapshot without the field as no extent', () => {
     expect(computeChangeSet(snapshot(), snapshot({ boundary: null }), [], WROTE).changedFields)
       .toEqual([]);
+  });
+});
+
+describe('nothingProposed (#2391)', () => {
+  it('drops what the gate and a claim refused, and keeps what was written', () => {
+    const before = snapshot();
+    const incoming = snapshot({ name: 'Serengeti', description: 'Plains.', countryCodes: ['TZ', 'KE'] });
+    const asked = computeChangeSet(before, incoming, ['description'], HELD);
+    expect(asked.heldFields.length + asked.curatedConflicts.length).toBeGreaterThan(0);
+
+    const quiet = nothingProposed(asked);
+
+    expect(quiet.heldFields).toEqual([]);
+    expect(quiet.curatedConflicts).toEqual([]);
+    expect(quiet.changedFields).toEqual(asked.changedFields);
+    expect(quiet.changeType).toBe(asked.changeType);
+  });
+
+  it('weighs nothing where nothing was written', () => {
+    const asked = computeChangeSet(snapshot(), snapshot({ name: 'Serengeti' }), [], HELD);
+    expect(asked.significance).not.toBeNull();
+    expect(nothingProposed(asked)).toMatchObject({ changeType: 'unchanged', significance: null });
   });
 });

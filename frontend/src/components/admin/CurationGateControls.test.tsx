@@ -292,10 +292,10 @@ describe('CurationGateControls', () => {
     renderControls(source({ requires_curation: false, waiting: { arrivals: 0, held: 2, contents: 0 } }));
 
     // The exception, and the more damaging half to get wrong: a held change is not a
-    // `pending` row but a visible one carrying a pointer, and the hold is
-    // `requires_curation` and a reader being able to see the place (some membership
-    // of it passed, `placeVisibleSql`) — so with the gate off the next run writes the
-    // proposed values and clears the pointer, and no curator ever sees the card.
+    // `pending` row but a visible one carrying a pointer, and the hold starts with
+    // `requires_curation` (`PLACE_HELD` in `experienceUpsert.ts`) — so with the gate
+    // off the next run writes the proposed values and clears the pointer, and no
+    // curator ever sees the card.
     const copy = screen.getByText(/will be applied by the next run of this source/);
     expect(copy.textContent).toContain('The 2 changes');
     expect(copy.textContent).toContain('holding them back');
