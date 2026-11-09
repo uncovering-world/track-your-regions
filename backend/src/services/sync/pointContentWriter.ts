@@ -37,7 +37,7 @@ import { writePartFields, type PartField, type PartWrite } from '../../db/partFi
 import { publishedContentSql } from '../../db/readerPredicates.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 import type { FieldChange } from './changeSet.js';
-import { pointHeldProposalAt } from './heldProposalPointer.js';
+import { proposeHeldParts } from './heldProposalPointer.js';
 import type { ImageCredit } from './imageCredit.js';
 import type { LocationWriteRun } from './locationWriter.js';
 import type { ContentItemChange } from './types.js';
@@ -209,11 +209,9 @@ export async function writePointContents(
       .filter(entry => entry.fields.length > 0);
     // A held field is a proposal the card finds through the object's pointer
     // (ADR-0037), set in the same transaction as the hold.
-    if (changed.some(entry => entry.fields.some(field => field.held))) {
-      await pointHeldProposalAt(client, experienceId, run.syncLogId);
-    }
+    const proposed = await proposeHeldParts(client, experienceId, run, changed);
     await client.query('COMMIT');
-    return changed;
+    return proposed;
   } catch (error) {
     unusable = await rollbackQuietly(client);
     throw error;
