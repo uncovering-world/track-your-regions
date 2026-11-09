@@ -39,6 +39,7 @@ import {
 import type { KindFacts, KindRule } from './kindRules.js';
 import { CAST_GROUP, emptyFacts, fetchCastGroupPool, type PoolEntity, type EntityFacts } from './queries.js';
 import { attachCasts, fetchCastItems } from './castGroups.js';
+import { readGardenMakers } from './gardens.js';
 import type { PlaceKind } from '../places/gather.js';
 import { inPool, namesRefusal, openWorldTier, type WorldOptions, type WorldTier } from '../places/worldTier.js';
 import type { WorldCandidate } from '../places/worldBars.js';
@@ -149,7 +150,7 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
   readsSubjects: true,
   editions: {
     enter: fetchCastGroupPool,
-    attach: readCastGroups,
+    attach: readCastGroupsAndGardens,
   },
   // The street-art places no class names (#2035), which Public art decides by
   // their own rule, and the monuments English Wikipedia files that Wikidata
@@ -164,6 +165,17 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
   // Rathaus-Glockenspiel has 7 editions — and is a candidate whatever its count.
   admissionPool: true,
 };
+
+/**
+ * What the rule reads of a candidate once the facts are in, beside its own
+ * statements: a group's casts, and who made a sculpture garden's works.
+ */
+async function readCastGroupsAndGardens(
+  run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>,
+): Promise<void> {
+  await readCastGroups(run, pool, facts);
+  await readGardenMakers(run, facts);
+}
 
 /**
  * The casts of every group of casts among the candidates, written onto the
@@ -222,6 +234,7 @@ function kindFactsOf(known: EntityFacts, subjects: Map<string, SubjectFacts>): K
     commemorates: known.commemorates,
     genres: known.genres,
     subjects: known.depicts.flatMap((qid) => subjects.get(qid) ?? []),
+    heldMakers: known.heldMakers,
   };
 }
 
@@ -297,6 +310,7 @@ export function publicArtVerdictOf(
     depicts: known.depicts,
     genres: known.genres,
     subjects: known.depicts.flatMap((qid) => subjects.get(qid) ?? []),
+    heldMakers: known.heldMakers,
     ...castsJudged(entity, containers),
     onEarth: entity.onEarth,
     lat: entity.lat,

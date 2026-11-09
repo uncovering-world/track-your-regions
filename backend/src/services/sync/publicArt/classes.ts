@@ -381,6 +381,13 @@ export const BURIAL_CLASSES: Record<string, string> = {
 };
 
 /**
+ * A sculpture garden: killed for both kinds (`KILL_CLASSES`) unless it is one
+ * artist's work, which Public art offers (`isOneArtistsGarden`, #2037), or a
+ * memorial, which Monuments & memorials does (`MEMORIAL_LIFTED_KILLS`).
+ */
+export const SCULPTURE_GARDEN = 'Q1759852';
+
+/**
  * Refused whatever else the entity carries, with the reason named. These are
  * other kinds' objects or nobody's: a place of worship is a place of worship
  * though a statue stands in it, a camp is a camp though it is also a memorial,

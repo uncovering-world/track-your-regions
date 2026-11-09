@@ -224,6 +224,16 @@ export async function subsetEntityFacts(ids: string[]): Promise<Map<string, Enti
   return out;
 }
 
+/** The makers each kept work names, as `fetchWorkMakers` answers: a work that names none is absent. */
+export async function subsetWorkMakers(ids: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  for (const [id, { entity }] of await entitiesOf(ids)) {
+    const makers = [...new Set(itemsOf(bestStatements(entity.claims.P170)))];
+    if (makers.length) out.set(id, makers);
+  }
+  return out;
+}
+
 /** What each kept depicted item is, as `fetchSubjectFacts` answers; an item the subset did not keep has no entry. */
 export async function subsetSubjectFacts(ids: string[]): Promise<Map<string, SubjectFacts>> {
   const out = new Map<string, SubjectFacts>();

@@ -30,8 +30,10 @@ import {
   SITE_CLASSES,
   OTHER_PLACE_CLASSES,
   MEMORIAL_LIFTS,
+  SCULPTURE_GARDEN,
   type PublicArtTrees,
 } from './classes.js';
+import { isOneArtistsGarden } from './gardens.js';
 import { formsOf, type KindRule, type MonumentType, type PublicArtType } from './kindRules.js';
 // The works-first kinds' exception for a lost work whose remains are on show (#872).
 import { REMAINS_ON_SHOW } from '../museum/worksCollector.js';
@@ -45,6 +47,8 @@ export interface PublicArtFacts {
   classes: string[];
   /** The `P31`s a preferred class outranks (`EntityFacts.outrankedClasses`). */
   outrankedClasses?: string[];
+  /** The makers each work a sculpture garden holds names (`EntityFacts.heldMakers`). */
+  heldMakers?: string[][];
   containers: ContainerFact[];
   /**
    * Whose collection the entity is in (`P195`), with what each owner is.
@@ -99,9 +103,10 @@ export type PublicArtResult =
     type: PublicArtType | MonumentType;
     /**
      * Whether the kind's classes answered a building's veto — an artwork
-     * class, and for Monuments & memorials a memorial too. Stored with the
-     * row, so the catalogue check can read the rule's own answer rather than
-     * approximate closures it cannot hold.
+     * class, and for Monuments & memorials a memorial too — or the place is a
+     * sculpture garden Public art admits as one artist's work (#2037). Stored
+     * with the row, so the catalogue check can read the rule's own answer
+     * rather than approximate closures it cannot hold.
      */
     artwork: boolean;
     /**
@@ -302,13 +307,18 @@ function vetoes(e: PublicArtFacts, trees: PublicArtTrees, memorialLifts: boolean
  * to. The class is read off the pinned floor (`COMMEMORATIVE_FLOOR`), not the
  * walked tree, so the catalogue check reads the same list. Where `filed`, the
  * monuments categories lift the burial kills as a form does (#2171): the Che
- * Guevara Mausoleum is typed nothing but a mausoleum.
+ * Guevara Mausoleum is typed nothing but a mausoleum. Where the kind takes
+ * one artist's sculpture garden (`oneArtistsGardens`, #2037), that garden's
+ * kill is lifted: the Vigeland installation.
  */
-function kills(e: PublicArtFacts, memorialLifts: boolean, filed: boolean): string[] {
+function kills(e: PublicArtFacts, rule: KindRule, filed: boolean): string[] {
+  const { memorialLifts } = rule;
   const form = memorialLifts && (filed || formsOf(e).some((c) => COMMEMORATIVE_FORMS[c]));
   const memorial = memorialLifts && e.classes.some((c) => COMMEMORATIVE_FLOOR[c]);
+  const oneArtists = rule.oneArtistsGardens && isOneArtistsGarden(e);
   return named(
-    e.classes.filter((c) => !(form && BURIAL_CLASSES[c]) && !(memorial && MEMORIAL_LIFTED_KILLS[c])),
+    e.classes.filter((c) => !(form && BURIAL_CLASSES[c]) && !(memorial && MEMORIAL_LIFTED_KILLS[c])
+      && !(oneArtists && c === SCULPTURE_GARDEN)),
     KILL_CLASSES,
   );
 }
@@ -477,7 +487,7 @@ function castsShown(
 function whatItIs(e: PublicArtFacts, trees: PublicArtTrees, rule: KindRule, filed: boolean): string | null {
   const not = `not ${rule.noun}`;
   if (e.classes.some((c) => trees.worship.has(c))) return `a place of worship, ${not}`;
-  const killed = kills(e, rule.memorialLifts, filed);
+  const killed = kills(e, rule, filed);
   if (killed.length) return `${not}: ${killed.join('; ')}`;
   // The works-first kinds' one exception by name holds here too: a destroyed
   // work whose remains are what a traveller stands in front of.
@@ -538,16 +548,25 @@ export function publicArtVerdict(
 
   // The category answers a building's veto as an artwork class does, and the
   // row says so (`artwork`), so the catalogue check reads the same answer.
-  const answered = filed !== undefined || rule.answersVeto(e, trees);
+  // Where the kind takes one artist's garden, the garden's own class neither
+  // answers a veto nor raises one: Wikidata files it under sculpture and under
+  // open-air museum alike, and the Vigeland installation, typed nothing else,
+  // is no museum, while Millesgården, typed an art museum too, stays the
+  // museum's. A memorial garden Monuments & memorials admits is answered as
+  // before.
+  const vetoFacts = rule.oneArtistsGardens ? { ...e, classes: e.classes.filter((c) => c !== SCULPTURE_GARDEN) } : e;
+  const answered = filed !== undefined || rule.answersVeto(vetoFacts, trees);
   if (!answered) {
-    const vetoed = vetoes(e, trees, rule.memorialLifts);
+    const vetoed = vetoes(vetoFacts, trees, rule.memorialLifts);
     if (vetoed.length) {
       return { pass: false, reason: `${rule.unanswered}, and typed: ${vetoed.join('; ')}` };
     }
   }
-  // Answered by the kind: an artwork class, or a memorial that lifted every
-  // veto the place carries.
-  const artwork = answered || (rule.memorialLifts && named(e.classes, VETO_CLASSES).length > 0);
+  // Answered by the kind: an artwork class, a memorial that lifted every veto
+  // the place carries, or a garden that is one artist's work, which answered
+  // no veto but is the kind's art all the same.
+  const artwork = answered || (rule.memorialLifts && named(e.classes, VETO_CLASSES).length > 0)
+    || (rule.oneArtistsGardens && isOneArtistsGarden(e));
 
   // Number.isFinite, not truthiness: a monument on the equator has a coordinate of 0.
   if (!Number.isFinite(e.lat) || !Number.isFinite(e.lon)) {

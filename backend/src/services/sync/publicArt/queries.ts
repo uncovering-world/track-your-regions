@@ -511,6 +511,12 @@ export interface EntityFacts {
   genres: string[];
   /** `P140`: the faiths it is holy to, which tells a holy mountain people worship at from a peak (#1978). */
   religions?: string[];
+  /**
+   * The makers each work a sculpture garden holds names, one list per work
+   * (`readGardenMakers`): whether it is one artist's work (#2037). Read for
+   * a garden only, and absent on everything else.
+   */
+  heldMakers?: string[][];
 }
 
 export const emptyFacts = (): EntityFacts => ({

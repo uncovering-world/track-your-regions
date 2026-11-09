@@ -104,14 +104,15 @@ async function liveRootsOfClasses(sparql: SparqlFn, classes: string[], roots: re
   return out;
 }
 
-/** One work a street-art place holds. */
+/** One work a place holds: a street-art wall's mural, a sculpture garden's statue. */
 export interface StreetArtHolding {
   place: string;
   work: string;
 }
 
 /**
- * What each of `places` holds by a standing statement (#2055): a part the
+ * What each of `places` holds by a standing statement (#2055), a street-art
+ * wall or a sculpture garden (`readGardenMakers`, #2037): a part the
  * place names (`P527`), or a work that says it stands in the place (`P276`)
  * or is part of it (`P361`). Of the East Side Gallery's seven murals, the wall
  * names three as parts, five say they stand there and five that they are part
@@ -138,7 +139,7 @@ async function liveStreetArtHoldings(sparql: SparqlFn, places: string[]): Promis
       { ${standing('?place', 'P527', '?work')} }
       UNION { ${standing('?work', 'P276', '?place')} }
       UNION { ${standing('?work', 'P361', '?place')} }
-    }`, { kind: 'statements', label: `what ${places.length} street-art places hold` });
+    }`, { kind: 'statements', label: `what ${places.length} places hold` });
   const out: StreetArtHolding[] = [];
   for (const row of rows) {
     const place = extractQid(row.place?.value ?? '');
