@@ -67,7 +67,9 @@ export interface PlaceKind<Trees> {
    * The editions among its candidates (#880, ADR-0145): `enter` names the
    * groups that enter the pool through their casts, with no point of their own;
    * `attach` writes each group's casts onto its pool entity once the facts are
-   * read, so the rule sees the casts' classes and the run writes their points.
+   * read, so the rule sees the casts' classes and the run writes their points,
+   * and anything else the rule reads past a candidate's own statements: who
+   * made a sculpture garden's works, for Public art (#2037).
    */
   editions?: {
     enter(run: QueryRunner): Promise<PoolEntity[]>;

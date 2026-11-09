@@ -176,8 +176,9 @@ describe('an admitted public-art row typed as a building', () => {
     // reads (`COMMEMORATIVE_FLOOR`), and a commemorative form lift the burial
     // kill too, read from the genre as well (#1832): the Monumento a la
     // Revolución is a mausoleum inside a triumphal arch. A constant cannot see
-    // the genre, so the form is asked of the stored answer; Public art never
-    // lifts any of them, so its admission is refused whatever stands with it.
+    // the genre, so the form is asked of the stored answer; Public art lifts
+    // none but one artist's sculpture garden (#2037), which its stored artwork
+    // answer says, and a garden that is also a hall of fame stays refused.
     const array = (qids: string[]) => 'ARRAY[' + qids.map((qid) => "'" + qid + "'").join(', ') + ']';
     const outright = Object.keys(KILL_CLASSES).filter((qid) => !MEMORIAL_LIFTED_KILLS[qid]);
     expect(sql).toContain(`?| ${array([...Object.keys(WORSHIP_CLASSES), ...outright])} OR`);
@@ -185,8 +186,11 @@ describe('an admitted public-art row typed as a building', () => {
     const lifted = Object.keys(MEMORIAL_LIFTED_KILLS).filter((qid) => !BURIAL_CLASSES[qid]);
     const floor = array(Object.keys(COMMEMORATIVE_FLOOR));
     expect(sql).toContain(
-      `?| ${array(lifted)} AND (m.source_id = 3 OR NOT m.facts->'wikidataClasses' ?| ${floor}) )`,
+      `?| ${array(lifted)} AND (m.source_id = 3 OR NOT m.facts->'wikidataClasses' ?| ${floor}) AND NOT ( `
+      + "m.source_id = 3 AND COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE) "
+      + `AND NOT (m.facts->'wikidataClasses') - ARRAY['Q1759852'] ?| ${array(lifted)} ) )`,
     );
+    expect(lifted).toContain('Q1759852');
     expect(sql).toContain(
       `?| ${array(Object.keys(BURIAL_CLASSES))} AND (m.source_id = 3 OR NOT ( `
       + `COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE) OR m.facts->'wikidataClasses' ?| ${floor} )) ) )`,

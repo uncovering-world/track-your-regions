@@ -27,6 +27,7 @@ import {
   type PublicArtTrees,
 } from './classes.js';
 import type { SubjectFacts } from './subjects.js';
+import { isOneArtistsGarden } from './gardens.js';
 import { typeValues, type PlaceTypeOf } from '@tyr/shared/placeTypes';
 
 /** The types the two kinds file a row under, disjoint so a value names its kind (`@tyr/shared/placeTypes`). */
@@ -46,6 +47,8 @@ export interface KindFacts {
   genres: string[];
   /** What each item it depicts (`P180`) is, for the ones that were read. */
   subjects: SubjectFacts[];
+  /** The makers each work a sculpture garden holds names (`EntityFacts.heldMakers`). */
+  heldMakers?: string[][];
 }
 
 export interface KindRule {
@@ -68,6 +71,13 @@ export interface KindRule {
    * mausoleum in it.
    */
   memorialLifts: boolean;
+  /**
+   * Whether a sculpture garden one artist made is of the kind
+   * (`isOneArtistsGarden`, #2037): it lifts the garden's kill and admits it,
+   * and answers no veto, so a garden that is also a museum stays the
+   * museum's (Millesgården).
+   */
+  oneArtistsGardens: boolean;
   /** The type an admitted row is filed under. */
   type(e: KindFacts, trees: PublicArtTrees): PublicArtType | MonumentType;
   /** Every type `type` may answer: a stored type outside it is no reader's fact to keep (#1807). */
@@ -89,7 +99,9 @@ export const formsOf = (e: KindFacts): string[] => [...e.classes, ...e.genres];
  * Public art: a sculpture, a statue, a fountain, a mural, a public clock with
  * a show (`PUBLIC_CLOCK_CLASSES`), and a column that is no sculpture by itself
  * but which Wikidata also types one below its preferred class: the Column of
- * Marcus Aurelius is a victory column first and a statue at normal rank. A fountain before a sculpture, since the
+ * Marcus Aurelius is a victory column first and a statue at normal rank. A
+ * sculpture garden one artist made is a work of its own (`isOneArtistsGarden`,
+ * #2037): the Vigeland installation. A fountain before a sculpture, since the
  * Trevi Fountain is typed both and is visited as the fountain; street art
  * before either. A public clock is filed as a clock, before anything else it
  * is: the Zytglogge is a gate tower too (#2140).
@@ -100,9 +112,11 @@ export const PUBLIC_ART_RULE: KindRule = {
   unanswered: 'not an artwork',
   admits: (e, trees) => has(e.classes, trees.sculptural) || has(e.classes, trees.fountain)
     || has(e.classes, PUBLIC_CLOCK_CLASSES)
-    || (has(e.classes, NOT_SCULPTURE_BY_ITSELF) && has(e.outrankedClasses ?? [], trees.sculptural)),
+    || (has(e.classes, NOT_SCULPTURE_BY_ITSELF) && has(e.outrankedClasses ?? [], trees.sculptural))
+    || isOneArtistsGarden(e),
   answersVeto: (e, trees) => has(e.classes, trees.artwork),
   memorialLifts: false,
+  oneArtistsGardens: true,
   types: PUBLIC_ART_TYPES,
   type: (e, trees) => {
     if (has(e.classes, PUBLIC_CLOCK_CLASSES)) return 'clock';
@@ -139,6 +153,7 @@ export const MONUMENTS_RULE: KindRule = {
     || (has(e.classes, trees.sculptural) && !has(e.classes, STREET_ART_CLASSES) && e.subjects.some(raisedTo)),
   answersVeto: (e, trees) => has(formsOf(e), trees.artwork) || e.genres.includes(PUBLIC_ART_GENRE),
   memorialLifts: true,
+  oneArtistsGardens: false,
   types: MONUMENT_TYPES,
   type: (e, trees) => {
     const forms = formsOf(e);

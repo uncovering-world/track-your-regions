@@ -194,6 +194,24 @@ describe('gatherPlaces', () => {
     expect(shareOf(gathered, LOCKY_ART).admissionPool).toBeNull();
   });
 
+  it('hands a kind\'s attach hook the facts of its admission pool too, beyond the shared pool (#2037)', async () => {
+    // A sculpture garden of 3 Wikipedia editions is in the kind's own pool
+    // only: who made its works is still read off its facts.
+    vi.mocked(readsSubset).mockReturnValue(true);
+    KNOWN.Q6 = facts([LOCK]);
+    vi.mocked(fetchAdmissionPool).mockResolvedValueOnce([entity('Q6', 3)]);
+    const seen: string[][] = [];
+    const attaching: PlaceKind<unknown> = {
+      ...(WORKS as PlaceKind<unknown>),
+      editions: { enter: async () => [], attach: async (_run, _pool, known) => { seen.push([...known.keys()]); } },
+    };
+    await gatherPlaces(run, [{ kind: attaching, admitted: new Set() }]);
+    delete KNOWN.Q6;
+    vi.mocked(readsSubset).mockReturnValue(false);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain('Q6');
+  });
+
   it('counts a held row the admission pool names as the pool\'s, not as one asked for by id', async () => {
     vi.mocked(readsSubset).mockReturnValue(true);
     KNOWN.Q6 = facts([LOCK]);

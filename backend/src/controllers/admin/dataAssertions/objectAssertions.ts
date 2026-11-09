@@ -19,7 +19,8 @@ import {
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 import { WORLD_HERITAGE_KIND_ID } from '../../../db/inscription.js';
 import {
-  BURIAL_CLASSES, COMMEMORATIVE_FLOOR, KILL_CLASSES, LOST_CLASSES, MEMORIAL_LIFTED_KILLS, VETO_CLASSES, WORSHIP_CLASSES,
+  BURIAL_CLASSES, COMMEMORATIVE_FLOOR, KILL_CLASSES, LOST_CLASSES, MEMORIAL_LIFTED_KILLS, SCULPTURE_GARDEN, VETO_CLASSES,
+  WORSHIP_CLASSES,
 } from '../../../services/sync/publicArt/classes.js';
 import { REMAINS_ON_SHOW } from '../../../services/sync/museum/worksCollector.js';
 import { tidyLabelSql } from '../../../services/sync/labelFold.js';
@@ -296,12 +297,15 @@ function qidArray(qids: string[]): string {
 // too, which that kind reads from the genre as well (#1832), and by English
 // Wikipedia's monuments categories (#2171), and a constant can see neither, so
 // that one is asked of the rule's own answer, as a building veto is. Public
-// art lifts none of them.
+// art lifts one of them: a sculpture garden one artist made (#2037), read from
+// who made its works, which no constant can see either, so it is asked of the
+// stored artwork answer too.
 const REFUSED_OUTRIGHT = qidArray([
   ...Object.keys(WORSHIP_CLASSES),
   ...Object.keys(KILL_CLASSES).filter((qid) => !MEMORIAL_LIFTED_KILLS[qid]),
 ]);
 const LIFTED_KILLS = qidArray(Object.keys(MEMORIAL_LIFTED_KILLS).filter((qid) => !BURIAL_CLASSES[qid]));
+const ONE_ARTISTS_GARDEN = qidArray([SCULPTURE_GARDEN]);
 const COMMEMORATIVE = qidArray(Object.keys(COMMEMORATIVE_FLOOR));
 // A lost or destroyed work is refused unless it is the one work the rule
 // names as remains on show (`REMAINS_ON_SHOW`, read by `publicArtVerdict`).
@@ -399,11 +403,17 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
                    AND NOT COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE)
                  )
                  OR (
-                   -- An organisation or an attraction: Public art never lifts
-                   -- it, and Monuments & memorials only where a commemorative
-                   -- class stands with it.
+                   -- An organisation or an attraction: Public art lifts none
+                   -- but one artist's sculpture garden, which its stored
+                   -- artwork answer says, and Monuments & memorials only where
+                   -- a commemorative class stands with it.
                    m.facts->'wikidataClasses' ?| ${LIFTED_KILLS}
                    AND (m.source_id = 3 OR NOT m.facts->'wikidataClasses' ?| ${COMMEMORATIVE})
+                   AND NOT (
+                     m.source_id = 3
+                     AND COALESCE((m.facts->>'wikidataArtwork')::boolean, FALSE)
+                     AND NOT (m.facts->'wikidataClasses') - ${ONE_ARTISTS_GARDEN} ?| ${LIFTED_KILLS}
+                   )
                  )
                  OR (
                    -- A burial class: Public art never lifts it, and Monuments &
