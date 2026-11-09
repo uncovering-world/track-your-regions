@@ -93,7 +93,9 @@ the policy page is the authority.
 - *Code:*
   - Wikidata: `sync/componentItemQueries.ts` (`wbgetentities`, 50 ids, through `askWikipediaOnce`),
     `worldViewImport/pointMatcher.ts` `fetchWikidataP625Batch`, `geocodeController.ts`
-    (`wbsearchentities`, a curator's click) and `scripts/catalogueCoverageLookup.ts` `apiGet`.
+    (`wbsearchentities`, a curator's click), `controllers/experience/commemorationSearch.ts`
+    (`wbsearchentities` + `wbgetentities`, a curator's typing) and
+    `scripts/catalogueCoverageLookup.ts` `apiGet`.
   - Wikipedia: `sync/wikipediaCategories.ts` `askWikipediaOnce` → `postWikipedia` (categories,
     articles, extracts), `sync/visit/visitReading.ts` `articleLeads` and `articleLead`, and
     `services/wikipediaCoordinate.ts`.

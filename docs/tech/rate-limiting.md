@@ -23,7 +23,7 @@ Endpoints that hit external APIs or perform text search.
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
-| `searchLimiter` | 1 min | 30 | `GET /api/experiences/search`, `GET /api/geocode/search` |
+| `searchLimiter` | 1 min | 30 | `GET /api/experiences/search`, `GET /api/geocode/search`, `GET /api/experiences/commemorates/search` (#2144: asked as a curator types, after a pause, and two Wikidata requests each) |
 
 ### 3. Public read (generous)
 
