@@ -22,9 +22,15 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { placeVisibleSql } from '../../db/membership.js';
+import { membershipAdmittedSql, placeOfferedSql, placeVisibleSql } from '../../db/membership.js';
 import { upsertExperienceRecord, type ExperienceUpsertParams } from './experienceUpsert.js';
 import { SYNC_OWNED_METADATA_KEYS } from './changeSet.js';
+
+/** The hold and the refused writer as the snapshot read selects them (#2391). */
+const GATE = '(SELECT requires_curation FROM experience_sources WHERE id = $1)';
+const OWN_REFUSED = `COALESCE(NOT ${membershipAdmittedSql('sm')}, false)`;
+const HOLD_SELECT = `(${GATE} AND (${placeOfferedSql('e')} OR (${OWN_REFUSED} AND ${placeVisibleSql('e')}))) AS was_held,`
+  + ` (${GATE} AND ${OWN_REFUSED}) AS refused_writer`;
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -453,14 +459,11 @@ describe('a dry run', () => {
     // asked for it or not — so the test above would pass on a preview that
     // selected `FALSE AS was_held` and called nothing held, for ever. This is the
     // assertion that the preview actually asks, and asks the same rule the write
-    // path is guarded by: the gate flag, and a reader being able to see the
-    // place — some membership of it passed — which is the membership's since
-    // #822.
+    // path is guarded by: the gate flag, and either a reader seeing the place —
+    // some one membership admitted and passed — or the run's own membership
+    // refusing it (#2391).
     const sql = String(mockedQuery.mock.calls[0][0]);
-    expect(sql).toContain(
-      '((SELECT requires_curation FROM experience_sources WHERE id = $1)'
-      + ` AND ${placeVisibleSql('e')}) AS was_held`,
-    );
+    expect(sql).toContain(HOLD_SELECT);
     expect(sql).not.toMatch(/experiences\.curation_state/);
     // And it finds the place the way the run does: through the source's own
     // membership and the id the source knows it by (ADR-0084), and else the
@@ -594,14 +597,10 @@ describe('one transaction per object, the row locked first', () => {
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
     const [snapshot] = snapshotRead();
-    // The same rule the preview asks: the gate, and a reader being able to see
-    // the place — some membership passed. Read under the lock and after it, so
-    // the answer is about the memberships as they stand when the statement
-    // then writes.
-    expect(snapshot).toContain(
-      '((SELECT requires_curation FROM experience_sources WHERE id = $1)'
-      + ` AND ${placeVisibleSql('e')}) AS was_held`,
-    );
+    // The same rule the preview asks. Read under the lock and after it, so the
+    // answer is about the memberships as they stand when the statement then
+    // writes.
+    expect(snapshot).toContain(HOLD_SELECT);
   });
 
   it('rolls back and rethrows when a statement fails, and returns the client marked', async () => {
