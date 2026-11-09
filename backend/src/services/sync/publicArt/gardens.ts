@@ -4,8 +4,8 @@
  * Wikidata types it `sculpture garden`, as it types a garden that gathers
  * many artists' works under a curator (Storm King, the Hakone Open-Air
  * Museum). Two things tell them apart: the maker the garden names of itself
- * (`P170`) — the Tarot Garden names Niki de Saint Phalle, while the
- * Vigeland installation names nobody — and the works the garden holds: every
+ * (`P170`, or failing one its founder) — the Tarot Garden names Niki de Saint
+ * Phalle, while the Vigeland installation names nobody — and the works the garden holds: every
  * one of the Vigeland installation's that names a maker names Gustav Vigeland,
  * while the Hakone Open-Air Museum's name Picasso and Tumarkin.
  */
@@ -13,7 +13,7 @@
 import { extractQid, isQid } from '../wikidataUtils.js';
 import { chunk, ENTITY_PREFIX, values, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import { readsSubset } from '../subset/reader.js';
-import { subsetWorkMakers } from '../subset/publicArt.js';
+import { subsetItemStatements } from '../subset/publicArt.js';
 import { SCULPTURE_GARDEN } from './classes.js';
 import type { EntityFacts } from './queries.js';
 import { fetchStreetArtHoldings } from './streetArtQueries.js';
@@ -32,26 +32,29 @@ const BATCH = 200;
  */
 export const ONE_ARTIST_MIN_WORKS = 2;
 
-/** The makers (`P170`, items only) each of `works` names, best-ranked; a work that names none is absent. */
-export async function fetchWorkMakers(sparql: SparqlFn, works: string[]): Promise<Map<string, string[]>> {
+/**
+ * The items each of `ids` names under `property`, best-ranked: who made a work
+ * (`P170`) or who founded a garden (`P112`). An entity that names none is absent.
+ */
+export async function fetchItemStatements(sparql: SparqlFn, ids: string[], property: 'P170' | 'P112'): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
-  for (const batch of chunk(works.filter(isQid), BATCH)) {
+  for (const batch of chunk(ids.filter(isQid), BATCH)) {
     if (readsSubset(sparql)) {
-      for (const [work, makers] of await subsetWorkMakers(batch)) out.set(work, makers);
+      for (const [id, items] of await subsetItemStatements(batch, property)) out.set(id, items);
       continue;
     }
     const rows = await sparql(`
-      SELECT ?work ?maker WHERE {
-        VALUES ?work { ${values(batch)} }
-        ?work wdt:P170 ?maker . FILTER(STRSTARTS(STR(?maker), "${ENTITY_PREFIX}Q"))
-      }`, { kind: 'edges', label: `the makers of ${batch.length} works` });
+      SELECT ?entity ?item WHERE {
+        VALUES ?entity { ${values(batch)} }
+        ?entity wdt:${property} ?item . FILTER(STRSTARTS(STR(?item), "${ENTITY_PREFIX}Q"))
+      }`, { kind: 'edges', label: `the ${property} of ${batch.length} entities` });
     for (const row of rows) {
-      const work = extractQid(row.work?.value ?? '');
-      const maker = extractQid(row.maker?.value ?? '');
-      if (!isQid(work) || !isQid(maker)) continue;
-      const makers = out.get(work) ?? [];
-      if (!makers.includes(maker)) makers.push(maker);
-      out.set(work, makers);
+      const id = extractQid(row.entity?.value ?? '');
+      const item = extractQid(row.item?.value ?? '');
+      if (!isQid(id) || !isQid(item)) continue;
+      const items = out.get(id) ?? [];
+      if (!items.includes(item)) items.push(item);
+      out.set(id, items);
     }
   }
   return out;
@@ -62,7 +65,12 @@ export async function fetchWorkMakers(sparql: SparqlFn, works: string[]): Promis
  * written onto the garden's facts (`EntityFacts.heldMakers`): a work standing
  * in it (`P276`), part of it (`P361`) or named as its part (`P527`), by a
  * statement that still stands, as a street-art wall's murals are read; and
- * the makers the garden names of itself (`EntityFacts.ownMakers`). Every
+ * the makers the garden names of itself (`EntityFacts.ownMakers`): its
+ * creators, or, where neither it nor any work it holds names one and it
+ * stands in no other place, its founders. Nek Chand founded the Rock Garden of Chandigarh and Pier Francesco
+ * Orsini the Sacro Bosco at Bomarzo, and neither garden names a maker; the
+ * Lola Beer Ebner Sculpture Garden is part of the Tel Aviv Museum of Art, and
+ * its founder, a fashion designer, made none of its works. Every
  * candidate whose facts were read is asked, not the shared pool alone: a
  * garden in the kind's own admission pool, one an entrance named, an admitted
  * one read by id and one the surroundings tier asks about are judged by the
@@ -75,11 +83,19 @@ export async function readGardenMakers(run: QueryRunner, facts: Map<string, Enti
   await run.step();
   const holdings = await fetchStreetArtHoldings(run.sparql, gardens);
   await run.step();
-  const makers = await fetchWorkMakers(run.sparql, [...new Set([...gardens, ...holdings.map((h) => h.work)])]);
+  const makers = await fetchItemStatements(run.sparql, [...new Set([...gardens, ...holdings.map((h) => h.work)])], 'P170');
+  // A garden whose works name their maker is settled by them: its founder is
+  // asked only where nothing else names who made it.
+  const unnamed = gardens.filter((garden) => {
+    const known = facts.get(garden)!;
+    return !makers.has(garden) && !known.locations.length && !known.parents.length
+      && !holdings.some((h) => h.place === garden && makers.has(h.work));
+  });
+  const founders = unnamed.length ? await fetchItemStatements(run.sparql, unnamed, 'P112') : new Map<string, string[]>();
   for (const garden of gardens) {
     const known = facts.get(garden)!;
     known.heldMakers = holdings.filter((h) => h.place === garden).map((h) => makers.get(h.work) ?? []);
-    known.ownMakers = makers.get(garden) ?? [];
+    known.ownMakers = makers.get(garden) ?? founders.get(garden) ?? [];
   }
 }
 

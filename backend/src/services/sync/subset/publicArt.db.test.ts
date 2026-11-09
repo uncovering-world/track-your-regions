@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
 import { fetchClassPool, fetchContainerFacts, fetchEntitiesByIds, fetchEntityFacts } from '../publicArt/queries.js';
 import { fetchSubjectFacts } from '../publicArt/subjects.js';
-import { fetchWorkMakers } from '../publicArt/gardens.js';
+import { fetchItemStatements } from '../publicArt/gardens.js';
 import { subsetOnlyDoor } from './reader.js';
 
 /**
@@ -278,7 +278,7 @@ describe('Public Art read from the subset (#1459)', () => {
   });
 
   it('reads the makers a work names, items only, and nothing of one that names none (#2037)', async () => {
-    const makers = await fetchWorkMakers(door, [MONA_LISA, KAILASH]);
+    const makers = await fetchItemStatements(door, [MONA_LISA, KAILASH], 'P170');
     expect([...makers]).toEqual([[MONA_LISA, [LEONARDO]]]);
   });
 
