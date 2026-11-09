@@ -2594,7 +2594,7 @@ export type ExperienceDetailPartOf = {
 } | null;
 
 /**
- * One person or event a place commemorates (#2144).
+ * One person or event a place commemorates (#2144), or a holy figure a religious work depicts (#2404).
  */
 export interface CommemoratedSubject {
   /** The subject's Wikidata item. */
@@ -2650,6 +2650,8 @@ export interface ExperienceDetail {
   date_inscribed: string | null;
   /** Whom or what the place commemorates, off its `metadata.commemorates` (#2144): the Lincoln Memorial names Abraham Lincoln. Empty where the runs of Public art and Monuments & memorials name nobody. */
   commemorates: CommemoratedSubject[];
+  /** The holy figure a religious work depicts, off its `metadata.depicts` (#2404): Christ the Redeemer names Jesus Christ, which is never whom it commemorates. Empty where the reading names none. */
+  depicts: CommemoratedSubject[];
   created_at: string | null;
   updated_at: string | null;
   source_membership: ExperienceDetailSourceMembership;
