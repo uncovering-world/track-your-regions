@@ -648,9 +648,11 @@ draws is a Commons file (ADR-0043), so that is the only term in play.
 `imageCredit.ts` captures the credit at sync time and `ImageCreditLine` renders
 it, so a row holding a picture the product draws and no credit is a picture
 displayed with nobody named. It asks every table that holds one — objects, works
-and, since #1270, a component's own picture (holder `point`), whose held credit
-rides in its object's contents record the way a work's does in its museum's;
-`picture-the-product-may-not-show` asks the same three. It asks nothing about lifecycle: the curation
+and, since #1270, a component's own picture (holder `point`), which is its part's
+row's (ADR-0156 decision 3) and whose held credit rides in its object's contents
+record the way a work's does in its museum's; a point holds no picture of its own
+(#2117). `picture-the-product-may-not-show` asks objects and works, a part's
+picture among the objects'. It asks nothing about lifecycle: the curation
 screens show pending rows to curators, and working on the catalogue rather than
 publishing it does not change whose photograph it is.
 
