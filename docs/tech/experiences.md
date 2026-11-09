@@ -5587,7 +5587,11 @@ Maggiore, and crowds out 51 more of its churches.
     arrivals read's own `none`, so every arrival that group counts is answered in it, and a place's
     circle names no region for such a place. Each carries its standing (`shown`, `shadowed` or `new`), whether it is
     crowded out (for a new arrival, once passed), its fame (`membership_fame.score`, the list's
-    order), its point, its picture, the picture's credit and its article. For a place in the tail
+    order) and what the score is made of (#2400): readers a year, Wikipedia editions and whether a
+    guide uses it (`FAME_SIGNALS` in `crowdingWindow.ts`), a signal no reading dates
+    (`readers_read_at`, `guides_read_at`) read as null rather than the zero it is ranked at
+    (ADR-0175 decision 6). It also carries its point, its picture, the picture's credit and its
+    article. For a place in the tail
     or pinned it carries the rule's count (`outrankedBy`) and the names of the three best known of
     those above it (`betterKnown`, published places only), both through `crowding_above()`; an
     unpinned place the page shows has fewer than the limit above it and carries neither, which its
@@ -5598,7 +5602,11 @@ Maggiore, and crowds out 51 more of its churches.
     the place with its exact count, the group it is listed under (its leaf, as the shadowed
     arrivals are grouped, `groupLeafSql`), and every other place of its kind and type within the
     radius (`aroundSql`, the review card's count), each marked `compared` where it counts above the
-    place. What it is compared with is `crowding_above()` itself: the set `crowding_better()`
+    place and each with the same signals and score as a row of the list. The web shows them on
+    every row of the list, on the place's card with its count against the line ("Better within
+    10 km 13 of 10") and under each place it is compared with, as one line with counts grouped in
+    thousands and the score to two decimals: "Readers a year 209,401 · Editions 47 · Guide yes ·
+    Score 0.70", a dash where nothing is read (`FameFigures`). What it is compared with is `crowding_above()` itself: the set `crowding_better()`
     counts, so the list and the count are one rule. On dev it took 4 ms around the Pantheon.
   - **The answer is a pin on the membership** (`experience_kind_memberships.crowding_pin`, written
     by `setCrowdingPin` in `membershipWriter.ts` and by no run). `list`: never crowded out, and it
