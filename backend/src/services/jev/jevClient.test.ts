@@ -115,6 +115,62 @@ describe('several questions in one call (#1272)', () => {
     });
   });
 
+  describe("within Jev's context (#2398)", () => {
+    /** A question about 18k tokens long by the estimate: two fill a call, a third starts the next. */
+    const long = (n: number) => ({ instructions: `Hint ${n}: ${'x'.repeat(54_000)}`, criteria: { here: 'it is here', other: 'another place' } });
+    /** Jev answering whatever a call asked, `here` to every question, at 1000 tokens a call. */
+    const answeringEach = () => fetchMock.mockImplementation(async (_url: string, init: { body: string }) => {
+      const asked = JSON.parse(init.body) as { questions: Record<string, unknown> };
+      return new Response(JSON.stringify({
+        model: 'jev-1.14.0',
+        answers: Object.fromEntries(Object.keys(asked.questions).map(id => [id, { choice: 'here', probabilities: { here: 0.8, other: 0.2 }, confidence: 0.8 }])),
+        usage: { input_tokens: 1000 },
+      }), { status: 200 });
+    });
+
+    it('asks a decision too long for one call in several, in order, each with the state, and answers every question under its key', async () => {
+      answeringEach();
+      const { askJevChoices } = await import('./jevClient.js');
+      const many = Object.fromEntries([1, 2, 3, 4, 5].map(n => [`h${n}`, long(n)]));
+
+      const answer = await askJevChoices({ site: 'Rock Art of the Mediterranean Basin' }, many);
+
+      const sent = fetchMock.mock.calls.map(call => JSON.parse(call[1].body as string) as { state: unknown; questions: object });
+      expect(sent.map(call => Object.keys(call.questions))).toEqual([['h1', 'h2'], ['h3', 'h4'], ['h5']]);
+      expect(sent.every(call => JSON.stringify(call.state) === JSON.stringify({ site: 'Rock Art of the Mediterranean Basin' }))).toBe(true);
+      expect(Object.keys(answer.answers)).toEqual(['h1', 'h2', 'h3', 'h4', 'h5']);
+      expect(answer.answers.h5).toEqual({ choice: 'here', probabilities: { here: 0.8, other: 0.2 }, confidence: 0.8 });
+      // What the calls cost, added up: what the callers share out over the questions.
+      expect(answer).toMatchObject({ model: 'jev-1.14.0', inputTokens: 3000 });
+    });
+
+    it('keeps the questions of a decision that fits in one call', async () => {
+      answeringEach();
+      const { askJevChoices } = await import('./jevClient.js');
+      await askJevChoices({ site: 'Dacia' }, Object.fromEntries(Array.from({ length: 50 }, (_, n) => [`h${n}`, questions.p31])));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks a question too long for any call alone, so Jev refuses that one and no other', async () => {
+      answeringEach();
+      const { callsFor } = await import('./jevClient.js');
+      const huge = { instructions: 'x'.repeat(200_000), criteria: { here: 'it is here', other: 'another place' } };
+      expect(callsFor({ site: 'Qhapaq Ñan' }, { h1: questions.p31, h2: huge, h3: questions.p32 }).map(Object.keys))
+        .toEqual([['h1'], ['h2'], ['h3']]);
+    });
+
+    it('asks nothing after a call that fails, and fails, so nothing is stored and the next opening asks again', async () => {
+      answeringEach();
+      fetchMock.mockImplementationOnce(async () => new Response('{}', { status: 200 }))
+        .mockImplementationOnce(async () => new Response('{"error":"max_tokens_exceeded"}', { status: 400 }));
+      const { askJevChoices } = await import('./jevClient.js');
+      const many = Object.fromEntries([1, 2, 3, 4, 5].map(n => [`h${n}`, long(n)]));
+
+      await expect(askJevChoices({ site: 'Rock Art' }, many)).rejects.toThrow('Jev answered 400');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('backs off once on a 429, for the delay the service names, and then asks again', async () => {
     vi.useFakeTimers();
     try {

@@ -59,12 +59,12 @@ export interface MergeSuggestion {
   judgement: PairJudgement | null;
   confidence: number;
   probabilities: Record<string, number>;
-  /** This question's share of the call's input tokens. */
+  /** This question's share of the ask's input tokens, over every call it took. */
   inputTokens: number;
 }
 
 /**
- * Record the judgements of one call, a row per question, each on its pair's
+ * Record the judgements of one ask, a row per question, each on its pair's
  * two places with the proposal it was asked for and the pair as it was asked
  * (`asked`), under the anchor's lock. Keyed on the places, not the proposal: a
  * pass deletes an open pair it no longer finds and clears the pointer, and the
