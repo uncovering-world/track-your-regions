@@ -5220,7 +5220,12 @@ be saved back with one name removed:
    and a leading *the* dropped, is resolved to the article titled X exactly, and that article to
    its item. The Statue of Unity is filed under *Memorials to Vallabhbhai Patel*. A class of people
    is written with a small letter in a category title (*Statues of military personnel*) and names
-   nobody.
+   nobody. The same step reads the categories that say what a memorial concerns
+   (`CONCERNING_CATEGORIES`): *Monuments and memorials related to X* or *concerning X*, *X
+   monuments and memorials* and *X memorials in Y*, X taken only where it is a person or an event,
+   since those titles name classes too (*Military monuments and memorials*). The National
+   Monument of Scotland → the Napoleonic Wars, Mamayev Kurgan (*World War II memorials in
+   Russia*) → World War II. *Monuments and memorials in Warsaw* says where, and names nothing.
 3. `P921` *main subject*, a value that is a person or an event: the Hermannsdenkmal → Arminius.
 4. `P138` *named after*, the same: the Alexander Column → Alexander I of Russia. The Brandenburg
    Gate's namesake is a town, so it names nobody.
@@ -5228,6 +5233,47 @@ be saved back with one name removed:
 6. `P180` *depicts*, a person only: Nelson's Column → Horatio Nelson, not the lions or the
    battles on its plinth. Its *Monuments and memorials to Horatio Nelson* names a title that is a
    redirect, which the copy holds no page for.
+
+**What a religious work shows is not whom it commemorates** (#2404). A holy figure — an
+instance of a class under *deity* (Q178885) at any rank but deprecated, as Jesus Christ is beside
+his preferred *human*, or a person the churches canonised (`P411`), the Buddha among them — named
+by a step that reads what a work shows (3, 5 and 6, `DEPICTION_STEPS` in
+`@tyr/shared/commemorates`) is never a dedication: it is kept as what the place depicts. Christ the
+Redeemer is about Jesus Christ, and its card says "Depicts: Jesus Christ", not "Commemorates". The
+main subject takes a holy figure that is no person too (Guan Yin, Shiva), where a dedication
+takes only a person or an event; *depicts* still takes people only, so the Neptune of a fountain
+is not read. The first of those steps to name a holy figure answers it, whether or not a
+dedication was read, and a step that names only holy figures leaves the dedication to the steps
+after it. A statement or a category that says whom a place is a memorial to stays a dedication
+even where it names a holy figure: the Plague Column in Vienna commemorates the Holy Trinity and
+the plague. A figure the dedication already names is not said twice (the Statue of St. Wenceslas
+commemorates him). A canonised ruler's statue that depicts him is read as depicting him, which is
+true but no longer says he is honoured: the Monument to Stephen the Great in Iași.
+
+**A group names no dedication.** A work filed under more than one *Statues of* category shows
+many figures, and those categories name nothing of it, not even what it depicts: the Holy Trinity
+Column in Olomouc, under *Statues of Jesus* and *Statues of the Virgin Mary*, shows the Trinity,
+the Virgin and dozens of saints, and the card says nothing rather than single out Jesus. A work
+depicting more than `MAX_DEDICATED_FIGURES` people is a scene, and of them only those whose name
+the place's own name carries are its dedication (`namedInPlace`, a word of four letters or more):
+the Luther Monument in Worms commemorates Martin Luther and not the eight reformers and princes
+around him, and Istanbul's Republic Monument, named for none of its five founders, names no
+dedication. Mount Rushmore's four presidents are all read.
+
+**A war narrowed by the lead** (`warNarrowing.ts`). Wikidata's *commemorates* or a category often
+names the whole war where a memorial is one battle's. Where a reading names a war (an instance of
+a class under *war*, Q198), the lead of the place's English article is read live, one article at a
+time (`fetchLeads`, `rvsection=0`), and the articles linked from its sentences that say what the
+place commemorates, remembers or honours, or who fell there (`dedicationLinks`), are resolved to
+their items. One that is an armed conflict, a military operation or a theatre of war lying wholly
+within the war's dates (`CONFLICTS`, `within`) replaces the war (`narrowWars`), and the value's
+`via` says so (`WARS_NARROWED_BY_LEAD`). The Soviet War Memorial in Treptower Park, said by
+Wikidata to commemorate World War II, commemorates the Battle of Berlin; Mamayev Kurgan the
+Battle of Stalingrad. A link to the war itself, to a unit, a place or a later war (India Gate's
+lead names the Third Anglo-Afghan War of 1919) narrows nothing, and the war stays. A lead that cannot be read, its retries spent or the host refusing it,
+narrows nothing either and is logged: the run goes on with the war, which is already true. Where the dead
+are named only in prose (the Shot at Dawn Memorial's executed soldiers, the Basra Memorial's
+missing), the war stays too: that is a reading of the lead's words, left for later.
 
 Statements are read at their best rank, in the item's order, and a category's subjects by item
 id. A person is `P31` human (Q5); an event carries a point in time (`P585`), a start (`P580`) or an
@@ -5247,7 +5293,13 @@ finds no page (`commemorationWiki`).
 
 **Where it is stored.** `metadata.commemorates` on the place, `{ via, subjects: [{ item, label,
 articleUrl }] }`, with `via` naming the step that answered (`COMMEMORATION_STEPS` in
-`@tyr/shared/commemorates`), or `curator` (`CURATOR_COMMEMORATION`) for a curator's list. It is
+`@tyr/shared/commemorates`), `war-narrowed-by-lead` where the lead narrowed its war, or `curator`
+(`CURATOR_COMMEMORATION`) for a curator's list. The holy figure a religious work depicts is
+`metadata.depicts` in the same shape, its `via` one of `DEPICTION_STEPS` (`depictsOf`): written
+by the same runs, kept by the same rule (`WRITTEN_BY_SOURCES`), compared by its items
+(`sameSubjects`), served as `ExperienceDetail.depicts` and drawn as "Depicts: …" by the same
+line (`CommemoratesLine` with `word="Depicts"`). No curator lists it: a wrong figure is a held
+proposal a curator turns down, or a fix on Wikidata. It is
 absent where no step names anyone and no curator listed anyone. It is a field of the place,
 shown (`@tyr/shared/placeFields`): a memorial church keeps it under Places of worship whichever kind's
 run read it. The object read serves it as `ExperienceDetail.commemorates`, `[{ qid, label,
