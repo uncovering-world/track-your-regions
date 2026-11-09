@@ -330,16 +330,21 @@ export const METADATA_SET_KEYS: ReadonlySet<string> = new Set(['creators']);
  * The metadata keys whose two values are the same when they name the same
  * items: whom a place commemorates (#2144). A label or an article Wikidata
  * re-words, or another step of the reading naming the same people, is no
- * change a curator is asked about (`sameSubjects`).
+ * change a curator is asked about (`sameSubjects`); nor is a run that reads
+ * nobody where a curator's list names nobody.
  */
 const ITEM_SET_KEYS: ReadonlySet<string> = new Set(['commemorates']);
 
-/** Whether a metadata key's two values say the same thing. */
+/**
+ * Whether a metadata key's two values say the same thing: asked of every key,
+ * a curator's claimed ones included, so a run restating a claimed value in
+ * other words is no conflict either.
+ */
 function sameMetadataValue(key: string, before: unknown, after: unknown): boolean {
   if (METADATA_SET_KEYS.has(key) && Array.isArray(before) && Array.isArray(after)) {
     return sameLabelSet(before.map(String), after.map(String));
   }
-  if (ITEM_SET_KEYS.has(key) && !isEmptyValue(before) && !isEmptyValue(after)) return sameSubjects(before, after);
+  if (ITEM_SET_KEYS.has(key)) return sameSubjects(before, after);
   return jsonEquals(before, after);
 }
 
@@ -601,7 +606,7 @@ function metadataChanges(
   // loop below; a major one was reported above, with its claim, and is left out
   // so it is not pushed twice.
   for (const key of claimed) {
-    if (!isMajor(key) && !jsonEquals(ownValue(left, key), ownValue(right, key))) {
+    if (!isMajor(key) && !sameMetadataValue(key, ownValue(left, key), ownValue(right, key))) {
       changes.push({
         field: `${METADATA_CLAIM_PREFIX}${key}`,
         old: ownValue(left, key),

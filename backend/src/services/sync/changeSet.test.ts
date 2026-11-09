@@ -554,6 +554,45 @@ describe('whom a place commemorates, which is a set of items (#2144)', () => {
     // Shown on the card, so a gated source's rewrite waits for a curator rather than passing as unseen.
     expect(computeChangeSet(monument(), both, [], HELD).heldFields.map(f => f.field)).toContain('metadata.commemorates');
   });
+
+  describe("a curator's list, claimed", () => {
+    const CLAIM = ['metadata.commemorates'];
+    const every = (before: ExperienceSnapshot, after: ExperienceSnapshot, gate = HELD) => {
+      const changes = computeChangeSet(before, after, CLAIM, gate);
+      return {
+        conflicts: changes.curatedConflicts.map(f => f.field),
+        other: [...changes.changedFields, ...changes.heldFields].map(f => f.field),
+      };
+    };
+
+    it('is kept against a run naming someone else, and filed as the curator\'s', () => {
+      const curated = monument({ via: 'curator', subjects: [MININ] });
+      const run = monument({ via: 'depicts', subjects: [POZHARSKY, MININ] });
+      expect(every(curated, run)).toEqual({ conflicts: ['metadata.commemorates'], other: [] });
+      expect(every(curated, run, false)).toEqual({ conflicts: ['metadata.commemorates'], other: [] });
+    });
+
+    it('raises nothing where the run names the same people in its own words and step', () => {
+      const curated = monument({ via: 'curator', subjects: [POZHARSKY, MININ] });
+      const run = monument({ via: 'depicts', subjects: [{ ...MININ, label: 'Minin' }, POZHARSKY] });
+      expect(every(curated, run)).toEqual({ conflicts: [], other: [] });
+    });
+
+    it('keeps a list emptied of everyone against a run that names someone', () => {
+      // The empty list is a value the row carries, so the claim holds it.
+      const nobody = monument({ via: 'curator', subjects: [] });
+      expect(claimedMetadataKeys(CLAIM, nobody.metadata)).toEqual(['commemorates']);
+      expect(every(nobody, monument({ via: 'depicts', subjects: [POZHARSKY] }))).toEqual({ conflicts: ['metadata.commemorates'], other: [] });
+    });
+
+    it('raises nothing where the curator and the run both name nobody', () => {
+      expect(every(monument({ via: 'curator', subjects: [] }), monument())).toEqual({ conflicts: [], other: [] });
+    });
+
+    it('would protect nothing as no value, which is why nobody is stored as an empty list', () => {
+      expect(claimedMetadataKeys(CLAIM, monument().metadata)).toEqual([]);
+    });
+  });
 });
 
 describe('a metadata key the run computes about its own pass', () => {

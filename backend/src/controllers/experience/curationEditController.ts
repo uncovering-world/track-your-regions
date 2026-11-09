@@ -24,6 +24,7 @@ import { refusalFor } from './curatedUrlRefusal.js';
 import { heldSettledDetails, settleHeldByEdit } from './heldSettledByEdit.js';
 import { CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import { HELD_CREDIT_FIELD } from '@tyr/shared/pictures';
+import { CURATOR_COMMEMORATION, type CommemoratedSubject, type Commemorates } from '@tyr/shared/commemorates';
 
 type IdParams = z.output<typeof idParamSchema>;
 
@@ -41,6 +42,8 @@ interface EditPayload {
   hasWikipediaUpdate: boolean;
   /** Whether the description is an edit of UNESCO's text, undefined where the edit does not say (ADR-0149). */
   descriptionAdapted: boolean | undefined;
+  /** The curator's list of whom the place commemorates, whole, undefined where the edit does not touch it (#2144). */
+  commemorates: CommemoratedSubject[] | undefined;
   /**
    * Whose picture the *new* one is, resolved before the write.
    *
@@ -79,6 +82,7 @@ function parseEditPayload(body: Record<string, unknown>): EditPayload {
     hasWebsiteUpdate: websiteUrl !== undefined,
     hasWikipediaUpdate: wikipediaUrl !== undefined,
     descriptionAdapted: body.descriptionAdapted as boolean | undefined,
+    commemorates: body.commemorates as CommemoratedSubject[] | undefined,
   };
 }
 
@@ -89,7 +93,8 @@ function validateEditPayload(payload: EditPayload): string | null {
     ?? refusalFor(wikipediaUrl, isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE)
     ?? refusalFor(imageUrl, isDisplayablePictureUrl, DISPLAYABLE_PICTURE_URL_MESSAGE);
   if (refusal) return refusal;
-  const hasMetadataUpdate = hasWebsiteUpdate || hasWikipediaUpdate || payload.descriptionAdapted !== undefined;
+  const hasMetadataUpdate = hasWebsiteUpdate || hasWikipediaUpdate || payload.descriptionAdapted !== undefined
+    || payload.commemorates !== undefined;
   if (updates.length === 0 && !hasMetadataUpdate) {
     return 'No fields to update';
   }
@@ -115,7 +120,22 @@ function metadataPatchOf(payload: EditPayload): Record<string, unknown> | null {
   // UNESCO's keeps the credit as an adaptation, their own carries none. Claimed
   // like a website, so a run keeps it, and a `null` is a decision too.
   if (payload.descriptionAdapted !== undefined) patch.descriptionAdaptedFrom = payload.descriptionAdapted ? 'unesco' : null;
+  // Whom the place commemorates, as the curator listed it (#2144). An empty
+  // list is stored as one rather than as no value: a claim protects only a key
+  // the row carries (`claimedMetadataKeys`), so "nobody" must be a value for
+  // the next run to keep it.
+  const commemorates = curatorCommemorates(payload);
+  if (commemorates) patch.commemorates = commemorates;
   return Object.keys(patch).length > 0 ? patch : null;
+}
+
+/** The value a curator's list is stored as, or undefined where the edit does not touch it. */
+function curatorCommemorates(payload: EditPayload): Commemorates | undefined {
+  if (payload.commemorates === undefined) return undefined;
+  return {
+    via: CURATOR_COMMEMORATION,
+    subjects: payload.commemorates.map(({ item, label, articleUrl }) => ({ item, label, articleUrl })),
+  };
 }
 
 /**
@@ -256,13 +276,15 @@ function editedFields(payload: EditPayload): Map<string, unknown> {
   if (payload.hasWebsiteUpdate) edited.set('metadata.website', payload.websiteUrl || null);
   if (payload.hasWikipediaUpdate) edited.set('metadata.wikipediaUrl', payload.wikipediaUrl || null);
   if (payload.imageCredit) edited.set(HELD_CREDIT_FIELD, payload.imageCredit);
+  const commemorates = curatorCommemorates(payload);
+  if (commemorates) edited.set('metadata.commemorates', commemorates);
   return edited;
 }
 
 /**
  * Edit an experience's fields
  * PATCH /api/experiences/:id/edit
- * Body: { name?, description?, subtitle?, type?, imageUrl?, tags?, websiteUrl?, wikipediaUrl? }
+ * Body: { name?, description?, subtitle?, type?, imageUrl?, tags?, websiteUrl?, wikipediaUrl?, descriptionAdapted?, commemorates? }
  * An empty string clears the field: the column is stored as NULL, and the
  * clearing is claimed like any other edit (`clearedToNull`).
  *

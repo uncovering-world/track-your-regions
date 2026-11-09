@@ -38,6 +38,7 @@
  */
 import type { PoolClient } from 'pg';
 import { isEmptyValue, jsonEquals } from '@tyr/shared/equality';
+import { sameSubjects } from '@tyr/shared/commemorates';
 import { HELD_CREDIT_FIELD, pictureCreditPartner } from '@tyr/shared/pictures';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
@@ -53,8 +54,13 @@ export interface HeldSettled {
   fromSyncLogId: number;
 }
 
-/** Whether what the curator stored is what the run proposed: names as stored, nothing as nothing. */
+/**
+ * Whether what the curator stored is what the run proposed: names as stored,
+ * nothing as nothing, and whom a place commemorates by the items it names
+ * (`sameSubjects`), since the curator's list is stored as theirs.
+ */
 function sameAsProposed(field: string, proposed: unknown, stored: unknown): boolean {
+  if (field === 'metadata.commemorates') return sameSubjects(proposed, stored);
   if (isEmptyValue(proposed) && isEmptyValue(stored)) return true;
   return jsonEquals(tidyNameValue(field, proposed), tidyNameValue(field, stored));
 }

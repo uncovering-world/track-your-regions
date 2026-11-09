@@ -15,6 +15,7 @@ import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
 import { isStorableHttpUrl, pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE, STORABLE_HTTP_URL_MESSAGE } from './urlSafety.js';
+import { commemoratesListSchema } from './commemoratesSchemas.js';
 import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
 import { QUEUE_KINDS } from '../controllers/experience/reviewQueueVocabulary.js';
 import { DUMP_KEYS } from '../services/dumps/catalog.js';
@@ -349,6 +350,11 @@ export const assignExperienceBodySchema = z.object({
   regionId: bodyRowIdSchema,
 });
 
+/** `GET /api/experiences/commemorates/search`: the name a curator typed, for the items Wikidata finds by it (#2144). */
+export const commemorationSearchQuerySchema = z.object({
+  q: searchText(2, 200),
+});
+
 export const editExperienceBodySchema = z.object({
   name: storedName(COLUMN_WIDTHS.experiences.name).optional(),
   description: z.string().max(10000).optional(),
@@ -362,6 +368,9 @@ export const editExperienceBodySchema = z.object({
   // its credit as an adaptation, or the curator's own, which carries none
   // (ADR-0149). Sent with a description of a place the UNESCO source holds.
   descriptionAdapted: z.boolean().optional(),
+  // Whom or what the place commemorates, the curator's list whole (#2144):
+  // stored as theirs and claimed, so the next run keeps it, the empty list too.
+  commemorates: commemoratesListSchema.optional(),
 });
 
 export const createManualExperienceBodySchema = z.object({

@@ -494,6 +494,20 @@ export const ExperienceEditResult = z.strictObject({
 }).describe("What a curator's edit of an object's fields did.");
 export type ExperienceEditResult = z.infer<typeof ExperienceEditResult>;
 
+export const CommemorationCandidate = z.strictObject({
+  item: z.string().describe('The Wikidata item.'),
+  label: z.string().describe('Its English label, or the label Wikidata\'s search shows where it has none in English.'),
+  description: z.string().nullable()
+    .describe('Its English description, which tells two people or events of one name apart; null where it has none.'),
+  articleUrl: z.string().nullable().describe('Its English Wikipedia article, or null where it has none.'),
+}).describe('A person or event a curator may add to whom a place commemorates (#2144).');
+export type CommemorationCandidate = z.infer<typeof CommemorationCandidate>;
+
+export const CommemorationCandidates = z.strictObject({
+  candidates: z.array(CommemorationCandidate).describe('Best match first, as Wikidata\'s search ranks them; at most eight.'),
+}).describe('The Wikidata items a name finds, for a curator\'s list of whom a place commemorates.');
+export type CommemorationCandidates = z.infer<typeof CommemorationCandidates>;
+
 export const ManualExperienceCreated = z.strictObject({
   id: z.number().int(),
   name: z.string(),

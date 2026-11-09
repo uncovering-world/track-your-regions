@@ -28,6 +28,7 @@ import {
   DeclineHeldResult,
   DeclineSourceResult,
   ExperienceEditResult,
+  CommemorationCandidates,
   ExperienceStateResult,
   LocationEditResult,
   LocationStateResult,
@@ -61,6 +62,7 @@ import { searchReviewRegions } from '../controllers/experience/reviewRegionSearc
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { getWebsiteChecks } from '../controllers/experience/websiteChecksController.js';
+import { searchCommemorationSubjects } from '../controllers/experience/commemorationSearch.js';
 import { getPictureClasses } from '../controllers/experience/pictureClassesController.js';
 import { getRegionTail } from '../controllers/experience/experienceTailController.js';
 import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
@@ -191,6 +193,7 @@ import {
   unrejectExperienceBodySchema,
   assignExperienceBodySchema,
   editExperienceBodySchema,
+  commemorationSearchQuerySchema,
   createManualExperienceBodySchema,
   wikipediaEditionsQuerySchema,
   findSiteLinkParamsSchema,
@@ -393,11 +396,24 @@ export const experienceCurationRoutes = [
   // Edit an experience's fields (curator)
   defineRoute({
     method: 'patch', path: '/:id/edit', access: 'curator', cache: 'no-store',
-    summary: 'Edit an experience\'s name, text, type, tags, picture or links, kept against later syncs',
+    summary: 'Edit an experience\'s name, text, type, tags, picture, links or whom it commemorates, kept against later syncs',
     params: idParamSchema,
     body: editExperienceBodySchema,
     response: ExperienceEditResult,
     handler: editExperience,
+  }),
+
+  // The people and events a name finds on Wikidata, for the edit's list of whom
+  // a place commemorates (#2144). Two outbound requests per search, asked as the
+  // curator types, so held to the search ceiling; curator-only, since it asks
+  // Wikidata under the product's User-Agent. No `/:id/…` route of its method
+  // has `search` as its second segment, so no id can take it.
+  defineRoute({
+    method: 'get', path: '/commemorates/search', access: 'curator', cache: 'no-store', limiter: searchLimiter,
+    summary: 'Find people and events on Wikidata by name, for whom a place commemorates',
+    query: commemorationSearchQuerySchema,
+    response: CommemorationCandidates,
+    handler: searchCommemorationSubjects,
   }),
 
   // Whether the official websites a review card shows still answer (#2165): an
