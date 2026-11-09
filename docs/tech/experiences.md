@@ -1283,12 +1283,26 @@ and that is the surface #544 is about.
 source are written invisible rather than withheld ([ADR-0025](../decisions/0025-per-source-curation-gate.md)),
 but an experience row that is already published has no second row to hide an unreviewed value behind
 — so for that row alone the run keeps the stored content instead. The condition is
-`requires_curation` and a reader being able to see the place — some membership of it passed
-(`placeVisibleSql`, the membership's state since #822) — decided under the lock the upsert takes
+`requires_curation` and a reader being able to see the place — some one membership of it admitted
+and passed (`placeOfferedSql`, the membership's state since #822) — decided under the lock the upsert takes
 first, in the statement after it, because it depends on the stored state the write is about to overwrite, and it rides on every
 content column but `tags` (#570) beside that column's own `curated_fields` guard. A place still
 unread is *not* held: nobody can see it, so the run refreshes it in place and the curator reviews
-the newest state rather than whatever landed first.
+the newest state rather than whatever landed first. Neither is a place whose only passed membership
+the kind refuses, which shows it to nobody (#2391).
+
+**A gated run whose own membership refuses the place asks nothing about the place's fields** (#2391,
+`REFUSED_WRITER` in `experienceUpsert.ts`). On a place a curator has passed it keeps them as the
+place holds them, as the hold does; on one nobody has passed it refreshes them in place, as for any
+unread place. Either way it files none of its rewrites, held or claimed (`nothingProposed`,
+`changeSet.ts`), so it raises no card about them, nor about an outline it draws, which passes the
+hold and is written, and it clears a pointer it set before. The points
+and works of the place keep their own hold, which reads the part and the gate alone (#2393). Its own view is still recorded on its
+membership. Where another kind offers the place, that kind's run asks: the Karl Marx Monument in
+Chemnitz, refused by Public art and offered by Monuments & memorials, is asked about whom it
+commemorates once, by the Monuments run. Where no kind offers it, as for the Rondanini Pietà kept
+out of both, no reader sees the place and nobody is asked about its fields. A trusted source's refused membership
+writes as before, since nothing it writes waits for a curator.
 
 **A rewrite a visitor would not notice passes the gate** (#1353, [ADR-0099](../decisions/0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md), `GatePass` in `changeSet.ts`).
 Three classes were half the queue's held objects on 2026-10-10: a part's name the source extended
@@ -1427,7 +1441,7 @@ every difference in exactly one of three buckets, and the bucket is what the run
 `changedFields` means *written*, `curatedConflicts` means a curator's claim refused it, `heldFields`
 means the gate refused it. The hold itself is decided in SQL — it reads the stored `curation_state`
 the same statement is about to overwrite — and the rule **is answered once and the answer handed
-on**: since #822 the hold is a question about the place's memberships (some membership passed),
+on**: since #822 the hold is a question about the place's memberships (some one membership admitted and passed, or the run's own refusing a place a curator passed),
 which an `ON CONFLICT DO UPDATE` cannot read under the row lock — a subselect there reads the
 statement's snapshot — so the upsert locks the place first, in a statement of its own, answers
 `was_held` in the next statement beside the `before` snapshot, and binds the answer into the write as a parameter every guard reads
@@ -7846,7 +7860,7 @@ after it. And it names no content column, so **turning it off publishes nothing*
 no row. What a backlog does next depends on its kind. Unread objects and unread contents stay put,
 because only the insert arm ever writes `pending` and only a person moves a row out of it. A change
 a run is holding does the opposite: the hold is `requires_curation` and a reader being able to see
-the place — some membership passed (`experienceUpsert.ts`) — so it stops existing with the gate,
+the place — some one membership admitted and passed (`experienceUpsert.ts`) — so it stops existing with the gate,
 and the next ungated run writes the proposed values and clears the pointer with nobody involved. The flip is logged with
 the actor's id; there is no per-source audit table, and the switch that decides whether a
 whole source reaches readers unreviewed should not leave no trace at all.
