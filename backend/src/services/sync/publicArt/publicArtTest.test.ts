@@ -50,7 +50,8 @@ const LOST_SCULPTURE = 'Q26883973';
 const INSTALLATION = 'Q20437094';
 
 const trees = buildTrees({
-  sculptural: [SCULPTURE, STATUE, COLOSSAL_STATUE, MONUMENTAL_SCULPTURE, 'Q29168169'],
+  // Wikidata files the victory column directly under sculpture, so the walk reaches it.
+  sculptural: [SCULPTURE, STATUE, COLOSSAL_STATUE, MONUMENTAL_SCULPTURE, 'Q29168169', VICTORY_COLUMN],
   fountain: [FOUNTAIN, 'Q1371047'],
   commemorative: [WAR_MEMORIAL, 'Q321053', 'Q1541043'],
   museum: [MUSEUM, ART_MUSEUM, MILITARY_MUSEUM, 'Q17431399', LOCAL_MUSEUM, NATURAL_HISTORY_MUSEUM, HISTORY_MUSEUM],
@@ -687,6 +688,29 @@ describe('publicArtVerdict — what it admits', () => {
     expect(typeOf({ classes: [OBELISK, US_NATIONAL_MEMORIAL], commemorates: ['Q23'] }))
       .toMatchObject({ pass: true, type: 'obelisk' });
     expect(typeOf({ classes: [TRIUMPHAL_ARCH, WAR_MEMORIAL] })).toMatchObject({ pass: true, type: 'arch' });
+  });
+
+  it('leaves a victory column to Monuments & memorials, unless Wikidata also types it a sculpture or a statue (#1918)', () => {
+    // Nelson's Column and Pompey's Pillar: victory column alone.
+    expect(reasonOf(publicArtVerdict(facts({ classes: [VICTORY_COLUMN] }), trees, art))).toBe('no public-art class');
+    expect(publicArtVerdict(facts({ classes: [VICTORY_COLUMN] }), trees, monuments))
+      .toMatchObject({ pass: true, type: 'column' });
+    // The Colonne Vendôme: victory column, sculpture.
+    expect(publicArtVerdict(facts({ classes: [VICTORY_COLUMN, SCULPTURE] }), trees, art))
+      .toMatchObject({ pass: true, type: 'sculpture' });
+    expect(publicArtVerdict(facts({ classes: [VICTORY_COLUMN, STATUE] }), trees, art))
+      .toMatchObject({ pass: true, type: 'sculpture' });
+    // The Column of Marcus Aurelius (Q265384): a victory column by preference,
+    // a statue and an archaeological site at normal rank, which `wdt:` drops.
+    expect(publicArtVerdict(facts({ classes: [VICTORY_COLUMN], outrankedClasses: [STATUE] }), trees, art))
+      .toMatchObject({ pass: true, type: 'sculpture' });
+    expect(publicArtVerdict(facts({ classes: [VICTORY_COLUMN], outrankedClasses: [STATUE] }), trees, monuments))
+      .toMatchObject({ pass: true, type: 'column' });
+    // An outranked statue alone admits nothing that is not such a column.
+    expect(reasonOf(publicArtVerdict(facts({ classes: [SQUARE], outrankedClasses: [STATUE] }), trees, art)))
+      .toBe('no public-art class');
+    expect(trees.sculptural.has(VICTORY_COLUMN)).toBe(false);
+    expect(trees.artwork.has(VICTORY_COLUMN)).toBe(true);
   });
 
   it('admits to Monuments & memorials what Wikidata says commemorates someone, and not a bare designation', () => {

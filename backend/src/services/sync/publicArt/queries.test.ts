@@ -244,13 +244,20 @@ describe('fetchEntityFacts', () => {
       { e: ref('Q326183'), commemorates: ref('Q11812') },
       { e: ref('Q672444'), depicts: ref('Q8479') },
       { e: ref('Q672444'), genre: ref('Q659396') },
+      // The Column of Marcus Aurelius: a victory column by preference, so its
+      // normal-rank statue is outranked; Michelangelo's David's normal-rank
+      // classes are the ones `wdt:` reads, so none is.
+      { e: ref('Q265384'), cls: ref('Q1930585') },
+      { e: ref('Q265384'), normalCls: ref('Q179700') },
+      { e: ref('Q235242'), normalCls: ref('Q860861') },
     ];
-    const facts = await fetchEntityFacts(answer(rows), ['Q235242', 'Q79961', 'Q326183', 'Q672444']);
+    const facts = await fetchEntityFacts(answer(rows), ['Q235242', 'Q79961', 'Q326183', 'Q672444', 'Q265384']);
     expect(facts.get('Q235242')).toEqual({
-      classes: ['Q860861', 'Q2065736'], locations: ['Q12512'], parents: [], collections: [],
+      classes: ['Q860861', 'Q2065736'], outrankedClasses: [], locations: ['Q12512'], parents: [], collections: [],
       creators: ['Michelangelo'], commemorates: [], depicts: [], genres: [],
     });
     expect(facts.get('Q326183')?.commemorates).toEqual(['Q11812']);
+    expect(facts.get('Q265384')).toMatchObject({ classes: ['Q1930585'], outrankedClasses: ['Q179700'] });
     expect(facts.get('Q672444')).toMatchObject({ depicts: ['Q8479'], genres: ['Q659396'] });
     expect(facts.get('Q79961')).toMatchObject({
       classes: ['Q1779653'], parents: ['Q2'], collections: ['Q5710459'],
@@ -289,7 +296,8 @@ describe('fetchEntityFacts', () => {
   it('answers for every entity asked about, facts or none', async () => {
     const facts = await fetchEntityFacts(answer([]), ['Q1']);
     expect(facts.get('Q1')).toEqual({
-      classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [], genres: [],
+      classes: [], outrankedClasses: [], locations: [], parents: [], collections: [], creators: [], commemorates: [],
+      depicts: [], genres: [],
     });
   });
 });

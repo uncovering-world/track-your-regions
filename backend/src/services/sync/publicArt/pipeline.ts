@@ -218,6 +218,7 @@ function landmarkOf(
 function kindFactsOf(known: EntityFacts, subjects: Map<string, SubjectFacts>): KindFacts {
   return {
     classes: known.classes,
+    outrankedClasses: known.outrankedClasses,
     commemorates: known.commemorates,
     genres: known.genres,
     subjects: known.depicts.flatMap((qid) => subjects.get(qid) ?? []),
@@ -289,6 +290,7 @@ export function publicArtVerdictOf(
   return publicArtVerdict({
     qid: entity.qid,
     classes: known.classes,
+    outrankedClasses: known.outrankedClasses,
     containers: chainOf(known, containers),
     collections: ownersOf(known, containers),
     commemorates: known.commemorates,

@@ -27,7 +27,8 @@ import { countryOfPlace, openCountries, standingCountries, type PlaceCountry } f
 import { parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
 import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
 import {
-  articleUrl, bestStatements, hasEnded, itemOf, itemsOf, picturesOf, standingStatements, textOf, wktOf, yearOf,
+  articleUrl, bestStatements, hasEnded, itemOf, itemsOf, outrankedStatements, picturesOf, standingStatements, textOf,
+  wktOf, yearOf,
 } from './values.js';
 import type { CompactStatement } from '../../dumps/wikidata/compactEntity.js';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
@@ -208,6 +209,7 @@ export async function subsetEntityFacts(ids: string[]): Promise<Map<string, Enti
     const religions = itemsOf(bestStatements(claims.P140));
     out.set(id, {
       classes: itemsOf(bestStatements(claims.P31)),
+      outrankedClasses: itemsOf(outrankedStatements(claims.P31)),
       locations: itemsOf(standingStatements(claims.P276)),
       parents: itemsOf(standingStatements(claims.P361)),
       collections: itemsOf(standingStatements(claims.P195)),

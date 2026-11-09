@@ -46,7 +46,9 @@ function entity(qid: string, sitelinks = 30): PoolEntity {
 }
 
 function facts(classes: string[], locations: string[] = []): EntityFacts {
-  return { classes, locations, parents: [], collections: [], creators: [], commemorates: [], depicts: [], genres: [] } as EntityFacts;
+  return {
+    classes, outrankedClasses: [], locations, parents: [], collections: [], creators: [], commemorates: [], depicts: [], genres: [],
+  };
 }
 
 /** Public art: statues in bands, monuments whole, and what holds a candidate. */
