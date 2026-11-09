@@ -14,7 +14,7 @@
  * (#1394) — how far off it stands and how alike the names are, and
  * opens on Wikidata. Nothing is written until the curator saves; a confirmed item
  * becomes the point's as the curator's choice, and its picture and description
- * follow where the item has them.
+ * follow onto the component's part where the item has them.
  *
  * Where the deployment asks Jev (#1272, ADR-0087), each candidate also says
  * what Jev makes of it — the same place, or another — and how sure it is, in

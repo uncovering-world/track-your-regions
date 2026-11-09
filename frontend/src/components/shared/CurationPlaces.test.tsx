@@ -51,7 +51,7 @@ function place(over: Partial<ExperienceLocationWithState> = {}): ExperienceLocat
     id: 9001, experience_id: 6205, name: null, external_ref: null, ordinal: 0,
     latitude: 51.5194, longitude: -0.127, created_at: '2026-08-01T00:00:00Z',
     approximate: null, curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null,
-    image_url: null, image_credit: null, description: null, wikidata_item: null, wikipedia_url: null,
+    image_url: null, image_credit: null, description: null, wikidata_item: null, wikipedia_url: null, is_part: false,
     ...over,
   };
 }
@@ -108,11 +108,19 @@ describe('CurationPlaces', () => {
 
   it("hands the form the picture the point shows, a part's own being its row's (ADR-0156)", async () => {
     const church = 'http://commons.wikimedia.org/wiki/Special:FilePath/Church%20fixture.jpg';
-    answer(place({ image_url: church }));
+    answer(place({ image_url: church, is_part: true }));
     renderPlaces();
     fireEvent.click(await screen.findByRole('button', { name: 'Move or rename British Museum' }));
     // The correction writes the part's own picture, so the form starts from it.
     expect(screen.getByText(`picture=${church}`)).toBeInTheDocument();
+  });
+
+  it("hands the form no picture for a point that is no part's, which holds none of its own (#2117)", async () => {
+    answer(place());
+    renderPlaces();
+    fireEvent.click(await screen.findByRole('button', { name: 'Move or rename British Museum' }));
+    // Absent, not null: the form then offers no picture field at all.
+    expect(screen.getByText('picture=undefined')).toBeInTheDocument();
   });
 
   it('says on the field when the one place has been corrected', async () => {

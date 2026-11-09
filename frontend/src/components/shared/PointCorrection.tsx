@@ -1,7 +1,9 @@
 /**
  * A curator's correction to one place: what it is called, where it is, and —
- * where the surface that opened it knows them — its own picture and description
- * (#1270), which a World Heritage run fills from the part's Wikidata item.
+ * for a serial site's part, where the surface that opened it knows them — its
+ * own picture and description (#1270), which a World Heritage run fills from
+ * the part's Wikidata item. A point of any other place holds none of its own,
+ * which its place holds (#2117), so its caller hands in neither.
  *
  * The body of `PointPreviewDialog` wherever a curator may correct the place it
  * shows, and only the body: the dialog decides where a place can be looked at,
@@ -66,8 +68,9 @@ export interface PlaceToCorrect {
   /** The region whose batch drew the pin, where the caller is looking at a region's map. */
   regionId?: number | null;
   /**
-   * The place's own picture, where the caller knows it: absent hides the field,
-   * since a field opened empty over a stored picture would read as none.
+   * A part's own picture, where the caller knows it: absent hides the field,
+   * since a field opened empty over a stored picture would read as none, and
+   * is what a point that is no part's hands in (#2117).
    */
   imageUrl?: string | null;
   /** Whose photograph the stored picture is, shown under it in the preview and never under an unsaved one. */
