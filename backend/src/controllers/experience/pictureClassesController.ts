@@ -59,9 +59,7 @@ export const PICTURES_SQL = `
     UNION ALL
     SELECT 2, f->>'new', NULL FROM held, jsonb_array_elements(held.changed_fields) f
      WHERE f->>'field' = 'imageUrl' AND jsonb_typeof(f->'new') = 'string'
-    UNION ALL
-    SELECT 3, el.image_url, NULL FROM experience_locations el
-     WHERE el.experience_id = $1 AND el.merged_into_id IS NULL AND el.missing_since IS NULL
+
     UNION ALL
     -- A work's proposed picture, before the works' own: the work the change
     -- names, by its reference, for its type. The "after" side of a work's

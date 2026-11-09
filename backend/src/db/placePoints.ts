@@ -293,43 +293,43 @@ function pointNameBySql(point: string, kinded: string): string {
 /**
  * The picture a reader sees on the point `point`, as two select-list columns
  * `image_url` and `image_credit`: a serial site's part's own, off the part row
- * (ADR-0156 decision 3), and the point's own for a point of any other place. A
- * part another kind brought holds its picture there as every place does: the
- * Church of the Intercession on the Nerl shows its own, not its site's montage
- * (#1946). The credit is taken from the row the picture is. A point with no
- * picture keeps its null, which the web fills with the site's picture and says
- * so (`pointPicture`).
+ * (ADR-0156 decision 3), with the credit taken from that row. A part another
+ * kind brought holds its picture there as every place does: the Church of the
+ * Intercession on the Nerl shows its own, not its site's montage (#1946). A
+ * point of any other place holds no picture of its own, which the place holds
+ * (#2117), so it reads null, as does a part with none, and the web fills it
+ * with the site's picture and says so (`pointPicture`).
  */
 export function pointPictureSql(point = 'el'): string {
   const ofPart = (column: string) => `(SELECT ${column} FROM experiences prt_pic WHERE prt_pic.id = ${point}.experience_id)`;
-  return `CASE WHEN ${pointOfPartSql(point)} THEN ${ofPart("NULLIF(prt_pic.image_url, '')")} ELSE NULLIF(${point}.image_url, '') END AS image_url,
-          CASE WHEN ${pointOfPartSql(point)} THEN ${ofPart("prt_pic.metadata -> 'imageCredit'")}
-               ELSE ${point}.metadata -> 'imageCredit' END AS image_credit`;
+  return `CASE WHEN ${pointOfPartSql(point)} THEN ${ofPart("NULLIF(prt_pic.image_url, '')")} END AS image_url,
+          CASE WHEN ${pointOfPartSql(point)} THEN ${ofPart("prt_pic.metadata -> 'imageCredit'")} END AS image_credit`;
 }
 
 /**
  * The English Wikipedia article a reader follows from the point `point`, as
  * the select-list column `wikipedia_url` (#1963): a serial site's part's own,
- * off the part row (ADR-0156 decision 3), else the point's own, as
- * `pointPictureSql` reads the picture. Never the site's: a part's article is
- * the part's. Null where it holds none.
+ * off the part row (ADR-0156 decision 3), as `pointPictureSql` reads the
+ * picture. Never the site's: a part's article is the part's. Null where it
+ * holds none, and on a point of any other place, whose article is the
+ * place's (#2117).
  */
 export function pointArticleSql(point = 'el'): string {
   return `CASE WHEN ${pointOfPartSql(point)}
                THEN (SELECT NULLIF(prt_art.metadata ->> 'wikipediaUrl', '') FROM experiences prt_art
-                      WHERE prt_art.id = ${point}.experience_id)
-               ELSE NULLIF(${point}.metadata ->> 'wikipediaUrl', '') END AS wikipedia_url`;
+                      WHERE prt_art.id = ${point}.experience_id) END AS wikipedia_url`;
 }
 
 /**
  * The line under a point's name (#1270): a serial site's part's subtitle, off
- * the part row (ADR-0156 decision 3), else the point's own description, as
- * the select-list column `description`.
+ * the part row (ADR-0156 decision 3), as the select-list column
+ * `description`. A point of any other place has none: the place's subtitle
+ * is the place's (#2117).
  */
 export function pointSubtitleSql(point = 'el'): string {
   return `CASE WHEN ${pointOfPartSql(point)}
                THEN (SELECT NULLIF(prt_sub.subtitle, '') FROM experiences prt_sub WHERE prt_sub.id = ${point}.experience_id)
-               ELSE NULLIF(${point}.description, '') END AS description`;
+               END AS description`;
 }
 
 /**

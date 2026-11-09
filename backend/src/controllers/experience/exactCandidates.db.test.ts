@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
+import { pointItemClaimedSql, pointItemSql } from '../../db/placePoints.js';
 import { acceptExactCandidates } from './exactCandidates.js';
 
 /**
@@ -7,7 +8,11 @@ import { acceptExactCandidates } from './exactCandidates.js';
  * (#1839, ADR-0141), against PostgreSQL. The fixture is three tombs of the
  * Mozu-Furuichi Kofun Group as the finder left them on 2026-10-22: the
  * Nagatsuka Kofun with one candidate of its own name 7 m off, and two points
- * whose exact candidates something contradicts.
+ * whose exact candidates something contradicts. The site holds the Daisen
+ * Kofun too, which nothing is proposed for, and each tomb is a part of the
+ * site, as the run parts a site of several points: what an accepted item gives
+ * a tomb lands on its part's row (ADR-0156 decision 3), since a point holds no
+ * picture of its own (#2117).
  */
 
 const SITE = 9839;
@@ -18,6 +23,7 @@ const PICTURE = 'http://commons.wikimedia.org/wiki/Special:FilePath/Nagatsuka%20
 let membershipId = 0;
 
 async function clear(): Promise<void> {
+  await pool.query('DELETE FROM experiences WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1)', [SITE]);
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = $1', [SITE]);
   await pool.query('DELETE FROM experiences WHERE id = $1', [SITE]);
 }
@@ -43,10 +49,17 @@ async function proposal(locationId: number, item: string, label: string, exact: 
   )).rows[0].id;
 }
 
+/** A tomb's item and the claim on it, off its record, and its part's picture. */
 const pointOf = async (id: number) => (await pool.query<{ item: string | null; image: string | null; claimed: boolean }>(
-  `SELECT wikidata_item AS item, image_url AS image, curated_fields ? 'wikidata_item' AS claimed
-     FROM experience_locations WHERE id = $1`, [id],
+  `SELECT ${pointItemSql('el')} AS item, part.image_url AS image, ${pointItemClaimedSql('el')} AS claimed
+     FROM experience_locations el JOIN experiences part ON part.id = el.experience_id WHERE el.id = $1`, [id],
 )).rows[0];
+
+/** The pass over the site, once its tombs are parts of it, as the run leaves them. */
+async function accept(options: Parameters<typeof acceptExactCandidates>[1]): ReturnType<typeof acceptExactCandidates> {
+  await pool.query('SELECT part_site_components($1, $2)', [SITE, membershipId]);
+  return acceptExactCandidates(SITE, options);
+}
 
 /** No call to Wikidata: the item's picture and description as a read would give them. */
 const readContents = async (items: readonly string[]) => new Map(items.map(item => [
@@ -70,6 +83,7 @@ beforeEach(async () => {
      SELECT $1, s.kind_id, s.id, '9839-fixture', 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
     [SITE],
   )).rows[0].id;
+  await point('1593-001', 'Daisen Kofun', 135.47);
 });
 
 afterAll(async () => {
@@ -82,7 +96,7 @@ describe("the catalogue's own answer to an exact candidate", () => {
     const nagatsuka = await point('1593-030', 'Nagatsuka Kofun', 135.48);
     const id = await proposal(nagatsuka, NAGATSUKA, 'Nagatsuka Kofun', true);
 
-    expect(await acceptExactCandidates(SITE, { readContents })).toEqual({ accepted: 1, sites: 1, leftForNextPass: 0 });
+    expect(await accept({ readContents })).toEqual({ accepted: 1, sites: 1, leftForNextPass: 0 });
     expect(await pointOf(nagatsuka)).toEqual({ item: NAGATSUKA, image: PICTURE, claimed: true });
     const answer = (await pool.query(
       'SELECT answer, answered_by, answered_by_catalogue FROM experience_component_item_proposals WHERE id = $1', [id],
@@ -102,7 +116,7 @@ describe("the catalogue's own answer to an exact candidate", () => {
     const shared = await point('1593-032', 'Shared Kofun', 135.482);
     await proposal(shared, NAGATSUKA, 'Shared Kofun', true);
 
-    expect(await acceptExactCandidates(SITE, { readContents })).toEqual({ accepted: 0, sites: 0, leftForNextPass: 0 });
+    expect(await accept({ readContents })).toEqual({ accepted: 0, sites: 0, leftForNextPass: 0 });
   });
 
   it('leaves a candidate a register disagrees with, one taken back, and a partial name', async () => {
@@ -115,7 +129,7 @@ describe("the catalogue's own answer to an exact candidate", () => {
     const partial = await point('1593-035', 'Partial Kofun', 135.485);
     await proposal(partial, 'Q98393', 'Partial Kofun Group', false);
 
-    expect(await acceptExactCandidates(SITE, { readContents })).toEqual({ accepted: 0, sites: 0, leftForNextPass: 0 });
+    expect(await accept({ readContents })).toEqual({ accepted: 0, sites: 0, leftForNextPass: 0 });
   });
 
   it('leaves a site whose items could not be read for the next pass, rather than accept it without its picture', async () => {
@@ -123,7 +137,7 @@ describe("the catalogue's own answer to an exact candidate", () => {
     await proposal(nagatsuka, NAGATSUKA, 'Nagatsuka Kofun', true);
     const failing = async () => { throw new Error('Wikidata answered 429'); };
 
-    expect(await acceptExactCandidates(SITE, { readContents: failing })).toEqual({ accepted: 0, sites: 0, leftForNextPass: 1 });
+    expect(await accept({ readContents: failing })).toEqual({ accepted: 0, sites: 0, leftForNextPass: 1 });
     expect(await pointOf(nagatsuka)).toEqual({ item: null, image: null, claimed: false });
   });
 
@@ -131,7 +145,7 @@ describe("the catalogue's own answer to an exact candidate", () => {
     const nagatsuka = await point('1593-030', 'Nagatsuka Kofun', 135.48);
     await proposal(nagatsuka, NAGATSUKA, 'Nagatsuka Kofun', true);
 
-    expect(await acceptExactCandidates(SITE, { readContents, isCancelled: () => true }))
+    expect(await accept({ readContents, isCancelled: () => true }))
       .toEqual({ accepted: 0, sites: 0, leftForNextPass: 0 });
     expect((await pointOf(nagatsuka)).item).toBeNull();
   });
@@ -144,7 +158,7 @@ describe("the catalogue's own answer to an exact candidate", () => {
     // The other item's picture had no credit, so the read left it out.
     const partial = async (items: readonly string[]) => new Map([...(await readContents(items))].filter(([item]) => item === NAGATSUKA));
 
-    expect(await acceptExactCandidates(SITE, { readContents: partial })).toEqual({ accepted: 1, sites: 1, leftForNextPass: 1 });
+    expect(await accept({ readContents: partial })).toEqual({ accepted: 1, sites: 1, leftForNextPass: 1 });
     expect((await pointOf(nagatsuka)).item).toBe(NAGATSUKA);
     expect((await pointOf(other)).item).toBeNull();
   });

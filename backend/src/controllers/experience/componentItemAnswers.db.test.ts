@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
+import { pointItemClaimedSql, pointItemSql } from '../../db/placePoints.js';
+import { recordComponentItems } from '../../services/sync/locationWriter.js';
 import { writePointContents } from '../../services/sync/pointContentWriter.js';
 import {
   answerComponentItemsUnderLock, componentItemsSourceIds, openCandidates,
@@ -14,6 +16,9 @@ import { queryComponentItems } from './reviewQueueComponentItems.js';
  * three components, Bologa with two candidates — the fort of Bologa, the same
  * name 20 m off, and a nearby tower with a name half alike — Buciumi with one,
  * and a third point already resolved by its reference, which is asked nothing.
+ * Each component is a part of the site, as the run parts a site of several
+ * points, so what a confirmed item gives a component lands on its part's row
+ * (ADR-0156 decision 3): a point holds no picture or text of its own (#2117).
  */
 
 const SITE = 9850;
@@ -31,16 +36,17 @@ let points: Record<string, number> = {};
 let proposals: Record<string, number> = {};
 
 async function clear(): Promise<void> {
+  await pool.query('DELETE FROM experiences WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1)', [SITE]);
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = $1', [SITE]);
   await pool.query('DELETE FROM experiences WHERE id = $1', [SITE]);
   await pool.query('DELETE FROM users WHERE uuid = $1', [CURATOR]);
 }
 
-async function point(ref: string, name: string, lat: number, lon: number, item: string | null): Promise<number> {
+async function point(ref: string, name: string, lat: number, lon: number): Promise<number> {
   const row = await pool.query<{ id: number }>(
-    `INSERT INTO experience_locations (experience_id, name, external_ref, location, wikidata_item, curation_state)
-     VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326), $6, 'auto') RETURNING id`,
-    [SITE, name, ref, lon, lat, item],
+    `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
+     VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326), 'auto') RETURNING id`,
+    [SITE, name, ref, lon, lat],
   );
   await pool.query(
     'INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)', [row.rows[0].id, membershipId],
@@ -60,16 +66,19 @@ async function proposal(locationId: number, item: string, label: string, metres:
   return row.rows[0].id;
 }
 
+/** What a component holds: its item and the curator's claim on it, off its record, and its part's picture and line. */
 const stored = async (locationId: number) => (await pool.query<{
-  wikidata_item: string | null; curated_fields: string[]; image_url: string | null; credit: unknown; description: string | null;
+  wikidata_item: string | null; claimed: boolean; image_url: string | null; credit: unknown; description: string | null;
 }>(
-  `SELECT wikidata_item, curated_fields, image_url, metadata -> 'imageCredit' AS credit, description
-     FROM experience_locations WHERE id = $1`, [locationId],
+  `SELECT ${pointItemSql('el')} AS wikidata_item, ${pointItemClaimedSql('el')} AS claimed,
+          part.image_url, part.metadata -> 'imageCredit' AS credit, part.subtitle AS description
+     FROM experience_locations el JOIN experiences part ON part.id = el.experience_id WHERE el.id = $1`, [locationId],
 )).rows[0];
 
 const answersOf = async () => (await pool.query<{ id: number; answer: string | null; answered_by: number | null }>(
   `SELECT p.id, p.answer, p.answered_by FROM experience_component_item_proposals p
-     JOIN experience_locations el ON el.id = p.location_id WHERE el.experience_id = $1 ORDER BY p.id`, [SITE],
+     JOIN experience_locations el ON el.id = p.location_id
+    WHERE el.experience_id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1) ORDER BY p.id`, [SITE],
 )).rows;
 
 const card = async () => (await queryComponentItems([SITE])).rows[0];
@@ -94,10 +103,14 @@ beforeEach(async () => {
     [SITE],
   )).rows[0].id;
   points = {
-    bologa: await point('9850-001', 'Bologa', 46.8853, 22.8752, null),
-    buciumi: await point('9850-002', 'Buciumi', 47.0383, 23.0581, null),
-    resolved: await point('9850-003', 'Resolved', 46.9, 22.9, RESOLVED),
+    bologa: await point('9850-001', 'Bologa', 46.8853, 22.8752),
+    buciumi: await point('9850-002', 'Buciumi', 47.0383, 23.0581),
+    resolved: await point('9850-003', 'Resolved', 46.9, 22.9),
   };
+  // Each component a part of the site, as the run leaves a site of several
+  // points, and the third resolved by its reference, on its part's record.
+  await pool.query('SELECT part_site_components($1, $2)', [SITE, membershipId]);
+  await recordComponentItems(SITE, [{ ref: '9850-003', item: RESOLVED }], 1);
   proposals = {
     fort: await proposal(points.bologa, BOLOGA_FORT, 'Castrul Bologa', 20, 1, true, [46.8855, 22.8753]),
     tower: await proposal(points.bologa, BOLOGA_TOWER, 'Turnul Bologa', 410, 0.52, false),
@@ -127,10 +140,11 @@ describe("a site's candidate component items (#1272)", () => {
 
   it('carries every place the site is made of, its own picture with it, and no point gone from the world (#1342)', async () => {
     await pool.query(
-      `UPDATE experience_locations SET image_url = $2, metadata = jsonb_build_object('imageCredit', $3::jsonb) WHERE id = $1`,
+      `UPDATE experiences SET image_url = $2, metadata = jsonb_build_object('imageCredit', $3::jsonb)
+        WHERE id = (SELECT experience_id FROM experience_locations WHERE id = $1)`,
       [points.buciumi, PICTURE, JSON.stringify(CREDIT)],
     );
-    const lost = await point('9850-004', 'Washed away', 46.95, 22.95, null);
+    const lost = await point('9850-004', 'Washed away', 46.95, 22.95);
     await pool.query(`UPDATE experience_locations SET existence = 'lost' WHERE id = $1`, [lost]);
 
     const row = await card();
@@ -153,7 +167,7 @@ describe("a site's candidate component items (#1272)", () => {
 
     expect(outcome.result).toEqual({ experienceId: SITE, accepted: 1, refused: 1, pictured: 1 });
     expect(await stored(points.bologa)).toEqual({
-      wikidata_item: BOLOGA_FORT, curated_fields: ['wikidata_item'], image_url: PICTURE, credit: CREDIT,
+      wikidata_item: BOLOGA_FORT, claimed: true, image_url: PICTURE, credit: CREDIT,
       description: 'Roman fort in Cluj County, Romania',
     });
     // The fort is the point's item now, so its other candidate is moot and goes;
@@ -213,7 +227,7 @@ describe("a site's candidate component items (#1272)", () => {
       { proposalId: proposals.buciumi, answer: 'accepted' }, { proposalId: stale, answer: 'accepted' },
     ], content(null, null));
     expect(twoForOne.refusal).toMatchObject({ status: 409 });
-    expect(await stored(points.buciumi)).toMatchObject({ wikidata_item: null, curated_fields: [] });
+    expect(await stored(points.buciumi)).toMatchObject({ wikidata_item: null, claimed: false });
   });
 
   it('waits on another site confirming the same item, and then reads it as taken', async () => {
@@ -236,7 +250,7 @@ describe("a site's candidate component items (#1272)", () => {
 
       const outcome = await answer;
       expect(outcome.refusal).toMatchObject({ status: 409, error: expect.stringContaining("already another component's item") });
-      expect(await stored(points.bologa)).toMatchObject({ wikidata_item: null, curated_fields: [] });
+      expect(await stored(points.bologa)).toMatchObject({ wikidata_item: null, claimed: false });
     } finally {
       other.release();
     }

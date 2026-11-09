@@ -164,7 +164,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     }));
   });
 
-  it("writes a held picture on a point that is no part's on the point itself, its line as its description", async () => {
+  it("writes no held picture or line on a point that is no part's, which holds none of its own (#2117)", async () => {
     grantScope();
     const see = 'http://commons.wikimedia.org/wiki/Special:FilePath/See%20Pfahlbau.jpg';
     const { client, queries } = makeClient({
@@ -181,9 +181,7 @@ describe('publishing the held fields of an object\'s parts', () => {
 
     await publish({ expectedSyncLogId: 64 }, client);
 
-    const write = only(queries, 'UPDATE experience_locations SET image_url');
-    expect(write.sql).toContain('description = $4');
-    expect(write.params).toEqual([9204, 5, see, 'pile dwelling']);
+    expect(none(queries, 'UPDATE experience_locations SET image_url')).toBe(true);
   });
 
   it('writes a held work\'s title and makers as a person would type them', async () => {

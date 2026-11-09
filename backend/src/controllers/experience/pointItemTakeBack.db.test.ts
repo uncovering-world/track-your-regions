@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
+import { pointItemClaimedSql, pointItemSql } from '../../db/placePoints.js';
+import { recordComponentItems } from '../../services/sync/locationWriter.js';
 import { answerComponentItemsUnderLock, openCandidates } from './componentItemController.js';
 import { takeBackPointItemUnderLock } from './pointItemTakeBackController.js';
 
@@ -9,7 +11,10 @@ import { takeBackPointItemUnderLock } from './pointItemTakeBackController.js';
  * then taken back — the point has no item, no claim, no picture and no
  * description again, the candidate is open again (#1336), and the act is logged.
  * A point whose item a run recorded off the reference is not a curator's to
- * take back; a picture a curator chose since the confirmation stays.
+ * take back; a picture a curator chose since the confirmation stays. Each
+ * component is a part of the site, as the run parts a site of several points,
+ * so the item is on its part's record and the picture, the description and
+ * the article on its part's row (ADR-0156): a point holds none (#2117).
  */
 
 const SITE = 9870;
@@ -26,28 +31,31 @@ let resolved = 0;
 let fort = 0;
 
 async function clear(): Promise<void> {
+  await pool.query('DELETE FROM experiences WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1)', [SITE]);
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = $1', [SITE]);
   await pool.query('DELETE FROM experiences WHERE id = $1', [SITE]);
   await pool.query('DELETE FROM users WHERE uuid = $1', [CURATOR]);
 }
 
-async function point(ref: string, name: string, item: string | null): Promise<number> {
+async function point(ref: string, name: string): Promise<number> {
   const row = await pool.query<{ id: number }>(
-    `INSERT INTO experience_locations (experience_id, name, external_ref, location, wikidata_item, curation_state)
-     VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint(22.8752, 46.8853), 4326), $4, 'auto') RETURNING id`,
-    [SITE, name, ref, item],
+    `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
+     VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint(22.8752, 46.8853), 4326), 'auto') RETURNING id`,
+    [SITE, name, ref],
   );
   await pool.query('INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)', [row.rows[0].id, membershipId]);
   return row.rows[0].id;
 }
 
+/** What a component holds: its item and the curator's claim on it, off its record, and its part's own fields and claims. */
 const stored = async (id: number) => (await pool.query<{
-  wikidata_item: string | null; curated_fields: string[]; image_url: string | null; credit: unknown; description: string | null;
-  article: string | null;
+  wikidata_item: string | null; claimed: boolean; image_url: string | null; credit: unknown; description: string | null;
+  article: string | null; part_claims: string[];
 }>(
-  `SELECT wikidata_item, curated_fields, image_url, metadata -> 'imageCredit' AS credit, description,
-          metadata ->> 'wikipediaUrl' AS article
-     FROM experience_locations WHERE id = $1`, [id],
+  `SELECT ${pointItemSql('el')} AS wikidata_item, ${pointItemClaimedSql('el')} AS claimed,
+          part.image_url, part.metadata -> 'imageCredit' AS credit, part.subtitle AS description,
+          part.metadata ->> 'wikipediaUrl' AS article, part.curated_fields AS part_claims
+     FROM experience_locations el JOIN experiences part ON part.id = el.experience_id WHERE el.id = $1`, [id],
 )).rows[0];
 
 const confirm = () => answerComponentItemsUnderLock(SITE, curatorId, null, [{ proposalId: fort, answer: 'accepted' }],
@@ -70,8 +78,12 @@ beforeEach(async () => {
      SELECT $1, s.kind_id, s.id, '9870-fixture', 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
     [SITE],
   )).rows[0].id;
-  bologa = await point('9870-001', 'Bologa', null);
-  resolved = await point('9870-002', 'Resolved', RESOLVED);
+  bologa = await point('9870-001', 'Bologa');
+  resolved = await point('9870-002', 'Resolved');
+  // Both components parts of the site, as the run leaves a site of several
+  // points, and the second resolved by its reference, on its part's record.
+  await pool.query('SELECT part_site_components($1, $2)', [SITE, membershipId]);
+  await recordComponentItems(SITE, [{ ref: '9870-002', item: RESOLVED }], 1);
   fort = (await pool.query<{ id: number }>(
     `INSERT INTO experience_component_item_proposals
             (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
@@ -89,7 +101,7 @@ describe('a confirmed component item taken back (#1317)', () => {
   it('takes the item, its claim and what the confirmation wrote off the point, reopens the candidate and logs it', async () => {
     await confirm();
     expect(await stored(bologa)).toMatchObject({
-      wikidata_item: BOLOGA_FORT, curated_fields: ['wikidata_item'], image_url: PICTURE, article: 'https://en.wikipedia.org/wiki/Castra_of_Bologa',
+      wikidata_item: BOLOGA_FORT, claimed: true, image_url: PICTURE, article: 'https://en.wikipedia.org/wiki/Castra_of_Bologa',
     });
 
     const outcome = await takeBackPointItemUnderLock(bologa, SITE, curatorId, null, BOLOGA_FORT);
@@ -98,7 +110,7 @@ describe('a confirmed component item taken back (#1317)', () => {
       locationId: bologa, item: BOLOGA_FORT, cleared: ['image_url', 'description', 'metadata.wikipediaUrl'],
     });
     expect(await stored(bologa)).toEqual({
-      wikidata_item: null, curated_fields: [], image_url: null, credit: null, description: null, article: null,
+      wikidata_item: null, claimed: false, image_url: null, credit: null, description: null, article: null, part_claims: [],
     });
     const proposal = await pool.query<{ answer: string | null; answered_by: number | null; answered_at: Date | null; marked: boolean }>(
       'SELECT answer, answered_by, answered_at, taken_back_at IS NOT NULL AS marked FROM experience_component_item_proposals WHERE id = $1', [fort],
@@ -122,14 +134,15 @@ describe('a confirmed component item taken back (#1317)', () => {
     await confirm();
     const mine = 'http://commons.wikimedia.org/wiki/Special:FilePath/My%20own%20photo.jpg';
     await pool.query(
-      `UPDATE experience_locations SET image_url = $2, curated_fields = curated_fields || '["image_url"]'::jsonb WHERE id = $1`,
+      `UPDATE experiences SET image_url = $2, curated_fields = curated_fields || '["image_url"]'::jsonb
+        WHERE id = (SELECT experience_id FROM experience_locations WHERE id = $1)`,
       [bologa, mine],
     );
 
     const outcome = await takeBackPointItemUnderLock(bologa, SITE, curatorId, null, BOLOGA_FORT);
 
     expect(outcome.result).toMatchObject({ cleared: ['description', 'metadata.wikipediaUrl'] });
-    expect(await stored(bologa)).toMatchObject({ wikidata_item: null, curated_fields: ['image_url'], image_url: mine, description: null });
+    expect(await stored(bologa)).toMatchObject({ wikidata_item: null, part_claims: ['image_url'], image_url: mine, description: null });
   });
 
   it('refuses a point holding a different item than the history showed, writing nothing', async () => {
@@ -140,7 +153,7 @@ describe('a confirmed component item taken back (#1317)', () => {
     const stale = await takeBackPointItemUnderLock(bologa, SITE, curatorId, null, 'Q98702');
 
     expect(stale.refusal).toMatchObject({ status: 409, error: expect.stringContaining('different item') });
-    expect(await stored(bologa)).toMatchObject({ wikidata_item: BOLOGA_FORT, curated_fields: ['wikidata_item'], image_url: PICTURE });
+    expect(await stored(bologa)).toMatchObject({ wikidata_item: BOLOGA_FORT, claimed: true, image_url: PICTURE });
     expect((await pool.query('SELECT answer FROM experience_component_item_proposals WHERE id = $1', [fort])).rows[0].answer).toBe('accepted');
   });
 

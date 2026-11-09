@@ -31,8 +31,8 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM users WHERE uuid = $1', [ADMIN]);
 }
 
-const luxor = async () => (await pool.query<{ part_id: number; point_id: number; subtitle: string | null; claims: string[]; point_description: string | null }>(
-  `SELECT p.part_id, el.id AS point_id, e.subtitle, e.curated_fields AS claims, el.description AS point_description
+const luxor = async () => (await pool.query<{ part_id: number; point_id: number; subtitle: string | null; claims: string[] }>(
+  `SELECT p.part_id, el.id AS point_id, e.subtitle, e.curated_fields AS claims
      FROM experience_parts p JOIN experiences e ON e.id = p.part_id
      JOIN experience_locations el ON el.experience_id = p.part_id
     WHERE p.whole_id = $1 AND p.external_ref = $2`, [THEBES, LUXOR.externalRef],
@@ -75,7 +75,7 @@ describe("a curator's correction of a part's point (ADR-0156)", () => {
     } as never);
 
     const after = await luxor();
-    expect(after).toMatchObject({ subtitle: 'Temple of Amun, Mut and Khonsu', point_description: null });
+    expect(after).toMatchObject({ subtitle: 'Temple of Amun, Mut and Khonsu' });
     expect(after.claims).toContain('subtitle');
 
     const changed = await writePointContents(THEBES, [

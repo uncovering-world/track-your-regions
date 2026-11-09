@@ -106,16 +106,17 @@ export const ExperienceLocation = z.strictObject({
   ),
   in_region: z.boolean().describe('Whether the point lies in the region the read was asked about. True where none was named.'),
   image_url: z.string().nullable().describe(
-    "The point's picture: its own — a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator"
-    + " chose, which may be an /images/ path we host — else, for the point of a site's part, the part place's own (#1946)."
-    + " Null where neither holds one, and it then shows its object's picture.",
+    "The picture of the point of a serial site's part, the part place's own: a World Heritage component's Wikidata"
+    + " picture, a Commons file (#1270, #1946), or one a curator chose, which may be an /images/ path we host. Null where"
+    + " the part holds none and on a point of any other place, which holds none of its own (#2117); it then shows its"
+    + " object's picture.",
   ),
   image_credit: ImageCredit.nullable().describe(
     'Who took that picture, from the row the picture comes from. Null where there is no picture or no credit.',
   ),
   wikipedia_url: z.string().nullable().describe(
-    "The point's own English Wikipedia article: a World Heritage component's, read off its Wikidata item (#1963), else,"
-    + " for the point of a site's part, the part place's own. Never the site's. Null where neither holds one.",
+    "The English Wikipedia article of the point of a serial site's part, the part place's own, read off its Wikidata"
+    + " item (#1963). Never the site's. Null where the part holds none and on a point of any other place.",
   ),
 }).describe('One point of an object.');
 export type ExperienceLocation = z.infer<typeof ExperienceLocation>;
@@ -138,11 +139,16 @@ export const ExperienceLocationWithState = ExperienceLocation.extend({
     + ' `pending`: publishing shows an unread point and refuses a turned-down one.',
   ),
   description: z.string().nullable().describe(
-    "The point's own short description: a World Heritage component's Wikidata description (#1270). Served by the"
-    + " object's own read only, to keep the region feed light.",
+    "The short description of the point of a serial site's part, the part place's subtitle: a World Heritage"
+    + " component's Wikidata description (#1270). Null on a point of any other place. Served by the object's own read"
+    + " only, to keep the region feed light.",
   ),
   wikidata_item: z.string().nullable().describe(
     'The Wikidata item this point is, where one is known (#1269), such as `Q3477679`; the point\'s card links to it (#1271).',
+  ),
+  is_part: z.boolean().describe(
+    "Whether the point is a serial site's part's. Only such a point has a picture and a description a curator corrects"
+    + " on it; a point of any other place shows its place's (#2117).",
   ),
 }).describe("One point as its object's own read serves it, with where it stands at the gate.");
 export type ExperienceLocationWithState = z.infer<typeof ExperienceLocationWithState>;
