@@ -2525,14 +2525,14 @@ export interface RegionExperienceLocation {
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
   /**
-     * The point's picture: its own — a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host — else, for the point of a site's part, the part place's own (#1946). Null where neither holds one, and it then shows its object's picture.
+     * The picture of the point of a serial site's part, the part place's own: a World Heritage component's Wikidata picture, a Commons file (#1270, #1946), or one a curator chose, which may be an /images/ path we host. Null where the part holds none and on a point of any other place, which holds none of its own (#2117); it then shows its object's picture.
      * @nullable
      */
   image_url: string | null;
   /** Who took that picture, from the row the picture comes from. Null where there is no picture or no credit. */
   image_credit: ImageCredit | null;
   /**
-     * The point's own English Wikipedia article: a World Heritage component's, read off its Wikidata item (#1963), else, for the point of a site's part, the part place's own. Never the site's. Null where neither holds one.
+     * The English Wikipedia article of the point of a serial site's part, the part place's own, read off its Wikidata item (#1963). Never the site's. Null where the part holds none and on a point of any other place.
      * @nullable
      */
   wikipedia_url: string | null;
@@ -2742,14 +2742,14 @@ export interface ExperienceLocationWithState {
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
   /**
-     * The point's picture: its own — a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host — else, for the point of a site's part, the part place's own (#1946). Null where neither holds one, and it then shows its object's picture.
+     * The picture of the point of a serial site's part, the part place's own: a World Heritage component's Wikidata picture, a Commons file (#1270, #1946), or one a curator chose, which may be an /images/ path we host. Null where the part holds none and on a point of any other place, which holds none of its own (#2117); it then shows its object's picture.
      * @nullable
      */
   image_url: string | null;
   /** Who took that picture, from the row the picture comes from. Null where there is no picture or no credit. */
   image_credit: ImageCredit | null;
   /**
-     * The point's own English Wikipedia article: a World Heritage component's, read off its Wikidata item (#1963), else, for the point of a site's part, the part place's own. Never the site's. Null where neither holds one.
+     * The English Wikipedia article of the point of a serial site's part, the part place's own, read off its Wikidata item (#1963). Never the site's. Null where the part holds none and on a point of any other place.
      * @nullable
      */
   wikipedia_url: string | null;
@@ -2757,7 +2757,7 @@ export interface ExperienceLocationWithState {
   /** Set where a curator turned this unread point down. The state cannot say so, because a refused point stays `pending`: publishing shows an unread point and refuses a turned-down one. */
   refused_at: string | null;
   /**
-     * The point's own short description: a World Heritage component's Wikidata description (#1270). Served by the object's own read only, to keep the region feed light.
+     * The short description of the point of a serial site's part, the part place's subtitle: a World Heritage component's Wikidata description (#1270). Null on a point of any other place. Served by the object's own read only, to keep the region feed light.
      * @nullable
      */
   description: string | null;
@@ -2766,6 +2766,8 @@ export interface ExperienceLocationWithState {
      * @nullable
      */
   wikidata_item: string | null;
+  /** Whether the point is a serial site's part's. Only such a point has a picture and a description a curator corrects on it; a point of any other place shows its place's (#2117). */
+  is_part: boolean;
 }
 
 /**
