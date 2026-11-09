@@ -23,6 +23,8 @@ const ANGRY_BOY = 'Q16678093';
 const BRIDGE = 'Q23868716';
 const ART_MUSEUM = 'Q207694';
 const TAROT_GARDEN = 'Q949846';
+const MUSEUM_OF_MODERN_ART = 'Q97662266';
+const PRIVATE_MUSEUM = 'Q614316';
 const NIKI_DE_SAINT_PHALLE = 'Q168704';
 const NOGUCHI = 'Q442628';
 const ELLSWORTH_KELLY = 'Q544899';
@@ -31,7 +33,8 @@ const DAVID_SMITH = 'Q726169';
 // Wikidata files a sculpture garden under sculpture (Q860861) and under
 // open-air museum, so both walked trees hold the garden's own class.
 const trees = buildTrees({
-  sculptural: ['Q860861', 'Q179700', GARDEN], fountain: [], commemorative: [], museum: ['Q33506', ART_MUSEUM, GARDEN], worship: [], lost: [],
+  sculptural: ['Q860861', 'Q179700', GARDEN], fountain: [], commemorative: [], worship: [], lost: [],
+  museum: ['Q33506', ART_MUSEUM, MUSEUM_OF_MODERN_ART, PRIVATE_MUSEUM, GARDEN],
 });
 
 const facts = (over: Partial<PublicArtFacts>): PublicArtFacts => ({
@@ -143,15 +146,20 @@ describe('the verdict on a sculpture garden', () => {
       .toBe('not public art: sculpture garden');
     // Bomarzo: no work of it names anyone, so nothing tells.
     expect(reasonOf(publicArtVerdict(facts({ classes: [GARDEN] }), trees, art))).toBe('not public art: sculpture garden');
-    // Millesgården is Carl Milles's and an art museum: the museum's veto stands.
-    expect(reasonOf(publicArtVerdict(facts({ classes: [GARDEN, ART_MUSEUM], heldMakers: [['Q48548'], ['Q48548']] }), trees, art)))
-      .toBe('not an artwork, and typed: a museum');
+    // Millesgården is Carl Milles's and an art museum: his garden all the same.
+    expect(publicArtVerdict(facts({ classes: [GARDEN, ART_MUSEUM], heldMakers: [['Q48548'], ['Q48548']] }), trees, art))
+      .toMatchObject({ pass: true, type: 'sculpture', artwork: true });
+    // A collection typed a museum stays refused as a garden: the Hakone Open-Air Museum.
+    expect(reasonOf(publicArtVerdict(facts({ classes: [GARDEN, ART_MUSEUM], heldMakers: [['Q5593'], ['Q777441']] }), trees, art)))
+      .toBe('not public art: sculpture garden');
     // Park Güell is a sculpture garden and a park, and both works Wikidata
     // places in it are Gaudí's: a park refuses nothing here.
     expect(publicArtVerdict(facts({ classes: [GARDEN, 'Q22698'], heldMakers: [['Q25328'], ['Q25328']] }), trees, art))
       .toMatchObject({ pass: true, type: 'sculpture' });
-    // The Tarot Garden names its maker of itself.
-    expect(publicArtVerdict(facts({ qid: TAROT_GARDEN, ownMakers: [NIKI_DE_SAINT_PHALLE] }), trees, art))
+    // The Tarot Garden names its maker of itself, and Wikidata types it a
+    // private museum and a museum of modern art besides.
+    const tarot = facts({ qid: TAROT_GARDEN, classes: [GARDEN, MUSEUM_OF_MODERN_ART, PRIVATE_MUSEUM], ownMakers: [NIKI_DE_SAINT_PHALLE] });
+    expect(publicArtVerdict(tarot, trees, art))
       .toMatchObject({ pass: true, type: 'sculpture', artwork: true });
     // A garden that is also a hall of fame keeps that kill.
     expect(reasonOf(publicArtVerdict(facts({ classes: [GARDEN, 'Q1046088'], heldMakers: [[VIGELAND], [VIGELAND]] }), trees, art)))
