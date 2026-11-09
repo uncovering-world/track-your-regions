@@ -81,6 +81,18 @@ describe('the surroundings tier over a kind', () => {
     expect(filtered).toEqual([{ externalId: 'Q4', name: 'A mast', reason: 'not a tower: a mast' }]);
   });
 
+  it('asks the survivors by id with no candidate of the kind\'s editions, but with what they attach to the facts (#2037)', async () => {
+    const attach = vi.fn();
+    const withEditions = { ...kind, editions: { enter: vi.fn(async () => [entity('Q9', 'A group of casts', 30)]), attach } };
+    const byIdShare = gatherModule.shareOf.getMockImplementation()!;
+    gatherModule.shareOf.mockImplementation((g: unknown, k: unknown) => (k === withEditions ? { trees } : byIdShare(g, k)));
+    await surroundingsReader({ ...surroundings, kind: withEditions as never }, ON)
+      .arrivals(run, sparql, gathered as never, new Set(['Q1']), pool, new Set());
+    const [, requests] = gatherModule.gatherPlaces.mock.calls[0];
+    expect(await requests[0].kind.editions.enter(run)).toEqual([]);
+    expect(requests[0].kind.editions.attach).toBe(attach);
+  });
+
   it('measures against the readers\' floor the pool\'s year yields, not the count the rank yielded when derived (ADR-0184)', async () => {
     // A year so read that its floor is 10,000: the Asinelli's 8,000 readers and the mast's 6,000 are under it.
     const { items } = await surroundingsReader(surroundings, ON).arrivals(run, sparql, gathered as never, new Set(['Q1']), { ...pool, minReaders: 10_000 }, new Set());

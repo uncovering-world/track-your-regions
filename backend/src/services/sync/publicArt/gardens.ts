@@ -64,8 +64,9 @@ export async function fetchWorkMakers(sparql: SparqlFn, works: string[]): Promis
  * statement that still stands, as a street-art wall's murals are read; and
  * the makers the garden names of itself (`EntityFacts.ownMakers`). Every
  * candidate whose facts were read is asked, not the shared pool alone: a
- * garden in the kind's own admission pool, one an entrance named and an
- * admitted one read by id are judged by the same rule.
+ * garden in the kind's own admission pool, one an entrance named, an admitted
+ * one read by id and one the surroundings tier asks about are judged by the
+ * same rule.
  */
 export async function readGardenMakers(run: QueryRunner, facts: Map<string, EntityFacts>): Promise<void> {
   const gardens = [...facts].filter(([, known]) => known.classes.includes(SCULPTURE_GARDEN)).map(([qid]) => qid);
