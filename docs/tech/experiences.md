@@ -1296,9 +1296,16 @@ the kind refuses, which shows it to nobody (#2391).
 place holds them, as the hold does; on one nobody has passed it refreshes them in place, as for any
 unread place. Either way it files none of its rewrites, held or claimed (`nothingProposed`,
 `changeSet.ts`), so it raises no card about them, nor about an outline it draws, which passes the
-hold and is written, and it clears a pointer it set before. The points
-and works of the place keep their own hold, which reads the part and the gate alone (#2393). Its own view is still recorded on its
-membership. Where another kind offers the place, that kind's run asks: the Karl Marx Monument in
+hold and is written, and it clears a pointer it set before. Its own view is still recorded on its
+membership. Its points and works keep their own hold, which reads the part and the gate alone, so
+a refusing run's rewrite of a published point or work is kept as the part holds it. Where no kind
+offers the place, it files none of them either and points the place at nothing (#2393,
+`proposeHeldParts` in `heldProposalPointer.ts`, which the location, point content and works writers
+call): the Museum of Fine Arts Ghent, refused by Art Museums alone, was asked four times whether
+Bosch's *Christ Carrying the Cross* dates from 1515 rather than 1510, and nobody is asked now. Where
+another kind offers the place, the refusing run still asks about the parts it placed, since readers
+see every point and work of an offered place whichever kind placed it, and only that run proposes
+about it: Public art's point of the Cave of Altamira, which Archaeology offers. Of the place's own fields, where another kind offers the place, that kind's run asks: the Karl Marx Monument in
 Chemnitz, refused by Public art and offered by Monuments & memorials, is asked about whom it
 commemorates once, by the Monuments run. Where no kind offers it, as for the Rondanini Pietà kept
 out of both, no reader sees the place and nobody is asked about its fields. A trusted source's refused membership
@@ -1422,11 +1429,13 @@ more precisely — ADR-0027, and nothing a reader can see), a work's `sitelinks_
 until it returns. A held name fails the writer's fast path on every run until answered, the cost
 ADR-0029 decision 5 already accepts for a claimed point.
 
-The pointer follows. `pending_change_sync_log_id` is set through one statement all three writers
-share (`heldProposalPointer.ts`), and the order they run in is what makes the column honest: the
-object upsert runs first and **clears** it where the object's own fields propose nothing, the content
-writers set it again where they held — so it names the newest run that held anything about the object,
-at either level, and is clear when nothing is. The location writer points inside its own transaction;
+The pointer follows. `pending_change_sync_log_id` is set through one statement the object upsert and
+the part writers share (`pointHeldProposalAt` in `heldProposalPointer.ts`, which the part writers reach
+through `proposeHeldParts`), and the order they run in is what makes the column honest: the object
+upsert runs first and **clears** it where the object's own fields propose nothing, the part writers
+set it again where they held — so it names the newest run that held anything about the object, at
+either level, and is clear when nothing is. A part writer whose run's membership refuses a place no
+kind offers points nowhere, and files none of its held fields (#2393). The location writer points inside its own transaction;
 the treasures writer once per museum, after the works. A run with no log id records the hold and
 withholds the pointer, as the object's has always done.
 
