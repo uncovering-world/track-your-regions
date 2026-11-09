@@ -21,6 +21,14 @@
  * "nobody" is stored as an empty list rather than as no value. Such a value
  * names nobody: no card line, no subject in the API, and the same as no value
  * to `sameSubjects`.
+ *
+ * A holy figure a religious work shows is not whom it commemorates (#2404):
+ * Christ the Redeemer depicts Jesus Christ and the Tian Tan Buddha the Buddha,
+ * and neither was raised to remember them. The reading keeps such a figure
+ * apart, as `metadata.depicts` in the same shape (`Depicts`), and the card
+ * says "Depicts: Jesus Christ" on a line of its own. Only the steps that read
+ * what a work shows name one (`DEPICTION_STEPS`); a statement or a category
+ * that says whom a place is a memorial to stays a dedication.
  */
 
 /** The steps of the reading, in the order they are tried; the first that names anyone answers. */
@@ -35,6 +43,22 @@ export const COMMEMORATION_STEPS = [
 
 export type CommemorationStep = (typeof COMMEMORATION_STEPS)[number];
 
+/**
+ * The steps that read what a work shows rather than whom it was raised for:
+ * the only ones whose holy figures are kept as `metadata.depicts` (#2404).
+ */
+export const DEPICTION_STEPS = ['main-subject', 'statues-category', 'depicts'] as const satisfies readonly CommemorationStep[];
+
+export type DepictionStep = (typeof DEPICTION_STEPS)[number];
+
+/**
+ * The `via` of a reading whose war the place's English Wikipedia lead narrowed
+ * to the battle or campaign the place is for (#2404): the Soviet War Memorial
+ * in Treptower Park, said by Wikidata to commemorate World War II, commemorates
+ * the Battle of Berlin.
+ */
+export const WARS_NARROWED_BY_LEAD = 'war-narrowed-by-lead';
+
 /** The `via` of a curator's own list: no step of the reading, and the one `via` whose list may be empty. */
 export const CURATOR_COMMEMORATION = 'curator';
 
@@ -45,8 +69,8 @@ export const CURATOR_COMMEMORATION = 'curator';
  */
 export const MAX_COMMEMORATED_SUBJECTS = 50;
 
-/** Who named a stored value's subjects: a step of the reading, or a curator. */
-export type CommemorationVia = CommemorationStep | typeof CURATOR_COMMEMORATION;
+/** Who named a stored value's subjects: a step of the reading, the lead narrowing its war, or a curator. */
+export type CommemorationVia = CommemorationStep | typeof WARS_NARROWED_BY_LEAD | typeof CURATOR_COMMEMORATION;
 
 /** One subject: its Wikidata item, its label, and its English Wikipedia article where it has one. */
 export interface CommemoratedSubject {
@@ -61,7 +85,17 @@ export interface Commemorates {
   subjects: CommemoratedSubject[];
 }
 
-const VIAS: ReadonlySet<string> = new Set<string>([...COMMEMORATION_STEPS, CURATOR_COMMEMORATION]);
+/**
+ * What `metadata.depicts` holds: the holy figures a religious work shows, and
+ * the step that named them. A run writes it and no curator lists it, so it is
+ * never empty.
+ */
+export interface Depicts {
+  via: DepictionStep;
+  subjects: CommemoratedSubject[];
+}
+
+const VIAS: ReadonlySet<string> = new Set<string>([...COMMEMORATION_STEPS, WARS_NARROWED_BY_LEAD, CURATOR_COMMEMORATION]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -86,6 +120,15 @@ export function commemoratesOf(value: unknown): Commemorates | null {
   return subjects.length || via === CURATOR_COMMEMORATION ? { via, subjects } : null;
 }
 
+const DEPICTION_VIAS: ReadonlySet<string> = new Set<string>(DEPICTION_STEPS);
+
+/** A stored `metadata.depicts` in this shape, key by key, or null where it is none or names nobody. */
+export function depictsOf(value: unknown): Depicts | null {
+  if (!isRecord(value) || typeof value.via !== 'string' || !DEPICTION_VIAS.has(value.via) || !Array.isArray(value.subjects)) return null;
+  const subjects = value.subjects.map(subjectOf).filter((s): s is CommemoratedSubject => s !== null);
+  return subjects.length ? { via: value.via as DepictionStep, subjects } : null;
+}
+
 /** The items a stored value names, none for anything not in this shape. */
 export function subjectItems(value: unknown): string[] {
   return commemoratesOf(value)?.subjects.map(subject => subject.item) ?? [];
@@ -93,7 +136,9 @@ export function subjectItems(value: unknown): string[] {
 
 /**
  * Whether two stored values name the same items, whatever their order, labels,
- * articles or step: a curator's empty list and no value both name nobody.
+ * articles or step: a curator's empty list and no value both name nobody. A
+ * stored `metadata.depicts` is compared the same way, its steps being steps of
+ * the reading.
  */
 export function sameSubjects(a: unknown, b: unknown): boolean {
   const [left, right] = [new Set(subjectItems(a)), new Set(subjectItems(b))];

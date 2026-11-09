@@ -435,7 +435,7 @@ describe('public art in the place pass', () => {
 
   it('reads whom each admitted place commemorates through the gather\'s door, and writes it as the place\'s own (#2144)', async () => {
     const lincoln = { via: 'commemorates', subjects: [{ item: 'Q91', label: 'Abraham Lincoln', articleUrl: 'https://en.wikipedia.org/wiki/Abraham_Lincoln' }] };
-    readCommemorates.mockResolvedValueOnce(new Map([['Q337179', lincoln]]));
+    readCommemorates.mockResolvedValueOnce(new Map([['Q337179', { commemorates: lincoln, depicts: null }]]));
     const config = await configOf();
     const fetched = await config.fetchItems(progress(), []);
     expect((readCommemorates.mock.calls[0] as unknown[])[0]).toEqual([expect.objectContaining({ qid: 'Q337179' })]);
@@ -444,9 +444,23 @@ describe('public art in the place pass', () => {
     const context: SyncRunContext = { dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null };
     await config.processItem(fetched.items[0], progress(), context);
     expect(mockedUpsert.mock.calls[0][0].metadata.commemorates).toEqual(lincoln);
+    expect(mockedUpsert.mock.calls[0][0].metadata).not.toHaveProperty('depicts');
     // A place the reading names nobody for sends no value.
     await config.processItem(landmark({ qid: 'Q82425' }), progress(), context);
     expect(mockedUpsert.mock.calls[1][0].metadata).not.toHaveProperty('commemorates');
+  });
+
+  it('writes the holy figure a religious work depicts beside whom it commemorates, never as it (#2404)', async () => {
+    // Christ the Redeemer (Q79961) is about Jesus Christ (Q302).
+    const jesus = { via: 'main-subject', subjects: [{ item: 'Q302', label: 'Jesus Christ', articleUrl: 'https://en.wikipedia.org/wiki/Jesus' }] };
+    readCommemorates.mockResolvedValueOnce(new Map([['Q337179', { commemorates: null, depicts: jesus }]]));
+    const config = await configOf();
+    const fetched = await config.fetchItems(progress(), []);
+    expect(fetched.items[0]).not.toHaveProperty('commemorates');
+    const context: SyncRunContext = { dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null };
+    await config.processItem(fetched.items[0], progress(), context);
+    expect(mockedUpsert.mock.calls[0][0].metadata).toMatchObject({ depicts: jesus });
+    expect(mockedUpsert.mock.calls[0][0].metadata).not.toHaveProperty('commemorates');
   });
 
   it('reads and writes what a street-art place holds in Public art alone, its pictures credited (#2055)', async () => {

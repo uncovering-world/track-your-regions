@@ -3,7 +3,7 @@
  */
 
 import type { PlaceTypeOf, TypedKindSlug } from '@tyr/shared/placeTypes';
-import type { Commemorates } from '@tyr/shared/commemorates';
+import type { Commemorates, Depicts } from '@tyr/shared/commemorates';
 import type { Operation } from '../operationProgress.js';
 import type { FieldChange } from './changeSet.js';
 
@@ -375,6 +375,12 @@ export interface WikidataLandmark {
    * card. Absent where no step of the reading names anyone.
    */
   commemorates?: Commemorates;
+  /**
+   * The holy figure a religious work depicts, read with `commemorates`
+   * (#2404): Christ the Redeemer depicts Jesus Christ. Absent where no step
+   * reading what the work shows names one.
+   */
+  depicts?: Depicts;
 }
 
 /**

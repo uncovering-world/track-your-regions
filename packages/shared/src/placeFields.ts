@@ -97,6 +97,10 @@ export const PLACE_FIELDS: Readonly<Record<string, PlaceField>> = {
   // every other source keeps it as the place holds it while one of theirs
   // admits the place (`WRITTEN_BY_SOURCES`, ADR-0190).
   'metadata.commemorates': place('shown'),
+  // The holy figure a religious work depicts, the line "Depicts: Jesus Christ"
+  // on Christ the Redeemer's card (#2404): read and kept as whom it
+  // commemorates is, and never said as a dedication.
+  'metadata.depicts': place('shown'),
 
   // The inscription, the World Heritage kind's: a delisted site loses it with
   // its membership.

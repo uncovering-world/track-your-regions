@@ -13,7 +13,19 @@
 
 import { entitiesOf, termsOf } from './entities.js';
 import { bestStatements, itemsOf } from './values.js';
+import { subsetClassTree } from './kit.js';
 import type { SubjectClaims, SubjectKind } from '../places/commemorates.js';
+import type { Span } from '../places/warNarrowing.js';
+import type { CompactStatement } from '../../dumps/wikidata/compactEntity.js';
+
+/** Wikidata's "deity" (Q178885), the root of the classes a holy figure is an instance of (#2404). */
+export const DEITY = 'Q178885';
+
+/** Wikidata's "war" (Q198): a reading naming one is narrowed by the place's lead (#2404). */
+export const WAR = 'Q198';
+
+/** What a war is narrowed to: an armed conflict (Q350604), a military operation (Q645883), a theatre of war (Q718893). */
+export const CONFLICTS = ['Q350604', 'Q645883', 'Q718893'] as const;
 
 /** Wikidata's "human" (Q5). */
 const HUMAN = 'Q5';
@@ -36,19 +48,54 @@ export async function subsetSubjectClaims(ids: string[]): Promise<Map<string, Su
   return out;
 }
 
-/** Each value's label, and whether it is a human or an event; a value with no label in any language has no entry. */
+/**
+ * Each value's label, whether it is a human or an event, and whether it is a
+ * holy figure (an instance of a class under deity, or canonised, `P411`); a
+ * value with no label in any language has no entry.
+ */
 export async function subsetSubjectKinds(ids: string[]): Promise<Map<string, SubjectKind>> {
-  const [kept, terms] = await Promise.all([entitiesOf(ids), termsOf(ids)]);
+  const [kept, terms, deities, wars, ...conflictTrees] = await Promise.all([
+    entitiesOf(ids), termsOf(ids), subsetClassTree(DEITY), subsetClassTree(WAR), ...CONFLICTS.map(root => subsetClassTree(root)),
+  ]);
+  const conflicts = new Set(conflictTrees.flatMap(tree => [...tree]));
   const out = new Map<string, SubjectKind>();
   for (const id of ids) {
     const label = terms.get(id)?.label;
     if (!label) continue;
     const claims = kept.get(id)?.entity.claims ?? {};
+    const classes = itemsOf(bestStatements(claims.P31));
+    // A deity at any rank but deprecated: Jesus Christ's deity class is
+    // outranked by his preferred human one, and he is both.
+    const everyClass = itemsOf((claims.P31 ?? []).filter(statement => statement.rank !== 'deprecated'));
     out.set(id, {
       label,
-      human: itemsOf(bestStatements(claims.P31)).includes(HUMAN),
+      human: classes.includes(HUMAN),
       event: EVENT_TIMES.some(property => bestStatements(claims[property]).length > 0),
+      holy: everyClass.some(cls => deities.has(cls)) || bestStatements(claims.P411).length > 0,
+      war: classes.some(cls => wars.has(cls)),
+      conflict: classes.some(cls => conflicts.has(cls)),
+      span: spanOf(timeOf(claims.P580) ?? timeOf(claims.P585), timeOf(claims.P582) ?? timeOf(claims.P585)),
     });
   }
   return out;
+}
+
+/** A Wikidata time (`+1945-04-16T00:00:00Z`) as a sortable `±YYYYMMDD`, or null for none. */
+function dayOf(time: string | undefined): number | null {
+  const match = time ? /^([+-]?)(\d+)-(\d\d)-(\d\d)/.exec(time) : null;
+  if (!match) return null;
+  const value = Number(match[2]) * 10000 + Number(match[3]) * 100 + Number(match[4]);
+  return match[1] === '-' ? -value : value;
+}
+
+/** A span from two Wikidata times, or null where either end is unknown. */
+export function spanOf(from: string | undefined, to: string | undefined): Span | null {
+  const [start, end] = [dayOf(from), dayOf(to)];
+  return start === null || end === null ? null : { from: start, to: end };
+}
+
+/** The time of a statement's best value, as Wikidata writes it. */
+function timeOf(statements: CompactStatement[] | undefined): string | undefined {
+  const value = bestStatements(statements)[0]?.value as { time?: unknown } | undefined;
+  return typeof value?.time === 'string' ? value.time : undefined;
 }
