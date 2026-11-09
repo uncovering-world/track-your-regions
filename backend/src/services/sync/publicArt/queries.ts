@@ -517,6 +517,12 @@ export interface EntityFacts {
    * a garden only, and absent on everything else.
    */
   heldMakers?: string[][];
+  /**
+   * The makers (`P170`, items only) a sculpture garden names of itself
+   * (`readGardenMakers`): the Tarot Garden names Niki de Saint Phalle. Read
+   * for a garden only, as `heldMakers` is.
+   */
+  ownMakers?: string[];
 }
 
 export const emptyFacts = (): EntityFacts => ({

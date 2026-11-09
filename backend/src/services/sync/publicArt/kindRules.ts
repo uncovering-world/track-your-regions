@@ -49,6 +49,8 @@ export interface KindFacts {
   subjects: SubjectFacts[];
   /** The makers each work a sculpture garden holds names (`EntityFacts.heldMakers`). */
   heldMakers?: string[][];
+  /** The makers a sculpture garden names of itself (`EntityFacts.ownMakers`). */
+  ownMakers?: string[];
 }
 
 export interface KindRule {

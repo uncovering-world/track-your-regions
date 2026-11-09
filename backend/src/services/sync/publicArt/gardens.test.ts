@@ -11,7 +11,7 @@ import { publicArtVerdict, type PublicArtFacts } from './publicArtTest.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 
-/** A sculpture garden one artist made (#2037): read off who made the works it holds. */
+/** A sculpture garden one artist made (#2037): read off who made it and the works it holds. */
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const ref = (qid: string) => ({ value: `${ENTITY}${qid}` });
@@ -22,6 +22,11 @@ const MONOLITH = 'Q11785240';
 const ANGRY_BOY = 'Q16678093';
 const BRIDGE = 'Q23868716';
 const ART_MUSEUM = 'Q207694';
+const TAROT_GARDEN = 'Q949846';
+const NIKI_DE_SAINT_PHALLE = 'Q168704';
+const NOGUCHI = 'Q442628';
+const ELLSWORTH_KELLY = 'Q544899';
+const DAVID_SMITH = 'Q726169';
 
 // Wikidata files a sculpture garden under sculpture (Q860861) and under
 // open-air museum, so both walked trees hold the garden's own class.
@@ -49,6 +54,16 @@ describe('isOneArtistsGarden', () => {
     // A park whose works are one sculptor's is no sculpture garden to ask about.
     expect(isOneArtistsGarden({ classes: ['Q22698'], heldMakers: [[VIGELAND], [VIGELAND]] })).toBe(false);
   });
+
+  it('takes the maker a garden names of itself, unless its works name another', () => {
+    // The Tarot Garden names Niki de Saint Phalle and holds no work Wikidata places in it.
+    expect(isOneArtistsGarden({ classes: [GARDEN], ownMakers: [NIKI_DE_SAINT_PHALLE], heldMakers: [] })).toBe(true);
+    expect(isOneArtistsGarden({ classes: [GARDEN], ownMakers: [NIKI_DE_SAINT_PHALLE], heldMakers: [[NIKI_DE_SAINT_PHALLE], []] })).toBe(true);
+    // The Cullen Sculpture Garden names Isamu Noguchi, who laid it out, and holds Kelly's and David Smith's.
+    expect(isOneArtistsGarden({ classes: [GARDEN], ownMakers: [NOGUCHI], heldMakers: [[ELLSWORTH_KELLY], [DAVID_SMITH]] })).toBe(false);
+    // The Tørskind Gravel Pit names two makers of itself.
+    expect(isOneArtistsGarden({ classes: [GARDEN], ownMakers: ['Q2230715', 'Q701078'] })).toBe(false);
+  });
 });
 
 describe('fetchWorkMakers', () => {
@@ -75,15 +90,22 @@ describe('readGardenMakers', () => {
       if (q.includes('?place ?work')) {
         return Promise.resolve([MONOLITH, ANGRY_BOY, BRIDGE].map((work) => ({ place: ref(VIGELAND_INSTALLATION), work: ref(work) })));
       }
-      return Promise.resolve([{ work: ref(MONOLITH), maker: ref(VIGELAND) }, { work: ref(ANGRY_BOY), maker: ref(VIGELAND) }]);
+      return Promise.resolve([
+        { work: ref(MONOLITH), maker: ref(VIGELAND) }, { work: ref(ANGRY_BOY), maker: ref(VIGELAND) },
+        { work: ref(TAROT_GARDEN), maker: ref(NIKI_DE_SAINT_PHALLE) },
+      ]);
     };
     const run = { sparql, phase: vi.fn(), step: vi.fn(async () => {}) } as unknown as QueryRunner;
     // The garden's facts were read for the kind's own admission pool, outside
     // the shared one: it is asked about all the same.
     const garden: EntityFacts = { ...emptyFacts(), classes: [GARDEN] };
+    const tarot: EntityFacts = { ...emptyFacts(), classes: [GARDEN] };
     const statue: EntityFacts = { ...emptyFacts(), classes: ['Q179700'] };
-    await readGardenMakers(run, new Map([[VIGELAND_INSTALLATION, garden], ['Q1', statue]]));
+    await readGardenMakers(run, new Map([[VIGELAND_INSTALLATION, garden], [TAROT_GARDEN, tarot], ['Q1', statue]]));
     expect(garden.heldMakers).toEqual([[VIGELAND], [VIGELAND], []]);
+    expect(garden.ownMakers).toEqual([]);
+    // The makers a garden names of itself are asked with its works'.
+    expect(tarot).toMatchObject({ heldMakers: [], ownMakers: [NIKI_DE_SAINT_PHALLE] });
     expect(statue).not.toHaveProperty('heldMakers');
     expect(asked[0]).toContain(`wd:${VIGELAND_INSTALLATION}`);
     expect(asked[0]).not.toContain('wd:Q1 ');
@@ -128,6 +150,9 @@ describe('the verdict on a sculpture garden', () => {
     // places in it are Gaudí's: a park refuses nothing here.
     expect(publicArtVerdict(facts({ classes: [GARDEN, 'Q22698'], heldMakers: [['Q25328'], ['Q25328']] }), trees, art))
       .toMatchObject({ pass: true, type: 'sculpture' });
+    // The Tarot Garden names its maker of itself.
+    expect(publicArtVerdict(facts({ qid: TAROT_GARDEN, ownMakers: [NIKI_DE_SAINT_PHALLE] }), trees, art))
+      .toMatchObject({ pass: true, type: 'sculpture', artwork: true });
     // A garden that is also a hall of fame keeps that kill.
     expect(reasonOf(publicArtVerdict(facts({ classes: [GARDEN, 'Q1046088'], heldMakers: [[VIGELAND], [VIGELAND]] }), trees, art)))
       .toBe('not public art: hall of fame');

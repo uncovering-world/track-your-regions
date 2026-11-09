@@ -1,13 +1,13 @@
 /**
  * A sculpture garden one artist made as a whole (#2037): the Vigeland
- * installation in Oslo, Millesgården, Matthias Braun's Betlém near Kuks.
+ * installation in Oslo, the Tarot Garden, Matthias Braun's Betlém near Kuks.
  * Wikidata types it `sculpture garden`, as it types a garden that gathers
  * many artists' works under a curator (Storm King, the Hakone Open-Air
- * Museum), and names the maker of neither garden: a garden's own creator
- * statement is missing on all three of the calibration list's. What tells
- * them apart is the works the garden holds: every one of the Vigeland
- * installation's that names a maker names Gustav Vigeland, while the Hakone
- * Open-Air Museum's name Picasso and Tumarkin.
+ * Museum). Two things tell them apart: the maker the garden names of itself
+ * (`P170`) — the Tarot Garden names Niki de Saint Phalle, while the
+ * Vigeland installation names nobody — and the works the garden holds: every
+ * one of the Vigeland installation's that names a maker names Gustav Vigeland,
+ * while the Hakone Open-Air Museum's name Picasso and Tumarkin.
  */
 
 import { extractQid, isQid } from '../wikidataUtils.js';
@@ -61,7 +61,8 @@ export async function fetchWorkMakers(sparql: SparqlFn, works: string[]): Promis
  * The makers of every work each sculpture garden among the candidates holds,
  * written onto the garden's facts (`EntityFacts.heldMakers`): a work standing
  * in it (`P276`), part of it (`P361`) or named as its part (`P527`), by a
- * statement that still stands, as a street-art wall's murals are read. Every
+ * statement that still stands, as a street-art wall's murals are read; and
+ * the makers the garden names of itself (`EntityFacts.ownMakers`). Every
  * candidate whose facts were read is asked, not the shared pool alone: a
  * garden in the kind's own admission pool, one an entrance named and an
  * admitted one read by id are judged by the same rule.
@@ -73,19 +74,27 @@ export async function readGardenMakers(run: QueryRunner, facts: Map<string, Enti
   await run.step();
   const holdings = await fetchStreetArtHoldings(run.sparql, gardens);
   await run.step();
-  const makers = await fetchWorkMakers(run.sparql, [...new Set(holdings.map((h) => h.work))]);
+  const makers = await fetchWorkMakers(run.sparql, [...new Set([...gardens, ...holdings.map((h) => h.work)])]);
   for (const garden of gardens) {
-    facts.get(garden)!.heldMakers = holdings.filter((h) => h.place === garden).map((h) => makers.get(h.work) ?? []);
+    const known = facts.get(garden)!;
+    known.heldMakers = holdings.filter((h) => h.place === garden).map((h) => makers.get(h.work) ?? []);
+    known.ownMakers = makers.get(garden) ?? [];
   }
 }
 
 /**
- * Whether a sculpture garden is one artist's work: at least
- * `ONE_ARTIST_MIN_WORKS` of its works name a maker, and every maker any of
- * them names is the same one. A work naming two makers names two.
+ * Whether a sculpture garden is one artist's work: every maker the garden
+ * names of itself and every maker any of its works names is the same one,
+ * and that one is named by the garden itself or by at least
+ * `ONE_ARTIST_MIN_WORKS` of its works. A work or a garden naming two makers
+ * names two. The garden's own maker alone is not enough when its works name
+ * others: the Cullen Sculpture Garden names Isamu Noguchi, who laid it out,
+ * and holds Ellsworth Kelly's and David Smith's.
  */
-export function isOneArtistsGarden(e: { classes: string[]; heldMakers?: string[][] }): boolean {
+export function isOneArtistsGarden(e: { classes: string[]; heldMakers?: string[][]; ownMakers?: string[] }): boolean {
   if (!e.classes.includes(SCULPTURE_GARDEN)) return false;
+  const own = e.ownMakers ?? [];
   const named = (e.heldMakers ?? []).filter((makers) => makers.length > 0);
-  return named.length >= ONE_ARTIST_MIN_WORKS && new Set(named.flat()).size === 1;
+  if (new Set([...own, ...named.flat()]).size !== 1) return false;
+  return own.length > 0 || named.length >= ONE_ARTIST_MIN_WORKS;
 }
