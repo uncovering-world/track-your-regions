@@ -518,9 +518,12 @@ export interface EntityFacts {
    */
   heldMakers?: string[][];
   /**
-   * The makers (`P170`, items only) a sculpture garden names of itself
-   * (`readGardenMakers`): the Tarot Garden names Niki de Saint Phalle. Read
-   * for a garden only, as `heldMakers` is.
+   * The makers (`P170`, items only) a sculpture garden names of itself, or its
+   * founders (`P112`) where neither it nor any work it holds names a maker
+   * and it stands in no other place
+   * (`readGardenMakers`): the Tarot Garden names Niki de Saint Phalle, and the
+   * Rock Garden of Chandigarh was founded by Nek Chand. Read for a garden
+   * only, as `heldMakers` is.
    */
   ownMakers?: string[];
 }

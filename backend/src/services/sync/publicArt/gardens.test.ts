@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const { subsetWorkMakers } = vi.hoisted(() => ({ subsetWorkMakers: vi.fn() }));
-vi.mock('../subset/publicArt.js', () => ({ subsetWorkMakers }));
+const { subsetItemStatements } = vi.hoisted(() => ({ subsetItemStatements: vi.fn() }));
+vi.mock('../subset/publicArt.js', () => ({ subsetItemStatements }));
 
-import { fetchWorkMakers, isOneArtistsGarden, ONE_ARTIST_MIN_WORKS, readGardenMakers } from './gardens.js';
+import { fetchItemStatements, isOneArtistsGarden, ONE_ARTIST_MIN_WORKS, readGardenMakers } from './gardens.js';
 import { emptyFacts, type EntityFacts } from './queries.js';
 import { buildTrees } from './classes.js';
 import { MONUMENTS_RULE as monuments, PUBLIC_ART_RULE as art } from './kindRules.js';
@@ -29,6 +29,11 @@ const NIKI_DE_SAINT_PHALLE = 'Q168704';
 const NOGUCHI = 'Q442628';
 const ELLSWORTH_KELLY = 'Q544899';
 const DAVID_SMITH = 'Q726169';
+const ROCK_GARDEN = 'Q3041915';
+const NEK_CHAND = 'Q2087833';
+const LOLA_BEER_EBNER_GARDEN = 'Q139575';
+const LOLA_BEER_EBNER = 'Q15215572';
+const TEL_AVIV_MUSEUM = 'Q1267958';
 
 // Wikidata files a sculpture garden under sculpture (Q860861) and under
 // open-air museum, so both walked trees hold the garden's own class.
@@ -69,19 +74,19 @@ describe('isOneArtistsGarden', () => {
   });
 });
 
-describe('fetchWorkMakers', () => {
-  it('reads each work\'s makers once, items only', async () => {
+describe('fetchItemStatements', () => {
+  it('reads each entity\'s items once, items only', async () => {
     const rows: SparqlBinding[] = [
-      { work: ref(MONOLITH), maker: ref(VIGELAND) },
-      { work: ref(MONOLITH), maker: ref(VIGELAND) },
-      { work: ref(ANGRY_BOY), maker: ref(VIGELAND) },
-      { work: ref(ANGRY_BOY), maker: { value: 'http://www.wikidata.org/.well-known/genid/abc' } },
+      { entity: ref(MONOLITH), item: ref(VIGELAND) },
+      { entity: ref(MONOLITH), item: ref(VIGELAND) },
+      { entity: ref(ANGRY_BOY), item: ref(VIGELAND) },
+      { entity: ref(ANGRY_BOY), item: { value: 'http://www.wikidata.org/.well-known/genid/abc' } },
     ];
     let sent = '';
     const sparql: SparqlFn = (q) => { sent = q; return Promise.resolve(rows); };
-    const makers = await fetchWorkMakers(sparql, [MONOLITH, ANGRY_BOY, BRIDGE, 'not a qid']);
+    const makers = await fetchItemStatements(sparql, [MONOLITH, ANGRY_BOY, BRIDGE, 'not a qid'], 'P170');
     expect([...makers]).toEqual([[MONOLITH, [VIGELAND]], [ANGRY_BOY, [VIGELAND]]]);
-    expect(sent.replace(/\s+/g, ' ')).toContain(`VALUES ?work { wd:${MONOLITH} wd:${ANGRY_BOY} wd:${BRIDGE} } ?work wdt:P170 ?maker`);
+    expect(sent.replace(/\s+/g, ' ')).toContain(`VALUES ?entity { wd:${MONOLITH} wd:${ANGRY_BOY} wd:${BRIDGE} } ?entity wdt:P170 ?item`);
   });
 });
 
@@ -93,9 +98,10 @@ describe('readGardenMakers', () => {
       if (q.includes('?place ?work')) {
         return Promise.resolve([MONOLITH, ANGRY_BOY, BRIDGE].map((work) => ({ place: ref(VIGELAND_INSTALLATION), work: ref(work) })));
       }
+      if (q.includes('wdt:P112')) return Promise.resolve([{ entity: ref(VIGELAND_INSTALLATION), item: ref('Q4952') }]);
       return Promise.resolve([
-        { work: ref(MONOLITH), maker: ref(VIGELAND) }, { work: ref(ANGRY_BOY), maker: ref(VIGELAND) },
-        { work: ref(TAROT_GARDEN), maker: ref(NIKI_DE_SAINT_PHALLE) },
+        { entity: ref(MONOLITH), item: ref(VIGELAND) }, { entity: ref(ANGRY_BOY), item: ref(VIGELAND) },
+        { entity: ref(TAROT_GARDEN), item: ref(NIKI_DE_SAINT_PHALLE) },
       ]);
     };
     const run = { sparql, phase: vi.fn(), step: vi.fn(async () => {}) } as unknown as QueryRunner;
@@ -106,7 +112,10 @@ describe('readGardenMakers', () => {
     const statue: EntityFacts = { ...emptyFacts(), classes: ['Q179700'] };
     await readGardenMakers(run, new Map([[VIGELAND_INSTALLATION, garden], [TAROT_GARDEN, tarot], ['Q1', statue]]));
     expect(garden.heldMakers).toEqual([[VIGELAND], [VIGELAND], []]);
+    // Its works name their maker, so no founder is asked: one would make it two artists' work.
     expect(garden.ownMakers).toEqual([]);
+    expect(isOneArtistsGarden(garden)).toBe(true);
+    expect(asked.some((q) => q.includes('wdt:P112'))).toBe(false);
     // The makers a garden names of itself are asked with its works'.
     expect(tarot).toMatchObject({ heldMakers: [], ownMakers: [NIKI_DE_SAINT_PHALLE] });
     expect(statue).not.toHaveProperty('heldMakers');
@@ -119,7 +128,30 @@ describe('readGardenMakers', () => {
     const run = { sparql, phase: vi.fn(), step: vi.fn(async () => {}) } as unknown as QueryRunner;
     await readGardenMakers(run, new Map([['Q1', { ...emptyFacts(), classes: ['Q179700'] }]]));
     expect(sparql).not.toHaveBeenCalled();
-    expect(subsetWorkMakers).not.toHaveBeenCalled();
+    expect(subsetItemStatements).not.toHaveBeenCalled();
+  });
+
+  it('takes a founder for the maker only of a garden that names none and stands in no other place', async () => {
+    const asked: string[] = [];
+    const sparql: SparqlFn = (q) => {
+      asked.push(q);
+      if (q.includes('?place ?work')) return Promise.resolve([]);
+      if (q.includes('wdt:P112')) {
+        return Promise.resolve([[ROCK_GARDEN, NEK_CHAND], [LOLA_BEER_EBNER_GARDEN, LOLA_BEER_EBNER]]
+          .filter(([garden]) => q.includes(`wd:${garden} `)).map(([garden, founder]) => ({ entity: ref(garden), item: ref(founder) })));
+      }
+      return Promise.resolve([]);
+    };
+    const run = { sparql, phase: vi.fn(), step: vi.fn(async () => {}) } as unknown as QueryRunner;
+    const rock: EntityFacts = { ...emptyFacts(), classes: [GARDEN] };
+    // Part of the Tel Aviv Museum of Art, and named after its donor.
+    const lola: EntityFacts = { ...emptyFacts(), classes: [GARDEN], locations: [TEL_AVIV_MUSEUM], parents: [TEL_AVIV_MUSEUM] };
+    await readGardenMakers(run, new Map([[ROCK_GARDEN, rock], [LOLA_BEER_EBNER_GARDEN, lola]]));
+    expect(rock.ownMakers).toEqual([NEK_CHAND]);
+    expect(lola.ownMakers).toEqual([]);
+    const founders = asked.find((q) => q.includes('wdt:P112'))!;
+    expect(founders).toContain(`wd:${ROCK_GARDEN}`);
+    expect(founders).not.toContain(`wd:${LOLA_BEER_EBNER_GARDEN}`);
   });
 });
 

@@ -224,12 +224,12 @@ export async function subsetEntityFacts(ids: string[]): Promise<Map<string, Enti
   return out;
 }
 
-/** The makers each kept work names, as `fetchWorkMakers` answers: a work that names none is absent. */
-export async function subsetWorkMakers(ids: string[]): Promise<Map<string, string[]>> {
+/** The items each kept entity names under `property`, as `fetchItemStatements` answers: one that names none is absent. */
+export async function subsetItemStatements(ids: string[], property: 'P170' | 'P112'): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   for (const [id, { entity }] of await entitiesOf(ids)) {
-    const makers = [...new Set(itemsOf(bestStatements(entity.claims.P170)))];
-    if (makers.length) out.set(id, makers);
+    const items = [...new Set(itemsOf(bestStatements(entity.claims[property])))];
+    if (items.length) out.set(id, items);
   }
   return out;
 }

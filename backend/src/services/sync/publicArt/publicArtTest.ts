@@ -49,7 +49,7 @@ export interface PublicArtFacts {
   outrankedClasses?: string[];
   /** The makers each work a sculpture garden holds names (`EntityFacts.heldMakers`). */
   heldMakers?: string[][];
-  /** The makers a sculpture garden names of itself (`EntityFacts.ownMakers`). */
+  /** A sculpture garden's own makers, as `EntityFacts.ownMakers` reads them. */
   ownMakers?: string[];
   containers: ContainerFact[];
   /**
