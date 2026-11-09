@@ -64,6 +64,16 @@ beforeEach(() => {
   mockedPlace.mockResolvedValue(schlossplatzCircle);
 });
 
+describe("the region list's numbers (#2400)", () => {
+  it("shows on every row what the place's score is made of, and the score, a dash where nothing is read", async () => {
+    renderWindow();
+    await inRegion();
+
+    expect(rowOf('Alexanderplatz').getByText('Readers a year 209,401 · Editions 47 · Guide yes · Score 0.95')).toBeInTheDocument();
+    expect(rowOf('Leipziger Platz').getByText('Readers a year — · Editions 18 · Guide — · Score 0.73')).toBeInTheDocument();
+  });
+});
+
 describe('the window opened from a card', () => {
   it('opens the card’s place in its own circle, within its region’s group', async () => {
     renderWindow();
@@ -81,6 +91,18 @@ describe('the window opened from a card', () => {
     expect(compared.getByText('0.7 km')).toBeInTheDocument();
     expect(compared.queryByRole('button', { name: 'Kulturforum' })).toBeNull();
     expect(compared.getByText(/^For the rule to show it, fewer than 10 squares better known than it/)).toBeInTheDocument();
+  });
+
+  it("shows what the place's score is made of, its count against the line, and the same for what it is compared with (#2400)", async () => {
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    expect(screen.getByText('Readers a year 20,000 · Editions 17 · Guide yes · Score 0.70 · Better within 10 km 13 of 10'))
+      .toBeInTheDocument();
+    const compared = within(screen.getByRole('region', { name: 'What it is compared with' }));
+    expect(compared.getByText('Readers a year 209,401 · Editions 47 · Guide yes · Score 0.95')).toBeInTheDocument();
+    // A place not read yet is a dash, never a zero.
+    expect(compared.getByText('Readers a year — · Editions 18 · Guide — · Score 0.73')).toBeInTheDocument();
   });
 
   it('answers the open place alone, with the answers its standing takes', async () => {

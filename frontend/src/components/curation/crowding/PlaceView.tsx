@@ -3,9 +3,11 @@
  * group in its own circle, beside the map that draws it. Its card shows what
  * the place is — its picture with its credit as a line, enlarged on a press
  * (ADR-0182), and its article — the rule's reading of it with its exact count, and its own
- * answers, which are about it alone. Below, what it is compared with: the
- * better-known places of its type within the radius, as the rule lists them,
- * best known first, each with its distance and each opening its own circle.
+ * answers, which are about it alone, and what its score is made of with the
+ * rule's count against its line (`FameFigures`, #2400). Below, what it is
+ * compared with: the better-known places of its type within the radius, as the
+ * rule lists them, best known first, each with the same numbers and its
+ * distance, and each opening its own circle.
  */
 
 import { useState } from 'react';
@@ -18,6 +20,7 @@ import { PictureLightbox } from '../../shared/PictureLightbox';
 import { ReaderEditionBeside } from '../../shared/WikipediaArticleLink';
 import { AnswerButtons } from './AnswerButtons';
 import { drawnStanding, type Staging } from './crowdingStaging';
+import { FameFigures } from './FameFigures';
 import { STANDING_COLOR } from './RegionList';
 import { distanceWords, nounOf, ruleReading, type RuleWords } from './rowWords';
 
@@ -87,6 +90,10 @@ export function PlaceView({ view, rule, staging, frozen = false, hovered, onHove
               <ReaderEditionBeside article={place.wikipediaUrl} />
             </Stack>
           )}
+          <FameFigures
+            signals={place}
+            better={place.outrankedBy === null ? undefined : { count: place.outrankedBy, radiusKm: rule.radiusKm, limit: rule.limit }}
+          />
           <Typography variant="body2">{ruleReading(place, rule, view.typeExempt)}</Typography>
           <AnswerButtons place={place} staging={staging} frozen={frozen} size="medium" onAnswer={onAnswer} />
           <Typography variant="caption" color="text.secondary">
@@ -114,12 +121,15 @@ export function PlaceView({ view, rule, staging, frozen = false, hovered, onHove
             }}
           >
             <Typography variant="caption" color="text.secondary" sx={{ width: 28, fontVariantNumeric: 'tabular-nums' }}>{index + 1}</Typography>
-            <ButtonBase
-              onClick={() => onOpen(entry.membershipId)}
-              sx={{ typography: 'body2', flexGrow: 1, justifyContent: 'flex-start', textAlign: 'left', '&:hover': { textDecoration: 'underline' } }}
-            >
-              {entry.name}
-            </ButtonBase>
+            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+              <ButtonBase
+                onClick={() => onOpen(entry.membershipId)}
+                sx={{ typography: 'body2', justifyContent: 'flex-start', textAlign: 'left', '&:hover': { textDecoration: 'underline' } }}
+              >
+                {entry.name}
+              </ButtonBase>
+              <FameFigures signals={entry} />
+            </Box>
             {entry.standing !== 'shown' && (
               <Typography variant="caption" color="text.secondary">{entry.standing === 'new' ? 'new' : 'shadowed'}</Typography>
             )}

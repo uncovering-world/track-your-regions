@@ -5257,6 +5257,15 @@ export interface CrowdingGroupPlace {
   imageUrl: string | null;
   /** Whose photograph the picture is, shown with it. */
   imageCredit: ImageCredit | null;
+  /** Readers a year of its Wikipedia articles; null before its first measurement. */
+  readers: number | null;
+  /** The Wikipedia editions with an article on it; null before it is measured. */
+  wikipediaEditions: number | null;
+  /**
+     * Whether a Wikivoyage edition uses its item: what its fame reads of the guides (ADR-0177); null before the guides are read.
+     * @nullable
+     */
+  guideUsed: boolean | null;
   /**
      * Its fame among its kind and type worldwide (ADR-0172); null before it is scored.
      * @nullable
@@ -5361,6 +5370,20 @@ export type CrowdingPlaceViewAroundItem = {
      * @maximum 9007199254740991
      */
   distanceM: number;
+  /** Readers a year of its Wikipedia articles; null before its first measurement. */
+  readers: number | null;
+  /** The Wikipedia editions with an article on it; null before it is measured. */
+  wikipediaEditions: number | null;
+  /**
+     * Whether a Wikivoyage edition uses its item: what its fame reads of the guides (ADR-0177); null before the guides are read.
+     * @nullable
+     */
+  guideUsed: boolean | null;
+  /**
+     * Its fame among its kind and type worldwide (ADR-0172); null before it is scored.
+     * @nullable
+     */
+  score: number | null;
   /** Where it stands now: on the region page, in its tail, or a new arrival nobody has passed. */
   standing: CrowdingPlaceViewAroundItemStanding;
   /** It counts above the place (`crowding_above()`): what the place is compared with. */
