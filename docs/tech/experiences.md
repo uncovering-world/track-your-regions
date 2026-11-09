@@ -2853,7 +2853,11 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    a foundation that commemorates someone being no place to stand in front of; and save that, for
    Public art, a sculpture garden one artist made is a work of its own (`isOneArtistsGarden` in
    `publicArt/gardens.ts`, #2037): the run reads the maker the garden names of itself (`P170`,
-   onto `EntityFacts.ownMakers`) and the works the garden holds — standing in it, part of it or
+   onto `EntityFacts.ownMakers`), or, where neither it nor any work it holds names a maker and it
+   stands in no other place (no `P276` or `P361`), its founder (`P112`) — Nek Chand founded the Rock Garden of Chandigarh and Pier
+   Francesco Orsini the Sacro Bosco at Bomarzo, while the Lola Beer Ebner Sculpture Garden, part of
+   the Tel Aviv Museum of Art, names a fashion designer as its founder — and
+   the works the garden holds — standing in it, part of it or
    named as its parts — and who each names as its maker (`readGardenMakers`, onto
    `EntityFacts.heldMakers`), and a garden whose own maker and whose works' makers are all one
    artist, named by the garden itself or by at least two of its works, lifts its kill and is filed
