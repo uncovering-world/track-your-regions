@@ -19,6 +19,9 @@ export function squarePlace(over: Partial<CrowdingGroupPlace> & Pick<CrowdingGro
     wikipediaUrl: null,
     imageUrl: null,
     imageCredit: null,
+    readers: 20000,
+    wikipediaEditions: 17,
+    guideUsed: true,
     score: 0.5,
     standing: 'shown',
     crowded: false,
@@ -62,7 +65,7 @@ export const ALEXANDERPLATZ_LOOK: Pick<CrowdingGroupPlace, 'wikipediaUrl' | 'ima
 export const berlinSquares: CrowdingGroupPlace[] = [
   ...LISTED.map((name, index) => squarePlace({
     membershipId: index + 1, name, score: 0.95 - index * 0.02,
-    ...(index === 0 ? ALEXANDERPLATZ_LOOK : {}),
+    ...(index === 0 ? { ...ALEXANDERPLATZ_LOOK, readers: 209401, wikipediaEditions: 47 } : {}),
   })),
   squarePlace({
     membershipId: FRANKFURTER_TOR, name: 'Frankfurter Tor', score: 0.74, outrankedBy: 10, betterKnown: TOP_THREE,
@@ -71,6 +74,8 @@ export const berlinSquares: CrowdingGroupPlace[] = [
   squarePlace({
     membershipId: LEIPZIGER_PLATZ, name: 'Leipziger Platz', score: 0.73, outrankedBy: 11, betterKnown: TOP_THREE,
     standing: 'shadowed', crowded: true, ruleCrowded: true,
+    // Before its readers and its guides are first read.
+    readers: null, guideUsed: null, wikipediaEditions: 18,
   }),
   squarePlace({ membershipId: ROSA_LUXEMBURG_PLATZ, name: 'Rosa-Luxemburg-Platz', score: 0.71, standing: 'new' }),
   squarePlace({
@@ -90,8 +95,11 @@ export const berlinGroup: CrowdingGroup = {
 };
 
 function around(place: CrowdingGroupPlace, compared: boolean, distanceM: number): CrowdingAroundPlace {
-  const { membershipId, experienceId, name, latitude, longitude, standing } = place;
-  return { membershipId, experienceId, name, latitude, longitude, standing, distanceM, compared };
+  const { membershipId, experienceId, name, latitude, longitude, standing, readers, wikipediaEditions, guideUsed, score } = place;
+  return {
+    membershipId, experienceId, name, latitude, longitude, standing, distanceM, compared,
+    readers, wikipediaEditions, guideUsed, score,
+  };
 }
 
 /** Schloßplatz in its own circle: the thirteen better known above it, and the rest of the squares around. */

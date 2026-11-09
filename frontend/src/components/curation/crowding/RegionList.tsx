@@ -6,7 +6,8 @@
  * the rule would put it once passed.
  *
  * Each row shows what its place is (`PlaceCell`: its picture, credit and
- * article, #2345), a note on its standing, and the answers its standing takes
+ * article, #2345), a note on its standing, what its score is made of and the
+ * score (`FameFigures`, #2400), and the answers its standing takes
  * (`AnswerButtons`). A hover says why the place stands where it stands
  * (`whyWords`) and lights its dot on the map; a click on its name opens the
  * place in its own circle.
@@ -16,6 +17,7 @@ import { Box, ButtonBase, Chip, Stack, Tooltip, Typography } from '@mui/material
 import type { CrowdingAnswer, CrowdingGroupPlace } from '../../../api/crowding';
 import { AnswerButtons } from './AnswerButtons';
 import { drawnStanding, listPart, type DrawnStanding, type Staging } from './crowdingStaging';
+import { FameFigures } from './FameFigures';
 import { PlaceCell } from './PlaceCell';
 import { nounOf, placeNote, whyWords, type RuleWords } from './rowWords';
 
@@ -83,6 +85,7 @@ function Row({ place, rank, first, rule, typeExempt, staging, hovered, onHover, 
             )}
           >
             {note && <Typography variant="caption" color="text.secondary" display="block">{note}</Typography>}
+            <FameFigures signals={place} />
           </PlaceCell>
         </Box>
         <Box sx={{ flexShrink: 0, maxWidth: '50%' }}>
