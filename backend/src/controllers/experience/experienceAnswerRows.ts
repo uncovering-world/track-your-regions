@@ -16,7 +16,7 @@ import type {
 } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { TextSource } from '@tyr/shared/textCredits';
-import { commemoratesOf } from '@tyr/shared/commemorates';
+import { commemoratesOf, depictsOf, type CommemoratedSubject as StoredSubject } from '@tyr/shared/commemorates';
 
 type Membership = CheckValue<'experiences', 'source_membership'>;
 type Existence = CheckValue<'experiences', 'existence'>;
@@ -46,8 +46,16 @@ export function creditOf(credit: ImageCredit | null): ImageCredit | null {
  * by key (`commemoratesOf`): none where the place holds no such value.
  */
 function commemoratedOf(metadata: Record<string, unknown> | null): CommemoratedSubject[] {
-  return (commemoratesOf(metadata?.commemorates)?.subjects ?? [])
-    .map(subject => ({ qid: subject.item, label: subject.label, article_url: subject.articleUrl }));
+  return servedSubjects(commemoratesOf(metadata?.commemorates)?.subjects);
+}
+
+/** The holy figure a religious work depicts, as `metadata.depicts` stores it (#2404): none where it holds none. */
+function depictedOf(metadata: Record<string, unknown> | null): CommemoratedSubject[] {
+  return servedSubjects(depictsOf(metadata?.depicts)?.subjects);
+}
+
+function servedSubjects(subjects: StoredSubject[] | undefined): CommemoratedSubject[] {
+  return (subjects ?? []).map(subject => ({ qid: subject.item, label: subject.label, article_url: subject.articleUrl }));
 }
 
 /** Where a find was dug up, as `metadata.foundAt` stores it, key by key. */
@@ -204,6 +212,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     metadata: row.metadata,
     date_inscribed: row.date_inscribed,
     commemorates: commemoratedOf(row.metadata),
+    depicts: depictedOf(row.metadata),
     created_at: iso(row.created_at),
     updated_at: iso(row.updated_at),
     source_membership: row.source_membership,

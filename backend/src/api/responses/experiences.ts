@@ -301,7 +301,7 @@ export const CommemoratedSubject = z.strictObject({
   qid: z.string().describe('The subject\'s Wikidata item.'),
   label: z.string(),
   article_url: z.string().nullable().describe('Its English Wikipedia article, or null where it has none.'),
-}).describe('One person or event a place commemorates (#2144).');
+}).describe('One person or event a place commemorates (#2144), or a holy figure a religious work depicts (#2404).');
 export type CommemoratedSubject = z.infer<typeof CommemoratedSubject>;
 
 export const ExperienceDetail = z.strictObject({
@@ -328,6 +328,10 @@ export const ExperienceDetail = z.strictObject({
   commemorates: z.array(CommemoratedSubject).describe(
     'Whom or what the place commemorates, off its `metadata.commemorates` (#2144): the Lincoln Memorial names Abraham'
     + ' Lincoln. Empty where the runs of Public art and Monuments & memorials name nobody.',
+  ),
+  depicts: z.array(CommemoratedSubject).describe(
+    'The holy figure a religious work depicts, off its `metadata.depicts` (#2404): Christ the Redeemer names Jesus'
+    + ' Christ, which is never whom it commemorates. Empty where the reading names none.',
   ),
   created_at: timestamp,
   updated_at: timestamp,
