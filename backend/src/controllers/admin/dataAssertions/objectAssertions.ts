@@ -298,7 +298,7 @@ function qidArray(qids: string[]): string {
 // Wikipedia's monuments categories (#2171), and a constant can see neither, so
 // that one is asked of the rule's own answer, as a building veto is. Public
 // art lifts one of them: a sculpture garden one artist made (#2037), read from
-// who made its works, which no constant can see either, so it is asked of the
+// who made it and its works, which no constant can see either, so it is asked of the
 // stored artwork answer too.
 const REFUSED_OUTRIGHT = qidArray([
   ...Object.keys(WORSHIP_CLASSES),

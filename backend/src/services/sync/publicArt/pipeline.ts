@@ -235,6 +235,7 @@ function kindFactsOf(known: EntityFacts, subjects: Map<string, SubjectFacts>): K
     genres: known.genres,
     subjects: known.depicts.flatMap((qid) => subjects.get(qid) ?? []),
     heldMakers: known.heldMakers,
+    ownMakers: known.ownMakers,
   };
 }
 
@@ -311,6 +312,7 @@ export function publicArtVerdictOf(
     genres: known.genres,
     subjects: known.depicts.flatMap((qid) => subjects.get(qid) ?? []),
     heldMakers: known.heldMakers,
+    ownMakers: known.ownMakers,
     ...castsJudged(entity, containers),
     onEarth: entity.onEarth,
     lat: entity.lat,
