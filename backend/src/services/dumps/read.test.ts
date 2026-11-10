@@ -88,7 +88,7 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>(resolve => server.close(() => resolve())));
 
 const file = (path: string, over: Partial<DumpFile> = {}): DumpFile => ({
-  key: 'wikidata-lexemes', fileName: path.slice(1), url: `${base}${path}`, date: '2026-10-07',
+  key: 'enwiki-page-props', fileName: path.slice(1), url: `${base}${path}`, date: '2026-10-07',
   checksum: null, expectedBytes: null, compression: path.endsWith('.bz2') ? 'bzip2' : 'gzip', ...over,
 });
 
@@ -302,17 +302,17 @@ describe('reading a dump through the pipeline', () => {
   it('removes the older copy of the same dump once the newer one is verified, and tells the build (#1456)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
     try {
-      writeFileSync(join(dir, 'wikidata-20260928-lexemes.json.gz'), 'older');
+      writeFileSync(join(dir, 'enwiki-20260928-page_props.sql.gz'), 'older');
       writeFileSync(join(dir, 'wikidata-20260928-all.json.gz'), 'another dump');
       const notes: string[] = [];
       await readDump(
-        file('/whole.json.gz', { fileName: 'wikidata-20261005-lexemes.json.gz', checksum: { kind: 'sha1', value: sha1(GZ) }, expectedBytes: GZ.length }),
+        file('/whole.json.gz', { fileName: 'enwiki-20261005-page_props.sql.gz', checksum: { kind: 'sha1', value: sha1(GZ) }, expectedBytes: GZ.length }),
         countLines(), { signal: signal(), dumpsDir: dir, onNote: note => notes.push(note) },
       );
-      expect(existsSync(join(dir, 'wikidata-20260928-lexemes.json.gz'))).toBe(false);
+      expect(existsSync(join(dir, 'enwiki-20260928-page_props.sql.gz'))).toBe(false);
       expect(existsSync(join(dir, 'wikidata-20260928-all.json.gz'))).toBe(true);
-      expect(existsSync(join(dir, 'wikidata-20261005-lexemes.json.gz'))).toBe(true);
-      expect(notes).toEqual(['removed the older wikidata-20260928-lexemes.json.gz']);
+      expect(existsSync(join(dir, 'enwiki-20261005-page_props.sql.gz'))).toBe(true);
+      expect(notes).toEqual(['removed the older enwiki-20260928-page_props.sql.gz']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -335,12 +335,12 @@ describe('reading a dump through the pipeline', () => {
   it('keeps the older copy when the newer one fails verification', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
     try {
-      writeFileSync(join(dir, 'wikidata-20260928-lexemes.json.gz'), 'older');
+      writeFileSync(join(dir, 'enwiki-20260928-page_props.sql.gz'), 'older');
       await expect(readDump(
-        file('/whole.json.gz', { fileName: 'wikidata-20261005-lexemes.json.gz', checksum: { kind: 'sha1', value: 'b'.repeat(40) }, expectedBytes: GZ.length }),
+        file('/whole.json.gz', { fileName: 'enwiki-20261005-page_props.sql.gz', checksum: { kind: 'sha1', value: 'b'.repeat(40) }, expectedBytes: GZ.length }),
         countLines(), { signal: signal(), dumpsDir: dir },
       )).rejects.toThrow();
-      expect(existsSync(join(dir, 'wikidata-20260928-lexemes.json.gz'))).toBe(true);
+      expect(existsSync(join(dir, 'enwiki-20260928-page_props.sql.gz'))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

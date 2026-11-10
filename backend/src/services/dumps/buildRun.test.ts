@@ -16,7 +16,7 @@ const ledger = vi.hoisted(() => ({
 }));
 vi.mock('./ledger.js', () => ledger);
 const FILE = {
-  key: 'wikidata-lexemes', fileName: 'wikidata-20261012-lexemes.json.gz', url: 'https://dumps.wikimedia.org/x',
+  key: 'enwiki-page-props', fileName: 'enwiki-20261012-page_props.sql.gz', url: 'https://dumps.wikimedia.org/x',
   date: '2026-10-12', checksum: { kind: 'sha1', value: 'a'.repeat(40) }, expectedBytes: 1, compression: 'gzip',
 };
 vi.mock('./catalog.js', () => ({
@@ -51,7 +51,7 @@ vi.mock('./read.js', async (original) => ({ ...await original<typeof import('./r
 const { runBuild, waitForRuns } = await import('./buildRun.js');
 const { CutDownload } = await import('./read.js');
 
-const claimed = { id: 9, dump: 'wikidata-lexemes', request: { kind: 'verify' as const } };
+const claimed = { id: 9, dump: 'enwiki-page-props', request: { kind: 'verify' as const } };
 /** A read that runs until its signal aborts. */
 const untilAborted = async (_file: unknown, _consumer: unknown, options: { signal: AbortSignal }) => {
   await new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason)));
@@ -255,12 +255,12 @@ describe('a build in the dump worker (ADR-0106)', () => {
 
   it('keeps what a failed build did on the way in the failure', async () => {
     read.readDump.mockImplementation(async (_file: unknown, _consumer: unknown, options: { onNote?: (note: string) => void }) => {
-      options.onNote?.('removed wikidata-20261005-lexemes.json.gz first');
+      options.onNote?.('removed enwiki-20261005-page_props.sql.gz first');
       throw new Error('the host cut the download');
     });
     await runBuild(claimed, new AbortController().signal);
     expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
-      status: 'failed', error: 'the host cut the download; removed wikidata-20261005-lexemes.json.gz first',
+      status: 'failed', error: 'the host cut the download; removed enwiki-20261005-page_props.sql.gz first',
     }));
   });
 
@@ -336,19 +336,19 @@ describe('a build the network cut (#2419)', () => {
     expect(keepers.build).toHaveBeenCalledTimes(4);
     expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
       status: 'failed',
-      error: 'The connection to dumps.wikimedia.org was closed after 2.2 GB of 3.6 GB of wikidata-20261012-lexemes.json.gz. '
-        + 'It was tried 4 times. The next build resumes from the 2.2 GB of wikidata-20261012-lexemes.json.gz on disk. '
+      error: 'The connection to dumps.wikimedia.org was closed after 2.2 GB of 3.6 GB of enwiki-20261012-page_props.sql.gz. '
+        + 'It was tried 4 times. The next build resumes from the 2.2 GB of enwiki-20261012-page_props.sql.gz on disk. '
         + 'The copy in place, built from the dump of 5 Oct 2026, is unchanged and still read.',
     }));
     keepers.build.mockReset();
   });
 
   it('never tries again a file that is not the host\'s', async () => {
-    const damaged = Object.assign(new Error('wikidata-20261012-lexemes.json.gz: sha1 1 is not the published 2'), { code: 'Z_DATA_ERROR' });
+    const damaged = Object.assign(new Error('enwiki-20261012-page_props.sql.gz: sha1 1 is not the published 2'), { code: 'Z_DATA_ERROR' });
     keepers.build.mockRejectedValueOnce(damaged);
     await runBuild(keep, new AbortController().signal, [0, 0, 0]);
     expect(keepers.build).toHaveBeenCalledTimes(1);
-    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed', error: expect.stringMatching(/^wikidata-20261012.*is not the published 2\. The copy in place/) }));
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed', error: expect.stringMatching(/^enwiki-20261012.*is not the published 2\. The copy in place/) }));
   });
 
   it('stops waiting when the worker stops, and says to start the build again', async () => {
