@@ -681,6 +681,7 @@ export interface ExperienceSyncLogsRow {
   withdrawal_skipped_reason: string | null;
   admission_sweep_skipped_reason: string | null;
   world_bars: unknown | null;
+  copies_read: unknown | null;
   phase: string | null;
   status_message: string | null;
   current_item: string | null;

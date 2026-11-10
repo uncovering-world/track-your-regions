@@ -23,6 +23,7 @@ import { findPointHints, type PointHintsReport } from './pointHints.js';
 import { WaitBudget } from './sourceRetry.js';
 import { isTerminalSyncStatus, runningSyncs, type SyncProgress } from './types.js';
 import { SPARQL_WAIT_BUDGET_MS, sayWait } from './wikidataUtils.js';
+import { holdCopiesForReading } from '../dumps/swapGuard.js';
 
 const UNESCO_SOURCE_ID = 1;
 const LOG_PREFIX = '[Component items]';
@@ -125,8 +126,12 @@ export async function findUnescoComponentItems(
   const operation = new Operation(LOG_PREFIX, FINDER_STEPS);
   progress.operation = operation;
   runningSyncs.set(UNESCO_SOURCE_ID, progress);
+  // The search reads the local Wikidata subset with no run's row to say so: it
+  // holds the copies as a pass does, so no swap lands under it (#2415).
+  let releaseCopies: (() => Promise<void>) | null = null;
 
   try {
+    releaseCopies = await holdCopiesForReading();
     const found = await runComponentItemSearch(progress, operation, { site }, accept);
     if (found === null) {
       progress.status = 'cancelled';
@@ -155,6 +160,7 @@ export async function findUnescoComponentItems(
     console.error('[Component items] Search failed:', err);
     throw err;
   } finally {
+    await releaseCopies?.();
     // The captured reference, so a later run's entry is never the one deleted.
     const thisProgress = progress;
     setTimeout(() => {

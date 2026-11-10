@@ -14,6 +14,7 @@
 import { orchestrateSync, type PassSlot } from './syncOrchestrator.js';
 import type { SyncServiceConfig } from './syncContract.js';
 import { runningSyncs, isTerminalSyncStatus, type SyncProgress, type SyncRunOptions } from './types.js';
+import { holdCopiesForReading } from '../dumps/swapGuard.js';
 
 /**
  * A gather the sources of a pass read, made once.
@@ -113,7 +114,19 @@ export async function runSyncPass(
   let firstLogId: number | null = null;
   let stopped = false;
   let failure: unknown;
+  // The pass holds the copies its kinds read for as long as it runs (#2415), so
+  // no swap of a kept copy lands between one kind's run and the next's. Taken
+  // inside the try, so a lock that cannot be taken still releases the entries.
+  let releaseCopies: (() => Promise<void>) | null = null;
   try {
+    releaseCopies = await holdCopiesForReading().catch((error: unknown) => {
+      // No run starts, and every entry ends, so a later start is not refused.
+      for (const progress of slots.values()) {
+        progress.status = 'failed';
+        progress.statusMessage = 'The pass did not start: the copies it reads could not be held.';
+      }
+      throw error;
+    });
     for (const member of running) {
       const progress = slots.get(member.sourceId) as SyncProgress;
       if (stopped || progress.cancel) {
@@ -137,6 +150,7 @@ export async function runSyncPass(
       firstLogId ??= progress.logId;
     }
   } finally {
+    await releaseCopies?.();
     // Every entry is the pass's to release, and only once its last run has
     // ended (`orchestrateSync` leaves a pass's entry alone): until then an
     // earlier source's entry is what a Cancel pressed on it reads, and what

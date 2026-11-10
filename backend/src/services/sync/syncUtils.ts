@@ -19,6 +19,7 @@ import {
 import {
   writeExperienceLocations, type LocationWriteResult, type LocationWriteRun,
 } from './locationWriter.js';
+import { openRunLog } from '../dumps/runInputs.js';
 
 export {
   upsertExperienceRecord,
@@ -66,13 +67,17 @@ export async function createSyncLog(
   isDryRun: boolean = false,
   passLogId: number | null = null,
 ): Promise<number> {
-  const result = await pool.query(
-    `INSERT INTO experience_sync_logs (source_id, triggered_by, status, is_dry_run, pass_log_id)
-     VALUES ($1, $2, 'running', $3, $4)
-     RETURNING id`,
-    [sourceId, triggeredBy, isDryRun, passLogId]
-  );
-  return result.rows[0].id;
+  // Written holding the swap lock, with the dump dates of the copies the run
+  // reads, so no copy is swapped in under a run that has started (#2415).
+  return openRunLog(async client => {
+    const result = await client.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, triggered_by, status, is_dry_run, pass_log_id)
+       VALUES ($1, $2, 'running', $3, $4)
+       RETURNING id`,
+      [sourceId, triggeredBy, isDryRun, passLogId]
+    );
+    return result.rows[0].id;
+  });
 }
 
 /**

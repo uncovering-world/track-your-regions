@@ -11,6 +11,8 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn() },
   rollbackQuietly: vi.fn(),
 }));
+const waiting = vi.hoisted(() => ({ buildsWaitingFor: vi.fn(async (_logId: number) => [] as string[]) }));
+vi.mock('../../services/dumps/runInputs.js', () => waiting);
 
 import { pool } from '../../db/index.js';
 import { runningSyncs, type SyncProgress } from '../../services/sync/index.js';
@@ -81,6 +83,20 @@ describe('getSyncStatus', () => {
       errors: 0, currentItem: 'Rijksmuseum', logId: 140, dryRun: false,
       progressAt: '2026-09-29T20:58:14.000Z',
     });
+  });
+
+  it('names the copies whose swap waits for the running run to end (#2415)', async () => {
+    runningSyncs.set(2, {
+      cancel: false, kind: 'sync', status: 'processing', statusMessage: 'Processing 5/10: Louvre',
+      progress: 5, total: 10, created: 1, updated: 0, unchanged: 4, missing: 0, curatedConflicts: 0,
+      held: 0, filtered: 0, errors: 0, currentItem: 'Louvre', logId: 141, dryRun: false,
+    } satisfies SyncProgress);
+    waiting.buildsWaitingFor.mockResolvedValueOnce(['The local Wikidata subset']);
+
+    const { body } = await statusOf();
+
+    expect(waiting.buildsWaitingFor).toHaveBeenCalledWith(141);
+    expect(body).toMatchObject({ running: true, waitingBuilds: ['The local Wikidata subset'] });
   });
 
   it('answers no run going with the last verdict and the run a restart stopped, as far as it got', async () => {

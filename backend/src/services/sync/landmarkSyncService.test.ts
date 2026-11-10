@@ -15,6 +15,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// The pass holds the copies it reads (#2415); the spec has no database to hold them in.
+vi.mock('../dumps/swapGuard.js', () => ({ holdCopiesForReading: vi.fn(async () => async () => undefined) }));
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn() },
 }));

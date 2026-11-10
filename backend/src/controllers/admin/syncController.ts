@@ -71,6 +71,7 @@ import {
   cacheSummary, cachedKindsFor, clearCache, setCacheTtl, CACHED_KINDS_BY_SOURCE, type CacheKind,
 } from '../../services/sync/wikidataCache.js';
 import { latestSubset } from '../../services/dumps/wikidata/subsetTables.js';
+import { buildsWaitingFor } from '../../services/dumps/runInputs.js';
 import { passOf } from '../../services/sync/passes.js';
 import { passIsRunning } from '../../services/sync/syncPass.js';
 
@@ -317,7 +318,7 @@ export async function setWikidataCacheTtl(
 export async function getSyncStatus({ params: { sourceId } }: { params: SourceParams }): Promise<SyncStatus> {
   // The run this process holds answers first: it is the one a cancel reaches.
   const status = getServiceSyncStatus(sourceId);
-  if (status) return heldRunStatusOf(status);
+  if (status) return withWaitingBuilds(heldRunStatusOf(status));
 
   const source = await pool.query<Pick<ExperienceSourcesRow, 'last_sync_at' | 'last_sync_status'>>(
     'SELECT last_sync_at, last_sync_status FROM experience_sources WHERE id = $1',
@@ -328,8 +329,15 @@ export async function getSyncStatus({ params: { sourceId } }: { params: SourcePa
   // Then the rows (#1131): a run another process holds, or the last one, with
   // how far it got when a restart stopped it.
   const latest = await readLatestSyncLog(sourceId);
-  if (latest?.status === 'running') return rowRunStatusOf(latest);
+  if (latest?.status === 'running') return withWaitingBuilds(rowRunStatusOf(latest));
   return idleStatusOf(source.rows[0], latest);
+}
+
+/** A running run's status with the copies whose swap waits for it to end (#2415). */
+async function withWaitingBuilds(status: SyncStatus): Promise<SyncStatus> {
+  if (!status.running || status.logId == null) return status;
+  const waiting = await buildsWaitingFor(status.logId);
+  return waiting.length > 0 ? { ...status, waitingBuilds: waiting } : status;
 }
 
 /**
@@ -490,7 +498,9 @@ const SYNC_LOG_COLUMNS_SQL = `
       -- The pass this run was part of (ADR-0132), named by its first run's
       -- source; ps is joined through SYNC_LOG_PASS_JOIN_SQL.
       l.pass_log_id,
-      ps.name AS pass_source_name
+      ps.name AS pass_source_name,
+      -- The dump date of each copy the run read, written as it started (#2415).
+      l.copies_read
 `;
 
 /** The first run of a log's pass and its source, for `SYNC_LOG_COLUMNS_SQL`. */

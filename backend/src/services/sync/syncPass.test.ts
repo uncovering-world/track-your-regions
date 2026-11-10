@@ -5,6 +5,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const copies = vi.hoisted(() => ({ release: vi.fn(async () => undefined) }));
+vi.mock('../dumps/swapGuard.js', () => ({ holdCopiesForReading: vi.fn(async () => copies.release) }));
 import { runSyncPass, sharedGather, passIsRunning, type PassMember } from './syncPass.js';
 import type { PassSlot } from './syncOrchestrator.js';
 import { runningSyncs } from './types.js';
@@ -54,6 +57,29 @@ describe('runSyncPass', () => {
     expect(vi.mocked(first.run).mock.invocationCallOrder[0])
       .toBeLessThan(vi.mocked(second.run).mock.invocationCallOrder[0]);
     expect(first.run).toHaveBeenCalledWith(1, { dryRun: true }, expect.anything());
+  });
+
+  it('holds the copies its kinds read from before the first run until after the last, a failed one included (#2415)', async () => {
+    const first = member(3, 101);
+    const second = member(6, 102);
+    vi.mocked(second.run).mockRejectedValueOnce(new Error('the gather failed'));
+    copies.release.mockClear();
+
+    await expect(runSyncPass([first, second], 1, { dryRun: true })).rejects.toThrow('the gather failed');
+
+    expect(copies.release).toHaveBeenCalledTimes(1);
+    expect(copies.release.mock.invocationCallOrder[0]).toBeGreaterThan(vi.mocked(second.run).mock.invocationCallOrder[0]);
+  });
+
+  it('releases every entry when the copies cannot be held, so a later start is not refused', async () => {
+    const { holdCopiesForReading } = await import('../dumps/swapGuard.js');
+    vi.mocked(holdCopiesForReading).mockRejectedValueOnce(new Error('the pool is exhausted'));
+    const first = member(3, 101);
+
+    await expect(runSyncPass([first], 1, { dryRun: true })).rejects.toThrow('the pool is exhausted');
+
+    expect(first.run).not.toHaveBeenCalled();
+    expect(passIsRunning([3])).toBe(false);
   });
 
   it('registers every source before the first starts, the later ones waiting', async () => {
