@@ -392,7 +392,9 @@ redirects copy is swapped, the year is no longer whole (`yearStanding`). Its bui
 months whose redirects are older (`keptAlready`). The schedule that moved the redirects
 therefore also queues readership's refold, rather than waiting for an admin, unless
 readership's own schedule is off, or a self-queued refold failed or was cancelled within its
-interval. In either case the refold waits for an admin's build. Meanwhile the runs
+interval. Then the refold waits for an admin's build, or, after a failed try, until the interval
+has passed. The same schedule also resumes a year a build left short, a month of the twelve
+missing, since that copy needs a rebuild too (`followerStale`). Meanwhile the runs
 go on reading the months as they were folded (`readershipYear` reads a year whose twelve are
 held, whatever redirects folded them). The refold is queued and then runs for hours, and a few
 articles renamed in a month are the whole difference.
@@ -401,6 +403,11 @@ The layer keeps its own trigger, the daily diffs past it (§ The OpenStreetMap l
 schedule*). A due build is queued from the newest dump, in the mode the machine keeps
 (`queueScheduledBuild`), as a row `{kind: 'keep', scheduled: true, notBefore}` that the worker
 takes 30 minutes later (`QUEUED_LEAD_MS`), so whoever pulls the machine's checkout can cancel it.
+Such a build never brings a copy back. A host's status file it could not read is passed over, so
+the newest file it resolves can be older than the copy in place, and then the build refuses it
+before recording it (`refuseOlderScheduled` in `buildRun.ts`). *Update* on the card asks the host
+again at once. The schedule asks again only after its interval, since `copyDue` counts it from the
+refused build. The same date is allowed, since a follower's refold rebuilds the dump it was built from.
 
 Each copy's interval defaults to 7 days, and the Wikidata subset's to 30 (`scheduled` in
 `keepers.ts`). The subset's dump is weekly and its build takes the worker most of a day, while
@@ -1325,17 +1332,30 @@ gigabyte is not the whole dump's.
 
 ## The admin panel
 
-Admin → **Public Dumps** opens on what an admin needs (#1583): one card for
-the copy syncs read, the Wikidata copy (`WikidataCopyCard.tsx`); readership is
-built under *For developers* only. It says what the copy is, which dump it was built
-from, and, only when something needs doing, a notice naming the one action and
-what it costs:
+Admin → **Public Dumps** opens on what an admin needs (#1583, #2415): one card
+for each copy the catalogue reads (`CopyCard.tsx`), in the catalog's order. A
+card gives:
+- the copy's name (the keeper's `title`), with what the dump holds and how a
+  file of it is read behind the info mark (`about` and `how`, `DUMP_WORDS` in
+  `catalog.ts`);
+- one sentence on what reads the copy (the keeper's `feeds`);
+- the dump it was built from and when it was swapped in;
+- the dumps its build reads beside its own (a descriptor's `inputOf`: English
+  Wikipedia's page properties, link targets and category links, read by the
+  structure build);
+- how often it updates itself (`DumpScheduleLine`, § Every copy updates itself);
+- only when something needs doing, a notice naming the one action and what the
+  last build of the copy took, read from its own history (beside a newer dump
+  only, and never for the OpenStreetMap layer, whose *Update* takes the daily
+  changes rather than a planet's build, `lastBuildTook`):
 
 | What the copy needs (`needs`) | The notice | The button |
 |---|---|---|
-| `newer-dump`: the host lists a newer dump than the one it was built from | A newer dump is out | *Update*, a `keep` build of the newest file (hours) |
+| `newer-dump`: the host lists a newer dump than the one it was built from | A newer dump of … is out | *Update*, a `keep` build of the newest file |
 | `recompute`: the code now makes the derived tables differently | The app was updated, and the tables need recomputing | *Recompute*, a `rederive` (minutes) |
 | `rebuild`: the code now keeps or writes the copy differently, or no copy is in place | The app was updated, and the copy needs a full update | *Update* (*Build* where there is none) |
+| `rebuild` of a copy that follows another, its input moved and every part held (`inputsMoved`): readership after the redirects moved | The redirects were updated, so the copy is counted again with them; its schedule starts this (or, with the schedule off, it waits for *Update*), and the runs read the copy as it stood meanwhile | *Update* |
+| `rebuild` of a copy that follows another, a part missing: a month a stopped build never kept | Part of the copy is missing, so the runs cannot read it; its schedule starts the build (or, with the schedule off, it waits for *Update*), which reads what is missing and counts again any month the redirects moved under | *Update* |
 | `nothing` | "Up to date" | none |
 
 While a build runs, the card shows its progress and *Stop*. What the copy needs
@@ -1356,7 +1376,11 @@ is `whatTheKeptNeeds` (`keepers.ts`). It reads two things:
   newer dump may be out.
 
 Everything else sits in the collapsed section *For developers*: every dump,
-every build button, the sample and the trial, and the build history.
+every build button, the sample and the trial, and the build history. A dump
+only a copy's build reads (`inputOf`) sits under that copy's row, indented, with
+a line naming the copy whose build reads it, and no *Never built* of its own. A
+trial's outcome shows what it kept, and its step times sit behind *Step times*
+(`DumpRowLines.tsx`).
 
 The developers' section (`frontend/src/components/admin/DumpsPanel.tsx`)
 groups the catalog's dumps by who publishes them (each descriptor's `source`),
