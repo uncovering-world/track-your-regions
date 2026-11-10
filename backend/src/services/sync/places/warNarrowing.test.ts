@@ -20,7 +20,7 @@ vi.mock('../wikipediaCategories.js', async (actual) => ({ ...(await actual<objec
 
 import { askWikipediaOnce } from '../wikipediaCategories.js';
 import type { SubjectKind } from './commemorates.js';
-import { BIOGRAPHY_CATEGORY, dedicationLinks, fetchLeads, leadLinks, narrowWars, within, type WarEvidence } from './warNarrowing.js';
+import { BIOGRAPHY_CATEGORY, dedicationLinks, fetchLeads, leadLinks, narrowWars, overlaps, within, type WarEvidence } from './warNarrowing.js';
 
 const WW2 = 'Q362';
 const WW1 = 'Q361';
@@ -35,6 +35,8 @@ const SHUKHEVYCH = 'Q463766';
 const ATATURK = 'Q5152';
 const WESTERPLATTE = 'Q517081';
 const DANIEL_LINDLEY = 'Q14864324';
+const HOLOCAUST = 'Q2763';
+const SIEGE_OF_WARSAW = 'Q182240';
 
 const NOT: Omit<SubjectKind, 'label'> = { human: false, event: true, holy: false, war: false, occurrence: true, span: null };
 const KINDS = new Map<string, SubjectKind>([
@@ -53,6 +55,9 @@ const KINDS = new Map<string, SubjectKind>([
   [SHUKHEVYCH, { ...NOT, label: 'Roman Shukhevych', event: false, occurrence: false }],
   [ATATURK, { ...NOT, label: 'Mustafa Kemal Atatürk', event: false, occurrence: false, human: true }],
   [DANIEL_LINDLEY, { ...NOT, label: 'Daniel Lindley', event: false, occurrence: false }],
+  // Wikidata dates the Holocaust by years: 1933 to 1945.
+  [HOLOCAUST, { ...NOT, label: 'The Holocaust', span: { from: 19330000, to: 19450000 } }],
+  [SIEGE_OF_WARSAW, { ...NOT, label: 'Siege of Warsaw', span: { from: 19390908, to: 19390928 } }],
 ]);
 /** What a place says beside its reading: by default, a lead that was read and links nothing. */
 const said = (over: Partial<WarEvidence> = {}): WarEvidence => ({ events: [], depicts: [], dedicated: [], linked: [], ...over });
@@ -136,6 +141,15 @@ describe('narrowing a war', () => {
     // Miła 18 is filed among the 1944 Warsaw Uprising's memorials; its lead never names that uprising.
     expect(narrowWars(categoryReading(WW2, WARSAW_UPRISING), said({ linked: [MILITARY] }), KINDS, ARTICLES))
       .toEqual({ via: 'memorials-category', subjects: [subject(WW2)] });
+  });
+
+  it('drops an event the categories name that overlaps their war where the place\'s story never tells it (#2416)', () => {
+    // The Monument to the Heroes of Warsaw is filed among Warsaw's Holocaust memorials; its lead links the siege and the uprisings.
+    const reading = categoryReading(WW2, WARSAW_UPRISING, HOLOCAUST);
+    const said3 = said({ dedicated: [SIEGE_OF_WARSAW, GHETTO_UPRISING, WARSAW_UPRISING], linked: [SIEGE_OF_WARSAW, GHETTO_UPRISING, WARSAW_UPRISING] });
+    expect(narrowWars(reading, said3, KINDS, ARTICLES).subjects.map((s) => s.item)).toEqual([SIEGE_OF_WARSAW, GHETTO_UPRISING, WARSAW_UPRISING]);
+    expect(overlaps({ from: 19330000, to: 19450000 }, { from: 19390901, to: 19450902 })).toBe(true);
+    expect(overlaps({ from: 19190506, to: 19190808 }, { from: 19140728, to: 19181111 })).toBe(false);
   });
 
   it('drops nothing where the lead was not read, and nothing a statement of the place names', () => {

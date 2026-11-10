@@ -58,8 +58,10 @@
  * Wikidata is read through the run's door, from the local subset where the run
  * reads it (`subset/commemorates.ts`). English Wikipedia's categories are read
  * from the copy of its structure where one is built, and from the live API
- * otherwise (`commemorationWiki`), which follows a redirect where the copy holds
- * none (`wikipediaStructure.ts`).
+ * otherwise (`commemorationWiki`). Both follow a title that is a redirect, the
+ * copy through English Wikipedia's redirect table (`wikipediaStructure.ts`),
+ * and a category's subject only a redirect named is kept only where it is a
+ * person, an event or a holy figure (`withoutLooseRedirects`).
  */
 
 import {
@@ -141,14 +143,20 @@ export interface PlaceReading {
  */
 export const MAX_DEDICATED_FIGURES = 4;
 
+/** The item a title resolves to, and whether only a redirect led there. */
+export interface ResolvedArticle {
+  item: string;
+  redirected: boolean;
+}
+
 /**
  * English Wikipedia as the reading reads it: each article's categories, the
- * item of each article titled exactly so, and the wikitext of an article's
- * lead, which narrows a war (`warNarrowing.ts`).
+ * item of each article titled so or redirected to from that title, and the
+ * wikitext of an article's lead, which narrows a war (`warNarrowing.ts`).
  */
 export interface CommemorationWiki {
   categories(titles: string[]): Promise<Map<string, string[]>>;
-  articleItems(titles: string[]): Promise<Map<string, string>>;
+  articleItems(titles: string[]): Promise<Map<string, ResolvedArticle>>;
   leads(titles: string[]): Promise<Map<string, string>>;
 }
 
@@ -355,11 +363,12 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
 
 /**
  * The items each place's article is filed as a memorial to, as concerning and
- * as a statue of, how many statues categories it is in, and the article each
- * of those items was resolved from.
+ * as a statue of, how many statues categories it is in, the article each of
+ * those items was resolved from, and, per place, the items only a redirect of
+ * that place's categories led to.
  */
 async function readFiled(places: readonly CommemorationPlace[], wiki: CommemorationWiki): Promise<{
-  filed: Map<string, FiledSubjects>; articles: Map<string, string>;
+  filed: Map<string, FiledSubjects>; articles: Map<string, string>; redirectedTo: Map<string, Set<string>>;
 }> {
   const titleOfPlace = new Map(places.flatMap((place) => {
     const title = enwikiTitleOf(place.articleUrl);
@@ -375,14 +384,44 @@ async function readFiled(places: readonly CommemorationPlace[], wiki: Commemorat
     }] as const;
   }));
   const asked = [...new Set([...named.values()].flatMap(({ memorials, concerning, statues }) => [...memorials, ...concerning, ...statues]))];
-  const items = asked.length ? await wiki.articleItems(asked) : new Map<string, string>();
-  const itemsOf = (titles: readonly string[]) => [...new Set(titles.map((title) => items.get(title)).filter((q): q is string => Boolean(q)))].sort(byItem);
+  const items = asked.length ? await wiki.articleItems(asked) : new Map<string, ResolvedArticle>();
+  const itemsOf = (titles: readonly string[]) => [...new Set(titles.flatMap((title) => items.get(title)?.item ?? []))].sort(byItem);
+  // A place's item is direct where one of its own categories names its title; a
+  // title another place's category names says nothing about this one's.
+  const redirectedOnly = (titles: readonly string[]) => {
+    const found = titles.flatMap((title) => items.get(title) ?? []);
+    const direct = new Set(found.filter((f) => !f.redirected).map((f) => f.item));
+    return new Set(found.filter((f) => f.redirected && !direct.has(f.item)).map((f) => f.item));
+  };
   return {
     filed: new Map([...named].map(([qid, { memorials, concerning, statues }]) => [qid, {
       memorials: itemsOf(memorials), concerning: itemsOf(concerning), statues: itemsOf(statues), statueCategories: statues.length,
     }])),
-    articles: new Map([...items].map(([title, item]) => [item, articleUrl(title)])),
+    articles: new Map([...items].map(([title, { item }]) => [item, articleUrl(title)])),
+    redirectedTo: new Map([...named].map(([qid, { memorials, concerning, statues }]) => [qid, redirectedOnly([...memorials, ...concerning, ...statues])])),
   };
+}
+
+/**
+ * A category's subject only a redirect named is taken where it is a person,
+ * an event or a holy figure (#2416): *Holocaust* is *The Holocaust* and
+ * *Virgin Mary* is *Mary, mother of Jesus*, while *Pilgrims* redirects to
+ * *Pilgrimage* and *Madonna and Child* to the art's genre, which a memorial to
+ * the Pilgrims or a statue of the Virgin is neither.
+ */
+function withoutLooseRedirects(
+  filed: Map<string, FiledSubjects>, redirectedTo: ReadonlyMap<string, ReadonlySet<string>>, kinds: ReadonlyMap<string, SubjectKind>,
+): void {
+  for (const [qid, subjects] of filed) {
+    const loose = redirectedTo.get(qid);
+    const keep = (item: string) => {
+      const kind = kinds.get(item);
+      return !loose?.has(item) || Boolean(kind && (kind.human || kind.event || kind.holy));
+    };
+    subjects.memorials = subjects.memorials.filter(keep);
+    subjects.concerning = subjects.concerning.filter(keep);
+    subjects.statues = subjects.statues.filter(keep);
+  }
 }
 
 const NONE: FiledSubjects = { memorials: [], concerning: [], statues: [], statueCategories: 0 };
@@ -397,7 +436,7 @@ export async function readCommemorates(
 ): Promise<Map<string, PlaceReading>> {
   if (!places.length) return new Map();
   const claims = await fetchSubjectClaims(sparql, [...new Set(places.map((place) => place.qid))]);
-  const { filed, articles: resolved } = await readFiled(places, wiki);
+  const { filed, articles: resolved, redirectedTo } = await readFiled(places, wiki);
   const values = [...new Set([
     ...[...claims.values()].flatMap((c) => [...c.commemorates, ...c.mainSubjects, ...c.namedAfter, ...c.depicts]),
     ...[...filed.values()].flatMap((f) => [...f.memorials, ...f.concerning, ...f.statues]),
@@ -406,6 +445,7 @@ export async function readCommemorates(
   // Wikidata's sitelink first; the article a category's title resolved to where the item carries none.
   const articles = new Map([...resolved, ...sitelinks]);
   const known = new Map(kinds);
+  withoutLooseRedirects(filed, redirectedTo, known);
   const out = new Map<string, PlaceReading>();
   for (const { qid, label } of places) {
     const reading = readingOfPlace(claims.get(qid) ?? NO_CLAIMS, filed.get(qid) ?? NONE, known, articles, label);
@@ -422,7 +462,7 @@ export async function readCommemorates(
 export function structureWiki(options: CategoryOptions): CommemorationWiki {
   return {
     categories: structureCategories,
-    articleItems: async (titles) => new Map((await structureArticleItems(titles)).map((a) => [a.title, a.item])),
+    articleItems: async (titles) => new Map((await structureArticleItems(titles)).map((a) => [a.title, { item: a.item, redirected: a.redirected }])),
     leads: (titles) => fetchLeads(titles, options),
   };
 }
@@ -433,7 +473,8 @@ function liveWiki(options: CategoryOptions): CommemorationWiki {
     categories: (titles) => fetchWikipediaCategories(titles, options),
     articleItems: async (titles) => {
       const resolved = await resolveWikipediaArticles(titles.map((title) => `en:${title}`), options);
-      return new Map([...resolved].map(([tag, item]) => [tag.slice('en:'.length), item]));
+      // The live API follows a redirect without saying so: every answer is taken as the title's own.
+      return new Map([...resolved].map(([tag, item]) => [tag.slice('en:'.length), { item, redirected: false }]));
     },
     leads: (titles) => fetchLeads(titles, options),
   };
