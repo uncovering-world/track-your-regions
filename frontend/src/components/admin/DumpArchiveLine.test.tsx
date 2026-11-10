@@ -14,11 +14,11 @@ vi.mock('../../api/admin/dumps', () => ({
 }));
 
 const dump = (over: Partial<DumpsDumpsItem> & { archives?: string[] } = {}): DumpsDumpsItem => ({
-  key: 'pageviews-user', source: 'Wikimedia pageviews', title: 'Readers per article, by month', datedBy: 'month', about: '',
+  key: 'pageviews-user', source: 'Wikimedia pageviews', title: 'Readers per article, by month', datedBy: 'month', about: '', how: '', inputOf: null,
   progress: null, builds: [], localCopy: null, sample: null,
   keeps: {
-    title: 'Readership over the last twelve months', built: { dumpDate: '2026-09-01', swappedAt: '2026-10-20T14:00:00Z' }, needs: 'nothing',
-    newestDumpDate: '2026-09-01', newestChecked: 'answered', rederives: false, samples: false, fromCopy: false, schedule: { everyDays: 7, chosen: false, defaultEveryDays: 7 }, currentTo: false,
+    title: 'Readership over the last twelve months', feeds: '', built: { dumpDate: '2026-09-01', swappedAt: '2026-10-20T14:00:00Z' }, needs: 'nothing',
+    newestDumpDate: '2026-09-01', newestChecked: 'answered', rederives: false, samples: false, fromCopy: false, schedule: { everyDays: 7, chosen: false, defaultEveryDays: 7 }, currentTo: false, followsInputs: true, inputsMoved: false,
     archives: over.archives ?? [],
   },
   ...over,
