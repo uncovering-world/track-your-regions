@@ -925,8 +925,14 @@ command line.
 2. **The selection** is `LAYER_SELECTION` (`layerSelection.ts`), written as an
    `osmium tags-filter` expression file: an object with `wikidata`,
    `wikipedia`, `historic`, `heritage`, `archaeological_site`, `ruins`,
-   `tourism`, `man_made` or `place`, `amenity=place_of_worship`, or a protected
-   `boundary` (`protected_area`, `national_park`). An address selects
+   `tourism`, `man_made` or `place`, `amenity=place_of_worship`, a
+   food-and-drink venue (`amenity` among `VENUE_AMENITIES`: a café, a
+   restaurant, a bar, a pub, fast food, ice cream or a beer garden, kept as a
+   point so a street's liveliness is read from the venues near it, ADR-0191),
+   or a protected `boundary` (`protected_area`, `national_park`). One entry
+   per key, since the flex style reads one set of values for each, and the
+   build records it (`osm_layer_builds.selection`), so a reader of a tag can
+   tell a build cut without it. An address selects
    nothing on its own; a kept object keeps its `addr:*` tags. `osmium
    tags-filter` also passes the nodes a kept way is drawn from and the members
    of a kept relation.

@@ -1,7 +1,7 @@
 # ADR-0134: OpenStreetMap is read from a layer cut from the planet, and a miss the layer cannot vouch for is asked live
 
 **Date:** 2026-10-22
-**Status:** Accepted — decisions 1 and 2 narrowed by [ADR-0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md)
+**Status:** Accepted — decisions 1 and 2 narrowed by [ADR-0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md); decision 2 narrowed by [ADR-0191](0191-the-openstreetmap-layer-keeps-food-and-drink-venues-as-points-read-by-nearness.md)
 **Issue:** [#1437](https://github.com/uncovering-world/track-your-regions/issues/1437)
 **Narrows:** [ADR-0101](0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md) decision 4 (an admin starts every build) and decision 6 (OpenStreetMap from Geofabrik extracts)
 
