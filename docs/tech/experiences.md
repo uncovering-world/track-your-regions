@@ -5232,7 +5232,7 @@ be saved back with one name removed:
 5. *Statues of X* (`STATUES_CATEGORY`), resolved as in step 2.
 6. `P180` *depicts*, a person only: Nelson's Column → Horatio Nelson, not the lions or the
    battles on its plinth. Its *Monuments and memorials to Horatio Nelson* names a title that is a
-   redirect, which the copy holds no page for.
+   redirect English Wikipedia's redirect table does not hold, so the copy finds no page for it.
 
 **What a religious work shows is not whom it commemorates** (#2404). A holy figure — an
 instance of a class under *deity* (Q178885) at any rank but deprecated, as Jesus Christ is beside
@@ -5278,10 +5278,14 @@ item with dates — Westerplatte, a peninsula Wikidata gives the battle's dates,
    World War I;
 3. where the categories read the war, an event they name beside it that the place's story tells —
    its lead links it or its significant event names it — and the war goes, the value keeping the
-   categories' `via`. An event inside the war the story never tells is no subject at all: the
+   categories' `via`. An event during the war the story never tells is no subject at all: the
    Anielewicz Bunker (Miła 18), the Warsaw Ghetto Uprising's headquarters, is filed among the 1944
    Warsaw Uprising's memorials, and its lead never names that uprising, so it reads World War II
-   alone;
+   alone. Overlapping the war is enough (`overlaps`, #2416): the Monument to the Heroes of Warsaw,
+   raised to the city's fighters of 1939 to 1945, is filed among Warsaw's Holocaust memorials, which
+   Wikidata dates from 1933, and its lead names the siege and the two uprisings, not the Holocaust;
+   the National War Memorial in Wellington is filed among the 1918 flu pandemic's memorials, which
+   its lead never names;
 4. where the reading names nothing but wars, the one person a bust or statue shows
    (`WARS_NARROWED_TO_PERSON`): the one human `P180` names, or the one of `P180` and the lead's links
    whose whole name the place's own name carries (`wholeNameInPlace`) — the bust of Roman Shukhevych
@@ -5320,8 +5324,16 @@ did not keep is neither a person nor an event there. The live twins, `fetchSubje
 `fetchSubjectKinds`, have no statement order, so the live answer is sorted by item id. English
 Wikipedia's categories come from the copy of its structure where one is built (`structureCategories`,
 `structureArticleItems` in `wikipediaStructure.ts`), and from the live API otherwise
-(`fetchWikipediaCategories`, `resolveWikipediaArticles`), which follows a redirect where the copy
-finds no page (`commemorationWiki`).
+(`fetchWikipediaCategories`, `resolveWikipediaArticles`, `commemorationWiki`). Both follow a title
+that is a redirect to its article: the live API with `redirects=1`, the copy one hop through English
+Wikipedia's redirect table where a build of it is in place (`wikipedia_redirects`, #2416), which keeps
+only redirects to an article an item of the subset names. A category's subject only a redirect names
+is taken where it is a person, an event or a holy figure (`withoutLooseRedirects`), since a redirect
+is a looser match than a title: *Holocaust* is *The Holocaust* and *Virgin Mary* is *Mary, mother of
+Jesus*, so Drobytsky Yar commemorates the Holocaust and Our Lady of the Rockies depicts Mary, while
+*Pilgrims* redirects to *Pilgrimage* and *Madonna and Child* to the art's genre, and neither is taken.
+The live API does not say which titles it redirected, so that door takes every answer as the title's
+own.
 
 **Where it is stored.** `metadata.commemorates` on the place, `{ via, subjects: [{ item, label,
 articleUrl }] }`, with `via` naming the step that answered (`COMMEMORATION_STEPS` in
