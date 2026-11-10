@@ -5,8 +5,12 @@
  * HTTPS and keeps agents off its listings (ADR-0134). Every request carries the project's
  * bot `userAgent()`, and at most `HOST_CONNECTIONS` are open to one host from
  * this process at a time (eight to the planet's, `CONNECTIONS_OF`); a read opens one, and a download into the local copy
- * up to all of them (`rangedDownload.ts`). Nothing retries in a loop:
- * a failed request fails the build, and the admin starts it again.
+ * up to all of them (`rangedDownload.ts`). A request is never retried here: a
+ * failed one fails the read. A build cut by the network is started again a
+ * bounded number of times by the build itself, after growing pauses, and
+ * resumes from what its local copies hold (`hostFailure` says which failures
+ * are the host's, `RETRY_PAUSES_MS` in `buildRun.ts` how often, #2419); a
+ * host's refusal is never retried.
  */
 
 import { createWriteStream } from 'node:fs';
@@ -16,8 +20,76 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { userAgent } from '../../config/userAgent.js';
 import { NotOnHost } from './catalog.js';
-import { downloadRanges } from './rangedDownload.js';
+import { downloadRanges, RangeEndedEarly } from './rangedDownload.js';
 import { assertRobotsAllow } from '../robots/robotsSignals.js';
+
+/** A host answered a request with an error status: `status` tells a refusal (4xx) from a host in trouble (5xx). */
+export class HostAnswered extends Error {
+  constructor(readonly url: string, readonly status: number, detail = '') {
+    super(`${url} answered ${status}${detail}`);
+  }
+}
+
+/** The codes a connection that never opened carries: the host's name did not resolve, or nothing answered. */
+const UNREACHABLE = new Set(['EAI_AGAIN', 'ENOTFOUND', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT']);
+/** The codes a connection cut once open carries: closed or reset by the other side, or silent too long. */
+const CLOSED = new Set(['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT']);
+/** A host's answers that say it is in trouble for now, not that it refuses the request. */
+const HOST_TROUBLE = new Set([502, 503, 504]);
+
+/** What a network failure was: the host could not be reached, it cut a connection, or it said it is in trouble. */
+export type NetworkFailure = 'unreachable' | 'closed' | 'host-trouble';
+
+/**
+ * Whether `error` is the network's, not the file's or the request's: a name
+ * that did not resolve, a connection refused, closed or reset, a range the
+ * host ended early, or a 502–504. Each is worth asking again later; a 4xx, a
+ * damaged file or a cancel never is. undici reports a closed socket as a
+ * `TypeError: terminated` whose cause carries the code, so the causes are read
+ * too.
+ */
+export function networkFailure(error: unknown): NetworkFailure | null {
+  for (let at: unknown = error, depth = 0; at && depth < 5; at = (at as { cause?: unknown }).cause, depth += 1) {
+    const failure = failureOf(at);
+    if (failure !== undefined) return failure;
+  }
+  return null;
+}
+
+/**
+ * The failure of a request to a dump host, where `error` is one: a request the
+ * network failed (`RequestFailed`), a range the host ended early, or a 502 to
+ * 504. Only these are a build's to try again (#2419); a database connection a
+ * build's own writes lost carries the same codes and is not the host's.
+ */
+export function hostFailure(error: unknown): NetworkFailure | null {
+  for (let at: unknown = error, depth = 0; at && depth < 5; at = (at as { cause?: unknown }).cause, depth += 1) {
+    if (at instanceof RequestFailed || at instanceof HostAnswered || at instanceof RangeEndedEarly) return failureOf(at) ?? null;
+  }
+  return null;
+}
+
+/** What one error in a chain of causes says: a failure, none (a refusal), or nothing yet (undefined: read its cause). */
+function failureOf(at: object): NetworkFailure | null | undefined {
+  if (at instanceof HostAnswered) return HOST_TROUBLE.has(at.status) ? 'host-trouble' : null;
+  if (at instanceof RequestFailed) return at.failure;
+  const code = String((at as NodeJS.ErrnoException).code ?? '');
+  if (UNREACHABLE.has(code)) return 'unreachable';
+  if (CLOSED.has(code) || at instanceof RangeEndedEarly) return 'closed';
+  if (at instanceof TypeError && /^(terminated|fetch failed)$/.test(at.message) && !(at as { cause?: unknown }).cause) return 'closed';
+  return undefined;
+}
+
+/**
+ * A request the network failed before the host answered (#2419): its host in
+ * words, the failure kept as the cause, which `networkFailure` reads.
+ */
+export class RequestFailed extends Error {
+  constructor(readonly url: string, readonly failure: NetworkFailure, cause: unknown) {
+    const host = new URL(url).host;
+    super(failure === 'unreachable' ? `${host} could not be reached` : `The connection to ${host} was closed before it answered`, { cause });
+  }
+}
 
 /** The connections a host is held to: Wikimedia's three, unless the host says otherwise. */
 const HOST_CONNECTIONS = 3;
@@ -86,7 +158,8 @@ async function request(url: string, init: RequestInit = {}, timeoutMs?: number):
     return { response, release };
   } catch (error) {
     release();
-    throw error;
+    const failure = init.signal?.aborted ? null : networkFailure(error);
+    throw failure ? new RequestFailed(url, failure, error) : error;
   }
 }
 
@@ -95,8 +168,11 @@ export async function fetchText(url: string, signal?: AbortSignal, timeoutMs?: n
   const { response, release } = await request(url, { signal }, timeoutMs);
   try {
     if (response.status === 404) throw new NotOnHost(`${url} answered 404`);
-    if (!response.ok) throw new Error(`${url} answered ${response.status}`);
-    return await response.text();
+    if (!response.ok) throw new HostAnswered(url, response.status);
+    return await response.text().catch((error: unknown) => {
+      const failure = signal?.aborted ? null : networkFailure(error);
+      throw failure ? new RequestFailed(url, failure, error) : error;
+    });
   } finally {
     release();
   }
@@ -133,7 +209,7 @@ export async function openStream(url: string, signal: AbortSignal, from = 0, to?
   }
   if (!(response.ok || response.status === 206) || !response.body) {
     release();
-    throw new Error(`${url} answered ${response.status}`);
+    throw new HostAnswered(url, response.status);
   }
   if ((from > 0 || to !== undefined) && response.status !== 206) {
     release();

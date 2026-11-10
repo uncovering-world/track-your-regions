@@ -164,7 +164,16 @@ describe('queuing a dump build (ADR-0106)', () => {
       ...queuedRow({ kind: 'keep' }), status: 'running', heartbeat_at: new Date(),
       progress: { phase: 'reading', message: 'Indexing...', downloaded: 0, read: 0, lines: 0, etaSeconds: null },
     });
-    expect(await buildProgress('wikidata-entities')).toMatchObject({ total: null, stepStartedAt: null });
+    expect(await buildProgress('wikidata-entities')).toMatchObject({ total: null, stepStartedAt: null, retry: null });
+  });
+
+  it('reads a build the network cut as waiting to try again, with when (#2419)', async () => {
+    const retry = { at: '2026-11-10T17:05:00.000Z', attempt: 2, of: 4, reason: 'The connection to dumps.wikimedia.org was closed' };
+    ledger.activeBuildOf.mockResolvedValue({
+      ...queuedRow({ kind: 'keep' }), status: 'running', heartbeat_at: new Date(),
+      progress: { phase: 'reading', message: 'Trying again...', downloaded: 0, read: 0, lines: 0, etaSeconds: null, retry },
+    });
+    expect(await buildProgress('wikidata-entities')).toMatchObject({ retry: { ...retry, at: new Date(retry.at) } });
   });
 
   it('reads a row from before the queue, which asked for nothing, as a verify build', async () => {

@@ -53,7 +53,10 @@ async function keepsOf(key: Dumps['dumps'][number]['key'], newest: Newest): Prom
 }
 
 const wireProgress = (progress: DumpBuildProgress | null): Dumps['dumps'][number]['progress'] => (progress
-  ? { ...progress, heartbeatAt: progress.heartbeatAt?.toISOString() ?? null, stepStartedAt: progress.stepStartedAt?.toISOString() ?? null }
+  ? {
+    ...progress, heartbeatAt: progress.heartbeatAt?.toISOString() ?? null, stepStartedAt: progress.stepStartedAt?.toISOString() ?? null,
+    retry: progress.retry ? { ...progress.retry, at: progress.retry.at.toISOString() } : null,
+  }
   : null);
 
 

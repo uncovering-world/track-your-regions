@@ -35,6 +35,8 @@ export interface DumpBuildProgress {
   operation: OperationProgressAnswer;
   /** When the step running now started; null while the build is queued. */
   stepStartedAt: Date | null;
+  /** A build the network cut, waiting to try again (#2419); null while it runs or waits for the worker. */
+  retry: { at: Date; attempt: number; of: number; reason: string } | null;
 }
 
 /**
@@ -117,6 +119,7 @@ function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
     etaSeconds: progress?.etaSeconds ?? null,
     total: progress?.total ?? null,
     stepStartedAt: !queued && progress?.stepStartedAt ? new Date(progress.stepStartedAt) : null,
+    retry: !queued && progress?.retry ? { ...progress.retry, at: new Date(progress.retry.at) } : null,
     operation: operationOf(build, progress, queued),
   };
 }

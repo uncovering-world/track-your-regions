@@ -38,6 +38,12 @@ export const DumpBuildProgress = z.strictObject({
   total: z.number().int().nullable()
     .describe('What read is measured against: the dump\'s file in a pass, the terms spool while labelling, the sample\'s size while cutting one; null in a step with no measure (#1519).'),
   stepStartedAt: timestamp.nullable().describe('When the step running now started, so a step with no measure of its own reads as alive; null while queued (#1519).'),
+  retry: z.strictObject({
+    at: timestamp.describe('When the next attempt starts.'),
+    attempt: z.number().int().describe('The attempt that starts then, counted from 1 for the first.'),
+    of: z.number().int().describe('How many attempts the build makes in all.'),
+    reason: z.string().describe('What cut the last attempt, in words: the host, and how much of which file was read.'),
+  }).nullable().describe('A build the network cut, waiting out a pause before it tries again from what its local copies hold (#2419); null while it runs or is queued.'),
   operation: OperationProgressAnswer.describe('The build in the shape every long operation reports (#1356): its step by ordinal and message, with no step count, measured as `read` is against `total`.'),
 }).describe('A dump build queued or running, read from its ledger row whatever process runs it.');
 export type DumpBuildProgress = z.infer<typeof DumpBuildProgress>;

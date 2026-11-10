@@ -5,16 +5,20 @@
  * `rederive` reads no file and runs the builder's derivation alone. Every
  * `BEAT_EVERY_MS` the build writes its progress and heartbeat to its row,
  * which is how the panel follows it, and learns whether an admin asked it to
- * stop.
+ * stop. A build the network cut tries again after a pause, a bounded number of
+ * times, from what its local copies hold (`RETRY_PAUSES_MS`, #2419), and a
+ * failed build's row says in words what happened and that the copy in place
+ * stands.
  */
 
+import { setTimeout as sleep } from 'node:timers/promises';
 import { dumpNamed, type DumpDescriptor, type DumpFile } from './catalog.js';
-import { fetchText, sizeOf } from './fetch.js';
+import { fetchText, hostFailure, sizeOf } from './fetch.js';
 import { BEAT_EVERY_MS, beat, closeBuild, recordFile, recordUpdate, type BuildProgressRecord, type ClaimedBuild } from './ledger.js';
 import { dumpsDir } from './buildQueue.js';
 import { keeperOf, type Keeper } from './keepers.js';
 import { PassClock } from './passClock.js';
-import { countLines, holdVerifiedCopy, readDump, type ReadOptions } from './read.js';
+import { countLines, CutDownload, holdVerifiedCopy, isDamagedRead, readDump, sizeWords, type ReadOptions } from './read.js';
 import { cutSample, SAMPLE_JSON_BYTES, sampleFile, sampleIn } from './samples.js';
 import { StepTimes } from './stepTimes.js';
 
@@ -76,11 +80,61 @@ function readOptions(
 export class WorkerStopping extends Error {}
 
 /**
+ * The pauses before each new attempt of a build the network cut (#2419): three
+ * more attempts, about 1, 5 and 15 minutes after the one before failed. A
+ * build lasting through a router's restart or a host closing long connections
+ * for a while ends verified instead of waiting for an admin to start it again.
+ * Each attempt resumes the local copies from where they stopped, and reads the
+ * files already whole from disk, so it asks the host only for what is left.
+ */
+export const RETRY_PAUSES_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_000];
+
+/**
+ * Whether a build is worth trying again: the network cut it on its way to or
+ * from the host. A damaged file, a host's refusal (4xx), a failure of the
+ * build's own writes, a cancel or the worker stopping never is.
+ */
+const worthRetrying = (error: unknown, signal: AbortSignal): boolean =>
+  !signal.aborted && !isDamagedRead(error) && (error instanceof CutDownload || hostFailure(error) !== null);
+
+
+/**
+ * Run `attempt`, and again after each of `pauses` while the network is what
+ * cut it. The row says it waits, when it tries again and why, so the panel
+ * shows a retry, not a failure; `tries` counts the attempts made, for the
+ * words of a build that fails anyway.
+ */
+async function retrying<T>(
+  attempt: () => Promise<T>, claimed: ClaimedBuild, progress: BuildProgressRecord, signal: AbortSignal,
+  pauses: readonly number[], tries: { made: number },
+): Promise<T> {
+  for (;;) {
+    tries.made += 1;
+    try {
+      return await attempt();
+    } catch (error) {
+      const wait = dumpNamed(claimed.dump)?.retriesACut === false ? undefined : pauses[tries.made - 1];
+      if (wait === undefined || !worthRetrying(error, signal)) throw error;
+      const reason = (error as Error).message;
+      progress.retry = { at: new Date(Date.now() + wait).toISOString(), attempt: tries.made + 1, of: pauses.length + 1, reason };
+      const from = dumpsDir() ? 'from what is on disk' : 'from the start of the file';
+      progress.message = `${reason}. Trying again ${from} (attempt ${tries.made + 1} of ${pauses.length + 1}); the copy in place stands.`;
+      progress.etaSeconds = null;
+      console.log(`[Dumps] ${claimed.dump}: ${reason}; attempt ${tries.made + 1} in ${Math.round(wait / 1000)} s`);
+      await beat(claimed.id, progress);
+      // A cancel or a stopping worker that came while the row was written ends the wait at once.
+      await sleep(wait, undefined, { signal });
+      progress.retry = null;
+    }
+  }
+}
+
+/**
  * Run the claimed build to its end and close its row. `stop` aborts it when
  * the worker itself stops: the row then says so, since the build will not go
  * on without being started again.
  */
-export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promise<void> {
+export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal, pauses: readonly number[] = RETRY_PAUSES_MS): Promise<void> {
   const controller = new AbortController();
   const onStop = () => controller.abort(new WorkerStopping('The dump worker stopped; start the build again.'));
   stop.addEventListener('abort', onStop, { once: true });
@@ -90,6 +144,7 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
   const clock = new PassClock();
   const notes: string[] = [];
   const figures: Figures = { bytes: 0, lines: 0 };
+  const tries = { made: 0 };
   const heart = setInterval(() => {
     beat(claimed.id, progress)
       .then(({ cancelRequested }) => { if (cancelRequested) controller.abort(new Error('Cancelled.')); })
@@ -136,10 +191,13 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
     }
     // A kind this code does not know reads no file: counting it as a verify would download the dump.
     if (kind !== 'keep' && kind !== 'verify') throw new Error(`This dump worker does not know a ${String(kind)} build; recreate it to run the current code`);
-    const read = await readTheDump(claimed, descriptor, progress, controller.signal, notes, clock, onPhase, figures);
+    const read = await retrying(
+      () => readTheDump(claimed, descriptor, progress, controller.signal, notes, clock, onPhase, figures),
+      claimed, progress, controller.signal, pauses, tries,
+    );
     await close(read.result, read.said);
   } catch (error) {
-    await fail(claimed, controller.signal, error, figures, notes);
+    await fail(claimed, controller.signal, error, figures, notes, tries.made);
   } finally {
     clearInterval(heart);
     stop.removeEventListener('abort', onStop);
@@ -301,12 +359,52 @@ async function tryOnSample(
   });
 }
 
+/** A dump's date as the admin reads it: the day of the dump, or the month its counts end on. */
+function dateWords(date: string, datedBy: DumpDescriptor['datedBy']): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day || 1));
+  return datedBy === 'month'
+    ? value.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+    : value.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * What a failed keeping build left in place, in words (#2419): a build is
+ * swapped in only whole, so a failure changes nothing the runs read.
+ */
+async function copyInPlaceWords(claimed: ClaimedBuild): Promise<string | null> {
+  if (claimed.request.kind !== 'keep') return null;
+  const descriptor = dumpNamed(claimed.dump);
+  const keeper = descriptor ? keeperOf(descriptor.key) : null;
+  if (!descriptor || !keeper) return null;
+  // A ledger that cannot be read leaves the sentence general, never the failure unclosed.
+  const kept = await Promise.resolve().then(() => keeper.latest()).catch(() => undefined);
+  if (kept === undefined) return 'The copy in place, if any, is unchanged';
+  if (kept === null) return 'No copy is in place yet, so nothing changed for the runs';
+  const from = descriptor.datedBy === 'month' ? 'the counts up to' : 'the dump of';
+  const date = dateWords(kept.dumpDate, descriptor.datedBy);
+  if (keeper.keepsAsItGoes) return `What this build kept before it failed stays kept, and the rest of the copy in place, up to ${date}, is unchanged and still read`;
+  return `The copy in place, built from ${from} ${date}, is unchanged and still read`;
+}
+
+/** What the next build does after a build the network cut: it resumes from the copy on disk, or reads the file again. */
+function nextBuildWords(error: unknown, tries: number): string | null {
+  if (!(error instanceof CutDownload) && hostFailure(error) === null) return null;
+  const tried = tries > 1 ? `It was tried ${tries} times. ` : '';
+  if (error instanceof CutDownload && error.local && error.held > 0) {
+    return `${tried}The next build resumes from the ${sizeWords(error.held)} of ${error.file.fileName} on disk`;
+  }
+  return dumpsDir() ? `${tried}The next build resumes from what is on disk` : `${tried}The next build reads its files from their start`;
+}
+
 /** Close a build that did not end verified; what it did on the way (an older copy removed) is kept in its message. */
-async function fail(claimed: ClaimedBuild, signal: AbortSignal, error: unknown, figures: Figures, notes: string[]): Promise<void> {
+async function fail(claimed: ClaimedBuild, signal: AbortSignal, error: unknown, figures: Figures, notes: string[], tries: number): Promise<void> {
   const reason: unknown = signal.aborted ? signal.reason : error;
   const cancelled = signal.aborted && !(reason instanceof WorkerStopping);
   const status = cancelled ? 'cancelled' : 'failed';
-  const message = [reason instanceof Error ? reason.message : String(reason), ...notes].join('; ');
+  const said = reason instanceof Error ? reason.message : String(reason);
+  const more = cancelled ? [] : [nextBuildWords(reason, tries), await copyInPlaceWords(claimed)].filter((w): w is string => !!w);
+  const message = [more.length > 0 ? `${[said.replace(/\.$/, ''), ...more].join('. ')}.` : said, ...notes].join('; ');
   console.error('[Dumps] A build ended without a verified file:', claimed.dump, status, error);
   await closeBuild(claimed.id, { status, bytes: figures.bytes, lines: figures.lines, checksumActual: null, error: message })
     .catch(err => console.error('[Dumps] Could not close the build row:', err));
