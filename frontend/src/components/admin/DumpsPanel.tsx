@@ -100,6 +100,12 @@ function Outcome({ build }: { build: DumpBuild }) {
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{formatRelativeTime(when)}</Typography>
         </Tooltip>
       </Box>
+      {build.queuedBy && (
+        // Who queued it (ADR-0195), so a log of builds the schedule started reads apart from an admin's.
+        <Typography variant="caption" color="text.secondary" display="block">
+          {build.queuedBy === 'schedule' ? 'Queued by the schedule' : 'Started by an admin'}
+        </Typography>
+      )}
       {reason && <Typography variant="caption" color="error" display="block" sx={{ mt: 0.5 }}>{reason}</Typography>}
     </Box>
   );
@@ -442,10 +448,12 @@ export function DumpsPanel() {
     queryFn: getDumps,
     // A queued or running build is polled every three seconds; the worker writes its progress every five.
     // While the dump worker has not yet asked the host for its newest dump, every ten, until it has (#1583, #2353).
+    // While a copy updates itself, every minute, so a build its schedule queues shows up to be seen or stopped (ADR-0195).
     refetchInterval: (query) => {
       const all = query.state.data?.dumps ?? [];
       if (all.some(d => inFlight(d.progress))) return 3000;
-      return all.some(d => d.keeps?.newestChecked === 'not-yet') ? 10_000 : false;
+      if (all.some(d => d.keeps?.newestChecked === 'not-yet')) return 10_000;
+      return all.some(d => d.keeps?.schedule.everyDays != null) ? 60_000 : false;
     },
   });
   if (dumps.isLoading) return <LinearProgress />;

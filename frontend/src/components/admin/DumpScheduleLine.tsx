@@ -1,7 +1,7 @@
 /**
- * How often the dump worker brings what is kept forward by itself, which an
- * admin may change (the OpenStreetMap layer, ADR-0134 decision 6): every 1 to
- * 30 days, or off, when updates are started by hand.
+ * How often the dump worker brings a copy built from a dump forward by itself,
+ * which an admin may change (ADR-0195; the OpenStreetMap layer since ADR-0134
+ * decision 6): every 1 to 30 days, or off, when builds are started by hand.
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';

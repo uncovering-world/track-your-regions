@@ -18,7 +18,7 @@ const dump = (over: Partial<DumpsDumpsItem> & { archives?: string[] } = {}): Dum
   progress: null, builds: [], localCopy: null, sample: null,
   keeps: {
     title: 'Readership over the last twelve months', built: { dumpDate: '2026-09-01', swappedAt: '2026-10-20T14:00:00Z' }, needs: 'nothing',
-    newestDumpDate: '2026-09-01', newestChecked: 'answered', rederives: false, samples: false, fromCopy: false, schedule: null, currentTo: false,
+    newestDumpDate: '2026-09-01', newestChecked: 'answered', rederives: false, samples: false, fromCopy: false, schedule: { everyDays: 7, chosen: false, defaultEveryDays: 7 }, currentTo: false,
     archives: over.archives ?? [],
   },
   ...over,
