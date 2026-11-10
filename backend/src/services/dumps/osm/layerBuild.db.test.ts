@@ -32,7 +32,9 @@ const calls: string[][] = [];
 let loadFails = false;
 /** What `osmium getid` answers: every named object found, or some gone, or an error it does not explain. */
 let getid: { code: number; stderr: string } = { code: 0, stderr: '' };
-let rowsLoaded: Array<[string, number, string, string | null, string]> = [];
+let rowsLoaded: Array<[string, number, string, string | null, string] | [string, number, string, string | null, string, string]> = [];
+/** Squares & streets' candidates the build looks for the lines of (fixture QIDs, not real ones). */
+let streets: Array<{ qid: string; lat: number; lon: number; names: string[] }> = [];
 /** The items the layer keeps whole (fixture QIDs, not real ones). */
 let drawnItems: { named: string[]; listed: string[] } = { named: [], listed: [] };
 
@@ -57,6 +59,10 @@ vi.mock('./layerSelection.js', async (importOriginal) => ({
   drawnItems: vi.fn(async () => drawnItems),
 }));
 let refillFails = false;
+vi.mock('./layerStreets.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./layerStreets.js')>(),
+  streetItems: vi.fn(async () => streets),
+}));
 vi.mock('./layerShapes.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('./layerShapes.js')>();
   return {
@@ -84,11 +90,11 @@ vi.mock('./tools.js', async (importOriginal) => {
           throw new Error('osm2pgsql --create failed (1): out of memory');
         }
         await db.query(`CREATE TABLE workbench.${options.env!.OSM_LAYER_TABLE} (osm_type char(1) NOT NULL, osm_id bigint NOT NULL,
-          tags jsonb NOT NULL, wikidata text, wikipedia text, geom geometry(Geometry, 4326))`);
+          tags jsonb NOT NULL, wikidata text, wikipedia text, geom geometry(Geometry, 4326), street_item text)`);
         await db.query('CREATE TABLE workbench.osm2pgsql_properties (property text, value text)');
-        for (const [type, id, tags, wikidata, wkt] of rowsLoaded) {
-          await db.query(`INSERT INTO workbench.${options.env!.OSM_LAYER_TABLE} VALUES ($1, $2, $3, $4, NULL, ST_GeomFromText($5, 4326))`,
-            [type, id, tags, wikidata, wkt]);
+        for (const [type, id, tags, wikidata, wkt, street] of rowsLoaded) {
+          await db.query(`INSERT INTO workbench.${options.env!.OSM_LAYER_TABLE} VALUES ($1, $2, $3, $4, NULL, ST_GeomFromText($5, 4326), $6)`,
+            [type, id, tags, wikidata, wkt, street ?? null]);
         }
       }
       return answer;
@@ -149,6 +155,7 @@ beforeEach(async () => {
   getid = { code: 0, stderr: '' };
   rowsLoaded = [STONEHENGE, POMPEII, BAKERY];
   drawnItems = { named: [], listed: [] };
+  streets = [];
   refillFails = false;
   await clear();
   buildId = await newBuild();
@@ -183,10 +190,10 @@ describe('buildLayer (#1437)', () => {
     expect(await rows("SELECT indexname FROM pg_indexes WHERE schemaname = 'workbench' AND tablename = 'osm_objects' ORDER BY 1")).toEqual([
       // The reference index the review card's hints are found by (#1853), copied like the rest.
       { indexname: 'osm_objects_geom' }, { indexname: 'osm_objects_pkey' }, { indexname: 'osm_objects_ref_whc' },
-      { indexname: 'osm_objects_wikidata' }, { indexname: 'osm_objects_wikipedia' },
+      { indexname: 'osm_objects_street_item' }, { indexname: 'osm_objects_wikidata' }, { indexname: 'osm_objects_wikipedia' },
     ]);
-    const [record] = await rows("SELECT planet_file, dump_date::text AS date, replicated_at, objects::int, pinned, pinned_gone, drawn, selection FROM osm_layer_builds");
-    expect(record).toMatchObject({ planet_file: planet.fileName, date: '2026-10-22', objects: 3, pinned: 1, pinned_gone: 0 });
+    const [record] = await rows("SELECT planet_file, dump_date::text AS date, replicated_at, objects::int, pinned, pinned_gone, drawn, selection, streets, streets_lined FROM osm_layer_builds");
+    expect(record).toMatchObject({ planet_file: planet.fileName, date: '2026-10-22', objects: 3, pinned: 1, pinned_gone: 0, streets: 0, streets_lined: 0 });
     // The rule its full geometries were kept by, which a reader holds a keep rule to (ADR-0136).
     expect(record.drawn).toEqual(LAYER_DRAWN);
     // What it selected, so a reader of venues can tell a build that holds them (ADR-0191).
@@ -197,6 +204,40 @@ describe('buildLayer (#1437)', () => {
     expect(await latestLayer()).toMatchObject({ dumpDate: '2026-10-22', needs: 'nothing' });
     expect(await rows("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'workbench' AND tablename = 'osm2pgsql_properties'")).toEqual([{ n: 0 }]);
     expect(readdirSync(dir).sort()).toEqual(CURRENT);
+  });
+
+  it('cuts the ways near the street items beside the other cuts, loads them with the items, and records the lines found (#2311, ADR-0194)', async () => {
+    // A walked street (fixture QID) with its line drawn as two ways, and a square the layer finds no line for.
+    streets = [
+      { qid: 'Q1000101', lat: 52.4892, lon: 13.3939, names: ['Bergmannstraße'] },
+      { qid: 'Q1000102', lat: 52.4880, lon: 13.3950, names: ['Marheinekeplatz'] },
+    ];
+    rowsLoaded = [STONEHENGE,
+      ['W', 40, '{"highway":"residential","name":"Bergmannstraße"}', null, 'LINESTRING(13.388 52.4893,13.394 52.4892)', 'Q1000101'],
+      ['W', 41, '{"highway":"tertiary","name":"Bergmannstraße"}', null, 'LINESTRING(13.394 52.4892,13.399 52.4890)', 'Q1000101']];
+    const result = await build();
+    expect(calls.map(call => call.slice(0, 2))).toEqual([
+      ['osmium', 'fileinfo'], ['osmium', 'apply-changes'], ['osmium', 'tags-filter'], ['osmium', 'getid'], ['osmium', 'extract'],
+      ['osmium', 'tags-filter'], ['osmium', 'merge'], ['osm2pgsql', '--create'],
+    ]);
+    const work = join(dir, 'osm-layer-cut');
+    // One extract of the polygon around the items' points, its ways whole, then its highways and places: never a list of names in tags-filter.
+    expect(calls[4]).toEqual(['osmium', 'extract', '-p', join(work, 'near-streets.geojson'), '-s', 'complete_ways', join(dir, 'planet-current.osm.pbf'),
+      '-o', join(work, 'near-streets.osm.pbf'), '--output-format=pbf,pbf_compression=lz4', '--overwrite']);
+    expect(calls[5]).toEqual(['osmium', 'tags-filter', join(work, 'near-streets.osm.pbf'), 'w/highway', 'w/place',
+      '-o', join(work, 'street-ways.osm.pbf'), '--output-format=pbf,pbf_compression=lz4', '--overwrite']);
+    expect(calls[6]).toEqual(expect.arrayContaining([join(work, 'selected.osm.pbf'), join(work, 'linked.osm.pbf'), join(work, 'street-ways.osm.pbf')]));
+    expect(await rows("SELECT osm_id, street_item, GeometryType(geom) AS geom FROM osm_objects WHERE street_item IS NOT NULL ORDER BY osm_id")).toEqual([
+      { osm_id: '40', street_item: 'Q1000101', geom: 'LINESTRING' }, { osm_id: '41', street_item: 'Q1000101', geom: 'LINESTRING' },
+    ]);
+    expect(await rows('SELECT streets, streets_lined FROM osm_layer_builds')).toEqual([{ streets: 2, streets_lined: 1 }]);
+    expect(result.summary).toMatch(/and 2 lines of 1 of the 2 streets and squares looked for/);
+  });
+
+  it('cuts no ways near streets where no street item is read, as before ADR-0194', async () => {
+    await build();
+    expect(calls.map(call => call[1])).not.toContain('extract');
+    expect(await rows('SELECT streets, streets_lined FROM osm_layer_builds')).toEqual([{ streets: 0, streets_lined: 0 }]);
   });
 
   it('brings the current planet forward from where it was, without the weekly planet', async () => {

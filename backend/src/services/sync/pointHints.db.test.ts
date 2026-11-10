@@ -54,6 +54,13 @@ beforeEach(async () => {
   // Nor is a café named after it, nearer than the church and alike enough to pass the
   // similarity bar, so only the venue exclusion keeps it out (ADR-0191).
   await osm(985505, { name: 'Church Saint Gayaneh Cafe', amenity: 'cafe' }, { lon: 44.2950, lat: 40.1596 });
+  // Nor is a street's line (ADR-0194) named like it, nearer than the church: a point on
+  // a line that runs for its length is not where the component stands.
+  await pool.query(
+    `INSERT INTO osm_objects (osm_type, osm_id, tags, geom, street_item)
+     VALUES ('W', 985506, $1, ST_SetSRID(ST_MakeLine(ST_MakePoint(44.2945, 40.1597), ST_MakePoint(44.2975, 40.1599)), 4326), 'Q9855-street')`,
+    [JSON.stringify({ name: 'Church Saint Gayaneh', highway: 'pedestrian' })],
+  );
   // A copy of the shared point, named like the component: not a measurement.
   await osm(985503, { name: 'Church Saint Gayaneh and surrounding buildings' }, SHARED);
   await pool.query(

@@ -5526,6 +5526,10 @@ CREATE TABLE IF NOT EXISTS workbench.osm_layer_builds (
 );
 COMMENT ON TABLE workbench.osm_layer_builds IS 'Each build of the OpenStreetMap layer that was swapped in (#1437, ADR-0134): the dump build that cut it, the planet file and its date, the replication timestamp the planet was current to (every answer read from the layer carries it), the objects kept, how many objects the catalogue named were cut in whatever their tags, and how many of those the planet no longer held (deleted or redrawn under another id since a place linked them). The newest row is what osm_objects holds.';
 ALTER TABLE workbench.osm_layer_builds ADD COLUMN IF NOT EXISTS selection TEXT[];
+ALTER TABLE workbench.osm_layer_builds ADD COLUMN IF NOT EXISTS streets INTEGER;
+ALTER TABLE workbench.osm_layer_builds ADD COLUMN IF NOT EXISTS streets_lined INTEGER;
+COMMENT ON COLUMN workbench.osm_layer_builds.streets IS 'How many of Squares & streets'' candidates the build looked for the lines of (ADR-0194). NULL is a layer cut before ADR-0194, which kept no street''s line.';
+COMMENT ON COLUMN workbench.osm_layer_builds.streets_lined IS 'How many of those candidates the build kept at least one line for (ADR-0194). NULL is a layer cut before ADR-0194.';
 COMMENT ON COLUMN workbench.osm_layer_builds.selection IS 'The selection the build kept objects by (LAYER_SELECTION, ADR-0191): one osmium tags-filter expression per key, such as amenity=place_of_worship,cafe,restaurant. A reader of a tag the build did not select treats the layer as not read for it. NULL is a layer cut before ADR-0191, which kept no venue it did not select for another tag.';
 COMMENT ON COLUMN workbench.osm_layer_builds.drawn IS 'The rule the build kept full geometries by (ADR-0136): {historic, manMade, boundary} value lists, with ruins and archaeological_site drawn by their presence. Every other object holds a point. NULL is a layer cut before ADR-0136, which kept every geometry whole.';
 
@@ -5543,6 +5547,10 @@ CREATE INDEX IF NOT EXISTS osm_objects_wikipedia ON workbench.osm_objects (wikip
 CREATE INDEX IF NOT EXISTS osm_objects_geom ON workbench.osm_objects USING GIST (geom);
 -- The objects that carry a World Heritage reference, found by it at any distance (#1853, migration 158).
 CREATE INDEX IF NOT EXISTS osm_objects_ref_whc ON workbench.osm_objects ((tags->>'ref:whc')) WHERE tags ? 'ref:whc';
+-- The line of a Squares & streets item (#2311, ADR-0194, migration 225).
+ALTER TABLE workbench.osm_objects ADD COLUMN IF NOT EXISTS street_item TEXT;
+CREATE INDEX IF NOT EXISTS osm_objects_street_item ON workbench.osm_objects (street_item) WHERE street_item IS NOT NULL;
+COMMENT ON COLUMN workbench.osm_objects.street_item IS 'The Squares & streets item this highway or place way is the line of (ADR-0194): its wikidata tag, or the item one of its names belongs to within 1 km of the item''s point. Such a way keeps its whole line. NULL for every other object.';
 COMMENT ON TABLE workbench.osm_objects IS 'An OpenStreetMap object of the layer (#1437, ADR-0134): its type as osm2pgsql writes it (N, W, R) and id, every tag, the wikidata and wikipedia tags for lookup, and its geometry in WGS 84: the full shape where a kind draws the object (a ruin, a dig, a protected area) or the object carries an item the world-view match reads a shape for, a region''s own or one its Wikivoyage page''s mapshapes list (ADR-0157, ADR-0158): a way''s line or the area it encloses, an area relation''s multipolygon, another relation''s collection of members; one point for every other object (ADR-0136), which locates it and never places anything. ODbL: what the catalogue takes from it keeps its provenance (ADR-0059). Never written but by the layer''s build, which swaps a new copy in whole.';
 
 -- When the OpenStreetMap layer updates itself (#1437). See db/migrations/147.

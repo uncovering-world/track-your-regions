@@ -883,6 +883,8 @@ export interface OsmLayerBuildsRow {
   drawn: unknown | null;
   swapped_at: Date;
   selection: string[] | null;
+  streets: number | null;
+  streets_lined: number | null;
 }
 
 /** The table `osm_layer_schedule`. */
@@ -901,6 +903,7 @@ export interface OsmObjectsRow {
   wikidata: string | null;
   wikipedia: string | null;
   geom: string | null;
+  street_item: string | null;
 }
 
 /** The table `place_identifier_verdicts`. */

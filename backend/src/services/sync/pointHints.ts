@@ -94,6 +94,9 @@ const HINTS = `
        AND NOT ST_DWithin(o.geom::geography, el.location::geography, ${COPIED_COORDINATE_M})
        AND o.tags->>'ref:whc' IS DISTINCT FROM el.external_ref
        AND NOT ${namedAfterSql('o.tags')}
+       -- A street's line (ADR-0194) runs for its length, and no point on it is
+       -- where a component named like the street stands.
+       AND o.street_item IS NULL
        AND (similarity(lower(o.tags->>'name'), lower(el.name)) >= ${OSM_NAME_SIMILARITY}
             OR similarity(lower(o.tags->>'name:en'), lower(el.name)) >= ${OSM_NAME_SIMILARITY})
      ORDER BY ST_Distance(o.geom::geography, el.location::geography)

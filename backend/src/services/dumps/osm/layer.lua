@@ -1,15 +1,19 @@
 -- The OpenStreetMap layer's flex style (ADR-0134): which objects of the cut
 -- become rows of the layer, with every tag, and the full geometry of the
--- objects a kind draws and of the objects that carry an item `drawnItems`
--- lists, and a point for the rest (ADR-0136, ADR-0157).
+-- objects a kind draws, of the objects that carry an item `drawnItems`
+-- lists and of the lines of Squares & streets' candidates, and a point for
+-- the rest (ADR-0136, ADR-0157, ADR-0194).
 --
 -- The cut osm2pgsql reads holds the selected objects, the objects the
--- catalogue names, and what those are drawn from: a kept way's nodes and a
--- kept relation's members. Only the first two become rows. The selection is
+-- catalogue names, the highway and place ways near a street item's point,
+-- and what those are drawn from: a kept way's nodes and a kept relation's
+-- members. Only the first two, and the ways that are a street item's line,
+-- become rows. The selection is
 -- the same expression file `osmium tags-filter` cut with (layerSelection.ts),
 -- and the named objects are the file `osmium getid` read, so the rows and the
 -- cut cannot disagree. The drawn rule and the drawn items are layerSelection.ts's
--- too. layerBuild.ts names the five through the environment.
+-- too, and the street items layerStreets.ts's. layerBuild.ts names the eight
+-- through the environment.
 
 local function required(name)
   local value = os.getenv(name)
@@ -59,6 +63,30 @@ for line in io.lines(required('OSM_LAYER_DRAWN_ITEMS')) do
   if line ~= '' then drawnItems[line] = true end
 end
 
+-- 'Q123\tlat\tlon\tname|name': Squares & streets' candidates, whose lines are
+-- kept whole (ADR-0194, layerStreets.ts). A way is an item's line when its
+-- wikidata tag is the item, or one of its names is the item's name, and it
+-- lies within the reach of the item's point.
+local streetReach = tonumber(required('OSM_LAYER_STREET_REACH_M'))
+-- The highway values a street's line is drawn with (STREET_HIGHWAYS); a way
+-- of a place (a square drawn as place=square) is one too.
+local streetHighways = {}
+for value in required('OSM_LAYER_STREET_HIGHWAYS'):gmatch('[^,]+') do streetHighways[value] = true end
+local streetPoints = {}
+local streetsNamed = {}
+for line in io.lines(required('OSM_LAYER_STREETS')) do
+  local qid, lat, lon, names = line:match('^(Q%d+)\t([^\t]+)\t([^\t]+)\t(.*)$')
+  if qid then
+    local point = { qid = qid, lat = tonumber(lat), lon = tonumber(lon) }
+    streetPoints[qid] = streetPoints[qid] or {}
+    table.insert(streetPoints[qid], point)
+    for name in names:gmatch('[^|]+') do
+      streetsNamed[name] = streetsNamed[name] or {}
+      table.insert(streetsNamed[name], point)
+    end
+  end
+end
+
 local objects = osm2pgsql.define_table({
   name = required('OSM_LAYER_TABLE'),
   schema = 'workbench',
@@ -68,6 +96,8 @@ local objects = osm2pgsql.define_table({
     { column = 'wikidata', type = 'text' },
     { column = 'wikipedia', type = 'text' },
     { column = 'geom', type = 'geometry', projection = 4326 },
+    -- The Squares & streets item a highway or a place way is the line of.
+    { column = 'street_item', type = 'text' },
   },
   -- The build gives the table the live table's indexes once it is loaded.
   indexes = {},
@@ -120,13 +150,41 @@ local function locator(geometry)
   return geometry:centroid()
 end
 
-local function keep(object, kind, geometry)
-  if not (selects(object.tags) or pinned[kind .. object.id]) then return end
+-- Whether a point lies within the reach of the box west, south, east, north.
+local function within(point, west, south, east, north)
+  local dLat = streetReach / 111000
+  local dLon = dLat / math.max(0.05, math.cos(math.rad(point.lat)))
+  return point.lat >= south - dLat and point.lat <= north + dLat and point.lon >= west - dLon and point.lon <= east + dLon
+end
+
+-- The item a highway or a place way is the line of: its own wikidata tag's
+-- where that item is near, else the first item of one of its names that is.
+local function streetOf(object)
+  local tags = object.tags
+  if not (streetHighways[tags.highway] or tags.place) then return nil end
+  local west, south, east, north = object:get_bbox()
+  if west == nil then return nil end
+  for _, point in ipairs(streetPoints[tags.wikidata] or {}) do
+    if within(point, west, south, east, north) then return point.qid end
+  end
+  for key, value in pairs(tags) do
+    if key == 'name' or key:sub(1, 5) == 'name:' then
+      for _, point in ipairs(streetsNamed[value] or {}) do
+        if within(point, west, south, east, north) then return point.qid end
+      end
+    end
+  end
+  return nil
+end
+
+local function keep(object, kind, geometry, street)
+  if not (street or selects(object.tags) or pinned[kind .. object.id]) then return end
   objects:insert({
     tags = object.tags,
     wikidata = object.tags.wikidata,
     wikipedia = object.tags.wikipedia,
-    geom = (draws(object.tags) or drawnItems[object.tags.wikidata]) and geometry or locator(geometry),
+    geom = (street or draws(object.tags) or drawnItems[object.tags.wikidata]) and geometry or locator(geometry),
+    street_item = street,
   })
 end
 
@@ -135,12 +193,17 @@ function osm2pgsql.process_node(object)
 end
 
 -- A closed way is drawn as the area it encloses, and as its line where that
--- area is not valid; an open way as its line.
+-- area is not valid; an open way as its line, and so is a street's closed
+-- highway that is no area.
 function osm2pgsql.process_way(object)
+  local street = streetOf(object)
+  -- A closed highway is a line (a roundabout, a looped path) unless it is
+  -- drawn as an area; a square's own way encloses it.
+  local area = object.is_closed and (street == nil or object.tags.place ~= nil or object.tags.area == 'yes')
   local geometry = nil
-  if object.is_closed then geometry = object:as_polygon() end
+  if area then geometry = object:as_polygon() end
   if geometry == nil or geometry:is_null() then geometry = object:as_linestring() end
-  keep(object, 'w', geometry)
+  keep(object, 'w', geometry, street)
 end
 
 -- An area relation as its multipolygon; any other (a site, a route) as the
