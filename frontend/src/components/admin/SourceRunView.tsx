@@ -95,6 +95,12 @@ export function SourceRunView({ run }: { run: SourceRun }) {
               />
             </>
           )}
+          {status.waitingBuilds && status.waitingBuilds.length > 0 && (
+            // A copy waits to swap in until this run ends (#2415), so the build reads as waiting, not stuck.
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+              Waiting for this run to end before it swaps in: {status.waitingBuilds.join(', ')}
+            </Typography>
+          )}
           {status.currentItem && (
             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
               {status.currentItem}
