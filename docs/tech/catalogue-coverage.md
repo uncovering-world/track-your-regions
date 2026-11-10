@@ -72,6 +72,7 @@ the first as treasures and nothing yet for the second (#1214).
 |---|---|
 | `slug` | Also the name of the region's list file |
 | `name`, `country` | As a person reads them |
+| `country_code` | The country's ISO 3166-1 alpha-2 code, which the report holds a place's countries against: a place standing only in other countries lies outside the region's reach (#2406) |
 | `lat`, `lon`, `radius_km` | The centre and the reach of the survey: the city and the day trips a guide files under it |
 | `surveyed` | The date the list was compiled, and so the date of its sitelinks and coordinates |
 | `role` | Absent for an ordinary region. `control` marks a region surveyed so that an admission rule can be verified on a list no tuning has read (#2232) |
@@ -612,7 +613,20 @@ names.
 direction too. For every surveyed region, `UNNAMED_SQL` reads the offered places with an
 offered, published point within the region's `radius_km` of its centre none of whose
 identifiers (`KNOWN_AS_SQL`, the same ids `MATCHES_SQL` matches by) matches an identifier an
-entry of the region names. Each
+entry of the region names. A place that stands only in other countries than the region's lies outside its
+reach though the circle takes it in (#2406): Seoul's 60 km take in Kaesong, 58 km away in North
+Korea across the closed border, which no guide of Seoul can name. A place's countries are the
+codes its source sent (`country_codes`) and the ISO codes of the countries its items name
+(`P17` off the claims copy, through each country's `P297`, read where the copy of Wikidata is,
+`ITEM_COUNTRIES_SQL`), held against the region's `country_code`. A place none of whose
+countries is known stays, and so does one in the region's country and another: the Bridge of
+No Return, which Wikidata places in both Koreas, stays in Seoul's. No list of closed borders is
+kept, since the catalogue holds a place's country and not whether a border is open. So the
+rule leaves out a place across an open border too, a walk away from a border city such as
+Geneva or Strasbourg: such a place is not dropped silently but listed apart per region (*left
+out of the reach, standing only in other countries*), counted in the region's line, and
+judged by nobody, its row judgement stale. A day trip abroad that guides name, as Rome's to
+the Vatican, is matched by its entry and never reaches this list. Each
 comes with the kinds that offer it, its own sitelinks as its source recorded them (a museum and
 an inscribed property carry none), its distance from the centre, and the ledger's line on it
 where a person has judged it by its Wikidata id. The text names the unjudged ones least known

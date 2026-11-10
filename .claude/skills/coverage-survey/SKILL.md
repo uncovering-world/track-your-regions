@@ -123,7 +123,7 @@ When no kind fits, leave the entry unsorted and note what kind is missing. If tw
 
 ### 10. Write the list
 
-Add the region's line to `db/catalogue-coverage/regions.jsonl` and write `db/catalogue-coverage/expectations/<slug>.jsonl`, one entry per line, the most-named first. Fill `sitelinks`, `lat` and `lon` from step 8's `facts`.
+Add the region's line to `db/catalogue-coverage/regions.jsonl`, its `country_code` the country's ISO 3166-1 alpha-2 code (a place in the circle that stands only in other countries is left out of the region's reach and listed apart, so a border city's day trips abroad are named on its list or read there), and write `db/catalogue-coverage/expectations/<slug>.jsonl`, one entry per line, the most-named first. Fill `sitelinks`, `lat` and `lon` from step 8's `facts`.
 
 Write the per-source record, which source named which entry, to `sources.jsonl` in the working directory, your own list and the source from inside the country each under a name of its own, and beside it how each source was read: fetched whole, fetched in part, or through searches of its site. It is never committed.
 
