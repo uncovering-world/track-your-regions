@@ -56,9 +56,9 @@ export interface ExperienceSnapshot {
   shortMovePasses?: boolean;
   /**
    * On an incoming record: the closed vocabulary of the kind the run fills
-   * (`publicArt/kindRules.ts`), where it declares one. A stored type that is
-   * none or outside it is rewritten past the gate (`type-outside-vocabulary`). Absent on a stored
-   * row, and from a source whose kind declares none.
+   * (`publicArt/kindRules.ts`), where it declares one. A type that is a word of it is written past
+   * the gate (`type-outside-vocabulary`, `type-within-vocabulary`). Absent on a stored row, and
+   * from a source whose kind declares none.
    */
   typeVocabulary?: readonly string[];
   countryCodes: string[] | null;
@@ -89,8 +89,10 @@ export type FieldSignificance = 'major' | 'minor';
  * ADR-0133), a line where there was none; and a type where the membership
  * holds none, or one its kind's vocabulary has no word for, replaced by one it
  * has (`type-outside-vocabulary`, ADR-0135): a value its kind has no word for
- * answers no filter of the kind, so it is no reader's fact to keep. Those
- * two are the classes a visitor sees. A field no reader is shown
+ * answers no filter of the kind, so it is no reader's fact to keep; and a type
+ * moved to another word of that vocabulary (`type-within-vocabulary`,
+ * ADR-0193): the place is the same either way, and only the filter it answers
+ * to changes. Those are the classes a visitor sees. A field no reader is shown
  * (`unseen`, ADR-0139: its mark in `@tyr/shared/placeFields`), and a text
  * rewritten only in its typesetting (`typography`, ADR-0139: `sameTypography`)
  * pass too, and so does a coordinate moved a short way (`short-move`, ADR-0140).
@@ -98,7 +100,7 @@ export type FieldSignificance = 'major' | 'minor';
  */
 export const GATE_PASSES = [
   'qualifier', 'same-file-credit', 'remeasured', 'own-item', 'first-subtitle', 'type-outside-vocabulary',
-  'unseen', 'typography', 'short-move',
+  'type-within-vocabulary', 'unseen', 'typography', 'short-move',
 ] as const;
 export type GatePass = (typeof GATE_PASSES)[number];
 
@@ -744,13 +746,16 @@ function nameLocalChanges(
 }
 
 /**
- * Whether a stored type is none, or one the incoming record's kind has no word
- * for, replaced by one it has.
+ * The class a type passes the gate as, where the kind declares a vocabulary
+ * and the incoming type is a word of it: `type-outside-vocabulary` where the
+ * stored type is none or no word of it (ADR-0135), `type-within-vocabulary`
+ * where it moves from one word to another (ADR-0193). Null otherwise: a kind
+ * with no vocabulary, or a record that proposes no type or a word outside it.
+ * The run's record of a put-back's type reads the same rule (`recordPutBackTypes`).
  */
-function outsideVocabulary(stored: string | null, incoming: ExperienceSnapshot): boolean {
-  const vocabulary = incoming.typeVocabulary;
-  if (!vocabulary || incoming.type === null || !vocabulary.includes(incoming.type)) return false;
-  return stored === null || !vocabulary.includes(stored);
+export function typePass(stored: string | null, incoming: string | null, vocabulary: readonly string[] | undefined): GatePass | null {
+  if (!vocabulary || incoming === null || !vocabulary.includes(incoming)) return null;
+  return stored === null || !vocabulary.includes(stored) ? 'type-outside-vocabulary' : 'type-within-vocabulary';
 }
 
 /**
@@ -760,7 +765,8 @@ function outsideVocabulary(stored: string | null, incoming: ExperienceSnapshot):
  * which a Wikidata kind also admits. The upsert's subtitle arm is the same rule.
  * A subtitle replaced or removed stays a question. A type its kind's vocabulary
  * has no word for, or none, replaced by one it has, is written past the gate
- * the same way (ADR-0135); a type moved inside the vocabulary stays a question.
+ * the same way (ADR-0135), and so is a type moved inside the vocabulary
+ * (ADR-0193).
  * A name, subtitle or description rewritten only in its typesetting passes as
  * `typography` (ADR-0139).
  */
@@ -779,7 +785,8 @@ function textPass(
   field: 'name' | 'subtitle' | 'description' | 'type' | 'imageUrl', before: ExperienceSnapshot, incoming: ExperienceSnapshot,
 ): { passedTheGate?: GatePass } {
   if (field === 'subtitle' && isEmptyValue(before.subtitle)) return { passedTheGate: 'first-subtitle' };
-  if (field === 'type' && outsideVocabulary(before.type, incoming)) return { passedTheGate: 'type-outside-vocabulary' };
+  const passed = field === 'type' ? typePass(before.type, incoming.type, incoming.typeVocabulary) : null;
+  if (passed) return { passedTheGate: passed };
   if (field !== 'type' && field !== 'imageUrl' && sameTypography(before[field], incoming[field])) {
     return { passedTheGate: 'typography' };
   }

@@ -267,7 +267,7 @@ export async function orchestrateSync<T>(
     const refusedRows = await markRefused(sourceId, filtered ?? [], dryRun);
     // What a curator put back stays admitted through the refusal, and the run
     // writes nothing else of it, so its type is filed here (ADR-0135).
-    recordPutBackTypes(await filePutBackTypes(sourceId, filtered ?? [], fetched.typeVocabulary, dryRun), progress, changes);
+    recordPutBackTypes(await filePutBackTypes(sourceId, filtered ?? [], fetched.typeVocabulary, dryRun), fetched.typeVocabulary, progress, changes);
     // What the run refused as another place's, and what it admits that one
     // also holds, for the kind that holds that place (ADR-0102): the fetch
     // answered whole, so the set is replaced.
