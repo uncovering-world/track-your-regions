@@ -36,8 +36,7 @@ indexes onto its copy.
 | Key | File | Verified by |
 |---|---|---|
 | `wikidata-entities` | `wikidatawiki/entities/<date>/wikidata-<date>-all.json.gz` | the sha1 in that directory's `wikidata-<date>-sha1sums.txt` |
-| `wikidata-lexemes` | `wikidata-<date>-lexemes.json.gz`, same directory | the same sums file |
-| `enwiki-page`, `enwiki-page-props`, `enwiki-linktarget`, `enwiki-categorylinks`, `enwiki-langlinks` | `enwiki/<date>/enwiki-<date>-<table>.sql.gz` | the sha1 and size `dumpstatus.json` gives the file once its job is `done` |
+| `enwiki-page`, `enwiki-page-props`, `enwiki-linktarget`, `enwiki-categorylinks` | `enwiki/<date>/enwiki-<date>-<table>.sql.gz` | the sha1 and size `dumpstatus.json` gives the file once its job is `done` |
 | `pageviews-user` | `other/pageview_complete/monthly/<year>/<year-month>/pageviews-<yyyymm>-user.bz2` | the host's `Content-Length` and a clean end of the bzip2 stream — no checksum is published |
 | `wikipedia-redirects` | `enwiki/<date>/enwiki-<date>-redirect.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{redirect,page}.sql.gz` of every counted edition | the sha1 and size each edition's `dumpstatus.json` gives (`wikipediaTableFile`) |
 | `wikidata-redirects` | `wikidatawiki/<date>/wikidatawiki-<date>-redirect.sql.gz`, and its build reads `wikidatawiki-<date>-page.sql.gz` of the same run | the sha1 and size the run's `dumpstatus.json` gives (`wikipediaTableFile`) |
@@ -176,7 +175,8 @@ first when the disk cannot hold what is left of the new one beside them
 read from its saved ranges, `bytesHeld`). The monthly pageview files are
 twelve different months, which readership reads together (ADR-0055), so none
 of them is an older copy of another and this rule removes none; readership's
-build removes each once its month is kept (§ Readership). Either is said in the build's message (`onNote`), as is a
+build keeps the current year's twelve and removes only a month past them, or an
+earlier year's month once kept (§ Readership). Either is said in the build's message (`onNote`), as is a
 copy that could not be removed: the verified read stands. One build per dump
 runs at a time in any process (§ A build), so no build of that dump is reading
 an older copy then.
@@ -369,6 +369,45 @@ by hand.
   (`keepsAsItGoes` on its keeper), so its failed build says that the months
   it kept stay kept and the rest of the year in place is unchanged.
 
+### Every copy updates itself
+
+Every copy built from a dump brings itself forward on a schedule (ADR-0195), as the
+OpenStreetMap layer has since ADR-0134 decision 6. Between builds, at most every ten minutes
+(`SCHEDULE_EVERY_MS` in `dumpWorker.ts`), the worker looks at each copy (`queueDueCopies` in
+`scheduledCopies.ts`). A copy's keeping build is due (`copyDue` in `copySchedule.ts`) when all of
+these hold:
+
+- its schedule is on;
+- a copy is in place: a first build stays an admin's;
+- the host has a newer dump than the copy was built from, as the worker last learnt it
+  (`dump_newest_on_host`, § The admin panel);
+- nothing of the dump is queued or running;
+- the copy is older than its interval, counted from its swap;
+- no self-queued build of it that failed or was cancelled started within the interval.
+
+A copy built with another copy as input is also due when it needs a rebuild: that copy moved,
+or a part of it is missing (`followsInputs` on its keeper, `followerStale` in `copyDue`). It then needs no newer dump of its own and no wait for
+its interval. Readership folds each month with the edition redirects in place. Once the
+redirects copy is swapped, the year is no longer whole (`yearStanding`). Its build refolds the
+months whose redirects are older (`keptAlready`). The schedule that moved the redirects
+therefore also queues readership's refold, rather than waiting for an admin, unless
+readership's own schedule is off, or a self-queued refold failed or was cancelled within its
+interval. In either case the refold waits for an admin's build. Meanwhile the runs
+go on reading the months as they were folded (`readershipYear` reads a year whose twelve are
+held, whatever redirects folded them). The refold is queued and then runs for hours, and a few
+articles renamed in a month are the whole difference.
+
+The layer keeps its own trigger, the daily diffs past it (§ The OpenStreetMap layer, *The
+schedule*). A due build is queued from the newest dump, in the mode the machine keeps
+(`queueScheduledBuild`), as a row `{kind: 'keep', scheduled: true, notBefore}` that the worker
+takes 30 minutes later (`QUEUED_LEAD_MS`), so whoever pulls the machine's checkout can cancel it.
+
+Each copy's interval defaults to 7 days, and the Wikidata subset's to 30 (`scheduled` in
+`keepers.ts`). The subset's dump is weekly and its build takes the worker most of a day, while
+the others' dumps are published monthly. An admin sets 1 to 30 days, or off, on the copy's row
+(`PUT /api/admin/dumps/:dump/schedule`, a row of `dump_schedules`; no row means the default).
+The build then swaps in only once no run reads the copy (below).
+
 ### A copy is never swapped in under a run
 
 A kept copy is swapped in only while no sync run or dry run is alive
@@ -404,8 +443,12 @@ main against a branch would not stand on the same inputs.
 - **Each run's log row names the copies it read** (`copies_read`, migration 226): the dump
   date of every copy in place when it started, written under the same lock
   (`copiesInPlace`). English Wikivoyage's articles are left out, since no run reads them
-  (`readByRuns: false` on their keeper). The run history shows them on each row, so a comparison across a swap
-  shows as one.
+  (`readByRuns: false` on their keeper). Readership's dump date stays the same through a refold,
+  so its entry also carries which redirects builds folded its twelve months, after a `#`
+  (`Kept.revision`, `59@2026-10-01×8,64@2026-11-01×4` halfway through a refold), answered as
+  `revision`. The run history shows them on each row, readership with the dates of the redirects
+  it was folded with (*folded with the redirects of 1 Oct (8 months) and 1 Nov (4)*), so a
+  comparison across a swap or a refold shows as one.
 
 ## The local Wikidata subset
 
@@ -647,18 +690,22 @@ and kept only once it is (`readership_month_files` names the file each month
 came from). A month that fails leaves the months before it kept, and the next
 build reads from there; a yearly build reads only the month it lacks. Months
 before the twelve are dropped once the twelve are in place. A month's local
-copy (about 6 GB) is removed once the month is kept, as is any copy of a month
-kept already or older than the twelve (`retiredCopies`), and the build's
-message says which: the kept rows are what readership reads, and twelve copies
-would hold some 70 GB beside the entities dump. A copy of a month not kept yet
-stays, so a cut download resumes from it. The three tables are unlogged, the
+copy (about 6 GB) stays while its month is in the twelve. Only a copy of a
+month older than the twelve is removed (`retiredCopies`), and the build's
+message says which. The twelve copies hold some 70 GB beside the entities dump.
+They are kept because readership folds each month with the redirects in place,
+and every month is folded again once the redirects copy moves (§ Every copy
+updates itself). The copies on disk make that refold a read of the disk rather
+than a second download of all twelve (#2415). An earlier year's build, read
+once for a comparison, still removes its months' copies once kept. A copy of a
+month not kept yet stays too, so a cut download resumes from it. The three tables are unlogged, the
 record of the months kept among them: a crash that empties the months empties
 that record too, and the next build reads the year again rather than skipping
 months it no longer holds. The panel's
 *Build newest* runs it, and always ends the year at the newest month the host
 has finished: there is no *Build \<date\> copy* (`Keeper.fromCopy`), since the
-only local copy left is a month not kept yet, which *Build newest* resumes
-anyway, and a year ending there would be the wrong year. There is no sample or
+local copies are the current twelve, which *Build newest* reads anyway, and a
+year ending on an older one would be the wrong year. There is no sample or
 trial either, since a month is kept only from its whole file (`Keeper.samples`).
 
 **An earlier year beside the current one** (#2230). The admission review
@@ -876,8 +923,10 @@ There is no trial build: a table is kept from its whole file.
 | `enwiki_category_links` | A kept page filed under a kept category, and whether the page is itself a category |
 | `enwiki_structure_builds` | The builds swapped in: the `dump_builds` row, the dump date, the counts |
 
-The `langlinks` table is listed in the catalog and verified like any dump, and
-kept by no build: Wikidata's sitelinks say the same (ADR-0121 decision 3).
+English Wikipedia's `langlinks` table is not in the catalog: Wikidata's sitelinks say the same
+(ADR-0121 decision 3), and no build read it. Neither is Wikidata's lexemes dump, the small file
+the pipeline was first tried on, whose job a trial on a sample of the entities dump does (§ Trying
+a change on a sample). Migration 227 took their builds and newest-file rows away with them.
 
 ## The items Wikivoyage uses
 
@@ -1168,8 +1217,8 @@ by a build an admin starts.
 
 The interval defaults to 7 days in code (`DEFAULT_EVERY_DAYS`, the planet's
 weekly release). An admin sets 1 to 30 days, or off, under the *Planet* row
-(`PUT /api/admin/dumps/:dump/schedule`, one row in `osm_layer_schedule`; no
-row means the default). The freshness bound a reader holds a miss to stays 8
+(`PUT /api/admin/dumps/:dump/schedule`, its row in `dump_schedules`, which
+every copy's schedule shares; no row means the default). The freshness bound a reader holds a miss to stays 8
 days whatever the interval (`LAYER_FRESH_FOR_DAYS`), so a longer interval
 only sends more misses live.
 
@@ -1177,7 +1226,7 @@ A self-queued update is a queued `dump_builds` row whose request reads
 `{kind: 'keep', scheduled: true, notBefore}`, with `notBefore` 30 minutes
 after it was queued (`QUEUED_LEAD_MS`). The worker does not take a queued row
 before its `notBefore` (`claimNextBuild`), and the panel says when it will
-(*Scheduled update: the dump worker takes it from …*). Whoever pulls the
+(*Queued by the schedule: the dump worker takes it from …*), and a build in the history says whether it was *Queued by the schedule* or *Started by an admin* (`queuedBy`). Whoever pulls the
 machine's checkout therefore sees a self-queued update coming at least 30
 minutes ahead, with `SELECT id, request FROM dump_builds WHERE status IN
 ('queued', 'running')`, and can cancel it from the panel. A pull in the middle
