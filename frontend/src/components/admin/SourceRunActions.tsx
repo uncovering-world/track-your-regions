@@ -54,11 +54,17 @@ interface SourceRunActionsProps {
    * pass's starts wait while a member repairs its pictures.
    */
   held?: boolean;
+  /**
+   * On a pass's card, its sources in the order it runs them: the menu then
+   * offers a preview of each kind alone (#2424).
+   */
+  passSources?: ExperienceSource[];
 }
 
 const START_FAILED: Record<keyof SourceRun['starts'], string> = {
   sync: 'Failed to start sync',
   dryRun: 'Failed to start dry run',
+  dryRunAlone: 'Failed to start the dry run of one kind',
   refresh: 'Failed to start sync without cache',
   askPins: 'Failed to start the run that asks again about pins',
   fixPictures: 'Failed to start the picture repair',
@@ -66,7 +72,9 @@ const START_FAILED: Record<keyof SourceRun['starts'], string> = {
 };
 
 /** The one button's menu: the same run in another mode, each said in a line. */
-function StartSyncMenu({ source, run, disabled }: { source: ExperienceSource; run: SourceRun; disabled: boolean }) {
+function StartSyncMenu({ source, run, disabled, passSources }: {
+  source: ExperienceSource; run: SourceRun; disabled: boolean; passSources?: ExperienceSource[];
+}) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const { starts } = run;
   const pick = (start: () => void) => () => { setAnchor(null); start(); };
@@ -84,6 +92,17 @@ function StartSyncMenu({ source, run, disabled }: { source: ExperienceSource; ru
         <MenuItem onClick={pick(() => starts.dryRun.mutate())}>
           <ListItemText primary="Preview (dry run)" secondary="The same run, with nothing written: what it would change, as a changeset." />
         </MenuItem>
+        {/* On a pass's card, a preview of one of its kinds alone (#2424): the
+            gather is made whole, as for every run of the pass, and only that
+            kind takes its share. A real run always runs every kind. */}
+        {passSources?.map((member) => (
+          <MenuItem key={member.id} onClick={pick(() => starts.dryRunAlone.mutate(member.id))}>
+            <ListItemText
+              primary={`Preview ${member.name} alone`}
+              secondary="The same dry run for this kind only, from the pass's whole gather: the other kinds do not run. Before a rule change merges, preview the whole pass once."
+            />
+          </MenuItem>
+        ))}
         {/* Only where there is a cache to ignore: offering to bypass a cache a
             source does not keep would be the same pretence the cache panel
             refuses when it says "This source caches nothing". */}
@@ -130,7 +149,7 @@ function SecondaryAction({ children, when }: { children: React.ReactNode; when: 
   );
 }
 
-export function SourceRunActions({ source, run, running, runningStatus, offers = 'all', held = false }: SourceRunActionsProps) {
+export function SourceRunActions({ source, run, running, runningStatus, offers = 'all', held = false, passSources }: SourceRunActionsProps) {
   const { starts } = run;
   const [componentSite, setComponentSite] = useState('');
   const [more, setMore] = useState(false);
@@ -188,7 +207,7 @@ export function SourceRunActions({ source, run, running, runningStatus, offers =
         <>
           {syncs && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-              <StartSyncMenu source={source} run={run} disabled={disabled} />
+              <StartSyncMenu source={source} run={run} disabled={disabled} passSources={passSources} />
               <StartSyncCaption source={source} />
             </Box>
           )}

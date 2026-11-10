@@ -247,6 +247,13 @@ export interface StartSyncBody {
   dryRun?: boolean;
   refreshCache?: boolean;
   askAboutPins?: boolean;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     * @items.maximum 9007199254740991
+     * @items.exclusiveMinimum 0
+     */
+  alone?: number[];
 }
 
 /**

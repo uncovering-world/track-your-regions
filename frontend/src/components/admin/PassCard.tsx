@@ -125,7 +125,7 @@ export function PassCard({ sources }: { sources: ExperienceSource[] }) {
       </CardContent>
 
       <CardActions sx={{ flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
-        <SourceRunActions source={first} run={run} running={running} runningStatus={runningStatus} offers="sync" held={held} />
+        <SourceRunActions source={first} run={run} running={running} runningStatus={runningStatus} offers="sync" held={held} passSources={sources} />
       </CardActions>
     </Card>
   );
