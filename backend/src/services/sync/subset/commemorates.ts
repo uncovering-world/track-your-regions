@@ -14,6 +14,7 @@
 import { entitiesOf, termsOf } from './entities.js';
 import { bestStatements, itemsOf } from './values.js';
 import { subsetClassTree } from './kit.js';
+import { CLASSICAL_MYTHOLOGY_CLASSES } from '../publicArt/classes.js';
 import { pool } from '../../../db/index.js';
 import type { SubjectClaims, SubjectKind } from '../places/commemorates.js';
 import type { Span } from '../places/warNarrowing.js';
@@ -72,6 +73,7 @@ export async function subsetSubjectKinds(ids: string[]): Promise<Map<string, Sub
       human: classes.includes(HUMAN),
       event: EVENT_TIMES.some(property => bestStatements(claims[property]).length > 0),
       holy: everyClass.some(cls => deities.has(cls)) || bestStatements(claims.P411).length > 0,
+      classical: classes.some(cls => Object.hasOwn(CLASSICAL_MYTHOLOGY_CLASSES, cls)),
       war: classes.some(cls => wars.has(cls)),
       occurrence: classes.some(cls => occurrences.has(cls)),
       span: spanOf(timeOf(claims.P580) ?? timeOf(claims.P585), timeOf(claims.P582) ?? timeOf(claims.P585)),

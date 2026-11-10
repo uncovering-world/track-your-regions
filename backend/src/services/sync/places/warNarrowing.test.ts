@@ -38,7 +38,7 @@ const DANIEL_LINDLEY = 'Q14864324';
 const HOLOCAUST = 'Q2763';
 const SIEGE_OF_WARSAW = 'Q182240';
 
-const NOT: Omit<SubjectKind, 'label'> = { human: false, event: true, holy: false, war: false, occurrence: true, span: null };
+const NOT: Omit<SubjectKind, 'label'> = { human: false, event: true, holy: false, classical: false, war: false, occurrence: true, span: null };
 const KINDS = new Map<string, SubjectKind>([
   [WW2, { ...NOT, label: 'World War II', war: true, span: { from: 19390901, to: 19450902 } }],
   [WW1, { ...NOT, label: 'World War I', war: true, span: { from: 19140728, to: 19181111 } }],

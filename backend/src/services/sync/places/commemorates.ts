@@ -74,6 +74,7 @@ import {
   type SparqlBinding,
 } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
+import { CLASSICAL_MYTHOLOGY_CLASSES } from '../publicArt/classes.js';
 import { DEITY, OCCURRENCE, spanOf, subsetSubjectClaims, subsetSubjectKinds, WAR } from '../subset/commemorates.js';
 import { articleUrl } from '../subset/values.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
@@ -109,6 +110,8 @@ export interface SubjectKind {
   event: boolean;
   /** A deity (`P31` under Q178885) or a person canonised (`P411`): what a religious work shows. */
   holy: boolean;
+  /** A figure of classical mythology (`CLASSICAL_MYTHOLOGY_CLASSES`): art's subject, and no religion's (#2279). */
+  classical: boolean;
   /** A war (`P31` under Q198), which the place's lead may narrow (`warNarrowing.ts`). */
   war: boolean;
   /** An occurrence (`P31` under Q1190554): what a war may be narrowed to, where an item with dates may be a peninsula. */
@@ -132,6 +135,13 @@ export interface FiledSubjects {
 export interface PlaceReading {
   commemorates: Commemorates | null;
   depicts: Depicts | null;
+  /**
+   * Whether the work is raised to no one and depicts a figure no classical myth
+   * holds, which makes a plain sculpture a religious statue (#2279). A work the
+   * reading names a dedication for is that dedication's first: the Column of
+   * Marcus Aurelius carries Paul the Apostle and is named for the emperor.
+   */
+  religious?: boolean;
 }
 
 /**
@@ -324,7 +334,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
   const out = new Map<string, SubjectKind>();
   for (const batch of chunk(qids, BATCH)) {
     const rows = await sparql(`
-      SELECT ?v ?vLabel ?human ?event ?holy ?war ?occurrence ?start ?end ?at WHERE {
+      SELECT ?v ?vLabel ?human ?event ?holy ?classical ?war ?occurrence ?start ?end ?at WHERE {
         VALUES ?v { ${values(batch)} }
         OPTIONAL { ?v wdt:P31 wd:Q5 . BIND(true AS ?human) }
         OPTIONAL { ?v wdt:P585|wdt:P580|wdt:P582 ?when . BIND(true AS ?event) }
@@ -333,6 +343,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
           UNION { ?v wdt:P411 ?canonised }
           BIND(true AS ?holy)
         }
+        OPTIONAL { VALUES ?myth { ${values(Object.keys(CLASSICAL_MYTHOLOGY_CLASSES))} } ?v wdt:P31 ?myth . BIND(true AS ?classical) }
         OPTIONAL { ?v wdt:P31/wdt:P279* wd:${WAR} . BIND(true AS ?war) }
         OPTIONAL { ?v wdt:P31/wdt:P279* wd:${OCCURRENCE} . BIND(true AS ?occurrence) }
         OPTIONAL { ?v wdt:P580 ?start }
@@ -352,6 +363,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
         human: Boolean(row.human) || Boolean(known?.human),
         event: Boolean(row.event) || Boolean(known?.event),
         holy: Boolean(row.holy) || Boolean(known?.holy),
+        classical: Boolean(row.classical) || Boolean(known?.classical),
         war: Boolean(row.war) || Boolean(known?.war),
         occurrence: Boolean(row.occurrence) || Boolean(known?.occurrence),
         span: known?.span ?? spanOf(times.start ?? times.at, times.end ?? times.at),
@@ -449,7 +461,8 @@ export async function readCommemorates(
   const out = new Map<string, PlaceReading>();
   for (const { qid, label } of places) {
     const reading = readingOfPlace(claims.get(qid) ?? NO_CLAIMS, filed.get(qid) ?? NONE, known, articles, label);
-    if (reading.commemorates || reading.depicts) out.set(qid, reading);
+    const religious = !reading.commemorates && Boolean(reading.depicts?.subjects.some((subject) => !known.get(subject.item)?.classical));
+    if (reading.commemorates || reading.depicts) out.set(qid, religious ? { ...reading, religious } : reading);
   }
   await narrowWarReadings(places, out, claims, { kinds: known, articles }, wiki, (items) => fetchSubjectKinds(sparql, items));
   return out;
