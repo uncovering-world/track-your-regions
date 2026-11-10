@@ -1047,9 +1047,10 @@ command line.
    gone fails the build.
 4. **The street lines** (`layerStreets.ts`, ADR-0194). The build reads
    Squares & streets' candidates from the local Wikidata subset
-   (`streetItems`). These are the items of the kind's classes at its pool's
-   floor, asked with the gather's own pool question (`kindClasses`,
-   `subsetIdsOfClasses`), each with its point. Each also carries every name
+   (`streetItems`). These are the candidates its surroundings tier judges:
+   the items of the kind's classes (`kindClasses`) with a point and at least
+   the tier's floor of Wikipedia editions (`SURROUNDINGS_CUT.minLanguages`,
+   counted by `subsetWikipediaEditions`; ADR-0192 decision 1a). Each also carries every name
    the subset holds for it (`subsetNamesOf`): its labels in every kept
    language, and the titles of its Wikipedia articles, which give the local
    name no kept label may hold. None are read while no subset is built.

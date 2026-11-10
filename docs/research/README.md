@@ -36,3 +36,4 @@ and says so in its first lines.
 | [2026-11-03 — A guide for a bridge in the surroundings tier](2026-11-03-a-guide-for-a-bridge-in-the-surroundings-tier.md) | #2324 |
 | [2026-11-03 — A proposed kind filled by its declaration alone: Parks & gardens as a dry run](2026-11-03-a-proposed-kind-filled-by-its-declaration.md) | #2254, #2317, #2318, #2319, #2320, #2321 |
 | [2026-11-10 — How established guides write for screens, and how this project's screens compare](2026-11-10-how-established-guides-write-for-screens.md) | #2432, #2433, #1506 |
+| [2026-11-10 — A walked street read from the venues around it](2026-11-10-a-walked-street-read-from-the-venues-around-it.md) | #2311, ADR-0192 |

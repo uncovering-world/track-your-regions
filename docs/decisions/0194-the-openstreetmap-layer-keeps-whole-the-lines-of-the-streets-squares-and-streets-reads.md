@@ -1,7 +1,7 @@
 # ADR-0194: The OpenStreetMap layer keeps whole the lines of the streets Squares & streets reads
 
 **Date:** 2026-11-10
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0192](0192-a-walked-street-is-read-from-the-cafes-restaurants-and-bars-around-it.md)
 **Issue:** [#2311](https://github.com/uncovering-world/track-your-regions/issues/2311)
 **Narrows:** [ADR-0134](0134-openstreetmap-is-read-from-a-layer-cut-from-the-planet-and-a-miss-the-layer-cannot-vouch-for-is-asked-live.md) decision 2 (the objects the layer keeps) and [ADR-0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md) decision 1 (the objects kept whole)
 

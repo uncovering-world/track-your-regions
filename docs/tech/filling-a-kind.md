@@ -211,13 +211,23 @@ OpenStreetMap's `tourism=museum` objects as the enumeration. For Wikidata the un
   places or more; or its readers reach one and a half times the median of its 10 best neighbours
   by readers, among 25 places or more (ADR-0175 decision 3, ADR-0181, read from the register,
   § 11);
+- a kind that reads the venues around its places has a fourth test (Squares & streets alone,
+  [ADR-0192](../decisions/0192-a-walked-street-is-read-from-the-cafes-restaurants-and-bars-around-it.md)):
+  the OpenStreetMap layer's cafés, restaurants and bars within 200 m of its point reach half the
+  median of the 10 liveliest places of its kind within 150 km, among 25 places of its kind or more,
+  in a plain circle with no density ratio (`places/surroundingsVenues.ts`); a street whose lines the
+  layer keeps is read in venues per 100 m along them, against the streets read so, unless fewer than
+  25 streets within 150 km are read so, and an artery enters by no venue (ADR-0192 decision 1a,
+  ADR-0194); where the layer in place
+  was cut before it kept them (ADR-0191) the test is not read, nothing enters by it, and a place the
+  tier holds by it keeps its place;
 - a tunnel, a dam, a lock or a bridge enters, and stays, only while a Wikivoyage edition uses it, a
   bridge also while a heritage designation holds (#2324);
 - a place the tier holds stays while it keeps two editions and 0.8 of the floor (2,400 on that year)
   and passes one test,
-  the readers test read at 0.8 of its share, 1.2 times the reference (ADR-0175 decision 2), and the
+  the readers test read at 0.8 of its share, 1.2 times the reference (ADR-0175 decision 2), the
   editions test at 0.8 of the reference, since a pool that gains a class moves it with nothing changed
-  about the place (ADR-0187);
+  about the place (ADR-0187), and the venue test at 0.8 of its share;
 - where fewer than 10 places carry the signal, the reference is the median of those that do;
 - the place pass reads it after the world tier has decided, for the six place kinds of § 11, from
   the local subset (`places/surroundingsTier.ts`, `SURROUNDINGS_CUT` in `places/surroundingsCut.ts`;
