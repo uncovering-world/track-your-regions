@@ -51,6 +51,12 @@ export interface WorldMemory {
   bars: { readers: number; guidedReaders: number; year: string; logId: number } | null;
   readers: ReadonlyMap<string, number>;
   guided: ReadonlyMap<string, boolean>;
+  /**
+   * The places that last stood in the surroundings tier by the venue test
+   * (`standsByVenues` of the membership's recorded reason, ADR-0192): what a
+   * run that reads no venue keeps; none where the source keeps none.
+   */
+  venued?: ReadonlySet<string>;
 }
 
 /**

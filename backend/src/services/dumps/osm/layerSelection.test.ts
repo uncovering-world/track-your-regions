@@ -25,7 +25,7 @@ vi.mock('../../wikivoyageExtract/pageCopy.js', async (importOriginal) => {
   };
 });
 
-const { drawnFile, drawnItems, getidOf, LAYER_DRAWN, LAYER_SELECTION, layerDraws, pinnedObjects, selectionFile } = await import('./layerSelection.js');
+const { drawnFile, drawnItems, getidOf, LAYER_DRAWN, LAYER_SELECTION, layerDraws, pinnedObjects, selectionFile, selectsVenues } = await import('./layerSelection.js');
 
 describe('the layer selection', () => {
   it('writes one osmium expression a line, for nodes, ways and relations', () => {
@@ -37,6 +37,18 @@ describe('the layer selection', () => {
     expect(new Set(lines.map(line => line.split('=')[0])).size).toBe(lines.length);
     expect(lines).toContain('nwr/boundary=protected_area,national_park');
     expect(lines.every(line => /^nwr\/[a-z_:]+(=[a-z_,]+)?$/.test(line))).toBe(true);
+  });
+
+  it('says whether a build kept every food-and-drink venue, by the selection it recorded (ADR-0191 decision 3)', () => {
+    expect(selectsVenues(LAYER_SELECTION)).toBe(true);
+    // A build cut before ADR-0191 recorded no selection, and kept places of worship alone under amenity.
+    expect(selectsVenues(null)).toBe(false);
+    expect(selectsVenues(['wikidata', 'amenity=place_of_worship', 'tourism'])).toBe(false);
+    // One venue value short is short: a reader would count a street's restaurants and miss its cafés.
+    expect(selectsVenues(['amenity=place_of_worship,restaurant,bar,pub,fast_food,ice_cream,biergarten'])).toBe(false);
+    // The key whole keeps every value.
+    expect(selectsVenues(['amenity'])).toBe(true);
+    expect(selectsVenues(['wikidata'])).toBe(false);
   });
 
   it('selects no object by an address alone', () => {

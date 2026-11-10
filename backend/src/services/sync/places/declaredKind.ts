@@ -76,6 +76,10 @@ export interface PlaceKindDeclaration<Type extends string> {
   tag: string;
   /** Its types in the order they are read (`typeValues` of its vocabulary). */
   types: readonly Type[];
+  /** Whether its surroundings tier reads the cafés, restaurants and bars around a place (`SurroundingsKind.venues`, ADR-0192). */
+  venues?: boolean;
+  /** The types whose places that test reads along their lines where the layer keeps them, not at their points (`SurroundingsKind.venueLineTypes`, ADR-0194). */
+  venueLines?: readonly Type[];
   /** The type of a place none of its types' classes name: a bare thoroughfare is a street. */
   fallback: Type;
   /** The roots the candidates are asked by, in fame bands on the live service. */
@@ -258,6 +262,8 @@ export function declaredKind<Type extends WikidataLandmark['type']>(decl: PlaceK
     classesOf: (trees) => trees.place,
     typeOf,
     verdict: (entity, share) => verdict({ classes: share.facts.get(entity.qid)?.classes ?? [], onEarth: entity.onEarth, lat: entity.lat, lon: entity.lon }, share.trees),
+    ...(decl.venues ? { venues: true } : {}),
+    ...(decl.venueLines ? { venueLineTypes: decl.venueLines } : {}),
     logPrefix: decl.logPrefix,
   };
   const classifier = {

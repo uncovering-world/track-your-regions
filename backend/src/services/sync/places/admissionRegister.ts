@@ -51,7 +51,14 @@ const bridgesMeasured = <T>(value: T, derivation: string, section: string): Para
   value, derivation, evidence: `${BRIDGES_REPORT} § ${section}`, date: '2026-11-03',
 });
 
-const RANK_RECORD = 'docs/decisions/0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md';
+const STREETS_REPORT = 'docs/research/2026-11-10-a-walked-street-read-from-the-venues-around-it.md';
+
+/** A value the streets measurement of #2311 derived, over Berlin, Istanbul and Kazan (ADR-0192). */
+const streetsMeasured = <T>(value: T, derivation: string, section: string): Parameter<T> => ({
+  value, derivation, evidence: `${STREETS_REPORT} § ${section}`, date: '2026-11-10',
+});
+
+const RANK_RECORD ='docs/decisions/0184-a-readers-floor-is-the-readers-of-a-fixed-rank-among-the-years-items.md';
 
 /** A readers' floor restated as a rank of the year's items (ADR-0184): the rank, and the count it yielded on the year it was derived on. */
 export interface ReadersRank { rank: number; yieldedThen: number }
@@ -100,7 +107,8 @@ export const WORLD_REGISTER = {
  * neighbourhood and shares narrowed by ADR-0181), read by `SURROUNDINGS_CUT`
  * in `surroundingsCut.ts`: the neighbourhood and its reference, the three
  * tests and their group floors, the languages and readers' floor, the types
- * that need a guide, and the share a held place stays at.
+ * that need a guide, the share a held place stays at, and the venue test of a
+ * kind that reads the venues around its places (ADR-0192).
  */
 export const SURROUNDINGS_REGISTER = {
   neighbours: derived('all' as const,
@@ -158,6 +166,24 @@ export const SURROUNDINGS_REGISTER = {
     evidence: 'docs/decisions/0187-a-held-surroundings-tier-place-stays-at-0-8-of-its-editions-reference.md § Measurement',
     date: '2026-11-08',
   } satisfies Parameter<number>,
+  venueRadiusM: streetsMeasured(200,
+    'A street\'s cafés, restaurants and bars are counted within 200 m of its point: read so, they rank the walked streets as the count along its whole line does, Boxhagener Platz, Bergmannstraße and Kastanienallee among Berlin\'s 32 liveliest of 9,031 candidates and Bauman Street second of 680 in Kazan, with no line to match by name; it is the reading of a square and of a street with no line long enough (decision 1a).',
+    'The signal'),
+  venueLineM: streetsMeasured(25,
+    'A street read along its line counts the cafés, restaurants and bars within 25 m of it, the width of a street and its frontage, per 100 m of line: the measurement counted along the lines of Berlin\'s, Istanbul\'s and Kazan\'s streets so, and the point count within 200 m stays the reading of a square and of a street with no line long enough.',
+    'The signal'),
+  venueLineMinM: {
+    value: 50,
+    derivation: 'A street is read along its line only when its lines run 50 m or more: of the 10,885 lined streets the dry run of 2026-11-11 read, the 247 shorter ones read up to 150 venues per 100 m, a band of 25 m around a stub being mostly its ends, where the 99th percentile of the longer ones is 13; a shorter line is read at its point.',
+    evidence: 'docs/decisions/0192-a-walked-street-is-read-from-the-cafes-restaurants-and-bars-around-it.md § Decision 1a',
+    date: '2026-11-11',
+  } satisfies Parameter<number>,
+  venueShare: streetsMeasured(0.5,
+    'The venue test passes at half the median of the ten liveliest places of the kind within the radius: in Berlin, Istanbul and Kazan it lets in 39, 10 and 7 places of two editions or more, Bauman Street and the walked streets fame misses among them, and neither street a curator refused in Berlin (Majakowskiring, Schloßplatz); a third lets in 106 in Berlin, a quarter 152.',
+    'The share'),
+  venueGroupFloor: streetsMeasured(25,
+    'The venue test reads an area of 25 places of the kind or more, as the readers and editions tests read 25 places.',
+    'The share'),
 } as const;
 
 const ARCHAEOLOGY_REPORT = 'docs/research/2026-11-02-archaeologys-sites-in-the-admission-frame.md';

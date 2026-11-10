@@ -25,6 +25,20 @@
  * neighbours an editions reference is read off move whenever the pool gains a
  * class, with nothing changed about the place itself (ADR-0187).
  *
+ * A kind that reads the venues around its places (Squares & streets, ADR-0192)
+ * has a fourth test: the food-and-drink venues of the OpenStreetMap layer
+ * within the venue radius of the place's point reach the venue share of the
+ * median of the best counts among the kind's places within the radius, in an
+ * area of the venue test's floor. A plain circle, with no density ratio
+ * (`venuesAround`). A street whose lines the layer keeps is measured along
+ * them instead, in venues per 100 m, against the streets around it measured
+ * the same way, where enough of them are (decision 1a, `thinlyLined`). An
+ * artery, a street whose every line is a road for through traffic, is let in
+ * by nothing the venue test reads (`SurroundingsCandidate.artery`). Where the
+ * layer in place keeps no venue (a build cut before ADR-0191) the test is not
+ * read: nothing enters by it, and a place the tier holds that last stood by it
+ * keeps its place (`standsByVenues`).
+ *
  * Where no Wikivoyage usage build is in place the guides' test is not read,
  * and never read as no guide (ADR-0175 decision 6): nothing new enters by a
  * guide, and a held place that passes no other test keeps its place unless no
@@ -91,6 +105,16 @@ export interface SurroundingsCut {
   stayReadersShare: number;
   /** The share of the editions test at which a place the tier holds stays. */
   stayEditionsShare: number;
+  /** How far from a place's point its food-and-drink venues are counted, in metres (ADR-0192). */
+  venueRadiusM: number;
+  /** How far from a street's line a venue is on it, in metres: the width of a street and its frontage (ADR-0192 decision 1a). */
+  venueLineM: number;
+  /** The shortest line a street is measured along, in metres; a shorter one is read at its point (ADR-0192 decision 1a). */
+  venueLineMinM: number;
+  /** The share of the venues reference a place's own venues must reach. */
+  venueShare: number;
+  /** The smallest number of the kind's places within the radius the venue test reads. */
+  venueGroupFloor: number;
 }
 
 export const SURROUNDINGS_CUT: SurroundingsCut = {
@@ -113,6 +137,11 @@ export const SURROUNDINGS_CUT: SurroundingsCut = {
   heritageForTypes: SURROUNDINGS_REGISTER.heritageForTypes.value,
   stayReadersShare: SURROUNDINGS_REGISTER.stayReadersShare.value,
   stayEditionsShare: SURROUNDINGS_REGISTER.stayEditionsShare.value,
+  venueRadiusM: SURROUNDINGS_REGISTER.venueRadiusM.value,
+  venueLineM: SURROUNDINGS_REGISTER.venueLineM.value,
+  venueLineMinM: SURROUNDINGS_REGISTER.venueLineMinM.value,
+  venueShare: SURROUNDINGS_REGISTER.venueShare.value,
+  venueGroupFloor: SURROUNDINGS_REGISTER.venueGroupFloor.value,
 };
 
 /** The cut with the readers' floor the pool's year yields, where the pool read one (ADR-0184). */
@@ -134,6 +163,55 @@ export interface SurroundingsCandidate {
    * place enters by a guide the run did not read.
    */
   guidedAsLastRead?: boolean | null;
+  /**
+   * The food-and-drink venues within the venue radius of its point, for a kind
+   * that reads them (ADR-0192); null where the layer in place keeps no venue,
+   * so none is read this run; absent for a kind that reads none.
+   */
+  venues?: number | null;
+  /**
+   * Where `venues` is read along the place's lines rather than at its point
+   * (ADR-0194): in venues per 100 m, over `metres` of line.
+   */
+  venuesAlong?: { metres: number };
+  /**
+   * Whether every one of the street's lines in the layer is an artery, which
+   * the venue test lets in by nothing (ADR-0194), however its venues are read.
+   */
+  artery?: boolean;
+  /**
+   * Where no venue is read this run, whether a place the tier holds last stood
+   * by the venue test (`WorldMemory.venued`): such a place keeps its place, and
+   * no other is kept for a test the run could not read.
+   */
+  venuedAsLastRead?: boolean;
+}
+
+/**
+ * Whether a place's recorded reason says it stood in the surroundings tier by
+ * the venue test (ADR-0192): it entered or stayed by the venues around it, or
+ * was kept while the venue test was unread. The reason is the cut's own note
+ * (`surroundingsVerdict`), so its words are read here and nowhere else.
+ */
+export function standsByVenues(reason: string | null): boolean {
+  if (reason === null) return false;
+  // A kind's rule may put its own note before the cut's (`surroundingsLandmark`).
+  if (reason.includes(VENUES_UNREAD_NOTE)) return true;
+  const doors = /(?:^|\s)(?:In|Stays in) the surroundings tier ([^:]*):/.exec(reason)?.[1] ?? '';
+  return doors.split(', the readers test read at')[0].includes(`by ${VENUES_DOOR}`);
+}
+
+/** The venue test's door, as a note names it. */
+const VENUES_DOOR = 'the venues around it';
+/** How a note opens where a held place was kept for the venue test the run could not read. */
+const VENUES_UNREAD_NOTE = 'Kept in the surroundings tier, the venue test unread';
+
+/** A place's own kind's places within the radius, for the venue test (ADR-0192): how many, and their best venue counts, highest first. */
+export interface VenueSurroundings {
+  groupSize: number;
+  topVenues: readonly number[];
+  /** Whether the place and its group are measured along their lines, in venues per 100 m (ADR-0194), rather than around their points. */
+  along?: boolean;
 }
 
 /** A candidate's neighbours, of its own density within the radius: the group's size and the best places' signals, highest first. */
@@ -145,13 +223,17 @@ export interface Surroundings {
   topGuideEditions: readonly number[];
   /** The `best` highest readers a year among the neighbours, over the places read at all. */
   topReaders: readonly number[];
+  /** The kind's places around it, for a kind that reads venues and a layer that keeps them (ADR-0192). */
+  venues?: VenueSurroundings;
 }
 
-/** The three references off the best within the radius; null where no place around carries the signal. */
+/** The references off the best within the radius; null where no place around carries the signal. */
 export interface SurroundingsReferences {
   editions: number | null;
   guide: number | null;
   readers: number | null;
+  /** Absent for a kind that reads no venues; null where none is read or no place of the kind around has one. */
+  venues?: number | null;
 }
 
 export type SurroundingsVerdict =
@@ -168,10 +250,10 @@ export function medianOf(values: readonly number[]): number | null {
 
 const fmt = (n: number) => n.toLocaleString('en', { maximumFractionDigits: 1 });
 
-/** The tests a candidate passes against its references, the editions and readers tests read at the shares given. */
+/** The tests a candidate passes against its references, the editions, readers and venue tests read at the shares given. */
 function doorsOf(
   candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut,
-  { editionsShare, readersShare }: { editionsShare: number; readersShare: number },
+  { editionsShare, readersShare, venueShare }: { editionsShare: number; readersShare: number; venueShare: number },
 ): string[] {
   const doors: string[] = [];
   if (around.groupSize >= cut.editionsGroupFloor && reference.editions !== null
@@ -180,6 +262,10 @@ function doorsOf(
     && candidate.readers >= readersShare * reference.readers) doors.push('its readers');
   if (around.groupSize >= cut.guideGroupFloor && reference.guide !== null && candidate.guideEditions !== null
     && candidate.guideEditions > 0 && candidate.guideEditions >= cut.guideShare * reference.guide) doors.push('the guides');
+  // An artery is driven through, and the venues along it say nothing of a street walked for its life (ADR-0194).
+  if ((around.venues?.groupSize ?? 0) >= cut.venueGroupFloor && typeof reference.venues === 'number' && typeof candidate.venues === 'number'
+    && candidate.artery !== true
+    && candidate.venues > 0 && candidate.venues >= venueShare * reference.venues) doors.push(VENUES_DOOR);
   return doors;
 }
 
@@ -208,39 +294,82 @@ export function surroundingsVerdict(
       + (held ? ' of a place it holds' : '') };
   }
   const smallest = Math.min(cut.guideGroupFloor, cut.editionsGroupFloor, cut.readersGroupFloor);
-  if (around.groupSize < smallest) {
+  if (around.groupSize < smallest && !venuesDecide(candidate, around, cut, held)) {
     return { in: false, reason: `${around.groupSize} places of its density within ${cut.radiusKm} km, under the floor of ${smallest}: too few to measure against` };
   }
   const reference = referencesOf(candidate, around, cut);
   const within = surroundingsInWords(candidate, around, reference, cut, held);
-  const enters = doorsOf(candidate, around, reference, cut, { editionsShare: cut.editionsShare, readersShare: cut.readersShare });
+  const enters = doorsOf(candidate, around, reference, cut, { editionsShare: cut.editionsShare, readersShare: cut.readersShare, venueShare: cut.venueShare });
   // A held place under the new-place floor is kept by the stay alone, and its note says so.
   const underFloor = candidate.readers < cut.minReaders;
   if (enters.length && !underFloor) return { in: true, reference, note: `In the surroundings tier ${doorsInWords(enters)}: ${within} (ADR-0171, ADR-0175, ADR-0181)` };
-  const stay = { editionsShare: cut.stayEditionsShare * cut.editionsShare, readersShare: cut.stayReadersShare * cut.readersShare };
-  const stays = held ? doorsOf(candidate, around, reference, cut, stay) : [];
+  return (held ? heldVerdict(candidate, around, reference, cut, within) : null)
+    ?? { in: false, reason: `below the surroundings tier's cut: ${within}` };
+}
+
+/**
+ * Whether the venue test can decide a place too few neighbours of its own
+ * density measure: it reads an area of its own, the kind's places within the
+ * radius (ADR-0192), and a held place that last stood by it is kept while the
+ * run reads no venue. The other tests read their own group floors.
+ */
+function venuesDecide(candidate: SurroundingsCandidate, around: Surroundings, cut: SurroundingsCut, held: boolean): boolean {
+  if (candidate.venues === undefined) return false;
+  if (candidate.venues === null) return held && candidate.venuedAsLastRead === true;
+  return (around.venues?.groupSize ?? 0) >= cut.venueGroupFloor;
+}
+
+/**
+ * Whether a place the tier holds that enters by no test keeps its place: by a
+ * test read at its stay share, or because the test it may stand by is one the
+ * run could not read; null where it falls.
+ */
+function heldVerdict(
+  candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut, within: string,
+): SurroundingsVerdict | null {
+  const stay = {
+    editionsShare: cut.stayEditionsShare * cut.editionsShare, readersShare: cut.stayReadersShare * cut.readersShare,
+    venueShare: cut.stayEditionsShare * cut.venueShare,
+  };
+  const stays = doorsOf(candidate, around, reference, cut, stay);
   if (stays.length) {
+    const venueStay = candidate.venues === undefined ? '' : ` and the venue test at ${fmt(stay.venueShare)}`;
     return { in: true, reference, note: `Stays in the surroundings tier ${doorsInWords(stays)}, the readers test read at `
-      + `${fmt(stay.readersShare)} times the reference and the editions test at ${fmt(stay.editionsShare)} for a place it holds: `
+      + `${fmt(stay.readersShare)} times the reference and the editions test at ${fmt(stay.editionsShare)}${venueStay} for a place it holds: `
       + `${within} (ADR-0175, ADR-0181)` };
+  }
+  // The venue test is the one the run could not read: a held place that last
+  // stood by it keeps its place until a layer that keeps the venues is in;
+  // one that stood by another test falls by the tests the run did read. Read
+  // before the guides' keep: the note is the venue test's only memory, while
+  // the guides' is kept apart (`membership_fame`), so a street kept by its
+  // guide's note would lose its venue mark at the next run.
+  if (candidate.venues === null && candidate.venuedAsLastRead === true) {
+    return { in: true, reference, note: `${VENUES_UNREAD_NOTE}: ${within} (ADR-0175 decision 6, ADR-0192)` };
   }
   // The guides' test is the one the run could not read: a held place a guide
   // used when last read, or that no build was ever read for, keeps its place
   // where the test reads its area; one no guide used when last read falls.
-  if (held && candidate.guideEditions === null && candidate.guidedAsLastRead !== false && around.groupSize >= cut.guideGroupFloor) {
+  if (candidate.guideEditions === null && candidate.guidedAsLastRead !== false && around.groupSize >= cut.guideGroupFloor) {
     return { in: true, reference, note: `Kept in the surroundings tier, the guides' test unread: ${within} (ADR-0175 decision 6, ADR-0181)` };
   }
-  return { in: false, reason: `below the surroundings tier's cut: ${within}` };
+  return null;
 }
 
-/** The three references off the best of the neighbours; no guide reference where no guide's use is read, the neighbours' as the candidate's. */
+/**
+ * The references off the best of the neighbours: no guide reference where no
+ * guide's use is read, the neighbours' as the candidate's, and, for a kind that
+ * reads venues, a venues reference off the best of the kind's places around.
+ */
 function referencesOf(candidate: SurroundingsCandidate, around: Surroundings, cut: SurroundingsCut): SurroundingsReferences {
   const best = (values: readonly number[]) => medianOf(values.filter((n) => n > 0).slice(0, cut.best));
-  return {
+  const references: SurroundingsReferences = {
     editions: best(around.topEditions),
     guide: candidate.guideEditions === null ? null : best(around.topGuideEditions),
     readers: best(around.topReaders),
   };
+  if (candidate.venues === undefined) return references;
+  return { ...references, venues: candidate.venues === null || !around.venues ? null : best(around.venues.topVenues) };
 }
 
 /** The candidate against its references in words, for the note and the reason. */
@@ -255,7 +384,23 @@ function surroundingsInWords(
     : `the best are used by ${fmt(reference.guide)} Wikivoyage editions at the median, this place by ${fmt(candidate.guideEditions ?? 0)}`;
   if (candidate.guideEditions === null) guide = `no Wikivoyage usage is built, so no guide's use is read${held ? guidesAsLastRead(candidate.guidedAsLastRead) : ''}`;
   return `within ${cut.radiusKm} km, ${fmt(around.groupSize)} places of its density: ${editions}, this place in ${fmt(candidate.editions)}; `
-    + `${readers}, this place ${fmt(candidate.readers)}; ${guide}`;
+    + `${readers}, this place ${fmt(candidate.readers)}; ${guide}${venuesInWords(candidate, around, reference, cut)}`;
+}
+
+/** The venue test's clause, for a kind that reads venues (ADR-0192): what lies around the place, and around the liveliest of its kind. */
+function venuesInWords(candidate: SurroundingsCandidate, around: Surroundings, reference: SurroundingsReferences, cut: SurroundingsCut): string {
+  if (candidate.venues === undefined) return '';
+  if (candidate.venues === null) return '; the OpenStreetMap layer in place keeps no café, restaurant or bar, so no venue is read (ADR-0191)';
+  const along = candidate.venuesAlong;
+  const artery = candidate.artery === true ? ', an artery the venue test lets in by nothing' : '';
+  const own = along
+    ? `${fmt(candidate.venues)} cafés, restaurants and bars per 100 m along its ${fmt(along.metres)} m of street${artery}`
+    : `${fmt(candidate.venues)} cafés, restaurants and bars within ${fmt(cut.venueRadiusM)} m of this place${artery}`;
+  const group = along ? 'streets of its kind read along their lines' : 'places of its kind';
+  const anyOne = along ? 'any street of its kind read along its line' : 'any place of its kind';
+  if (typeof reference.venues !== 'number') return `; ${own}, and none around ${anyOne} within ${cut.radiusKm} km`;
+  return `; ${own}, the ${cut.best} liveliest of the ${fmt(around.venues?.groupSize ?? 0)} ${group} within ${cut.radiusKm} km `
+    + `${fmt(reference.venues)} at the median`;
 }
 
 /** A held place's guide mark as last read, as the clause the cut's words close on where no guide's use is read this run. */

@@ -35,7 +35,9 @@ import { NOT_WIKIPEDIA } from '../subset/kit.js';
 import { yearCut, type SurroundingsCut, type Surroundings } from './surroundingsCut.js';
 import { yearlyReadersAtRank, yearlyReadersOfMany } from './candidates.js';
 import { latestUsage } from '../../dumps/wikivoyage/usageTables.js';
+import { layerState } from '../../dumps/osm/layerTables.js';
 import { densityNear, densityOf, SphereIndex, surroundingsNear, surroundingsOf } from './surroundingsNeighbourhood.js';
+import { countVenues, layerSwapped, streetLines, thinlyLined, venueAreas, venuesAlong, venueLayer, type PoolVenues } from './surroundingsVenues.js';
 
 /** An item as the pool holds it. */
 export interface SurroundingsPoolRow {
@@ -71,6 +73,10 @@ export interface SurroundingsGroup {
 export interface PoolMembers {
   classes: ReadonlySet<string>;
   items?: ReadonlySet<string>;
+  /** The classes of the kinds that read the venues around their places (ADR-0192): the places of these the pool counts venues around. */
+  venues?: ReadonlySet<string>;
+  /** Whether a place of these classes is read along its line where the layer keeps one (ADR-0194). */
+  venueLine?: (classes: readonly string[]) => boolean;
 }
 
 /** The pass's surroundings pool, read once: the rows, and each group's surroundings of every row with the cut's languages. */
@@ -94,6 +100,8 @@ export interface SurroundingsPool {
    * the tier reads its held places' guides as last read (ADR-0175 decision 6).
    */
   unreadGuides?: string;
+  /** The venues around the places of `PoolMembers.venues`, or why none were read; absent where no kind reads them (ADR-0192). */
+  venues?: PoolVenues;
 }
 
 const TABLE = 'surroundings_pool';
@@ -192,7 +200,8 @@ export async function readSurroundingsPool(
       }
       around.set(group.key, surroundings);
     }
-    return { rows, around, minReaders, seconds: Math.round((Date.now() - started) / 1000), ...guides };
+    const venues = members.venues?.size ? { venues: await readPoolVenues(client, list, members, yearly, run) } : {};
+    return { rows, around, minReaders, seconds: Math.round((Date.now() - started) / 1000), ...guides, ...venues };
   } finally {
     await client.query(`DROP TABLE IF EXISTS ${TABLE}`).catch(() => undefined);
     client.release();
@@ -254,6 +263,50 @@ async function readPoolReaders(
     [qids, qids.map((qid) => year.readers.get(qid))],
   );
   return year.minReaders;
+}
+
+/**
+ * The venues around the pool's places of the classes that read them, every
+ * one of them whatever its editions, and the area of each candidate the cut
+ * measures: those with the cut's languages and the readers a held place
+ * stays at (ADR-0192). Not read where the layer in place keeps no venue.
+ */
+async function readPoolVenues(
+  client: PoolClient, list: readonly SurroundingsPoolRow[], members: PoolMembers, cut: SurroundingsCut, run?: SurroundingsPoolRun,
+): Promise<PoolVenues> {
+  const readable = venueLayer(await layerState());
+  if (readable.unread !== undefined) return { unread: readable.unread };
+  const { layer } = readable;
+  const classes = members.venues ?? new Set<string>();
+  const places = list.filter((row) => row.classes.some((c) => classes.has(c)));
+  const counts = await countVenues(client, TABLE, places.map((row) => row.qid), cut.venueRadiusM, run);
+  // A street is read along its line where the layer keeps one long enough, in venues per 100 m (ADR-0194); a square, and a street with none, at its point.
+  const lined = places.filter((row) => members.venueLine?.(row.classes) === true).map((row) => row.qid);
+  const along = await streetLines(client, layer, lined, cut.venueLineM, run);
+  // The counts and the lines are read in several statements: a layer swapped in between them would mix two maps.
+  const swapped = layerSwapped(layer, await layerState());
+  if (swapped) return { unread: swapped };
+  const measures = new Map(counts);
+  const alongIds = new Set<string>();
+  for (const [qid, line] of along) {
+    const perHundred = venuesAlong(line, cut.venueLineMinM);
+    if (perHundred === null) continue;
+    measures.set(qid, perHundred);
+    alongIds.add(qid);
+  }
+  const arteries = new Set([...along].filter(([qid, line]) => alongIds.has(qid) && line.artery).map(([qid]) => qid));
+  // Where too few streets around are read along their lines to make a reference, a street is read at its point; an artery stays one.
+  const slice = slicer();
+  for (const qid of await thinlyLined(places, alongIds, cut, slice)) {
+    alongIds.delete(qid);
+    measures.set(qid, counts.get(qid) ?? 0);
+  }
+  const floor = cut.stayReadersShare * cut.minReaders;
+  const candidates = new Set(places.filter((row) => row.editions >= cut.minLanguages && row.readers >= floor).map((row) => row.qid));
+  return {
+    counts: measures, along: new Map([...along].filter(([qid]) => alongIds.has(qid))), arteries,
+    around: await venueAreas(places, measures, candidates, cut, { ...run, slice }, alongIds),
+  };
 }
 
 /** Lets the run's other work through between two batches of the pool's arithmetic, which holds the event loop while it runs. */

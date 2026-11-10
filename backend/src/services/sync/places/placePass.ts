@@ -153,7 +153,11 @@ async function surroundingsPoolOf(gathered: GatheredPlaces, sparql: SparqlFn, ru
   // What a kind measures beside its classes joins the pool too: the monuments
   // English Wikipedia files and Wikidata types as something else (#2171).
   const items = new Set(readers.flatMap((reader) => [...reader.named(gathered)]));
-  return readSurroundingsPool({ classes: new Set([...gathered.classes, ...museums]), items }, SURROUNDINGS_CUT, groups, run);
+  // The kinds that read the venues around their places have them counted (ADR-0192).
+  const venues = new Set(readers.flatMap((reader) => [...reader.venueClasses(gathered)]));
+  const lines = readers.map((reader) => reader.venueLine(gathered));
+  const venueLine = (classes: readonly string[]) => lines.some((line) => line(classes));
+  return readSurroundingsPool({ classes: new Set([...gathered.classes, ...museums]), items, venues, venueLine }, SURROUNDINGS_CUT, groups, run);
 }
 
 /** Every row a set of sources' world tier admits before the run: the surroundings tier's rows are its own step's (#2178). */

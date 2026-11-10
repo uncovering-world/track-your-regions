@@ -104,6 +104,13 @@ export const SQUARES_DECLARATION: PlaceKindDeclaration<SquareType> = {
   logPrefix: '[Squares]',
   tag: 'square',
   types: SQUARE_TYPES,
+  // A street a traveller walks is lined with cafés, restaurants and bars, where a
+  // through street of the same fame is not (ADR-0192): Bergmannstraße and
+  // Bauman Street, which fame misses, are among their cities' liveliest.
+  venues: true,
+  // A street, a promenade and a stairway are read along their lines; a square,
+  // where one stands among the venues on it, at its point (ADR-0194).
+  venueLines: ['street', 'promenade', 'stairway'],
   fallback: 'street',
   pool: SQUARE_ROOTS,
   place: { roots: Object.values(TYPE_ROOTS).flat(), classes: [THOROUGHFARE, DESCENT] },

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { medianOf, needsAGuide, surroundingsVerdict, SURROUNDINGS_CUT, yearCut, type Surroundings } from './surroundingsCut.js';
+import { medianOf, needsAGuide, standsByVenues, surroundingsVerdict, SURROUNDINGS_CUT, yearCut, type Surroundings } from './surroundingsCut.js';
 
 // A schematic of a Kyoto temple's neighbours: editions 60, 55, 50, 44, 40, 36, 33, 30, 28, 26 (median 38);
 // guide use 8, 7, 6, 6, 5, 5, 4, 4, 3, 3 (median 5, a quarter of it 1.25); readers median 300,000.
@@ -122,6 +122,7 @@ describe('surroundingsVerdict', () => {
       enabled: true, neighbours: 'all', radiusKm: 150, densityNeighbours: 20, densityRatio: 4, best: 10,
       guideShare: 0.25, editionsShare: 1, readersShare: 1.5, guideGroupFloor: 5, editionsGroupFloor: 25, readersGroupFloor: 25,
       minLanguages: 2, minReaders: 3_000, minReadersRank: 889_568, guideForTypes: ['tunnel', 'dam', 'lock', 'bridge'], heritageForTypes: ['bridge'], stayReadersShare: 0.8, stayEditionsShare: 0.8,
+      venueRadiusM: 200, venueLineM: 25, venueLineMinM: 50, venueShare: 0.5, venueGroupFloor: 25,
     });
   });
 });
@@ -330,3 +331,122 @@ describe('the types that need a guide', () => {
     expect(needsAGuide('bridge', { guideEditions: null })).not.toBeNull();
   });
 });
+
+// Bauman Street in Kazan (Q1593247), the city's pedestrian heart, which the run of 2026-11-03 refused: its neighbours
+// of its own density as that run's note read them (805 places, editions at a median of 17.5, readers 14,357.5, guides 2),
+// and Kazan's streets and squares around it as the measurement of #2311 counted their cafés, restaurants and bars.
+const kazan: Surroundings = {
+  groupSize: 805,
+  topEditions: [30, 25, 20, 18, 18, 17, 15, 14, 12, 10],
+  topGuideEditions: [4, 3, 3, 2, 2, 2, 2, 1, 1, 1],
+  topReaders: [40_000, 30_000, 25_000, 20_000, 15_000, 13_715, 12_000, 11_000, 10_000, 9_000],
+  venues: { groupSize: 680, topVenues: [72, 69, 68, 57, 54, 53, 52, 41, 30, 27] },
+};
+const bauman = { editions: 8, guideEditions: 0, readers: 16_086, venues: 69 };
+
+describe('the venue test of a kind that reads the venues around its places (ADR-0192)', () => {
+  it('lets in a walked street fame misses, by the cafés, restaurants and bars around it, and says so on the card', () => {
+    // Without the venues Bauman Street is under every reference: 8 editions against 17.5, 16,086 readers against 21,536.
+    expect(surroundingsVerdict({ ...bauman, venues: undefined }, kazan).in).toBe(false);
+    const v = surroundingsVerdict(bauman, kazan);
+    expect(v.in).toBe(true);
+    if (v.in) {
+      expect(v.reference).toEqual({ editions: 17.5, guide: 2, readers: 14_357.5, venues: 53.5 });
+      expect(v.note).toMatch(/^In the surroundings tier by the venues around it: /);
+      expect(v.note).toContain('; 69 cafés, restaurants and bars within 200 m of this place, the 10 liveliest of the 680 places of its kind within 150 km 53.5 at the median');
+    }
+  });
+
+  it('refuses a quiet street whatever its fame lacks: Majakowskiring, Pankow\'s villa street, has no café within 200 m', () => {
+    // Berlin's streets and squares, as the measurement counted them: the ten liveliest at a median of 73.
+    const berlin: Surroundings = { ...kazan, venues: { groupSize: 9_031, topVenues: [107, 95, 94, 76, 74, 72, 71, 70, 69, 65] } };
+    const v = surroundingsVerdict({ editions: 9, guideEditions: 0, readers: 9_000, venues: 0 }, berlin);
+    expect(v.in).toBe(false);
+    if (!v.in) expect(v.reason).toContain('; 0 cafés, restaurants and bars within 200 m of this place, the 10 liveliest of the 9,031 places of its kind within 150 km 73 at the median');
+    // Bergmannstraße, 54 against half of 73, enters by them.
+    expect(surroundingsVerdict({ editions: 4, guideEditions: 0, readers: 9_000, venues: 54 }, berlin).in).toBe(true);
+  });
+
+  it('reads the test only in an area of 25 places of the kind, and keeps a held place at 0.8 of the share', () => {
+    expect(surroundingsVerdict(bauman, { ...kazan, venues: { groupSize: 24, topVenues: kazan.venues!.topVenues } }).in).toBe(false);
+    // Half of 53.5 is 26.75 for a new street; 0.8 of that, 21.4, for one the tier holds.
+    const quieter = { ...bauman, venues: 22 };
+    expect(surroundingsVerdict(quieter, kazan).in).toBe(false);
+    const held = surroundingsVerdict(quieter, kazan, SURROUNDINGS_CUT, true);
+    expect(held.in).toBe(true);
+    if (held.in) expect(held.note).toMatch(/^Stays in the surroundings tier by the venues around it, .* and the venue test at 0\.4 for a place it holds: /);
+  });
+
+  it('reads a street along its line against the streets read so, and lets no artery in by the venues along it (ADR-0194)', () => {
+    // Bauman Street read along its line: 7 venues per 100 m, against Kazan's streets read along theirs.
+    const kazanAlong: Surroundings = { ...kazan, venues: { groupSize: 120, topVenues: [12, 11, 10, 9, 9, 8, 8, 7, 7, 6], along: true } };
+    const walked = surroundingsVerdict({ ...bauman, venues: 7, venuesAlong: { metres: 1_200 } }, kazanAlong);
+    expect(walked.in).toBe(true);
+    if (walked.in) {
+      expect(walked.note).toMatch(/^In the surroundings tier by the venues around it: /);
+      expect(walked.note).toContain('7 cafés, restaurants and bars per 100 m along its 1,200 m of street, '
+        + 'the 10 liveliest of the 120 streets of its kind read along their lines within 150 km 8.5 at the median');
+    }
+    // An artery as lively is driven through: the venue test lets it in by nothing, and says why.
+    const artery = surroundingsVerdict({ ...bauman, venues: 9, venuesAlong: { metres: 2_766 }, artery: true }, kazanAlong);
+    expect(artery.in).toBe(false);
+    if (!artery.in) expect(artery.reason).toContain('per 100 m along its 2,766 m of street, an artery the venue test lets in by nothing');
+    // Read at its point, where too few lines around make a reference, an artery is still let in by nothing.
+    const atPoint = surroundingsVerdict({ ...bauman, venues: 400, artery: true }, kazan);
+    expect(atPoint.in).toBe(false);
+    if (!atPoint.in) expect(atPoint.reason).toContain('400 cafés, restaurants and bars within 200 m of this place, an artery the venue test lets in by nothing');
+  });
+
+  it('reads no venue where the layer in place keeps none: nothing enters by them, and a place the tier holds by them keeps its place', () => {
+    const unread = { ...bauman, venues: null };
+    const v = surroundingsVerdict(unread, kazan);
+    expect(v.in).toBe(false);
+    if (!v.in) expect(v.reason).toContain('; the OpenStreetMap layer in place keeps no café, restaurant or bar, so no venue is read (ADR-0191)');
+    const held = surroundingsVerdict({ ...unread, venuedAsLastRead: true }, kazan, SURROUNDINGS_CUT, true);
+    expect(held.in && held.note.startsWith('Kept in the surroundings tier, the venue test unread: ')).toBe(true);
+    // A place the tier holds by another test falls by the tests the run read: the unread one keeps no place it never held it.
+    expect(surroundingsVerdict({ ...unread, venuedAsLastRead: false }, kazan, SURROUNDINGS_CUT, true).in).toBe(false);
+  });
+
+  it('keeps a street it holds by the venues with the venue test\'s note, where neither the guides nor the venues are read', () => {
+    // A guide used it when last read too: kept by the guides' note, it would lose the mark the next run reads it by.
+    const unreadBoth = { ...bauman, guideEditions: null, guidedAsLastRead: true, venues: null, venuedAsLastRead: true };
+    const held = surroundingsVerdict(unreadBoth, kazan, SURROUNDINGS_CUT, true);
+    expect(held.in && standsByVenues(held.note)).toBe(true);
+  });
+
+  it('lets the venue test decide a place too few neighbours of its own density measure, by its own area', () => {
+    // Three places of its density within 150 km: under every other test's floor, while 680 streets and squares stand around it.
+    const thin: Surroundings = { ...kazan, groupSize: 3 };
+    const v = surroundingsVerdict(bauman, thin);
+    expect(v.in && v.note.startsWith('In the surroundings tier by the venues around it: within 150 km, 3 places of its density')).toBe(true);
+    // Without an area of its own the venue test decides nothing, and the floor refuses as before.
+    expect(surroundingsVerdict(bauman, { ...thin, venues: { groupSize: 24, topVenues: kazan.venues!.topVenues } })).toEqual({
+      in: false, reason: '3 places of its density within 150 km, under the floor of 5: too few to measure against',
+    });
+    // A held street that stood by the venues is kept while they are unread, its density neighbours gone or not.
+    const held = surroundingsVerdict({ ...bauman, venues: null, venuedAsLastRead: true }, { ...thin, venues: undefined }, SURROUNDINGS_CUT, true);
+    expect(held.in && held.note.startsWith('Kept in the surroundings tier, the venue test unread')).toBe(true);
+  });
+
+  it('tells from a place\'s recorded note whether it last stood by the venue test', () => {
+    const note = (v: ReturnType<typeof surroundingsVerdict>) => (v.in ? v.note : v.reason);
+    expect(standsByVenues(note(surroundingsVerdict(bauman, kazan)))).toBe(true);
+    expect(standsByVenues(note(surroundingsVerdict({ ...bauman, venues: 22 }, kazan, SURROUNDINGS_CUT, true)))).toBe(true);
+    expect(standsByVenues(note(surroundingsVerdict({ ...bauman, venues: null, venuedAsLastRead: true }, kazan, SURROUNDINGS_CUT, true)))).toBe(true);
+    // A street in by its readers carries the venue clause in its words, and did not stand by the venues.
+    const read = surroundingsVerdict({ ...bauman, readers: 30_000, venues: 5 }, kazan);
+    expect(read.in && read.note).toMatch(/^In the surroundings tier by its readers: .*5 cafés, restaurants and bars within 200 m/);
+    expect(standsByVenues(note(read))).toBe(false);
+    // A kind's rule may put its own note before the cut's.
+    expect(standsByVenues(`Named by its category. ${note(surroundingsVerdict(bauman, kazan))}`)).toBe(true);
+    expect(standsByVenues(null)).toBe(false);
+  });
+
+  it('leaves a kind that reads no venues as it was: no venue reference, no venue clause', () => {
+    const v = surroundingsVerdict({ editions: 4, guideEditions: 3, readers: 7_617 }, bangkokNoi);
+    expect(v.in && v.reference).toEqual({ editions: 25.5, guide: 4, readers: 118_481 });
+    expect(v.in && v.note).not.toMatch(/café/);
+  });
+});
+

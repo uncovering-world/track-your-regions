@@ -237,6 +237,87 @@ describe('the surroundings tier over a kind', () => {
     });
   });
 
+  describe('a kind that reads the venues around its places (ADR-0192)', () => {
+    const lively = { ...surroundings, venues: true };
+    // Q3, seven editions and no guide, is under every reference; the ten liveliest towers around it have 46.5 venues at the median.
+    const area = { groupSize: 30, topVenues: [70, 60, 55, 50, 48, 45, 40, 38, 35, 30] };
+    type Read = { unread: string } | { counts: Map<string, number>; around: Map<string, unknown>; along?: Map<string, { metres: number; venues: number; artery: boolean }>; arteries?: Set<string> };
+    const withVenues = (venues: Read): SurroundingsPool => ({
+      ...pool, venues: 'unread' in venues ? venues : { along: new Map(), arteries: new Set(), ...venues } as SurroundingsPool['venues'],
+    });
+    beforeEach(() => {
+      gatherModule.shareOf.mockImplementation((g: unknown, k: { name?: string }) => (g === 'gathered-by-id'
+        ? { trees, pool: new Map([['Q3', entity('Q3', 'Torre degli Azzoguidi', 7)]]), facts: new Map([['Q3', { classes: [TOWER] }]]) }
+        : gathered.shares.get(k as never)));
+    });
+
+    it('has the pool count venues around its own classes alone, and a kind that reads none has none counted', () => {
+      expect([...surroundingsReader(lively, ON).venueClasses(gathered as never)]).toEqual([TOWER, BELL]);
+      expect([...surroundingsReader(surroundings, ON).venueClasses(gathered as never)]).toEqual([]);
+    });
+
+    it('reads along its line only a place of a type the kind names, and nothing for a kind that names none (ADR-0194)', () => {
+      const lined = surroundingsReader({ ...lively, venueLineTypes: ['bell-tower'] }, ON).venueLine(gathered as never);
+      expect(lined([BELL])).toBe(true);
+      expect(lined([TOWER])).toBe(false);
+      expect(surroundingsReader(lively, ON).venueLine(gathered as never)([BELL])).toBe(false);
+    });
+
+    it('admits a place by the venues around it, with the count and the reference on the card', async () => {
+      const read = withVenues({ counts: new Map([['Q3', 40]]), around: new Map([['Q3', area]]) });
+      const { items } = await surroundingsReader(lively, ON).arrivals(run, sparql, gathered as never, new Set(['Q1']), read, new Set());
+      expect(items.map((i) => i.qid)).toEqual(['Q3']);
+      expect(items[0].readershipNote).toMatch(/^In the surroundings tier by the venues around it: /);
+      expect(items[0].readershipNote).toContain('40 cafés, restaurants and bars within 200 m of this place, the 10 liveliest of the 30 places of its kind within 150 km 46.5 at the median');
+      // The same pool read for a kind that reads no venues leaves Q3 under the cut.
+      const { items: none } = await surroundingsReader(surroundings, ON).arrivals(run, sparql, gathered as never, new Set(['Q1', 'Q2', 'Q4']), read, new Set());
+      expect(none).toEqual([]);
+    });
+
+    it('reads a street along its line, in venues per 100 m against the streets read so (ADR-0194)', async () => {
+      // Bergmannstraße's shape: 1,308 m of line, 59 venues along it; the area is the streets read along their lines.
+      const alongArea = { groupSize: 30, topVenues: [9, 8, 7, 6, 5, 5, 4, 4, 4, 3], along: true };
+      const read = withVenues({
+        counts: new Map([['Q3', 4.5]]), around: new Map([['Q3', alongArea]]),
+        along: new Map([['Q3', { metres: 1308, venues: 59, artery: false }]]),
+      });
+      const { items } = await surroundingsReader(lively, ON).arrivals(run, sparql, gathered as never, new Set(['Q1']), read, new Set());
+      expect(items.map((i) => i.qid)).toEqual(['Q3']);
+      expect(items[0].readershipNote).toContain('4.5 cafés, restaurants and bars per 100 m along its 1,308 m of street, '
+        + 'the 10 liveliest of the 30 streets of its kind read along their lines within 150 km 5 at the median');
+    });
+
+    it('lets no artery in by the venues along it, however lively', async () => {
+      const alongArea = { groupSize: 30, topVenues: [9, 8, 7, 6, 5, 5, 4, 4, 4, 3], along: true };
+      const read = withVenues({
+        counts: new Map([['Q3', 9]]), around: new Map([['Q3', alongArea]]),
+        along: new Map([['Q3', { metres: 2766, venues: 249, artery: true }]]), arteries: new Set(['Q3']),
+      });
+      const { items } = await surroundingsReader(lively, ON).arrivals(run, sparql, gathered as never, new Set(['Q1', 'Q2', 'Q4']), read, new Set());
+      expect(items).toEqual([]);
+    });
+
+    it('admits nothing by them where the layer keeps none, and says why in its line', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const unread = withVenues({ unread: 'The OpenStreetMap layer in place was cut before it kept the cafés' });
+      const { items } = await surroundingsReader(lively, ON).arrivals(run, sparql, gathered as never, new Set(['Q1', 'Q2', 'Q4']), unread, new Set());
+      expect(items).toEqual([]);
+      expect(log.mock.calls.flat().join('\n')).toContain('; The OpenStreetMap layer in place was cut before it kept the cafés');
+      log.mockRestore();
+    });
+
+    it('keeps a place it holds by the venues while they are unread, and lets one it holds by another test fall', async () => {
+      const unread = withVenues({ unread: 'The OpenStreetMap layer in place was cut before it kept the cafés' });
+      const memory = { bars: null, readers: new Map(), guided: new Map(), venued: new Set(['Q3']) };
+      const kept = await surroundingsReader(lively, ON).arrivals(run, sparql, gathered as never, new Set(['Q1', 'Q2', 'Q4']), unread, new Set(['Q3']), memory);
+      expect(kept.items.map((i) => [i.qid, i.readershipNote?.startsWith('Kept in the surroundings tier, the venue test unread')])).toEqual([['Q3', true]]);
+      const fell = await surroundingsReader(lively, ON).arrivals(run, sparql, gathered as never, new Set(['Q1', 'Q2', 'Q4']), unread, new Set(['Q3']),
+        { ...memory, venued: new Set() });
+      expect(fell.items).toEqual([]);
+      expect(fell.filtered.map((f) => f.externalId)).toEqual(['Q3']);
+    });
+  });
+
   it('reads nothing while the switch is off, and says why', async () => {
     const result = await surroundingsReader(surroundings, { ...ON, enabled: false }).arrivals(run, sparql, gathered as never, new Set(), pool, new Set());
     expect(result.items).toEqual([]);

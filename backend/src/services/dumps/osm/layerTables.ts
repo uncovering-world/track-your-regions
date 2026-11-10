@@ -124,17 +124,31 @@ export async function swapIn(record: LayerRecord, signal: AbortSignal): Promise<
 }
 
 /**
- * The layer in place, or null where none is: the instant it is current to and
+ * The layer in place, or null where none is: the instant it is current to,
  * the rule it kept full geometries by, null for a layer cut before ADR-0136,
- * which kept every one. The one statement of "the layer in place" the schedule
- * and the layer's door both read (`layerSchedule.ts`, `sync/osm/localOsm.ts`).
+ * which kept every one, the selection it kept objects by, null for a layer
+ * cut before ADR-0191, and how many street items it looked for the lines of,
+ * null for a layer cut before ADR-0194, and the build that made it, which a
+ * reader of several statements compares before and after to know no other
+ * layer was swapped in between. The one statement of "the layer in place" the
+ * schedule, the layer's door and the venues' reader read (`layerSchedule.ts`,
+ * `sync/osm/localOsm.ts`, `sync/places/surroundingsVenues.ts`).
  */
-export async function layerState(): Promise<{ currentTo: Date; drawn: KeepWkt | null } | null> {
-  const result = await pool.query<{ replicated_at: Date; drawn: KeepWkt | null }>(
-    'SELECT replicated_at, drawn FROM osm_layer_builds ORDER BY swapped_at DESC LIMIT 1',
+export async function layerState(): Promise<LayerState | null> {
+  const result = await pool.query<{ build_id: number; replicated_at: Date; drawn: KeepWkt | null; selection: string[] | null; streets: number | null }>(
+    'SELECT build_id, replicated_at, drawn, selection, streets FROM osm_layer_builds ORDER BY swapped_at DESC LIMIT 1',
   );
   const row = result.rows[0];
-  return row ? { currentTo: row.replicated_at, drawn: row.drawn } : null;
+  return row ? { buildId: row.build_id, currentTo: row.replicated_at, drawn: row.drawn, selection: row.selection, streets: row.streets } : null;
+}
+
+/** The layer in place, as `layerState` reads it. */
+export interface LayerState {
+  buildId: number;
+  currentTo: Date;
+  drawn: KeepWkt | null;
+  selection: string[] | null;
+  streets: number | null;
 }
 
 /** The instant the layer in place is current to, or null where none is. */

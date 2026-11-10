@@ -51,7 +51,7 @@ const surroundingsArrivals = vi.hoisted(() => vi.fn(async () => ({ items: [], fi
 vi.mock('./places/surroundingsTier.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./places/surroundingsTier.js')>()),
   // What a kind measures beside its classes joins the pass's pool (#2171): nothing here.
-  surroundingsReader: vi.fn(() => ({ arrivals: surroundingsArrivals, named: () => new Set() })),
+  surroundingsReader: vi.fn(() => ({ arrivals: surroundingsArrivals, named: () => new Set(), venueClasses: () => new Set(), venueLine: () => () => false })),
 }));
 // What the source's world tier last read (ADR-0175 decision 6) is its own module's (`places/worldMemory.ts`).
 const history = vi.hoisted(() => ({ memory: { bars: null, readers: new Map(), guided: new Map() }, keep: vi.fn() }));

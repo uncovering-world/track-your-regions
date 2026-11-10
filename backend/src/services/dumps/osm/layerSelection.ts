@@ -51,6 +51,20 @@ export function selectionFile(): string {
 }
 
 /**
+ * Whether a build cut with `selection` kept every food-and-drink venue
+ * (ADR-0191 decision 3): its `amenity` entry keeps the key whole or names each
+ * of `VENUE_AMENITIES`. A build cut before ADR-0191 (`null`) kept a venue only
+ * where another tag selected it, so a reader of venues leaves it unread.
+ */
+export function selectsVenues(selection: readonly string[] | null): boolean {
+  const amenity = selection?.find((entry) => entry === 'amenity' || entry.startsWith('amenity='));
+  if (amenity === undefined) return false;
+  if (amenity === 'amenity') return true;
+  const values = amenity.slice('amenity='.length).split(',');
+  return VENUE_AMENITIES.every((value) => values.includes(value));
+}
+
+/**
  * The objects whose full geometry the layer keeps (ADR-0136): those a kind's
  * keep rule draws, which today is Archaeology's alone — a ruin, a dig, or the
  * protected area drawn around one. The objects that carry an item

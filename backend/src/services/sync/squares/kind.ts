@@ -10,6 +10,12 @@
  * traveller crosses a city for. The kind's canon is
  * `db/catalogue-coverage/calibration/squares-and-streets.jsonl`.
  *
+ * Its surroundings tier reads one test no other kind reads: the cafés,
+ * restaurants and bars around a street, against the liveliest streets and
+ * squares within the radius (ADR-0192). Fame misses the streets a traveller
+ * walks, Bergmannstraße at four editions and Bauman Street at eight, and
+ * they are among their cities' liveliest.
+ *
  * The verdict, in the order `places/declaredKind.ts` reads it: what is no
  * place to visit; what another kind offers, or no square or street a visitor
  * walks (a place of worship, a palace, a bridge, an archaeological site or an

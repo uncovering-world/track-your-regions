@@ -14,7 +14,7 @@
  * as one indexed query each.
  */
 
-import type { Surroundings } from './surroundingsCut.js';
+import type { Surroundings, VenueSurroundings } from './surroundingsCut.js';
 
 /** The Earth's mean radius, in km. */
 const EARTH_KM = 6371.0088;
@@ -339,4 +339,22 @@ function surroundingsTally(own: number, shape: NeighbourhoodShape) {
     },
     result: (): Surroundings => ({ groupSize, topEditions, topGuideEditions, topReaders }),
   };
+}
+
+/**
+ * The venues around point `i` of an index of a kind's places that read them
+ * (ADR-0192): how many of those places lie within the radius, the place
+ * itself among them, and the best venue counts among them, highest first.
+ * A plain circle, with no density ratio: the count of venues is itself how
+ * lively the ground is, and a street on a core's edge passes only when it is
+ * as lively as the core's, never by being livelier than a quieter edge.
+ */
+export function venuesAround(index: SphereIndex, venues: ArrayLike<number>, i: number, radiusKm: number, best: number): VenueSurroundings {
+  let groupSize = 0;
+  const topVenues: number[] = [];
+  index.forEachWithin(i, chordOfKm(radiusKm), (j) => {
+    groupSize += 1;
+    keepBest(topVenues, venues[j], best);
+  });
+  return { groupSize, topVenues };
 }
