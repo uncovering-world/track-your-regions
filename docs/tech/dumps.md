@@ -342,6 +342,13 @@ by hand.
   the same row and resolves the file again; its local copies resume from
   their saved ranges, and the files already whole are read from disk. The
   host's three connections and its User-Agent policy hold as for any read.
+  The attempts are counted from the build's last progress, not from its start
+  (`movedOn`, #2440). A cut that comes after a cut of another file, or with
+  more of the same file on disk, starts the count again. A read with no local
+  copy keeps nothing of a file, so more bytes streamed count as no progress. So a build fails only
+  when the network cuts it four times with nothing gained between. Readership
+  reads twelve files of about 5 GB, and counted from its start it ran out of
+  attempts in its third month on a host that cut every few hundred megabytes.
 - **While it waits** the row says so (`progress.retry`: when, which attempt
   of how many, and what cut the last one), and its message says the copy in
   place stands. The panel shows a retry, not a failure: *Waiting to try
