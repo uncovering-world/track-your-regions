@@ -6,7 +6,8 @@
  * The build reads the month's MediaWiki Content File Export of the wiki's
  * current revisions, the build's own file, verified by the sha256 and size the
  * host publishes beside it (#2355), and the `page_props` table of the wiki's
- * run of the same date, verified by its status file's sha1 and size. It keeps every page of namespace 0, an article with
+ * run of the same date, verified by its status file's sha1 and size, both kept
+ * in the local copy (#2419). It keeps every page of namespace 0, an article with
  * its wikitext or a redirect with its target, and the Wikidata item its page
  * properties name (`wikibase_item`). It is swapped in only whole: a file that
  * fails, a run that has not finished its page properties, or a cancel, drops
@@ -47,7 +48,7 @@ async function itemsByPage(own: DumpFile, options: TableBuildOptions): Promise<{
   }
   options.onPhase(`Reading ${props.fileName}...`);
   const items = new Map<number, string>();
-  const result = await readTable(props, 'page_props', PAGE_PROPS_COLUMNS, { ...options, dumpsDir: undefined }, false, (row) => {
+  const result = await readTable(props, 'page_props', PAGE_PROPS_COLUMNS, options, false, (row) => {
     const [page, name, value] = [numberOf(row[0]), textOf(row[1]), textOf(row[2])];
     if (page !== null && name === 'wikibase_item' && value && ITEM.test(value)) items.set(page, value);
   }, async () => undefined);

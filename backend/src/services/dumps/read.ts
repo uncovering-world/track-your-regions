@@ -145,10 +145,17 @@ async function makeRoom(file: DumpFile, dir: string, path: string, options: Read
   options.onNote?.(`removed ${older.join(', ')} first: the disk could not hold ${file.fileName} beside it`);
 }
 
-/** The catalog's test for the dump's files, where the dump is one a newer file replaces; else none passes. */
+/**
+ * The catalog's test for the dump's files and the others its build reads
+ * (`readsAlso`), where the dump is one a newer file replaces; else none
+ * passes. `olderCopies` keeps to the copies of the one file named, so an
+ * edition's page table retires only that edition's older page table.
+ */
 function fileNamesOf(file: DumpFile): (name: string) => boolean {
   const descriptor = dumpNamed(file.key);
-  return descriptor?.datedBy === 'day' ? descriptor.isFileName : () => false;
+  if (descriptor?.datedBy !== 'day') return () => false;
+  const { isFileName, readsAlso } = descriptor;
+  return name => isFileName(name) || (readsAlso?.(name) ?? false);
 }
 
 /** The file's compressed bytes: a local copy brought to full size first, or the host's stream. */

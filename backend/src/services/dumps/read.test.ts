@@ -36,6 +36,7 @@ const files = new Map<string, Buffer>([
   ['/cut.bz2', BZ2.subarray(0, Math.floor(BZ2.length / 2))],
   ['/unsized.json.gz', GZ],
   ['/planet-261012.osm.pbf', PBF],
+  ['/dewiki-20261101-page.sql.gz', GZ],
 ]);
 /** Files whose size the host does not answer, as a HEAD with no Content-Length. */
 const unsized = new Set(['/unsized.json.gz']);
@@ -218,6 +219,40 @@ describe('reading a dump through the pipeline', () => {
       expect(ranges).toEqual([`bytes=100-${GZ.length - 1}`]);
       expect(result.lines).toBe(LINES.length);
       expect(readFileSync(join(dir, 'whole.json.gz')).equals(GZ)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("retires an edition's older table once a build has verified its newer one (#2419)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
+    try {
+      writeFileSync(join(dir, 'dewiki-20261001-page.sql.gz'), 'older');
+      writeFileSync(join(dir, 'frwiki-20261001-page.sql.gz'), 'another edition');
+      const notes: string[] = [];
+      await readDump(
+        file('/dewiki-20261101-page.sql.gz', { key: 'wikipedia-redirects', checksum: { kind: 'sha1', value: sha1(GZ) }, expectedBytes: GZ.length }),
+        countLines(), { signal: signal(), dumpsDir: dir, onNote: note => notes.push(note) },
+      );
+      expect(existsSync(join(dir, 'dewiki-20261001-page.sql.gz'))).toBe(false);
+      expect(existsSync(join(dir, 'frwiki-20261001-page.sql.gz'))).toBe(true);
+      expect(notes).toEqual(['removed the older dewiki-20261001-page.sql.gz']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reads a file already whole on disk without asking the host for a byte of it (#2419)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
+    try {
+      writeFileSync(join(dir, 'dewiki-20261101-page.sql.gz'), GZ);
+      ranges.length = 0;
+      const result = await readDump(
+        file('/dewiki-20261101-page.sql.gz', { checksum: { kind: 'sha1', value: sha1(GZ) }, expectedBytes: GZ.length }),
+        countLines(), { signal: signal(), dumpsDir: dir },
+      );
+      expect(ranges).toEqual([]);
+      expect(result.lines).toBe(LINES.length);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

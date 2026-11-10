@@ -18,9 +18,11 @@
  * visitor to it. A heritage register is not a guide either (`REGISTER_ROOTS`).
  *
  * The build starts from English Wikivoyage's usage table, the dump's own file,
- * kept in the local copy, and reads every other edition's usage table and
- * every edition's page table of the same date from the host as a stream, each
- * verified by the checksum and size its status file gives. It is swapped in only whole: where an edition's run has not finished
+ * and reads every other edition's usage table and every edition's page table
+ * of the same date, each kept in the local copy, so a read the network cut
+ * resumes where it stopped and a build started again reads the files already
+ * whole from disk (#2419), and each verified by the checksum and size its
+ * status file gives. It is swapped in only whole: where an edition's run has not finished
  * its table, the build fails, names the editions, and leaves the usage in
  * place, so a partial guide never stands in for a full one. A file that fails,
  * or a cancel, drops what was kept and leaves the usage in place as it was.
@@ -106,7 +108,7 @@ async function editionFiles(own: DumpFile, signal: AbortSignal): Promise<Edition
 async function guideArticles(site: string, file: DumpFile, options: TableBuildOptions): Promise<TableRead & { ids: Set<number> }> {
   const ids = new Set<number>();
   const roots = REGISTER_ROOTS[site] ?? [];
-  const read = await readTable(file, 'page', PAGE_COLUMNS, { ...options, dumpsDir: undefined }, false, (row) => {
+  const read = await readTable(file, 'page', PAGE_COLUMNS, options, false, (row) => {
     const [id, namespace, title, isRedirect] = [numberOf(row[0]), numberOf(row[1]), textOf(row[2]), numberOf(row[3])];
     if (id === null || namespace !== ARTICLE || !title || isRedirect === 1) return;
     if (roots.some(root => title.startsWith(root))) return;
@@ -120,7 +122,7 @@ async function keepEdition(
   site: string, file: DumpFile, articles: ReadonlySet<number>, options: TableBuildOptions, ownRead: boolean,
 ): Promise<TableRead & { kept: number }> {
   const items = new Set<string>();
-  const read = await readTable(file, 'wbc_entity_usage', USAGE_COLUMNS, ownRead ? options : { ...options, dumpsDir: undefined }, ownRead,
+  const read = await readTable(file, 'wbc_entity_usage', USAGE_COLUMNS, options, ownRead,
     (row) => {
       const [item, page] = [textOf(row[1]), numberOf(row[3])];
       if (item && ITEM.test(item) && page !== null && articles.has(page)) items.add(item);

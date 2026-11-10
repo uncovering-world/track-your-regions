@@ -119,6 +119,19 @@ describe('the dump catalog', () => {
     await expect(dumpNamed('wikivoyage-pages')!.resolve(read, noSize)).rejects.toThrow('503');
   });
 
+  it('names the other files each build reads beside its own, which its local copy keeps and retires (#2419)', () => {
+    const reads = (key: string, name: string) => dumpNamed(key)!.readsAlso?.(name) ?? false;
+    expect(reads('wikipedia-redirects', 'dewiki-20261101-redirect.sql.gz')).toBe(true);
+    expect(reads('wikipedia-redirects', 'be_x_oldwiki-20261101-page.sql.gz')).toBe(true);
+    expect(reads('wikipedia-redirects', 'dewiki-20261101-categorylinks.sql.gz')).toBe(false);
+    expect(reads('wikidata-redirects', 'wikidatawiki-20261101-page.sql.gz')).toBe(true);
+    expect(reads('wikivoyage-usage', 'dewikivoyage-20261101-wbc_entity_usage.sql.gz')).toBe(true);
+    expect(reads('wikivoyage-usage', 'enwikivoyage-20261101-page.sql.gz')).toBe(true);
+    expect(reads('wikivoyage-pages', 'enwikivoyage-20261101-page_props.sql.gz')).toBe(true);
+    // A dump read on its own names nothing else.
+    expect(reads('wikidata-entities', 'wikidatawiki-20261101-page.sql.gz')).toBe(false);
+  });
+
   it("reads a file's sha256 from a SHA256SUMS, and nothing for a file it does not list", () => {
     const sums = `${'c'.repeat(64)}  a.xml.bz2\n${'d'.repeat(63)}  b.xml.bz2\n`;
     expect(sha256Of(sums, 'a.xml.bz2')).toBe('c'.repeat(64));

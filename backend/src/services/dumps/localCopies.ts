@@ -22,7 +22,7 @@ import { readdir, rm, stat, statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const LEFTOVER = /(?:\.part(?:\.json(?:\.tmp)?)?|\.terms\.gz|\.scope(?:\.tmp)?)$/;
-const DATED = /^([a-z]+)-(\d{6}|\d{8})([-.].+)$/;
+const DATED = /^([a-z_]+)-(\d{6}|\d{8})([-.].+)$/;
 
 export interface Copy {
   /** The name with its date taken out: what every copy of the dump shares. */

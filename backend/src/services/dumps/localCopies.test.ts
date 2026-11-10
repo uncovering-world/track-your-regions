@@ -35,6 +35,8 @@ describe('the local copies of one dump (#1456)', () => {
     expect(copyOf('planet-261012.osm.pbf')).toEqual({ dump: 'planet-*.osm.pbf', date: '261012' });
     expect(copyOf('planet-261012.osm.pbf.part')).toEqual({ dump: 'planet-*.osm.pbf', date: '261012' });
     expect(copyOf('notes.txt')).toBeNull();
+    // An edition whose code has an underscore, as Belarusian (Taraškievica) Wikipedia's be_x_oldwiki (#2419).
+    expect(copyOf('be_x_oldwiki-20261101-page.sql.gz')).toEqual({ dump: 'be_x_oldwiki-*-page.sql.gz', date: '20261101' });
   });
 
   it('reads a content export part as one dump whatever page range it holds, dated by its dashed date (#2355)', () => {

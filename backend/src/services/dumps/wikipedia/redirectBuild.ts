@@ -18,13 +18,15 @@
  * Both are staged, joined in the database and kept where the target is an
  * article of the subset (`redirectTables.ts`), one edition at a time. The
  * build starts from English Wikipedia's redirect file, which is the dump's
- * own and is kept in the local copy. A build is swapped in only whole: where
+ * own. A build is swapped in only whole: where
  * an edition's run has not finished the two tables of that date, as in the
  * first days of a run, the build fails, names the editions, and leaves the
- * redirects in place, so a partial set never stands in for a full one. Every other file is read from the host
- * as a stream and verified by the checksum and size its edition's status file
- * gives. A file that fails, or a cancel, drops what was staged and leaves the
- * redirects in place as they were.
+ * redirects in place, so a partial set never stands in for a full one. Every
+ * other file is kept in the local copy too and verified by the checksum and
+ * size its edition's status file gives, so a read the network cut resumes
+ * where it stopped, and a build started again reads the editions already
+ * whole from disk (#2419). A file that fails, or a cancel, drops what was
+ * staged and leaves the redirects in place as they were.
  */
 
 import { pool } from '../../../db/index.js';
@@ -134,7 +136,6 @@ export async function buildRedirects(redirect: DumpFile, options: TableBuildOpti
   const kept: Record<string, number> = {};
   const totals = { bytes: 0, lines: 0, files: 0 };
   let own: TableRead | null = null;
-  const fromHost: TableBuildOptions = { ...options, dumpsDir: undefined };
 
   await createNextTable();
   try {
@@ -142,10 +143,10 @@ export async function buildRedirects(redirect: DumpFile, options: TableBuildOpti
       const step = (file: DumpFile) => options.onPhase(`Reading ${file.fileName} (edition ${at + 1} of ${files.length})...`);
       const isOwn = redirectFile === redirect;
       step(redirectFile);
-      const redirectRead = await stageRedirects(redirectFile, isOwn ? options : fromHost, isOwn);
+      const redirectRead = await stageRedirects(redirectFile, options, isOwn);
       if (isOwn) own = redirectRead;
       step(pageFile);
-      const pageRead = await stageRedirectPages(pageFile, fromHost);
+      const pageRead = await stageRedirectPages(pageFile, options);
 
       for (const read of [redirectRead, pageRead]) {
         totals.bytes += read.bytes;
