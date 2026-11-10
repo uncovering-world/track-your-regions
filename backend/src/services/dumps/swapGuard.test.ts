@@ -74,6 +74,6 @@ describe('a swap waiting for the runs that read the copy (#2415)', () => {
     expect(waitWords([
       { logId: 1, source: 'Public art', dryRun: true }, { logId: 2, source: 'Towers', dryRun: true }, { logId: 3, source: 'Bridges', dryRun: false },
     ])).toBe('Waiting to swap in until the run of Public art (a dry run), Towers (a dry run) and Bridges end: a run reads the copy as it started');
-    expect(waitWords([])).toBe('Waiting to swap in until the sync pass in progress ends: a run reads the copy as it started');
+    expect(waitWords([])).toBe('Waiting to swap in until the sync work reading the copies ends: a run reads the copy as it started');
   });
 });

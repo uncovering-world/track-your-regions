@@ -12,7 +12,10 @@
  *   `syncPass.ts`), so no swap lands between one kind's run and the next's;
  * - **a run's start** takes it shared while it writes its log row and the dump
  *   dates of the copies it is about to read (`runInputs.ts`), so no run starts
- *   in the middle of a swap.
+ *   in the middle of a swap;
+ * - **the steps after a run and the component search** hold it shared for as
+ *   long as they read (`afterRun.ts`, `componentItemJob.ts`): they read the
+ *   copies with no run's row alive.
  *
  * A run outside a pass holds no lock once started: its row says it is alive,
  * while it is `running` and its progress was written in the last five minutes
@@ -38,7 +41,7 @@ export interface AliveRun {
   dryRun: boolean;
 }
 
-/** What a swap waits for: the runs alive, which a pass between two of its kinds has none of. */
+/** What a swap waits for: the runs alive, none while a pass between two of its kinds, a run's after-steps or the component search holds the copies. */
 export interface RunsWait {
   runs: AliveRun[];
 }
@@ -88,19 +91,26 @@ export async function holdCopiesForReading(): Promise<() => Promise<void>> {
   };
 }
 
-/** Run `work` holding the lock shared: a run's start, which waits for a swap under way. */
-export async function underReadLock<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+/**
+ * Run `work` holding the lock shared: a run's start, which waits for a swap
+ * under way. `work` calls `discard` where it left the client unfit to go back
+ * to the pool, such as a transaction whose ROLLBACK failed.
+ */
+export async function underReadLock<T>(work: (client: PoolClient, discard: (cause: Error) => void) => Promise<T>): Promise<T> {
   const client = await pool.connect();
-  let unlocked = true;
+  // False until the lock is let go: a lock query that rejected may still have
+  // taken it, so that client never goes back to the pool.
+  let unlocked = false;
+  let broken: Error | undefined;
   try {
     await client.query('SELECT pg_advisory_lock_shared($1)', [SWAP_LOCK]);
     try {
-      return await work(client);
+      return await work(client, cause => { broken = cause; });
     } finally {
       unlocked = await unlock(client, true);
     }
   } finally {
-    client.release(!unlocked);
+    client.release(broken ?? !unlocked);
   }
 }
 
@@ -116,7 +126,9 @@ export async function swapWhenNoRunReads<T>(options: QuietOptions, swap: () => P
   try {
     for (;;) {
       options.signal.throwIfAborted();
-      const taken = await client.query<{ taken: boolean }>('SELECT pg_try_advisory_lock($1) AS taken', [SWAP_LOCK]);
+      // A try that rejected may still have taken the lock: that client is not handed back.
+      const taken = await client.query<{ taken: boolean }>('SELECT pg_try_advisory_lock($1) AS taken', [SWAP_LOCK])
+        .catch((error: unknown) => { broken = true; throw error; });
       let runs: AliveRun[] = [];
       if (taken.rows[0]?.taken) {
         try {
@@ -143,9 +155,9 @@ export async function swapWhenNoRunReads<T>(options: QuietOptions, swap: () => P
   }
 }
 
-/** What a build waiting for runs says on its row: which runs, by source, or the pass between two of its kinds. */
+/** What a build waiting for runs says on its row: which runs, by source, or the work that holds the copies with no run alive. */
 export function waitWords(runs: readonly AliveRun[]): string {
-  if (runs.length === 0) return 'Waiting to swap in until the sync pass in progress ends: a run reads the copy as it started';
+  if (runs.length === 0) return 'Waiting to swap in until the sync work reading the copies ends: a run reads the copy as it started';
   const named = runs.map(run => `${run.source}${run.dryRun ? ' (a dry run)' : ''}`);
   const list = named.length > 2 ? `${named.slice(0, -1).join(', ')} and ${named.at(-1)}` : named.join(' and ');
   return `Waiting to swap in until the run of ${list} ${runs.length > 1 ? 'end' : 'ends'}: a run reads the copy as it started`;

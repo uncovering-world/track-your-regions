@@ -24,6 +24,8 @@ import type {
   UsersRow,
 } from '../../db/schema.generated.js';
 import { changedFieldOf, type StoredProposal } from '../experience/reviewQueueItem.js';
+import { DUMPS } from '../../services/dumps/catalog.js';
+import { keeperOf } from '../../services/dumps/keepers.js';
 
 function isoOf(value: Date | null): string | null {
   return value === null ? null : value.toISOString();
@@ -85,7 +87,7 @@ export function experienceSourceOf(
 /** A run as the log reads select it (`SYNC_LOG_COLUMNS_SQL` in `syncController.ts`). */
 export type SyncLogRow = Pick<ExperienceSyncLogsRow,
   'id' | 'source_id' | 'started_at' | 'completed_at' | 'status' | 'is_dry_run' | 'detection_skipped_reason'
-  | 'withdrawal_skipped_reason' | 'admission_sweep_skipped_reason' | 'triggered_by' | 'pass_log_id'> & {
+  | 'withdrawal_skipped_reason' | 'admission_sweep_skipped_reason' | 'triggered_by' | 'pass_log_id' | 'copies_read'> & {
   /** Read through `COALESCE(…, 0)`: nullable columns that no writer leaves null. */
   total_fetched: number;
   total_created: number;
@@ -104,6 +106,14 @@ export type SyncLogRow = Pick<ExperienceSyncLogsRow,
   /** The source of the pass's first run, through `pass_log_id`; null without one. */
   pass_source_name: string | null;
 };
+
+/** The copies a run read, named as the Public Dumps page names them, in the catalogue's order (#2415). */
+function copiesReadOf(copies: Record<string, string> | null): SyncLog['copies_read'] {
+  if (!copies) return null;
+  return DUMPS.filter(dump => copies[dump.key]).map(dump => ({
+    dump: dump.key, title: keeperOf(dump.key)?.title ?? dump.title, dumpDate: copies[dump.key], datedBy: dump.datedBy,
+  }));
+}
 
 export function syncLogOf(row: SyncLogRow): SyncLog {
   return {
@@ -134,6 +144,7 @@ export function syncLogOf(row: SyncLogRow): SyncLog {
     stopped_by_restart: row.stopped_by_restart,
     pass_log_id: row.pass_log_id,
     pass_source_name: row.pass_source_name,
+    copies_read: copiesReadOf(row.copies_read as Record<string, string> | null),
   };
 }
 

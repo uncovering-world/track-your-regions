@@ -50,6 +50,7 @@ import { crowdingSentence, refreshCrowding } from '../../services/sync/crowding.
 import { drainPairing, pairingSentence } from '../../services/sync/mergeProposalFinder.js';
 import { isTerminalSyncStatus, runningSyncs, type SyncProgress } from '../../services/sync/types.js';
 import { joinPlacesClaimingOneItem } from '../experience/equalItemMerges.js';
+import { holdCopiesForReading } from '../../services/dumps/swapGuard.js';
 
 const UNESCO_SOURCE_ID = 1;
 const LOG_PREFIX = '[After run]';
@@ -193,7 +194,22 @@ export async function afterRun(startedId: number, pass: readonly number[], accep
     const sentence = await guarded(name, shown.logId, step);
     if (sentence !== null) said.push(sentence);
   };
+  // The steps read the copies built from dumps after the run's row has closed:
+  // the component search the subset, the crowding the readership and the
+  // guides. They hold the copies as a pass does, so no swap lands under them (#2415).
+  // A hold that cannot be taken skips the steps and says so: `afterRun` never
+  // throws, since nothing after its caller would catch it.
+  let releaseCopies: (() => Promise<void>) | null = null;
   try {
+    releaseCopies = await holdCopiesForReading().catch((error: unknown) => {
+      console.error('%s The copies could not be held, so the steps after the run did not run:', LOG_PREFIX, error);
+      return null;
+    });
+    if (!releaseCopies) {
+      said.push('the steps after the run did not run: the copies built from dumps could not be held');
+      operation.finish(said.join('; '));
+      return;
+    }
     await run('the joining of places claiming one item', async () => { await joinPlacesClaimingOneItem(); return null; });
     if (searches) {
       await run('the search for the new components\' items', () => searchNewComponents(shown, operation, shown.logId!, accept));
@@ -202,6 +218,7 @@ export async function afterRun(startedId: number, pass: readonly number[], accep
     await run('the display of crowded cities', () => recountCrowding(shown, operation, steps));
     operation.finish(said.join('; '));
   } finally {
+    await releaseCopies?.();
     // The run's own verdict stands; the steps only add to its line.
     shown.status = isTerminalSyncStatus(ended) ? ended : 'complete';
     shown.statusMessage = said.length > 0 ? `${closing}; ${said.join('; ')}` : closing;

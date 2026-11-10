@@ -142,6 +142,8 @@ export const SyncStatus = z.strictObject({
   dryRun: z.boolean().optional(),
   operation: OperationProgressAnswer.optional()
     .describe('The step the run is on, of how many, and how far through it (#1356), for a run that reports through the shared shape.'),
+  waitingBuilds: z.array(z.string()).optional()
+    .describe('Sent for a running run: the copies built from a dump whose swap waits for this run to end, by their title (#2415).'),
   progressAt: timestamp.optional()
     .describe('Sent only for a run this server does not hold, read from its log row: when that run last wrote its progress. It cannot be cancelled from here.'),
   lastSyncAt: timestamp.nullable().optional()
@@ -298,6 +300,13 @@ export const SyncLog = z.strictObject({
   pass_log_id: z.number().int().nullable()
     .describe('The first run of the pass this run was part of, whose gather it read (ADR-0132); null on the first run and on a run that shared no gather.'),
   pass_source_name: z.string().nullable().describe('The source of that first run.'),
+  copies_read: z.array(z.strictObject({
+    dump: z.string().describe('The dump the copy is built from.'),
+    title: z.string().describe('What the copy is, as the Public Dumps page names it.'),
+    dumpDate: z.string().describe('The dump date of the copy in place when the run started, an ISO day.'),
+    datedBy: z.enum(['day', 'month']).describe('Whether the date is a day\'s dump or the last month of counts.'),
+  })).nullable()
+    .describe('Each copy built from a dump that was in place when the run started (#2415), which no swap changes while the run is alive. Null for a run from before.'),
 }).describe('One run of a source.');
 export type SyncLog = z.infer<typeof SyncLog>;
 

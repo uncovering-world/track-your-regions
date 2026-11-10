@@ -99,6 +99,12 @@ export interface Keeper {
    * leaves the months before it kept (#2419).
    */
   keepsAsItGoes?: true;
+  /**
+   * False for a copy no sync run reads: English Wikivoyage's articles, which
+   * the world-view extraction reads. Its swap waits for no run, and a run's
+   * row does not name it (#2415).
+   */
+  readByRuns?: false;
 }
 
 const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
@@ -122,7 +128,7 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
     title: 'The items Wikivoyage\'s pages use', build: buildUsage, latest: latestUsage, samples: false, fromCopy: false,
   },
   'wikivoyage-pages': {
-    title: 'English Wikivoyage\'s articles', build: buildPages, latest: latestPages, samples: false, fromCopy: false,
+    title: 'English Wikivoyage\'s articles', build: buildPages, latest: latestPages, samples: false, fromCopy: false, readByRuns: false,
   },
   // A build from the newest brings the kept current planet forward; a build
   // from a weekly copy on disk starts the current planet again from it.

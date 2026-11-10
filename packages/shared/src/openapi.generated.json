@@ -38811,6 +38811,49 @@
               "string",
               "null"
             ]
+          },
+          "copies_read": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "dump": {
+                      "type": "string",
+                      "description": "The dump the copy is built from."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "What the copy is, as the Public Dumps page names it."
+                    },
+                    "dumpDate": {
+                      "type": "string",
+                      "description": "The dump date of the copy in place when the run started, an ISO day."
+                    },
+                    "datedBy": {
+                      "type": "string",
+                      "enum": [
+                        "day",
+                        "month"
+                      ],
+                      "description": "Whether the date is a day's dump or the last month of counts."
+                    }
+                  },
+                  "required": [
+                    "dump",
+                    "title",
+                    "dumpDate",
+                    "datedBy"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Each copy built from a dump that was in place when the run started (#2415), which no swap changes while the run is alive. Null for a run from before."
           }
         },
         "required": [
@@ -38839,7 +38882,8 @@
           "changeset_lost",
           "stopped_by_restart",
           "pass_log_id",
-          "pass_source_name"
+          "pass_source_name",
+          "copies_read"
         ],
         "additionalProperties": false,
         "description": "One run of a source."
@@ -39014,6 +39058,49 @@
               "null"
             ]
           },
+          "copies_read": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "dump": {
+                      "type": "string",
+                      "description": "The dump the copy is built from."
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "What the copy is, as the Public Dumps page names it."
+                    },
+                    "dumpDate": {
+                      "type": "string",
+                      "description": "The dump date of the copy in place when the run started, an ISO day."
+                    },
+                    "datedBy": {
+                      "type": "string",
+                      "enum": [
+                        "day",
+                        "month"
+                      ],
+                      "description": "Whether the date is a day's dump or the last month of counts."
+                    }
+                  },
+                  "required": [
+                    "dump",
+                    "title",
+                    "dumpDate",
+                    "datedBy"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Each copy built from a dump that was in place when the run started (#2415), which no swap changes while the run is alive. Null for a run from before."
+          },
           "error_details": {
             "anyOf": [
               {
@@ -39065,6 +39152,7 @@
           "stopped_by_restart",
           "pass_log_id",
           "pass_source_name",
+          "copies_read",
           "error_details",
           "component_items"
         ],
@@ -39261,6 +39349,13 @@
           "operation": {
             "description": "The step the run is on, of how many, and how far through it (#1356), for a run that reports through the shared shape.",
             "$ref": "#/components/schemas/OperationProgressAnswer"
+          },
+          "waitingBuilds": {
+            "description": "Sent for a running run: the copies built from a dump whose swap waits for this run to end, by their title (#2415).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "progressAt": {
             "description": "Sent only for a run this server does not hold, read from its log row: when that run last wrote its progress. It cannot be cancelled from here.",

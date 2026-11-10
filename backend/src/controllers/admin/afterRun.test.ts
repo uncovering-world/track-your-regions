@@ -7,6 +7,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn() } }));
+const copies = vi.hoisted(() => ({ release: vi.fn(async () => undefined) }));
+vi.mock('../../services/dumps/swapGuard.js', () => ({ holdCopiesForReading: vi.fn(async () => copies.release) }));
 vi.mock('../../services/sync/componentItemJob.js', () => ({
   runComponentItemSearch: vi.fn(async () => ({ sentence: '2 of 3 components without an item have a candidate', candidates: 2, queries: 7 })),
 }));
@@ -54,6 +56,7 @@ describe('the steps after a run', () => {
     vi.mocked(drainPairing).mockClear();
     vi.mocked(runComponentItemSearch).mockClear();
     accept.mockClear();
+    copies.release.mockClear();
   });
   afterEach(() => { vi.useRealTimers(); });
 
@@ -77,6 +80,8 @@ describe('the steps after a run', () => {
     expect(joinPlacesClaimingOneItem).toHaveBeenCalledTimes(1);
     expect(drainPairing).toHaveBeenCalledTimes(1);
     expect(runComponentItemSearch).not.toHaveBeenCalled();
+    // The steps read the copies with no run's row alive, so they held them (#2415), and let them go.
+    expect(copies.release).toHaveBeenCalledTimes(1);
     expect(second.status).toBe('complete');
     expect(second.statusMessage).toBe('Sync completed: 102; 2 changed places paired again with near places, 1 near pair open among them; 124 places crowded out of crowded cities');
     expect(first.statusMessage).toBe('Sync completed: 101');
@@ -87,6 +92,20 @@ describe('the steps after a run', () => {
     vi.advanceTimersByTime(30000);
     expect(runningSyncs.get(3)).toBeUndefined();
     expect(runningSyncs.get(6)).toBeUndefined();
+  });
+
+  it('skips the steps and says so when the copies cannot be held, and never throws (#2415)', async () => {
+    const { holdCopiesForReading } = await import('../../services/dumps/swapGuard.js');
+    vi.mocked(holdCopiesForReading).mockRejectedValueOnce(new Error('timeout exceeded when trying to connect'));
+    const only = ended(101);
+    runningSyncs.set(3, only);
+
+    await expect(afterRun(3, [3], accept)).resolves.toBeUndefined();
+
+    expect(joinPlacesClaimingOneItem).not.toHaveBeenCalled();
+    expect(drainPairing).not.toHaveBeenCalled();
+    expect(only.statusMessage).toMatch(/; the steps after the run did not run: the copies built from dumps could not be held$/);
+    expect(only.status).toBe('complete');
   });
 
   it('pairs what a cancelled run wrote, and keeps its verdict', async () => {
