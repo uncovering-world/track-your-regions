@@ -84,6 +84,33 @@ export async function subsetWikipediaEditions(qids: string[]): Promise<Map<strin
   return new Map(result.rows.map(row => [row.id, row.editions]));
 }
 
+/**
+ * Every name the subset holds for each item: its labels, in every language
+ * kept, and the titles of its Wikipedia articles, which name it in its own
+ * country's language where no kept label does (Kraków's market square is
+ * *Rynek Główny w Krakowie* on the Polish Wikipedia). A title's closing
+ * parenthesis tells it from a namesake and is no part of the name.
+ */
+export async function subsetNamesOf(qids: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (!qids.length) return out;
+  const result = await pool.query<{ id: string; name: string }>(
+    `SELECT id, label AS name FROM wikidata_labels WHERE id = ANY($1::text[]) AND label IS NOT NULL
+     UNION
+     SELECT id, regexp_replace(title, '\\s+\\([^()]*\\)$', '') FROM wikidata_sitelinks
+      WHERE id = ANY($1::text[]) AND site LIKE '%wiki' AND site <> ALL($2::text[])`,
+    [qids, NOT_WIKIPEDIA],
+  );
+  for (const row of result.rows) {
+    const name = row.name.trim();
+    if (!name) continue;
+    const names = out.get(row.id) ?? [];
+    if (!names.includes(name)) names.push(name);
+    out.set(row.id, names);
+  }
+  return out;
+}
+
 /** The English Wikipedia article of each item that has one, as `fetchEnglishArticles` answers live (#1608). */
 export async function subsetEnglishArticles(qids: string[]): Promise<Map<string, string>> {
   if (!qids.length) return new Map();
