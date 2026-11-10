@@ -21,6 +21,7 @@ import { PassClock } from './passClock.js';
 import { countLines, CutDownload, holdVerifiedCopy, isDamagedRead, readDump, sizeWords, type ReadOptions } from './read.js';
 import { cutSample, SAMPLE_JSON_BYTES, sampleFile, sampleIn } from './samples.js';
 import { StepTimes } from './stepTimes.js';
+import { waitWords, type RunsWait } from './swapGuard.js';
 
 function verifiedMessage(file: DumpFile, lines: number, checksumActual: string | null): string {
   const how = checksumActual ? `${file.checksum?.kind} matches the host's` : 'size and stream end match the host\'s';
@@ -73,7 +74,24 @@ function readOptions(
       notes.push(note);
       console.log(`[Dumps] ${descriptor.key}: ${note}`);
     },
+    onWaitForRuns: runs => waitForRuns(progress, runs),
   };
+}
+
+/**
+ * Say on the row which runs the swap waits for (#2415), so a build behind a
+ * long pass reads as waiting, not as stuck. Null ends the wait: a build that
+ * waited says it is swapping in, which the subset's swap takes minutes to do.
+ */
+export function waitForRuns(progress: BuildProgressRecord, wait: RunsWait | null): void {
+  const waited = !!progress.waitsFor;
+  progress.waitsFor = wait ? wait.runs : null;
+  if (wait) {
+    progress.message = waitWords(wait.runs);
+    progress.etaSeconds = null;
+  } else if (waited) {
+    progress.message = 'Swapping the new copy in...';
+  }
 }
 
 /** Why a build stopped short: an admin's cancel, or the worker stopping. */
@@ -285,6 +303,7 @@ async function rederive(
     buildId: claimed.id,
     signal,
     onPhase,
+    onWaitForRuns: runs => waitForRuns(progress, runs),
     onNote: note => {
       notes.push(note);
       console.log(`[Dumps] ${descriptor.key}: ${note}`);

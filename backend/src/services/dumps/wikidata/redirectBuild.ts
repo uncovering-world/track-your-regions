@@ -32,6 +32,7 @@ import { Batches, readTable, type TableBuildOptions } from '../wikipedia/tableRe
 import {
   createNextTable, dropNextTable, indexNextTable, keepRedirects, stagePages, stageTargets, swapIn,
 } from './redirectTables.js';
+import { swapWhenNoRunReads } from '../swapGuard.js';
 
 const ITEM = /^Q\d+$/;
 const MAIN_NAMESPACE = 0;
@@ -84,7 +85,7 @@ export async function buildWikidataRedirects(
     if (kept === 0) throw new Error('The build kept no item redirect, so the redirects in place stay');
     options.onPhase('Indexing the item redirects...');
     await indexNextTable(options.signal);
-    await swapIn(options.buildId, redirect.date, kept, options.signal);
+    await swapWhenNoRunReads(options, () => swapIn(options.buildId, redirect.date, kept, options.signal));
     // The build's row records its own file, the redirect table; both files' totals are the summary's.
     return {
       ...redirectRead,

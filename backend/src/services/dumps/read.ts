@@ -33,6 +33,7 @@ import { dumpNamed, safeFileName, type DumpFile } from './catalog.js';
 import { downloadTo, networkFailure, openStream, type NetworkFailure } from './fetch.js';
 import { freeBytes, olderCopies, removeCopies } from './localCopies.js';
 import { bytesHeld } from './rangedDownload.js';
+import type { RunsWait } from './swapGuard.js';
 
 /** What a build does with the lines: kept only after `commit`, dropped by `abort`. */
 export interface DumpConsumer {
@@ -59,6 +60,8 @@ export interface ReadOptions {
   onProgress?: (progress: { downloaded: number; read: number; lines: number }) => void;
   /** Something the build did beside reading that its admin should be told: an older copy removed. */
   onNote?: (note: string) => void;
+  /** Told what a keeping build's swap waits for, and null once it swaps (`swapGuard.ts`, #2415). */
+  onWaitForRuns?: (wait: RunsWait | null) => void;
   /** The grid a chunk consumer's pieces are cut on; `PIECE_BYTES` unless a spec needs small pieces. */
   pieceBytes?: number;
   /**

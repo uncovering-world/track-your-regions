@@ -33,6 +33,7 @@ import {
   swapIn,
   type LinkRow, type PageRow,
 } from './structureTables.js';
+import { swapWhenNoRunReads } from '../swapGuard.js';
 
 const ARTICLE = 0;
 const CATEGORY = 14;
@@ -153,7 +154,7 @@ export async function buildStructure(page: DumpFile, options: BuildOptions): Pro
     refuseEmpty(counts);
     options.onPhase('Indexing the structure\'s tables...');
     await indexNextTables(options.signal, which => options.onPhase(`Indexing the structure's tables: ${which}...`));
-    await swapIn(options.buildId, page.date, counts, options.signal);
+    await swapWhenNoRunReads(options, () => swapIn(options.buildId, page.date, counts, options.signal));
     // The build's row records its own file, the page table's; the four files' totals are the summary's.
     return {
       bytes: pageRead.bytes, lines: pageRead.lines, checksumActual: pageRead.checksumActual,
