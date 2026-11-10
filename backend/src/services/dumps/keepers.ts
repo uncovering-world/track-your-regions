@@ -93,6 +93,12 @@ export interface Keeper {
   rederive?(options: RederiveOptions): Promise<void>;
   /** The build now in place, if any. */
   latest(): Promise<Kept | null>;
+  /**
+   * Whether a build keeps what it reads step by step rather than swapping it
+   * in whole: readership keeps each month as it is read, so a failed build
+   * leaves the months before it kept (#2419).
+   */
+  keepsAsItGoes?: true;
 }
 
 const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
@@ -101,7 +107,7 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   },
   'pageviews-user': {
     title: 'Readership over the last twelve months', build: buildReadership, latest: latestReadership, archives: readershipArchives,
-    refuseYearEnd: refuseOverlappingYear, samples: false, fromCopy: false,
+    refuseYearEnd: refuseOverlappingYear, samples: false, fromCopy: false, keepsAsItGoes: true,
   },
   'enwiki-page': {
     title: 'English Wikipedia\'s articles, categories and category links', build: buildStructure, latest: latestStructure, samples: false, fromCopy: false,

@@ -42,6 +42,9 @@ export interface RangedDownload {
   minRange?: number;
 }
 
+/** A range the host ended before its last byte: the connection was closed without an error of its own. */
+export class RangeEndedEarly extends Error {}
+
 /** How many bytes a range writes between two saves of where it has got to. */
 const SAVE_EVERY = 64 * 1024 * 1024;
 
@@ -145,7 +148,7 @@ async function fetchRange(
   } finally {
     source.destroy();
   }
-  if (range.next < range.end) throw new Error(`${job.url}: a range ended at byte ${range.next} of ${range.end}`);
+  if (range.next < range.end) throw new RangeEndedEarly(`${job.url}: a range ended at byte ${range.next} of ${range.end}`);
 }
 
 /**

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import type { DumpFile } from './catalog.js';
 import { openStream } from './fetch.js';
-import { countLines, holdVerifiedCopy, readDump, type DumpConsumer } from './read.js';
+import { countLines, CutDownload, holdVerifiedCopy, readDump, sizeWords, type DumpConsumer } from './read.js';
 import { ScopeReader } from './wikidata/scopeReader.js';
 
 /**
@@ -38,6 +38,8 @@ const files = new Map<string, Buffer>([
   ['/planet-261012.osm.pbf', PBF],
   ['/dewiki-20261101-page.sql.gz', GZ],
 ]);
+/** How many more requests of a file the host cuts halfway through (#2419), as dumps.wikimedia.org closed long downloads on 2026-11-10. */
+const severing = new Map<string, number>();
 /** Files whose size the host does not answer, as a HEAD with no Content-Length. */
 const unsized = new Set(['/unsized.json.gz']);
 
@@ -60,6 +62,13 @@ beforeAll(async () => {
         return;
       }
       res.writeHead(206, { 'Content-Length': to - from + 1, 'Content-Range': `bytes ${from}-${to}/${body.length}` });
+      const cuts = severing.get(req.url ?? '') ?? 0;
+      if (req.method !== 'HEAD' && cuts > 0) {
+        severing.set(req.url!, cuts - 1);
+        // Half of what was asked, then the connection closed with no end: undici's `terminated`.
+        res.write(body.subarray(from, from + Math.floor((to - from + 1) / 2)), () => res.socket?.destroy());
+        return;
+      }
       res.end(req.method === 'HEAD' ? undefined : body.subarray(from, to + 1));
       return;
     }
@@ -224,6 +233,32 @@ describe('reading a dump through the pipeline', () => {
     }
   });
 
+  it('resumes a table the host cut mid-download from the offset it saved, and says how much is on disk (#2419)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
+    try {
+      const table = file('/dewiki-20261101-page.sql.gz', { checksum: { kind: 'sha1', value: sha1(GZ) }, expectedBytes: GZ.length });
+      severing.set('/dewiki-20261101-page.sql.gz', 1);
+      ranges.length = 0;
+      const consumer = recording();
+      const cut = await readDump(table, consumer, { signal: signal(), dumpsDir: dir }).catch((error: unknown) => error);
+      expect(cut).toBeInstanceOf(CutDownload);
+      const half = Math.floor(GZ.length / 2);
+      expect(cut).toMatchObject({ failure: 'closed', local: true, held: half });
+      expect((cut as Error).message)
+        .toBe(`The connection to ${new URL(base).host} was closed after ${sizeWords(half)} of ${sizeWords(GZ.length)} of dewiki-20261101-page.sql.gz`);
+      expect(consumer.outcome).toBe('aborted');
+
+      // The retry asks the host only for what the copy lacks, and reads the whole file from disk.
+      const result = await readDump(table, countLines(), { signal: signal(), dumpsDir: dir });
+      expect(ranges).toEqual([`bytes=0-${GZ.length - 1}`, `bytes=${half}-${GZ.length - 1}`]);
+      expect(result.lines).toBe(LINES.length);
+      expect(readFileSync(join(dir, 'dewiki-20261101-page.sql.gz')).equals(GZ)).toBe(true);
+    } finally {
+      severing.clear();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("retires an edition's older table once a build has verified its newer one (#2419)", async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
     try {
@@ -240,6 +275,12 @@ describe('reading a dump through the pipeline', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("reads a lost database connection of the consumer's as the consumer's, never as the host's cut (#2419)", async () => {
+    const lost = Object.assign(new Error('Connection terminated unexpectedly'), { code: 'ECONNRESET' });
+    const consumer = { ...recording(), line: () => { throw lost; } };
+    await expect(readDump(file('/whole.json.gz'), consumer, { signal: signal() })).rejects.toBe(lost);
   });
 
   it('reads a file already whole on disk without asking the host for a byte of it (#2419)', async () => {

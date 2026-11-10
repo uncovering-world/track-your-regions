@@ -30,7 +30,7 @@ import { PassThrough, Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
 import { dumpNamed, safeFileName, type DumpFile } from './catalog.js';
-import { downloadTo, openStream } from './fetch.js';
+import { downloadTo, networkFailure, openStream, type NetworkFailure } from './fetch.js';
 import { freeBytes, olderCopies, removeCopies } from './localCopies.js';
 import { bytesHeld } from './rangedDownload.js';
 
@@ -81,6 +81,50 @@ const PROGRESS_EVERY = 100_000;
 const GUNZIP_CHUNK = 1 << 20;
 /** The grid a chunk consumer's pieces are cut on: a piece is about this size, give or take a line. */
 export const PIECE_BYTES = 8 << 20;
+
+const GB = 1024 ** 3;
+const MB = 1024 ** 2;
+/** A size as the admin reads it: `2.2 GB`, `75 MB` below a gigabyte, `40 KB` below a megabyte. */
+export function sizeWords(bytes: number): string {
+  if (bytes >= GB) return `${(bytes / GB).toFixed(1)} GB`;
+  return bytes >= MB ? `${Math.round(bytes / MB)} MB` : `${Math.round(bytes / 1024)} KB`;
+}
+
+/**
+ * A read the network cut (#2419): what happened in words, and how much of the
+ * file was read. With a local copy (`local`) those bytes are on disk, and the
+ * next read resumes from them; a read from the host's stream keeps none, and
+ * the next one starts the file again.
+ */
+export class CutDownload extends Error {
+  constructor(
+    readonly failure: NetworkFailure, readonly file: DumpFile, readonly held: number, readonly local: boolean, cause: unknown,
+  ) {
+    super(cutWords(failure, file, held), { cause });
+  }
+}
+
+function cutWords(failure: NetworkFailure, file: DumpFile, held: number): string {
+  const host = new URL(file.url).host;
+  if (failure === 'unreachable') return `${host} could not be reached while ${file.fileName} was read`;
+  if (failure === 'host-trouble') return `${host} answered that it could not serve ${file.fileName} for now`;
+  const of = file.expectedBytes ? ` of ${sizeWords(file.expectedBytes)}` : '';
+  return `The connection to ${host} was closed after ${sizeWords(held)}${of} of ${file.fileName}`;
+}
+
+/**
+ * The error a read ends with where the network cut it, with what of the file
+ * it holds; any other error as it was. A cancel is a cancel, whatever broke
+ * the connection on its way out.
+ */
+async function asCut(
+  error: unknown, file: DumpFile, path: string | null, read: number, options: ReadOptions, fromConsumer = false,
+): Promise<unknown> {
+  const failure = fromConsumer ? null : networkFailure(error);
+  if (!failure || options.signal.aborted) return error;
+  const held = path && file.expectedBytes !== null ? await bytesHeld(path, file.expectedBytes) : read;
+  return new CutDownload(failure, file, held, path !== null, error);
+}
 
 /** The bytes read are not the host's file: a checksum or size mismatch, or a stream the decoder refused. */
 class DamagedFile extends Error {}
@@ -181,20 +225,50 @@ export async function readDump(file: DumpFile, consumer: DumpConsumer, options: 
   if (file.compression === 'none') throw new Error(`${file.fileName} is read whole by a tool, not by lines: hold a verified copy of it`);
   const path = localPath(file, options);
   let downloaded = 0;
+  let streamed = 0;
+  let consumerFailed: unknown;
   let source: Readable | undefined;
   try {
     source = await openSource(file, path, options, n => {
       downloaded += n;
       options.onProgress?.({ downloaded, read: 0, lines: 0 });
     });
-    const result = await readSource(file, file.compression, source, consumer, options, () => downloaded);
+    // What a read from the host's stream has taken, for the words of a cut: it keeps no copy to measure.
+    const tracked: ReadOptions = { ...options, onProgress: progress => { streamed = progress.read; options.onProgress?.(progress); } };
+    const result = await readSource(file, file.compression, source, heard(consumer, error => { consumerFailed = error; }), tracked, () => downloaded);
     if (options.dumpsDir && !options.held) await retireOlderCopies(file, options.dumpsDir, options);
     return result;
   } catch (error) {
     source?.destroy();
     await consumer.abort();
-    throw await withDamagedCopyDeleted(error, path, options);
+    throw await asCut(await withDamagedCopyDeleted(error, path, options), file, path, streamed, options, error === consumerFailed);
   }
+}
+
+/**
+ * The consumer with every failure of its own noted: a database connection a
+ * build's rows lost is the build's, never the host's cut (#2419).
+ */
+function heard(consumer: DumpConsumer, note: (error: unknown) => void): DumpConsumer {
+  const noted = (error: unknown): never => {
+    note(error);
+    throw error;
+  };
+  const watch = <A extends unknown[], R>(call: (...args: A) => R) => (...args: A): R => {
+    try {
+      const result = call(...args);
+      return (result instanceof Promise ? result.catch(noted) : result) as R;
+    } catch (error) {
+      return noted(error);
+    }
+  };
+  return {
+    line: watch(text => consumer.line(text)),
+    ...(consumer.chunk ? { chunk: watch((text: Uint8Array, piece: number) => consumer.chunk!(text, piece)) } : {}),
+    ...(consumer.lineCount ? { lineCount: () => consumer.lineCount!() } : {}),
+    commit: watch(() => consumer.commit()),
+    abort: () => consumer.abort(),
+  };
 }
 
 /** How many chunks of a copy are hashed between two progress reports and cancel checks. */
@@ -234,7 +308,7 @@ export async function holdVerifiedCopy(file: DumpFile, options: ReadOptions): Pr
     if (!options.held) await retireOlderCopies(file, options.dumpsDir!, options);
     return { bytes, lines: 0, checksumActual, path };
   } catch (error) {
-    throw await withDamagedCopyDeleted(error, path, options);
+    throw await asCut(await withDamagedCopyDeleted(error, path, options), file, path, downloaded, options);
   }
 }
 

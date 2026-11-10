@@ -24317,6 +24317,48 @@
             ],
             "description": "When the step running now started, so a step with no measure of its own reads as alive; null while queued (#1519)."
           },
+          "retry": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "description": "When the next attempt starts."
+                  },
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991,
+                    "description": "The attempt that starts then, counted from 1 for the first."
+                  },
+                  "of": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991,
+                    "description": "How many attempts the build makes in all."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "What cut the last attempt, in words: the host, and how much of which file was read."
+                  }
+                },
+                "required": [
+                  "at",
+                  "attempt",
+                  "of",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A build the network cut, waiting out a pause before it tries again from what its local copies hold (#2419); null while it runs or is queued."
+          },
           "operation": {
             "description": "The build in the shape every long operation reports (#1356): its step by ordinal and message, with no step count, measured as `read` is against `total`.",
             "$ref": "#/components/schemas/OperationProgressAnswer"
@@ -24336,6 +24378,7 @@
           "etaSeconds",
           "total",
           "stepStartedAt",
+          "retry",
           "operation"
         ],
         "additionalProperties": false,

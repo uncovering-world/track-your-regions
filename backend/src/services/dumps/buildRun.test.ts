@@ -19,17 +19,23 @@ const FILE = {
   key: 'wikidata-lexemes', fileName: 'wikidata-20261012-lexemes.json.gz', url: 'https://dumps.wikimedia.org/x',
   date: '2026-10-12', checksum: { kind: 'sha1', value: 'a'.repeat(40) }, expectedBytes: 1, compression: 'gzip',
 };
-vi.mock('./catalog.js', () => ({ dumpNamed: (key: string) => ({ key, resolve: async () => FILE }) }));
+vi.mock('./catalog.js', () => ({
+  dumpNamed: (key: string) => ({
+    key, datedBy: key === 'pageviews-user' ? 'month' : 'day', resolve: async () => FILE, ...(key === 'osm-planet' ? { retriesACut: false } : {}),
+  }),
+}));
 const keepers = vi.hoisted(() => ({
   rederive: vi.fn(async (_options: { buildId: number; onNote?: (note: string) => void; onPhase: (m: string) => void }) => undefined),
   build: vi.fn(),
   update: vi.fn(),
   canUpdate: vi.fn(async () => true),
+  latest: vi.fn(async () => ({ dumpDate: '2026-10-05', swappedAt: new Date(), needs: 'nothing' })),
 }));
 vi.mock('./keepers.js', () => ({
   keeperOf: (key: string) => {
-    if (key === 'wikidata-entities') return { rederive: keepers.rederive, build: keepers.build };
+    if (key === 'wikidata-entities') return { rederive: keepers.rederive, build: keepers.build, latest: keepers.latest };
     if (key === 'osm-planet') return { build: keepers.build, update: keepers.update, canUpdate: keepers.canUpdate };
+    if (key === 'pageviews-user') return { build: keepers.build, latest: keepers.latest, keepsAsItGoes: true };
     return null;
   },
 }));
@@ -40,9 +46,10 @@ vi.mock('./samples.js', () => ({
   cutSample: samples.cutSample, sampleIn: samples.sampleIn, sampleFile: () => SAMPLE_FILE, SAMPLE_JSON_BYTES: 4 * 1024 ** 3,
 }));
 const read = vi.hoisted(() => ({ readDump: vi.fn() }));
-vi.mock('./read.js', () => ({ readDump: read.readDump, countLines: () => ({}) }));
+vi.mock('./read.js', async (original) => ({ ...await original<typeof import('./read.js')>(), readDump: read.readDump, countLines: () => ({}) }));
 
 const { runBuild } = await import('./buildRun.js');
+const { CutDownload } = await import('./read.js');
 
 const claimed = { id: 9, dump: 'wikidata-lexemes', request: { kind: 'verify' as const } };
 /** A read that runs until its signal aborts. */
@@ -299,5 +306,108 @@ describe('a build in the dump worker (ADR-0106)', () => {
     });
     await runBuild(claimed, new AbortController().signal);
     expect(etas.at(-1)).toBeNull();
+  });
+});
+
+describe('a build the network cut (#2419)', () => {
+  const cut = (held: number) => new CutDownload('closed', { ...FILE, expectedBytes: 3_865_470_566 } as never, held, true,
+    new TypeError('terminated'));
+  const keep = { id: 9, dump: 'wikidata-entities', request: { kind: 'keep' as const } };
+
+  it('tries again after its pause, says it waits, and ends verified from what is on disk', async () => {
+    keepers.build.mockRejectedValueOnce(cut(907_018_240)).mockResolvedValueOnce({ bytes: 1, lines: 3, checksumActual: null });
+    // The row's progress is one object the build keeps writing: each beat is read as it was sent.
+    const sent: unknown[] = [];
+    ledger.beat.mockImplementation(async (_id, progress) => { sent.push(structuredClone(progress)); return { cancelRequested: false }; });
+    await runBuild(keep, new AbortController().signal, [0, 0, 0]);
+    expect(keepers.build).toHaveBeenCalledTimes(2);
+    // The row said it waits for its second attempt, why, and that the copy in place stands: a retry, not a failure.
+    expect(sent).toContainEqual(expect.objectContaining({
+      retry: expect.objectContaining({ attempt: 2, of: 4, reason: expect.stringMatching(/closed after 865 MB of 3\.6 GB/) }),
+      message: expect.stringMatching(/Trying again from what is on disk \(attempt 2 of 4\); the copy in place stands/),
+    }));
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'success' }));
+    ledger.beat.mockImplementation(async () => ({ cancelRequested: false }));
+  });
+
+  it('fails after its last attempt, saying what happened, what the next build resumes from and that the copy in place stands', async () => {
+    keepers.build.mockRejectedValue(cut(2_362_232_012));
+    await runBuild(keep, new AbortController().signal, [0, 0, 0]);
+    expect(keepers.build).toHaveBeenCalledTimes(4);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      status: 'failed',
+      error: 'The connection to dumps.wikimedia.org was closed after 2.2 GB of 3.6 GB of wikidata-20261012-lexemes.json.gz. '
+        + 'It was tried 4 times. The next build resumes from the 2.2 GB of wikidata-20261012-lexemes.json.gz on disk. '
+        + 'The copy in place, built from the dump of 5 Oct 2026, is unchanged and still read.',
+    }));
+    keepers.build.mockReset();
+  });
+
+  it('never tries again a file that is not the host\'s', async () => {
+    const damaged = Object.assign(new Error('wikidata-20261012-lexemes.json.gz: sha1 1 is not the published 2'), { code: 'Z_DATA_ERROR' });
+    keepers.build.mockRejectedValueOnce(damaged);
+    await runBuild(keep, new AbortController().signal, [0, 0, 0]);
+    expect(keepers.build).toHaveBeenCalledTimes(1);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed', error: expect.stringMatching(/^wikidata-20261012.*is not the published 2\. The copy in place/) }));
+  });
+
+  it('stops waiting when the worker stops, and says to start the build again', async () => {
+    keepers.build.mockRejectedValueOnce(cut(1));
+    ledger.beat.mockResolvedValueOnce({ cancelRequested: false });
+    const stop = new AbortController();
+    const running = runBuild(keep, stop.signal, [60_000]);
+    await vi.waitFor(() => expect(ledger.beat).toHaveBeenCalledWith(9, expect.objectContaining({ retry: expect.anything() })));
+    stop.abort();
+    await running;
+    expect(keepers.build).toHaveBeenCalledTimes(1);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed', error: expect.stringMatching(/^The dump worker stopped/) }));
+  });
+
+  it('ends the wait at once for a stop that came while the row was being written', async () => {
+    keepers.build.mockRejectedValueOnce(cut(1));
+    const stop = new AbortController();
+    ledger.beat.mockImplementationOnce(async () => {
+      stop.abort();
+      return { cancelRequested: false };
+    });
+    // A wait of an hour would outlast the spec's timeout; the stop ends it.
+    await runBuild(keep, stop.signal, [3_600_000]);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed', error: expect.stringMatching(/^The dump worker stopped/) }));
+  });
+
+  it("never tries the planet again: a failed update waits for the next one (ADR-0134 decision 1)", async () => {
+    keepers.update.mockRejectedValueOnce(cut(1));
+    await runBuild({ id: 9, dump: 'osm-planet', request: { kind: 'keep' } }, new AbortController().signal, [0, 0, 0]);
+    expect(keepers.update).toHaveBeenCalledTimes(1);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed' }));
+  });
+
+  it('says of readership, which keeps month by month, that what it kept stays and the rest is unchanged', async () => {
+    keepers.build.mockRejectedValueOnce(new Error('pageviews-202606-user.bz2: read 1 bytes of the host\'s 2'));
+    keepers.latest.mockResolvedValueOnce({ dumpDate: '2026-09-01', swappedAt: new Date(), needs: 'nothing' });
+    await runBuild({ id: 9, dump: 'pageviews-user', request: { kind: 'keep' } }, new AbortController().signal, [0]);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      error: "pageviews-202606-user.bz2: read 1 bytes of the host's 2. "
+        + 'What this build kept before it failed stays kept, and the rest of the copy in place, up to Sept 2026, is unchanged and still read.',
+    }));
+  });
+
+  it('says the next build resumes from what is on disk where a listing, not a file, was cut', async () => {
+    const { RequestFailed } = await import('./fetch.js');
+    keepers.build.mockRejectedValue(new RequestFailed('https://dumps.wikimedia.org/dewiki/20261101/dumpstatus.json', 'unreachable', new Error('x')));
+    await runBuild(keep, new AbortController().signal, [0]);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      error: expect.stringMatching(/^dumps\.wikimedia\.org could not be reached\. It was tried 2 times\. The next build resumes from what is on disk\. /),
+    }));
+    keepers.build.mockReset();
+  });
+
+  it("never tries again a build whose own writes lost the database, though the codes match a host's", async () => {
+    keepers.build.mockRejectedValueOnce(Object.assign(new Error('Connection terminated unexpectedly'), { code: 'ECONNRESET' }));
+    await runBuild(keep, new AbortController().signal, [0, 0, 0]);
+    expect(keepers.build).toHaveBeenCalledTimes(1);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      error: 'Connection terminated unexpectedly. The copy in place, built from the dump of 5 Oct 2026, is unchanged and still read.',
+    }));
   });
 });

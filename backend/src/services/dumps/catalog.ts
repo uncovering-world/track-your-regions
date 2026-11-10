@@ -80,6 +80,12 @@ export interface DumpDescriptor {
    */
   readsAlso?: (name: string) => boolean;
   /**
+   * False where a build the network cut is never tried again: the planet,
+   * whose failed update waits for the next one (ADR-0134 decision 1,
+   * ADR-0136 decision 3). Every other dump's build is (#2419).
+   */
+  retriesACut?: false;
+  /**
    * The newest complete file the host lists, or, with `only`, the newest of
    * those whose name it accepts: a build from the local copy resolves the
    * copy's own file, so its checksum and size are still the host's.
@@ -397,6 +403,7 @@ const planet: DumpDescriptor = {
   source: 'OpenStreetMap',
   title: 'Planet',
   datedBy: 'day',
+  retriesACut: false,
   about: 'The whole OpenStreetMap database as one PBF file, released weekly and verified by its md5. It is kept as a local '
     + 'copy, which the OpenStreetMap layer is cut from (ADR-0134); it is never read by lines.',
   isFileName: datedName('planet-', 6, '.osm.pbf'),

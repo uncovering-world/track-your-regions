@@ -62,6 +62,17 @@ export interface BuildProgressRecord {
   stepStartedAt?: string | null;
   /** Which step the build is on, counted from 1 as steps start (#1356); how many it will have is not known ahead. */
   step?: number;
+  /** A build the network cut, waiting to try again (#2419); null or absent while it runs. */
+  retry?: BuildRetry | null;
+}
+
+/** A build waiting out its pause before it tries again: when, which attempt of how many, and what cut the last one. */
+export interface BuildRetry {
+  /** ISO time the next attempt starts. */
+  at: string;
+  attempt: number;
+  of: number;
+  reason: string;
 }
 
 /** How often a running build says it is alive and how far it got (#1463, #1467). */
