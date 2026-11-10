@@ -13,7 +13,10 @@
  * 1. `redirect`: each redirect page's id and the item it points to, an
  *    interwiki redirect left out — the build's own file, 37 MB;
  * 2. `page`: each main-namespace redirect page's id and the item it is titled —
- *    the run's page table, read from the host as a stream.
+ *    the run's page table.
+ *
+ * Both files are kept in the local copy, so a read the network cut resumes
+ * where it stopped (#2419).
  *
  * Both are staged and joined in the database (`redirectTables.ts`). A build is
  * swapped in only whole: where the run has not finished the page table, the
@@ -75,7 +78,7 @@ export async function buildWikidataRedirects(
     options.onPhase(`Reading ${redirect.fileName}...`);
     const redirectRead = await stageRedirects(redirect, options);
     options.onPhase(`Reading ${pageFile.fileName}...`);
-    const pageRead = await stageRedirectPages(pageFile, { ...options, dumpsDir: undefined });
+    const pageRead = await stageRedirectPages(pageFile, options);
     options.onPhase('Keeping the item redirects...');
     const kept = await keepRedirects(options.signal);
     if (kept === 0) throw new Error('The build kept no item redirect, so the redirects in place stay');

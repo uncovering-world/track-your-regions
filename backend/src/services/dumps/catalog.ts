@@ -72,6 +72,14 @@ export interface DumpDescriptor {
   /** Whether a name is one of the dump's dated files, which a local copy keeps (#1456). */
   isFileName: (name: string) => boolean;
   /**
+   * Whether a name is one of the other files a build of the dump reads beside
+   * its own, each kept in the local copy too: every counted edition's redirect
+   * and page tables, Wikidata's page table, every Wikivoyage edition's usage
+   * and page tables, English Wikivoyage's page properties (#2419). A newer one
+   * replaces the older copy as the dump's own file does.
+   */
+  readsAlso?: (name: string) => boolean;
+  /**
    * The newest complete file the host lists, or, with `only`, the newest of
    * those whose name it accepts: a build from the local copy resolves the
    * copy's own file, so its checksum and size are still the host's.
@@ -206,6 +214,7 @@ const wikivoyageUsage: DumpDescriptor = {
     + 'page tables of every edition, and keeps each item an edition\'s guide articles use: the travel-guide witness of '
     + 'whether a place is one a visitor goes to (#1768, decided on #1718).',
   isFileName: datedName('enwikivoyage-', 8, `-${USAGE_SUFFIX}`),
+  readsAlso: name => /^[a-z_]+wikivoyage-\d{8}-(wbc_entity_usage|page)\.sql\.gz$/.test(name),
   async resolve(read, _size, only) {
     const base = `${WIKIMEDIA_DUMPS}/enwikivoyage`;
     for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
@@ -257,6 +266,7 @@ const wikivoyagePages: DumpDescriptor = {
     + 'properties: the copy the world-view extraction reads a region\'s page from, so two extractions of one copy agree '
     + '(#2089, #2355).',
   isFileName: name => CONTENT_PART.test(name),
+  readsAlso: datedName('enwikivoyage-', 8, '-page_props.sql.gz'),
   async resolve(read, size, only) {
     const base = `${CONTENT_CURRENT}/enwikivoyage`;
     for (const date of contentDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
@@ -286,11 +296,15 @@ const wikivoyagePages: DumpDescriptor = {
 };
 
 /** One table of a wiki's run, found in the newest run that has written it. */
-function wikiTable(wiki: string, key: DumpKey, job: string, table: string, title: string, about: string, source: string): DumpDescriptor {
+function wikiTable(
+  wiki: string, key: DumpKey, job: string, table: string, title: string, about: string, source: string,
+  readsAlso?: (name: string) => boolean,
+): DumpDescriptor {
   const base = `${WIKIMEDIA_DUMPS}/${wiki}`;
   return {
     key, source, title, datedBy: 'day', about: `The ${table} table: ${about}`,
     isFileName: datedName(`${wiki}-`, 8, `-${table}.sql.gz`),
+    ...(readsAlso ? { readsAlso } : {}),
     async resolve(read, _size, only) {
       for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
         if (only && !only(`${wiki}-${dir}-${table}.sql.gz`)) continue;
@@ -302,8 +316,11 @@ function wikiTable(wiki: string, key: DumpKey, job: string, table: string, title
   };
 }
 
-function enwikiTable(key: DumpKey, job: string, table: string, title: string, about: string, source = 'English Wikipedia'): DumpDescriptor {
-  return wikiTable('enwiki', key, job, table, title, about, source);
+function enwikiTable(
+  key: DumpKey, job: string, table: string, title: string, about: string, source = 'English Wikipedia',
+  readsAlso?: (name: string) => boolean,
+): DumpDescriptor {
+  return wikiTable('enwiki', key, job, table, title, about, source, readsAlso);
 }
 
 /**
@@ -420,10 +437,10 @@ export const DUMPS: readonly DumpDescriptor[] = [
   enwikiTable('enwiki-langlinks', 'langlinkstable', 'langlinks', 'Language links', 'each article\'s articles in other editions.'),
   enwikiTable('wikipedia-redirects', 'redirecttable', 'redirect', 'Redirects',
     'each redirect page and the title it points to. A build reads this and the page table of the same date in every edition readership counts, and keeps the redirects to an article with a Wikidata item, so their views count under it (#1650, ADR-0055 decision 2).',
-    'Wikipedia editions'),
+    'Wikipedia editions', name => /^[a-z_]+wiki-\d{8}-(redirect|page)\.sql\.gz$/.test(name)),
   wikiTable('wikidatawiki', 'wikidata-redirects', 'redirecttable', 'redirect', 'Item redirects',
     'each redirect page of Wikidata and the item it points to. A build reads this and the page table of the same run, and keeps every item redirected to another, so a place registered under an item Wikidata has since merged away is still found (ADR-0143 decision 3, #1895).',
-    'Wikidata'),
+    'Wikidata', datedName('wikidatawiki-', 8, '-page.sql.gz')),
   pageviews,
   wikivoyageUsage,
   wikivoyagePages,
