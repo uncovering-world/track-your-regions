@@ -154,6 +154,7 @@ export interface CoverageRegionsRow {
   slug: string;
   name: string;
   country: string;
+  country_code: string;
   centre: string;
   radius_km: number;
   surveyed: Date;
@@ -1571,6 +1572,7 @@ export const COLUMN_WIDTHS = {
     slug: 80,
     name: 255,
     country: 255,
+    country_code: 2,
   },
   curator_assignments: {
     scope_type: 20,

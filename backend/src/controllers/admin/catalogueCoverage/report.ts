@@ -251,6 +251,13 @@ export interface RegionUnnamed {
   judgedByCause: JudgedCause[];
   /** Judged not worth a visit, and a kind still offers it: a finding the kind's rule or a curator answers. */
   standing: UnnamedPlace[];
+  /**
+   * Within the circle and standing only in other countries than the region's (#2406):
+   * left out of the reach, counted in nothing above and judged by nobody, and listed so a
+   * place a traveller walks to across an open border is seen to be left out rather than
+   * lost. Seoul's is Kaesong, across the closed border.
+   */
+  abroad: UnnamedPlace[];
 }
 
 /** A judgement on a row no offered place within the region's reach carries now: the finding is answered, and the line is to be removed. */
@@ -445,7 +452,8 @@ const byObscurity = (a: UnnamedPlace, b: UnnamedPlace): number =>
 
 /**
  * What each region offers that no guide names (#1601), with the ledger's row judgements
- * joined by Wikidata id. A judged row no offered place within reach carries now is stale.
+ * joined by Wikidata id. A judged row no offered place within reach carries now is stale,
+ * and a place abroad is out of reach (#2406), so it carries none.
  */
 function unnamedByRegion(
   facts: CoverageFacts, kindNames: Map<number, string>, regionNames: Map<string, string>,
@@ -455,9 +463,10 @@ function unnamedByRegion(
   const judgements = new Map(onRows.map(row => [rowKey(row.region_slug, row.row_wikidata_id as string), toJudgement(row)]));
   const carried = new Set<string>();
   const places = new Map<string, UnnamedPlace[]>();
+  const abroad = new Map<string, UnnamedPlace[]>();
   for (const row of facts.unnamed) {
-    const judgement = row.wikidata_id === null ? null : judgements.get(rowKey(row.region_slug, row.wikidata_id)) ?? null;
-    if (row.wikidata_id !== null) carried.add(rowKey(row.region_slug, row.wikidata_id));
+    const judgement = row.abroad || row.wikidata_id === null ? null : judgements.get(rowKey(row.region_slug, row.wikidata_id)) ?? null;
+    if (!row.abroad && row.wikidata_id !== null) carried.add(rowKey(row.region_slug, row.wikidata_id));
     const place: UnnamedPlace = {
       experienceId: row.experience_id,
       name: row.name,
@@ -467,9 +476,10 @@ function unnamedByRegion(
       km: row.km,
       judgement,
     };
-    const list = places.get(row.region_slug);
+    const into = row.abroad ? abroad : places;
+    const list = into.get(row.region_slug);
     if (list) list.push(place);
-    else places.set(row.region_slug, [place]);
+    else into.set(row.region_slug, [place]);
   }
   const unnamed: RegionUnnamed[] = facts.regions.map((region) => {
     const own = places.get(region.slug) ?? [];
@@ -481,6 +491,7 @@ function unnamedByRegion(
       unjudgeable: own.filter(place => place.wikidataId === null).sort(byObscurity),
       judgedByCause: judgedByCause(own),
       standing: own.filter(place => notWorthAVisit(place.judgement)).sort(byObscurity),
+      abroad: (abroad.get(region.slug) ?? []).sort((a, b) => a.km - b.km || a.name.localeCompare(b.name)),
     };
   });
   const stale: StaleRowJudgement[] = onRows

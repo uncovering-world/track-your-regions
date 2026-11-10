@@ -467,7 +467,7 @@ describe('a top no kind\'s classes reach (#2146)', () => {
 
 describe('what a region offers that no guide names', () => {
   const unnamed = (name: string, over: Partial<CoverageFacts['unnamed'][number]> = {}): CoverageFacts['unnamed'][number] => ({
-    region_slug: 'cusco-region', experience_id: name.length, name, wikidata_id: `Q${name.length}`, kind_ids: [5], sitelinks: 10, km: 3, ...over,
+    region_slug: 'cusco-region', experience_id: name.length, name, wikidata_id: `Q${name.length}`, kind_ids: [5], sitelinks: 10, abroad: false, km: 3, ...over,
   });
   const onRow = (id: string, cause: string, issue: number | null = null): JudgementRow =>
     judged('', cause, issue, { entry_slug: null, kind_slug: null, row_wikidata_id: id });
@@ -483,16 +483,26 @@ describe('what a region offers that no guide names', () => {
       unnamed('An aqueduct', { wikidata_id: 'Q78', sitelinks: 12, kind_ids: [5] }),
       unnamed('A road', { wikidata_id: 'Q79', sitelinks: 30 }),
       unnamed('A property only UNESCO names', { wikidata_id: null, sitelinks: null, kind_ids: [1] }),
+      // In the circle and standing only abroad (#2406); judged once as if it were in reach.
+      unnamed('A fortress over the border', { wikidata_id: 'Q81', sitelinks: 4, km: 9, abroad: true }),
     ],
     judgements: [
       onRow('Q77', 'worth-a-visit'),
       onRow('Q78', 'not-a-must'),
       onRow('Q79', 'rule-defect', 1160),
+      onRow('Q81', 'not-a-must'),
       // Judged in Rome, where no offered row carries the id any more.
       onRow('Q80', 'not-a-must', null),
-    ].map((row, i) => (i === 3 ? { ...row, region_slug: 'rome' } : row)),
+    ].map((row, i) => (i === 4 ? { ...row, region_slug: 'rome' } : row)),
   }));
   const cusco = report.unnamed.find(region => region.regionSlug === 'cusco-region');
+
+  it('lists apart, counted in nothing and judged by nobody, a place standing only in other countries, and calls its judgement stale (#2406)', () => {
+    expect(cusco?.abroad.map(place => [place.name, place.km, place.judgement])).toEqual([['A fortress over the border', 9, null]]);
+    expect([...(cusco?.unjudged ?? []), ...(cusco?.standing ?? [])].map(place => place.name)).not.toContain('A fortress over the border');
+    expect(report.staleRowJudgements.map(stale => [stale.regionSlug, stale.wikidataId])).toContainEqual(['cusco-region', 'Q81']);
+    expect(renderCoverageReport(report)).toContain('    left out of the reach, standing only in other countries:\n        A fortress over the border (Q81; Archaeology; 4 sitelinks; 9 km)');
+  });
 
   it('lists per region the unjudged rows least known first, with the kinds that offer them, and apart the ones with no id to judge by', () => {
     expect(cusco?.total).toBe(6);
@@ -516,7 +526,10 @@ describe('what a region offers that no guide names', () => {
 
   it('says of a region with nothing unnamed that it has nothing, and calls stale a row judgement no offered row carries', () => {
     expect(report.unnamed.find(region => region.regionSlug === 'rome')).toMatchObject({ total: 0, unjudged: [], unjudgeable: [], judgedByCause: [], standing: [] });
-    expect(report.staleRowJudgements.map(stale => [stale.regionSlug, stale.wikidataId, stale.cause])).toEqual([['rome', 'Q80', 'not-a-must']]);
+    // The judgement on the place abroad is stale too, its own case's subject (#2406).
+    expect(report.staleRowJudgements.map(stale => [stale.regionSlug, stale.wikidataId, stale.cause])).toEqual([
+      ['cusco-region', 'Q81', 'not-a-must'], ['rome', 'Q80', 'not-a-must'],
+    ]);
   });
 
   it('says it as text: the counts per region, the unjudged, and the findings that stand', () => {

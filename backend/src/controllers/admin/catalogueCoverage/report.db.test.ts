@@ -24,12 +24,30 @@ const REGION = 'db-lane-region';
 const NORTH = { slug: 'db-lane-north', lat: 70, lon: 20 };
 const FAR_EAST = { slug: 'db-lane-far-east', lat: -17, lon: 179.8 };
 const POLE = { slug: 'db-lane-pole', lat: 89.9, lon: 0 };
-const PLACES = { offered: 9601, pending: 9602, refused: 9603, lost: 9604, otherItem: 9605, heritage: 9606, unnamed: 9607, north: 9608, acrossTheLine: 9609, byThePole: 9610, pendingMissing: 9611, crowded: 9612 } as const;
+const PLACES = {
+  offered: 9601, pending: 9602, refused: 9603, lost: 9604, otherItem: 9605, heritage: 9606, unnamed: 9607, north: 9608, acrossTheLine: 9609,
+  byThePole: 9610, pendingMissing: 9611, crowded: 9612, abroad: 9613, astride: 9614, abroadByItem: 9615,
+} as const;
 const WORKS = { shown: 'Q96000010', hidden: 'Q96000011' } as const;
 const QID = {
   offered: 'Q96000001', pending: 'Q96000002', refused: 'Q96000003', lost: 'Q96000004', otherItem: 'Q96000005', unnamed: 'Q96000006',
   north: 'Q96000007', acrossTheLine: 'Q96000008', byThePole: 'Q96000009', crowded: 'Q96000012',
+  abroad: 'Q96000013', astride: 'Q96000014', abroadByItem: 'Q96000015',
 } as const;
+
+/**
+ * The fixture region's country is ZZ (#2406). A place its source puts in XA alone lies
+ * outside the reach, one in XA and ZZ stands on the border and stays, and one whose item
+ * names a country with the code XB (P17, then P297) lies outside too.
+ */
+const COUNTRY_XB = 'Q96000070';
+const ENTITIES: Record<string, unknown> = {
+  [COUNTRY_XB]: { claims: { P297: [{ id: `${COUNTRY_XB}$db-lane-p297`, value: 'XB' }] } },
+};
+
+async function clearEntities(): Promise<void> {
+  await pool.query('DELETE FROM workbench.wikidata_entities WHERE id = ANY($1::text[])', [Object.keys(ENTITIES)]);
+}
 const UNESCO = '96001';
 /** The items the calibration lists name and no fixture place holds (#1864, #1988). */
 const TOPS = {
@@ -39,8 +57,10 @@ const TOPS = {
   partOfDig: 'Q96000056', digHasIt: 'Q96000057', wholeOfDig: 'Q96000058',
 } as const;
 
-/** What the copy of Wikidata says holds what (#2151): the temple and the hall are in the dig, the dig is in the whole. */
+/** What the copy of Wikidata says holds what (#2151): the temple and the hall are in the dig, the dig is in the whole; and where a place abroad stands (#2406). */
 const CLAIMS = [
+  // The item of a place abroad names its country (#2406).
+  { subject: QID.abroadByItem, property: 'P17', value: COUNTRY_XB },
   { subject: TOPS.partOfDig, property: 'P361', value: QID.offered },
   { subject: QID.offered, property: 'P527', value: TOPS.digHasIt },
   { subject: QID.offered, property: 'P361', value: TOPS.wholeOfDig },
@@ -130,10 +150,10 @@ async function files(): Promise<CoverageFiles> {
       { slug: 'festivals-and-events', name: 'Festivals & events', form: 'event', definition: 'A festival.', ...proposed, issue: 1300 },
     ],
     regions: [
-      { slug: REGION, name: 'A region of the db lane', country: 'Nowhere', lat: AT.lat, lon: AT.lon, radius_km: 50, surveyed: '2026-10-01' },
-      { slug: NORTH.slug, name: 'Far north', country: 'Nowhere', lat: NORTH.lat, lon: NORTH.lon, radius_km: 50, surveyed: '2026-10-01' },
-      { slug: FAR_EAST.slug, name: 'Across the line', country: 'Nowhere', lat: FAR_EAST.lat, lon: FAR_EAST.lon, radius_km: 50, surveyed: '2026-10-01' },
-      { slug: POLE.slug, name: 'By the pole', country: 'Nowhere', lat: POLE.lat, lon: POLE.lon, radius_km: 50, surveyed: '2026-10-01' },
+      { slug: REGION, name: 'A region of the db lane', country: 'Nowhere', country_code: 'ZZ', lat: AT.lat, lon: AT.lon, radius_km: 50, surveyed: '2026-10-01' },
+      { slug: NORTH.slug, name: 'Far north', country: 'Nowhere', country_code: 'ZZ', lat: NORTH.lat, lon: NORTH.lon, radius_km: 50, surveyed: '2026-10-01' },
+      { slug: FAR_EAST.slug, name: 'Across the line', country: 'Nowhere', country_code: 'ZZ', lat: FAR_EAST.lat, lon: FAR_EAST.lon, radius_km: 50, surveyed: '2026-10-01' },
+      { slug: POLE.slug, name: 'By the pole', country: 'Nowhere', country_code: 'ZZ', lat: POLE.lat, lon: POLE.lon, radius_km: 50, surveyed: '2026-10-01' },
     ],
     expectations: new Map([[NORTH.slug, []], [FAR_EAST.slug, []], [POLE.slug, []], [REGION, [
       entry('offered-dig', { wikidata: QID.offered, sitelinks: 150 }),
@@ -235,6 +255,16 @@ beforeAll(async () => {
   // Admitted, passed and crowded out of what a reader is shown (ADR-0172): the row the
   // recount would write, written last, so no recount a later write sets off replaces it.
   await place(PLACES.crowded, QID.crowded, AT.lon + 6, dig, 'admitted', 'verified');
+  // Within reach and named by no entry, in other countries than the region's or on the border (#2406).
+  await place(PLACES.abroad, QID.abroad, AT.lon + 0.25, dig, 'admitted', 'verified');
+  await place(PLACES.astride, QID.astride, AT.lon + 0.3, dig, 'admitted', 'verified');
+  await place(PLACES.abroadByItem, QID.abroadByItem, AT.lon + 0.35, dig, 'admitted', 'verified');
+  await pool.query(`UPDATE experiences SET country_codes = '{XA}' WHERE id = $1`, [PLACES.abroad]);
+  await pool.query(`UPDATE experiences SET country_codes = '{XA,ZZ}' WHERE id = $1`, [PLACES.astride]);
+  await clearEntities();
+  for (const [id, entity] of Object.entries(ENTITIES)) {
+    await pool.query('INSERT INTO workbench.wikidata_entities (id, sitelink_count, entity) VALUES ($1, 0, $2)', [id, JSON.stringify(entity)]);
+  }
   await work(WORKS.shown, PLACES.offered);
   await work(WORKS.hidden, PLACES.pending);
   await pool.query(
@@ -256,6 +286,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await clearCatalogue();
   await clearClaims();
+  await clearEntities();
   await clearExpectations();
   // The two runs this spec logged, and their changes with them.
   await pool.query('DELETE FROM experience_sync_logs WHERE id >= $1 AND source_id = 5 AND completed_at >= NOW() - interval \'2 days\'', [runLogId]);
@@ -353,6 +384,15 @@ describe('the coverage report on a real database', () => {
     }]);
     // A place the lists name is never also a place the lists do not name.
     expect([...region.unjudged, ...region.standing].map(place => place.wikidataId)).not.toContain(QID.offered);
+  });
+
+  it('leaves out of the reach a place standing only in other countries than the region\'s, by its source\'s codes or its item\'s, and keeps one on the border (#2406)', () => {
+    const [region] = report.unnamed;
+    const listed = [...region.unjudged, ...region.standing].map(place => place.wikidataId);
+    expect(listed).toContain(QID.astride);
+    expect(listed).not.toContain(QID.abroad);
+    expect(listed).not.toContain(QID.abroadByItem);
+    expect(region.abroad.map(place => place.wikidataId)).toEqual([QID.abroad, QID.abroadByItem]);
   });
 
   it('stands each top of the calibration list: offered, admitted and waiting for a curator, refused by the latest run with its reason, under the line, out of reach (#1864)', () => {

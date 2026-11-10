@@ -95,6 +95,8 @@ export interface UnnamedRow {
   kind_ids: number[];
   /** The place's own sitelinks as its source recorded them; null where the source records none (a museum, an inscribed property). */
   sitelinks: number | null;
+  /** Whether it stands only in other countries than the region's (#2406). */
+  abroad: boolean;
   /** Kilometres from the region's centre to its nearest offered point, rounded. */
   km: number;
 }
@@ -273,6 +275,30 @@ const JUDGEMENTS_SQL = `
    ORDER BY j.region_slug, j.entry_slug NULLS LAST, j.kind_slug, j.row_wikidata_id`;
 
 /**
+ * The countries a place reached stands in, by the ISO 3166-1 codes its items name (#2406):
+ * each item's `P17` at any rank but deprecated, off the claims copy's index, and each
+ * country's `P297` read once. Read off the copy of Wikidata; without one, a place's
+ * countries are the codes its source sent.
+ */
+const ITEM_COUNTRIES_SQL = `
+  ), item_countries AS (
+    SELECT DISTINCT k.experience_id, wc.value_item AS country
+      FROM known_as k
+      JOIN wikidata_claims wc ON wc.subject = k.id AND wc.property = 'P17' AND wc.rank >= 0 AND wc.value_item IS NOT NULL
+  ), country_iso AS (
+    SELECT c.country, w.entity->'claims'->'P297'->0->>'value' AS code
+      FROM (SELECT DISTINCT country FROM item_countries) c
+      JOIN wikidata_entities w ON w.id = c.country`;
+
+/** The countries a place is put in by its items, joined to `countries` where the copy holds them. */
+const ITEM_COUNTRIES_UNION = `
+    UNION
+    SELECT ic.experience_id, ci.code
+      FROM item_countries ic
+      JOIN country_iso ci ON ci.country = ic.country
+     WHERE ci.code IS NOT NULL`;
+
+/**
  * The other direction (#1601): what a region offers that no guide names. Every
  * offered place with an offered, published point within the region's reach,
  * none of whose identifiers (`KNOWN_AS_SQL`) matches an identifier an entry of
@@ -284,8 +310,15 @@ const JUDGEMENTS_SQL = `
  * The identifiers are read once for the places reached and joined, not asked
  * per row: the `known_as` set is the whole catalogue's, and a correlated
  * subquery over it ran for seconds where the joins run in tens of milliseconds.
+ *
+ * A place that stands only in other countries than the region's is marked `abroad` (#2406):
+ * the circle takes it in, and the region's guides may not name it, since a border lies
+ * between. Seoul's 60 km take in Kaesong, in North Korea across the closed border. Its
+ * countries are the codes its source sent (`country_codes`) and the countries its items
+ * name (`ITEM_COUNTRIES_SQL`); a place none of whose countries is known is not abroad, and
+ * neither is the Bridge of No Return, which Wikidata places in both Koreas.
  */
-const UNNAMED_SQL = `
+const unnamedSql = (itemCountries: string, itemCountriesUnion: string) => `
   WITH named AS (
     SELECT x.region_slug, x.wikidata_id AS id
       FROM coverage_expectations x
@@ -306,7 +339,7 @@ const UNNAMED_SQL = `
     -- comes within six degrees of a pole is drawn over the whole world instead: there a
     -- circle in degrees misses a point a kilometre away across the meridians, and no reach
     -- in degree space is wider than 360. The geography test is the measure.
-    SELECT r.slug, r.centre, r.radius_km,
+    SELECT r.slug, r.centre, r.radius_km, r.country_code,
            CASE WHEN abs(ST_Y(r.centre)) + r.radius_km / 111.0 >= 84 THEN 360
                 ELSE r.radius_km / 111.0 / cos(radians(ST_Y(r.centre))) * 1.1 END AS degrees,
            -- The centre's twin across the antimeridian, so a reach over it is tested on both sides.
@@ -314,7 +347,7 @@ const UNNAMED_SQL = `
       FROM coverage_regions r
      WHERE ($1::text[] IS NULL OR r.slug = ANY($1))
   ), reached AS (
-    SELECT rc.slug AS region_slug, e.id AS experience_id, e.name, e.metadata,
+    SELECT rc.slug AS region_slug, rc.country_code AS region_country, e.id AS experience_id, e.name, e.metadata,
            round(MIN(ST_Distance(el.location::geography, rc.centre::geography)) / 1000)::int AS km
       FROM reach rc
       JOIN experience_locations el
@@ -326,7 +359,7 @@ const UNNAMED_SQL = `
      WHERE ${offeredLocationSql('el')}
        AND ${publishedContentSql('el')}
        AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND ${countedMembershipSql('m', 'e')})
-     GROUP BY rc.slug, e.id
+     GROUP BY rc.slug, rc.country_code, e.id
   ), known_as AS (
     SELECT k.* FROM (${KNOWN_AS_SQL}
     ) k
@@ -346,10 +379,21 @@ const UNNAMED_SQL = `
       JOIN experiences e ON e.id = m.experience_id
      WHERE m.experience_id IN (SELECT experience_id FROM reached)
        AND ${countedMembershipSql('m', 'e')}
-     GROUP BY m.experience_id
+     GROUP BY m.experience_id${itemCountries}
+  ), countries AS (
+    SELECT e.id AS experience_id, code
+      FROM experiences e
+      CROSS JOIN LATERAL unnest(e.country_codes) AS code
+     WHERE e.id IN (SELECT experience_id FROM reached)${itemCountriesUnion}
+  ), abroad AS (
+    SELECT rd.region_slug, rd.experience_id
+      FROM reached rd
+     WHERE EXISTS (SELECT 1 FROM countries c WHERE c.experience_id = rd.experience_id)
+       AND NOT EXISTS (SELECT 1 FROM countries c WHERE c.experience_id = rd.experience_id AND c.code = rd.region_country)
   )
   SELECT rd.region_slug, rd.experience_id, rd.name, rd.km,
          i.wikidata_id, o.kind_ids,
+         EXISTS (SELECT 1 FROM abroad a WHERE a.region_slug = rd.region_slug AND a.experience_id = rd.experience_id) AS abroad,
          (rd.metadata->>'sitelinksCount')::int AS sitelinks
     FROM reached rd
     LEFT JOIN named_places np ON np.experience_id = rd.experience_id AND np.region_slug = rd.region_slug
@@ -357,6 +401,9 @@ const UNNAMED_SQL = `
     JOIN offering o ON o.experience_id = rd.experience_id
    WHERE np.experience_id IS NULL
    ORDER BY rd.region_slug, sitelinks NULLS LAST, rd.name`;
+
+const UNNAMED_SQL = unnamedSql(ITEM_COUNTRIES_SQL, ITEM_COUNTRIES_UNION);
+const UNNAMED_WITHOUT_COPY_SQL = unnamedSql('', '');
 
 /**
  * The places that hold a calibration entry's item (#2151): what Wikidata says
@@ -489,8 +536,12 @@ export const SAME_SPOT_METRES = 250;
 export async function readCoverageFacts(regionSlugs?: string[]): Promise<CoverageFacts> {
   const only = regionSlugs ?? null;
   // The places that hold an entry are read off the copy of Wikidata, where there is one.
-  const claims = await pool.query<{ present: boolean }>(`SELECT to_regclass('workbench.wikidata_claims') IS NOT NULL AS present`);
-  const calibrationStatement = claims.rows[0]?.present ? CALIBRATION_SQL : CALIBRATION_WITHOUT_CLAIMS_SQL;
+  const copy = await pool.query<{ claims: boolean; entities: boolean }>(
+    `SELECT to_regclass('workbench.wikidata_claims') IS NOT NULL AS claims, to_regclass('workbench.wikidata_entities') IS NOT NULL AS entities`,
+  );
+  const calibrationStatement = copy.rows[0]?.claims ? CALIBRATION_SQL : CALIBRATION_WITHOUT_CLAIMS_SQL;
+  // A place's countries are read off its items too where the copy holds them (#2406).
+  const unnamedStatement = copy.rows[0]?.claims && copy.rows[0]?.entities ? UNNAMED_SQL : UNNAMED_WITHOUT_COPY_SQL;
   const [kinds, regions, expectations, matches, nearby, judgements, unnamed, calibration, calibrationSources] = await Promise.all([
     pool.query<KindRow>(KINDS_SQL, [PLACE_KIND_SOURCES]),
     pool.query<RegionRow>(REGIONS_SQL, [only]),
@@ -498,7 +549,7 @@ export async function readCoverageFacts(regionSlugs?: string[]): Promise<Coverag
     pool.query<MatchRow>(MATCHES_SQL, [only]),
     pool.query<NearbyRow>(NEARBY_SQL, [only, SAME_SPOT_METRES]),
     pool.query<JudgementRow>(JUDGEMENTS_SQL, [only]),
-    pool.query<UnnamedRow>(UNNAMED_SQL, [only]),
+    pool.query<UnnamedRow>(unnamedStatement, [only]),
     // A kind's list is the whole world's, so a region never narrows it.
     pool.query<CalibrationRow>(calibrationStatement),
     pool.query<CalibrationSourceRow>(CALIBRATION_SOURCES_SQL),
