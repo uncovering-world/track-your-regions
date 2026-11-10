@@ -176,6 +176,11 @@ A screen reader announces a button by its accessible name and nothing else, and 
 
 ## Text on screen
 
+How the text on screen is written, sentence by sentence, is
+[interface-writing.md](interface-writing.md): its length, its figures and dates, the source it
+names and what a card asks first. This section holds the rule a lint partly enforces today: the
+lint catches ADR and issue numbers, and a file or a symbol on screen is caught in review.
+
 What a visitor, a curator or an admin reads names no development record:
 no ADR, no issue or pull request number, no file or symbol. None of these
 means anything on screen or can be followed from the app (#1506). A screen

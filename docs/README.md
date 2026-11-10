@@ -49,6 +49,7 @@ decided. § Where things live says what goes where.
 | [performance.md](tech/performance.md) | Performance lane — what is measured, the baseline, the budgets and their ratchet rule, known breaches |
 | [review-surface.md](tech/review-surface.md) | How much review a branch asks for — the baseline over merged PRs, the budget it sets and the rule for moving it |
 | [shared-frontend-patterns.md](tech/shared-frontend-patterns.md) | Shared UI components and utilities — full inventory with "use this, not that" reference |
+| [interface-writing.md](tech/interface-writing.md) | How the text on screen is written: sentence length, figures, dates, the source named, what a card asks first, each role's words |
 | [maplibre-patterns.md](tech/maplibre-patterns.md) | MapLibre + react-map-gl patterns and pitfalls — overlapping layers, MVT properties, feature IDs, fonts, paint priority |
 | [world-view-import.md](tech/world-view-import.md) | WorldView Import — matching algorithm, API endpoints, admin UI |
 | [world-view-import-format.md](tech/world-view-import-format.md) | WorldView Import JSON format specification for source-agnostic imports |
