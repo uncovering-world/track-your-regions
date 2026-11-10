@@ -237,6 +237,7 @@ Before working in a specific area, read the relevant docs. Start from the area g
 | **Map UI behavior** (markers, hover, selection) | `docs/tech/experience-map-ui.md` | Marker model, hover cards, context layers, exploration outlines |
 | **Anything that reads or writes the URL** (a route, a selection, a new parameter) | `docs/tech/addresses.md` | The grammar, ids vs slugs, push vs replace, silent degradation, the one parse/build module |
 | **Shared frontend components/utils** | `docs/tech/shared-frontend-patterns.md` | Full inventory with "use this, not that" table |
+| **Any text a person reads on screen** (a label, a card, a hint, an error, a backend message shown as it stands) | `docs/tech/interface-writing.md` | The rules, which of them a lint checks, each role's words, with before and after from this project's screens |
 | **Experience system** | `docs/tech/experiences.md` | Sources, sync, region assignment, API |
 | **Anything that changes the database schema** (a table, a column, a backfill) | `docs/tech/development-guide.md` § Database Migrations | `db/migrations/README.md` — the naming and transaction rules, and how a database gets a ledger |
 | **Anything that writes catalogue rows** | `docs/tech/data-assertions.md` | Admin panel → Catalogue Checks: the invariants over live rows, and the debt it carries |
