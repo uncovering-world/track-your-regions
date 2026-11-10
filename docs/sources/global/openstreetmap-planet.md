@@ -68,8 +68,8 @@ it is read through. Its tagging docs covered `wikidata`, `historic=archaeologica
 tag's secondary key `archaeological_site=*` (with `site_type`, its deprecated spelling). The masts
 and towers Towers reads are covered in § The tagging docs of masts and towers below. The other keys
 ADR-0134 decision 2 selects, such as `tourism` beyond its presence, the other `man_made` values,
-`heritage`, `amenity=place_of_worship` and the protected `boundary` values, have no tagging-doc
-reading yet. Each is owed one before a reader asks by it.
+`heritage`, `amenity=place_of_worship`, the food-and-drink `amenity` values ADR-0191 adds and the
+protected `boundary` values, have no tagging-doc reading yet. Each is owed one before a reader asks by it.
 
 **The host.** `planet.openstreetmap.org` redirects every file to the Foundation's S3 bucket
 (`osm-planet-eu-central-1`). The wiki says mirrors are no longer needed, because those buckets have
