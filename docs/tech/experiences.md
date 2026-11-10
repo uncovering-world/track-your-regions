@@ -5260,20 +5260,52 @@ the Luther Monument in Worms commemorates Martin Luther and not the eight reform
 around him, and Istanbul's Republic Monument, named for none of its five founders, names no
 dedication. Mount Rushmore's four presidents are all read.
 
-**A war narrowed by the lead** (`warNarrowing.ts`). Wikidata's *commemorates* or a category often
-names the whole war where a memorial is one battle's. Where a reading names a war (an instance of
-a class under *war*, Q198), the lead of the place's English article is read live, one article at a
-time (`fetchLeads`, `rvsection=0`), and the articles linked from its sentences that say what the
-place commemorates, remembers or honours, or who fell there (`dedicationLinks`), are resolved to
-their items. One that is an armed conflict, a military operation or a theatre of war lying wholly
-within the war's dates (`CONFLICTS`, `within`) replaces the war (`narrowWars`), and the value's
-`via` says so (`WARS_NARROWED_BY_LEAD`). The Soviet War Memorial in Treptower Park, said by
-Wikidata to commemorate World War II, commemorates the Battle of Berlin; Mamayev Kurgan the
-Battle of Stalingrad. A link to the war itself, to a unit, a place or a later war (India Gate's
-lead names the Third Anglo-Afghan War of 1919) narrows nothing, and the war stays. A lead that cannot be read, its retries spent or the host refusing it,
-narrows nothing either and is logged: the run goes on with the war, which is already true. Where the dead
-are named only in prose (the Shot at Dawn Memorial's executed soldiers, the Basra Memorial's
-missing), the war stays too: that is a reading of the lead's words, left for later.
+**A war narrowed to what the memorial is for** (`warNarrowing.ts`, #2404, #2412). Wikidata's
+*commemorates* or a category often names the whole war where a memorial is one event's. Where a
+reading names a war (an instance of a class under *war*, Q198), the lead of the place's English
+article is read live, one article at a time (`fetchLeads`, `rvsection=0`), and every article its
+prose links is resolved to its item (`leadLinks`), those of the sentences that say what the place
+commemorates, remembers or honours, or who fell there (`dedicationLinks`) apart. Each war is then
+replaced by the first of four that names something within its dates (`narrowWars`, `within`), an
+occurrence in Wikidata's class tree (Q1190554, read from the subset's class closure) and not just an
+item with dates — Westerplatte, a peninsula Wikidata gives the battle's dates, is none:
+
+1. the place's own significant event (`P793`): the Hiroshima Peace Memorial, under *World War II
+   memorials in Japan*, commemorates the atomic bombing of Hiroshima (`WARS_NARROWED_BY_EVENT`);
+2. an event a dedication sentence links, armed conflict or not (`WARS_NARROWED_BY_LEAD`): the Soviet
+   War Memorial in Treptower Park, said by Wikidata to commemorate World War II, commemorates the
+   Battle of Berlin, Mamayev Kurgan the Battle of Stalingrad, Bucharest's Arcul de Triumf Romania in
+   World War I;
+3. where the categories read the war, an event they name beside it that the place's story tells —
+   its lead links it or its significant event names it — and the war goes, the value keeping the
+   categories' `via`. An event inside the war the story never tells is no subject at all: the
+   Anielewicz Bunker (Miła 18), the Warsaw Ghetto Uprising's headquarters, is filed among the 1944
+   Warsaw Uprising's memorials, and its lead never names that uprising, so it reads World War II
+   alone;
+4. where the reading names nothing but wars, the one person a bust or statue shows
+   (`WARS_NARROWED_TO_PERSON`): the one human `P180` names, or the one of `P180` and the lead's links
+   whose whole name the place's own name carries (`wholeNameInPlace`) — the bust of Roman Shukhevych
+   in Edmonton, filed under *World War II memorials in Canada*, commemorates him. The subset keeps no
+   item a lead alone links, so a link the place's name carries is a person where English Wikipedia
+   files its article under a year or century of birth or death, or *Living people*
+   (`BIOGRAPHY_CATEGORY`, read from the structure copy's categories). A surname alone is no name:
+   the town of Lindley does not commemorate the missionary Daniel Lindley.
+
+A link to the war itself, to a unit, a place or a later war (India Gate's lead names the Third
+Anglo-Afghan War of 1919) narrows nothing, and the war stays: the Cenotaph in Whitehall, the Menin
+Gate and the Australian War Memorial are raised to a war's dead. A lead that cannot be read, its
+retries spent or the host refusing it, or a place with no English article, narrows nothing by steps
+2 and 3 or by the lead's half of step 4, and drops no event; an unread lead is logged. The run goes
+on with the war, which is already true, unless the place's significant event or a single human
+`P180` names narrows it. Where the subject is named only in
+prose (the Shot at Dawn Memorial's executed soldiers, the deportation the Mémorial des Martyrs de la
+Déportation is for, the 1941 rebellion of Kordun and Banija), the war stays too: that is a reading of
+the lead's words, left for later. So does a campaign Wikidata ends after its war, as the Mesopotamian
+campaign ends three days after World War I and stays outside it at the Basra Memorial.
+
+Measured on 2026-11-10 over the 1,531 admitted places of Public art and Monuments & memorials on the
+development subset, main against this reading: four places changed, the four above (the Hiroshima
+Peace Memorial, Arcul de Triumf, Miła 18 and the Shukhevych bust), and none of the whole-war readings.
 
 Statements are read at their best rank, in the item's order, and a category's subjects by item
 id. A person is `P31` human (Q5); an event carries a point in time (`P585`), a start (`P580`) or an
@@ -5282,7 +5314,7 @@ subject's article is Wikidata's English sitelink (`fetchEnglishArticles`), or, f
 named, the article its title resolved to.
 
 Wikidata is read through the run's door: the subset's twins are `subsetSubjectClaims` and
-`subsetSubjectKinds` (`subset/commemorates.ts`), which read `P547`, `P921`, `P138` and `P180` off
+`subsetSubjectKinds` (`subset/commemorates.ts`), which read `P547`, `P921`, `P138`, `P180` and `P793` off
 the kept entity's claims, since `wikidata_claims` keeps place properties only. A value the subset
 did not keep is neither a person nor an event there. The live twins, `fetchSubjectClaims` and
 `fetchSubjectKinds`, have no statement order, so the live answer is sorted by item id. English
@@ -5293,7 +5325,8 @@ finds no page (`commemorationWiki`).
 
 **Where it is stored.** `metadata.commemorates` on the place, `{ via, subjects: [{ item, label,
 articleUrl }] }`, with `via` naming the step that answered (`COMMEMORATION_STEPS` in
-`@tyr/shared/commemorates`), `war-narrowed-by-lead` where the lead narrowed its war, or `curator`
+`@tyr/shared/commemorates`), one of the war narrowings (`WarNarrowing`: `war-narrowed-by-event`,
+`war-narrowed-by-lead`, `war-narrowed-to-person`) where one replaced its war, or `curator`
 (`CURATOR_COMMEMORATION`) for a curator's list. The holy figure a religious work depicts is
 `metadata.depicts` in the same shape, its `via` one of `DEPICTION_STEPS` (`depictsOf`): written
 by the same runs, kept by the same rule (`WRITTEN_BY_SOURCES`), compared by its items
