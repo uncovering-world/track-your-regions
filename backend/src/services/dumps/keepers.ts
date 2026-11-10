@@ -13,7 +13,8 @@
 import type { DumpFile, DumpKey } from './catalog.js';
 import { buildLayer, hasCurrentPlanet, updateLayer } from './osm/layerBuild.js';
 import { latestLayer } from './osm/layerTables.js';
-import { DEFAULT_EVERY_DAYS, layerSchedule, setLayerSchedule, type LayerSchedule } from './osm/layerSchedule.js';
+import { DEFAULT_EVERY_DAYS } from './osm/layerSchedule.js';
+import { scheduleOf, setScheduleOf, type CopySchedule } from './copySchedule.js';
 import type { ReadOptions } from './read.js';
 import { buildReadership, latestReadership, readershipArchives, refuseOverlappingYear } from './readership/readershipBuild.js';
 import { buildRedirects } from './wikipedia/redirectBuild.js';
@@ -81,13 +82,15 @@ export interface Keeper {
     Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }>;
   canUpdate?(): Promise<boolean>;
   /**
-   * How often the dump worker brings what is kept forward by itself, which an
-   * admin may change (the OpenStreetMap layer, ADR-0134 decision 6).
+   * How often the dump worker brings the copy forward by itself, which an admin
+   * may change or turn off (ADR-0195; the OpenStreetMap layer's since ADR-0134
+   * decision 6): once the host has a newer dump and the copy is older than the
+   * interval (`copySchedule.ts`), or, for the layer, once the daily diffs pass it.
    */
-  schedule?: {
+  schedule: {
     defaultEveryDays: number;
-    read(): Promise<LayerSchedule>;
-    set(everyDays: number | null, adminId: number): Promise<LayerSchedule>;
+    read(): Promise<CopySchedule>;
+    set(everyDays: number | null, adminId: number): Promise<CopySchedule>;
   };
   /** Derive the build in place's tables again from what it holds, without the dump (#1526). */
   rederive?(options: RederiveOptions): Promise<void>;
@@ -100,6 +103,14 @@ export interface Keeper {
    */
   keepsAsItGoes?: true;
   /**
+   * Whether the copy is built with another copy as input and needs a rebuild
+   * once that copy moves: readership folds each month with the edition
+   * redirects in place, and reads none after they are swapped. Its schedule
+   * then queues the rebuild as it queues a newer dump's (`copyDue`), since the
+   * redirects' own schedule moved them (ADR-0195).
+   */
+  followsInputs?: true;
+  /**
    * False for a copy no sync run reads: English Wikivoyage's articles, which
    * the world-view extraction reads. Its swap waits for no run, and a run's
    * row does not name it (#2415).
@@ -107,34 +118,57 @@ export interface Keeper {
   readByRuns?: false;
 }
 
+/**
+ * A copy's schedule, read from `dump_schedules` with its default (ADR-0195).
+ * Wikidata's entities dump is published weekly and its build takes the worker
+ * most of a day, so its copy follows it monthly; every other copy's dump is
+ * published monthly, and a week's interval brings it in soon after.
+ */
+const scheduled = (dump: DumpKey, defaultEveryDays: number): Keeper['schedule'] => ({
+  defaultEveryDays,
+  read: () => scheduleOf(dump, defaultEveryDays),
+  set: (everyDays, adminId) => setScheduleOf(dump, everyDays, adminId),
+});
+
+/** The interval a copy follows its dump at where no admin chose one. */
+const WEEKLY = 7;
+const MONTHLY = 30;
+
 const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   'wikidata-entities': {
     title: 'The local Wikidata subset', build: buildSubset, rederive: rederiveSubset, latest: latestSubset, samples: true, fromCopy: true,
+    schedule: scheduled('wikidata-entities', MONTHLY),
   },
   'pageviews-user': {
     title: 'Readership over the last twelve months', build: buildReadership, latest: latestReadership, archives: readershipArchives,
-    refuseYearEnd: refuseOverlappingYear, samples: false, fromCopy: false, keepsAsItGoes: true,
+    refuseYearEnd: refuseOverlappingYear, samples: false, fromCopy: false, keepsAsItGoes: true, followsInputs: true,
+    schedule: scheduled('pageviews-user', WEEKLY),
   },
   'enwiki-page': {
     title: 'English Wikipedia\'s articles, categories and category links', build: buildStructure, latest: latestStructure, samples: false, fromCopy: false,
+    schedule: scheduled('enwiki-page', WEEKLY),
   },
   'wikipedia-redirects': {
     title: 'The redirects readership counts under an article', build: buildRedirects, latest: latestRedirects, samples: false, fromCopy: false,
+    schedule: scheduled('wikipedia-redirects', WEEKLY),
   },
   'wikidata-redirects': {
     title: 'The items Wikidata redirected to another', build: buildWikidataRedirects, latest: latestWikidataRedirects, samples: false, fromCopy: false,
+    schedule: scheduled('wikidata-redirects', WEEKLY),
   },
   'wikivoyage-usage': {
     title: 'The items Wikivoyage\'s pages use', build: buildUsage, latest: latestUsage, samples: false, fromCopy: false,
+    schedule: scheduled('wikivoyage-usage', WEEKLY),
   },
   'wikivoyage-pages': {
     title: 'English Wikivoyage\'s articles', build: buildPages, latest: latestPages, samples: false, fromCopy: false, readByRuns: false,
+    schedule: scheduled('wikivoyage-pages', WEEKLY),
   },
   // A build from the newest brings the kept current planet forward; a build
   // from a weekly copy on disk starts the current planet again from it.
   'osm-planet': {
     title: 'The OpenStreetMap layer', build: buildLayer, update: updateLayer, canUpdate: hasCurrentPlanet, latest: latestLayer,
-    schedule: { defaultEveryDays: DEFAULT_EVERY_DAYS, read: layerSchedule, set: setLayerSchedule },
+    schedule: scheduled('osm-planet', DEFAULT_EVERY_DAYS),
     samples: false, fromCopy: true,
   },
 };

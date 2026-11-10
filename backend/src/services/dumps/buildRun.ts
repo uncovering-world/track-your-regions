@@ -274,6 +274,17 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal, pauses:
  */
 const noBuilder = (key: string) => `This dump worker has no builder for ${key}; restart it to run the current code`;
 
+/**
+ * The layer's scheduled update only brings forward what is kept: where that
+ * can no longer be done, it downloads no weekly planet (ADR-0134 decision 6).
+ * Every other copy's scheduled build reads its newest dump (ADR-0195).
+ */
+function refuseScheduledDownload(claimed: ClaimedBuild, keeper: Keeper | null): void {
+  if (claimed.request.scheduled && keeper?.update) {
+    throw new Error('What is kept can no longer be brought forward, and a scheduled update downloads nothing: start a build by hand');
+  }
+}
+
 /** Verify the dump's file, or, for a `keep`, build from it and swap the result in. */
 async function readTheDump(
   claimed: ClaimedBuild, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
@@ -284,9 +295,7 @@ async function readTheDump(
   // Counting the file as a verify would end green with nothing kept.
   if (kind === 'keep' && !keeper) throw new Error(noBuilder(descriptor.key));
   if (keeper?.update && !only && await keeper.canUpdate?.()) return updateKept(claimed, keeper, descriptor, progress, signal, notes, clock, onPhase, figures);
-  // A build the worker queued on a schedule only brings forward what is kept:
-  // where that can no longer be done, it downloads nothing (ADR-0134 decision 6).
-  if (claimed.request.scheduled) throw new Error('What is kept can no longer be brought forward, and a scheduled update downloads nothing: start a build by hand');
+  refuseScheduledDownload(claimed, keeper);
   onPhase(only ? `Finding ${only} on the host...` : 'Finding the newest complete file...');
   await beat(claimed.id, progress);
   const file = await resolveFile(descriptor, signal, only, windowEnd);

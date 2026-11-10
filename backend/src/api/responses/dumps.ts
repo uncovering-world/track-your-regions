@@ -66,6 +66,8 @@ export const DumpBuild = z.strictObject({
   checksumKind: z.enum(CHECK_VALUES.dump_builds.checksum_kind).nullable(),
   verified: z.boolean().describe('The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file, nor for a sample or a trial, which read no file of the host\'s, nor for a keeping build that brought a kept copy forward (`broughtForward`).'),
   broughtForward: z.boolean().describe('Whether this keeping build brought a kept copy forward from its own source rather than reading a file of the host\'s: the OpenStreetMap layer\'s current planet, by the daily diffs (#1437).'),
+  queuedBy: z.enum(['schedule', 'admin']).nullable()
+    .describe('Who queued the build: the dump worker on the copy\'s schedule (ADR-0195), or an admin; null for a build from before either was recorded.'),
   status: z.enum(CHECK_VALUES.dump_builds.status).exclude(['queued']),
   error: z.string().nullable(),
   outcome: z.string().nullable().describe('What a build that ended well did, in words: what it kept, how long each step took, an older copy removed (#1527); null otherwise.'),
@@ -95,7 +97,7 @@ export const Dumps = z.strictObject({
       rederives: z.boolean().describe('Whether what is kept can be derived again without the dump, which decides whether "Derive again" is offered.'),
       samples: z.boolean().describe('Whether a sample of the local copy can be cut and the build tried on it, which decides whether "Cut a sample" and "Try the build" are offered.'),
       fromCopy: z.boolean().describe('Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered.'),
-      schedule: DumpSchedule.nullable().describe('How often the dump worker brings what is kept forward by itself, where the keeper does so (the OpenStreetMap layer); null otherwise.'),
+      schedule: DumpSchedule.describe('How often the dump worker brings the copy forward by itself (ADR-0195).'),
       currentTo: z.boolean().describe('Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet\'s daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump.'),
       archives: z.array(z.string()).describe('The earlier years kept beside the current one, each by the month it ends on (YYYY-MM), oldest first (readership, #2230): asked for with `windowEnd` on a keeping build, kept through the cleanup, read by no run. Empty for every other keeper.'),
     }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet.'),
