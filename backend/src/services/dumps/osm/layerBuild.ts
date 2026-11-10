@@ -48,6 +48,7 @@ import { STREET_HIGHWAYS, STREET_REACH_M, streetArea, streetItems, streetsFile }
 import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextStreetLines, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
 import { bringForward, CURRENT_PLANET, dailyState, dropCurrent, firstDiffAfter, readCurrent, type BroughtForward } from './planetCurrent.js';
 import { databaseEnv, OSM2PGSQL, OSM2PGSQL_INPUT, OSMIUM, OSMIUM_OUTPUT, runTool, sideBySide, type ToolResult } from './tools.js';
+import { swapWhenNoRunReads } from '../swapGuard.js';
 
 export type LayerBuildOptions = ReadOptions & {
   buildId: number; onPhase: (message: string) => void; trial?: boolean;
@@ -302,10 +303,10 @@ async function cutAndSwap(
     await indexNextTable(signal);
     // The layer's date is the day it is current to, so a newer weekly planet
     // is not offered as newer than a layer already brought past it.
-    await swapIn({
+    await swapWhenNoRunReads(options, () => swapIn({
       buildId: options.buildId, planetFile: planet.state.base, dumpDate: current.slice(0, 10), replicatedAt: current, objects, pinned, pinnedGone: gone,
       drawn: LAYER_DRAWN, selection: LAYER_SELECTION, streets, streetsLined: lined.items,
-    }, signal);
+    }, signal));
     const shapesSaid = await regionShapesFrom(items, options);
     const goneSaid = gone > 0 ? ` (${gone.toLocaleString('en')} of them no longer in the planet)` : '';
     return {

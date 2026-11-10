@@ -10,6 +10,7 @@
 import { pool } from '../../db/index.js';
 import type { CheckValue, DumpBuildsRow } from '../../db/schema.generated.js';
 import type { DumpFile } from './catalog.js';
+import type { AliveRun } from './swapGuard.js';
 
 /** A ledger row with its checked columns read as the vocabularies they are. */
 export type DumpBuildRow = Omit<DumpBuildsRow, 'mode' | 'status' | 'checksum_kind'> & {
@@ -64,6 +65,8 @@ export interface BuildProgressRecord {
   step?: number;
   /** A build the network cut, waiting to try again (#2419); null or absent while it runs. */
   retry?: BuildRetry | null;
+  /** The runs a build's swap waits for, as `swapGuard.ts` found them (#2415); null or absent while it waits for none. */
+  waitsFor?: AliveRun[] | null;
 }
 
 /** A build waiting out its pause before it tries again: when, which attempt of how many, and what cut the last one. */

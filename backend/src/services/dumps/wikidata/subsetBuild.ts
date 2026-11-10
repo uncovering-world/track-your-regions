@@ -34,6 +34,7 @@ import {
   type LabelRow, type ResumeState, swapIn,
 } from './subsetTables.js';
 import { currentRules, DERIVE_VERSION } from './buildRules.js';
+import { swapWhenNoRunReads, type RunsWait } from '../swapGuard.js';
 
 export interface SubsetBuildOptions extends ReadOptions {
   buildId: number;
@@ -227,7 +228,7 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
       return { ...read, counts, summary };
     }
     onPhase('Swapping the new subset in...');
-    await swapIn(options.buildId, file.date, counts, currentRules());
+    await swapWhenNoRunReads(options, () => swapIn(options.buildId, file.date, counts, currentRules()));
     return { ...read, counts, summary };
   } catch (error) {
     // What pass 2 wrote is kept for the next build of the same file to pick
@@ -249,6 +250,7 @@ export interface RederiveOptions {
   signal: AbortSignal;
   onPhase: (message: string) => void;
   onNote?: (note: string) => void;
+  onWaitForRuns?: (wait: RunsWait | null) => void;
 }
 
 /**
@@ -261,7 +263,7 @@ export interface RederiveOptions {
  * one whose entities it read. Anything that fails leaves the live subset as
  * it was, and a cut keeping build's entities copy where it was.
  */
-export async function rederiveSubset({ buildId, signal, onPhase, onNote }: RederiveOptions): Promise<void> {
+export async function rederiveSubset({ buildId, signal, onPhase, onNote, onWaitForRuns }: RederiveOptions): Promise<void> {
   const latest = await latestSubsetCounts();
   if (!latest) throw new Error('There is no subset in place to derive again: build it from the dump first');
   if (!await entitiesAreHeld()) {
@@ -282,7 +284,8 @@ export async function rederiveSubset({ buildId, signal, onPhase, onNote }: Reder
     signal.throwIfAborted();
     onPhase('Swapping the derived tables in...');
     // The entities are the build's in place, so are what kept and wrote them; the derivations are this code's.
-    await swapIn(buildId, latest.dumpDate, latest.counts, { ...(latest.rules ?? currentRules()), derive: DERIVE_VERSION }, DERIVED_TABLES);
+    await swapWhenNoRunReads({ signal, onWaitForRuns }, () =>
+      swapIn(buildId, latest.dumpDate, latest.counts, { ...(latest.rules ?? currentRules()), derive: DERIVE_VERSION }, DERIVED_TABLES));
   } catch (error) {
     await dropDerivedNextTables().catch(() => undefined);
     throw error;

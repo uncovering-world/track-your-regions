@@ -48,6 +48,7 @@ import { DAILY_FLOOR, MONTH_FLOOR, MonthSummer } from './monthSummer.js';
 import {
   dropMonthsBefore, emptyStaging, foldTitles, keepMonth, keptMonths, redirectsInPlace, refuseShortMonth, stageRows, type KeptMonth,
 } from './readershipMonth.js';
+import { swapWhenNoRunReads } from '../swapGuard.js';
 
 /** How many months readership reads (ADR-0055 decision 1). */
 export const READERSHIP_MONTHS = 12;
@@ -143,7 +144,8 @@ async function keepOneMonth(
       const monthRead = { buildId, month, fileName: file.fileName, lines: summer.lines, editions: summer.editionViews, windowEnd };
       refuseShortMonth(monthRead);
       options.onPhase(`Keeping ${month.slice(0, 7)}: summing ${file.fileName} per item...`);
-      kept = await keepMonth(monthRead);
+      // A month kept changes what a run's scores read, so it waits for the runs as a swap does.
+      kept = await swapWhenNoRunReads(options, () => keepMonth(monthRead));
     },
     abort: () => emptyStaging(),
   }, options);

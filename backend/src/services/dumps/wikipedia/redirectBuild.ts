@@ -35,6 +35,7 @@ import { fetchText } from '../fetch.js';
 import { numberOf, textOf } from './sqlInsert.js';
 import { createNextTable, dropNextTable, indexNextTable, keepEdition, stagePages, stageTargets, swapIn } from './redirectTables.js';
 import { Batches, readTable, type TableBuildOptions } from './tableRead.js';
+import { swapWhenNoRunReads } from '../swapGuard.js';
 
 const ARTICLE = 0;
 
@@ -161,7 +162,7 @@ export async function buildRedirects(redirect: DumpFile, options: TableBuildOpti
     if (all === 0) throw new Error('The build kept no redirect of any edition, so the redirects in place stay');
     options.onPhase('Indexing the redirects...');
     await indexNextTable(options.signal);
-    await swapIn(options.buildId, redirect.date, kept, options.signal);
+    await swapWhenNoRunReads(options, () => swapIn(options.buildId, redirect.date, kept, options.signal));
     // The build's row records its own file, English Wikipedia's redirects; the editions' totals are the summary's.
     const read = own ?? { bytes: 0, lines: 0, checksumActual: null };
     return {

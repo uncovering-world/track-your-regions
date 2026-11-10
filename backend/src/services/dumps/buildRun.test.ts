@@ -48,7 +48,7 @@ vi.mock('./samples.js', () => ({
 const read = vi.hoisted(() => ({ readDump: vi.fn() }));
 vi.mock('./read.js', async (original) => ({ ...await original<typeof import('./read.js')>(), readDump: read.readDump, countLines: () => ({}) }));
 
-const { runBuild } = await import('./buildRun.js');
+const { runBuild, waitForRuns } = await import('./buildRun.js');
 const { CutDownload } = await import('./read.js');
 
 const claimed = { id: 9, dump: 'wikidata-lexemes', request: { kind: 'verify' as const } };
@@ -409,5 +409,28 @@ describe('a build the network cut (#2419)', () => {
     expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
       error: 'Connection terminated unexpectedly. The copy in place, built from the dump of 5 Oct 2026, is unchanged and still read.',
     }));
+  });
+});
+
+describe('a swap waiting for the runs that read the copy (#2415)', () => {
+  const progress = () => ({ phase: 'reading', message: 'Reading...', downloaded: 0, read: 0, lines: 0, etaSeconds: 40 }) as never;
+  const RUN = { logId: 859, source: 'Squares & streets', dryRun: true };
+
+  it('says which run it waits for, then that it swaps in once the run has ended', () => {
+    const shown = progress() as { message: string; waitsFor?: unknown; etaSeconds: number | null };
+    waitForRuns(shown as never, { runs: [RUN] });
+    expect(shown.message).toBe('Waiting to swap in until the run of Squares & streets (a dry run) ends: a run reads the copy as it started');
+    expect(shown.waitsFor).toEqual([RUN]);
+    expect(shown.etaSeconds).toBeNull();
+
+    waitForRuns(shown as never, null);
+    expect(shown.message).toBe('Swapping the new copy in...');
+    expect(shown.waitsFor).toBeNull();
+  });
+
+  it('leaves the message of a build that never waited', () => {
+    const shown = progress() as { message: string };
+    waitForRuns(shown as never, null);
+    expect(shown.message).toBe('Reading...');
   });
 });

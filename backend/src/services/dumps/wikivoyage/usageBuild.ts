@@ -34,6 +34,7 @@ import { fetchText } from '../fetch.js';
 import { numberOf, textOf } from '../wikipedia/sqlInsert.js';
 import { readTable, type TableBuildOptions } from '../wikipedia/tableRead.js';
 import { createNextTable, dropNextTable, indexNextTable, keepUsage, swapIn } from './usageTables.js';
+import { swapWhenNoRunReads } from '../swapGuard.js';
 
 /**
  * Every Wikivoyage edition a dump run publishes, by its database name: the 28
@@ -163,7 +164,7 @@ export async function buildUsage(own: DumpFile, options: TableBuildOptions): Pro
     if (all === 0) throw new Error('The build kept no item of any edition, so the usage in place stays');
     options.onPhase('Indexing the item usage...');
     await indexNextTable(options.signal);
-    await swapIn(options.buildId, own.date, kept, options.signal);
+    await swapWhenNoRunReads(options, () => swapIn(options.buildId, own.date, kept, options.signal));
     // The build's row records its own file, English Wikivoyage's table; the editions' totals are the summary's.
     const read = ownRead ?? { bytes: 0, lines: 0, checksumActual: null };
     return {
