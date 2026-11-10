@@ -34,6 +34,8 @@ export interface SourceRun extends Pick<SyncStatusPolling, 'status' | 'lostTouch
   starts: {
     sync: Start;
     dryRun: Start;
+    /** A dry run of one kind of the pass alone, by its source (#2424). */
+    dryRunAlone: Start<number>;
     refresh: Start;
     askPins: Start;
     fixPictures: Start;
@@ -113,6 +115,10 @@ export function useSourceRun(sourceId: number, onStarted?: () => void): SourceRu
     sync: useStart(() => startSync(sourceId), begin('sync')),
     // The same run, no writes to experiences.
     dryRun: useStart(() => startSync(sourceId, { dryRun: true }), begin('sync')),
+    // The same preview of one kind of the pass alone, from the pass's whole
+    // gather (#2424): what a change to that kind's rule would change, without
+    // waiting for every other kind's run.
+    dryRunAlone: useStart((alone: number) => startSync(sourceId, { dryRun: true, alone: [alone] }), begin('sync')),
     // The same run again, asking the source everything rather than reusing
     // what it already told us.
     refresh: useStart(() => startSync(sourceId, { refreshCache: true }), begin('sync')),

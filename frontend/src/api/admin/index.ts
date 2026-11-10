@@ -112,12 +112,14 @@ export async function getSources(): Promise<ExperienceSources> {
  */
 export async function startSync(
   sourceId: number,
-  options: { dryRun?: boolean; refreshCache?: boolean; askAboutPins?: boolean } = {},
+  options: { dryRun?: boolean; refreshCache?: boolean; askAboutPins?: boolean; alone?: number[] } = {},
 ): Promise<SyncStarted> {
   return postAdminSyncSourcesBySourceIdStart(sourceId, {
     dryRun: options.dryRun ?? false,
     refreshCache: options.refreshCache ?? false,
     askAboutPins: options.askAboutPins ?? false,
+    // A dry run of some kinds of a pass alone (#2424), by their sources.
+    ...(options.alone ? { alone: options.alone } : {}),
   });
 }
 
