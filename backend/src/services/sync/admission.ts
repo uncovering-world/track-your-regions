@@ -449,17 +449,15 @@ export interface PutBackType extends AdmissionRow {
 
 /**
  * File the rows a curator put back against the rule's refusal under the type
- * the rule reads from their classes (ADR-0135).
+ * the rule reads from their classes (ADR-0135, ADR-0193).
  *
  * A run writes what it admits, and a put-back is a refusal, so nothing else
  * files its type: the Victory Arch, put back into Monuments & memorials, held
  * none once migration 146 cleared the type the kinds inherited. The type
  * decides nothing about admission, so it is filed by the rule of a held row,
- * on every source: a type the membership holds none of, or one its kind's
- * vocabulary has no word for, is replaced by one it has, and a curator's
- * claim on the type and a word of the vocabulary stand. An ungated source
- * rewrites an admitted row's word too, but a put-back is a row a person kept
- * against the rule, so the run fills the gap and re-files nothing.
+ * on every source: whatever the membership holds is replaced by the word of
+ * its kind's vocabulary the classes read, and only a curator's claim on the
+ * type stands.
  */
 export async function filePutBackTypes(
   sourceId: number,
@@ -478,8 +476,8 @@ export async function filePutBackTypes(
       AND m.admission = 'admitted'
       AND ${admissionPinnedSql('m')}
       AND NOT m.curated_fields ? 'type'
-      AND (m.type IS NULL OR NOT m.type = ANY($4::text[]))`;
-  const params = [sourceId, typed.map((r) => r.externalId), typed.map((r) => r.type), [...vocabulary]];
+      AND m.type IS DISTINCT FROM v.type`;
+  const params = [sourceId, typed.map((r) => r.externalId), typed.map((r) => r.type)];
 
   // The type before the write is read from the row the update replaces: a
   // table joined in FROM is read as the statement found it.

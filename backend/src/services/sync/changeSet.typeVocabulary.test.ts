@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { ChangeRecord } from './changeRecorder.js';
 import { computeChangeSet, type ExperienceSnapshot } from './changeSet.js';
+import { recordPutBackTypes } from './itemOutcome.js';
+import type { SyncProgress } from './types.js';
 
 /**
  * A type the kind's vocabulary does not hold, replaced by one it does, passes
@@ -42,11 +45,12 @@ describe('a type outside the kind\'s vocabulary (#1807)', () => {
     expect(result.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['type', 'type-outside-vocabulary']]);
   });
 
-  it('holds a type moved inside the vocabulary', () => {
+  it('writes a type moved inside the vocabulary past the gate (ADR-0193)', () => {
     const result = computeChangeSet(
       snapshot({ type: 'monument' }), snapshot({ type: 'arch', typeVocabulary: MONUMENTS }), [], HELD,
     );
-    expect(result.heldFields.map(f => [f.field, f.passedTheGate])).toEqual([['type', undefined]]);
+    expect(result.heldFields).toEqual([]);
+    expect(result.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['type', 'type-within-vocabulary']]);
   });
 
   it('holds a type as before where the run declares no vocabulary, or proposes a word outside it', () => {
@@ -59,5 +63,22 @@ describe('a type outside the kind\'s vocabulary (#1807)', () => {
   it("keeps a curator's claim on a type outside the vocabulary", () => {
     const result = computeChangeSet(snapshot(), snapshot({ type: 'arch', typeVocabulary: MONUMENTS }), ['type'], HELD);
     expect(result.curatedConflicts.map(f => [f.field, f.passedTheGate])).toEqual([['type', undefined]]);
+  });
+});
+
+describe("the run's record of a put-back's type", () => {
+  it('files each move under the class the gate gives it', () => {
+    const changes: ChangeRecord[] = [];
+    const progress = { updated: 0, logId: 7 } as SyncProgress;
+    recordPutBackTypes([
+      { id: 1, externalId: 'Q1', name: 'Victory Arch', before: null, type: 'arch' },
+      { id: 2, externalId: 'Q2', name: 'Warsaw Uprising Monument', before: 'sculpture', type: 'column' },
+      { id: 3, externalId: 'Q3', name: 'A put-back already a memorial', before: 'memorial', type: 'monument' },
+    ], MONUMENTS, progress, changes);
+
+    expect(changes.map((c) => c.changedFields?.[0].passedTheGate)).toEqual([
+      'type-outside-vocabulary', 'type-outside-vocabulary', 'type-within-vocabulary',
+    ]);
+    expect(progress.updated).toBe(3);
   });
 });

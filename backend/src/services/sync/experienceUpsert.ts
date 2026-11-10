@@ -110,8 +110,9 @@ export interface ExperienceUpsertParams {
   type: string | null;
   /**
    * The closed vocabulary of the kind `sourceId` fills, where the run declares
-   * one: a stored type that is none or outside it is rewritten past the gate and filed as such
-   * (`type-outside-vocabulary`, ADR-0135). Absent, a type is held as any change is.
+   * one: a type that is a word of it is written past the gate and filed as such, whatever the
+   * stored type was (`type-outside-vocabulary`, ADR-0135; `type-within-vocabulary`, ADR-0193).
+   * Absent, a type is held as any change is.
    */
   typeVocabulary?: readonly string[];
   tags: string[];
@@ -1009,15 +1010,14 @@ async function writeUnderLock(
         admitted_for = EXCLUDED.admitted_for,
         -- The type within the kind is the membership's (ADR-0084), behind the
         -- membership's own claim and behind the gate, as the place's content is
-        -- -- except a stored type that is none, or one the kind's vocabulary
-        -- ($31) has no word for, replaced by one it has: the diff's
-        -- 'type-outside-vocabulary' (ADR-0135).
+        -- -- except a type that is a word of the kind's vocabulary ($31), which
+        -- replaces none, a word outside it, or another of its words: the diff's
+        -- 'type-outside-vocabulary' (ADR-0135) and 'type-within-vocabulary'
+        -- (ADR-0193).
         type = CASE WHEN ${MEMBERSHIPS}.curated_fields ? 'type' THEN ${MEMBERSHIPS}.type
                     WHEN ${HELD} AND NOT ($31::text[] IS NOT NULL
                                           AND EXCLUDED.type IS NOT NULL
-                                          AND EXCLUDED.type = ANY($31::text[])
-                                          AND (${MEMBERSHIPS}.type IS NULL
-                                               OR NOT ${MEMBERSHIPS}.type = ANY($31::text[])))
+                                          AND EXCLUDED.type = ANY($31::text[]))
                     THEN ${MEMBERSHIPS}.type ELSE EXCLUDED.type END,
         pending_change_sync_log_id = CASE WHEN ${HELD}
                                          THEN ${MEMBERSHIPS}.pending_change_sync_log_id

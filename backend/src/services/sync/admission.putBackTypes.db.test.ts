@@ -4,13 +4,13 @@ import { filePutBackTypes } from './admission.js';
 
 /**
  * A run files the type of a row a curator put back against its rule's
- * refusal (ADR-0135), executed against PostgreSQL: which rows the statement
- * touches is decided in SQL, by the pin, the claim and the vocabulary.
+ * refusal (ADR-0135, ADR-0193), executed against PostgreSQL: which rows the
+ * statement touches is decided in SQL, by the pin, the claim and the type held.
  *
  * Six memberships of Monuments & memorials, each a fixture of its own: the
  * Victory Arch and the Warsaw Uprising Monument put back with no type and
- * with the old kind's `sculpture`, one put back with a word of the kind
- * already, one whose type a curator claimed, one admitted but not pinned, and
+ * with the old kind's `sculpture`, one put back with another word of the kind,
+ * one whose type a curator claimed, one admitted but not pinned, and
  * one put back into a refusal. Ids are the fixture's own, deleted before and
  * after.
  */
@@ -80,18 +80,20 @@ const RUN_TYPES = ['arch', 'column', 'monument', 'obelisk', 'arch', 'arch'];
 const refusals = FIXTURES.map((_, i) => ({ externalId: qid(i), type: RUN_TYPES[i] }));
 
 describe('filePutBackTypes', () => {
-  it('files a put-back with no type, or one its kind has no word for, and nothing else', async () => {
+  it('files a put-back under the type its classes read, unless a curator claimed it', async () => {
     const written = await filePutBackTypes(await monuments(), refusals, VOCABULARY, false);
 
     expect(written.map((w) => [w.name, w.before, w.type])).toEqual(expect.arrayContaining([
       ['Victory Arch', null, 'arch'],
       ['Warsaw Uprising Monument', 'sculpture', 'column'],
+      // A word moved inside the vocabulary is filed as on a held row (ADR-0193).
+      ['A put-back already a memorial', 'memorial', 'monument'],
     ]));
-    expect(written).toHaveLength(2);
+    expect(written).toHaveLength(3);
     expect(await Promise.all(FIXTURES.map((_, i) => typeOf(i)))).toEqual([
-      'arch', 'column',
-      // A word of the kind stands, as a curator's claim does.
-      'memorial', null,
+      'arch', 'column', 'monument',
+      // A curator's claim stands.
+      null,
       // Only a pinned admission is a put-back: the run refuses the others.
       null, null,
     ]);
@@ -100,7 +102,7 @@ describe('filePutBackTypes', () => {
   it('says on a preview what it would file and writes nothing', async () => {
     const written = await filePutBackTypes(await monuments(), refusals, VOCABULARY, true);
 
-    expect(written.map((w) => w.name).sort()).toEqual(['Victory Arch', 'Warsaw Uprising Monument']);
+    expect(written.map((w) => w.name).sort()).toEqual(['A put-back already a memorial', 'Victory Arch', 'Warsaw Uprising Monument']);
     expect(await typeOf(0)).toBeNull();
     expect(await typeOf(1)).toBe('sculpture');
   });

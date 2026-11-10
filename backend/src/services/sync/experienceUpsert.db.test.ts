@@ -571,7 +571,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     }
   });
 
-  it('writes a type the kind has a word for over one it has none for, and asks about the rest (#1807)', async () => {
+  it('writes a type the kind has a word for over any stored type, and asks about a record that proposes none (#1807, ADR-0193)', async () => {
     // A monument the split of Public Art & Monuments left typed `sculpture`:
     // the vocabulary here is Archaeology's, and the stored type is outside it.
     const created = await upsertExperienceRecord(site({}));
@@ -604,9 +604,11 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       expect(filed.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['type', 'type-outside-vocabulary']]);
       expect(await state()).toEqual({ type: 'site', pointer: null, state: 'verified' });
 
+      // A type moved to another word of the vocabulary is the same place under another filter.
       const retyped = await upsertExperienceRecord(record('museum'), { syncLogId: log });
-      expect(retyped.changeSet.heldFields.map(f => f.field)).toEqual(['type']);
-      expect(await state()).toEqual({ type: 'site', pointer: log, state: 'verified' });
+      expect(retyped.changeSet.heldFields).toEqual([]);
+      expect(retyped.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['type', 'type-within-vocabulary']]);
+      expect(await state()).toEqual({ type: 'museum', pointer: null, state: 'verified' });
     } finally {
       await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);

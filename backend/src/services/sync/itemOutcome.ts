@@ -8,6 +8,7 @@
  */
 
 import type { ChangeRecord } from './changeRecorder.js';
+import { typePass } from './changeSet.js';
 import type { AdmissionRow, PutBackType } from './admission.js';
 import type { FilteredEntity, ProcessItemResult, SyncServiceConfig } from './syncContract.js';
 import type { SyncProgress, ErrorDetail, ContentsByKind } from './types.js';
@@ -250,11 +251,13 @@ export function recordFilteredEntities(
 
 /**
  * Record the types the run filed on rows a curator put back (`filePutBackTypes`):
- * each one an update past the gate, as an admitted row's type would be
- * (ADR-0135), so the run's record says what moved and why nobody was asked.
+ * each one an update past the gate, filed under the class an admitted row's
+ * type would pass as (ADR-0135, ADR-0193), so the run's record says what moved
+ * and why nobody was asked.
  */
 export function recordPutBackTypes(
   written: PutBackType[],
+  vocabulary: readonly string[] | undefined,
   progress: SyncProgress,
   changes: ChangeRecord[],
 ): void {
@@ -269,7 +272,7 @@ export function recordPutBackTypes(
       changeType: 'updated',
       changedFields: [{
         field: 'type', old: row.before, new: row.type, significance: 'minor',
-        curatedConflict: false, held: false, passedTheGate: 'type-outside-vocabulary',
+        curatedConflict: false, held: false, passedTheGate: typePass(row.before, row.type, vocabulary) ?? 'type-outside-vocabulary',
       }],
       contents: null,
       significance: 'minor',
