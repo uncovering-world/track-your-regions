@@ -18,6 +18,7 @@ import {
   Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,7 +30,8 @@ import { queryKeys } from '../../api/queryKeys';
 import { DumpArchiveLine } from './DumpArchiveLine';
 import { DumpScheduleLine } from './DumpScheduleLine';
 import { BuildProgressDetails, compact, dumpDate, inFlight, size } from './DumpBuildProgress';
-import { WikidataCopyCard } from './WikidataCopyCard';
+import { CopyCard } from './CopyCard';
+import { InputOfLine, Kept, LocalCopy, OUTCOME, SampleLine } from './DumpRowLines';
 import { formatDateTime, formatDuration, formatRelativeTime } from '../../utils/dateFormat';
 
 /** One column grid for every table on the page, so the groups and the earlier builds line up. */
@@ -38,13 +40,6 @@ const COLUMN_WIDTHS = ['30%', '18%', '10%', '8%', '7%', '11%', '16%'];
 function Columns() {
   return <colgroup>{COLUMN_WIDTHS.map((width, i) => <col key={i} style={{ width }} />)}</colgroup>;
 }
-
-const OUTCOME: Record<DumpBuild['status'], { label: string; color: 'success' | 'error' | 'default' }> = {
-  success: { label: 'Verified', color: 'success' },
-  failed: { label: 'Failed', color: 'error' },
-  cancelled: { label: 'Cancelled', color: 'default' },
-  running: { label: 'Running', color: 'default' },
-};
 
 /**
  * Whether a build read the dump's own file, which its host's checksum or size
@@ -186,54 +181,6 @@ function EarlierBuilds({ builds, datedBy }: { builds: DumpBuild[]; datedBy: Dump
   );
 }
 
-/** The newest local copy of the dump, which a build can read instead of downloading the newest file. */
-function LocalCopy({ dump }: { dump: DumpsDumpsItem }) {
-  if (!dump.localCopy) return null;
-  return (
-    <Typography variant="caption" color="text.secondary" display="block">
-      Local copy: {dumpDate(dump.localCopy.date, dump.datedBy)}, {size(dump.localCopy.bytes)}
-    </Typography>
-  );
-}
-
-/**
- * The sample a trial reads, and how the last trial ended: what it kept and
- * how long each step took, which is what a trial is for (#1527).
- */
-function SampleLine({ dump, tried }: { dump: DumpsDumpsItem; tried: DumpBuild | undefined }) {
-  if (!dump.sample && !tried) return null;
-  return (
-    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-      {dump.sample && <>Sample: the first part of the {dumpDate(dump.sample.date, dump.datedBy)} copy, {size(dump.sample.bytes)}</>}
-      {tried && (
-        <Box component="span" display="block">
-          Last trial {formatRelativeTime(tried.finishedAt ?? tried.startedAt)}
-          {tried.status === 'success' ? `: ${tried.outcome ?? 'ended well'}` : ` (${OUTCOME[tried.status].label.toLowerCase()})`}
-        </Box>
-      )}
-    </Typography>
-  );
-}
-
-/** What is built from the dump, from which dump the build in place was made, and when it was last derived again (#1526). */
-function Kept({ dump, derived }: { dump: DumpsDumpsItem; derived: DumpBuild | undefined }) {
-  if (!dump.keeps) return null;
-  const { title, built } = dump.keeps;
-  return (
-    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-      {built
-        ? <>{title}: {dump.keeps.currentTo ? 'current to' : 'built from the dump of'} {dumpDate(built.dumpDate, dump.datedBy)}, swapped in {formatRelativeTime(built.swappedAt)}</>
-        : <>{title}: not built yet</>}
-      {derived && (
-        <Box component="span" display="block">
-          Last derived again {formatRelativeTime(derived.finishedAt ?? derived.startedAt)}
-          {derived.status !== 'success' && ` (${OUTCOME[derived.status].label.toLowerCase()})`}
-        </Box>
-      )}
-    </Typography>
-  );
-}
-
 /** One thing a dump's row can start: its words, what it does, and the call. */
 interface RowAction {
   label: string;
@@ -324,7 +271,7 @@ function RowActions({ actions }: { actions: RowAction[] }) {
   );
 }
 
-function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
+function DumpRow({ dump, readBy }: { dump: DumpsDumpsItem; readBy?: DumpsDumpsItem }) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.dumps });
   const start = useMutation({ mutationFn: (from: DumpBuildFrom) => startDumpBuild(dump.key, from), onSettled: refresh });
@@ -368,8 +315,16 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
     <Fragment>
       <TableRow sx={{ verticalAlign: 'top', '& > td': ruled ? {} : { borderBottom: 'none' } }}>
         <TableCell>
-          <Typography variant="body2" fontWeight={500}>{dump.title}</Typography>
-          <Typography variant="caption" color="text.secondary">{dump.about}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: dump.inputOf ? 2 : 0 }}>
+            <Typography variant="body2" fontWeight={500}>{dump.title}</Typography>
+            <Tooltip title={dump.how} describeChild>
+              <IconButton size="small" aria-label={`How ${dump.title} is read`} sx={{ p: 0.25 }}>
+                <InfoOutlinedIcon sx={{ fontSize: 16 }} color="action" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ pl: dump.inputOf ? 2 : 0 }}>{dump.about}</Typography>
+          <InputOfLine dump={dump} copy={readBy} />
           <Kept dump={dump} derived={derived} />
           <DumpScheduleLine dump={dump} />
           <DumpArchiveLine dump={dump} />
@@ -380,7 +335,8 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
         {!running && (
           <>
             <TableCell>
-              {last ? <Outcome build={last} /> : <Typography variant="body2" color="text.secondary">Never built</Typography>}
+              {last && <Outcome build={last} />}
+              {!last && !dump.inputOf && <Typography variant="body2" color="text.secondary">Never built</Typography>}
             </TableCell>
             {last ? <BuildFigures build={last} datedBy={dump.datedBy} localCopy={dump.localCopy} /> : <TableCell colSpan={4} />}
           </>
@@ -434,7 +390,7 @@ function SourceTable({ source, dumps }: { source: string; dumps: DumpsDumpsItem[
             </TableRow>
           </TableHead>
           <TableBody>
-            {dumps.map(dump => <DumpRow key={dump.key} dump={dump} />)}
+            {dumps.map(dump => <DumpRow key={dump.key} dump={dump} readBy={dumps.find(other => other.key === dump.inputOf)} />)}
           </TableBody>
         </Table>
       </TableContainer>
@@ -464,11 +420,14 @@ export function DumpsPanel() {
     <Box>
       <Typography variant="h4" gutterBottom>Public Dumps</Typography>
       <Typography color="text.secondary" sx={{ mb: 3, maxWidth: 900 }}>
-        The catalogue keeps its own copies of what Wikidata publishes, so syncs never wait on a live service.
+        The catalogue keeps its own copies of what Wikimedia and OpenStreetMap publish, so syncs never wait on a live service.
+        Each copy updates itself when a newer dump is out.
       </Typography>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
-        {/* The card is the Wikidata copy's, the one copy syncs read: readership is built under For developers only. */}
-        {all.filter(dump => dump.keeps && dump.key === 'wikidata-entities').map(dump => <WikidataCopyCard key={dump.key} dump={dump} />)}
+        {/* One card per copy the catalogue reads (#2415), each naming the dumps its build reads beside its own. */}
+        {all.filter(dump => dump.keeps).map(dump => (
+          <CopyCard key={dump.key} dump={dump} inputs={all.filter(input => input.inputOf === dump.key)} />
+        ))}
       </Box>
       {/* Every dump, every build and its history: for a change to how a copy is made (#1583). */}
       <Accordion disableGutters variant="outlined" sx={{ maxWidth: 1200 }}>

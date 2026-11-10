@@ -585,6 +585,26 @@ export const DumpsDumpsItemDatedBy = {
 } as const;
 
 /**
+ * The copy whose build reads this dump as one of its inputs, under whose card it is named, where it keeps nothing of its own (#2415); null otherwise.
+ */
+export type DumpsDumpsItemInputOf = typeof DumpsDumpsItemInputOf[keyof typeof DumpsDumpsItemInputOf] | null;
+
+
+export const DumpsDumpsItemInputOf = {
+  'wikidata-entities': 'wikidata-entities',
+  'enwiki-page': 'enwiki-page',
+  'enwiki-page-props': 'enwiki-page-props',
+  'enwiki-linktarget': 'enwiki-linktarget',
+  'enwiki-categorylinks': 'enwiki-categorylinks',
+  'pageviews-user': 'pageviews-user',
+  'wikipedia-redirects': 'wikipedia-redirects',
+  'wikidata-redirects': 'wikidata-redirects',
+  'wikivoyage-usage': 'wikivoyage-usage',
+  'wikivoyage-pages': 'wikivoyage-pages',
+  'osm-planet': 'osm-planet',
+} as const;
+
+/**
  * The build now in place: its dump date and when it was swapped in.
  */
 export type DumpsDumpsItemKeepsBuilt = {
@@ -638,7 +658,10 @@ export interface DumpSchedule {
  * What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet.
  */
 export type DumpsDumpsItemKeeps = {
+  /** The copy, as its card names it. */
   title: string;
+  /** What reads the copy, in one plain sentence (#2415). */
+  feeds: string;
   /** The build now in place: its dump date and when it was swapped in. */
   built: DumpsDumpsItemKeepsBuilt;
   /** What the copy needs (#1583): nothing; a re-derive, the code now making its derived tables differently; a build from the newer dump the host lists; or a build from the dump, none being in place or the code now keeping or writing it differently. */
@@ -660,6 +683,10 @@ export type DumpsDumpsItemKeeps = {
   schedule: DumpSchedule;
   /** Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet's daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump. */
   currentTo: boolean;
+  /** Whether the copy is built with another copy as input and is counted again once that copy moves (readership, folded with the edition redirects; `followsInputs`, ADR-0195): its `rebuild` is then the input's move, not an update of the app. */
+  followsInputs: boolean;
+  /** For a copy that follows another: its `rebuild` is that input's move, every part being held and read as it stands meanwhile; false where a part is missing, or the copy needs nothing. */
+  inputsMoved: boolean;
   /** The earlier years kept beside the current one, each by the month it ends on (YYYY-MM), oldest first (readership, #2230): asked for with `windowEnd` on a keeping build, kept through the cleanup, read by no run. Empty for every other keeper. */
   archives: string[];
 } | null;
@@ -922,7 +949,12 @@ export type DumpsDumpsItem = {
   title: string;
   /** Whether a file's date is the day of its dump or the month its counts cover. */
   datedBy: DumpsDumpsItemDatedBy;
+  /** What the dump holds, in a plain sentence or two. */
   about: string;
+  /** How a file of the dump is read and verified, which the panel shows behind an info mark. */
+  how: string;
+  /** The copy whose build reads this dump as one of its inputs, under whose card it is named, where it keeps nothing of its own (#2415); null otherwise. */
+  inputOf: DumpsDumpsItemInputOf;
   progress: DumpBuildProgress | null;
   builds: DumpBuild[];
   /** What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet. */

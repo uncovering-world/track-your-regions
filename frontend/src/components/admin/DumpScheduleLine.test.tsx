@@ -14,11 +14,11 @@ vi.mock('../../api/admin/dumps', () => ({
 }));
 
 const planet = (schedule: NonNullable<DumpsDumpsItem['keeps']>['schedule']): DumpsDumpsItem => ({
-  key: 'osm-planet', source: 'OpenStreetMap', title: 'Planet', datedBy: 'day', about: '',
+  key: 'osm-planet', source: 'OpenStreetMap', title: 'Planet', datedBy: 'day', about: '', how: '', inputOf: null,
   progress: null, builds: [], localCopy: null, sample: null,
   keeps: {
-    title: 'The OpenStreetMap layer', built: { dumpDate: '2026-10-22', swappedAt: '2026-10-22T14:00:00Z' }, needs: 'nothing',
-    newestDumpDate: '2026-10-19', newestChecked: 'answered', rederives: false, samples: false, fromCopy: true, schedule, currentTo: true, archives: [],
+    title: 'The OpenStreetMap layer', feeds: '', built: { dumpDate: '2026-10-22', swappedAt: '2026-10-22T14:00:00Z' }, needs: 'nothing',
+    newestDumpDate: '2026-10-19', newestChecked: 'answered', rederives: false, samples: false, fromCopy: true, schedule, currentTo: true, followsInputs: false, inputsMoved: false, archives: [],
   },
 });
 

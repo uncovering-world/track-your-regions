@@ -146,11 +146,6 @@ export function PassNote({ log }: { log: Pick<SyncLog, 'pass_log_id' | 'pass_sou
 }
 
 /**
- * The copies a run read (#2415): the dump date of each, as it stood when the
- * run started. Two runs compared against each other stand on the same inputs
- * when these match.
- */
-/**
  * Readership's fold as the run history says it (#2415): which redirects its
  * twelve months were folded with, by their dump date, and how many months
  * each where a refold was halfway. Nothing for a copy whose date says it all.
@@ -167,6 +162,11 @@ export function foldWords(revision: string | null): string {
   return `, folded with ${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
 }
 
+/**
+ * The copies a run read (#2415): the dump date of each, as it stood when the
+ * run started. Two runs compared against each other stand on the same inputs
+ * when these match.
+ */
 export function CopiesReadNote({ log }: { log: Pick<SyncLog, 'copies_read'> }) {
   if (!log.copies_read || log.copies_read.length === 0) return null;
   return (

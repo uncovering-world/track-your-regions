@@ -17,7 +17,7 @@ const build = (over: Partial<DumpBuild>): DumpBuild => ({
 } as DumpBuild);
 
 const entities = {
-  key: 'wikidata-entities', source: 'Wikidata', title: 'All entities', datedBy: 'day', about: '',
+  key: 'wikidata-entities', source: 'Wikidata', title: 'All entities', datedBy: 'day', about: '', how: '', inputOf: null,
   progress: null, builds: [], sample: { fileName: 'sample.json.gz', bytes: 1 },
   localCopy: { date: '2026-10-05', bytes: 145_700_000_000, fileName: 'latest-all.json.gz' },
   keeps: { built: { dumpDate: '2026-10-05' }, rederives: true, samples: true, fromCopy: true },
