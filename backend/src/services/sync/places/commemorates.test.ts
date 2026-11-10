@@ -85,7 +85,7 @@ const article = (title: string) => `https://en.wikipedia.org/wiki/${title}`;
 const claims = (over: Partial<SubjectClaims> = {}): SubjectClaims => ({
   commemorates: [], mainSubjects: [], namedAfter: [], depicts: [], significantEvents: [], ...over,
 });
-const NOT: Omit<SubjectKind, 'label'> = { human: false, event: false, holy: false, war: false, occurrence: false, span: null };
+const NOT: Omit<SubjectKind, 'label'> = { human: false, event: false, holy: false, classical: false, war: false, occurrence: false, span: null };
 const person = (label: string): SubjectKind => ({ ...NOT, label, human: true });
 const event = (label: string): SubjectKind => ({ ...NOT, label, event: true, occurrence: true });
 const thing = (label: string): SubjectKind => ({ ...NOT, label });

@@ -226,9 +226,12 @@ function landmarkOf(
   };
 }
 
-/** What a kind's `admits` and `type` read of a candidate. */
-function kindFactsOf(known: EntityFacts, subjects: Map<string, SubjectFacts>): KindFacts {
+/** What a kind's `admits` and `type` read of a candidate, its label and description where the entity is at hand. */
+function kindFactsOf(known: EntityFacts, subjects: Map<string, SubjectFacts>, entity?: Pick<PoolEntity, 'label' | 'description'>): KindFacts {
   return {
+    label: entity?.label,
+    description: entity?.description ?? undefined,
+    depicts: known.depicts,
     classes: known.classes,
     outrankedClasses: known.outrankedClasses,
     commemorates: known.commemorates,
@@ -303,6 +306,8 @@ export function publicArtVerdictOf(
   const known = facts.get(entity.qid) ?? emptyFacts();
   return publicArtVerdict({
     qid: entity.qid,
+    label: entity.label,
+    description: entity.description ?? undefined,
     classes: known.classes,
     outrankedClasses: known.outrankedClasses,
     containers: chainOf(known, containers),
@@ -392,7 +397,7 @@ function kindDecision(
   // On a refusal of a row the source admits, the type the classes read: a
   // curator may have put it back, and a put-back is filed under it too
   // (`filePutBackTypes`, ADR-0135).
-  const type = held ? { type: rule.type(kindFactsOf(known, gathered.subjects), gathered.trees) } : {};
+  const type = held ? { type: rule.type(kindFactsOf(known, gathered.subjects, entity), gathered.trees) } : {};
   const c = candidateOf(entity);
   if (!verdict.pass) {
     // What an entrance the kind reads named is named back: a category filed it.

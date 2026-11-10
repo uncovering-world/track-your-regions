@@ -259,6 +259,86 @@ export const STREET_ART_CLASSES: Record<string, string> = {
   Q17516: 'street art',
 };
 
+// =============================================================================
+// What files a Public art work under its type (#2279)
+// =============================================================================
+//
+// Read off the 588 works Public art admitted on the development catalogue on
+// 2026-11-10, with their classes, genres (`P136`) and what they depict from the
+// subset; every QID carries the label named, as the subset gives it. These
+// file a work the kind already admits and admit nothing themselves.
+
+/** A clock the work is, beside the public clocks with a show: the Corpus Clock is typed `clock`, the World Clock `world clock`. */
+export const CLOCK_TYPE_CLASSES: Record<string, string> = {
+  ...PUBLIC_CLOCK_CLASSES,
+  Q376: 'clock',
+  Q1451661: 'world clock',
+};
+
+/**
+ * A fountain Wikidata files as a well (`Brunnen`): the Lindwurmbrunnen in
+ * Klagenfurt and the Monument aux Girondins carry no fountain class beside it.
+ */
+export const WELL_CLASSES: Record<string, string> = {
+  Q43483: 'water well',
+};
+
+/** A religious statue by its class (#2279): Christ the Redeemer, the Ushiku Daibutsu, the Virgin of Candelaria. */
+export const RELIGIOUS_STATUE_CLASSES: Record<string, string> = {
+  Q29168169: 'colossal statue of Jesus',
+  Q29168168: 'statue of Jesus',
+  Q1051606: 'daibutsu',
+  Q1000809: 'Buddharupa',
+  Q134082452: 'canonically crowned Marian image',
+};
+
+/** An equestrian statue by its class or its genre: the Statue of Bartolomeo Colleoni, the Bronze Horseman's genre. */
+export const EQUESTRIAN_CLASSES: Record<string, string> = {
+  Q659396: 'equestrian statue',
+};
+
+/** What an equestrian statue shows beside its rider (`P180`): the statue of Gattamelata is typed only `sculpture`. */
+export const HORSE = 'Q726';
+
+/** A roadside giant: the Big Merino, the Big Nickel, the Vegreville egg, the World's Largest Dinosaur. */
+export const ROADSIDE_GIANT_CLASSES: Record<string, string> = {
+  Q104904962: 'big thing',
+  Q130478367: 'oversized object',
+  Q4823517: 'big thing in Australia',
+  Q100323579: 'big thing in New Zealand',
+};
+
+/**
+ * Installation and land art, by class or genre: the Spiral Jetty (`earthworks`,
+ * genre `land art`), Cadillac Ranch (`installation artwork`), the Sea organ
+ * (`tide organ`), Tiger and Turtle (`light installation`).
+ */
+export const INSTALLATION_CLASSES: Record<string, string> = {
+  Q20437094: 'installation artwork',
+  Q212431: 'installation art',
+  Q29857932: 'kinetic sculpture',
+  Q20967773: 'tide organ',
+  Q1823448: 'light installation',
+  Q326478: 'land art',
+  Q473743: 'environmental art',
+  Q11880367: 'earthworks',
+  Q1349587: 'earthworks',
+  Q29574068: 'earthworks',
+};
+
+/**
+ * A figure of classical mythology, which a work shows as art's subject and no
+ * religion's (#2279): Cellini's Perseus is a sculpture, not a religious statue.
+ */
+export const CLASSICAL_MYTHOLOGY_CLASSES: Record<string, string> = {
+  Q22989102: 'Greek deity',
+  Q878099: 'Greek primordial deity',
+  Q11688446: 'Roman deity',
+  Q45713: 'titan',
+  Q23015925: 'demigod of Greek mythology',
+  Q12502038: 'Greek heroes',
+};
+
 /**
  * A place a monument class says nothing about: the row is the lake, the road,
  * the square or the house, and a traveller visiting it is not standing in

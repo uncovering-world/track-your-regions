@@ -16,6 +16,13 @@ import {
   COLUMN_CLASSES,
   COMMEMORATIVE_FORMS,
   BIBLICAL_FIGURE_CLASS,
+  CLOCK_TYPE_CLASSES,
+  EQUESTRIAN_CLASSES,
+  HORSE,
+  INSTALLATION_CLASSES,
+  RELIGIOUS_STATUE_CLASSES,
+  ROADSIDE_GIANT_CLASSES,
+  WELL_CLASSES,
   HERITAGE_MONUMENT_CLASSES,
   NATION_CLASSES,
   NOT_SCULPTURE_BY_ITSELF,
@@ -47,6 +54,11 @@ export interface KindFacts {
   genres: string[];
   /** What each item it depicts (`P180`) is, for the ones that were read. */
   subjects: SubjectFacts[];
+  /** `P180` itself, the items depicted: a horse makes a rider's statue equestrian. */
+  depicts?: string[];
+  /** The candidate's label and Wikidata description, which name a fountain or a clock no class names. */
+  label?: string;
+  description?: string;
   /** The makers each work a sculpture garden holds names (`EntityFacts.heldMakers`). */
   heldMakers?: string[][];
   /** A sculpture garden's own makers, as `EntityFacts.ownMakers` reads them. */
@@ -97,6 +109,61 @@ const raisedTo = (subject: SubjectFacts): boolean =>
 /** What a candidate's form is said to be: its classes, and the genre it is filed under. */
 export const formsOf = (e: KindFacts): string[] => [...e.classes, ...e.genres];
 
+/** A clock's or a fountain's name in the words a label or a description uses for it, where no class says so (#2279). */
+const CLOCK_WORDS = /\bclock\b/i;
+const FOUNTAIN_WORDS = /\bfountain\b|brunnen\b|\bfontaine\b|\bfontana\b|\bfuente\b/i;
+
+/** Where a description's head ends: the first word that places or credits what it names. */
+const AFTER_THE_HEAD = /\s(?:by|in|at|on|near|from|beside|with|of|for|outside|inside|opposite)\s/i;
+
+/**
+ * The words that name what the candidate is: its label, and its description up
+ * to the words that place or credit it. Manneken Pis is a *bronze sculpture
+ * and fountain* by Jérôme Duquesnoy, and a statue *by Lucio Fontana* or
+ * *beside the clock tower* names its maker or its neighbour, never itself.
+ */
+const textOf = (e: KindFacts): string => `${e.label ?? ''} ${(e.description ?? '').split(AFTER_THE_HEAD, 1)[0]}`;
+
+/** Whether a statue shows a rider: a horse beside a person among what it depicts. */
+const ridden = (e: KindFacts): boolean => (e.depicts ?? []).includes(HORSE) && e.subjects.some((s) => s.classes.includes(PERSON_CLASS));
+
+/**
+ * Public art's type, by its classes and what it depicts (#2279), in the order
+ * that decides a work which is more than one: a public clock with a show is a
+ * clock before anything else it is (the Zytglogge is a gate tower too, #2140),
+ * street art before a fountain, a fountain before a sculpture (the Trevi
+ * Fountain is typed both and visited as the fountain), then a religious
+ * statue, an equestrian statue, a roadside giant, installation and land art,
+ * and a sculpture otherwise. A label or a description names a clock or a
+ * fountain no class names (the Brno astronomical clock, Manneken Pis, the
+ * Merlion), read only where no class names one. A sculpture whose reading
+ * names a holy figure it depicts becomes a religious statue later in the run
+ * (`typeByDepicted`).
+ */
+export function publicArtType(e: KindFacts, trees: PublicArtTrees): PublicArtType {
+  if (has(e.classes, CLOCK_TYPE_CLASSES)) return 'clock';
+  if (has(e.classes, STREET_ART_CLASSES)) return 'street-art';
+  if (has(e.classes, trees.fountain) || has(e.classes, WELL_CLASSES)) return 'fountain';
+  if (CLOCK_WORDS.test(textOf(e))) return 'clock';
+  if (FOUNTAIN_WORDS.test(textOf(e))) return 'fountain';
+  if (has(e.classes, RELIGIOUS_STATUE_CLASSES)) return 'religious-statue';
+  if (has(formsOf(e), EQUESTRIAN_CLASSES) || ridden(e)) return 'equestrian-statue';
+  if (has(e.classes, ROADSIDE_GIANT_CLASSES)) return 'roadside-giant';
+  if (has(formsOf(e), INSTALLATION_CLASSES)) return 'installation';
+  return 'sculpture';
+}
+
+/**
+ * The type a work's reading of what it depicts files it under (#2279, after
+ * `readCommemorates`): a sculpture the classes left plain, raised to no one,
+ * that depicts a holy figure no classical myth holds is a religious statue (Our
+ * Lady of the Rockies, Guanyin of Nanshan; `PlaceReading.religious`), and every
+ * other type stands.
+ */
+export function typeByDepicted(type: string | null | undefined, religious: boolean): string | null | undefined {
+  return type === 'sculpture' && religious ? 'religious-statue' : type;
+}
+
 /**
  * Public art: a sculpture, a statue, a fountain, a mural, a public clock with
  * a show (`PUBLIC_CLOCK_CLASSES`), and a column that is no sculpture by itself
@@ -120,12 +187,7 @@ export const PUBLIC_ART_RULE: KindRule = {
   memorialLifts: false,
   oneArtistsGardens: true,
   types: PUBLIC_ART_TYPES,
-  type: (e, trees) => {
-    if (has(e.classes, PUBLIC_CLOCK_CLASSES)) return 'clock';
-    if (has(e.classes, STREET_ART_CLASSES)) return 'street-art';
-    if (has(e.classes, trees.fountain)) return 'fountain';
-    return 'sculpture';
-  },
+  type: publicArtType,
 };
 
 /**

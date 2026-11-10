@@ -728,7 +728,7 @@ describe('publicArtVerdict — what it admits', () => {
     // monument to its rider by tradition, and a sculpture.
     const statue = facts({ classes: [COLOSSAL_STATUE, EQUESTRIAN_STATUE] });
     expect(publicArtVerdict(statue, trees, monuments)).toMatchObject({ pass: true, type: 'monument' });
-    expect(publicArtVerdict(statue, trees, art)).toMatchObject({ pass: true, type: 'sculpture' });
+    expect(publicArtVerdict(statue, trees, art)).toMatchObject({ pass: true, type: 'equestrian-statue' });
   });
 
   it('lets a memorial lift a bare building\'s veto for Monuments & memorials', () => {
@@ -939,7 +939,7 @@ describe('publicArtVerdict — what it admits', () => {
     const v = publicArtVerdict(
       facts({ classes: ['Q29168169', PILGRIMAGE_SITE, COLOSSAL_STATUE, STATUE, MONUMENT] }), trees, art,
     );
-    expect(v).toMatchObject({ pass: true, type: 'sculpture' });
+    expect(v).toMatchObject({ pass: true, type: 'religious-statue' });
   });
 
   it('admits a monument that is only a pilgrimage site besides', () => {

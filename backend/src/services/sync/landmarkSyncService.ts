@@ -40,7 +40,7 @@ import { streetArtContents, type PlaceContents } from './publicArt/streetArtWork
 import { shareOf, type GatheredPlaces, type PlaceGather } from './places/gather.js';
 import { PUBLIC_CLOCK_CLASSES, STREET_ART_CLASSES, type PublicArtTrees } from './publicArt/classes.js';
 import type { SparqlFn } from './wikidataQueries.js';
-import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './publicArt/kindRules.js';
+import { MONUMENTS_RULE, PUBLIC_ART_RULE, typeByDepicted, type KindRule } from './publicArt/kindRules.js';
 import { PUBLIC_ART_SOURCES } from './passes.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import {
@@ -421,6 +421,22 @@ async function upsertLandmarkExperience(
 }
 
 /**
+ * Whom or what each admitted place commemorates and the holy figure a
+ * religious work depicts, onto its item, and Public art's plain sculpture that
+ * shows one made a religious statue (#2279, `typeByDepicted`).
+ */
+async function readWhatEachCommemorates(items: WikidataLandmark[], sourceId: number, sparql: SparqlFn, progress: SyncProgress): Promise<void> {
+  progress.statusMessage = 'Reading whom or what each place commemorates...';
+  const readings = await readCommemorates(items, sparql, await commemorationWiki(progress));
+  for (const item of items) {
+    const reading = readings.get(item.qid);
+    if (reading?.commemorates) item.commemorates = reading.commemorates;
+    if (reading?.depicts) item.depicts = reading.depicts;
+    if (sourceId === LANDMARK_SOURCE_ID) item.type = typeByDepicted(item.type, Boolean(reading?.religious)) as typeof item.type;
+  }
+}
+
+/**
  * Decide from the gather, and ask Commons about the pictures of what was
  * admitted.
  *
@@ -466,15 +482,7 @@ async function fetchLandmarkItems(
   // religious work depicts, once the kinds have decided (#2144, #2404): Public
   // art's and Monuments & memorials' alone, whose writers `WRITTEN_BY_SOURCES`
   // names. Every other kind keeps what the place holds.
-  if (PUBLIC_ART_SOURCES.includes(sourceId)) {
-    progress.statusMessage = 'Reading whom or what each place commemorates...';
-    const readings = await readCommemorates(items, sparql, await commemorationWiki(progress));
-    for (const item of items) {
-      const reading = readings.get(item.qid);
-      if (reading?.commemorates) item.commemorates = reading.commemorates;
-      if (reading?.depicts) item.depicts = reading.depicts;
-    }
-  }
+  if (PUBLIC_ART_SOURCES.includes(sourceId)) await readWhatEachCommemorates(items, sourceId, sparql, progress);
   // What the admitted places hold, read before the first is written, so the
   // coverage floor is measured over the whole run (ADR-0044).
   const held = await classifier.contents?.read(items, sparql, progress);

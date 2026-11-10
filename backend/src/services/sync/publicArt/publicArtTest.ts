@@ -43,6 +43,9 @@ import type { ClassObject } from './monumentCategoryQueries.js';
 
 export interface PublicArtFacts {
   qid: string;
+  /** The label and Wikidata description, which name a fountain or a clock no class names (`publicArtType`). */
+  label?: string;
+  description?: string;
   /** Every `P31` the entity carries. */
   classes: string[];
   /** The `P31`s a preferred class outranks (`EntityFacts.outrankedClasses`). */
