@@ -155,8 +155,13 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
   - the SQL table dumps, the Wikidata JSON dumps and the pageview files have no end date; the
     sunset page says SQL, RDF and JSON dumps do not change.
 - *Code:* `services/dumps/fetch.ts` (`downloadTo` with ranged parts, bot UA with the purpose
-  *public dump builds*, `HOST_CONNECTIONS = 3`, no retry loop), the descriptors in `dumps/catalog.ts`,
+  *public dump builds*, `HOST_CONNECTIONS = 3`, no request retried), the descriptors in `dumps/catalog.ts`,
   and `dumps/newestOnHost.ts` (once a day per dump).
+- *Retries:* a build the network cut (a name that did not resolve, a connection closed or reset, a
+  502–504) is started again three times, about 1, 5 and 15 minutes after the attempt before
+  (`RETRY_PAUSES_MS` in `dumps/buildRun.ts`, #2419), and each attempt asks only for the bytes its
+  local copies lack. A 4xx, a 429 among them, is never retried, so a limit the host sets is never
+  pushed against.
 - *Where the cap is kept:* in the dump worker, the one process that asks the host anything. Its
   builds and its daily check of the newest dumps share the one count `fetch.ts` keeps, and the
   backend reads what the worker learnt (`workbench.dump_newest_on_host`) and opens no connection
