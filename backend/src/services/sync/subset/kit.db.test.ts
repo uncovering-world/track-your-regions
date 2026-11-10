@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
 import { fetchClassTree, fetchEnglishArticles, fetchSubclasses, fetchWikipediaEditions } from '../wikidataQueries.js';
+import { subsetNamesOf } from './kit.js';
 import { subsetDoor } from './reader.js';
 
 /**
@@ -21,6 +22,8 @@ const VISUAL_ARTWORK = 'Q4502142';
 const WORK_OF_ART = 'Q838948';
 const MONA_LISA = 'Q12418';
 const LEONARDO = 'Q762';
+/** Kraków's Main Market Square: named in Polish by its Wikipedia article, by no kept label (#2311). */
+const KRAKOW_SQUARE = 'Q770631';
 /** The stele of Lemnos: editions in other languages, none in English (#1608). */
 const STELE_OF_LEMNOS = 'Q3501422';
 
@@ -56,6 +59,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await pool.query('TRUNCATE wikidata_claims, wikidata_sitelinks');
+  await pool.query('DELETE FROM wikidata_labels WHERE id = $1', [KRAKOW_SQUARE]);
   await pool.end();
 });
 
@@ -79,5 +83,24 @@ describe('the shared questions, read from the subset (#1458)', () => {
   it("answers an item's English article by the address the live service names, and nothing where English has none (#1608)", async () => {
     const articles = await fetchEnglishArticles(door, [MONA_LISA, STELE_OF_LEMNOS, LEONARDO]);
     expect(articles).toEqual(new Map([[MONA_LISA, 'https://en.wikipedia.org/wiki/Mona_Lisa']]));
+  });
+});
+
+describe('subsetNamesOf (#2311, ADR-0194)', () => {
+  it("names an item by its labels and its Wikipedia articles' titles, without a namesake's parenthesis, and by no other project's", async () => {
+    await pool.query('DELETE FROM wikidata_labels WHERE id = $1', [KRAKOW_SQUARE]);
+    await pool.query(`INSERT INTO wikidata_labels (id, language, label) VALUES ($1, 'en', 'Main Square'), ($1, 'de', 'Hauptmarkt')`, [KRAKOW_SQUARE]);
+    await pool.query(
+      `INSERT INTO wikidata_sitelinks (id, site, title) VALUES ($1, 'plwiki', 'Rynek Główny w Krakowie'), ($1, 'enwiki', 'Main Square (Kraków)'),
+         ($1, 'commonswiki', 'Category:Main Market Square in Kraków'), ($1, 'plwikivoyage', 'Kraków')`,
+      [KRAKOW_SQUARE],
+    );
+    const names = await subsetNamesOf([KRAKOW_SQUARE, 'Q1']);
+    expect(new Set(names.get(KRAKOW_SQUARE))).toEqual(new Set(['Main Square', 'Hauptmarkt', 'Rynek Główny w Krakowie']));
+    expect(names.has('Q1')).toBe(false);
+  });
+
+  it('asks nothing of an empty list', async () => {
+    expect(await subsetNamesOf([])).toEqual(new Map());
   });
 });
