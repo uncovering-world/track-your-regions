@@ -1,7 +1,7 @@
 # ADR-0135: A type its kind has no word for passes the gate
 
 **Date:** 2026-10-22
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0193](0193-public-art-files-its-works-under-eight-types-and-a-retype-passes-the-gate.md)
 **Issue:** [#1807](https://github.com/uncovering-world/track-your-regions/issues/1807)
 **Narrows:** [ADR-0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) decision 1
 

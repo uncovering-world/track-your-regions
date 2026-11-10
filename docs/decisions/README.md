@@ -154,7 +154,7 @@ and accepted by it.
 | [0132](0132-several-kinds-are-filled-from-one-gather-each-by-a-source-of-its-own.md) | Several kinds are filled from one gather, each by a source of its own | Accepted | 2026-10-21 |
 | [0133](0133-a-subtitle-a-place-holds-none-of-passes-the-gate.md) | A subtitle a place holds none of passes the gate | Accepted | 2026-10-21 |
 | [0134](0134-openstreetmap-is-read-from-a-layer-cut-from-the-planet-and-a-miss-the-layer-cannot-vouch-for-is-asked-live.md) | OpenStreetMap is read from a layer cut from the planet, and a miss the layer cannot vouch for is asked live | Accepted — decisions 1 and 2 narrowed by [0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md); decision 2 narrowed by [0191](0191-the-openstreetmap-layer-keeps-food-and-drink-venues-as-points-read-by-nearness.md) | 2026-10-22 |
-| [0135](0135-a-type-its-kind-has-no-word-for-passes-the-gate.md) | A type its kind has no word for passes the gate | Accepted | 2026-10-22 |
+| [0135](0135-a-type-its-kind-has-no-word-for-passes-the-gate.md) | A type its kind has no word for passes the gate | Accepted — decision 2 narrowed by [0193](0193-public-art-files-its-works-under-eight-types-and-a-retype-passes-the-gate.md) | 2026-10-22 |
 | [0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md) | The OpenStreetMap layer keeps a full geometry only for what a kind draws | Accepted — decision 1 narrowed by [0157](0157-the-openstreetmap-layer-keeps-whole-the-objects-of-the-items-an-import-names.md) | 2026-10-22 |
 | [0137](0137-a-point-a-reader-sees-is-another-sources-point-within-ten-metres.md) | A point a reader sees is another source's point within ten metres | Accepted — decision 1 narrowed by [0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md) | 2026-10-23 |
 | [0138](0138-unescos-page-about-a-site-is-kept-by-every-other-familys-run.md) | UNESCO's page about a site is kept by every other family's run | Accepted | 2026-10-23 |
@@ -210,6 +210,7 @@ and accepted by it.
 | [0189](0189-a-component-renumbered-or-moved-stays-its-part-found-by-its-name.md) | A component renumbered or moved stays its part, found by its name | Accepted | 2026-11-08 |
 | [0190](0190-a-place-field-some-sources-read-is-kept-while-one-of-them-stands.md) | A place field only some sources read is kept by the others while one of them stands | Accepted | 2026-11-09 |
 | [0191](0191-the-openstreetmap-layer-keeps-food-and-drink-venues-as-points-read-by-nearness.md) | The OpenStreetMap layer keeps food-and-drink venues as points read by nearness | Accepted | 2026-11-10 |
+| [0193](0193-public-art-files-its-works-under-eight-types-and-a-retype-passes-the-gate.md) | Public art files its works under eight types, and a retype passes the gate | Accepted | 2026-11-10 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
