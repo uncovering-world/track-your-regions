@@ -934,9 +934,9 @@ build.
 Code: `backend/src/services/dumps/osm/`. A keeping build of `osm-planet`
 (`buildLayer`, `layerBuild.ts`) cuts the objects of the planet the
 catalogue asks about into `osm_objects`, with every tag, the full geometry
-of what a kind draws and of the objects that carry an item `drawnItems`
-lists, and a point for everything else (ADR-0134, ADR-0136,
-ADR-0157), and refills the store of region shapes from it. It runs in the dump worker, whose image carries osmium
+of what a kind draws, of the objects that carry an item `drawnItems`
+lists and of the lines of Squares & streets' candidates, and a point for
+everything else (ADR-0134, ADR-0136, ADR-0157, ADR-0194), and refills the store of region shapes from it. It runs in the dump worker, whose image carries osmium
 and osm2pgsql (`tools.ts`: each runs as a child process with its arguments as
 a list, by its absolute path, killed on a cancel). The database password
 reaches osm2pgsql through libpq's environment (`databaseEnv`), never its
@@ -1000,12 +1000,44 @@ command line.
    goes on, counting them in its record (`pinned_gone`) and naming up to 20 of
    them in its notes (`goneObjects`). An exit 1 that does not say an object is
    gone fails the build.
-4. **The load** runs osm2pgsql in slim mode with its node store in the
+4. **The street lines** (`layerStreets.ts`, ADR-0194). The build reads
+   Squares & streets' candidates from the local Wikidata subset
+   (`streetItems`). These are the items of the kind's classes at its pool's
+   floor, asked with the gather's own pool question (`kindClasses`,
+   `subsetIdsOfClasses`), each with its point. Each also carries every name
+   the subset holds for it (`subsetNamesOf`): its labels in every kept
+   language, and the titles of its Wikipedia articles, which give the local
+   name no kept label may hold. None are read while no subset is built.
+   - **The cut.** Beside the two cuts above, one `osmium extract -s
+     complete_ways` reads the planet through a polygon of 0.01° cells within `STREET_REACH_M` (1 km)
+     of the points, each row's cells joined into one rectangle
+     (`streetArea`). An `osmium tags-filter w/highway w/place` of that small
+     cut is merged into the load. Its ways come whole: one matched by name that
+     runs past the cells keeps its line beyond them. On 2026-11-10 a
+     single-pass extract (`-s simple`) read the 124 GB planet in 11 minutes for
+     8,577 points; `complete_ways` reads it twice. The names are never written as
+     `tags-filter` expressions: tags-filter tries every expression on every
+     way, and 33,208 names read 80 GB in 40 minutes before it was stopped.
+   - **The match.** The flex style reads the items once (`streetsFile`,
+     `streets.txt`). A way of a street's `highway` type (`STREET_HIGHWAYS`:
+     the roads, paths and steps, never a stop's platform named after its
+     street) or of a `place` is an item's line in two cases:
+     its `wikidata` tag is the item, or one of its `name`/`name:*` values is
+     one of the item's names; and either way, its box lies within the reach
+     of the item's point. The tag is tried first. Such a row keeps its whole
+     line, and names the item in `street_item`. A closed way keeps its area
+     only where it is a place or is tagged `area=yes`; a roundabout or a
+     looped path stays a line. Every other way of that cut is dropped.
+   - **The record.** The build records how many items it looked for and how
+     many it kept a line for (`osm_layer_builds.streets`, `streets_lined`).
+     NULL there is a layer cut before ADR-0194. A street with no line is read
+     at its point.
+5. **The load** runs osm2pgsql in slim mode with its node store in the
    workbench schema (`osm_layer_middle_*`), dropped after the load and by a
    failed one too, through the flex style
    `layer.lua`. The style reads the same expression file and the same list of
-   named objects, so a row is written for a selected or named object and
-   never for a node or member that only draws one: the cut and the rows
+   named objects, so a row is written for a selected or named object, or a street item's
+   line, and never for a node or member that only draws one: the cut and the rows
    cannot disagree. **The full geometry** is kept only for an object a kind's
    keep rule draws (`LAYER_DRAWN`, written as `drawn.txt`; today
    Archaeology's: a ruin, a dig, a protected area), and for an object whose
@@ -1014,7 +1046,8 @@ command line.
    `{{mapshape|wikidata=…}}` on those regions' Wikivoyage pages lists, read
    with the mapshape match's own parser from the kept copy of English
    Wikivoyage, none while no copy is kept; written as `drawn-items.txt`,
-   ADR-0157, ADR-0158): a point for a node; a
+   ADR-0157, ADR-0158), and for a way that is a street item's line (step 4,
+   ADR-0194): a point for a node; a
    closed way's area, or its line where the area is not valid; an open way's
    line; an area relation's multipolygon; any other relation's collection of
    members. **Every other object keeps one point** (ADR-0136): a node its own;
@@ -1031,8 +1064,9 @@ command line.
    points. osm2pgsql writes
    no editor field (`user`, `uid`, `changeset`), and its record of the import
    (`osm2pgsql_properties`) is dropped.
-5. **The swap.** The `_next` copy is given the live table's key and indexes
-   (by `wikidata`, by `wikipedia`, and a GiST index on the geometry) and
+6. **The swap.** The `_next` copy is given the live table's key and indexes
+   (by `wikidata`, by `wikipedia`, by `street_item`, and a GiST index on the
+   geometry) and
    swapped in with its row in `osm_layer_builds` in one transaction
    (`swapIn`, `layerTables.ts`). The row records the weekly planet the
    current one started from, the objects kept, how many objects the catalogue
@@ -1043,7 +1077,7 @@ command line.
    instant's day, so a newer weekly planet is not offered as newer than a
    layer already brought past it. A failed tool, a cut that kept nothing, or a cancel
    drops the copy and leaves the layer in place.
-6. **The region shapes** (`refillRegionShapes`, `layerShapes.ts`, ADR-0157).
+7. **The region shapes** (`refillRegionShapes`, `layerShapes.ts`, ADR-0157).
    Once the layer is swapped in, the store a world-view match reads its
    regions' outlines from (`workbench.wikidata_geoshapes`,
    `docs/tech/world-view-import.md` § Geoshape Match) is refilled from it in
@@ -1107,11 +1141,12 @@ of a build stops the worker's passes.
 took about 78 minutes to download and verify the planet, 21.5 to apply three daily diffs, 10.8
 and 6 to cut the selection and the named objects, and then loaded a cut of 612 million nodes,
 26.6 million ways and 1.4 million relations. Since then:
-- the current planet and the two cuts osmium reads again are written as PBF compressed with lz4
+- the current planet and the cuts osmium reads again are written as PBF compressed with lz4
   (`OSMIUM_OUTPUT`), which writes and reads several times faster than zlib, while the cut
   osm2pgsql loads is written uncompressed (`OSM2PGSQL_INPUT`): the Debian build of osm2pgsql
   2.1.1 refuses lz4;
-- the two cuts read the planet side by side (`cutLayer`);
+- the cuts read the planet side by side (`cutLayer`): the selection, the named objects and,
+  since ADR-0194, the ways near the street items;
 - the flex style leaves the table unclustered (`cluster = 'no'`), since nothing reads the layer
   by nearness, and clustering copies the whole loaded table into a sorted one;
 - the indexes are built side by side after the key (`indexNextTable`);
