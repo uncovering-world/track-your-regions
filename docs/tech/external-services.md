@@ -161,9 +161,11 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
   built before, once the host has a newer dump than the copy and the copy is older than its
   interval (7 days by default, 30 for the Wikidata subset). That is about one download of each
   copy's files a month, as each dump is published. Readership is also refolded whenever the
-  redirects copy moves (`followsInputs`), from the twelve monthly files it keeps on disk
-  (`retiredCopies`), so it downloads nothing again. The one exception is a month whose file a build
-  from before 2026-11-11 removed: it is downloaded once more, then kept.
+  redirects copy moves (`followsInputs`). Where the server keeps local copies (`DUMPS_DIR`), the
+  refold reads the twelve monthly files it keeps on disk (`retiredCopies`) and downloads nothing
+  again, except a month whose file a build from before 2026-11-11 removed, which is downloaded
+  once more and then kept. A server that streams downloads all twelve again for each refold, some
+  70 GB.
 - *Retries:* a build the network cut (a name that did not resolve, a connection closed or reset, a
   502–504) is started again three times, about 1, 5 and 15 minutes after the attempt before
   (`RETRY_PAUSES_MS` in `dumps/buildRun.ts`, #2419), and each attempt asks only for the bytes its

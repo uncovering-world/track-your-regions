@@ -359,7 +359,10 @@ my answer".
 The backend writes some of what a screen shows. That text follows these rules as the web app's
 does:
 
-- a dump's description (`about`, `services/dumps/catalog.ts`);
+- a dump's description and how a file of it is read (`about` and `how` in `DUMP_WORDS`,
+  `services/dumps/catalog.ts`);
+- a copy's name and what reads it (`title` and `feeds` in `KEEPERS`, `services/dumps/keepers.ts`),
+  on its Public Dumps card and in the run history's line of copies read;
 - a failed build's message (`services/dumps/buildRun.ts`);
 - a run's refusal reason and an admission's reason;
 - the words of a held change.
