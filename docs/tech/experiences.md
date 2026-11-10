@@ -941,7 +941,37 @@ and reasons, and the tier a run recorded on its changeset.
   its editions reach `editionsShare` of the editions reference, in a group of at least
   `editionsGroupFloor` places; its readers reach `readersShare` of the readers reference, in a group of
   at least `readersGroupFloor`; or the Wikivoyage editions that use it reach `guideShare` of the guide
-  reference, in a group of at least `guideGroupFloor`. A place of a type in `guideForTypes` — a tunnel,
+  reference, in a group of at least `guideGroupFloor`. A kind that reads the venues around its places
+  (`SurroundingsKind.venues`: Squares & streets, ADR-0192) has a fourth test: the food-and-drink venues
+  within `venueRadiusM` of its point reach `venueShare` of the median of the `best` highest counts among
+  the kind's places within `radiusKm`, in a group of at least `venueGroupFloor` of them. A place of a
+  type the kind names (`SurroundingsKind.venueLineTypes`, read through the reader's `venueLine`) whose
+  lines the layer keeps (`osm_objects.street_item`, on a build that looked for them, ADR-0194) and run
+  `venueLineMinM` or more is read in venues within `venueLineM` of them per 100 m of them instead
+  (`streetLines`, `venuesAlong`), against the places read the same way (`venueAreas` reads
+  the two groups apart), unless fewer than `venueGroupFloor` places within `radiusKm` are read along
+  their lines, itself included (`thinlyLined`): it is then read at its point. An artery
+  (`StreetLine.artery`, `SurroundingsCandidate.artery`) enters by no venue, however it is read. A place with no
+  venue is no part of that median, so an area with fewer lively places than `best` reads the median of
+  those it has (`keepBest`). The pool counts
+  them for every place of the classes that read them (`PoolMembers.venues`, `countVenues` in
+  `places/surroundingsVenues.ts`: a box the layer's spatial index answers, then the distance on the
+  spheroid), whatever its editions, so a quiet street counts toward the area and sets no reference,
+  and reads each candidate's area in a plain circle (`venueAreas`, `venuesAround`): liveliness is
+  itself a density, and a street on a core's edge passes only by being as lively as the core's. With
+  an area of its own the test decides a place too few neighbours of its own density measure, which
+  the other tests' group floors leave out (`venuesDecide`). It
+  reads the layer only when the build in place kept the venues (`venueLayer`: `selectsVenues` over
+  `osm_layer_builds.selection`, ADR-0191 decision 3), and uses what it read only when that build is
+  still in place once the counts and the lines are read (`layerSwapped`, by `layerState`'s build);
+  otherwise the pool says why
+  (`PoolVenues.unread`), nothing enters by the test, and a held place that last stood by it is kept, its
+  note naming the venue test it could not read. Which held places stood by it is the note each
+  membership records (`admissionNote`), read once per run into the world memory (`WorldMemory.venued`,
+  `places/worldMemory.ts`) through the one predicate that knows the note's words (`standsByVenues`); a
+  place held by another test is judged by the tests the run read. The venue keep is read before the
+  guides' keep, since the note is the venue test's only memory. A held place stays at
+  `stayEditionsShare` of the venue share. A place of a type in `guideForTypes` — a tunnel,
   a dam, a lock, a bridge, as the kind's rule types it — is then refused unless a Wikivoyage edition uses it
   (`needsAGuide`, read by `surroundingsArrivals` after the rule): the readership of a tunnel's article does
   not say people go to see it, a guide does (the Kurobe Dam, the Old Elbe Tunnel). For a type in
@@ -963,7 +993,8 @@ and reasons, and the tier a run recorded on its changeset.
   best, a Wikivoyage share of a quarter, the editions reference whole and the readers reference at one
   and a half, groups of 5, 25 and 25 places, two editions, the readers of the 889,568th most read
   item of the year (3,000 a year on the year to September 2026, ADR-0184), a guide for tunnels,
-  dams, locks and bridges, a bridge also kept by a heritage designation, and a stay at 0.8 (2,400 readers on that year, 0.8 of the readers share). Two more
+  dams, locks and bridges, a bridge also kept by a heritage designation, a stay at 0.8 (2,400 readers on that year, 0.8 of the readers share),
+  and the venue test's 200 m, half and 25 places. Two more
   the review's experiments turned: **`enabled`**, on since #2252 (off, the pass reads no pool and
   every kind's part says so),
   and **`neighbours`**, whose places set the references: `all` (every place kind's and the museums',
@@ -5230,6 +5261,28 @@ editions, then 30,000 readers or 5,000 with a guide).
 Measured on the development subset on 2026-10-23, read-only in the dev container: the pool named
 419 candidates, and the source would admit 326 and refuse 28, with 109 of the 114 places the line
 was chosen on among the admitted.
+
+**The venue test** (ADR-0192, #2311) is the kind's own in the surroundings tier
+(`SQUARES_DECLARATION.venues`): fame misses the streets a traveller walks for their cafés, bars and
+life, Bergmannstraße at four editions and Bauman Street at eight, while the through streets of the
+same fame have no café. The pool counts the OpenStreetMap layer's cafés, restaurants, bars, pubs,
+fast food, ice cream and beer gardens within 200 m of the point of every place of the kind's
+classes, and a candidate enters when its count reaches half the median of the ten liveliest places
+of the kind within 150 km, or of as many as the area has with a venue at all, since a place with
+none sets no reference (§ The surroundings tier from the gather). An area that holds fewer than 25
+places of the kind (`venueGroupFloor`) lets nothing in by venues. A street, a promenade or a stairway
+whose lines the layer keeps (ADR-0194, `SQUARES_DECLARATION.venueLines`) is read along them instead:
+the venues within 25 m of its lines per 100 m of them, against the streets of the kind within 150 km
+read the same way (`streetLines`, `venuesAlong`). A long street is then measured on its whole
+length, not at the one point Wikidata gives it. An artery, a street of `motorway`, `trunk`, `primary`
+or `secondary` roads and their links alone, is let in by nothing the test reads, however lively. A square stays at its point,
+where one stands among the venues on it. It only adds: the world bars
+still admit the famous quiet squares and avenues, Unter den Linden and Karl-Marx-Allee among them,
+and a place another test holds never leaves for having few cafés. A place the venue test alone
+holds stays while its venues reach 0.8 of the share, and leaves under it as a place held by any
+other test does. It reads the kind's own places, never a quarter:
+Kreuzberg and Friedrichshain are a neighbourhood, a kind of their own. Its arrivals wait for a
+curator, with the count and the reference in the cut's note on the card.
 
 ### Whom or what a place commemorates (#2144)
 

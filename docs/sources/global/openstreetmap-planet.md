@@ -66,10 +66,11 @@ community guidelines that ADR-0059 decision 4 asks a record to quote were read f
 connector: `openstreetmap-qlever.md` § What was read on 2026-09-14. They bind the data, whichever door
 it is read through. Its tagging docs covered `wikidata`, `historic=archaeological_site` and that
 tag's secondary key `archaeological_site=*` (with `site_type`, its deprecated spelling). The masts
-and towers Towers reads are covered in § The tagging docs of masts and towers below. The other keys
-ADR-0134 decision 2 selects, such as `tourism` beyond its presence, the other `man_made` values,
-`heritage`, `amenity=place_of_worship`, the food-and-drink `amenity` values ADR-0191 adds and the
-protected `boundary` values, have no tagging-doc reading yet. Each is owed one before a reader asks by it.
+and towers Towers reads are covered in § The tagging docs of masts and towers below, and the
+food-and-drink `amenity` values ADR-0191 adds in § The tagging docs of food-and-drink venues. The
+other keys ADR-0134 decision 2 selects, such as `tourism` beyond its presence, the other `man_made`
+values, `heritage`, `amenity=place_of_worship` and the protected `boundary` values, have no
+tagging-doc reading yet. Each is owed one before a reader asks by it.
 
 **The host.** `planet.openstreetmap.org` redirects every file to the Foundation's S3 bucket
 (`osm-planet-eu-central-1`). The wiki says mirrors are no longer needed, because those buckets have
@@ -86,7 +87,10 @@ read OpenStreetMap from the layer while a fresh one is in place (`OSM_READER` un
 misses the layer cannot vouch for are asked live: of Overpass by the run, of the QLever mirror by its
 visit questions. The Towers run (`experience_sources` id 7) reads the layer alone, to tell a broadcast
 mast from a tower people go up (#2275, § The tagging docs of masts and towers): it asks no live door,
-and where no layer is in place it files no tower as a mast by the map.
+and where no layer is in place it files no tower as a mast by the map. Squares & streets
+(`experience_sources` id 9) counts the layer's food-and-drink venues around a street for its
+surroundings tier's venue test (ADR-0192, § The tagging docs of food-and-drink venues), and reads none
+from a layer whose build did not keep them.
 
 **Scorecard notes.**
 - **Completeness: 2.** Every object mapped as of the layer's replication timestamp.
@@ -132,3 +136,34 @@ rule reads a guyed construction only on an object with no `tower:type=observatio
 tag. A plain `lattice` is the Cairo Tower's and Sapporo's construction, and is never read. The masts
 of the United States came into OSM from GNIS as plain `man_made=tower` nodes with no item (KFVS, the
 KCCI Tower), which no tag tells from a tower.
+
+## The tagging docs of food-and-drink venues (read on 2026-11-10, #2311)
+
+Read on the OpenStreetMap wiki, under the same terms as above. The layer keeps every object with one of
+these `amenity` values as a point (ADR-0191), and Squares & streets counts them within 200 m of a
+street's point (ADR-0192): a street a traveller walks is lined with places to sit, eat and drink.
+
+- **`amenity=cafe`** (<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dcafe>): "A generally informal
+  place with sit-down facilities selling beverages and light meals and/or snacks." The page says "Set a
+  node or draw as an area along the café outline"; either counts as one venue, at its point.
+- **`amenity=restaurant`** (<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Drestaurant>): "A
+  restaurant sells full sit-down meals with servers, and may sell alcohol."
+- **`amenity=bar`** (<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbar>): "An establishment in a
+  modern style serving alcoholic drinks, mainly to customers standing around the bar." The page says
+  "Bars should not be confused with an amenity=pub", which the test counts all the same.
+- **`amenity=pub`** (<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dpub>): "An establishment in a
+  traditional style that serves alcoholic drinks and food, mainly to customers sitting at the tables."
+- **`amenity=fast_food`** (<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dfast_food>): "A place
+  which offers self-service and take-away food." A kebab counter on a lively street counts as a café
+  beside it does.
+- **`amenity=ice_cream`** (<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dice_cream>): "A place that
+  sells ice cream and/or frozen yoghurt over the counter."
+- **`amenity=biergarten`** (<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbiergarten>): "An
+  open-air seating area where beer is served." A pub's own garden is mapped instead by adding
+  `outdoor_seating=*` to the pub, café or restaurant: the page says it "may be tagged as a beer_garden or
+  by adding outdoor_seating=* to the pub, cafe or restaurant", neither of which is a second venue.
+
+What the reading settles: each value names a place a traveller sits, eats or drinks at, and none names
+a shop or an office. A chain outlet in a station and a café on Bergmannstraße count alike, which is why
+the test measures a street against the liveliest streets around it rather than by a fixed count.
+

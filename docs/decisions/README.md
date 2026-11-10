@@ -210,8 +210,9 @@ and accepted by it.
 | [0189](0189-a-component-renumbered-or-moved-stays-its-part-found-by-its-name.md) | A component renumbered or moved stays its part, found by its name | Accepted | 2026-11-08 |
 | [0190](0190-a-place-field-some-sources-read-is-kept-while-one-of-them-stands.md) | A place field only some sources read is kept by the others while one of them stands | Accepted | 2026-11-09 |
 | [0191](0191-the-openstreetmap-layer-keeps-food-and-drink-venues-as-points-read-by-nearness.md) | The OpenStreetMap layer keeps food-and-drink venues as points read by nearness | Accepted | 2026-11-10 |
+| [0192](0192-a-walked-street-is-read-from-the-cafes-restaurants-and-bars-around-it.md) | A walked street is read from the cafés, restaurants and bars around it | Accepted | 2026-11-10 |
 | [0193](0193-public-art-files-its-works-under-eight-types-and-a-retype-passes-the-gate.md) | Public art files its works under eight types, and a retype passes the gate | Accepted | 2026-11-10 |
-| [0194](0194-the-openstreetmap-layer-keeps-whole-the-lines-of-the-streets-squares-and-streets-reads.md) | The OpenStreetMap layer keeps whole the lines of the streets Squares & streets reads | Accepted | 2026-11-10 |
+| [0194](0194-the-openstreetmap-layer-keeps-whole-the-lines-of-the-streets-squares-and-streets-reads.md) | The OpenStreetMap layer keeps whole the lines of the streets Squares & streets reads | Accepted — decision 1 narrowed by [0192](0192-a-walked-street-is-read-from-the-cafes-restaurants-and-bars-around-it.md) | 2026-11-10 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
