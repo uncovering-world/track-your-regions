@@ -23,6 +23,12 @@
  *
  * A war narrowed by the place's own significant event (#2412): the Hiroshima
  * Peace Memorial (Q231140) names the atomic bombing of Hiroshima (Q703203).
+ *
+ * A category's title that is a redirect (#2416): Our Lady of the Rockies
+ * (Q7111031) is filed under *Statues of the Virgin Mary*, a redirect to Mary
+ * (Q345); the National Monument to the Forefathers (Q4343546) under
+ * *Monuments and memorials to the Pilgrims*, a redirect to pilgrimage
+ * (Q1644573).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,7 +43,7 @@ import type { SparqlFn } from '../wikidataQueries.js';
 import { MAX_COMMEMORATED_SUBJECTS } from '@tyr/shared/commemorates';
 import {
   categoryTitles, CONCERNING_CATEGORIES, fetchSubjectClaims, fetchSubjectKinds, MAX_DEDICATED_FIGURES, MEMORIALS_CATEGORY, readCommemorates,
-  readingOfPlace, STATUES_CATEGORY, type CommemorationWiki, type FiledSubjects, type SubjectClaims, type SubjectKind,
+  readingOfPlace, STATUES_CATEGORY, type CommemorationWiki, type FiledSubjects, type ResolvedArticle, type SubjectClaims, type SubjectKind,
 } from './commemorates.js';
 import { namedInPlace } from './placeNames.js';
 
@@ -69,6 +75,10 @@ const TREPTOW_MEMORIAL = 'Q48441';
 const WW2 = 'Q362';
 const BATTLE_OF_BERLIN = 'Q154182';
 const HIROSHIMA_PEACE_MEMORIAL = 'Q231140';
+const OUR_LADY_OF_THE_ROCKIES = 'Q7111031';
+const MARY = 'Q345';
+const FOREFATHERS = 'Q4343546';
+const PILGRIMAGE = 'Q1644573';
 const BOMBING_OF_HIROSHIMA = 'Q703203';
 
 const article = (title: string) => `https://en.wikipedia.org/wiki/${title}`;
@@ -99,6 +109,8 @@ const KINDS = new Map<string, SubjectKind>([
   [HOLY_TRINITY, holy('Holy Trinity', false)],
   [PLAGUE, event('plague')],
   [WENCESLAS, holy('Saint Wenceslaus I, Duke of Bohemia')],
+  [MARY, holy('Mary')],
+  [PILGRIMAGE, thing('pilgrimage')],
   ...REPUBLIC_FOUNDERS.map((item, i) => [item, person(`Founder ${i + 1}`)] as const),
   [WW2, { ...event('World War II'), war: true, span: { from: 19390901, to: 19450902 } }],
   [BATTLE_OF_BERLIN, { ...event('Battle of Berlin'), span: { from: 19450416, to: 19450502 } }],
@@ -248,9 +260,13 @@ describe('the categories that name a subject', () => {
 });
 
 describe('reading the places of a run', () => {
-  const wiki = (categories: Record<string, string[]>, items: Record<string, string>): CommemorationWiki => ({
+  /** English Wikipedia: each article's categories, the items of titles, and the items titles only redirect to. */
+  const wiki = (categories: Record<string, string[]>, items: Record<string, string>, redirects: Record<string, string> = {}): CommemorationWiki => ({
     categories: vi.fn(async (titles: string[]) => new Map(titles.map((t) => [t, categories[t] ?? []]))),
-    articleItems: vi.fn(async (titles: string[]) => new Map(titles.flatMap((t) => (items[t] ? [[t, items[t]] as const] : [])))),
+    articleItems: vi.fn(async (titles: string[]) => new Map<string, ResolvedArticle>(titles.flatMap((t): Array<[string, ResolvedArticle]> => {
+      if (items[t]) return [[t, { item: items[t], redirected: false }]];
+      return redirects[t] ? [[t, { item: redirects[t], redirected: true }]] : [];
+    }))),
     leads: vi.fn(async () => new Map<string, string>()),
   });
 
@@ -323,6 +339,35 @@ describe('reading the places of a run', () => {
     expect(found.get(HIROSHIMA_PEACE_MEMORIAL)?.commemorates).toEqual({
       via: 'war-narrowed-by-event', subjects: [{ item: BOMBING_OF_HIROSHIMA, label: 'atomic bombing of Hiroshima', articleUrl: null }],
     });
+  });
+
+  it('takes a category\'s subject only a redirect names where it is a person, an event or a holy figure (#2416)', async () => {
+    // *Virgin Mary* redirects to Mary, mother of Jesus; *Pilgrims* to Pilgrimage, which no memorial to the Pilgrims is for.
+    const read = wiki(
+      { 'Our Lady of the Rockies': ['Statues of the Virgin Mary'], 'National Monument to the Forefathers': ['Monuments and memorials to the Pilgrims'] },
+      {}, { 'Virgin Mary': MARY, Pilgrims: PILGRIMAGE },
+    );
+    const found = await readCommemorates([
+      { qid: OUR_LADY_OF_THE_ROCKIES, articleUrl: article('Our_Lady_of_the_Rockies') },
+      { qid: FOREFATHERS, articleUrl: article('National_Monument_to_the_Forefathers') },
+    ], subsetOnlyDoor(), read);
+    expect(found.get(OUR_LADY_OF_THE_ROCKIES)?.depicts?.subjects.map((s) => s.item)).toEqual([MARY]);
+    expect(found.has(FOREFATHERS)).toBe(false);
+  });
+
+  it('judges a redirect per place: another place naming the same item by its title lifts nothing', async () => {
+    // A place written for the test, filed under a category whose title is Pilgrimage's own.
+    const shrine = 'Q900000001';
+    const read = wiki(
+      { 'National Monument to the Forefathers': ['Monuments and memorials to the Pilgrims'], 'Fixture shrine': ['Monuments and memorials to Pilgrimage'] },
+      { Pilgrimage: PILGRIMAGE }, { Pilgrims: PILGRIMAGE },
+    );
+    const found = await readCommemorates([
+      { qid: FOREFATHERS, articleUrl: article('National_Monument_to_the_Forefathers') },
+      { qid: shrine, articleUrl: article('Fixture_shrine') },
+    ], subsetOnlyDoor(), read);
+    expect(found.has(FOREFATHERS)).toBe(false);
+    expect(found.get(shrine)?.commemorates?.subjects.map((s) => s.item)).toEqual([PILGRIMAGE]);
   });
 
   it('asks no category of a place with no English article', async () => {

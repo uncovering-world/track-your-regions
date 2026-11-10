@@ -21,10 +21,13 @@
  *    Anglo-Afghan War of 1919 beside World War I) narrows nothing.
  * 3. Where the categories read the war, an event they name beside it that the
  *    place's story tells, its lead linking it or its significant event naming
- *    it. An event inside the war the story does not tell is no subject at all:
+ *    it. An event during the war the story does not tell is no subject at all:
  *    the Anielewicz Bunker (Miła 18), the Warsaw Ghetto Uprising's
  *    headquarters, is filed among the 1944 Warsaw Uprising's memorials, and
- *    its lead never names that uprising.
+ *    its lead never names that uprising. The event need only overlap the war
+ *    for that: the Monument to the Heroes of Warsaw, raised to the city's
+ *    fighters of 1939 to 1945, is filed among Warsaw's Holocaust memorials,
+ *    and Wikidata dates the Holocaust from 1933 (#2416).
  * 4. Where the reading names nothing but wars, the one person a bust or statue
  *    shows: the one human `P180` names, or the one human of `P180` and the
  *    lead's links whose whole name the place's own name carries (the bust of
@@ -138,6 +141,11 @@ export function within(inner: Span, outer: Span): boolean {
   return inner.from >= outer.from && inner.to <= outer.to;
 }
 
+/** Whether two spans share a day. */
+export function overlaps(a: Span, b: Span): boolean {
+  return a.from <= b.to && b.from <= a.to;
+}
+
 /** What a place says beside its reading that may narrow a war it names, as items. */
 export interface WarEvidence {
   /** The place's own significant events (`P793`). */
@@ -189,8 +197,12 @@ export function narrowWars(
   };
   const story = evidence.linked ? new Set([...evidence.linked, ...evidence.events]) : null;
   const fromCategories = reading.via === 'memorials-category';
-  // An event the categories name inside one of their wars that the place's story never tells is no subject (Miła 18).
-  const untold = (item: string) => fromCategories && story !== null && !story.has(item) && wars.some((war) => inside(item, war));
+  const during = (item: string, war: { item: string; span: Span }) => {
+    const kind = kinds.get(item);
+    return item !== war.item && Boolean(kind?.occurrence && kind.span && overlaps(kind.span, war.span));
+  };
+  // An event the categories name during one of their wars that the place's story never tells is no subject (Miła 18).
+  const untold = (item: string) => fromCategories && story !== null && !story.has(item) && wars.some((war) => during(item, war));
   const onlyWars = reading.subjects.every((subject) => spanOfWar(subject.item));
   const subjectOf = (item: string): CommemoratedSubject => ({ item, label: kinds.get(item)?.label ?? item, articleUrl: articles.get(item) ?? null });
 
@@ -284,7 +296,8 @@ export async function narrowWarReadings(
     return lead ? [[qid, { dedicated: dedicationLinks(lead), linked: leadLinks(lead) }] as const] : [];
   }));
   const titles = [...new Set([...linksOfPlace.values()].flatMap(({ linked }) => linked))];
-  const items = titles.length ? await wiki.articleItems(titles) : new Map<string, string>();
+  const resolved = titles.length ? await wiki.articleItems(titles) : new Map<string, { item: string }>();
+  const items = new Map([...resolved].map(([title, { item }]) => [title, item]));
   const unknown = [...new Set([...items.values(), ...asked.flatMap((place) => {
     const own = claims.get(place.qid);
     return own ? [...own.significantEvents, ...own.depicts] : [];

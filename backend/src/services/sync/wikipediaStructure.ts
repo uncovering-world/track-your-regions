@@ -15,8 +15,14 @@
  * - a hidden category is not kept, as the live `clshow=!hidden` leaves it out
  *   of an article's categories; a hidden subcategory is still listed, and is
  *   empty;
- * - a title that is a redirect finds no page, where the API with `redirects=1`
- *   follows it to the article. Wikidata's sitelinks name the article itself;
+ * - `structureArticleItems` follows a title that is a redirect one hop through
+ *   English Wikipedia's redirect table, where a build of it is in place
+ *   (`wikipedia_redirects`, #2416), as the API with `redirects=1` follows it:
+ *   *Virgin Mary* is *Mary, mother of Jesus*. The table keeps only redirects
+ *   to an article an item of the subset names, so a redirect to any other page
+ *   still finds none. An article's categories and the walk's eponymous members
+ *   are read by the exact title, so a redirect there finds no page, where the
+ *   live categories follow it;
  * - a category's pages are its articles, where the API lists a portal or a
  *   template filed there too.
  */
@@ -221,25 +227,40 @@ export function structureCategoryReads(): CategoryReads {
       );
       return result.rows.map(row => CATEGORY_PREFIX + shown(row.title));
     },
-    articles: structureArticleItems,
+    // The walk reads an article of exactly a subcategory's name, as the live
+    // walk asks without `redirects=1`: a redirect's target is no eponymous member.
+    articles: async (titles) => (await structureArticleItems(titles)).flatMap(({ title, item, redirected }) => (redirected ? [] : [{ title, item }])),
   };
 }
 
 /**
- * The item of each article titled exactly as asked, title spelt as the API
- * spells it: a missing page or a redirect has none. What the category walk
- * resolves a member by, and what whom a place commemorates resolves a
- * category's subject by (`places/commemorates.ts`).
+ * The item of each article titled as asked, title spelt as the API spells it,
+ * under the title asked: an article's own, or, for a title that is no article,
+ * the item of the article it redirects to (`wikipedia_redirects`, one hop,
+ * #2416), marked `redirected`. A missing page, or a redirect the table does
+ * not hold, has none.
+ * What the category walk resolves a member by, and what whom a place
+ * commemorates resolves a category's subject and a lead's link by
+ * (`places/commemorates.ts`, `places/warNarrowing.ts`).
  */
-export async function structureArticleItems(titles: string[]): Promise<Array<{ title: string; item: string }>> {
+export async function structureArticleItems(titles: string[]): Promise<Array<{ title: string; item: string; redirected: boolean }>> {
   if (titles.length === 0) return [];
-  const result = await pool.query<{ title: string; item: string }>(
-    `SELECT p.title, i.item
-       FROM enwiki_pages p
-       JOIN enwiki_page_items i ON i.page = p.id
-      WHERE p.namespace = 0 AND p.title = ANY($1::text[])
-      ORDER BY p.title`,
+  // The redirect table writes its titles with spaces, as Wikidata's sitelinks
+  // do; the copy's pages are stored with underscores.
+  const result = await pool.query<{ title: string; item: string; redirected: boolean }>(
+    `WITH asked AS (SELECT DISTINCT unnest($1::text[]) AS title),
+          found AS (
+            SELECT a.title,
+                   (SELECT p.id FROM enwiki_pages p WHERE p.namespace = 0 AND p.title = a.title) AS own,
+                   (SELECT p.id FROM wikipedia_redirects r
+                      JOIN enwiki_pages p ON p.namespace = 0 AND p.title = replace(r.target, ' ', '_')
+                     WHERE r.site = 'enwiki' AND r.title = replace(a.title, '_', ' ')) AS target
+              FROM asked a)
+     SELECT f.title, i.item, f.own IS NULL AS redirected
+       FROM found f
+       JOIN enwiki_page_items i ON i.page = coalesce(f.own, f.target)
+      ORDER BY f.title`,
     [titles.map(stored)],
   );
-  return result.rows.map(row => ({ title: shown(row.title), item: row.item }));
+  return result.rows.map(row => ({ title: shown(row.title), item: row.item, redirected: row.redirected }));
 }

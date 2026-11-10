@@ -2,8 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
 import {
-  forgetCollectionShelves, structureCategories, structureCategoriesOfItems, structureCategoryReads, structureCollectionItems,
-  structureItemsInCategories,
+  forgetCollectionShelves, structureArticleItems, structureCategories, structureCategoriesOfItems, structureCategoryReads,
+  structureCollectionItems, structureItemsInCategories,
 } from './wikipediaStructure.js';
 import { NOT_A_PLACE_CATEGORY, STREET_ART_CATEGORY } from './publicArt/streetArtTest.js';
 
@@ -14,6 +14,8 @@ import { NOT_A_PLACE_CATEGORY, STREET_ART_CATEGORY } from './publicArt/streetArt
  * under it, a sibling of another kind it does not follow, and an unfollowed
  * museum category whose eponymous article the walk takes with its shelf.
  * Beside it, the street-art categories (#2035): one of places, one of people.
+ * Two redirects in English Wikipedia's redirect table (#2416): one to an
+ * article of the copy, one to an article it does not hold.
  */
 
 const pages: Array<[number, 0 | 14, string]> = [
@@ -67,10 +69,14 @@ beforeAll(async () => {
     [categories.map(c => c[0]), categories.map(c => c[1])]);
   await pool.query('INSERT INTO enwiki_category_links (page, category, subcat) SELECT * FROM unnest($1::int[], $2::int[], $3::bool[])',
     [links.map(l => l[0]), links.map(l => l[1]), links.map(l => l[2])]);
+  await pool.query(`DELETE FROM wikipedia_redirects WHERE site = 'enwiki' AND title LIKE 'Fixture %'`);
+  await pool.query(`INSERT INTO wikipedia_redirects (site, title, target) VALUES
+    ('enwiki', 'Fixture Atlantis Museum', 'Fixture Museum of Atlantis'), ('enwiki', 'Fixture Lost Museum', 'Fixture Sunken Museum')`);
 });
 
 afterAll(async () => {
   await pool.query('TRUNCATE enwiki_pages, enwiki_page_items, enwiki_categories, enwiki_category_links');
+  await pool.query(`DELETE FROM wikipedia_redirects WHERE site = 'enwiki' AND title LIKE 'Fixture %'`);
   await pool.end();
 });
 
@@ -140,5 +146,18 @@ describe("English Wikipedia's categories, read from the copy (#1440)", () => {
     ]);
     expect(await structureCollectionItems(['Fixture Museum of Atlantis'])).toEqual([]);
     expect(await structureCollectionItems([])).toEqual([]);
+  });
+
+  it('resolves a title that is a redirect to its article\'s item, under the title asked (#2416)', async () => {
+    const found = await structureArticleItems(['Fixture Atlantis Museum', 'Fixture Lost Museum', 'Fixture Regional Museum', 'Fixture Nowhere']);
+    expect(found).toEqual([
+      { title: 'Fixture Atlantis Museum', item: 'Q98461', redirected: true },
+      { title: 'Fixture Regional Museum', item: 'Q98462', redirected: false },
+    ]);
+  });
+
+  it('keeps the category walk to an article of exactly a subcategory\'s name, as the live walk asks (#2416)', async () => {
+    expect(await structureCategoryReads().articles(['Fixture Atlantis Museum', 'Fixture Regional Museum'], ROOT))
+      .toEqual([{ title: 'Fixture Regional Museum', item: 'Q98462' }]);
   });
 });
