@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
-import { CONFLICTS, DEITY, subsetSubjectKinds, WAR } from './commemorates.js';
+import { DEITY, OCCURRENCE, subsetSubjectKinds, WAR } from './commemorates.js';
 
 /**
  * What each subject of the reading is, read from the local Wikidata subset
@@ -9,8 +9,10 @@ import { CONFLICTS, DEITY, subsetSubjectKinds, WAR } from './commemorates.js';
  * human by preference and a deity at normal rank, the Buddha (Q9441) a
  * canonised human, Guan Yin (Q715162) a bodhisattva, a class under deity;
  * World War II (Q362) a world war under war, and the Battle of Berlin
- * (Q154182) a battle under armed conflict, each with its dates. The class
- * edges are the subset's best-rank `P279` claims.
+ * (Q154182) a battle, each with its dates, both occurrences through the
+ * class closure; Westerplatte (Q517081) is a peninsula Wikidata gives the
+ * battle's dates, and no occurrence. The class edges are the subset's
+ * best-rank `P279` claims.
  */
 
 const JESUS = 'Q302';
@@ -18,6 +20,8 @@ const BUDDHA = 'Q9441';
 const GUAN_YIN = 'Q715162';
 const WW2 = 'Q362';
 const BERLIN = 'Q154182';
+const WESTERPLATTE = 'Q517081';
+const PENINSULA = 'Q34763';
 const HUMAN = 'Q5';
 const HUMAN_BIBLICAL_FIGURE = 'Q20643955';
 const BODHISATTVA = 'Q178149';
@@ -60,7 +64,20 @@ const ENTITIES: Record<string, { label: string; claims: Record<string, unknown[]
       P582: [{ id: `${BERLIN}$3`, value: time('+1945-05-02T00:00:00Z') }],
     },
   },
+  [WESTERPLATTE]: {
+    label: 'Westerplatte',
+    claims: {
+      P31: [{ id: `${WESTERPLATTE}$1`, value: PENINSULA }],
+      P580: [{ id: `${WESTERPLATTE}$2`, value: time('+1939-09-01T00:00:00Z') }],
+      P582: [{ id: `${WESTERPLATTE}$3`, value: time('+1939-09-07T00:00:00Z') }],
+    },
+  },
 };
+
+/** The class closure's rows this spec writes: a battle and a world war are occurrences, a peninsula only itself. */
+const CLOSURE: ReadonlyArray<readonly [string, string]> = [
+  [BATTLE, BATTLE], [BATTLE, OCCURRENCE], [WORLD_WAR, WORLD_WAR], [WORLD_WAR, OCCURRENCE], [PENINSULA, PENINSULA],
+];
 
 /** The statement ids of this spec's subclass edges, by which it deletes them and nothing else. */
 const EDGE = '%$commemorates-db-%';
@@ -78,6 +95,7 @@ async function deleteFixture(): Promise<void> {
   await pool.query('DELETE FROM wikidata_labels WHERE id = ANY($1::text[])', [ids]);
   await pool.query('DELETE FROM wikidata_entities WHERE id = ANY($1::text[])', [ids]);
   await pool.query(`DELETE FROM wikidata_claims WHERE property = 'P279' AND statement_id LIKE $1`, [EDGE]);
+  await pool.query('DELETE FROM wikidata_class_closure WHERE class = ANY($1::text[])', [CLOSURE.map(([cls]) => cls)]);
 }
 
 beforeAll(async () => {
@@ -88,8 +106,9 @@ beforeAll(async () => {
   }
   await subclass(BODHISATTVA, DEITY, 1);
   await subclass(WORLD_WAR, WAR, 2);
-  await subclass(WAR, CONFLICTS[0], 3);
-  await subclass(BATTLE, CONFLICTS[0], 4);
+  for (const [cls, ancestor] of CLOSURE) {
+    await pool.query('INSERT INTO wikidata_class_closure (class, ancestor) VALUES ($1, $2)', [cls, ancestor]);
+  }
 });
 
 afterAll(async () => {
@@ -106,10 +125,15 @@ describe('what a subject of the reading is, read from the subset (#2404)', () =>
     expect(kinds.get(MYTHICAL_CHARACTER)?.holy).toBe(false);
   });
 
-  it('reads a war, a conflict within it and the dates of each', async () => {
+  it('reads a war, an event within it and the dates of each', async () => {
     const kinds = await subsetSubjectKinds([WW2, BERLIN]);
-    expect(kinds.get(WW2)).toMatchObject({ war: true, conflict: true, event: true, span: { from: 19390901, to: 19450902 } });
-    expect(kinds.get(BERLIN)).toMatchObject({ war: false, conflict: true, span: { from: 19450416, to: 19450502 } });
+    expect(kinds.get(WW2)).toMatchObject({ war: true, event: true, occurrence: true, span: { from: 19390901, to: 19450902 } });
+    expect(kinds.get(BERLIN)).toMatchObject({ war: false, event: true, occurrence: true, span: { from: 19450416, to: 19450502 } });
     expect(kinds.get(JESUS)).toBeUndefined();
+  });
+
+  it('reads an item with dates that is no occurrence as none (#2412)', async () => {
+    const kinds = await subsetSubjectKinds([WESTERPLATTE]);
+    expect(kinds.get(WESTERPLATTE)).toMatchObject({ event: true, occurrence: false, span: { from: 19390901, to: 19390907 } });
   });
 });

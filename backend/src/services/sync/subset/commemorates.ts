@@ -3,7 +3,7 @@
  * (#2144): the twins of `fetchSubjectClaims` and `fetchSubjectKinds` in
  * `places/commemorates.ts`.
  *
- * `P547`, `P921`, `P138` and `P180` are read off the kept entity's claims,
+ * `P547`, `P921`, `P138`, `P180` and `P793` are read off the kept entity's claims,
  * which `wikidata_claims` does not hold (it keeps place properties only). A
  * value's statements are read in the entity's order, where the live answer has
  * none and is sorted by id. A value the subset did not keep is neither a human
@@ -14,6 +14,7 @@
 import { entitiesOf, termsOf } from './entities.js';
 import { bestStatements, itemsOf } from './values.js';
 import { subsetClassTree } from './kit.js';
+import { pool } from '../../../db/index.js';
 import type { SubjectClaims, SubjectKind } from '../places/commemorates.js';
 import type { Span } from '../places/warNarrowing.js';
 import type { CompactStatement } from '../../dumps/wikidata/compactEntity.js';
@@ -24,8 +25,8 @@ export const DEITY = 'Q178885';
 /** Wikidata's "war" (Q198): a reading naming one is narrowed by the place's lead (#2404). */
 export const WAR = 'Q198';
 
-/** What a war is narrowed to: an armed conflict (Q350604), a military operation (Q645883), a theatre of war (Q718893). */
-export const CONFLICTS = ['Q350604', 'Q645883', 'Q718893'] as const;
+/** Wikidata's "occurrence" (Q1190554), the root of the classes of what a war is narrowed to: Westerplatte, a peninsula with dates, is none (#2412). */
+export const OCCURRENCE = 'Q1190554';
 
 /** Wikidata's "human" (Q5). */
 const HUMAN = 'Q5';
@@ -33,7 +34,7 @@ const HUMAN = 'Q5';
 /** What makes a value an event: it happened at a time (`P585`), or started (`P580`) or ended (`P582`). */
 const EVENT_TIMES = ['P585', 'P580', 'P582'] as const;
 
-/** The best-rank items each place names as whom it commemorates, its main subject, its namesake and what it depicts. */
+/** The best-rank items each place names as whom it commemorates, its main subject, its namesake, what it depicts and its significant events. */
 export async function subsetSubjectClaims(ids: string[]): Promise<Map<string, SubjectClaims>> {
   const out = new Map<string, SubjectClaims>();
   for (const [id, { entity }] of await entitiesOf(ids)) {
@@ -43,6 +44,7 @@ export async function subsetSubjectClaims(ids: string[]): Promise<Map<string, Su
       mainSubjects: itemsOf(bestStatements(claims.P921)),
       namedAfter: itemsOf(bestStatements(claims.P138)),
       depicts: itemsOf(bestStatements(claims.P180)),
+      significantEvents: itemsOf(bestStatements(claims.P793)),
     });
   }
   return out;
@@ -54,10 +56,8 @@ export async function subsetSubjectClaims(ids: string[]): Promise<Map<string, Su
  * value with no label in any language has no entry.
  */
 export async function subsetSubjectKinds(ids: string[]): Promise<Map<string, SubjectKind>> {
-  const [kept, terms, deities, wars, ...conflictTrees] = await Promise.all([
-    entitiesOf(ids), termsOf(ids), subsetClassTree(DEITY), subsetClassTree(WAR), ...CONFLICTS.map(root => subsetClassTree(root)),
-  ]);
-  const conflicts = new Set(conflictTrees.flatMap(tree => [...tree]));
+  const [kept, terms, deities, wars] = await Promise.all([entitiesOf(ids), termsOf(ids), subsetClassTree(DEITY), subsetClassTree(WAR)]);
+  const occurrences = await classesUnderOccurrence([...kept.values()].flatMap(({ entity }) => itemsOf(bestStatements(entity.claims.P31))));
   const out = new Map<string, SubjectKind>();
   for (const id of ids) {
     const label = terms.get(id)?.label;
@@ -73,11 +73,25 @@ export async function subsetSubjectKinds(ids: string[]): Promise<Map<string, Sub
       event: EVENT_TIMES.some(property => bestStatements(claims[property]).length > 0),
       holy: everyClass.some(cls => deities.has(cls)) || bestStatements(claims.P411).length > 0,
       war: classes.some(cls => wars.has(cls)),
-      conflict: classes.some(cls => conflicts.has(cls)),
+      occurrence: classes.some(cls => occurrences.has(cls)),
       span: spanOf(timeOf(claims.P580) ?? timeOf(claims.P585), timeOf(claims.P582) ?? timeOf(claims.P585)),
     });
   }
   return out;
+}
+
+/**
+ * Which of the classes are kinds of occurrence, through the subset's class
+ * closure: asked of the few classes the subjects carry, where the whole tree
+ * under occurrence holds hundreds of thousands of classes.
+ */
+async function classesUnderOccurrence(classes: string[]): Promise<Set<string>> {
+  if (!classes.length) return new Set();
+  const result = await pool.query<{ class: string }>(
+    'SELECT DISTINCT class FROM wikidata_class_closure WHERE class = ANY($1::text[]) AND ancestor = $2',
+    [[...new Set(classes)], OCCURRENCE],
+  );
+  return new Set(result.rows.map(row => row.class));
 }
 
 /** A Wikidata time (`+1945-04-16T00:00:00Z`) as a sortable `±YYYYMMDD`, or null for none. */
