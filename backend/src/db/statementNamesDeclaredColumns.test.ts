@@ -60,7 +60,7 @@ function declaredColumns(schema: string): Schema {
   // (`ALTER TABLE t` on one line, `ADD COLUMN IF NOT EXISTS c …` on the next).
   // Comment lines are dropped first, so a comment that quotes the clause names no column.
   const code = schema.split('\n').filter((line) => !line.trim().startsWith('--')).join('\n');
-  for (const [, table, body] of code.matchAll(/\bALTER TABLE (\w+)\b([^;]*);/g)) {
+  for (const [, table, body] of code.matchAll(/\bALTER TABLE (?:workbench\.)?(\w+)\b([^;]*);/g)) {
     for (const [, column] of body.matchAll(/\bADD COLUMN(?: IF NOT EXISTS)?\s+(\w+)/g)) {
       const columns = tables.get(table);
       if (columns === undefined) throw new Error(`ADD COLUMN on ${table}, which no CREATE TABLE declares`);

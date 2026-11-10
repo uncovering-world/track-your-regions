@@ -99,7 +99,7 @@ vi.mock('./tools.js', async (importOriginal) => {
 const { pool } = await import('../../../db/index.js');
 const { buildLayer, hasCurrentPlanet, updateLayer } = await import('./layerBuild.js');
 const { latestLayer } = await import('./layerTables.js');
-const { LAYER_DRAWN, pinnedObjects } = await vi.importActual<typeof import('./layerSelection.js')>('./layerSelection.js');
+const { LAYER_DRAWN, LAYER_SELECTION, pinnedObjects } = await vi.importActual<typeof import('./layerSelection.js')>('./layerSelection.js');
 
 const STONEHENGE: [string, number, string, string | null, string] = ['N', 1, '{"historic":"archaeological_site","wikidata":"Q39671"}', 'Q39671', 'POINT(-1.8262 51.1789)'];
 const POMPEII: [string, number, string, string | null, string] = ['W', 10, '{"historic":"archaeological_site","addr:city":"Pompei"}', null,
@@ -185,10 +185,12 @@ describe('buildLayer (#1437)', () => {
       { indexname: 'osm_objects_geom' }, { indexname: 'osm_objects_pkey' }, { indexname: 'osm_objects_ref_whc' },
       { indexname: 'osm_objects_wikidata' }, { indexname: 'osm_objects_wikipedia' },
     ]);
-    const [record] = await rows("SELECT planet_file, dump_date::text AS date, replicated_at, objects::int, pinned, pinned_gone, drawn FROM osm_layer_builds");
+    const [record] = await rows("SELECT planet_file, dump_date::text AS date, replicated_at, objects::int, pinned, pinned_gone, drawn, selection FROM osm_layer_builds");
     expect(record).toMatchObject({ planet_file: planet.fileName, date: '2026-10-22', objects: 3, pinned: 1, pinned_gone: 0 });
     // The rule its full geometries were kept by, which a reader holds a keep rule to (ADR-0136).
     expect(record.drawn).toEqual(LAYER_DRAWN);
+    // What it selected, so a reader of venues can tell a build that holds them (ADR-0191).
+    expect(record.selection).toEqual([...LAYER_SELECTION]);
     expect((record.replicated_at as Date).toISOString()).toBe('2026-10-22T00:00:00.000Z');
     expect(result.summary).toMatch(/kept 3 OpenStreetMap objects from planet-261012.osm.pbf brought forward with 10 daily diffs to diff 5153, current to 2026-10-22T00:00:00.000Z, with the 1 objects the catalogue names/);
     expect(notes).toContain('removed planet-261012.osm.pbf: the current planet, brought forward to daily diff 5153, replaces it');

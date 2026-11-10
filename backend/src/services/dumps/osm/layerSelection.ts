@@ -17,12 +17,18 @@ import type { KeepWkt } from '../../sync/osm/types.js';
 import { CopyRefusal, pageNameFromUrl, PageCopy } from '../../wikivoyageExtract/pageCopy.js';
 import { parseMapshapes } from '../../wikivoyageExtract/parser.js';
 
+/** The `amenity` values of a café, a restaurant, a bar and their kin: what a traveller walks a lively street for (ADR-0191). */
+export const VENUE_AMENITIES = ['cafe', 'restaurant', 'bar', 'pub', 'fast_food', 'ice_cream', 'biergarten'] as const;
+
 /**
  * The selection, one `osmium tags-filter` expression per entry: a key on its
- * own keeps any value of it, `key=a,b` those values only. An address is not
+ * own keeps any value of it, `key=a,b` those values only, one entry per key
+ * since the flex style reads one set of values for each. An address is not
  * among them: every house with an address would bring in most of the mapped
  * world's buildings, and an object kept for another tag keeps its `addr:*`
- * tags with the rest.
+ * tags with the rest. The food-and-drink venues (`VENUE_AMENITIES`) are kept
+ * as points, so a street's liveliness can be read from the venues near it
+ * (ADR-0191).
  */
 export const LAYER_SELECTION = [
   'wikidata',
@@ -31,7 +37,7 @@ export const LAYER_SELECTION = [
   'heritage',
   'archaeological_site',
   'ruins',
-  'amenity=place_of_worship',
+  `amenity=place_of_worship,${VENUE_AMENITIES.join(',')}`,
   'tourism',
   'man_made',
   'place',

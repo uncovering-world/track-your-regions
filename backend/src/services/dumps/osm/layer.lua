@@ -71,9 +71,10 @@ local objects = osm2pgsql.define_table({
   },
   -- The build gives the table the live table's indexes once it is loaded.
   indexes = {},
-  -- No spatial clustering: the layer is read by item and by tag, never by
-  -- nearness, and clustering copies the whole loaded table into a sorted one
-  -- (22 GB on the first build, 2026-10-22).
+  -- No spatial clustering: the layer is read by item and by tag, and by
+  -- nearness only for the venues near a point (ADR-0191), which the GiST index
+  -- answers; clustering copies the whole loaded table into a sorted one (22 GB
+  -- on the first build, 2026-10-22).
   cluster = 'no',
 })
 

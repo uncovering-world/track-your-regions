@@ -51,6 +51,9 @@ beforeEach(async () => {
   await osm(985502, { name: 'Church Saint Gayaneh' }, { lon: 44.2960, lat: 40.1600 });
   // A village named like the component is the place it is named after, never a hint (#1903).
   await osm(985504, { name: 'Church Saint Gayaneh', place: 'village' }, { lon: 44.2980, lat: 40.1610 });
+  // Nor is a café named after it, nearer than the church and alike enough to pass the
+  // similarity bar, so only the venue exclusion keeps it out (ADR-0191).
+  await osm(985505, { name: 'Church Saint Gayaneh Cafe', amenity: 'cafe' }, { lon: 44.2950, lat: 40.1596 });
   // A copy of the shared point, named like the component: not a measurement.
   await osm(985503, { name: 'Church Saint Gayaneh and surrounding buildings' }, SHARED);
   await pool.query(

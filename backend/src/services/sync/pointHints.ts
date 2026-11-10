@@ -28,6 +28,7 @@ import { pool } from '../../db/index.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { pointItemSql, shownBySql } from '../../db/placePoints.js';
 import { COPIED_COORDINATE_M } from './componentItemMatching.js';
+import { VENUE_AMENITIES } from '../dumps/osm/layerSelection.js';
 
 /** How far an OpenStreetMap object named like the component may stand to be offered: a whole minute's cell. */
 export const OSM_NAME_RADIUS_M = 2000;
@@ -41,11 +42,16 @@ export const OSM_NAME_HINTS = 3;
  * not where it stands: a settlement or an area's boundary (the Dacian forts
  * were offered their villages, #1903), and a stream or a hill (the rock
  * shelter Barranc del Puig – Abric I was offered its ravine's stream, which
- * runs for kilometres, #2243). `tags` is the object's tags as `jsonb`.
+ * runs for kilometres, #2243). And a café, a restaurant or a bar, which the
+ * layer keeps by the million (ADR-0191) and which is named after the sight
+ * beside it, never where the sight stands: a Caffè Duomo is not the cathedral.
+ * `tags` is the object's tags as `jsonb`.
  */
 export function namedAfterSql(tags: string): string {
+  const venues = VENUE_AMENITIES.map((value) => `'${value}'`).join(', ');
   return `(${tags} ? 'place' OR ${tags} ? 'boundary' OR ${tags} ? 'waterway'
-    OR COALESCE(${tags}->>'natural' IN ('peak', 'hill', 'ridge', 'valley', 'saddle', 'mountain_range'), FALSE))`;
+    OR COALESCE(${tags}->>'natural' IN ('peak', 'hill', 'ridge', 'valley', 'saddle', 'mountain_range'), FALSE)
+    OR COALESCE(${tags}->>'amenity' IN (${venues}), FALSE))`;
 }
 /** Metres in a degree of latitude, near enough for a search box. */
 const METRES_PER_DEGREE = 111000;

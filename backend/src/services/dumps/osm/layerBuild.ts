@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url';
 import type { DumpFile, TextReader } from '../catalog.js';
 import { fetchText } from '../fetch.js';
 import { holdVerifiedCopy, type ReadOptions, type ReadResult } from '../read.js';
-import { drawnFile, drawnItems, type DrawnItems, LAYER_DRAWN, pinnedObjects, selectionFile } from './layerSelection.js';
+import { drawnFile, drawnItems, type DrawnItems, LAYER_DRAWN, LAYER_SELECTION, pinnedObjects, selectionFile } from './layerSelection.js';
 import { refillRegionShapes } from './layerShapes.js';
 import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
 import { bringForward, CURRENT_PLANET, dailyState, dropCurrent, firstDiffAfter, readCurrent, type BroughtForward } from './planetCurrent.js';
@@ -248,7 +248,7 @@ async function cutAndSwap(
     // is not offered as newer than a layer already brought past it.
     await swapIn({
       buildId: options.buildId, planetFile: planet.state.base, dumpDate: current.slice(0, 10), replicatedAt: current, objects, pinned, pinnedGone: gone,
-      drawn: LAYER_DRAWN,
+      drawn: LAYER_DRAWN, selection: LAYER_SELECTION,
     }, signal);
     const shapesSaid = await regionShapesFrom(items, options);
     const goneSaid = gone > 0 ? ` (${gone.toLocaleString('en')} of them no longer in the planet)` : '';
