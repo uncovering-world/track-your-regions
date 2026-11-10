@@ -526,6 +526,8 @@ export interface SyncStatus {
   dryRun?: boolean;
   /** The step the run is on, of how many, and how far through it (#1356), for a run that reports through the shared shape. */
   operation?: OperationProgressAnswer;
+  /** Sent for a running run: the copies built from a dump whose swap waits for this run to end, by their title (#2415). */
+  waitingBuilds?: string[];
   /**
      * Sent only for a run this server does not hold, read from its log row: when that run last wrote its progress. It cannot be cancelled from here.
      * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
@@ -1111,6 +1113,20 @@ export const SyncLogStatus = {
 } as const;
 
 /**
+ * Each copy built from a dump that was in place when the run started (#2415), which no swap changes while the run is alive. Null for a run from before.
+ */
+export type SyncLogCopiesRead = ({
+  /** The dump the copy is built from. */
+  dump: string;
+  /** What the copy is, as the Public Dumps page names it. */
+  title: string;
+  /** The dump date of the copy in place when the run started, an ISO day. */
+  dumpDate: string;
+  /** Whether the date is a day's dump or the last month of counts. */
+  datedBy: 'day' | 'month';
+})[] | null;
+
+/**
  * One run of a source.
  */
 export interface SyncLog {
@@ -1204,6 +1220,8 @@ export interface SyncLog {
      * @nullable
      */
   pass_source_name: string | null;
+  /** Each copy built from a dump that was in place when the run started (#2415), which no swap changes while the run is alive. Null for a run from before. */
+  copies_read: SyncLogCopiesRead;
 }
 
 /**
@@ -1239,6 +1257,20 @@ export const SyncLogDetailStatus = {
   failed: 'failed',
   cancelled: 'cancelled',
 } as const;
+
+/**
+ * Each copy built from a dump that was in place when the run started (#2415), which no swap changes while the run is alive. Null for a run from before.
+ */
+export type SyncLogDetailCopiesRead = ({
+  /** The dump the copy is built from. */
+  dump: string;
+  /** What the copy is, as the Public Dumps page names it. */
+  title: string;
+  /** The dump date of the copy in place when the run started, an ISO day. */
+  dumpDate: string;
+  /** Whether the date is a day's dump or the last month of counts. */
+  datedBy: 'day' | 'month';
+})[] | null;
 
 /**
  * One error a run recorded.
@@ -1391,6 +1423,8 @@ export interface SyncLogDetail {
      * @nullable
      */
   pass_source_name: string | null;
+  /** Each copy built from a dump that was in place when the run started (#2415), which no swap changes while the run is alive. Null for a run from before. */
+  copies_read: SyncLogDetailCopiesRead;
   error_details: SyncErrorDetail[] | null;
   component_items: ComponentItems | null;
 }

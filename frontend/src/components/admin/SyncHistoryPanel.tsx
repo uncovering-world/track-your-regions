@@ -37,6 +37,7 @@ import { getSyncLogs, getSyncLogDetails, type SyncLog } from '../../api/admin';
 import { formatDateTime, formatDuration } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { SyncChangeList } from './SyncChangeList';
+import { dumpDate } from './DumpBuildProgress';
 import { ComponentItemsSummary } from './ComponentItemsSummary';
 import { displayNameOf } from '../../utils/displayName';
 import { queryKeys } from '../../api/queryKeys';
@@ -144,6 +145,22 @@ export function PassNote({ log }: { log: Pick<SyncLog, 'pass_log_id' | 'pass_sou
   );
 }
 
+/**
+ * The copies a run read (#2415): the dump date of each, as it stood when the
+ * run started. Two runs compared against each other stand on the same inputs
+ * when these match.
+ */
+export function CopiesReadNote({ log }: { log: Pick<SyncLog, 'copies_read'> }) {
+  if (!log.copies_read || log.copies_read.length === 0) return null;
+  return (
+    <Tooltip title={<>{log.copies_read.map(copy => <div key={copy.dump}>{copy.title}: {dumpDate(copy.dumpDate, copy.datedBy)}</div>)}</>}>
+      <Typography variant="caption" color="text.secondary" display="block" tabIndex={0}>
+        Read {log.copies_read.length === 1 ? 'one copy' : `${log.copies_read.length} copies`} of the public dumps
+      </Typography>
+    </Tooltip>
+  );
+}
+
 function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
   const getStatusChip = () => {
     switch (log.status) {
@@ -172,6 +189,7 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
           <Chip label="Preview" size="small" color="info" variant="outlined" sx={{ ml: 1 }} />
         )}
         <PassNote log={log} />
+        <CopiesReadNote log={log} />
       </TableCell>
       <TableCell>{formatDateTime(log.started_at)}</TableCell>
       <TableCell>{formatDuration(log.started_at, log.completed_at)}</TableCell>
