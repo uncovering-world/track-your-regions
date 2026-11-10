@@ -54,7 +54,7 @@ const top = (slug: string, wikidata: string, sources = ['coverage-surveys']): Co
 async function files(regionSlug: string, slugs: string[], filedUnder = 'markets', judged: string[] = []): Promise<CoverageFiles> {
   return {
     kinds: [...await liveKinds(), MARKETS, NOTABLE_WORKS],
-    regions: [{ slug: regionSlug, name: regionSlug, country: 'Peru', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' }],
+    regions: [{ slug: regionSlug, name: regionSlug, country: 'Peru', country_code: 'PE', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' }],
     expectations: new Map([[regionSlug, slugs.map(slug => entry(slug, [filedUnder]))]]),
     judgements: judged.map(slug => judgementOn(regionSlug, slug, filedUnder)),
     calibrationSources: [SURVEYS],

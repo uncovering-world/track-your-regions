@@ -6295,10 +6295,23 @@ CREATE TABLE IF NOT EXISTS workbench.coverage_regions (
     slug VARCHAR(80) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     country VARCHAR(255) NOT NULL,
+    country_code CHAR(2) NOT NULL CHECK (country_code ~ '^[A-Z]{2}$'),
     centre GEOMETRY(Point, 4326) NOT NULL,
     radius_km DOUBLE PRECISION NOT NULL CHECK (radius_km > 0),
     surveyed DATE NOT NULL
 );
+
+-- On a database migration 223 has not reached yet the column is not there, and
+-- re-applying this file must not fail on its comment: the migration writes it.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'workbench' AND table_name = 'coverage_regions' AND column_name = 'country_code'
+  ) THEN
+    COMMENT ON COLUMN workbench.coverage_regions.country_code IS 'The ISO 3166-1 alpha-2 code of the region''s country (#2406): a place none of whose countries is this one lies outside the region''s reach in the coverage report.';
+  END IF;
+END $$;
 
 -- The ids are held to their shape here because the comparison joins them to
 -- experiences.external_id and treasures.external_id as text.

@@ -36,7 +36,7 @@ const FILES: CoverageFiles = {
     kind({ slug: 'archaeology', name: 'Archaeology', status: 'live', experience_kind_id: 5 }),
     kind({}),
   ],
-  regions: [{ slug: 'cusco-region', name: 'Cusco region', country: 'Peru', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' }],
+  regions: [{ slug: 'cusco-region', name: 'Cusco region', country: 'Peru', country_code: 'PE', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' }],
   expectations: new Map([['cusco-region', [
     {
       slug: 'moray', name: 'Moray', aliases: ['Muray'], type: 'place', kinds: ['archaeology'], wikidata: 'Q1814201', same_as: [],

@@ -106,6 +106,7 @@ async function fill(client: PoolClient, files: CoverageFiles, typed: FilingTypes
     slug: region.slug,
     name: region.name,
     country: region.country,
+    country_code: region.country_code,
     centre: point(region.lat, region.lon),
     radius_km: region.radius_km,
     surveyed: region.surveyed,
@@ -170,10 +171,10 @@ async function fill(client: PoolClient, files: CoverageFiles, typed: FilingTypes
     [JSON.stringify(kinds)],
   );
   await client.query(
-    `INSERT INTO coverage_regions (slug, name, country, centre, radius_km, surveyed)
-     SELECT slug, name, country, ST_GeomFromText(centre, 4326), radius_km, surveyed
+    `INSERT INTO coverage_regions (slug, name, country, country_code, centre, radius_km, surveyed)
+     SELECT slug, name, country, country_code, ST_GeomFromText(centre, 4326), radius_km, surveyed
        FROM jsonb_to_recordset($1::jsonb)
-         AS sent(slug text, name text, country text, centre text, radius_km double precision, surveyed date)`,
+         AS sent(slug text, name text, country text, country_code text, centre text, radius_km double precision, surveyed date)`,
     [JSON.stringify(regions)],
   );
   await client.query(

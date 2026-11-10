@@ -56,6 +56,9 @@ const regionSchema = z.strictObject({
   slug,
   name: text,
   country: text,
+  // The country's ISO 3166-1 alpha-2 code (#2406): what the report holds a place's countries
+  // against, so a place standing only in other countries lies outside the region's reach.
+  country_code: z.string().regex(/^[A-Z]{2}$/),
   lat: z.number().min(-90).max(90),
   lon: z.number().min(-180).max(180),
   radius_km: z.number().positive(),

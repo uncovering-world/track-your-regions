@@ -153,6 +153,10 @@ function unjudgeableWords(unjudgeable: number): string {
 
 /** How a region stands in the other direction, in one line: what it offers that no guide names, and what a person made of it. */
 function regionLine(region: CoverageReport['unnamed'][number]): string {
+  return `${regionWords(region)}${abroadWords(region.abroad.length)}`;
+}
+
+function regionWords(region: CoverageReport['unnamed'][number]): string {
   if (region.total === 0) return `${region.regionName}: everything it offers within its reach is named by a guide.`;
   const offers = `${region.regionName} offers ${region.total} within its reach that no guide names`;
   const judged = region.total - region.unjudged.length - region.unjudgeable.length;
@@ -160,6 +164,12 @@ function regionLine(region: CoverageReport['unnamed'][number]): string {
   if (judged === 0) return `${offers}; ${waitingWords(region.unjudged.length)}${unjudgeable}.`;
   const them = judged === 1 ? '1 is judged' : `${judged} are judged`;
   return `${offers}; ${them}: ${region.judgedByCause.map(causeWords).join('; ')}; ${waitingWords(region.unjudged.length)}${unjudgeable}.`;
+}
+
+/** What the reach left out as standing only in other countries (#2406), so it is seen and not lost. */
+function abroadWords(abroad: number): string {
+  if (abroad === 0) return '';
+  return abroad === 1 ? ' 1 more within the circle stands only abroad and is left out.' : ` ${abroad} more within the circle stand only abroad and are left out.`;
 }
 
 /**

@@ -1,27 +1,27 @@
-{"slug": "cusco-region", "name": "Cusco region", "country": "Peru", "lat": -13.532, "lon": -71.967, "radius_km": 110, "surveyed": "2026-10-02"}
-{"slug": "rome", "name": "Rome", "country": "Italy", "lat": 41.9, "lon": 12.49, "radius_km": 35, "surveyed": "2026-10-02"}
-{"slug": "kyoto", "name": "Kyoto", "country": "Japan", "lat": 35.011, "lon": 135.768, "radius_km": 45, "surveyed": "2026-10-02"}
-{"slug": "cairo", "name": "Cairo", "country": "Egypt", "lat": 30.044, "lon": 31.236, "radius_km": 40, "surveyed": "2026-10-02"}
-{"slug": "mexico-city", "name": "Mexico City", "country": "Mexico", "lat": 19.433, "lon": -99.133, "radius_km": 50, "surveyed": "2026-10-02"}
-{"slug": "sydney", "name": "Sydney", "country": "Australia", "lat": -33.868, "lon": 151.209, "radius_km": 90, "surveyed": "2026-10-02"}
-{"slug": "auckland", "name": "Auckland", "country": "New Zealand", "lat": -36.85, "lon": 174.763, "radius_km": 60, "surveyed": "2026-10-02"}
-{"slug": "delhi", "name": "Delhi", "country": "India", "lat": 28.632, "lon": 77.22, "radius_km": 40, "surveyed": "2026-10-02"}
-{"slug": "beijing", "name": "Beijing", "country": "China", "lat": 39.904, "lon": 116.407, "radius_km": 130, "surveyed": "2026-10-02"}
-{"slug": "samarkand", "name": "Samarkand", "country": "Uzbekistan", "lat": 39.655, "lon": 66.975, "radius_km": 80, "surveyed": "2026-10-02"}
-{"slug": "yerevan", "name": "Yerevan", "country": "Armenia", "lat": 40.18, "lon": 44.51, "radius_km": 85, "surveyed": "2026-10-02"}
-{"slug": "bali", "name": "Bali", "country": "Indonesia", "lat": -8.41, "lon": 115.19, "radius_km": 90, "surveyed": "2026-10-02"}
-{"slug": "istanbul", "name": "Istanbul", "country": "Türkiye", "lat": 41.02, "lon": 28.98, "radius_km": 35, "surveyed": "2026-10-02"}
-{"slug": "isfahan", "name": "Isfahan", "country": "Iran", "lat": 32.657, "lon": 51.677, "radius_km": 160, "surveyed": "2026-10-02"}
-{"slug": "dakar", "name": "Dakar", "country": "Senegal", "lat": 14.69, "lon": -17.44, "radius_km": 45, "surveyed": "2026-10-02"}
-{"slug": "zanzibar", "name": "Zanzibar", "country": "Tanzania", "lat": -6.13, "lon": 39.36, "radius_km": 50, "surveyed": "2026-10-02"}
-{"slug": "addis-ababa", "name": "Addis Ababa", "country": "Ethiopia", "lat": 9.01, "lon": 38.76, "radius_km": 120, "surveyed": "2026-10-02"}
-{"slug": "havana", "name": "Havana", "country": "Cuba", "lat": 23.137, "lon": -82.358, "radius_km": 80, "surveyed": "2026-10-02"}
-{"slug": "salvador", "name": "Salvador da Bahia", "country": "Brazil", "lat": -12.973, "lon": -38.51, "radius_km": 85, "surveyed": "2026-10-02"}
-{"slug": "berlin", "name": "Berlin", "country": "Germany", "lat": 52.52, "lon": 13.405, "radius_km": 40, "surveyed": "2026-10-16"}
-{"slug": "moscow", "name": "Moscow", "country": "Russia", "lat": 55.756, "lon": 37.617, "radius_km": 75, "surveyed": "2026-10-16"}
-{"slug": "bangkok", "name": "Bangkok", "country": "Thailand", "lat": 13.75, "lon": 100.5, "radius_km": 90, "surveyed": "2026-11-01"}
-{"slug": "lisbon", "name": "Lisbon", "country": "Portugal", "lat": 38.714, "lon": -9.139, "radius_km": 40, "surveyed": "2026-11-01"}
-{"slug": "cape-town", "name": "Cape Town", "country": "South Africa", "lat": -33.925, "lon": 18.424, "radius_km": 75, "surveyed": "2026-11-01"}
-{"slug": "seoul", "name": "Seoul", "country": "South Korea", "lat": 37.5665, "lon": 126.978, "radius_km": 60, "surveyed": "2026-11-04", "role": "control"}
-{"slug": "krakow", "name": "Kraków", "country": "Poland", "lat": 50.0617, "lon": 19.9373, "radius_km": 70, "surveyed": "2026-11-04", "role": "control"}
-{"slug": "quito", "name": "Quito", "country": "Ecuador", "lat": -0.22, "lon": -78.512, "radius_km": 90, "surveyed": "2026-11-04", "role": "control"}
+{"slug": "cusco-region", "name": "Cusco region", "country": "Peru", "country_code": "PE", "lat": -13.532, "lon": -71.967, "radius_km": 110, "surveyed": "2026-10-02"}
+{"slug": "rome", "name": "Rome", "country": "Italy", "country_code": "IT", "lat": 41.9, "lon": 12.49, "radius_km": 35, "surveyed": "2026-10-02"}
+{"slug": "kyoto", "name": "Kyoto", "country": "Japan", "country_code": "JP", "lat": 35.011, "lon": 135.768, "radius_km": 45, "surveyed": "2026-10-02"}
+{"slug": "cairo", "name": "Cairo", "country": "Egypt", "country_code": "EG", "lat": 30.044, "lon": 31.236, "radius_km": 40, "surveyed": "2026-10-02"}
+{"slug": "mexico-city", "name": "Mexico City", "country": "Mexico", "country_code": "MX", "lat": 19.433, "lon": -99.133, "radius_km": 50, "surveyed": "2026-10-02"}
+{"slug": "sydney", "name": "Sydney", "country": "Australia", "country_code": "AU", "lat": -33.868, "lon": 151.209, "radius_km": 90, "surveyed": "2026-10-02"}
+{"slug": "auckland", "name": "Auckland", "country": "New Zealand", "country_code": "NZ", "lat": -36.85, "lon": 174.763, "radius_km": 60, "surveyed": "2026-10-02"}
+{"slug": "delhi", "name": "Delhi", "country": "India", "country_code": "IN", "lat": 28.632, "lon": 77.22, "radius_km": 40, "surveyed": "2026-10-02"}
+{"slug": "beijing", "name": "Beijing", "country": "China", "country_code": "CN", "lat": 39.904, "lon": 116.407, "radius_km": 130, "surveyed": "2026-10-02"}
+{"slug": "samarkand", "name": "Samarkand", "country": "Uzbekistan", "country_code": "UZ", "lat": 39.655, "lon": 66.975, "radius_km": 80, "surveyed": "2026-10-02"}
+{"slug": "yerevan", "name": "Yerevan", "country": "Armenia", "country_code": "AM", "lat": 40.18, "lon": 44.51, "radius_km": 85, "surveyed": "2026-10-02"}
+{"slug": "bali", "name": "Bali", "country": "Indonesia", "country_code": "ID", "lat": -8.41, "lon": 115.19, "radius_km": 90, "surveyed": "2026-10-02"}
+{"slug": "istanbul", "name": "Istanbul", "country": "Türkiye", "country_code": "TR", "lat": 41.02, "lon": 28.98, "radius_km": 35, "surveyed": "2026-10-02"}
+{"slug": "isfahan", "name": "Isfahan", "country": "Iran", "country_code": "IR", "lat": 32.657, "lon": 51.677, "radius_km": 160, "surveyed": "2026-10-02"}
+{"slug": "dakar", "name": "Dakar", "country": "Senegal", "country_code": "SN", "lat": 14.69, "lon": -17.44, "radius_km": 45, "surveyed": "2026-10-02"}
+{"slug": "zanzibar", "name": "Zanzibar", "country": "Tanzania", "country_code": "TZ", "lat": -6.13, "lon": 39.36, "radius_km": 50, "surveyed": "2026-10-02"}
+{"slug": "addis-ababa", "name": "Addis Ababa", "country": "Ethiopia", "country_code": "ET", "lat": 9.01, "lon": 38.76, "radius_km": 120, "surveyed": "2026-10-02"}
+{"slug": "havana", "name": "Havana", "country": "Cuba", "country_code": "CU", "lat": 23.137, "lon": -82.358, "radius_km": 80, "surveyed": "2026-10-02"}
+{"slug": "salvador", "name": "Salvador da Bahia", "country": "Brazil", "country_code": "BR", "lat": -12.973, "lon": -38.51, "radius_km": 85, "surveyed": "2026-10-02"}
+{"slug": "berlin", "name": "Berlin", "country": "Germany", "country_code": "DE", "lat": 52.52, "lon": 13.405, "radius_km": 40, "surveyed": "2026-10-16"}
+{"slug": "moscow", "name": "Moscow", "country": "Russia", "country_code": "RU", "lat": 55.756, "lon": 37.617, "radius_km": 75, "surveyed": "2026-10-16"}
+{"slug": "bangkok", "name": "Bangkok", "country": "Thailand", "country_code": "TH", "lat": 13.75, "lon": 100.5, "radius_km": 90, "surveyed": "2026-11-01"}
+{"slug": "lisbon", "name": "Lisbon", "country": "Portugal", "country_code": "PT", "lat": 38.714, "lon": -9.139, "radius_km": 40, "surveyed": "2026-11-01"}
+{"slug": "cape-town", "name": "Cape Town", "country": "South Africa", "country_code": "ZA", "lat": -33.925, "lon": 18.424, "radius_km": 75, "surveyed": "2026-11-01"}
+{"slug": "seoul", "name": "Seoul", "country": "South Korea", "country_code": "KR", "lat": 37.5665, "lon": 126.978, "radius_km": 60, "surveyed": "2026-11-04", "role": "control"}
+{"slug": "krakow", "name": "Kraków", "country": "Poland", "country_code": "PL", "lat": 50.0617, "lon": 19.9373, "radius_km": 70, "surveyed": "2026-11-04", "role": "control"}
+{"slug": "quito", "name": "Quito", "country": "Ecuador", "country_code": "EC", "lat": -0.22, "lon": -78.512, "radius_km": 90, "surveyed": "2026-11-04", "role": "control"}

@@ -247,6 +247,7 @@ describe('what a region offers that no guide names', () => {
       place('Umbilicus urbis Romae', { sitelinks: 22, judgement: judgedRow('not-a-must') }),
       place('Via Salaria', { sitelinks: 35, kinds: ['Archaeology', 'Public art'], judgement: judgedRow('rule-defect', 1700) }),
     ],
+    abroad: [],
   };
   const withUnnamed = (unnamed: RegionUnnamed[], stale: CoverageReport['staleRowJudgements'] = []): CoverageReport =>
     ({ ...report([archaeology]), unnamed, staleRowJudgements: stale });
@@ -263,14 +264,24 @@ describe('what a region offers that no guide names', () => {
     ]);
   });
 
+  it('says how many in the circle stand only abroad and are left out (#2406)', () => {
+    const seoul: RegionUnnamed = {
+      regionSlug: 'seoul', regionName: 'Seoul', total: 0, unjudged: [], unjudgeable: [], judgedByCause: [], standing: [],
+      abroad: [place('Historic Monuments and Sites in Kaesong', { wikidataId: 'Q15726137', km: 58 })],
+    };
+    expect(unnamedFindings(withUnnamed([seoul])).context).toEqual([
+      'Seoul: everything it offers within its reach is named by a guide. 1 more within the circle stands only abroad and is left out.',
+    ]);
+  });
+
   it('says a region with nothing unjudged and nothing unnamed each in a line, and lists a stale row judgement after the findings', () => {
     const berlin: RegionUnnamed = {
       regionSlug: 'berlin', regionName: 'Berlin', total: 3,
       unjudged: [place('Neptunbrunnen'), place('Berlin Mosque', { sitelinks: null })],
       unjudgeable: [place('A property only UNESCO names', { wikidataId: null, kinds: ['World Heritage Sites'], sitelinks: null })],
-      judgedByCause: [], standing: [],
+      judgedByCause: [], standing: [], abroad: [],
     };
-    const dakar: RegionUnnamed = { regionSlug: 'dakar', regionName: 'Dakar', total: 0, unjudged: [], unjudgeable: [], judgedByCause: [], standing: [] };
+    const dakar: RegionUnnamed = { regionSlug: 'dakar', regionName: 'Dakar', total: 0, unjudged: [], unjudgeable: [], judgedByCause: [], standing: [], abroad: [] };
     const { rows, context } = unnamedFindings(withUnnamed([berlin, dakar], [
       { regionSlug: 'cusco-region', wikidataId: 'Q96000099', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'Gone.' },
     ]));

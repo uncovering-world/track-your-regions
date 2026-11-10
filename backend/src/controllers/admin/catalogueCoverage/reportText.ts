@@ -163,6 +163,8 @@ function unnamedLines(report: CoverageReport): string[] {
     if (region.unjudged.length > 0) lines.push('    not judged:', ...region.unjudged.map(unnamedLine));
     if (region.unjudgeable.length > 0) lines.push('    no Wikidata id to judge by:', ...region.unjudgeable.map(unnamedLine));
     if (region.standing.length > 0) lines.push('    judged not worth a visit and still offered:', ...region.standing.map(unnamedLine));
+    // Seen to be left out rather than lost: a place across an open border is a walk away (#2406).
+    if (region.abroad.length > 0) lines.push('    left out of the reach, standing only in other countries:', ...region.abroad.map(unnamedLine));
   }
   return lines;
 }

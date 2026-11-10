@@ -24,7 +24,7 @@ const KINDS: Line[] = [
   { slug: 'shows-and-performances', name: 'Shows & performances', form: 'activity', definition: 'A show.', status: 'proposed', experience_kind_id: null, issue: null, vision: null, in_venue: false },
 ];
 const REGIONS: Line[] = [
-  { slug: 'cusco-region', name: 'Cusco region', country: 'Peru', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' },
+  { slug: 'cusco-region', name: 'Cusco region', country: 'Peru', country_code: 'PE', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' },
 ];
 const entry = (over: Line = {}): Line => ({
   slug: 'moray', name: 'Moray', aliases: [], type: 'place', kinds: ['archaeology'], wikidata: 'Q1814201', same_as: [],
@@ -116,11 +116,18 @@ describe('reading a well-formed set of files', () => {
   });
 
   it('carries a region\'s control mark, and refuses any other role (#2232)', () => {
-    const control = { ...REGIONS[0], slug: 'lisbon', name: 'Lisbon', country: 'Portugal', role: 'control' };
+    const control = { ...REGIONS[0], slug: 'lisbon', name: 'Lisbon', country: 'Portugal', country_code: 'PT', role: 'control' };
     const read = readCoverageFiles(files({ regions: [REGIONS[0], control], expectations: { 'cusco-region': [MACHU_PICCHU], lisbon: [] } }));
     expect(read.regions.map(region => [region.slug, region.role])).toEqual([['cusco-region', undefined], ['lisbon', 'control']]);
     // The refused line also leaves the region's list without its region, which is the second problem.
     expect(problemsOf(files({ regions: [{ ...REGIONS[0], role: 'development' }] }))[0]).toMatch(/regions\.jsonl line 1: role: .*control/);
+  });
+
+  it('refuses a region whose country is not given as an ISO 3166-1 alpha-2 code (#2406)', () => {
+    expect(problemsOf(files({ regions: [{ ...REGIONS[0], country_code: 'Peru' }] }))[0]).toMatch(/regions\.jsonl line 1: country_code/);
+    const withoutCode: Partial<(typeof REGIONS)[number]> = { ...REGIONS[0] };
+    delete withoutCode.country_code;
+    expect(problemsOf(files({ regions: [withoutCode] }))[0]).toMatch(/regions\.jsonl line 1: country_code/);
   });
 });
 
