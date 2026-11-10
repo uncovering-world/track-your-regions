@@ -53,11 +53,26 @@ export type DepictionStep = (typeof DEPICTION_STEPS)[number];
 
 /**
  * The `via` of a reading whose war the place's English Wikipedia lead narrowed
- * to the battle or campaign the place is for (#2404): the Soviet War Memorial
- * in Treptower Park, said by Wikidata to commemorate World War II, commemorates
- * the Battle of Berlin.
+ * to the battle, campaign or other event the place is for (#2404, #2412): the
+ * Soviet War Memorial in Treptower Park, said by Wikidata to commemorate World
+ * War II, commemorates the Battle of Berlin.
  */
 export const WARS_NARROWED_BY_LEAD = 'war-narrowed-by-lead';
+
+/**
+ * The `via` of a reading whose war the place's own significant event within it
+ * replaced (#2412): Wikidata says the Hiroshima Peace Memorial's significant
+ * event is the atomic bombing of Hiroshima, and that is what it commemorates
+ * of World War II.
+ */
+export const WARS_NARROWED_BY_EVENT = 'war-narrowed-by-event';
+
+/**
+ * The `via` of a reading that named only a war, replaced by the one person a
+ * bust or statue shows (#2412): the bust of Roman Shukhevych in Edmonton,
+ * filed under *World War II memorials in Canada*, commemorates him.
+ */
+export const WARS_NARROWED_TO_PERSON = 'war-narrowed-to-person';
 
 /** The `via` of a curator's own list: no step of the reading, and the one `via` whose list may be empty. */
 export const CURATOR_COMMEMORATION = 'curator';
@@ -69,8 +84,11 @@ export const CURATOR_COMMEMORATION = 'curator';
  */
 export const MAX_COMMEMORATED_SUBJECTS = 50;
 
-/** Who named a stored value's subjects: a step of the reading, the lead narrowing its war, or a curator. */
-export type CommemorationVia = CommemorationStep | typeof WARS_NARROWED_BY_LEAD | typeof CURATOR_COMMEMORATION;
+/** The ways a war a reading names is narrowed to what the place is for. */
+export type WarNarrowing = typeof WARS_NARROWED_BY_EVENT | typeof WARS_NARROWED_BY_LEAD | typeof WARS_NARROWED_TO_PERSON;
+
+/** Who named a stored value's subjects: a step of the reading, a narrowing of its war, or a curator. */
+export type CommemorationVia = CommemorationStep | WarNarrowing | typeof CURATOR_COMMEMORATION;
 
 /** One subject: its Wikidata item, its label, and its English Wikipedia article where it has one. */
 export interface CommemoratedSubject {
@@ -95,7 +113,9 @@ export interface Depicts {
   subjects: CommemoratedSubject[];
 }
 
-const VIAS: ReadonlySet<string> = new Set<string>([...COMMEMORATION_STEPS, WARS_NARROWED_BY_LEAD, CURATOR_COMMEMORATION]);
+const VIAS: ReadonlySet<string> = new Set<string>([
+  ...COMMEMORATION_STEPS, WARS_NARROWED_BY_EVENT, WARS_NARROWED_BY_LEAD, WARS_NARROWED_TO_PERSON, CURATOR_COMMEMORATION,
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

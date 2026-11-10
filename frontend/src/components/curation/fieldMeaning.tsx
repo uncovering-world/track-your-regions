@@ -305,7 +305,9 @@ const COMMEMORATION_SOURCE: Readonly<Record<CommemorationVia, string>> = {
   'named-after': 'Read from Wikidata’s “named after”, a person or an event',
   'statues-category': 'Read from English Wikipedia’s “Statues of …” category of the place’s article',
   'depicts': 'Read from Wikidata’s “depicts”, a person the work shows',
-  'war-narrowed-by-lead': 'Read as a war, narrowed to the battle or campaign the lead of the place’s English Wikipedia article links where it says what the place commemorates',
+  'war-narrowed-by-event': 'Read as a war, narrowed to the place’s own significant event within it, as Wikidata names it',
+  'war-narrowed-by-lead': 'Read as a war, narrowed to the battle, campaign or other event within it that the lead of the place’s English Wikipedia article links where it says what the place commemorates',
+  'war-narrowed-to-person': 'Read as a war, narrowed to the one person the bust or statue shows: the one Wikidata says it depicts, or the one its name names and English Wikipedia knows as a person',
   'curator': 'Listed by a curator',
 };
 
