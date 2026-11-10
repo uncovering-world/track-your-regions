@@ -747,6 +747,31 @@ export type DumpBuildProgressFile = {
 } | null;
 
 /**
+ * A build the network cut, waiting out a pause before it tries again from what its local copies hold (#2419); null while it runs or is queued.
+ */
+export type DumpBuildProgressRetry = {
+  /**
+     * When the next attempt starts.
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+     */
+  at: string;
+  /**
+     * The attempt that starts then, counted from 1 for the first.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  attempt: number;
+  /**
+     * How many attempts the build makes in all.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  of: number;
+  /** What cut the last attempt, in words: the host, and how much of which file was read. */
+  reason: string;
+} | null;
+
+/**
  * A dump build queued or running, read from its ledger row whatever process runs it.
  */
 export interface DumpBuildProgress {
@@ -785,6 +810,8 @@ export interface DumpBuildProgress {
   total: number | null;
   /** When the step running now started, so a step with no measure of its own reads as alive; null while queued (#1519). */
   stepStartedAt: string | null;
+  /** A build the network cut, waiting out a pause before it tries again from what its local copies hold (#2419); null while it runs or is queued. */
+  retry: DumpBuildProgressRetry;
   /** The build in the shape every long operation reports (#1356): its step by ordinal and message, with no step count, measured as `read` is against `total`. */
   operation: OperationProgressAnswer;
 }
