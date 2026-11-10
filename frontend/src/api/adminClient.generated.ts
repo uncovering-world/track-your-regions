@@ -656,8 +656,8 @@ export type DumpsDumpsItemKeeps = {
   samples: boolean;
   /** Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered. */
   fromCopy: boolean;
-  /** How often the dump worker brings what is kept forward by itself, where the keeper does so (the OpenStreetMap layer); null otherwise. */
-  schedule: DumpSchedule | null;
+  /** How often the dump worker brings the copy forward by itself (ADR-0195). */
+  schedule: DumpSchedule;
   /** Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet's daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump. */
   currentTo: boolean;
   /** The earlier years kept beside the current one, each by the month it ends on (YYYY-MM), oldest first (readership, #2230): asked for with `windowEnd` on a keeping build, kept through the cleanup, read by no run. Empty for every other keeper. */
@@ -845,6 +845,17 @@ export const DumpBuildChecksumKind = {
   sha256: 'sha256',
 } as const;
 
+/**
+ * Who queued the build: the dump worker on the copy's schedule (ADR-0195), or an admin; null for a build from before either was recorded.
+ */
+export type DumpBuildQueuedBy = typeof DumpBuildQueuedBy[keyof typeof DumpBuildQueuedBy] | null;
+
+
+export const DumpBuildQueuedBy = {
+  schedule: 'schedule',
+  admin: 'admin',
+} as const;
+
 export type DumpBuildStatus = typeof DumpBuildStatus[keyof typeof DumpBuildStatus];
 
 
@@ -889,6 +900,8 @@ export interface DumpBuild {
   verified: boolean;
   /** Whether this keeping build brought a kept copy forward from its own source rather than reading a file of the host's: the OpenStreetMap layer's current planet, by the daily diffs (#1437). */
   broughtForward: boolean;
+  /** Who queued the build: the dump worker on the copy's schedule (ADR-0195), or an admin; null for a build from before either was recorded. */
+  queuedBy: DumpBuildQueuedBy;
   status: DumpBuildStatus;
   /** @nullable */
   error: string | null;

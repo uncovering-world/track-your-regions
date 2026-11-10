@@ -12,7 +12,7 @@ vi.mock('../../api/admin/dumps', () => ({}));
 
 const build = (over: Partial<DumpBuild>): DumpBuild => ({
   id: 6, kind: 'keep', fileName: null, dumpDate: null, mode: 'local', bytes: 0, lines: 0, checksumKind: null,
-  verified: false, broughtForward: false, status: 'failed', error: null, outcome: null,
+  verified: false, broughtForward: false, queuedBy: null, status: 'failed', error: null, outcome: null,
   startedAt: '2026-10-15T08:00:00Z', finishedAt: '2026-10-15T08:26:00Z', ...over,
 } as DumpBuild);
 

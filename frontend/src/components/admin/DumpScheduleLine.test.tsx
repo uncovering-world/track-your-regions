@@ -51,8 +51,8 @@ describe('the schedule line', () => {
     await waitFor(() => expect(setDumpSchedule).toHaveBeenCalledWith('osm-planet', null));
   });
 
-  it('shows nothing for a dump whose keeper keeps no schedule', () => {
-    const { container } = show(planet(null));
+  it('shows nothing for a dump no copy is kept from', () => {
+    const { container } = show({ ...planet({ everyDays: 7, chosen: false, defaultEveryDays: 7 }), keeps: null });
     expect(container.textContent).toBe('');
   });
 });
