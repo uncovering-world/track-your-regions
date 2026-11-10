@@ -41,6 +41,8 @@ export const EXCLUDED = {
   getAuthGoogleCallback: 'finishes a Google sign-in the lane never started',
   getAuthApple: 'redirects to Apple',
   getGeocodeSearch: 'asks OpenStreetMap Nominatim',
+  getGeocodeReverse: 'asks OpenStreetMap Nominatim what stands at a point',
+  getGeocodeArticlePointById: "asks Wikipedia for the point a place's article gives",
   getGeocodeSuggestImage: 'asks Wikidata',
   getAiStatus: 'lists OpenAI models when a key is set',
   getAiModels: 'lists OpenAI models when a key is set',
