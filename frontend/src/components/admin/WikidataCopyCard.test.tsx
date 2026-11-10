@@ -86,7 +86,7 @@ describe('the Wikidata copy card', () => {
     show(dump({ needs: 'newer-dump' }, {
       dump: 'wikidata-entities', kind: 'keep', status: 'reading', message: 'Pass 1 of 2: finding what the subset keeps...',
       file: null, downloaded: 0, read: 0, lines: 0, buildId: 11, heartbeatAt: new Date().toISOString(), etaSeconds: null,
-      total: null, stepStartedAt: new Date().toISOString(),
+      total: null, stepStartedAt: new Date().toISOString(), retry: null,
       operation: {
         elapsedSeconds: 90, cancelling: false, wait: null,
         step: { index: 2, count: null, sentence: 'Pass 1 of 2: finding what the subset keeps...', done: 0, total: 0, elapsedSeconds: 60 },

@@ -30,6 +30,12 @@ export function dumpDate(date: string, datedBy: DumpsDumpsItem['datedBy']): stri
  */
 const SILENT_FOR_MS = 60_000;
 
+/** When a build the network cut tries again, at the reader's clock: "Attempt 2 of 4 at 18:05". */
+export function retryLine(retry: NonNullable<DumpBuildProgress['retry']>): string {
+  const at = new Date(retry.at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return `Waiting to try again: attempt ${retry.attempt} of ${retry.of} at ${at}`;
+}
+
 /** A running build as a person follows it: what it does, how far, and whether the worker still answers. */
 export function BuildProgressDetails({ progress }: { progress: DumpBuildProgress }) {
   const silent = progress.heartbeatAt !== null && Date.now() - new Date(progress.heartbeatAt).getTime() > SILENT_FOR_MS;
@@ -40,12 +46,18 @@ export function BuildProgressDetails({ progress }: { progress: DumpBuildProgress
       {progress.lines > 0 && (
         <Typography variant="caption" color="text.secondary" display="block">{compact.format(progress.lines)} lines</Typography>
       )}
+      {progress.retry && (
+        // A build the network cut waits to try again (#2419): a retry, not a failure.
+        <Typography variant="caption" color="warning.main" display="block">
+          {retryLine(progress.retry)}
+        </Typography>
+      )}
       {progress.heartbeatAt && (
         <Typography variant="caption" color={silent ? 'error' : 'text.secondary'} display="block">
           {silent
             ? `No word from the dump worker since ${formatRelativeTime(progress.heartbeatAt)}: it may have stopped`
             : <>
-              {progress.etaSeconds !== null && `${formatTimeLeft(progress.etaSeconds)} left in this step · `}
+              {progress.etaSeconds !== null && !progress.retry && `${formatTimeLeft(progress.etaSeconds)} left in this step · `}
               Last seen alive {formatRelativeTime(progress.heartbeatAt)}
             </>}
         </Typography>
