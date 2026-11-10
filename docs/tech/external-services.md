@@ -156,7 +156,14 @@ reader's browser, `frontend/src/utils/imageUrl.ts` `toThumbnailUrl`).
     sunset page says SQL, RDF and JSON dumps do not change.
 - *Code:* `services/dumps/fetch.ts` (`downloadTo` with ranged parts, bot UA with the purpose
   *public dump builds*, `HOST_CONNECTIONS = 3`, no request retried), the descriptors in `dumps/catalog.ts`,
-  and `dumps/newestOnHost.ts` (once a day per dump).
+  and `dumps/newestOnHost.ts` (once a day per dump). The worker also starts a build by itself
+  (`dumps/scheduledCopies.ts`, `copySchedule.ts`, ADR-0195): a keeping build of a copy an admin
+  built before, once the host has a newer dump than the copy and the copy is older than its
+  interval (7 days by default, 30 for the Wikidata subset). That is about one download of each
+  copy's files a month, as each dump is published. Readership is also refolded whenever the
+  redirects copy moves (`followsInputs`), from the twelve monthly files it keeps on disk
+  (`retiredCopies`), so it downloads nothing again. The one exception is a month whose file a build
+  from before 2026-11-11 removed: it is downloaded once more, then kept.
 - *Retries:* a build the network cut (a name that did not resolve, a connection closed or reset, a
   502–504) is started again three times, about 1, 5 and 15 minutes after the attempt before
   (`RETRY_PAUSES_MS` in `dumps/buildRun.ts`, #2419), and each attempt asks only for the bytes its
