@@ -116,35 +116,80 @@ const worthRetrying = (error: unknown, signal: AbortSignal): boolean =>
   !signal.aborted && !isDamagedRead(error) && (error instanceof CutDownload || hostFailure(error) !== null);
 
 
+/** Where a cut read stopped: the file, and how much of it was on disk. */
+interface CutAt {
+  fileName: string;
+  held: number;
+}
+
+/**
+ * Whether a cut came after the build moved forward (#2440): another file than
+ * the last cut's, or more of the same file on disk. A read with no local copy
+ * keeps nothing of a file, so more bytes streamed is no progress there.
+ * Counted from the build's start instead, attempts would run out on a build of
+ * many large files, such as readership's twelve of about 5 GB, on a host that
+ * cuts every few hundred megabytes.
+ */
+function movedOn(error: unknown, last: CutAt | null): boolean {
+  if (!(error instanceof CutDownload) || !last) return false;
+  return error.file.fileName !== last.fileName || (error.local && error.held > last.held);
+}
+
+/** The mark a cut leaves: the most of one file ever held, so a cut holding less than an earlier one is no new mark to pass. */
+function cutMark(error: unknown, last: CutAt | null): CutAt | null {
+  if (!(error instanceof CutDownload)) return last;
+  const held = last?.fileName === error.file.fileName ? Math.max(last.held, error.held) : error.held;
+  return { fileName: error.file.fileName, held };
+}
+
 /**
  * Run `attempt`, and again after each of `pauses` while the network is what
- * cut it. The row says it waits, when it tries again and why, so the panel
- * shows a retry, not a failure; `tries` counts the attempts made, for the
- * words of a build that fails anyway.
+ * cut it. The pauses are counted from the build's last progress, so a build
+ * fails only when the network cuts it four times with nothing gained between.
+ * The row says it waits, when it tries again and why, so the panel shows a
+ * retry, not a failure; `tries` counts every attempt made, for the words of a
+ * build that fails anyway.
  */
 async function retrying<T>(
   attempt: () => Promise<T>, claimed: ClaimedBuild, progress: BuildProgressRecord, signal: AbortSignal,
   pauses: readonly number[], tries: { made: number },
 ): Promise<T> {
+  let sinceProgress = 0;
+  let lastCut: CutAt | null = null;
   for (;;) {
     tries.made += 1;
     try {
       return await attempt();
     } catch (error) {
-      const wait = dumpNamed(claimed.dump)?.retriesACut === false ? undefined : pauses[tries.made - 1];
+      sinceProgress = movedOn(error, lastCut) ? 1 : sinceProgress + 1;
+      lastCut = cutMark(error, lastCut);
+      const wait = dumpNamed(claimed.dump)?.retriesACut === false ? undefined : pauses[sinceProgress - 1];
       if (wait === undefined || !worthRetrying(error, signal)) throw error;
-      const reason = (error as Error).message;
-      progress.retry = { at: new Date(Date.now() + wait).toISOString(), attempt: tries.made + 1, of: pauses.length + 1, reason };
-      const from = dumpsDir() ? 'from what is on disk' : 'from the start of the file';
-      progress.message = `${reason}. Trying again ${from} (attempt ${tries.made + 1} of ${pauses.length + 1}); the copy in place stands.`;
-      progress.etaSeconds = null;
-      console.log(`[Dumps] ${claimed.dump}: ${reason}; attempt ${tries.made + 1} in ${Math.round(wait / 1000)} s`);
-      await beat(claimed.id, progress);
-      // A cancel or a stopping worker that came while the row was written ends the wait at once.
-      await sleep(wait, undefined, { signal });
-      progress.retry = null;
+      await waitToRetry(claimed, progress, signal, { wait, next: sinceProgress + 1, of: pauses.length + 1, reason: (error as Error).message });
     }
   }
+}
+
+/**
+ * Say on the row that the build waits to try again, when and why, and wait. A
+ * cancel or a stopping worker that came while the row was written ends the
+ * wait at once, with its own reason.
+ */
+async function waitToRetry(
+  claimed: ClaimedBuild, progress: BuildProgressRecord, signal: AbortSignal,
+  { wait, next, of, reason }: { wait: number; next: number; of: number; reason: string },
+): Promise<void> {
+  progress.retry = { at: new Date(Date.now() + wait).toISOString(), attempt: next, of, reason };
+  const from = dumpsDir() ? 'from what is on disk' : 'from the start of the file';
+  progress.message = `${reason}. Trying again ${from} (attempt ${next} of ${of}); the copy in place stands.`;
+  progress.etaSeconds = null;
+  console.log(`[Dumps] ${claimed.dump}: ${reason}; attempt ${next} in ${Math.round(wait / 1000)} s`);
+  await beat(claimed.id, progress);
+  await sleep(wait, undefined, { signal }).catch((cause: unknown) => {
+    signal.throwIfAborted();
+    throw cause;
+  });
+  progress.retry = null;
 }
 
 /**

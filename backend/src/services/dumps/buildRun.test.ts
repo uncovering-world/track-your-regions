@@ -410,6 +410,51 @@ describe('a build the network cut (#2419)', () => {
       error: 'Connection terminated unexpectedly. The copy in place, built from the dump of 5 Oct 2026, is unchanged and still read.',
     }));
   });
+
+  it('counts the attempts afresh once a cut came after the build moved on (#2440)', async () => {
+    // Readership's February was cut three times and finished; March's first cut followed.
+    const month = (fileName: string, held: number) => new CutDownload('closed', { ...FILE, fileName, expectedBytes: 4_800_000_000 } as never, held, true,
+      new TypeError('terminated'));
+    keepers.build
+      .mockRejectedValueOnce(month('pageviews-202602-user.bz2', 356_000_000))
+      .mockRejectedValueOnce(month('pageviews-202602-user.bz2', 927_000_000))
+      .mockRejectedValueOnce(month('pageviews-202602-user.bz2', 3_700_000_000))
+      .mockRejectedValueOnce(month('pageviews-202603-user.bz2', 472_000_000))
+      .mockResolvedValueOnce({ bytes: 1, lines: 3, checksumActual: null });
+    await runBuild(keep, new AbortController().signal, [0, 0, 0]);
+    expect(keepers.build).toHaveBeenCalledTimes(5);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'success' }));
+  });
+
+  it('still fails after four cuts with nothing gained between', async () => {
+    keepers.build.mockRejectedValue(cut(1_000_000));
+    await runBuild(keep, new AbortController().signal, [0, 0, 0]);
+    expect(keepers.build).toHaveBeenCalledTimes(4);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed' }));
+    keepers.build.mockReset();
+  });
+
+  it('measures a cut against the most of its file ever held, so a shorter copy does not reset the count', async () => {
+    const local = (held: number) => new CutDownload('closed', { ...FILE, expectedBytes: 4_800_000_000 } as never, held, true,
+      new TypeError('terminated'));
+    keepers.build.mockRejectedValueOnce(local(900)).mockRejectedValueOnce(local(300))
+      .mockRejectedValueOnce(local(600)).mockRejectedValueOnce(local(600)).mockResolvedValueOnce({ bytes: 1, lines: 3, checksumActual: null });
+    await runBuild(keep, new AbortController().signal, [0, 0, 0]);
+    expect(keepers.build).toHaveBeenCalledTimes(4);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed' }));
+    keepers.build.mockReset();
+  });
+
+  it('reads more bytes streamed with no local copy as no progress, so the count is not reset', async () => {
+    const streamed = (held: number) => new CutDownload('closed', { ...FILE, expectedBytes: 4_800_000_000 } as never, held, false,
+      new TypeError('terminated'));
+    keepers.build.mockRejectedValueOnce(streamed(100)).mockRejectedValueOnce(streamed(200))
+      .mockRejectedValueOnce(streamed(300)).mockRejectedValueOnce(streamed(400)).mockResolvedValueOnce({ bytes: 1, lines: 3, checksumActual: null });
+    await runBuild(keep, new AbortController().signal, [0, 0, 0]);
+    expect(keepers.build).toHaveBeenCalledTimes(4);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed' }));
+    keepers.build.mockReset();
+  });
 });
 
 describe('a swap waiting for the runs that read the copy (#2415)', () => {
