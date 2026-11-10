@@ -122,8 +122,8 @@ such a dump holds the copy and reports it as kept, with no line count.
 `DUMPS_DIR` (environment; `.env.example` has the note) decides:
 
 - **Empty** — every file is read straight from the host as a stream and
-  nothing is kept on disk. A cut stream fails the build, and the next build
-  starts from the beginning.
+  nothing is kept on disk. A cut stream starts the file again on the build's
+  next attempt (§ A build the network cut).
 - **A directory** (a container path under `/app/data`, e.g. `/app/data/dumps`)
   — the file is first brought to the host's full size in that directory
   (`downloadTo` in `fetch.ts`), then read from disk. Where the host names the
@@ -146,6 +146,15 @@ such a dump holds the copy and reports it as kept, with no line count.
   decoder refuses — is deleted, and the next build downloads it afresh; a
   failure of the network, the consumer or a cancel keeps it. `data/dumps/` is
   gitignored.
+- **Every file a build reads** goes through the local copy, not only the
+  dump's own: every counted edition's redirect and page tables (the
+  redirects), Wikidata's page table (the item redirects), every Wikivoyage
+  edition's usage and page tables (the items Wikivoyage uses), English
+  Wikivoyage's page properties (its articles). A build cut halfway through
+  every counted edition's tables reads the ones already whole from disk when
+  it is started again, and resumes the one it was reading (#2419). The catalog names
+  those files per dump (`readsAlso`), so their older copies are retired as the
+  dump's own file is (below).
 
 The full Wikidata dump is well over 100 GB, so a local copy needs a disk with
 room for it; a machine without one streams.
@@ -159,8 +168,9 @@ dashed and followed by the page range it holds, which moves from month to month
 `enwikivoyage-*-p*.xml.bz2` of `20261001`). `copyOf` reads a name's dump and
 date, with its leftovers: a ranged download's `.part` and state, a subset build's terms
 spool and first-pass result. A dump dated by day keeps one copy: once a copy
-is verified, `readDump` removes the older copies of its dump (`olderCopies`,
-matched by the catalog's `isFileName`); before a download, it removes them
+is verified, `readDump` removes the older copies of the same file
+(`olderCopies`, matched by the catalog's `isFileName` and `readsAlso`, so
+German Wikipedia's newer page table retires only its older page table); before a download, it removes them
 first when the disk cannot hold what is left of the new one beside them
 (`makeRoom`, `freeBytes`, with what a resumed ranged download already holds
 read from its saved ranges, `bytesHeld`). The monthly pageview files are
@@ -190,8 +200,9 @@ calls unlimited, `CONNECTIONS_OF`). The dump worker is the one process that
 asks a dump host anything: its builds and its daily check of the newest
 dumps (`newestOnHost.ts`) share that one count, and the backend opens no
 connection to a dump host at all (#2353). `fetch.ts` sends the bot `userAgent()` with the purpose `public dump builds` on
-every request, follows redirects, and never retries: a failed request fails
-the build, and an admin starts it again. A read opens one connection and a
+every request, follows redirects, and never retries a request: a failed one
+fails the read, and the build tries again only as § A build the network cut
+says. A read opens one connection and a
 download into the local copy up to the host's cap. The worker runs one build at a
 time, so a second build waits as a queued row (§ A build), not on a
 connection.
@@ -201,7 +212,7 @@ Foundation's S3 bucket, whose bandwidth the OSM wiki calls unlimited. It
 asks for HTTPS and no downloads through a web browser, and its `robots.txt`
 keeps every agent but `wget` off the listings, which the catalog never reads
 (§ The catalog). Its cap is eight connections (ADR-0136 decision 3); the
-User-Agent and no-retry rule apply as to any host, and the cap is counted
+User-Agent and retry rules apply as to any host, and the cap is counted
 against the host the URL names.
 
 What the files may be used for is the dump's own licence, and a table built
@@ -306,6 +317,50 @@ what it verified and kept, how long each step took (`StepTimes` in
 `stepTimes.ts`, read off the phase messages the build reports; a step under a
 second is left out), and what it
 did on the way, such as an older copy removed. It is what says which dump a consumer's tables were built from.
+
+### A build the network cut
+
+A build cut by the network tries again by itself (`retrying` in `buildRun.ts`,
+#2419). On 2026-11-10 the development stack's name resolution went, and then
+dumps.wikimedia.org closed long downloads after 75 MB, 480 MB, 1 GB and
+2.2 GB. Five of six refreshes failed twice each, and each was started again
+by hand.
+
+- **What counts as the network's** (`networkFailure` in `fetch.ts`): a name
+  that did not resolve, a connection refused, closed or reset (undici's
+  `terminated`), a range the host ended early, and a host's 502, 503 or 504.
+  A damaged file (a checksum or size mismatch, a stream the decoder refuses),
+  a host's refusal (any other 4xx, a 429 among them), a cancel and the worker
+  stopping are never retried. Nor is the planet (`retriesACut: false` in the
+  catalog): a failed update of the OpenStreetMap layer waits for the next one
+  (ADR-0134 decision 1, ADR-0136 decision 3). Only a failure of a request
+  to the host counts (`hostFailure`): a database connection a build's own
+  writes lost carries the same codes, and is neither retried nor read as
+  the host's cut.
+- **How often**: three more attempts, about 1, 5 and 15 minutes after the one
+  before failed (`RETRY_PAUSES_MS`). Each attempt starts the build again with
+  the same row and resolves the file again; its local copies resume from
+  their saved ranges, and the files already whole are read from disk. The
+  host's three connections and its User-Agent policy hold as for any read.
+- **While it waits** the row says so (`progress.retry`: when, which attempt
+  of how many, and what cut the last one), and its message says the copy in
+  place stands. The panel shows a retry, not a failure: *Waiting to try
+  again: attempt 2 of 4 at 18:05* (`retryLine` in `DumpBuildProgress.tsx`).
+  A cancel or a stopping worker ends the wait at once, even one that came while
+  the row was being written.
+- **A read the network cut** ends with a `CutDownload` (`read.ts`), whose
+  message says what happened in words: *The connection to dumps.wikimedia.org
+  was closed after 2.2 GB of 3.6 GB of wikidatawiki-20261101-page.sql.gz*,
+  the bytes of a local copy read from its saved ranges.
+- **A build that fails anyway** says, after its reason, what the next build
+  does: it resumes from the 2.2 GB of the file on disk, or from what is on
+  disk where a listing or a status file was what failed, or reads its files
+  from their start where no local copy is kept. A keeping build also says
+  that the copy in place, with the date of the dump it was built from, is
+  unchanged and still read, since a build is swapped in only whole; any
+  failed keeping build says it. Readership keeps each month as it is read
+  (`keepsAsItGoes` on its keeper), so its failed build says that the months
+  it kept stay kept and the rest of the year in place is unchanged.
 
 ## The local Wikidata subset
 
@@ -702,10 +757,9 @@ How the build runs:
   subset, since a redirect to an article no item names counts for nothing,
   and leaves out a redirect that is itself an item's sitelink (an
   intentional sitelink to a redirect), which counts under that item.
-- English Wikipedia's redirect file is the build's own and is kept in the local
-  copy. Every other file is read from the host as a stream, verified by the
-  sha1 and size its edition's `dumpstatus.json` gives (`wikipediaTableFile`,
-  `catalog.ts`).
+- English Wikipedia's redirect file is the build's own. Every file is kept in
+  the local copy (§ Stream or local copy) and verified by the sha1 and size
+  its edition's `dumpstatus.json` gives (`wikipediaTableFile`, `catalog.ts`).
 - Both builds of Wikipedia's tables read through one reader, `readTable` in
   `wikipedia/tableRead.ts`.
 - The table is swapped in whole (`redirectTables.ts`). A failed file or a
@@ -718,7 +772,7 @@ of them with 10 views or more. 9.6M of those are sitelinks of 3.6M subset items,
 
 ## Wikidata's item redirects
 
-When two items are merged on Wikidata, one becomes a redirect to the other, and the JSON dump the subset is cut from carries no trace of it. A place registered under the old item and a run reading the new one would then not meet, and the resolver would create a second place (ADR-0143 decision 3, #1895). The `wikidata-redirects` keeper (`services/dumps/wikidata/redirectBuild.ts`) reads two tables of one run of `wikidatawiki`: `redirect`, the build's own file (each redirect page's id and the item it points to, an interwiki one left out), and `page`, read from the host as a stream (each main-namespace redirect page's id and the item it is titled). Both are staged and joined in the database (`redirectTables.ts`), every item redirected to another is kept in a `_next` copy of `workbench.wikidata_redirects`, and the copy is swapped in whole with the record of the build (`workbench.wikidata_redirect_builds`), so a reader never sees half a build; a run that has not finished its page table fails the build and leaves the redirects in place. Nothing samples it and nothing starts it from a copy, as for the Wikipedia redirects.
+When two items are merged on Wikidata, one becomes a redirect to the other, and the JSON dump the subset is cut from carries no trace of it. A place registered under the old item and a run reading the new one would then not meet, and the resolver would create a second place (ADR-0143 decision 3, #1895). The `wikidata-redirects` keeper (`services/dumps/wikidata/redirectBuild.ts`) reads two tables of one run of `wikidatawiki`: `redirect`, the build's own file (each redirect page's id and the item it points to, an interwiki one left out), and `page`, kept in the local copy (each main-namespace redirect page's id and the item it is titled). Both are staged and joined in the database (`redirectTables.ts`), every item redirected to another is kept in a `_next` copy of `workbench.wikidata_redirects`, and the copy is swapped in whole with the record of the build (`workbench.wikidata_redirect_builds`), so a reader never sees half a build; a run that has not finished its page table fails the build and leaves the redirects in place. Nothing samples it and nothing starts it from a copy, as for the Wikipedia redirects.
 
 What reads it: `withRedirects` (`db/experienceWriter.ts`) widens a lookup of a place by its items to the items redirected to or from them, so `lockIdentifiedPlace` finds a place registered under an item Wikidata has since merged away; `lockSourcedExperience` finds a Wikidata source's membership keyed by the old item when its run reads the new one, and the upsert moves the key to the item the run reads, filing the move on the run's changeset as the field `external_id`; the catalogue check `identifiers-redirected` lists what stays registered under an old item, a site's items or a component point's, for a curator. Measured on the development catalogue on 2026-10-23, before the first build: 0 of 8,187 registered items were redirects, read live with `wbgetentities`; the keeper is the guard for the next merge on Wikidata, not a backlog.
 
@@ -789,8 +843,8 @@ usage table of every other edition, and every edition's page table
 (`WIKIVOYAGE_EDITIONS`). That is the 28 editions of Wikimedia's site matrix
 on 2026-10-20, less Malayalam Wikivoyage, which has no dumps yet. Each file is
 verified by the sha1 and size its edition's `dumpstatus.json` gives. Every
-file but English Wikivoyage's usage table is read from the host as a stream;
-the 27 editions' tables together are about 58 MB. An edition whose run has not
+file is kept in the local copy (§ Stream or local copy); the 27 editions'
+tables together are about 58 MB. An edition whose run has not
 finished its tables fails the build and names it, and the usage in place
 stays.
 
@@ -838,7 +892,7 @@ reads).
 The build first finds the `page_props` table of the wiki's run of the
 export's date (the export of 2026-10-01 goes with the run `20261001`),
 verified by the sha1 and size its `pagepropstable` job gives, and reads it
-from the host as a stream, about 1.6 MB on 2026-10-01: each page's
+through the local copy, about 1.6 MB on 2026-10-01: each page's
 `wikibase_item`, kept only where it is an item id (`Q…`). A run that has not
 finished it fails the build and the pages in place stay. Then it reads the
 build's own file, the month's MediaWiki Content File Export of the wiki's
