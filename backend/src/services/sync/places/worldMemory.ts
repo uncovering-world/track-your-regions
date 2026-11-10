@@ -12,6 +12,11 @@
  *   (`readers_read_at`, `guides_read_at`) is taken: the zero a membership is
  *   ranked at before its first reading is no reading.
  *
+ * - Whether a place last stood in the surroundings tier by the venue test is
+ *   the note its membership records (`admissionNote`, `standsByVenues`,
+ *   ADR-0192), so a run
+ *   whose layer keeps no venue keeps those places and no other.
+ *
  * Every membership of the source is read, refused ones included: a place the
  * kind refused last time is judged again on what was last read of it.
  */
@@ -20,6 +25,7 @@ import { pool } from '../../../db/index.js';
 import { MEMBERSHIPS } from '../../../db/membership.js';
 import type { ExperienceKindMembershipsRow, ExperienceSyncLogsRow, MembershipFameRow } from '../../../db/schema.generated.js';
 import { WORLD_FRAME } from './admissionRegister.js';
+import { standsByVenues } from './surroundingsCut.js';
 import type { WorldBars, WorldMemory } from './worldBars.js';
 
 /** A source's world tier across runs: what it last read, and where this run's bars are written. */
@@ -69,7 +75,16 @@ export async function readWorldMemory(sourceId: number): Promise<WorldMemory> {
     if (signal.readers_read) readers.set(signal.external_id, signal.readers);
     if (signal.guides_read) guided.set(signal.external_id, signal.guide_editions >= WORLD_FRAME.guideEditions);
   }
-  return { bars: row ? keptBarsOf(row.id, row.world_bars) : null, readers, guided };
+  // The note the run wrote for the curator is the membership's `admissionNote` fact. Its words are the
+  // cut's own (standsByVenues); the statement only narrows to the notes that name a venue.
+  const notes = await pool.query<Pick<ExperienceKindMembershipsRow, 'external_id'> & { note: string | null }>(
+    `SELECT m.external_id, m.facts->>'admissionNote' AS note FROM ${MEMBERSHIPS} m
+      WHERE m.source_id = $1 AND m.admission = 'admitted' AND m.facts->>'tier' = 'surroundings'
+        AND m.facts->>'admissionNote' LIKE '%venue%'`,
+    [sourceId],
+  );
+  const venued = new Set(notes.rows.filter((r) => standsByVenues(r.note)).map((r) => r.external_id));
+  return { bars: row ? keptBarsOf(row.id, row.world_bars) : null, readers, guided, venued };
 }
 
 /** Write the bars a run admits by on its sync log; a run with no log has nowhere to keep them. */

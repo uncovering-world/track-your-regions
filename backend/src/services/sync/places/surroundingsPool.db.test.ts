@@ -11,10 +11,11 @@
  * place's density at its fourth-nearest place rather than its twentieth.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
 import { readSurroundingsPool, type PoolReaders } from './surroundingsPool.js';
 import { SURROUNDINGS_CUT } from './surroundingsCut.js';
+import { LAYER_SELECTION } from '../../dumps/osm/layerSelection.js';
 
 const TOWER = 'Q12518';
 const MAST = 'Q5622819';
@@ -75,6 +76,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await clearLayer();
   await pool.query('TRUNCATE wikidata_entities, wikidata_claims, wikidata_labels, wikidata_sitelinks, wikivoyage_usage');
   await pool.end();
 });
@@ -189,3 +191,120 @@ describe('the surroundings pool read from the subset (#2178)', () => {
     expect(left.rows).toEqual([]);
   });
 });
+
+/** The OpenStreetMap layer of the venue cases, emptied before and after. */
+async function clearLayer(): Promise<void> {
+  await pool.query('TRUNCATE osm_layer_builds, osm_objects');
+  await pool.query("DELETE FROM dump_builds WHERE dump = 'osm-planet'");
+}
+
+/** A layer swapped in, cut with `selection` (null: before ADR-0191), having looked for `streets` street items' lines (null: before ADR-0194). */
+async function layerCutWith(selection: readonly string[] | null, streets: number | null = null): Promise<void> {
+  const build = (await pool.query<{ id: number }>("INSERT INTO dump_builds (dump, mode, status) VALUES ('osm-planet', 'local', 'success') RETURNING id")).rows[0].id;
+  await pool.query(
+    `INSERT INTO osm_layer_builds (build_id, planet_file, dump_date, replicated_at, objects, pinned, selection, streets)
+     VALUES ($1, 'planet.osm.pbf', '2026-11-03', '2026-11-09T00:00:00Z', 6, 0, $2, $3)`,
+    [build, selection, streets],
+  );
+}
+
+/** A street item's line in the layer (ADR-0194), from `[lon, lat]` points. */
+const osmLine = (item: string, highway: string, points: Array<[number, number]>) => pool.query(
+  `INSERT INTO osm_objects (osm_type, osm_id, tags, geom, street_item) VALUES ('W', $1, $2, ST_SetSRID(ST_GeomFromText($3), 4326), $4)`,
+  [++osmId, JSON.stringify({ highway }), 'LINESTRING(' + points.map(([lon, lat]) => `${lon} ${lat}`).join(', ') + ')', item],
+);
+
+let osmId = 0;
+const osmPoint = (tags: Record<string, string>, lat: number, lon: number) => pool.query(
+  "INSERT INTO osm_objects (osm_type, osm_id, tags, geom) VALUES ('N', $1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326))",
+  [++osmId, JSON.stringify(tags), lon, lat],
+);
+
+describe('the venues around the places of a kind that reads them (ADR-0192)', () => {
+  const read = () => readSurroundingsPool({ classes: new Set([TOWER]), venues: new Set([TOWER]) }, CUT, [{ key: 'all', classes: null }], undefined, year, built);
+
+  beforeEach(async () => {
+    await clearLayer();
+    // Three cafés at the foot of the Two Towers; a restaurant half a kilometre up Via Galliera; a church
+    // among the cafés, which is no venue; and a bar beside the Leaning Tower of Pisa.
+    for (const cafe of ['Caffè Zanarini', 'Bar Due Torri', 'Caffè Terzi']) await osmPoint({ amenity: 'cafe', name: cafe }, 44.4947, 11.3467);
+    await osmPoint({ amenity: 'restaurant', name: 'Trattoria lontana' }, 44.4990, 11.3466);
+    await osmPoint({ amenity: 'place_of_worship', name: 'San Bartolomeo' }, 44.4947, 11.3467);
+    await osmPoint({ amenity: 'bar', name: 'Bar La Torre' }, 43.7231, 10.3966);
+  });
+
+  it('reads none where no layer is in place, and none where the layer in place was cut before it kept them', async () => {
+    expect((await read()).venues).toEqual({ unread: expect.stringMatching(/^No OpenStreetMap layer is in place/) });
+    await layerCutWith(null);
+    expect((await read()).venues).toEqual({ unread: expect.stringMatching(/was cut before it kept the cafés, restaurants and bars \(ADR-0191\)/) });
+    // Nor where no kind reads them.
+    expect((await readSurroundingsPool({ classes: new Set([TOWER]) }, CUT, [{ key: 'all', classes: null }], undefined, year, built)).venues).toBeUndefined();
+  });
+
+  it('reads none where another layer is swapped in while the venues are read, since the counts and the lines would mix two maps', async () => {
+    await layerCutWith(LAYER_SELECTION, 2);
+    await osmLine(ASINELLI, 'pedestrian', [[11.3467, 44.4937], [11.3467, 44.4957]]);
+    // The next build is swapped in once the points are counted, before the streets' lines are read.
+    let counted = false;
+    let swapped = false;
+    const run = {
+      phase: (message: string) => { if (message.startsWith('Counting the cafés')) counted = true; },
+      step: async () => { if (counted && !swapped) { swapped = true; await layerCutWith(LAYER_SELECTION, 2); } },
+    };
+    const { venues } = await readSurroundingsPool({ classes: new Set([TOWER]), venues: new Set([TOWER]), venueLine: () => true }, CUT,
+      [{ key: 'all', classes: null }], run, year, built);
+    expect(swapped).toBe(true);
+    expect(venues).toEqual({ unread: expect.stringMatching(/^Another OpenStreetMap layer was swapped in while the cafés, restaurants and bars were read/) });
+  });
+
+  it('counts the food-and-drink venues within 200 m of every place of the classes, whatever its editions, and measures the candidates among them', async () => {
+    await layerCutWith(LAYER_SELECTION);
+    const { venues } = await read();
+    if (!venues || venues.unread !== undefined) throw new Error('venues unread');
+    // Bologna's five places stand within 200 m of the cafés, the one-edition item among them; the restaurant and the church count for none.
+    expect(Object.fromEntries(venues.counts)).toEqual({
+      [TWO_TOWERS]: 3, [ASINELLI]: 3, [GARISENDA]: 3, [PRENDIPARTE]: 3, [ONE_WIKI]: 3, [PISA]: 1,
+    });
+    // The candidates are the places with the cut's languages and the readers a held place stays at: the Prendiparte, read in no
+    // counted edition, and the one-edition item set the area and are measured in none. Pisa is within 150 km of Bologna.
+    expect([...venues.around.keys()].sort()).toEqual([ASINELLI, GARISENDA, PISA, TWO_TOWERS].sort());
+    expect(venues.around.get(PISA)).toEqual({ groupSize: 6, topVenues: [3, 3, 3], along: false });
+  });
+
+  it('reads a street along its line where the layer keeps one, against the others read so, and marks an artery (ADR-0194)', async () => {
+    await layerCutWith(LAYER_SELECTION, 2);
+    // A pedestrian line of about 222 m past the three cafés (fixture lines on the towers' points), and a primary road past Pisa's bar.
+    await osmLine(ASINELLI, 'pedestrian', [[11.3467, 44.4937], [11.3467, 44.4957]]);
+    await osmLine(PISA, 'primary', [[10.3966, 43.7221], [10.3966, 43.7241]]);
+    // Two lined streets make an area only under a floor of two: the floor the test reads an area by is lowered to read them along their lines.
+    const lined = await readSurroundingsPool({ classes: new Set([TOWER]), venues: new Set([TOWER]), venueLine: () => true }, { ...CUT, venueGroupFloor: 2 },
+      [{ key: 'all', classes: null }], undefined, year, built);
+    const venues = lined.venues;
+    if (!venues || venues.unread !== undefined) throw new Error('venues unread');
+    expect(venues.along.get(ASINELLI)).toMatchObject({ venues: 3, artery: false });
+    expect(venues.along.get(ASINELLI)!.metres).toBeCloseTo(222, -1);
+    expect(venues.along.get(PISA)).toMatchObject({ venues: 1, artery: true });
+    expect(venues.counts.get(ASINELLI)).toBeCloseTo(300 / venues.along.get(ASINELLI)!.metres, 5);
+    expect([...venues.arteries]).toEqual([PISA]);
+    // The two lined places are read against each other alone, and the rest at their points as before.
+    expect(venues.around.get(ASINELLI)).toMatchObject({ groupSize: 2, along: true });
+    expect(venues.around.get(TWO_TOWERS)).toMatchObject({ topVenues: [3, 3, 3], along: false });
+    // Under the floor of 25, two lined streets make no reference: both are read at their points, and Pisa's road is still an artery.
+    const thin = (await readSurroundingsPool({ classes: new Set([TOWER]), venues: new Set([TOWER]), venueLine: () => true }, CUT,
+      [{ key: 'all', classes: null }], undefined, year, built)).venues;
+    if (!thin || thin.unread !== undefined) throw new Error('venues unread');
+    expect(thin.along.size).toBe(0);
+    expect(thin.counts.get(ASINELLI)).toBe(3);
+    expect([...thin.arteries]).toEqual([PISA]);
+    expect(thin.around.get(ASINELLI)).toMatchObject({ along: false });
+    // Where the layer in place looked for no line, every place is read at its point.
+    await clearLayer();
+    await layerCutWith(LAYER_SELECTION, null);
+    await osmLine(ASINELLI, 'pedestrian', [[11.3467, 44.4937], [11.3467, 44.4957]]);
+    const before = (await readSurroundingsPool({ classes: new Set([TOWER]), venues: new Set([TOWER]), venueLine: () => true }, CUT,
+      [{ key: 'all', classes: null }], undefined, year, built)).venues;
+    if (!before || before.unread !== undefined) throw new Error('venues unread');
+    expect(before.along.size).toBe(0);
+  });
+});
+

@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  chordOfKm, densityNear, densityOf, kmOfChord, SphereIndex, surroundingsNear, surroundingsOf, type NeighbourSignals, type SpherePoint,
+  chordOfKm, densityNear, densityOf, kmOfChord, SphereIndex, surroundingsNear, surroundingsOf, venuesAround, type NeighbourSignals, type SpherePoint,
 } from './surroundingsNeighbourhood.js';
 import { SURROUNDINGS_CUT, surroundingsVerdict } from './surroundingsCut.js';
 
@@ -165,3 +165,22 @@ describe('a place on a dense core\'s edge is measured against the edge (ADR-0181
     expect(around).toEqual({ groupSize: 3, topEditions: [4, 2, 1], topGuideEditions: [], topReaders: [4_000, 2_000, 1_000] });
   });
 });
+
+describe('the venues around a street, among the streets and squares within the radius (ADR-0192)', () => {
+  it('counts every place of the index within the radius, the street itself among them, and keeps the best counts, with no density ratio', () => {
+    // A dense core of 25 streets a kilometre apart, and a quieter edge of five streets 40 km off, two of them livelier than the edge's rest.
+    const core = grid(52.52, 13.4, 5, 1);
+    const edge = meridian(52.88, 13.4, 5, 1);
+    const points = [...core, ...edge];
+    const venues = [...core.map((_, i) => 40 + i), 20, 18, 2, 1, 0];
+    const index = new SphereIndex(points);
+    const atEdge = core.length;
+    // Within 150 km the edge's street is measured against the core's liveliest as well: a plain circle.
+    expect(venuesAround(index, venues, atEdge, 150, 3)).toEqual({ groupSize: 30, topVenues: [64, 63, 62] });
+    // Within 10 km it is measured against the edge alone, its own count among the best.
+    expect(venuesAround(index, venues, atEdge, 10, 3)).toEqual({ groupSize: 5, topVenues: [20, 18, 2] });
+    // A street with no venue sets no count, and counts toward the area all the same.
+    expect(venuesAround(new SphereIndex([core[0]]), [0], 0, 10, 3)).toEqual({ groupSize: 1, topVenues: [] });
+  });
+});
+

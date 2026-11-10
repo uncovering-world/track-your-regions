@@ -44,6 +44,11 @@ describe('readWorldMemory', () => {
         { external_id: 'Q896890', readers: 54_022, guide_editions: 0, readers_read: true, guides_read: false },
         // A dam read by a build and no year: its readers' zero is no reading.
         { external_id: 'Q9002253', readers: 0, guide_editions: 0, readers_read: false, guides_read: true },
+      ] })
+      .mockResolvedValueOnce({ rows: [
+        // Bauman Street, in by the venues around it; a street in by its readers, whose note names its cafés too.
+        { external_id: 'Q1593247', note: 'In the surroundings tier by the venues around it: within 150 km, 805 places of its density: …' },
+        { external_id: 'fixture-readers-street', note: 'In the surroundings tier by its readers: within 150 km, …; 5 cafés, restaurants and bars within 200 m of this place, …' },
       ] });
     const memory = await readWorldMemory(8);
     expect(memory.bars).toEqual({ readers: 56_955, guidedReaders: 13_757, year: '2025-10 to 2026-09', logId: 812 });
@@ -53,11 +58,14 @@ describe('readWorldMemory', () => {
     expect(query.mock.calls[0][0]).toMatch(/is_dry_run = FALSE/);
     expect(query.mock.calls[0][1]).toEqual([8]);
     expect(query.mock.calls[1][1]).toEqual([8]);
+    // The places that last stood by the venue test (ADR-0192), read off the note each membership records.
+    expect([...memory.venued!]).toEqual(['Q1593247']);
+    expect(query.mock.calls[2][0]).toMatch(/facts->>'admissionNote'/);
   });
 
   it('holds no bars where no run of the source read a year', async () => {
-    query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
-    expect(await readWorldMemory(8)).toEqual({ bars: null, readers: new Map(), guided: new Map() });
+    query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
+    expect(await readWorldMemory(8)).toEqual({ bars: null, readers: new Map(), guided: new Map(), venued: new Set() });
   });
 });
 

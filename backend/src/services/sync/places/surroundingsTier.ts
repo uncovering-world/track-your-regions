@@ -26,7 +26,7 @@ import type { PoolEntity } from '../publicArt/queries.js';
 import type { SubjectRunner } from '../publicArt/subjects.js';
 import { gatherPlaces, shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from './gather.js';
 import { placeLandmark } from './candidates.js';
-import { needsAGuide, SURROUNDINGS_CUT, surroundingsVerdict, yearCut, type SurroundingsCandidate, type SurroundingsCut } from './surroundingsCut.js';
+import { needsAGuide, SURROUNDINGS_CUT, surroundingsVerdict, yearCut, type Surroundings, type SurroundingsCandidate, type SurroundingsCut } from './surroundingsCut.js';
 import type { SurroundingsGroup, SurroundingsPool, SurroundingsPoolRow } from './surroundingsPool.js';
 import type { WorldMemory } from './worldBars.js';
 
@@ -81,6 +81,10 @@ export interface SurroundingsKind<Trees, Context = undefined> {
   context?(survivors: readonly PoolEntity[], share: KindShare<Trees>, sparql: SparqlFn, named: ReadonlySet<string>): Promise<Context>;
   /** The kind's own verdict on a survivor of the cut, read off what the gather asked about it by id. */
   verdict(entity: PoolEntity, share: KindShare<Trees>, context: Context): SurroundingsRuleVerdict;
+  /** Whether the cut reads the cafés, restaurants and bars around its places, a street a traveller walks being lined with them (ADR-0192). */
+  venues?: boolean;
+  /** The types (`typeOf`) whose places the venue test reads along their lines where the layer keeps them (ADR-0194): a street, never a square. */
+  venueLineTypes?: readonly string[];
   logPrefix: string;
 }
 
@@ -114,6 +118,10 @@ export interface SurroundingsReader {
   classes(gathered: GatheredPlaces): ReadonlySet<string>;
   /** The items it measures beside them (`SurroundingsKind.named`), which join the pass's pool. */
   named(gathered: GatheredPlaces): ReadonlySet<string>;
+  /** The classes whose places the pool counts venues around: the kind's own where it reads them (`SurroundingsKind.venues`), none otherwise. */
+  venueClasses(gathered: GatheredPlaces): ReadonlySet<string>;
+  /** Whether a place of these classes is read along its line (`SurroundingsKind.venueLineTypes`); never for a kind that names no such type. */
+  venueLine(gathered: GatheredPlaces): (classes: readonly string[]) => boolean;
   /** The neighbourhoods the cut reads for this kind (`surroundingsGroups`). */
   groups(gathered: GatheredPlaces, cut: SurroundingsCut): SurroundingsGroup[];
   /** `memory` is what the source last read (`worldMemory.ts`), for the guides a run without a usage build cannot read. */
@@ -126,6 +134,12 @@ export function surroundingsReader<Trees, Context = undefined>(surroundings: Sur
   return {
     classes: (gathered) => surroundings.classesOf(shareOf(gathered, surroundings.kind).trees),
     named,
+    venueClasses: (gathered) => (surroundings.venues ? surroundings.classesOf(shareOf(gathered, surroundings.kind).trees) : new Set<string>()),
+    venueLine: (gathered) => {
+      const types = surroundings.venueLineTypes;
+      const trees = shareOf(gathered, surroundings.kind).trees;
+      return (classes) => types !== undefined && surroundings.typeOf !== undefined && types.includes(surroundings.typeOf(classes, trees) ?? '');
+    },
     groups: (gathered, cut) => surroundingsGroups(surroundings, shareOf(gathered, surroundings.kind).trees, cut, named(gathered)),
     arrivals: (run, sparql, gathered, worldAdmitted, pool, held, memory) =>
       surroundingsArrivals(run, sparql, surroundings, shareOf(gathered, surroundings.kind).trees, worldAdmitted, surroundingsLandmark, pool, held, cut, memory,
@@ -217,9 +231,32 @@ function guideOf(qid: string, pool: SurroundingsPool, held: boolean, memory?: Wo
   return row ? candidateOf(row, pool, held, memory) : { guideEditions: 0 };
 }
 
-/** The run line's clause where the guides were read from memory: no usage build is in place. */
-function guidesClause(pool: SurroundingsPool): string {
-  return pool.unreadGuides ? '; no Wikivoyage usage is built, so the guides of the places it holds are as last read and no new place enters by a guide' : '';
+/**
+ * A candidate and its surroundings with its venues as the pool read them, for
+ * a kind that reads them (ADR-0192): its count and its area among the kind's
+ * places, or no reading where the layer in place keeps no venue, a held
+ * place then read by whether it last stood by the venue test.
+ */
+function withVenues(
+  qid: string, candidate: SurroundingsCandidate, near: Surroundings, pool: SurroundingsPool, held: boolean, memory?: WorldMemory,
+): { candidate: SurroundingsCandidate; around: Surroundings } {
+  const read = pool.venues;
+  if (!read || read.unread !== undefined) {
+    const asLastRead = held ? { venuedAsLastRead: memory?.venued?.has(qid) === true } : {};
+    return { candidate: { ...candidate, venues: null, ...asLastRead }, around: near };
+  }
+  const area = read.around.get(qid);
+  const line = read.along.get(qid);
+  const along = line ? { venuesAlong: { metres: Math.round(line.metres) } } : {};
+  const artery = read.arteries.has(qid) ? { artery: true } : {};
+  return { candidate: { ...candidate, venues: read.counts.get(qid) ?? 0, ...along, ...artery }, around: area ? { ...near, venues: area } : near };
+}
+
+/** The run line's clauses where the guides were read from memory, or the venues could not be read. */
+function guidesClause(pool: SurroundingsPool, venues: boolean): string {
+  const guides = pool.unreadGuides ? '; no Wikivoyage usage is built, so the guides of the places it holds are as last read and no new place enters by a guide' : '';
+  const unreadVenues = venues && (!pool.venues || pool.venues.unread !== undefined) ? `; ${pool.venues?.unread ?? 'no venue is read'}` : '';
+  return guides + unreadVenues;
 }
 
 /** The candidates of the kind's classes, and the items it measures beside them, the cut admits, with the notes they clear it by. */
@@ -243,7 +280,9 @@ function survivorsOf<Trees>(
       ?? (held.has(row.qid) ? { groupSize: 0, topEditions: [], topGuideEditions: [], topReaders: [] } : undefined);
     if (!near) continue;
     candidates += 1;
-    const verdict = surroundingsVerdict(candidateOf(row, pool, held.has(row.qid), memory), near, cut, held.has(row.qid));
+    const signals = candidateOf(row, pool, held.has(row.qid), memory);
+    const { candidate, around } = surroundings.venues ? withVenues(row.qid, signals, near, pool, held.has(row.qid), memory) : { candidate: signals, around: near };
+    const verdict = surroundingsVerdict(candidate, around, cut, held.has(row.qid));
     if (verdict.in) { survivors.push(row.qid); notes.set(row.qid, verdict.note); }
     // A row this tier admitted before that no longer clears the cut falls with
     // the cut's own reason, rather than the sweep's generic one.
@@ -327,7 +366,7 @@ export async function surroundingsArrivals<Trees, Context, T>(
   );
   console.log(`${logPrefix} Surroundings tier: ${candidates.toLocaleString('en')} candidates of the kind's classes at ${yearly.minLanguages}+ editions `
     + `and ${(yearly.stayReadersShare * yearly.minReaders).toLocaleString('en')}+ readers (a floor of ${yearly.minReaders.toLocaleString('en')} this year), `
-    + `${survivors.length.toLocaleString('en')} clear the cut within ${yearly.radiusKm} km, ${fell.size} it held fell${guidesClause(pool)}`);
+    + `${survivors.length.toLocaleString('en')} clear the cut within ${yearly.radiusKm} km, ${fell.size} it held fell${guidesClause(pool, surroundings.venues === true)}`);
   if (!survivors.length && !fell.size) return none<T>();
 
   // The survivors asked about by id, with everything the kind's rule reads of a
