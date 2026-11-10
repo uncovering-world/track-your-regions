@@ -362,6 +362,44 @@ by hand.
   (`keepsAsItGoes` on its keeper), so its failed build says that the months
   it kept stay kept and the rest of the year in place is unchanged.
 
+### A copy is never swapped in under a run
+
+A kept copy is swapped in only while no sync run or dry run is alive
+(`swapGuard.ts`, #2415). A run reads the copies as they stood when it started.
+A swap under it would leave its two halves on two dumps, and two runs compared
+main against a branch would not stand on the same inputs.
+
+- **Where.** Each builder swaps through `swapWhenNoRunReads`: the subset build and
+  its re-derive, English Wikipedia's structure, both redirects, the items
+  Wikivoyage uses and the OpenStreetMap layer's build and update. Readership
+  keeps each month in its own step, so each month waits in the same way. English
+  Wikivoyage's articles are read by the world-view extraction, not by a run, and
+  their swap waits for nothing.
+- **One lock, `SWAP_LOCK`**, a session advisory lock that three parties take:
+  - **A swap** takes it alone (`pg_try_advisory_lock`) and swaps only where no run is
+    alive besides. Otherwise it lets the lock go and asks again every 30 seconds.
+  - **A pass** holds it shared for as long as it runs (`holdCopiesForReading` in
+    `syncPass.ts`), so no swap lands between one kind's run and the next's.
+  - **A run's start** holds it shared while it writes its log row (`createSyncLog`,
+    `openRunLog` in `runInputs.ts`), so no run starts in the middle of a swap.
+
+  A client that cannot let the lock go is closed rather than handed back to the pool
+  holding it. A crashed pass's lock goes with its connection.
+- **A run alive** outside a pass is a log row `running` whose progress was written in the
+  last five minutes. `syncProgressWriter.ts` writes it every 15 seconds at least, so a row
+  a crashed process left `running` stops holding swaps back after five minutes.
+- **While it waits**, the build's row carries the runs it waits for (`progress.waitsFor`), and
+  its message names them, for example *Waiting to swap in until the run of Public art (a dry run)
+  ends*, or *until the sync work reading the copies ends* between two of a pass's kinds, during a run's after-steps or during the component search. The run's card
+  on the sync panel names the copies waiting for it (`waitingBuilds` on the run's status,
+  `buildsWaitingFor`), so a long pass and the build behind it read as what they are. A cancel
+  ends the wait with its own reason.
+- **Each run's log row names the copies it read** (`copies_read`, migration 226): the dump
+  date of every copy in place when it started, written under the same lock
+  (`copiesInPlace`). English Wikivoyage's articles are left out, since no run reads them
+  (`readByRuns: false` on their keeper). The run history shows them on each row, so a comparison across a swap
+  shows as one.
+
 ## The local Wikidata subset
 
 Code: `backend/src/services/dumps/wikidata/` —
