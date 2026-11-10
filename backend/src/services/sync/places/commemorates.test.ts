@@ -20,6 +20,9 @@
  * Istanbul (Q1143790) depicts Atatürk (Q5152), Aralov (Q2636506), Voroshilov
  * (Q186185), Çakmak (Q328331) and İnönü (Q183297); the Statue of St.
  * Wenceslas (Q3497632) commemorates and depicts him (Q196527).
+ *
+ * A war narrowed by the place's own significant event (#2412): the Hiroshima
+ * Peace Memorial (Q231140) names the atomic bombing of Hiroshima (Q703203).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,8 +37,9 @@ import type { SparqlFn } from '../wikidataQueries.js';
 import { MAX_COMMEMORATED_SUBJECTS } from '@tyr/shared/commemorates';
 import {
   categoryTitles, CONCERNING_CATEGORIES, fetchSubjectClaims, fetchSubjectKinds, MAX_DEDICATED_FIGURES, MEMORIALS_CATEGORY, readCommemorates,
-  namedInPlace, readingOfPlace, STATUES_CATEGORY, type CommemorationWiki, type FiledSubjects, type SubjectClaims, type SubjectKind,
+  readingOfPlace, STATUES_CATEGORY, type CommemorationWiki, type FiledSubjects, type SubjectClaims, type SubjectKind,
 } from './commemorates.js';
+import { namedInPlace } from './placeNames.js';
 
 const LINCOLN_MEMORIAL = 'Q213559';
 const LINCOLN = 'Q91';
@@ -64,12 +68,16 @@ const REPUBLIC_FOUNDERS = ['Q5152', 'Q2636506', 'Q186185', 'Q328331', 'Q183297']
 const TREPTOW_MEMORIAL = 'Q48441';
 const WW2 = 'Q362';
 const BATTLE_OF_BERLIN = 'Q154182';
+const HIROSHIMA_PEACE_MEMORIAL = 'Q231140';
+const BOMBING_OF_HIROSHIMA = 'Q703203';
 
 const article = (title: string) => `https://en.wikipedia.org/wiki/${title}`;
-const claims = (over: Partial<SubjectClaims> = {}): SubjectClaims => ({ commemorates: [], mainSubjects: [], namedAfter: [], depicts: [], ...over });
-const NOT: Omit<SubjectKind, 'label'> = { human: false, event: false, holy: false, war: false, conflict: false, span: null };
+const claims = (over: Partial<SubjectClaims> = {}): SubjectClaims => ({
+  commemorates: [], mainSubjects: [], namedAfter: [], depicts: [], significantEvents: [], ...over,
+});
+const NOT: Omit<SubjectKind, 'label'> = { human: false, event: false, holy: false, war: false, occurrence: false, span: null };
 const person = (label: string): SubjectKind => ({ ...NOT, label, human: true });
-const event = (label: string): SubjectKind => ({ ...NOT, label, event: true });
+const event = (label: string): SubjectKind => ({ ...NOT, label, event: true, occurrence: true });
 const thing = (label: string): SubjectKind => ({ ...NOT, label });
 const holy = (label: string, human = true): SubjectKind => ({ ...NOT, label, human, holy: true });
 
@@ -92,8 +100,9 @@ const KINDS = new Map<string, SubjectKind>([
   [PLAGUE, event('plague')],
   [WENCESLAS, holy('Saint Wenceslaus I, Duke of Bohemia')],
   ...REPUBLIC_FOUNDERS.map((item, i) => [item, person(`Founder ${i + 1}`)] as const),
-  [WW2, { ...event('World War II'), war: true, conflict: true, span: { from: 19390901, to: 19450902 } }],
-  [BATTLE_OF_BERLIN, { ...event('Battle of Berlin'), conflict: true, span: { from: 19450416, to: 19450502 } }],
+  [WW2, { ...event('World War II'), war: true, span: { from: 19390901, to: 19450902 } }],
+  [BATTLE_OF_BERLIN, { ...event('Battle of Berlin'), span: { from: 19450416, to: 19450502 } }],
+  [BOMBING_OF_HIROSHIMA, { ...event('atomic bombing of Hiroshima'), span: { from: 19450806, to: 19450806 } }],
 ]);
 const ARTICLES = new Map([[LINCOLN, article('Abraham_Lincoln')], [NELSON, article('Horatio_Nelson,_1st_Viscount_Nelson')]]);
 const NOTHING_FILED: FiledSubjects = { memorials: [], concerning: [], statues: [], statueCategories: 0 };
@@ -255,6 +264,7 @@ describe('reading the places of a run', () => {
       [NELSONS_COLUMN, claims({ depicts: [NELSON, LION, BATTLE, NILE, CAPE_ST_VINCENT, TRAFALGAR] })],
       [BRANDENBURG_GATE, claims({ namedAfter: [BRANDENBURG_AN_DER_HAVEL] })],
       [TREPTOW_MEMORIAL, claims({ commemorates: [WW2] })],
+      [HIROSHIMA_PEACE_MEMORIAL, claims({ significantEvents: [BOMBING_OF_HIROSHIMA] })],
     ]));
     vi.mocked(subsetSubjectKinds).mockImplementation(async (ids) => new Map(ids.flatMap((id) => (KINDS.has(id) ? [[id, KINDS.get(id)!] as const] : []))));
     vi.mocked(subsetEnglishArticles).mockImplementation(async (ids) => new Map(ids.flatMap((id) => (ARTICLES.has(id) ? [[id, ARTICLES.get(id)!] as const] : []))));
@@ -304,6 +314,17 @@ describe('reading the places of a run', () => {
     expect(found.get(LINCOLN_MEMORIAL)?.commemorates?.via).toBe('commemorates');
   });
 
+  it('narrows a war its categories read to the significant event Wikidata names for the place', async () => {
+    const read = wiki({ 'Hiroshima Peace Memorial': ['World War II memorials in Japan'] }, { 'World War II': WW2 });
+    vi.mocked(read.leads).mockResolvedValue(new Map([['Hiroshima Peace Memorial', 'The ruin serves as a memorial to the people killed in the bombing.']]));
+    const found = await readCommemorates([
+      { qid: HIROSHIMA_PEACE_MEMORIAL, articleUrl: article('Hiroshima_Peace_Memorial'), label: 'Hiroshima Peace Memorial' },
+    ], subsetOnlyDoor(), read);
+    expect(found.get(HIROSHIMA_PEACE_MEMORIAL)?.commemorates).toEqual({
+      via: 'war-narrowed-by-event', subjects: [{ item: BOMBING_OF_HIROSHIMA, label: 'atomic bombing of Hiroshima', articleUrl: null }],
+    });
+  });
+
   it('asks no category of a place with no English article', async () => {
     const read = wiki({}, {});
     const found = await readCommemorates([{ qid: HERMANNSDENKMAL, articleUrl: null }], subsetOnlyDoor(), read);
@@ -317,32 +338,35 @@ describe('the live twins', () => {
   beforeEach(() => { vi.clearAllMocks(); });
   const entity = (qid: string) => ({ value: `http://www.wikidata.org/entity/${qid}` });
 
-  it('read the four statements of each place, by item where the answer has no statement order', async () => {
+  it('read the five statements of each place, by item where the answer has no statement order', async () => {
     const sparql = vi.fn<SparqlFn>(async () => [
       { e: entity(NELSONS_COLUMN), depicts: entity(TRAFALGAR) },
       { e: entity(NELSONS_COLUMN), depicts: entity(NELSON) },
       { e: entity(LINCOLN_MEMORIAL), commemorates: entity(LINCOLN) },
       { e: entity(ALEXANDER_COLUMN), namesake: entity(ALEXANDER_I) },
       { e: entity(HERMANNSDENKMAL), subject: entity(ARMINIUS) },
+      { e: entity(HIROSHIMA_PEACE_MEMORIAL), happened: entity(BOMBING_OF_HIROSHIMA) },
     ]);
-    const answer = await fetchSubjectClaims(sparql, [NELSONS_COLUMN, LINCOLN_MEMORIAL, ALEXANDER_COLUMN, HERMANNSDENKMAL]);
+    const answer = await fetchSubjectClaims(sparql, [NELSONS_COLUMN, LINCOLN_MEMORIAL, ALEXANDER_COLUMN, HERMANNSDENKMAL, HIROSHIMA_PEACE_MEMORIAL]);
     expect(answer.get(NELSONS_COLUMN)?.depicts).toEqual([NELSON, TRAFALGAR]);
     expect(answer.get(LINCOLN_MEMORIAL)?.commemorates).toEqual([LINCOLN]);
     expect(answer.get(ALEXANDER_COLUMN)?.namedAfter).toEqual([ALEXANDER_I]);
     expect(answer.get(HERMANNSDENKMAL)?.mainSubjects).toEqual([ARMINIUS]);
+    expect(answer.get(HIROSHIMA_PEACE_MEMORIAL)?.significantEvents).toEqual([BOMBING_OF_HIROSHIMA]);
     expect(subsetSubjectClaims).not.toHaveBeenCalled();
   });
 
   it('read what each value is, and no label the service answers with an id', async () => {
     const sparql = vi.fn<SparqlFn>(async () => [
       { v: entity(NELSON), vLabel: { value: 'Horatio Nelson' }, human: { value: 'true' } },
-      { v: entity(TRAFALGAR), vLabel: { value: 'Battle of Trafalgar' }, event: { value: 'true' } },
+      { v: entity(TRAFALGAR), vLabel: { value: 'Battle of Trafalgar' }, event: { value: 'true' }, occurrence: { value: 'true' } },
       { v: entity(LION), vLabel: { value: 'lion' } },
       { v: entity('Q999999999'), vLabel: { value: 'Q999999999' } },
     ]);
     const answer = await fetchSubjectKinds(sparql, [NELSON, TRAFALGAR, LION, 'Q999999999']);
     expect(answer.get(NELSON)).toEqual(person('Horatio Nelson'));
     expect(sparql.mock.calls[0][0]).toContain('wdt:P411');
+    expect(sparql.mock.calls[0][0]).toContain('wd:Q1190554');
     expect(answer.get(TRAFALGAR)).toEqual(event('Battle of Trafalgar'));
     expect(answer.get(LION)).toEqual(thing('lion'));
     expect(answer.has('Q999999999')).toBe(false);
@@ -351,7 +375,7 @@ describe('the live twins', () => {
   it('read a holy figure, a war and its span', async () => {
     const sparql = vi.fn<SparqlFn>(async () => [
       { v: entity(JESUS), vLabel: { value: 'Jesus Christ' }, human: { value: 'true' }, holy: { value: 'true' } },
-      { v: entity(WW2), vLabel: { value: 'World War II' }, event: { value: 'true' }, war: { value: 'true' }, conflict: { value: 'true' },
+      { v: entity(WW2), vLabel: { value: 'World War II' }, event: { value: 'true' }, war: { value: 'true' }, occurrence: { value: 'true' }, conflict: { value: 'true' },
         start: { value: '1939-09-01T00:00:00Z' }, end: { value: '1945-09-02T00:00:00Z' } },
     ]);
     const answer = await fetchSubjectKinds(sparql, [JESUS, WW2]);

@@ -72,18 +72,19 @@ import {
   type SparqlBinding,
 } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
-import { CONFLICTS, DEITY, spanOf, subsetSubjectClaims, subsetSubjectKinds, WAR } from '../subset/commemorates.js';
+import { DEITY, OCCURRENCE, spanOf, subsetSubjectClaims, subsetSubjectKinds, WAR } from '../subset/commemorates.js';
 import { articleUrl } from '../subset/values.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureArticleItems, structureCategories } from '../wikipediaStructure.js';
 import { enwikiTitleOf, fetchWikipediaCategories, type CategoryOptions } from '../wikipediaCategories.js';
 import { resolveWikipediaArticles } from '../wikipediaArticles.js';
-import { dedicationLinks, fetchLeads, narrowWars, type Span } from './warNarrowing.js';
+import { fetchLeads, narrowWarReadings, type Span } from './warNarrowing.js';
+import { namedInPlace } from './placeNames.js';
 import type { SyncProgress } from '../types.js';
 
 const BATCH = 50;
 
-const NO_CLAIMS: SubjectClaims = { commemorates: [], mainSubjects: [], namedAfter: [], depicts: [] };
+const NO_CLAIMS: SubjectClaims = { commemorates: [], mainSubjects: [], namedAfter: [], depicts: [], significantEvents: [] };
 
 /** The items a place names, by property, at their best rank. */
 export interface SubjectClaims {
@@ -95,6 +96,8 @@ export interface SubjectClaims {
   namedAfter: string[];
   /** `P180` depicts. */
   depicts: string[];
+  /** `P793` significant event, which may narrow a war the reading names (`warNarrowing.ts`). */
+  significantEvents: string[];
 }
 
 /** What a value is: its label, whether it is a person or an event, and whether it is a holy figure. */
@@ -106,8 +109,8 @@ export interface SubjectKind {
   holy: boolean;
   /** A war (`P31` under Q198), which the place's lead may narrow (`warNarrowing.ts`). */
   war: boolean;
-  /** An armed conflict, a military operation or a theatre of war: what a war is narrowed to. */
-  conflict: boolean;
+  /** An occurrence (`P31` under Q1190554): what a war may be narrowed to, where an item with dates may be a peninsula. */
+  occurrence: boolean;
   /** When it happened: its start (`P580`) or point in time (`P585`) to its end (`P582`), where Wikidata says. */
   span: Span | null;
 }
@@ -210,17 +213,6 @@ type Step = [CommemorationStep, ReadonlyArray<readonly [readonly string[], Accep
 
 const asFound = (found: Found) => found;
 
-/** The words of a name a reader would know a person by: four letters or more, a capital first. */
-function nameWords(name: string): string[] {
-  return name.split(/[^\p{L}]+/u).filter((word) => word.length >= 4 && /^\p{Lu}/u.test(word));
-}
-
-/** Of a scene's people, those whose name the place's own name carries: "Luther monument Worms" → Martin Luther. */
-export function namedInPlace(people: CommemoratedSubject[], placeName: string | undefined): CommemoratedSubject[] {
-  const words = new Set(nameWords(placeName ?? '').map((word) => word.toLowerCase()));
-  return people.filter((person) => nameWords(person.label).some((word) => words.has(word.toLowerCase())));
-}
-
 /** The values a step accepts, once each in its order: its holy figures apart where the step reads what a work shows. */
 function subjectsOfStep(
   lists: Step[1], shows: boolean, kinds: ReadonlyMap<string, SubjectKind>, articles: ReadonlyMap<string, string>,
@@ -283,6 +275,7 @@ export function readingOfPlace(
 /** Which binding of the live answer each list of a place's claims is read from. */
 const CLAIM_COLUMNS: ReadonlyArray<[string, keyof SubjectClaims]> = [
   ['commemorates', 'commemorates'], ['subject', 'mainSubjects'], ['namesake', 'namedAfter'], ['depicts', 'depicts'],
+  ['happened', 'significantEvents'],
 ];
 
 /** What one row of the live answer adds to its place's claims: one statement. */
@@ -299,14 +292,15 @@ export async function fetchSubjectClaims(sparql: SparqlFn, qids: string[]): Prom
   const out = new Map<string, SubjectClaims>();
   for (const batch of chunk(qids, BATCH)) {
     const rows = await sparql(`
-      SELECT ?e ?commemorates ?subject ?namesake ?depicts WHERE {
+      SELECT ?e ?commemorates ?subject ?namesake ?depicts ?happened WHERE {
         VALUES ?e { ${values(batch)} }
         { ?e wdt:P547 ?commemorates } UNION { ?e wdt:P921 ?subject } UNION { ?e wdt:P138 ?namesake } UNION { ?e wdt:P180 ?depicts }
+        UNION { ?e wdt:P793 ?happened }
       }`, { kind: 'edges', label: `whom or what ${batch.length} places commemorate` });
     for (const row of rows) {
       const qid = extractQid(row.e?.value ?? '');
       if (!isQid(qid)) continue;
-      const claims = out.get(qid) ?? { commemorates: [], mainSubjects: [], namedAfter: [], depicts: [] };
+      const claims = out.get(qid) ?? { commemorates: [], mainSubjects: [], namedAfter: [], depicts: [], significantEvents: [] };
       addClaim(claims, row);
       out.set(qid, claims);
     }
@@ -322,7 +316,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
   const out = new Map<string, SubjectKind>();
   for (const batch of chunk(qids, BATCH)) {
     const rows = await sparql(`
-      SELECT ?v ?vLabel ?human ?event ?holy ?war ?conflict ?start ?end ?at WHERE {
+      SELECT ?v ?vLabel ?human ?event ?holy ?war ?occurrence ?start ?end ?at WHERE {
         VALUES ?v { ${values(batch)} }
         OPTIONAL { ?v wdt:P31 wd:Q5 . BIND(true AS ?human) }
         OPTIONAL { ?v wdt:P585|wdt:P580|wdt:P582 ?when . BIND(true AS ?event) }
@@ -332,7 +326,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
           BIND(true AS ?holy)
         }
         OPTIONAL { ?v wdt:P31/wdt:P279* wd:${WAR} . BIND(true AS ?war) }
-        OPTIONAL { VALUES ?root { ${values([...CONFLICTS])} } ?v wdt:P31/wdt:P279* ?root . BIND(true AS ?conflict) }
+        OPTIONAL { ?v wdt:P31/wdt:P279* wd:${OCCURRENCE} . BIND(true AS ?occurrence) }
         OPTIONAL { ?v wdt:P580 ?start }
         OPTIONAL { ?v wdt:P582 ?end }
         OPTIONAL { ?v wdt:P585 ?at }
@@ -351,7 +345,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
         event: Boolean(row.event) || Boolean(known?.event),
         holy: Boolean(row.holy) || Boolean(known?.holy),
         war: Boolean(row.war) || Boolean(known?.war),
-        conflict: Boolean(row.conflict) || Boolean(known?.conflict),
+        occurrence: Boolean(row.occurrence) || Boolean(known?.occurrence),
         span: known?.span ?? spanOf(times.start ?? times.at, times.end ?? times.at),
       });
     }
@@ -417,38 +411,8 @@ export async function readCommemorates(
     const reading = readingOfPlace(claims.get(qid) ?? NO_CLAIMS, filed.get(qid) ?? NONE, known, articles, label);
     if (reading.commemorates || reading.depicts) out.set(qid, reading);
   }
-  await narrowByLeads(places, out, known, articles, sparql, wiki);
+  await narrowWarReadings(places, out, claims, { kinds: known, articles }, wiki, (items) => fetchSubjectKinds(sparql, items));
   return out;
-}
-
-/**
- * Each reading that names a war, with the war narrowed to the conflicts its
- * place's English lead links within it (`warNarrowing.ts`), in place. `kinds`
- * and `articles` learn the linked items.
- */
-async function narrowByLeads(
-  places: readonly CommemorationPlace[], readings: Map<string, PlaceReading>, kinds: Map<string, SubjectKind>,
-  articles: Map<string, string>, sparql: SparqlFn, wiki: CommemorationWiki,
-): Promise<void> {
-  const titleOf = new Map(places.flatMap((place) => {
-    const title = enwikiTitleOf(place.articleUrl);
-    const named = readings.get(place.qid)?.commemorates?.subjects ?? [];
-    return title && named.some((subject) => kinds.get(subject.item)?.war) ? [[place.qid, title] as const] : [];
-  }));
-  if (!titleOf.size) return;
-  const leads = await wiki.leads([...new Set(titleOf.values())]);
-  const links = new Map([...titleOf].map(([qid, title]) => [qid, dedicationLinks(leads.get(title) ?? '')] as const));
-  const asked = [...new Set([...links.values()].flat())];
-  const items = asked.length ? await wiki.articleItems(asked) : new Map<string, string>();
-  const unknown = [...new Set(items.values())].filter((item) => !kinds.has(item));
-  for (const [item, kind] of await fetchSubjectKinds(sparql, unknown)) kinds.set(item, kind);
-  for (const [title, item] of items) if (!articles.has(item)) articles.set(item, articleUrl(title));
-  for (const [qid, titles] of links) {
-    const reading = readings.get(qid);
-    if (!reading?.commemorates) continue;
-    const linked = titles.map((title) => items.get(title)).filter((item): item is string => Boolean(item));
-    reading.commemorates = narrowWars(reading.commemorates, linked, kinds, articles);
-  }
 }
 
 /**
