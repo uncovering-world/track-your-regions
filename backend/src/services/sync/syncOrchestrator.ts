@@ -38,6 +38,7 @@ import {
 import type { SyncRunContext, SyncServiceConfig } from './syncContract.js';
 import type { SyncProgress, RunVerdict, ErrorDetail, SyncRunOptions } from './types.js';
 import { runningSyncs, isTerminalSyncStatus } from './types.js';
+import { passOf } from './passes.js';
 import { refreshRobotsForRun } from '../robots/robotsSignals.js';
 
 // =============================================================================
@@ -467,6 +468,20 @@ export function isCancellable(progress: SyncProgress): boolean {
 }
 
 /**
+ * The entry of a run of the source's pass when the source itself holds none:
+ * a dry run of a later kind alone (#2424) is started, followed and cancelled
+ * through the pass's card, whose Cancel names the pass's first source, which
+ * that run never registered.
+ */
+function passEntryOf(sourceId: number): SyncProgress | undefined {
+  for (const id of passOf(sourceId)) {
+    const entry = runningSyncs.get(id);
+    if (entry?.passSources) return entry;
+  }
+  return undefined;
+}
+
+/**
  * Cancel a running sync for any source by ID.
  *
  * Answers whether the press was acted on, not whether the run stopped: it sets
@@ -478,7 +493,7 @@ export function isCancellable(progress: SyncProgress): boolean {
  * none of them starts after the press.
  */
 export function cancelSync(sourceId: number): boolean {
-  const progress = runningSyncs.get(sourceId);
+  const progress = runningSyncs.get(sourceId) ?? passEntryOf(sourceId);
   if (!progress) return false;
   let acted = false;
   for (const id of progress.passSources ?? [sourceId]) {

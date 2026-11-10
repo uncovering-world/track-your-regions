@@ -137,7 +137,8 @@ export function completionMessage(
   return `${verdict}: ${progress.created} created, ${progress.updated} updated, `
     + `${progress.unchanged} unchanged (${progress.held} held), ${progress.missing} missing, `
     + `${progress.errors} errors${skipped}${pinsSentence(progress.pins, progress.dryRun)}`
-    + visitQuestionsSentence(progress.visitQuestions, progress.dryRun);
+    + visitQuestionsSentence(progress.visitQuestions, progress.dryRun)
+    + (progress.alone ? '; run alone, from the pass\'s whole gather: the pass\'s other kinds did not run' : '');
 }
 
 /**

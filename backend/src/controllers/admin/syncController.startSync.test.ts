@@ -86,6 +86,28 @@ describe('startSync for a source of a pass', () => {
     expect(syncPlacePass).toHaveBeenCalled();
   });
 
+  it('starts a dry run of one kind alone, and refuses one on a real run or for a source outside the pass (#2424)', async () => {
+    const active = { rows: [{ id: 3, name: 'Public art', is_active: true }] };
+    const ask = async (body: Record<string, unknown>) => {
+      mockedQuery.mockResolvedValueOnce(active);
+      const res = makeRes();
+      await answerRoute(startRoute, { ...request(3), body } as never, res as never);
+      return res;
+    };
+
+    const real = await ask({ alone: [6] });
+    expect(real.status).toHaveBeenCalledWith(400);
+    expect(real.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringMatching(/Only a dry run/) }));
+    const stranger = await ask({ dryRun: true, alone: [9] });
+    expect(stranger.status).toHaveBeenCalledWith(400);
+    expect(stranger.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringMatching(/Source 9 does not run in this pass/) }));
+    expect(syncPlacePass).not.toHaveBeenCalled();
+
+    const alone = await ask({ dryRun: true, alone: [6, 6] });
+    expect(syncPlacePass).toHaveBeenCalledWith(7, expect.objectContaining({ dryRun: true, alone: [6] }));
+    expect(alone.json).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/Only the kinds named run/) }));
+  });
+
   it('hands the pass to the after-steps once, with the source that started it', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Public art', is_active: true }] });
     vi.mocked(syncPlacePass).mockImplementationOnce(async () => {

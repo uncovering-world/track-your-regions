@@ -187,12 +187,14 @@ export async function startSync(
   // Asked for when a rule has changed (#1370): every pin the run disagrees with
   // becomes a question, not only the ones whose reason moved.
   const askAboutPins = body.askAboutPins === true;
+  // A dry run of some of the pass's kinds alone (#2424), named by their sources.
+  const alone = aloneOf(body.alone, dryRun, pass);
 
   // Start sync based on source type
   const syncFn = syncRegistry[sourceId];
   if (!syncFn) throw badRequest(`Sync not implemented for source: ${source.name}`);
 
-  syncFn(triggeredBy, { dryRun, refreshCache, askAboutPins })
+  syncFn(triggeredBy, { dryRun, refreshCache, askAboutPins, ...(alone ? { alone } : {}) })
     .catch((err) => {
       console.error('[Sync Controller] Sync error for source %s:', sourceId, err);
     })
@@ -214,11 +216,24 @@ export async function startSync(
     dryRun,
     refreshCache,
     askAboutPins,
-    message: buildStartMessage({ dryRun, refreshCache, askAboutPins }),
+    message: buildStartMessage({ dryRun, refreshCache, askAboutPins, alone: alone !== undefined }),
   };
 }
 
-function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean; askAboutPins: boolean }): string {
+/**
+ * The sources a dry run runs alone, checked before anything starts: only a dry
+ * run leaves kinds out (a real pass left without one would keep that kind's
+ * last decisions as if it had run), and only of the pass it starts.
+ */
+function aloneOf(named: readonly number[] | undefined, dryRun: boolean, pass: readonly number[]): readonly number[] | undefined {
+  if (named === undefined) return undefined;
+  if (!dryRun) throw badRequest('Only a dry run runs some kinds of a pass alone; a real run runs every kind of the pass');
+  const strangers = named.filter((id) => !pass.includes(id));
+  if (strangers.length) throw badRequest(`Source ${strangers.join(', ')} does not run in this pass`);
+  return [...new Set(named)];
+}
+
+function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean; askAboutPins: boolean; alone?: boolean }): string {
   // The cache half is said second and always, because it changes how long the
   // run takes rather than what it writes: a curator who asked for fresh answers
   // and sees the usual quarter-hour should know the two are connected.
@@ -229,7 +244,8 @@ function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean; askAb
     ? ' Every pinned row the run disagrees with is asked about again.'
     : '';
   if (mode.dryRun) {
-    return `Dry run started: the changeset will be recorded, experiences will not be written.${cache}${mode.askAboutPins ? ' The pins it would ask about again are counted, not asked.' : ''}`;
+    const alone = mode.alone ? ' Only the kinds named run, from the pass\'s whole gather.' : '';
+    return `Dry run started: the changeset will be recorded, experiences will not be written.${alone}${cache}${mode.askAboutPins ? ' The pins it would ask about again are counted, not asked.' : ''}`;
   }
   return `Sync started. Poll /status endpoint for progress.${cache}${pins}`;
 }

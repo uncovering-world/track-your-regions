@@ -50,7 +50,7 @@ export function passMember<T>(config: SyncServiceConfig<T>): PassMember {
 }
 
 /** The entry a later source of a pass holds while an earlier one runs. */
-function waitingProgress(dryRun: boolean, passSources: number[]): SyncProgress {
+function waitingProgress(dryRun: boolean, passSources: number[], alone: boolean): SyncProgress {
   return {
     cancel: false,
     kind: 'sync',
@@ -70,6 +70,7 @@ function waitingProgress(dryRun: boolean, passSources: number[]): SyncProgress {
     logId: null,
     dryRun,
     passSources,
+    ...(alone ? { alone } : {}),
   };
 }
 
@@ -99,19 +100,21 @@ export async function runSyncPass(
   triggeredBy: number | null,
   options: SyncRunOptions = {},
 ): Promise<void> {
-  const sourceIds = members.map((member) => member.sourceId);
-  if (passIsRunning(sourceIds)) {
+  if (passIsRunning(members.map((member) => member.sourceId))) {
     throw new Error(`${members[0].logPrefix} pass already in progress`);
   }
   const dryRun = options.dryRun ?? false;
-  const slots = new Map(sourceIds.map((id) => [id, waitingProgress(dryRun, sourceIds)]));
+  const running = runningMembers(members, options);
+  const sourceIds = running.map((member) => member.sourceId);
+  const alone = running.length < members.length;
+  const slots = new Map(sourceIds.map((id) => [id, waitingProgress(dryRun, sourceIds, alone)]));
   for (const [id, progress] of slots) runningSyncs.set(id, progress);
 
   let firstLogId: number | null = null;
   let stopped = false;
   let failure: unknown;
   try {
-    for (const member of members) {
+    for (const member of running) {
       const progress = slots.get(member.sourceId) as SyncProgress;
       if (stopped || progress.cancel) {
         stopped = true;
@@ -142,6 +145,26 @@ export async function runSyncPass(
   }
   // The first failure, for the caller's log, once every source had its turn.
   if (failure !== undefined) throw failure;
+}
+
+/**
+ * The sources of the pass this run runs (#2424): every one, or on a dry run
+ * the ones `options.alone` names, in the pass's order. The gather is shared
+ * and made whole by whichever runs first, so a source run alone reads what it
+ * reads in the whole pass: what one kind hands another goes through the
+ * database (`handOvers.ts`), which no dry run writes. A real pass runs every
+ * source, since a kind it left out would keep what the last run decided.
+ */
+function runningMembers(members: readonly PassMember[], options: SyncRunOptions): readonly PassMember[] {
+  if (options.alone === undefined) return members;
+  if (!options.dryRun) throw new Error('Only a dry run runs some sources of a pass alone; a real pass runs every source');
+  const named = new Set(options.alone);
+  const running = members.filter((member) => named.has(member.sourceId));
+  const strangers = [...named].filter((id) => !members.some((member) => member.sourceId === id));
+  if (strangers.length || running.length === 0) {
+    throw new Error(`Source ${strangers.join(', ') || 'none'} is not a source of this pass`);
+  }
+  return running;
 }
 
 /** Drop a source's entry once a poller has had time to read how it ended. */
