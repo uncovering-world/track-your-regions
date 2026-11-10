@@ -5525,6 +5525,8 @@ CREATE TABLE IF NOT EXISTS workbench.osm_layer_builds (
     swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 COMMENT ON TABLE workbench.osm_layer_builds IS 'Each build of the OpenStreetMap layer that was swapped in (#1437, ADR-0134): the dump build that cut it, the planet file and its date, the replication timestamp the planet was current to (every answer read from the layer carries it), the objects kept, how many objects the catalogue named were cut in whatever their tags, and how many of those the planet no longer held (deleted or redrawn under another id since a place linked them). The newest row is what osm_objects holds.';
+ALTER TABLE workbench.osm_layer_builds ADD COLUMN IF NOT EXISTS selection TEXT[];
+COMMENT ON COLUMN workbench.osm_layer_builds.selection IS 'The selection the build kept objects by (LAYER_SELECTION, ADR-0191): one osmium tags-filter expression per key, such as amenity=place_of_worship,cafe,restaurant. A reader of a tag the build did not select treats the layer as not read for it. NULL is a layer cut before ADR-0191, which kept no venue it did not select for another tag.';
 COMMENT ON COLUMN workbench.osm_layer_builds.drawn IS 'The rule the build kept full geometries by (ADR-0136): {historic, manMade, boundary} value lists, with ruins and archaeological_site drawn by their presence. Every other object holds a point. NULL is a layer cut before ADR-0136, which kept every geometry whole.';
 
 CREATE TABLE IF NOT EXISTS workbench.osm_objects (

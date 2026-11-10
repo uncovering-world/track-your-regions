@@ -882,6 +882,7 @@ export interface OsmLayerBuildsRow {
   pinned_gone: number;
   drawn: unknown | null;
   swapped_at: Date;
+  selection: string[] | null;
 }
 
 /** The table `osm_layer_schedule`. */

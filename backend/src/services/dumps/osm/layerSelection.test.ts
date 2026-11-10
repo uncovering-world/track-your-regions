@@ -32,7 +32,9 @@ describe('the layer selection', () => {
     const lines = selectionFile().trimEnd().split('\n');
     expect(lines).toHaveLength(LAYER_SELECTION.length);
     expect(lines).toContain('nwr/wikidata');
-    expect(lines).toContain('nwr/amenity=place_of_worship');
+    expect(lines).toContain('nwr/amenity=place_of_worship,cafe,restaurant,bar,pub,fast_food,ice_cream,biergarten');
+    // One entry per key: the flex style reads one set of values for each.
+    expect(new Set(lines.map(line => line.split('=')[0])).size).toBe(lines.length);
     expect(lines).toContain('nwr/boundary=protected_area,national_park');
     expect(lines.every(line => /^nwr\/[a-z_:]+(=[a-z_,]+)?$/.test(line))).toBe(true);
   });

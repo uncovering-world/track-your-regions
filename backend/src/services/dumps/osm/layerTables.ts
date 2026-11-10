@@ -79,6 +79,8 @@ export interface LayerRecord {
   pinnedGone: number;
   /** The rule the build kept full geometries by (ADR-0136). */
   drawn: KeepWkt;
+  /** The selection the build kept objects by (`LAYER_SELECTION`, ADR-0191). */
+  selection: readonly string[];
 }
 
 /**
@@ -95,10 +97,10 @@ export async function swapIn(record: LayerRecord, signal: AbortSignal): Promise<
     await client.query(`ALTER TABLE ${NEXT} RENAME TO ${TABLE}`);
     for (const index of indexes) await client.query(`ALTER INDEX ${inWorkbench(index.name + '_next')} RENAME TO ${index.name}`);
     await client.query(
-      `INSERT INTO osm_layer_builds (build_id, planet_file, dump_date, replicated_at, objects, pinned, pinned_gone, drawn)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO osm_layer_builds (build_id, planet_file, dump_date, replicated_at, objects, pinned, pinned_gone, drawn, selection)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [record.buildId, record.planetFile, record.dumpDate, record.replicatedAt, record.objects, record.pinned, record.pinnedGone,
-        JSON.stringify(record.drawn)],
+        JSON.stringify(record.drawn), [...record.selection]],
     );
     signal.throwIfAborted();
     await client.query('COMMIT');
