@@ -51,7 +51,7 @@ const WORLD_HERITAGE: TypeVocabulary = {
 
 const PUBLIC_ART: TypeVocabulary = {
   options: PUBLIC_ART_TYPES,
-  what: 'What the work is, read from Wikidata’s classes: a public clock with a show as a clock, a fountain before a sculpture, a mural as street art.',
+  what: 'What the work is, read from Wikidata’s classes: a clock first, then street art, a fountain, a religious statue (or a plain sculpture that depicts a holy figure), an equestrian statue, a roadside giant, installation and land art, and a sculpture otherwise.',
   whenItChanges: 'Retyped on Wikidata. The same work either way; the filter chip it answers to changes.',
 };
 
@@ -190,10 +190,12 @@ export function typeVocabularyOf(value: unknown): TypeVocabulary | null {
 
 /**
  * A type's plural where an `s` alone would be wrong. "Street art" counts no
- * pieces of itself and "flight of locks" pluralises its head.
+ * pieces of itself, "flight of locks" pluralises its head, and "installation
+ * and land art" names two things, each counted on its own.
  */
 const IRREGULAR: Record<string, [string, string]> = {
   'street-art': ['piece of street art', 'pieces of street art'],
+  installation: ['installation or work of land art', 'installations and works of land art'],
   'lock-flight': ['flight of locks', 'flights of locks'],
 };
 

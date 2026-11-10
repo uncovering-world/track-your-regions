@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { hasExtent, kindWithType, typeOptionsFor, typeVocabularyOf } from './experienceTypes';
+import { hasExtent, kindWithType, typeNoun, typeOptionsFor, typeVocabularyOf } from './experienceTypes';
 
 const WORLD_HERITAGE = 1;
 const ART_MUSEUMS = 2;
@@ -20,7 +20,9 @@ const MONUMENTS = 6;
 describe('typeOptionsFor', () => {
   it('offers a World Heritage site, public art and a monument the types of their own kind', () => {
     expect(typeOptionsFor(WORLD_HERITAGE).map(o => o.value)).toEqual(['cultural', 'natural', 'mixed']);
-    expect(typeOptionsFor(PUBLIC_ART).map(o => o.value)).toEqual(['sculpture', 'fountain', 'street-art', 'clock']);
+    expect(typeOptionsFor(PUBLIC_ART).map(o => o.value)).toEqual([
+      'sculpture', 'religious-statue', 'equestrian-statue', 'fountain', 'street-art', 'clock', 'installation', 'roadside-giant',
+    ]);
     expect(typeOptionsFor(MONUMENTS).map(o => o.value)).toEqual(['memorial', 'arch', 'column', 'obelisk', 'monument']);
   });
 
@@ -48,7 +50,9 @@ describe('typeOptionsFor', () => {
 
 describe('typeVocabularyOf', () => {
   it('explains a sculpture in public art\'s words, an obelisk in a monument\'s and a natural site in World Heritage\'s', () => {
-    expect(typeVocabularyOf('sculpture')?.what).toMatch(/a fountain before a sculpture/);
+    expect(typeVocabularyOf('sculpture')?.what).toMatch(/a fountain, a religious statue/);
+    expect(typeNoun(PUBLIC_ART, 'installation', 2)).toBe('installations and works of land art');
+    expect(typeNoun(PUBLIC_ART, 'religious-statue', 2)).toBe('religious statues');
     expect(typeVocabularyOf('obelisk')?.what).toMatch(/an arch, a column, an obelisk/);
     expect(typeVocabularyOf('natural')?.what).toMatch(/World Heritage/);
     expect(typeVocabularyOf('natural')?.what).not.toMatch(/monument/);
