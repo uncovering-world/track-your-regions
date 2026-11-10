@@ -14,7 +14,7 @@ import { meaningOf } from './fieldMeaning';
 describe("a type's meaning", () => {
   it('speaks a monument\'s vocabulary for a memorial and World Heritage\'s for a natural site', () => {
     expect(meaningOf('type', 'memorial', 'monument').what).toMatch(/an arch, a column, an obelisk/);
-    expect(meaningOf('type', 'fountain', 'sculpture').what).toMatch(/a fountain before a sculpture/);
+    expect(meaningOf('type', 'fountain', 'sculpture').what).toMatch(/a fountain, a religious statue/);
     expect(meaningOf('type', 'natural', 'cultural').what).toMatch(/World Heritage/);
     expect(meaningOf('type', 'natural', 'cultural').what).not.toMatch(/monument/);
   });
@@ -28,7 +28,7 @@ describe("a type's meaning", () => {
     const fallback = meaningOf('type', '', null);
     expect(fallback.label).toBe('type');
     expect(fallback.what).toMatch(/cultural, natural or mixed/);
-    expect(fallback.what).toMatch(/sculpture, fountain, street art or clock/);
+    expect(fallback.what).toMatch(/sculpture, religious statue, equestrian statue, fountain, street art, clock, installation and land art or roadside giant/);
     expect(fallback.what).toMatch(/memorial, arch, column, obelisk or monument/);
   });
 

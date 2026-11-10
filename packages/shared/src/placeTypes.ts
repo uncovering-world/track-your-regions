@@ -38,11 +38,21 @@ export const WORLD_HERITAGE_TYPES = [
   { value: 'mixed', label: 'Mixed' },
 ] as const satisfies readonly PlaceTypeEntry[];
 
+/**
+ * What a work is (#2279): a religious statue shows a deity, Christ, Mary, the
+ * Buddha, a bodhisattva or a saint; a roadside giant is an everyday thing
+ * built huge to be stopped at; installation and land art is made of a place
+ * or of things set out in it. A sculpture is everything else.
+ */
 export const PUBLIC_ART_TYPES = [
   { value: 'sculpture', label: 'Sculpture' },
+  { value: 'religious-statue', label: 'Religious statue' },
+  { value: 'equestrian-statue', label: 'Equestrian statue' },
   { value: 'fountain', label: 'Fountain' },
   { value: 'street-art', label: 'Street art' },
   { value: 'clock', label: 'Clock' },
+  { value: 'installation', label: 'Installation and land art' },
+  { value: 'roadside-giant', label: 'Roadside giant' },
 ] as const satisfies readonly PlaceTypeEntry[];
 
 export const PLACES_OF_WORSHIP_TYPES = [
