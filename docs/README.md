@@ -123,6 +123,7 @@ the one statement of the rule; `CLAUDE.md`, the development guide and the comman
 | **The working plan of issue N** | `docs/local/plans/<N>-slug.md` | from the start of the work to its merge: then what was not built is filed as issues, and the plan is deleted or archived |
 | **A research draft** | `docs/local/research/<topic>/` | until it is published or dropped |
 | **One session's state**: its scratch, never the order of the work, which is its queue's | `docs/local/sessions/YYYY-MM-DD.md` | the session |
+| **A queue's handoff between two contexts**: what the next context needs of this machine and of the item that just ended, never the order of the work | `docs/local/queues/<n>-handoff.md` (`/queue` § Between items) | until the next `resume` replaces it |
 | **An unsorted note** | `docs/local/inbox/` | until `/issue-upload` turns it into issues or a document |
 | **Finished or stale local files** | `docs/local/archive/` | until `/docs-sweep` deletes them |
 | **How an agent should work** (feedback, gotchas, references) | the agent's own memory | living; never project status |

@@ -36,7 +36,7 @@ import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
 const TOOL_SCRIPTS = [
   'affected-specs.mjs', 'board.sh', 'catalogue-coverage.sh', 'check-shrunk-files.mjs', 'ci-graph-measure.mjs', 'db-cli.sh', 'db-migrate.sh',
   'db-types.sh', 'gate-cache.mjs', 'gates.mjs', 'gates-base.mjs', 'gates-run.mjs', 'lib/db-env.sh', 'lint-line-pointers.mjs',
-  'match-snapshot.sh', 'openapi-breaking.mjs', 'require-node-tools.sh', 'require-py-tools.sh',
+  'match-snapshot.sh', 'openapi-breaking.mjs', 'queue-run.sh', 'require-node-tools.sh', 'require-py-tools.sh',
   'require-python-312.sh', 'review-surface.mjs', 'scan-image.sh', 'scan-secrets.sh', 'setup.sh',
   'setup-integrations.sh', 'test-db-migrate.sh',
 ].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));

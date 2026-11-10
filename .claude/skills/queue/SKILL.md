@@ -18,7 +18,7 @@ $ARGUMENTS — a subcommand and its operands:
 |---|---|---|
 | `new` | the goal in words (optional) | opens a queue |
 | `show` | queue number | prints it |
-| `resume` | queue number | takes it over in this session and says where it stopped |
+| `resume` | queue number, then `unattended` when `scripts/queue-run.sh` started the session | takes it over in this session and says where it stopped |
 | `check` | queue number | reports drift between the queue and the repository |
 | `change` | queue number, the change, its reason | changes the order, adds, defers, drops, opens or closes a detour, marks an item done |
 | `close` | queue number | closes the queue once *Done when* holds |
@@ -60,7 +60,8 @@ Without a subcommand, run `status`.
   - merges the pull request itself once `/pr-create` § 8 *Done* holds. An item whose issue is
     *Human-led* is the exception: the maintainer leads it and tests it by hand, so its PR is
     merged only after the maintainer says the test passed;
-  - marks the item done with that merge as its evidence, and starts the next item.
+  - marks the item done with that merge as its evidence, and starts the next item, in this
+    context or a fresh one (*Between items*).
 
   It asks the maintainer only what is the maintainer's: product questions, and the calls the
   rule above reserves.
@@ -68,6 +69,12 @@ Without a subcommand, run `status`.
   the time, writes an `owner` entry saying where the work stopped, and moves the queue's board
   Status back (`scripts/board.sh status <n> Backlog`). A queue whose owner
   never released it is taken over only as `resume` § 2 allows.
+- **An item's end is a context boundary.** Everything the next item needs is in the queue, its
+  journal and the repository, so a fresh context can pick it up for the price of
+  `CLAUDE.md`, the skills and the queue, while carrying on makes every turn of the next item
+  re-read the whole history of the last one. At each item's end the session either carries on
+  or hands the queue off to a fresh context, as *Between items* decides. A handoff is a
+  release that keeps the queue's board Status, so the next `resume` takes it without asking.
 
 ## The body
 
@@ -132,6 +139,14 @@ Out of scope: <what this queue does not do, and where it goes instead>.
   or `waiting`. A blocker of an item that has not started is a blocked-by link on its issue
   (`gh issue edit <N> --add-blocked-by <B>`), and the item stays `next` or `deferred`.
 - **A detour line starts with `detour:`.** It names the item it serves and its end condition.
+- **The *Owner* line is one of three forms**, and its first line is the one `status`, `resume`
+  and `scripts/queue-run.sh` read: the session's line above; `released` with the time; or,
+  between two contexts of one piece of work, a handoff:
+
+  ```markdown
+  handoff (<agent>, <machine>) since YYYY-MM-DD HH:MM UTC — next: #<N>
+  ```
+
 - **A claim names the item it is for.** It is removed when that item is done. The dev stack is
   claimed by one queue only: its keeper's.
 
@@ -140,7 +155,8 @@ Out of scope: <what this queue does not do, and where it goes instead>.
 One comment per change, headed `**Journal · YYYY-MM-DD · <kind>**`, where `<kind>` is one of:
 
 - `opened`, `owner`, `closed`: the queue's life (an `owner` entry takes the queue over or
-  releases it);
+  releases it; a handoff is not an entry of its own but the last line of the entry that ended
+  the item, `Handed off to a fresh context; next: #<N>`);
 - `order`, `add`, `defer`, `drop`: the items;
 - `state`: an item moving between `next`, `in progress` and `waiting`, in one line;
 - `detour`, `done`: an item's start or end;
@@ -203,7 +219,12 @@ gh api --paginate "repos/uncovering-world/track-your-regions/issues/<n>/comments
 ### `resume`
 
 1. **Read the queue whole:** the body and every journal comment (the commands of `show`).
-2. **Check who holds it.** When *Owner* names another session, look it up with `ListAgents`.
+   After a handoff, read the body, the handoff note `docs/local/queues/<n>-handoff.md` when this
+   machine has one, and only the journal entries since the last `owner` entry: those are what
+   the previous context did, and the note and the body carry everything before them that is
+   still open.
+2. **Check who holds it.** *Owner* reading `handoff` is a release, whichever machine wrote it:
+   take it over. When *Owner* names another session, look it up with `ListAgents`.
    - **Listed:** the session is alive. Ask it through `SendMessage` to release the queue, and
      wait for its `owner` entry.
    - **Not listed:** that proves nothing. `ListAgents` never shows a Codex session, or a
@@ -245,7 +266,46 @@ gh api --paginate "repos/uncovering-world/track-your-regions/issues/<n>/comments
    - what ends it;
    - the next item after it.
 
-   Then start the current item: `/feature` or `/fix` on its issue, or the named step.
+   Then start the current item: `/feature` or `/fix` on its issue, or the named step, and at
+   its end go to *Between items*.
+
+   **Unattended** (`resume <n> unattended`, started by `scripts/queue-run.sh`): no one answers
+   in this session. Work the current item only, and always hand off at its end, since the
+   script starts the next context for free. A question that is the maintainer's is not asked
+   here: write it in the `owner` entry that releases the queue, say so in the reply and stop — the
+   script stops too, because *Owner* no longer reads `handoff`.
+
+### Between items
+
+An item has ended when its line got `done`, `deferred` or `waiting` with its evidence, and
+its journal entry is being written. Before the next item starts, decide whether this context
+carries on.
+
+1. **Carry on** only when all three hold:
+   - the next item continues this one: the next slice of the same Epic in the same code, or
+     the item a just-ended detour served;
+   - this context has not been compacted (it holds no summary of an earlier part of itself);
+   - this context has worked no other item to its end before this one.
+
+   Otherwise hand off. An unattended session always hands off. When the queue has no current
+   item left, or the next one cannot start (the third rule of the queue), neither applies:
+   stop as the queue's rules say.
+2. **Write the handoff note** to `docs/local/queues/<n>-handoff.md`, replacing the previous one.
+   It holds what a fresh context needs and GitHub does not:
+   - the next item, and what of this one bears on it (a file both touch, a decision taken
+     here that it inherits);
+   - the state of this machine: the dev stack's frontend mode, migrations applied by hand,
+     worktrees and branches left open, background processes;
+   - the gotchas this item paid for that the next one would pay for again.
+
+   At most thirty lines. Never the order of the work or its reasons: those are the queue's.
+   The note lives on this machine only, so nothing that another machine needs goes there
+   alone.
+3. **Hand the queue off.** Set *Owner* to the handoff form (*The body*), and end the journal
+   entry that ended the item with its handoff line. The board Status stays as it is.
+4. **Stop.** An unattended session ends its reply with `handoff: next #<N>`. An interactive
+   one tells the maintainer, in one line, to run `/clear` and then `/queue resume <n>`, and
+   waits: a session cannot clear its own context.
 
 ### `check`
 
