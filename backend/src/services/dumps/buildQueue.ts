@@ -126,7 +126,7 @@ function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
 
 /** What a queued build says: a self-queued update says when the worker may take it. */
 function queuedMessage(request: { scheduled?: true; notBefore?: string } | null): string {
-  if (request?.scheduled && request.notBefore) return `Scheduled update: the dump worker takes it from ${request.notBefore.slice(0, 16).replace('T', ' ')} UTC`;
+  if (request?.scheduled && request.notBefore) return `Queued by the schedule: the dump worker takes it from ${request.notBefore.slice(0, 16).replace('T', ' ')} UTC`;
   return 'Waiting for the dump worker...';
 }
 

@@ -5559,14 +5559,15 @@ CREATE INDEX IF NOT EXISTS osm_objects_street_item ON workbench.osm_objects (str
 COMMENT ON COLUMN workbench.osm_objects.street_item IS 'The Squares & streets item this highway or place way is the line of (ADR-0194): its wikidata tag, or the item one of its names belongs to within 1 km of the item''s point. Such a way keeps its whole line. NULL for every other object.';
 COMMENT ON TABLE workbench.osm_objects IS 'An OpenStreetMap object of the layer (#1437, ADR-0134): its type as osm2pgsql writes it (N, W, R) and id, every tag, the wikidata and wikipedia tags for lookup, and its geometry in WGS 84: the full shape where a kind draws the object (a ruin, a dig, a protected area) or the object carries an item the world-view match reads a shape for, a region''s own or one its Wikivoyage page''s mapshapes list (ADR-0157, ADR-0158): a way''s line or the area it encloses, an area relation''s multipolygon, another relation''s collection of members; one point for every other object (ADR-0136), which locates it and never places anything. ODbL: what the catalogue takes from it keeps its provenance (ADR-0059). Never written but by the layer''s build, which swaps a new copy in whole.';
 
--- When the OpenStreetMap layer updates itself (#1437). See db/migrations/147.
-CREATE TABLE IF NOT EXISTS workbench.osm_layer_schedule (
-    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+-- When each copy built from a dump updates itself (#2415, ADR-0195; the
+-- OpenStreetMap layer's since #1437). See db/migrations/228.
+CREATE TABLE IF NOT EXISTS workbench.dump_schedules (
+    dump VARCHAR(40) PRIMARY KEY,
     every_days SMALLINT CHECK (every_days BETWEEN 1 AND 30),
     updated_by INTEGER,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-COMMENT ON TABLE workbench.osm_layer_schedule IS 'How often the dump worker brings the OpenStreetMap layer forward by itself (#1437, ADR-0134 decision 6), where an admin chose otherwise than the default of every 7 days, which lives in code. One row at most; every_days NULL means the schedule is off and updates are started by hand. updated_by is the admin''s user id, a plain id because this table is workbench and users is serving (ADR-0124).';
+COMMENT ON TABLE workbench.dump_schedules IS 'How often the dump worker brings a copy built from a dump forward by itself (ADR-0195; the OpenStreetMap layer''s, ADR-0134 decision 6), where an admin chose otherwise than the copy''s default, which lives in code (keepers.ts). One row a dump at most; every_days NULL means the schedule is off and builds are started by hand. updated_by is the admin''s user id, a plain id because this table is workbench and users is serving (ADR-0124).';
 
 COMMENT ON COLUMN workbench.readership_month_files.redirects_dump_date IS 'The dump date of the redirects the month was folded with (#1650), or null where no redirects were in place when it was kept.';
 COMMENT ON COLUMN workbench.readership_month_files.redirects_build_id IS 'The build of the redirects the month was folded with (#1650): a build reads again a month folded with another, since one dump date can be built twice over a changed subset.';

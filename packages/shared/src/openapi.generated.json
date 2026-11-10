@@ -24060,6 +24060,21 @@
             "type": "boolean",
             "description": "Whether this keeping build brought a kept copy forward from its own source rather than reading a file of the host's: the OpenStreetMap layer's current planet, by the daily diffs (#1437)."
           },
+          "queuedBy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "schedule",
+                  "admin"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who queued the build: the dump worker on the copy's schedule (ADR-0195), or an admin; null for a build from before either was recorded."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -24111,6 +24126,7 @@
           "checksumKind",
           "verified",
           "broughtForward",
+          "queuedBy",
           "status",
           "error",
           "outcome",
@@ -24572,15 +24588,8 @@
                           "description": "Whether a keeping build may start from the local copy rather than the newest file, which decides whether \"Build <date> copy\" is offered."
                         },
                         "schedule": {
-                          "anyOf": [
-                            {
-                              "$ref": "#/components/schemas/DumpSchedule"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ],
-                          "description": "How often the dump worker brings what is kept forward by itself, where the keeper does so (the OpenStreetMap layer); null otherwise."
+                          "description": "How often the dump worker brings the copy forward by itself (ADR-0195).",
+                          "$ref": "#/components/schemas/DumpSchedule"
                         },
                         "currentTo": {
                           "type": "boolean",

@@ -8,9 +8,9 @@
 
 import { hostname } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { BuildAlreadyRunning, claimNextBuild, closeOrphanedBuilds } from './ledger.js';
+import { claimNextBuild, closeOrphanedBuilds } from './ledger.js';
 import { runBuild } from './buildRun.js';
-import { queueScheduledUpdate } from './osm/layerSchedule.js';
+import { queueDueCopies } from './scheduledCopies.js';
 import { askDueDumps } from './newestOnHost.js';
 
 /**
@@ -23,7 +23,7 @@ export const WORKER_RUNNER = `worker:${hostname()}`;
 
 /** How long the worker waits before it looks for a queued build again. */
 const POLL_EVERY_MS = 3_000;
-/** How often an idle worker asks whether a scheduled update is due (`layerSchedule.ts`). */
+/** How often an idle worker asks whether a scheduled build is due (`scheduledCopies.ts`). */
 const SCHEDULE_EVERY_MS = 10 * 60 * 1000;
 /** How often the worker looks for a dump whose newest file on the host it last learnt a day ago (`newestOnHost.ts`). */
 const NEWEST_EVERY_MS = 10 * 60 * 1000;
@@ -38,16 +38,16 @@ export async function runNextBuild(stop: AbortSignal): Promise<boolean> {
 }
 
 /**
- * Queue the OpenStreetMap layer's update where its schedule says one is due.
- * A build an admin queued meanwhile holds the dump's one slot, which is no
- * error; anything else is logged, and the next look tries again.
+ * Queue the builds the copies' schedules make due (ADR-0195), the
+ * OpenStreetMap layer's update among them. A build an admin queued meanwhile
+ * holds the dump's one slot, which is no error; anything else is logged, and
+ * the next look tries again.
  */
 export async function queueWhatIsDue(stop: AbortSignal): Promise<void> {
   try {
-    const id = await queueScheduledUpdate(stop);
-    if (id !== null) console.log(`[Dumps] Queued build ${id}: the OpenStreetMap layer's scheduled update`);
+    for (const { dump, id } of await queueDueCopies(stop)) console.log(`[Dumps] Queued build ${id}: the scheduled build of ${dump}`);
   } catch (error) {
-    if (!(error instanceof BuildAlreadyRunning)) console.error('[Dumps] Could not queue the scheduled update:', error);
+    console.error('[Dumps] Could not queue the scheduled builds:', error);
   }
 }
 

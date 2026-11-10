@@ -41,7 +41,7 @@ export interface BuildRequestRecord {
    * host's (the OpenStreetMap layer's current planet, #1437).
    */
   update?: true;
-  /** Queued by the dump worker on the layer's schedule, not by an admin (#1437, `layerSchedule.ts`). */
+  /** Queued by the dump worker on the copy's schedule, not by an admin (ADR-0195, `scheduledCopies.ts`; the layer's since #1437). */
   scheduled?: true;
   /** An ISO instant before which the worker does not take the build: a self-queued update waits visibly first. */
   notBefore?: string;

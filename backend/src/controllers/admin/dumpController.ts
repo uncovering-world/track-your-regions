@@ -46,7 +46,7 @@ async function keepsOf(key: Dumps['dumps'][number]['key'], newest: Newest): Prom
     rederives: Boolean(keeper.rederive),
     samples: keeper.samples,
     fromCopy: keeper.fromCopy,
-    schedule: keeper.schedule ? { ...await keeper.schedule.read(), defaultEveryDays: keeper.schedule.defaultEveryDays } : null,
+    schedule: { ...await keeper.schedule.read(), defaultEveryDays: keeper.schedule.defaultEveryDays },
     currentTo: Boolean(keeper.update),
     archives: keeper.archives ? await keeper.archives() : [],
   };
@@ -64,6 +64,11 @@ const wireProgress = (progress: DumpBuildProgress | null): Dumps['dumps'][number
 const kindOf = (build: DumpBuildRow): BuildKind => (build.request as BuildRequestRecord | null)?.kind ?? 'verify';
 /** Whether the worker brought a kept copy forward rather than reading a file of the host's (#1437). */
 const broughtForward = (build: DumpBuildRow): boolean => (build.request as BuildRequestRecord | null)?.update === true;
+/** Who queued a build (ADR-0195): the worker on a schedule, an admin by their id, or neither recorded. */
+const queuedBy = (build: DumpBuildRow): 'schedule' | 'admin' | null => {
+  if ((build.request as BuildRequestRecord | null)?.scheduled === true) return 'schedule';
+  return build.started_by === null ? null : 'admin';
+};
 
 export async function listDumps(): Promise<Dumps> {
   // A build that stopped beating shows as the failure it is, not as running.
@@ -103,6 +108,7 @@ export async function listDumps(): Promise<Dumps> {
         // A keeping build that brought a kept copy forward read no file of the host's.
         verified: build.status === 'success' && (kindOf(build) === 'verify' || kindOf(build) === 'keep') && !broughtForward(build),
         broughtForward: broughtForward(build),
+        queuedBy: queuedBy(build),
         status: build.status as Exclude<typeof build.status, 'queued'>,
         error: build.error,
         outcome: build.outcome,
@@ -170,12 +176,12 @@ export async function startDumpTrial(
   }
 }
 
-/** Set how often the dump worker brings what is kept from the dump forward by itself (ADR-0134 decision 6). */
+/** Set how often the dump worker brings the copy built from the dump forward by itself (ADR-0195). */
 export async function setDumpSchedule(
   { params: { dump }, body: { everyDays }, caller }: { params: DumpParams; body: z.infer<typeof dumpScheduleBodySchema>; caller: Express.User },
 ): Promise<DumpSchedule> {
   const schedule = keeperOf(dump)?.schedule;
-  if (!schedule) throw createError(`Nothing kept from ${dump} updates on a schedule`, 409);
+  if (!schedule) throw createError(`Nothing is built from ${dump}, so it has no schedule`, 409);
   return { ...await schedule.set(everyDays, caller.id), defaultEveryDays: schedule.defaultEveryDays };
 }
 

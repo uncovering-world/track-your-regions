@@ -17,6 +17,7 @@ import { activeBuildOf, enqueueBuild } from '../ledger.js';
 import { hasCurrentPlanet } from './layerBuild.js';
 import { layerCurrentTo } from './layerTables.js';
 import { dailyState } from './planetCurrent.js';
+import { QUEUED_LEAD_MS, scheduleOf, type CopySchedule } from '../copySchedule.js';
 
 /**
  * The interval when no admin has chosen one: the planet's own weekly release.
@@ -35,37 +36,11 @@ export const LAYER_FRESH_FOR_DAYS = DEFAULT_EVERY_DAYS + 1;
 /** How long the host may take to say where its newest daily diff ends, before the look gives up until the next. */
 const ASK_FOR_MS = 30_000;
 
-/** How long a self-queued update stays visibly queued before the worker may take it. */
-export const QUEUED_LEAD_MS = 30 * 60 * 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export interface LayerSchedule {
-  /** The interval in days, or null where the schedule is off. */
-  everyDays: number | null;
-  /** Whether an admin chose it; otherwise it is the default. */
-  chosen: boolean;
-}
-
-/** The schedule in force: the admin's where one was chosen, the default otherwise. */
-export async function layerSchedule(): Promise<LayerSchedule> {
-  const result = await pool.query<{ every_days: number | null }>('SELECT every_days FROM osm_layer_schedule');
-  const row = result.rows[0];
-  return row ? { everyDays: row.every_days, chosen: true } : { everyDays: DEFAULT_EVERY_DAYS, chosen: false };
-}
-
-/** An admin's choice: every `everyDays` days (1–30), or null for off. */
-export async function setLayerSchedule(everyDays: number | null, adminId: number): Promise<LayerSchedule> {
-  if (everyDays !== null && (!Number.isInteger(everyDays) || everyDays < 1 || everyDays > 30)) {
-    throw new Error('The interval is a whole number of days from 1 to 30, or off');
-  }
-  await pool.query(
-    `INSERT INTO osm_layer_schedule (singleton, every_days, updated_by, updated_at) VALUES (TRUE, $1, $2, NOW())
-     ON CONFLICT (singleton) DO UPDATE SET every_days = EXCLUDED.every_days, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
-    [everyDays, adminId],
-  );
-  return { everyDays, chosen: true };
-}
+/** The layer's schedule, read as every copy's is (`copySchedule.ts`). */
+export const layerSchedule = (): Promise<CopySchedule> => scheduleOf('osm-planet', DEFAULT_EVERY_DAYS);
 
 export interface ScheduleFacts {
   everyDays: number | null;

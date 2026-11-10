@@ -223,6 +223,14 @@ export interface DumpNewestOnHostRow {
   answered: boolean;
 }
 
+/** The table `dump_schedules`. */
+export interface DumpSchedulesRow {
+  dump: string;
+  every_days: number | null;
+  updated_by: number | null;
+  updated_at: Date;
+}
+
 /** The table `email_verification_tokens`. */
 export interface EmailVerificationTokensRow {
   id: number;
@@ -888,14 +896,6 @@ export interface OsmLayerBuildsRow {
   streets_lined: number | null;
 }
 
-/** The table `osm_layer_schedule`. */
-export interface OsmLayerScheduleRow {
-  singleton: boolean;
-  every_days: number | null;
-  updated_by: number | null;
-  updated_at: Date;
-}
-
 /** The table `osm_objects`. */
 export interface OsmObjectsRow {
   osm_type: string;
@@ -1417,6 +1417,7 @@ export const RELATION_SCHEMAS = {
   data_assertion_acceptances: "public",
   dump_builds: "workbench",
   dump_newest_on_host: "workbench",
+  dump_schedules: "workbench",
   email_verification_tokens: "public",
   enwiki_categories: "workbench",
   enwiki_category_links: "workbench",
@@ -1465,7 +1466,6 @@ export const RELATION_SCHEMAS = {
   membership_crowding: "public",
   membership_fame: "public",
   osm_layer_builds: "workbench",
-  osm_layer_schedule: "workbench",
   osm_objects: "workbench",
   place_identifier_verdicts: "public",
   place_identifiers: "public",
@@ -1593,6 +1593,9 @@ export const COLUMN_WIDTHS = {
   },
   dump_newest_on_host: {
     dump: 60,
+  },
+  dump_schedules: {
+    dump: 40,
   },
   email_verification_tokens: {
     token_hash: 255,

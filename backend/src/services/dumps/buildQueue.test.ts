@@ -131,7 +131,7 @@ describe('queuing a dump build (ADR-0106)', () => {
   it('says when the worker takes a scheduled update of the layer (#1437)', async () => {
     ledger.activeBuildOf.mockResolvedValue(queuedRow({ kind: 'keep', scheduled: true, notBefore: '2026-10-30T09:30:00.000Z' }));
     expect(await buildProgress('osm-planet')).toMatchObject({
-      status: 'queued', message: 'Scheduled update: the dump worker takes it from 2026-10-30 09:30 UTC',
+      status: 'queued', message: 'Queued by the schedule: the dump worker takes it from 2026-10-30 09:30 UTC',
     });
   });
 
