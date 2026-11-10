@@ -81,11 +81,15 @@ export const Dumps = z.strictObject({
     source: z.string().describe('Who publishes the dump: Wikidata, English Wikipedia, Wikimedia pageviews.'),
     title: z.string(),
     datedBy: z.enum(['day', 'month']).describe("Whether a file's date is the day of its dump or the month its counts cover."),
-    about: z.string(),
+    about: z.string().describe('What the dump holds, in a plain sentence or two.'),
+    how: z.string().describe('How a file of the dump is read and verified, which the panel shows behind an info mark.'),
+    inputOf: z.enum(DUMP_KEYS).nullable()
+      .describe('The copy whose build reads this dump as one of its inputs, under whose card it is named, where it keeps nothing of its own (#2415); null otherwise.'),
     progress: DumpBuildProgress.nullable(),
     builds: z.array(DumpBuild),
     keeps: z.strictObject({
-      title: z.string(),
+      title: z.string().describe('The copy, as its card names it.'),
+      feeds: z.string().describe('What reads the copy, in one plain sentence (#2415).'),
       built: z.strictObject({ dumpDate: z.string(), swappedAt: timestamp }).nullable()
         .describe('The build now in place: its dump date and when it was swapped in.'),
       needs: z.enum(['nothing', 'recompute', 'newer-dump', 'rebuild'])
@@ -99,6 +103,8 @@ export const Dumps = z.strictObject({
       fromCopy: z.boolean().describe('Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered.'),
       schedule: DumpSchedule.describe('How often the dump worker brings the copy forward by itself (ADR-0195).'),
       currentTo: z.boolean().describe('Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet\'s daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump.'),
+      followsInputs: z.boolean().describe('Whether the copy is built with another copy as input and is counted again once that copy moves (readership, folded with the edition redirects; `followsInputs`, ADR-0195): its `rebuild` is then the input\'s move, not an update of the app.'),
+      inputsMoved: z.boolean().describe('For a copy that follows another: its `rebuild` is that input\'s move, every part being held and read as it stands meanwhile; false where a part is missing, or the copy needs nothing.'),
       archives: z.array(z.string()).describe('The earlier years kept beside the current one, each by the month it ends on (YYYY-MM), oldest first (readership, #2230): asked for with `windowEnd` on a keeping build, kept through the cleanup, read by no run. Empty for every other keeper.'),
     }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet.'),
     localCopy: z.strictObject({

@@ -38,6 +38,12 @@ export interface Kept {
   /** What it needs to match the code's rules (#1583): nothing, a re-derive, or a build from the dump. */
   needs: CopyNeeds;
   /**
+   * For a copy that follows another (`followsInputs`): whether the runs can
+   * read it as it stands, every part held though folded with an input since
+   * moved. Readership's twelve months held is readable; a month missing is not.
+   */
+  readable?: boolean;
+  /**
    * What, beyond its dump date, tells two states of the copy apart: for
    * readership, which redirects builds folded its twelve months
    * (`build@date×months`), so a run before the refold and one after it read the
@@ -47,8 +53,10 @@ export interface Kept {
 }
 
 export interface Keeper {
-  /** What a keeping build of the dump makes, for the admin panel. */
+  /** The copy a keeping build of the dump makes, as its card on the admin panel names it. */
   title: string;
+  /** What reads the copy, in one plain sentence for its card (#2415). */
+  feeds: string;
   /** Build from `file` and swap the result in, or, as a `trial`, build and throw it away (#1527). */
   build(file: DumpFile, options: ReadOptions & {
     buildId: number; onPhase: (message: string) => void; trial?: boolean;
@@ -143,38 +151,38 @@ const MONTHLY = 30;
 
 const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   'wikidata-entities': {
-    title: 'The local Wikidata subset', build: buildSubset, rederive: rederiveSubset, latest: latestSubset, samples: true, fromCopy: true,
+    title: 'Wikidata copy', feeds: 'Every sync reads Wikidata from this copy, not from the live service.', build: buildSubset, rederive: rederiveSubset, latest: latestSubset, samples: true, fromCopy: true,
     schedule: scheduled('wikidata-entities', MONTHLY),
   },
   'pageviews-user': {
-    title: 'Readership over the last twelve months', build: buildReadership, latest: latestReadership, archives: readershipArchives,
+    title: 'Readership', feeds: 'How many people read each place\'s articles in the last twelve months: the readers in every kind\'s fame score.', build: buildReadership, latest: latestReadership, archives: readershipArchives,
     refuseYearEnd: refuseOverlappingYear, samples: false, fromCopy: false, keepsAsItGoes: true, followsInputs: true,
     schedule: scheduled('pageviews-user', WEEKLY),
   },
   'enwiki-page': {
-    title: 'English Wikipedia\'s articles, categories and category links', build: buildStructure, latest: latestStructure, samples: false, fromCopy: false,
+    title: 'English Wikipedia\'s structure', feeds: 'Its articles and categories: what a memorial commemorates, a museum\'s holdings, the street art a city lists.', build: buildStructure, latest: latestStructure, samples: false, fromCopy: false,
     schedule: scheduled('enwiki-page', WEEKLY),
   },
   'wikipedia-redirects': {
-    title: 'The redirects readership counts under an article', build: buildRedirects, latest: latestRedirects, samples: false, fromCopy: false,
+    title: 'Edition redirects', feeds: 'Readership counts a redirect\'s readers under the article it points to.', build: buildRedirects, latest: latestRedirects, samples: false, fromCopy: false,
     schedule: scheduled('wikipedia-redirects', WEEKLY),
   },
   'wikidata-redirects': {
-    title: 'The items Wikidata redirected to another', build: buildWikidataRedirects, latest: latestWikidataRedirects, samples: false, fromCopy: false,
+    title: 'Wikidata item redirects', feeds: 'A place filed under an item Wikidata has since merged away is still found.', build: buildWikidataRedirects, latest: latestWikidataRedirects, samples: false, fromCopy: false,
     schedule: scheduled('wikidata-redirects', WEEKLY),
   },
   'wikivoyage-usage': {
-    title: 'The items Wikivoyage\'s pages use', build: buildUsage, latest: latestUsage, samples: false, fromCopy: false,
+    title: 'Wikivoyage item usage', feeds: 'Whether a travel guide sends visitors to a place: the guide in every kind\'s fame score.', build: buildUsage, latest: latestUsage, samples: false, fromCopy: false,
     schedule: scheduled('wikivoyage-usage', WEEKLY),
   },
   'wikivoyage-pages': {
-    title: 'English Wikivoyage\'s articles', build: buildPages, latest: latestPages, samples: false, fromCopy: false, readByRuns: false,
+    title: 'English Wikivoyage\'s articles', feeds: 'The Wikivoyage world-view extraction reads each region\'s page from this copy.', build: buildPages, latest: latestPages, samples: false, fromCopy: false, readByRuns: false,
     schedule: scheduled('wikivoyage-pages', WEEKLY),
   },
   // A build from the newest brings the kept current planet forward; a build
   // from a weekly copy on disk starts the current planet again from it.
   'osm-planet': {
-    title: 'The OpenStreetMap layer', build: buildLayer, update: updateLayer, canUpdate: hasCurrentPlanet, latest: latestLayer,
+    title: 'OpenStreetMap layer', feeds: 'The syncs read OpenStreetMap from this layer: a site\'s outline, the named ruins near it, the food and drink around a place.', build: buildLayer, update: updateLayer, canUpdate: hasCurrentPlanet, latest: latestLayer,
     schedule: scheduled('osm-planet', DEFAULT_EVERY_DAYS),
     samples: false, fromCopy: true,
   },

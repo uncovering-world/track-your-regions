@@ -24497,7 +24497,36 @@
                   "description": "Whether a file's date is the day of its dump or the month its counts cover."
                 },
                 "about": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "What the dump holds, in a plain sentence or two."
+                },
+                "how": {
+                  "type": "string",
+                  "description": "How a file of the dump is read and verified, which the panel shows behind an info mark."
+                },
+                "inputOf": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "wikidata-entities",
+                        "enwiki-page",
+                        "enwiki-page-props",
+                        "enwiki-linktarget",
+                        "enwiki-categorylinks",
+                        "pageviews-user",
+                        "wikipedia-redirects",
+                        "wikidata-redirects",
+                        "wikivoyage-usage",
+                        "wikivoyage-pages",
+                        "osm-planet"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The copy whose build reads this dump as one of its inputs, under whose card it is named, where it keeps nothing of its own (#2415); null otherwise."
                 },
                 "progress": {
                   "anyOf": [
@@ -24521,7 +24550,12 @@
                       "type": "object",
                       "properties": {
                         "title": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "The copy, as its card names it."
+                        },
+                        "feeds": {
+                          "type": "string",
+                          "description": "What reads the copy, in one plain sentence (#2415)."
                         },
                         "built": {
                           "anyOf": [
@@ -24595,6 +24629,14 @@
                           "type": "boolean",
                           "description": "Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet's daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump."
                         },
+                        "followsInputs": {
+                          "type": "boolean",
+                          "description": "Whether the copy is built with another copy as input and is counted again once that copy moves (readership, folded with the edition redirects; `followsInputs`, ADR-0195): its `rebuild` is then the input's move, not an update of the app."
+                        },
+                        "inputsMoved": {
+                          "type": "boolean",
+                          "description": "For a copy that follows another: its `rebuild` is that input's move, every part being held and read as it stands meanwhile; false where a part is missing, or the copy needs nothing."
+                        },
                         "archives": {
                           "type": "array",
                           "items": {
@@ -24605,6 +24647,7 @@
                       },
                       "required": [
                         "title",
+                        "feeds",
                         "built",
                         "needs",
                         "newestDumpDate",
@@ -24614,6 +24657,8 @@
                         "fromCopy",
                         "schedule",
                         "currentTo",
+                        "followsInputs",
+                        "inputsMoved",
                         "archives"
                       ],
                       "additionalProperties": false
@@ -24698,6 +24743,8 @@
                 "title",
                 "datedBy",
                 "about",
+                "how",
+                "inputOf",
                 "progress",
                 "builds",
                 "keeps",
