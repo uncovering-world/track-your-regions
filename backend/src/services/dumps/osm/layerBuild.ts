@@ -11,8 +11,9 @@
  * 1. cuts the selected objects with `osmium tags-filter`, which also keeps
  *    the nodes and members they are drawn from (`layerSelection.ts`);
  * 2. cuts every object the catalogue names with `osmium getid -r`, with what
- *    it is drawn from, and merges the two, so a linked object is kept whatever
- *    its tags (decision 3);
+ *    it is drawn from, so a linked object is kept whatever its tags
+ *    (decision 3), and the highway and place ways near the points of Squares &
+ *    streets' candidates (`layerStreets.ts`, ADR-0194), and merges the three;
  * 3. loads the cut through the flex style (`layer.lua`) into the `_next` copy,
  *    with osm2pgsql's node store in the database and dropped after the load;
  * 4. indexes the copy and swaps it in with the planet's replication timestamp,
@@ -43,9 +44,10 @@ import { fetchText } from '../fetch.js';
 import { holdVerifiedCopy, type ReadOptions, type ReadResult } from '../read.js';
 import { drawnFile, drawnItems, type DrawnItems, LAYER_DRAWN, LAYER_SELECTION, pinnedObjects, selectionFile } from './layerSelection.js';
 import { refillRegionShapes } from './layerShapes.js';
-import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
+import { STREET_HIGHWAYS, STREET_REACH_M, streetArea, streetItems, streetsFile } from './layerStreets.js';
+import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextStreetLines, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
 import { bringForward, CURRENT_PLANET, dailyState, dropCurrent, firstDiffAfter, readCurrent, type BroughtForward } from './planetCurrent.js';
-import { databaseEnv, OSM2PGSQL, OSM2PGSQL_INPUT, OSMIUM, OSMIUM_OUTPUT, runTool, sideBySide } from './tools.js';
+import { databaseEnv, OSM2PGSQL, OSM2PGSQL_INPUT, OSMIUM, OSMIUM_OUTPUT, runTool, sideBySide, type ToolResult } from './tools.js';
 
 export type LayerBuildOptions = ReadOptions & {
   buildId: number; onPhase: (message: string) => void; trial?: boolean;
@@ -59,6 +61,12 @@ const NODE_CACHE_MB = '4000';
 
 /** The cut's directory under `DUMPS_DIR`: one build runs at a time, so one name serves. */
 const CUT_DIRECTORY = 'osm-layer-cut';
+
+/** The street items the flex style reads, written in the cut's directory (`streetsFile`). */
+const STREETS_FILE = 'streets.txt';
+
+/** The highway and place ways near the street items' points, merged into the load. */
+const STREET_WAYS = 'street-ways.osm.pbf';
 
 /** How many of the gone objects' ids a build's note names. */
 const GONE_NAMED = 20;
@@ -97,51 +105,96 @@ interface Cut {
   /** How many objects the catalogue names, and how many of them the planet no longer holds. */
   pinned: number;
   gone: number;
+  /** How many of Squares & streets' candidates the cut looked for the lines of (ADR-0194). */
+  streets: number;
 }
 
-/** Cut the layer's objects from `planet` into `work`. */
+/** One part of the cut, run side by side with the others; `osmium getid`'s answer is the one read after. */
+type CutPart = (each: AbortSignal) => Promise<ToolResult | null>;
+
+/** The cut of the street lines (ADR-0194): the planet's ways within the polygon around the items' points, whole, then its highway and place ways. */
+function streetWaysCut(planet: string, polygon: string, work: string): CutPart {
+  const near = join(work, 'near-streets.osm.pbf');
+  return async (each) => {
+    // Complete ways: a street matched by name that runs past the cells keeps its whole line, not the stretch inside them.
+    await runTool(OSMIUM, ['extract', '-p', polygon, '-s', 'complete_ways', planet, '-o', near, OSMIUM_OUTPUT, '--overwrite'], { signal: each });
+    await runTool(OSMIUM, ['tags-filter', near, 'w/highway', 'w/place', '-o', join(work, STREET_WAYS), OSMIUM_OUTPUT, '--overwrite'], { signal: each });
+    await rm(near, { force: true });
+    return null;
+  };
+}
+
+/** How many objects the catalogue names `osmium getid` did not find, named in a note; an exit 1 it does not explain fails the build. */
+function goneCount(found: ToolResult, options: LayerBuildOptions): number {
+  const missing = found.code === 0 ? { count: 0, ids: [] } : goneObjects(found.stderr);
+  if (!missing) throw new Error(`osmium getid failed (1): ${found.stderr.slice(-2000).trim()}`);
+  if (missing.count > 0) {
+    const listed = missing.ids.slice(0, GONE_NAMED).join(', ') + (missing.ids.length > GONE_NAMED ? ', ...' : '');
+    const which = listed ? ': ' + listed : '';
+    options.onNote?.(`${missing.count.toLocaleString('en')} objects the catalogue names are no longer in the planet${which}`);
+  }
+  return missing.count;
+}
+
+/**
+ * Cut the layer's objects from `planet` into `work`: the selected objects
+ * (`osmium tags-filter`), the objects the catalogue names (`osmium getid -r`,
+ * with what they are drawn from) and the highway and place ways near a
+ * street item's point (`osmium extract -s complete_ways` of `streetArea`,
+ * which reads the planet twice, then a `tags-filter` of that small cut),
+ * merged into one file. The parts run side by side, so their reads overlap
+ * rather than add up (10.8 and 6 minutes one after the other on the first
+ * build for the first two).
+ */
 async function cutLayer(planet: string, work: string, options: LayerBuildOptions): Promise<Cut> {
   const { signal } = options;
   const selection = join(work, 'selection.txt');
   const pins = join(work, 'pins.txt');
   const named = await pinnedObjects();
   const items = await drawnItems();
+  const streets = await streetItems();
+  const area = streetArea(streets);
   await writeFile(selection, selectionFile());
   await writeFile(join(work, 'drawn.txt'), drawnFile());
   const drawn = [...items.named, ...items.listed];
   await writeFile(join(work, 'drawn-items.txt'), drawn.length > 0 ? `${drawn.join('\n')}\n` : '');
   await writeFile(pins, named.length > 0 ? `${named.join('\n')}\n` : '');
+  await writeFile(join(work, STREETS_FILE), streetsFile(streets));
 
   const selected = join(work, 'selected.osm.pbf');
+  const alone = named.length === 0 && area === null;
   // Read by osm2pgsql itself where nothing is merged into it.
-  const tagsFilter = ['tags-filter', planet, '-e', selection, '-o', selected, named.length === 0 ? OSM2PGSQL_INPUT : OSMIUM_OUTPUT, '--overwrite'];
-  if (named.length === 0) {
+  const tagsFilter = ['tags-filter', planet, '-e', selection, '-o', selected, alone ? OSM2PGSQL_INPUT : OSMIUM_OUTPUT, '--overwrite'];
+  if (alone) {
     options.onPhase('Cutting the selected objects from the planet...');
     await runTool(OSMIUM, tagsFilter, { signal });
-    return { cut: selected, pins, items, pinned: 0, gone: 0 };
+    return { cut: selected, pins, items, pinned: 0, gone: 0, streets: 0 };
   }
 
   const linked = join(work, 'linked.osm.pbf');
   const cut = join(work, 'layer.osm.pbf');
-  // The two cuts read the planet each, independently: run side by side, they
-  // cost one read's time rather than two (10.8 and 6 minutes one after the
-  // other on the first build). Exit 1 is also osmium's answer to an error
-  // reading the data: it is taken as "some objects are gone" only where
-  // osmium says so.
-  options.onPhase(`Cutting the selected objects and the ${named.length.toLocaleString('en')} objects the catalogue names from the planet...`);
-  const [, found] = await sideBySide(signal, [
-    (each) => runTool(OSMIUM, tagsFilter, { signal: each }),
-    (each) => runTool(OSMIUM, ['getid', '-r', '--verbose-ids', planet, '-i', pins, '-o', linked, OSMIUM_OUTPUT, '--overwrite'], { signal: each, exitCodes: [0, 1] }),
-  ]);
-  const gone = found.code === 0 ? { count: 0, ids: [] } : goneObjects(found.stderr);
-  if (!gone) throw new Error(`osmium getid failed (1): ${found.stderr.slice(-2000).trim()}`);
-  if (gone.count > 0) {
-    const listed = gone.ids.slice(0, GONE_NAMED).join(', ') + (gone.ids.length > GONE_NAMED ? ', ...' : '');
-    const which = listed ? ': ' + listed : '';
-    options.onNote?.(`${gone.count.toLocaleString('en')} objects the catalogue names are no longer in the planet${which}`);
+  const said = [
+    'the selected objects',
+    ...(named.length ? [`the ${named.length.toLocaleString('en')} objects the catalogue names`] : []),
+    ...(area ? [`the ways near ${streets.length.toLocaleString('en')} streets and squares`] : []),
+  ];
+  options.onPhase(`Cutting ${said.join(', ')} from the planet...`);
+  const parts: CutPart[] = [async (each) => { await runTool(OSMIUM, tagsFilter, { signal: each }); return null; }];
+  // Exit 1 is also osmium's answer to an error reading the data: it is taken
+  // as "some objects are gone" only where osmium says so.
+  if (named.length) {
+    parts.push((each) => runTool(OSMIUM, ['getid', '-r', '--verbose-ids', planet, '-i', pins, '-o', linked, OSMIUM_OUTPUT, '--overwrite'], { signal: each, exitCodes: [0, 1] }));
   }
-  await runTool(OSMIUM, ['merge', selected, linked, '-o', cut, OSM2PGSQL_INPUT, '--overwrite'], { signal });
-  return { cut, pins, items, pinned: named.length, gone: gone.count };
+  if (area) {
+    const polygon = join(work, 'near-streets.geojson');
+    await writeFile(polygon, JSON.stringify(area));
+    parts.push(streetWaysCut(planet, polygon, work));
+  }
+  const [, found] = await sideBySide(signal, parts);
+  const gone = named.length ? goneCount(found!, options) : 0;
+  const merged = [selected, ...(named.length ? [linked] : []), ...(area ? [join(work, STREET_WAYS)] : [])];
+  await runTool(OSMIUM, ['merge', ...merged, '-o', cut, OSM2PGSQL_INPUT, '--overwrite'], { signal });
+  return { cut, pins, items, pinned: named.length, gone, streets: streets.length };
 }
 
 /** Load the cut through the flex style into the `_next` copy. */
@@ -155,6 +208,8 @@ async function loadLayer(cut: string, work: string, pins: string, signal: AbortS
     env: {
       ...databaseEnv(), OSM_LAYER_TABLE: NEXT_TABLE, OSM_LAYER_SELECTION: join(work, 'selection.txt'),
       OSM_LAYER_DRAWN: join(work, 'drawn.txt'), OSM_LAYER_DRAWN_ITEMS: join(work, 'drawn-items.txt'), OSM_LAYER_PINS: pins,
+      OSM_LAYER_STREETS: join(work, STREETS_FILE), OSM_LAYER_STREET_REACH_M: String(STREET_REACH_M),
+      OSM_LAYER_STREET_HIGHWAYS: STREET_HIGHWAYS.join(','),
     },
   });
   await dropImportProperties();
@@ -237,10 +292,11 @@ async function cutAndSwap(
   try {
     const planet = await planetOf(options.dumpsDir, work);
     const current = planet.state.timestamp;
-    const { cut, pins, items, pinned, gone } = await cutLayer(planet.path, work, options);
+    const { cut, pins, items, pinned, gone, streets } = await cutLayer(planet.path, work, options);
     options.onPhase('Loading the layer into the database...');
     await loadLayer(cut, work, pins, signal);
     const objects = await nextTableCount();
+    const lined = await nextStreetLines();
     if (objects === 0) throw new Error('The cut kept no object, so the layer in place stays');
     options.onPhase('Indexing the layer...');
     await indexNextTable(signal);
@@ -248,7 +304,7 @@ async function cutAndSwap(
     // is not offered as newer than a layer already brought past it.
     await swapIn({
       buildId: options.buildId, planetFile: planet.state.base, dumpDate: current.slice(0, 10), replicatedAt: current, objects, pinned, pinnedGone: gone,
-      drawn: LAYER_DRAWN, selection: LAYER_SELECTION,
+      drawn: LAYER_DRAWN, selection: LAYER_SELECTION, streets, streetsLined: lined.items,
     }, signal);
     const shapesSaid = await regionShapesFrom(items, options);
     const goneSaid = gone > 0 ? ` (${gone.toLocaleString('en')} of them no longer in the planet)` : '';
@@ -256,7 +312,8 @@ async function cutAndSwap(
       bytes: planet.held?.bytes ?? planet.bytes, lines: 0, checksumActual: planet.held?.checksumActual ?? null,
       summary: `kept ${objects.toLocaleString('en')} OpenStreetMap objects from ${planet.state.base} brought forward with `
         + `${planet.applied} daily diffs to diff ${planet.state.sequence}, current to ${current}, `
-        + `with the ${pinned.toLocaleString('en')} objects the catalogue names cut in whatever their tags${goneSaid}${shapesSaid}`,
+        + `with the ${pinned.toLocaleString('en')} objects the catalogue names cut in whatever their tags${goneSaid}, `
+        + `and ${lined.lines.toLocaleString('en')} lines of ${lined.items.toLocaleString('en')} of the ${streets.toLocaleString('en')} streets and squares looked for${shapesSaid}`,
     };
   } catch (error) {
     await dropNextTable().catch(() => undefined);

@@ -38,6 +38,14 @@ export async function dropImportProperties(): Promise<void> {
   await pool.query(`DROP TABLE IF EXISTS ${PROPERTIES}`);
 }
 
+/** How many of the `_next` copy's rows are a street item's line, and how many items they are the lines of (ADR-0194). */
+export async function nextStreetLines(): Promise<{ lines: number; items: number }> {
+  const result = await pool.query<{ lines: string; items: string }>(
+    `SELECT count(*) AS lines, count(DISTINCT street_item) AS items FROM ${NEXT} WHERE street_item IS NOT NULL`,
+  );
+  return { lines: Number(result.rows[0].lines), items: Number(result.rows[0].items) };
+}
+
 /** How many objects the `_next` copy holds. */
 export async function nextTableCount(): Promise<number> {
   const result = await pool.query<{ objects: string }>(`SELECT count(*) AS objects FROM ${NEXT}`);
@@ -81,6 +89,9 @@ export interface LayerRecord {
   drawn: KeepWkt;
   /** The selection the build kept objects by (`LAYER_SELECTION`, ADR-0191). */
   selection: readonly string[];
+  /** How many of Squares & streets' candidates the build looked for the lines of, and how many it found one for (ADR-0194). */
+  streets: number;
+  streetsLined: number;
 }
 
 /**
@@ -97,10 +108,10 @@ export async function swapIn(record: LayerRecord, signal: AbortSignal): Promise<
     await client.query(`ALTER TABLE ${NEXT} RENAME TO ${TABLE}`);
     for (const index of indexes) await client.query(`ALTER INDEX ${inWorkbench(index.name + '_next')} RENAME TO ${index.name}`);
     await client.query(
-      `INSERT INTO osm_layer_builds (build_id, planet_file, dump_date, replicated_at, objects, pinned, pinned_gone, drawn, selection)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      `INSERT INTO osm_layer_builds (build_id, planet_file, dump_date, replicated_at, objects, pinned, pinned_gone, drawn, selection, streets, streets_lined)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [record.buildId, record.planetFile, record.dumpDate, record.replicatedAt, record.objects, record.pinned, record.pinnedGone,
-        JSON.stringify(record.drawn), [...record.selection]],
+        JSON.stringify(record.drawn), [...record.selection], record.streets, record.streetsLined],
     );
     signal.throwIfAborted();
     await client.query('COMMIT');

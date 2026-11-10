@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 export const OSMIUM = '/usr/bin/osmium';
 /**
  * How osmium writes the files a build makes for osmium to read again (the
- * current planet, the two cuts before they are merged): PBF compressed with
+ * current planet, the cuts before they are merged): PBF compressed with
  * lz4 rather than zlib, which writes and reads several times faster for files
  * about a quarter larger. Rewriting the 95 GB planet with zlib took 21.5
  * minutes on the first build (2026-10-22), most of it compressing. The weekly
