@@ -28,7 +28,7 @@ import { gatheredPlaceKinds } from '../sync/places/placePass.js';
 import { termsOf } from '../sync/subset/entities.js';
 import { fetchEntityFacts } from '../sync/publicArt/queries.js';
 import { chunk } from '../sync/wikidataQueries.js';
-import { subsetRunner } from './entryTypes.js';
+import { subsetRunner } from '../sync/subset/reader.js';
 
 /** One item's classes as the subset holds them, each with its label where the subset has one. */
 export interface ItemClass {

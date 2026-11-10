@@ -8,7 +8,7 @@
  */
 
 import { pool } from '../../../db/index.js';
-import type { SparqlFn } from '../wikidataQueries.js';
+import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 
 export type WikidataReader = 'live' | 'subset';
 
@@ -51,6 +51,11 @@ export function subsetOnlyDoor(): SparqlFn & Marked {
   return subsetDoor(async (_query: string, descriptor?: { label?: string }) => {
     throw new Error(`A run reading the local Wikidata subset asked the live service: ${descriptor?.label ?? 'a question with no twin'}`);
   });
+}
+
+/** A runner over the subset's door: the subset is our own database, so nothing is paced and nothing is shown. */
+export function subsetRunner(): QueryRunner {
+  return { sparql: subsetOnlyDoor(), phase: () => {}, step: async () => {} };
 }
 
 /** Which Wikidata the source's runs read, as the admin set it (`experience_sources.wikidata_reader`). */
