@@ -25,8 +25,8 @@ export const OSM_PLANET = 'https://planet.openstreetmap.org';
 
 /** Every dump the catalog knows, by key: what a route accepts and a build is named by. */
 export const DUMP_KEYS = [
-  'wikidata-entities', 'wikidata-lexemes', 'enwiki-page', 'enwiki-page-props', 'enwiki-linktarget', 'enwiki-categorylinks',
-  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects', 'wikidata-redirects', 'wikivoyage-usage', 'wikivoyage-pages',
+  'wikidata-entities', 'enwiki-page', 'enwiki-page-props', 'enwiki-linktarget', 'enwiki-categorylinks',
+  'pageviews-user', 'wikipedia-redirects', 'wikidata-redirects', 'wikivoyage-usage', 'wikivoyage-pages',
   'osm-planet',
 ] as const;
 export type DumpKey = typeof DUMP_KEYS[number];
@@ -145,7 +145,7 @@ export function md5Of(text: string, fileName: string): string | null {
 /** How many dated directories back a resolver looks before it says there is none. */
 const DIRECTORIES_TRIED = 6;
 
-function wikidataJson(key: DumpKey, part: 'all' | 'lexemes', title: string, about: string): DumpDescriptor {
+function wikidataJson(key: DumpKey, part: 'all', title: string, about: string): DumpDescriptor {
   const base = `${WIKIMEDIA_DUMPS}/wikidatawiki/entities`;
   return {
     key, source: 'Wikidata', title, datedBy: 'day', about, isFileName: datedName('wikidata-', 8, `-${part}.json.gz`),
@@ -435,13 +435,10 @@ const planet: DumpDescriptor = {
 export const DUMPS: readonly DumpDescriptor[] = [
   wikidataJson('wikidata-entities', 'all', 'All entities',
     'One entity per line, every statement at every rank: the source of the local Wikidata subset (#1434).'),
-  wikidataJson('wikidata-lexemes', 'lexemes', 'Lexemes',
-    'The same JSON format at a size that verifies the pipeline in minutes.'),
   enwikiTable('enwiki-page', 'pagetable', 'page', 'Pages', 'every page with its title, namespace, length and redirect flag (#1440).'),
   enwikiTable('enwiki-page-props', PAGE_PROPS_JOB, 'page_props', 'Page properties', 'among them the Wikidata item of each article.'),
   enwikiTable('enwiki-linktarget', 'linktargettable', 'linktarget', 'Link targets', 'the namespace and title each category link names by id (#1440).'),
   enwikiTable('enwiki-categorylinks', 'categorylinkstable', 'categorylinks', 'Category links', 'which category each page is in, named by its link target (#1440).'),
-  enwikiTable('enwiki-langlinks', 'langlinkstable', 'langlinks', 'Language links', 'each article\'s articles in other editions.'),
   enwikiTable('wikipedia-redirects', 'redirecttable', 'redirect', 'Redirects',
     'each redirect page and the title it points to. A build reads this and the page table of the same date in every edition readership counts, and keeps the redirects to an article with a Wikidata item, so their views count under it (#1650, ADR-0055 decision 2).',
     'Wikipedia editions', name => /^[a-z_]+wiki-\d{8}-(redirect|page)\.sql\.gz$/.test(name)),
