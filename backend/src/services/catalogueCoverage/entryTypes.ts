@@ -23,9 +23,9 @@ import type { SurroundingsKind } from '../sync/places/surroundingsTier.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE } from '../sync/publicArt/kindRules.js';
 import { fetchEntityFacts } from '../sync/publicArt/queries.js';
 import { SQUARES_SURROUNDINGS } from '../sync/squares/kind.js';
-import { subsetOnlyDoor } from '../sync/subset/reader.js';
+import { subsetRunner } from '../sync/subset/reader.js';
 import { TOWERS_SURROUNDINGS } from '../sync/towers/kind.js';
-import { chunk, type QueryRunner } from '../sync/wikidataQueries.js';
+import { chunk } from '../sync/wikidataQueries.js';
 import { WORSHIP_SURROUNDINGS } from '../sync/worshipSyncService.js';
 
 /** What a kind's type is read with: the gather kind whose trees its rule reads, and the rule's `typeOf` over them. */
@@ -102,11 +102,6 @@ export function typeFilings(
 
 /** The subset answers per batch of items, as the gather asks it. */
 const FACT_BATCH = 500;
-
-/** A runner over the subset's door: the subset is our own database, so nothing is paced and nothing is shown. */
-export function subsetRunner(): QueryRunner {
-  return { sparql: subsetOnlyDoor(), phase: () => {}, step: async () => {} };
-}
 
 /** The types of `filings` read from the local Wikidata subset, under the kinds `rules` types. */
 export async function readFilingTypes(
