@@ -126,7 +126,7 @@ describe('a swap and a run (#2415)', () => {
        VALUES ($2, 'wikidata-redirects', 'local', 'running', '{"kind":"keep"}', 'worker:swap-guard', $1, NOW(), NOW())`,
       [JSON.stringify({ phase: 'reading', message: 'Waiting', downloaded: 0, read: 0, lines: 0, etaSeconds: null, waitsFor: [{ logId: id, source: 'UNESCO', dryRun: false }] }), BUILD],
     );
-    expect(await buildsWaitingFor(id)).toEqual(['The items Wikidata redirected to another']);
+    expect(await buildsWaitingFor(id)).toEqual(['Wikidata item redirects']);
     expect(await buildsWaitingFor(id + 1)).toEqual([]);
   });
 });

@@ -67,8 +67,17 @@ export interface DumpDescriptor {
   title: string;
   /** Whether a file is a day's dump or a month's counts, which its date stands for. */
   datedBy: 'day' | 'month';
-  /** What the dump holds, for the admin panel. */
+  /** What the dump holds, for the admin panel, in a plain sentence or two (`DUMP_WORDS`). */
   about: string;
+  /** How a file of it is read and verified, which the panel shows behind an info mark (`DUMP_WORDS`). */
+  how: string;
+  /**
+   * The copy whose build reads this dump's file as one of its inputs, where it
+   * keeps nothing of its own: English Wikipedia's page properties, link targets
+   * and category links are read by the structure build of `enwiki-page`. The
+   * panel names it under that copy, not as a row that was never built (#2415).
+   */
+  inputOf?: DumpKey;
   /** Whether a name is one of the dump's dated files, which a local copy keeps (#1456). */
   isFileName: (name: string) => boolean;
   /**
@@ -92,6 +101,9 @@ export interface DumpDescriptor {
    */
   resolve(read: TextReader, size: SizeReader, only?: (fileName: string) => boolean): Promise<DumpFile | null>;
 }
+
+/** A dump as its resolver knows it, before the panel's words are put to it (`DUMP_WORDS`). */
+type DumpSource = Omit<DumpDescriptor, 'about' | 'how' | 'inputOf'>;
 
 const DIGITS = /^\d+$/;
 
@@ -145,10 +157,10 @@ export function md5Of(text: string, fileName: string): string | null {
 /** How many dated directories back a resolver looks before it says there is none. */
 const DIRECTORIES_TRIED = 6;
 
-function wikidataJson(key: DumpKey, part: 'all', title: string, about: string): DumpDescriptor {
+function wikidataJson(key: DumpKey, part: 'all', title: string): DumpSource {
   const base = `${WIKIMEDIA_DUMPS}/wikidatawiki/entities`;
   return {
-    key, source: 'Wikidata', title, datedBy: 'day', about, isFileName: datedName('wikidata-', 8, `-${part}.json.gz`),
+    key, source: 'Wikidata', title, datedBy: 'day', isFileName: datedName('wikidata-', 8, `-${part}.json.gz`),
     async resolve(read, size, only) {
       for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
         const fileName = safeFileName(`wikidata-${dir}-${part}.json.gz`);
@@ -211,14 +223,11 @@ export const USAGE_SUFFIX = 'wbc_entity_usage.sql.gz';
  * English Wikivoyage's item usage, the build's own file: a build reads every
  * edition's usage table of the same date (#1768).
  */
-const wikivoyageUsage: DumpDescriptor = {
+const wikivoyageUsage: DumpSource = {
   key: 'wikivoyage-usage',
   source: 'Wikivoyage editions',
   title: 'Item usage',
   datedBy: 'day',
-  about: 'The wbc_entity_usage table: which Wikidata items each page uses. A build reads this and the same date\'s usage and '
-    + 'page tables of every edition, and keeps each item an edition\'s guide articles use: the travel-guide witness of '
-    + 'whether a place is one a visitor goes to (#1768, decided on #1718).',
   isFileName: datedName('enwikivoyage-', 8, `-${USAGE_SUFFIX}`),
   readsAlso: name => /^[a-z_]+wikivoyage-\d{8}-(wbc_entity_usage|page)\.sql\.gz$/.test(name),
   async resolve(read, _size, only) {
@@ -262,15 +271,11 @@ export function contentDirectories(html: string): string[] {
  * size is one part, and an export the host splits into more is refused by name
  * rather than read in part.
  */
-const wikivoyagePages: DumpDescriptor = {
+const wikivoyagePages: DumpSource = {
   key: 'wikivoyage-pages',
   source: 'Wikivoyage editions',
   title: 'English Wikivoyage\'s articles',
   datedBy: 'day',
-  about: 'Every page of English Wikivoyage with its current text, as MediaWiki Content File Exports write it on the 1st '
-    + 'of each month; a build keeps the articles and redirects with their Wikidata items from the same date\'s page '
-    + 'properties: the copy the world-view extraction reads a region\'s page from, so two extractions of one copy agree '
-    + '(#2089, #2355).',
   isFileName: name => CONTENT_PART.test(name),
   readsAlso: datedName('enwikivoyage-', 8, '-page_props.sql.gz'),
   async resolve(read, size, only) {
@@ -303,12 +308,12 @@ const wikivoyagePages: DumpDescriptor = {
 
 /** One table of a wiki's run, found in the newest run that has written it. */
 function wikiTable(
-  wiki: string, key: DumpKey, job: string, table: string, title: string, about: string, source: string,
+  wiki: string, key: DumpKey, job: string, table: string, title: string, source: string,
   readsAlso?: (name: string) => boolean,
-): DumpDescriptor {
+): DumpSource {
   const base = `${WIKIMEDIA_DUMPS}/${wiki}`;
   return {
-    key, source, title, datedBy: 'day', about: `The ${table} table: ${about}`,
+    key, source, title, datedBy: 'day',
     isFileName: datedName(`${wiki}-`, 8, `-${table}.sql.gz`),
     ...(readsAlso ? { readsAlso } : {}),
     async resolve(read, _size, only) {
@@ -323,10 +328,10 @@ function wikiTable(
 }
 
 function enwikiTable(
-  key: DumpKey, job: string, table: string, title: string, about: string, source = 'English Wikipedia',
+  key: DumpKey, job: string, table: string, title: string, source = 'English Wikipedia',
   readsAlso?: (name: string) => boolean,
-): DumpDescriptor {
-  return wikiTable('enwiki', key, job, table, title, about, source, readsAlso);
+): DumpSource {
+  return wikiTable('enwiki', key, job, table, title, source, readsAlso);
 }
 
 /**
@@ -336,12 +341,11 @@ function enwikiTable(
  */
 export const pageviewsFileName = (month: string) => `pageviews-${month.slice(0, 4)}${month.slice(5, 7)}-user.bz2`;
 
-const pageviews: DumpDescriptor = {
+const pageviews: DumpSource = {
   key: 'pageviews-user',
   source: 'Wikimedia pageviews',
   title: 'Readers per article, by month',
   datedBy: 'month',
-  about: 'Every article of every edition with its month total and daily counts, people only (ADR-0055). No checksum is published: the size and a clean end of the bz2 stream verify it.',
   isFileName: datedName('pageviews-', 6, '-user.bz2'),
   async resolve(read, size, only) {
     const years = [...(await read(`${PAGEVIEWS_MONTHLY}/`)).matchAll(/href="(\d{4})\/"/g)].map(m => m[1]).sort().reverse();
@@ -398,14 +402,12 @@ function mondayCode(day: Date, weeksBack: number): string {
   return monday.toISOString().slice(2, 10).replaceAll('-', '');
 }
 
-const planet: DumpDescriptor = {
+const planet: DumpSource = {
   key: 'osm-planet',
   source: 'OpenStreetMap',
   title: 'Planet',
   datedBy: 'day',
   retriesACut: false,
-  about: 'The whole OpenStreetMap database as one PBF file, released weekly and verified by its md5. It is kept as a local '
-    + 'copy, which the OpenStreetMap layer is cut from (ADR-0134); it is never read by lines.',
   isFileName: datedName('planet-', 6, '.osm.pbf'),
   async resolve(read, size, only) {
     const base = `${OSM_PLANET}/pbf`;
@@ -432,24 +434,79 @@ const planet: DumpDescriptor = {
   },
 };
 
-export const DUMPS: readonly DumpDescriptor[] = [
-  wikidataJson('wikidata-entities', 'all', 'All entities',
-    'One entity per line, every statement at every rank: the source of the local Wikidata subset (#1434).'),
-  enwikiTable('enwiki-page', 'pagetable', 'page', 'Pages', 'every page with its title, namespace, length and redirect flag (#1440).'),
-  enwikiTable('enwiki-page-props', PAGE_PROPS_JOB, 'page_props', 'Page properties', 'among them the Wikidata item of each article.'),
-  enwikiTable('enwiki-linktarget', 'linktargettable', 'linktarget', 'Link targets', 'the namespace and title each category link names by id (#1440).'),
-  enwikiTable('enwiki-categorylinks', 'categorylinkstable', 'categorylinks', 'Category links', 'which category each page is in, named by its link target (#1440).'),
+/**
+ * What the panel says of each dump (#2415, `docs/tech/interface-writing.md`):
+ * what it holds in plain words, and how a file of it is read and verified,
+ * shown behind an info mark. One place for the words, so a reader of the
+ * descriptors above sees the mechanics and the admin sees the sentence.
+ */
+const DUMP_WORDS: Record<DumpKey, Pick<DumpDescriptor, 'about' | 'how' | 'inputOf'>> = {
+  'wikidata-entities': {
+    about: 'Every Wikidata item, with all its statements. The Wikidata copy is cut from it.',
+    how: 'One entity a line, verified against the sha1 Wikidata publishes beside the file.',
+  },
+  'enwiki-page': {
+    about: 'Every page of English Wikipedia, with its title and whether it is a redirect.',
+    how: 'The page table of the wiki\'s run, verified by the sha1 its status file gives. The structure build reads it with the page properties, link targets and category links of the same date.',
+  },
+  'enwiki-page-props': {
+    about: 'The Wikidata item of each English Wikipedia article.',
+    how: 'The page_props table of the wiki\'s run, verified by the sha1 its status file gives.',
+    inputOf: 'enwiki-page',
+  },
+  'enwiki-linktarget': {
+    about: 'The title each category link of English Wikipedia names.',
+    how: 'The linktarget table of the wiki\'s run, verified by the sha1 its status file gives.',
+    inputOf: 'enwiki-page',
+  },
+  'enwiki-categorylinks': {
+    about: 'Which category each page of English Wikipedia is in.',
+    how: 'The categorylinks table of the wiki\'s run, verified by the sha1 its status file gives.',
+    inputOf: 'enwiki-page',
+  },
+  'wikipedia-redirects': {
+    about: 'Each redirect of the Wikipedia editions readership counts, and the article it points to.',
+    how: 'English Wikipedia\'s redirect table, and the redirect and page tables of the same date in every counted edition, each verified by the sha1 its status file gives.',
+  },
+  'wikidata-redirects': {
+    about: 'Each Wikidata item merged into another, and the item it now points to.',
+    how: 'Wikidata\'s redirect table and the page table of the same run, each verified by the sha1 its status file gives.',
+  },
+  'pageviews-user': {
+    about: 'How many people read each article of every edition, month by month.',
+    how: 'One file a month, people only. No checksum is published: the host\'s size and a clean end of the bzip2 stream verify it.',
+  },
+  'wikivoyage-usage': {
+    about: 'Which Wikidata items each Wikivoyage edition\'s pages use.',
+    how: 'English Wikivoyage\'s usage table, and the usage and page tables of the same date in every edition, each verified by the sha1 its status file gives.',
+  },
+  'wikivoyage-pages': {
+    about: 'Every page of English Wikivoyage, with its text and its Wikidata item.',
+    how: 'The monthly content export, verified by its sha256, and the page properties of the same date, verified by their sha1.',
+  },
+  'osm-planet': {
+    about: 'The whole OpenStreetMap map, released weekly. The OpenStreetMap layer is cut from it.',
+    how: 'One file read whole by the layer\'s tools, verified by its md5 and kept on disk, then brought forward with the daily diffs.',
+  },
+};
+
+const DESCRIPTORS: readonly DumpSource[] = [
+  wikidataJson('wikidata-entities', 'all', 'All entities'),
+  enwikiTable('enwiki-page', 'pagetable', 'page', 'Pages'),
+  enwikiTable('enwiki-page-props', PAGE_PROPS_JOB, 'page_props', 'Page properties'),
+  enwikiTable('enwiki-linktarget', 'linktargettable', 'linktarget', 'Link targets'),
+  enwikiTable('enwiki-categorylinks', 'categorylinkstable', 'categorylinks', 'Category links'),
   enwikiTable('wikipedia-redirects', 'redirecttable', 'redirect', 'Redirects',
-    'each redirect page and the title it points to. A build reads this and the page table of the same date in every edition readership counts, and keeps the redirects to an article with a Wikidata item, so their views count under it (#1650, ADR-0055 decision 2).',
     'Wikipedia editions', name => /^[a-z_]+wiki-\d{8}-(redirect|page)\.sql\.gz$/.test(name)),
   wikiTable('wikidatawiki', 'wikidata-redirects', 'redirecttable', 'redirect', 'Item redirects',
-    'each redirect page of Wikidata and the item it points to. A build reads this and the page table of the same run, and keeps every item redirected to another, so a place registered under an item Wikidata has since merged away is still found (ADR-0143 decision 3, #1895).',
     'Wikidata', datedName('wikidatawiki-', 8, '-page.sql.gz')),
   pageviews,
   wikivoyageUsage,
   wikivoyagePages,
   planet,
 ];
+
+export const DUMPS: readonly DumpDescriptor[] = DESCRIPTORS.map(dump => ({ ...dump, ...DUMP_WORDS[dump.key] }));
 
 export function dumpNamed(key: string): DumpDescriptor | undefined {
   return DUMPS.find(dump => dump.key === key);

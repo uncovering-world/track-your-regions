@@ -16,7 +16,7 @@ import { DUMPS } from '../../services/dumps/catalog.js';
 import { newestLocalCopy } from '../../services/dumps/localCopies.js';
 import { newestSample } from '../../services/dumps/samples.js';
 import { buildProgress, cancelBuild, isoDay, startBuild, type DumpBuildProgress } from '../../services/dumps/buildQueue.js';
-import { keeperOf, whatTheKeptNeeds } from '../../services/dumps/keepers.js';
+import { keeperOf, whatTheKeptNeeds, type Kept, type Keeper } from '../../services/dumps/keepers.js';
 import { NOT_ASKED, newestDumps, type Newest } from '../../services/dumps/newestOnHost.js';
 import {
   closeOrphanedBuilds, recentBuilds, type BuildKind, type BuildRequestRecord, type DumpBuildRow,
@@ -33,14 +33,25 @@ function checkedOf(newest: Newest): 'not-yet' | 'answered' | 'unreachable' {
   return newest.answered ? 'answered' : 'unreachable';
 }
 
+/**
+ * Whether a copy that follows another needs its rebuild because that input
+ * moved, every part held and read as it stands meanwhile, rather than because a
+ * part is missing (#2415): the card words the two apart.
+ */
+export function inputsMoved(keeper: Pick<Keeper, 'followsInputs'>, needs: ReturnType<typeof whatTheKeptNeeds>, built: Pick<Kept, 'readable'> | null): boolean {
+  return Boolean(keeper.followsInputs) && needs === 'rebuild' && built?.readable === true;
+}
+
 async function keepsOf(key: Dumps['dumps'][number]['key'], newest: Newest): Promise<Dumps['dumps'][number]['keeps']> {
   const keeper = keeperOf(key);
   if (!keeper) return null;
   const built = await keeper.latest();
+  const needs = whatTheKeptNeeds(built, newest.date);
   return {
     title: keeper.title,
+    feeds: keeper.feeds,
     built: built ? { dumpDate: built.dumpDate, swappedAt: built.swappedAt.toISOString() } : null,
-    needs: whatTheKeptNeeds(built, newest.date),
+    needs,
     newestDumpDate: newest.date,
     newestChecked: checkedOf(newest),
     rederives: Boolean(keeper.rederive),
@@ -48,6 +59,8 @@ async function keepsOf(key: Dumps['dumps'][number]['key'], newest: Newest): Prom
     fromCopy: keeper.fromCopy,
     schedule: { ...await keeper.schedule.read(), defaultEveryDays: keeper.schedule.defaultEveryDays },
     currentTo: Boolean(keeper.update),
+    followsInputs: Boolean(keeper.followsInputs),
+    inputsMoved: inputsMoved(keeper, needs, built),
     archives: keeper.archives ? await keeper.archives() : [],
   };
 }
@@ -95,6 +108,8 @@ export async function listDumps(): Promise<Dumps> {
       title: dump.title,
       datedBy: dump.datedBy,
       about: dump.about,
+      how: dump.how,
+      inputOf: dump.inputOf ?? null,
       progress: wireProgress(progress[index]),
       builds: builds.filter(build => build.dump === dump.key && build.status !== 'queued').map(build => ({
         id: build.id,
