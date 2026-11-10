@@ -583,6 +583,12 @@ export const startSyncBodySchema = z.object({
    * rather than kept or erased unread.
    */
   askAboutPins: z.boolean().optional(),
+  /**
+   * On a dry run of a pass, the sources it runs alone (#2424): the pass's
+   * gather is made whole and only these take their share. Refused on a real
+   * run, and for a source outside the pass.
+   */
+  alone: z.array(z.number().int().positive()).min(1).max(20).optional(),
 });
 
 /**

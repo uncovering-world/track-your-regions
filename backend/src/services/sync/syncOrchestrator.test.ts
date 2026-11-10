@@ -269,6 +269,26 @@ describe('cancelSync', () => {
     expect(runningSyncs.get(TEST_SOURCE_ID)?.cancel).toBe(true);
     expect(runningSyncs.get(TEST_SOURCE_ID + 1)?.cancel).toBe(true);
   });
+
+  it('stops a later kind run alone when pressed on the pass\'s first source, which holds no entry (#2424)', () => {
+    // The place pass's card cancels through its first source, Public art (3);
+    // a dry run of Squares & streets (9) alone registered 9 only.
+    runningSyncs.set(9, makeProgress({ passSources: [9], alone: true, logId: 42 }));
+
+    expect(cancelSync(3)).toBe(true);
+    expect(runningSyncs.get(9)?.cancel).toBe(true);
+    expect(runningSyncs.has(3)).toBe(false);
+  });
+
+  it('reaches no run of another pass, or a source of none', () => {
+    // A pass of its own, registered as a pass is, so only the bound by
+    // `passOf` keeps a press on the place pass's first source from reaching it.
+    runningSyncs.set(TEST_SOURCE_ID, makeProgress({ passSources: [TEST_SOURCE_ID, TEST_SOURCE_ID + 1], logId: 42 }));
+
+    expect(cancelSync(3)).toBe(false);
+    expect(cancelSync(1)).toBe(false);
+    expect(runningSyncs.get(TEST_SOURCE_ID)?.cancel).toBe(false);
+  });
 });
 
 describe('registering a location write', () => {

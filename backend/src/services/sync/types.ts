@@ -79,6 +79,11 @@ export interface SyncProgress {
    */
   passSources?: number[];
   /**
+   * A dry run of some of its pass's sources alone (`SyncRunOptions.alone`),
+   * which its closing line says, so it is never read as the whole pass.
+   */
+  alone?: boolean;
+  /**
    * The run's own steps go on after its items (#1805, `afterRun.ts`): the
    * items of the components it left without one, the near-places pairing.
    * Set once the run's writer has ended, before its entry would be dropped,
@@ -117,6 +122,13 @@ export interface SyncRunOptions {
   dryRun?: boolean;
   refreshCache?: boolean;
   askAboutPins?: boolean;
+  /**
+   * The sources of a pass a dry run runs, the rest of the pass left out
+   * (#2424): the shared gather is made whole, as every run of the pass makes
+   * it, and only these sources take their share. Absent, every source runs. A
+   * real pass always runs every source (`runSyncPass` refuses otherwise).
+   */
+  alone?: readonly number[];
 }
 
 /**

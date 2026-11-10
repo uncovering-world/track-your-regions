@@ -137,6 +137,95 @@ describe('runSyncPass', () => {
   });
 });
 
+describe('runSyncPass, a dry run of some sources alone (#2424)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runningSyncs.clear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    runningSyncs.clear();
+  });
+
+  it('runs only the sources named, from the one gather, and registers none of the rest', async () => {
+    const gather = vi.fn(async () => 'the whole gather');
+    const shared = sharedGather(gather);
+    const seen: string[] = [];
+    let registered: number[] = [];
+    const first = member(3, 101, async (slot) => { seen.push(await shared(slot.progress)); });
+    const second = member(6, 102, async (slot) => {
+      registered = [...runningSyncs.keys()];
+      seen.push(await shared(slot.progress));
+    });
+    const third = member(9, 103, async (slot) => { seen.push(await shared(slot.progress)); });
+
+    await runSyncPass([first, second, third], 1, { dryRun: true, alone: [6] });
+
+    expect(first.run).not.toHaveBeenCalled();
+    expect(third.run).not.toHaveBeenCalled();
+    expect(second.run).toHaveBeenCalledTimes(1);
+    // The source run alone makes the gather the whole pass would read.
+    expect(gather).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual(['the whole gather']);
+    expect(registered).toEqual([6]);
+    expect(second.slots[0].progress.passSources).toEqual([6]);
+    expect(second.slots[0].progress.alone).toBe(true);
+  });
+
+  it('keeps the pass\'s order among the sources named, whatever order they were named in', async () => {
+    const first = member(3, 101);
+    const second = member(6, 102);
+    const third = member(9, 103);
+
+    await runSyncPass([first, second, third], 1, { dryRun: true, alone: [9, 3] });
+
+    expect(second.run).not.toHaveBeenCalled();
+    expect(vi.mocked(first.run).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(third.run).mock.invocationCallOrder[0]);
+    expect(third.slots[0].firstLogId).toBe(101);
+  });
+
+  it('marks no run as alone when every source is named', async () => {
+    const first = member(3, 101);
+    const second = member(6, 102);
+
+    await runSyncPass([first, second], 1, { dryRun: true, alone: [3, 6] });
+
+    expect(first.slots[0].progress.alone).toBeUndefined();
+    expect(second.slots[0].progress.alone).toBeUndefined();
+  });
+
+  it('refuses a real pass that leaves a source out, before any source runs', async () => {
+    const first = member(3, 101);
+    const second = member(6, 102);
+
+    await expect(runSyncPass([first, second], 1, { alone: [6] })).rejects.toThrow(/Only a dry run/);
+    expect(first.run).not.toHaveBeenCalled();
+    expect(second.run).not.toHaveBeenCalled();
+    expect(runningSyncs.size).toBe(0);
+  });
+
+  it('refuses a source that is not of the pass', async () => {
+    const first = member(3, 101);
+
+    await expect(runSyncPass([first], 1, { dryRun: true, alone: [5] })).rejects.toThrow(/Source 5 is not a source of this pass/);
+    expect(first.run).not.toHaveBeenCalled();
+  });
+
+  it('refuses a start of the whole pass while one source runs alone', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const first = member(3, 101);
+    const second = member(6, 102, () => held);
+
+    const alone = runSyncPass([first, second], 1, { dryRun: true, alone: [6] });
+    await Promise.resolve();
+    await expect(runSyncPass([first, second], 1)).rejects.toThrow(/already in progress/);
+    release();
+    await alone;
+  });
+});
+
 describe('sharedGather', () => {
   it('gathers once with the first asker\'s progress, and hands every asker the same answer', async () => {
     const gather = vi.fn().mockResolvedValue({ pool: 7 });
