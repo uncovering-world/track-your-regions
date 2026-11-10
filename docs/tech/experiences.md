@@ -25,7 +25,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 | **Kind** | What a traveller browses by — a World Heritage site, an art museum, an archaeology museum, a monument. Siblings: each its own list, pin colour and count, each with a sync of its own and its own rule of what complete means — a kind's sources are that sync's inputs (ADR-0045 §1, §2, §3) | `experience_kinds` (#822), and a place's membership in it is a row of `experience_kind_memberships`; a reader-facing row carries its kind off that membership (`rowKindJoinSql`, #819) | `kind_id`, `kind_name`, `kind_priority`, `kindId`; `experience_kinds`; the chip beside an object's name on a review card, the Discover pills and `?kind=`, the group headers, `kindColors.ts` |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query — an input of the kind's sync, carrying its own gate (§3, §7); the sync and the rule of completeness are the kind's. A kind may have several; one source may feed several kinds | `experience_sources` — one row per source, the row the sync service is registered under, naming the kind it fills (`kind_id`, #822); named `experience_categories` until migration 055 (#819) | `experience_sources`, `source_id` on `experiences` (the source that first brought the row, provenance only since ADR-0084), on `experience_sync_logs`, on a membership and on the caches, the curator scope `'source'`, `requires_curation`, the admin panel's Sources tab and its routes (`/api/admin/sync/sources/…`) |
 | **Tier** | Which of a kind's three fillings a place comes through ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md), [ADR-0178](../decisions/0178-a-kind-is-filled-in-three-tiers-the-world-a-places-surroundings-and-its-region.md)): the **world tier** — a global source ranks the world on one signal and a bar is drawn, the Iconic badge is its (§5) — the **surroundings tier** — the same global sources and the same analysis, a place measured against its neighbours of its own density within 150 km (ADR-0171, ADR-0181), no badge — or the **regional tier** — a source native to its own unit (a country's register, a city's list, a curator) enumerates what the unit holds and the kind's rule cuts within it, with no global signal, no badge. A region's list is all three together; the rules, the scorecard and the register of sources looked at are [filling-a-kind.md](filling-a-kind.md) and [`docs/sources/`](../sources/README.md) | Not a column on the source yet: every source that exists is world tier, and the surroundings tier each place kind reads from Wikidata by ADR-0171 (§ The surroundings tier from the gather) marks its rows on the membership (`facts.tier = 'surroundings'`; no badge); the first native regional source (#628) records its tier on its `experience_sources` row | — |
-| **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, sculpture / fountain / street art / clock, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue / sacred mountain / holy site, site / museum — and none for an art museum (§1, #814) | `experience_kind_memberships.type` — the membership's, since a place in two kinds has a type in each (ADR-0084, #1253); the vocabularies and their words in `@tyr/shared/placeTypes` (#2319), what a reader is told about each in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
+| **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, sculpture / religious statue / equestrian statue / fountain / street art / clock / installation and land art / roadside giant, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue / sacred mountain / holy site, site / museum — and none for an art museum (§1, #814) | `experience_kind_memberships.type` — the membership's, since a place in two kinds has a type in each (ADR-0084, #1253); the vocabularies and their words in `@tyr/shared/placeTypes` (#2319), what a reader is told about each in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
 | **Treasure type** | What kind of thing a work is, independent of its venue's kind and type | `treasures.treasure_type` | `treasure_type` |
 
 **Every reader says which of the two it means** (#819). A reader that means the kind reads the membership's `kind_id` — through `rowKindJoinSql` / `rowKindSelectSql` (`backend/src/db/membership.ts`), which join the membership the place is shown under (`shownMembershipSql`: the first of its kinds in display order, an offered one first, ADR-0143 decision 6; per row; a read over the whole catalogue that keeps only shown places, the world map's first screen, reads that order once for every place and picks among shown memberships only, `catalogueKindJoinSql`) and the kind it names, so a list row, a search result, a review card and the counts all carry `kind_id`, `kind_name` and `kind_priority`, and a kind filter asks every kind of the place (below); the kinds are listed by `GET /api/experiences/kinds`. A reader that means the source reads the source row under its own name: migration 055 renamed `experience_categories` to `experience_sources` and every `category_id` that pointed at it to `source_id` (on `experiences`, `experience_sync_logs`, `curator_assignments`, `wikidata_query_cache`, `wikidata_cache_policy`), and the curator scope that names one is `'source'`. The word *category* is gone from the schema and the code, apart from the guards that remember the `experiences.category` column #814 retired; in the sections below *kind* is what a reader browses by, counts, admits and refuses, and *source* is a run, its gate, its cache, its log, its scope. The vision documents use the same words ([`EXPERIENCE-TYPE-AND-SIGNIFICANCE.md`](../vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md), [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md)).
@@ -1341,21 +1341,25 @@ subtitle by the same rule. Migration 143 wrote the line an admitted membership r
 (`reported_subtitle`), where no standing view contests it, onto 172 places on the development catalogue on 2026-10-21. It also cleared
 the held pointer of the 81 memberships whose pointed run held nothing but that line. A sixth,
 `type-outside-vocabulary`, is a type where the membership holds none, or one its kind's
-vocabulary has no word for, replaced by one it has (ADR-0135). When Public Art & Monuments split,
+vocabulary has no word for, replaced by one it has (ADR-0135). A seventh,
+`type-within-vocabulary`, is a type moved from one word of that vocabulary to another (ADR-0193):
+the place is the same either way, and only the filter it answers to changes. Replayed on the
+development catalogue on 2026-11-10, Public art's eight types (#2279) move 133 works so. When Public Art & Monuments split,
 both new kinds inherited its `monument` and `sculpture`, and the dry runs of 2026-10-22 held 98
 retypes of places a reader sees (Arc de Triomphe `monument` → `arch`, Nelson's Column
 `sculpture` → `column`), none a change the source made; migration 146 cleared the inherited
 types a curator had not claimed, so each kind's next run files its places in its own words. A
 source declares its kind's words on the record it writes (`typeVocabulary`, from
-`KindRule.types`); the diff marks the rewrite in `textDifferences`, and the upsert's membership
-`type` arm writes it by the same rule. A type moved inside the vocabulary, `memorial` →
-`monument`, is still held. A row a curator put back against the rule's refusal is filed by the held row's rule, on every
-source, since a person kept it against the rule and the run only fills the gap: the run
-writes nothing else of a refusal, so the rule reads the type of every admitted row it refuses
-(`FilteredEntity.type`), and `filePutBackTypes` writes it on the ones a pin keeps admitted,
-recorded as an update past the gate (`recordPutBackTypes`). The Victory Arch and the Warsaw
+`KindRule.types`; the five kinds of the landmark pass do, Places of worship and Archaeology do not); the diff marks the rewrite in `textDifferences`, and the upsert's membership
+`type` arm writes it by the same rule, and a type moved inside the vocabulary, `memorial` →
+`monument`, is written the same way (`type-within-vocabulary`, ADR-0193). A row a curator put back against the rule's refusal is filed by the held row's rule, on every
+source: a person kept it against the rule, not its type, so only a curator's claim on the type
+stands. The run writes nothing else of a refusal, so the rule reads the type of every admitted
+row it refuses (`FilteredEntity.type`), and `filePutBackTypes` writes it on the ones a pin keeps
+admitted, recorded as an update past the gate under the class `typePass` gives it
+(`recordPutBackTypes`). The Victory Arch and the Warsaw
 Uprising Monument, put back into Monuments & memorials, held no type once migration 146 had run.
-A seventh, `unseen`, is every rewrite of a field no reader is shown, and an eighth, `typography`,
+An eighth, `unseen`, is every rewrite of a field no reader is shown, and a ninth, `typography`,
 a text rewritten in its typesetting alone ([ADR-0139](../decisions/0139-a-field-no-reader-sees-and-a-typographic-rewrite-pass-the-gate.md),
 #1834). Whether a reader is shown a field of a place is its mark in `@tyr/shared/placeFields`,
 measured against the surfaces the declaration names; the card's "readers do not see this" reads the
@@ -1381,7 +1385,7 @@ text clear of them, is asked. Migration 154
 wrote what the cards held only for these two classes and closed them: 47 of 532 open held cards on
 the development catalogue on 2026-10-23. It left alone a card a curator had answered a field of,
 and 21 that held only a removal of a year or makers by a kind that never writes them (#1879).
-A ninth, `short-move`, is a coordinate a reader sees moved less than `SHORT_MOVE_METERS` (250 m,
+A tenth, `short-move`, is a coordinate a reader sees moved less than `SHORT_MOVE_METERS` (250 m,
 `@tyr/shared/moves`), into the same GADM leaf division, and no nearer a point readers see of another
 place than to its stored point (`shortMovePassesSql`, `db/shortMove.ts`;
 [ADR-0140](../decisions/0140-a-short-move-passes-the-gate.md), #1837). Measured on the queue of
@@ -2670,7 +2674,38 @@ art, taken whole as one place, since its works are repainted while the place sta
 Gallery, the Wynwood Walls; #1994). The run finds such a place through the street-art entrance
 and rule (#2035, **Street-art places** below) and files it under the `street-art` type. The run
 still admits a panel on such a wall on its own (the Fraternal Kiss); a traveller visits the two as
-one place, so how the kind holds a wall and its panels together is #1992's. **Monuments & memorials** (kind and source 6)
+one place, so how the kind holds a wall and its panels together is #1992's.
+
+**Public art's eight types** (#2279, ADR-0193). A work is filed under *sculpture*, *religious
+statue*, *equestrian statue*, *fountain*, *street art*, *clock*, *installation and land art* or
+*roadside giant* (`PUBLIC_ART_TYPES` in `@tyr/shared/placeTypes`). `publicArtType`
+(`publicArt/kindRules.ts`) reads the first that applies, in that order: a clock
+(`CLOCK_TYPE_CLASSES`: the public clocks with a show, `clock`, `world clock`), street art, a
+fountain (the fountain tree, or `water well`, which is how Wikidata files a *Brunnen*: the
+Lindwurmbrunnen), then a clock or a fountain the label or the head of the Wikidata description names
+where no class names one (the Brno astronomical clock, Manneken Pis, the Merlion, the Bucket
+Fountain; `textOf`: the head ends at the first word that places or credits the work, so *a sculpture
+by Lucio Fontana* names no fountain). Then
+come a religious statue (`RELIGIOUS_STATUE_CLASSES`: a colossal statue of Jesus, a daibutsu, a
+Buddharupa), an equestrian statue (`equestrian statue` as a class or a genre, or a horse depicted
+beside a person: the statue of Gattamelata), a roadside giant (`ROADSIDE_GIANT_CLASSES`: big thing,
+oversized object), installation and land art (`INSTALLATION_CLASSES`, classes or genres:
+installation artwork, kinetic sculpture, tide organ, light installation, earthworks, land art), and
+a sculpture otherwise. After the commemorates reading, a sculpture still plain whose reading names
+no dedication and depicts a holy figure that is not of classical mythology becomes a religious
+statue (`typeByDepicted`, `PlaceReading.religious`, `CLASSICAL_MYTHOLOGY_CLASSES`). Our Lady of the
+Rockies is typed only `sculpture`, and its *Statues of the Virgin Mary* names Mary. Cellini's
+Perseus and the Column of Marcus Aurelius, which carries Paul the Apostle and is named for the
+emperor, stay sculptures. Measured on the development catalogue on 2026-11-10 over the 587 works
+Public art admits, the rule moves 133 of the 476 sculptures. 57 become religious statues, 36
+equestrian statues, 18 installation and land art and 11 roadside giants, and 7 become fountains and
+4 clocks; 343 stay sculptures. A work no class, genre, depicted figure, label or description places
+stays a sculpture (the Statue of Belief, Carhenge) until #2218 types such places for every kind. Two
+filings follow Wikidata where a traveller would not: the Newark Earthworks, an ancient earthwork
+whose item carries the genre *land art*, is installation and land art, and Bangkok's Giant Swing,
+typed *oversized object*, is a roadside giant. A curator's type is kept.
+
+**Monuments & memorials** (kind and source 6)
 is what was raised to remember: a memorial, a triumphal arch, a column, an obelisk, a monument —
 the Arc de Triomphe, Nelson's Column, the Lincoln Memorial, the Memorial to the Murdered Jews of
 Europe. One place may be both: the Motherland Calls is a statue and a memorial, the Colonne Vendôme
@@ -8481,7 +8516,7 @@ What the table decides, rather than merely draws:
   word is the chip beside the object's name, the kind — and `meaningOf('type', value)` reads
   the proposed value (or the stored one, where nothing is proposed) to say which closed
   vocabulary it is from (`typeVocabularyOf`, `utils/experienceTypes.ts`): a sculpture's card
-  explains public art's sculpture / fountain / street art / clock, a natural site's cultural / natural / mixed. One sentence for
+  explains public art's eight words, from sculpture to roadside giant, a natural site's cultural / natural / mixed. One sentence for
   every kind, opening with UNESCO's, is what *The Motherland Calls* used to get (#814). And the
   fact is one row: public art stored its type twice, as `category` and `metadata.type`, so a run
   proposed the same change twice and a curator answered twice — migration 044 dropped the key

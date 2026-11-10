@@ -8,7 +8,7 @@ The words this document uses are the ones [ADR-0045](../decisions/0045-a-travell
 |---|---|
 | **Kind** | What a traveller browses by — what they would call the thing in front of them: a World Heritage site, an art museum, an archaeology museum, a monument. Each kind is its own list, pin colour and count |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query. Not something a visitor sees |
-| **Type** | A distinction *inside* a kind whose members a traveller still browses together — cultural, natural or mixed for a World Heritage site; sculpture, fountain, street art or clock for public art; cathedral, church, chapel, monastery, mosque, temple, shrine, synagogue, sacred mountain or holy site for a place of worship (`@tyr/shared/placeTypes` holds every kind's list); site or museum for archaeology. A kind whose members a traveller would want as separate lists has no types: they are kinds |
+| **Type** | A distinction *inside* a kind whose members a traveller still browses together — cultural, natural or mixed for a World Heritage site; sculpture, religious statue, equestrian statue, fountain, street art, clock, installation and land art or roadside giant for public art; cathedral, church, chapel, monastery, mosque, temple, shrine, synagogue, sacred mountain or holy site for a place of worship (`@tyr/shared/placeTypes` holds every kind's list); site or museum for archaeology. A kind whose members a traveller would want as separate lists has no types: they are kinds |
 | **Treasure type** | What kind of thing a treasure inside a venue is — an artwork, a species. Independent of the venue's kind and type |
 
 ---
@@ -38,7 +38,7 @@ A type is a distinction *inside* a kind whose members a traveller still browses 
 | Kind | Types | Notes |
 |---|---|---|
 | World Heritage sites | `cultural`, `natural`, `mixed` | UNESCO's own classification, carried through from the source |
-| Public art | `sculpture`, `fountain`, `street-art`, `clock` | What the work is, read from Wikidata's classes: a public clock with a show as a clock, a fountain before a sculpture, a mural as street art |
+| Public art | `sculpture`, `religious-statue`, `equestrian-statue`, `fountain`, `street-art`, `clock`, `installation`, `roadside-giant` | What the work is, read from Wikidata's classes (ADR-0193): a public clock with a show as a clock, a fountain before a sculpture, a mural as street art, Christ the Redeemer as a religious statue, the Bronze Horseman as an equestrian statue, the Spiral Jetty as installation and land art, the Big Merino as a roadside giant |
 | Monuments & memorials | `memorial`, `arch`, `column`, `obelisk`, `monument` | What was raised: the form first (an arch, a column, an obelisk), then a memorial, and a monument otherwise. A kind of its own since #1807, so its values are not public art's |
 | Places of worship | `cathedral`, `monastery`, `mosque`, `synagogue`, `chapel`, `church`, `shrine`, `temple`, then `sacred mountain` and `holy site` for a holy place that is no building (ADR-0161) | Read from Wikidata's class trees in that order, the first one a place's classes reach winning — so Durham, a cathedral and a monastery, is a cathedral, and the Hagia Sophia is a mosque rather than a church. Where the class graph and a guidebook disagree the guidebook wins: a Thai *wat* is a temple, so Wat Pho is a temple though Wikidata files it under monastery. A place none of these words fits is stored with no type at all, which is a real answer rather than a gap ([ADR-0052](../decisions/0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) decision 5) |
 | Archaeology | `site`, `museum` | The dig a traveller stands in, or the museum that shows what came out of it — one kind, because they are one interest, and two chips inside it ([ADR-0058](../decisions/0058-archaeology-is-one-kind-of-sites-and-museums.md) decision 1). Both doors are built (#581): the museums from Wikidata and English Wikipedia, the sites from Wikidata with OpenStreetMap as the second signal. The source is gated and has never run live, so the kind holds no place and no reader surface draws it — the kinds list names it with a count of 0, and a curator's create dialog offers it |
@@ -138,7 +138,7 @@ Kinds are siblings: art museums, archaeology museums and World Heritage sites ar
 
 ```text
 World Heritage sites   [All] [Cultural] [Natural] [Mixed]
-Public art             [All] [Sculpture] [Fountain] [Street art] [Clock]
+Public art             [All] [Sculpture] [Religious statue] [Equestrian statue] [Fountain] [Street art] [Clock] [Installation and land art] [Roadside giant]
 Art museums            (no type filter — an art museum is the whole list)
 ```
 
