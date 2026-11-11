@@ -468,6 +468,16 @@ absent and would otherwise stand an empty second source table beside the full on
 refuses to run while `experience_categories` exists and names this file. The entries above keep the
 names their migrations were written with.
 
+`230-memberships-are-named-source-records.sql` gives the membership table the name of what a row
+is, one source's record of a place (#2118, Epic #2115): `experience_kind_memberships` becomes
+`source_records`, with its sequence and every constraint and index named after it, and every
+function whose body names the table is rewritten from its own definition under the new name, so a
+database migrated and not yet re-applied keeps its triggers and its tile function working. No row
+moves and no value changes. It refuses both tables at once, and is re-runnable otherwise. **Run it
+before the next re-application of `01-schema.sql`**, which refuses to run while
+`experience_kind_memberships` exists and names this file. The entries above keep the names their
+migrations were written with.
+
 `054-leaf-pieces-for-placement.sql` adds `region_geom_pieces` — each leaf region's geometry cut by
 `ST_Subdivide` into pieces of at most 256 vertices — with the trigger that keeps it, and cuts every
 leaf that has a geometry (#851, [ADR-0054](../../docs/decisions/0054-placement-reads-leaves-through-their-pieces.md)).

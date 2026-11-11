@@ -464,7 +464,7 @@ excusing. `picture-with-nobody-credited`'s `credit_waiting` arms narrowed alongs
 though on a refusal alone rather than on any answer — see its own section for why.
 
 **The refused-badge rule** (`refused-row-wearing-iconic`) is about two columns
-of one membership (`experience_kind_memberships`, where the verdict and the
+of one membership (`source_records`, where the verdict and the
 badge live since #822) that the same writes are supposed to move together. A museum carries
 `is_iconic` because it holds a work above the fame line; where the museum was
 admitted for exactly that (ADR-0023, the works-first source), the flag is a

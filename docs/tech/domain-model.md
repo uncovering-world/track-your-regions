@@ -83,13 +83,13 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `SourceID`: The source that first brought the place (UNESCO, etc.) — with `ExternalID`,
     provenance only: a place belongs to no source (ADR-0084), a run finds it by the id on its
     own membership, and what the place *is* to a traveller is its memberships
-    (`ExperienceKindMembership`, ADR-0045 decision 4)
+    (`SourceRecord`, ADR-0045 decision 4)
   - `ExternalID`: The id that first source knows the place by
   - `Name`: Name of the experience
   - `NameLocal`: Multilingual names (JSONB)
   - `Subtitle`: Wikidata's one-line description of the item, from the Wikidata kinds (#1795)
   - `Description`: The paragraph a reader opens: UNESCO's text for a World Heritage site, or a curator's
-  - (The type within the kind is `ExperienceKindMembership.Type` since ADR-0084, #1253: a place in two kinds has a type in each)
+  - (The type within the kind is `SourceRecord.Type` since ADR-0084, #1253: a place in two kinds has a type in each)
   - `Tags`: Additional classification tags (JSONB)
   - `Location`: Geographic point (PostGIS Point, SRID 4326)
   - `Boundary`: Optional boundary geometry (PostGIS MultiPolygon)
@@ -113,9 +113,10 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `Name`: Kind name (unique)
   - `DisplayPriority`: Ordering (lower = first)
 
-### ExperienceKindMembership
+### SourceRecord
 
-- **Description**: A place's membership in a kind — one row per (place, kind), what
+- **Description**: One source's record of a place, the table `source_records` (#2118).
+  Every record today is a place's membership in a kind — one row per (place, kind), what
   one row of `Experience` carried until #822: the source that brought it, whether the
   kind's rule admitted it and why, the work that qualified a museum, the must-see badge
   (the world tier of that kind, ADR-0045 decision 5), the curator's pins on those, and

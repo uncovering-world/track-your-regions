@@ -806,7 +806,7 @@ little differently in another order.
 ### The reads skip the arrivals that wait — 2026-11-02
 
 The first places pass under ADR-0175 added 10 063 memberships waiting for
-a curator, with their unread points (#2283). `experience_kind_memberships`
+a curator, with their unread points (#2283). `source_records`
 grew to 22 036 rows, 11 582 of them pending, and `experience_locations` to
 21 095 points, 11 550 of them pending. No reader sees any of them, and
 every answer kept its size, but `npm run perf:api` on the dev stack moved
@@ -846,7 +846,7 @@ compiles nothing records.
   the heap only to drop it.
 
 Two partial indexes now hold what a reader may be shown, on the terms the
-reader modules spell: `idx_experience_kind_memberships_reader`, a
+reader modules spell: `idx_source_records_reader`, a
 membership admitted and passed (`membershipAdmittedSql`,
 `membershipVisibleSql`), and `idx_experience_locations_reader`, a point
 offered and passed (`offeredLocationSql`, `publishedContentSql`). Both
