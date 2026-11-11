@@ -5357,6 +5357,23 @@ the Luther Monument in Worms commemorates Martin Luther and not the eight reform
 around him, and Istanbul's Republic Monument, named for none of its five founders, names no
 dedication. Mount Rushmore's four presidents are all read.
 
+**What a work shows is everyone its `P180` names** (#2436). After the holy figures, the *Depicts*
+line takes every value of the place's own *depicts* statement that is someone (`someone` in
+`places/commemorates.ts`): a person, a holy figure, or a named figure of fiction, myth or legend
+or a personification (`figure`, an instance of a class under *character* Q95074, *mythical
+character* Q4271324, *legendary figure* Q13002315 or *personification* Q207174, `FIGURE_CLASSES`
+in `subset/commemorates.ts`). A horse, a lion, a sword, a novel or an occupation is no one. Nobody
+the dedication names is named again. The Republic Monument depicts its five founders though it
+commemorates none of them, the Luther Monument in Worms the eight reformers and princes around
+Luther, the Monument to Miguel de Cervantes Don Quixote and Sancho Panza beside the writer it
+commemorates, the Niederwalddenkmal Germania, and Nelson's Column nobody, since Nelson is its
+dedication. The dedication does not change, and neither does a plain sculpture's retype to a
+religious statue (#2279), which only the holy figures the reading's own steps named decide
+(`holyFigures`): the Trevi Fountain's Triton and Oceanus make no religious statue of it. Read by
+main's code and this one over the development subset on 2026-11-11, the line changes on 61 of
+the 1 525 admitted places of the two kinds (58 gain one, 3 fold), and no dedication or retype
+changes.
+
 **A war narrowed to what the memorial is for** (`warNarrowing.ts`, #2404, #2412). Wikidata's
 *commemorates* or a category often names the whole war where a memorial is one event's. Where a
 reading names a war (an instance of a class under *war*, Q198), the lead of the place's English
@@ -5436,7 +5453,7 @@ own.
 articleUrl }] }`, with `via` naming the step that answered (`COMMEMORATION_STEPS` in
 `@tyr/shared/commemorates`), one of the war narrowings (`WarNarrowing`: `war-narrowed-by-event`,
 `war-narrowed-by-lead`, `war-narrowed-to-person`) where one replaced its war, or `curator`
-(`CURATOR_COMMEMORATION`) for a curator's list. The holy figure a religious work depicts is
+(`CURATOR_COMMEMORATION`) for a curator's list. What a work depicts is
 `metadata.depicts` in the same shape, its `via` one of `DEPICTION_STEPS` (`depictsOf`): written
 by the same runs, kept by the same rule (`WRITTEN_BY_SOURCES`), compared by its items
 (`sameSubjects`), served as `ExperienceDetail.depicts` and drawn as "Depicts: …" by the same
@@ -5489,12 +5506,13 @@ is listed under *Depicts*, and the other way round. A move sends both lists, so 
 A subject stands on one line in what a curator writes: the form never offers one the other line
 lists, and the edit is refused when a subject would stand on both, the line it does not send read as
 the place holds it (`refuseSubjectOnBothLines`). A run keeps apart its own two readings
-(`dedicatedTo` in `places/commemorates.ts`). Beside a curator's claimed line it may still read the
-other line with the same subject. On a published place that change is held, and publishing it,
-from the review card or by accepting the source, leaves out of the line it publishes whoever the
-other line lists (`keepSubjectsOnOneLine` in `subjectLines.ts`, over `onBothLines` in
-`@tyr/shared/commemorates`): Big Vishnu's run reading Vishnu as commemorated publishes no one a
-curator listed under *Depicts*. The dialog's two lists open only once the stored ones are read, and
+(`dedicatedTo` in `places/commemorates.ts`), and beside a curator's claimed line it leaves out of
+the line it writes whoever the claimed line lists (`withSubjectsOnOneLine` in
+`sync/subjectLinesKept.ts`, #2436). Big Vishnu's curator listed Vishnu under *Depicts*, so a run
+reading Vishnu and Garuda as commemorated writes *Commemorates: Garuda*, and on an arrival that
+waits for a curator, which a run writes directly, too. Publishing a held line, from the review card
+or by accepting the source, does the same against the line it leaves (`keepSubjectsOnOneLine` in
+`subjectLines.ts`, over `onBothLines` in `@tyr/shared/commemorates`). The dialog's two lists open only once the stored ones are read, and
 its *Depicts* field also shows where a reading source holds the place still waiting for a curator. An emptied *Depicts* is stored as an empty curator's list,
 which `depictsOf` keeps, as `commemoratesOf` keeps one: the work shows no named figure.
 
