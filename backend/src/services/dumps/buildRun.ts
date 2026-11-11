@@ -285,6 +285,22 @@ function refuseScheduledDownload(claimed: ClaimedBuild, keeper: Keeper | null): 
   }
 }
 
+/**
+ * A self-queued build never brings a copy back (#2415). A host's status file it
+ * could not read is passed over (`wikiRunFile`, `wikidataJson`), so a transient
+ * error can resolve an older complete dump than the one kept. The same date
+ * stays allowed: a follower's refold rebuilds the dump it was built from.
+ */
+async function refuseOlderScheduled(claimed: ClaimedBuild, descriptor: DumpDescriptor, keeper: Keeper | null, file: DumpFile): Promise<void> {
+  if (!claimed.request.scheduled || !keeper) return;
+  const kept = await keeper.latest();
+  if (kept && file.date < kept.dumpDate) {
+    throw new Error(`The host answered with ${dumpWords(file.date, descriptor.datedBy)}, older than the copy in place, `
+      + `built from ${dumpWords(kept.dumpDate, descriptor.datedBy)}. A scheduled build never brings a copy back. `
+      + 'Update asks the host again now, and the schedule asks again after its interval');
+  }
+}
+
 /** Verify the dump's file, or, for a `keep`, build from it and swap the result in. */
 async function readTheDump(
   claimed: ClaimedBuild, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
@@ -299,6 +315,7 @@ async function readTheDump(
   onPhase(only ? `Finding ${only} on the host...` : 'Finding the newest complete file...');
   await beat(claimed.id, progress);
   const file = await resolveFile(descriptor, signal, only, windowEnd);
+  await refuseOlderScheduled(claimed, descriptor, keeper, file);
   await recordFile(claimed.id, file);
   progress.phase = 'reading';
   onPhase(`Reading ${file.fileName}${dumpsDir() ? ' into the local copy' : ' from the host'}...`);
@@ -441,6 +458,11 @@ function dateWords(date: string, datedBy: DumpDescriptor['datedBy']): string {
     : value.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
+/** The dump a date names, as the admin reads it: "the dump of 26 Oct 2026", or "the counts up to Oct 2026". */
+function dumpWords(date: string, datedBy: DumpDescriptor['datedBy']): string {
+  return `${datedBy === 'month' ? 'the counts up to' : 'the dump of'} ${dateWords(date, datedBy)}`;
+}
+
 /**
  * What a failed keeping build left in place, in words (#2419): a build is
  * swapped in only whole, so a failure changes nothing the runs read.
@@ -454,10 +476,10 @@ async function copyInPlaceWords(claimed: ClaimedBuild): Promise<string | null> {
   const kept = await Promise.resolve().then(() => keeper.latest()).catch(() => undefined);
   if (kept === undefined) return 'The copy in place, if any, is unchanged';
   if (kept === null) return 'No copy is in place yet, so nothing changed for the runs';
-  const from = descriptor.datedBy === 'month' ? 'the counts up to' : 'the dump of';
-  const date = dateWords(kept.dumpDate, descriptor.datedBy);
-  if (keeper.keepsAsItGoes) return `What this build kept before it failed stays kept, and the rest of the copy in place, up to ${date}, is unchanged and still read`;
-  return `The copy in place, built from ${from} ${date}, is unchanged and still read`;
+  if (keeper.keepsAsItGoes) {
+    return `What this build kept before it failed stays kept, and the rest of the copy in place, up to ${dateWords(kept.dumpDate, descriptor.datedBy)}, is unchanged and still read`;
+  }
+  return `The copy in place, built from ${dumpWords(kept.dumpDate, descriptor.datedBy)}, is unchanged and still read`;
 }
 
 /** What the next build does after a build the network cut: it resumes from the copy on disk, or reads the file again. */
