@@ -15,3 +15,15 @@ describe("a run's closing line says it ran alone (#2424)", () => {
     expect(completionMessage(makeProgress({ dryRun: true }), 'success', NO_SKIPS)).not.toMatch(/alone/);
   });
 });
+
+describe("a run's closing line says which of the pass's shared steps it read back (#2424)", () => {
+  it('names each step it read, when it was kept and the builds its key names', () => {
+    const keptGather = { places: new Date('2026-11-11T05:02:00Z'), pool: new Date('2026-11-11T05:19:00Z'), builds: '71 builds, the newest #1204' };
+    const line = completionMessage(makeProgress({ dryRun: true, alone: true, keptGather }), 'success', NO_SKIPS);
+    expect(line).toMatch(/; read the gather of places kept at 2026-11-11T05:02:00.000Z and the surroundings pool kept at 2026-11-11T05:19:00.000Z, made by the same code over the same builds \(71 builds, the newest #1204\) and admitted rows$/);
+  });
+
+  it('says nothing of it when the run made them', () => {
+    expect(completionMessage(makeProgress({ dryRun: true, keptGather: {} }), 'success', NO_SKIPS)).not.toMatch(/kept at/);
+  });
+});

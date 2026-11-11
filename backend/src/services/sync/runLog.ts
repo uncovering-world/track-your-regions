@@ -13,7 +13,7 @@ import { sentenceFor } from '../../api/readerFacingError.js';
 import { recordSyncChanges, type ChangeRecord } from './changeRecorder.js';
 import { CHANGESET_LOST_MARKER } from './syncLogMarkers.js';
 import type { SyncServiceConfig } from './syncContract.js';
-import type { SyncProgress, RunVerdict, ErrorDetail, PinTally, VisitQuestionTally } from './types.js';
+import type { SyncProgress, RunVerdict, ErrorDetail, PinTally, VisitQuestionTally, KeptGatherNote } from './types.js';
 
 /**
  * Persist the per-object changeset, or leave a marker saying it was lost.
@@ -138,7 +138,21 @@ export function completionMessage(
     + `${progress.unchanged} unchanged (${progress.held} held), ${progress.missing} missing, `
     + `${progress.errors} errors${skipped}${pinsSentence(progress.pins, progress.dryRun)}`
     + visitQuestionsSentence(progress.visitQuestions, progress.dryRun)
-    + (progress.alone ? '; run alone, from the pass\'s whole gather: the pass\'s other kinds did not run' : '');
+    + (progress.alone ? '; run alone, from the pass\'s whole gather: the pass\'s other kinds did not run' : '')
+    + keptGatherSentence(progress.keptGather);
+}
+
+/**
+ * Which of the pass's shared steps a dry run read back rather than made
+ * (#2424, ADR-0196): when each was kept, and the builds its key names.
+ */
+function keptGatherSentence(note: KeptGatherNote | undefined): string {
+  if (!note || (!note.places && !note.pool)) return '';
+  const steps = [
+    note.places ? `the gather of places kept at ${note.places.toISOString()}` : null,
+    note.pool ? `the surroundings pool kept at ${note.pool.toISOString()}` : null,
+  ].filter((step): step is string => step !== null);
+  return `; read ${steps.join(' and ')}, made by the same code over the same builds (${note.builds ?? 'unknown'}) and admitted rows`;
 }
 
 /**

@@ -34,6 +34,7 @@ import type { SurroundingsPool } from './surroundingsPool.js';
 import { readsSubset } from '../subset/reader.js';
 import { WORLD_FRAME } from './admissionRegister.js';
 import type { PassWorks } from '../museum/worksGather.js';
+import type { KeptGatherNote } from '../types.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
@@ -158,6 +159,8 @@ export interface PlaceGather {
   surroundings: () => Promise<SurroundingsPool | null>;
   /** The pass's one gather of works (#1821), read on first ask through the same door. */
   works: PassWorks;
+  /** Which of the shared steps a dry run read back rather than made (#2424), filled as each is read. */
+  kept: KeptGatherNote;
 }
 
 /** One kind's share, typed by its declaration. */
