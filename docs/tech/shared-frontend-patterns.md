@@ -179,8 +179,10 @@ A screen reader announces a button by its accessible name and nothing else, and 
 
 How the text on screen is written, sentence by sentence, is
 [interface-writing.md](interface-writing.md): its length, its figures and dates, the source it
-names and what a card asks first. This section holds the rule a lint partly enforces today: the
-lint catches ADR and issue numbers, and a file or a symbol on screen is caught in review.
+names and what a card asks first. The lint of the text on screen (`screen-text/guideline`,
+`packages/shared/lint/screenText.mjs`, #2433) checks the measurable rules there. This section
+holds the one that lint has always checked, rule 7: it catches ADR and issue numbers, and a file
+or a symbol on screen is caught in review.
 
 What a visitor, a curator or an admin reads names no development record:
 no ADR, no issue or pull request number, no file or symbol. None of these
@@ -189,15 +191,18 @@ says what is happening and what the person can do, in the words of their
 role. A licence credit stays, in plain words: "© OpenStreetMap contributors,
 under the ODbL licence".
 
-The frontend lint refuses a record in JSX text, a string literal or a
-template's text (`SCREEN_TEXT_SELECTORS` in `frontend/eslint.config.mjs`):
+The lint refuses a record in JSX text, a string literal or a template's text
+that a person may read, wherever it stands in the web app, and in the
+backend's screen texts:
 - an ADR number;
 - an issue number in brackets, `(#523)`;
 - an issue number of four digits or more.
 
 A three-digit colour such as `'2px solid #999'` is neither, and a string that
 is a colour alone, such as `'#0008'`, is let through. Comments keep their
-references.
+references, and so do SQL, a log line and a string a program only compares.
+No file of the web app is allowed one; the backend's screen texts that still
+carry one are counted in its allowance until #2446 and #2447 rewrite them.
 
 ## Fonts
 

@@ -10,6 +10,10 @@ A module does **not** belong here when it needs a runtime: anything that imports
 
 Where the schema is a third statement of a rule (a `CHECK` list, an enum), the shared declaration is pinned to it **by a type**, in `backend/src/db/curationLogActions.test.ts`, never by reading a file: `CheckValue<…>` from the generated row types (ADR-0064) and the union here have to be the same type, or the typecheck fails.
 
+## The lint of the text on screen
+
+`lint/screenText.mjs` is the one file outside `src/`: the ESLint rule that holds the text a person reads to the measurable rules of `docs/tech/interface-writing.md` (#2433). Both packages' linters apply it, the web app's strings and the backend's screen texts alike, so it is stated here once. It is plain ESM with no imports, since Node 22 loads it from `frontend/eslint.config.mjs` and `backend/eslint.config.mjs` as it stands, and no code imports it. A change to it runs both packages' lint and unit lanes, as any change here does; its specs are `frontend/src/utils/screenTextLint.test.ts` and `backend/src/services/screenTextLint.test.ts`.
+
 ## The generated files
 
 `src/openapi.generated.json`, exported as `@tyr/shared/openapi`, is the API's OpenAPI 3.1 document, the contract every client is generated from: the web's (`frontend/src/api/client.generated.ts` and, for the `admin` operations, `adminClient.generated.ts`, ADR-0073) and a native one. `npm --prefix backend run api:openapi` renders it from the route declarations and the response schemas in `backend/src/api/responses/` (ADR-0072), and `backend/src/api/openApi.test.ts` fails while it lags them. `npm run lint:openapi` lints it with the rules in `redocly.yaml`. It is not written by hand: to change a response shape, change its schema. No module imports it.

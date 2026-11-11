@@ -89,6 +89,13 @@ never from a head the branch was rewritten past.
 | `scan` | the slow scans: Semgrep on both stacks, the Trivy image scan | no: CI runs them | `npm run security:all` — the `check` tier, then this one |
 | `stack` | build, smoke, the database lane, the API lane, Lighthouse: the lanes that stand a stack up | only a measurement marked `run here` | `npm run gates -- run stack` **lists** them as `run here`, `CI runs it` or `skip`, and exits 2; they are typed by hand |
 
+**The text on screen is linted too.** `lint:backend` and `lint:frontend` hold
+the text a person reads to the measurable rules of `interface-writing.md`: both
+configs load the rule `screen-text/guideline` from
+`packages/shared/lint/screenText.mjs` (`interface-writing.md` § The lint). That
+file sits in the `shared` class, so a change to it asks for both lints and both
+unit lanes, whose specs pin it.
+
 **Where each tier runs (#1379).** The local loop is for fast feedback, and CI is
 where the slow lanes run: it runs every lane a change asks for on every pushed
 head. A local run of a lane CI also runs therefore repeats it on a slower
