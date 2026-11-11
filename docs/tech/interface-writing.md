@@ -19,15 +19,15 @@ credit.
 
 ## The rules at a glance
 
-| # | Rule | The lint #2433 adds |
+| # | Rule | The lint |
 |---|---|---|
-| 1 | A sentence holds at most 20 words, and none holds more than 25 | will check it |
-| 2 | A sentence makes one point, with at most two clauses, and no semicolon or dash joins them | will check part |
-| 3 | Figures that are compared go into a table or labelled figures, and a sentence holds at most two | will check part |
-| 4 | A number is written in numerals, through the reader's locale, and never as a fraction of its bar | will check part |
-| 5 | A date is a day and a month in words, in the reader's locale, and a time only where it matters | will check it |
-| 6 | A block holds at most three sentences, a hint one, and a tooltip at most 75 characters | will check it |
-| 7 | Nothing from the repository is on screen: no ADR, issue, file, symbol or internal table | checks ADR and issue numbers in the web app's strings today; will add the backend's |
+| 1 | A sentence holds at most 20 words, and none holds more than 25 | checks it |
+| 2 | A sentence makes one point, with at most two clauses, and no semicolon or dash joins them | checks part |
+| 3 | Figures that are compared go into a table or labelled figures, and a sentence holds at most two | checks part |
+| 4 | A number is written in numerals, through the reader's locale, and never as a fraction of its bar | checks part |
+| 5 | A date is a day and a month in words, in the reader's locale, and a time only where it matters | checks it |
+| 6 | A block holds at most three sentences, a hint one, and a tooltip at most 75 characters | checks it |
+| 7 | Nothing from the repository is on screen: no ADR, issue, file, symbol or internal table | checks ADR and issue numbers |
 | 8 | A card opens with what it asks | review only |
 | 9 | A change is shown as before and after, with the difference marked | review only |
 | 10 | A source is named as the thing that was read, and linked | review only |
@@ -35,12 +35,10 @@ credit.
 | 12 | A wait, an empty list and a failure say what happened, what stands and what to do | review only |
 | 13 | Each role reads its own words, and one thing has one name | review only |
 
-Only part of rule 7 is checked by a lint today: ADR and issue numbers, over the web app's strings
-(`SCREEN_TEXT_SELECTORS`, #1577). A file, a symbol or an internal table on screen is caught in
-review. The lint #2433 adds will check the rest of the column, over the
-web app's strings and the backend's screen texts. *Part* means it will catch the plain cases,
-such as a semicolon or five figures in a sentence, and review catches the rest. Until it lands,
-every rule is checked when a branch is reviewed.
+The lint is `screen-text/guideline` (§ The lint below). It reads the web app's strings and the
+backend's screen texts. *Part* means it catches the plain cases, such as a semicolon or three
+figures in a sentence, and review catches the rest. A file, a symbol or an internal table on
+screen is caught in review, as is every rule the column marks *review only*.
 
 ## The measurable rules
 
@@ -140,12 +138,11 @@ A recent moment may read as "today" or "3 h ago". The full date and time is then
 focus or a tap away, and is read out by a screen reader: a `<time>` element whose `dateTime`
 holds it, with the full date as its accessible name.
 
-*Lint* (#2433): `toLocaleString()` and `toLocaleDateString()` without options are refused on a
-date. In `utils/dateFormat.ts` today, `formatDay` writes the day and the month in words but
-never the year, so it follows this rule only for a date in this year. `formatDateTime`, a bare
-`toLocaleString()` that prints the *before* below, and `formatRelativeTime`'s fallback past 30
-days do not yet. The rewrite of the screens (#1506) changes them, and #2433's lint refuses
-them until it does.
+*Lint*: `toLocaleDateString()` and `toLocaleTimeString()` without options are refused, and so is
+`toLocaleString()` without options on a value the code names as a date. In `utils/dateFormat.ts`,
+`formatDateTime` writes "2 Nov, 21:54" and `formatRelativeTime`'s fallback past 30 days writes
+"2 Nov", each with the year only where it is not this one. `formatDay` writes "2 November" and
+never the year, so it follows this rule only for a date in this year.
 
 **Before** (the Aqua Claudia card):
 
@@ -189,9 +186,8 @@ A screen names no ADR, issue, pull request, file, symbol, internal table or sett
 (`shared-frontend-patterns.md` § Text on screen, #1577). A licence credit stays, in plain words.
 This applies to the backend's screen texts too, which the web app's lint never reads.
 
-*Lint*: ADR and issue numbers in the web app's strings already (`SCREEN_TEXT_SELECTORS`).
-#2433 adds the backend's screen texts. A file, a symbol or a table's name is for review until a
-lint can tell it from an ordinary word.
+*Lint*: ADR and issue numbers, in the web app's strings and the backend's screen texts. A file, a
+symbol or a table's name is for review until a lint can tell it from an ordinary word.
 
 **Before** (*Public Dumps*, a dump's description from `catalog.ts`):
 
@@ -370,12 +366,75 @@ does:
 It is written to be shown, not logged: in the role's words, with the figures labelled and the
 source named. Where it carries figures, it is better sent as data the web app words. A refusal
 reason, for one, becomes its figures and its bar, which the card shows as a table (rule 3).
-#2433's lint reads the texts where they are declared. A message built in code is held to the
-rules by its spec, which asserts the words a person reads.
+The lint reads the texts where they are declared (§ The lint). A message built in code is held to
+the rules by its spec, which asserts the words a person reads.
+
+## The lint
+
+`screen-text/guideline` (`packages/shared/lint/screenText.mjs`, #2433) holds rules 1 to 7 where a
+machine can. Both packages' ESLint configs load it, so it runs in `lint:frontend` and
+`lint:backend`, the `check` tier. Each finding names its rule by number.
+
+**What it reads as a text:**
+
+- JSX text, read with the strings and expressions beside it as one text;
+- a string, a template or a `+` chain given to a text prop or a text property, such as `label`,
+  `title`, `helperText`, `reason` or `statusMessage`;
+- in the backend, a string passed to an error answer (`badRequest`, `failure`, `Refusal` and the
+  others `SCREEN_CALLS` names);
+- any other string that reads as prose: three words or more, and no SQL or CSS.
+
+An interpolated value counts as a figure when its expression formats a number or names a count
+(`toLocaleString()`, `count`, `readers`).
+
+**What it leaves out:**
+
+- a string a program compares, imports, styles, logs or matches;
+- a title in quotation marks, an address and an HTML entity, which add no words, clauses or
+  figures;
+- what a person wrote, which reaches the screen as data and is never a literal.
+
+**Where it reads in the backend.** The backend holds SQL, prompts and identifiers beside its
+screen text, so the lint reads two lists in `backend/eslint.config.mjs`:
+
+- `SCREEN_TEXT_MODULES`: the dump builds, the source runs, the Catalogue Checks, the error
+  handler and the sign-in refusals, where every string that reads as prose is measured;
+- `SCREEN_ANSWER_MODULES`: the controllers and the world-view import, where only answers and text
+  properties are.
+
+A module whose text a screen shows joins the first list.
+
+**The allowance.** The screens written before the guideline still break it. Each file is listed with
+its count of breaches and the slice of #1506 that rewrites it, in `frontend/screenTextAllowance.mjs`
+and `backend/screenTextAllowance.mjs`:
+
+| Slice | What it rewrites |
+|---|---|
+| #2443 | the visitor's screens |
+| #2444 | the curator's screens |
+| #2445 | the admin's screens |
+| #2446 | a run's reasons, notes and status |
+| #2447 | the backend's other screen text |
+
+The count only goes down:
+
+- a file over its count reports every breach;
+- a file under it asks for the count to be lowered;
+- a file at 0 leaves the list;
+- a new file is never added to it.
+
+The lint holds a file to its count, and `lint:allowance` (`scripts/check-screen-allowance.mjs`)
+holds the count itself. A count higher than at the branch's base fails it, and so does a file the
+base did not list. A count rises for a reason only when the rule itself reads more than it did. Such
+a rise is named in a commit body on the branch, one line per file:
+`Screen-text-allowance: <path> -- <why>`.
+
+Rule 7 is never allowed in the web app. In the backend it is counted, since a run's stored
+refusal reasons carry ADR numbers that #2446 takes out without asking every pinned place again.
 
 ## How a rule changes
 
 A rule here changes when a screen that follows it reads worse than one that breaks it. The change
 gives the case, before and after, and names the source it follows, or says that it departs from
 the sources and why. A number in rules 1 to 6 moves only with a case like that. Every rule a lint
-checks changes in the lint and here together (#2433).
+checks changes in the lint (`packages/shared/lint/screenText.mjs`) and here together.
