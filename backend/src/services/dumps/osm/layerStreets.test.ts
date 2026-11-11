@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const subset = { built: true, ids: [] as string[], placed: [] as Array<{ qid: string; lat: number | null; lon: number | null }> };
+const subset = {
+  built: true,
+  ids: [] as string[],
+  editions: new Map<string, number>(),
+  placed: [] as Array<{ qid: string; lat: number | null; lon: number | null }>,
+};
 const asked: { classes: string[]; floor: number }[] = [];
 
 vi.mock('../wikidata/subsetTables.js', () => ({
@@ -13,29 +18,36 @@ vi.mock('../../sync/squares/kind.js', () => ({
 }));
 vi.mock('../../sync/subset/publicArt.js', () => ({
   subsetIdsOfClasses: vi.fn(async (classes: string[], floor: number) => { asked.push({ classes, floor }); return subset.ids; }),
-  subsetPlacedPoolOfIds: vi.fn(async () => subset.placed),
+  subsetPlacedPoolOfIds: vi.fn(async (ids: string[]) => subset.placed.filter((entity) => ids.includes(entity.qid))),
 }));
 vi.mock('../../sync/subset/kit.js', () => ({
   subsetNamesOf: vi.fn(async () => new Map([['Q820025', ['Bergmannstraße', 'Bergmann Street']], ['Q1123493', ['Plaza Mayor de Madrid']]])),
+  subsetWikipediaEditions: vi.fn(async () => subset.editions),
 }));
 
 const { STREET_REACH_M, streetArea, streetItems, streetsFile } = await import('./layerStreets.js');
-const { POOL_MIN_SITELINKS } = await import('../../sync/publicArt/queries.js');
+const { SURROUNDINGS_CUT } = await import('../../sync/places/surroundingsCut.js');
 
 beforeEach(() => {
   subset.built = true;
   subset.ids = ['Q820025', 'Q1123493'];
+  subset.editions = new Map([['Q820025', 4], ['Q1123493', 31]]);
   subset.placed = [{ qid: 'Q820025', lat: 52.4892, lon: 13.3939 }, { qid: 'Q1123493', lat: 40.4155, lon: -3.7074 }];
   asked.length = 0;
 });
 
 describe('streetItems (ADR-0194)', () => {
-  it("reads the kind's own classes at the pool's floor, with each item's point and names", async () => {
+  it("reads the kind's own classes at the surroundings tier's floor of editions, with each item's point and names", async () => {
     expect(await streetItems()).toEqual([
       { qid: 'Q1123493', lat: 40.4155, lon: -3.7074, names: ['Plaza Mayor de Madrid'] },
       { qid: 'Q820025', lat: 52.4892, lon: 13.3939, names: ['Bergmannstraße', 'Bergmann Street'] },
     ]);
-    expect(asked).toEqual([{ classes: ['Q79007', 'Q174782'], floor: POOL_MIN_SITELINKS }]);
+    expect(asked).toEqual([{ classes: ['Q79007', 'Q174782'], floor: SURROUNDINGS_CUT.minLanguages }]);
+  });
+
+  it('leaves out an item under the tier\'s floor of Wikipedia editions, which the door never judges', async () => {
+    subset.editions = new Map([['Q820025', SURROUNDINGS_CUT.minLanguages - 1], ['Q1123493', 31]]);
+    expect((await streetItems()).map((item) => item.qid)).toEqual(['Q1123493']);
   });
 
   it('leaves out an item with no point, which no line can lie near', async () => {

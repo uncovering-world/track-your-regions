@@ -17,9 +17,9 @@
 import { entitiesAreHeld, latestSubset } from '../wikidata/subsetTables.js';
 import { subsetRunner } from '../../sync/subset/reader.js';
 import { kindClasses } from '../../sync/places/gather.js';
-import { POOL_MIN_SITELINKS } from '../../sync/publicArt/queries.js';
+import { SURROUNDINGS_CUT } from '../../sync/places/surroundingsCut.js';
 import { subsetIdsOfClasses, subsetPlacedPoolOfIds } from '../../sync/subset/publicArt.js';
-import { subsetNamesOf } from '../../sync/subset/kit.js';
+import { subsetNamesOf, subsetWikipediaEditions } from '../../sync/subset/kit.js';
 import { SQUARES_KIND } from '../../sync/squares/kind.js';
 
 /** One street item: its point and its names. */
@@ -51,15 +51,23 @@ const CELL = 0.01;
 const METRES_PER_DEGREE = 111_000;
 
 /**
- * The candidates Squares & streets reads, from the subset: every item of the
- * kind's classes at the pool's floor, with its point, as the gather's pool
- * question asks it (`kindClasses`, `subsetIdsOfClasses`), and its names. None
- * while no subset is built.
+ * The candidates Squares & streets' surroundings tier judges, from the
+ * subset: every item of the kind's classes with a point and at least the
+ * tier's Wikipedia editions (`SURROUNDINGS_CUT.minLanguages`), counted as the
+ * tier counts them (`subsetWikipediaEditions`), and its names. The venue door
+ * reads a street's line for each of them (ADR-0192 decision 1a); a floor of
+ * sitelinks such as a pool's would line only the famous ones, which fame
+ * admits anyway.
+ * None while no subset is built.
  */
 export async function streetItems(): Promise<StreetItem[]> {
   if (!(await latestSubset()) || !(await entitiesAreHeld())) return [];
+  const floor = SURROUNDINGS_CUT.minLanguages;
   const classes = kindClasses(SQUARES_KIND, await SQUARES_KIND.trees(subsetRunner()));
-  const placed = await subsetPlacedPoolOfIds(await subsetIdsOfClasses([...classes], POOL_MIN_SITELINKS));
+  // Every Wikipedia edition is a sitelink, so the sitelinks floor only narrows what is counted.
+  const ids = await subsetIdsOfClasses([...classes], floor);
+  const editions = await subsetWikipediaEditions(ids);
+  const placed = await subsetPlacedPoolOfIds(ids.filter((qid) => (editions.get(qid) ?? 0) >= floor));
   const names = await subsetNamesOf(placed.map(entity => entity.qid));
   return placed
     .filter(entity => entity.lat !== null && entity.lon !== null)
