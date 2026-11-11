@@ -61,6 +61,15 @@ Write the file to be re-runnable while you are there: a run interrupted between 
 migration's commit and its ledger row leaves the file pending, and the next run
 applies it again.
 
+**Change a table's shape before you write its rows.** A table with a deferred
+constraint trigger (`source_records` carries two, the crowding triggers) holds
+the events of every row write until the commit, and Postgres refuses an
+`ALTER TABLE` or a `CREATE INDEX` on it while they are pending ("cannot ALTER
+TABLE ... because it has pending trigger events"). A database built from the
+schema never meets this, since no lane migrates a database that holds rows, so
+the order is the file's to keep: every change of shape first, then the
+backfill (232 is the example).
+
 ## A database that predates the ledger
 
 `schema_migrations` arrives with the canonical schema, so an existing database
@@ -477,6 +486,18 @@ moves and no value changes. It refuses both tables at once, and is re-runnable o
 before the next re-application of `01-schema.sql`**, which refuses to run while
 `experience_kind_memberships` exists and names this file. The entries above keep the names their
 migrations were written with.
+
+`232-a-part-record-is-a-record-in-a-whole.sql` makes a serial site's part's record a record in its
+whole and retires the virtual kind (#2118, ADR-0198). It adds `experience_sources.id_scheme` (the
+World Heritage list's properties `whc-site`, its components `whc-component`, the Wikidata sources
+`wikidata`) and lets a source fill no kind; adds `source_records.whole_id`, lets `kind_id` be NULL,
+holds a record to one of the two, keys a record in a whole by `(source, whole, place)` and keeps the
+`(source, external id)` key for a record in a kind only, since the list gives `985ter-001` to two
+parks. It rewrites the functions that read kind 10, then turns each kind-10 membership into its
+relation's record in the relation's whole under the component's reference, keeping its id, item,
+view and claims, asserts one record per relation, and deletes kind 10 and `is_virtual`. No
+reader-facing row changes. **Run it before the next re-application of `01-schema.sql`**, which
+declares `id_scheme` required and no longer seeds kind 10.
 
 `054-leaf-pieces-for-placement.sql` adds `region_geom_pieces` — each leaf region's geometry cut by
 `ST_Subdivide` into pieces of at most 256 vertices — with the trigger that keeps it, and cuts every

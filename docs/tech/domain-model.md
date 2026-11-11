@@ -115,8 +115,11 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 
 ### SourceRecord
 
-- **Description**: One source's record of a place, the table `source_records` (#2118).
-  Every record today is a place's membership in a kind — one row per (place, kind), what
+- **Description**: One source's record of a place, the table `source_records` (#2118):
+  in a kind or in a whole, never both (ADR-0198). A record in a whole is a serial World
+  Heritage site's part's record of World Heritage components, one per (source, whole,
+  place), under the component's reference. A record in a kind is a place's membership in
+  a kind — one row per (place, kind), what
   one row of `Experience` carried until #822: the source that brought it, whether the
   kind's rule admitted it and why, the work that qualified a museum, the must-see badge
   (the world tier of that kind, ADR-0045 decision 5), the curator's pins on those, and
@@ -125,9 +128,11 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   a kind's count is of memberships, a region's count is of places (ADR-0046 decision 8).
 - **Attributes**:
   - `ExperienceID`: The place
-  - `KindID`: The kind
+  - `KindID`: The kind, on a record in a kind
+  - `WholeID`: The whole the place is a part of, on a record in a whole
   - `SourceID`: The source (`ExperienceSource`) that brought the membership
-  - `ExternalID`: The id that source knows the place by, unique per source — what a run
+  - `ExternalID`: The id that source knows the place by, in the shape of the source's
+    `IDScheme`; unique per source on a record in a kind — what a run
     finds the place through (ADR-0084)
   - `Type`: The type within the kind, one closed vocabulary per kind — 'cultural' /
     'natural' / 'mixed' for a World Heritage site, 'sculpture' / 'religious-statue' / 'equestrian-statue' / 'fountain' / 'street-art' / 'clock' / 'installation' / 'roadside-giant' for public art,
@@ -154,7 +159,11 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 - **Attributes**:
   - `ID`: Unique identifier
   - `Name`: Source name (unique)
-  - `KindID`: The kind this source fills (`ExperienceKind`, NOT NULL)
+  - `KindID`: The kind this source fills (`ExperienceKind`), NULL for World Heritage
+    components, whose records place parts in wholes (ADR-0198)
+  - `IDScheme`: The shape of the ids the source knows a place by — `whc-site`,
+    `whc-component`, `wikidata`, `wikidata-statement` or `curator` (`SOURCE_ID_SCHEMES`,
+    `@tyr/shared/identifiers`)
   - `Description`: Human-readable description
   - `APIEndpoint`: External API URL for syncing
   - `APIConfig`: Configuration for sync process (JSONB)

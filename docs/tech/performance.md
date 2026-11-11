@@ -921,7 +921,7 @@ the controllers send for world view 5 and Europe (region 6737):
 - **The Europe markers and the folded overview** spend it in per-row
   subqueries over the points of serial sites' parts. 209 parts now hold a
   membership of a real kind waiting for a curator, and
-  `placeHoldsRealKindSql`, which a point's name reads, counts it, so the
+  `placeHoldsKindSql`, which a point's name reads, counts it, so the
   per-row test that used to stop at an empty set now reads the kinds. On
   the copies: 60 ms against 78 ms for the markers, 38 ms against 47 ms
   for the folded overview. That count was also a leak of the waiting
@@ -982,7 +982,7 @@ Measured and not taken:
   hashed membership test, and Lazio's list read 28 → 32 ms. It would also
   make the reader reads rest on that propagation, which today only the
   review queue's region facet does.
-- **`realKindSql` spelled `kind_id = ANY (ARRAY(...))`**: the Europe
+- **The kind test spelled `kind_id = ANY (ARRAY(...))`**: the Europe
   markers 81 → 60 ms and the locations 145 → 126 ms, but the region counts
   25 → 31-37 ms, because the reader index then probes once per real kind.
   It is the kind test of every reader read, so it is not changed for
