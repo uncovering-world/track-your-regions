@@ -2,7 +2,7 @@
  * CurationDialog — Shared dialog for curator actions on an experience.
  *
  * Supports editing (name, subtitle, description, type, picture, links, whom it
- * commemorates), rejecting, and
+ * commemorates and, where the card can carry the line, what it depicts), rejecting, and
  * unrejecting an experience within a region, and lists the places the object
  * is made of with the way to correct each (`CurationPlaces`). The edit's
  * fields are held by the form layer (`useEditForm`, ADR-0076), which decides
@@ -52,6 +52,8 @@ import {
   unrejectExperience,
   removeExperienceFromRegion,
   setExperienceState,
+  fetchPlaceKinds,
+  type PlaceKindStanding,
 } from '../../api/curation';
 import { useEditForm } from '../../hooks/useEditForm';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
@@ -60,7 +62,7 @@ import { DescriptionCreditLine } from './DescriptionText';
 import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
 import { CurationHistory } from './CurationHistory';
-import { CommemoratesField } from './CommemoratesField';
+import { SubjectLinesFields, subjectValues } from './SubjectLinesFields';
 import { PlacePins } from './AdmissionPins';
 import { PlaceIdentifiers } from './PlaceIdentifiers';
 import { SiteFindQuestions } from './SiteFindQuestions';
@@ -69,6 +71,7 @@ import { KindSeparation } from './KindSeparation';
 import { PlaceKinds, type CrowdingWindowOpener } from './PlaceKinds';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { tidyLabel } from '@tyr/shared/labels';
+import { SUBJECT_LINE_SOURCE_IDS } from '@tyr/shared/commemorates';
 import { queryKeys } from '../../api/queryKeys';
 
 /**
@@ -120,10 +123,23 @@ function creditForPreview(editImageUrl: string, row: CurationTarget): ImageCredi
 /** What the edit form holds, named by the request body's keys (ADR-0076). */
 type EditFields = Required<Pick<Parameters<typeof editExperience>[1],
   'name' | 'subtitle' | 'description' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl' | 'descriptionAdapted'
-  | 'commemorates'>>;
+  | 'commemorates' | 'depicts'>>;
 
 /** The source whose run writes a place's description (ADR-0149). */
 const UNESCO_SOURCE_ID = 1;
+
+/**
+ * Whether the place's card can carry the *Depicts* line: a source that reads it
+ * holds the place, offered or still waiting for a curator (a kind carries its
+ * source's id), or the line is there already.
+ */
+function carriesDepicts(
+  experience: CurationTarget | null, depicts: readonly unknown[] | undefined, kinds: readonly PlaceKindStanding[] | undefined,
+): boolean {
+  return !!depicts?.length
+    || !!experience?.kinds?.some(kind => SUBJECT_LINE_SOURCE_IDS.includes(kind.source_id))
+    || !!kinds?.some(kind => kind.state === 'waiting' && SUBJECT_LINE_SOURCE_IDS.includes(kind.kindId));
+}
 
 /** Whether the UNESCO source holds the place, whose description is then UNESCO's text or a curator's word on it. */
 function holdsUnescoText(experience: CurationTarget | null): boolean {
@@ -221,14 +237,23 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose,
       descriptionAdapted: experience?.description_source === 'unesco',
       // Whom the place commemorates, off the detail read, as the card names them
       // (#2144): sent whole once changed, an emptied list included.
-      commemorates: (detailQuery.data?.commemorates ?? [])
-        .map(subject => ({ item: subject.qid, label: subject.label, articleUrl: subject.article_url })),
+      commemorates: subjectValues(detailQuery.data?.commemorates),
+      // The figures the work depicts, the same way (#2421).
+      depicts: subjectValues(detailQuery.data?.depicts),
     },
     resetKey: experience?.id ?? null,
     tidy: { name: tidyLabel },
     required: ['name'],
   });
   const rejectForm = useEditForm({ initial: { reason: '' }, resetKey: experience?.id ?? null });
+  // The place's kinds as the dialog's kind rows read them, waiting ones included (#2022).
+  const placeKinds = useQuery({
+    queryKey: queryKeys.curation.placeKinds(experience?.id ?? 0),
+    queryFn: () => fetchPlaceKinds(experience!.id),
+    enabled: !!experience,
+    staleTime: 0,
+  });
+  const showsDepicts = carriesDepicts(experience, detailQuery.data?.depicts, placeKinds.data?.kinds);
 
   const invalidateCaches = () => {
     invalidateExperiences(queryClient, {
@@ -444,11 +469,13 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose,
             size="small"
             placeholder="https://..."
           />
-          <CommemoratesField
-            subjects={form.values.commemorates}
-            onChange={subjects => form.set('commemorates', subjects)}
-            error={form.errors.commemorates}
-            disabled={isPending}
+          <SubjectLinesFields
+            lines={{ commemorates: form.values.commemorates, depicts: form.values.depicts }}
+            errors={{ commemorates: form.errors.commemorates, depicts: form.errors.depicts }}
+            onChange={(line, subjects) => form.set(line, subjects)}
+            showsDepicts={showsDepicts}
+            // Editable only once the stored lists are read: an unread list is not an empty one.
+            disabled={isPending || !detailQuery.isSuccess}
           />
         </Box>
 

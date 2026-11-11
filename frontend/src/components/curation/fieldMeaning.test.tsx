@@ -438,4 +438,13 @@ describe('whom a place commemorates (#2144)', () => {
   it('is a fact readers see, so publishing it changes the card', () => {
     expect(meaningOf('metadata.commemorates').unseen).toBeUndefined();
   });
+
+  it("says a curator's list of what a work depicts is theirs, and reads their empty list as no figure named (#2421)", () => {
+    // Big Vishnu read "Depicts: Garuda"; the curator adds Vishnu, whom the statue shows riding him.
+    const GARUDA = { item: 'Q188676', label: 'Garuda', articleUrl: 'https://en.wikipedia.org/wiki/Garuda' };
+    const VISHNU = { item: 'Q11380', label: 'Vishnu', articleUrl: 'https://en.wikipedia.org/wiki/Vishnu' };
+    expect(change('metadata.depicts', { via: 'main-subject', subjects: [GARUDA] }, { via: 'curator', subjects: [GARUDA, VISHNU] }))
+      .toBe('Added: Vishnu. Listed by a curator.');
+    expect(said('metadata.depicts', { via: 'curator', subjects: [] })).toBe('no figure named');
+  });
 });

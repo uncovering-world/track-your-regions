@@ -69,7 +69,7 @@ vi.mock('./PointPreviewDialog', () => ({
 }));
 
 import { fetchExperience, type Experience, type ExperienceLocationsResponse } from '../../api/experiences';
-import { editExperience } from '../../api/curation';
+import { editExperience, fetchPlaceKinds } from '../../api/curation';
 import { ApiError } from '../../api/fetchUtils';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { CurationDialog } from './CurationDialog';
@@ -531,5 +531,72 @@ describe('CurationDialog and whom a place commemorates (#2144)', () => {
     save();
 
     await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { commemorates: [] }));
+  });
+});
+
+describe('CurationDialog and what a work depicts (#2421)', () => {
+  // Big Vishnu (Q12498977) shows Vishnu (Q11380) riding Garuda (Q188676).
+  const garuda = { qid: 'Q188676', label: 'Garuda', article_url: 'https://en.wikipedia.org/wiki/Garuda' };
+  const GARUDA = { item: 'Q188676', label: 'Garuda', articleUrl: 'https://en.wikipedia.org/wiki/Garuda' };
+  const bigVishnu = { ...bamiyan, kinds: [{ ...bamiyan.kinds[0], kind_id: 3, source_id: 3, type: 'religious statue' }] } as Experience;
+
+  beforeEach(() => {
+    mockedEdit.mockReset();
+    mockedDetail.mockReset();
+  });
+
+  it('is not offered on a place no source that reads it holds', async () => {
+    mockedDetail.mockResolvedValue({ ...bamiyan, metadata: {}, commemorates: [], depicts: [] });
+    renderDialog();
+    await screen.findByText('Nobody named');
+    expect(screen.queryByText('Depicts')).not.toBeInTheDocument();
+  });
+
+  it('is offered where a source that reads it holds the place still waiting for a curator', async () => {
+    mockedDetail.mockResolvedValue({ ...bamiyan, metadata: {}, commemorates: [], depicts: [] });
+    vi.mocked(fetchPlaceKinds).mockResolvedValueOnce({ kinds: [
+      { membershipId: 9, kindId: 3, kindName: 'Public art', type: null, state: 'waiting', reason: null, added: false },
+    ] } as never);
+    renderDialog();
+    expect(await screen.findByText('Depicts')).toBeInTheDocument();
+  });
+
+  it('keeps both lines shut until the stored lists are read, so an unread list is never saved as empty', async () => {
+    let answer: (value: unknown) => void = () => {};
+    mockedDetail.mockReturnValue(new Promise(resolve => { answer = resolve; }));
+    renderDialog(bigVishnu);
+    expect(await screen.findByLabelText('Add a figure')).toBeDisabled();
+    expect(screen.getByLabelText('Add a person or event')).toBeDisabled();
+
+    answer({ ...bigVishnu, metadata: {}, commemorates: [], depicts: [garuda] });
+    await screen.findByTitle('Remove Garuda');
+    expect(screen.getByLabelText('Add a figure')).toBeEnabled();
+  });
+
+  it('moves a figure read as commemorated to what the work depicts, and sends both lines', async () => {
+    mockedDetail.mockResolvedValue({ ...bigVishnu, metadata: {}, commemorates: [garuda], depicts: [] });
+    mockedEdit.mockResolvedValue({ success: true, experienceId: bigVishnu.id, curatedFields: ['metadata.commemorates', 'metadata.depicts'] });
+    renderDialog(bigVishnu);
+    await screen.findByTitle('Remove Garuda');
+    expect(screen.getByText('No figure named')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move Garuda to Depicts' }));
+    expect(screen.getByText('Nobody named')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move Garuda to Commemorates' })).toBeInTheDocument();
+    save();
+
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bigVishnu.id, { commemorates: [], depicts: [GARUDA] }));
+  });
+
+  it('sends an emptied list as one, the curator\'s word that the work shows no named figure', async () => {
+    mockedDetail.mockResolvedValue({ ...bigVishnu, metadata: {}, commemorates: [], depicts: [garuda] });
+    mockedEdit.mockResolvedValue({ success: true, experienceId: bigVishnu.id, curatedFields: ['metadata.depicts'] });
+    renderDialog(bigVishnu);
+
+    fireEvent.click(await screen.findByTitle('Remove Garuda'));
+    expect(screen.getByText('No figure named')).toBeInTheDocument();
+    save();
+
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bigVishnu.id, { depicts: [] }));
   });
 });

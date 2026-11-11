@@ -23,13 +23,14 @@ const POZHARSKY = { item: 'Q15756', label: 'Dmitry Pozharsky', articleUrl: 'http
 const MININ = { item: 'Q469785', label: 'Kuzma Minin', articleUrl: null };
 
 /** The field with its list held as the dialog's form holds it, and every list it sent. */
-function renderField(initial: CommemoratedSubjectValue[]) {
+function renderField(initial: CommemoratedSubjectValue[], elsewhere: CommemoratedSubjectValue[] = []) {
   const sent: CommemoratedSubjectValue[][] = [];
   function Held() {
     const [subjects, setSubjects] = useState(initial);
     return (
       <CommemoratesField
         subjects={subjects}
+        elsewhere={elsewhere}
         onChange={(next) => { sent.push(next); setSubjects(next); }}
       />
     );
@@ -90,6 +91,21 @@ describe('CommemoratesField', () => {
     }]);
     await waitFor(() => expect(box).toHaveValue(''));
     expect(screen.getByTitle('Remove Abraham Lincoln')).toBeInTheDocument();
+  });
+
+  it('never offers a subject the other line lists (#2421)', async () => {
+    mockedSearch.mockResolvedValue([
+      { item: 'Q15756', label: 'Dmitry Pozharsky', description: 'Russian prince', articleUrl: null },
+      { item: 'Q469785', label: 'Kuzma Minin', description: 'merchant', articleUrl: null },
+    ]);
+    renderField([], [POZHARSKY]);
+
+    const box = screen.getByLabelText('Add a person or event');
+    box.focus();
+    fireEvent.change(box, { target: { value: 'Minin' } });
+
+    expect(await screen.findByText(/merchant/)).toBeInTheDocument();
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([expect.stringContaining('Kuzma Minin')]);
   });
 
   it('asks nothing for a single letter', async () => {
