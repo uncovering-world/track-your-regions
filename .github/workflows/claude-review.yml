@@ -406,6 +406,20 @@ jobs:
               radius makes it Major.
             - **Convention adherence** — code reuse (shared components/utils),
               file-size limits, dev-guide patterns, commit hygiene
+            - **A reader's field without a curator's correction** — a PR
+              that shows a reader a new field of a place (a line, a chip,
+              a link or a list on its card) ships the curator's way to
+              correct it. That is a field in `CurationDialog` or an editor
+              the dialog or the card opens to a curator (`WorkCorrection`
+              through `WorkPreviewDialog`, for one), stored as the curator's
+              (a `curated_fields` claim or a membership pin) and kept from
+              the next run. A review
+              answer alone is not a correction. A field worked out from
+              another is corrected through that field, and a fact the World
+              Heritage List states needs none; neither is a finding. A PR
+              that does not build a correction a field needs names the issue
+              that will; a PR that names neither is a Minor finding (development-guide.md § A field a reader is
+              shown is a field a curator corrects, #2422)
 
             ## EXCLUSIONS (don't report)
 
