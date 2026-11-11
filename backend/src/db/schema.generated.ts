@@ -378,7 +378,6 @@ export interface ExperienceKindsRow {
   name: string;
   display_priority: number;
   created_at: Date | null;
-  is_virtual: boolean;
   crowding_limit: number | null;
   crowding_radius_km: number | null;
   crowding_exempt_types: string[];
@@ -597,9 +596,10 @@ export interface ExperienceSourcesRow {
   last_sync_status: string | null;
   last_sync_error: string | null;
   display_priority: number;
-  kind_id: number;
+  kind_id: number | null;
   created_at: Date | null;
   wikidata_reader: string;
+  id_scheme: string;
   new_badge_days: number;
   requires_curation: boolean;
 }
@@ -1096,7 +1096,8 @@ export interface SeparatedVisitQuestionsRow {
 export interface SourceRecordsRow {
   id: number;
   experience_id: number;
-  kind_id: number;
+  kind_id: number | null;
+  whole_id: number | null;
   source_id: number;
   external_id: string;
   type: string | null;
@@ -1683,6 +1684,7 @@ export const COLUMN_WIDTHS = {
     api_endpoint: 1000,
     last_sync_status: 50,
     wikidata_reader: 10,
+    id_scheme: 20,
   },
   experience_sync_changes: {
     external_id: 255,
@@ -1870,6 +1872,7 @@ export const CHECK_VALUES = {
     source: ["item", "osm-ref", "osm-name"],
   },
   experience_sources: {
+    id_scheme: ["whc-site", "whc-component", "wikidata", "wikidata-statement", "curator"],
     last_sync_status: ["success", "partial", "failed", "cancelled"],
     wikidata_reader: ["live", "subset"],
   },

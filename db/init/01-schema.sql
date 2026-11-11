@@ -2591,21 +2591,6 @@ INSERT INTO experience_kinds (id, name, display_priority) VALUES
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
 
--- A virtual kind records how a source knows a place and offers none
--- (ADR-0156 decision 1): no list, count, filter, map or chip reads it, and a
--- place is offered only by its other memberships. backend/src/db/membership.ts
--- states the exclusion for every read (realKindSql, kindIsRealSql).
-ALTER TABLE experience_kinds ADD COLUMN IF NOT EXISTS is_virtual BOOLEAN NOT NULL DEFAULT FALSE;
-COMMENT ON COLUMN experience_kinds.is_virtual IS 'The kind records how a source knows a place and offers none (ADR-0156): no reader, curator or admin surface lists, counts or offers a place by it.';
-
--- The tenth kind, virtual: each part of a serial World Heritage site holds a
--- membership in it, the record of how the World Heritage list knows that
--- part (ADR-0156 decision 2). Never browsed.
-INSERT INTO experience_kinds (id, name, display_priority, is_virtual) VALUES
-    (10, 'World Heritage components', 10, TRUE)
-ON CONFLICT (name) DO NOTHING;
-SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
-
 -- =============================================================================
 -- Sources (ADR-0045 decision 3)
 -- =============================================================================
@@ -2642,14 +2627,21 @@ CREATE TABLE IF NOT EXISTS experience_sources (
     kind_id INTEGER REFERENCES experience_kinds(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     -- Which Wikidata the source's runs read (#1459): live, or the local subset (ADR-0105).
-    wikidata_reader VARCHAR(10) NOT NULL DEFAULT 'live' CHECK (wikidata_reader IN ('live', 'subset'))
+    wikidata_reader VARCHAR(10) NOT NULL DEFAULT 'live' CHECK (wikidata_reader IN ('live', 'subset')),
+    -- The shape of the ids the source knows a place by (ADR-0198); every seed names its own.
+    id_scheme VARCHAR(20) NOT NULL CHECK (id_scheme IN ('whc-site', 'whc-component', 'wikidata', 'wikidata-statement', 'curator'))
 );
 
 COMMENT ON TABLE experience_sources IS 'Sources: the lists a sync reads to fill a kind (ADR-0045 decision 3). One row per sync service, with its endpoint, config and gate.';
 -- For a database that predates the column; a fresh one has it from the CREATE.
 -- Filled and made required below the seeds, once every row can name its kind.
 ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS kind_id INTEGER REFERENCES experience_kinds(id);
-COMMENT ON COLUMN experience_sources.kind_id IS 'The kind this source fills (ADR-0045 decision 3). One kind per source today; a membership records which source brought it, so a kind can have several sources.';
+COMMENT ON COLUMN experience_sources.kind_id IS 'The kind this source fills (ADR-0045 decision 3), or NULL for a source whose records place a part in a whole (ADR-0198): World Heritage components. One kind per source today; a membership records which source brought it, so a kind can have several sources.';
+-- db/migrations/232-a-part-record-is-a-record-in-a-whole.sql for a database
+-- whose sources predate the column; a fresh one has it from the CREATE.
+ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS id_scheme VARCHAR(20) NOT NULL
+    CHECK (id_scheme IN ('whc-site', 'whc-component', 'wikidata', 'wikidata-statement', 'curator'));
+COMMENT ON COLUMN experience_sources.id_scheme IS 'The shape of the ids this source knows a place by (ADR-0198), declared once in @tyr/shared/identifiers (SOURCE_ID_SCHEMES): whc-site, a World Heritage property''s number (383); whc-component, a component''s reference (383bis-001); wikidata, an item (Q42); wikidata-statement, a statement''s id; curator, a curator''s own key (curator-<user>-<n>). A record in a whole fits its source''s scheme or the curator''s (source_record_fits_scheme).';
 COMMENT ON COLUMN experience_sources.api_config IS 'Source-specific API configuration (pagination, auth, etc.)';
 COMMENT ON COLUMN experience_sources.last_sync_status IS 'How the source''s last sync ended: success, partial, failed or cancelled (CHECK; @tyr/shared/runStatuses)';
 COMMENT ON COLUMN experience_sources.display_priority IS 'Display order in experience list (lower = shown first)';
@@ -2669,7 +2661,7 @@ COMMENT ON COLUMN experience_sources.requires_curation IS 'Does a run from this 
 -- inscription a decision of the World Heritage Committee, not a community's
 -- edit to be read first, so what the run brings publishes on arrival. Every
 -- other place source is seeded gated (#2335).
-INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     'UNESCO World Heritage Sites',
     'Official UNESCO World Heritage List - Cultural, Natural, and Mixed sites worldwide',
@@ -2677,7 +2669,8 @@ VALUES (
     '{"pageSize": 100}'::jsonb,
     1,
     false,
-    (SELECT id FROM experience_kinds WHERE name = 'World Heritage Sites')
+    (SELECT id FROM experience_kinds WHERE name = 'World Heritage Sites'),
+    'whc-site'
 )
 ON CONFLICT (name) DO NOTHING;
 
@@ -3034,7 +3027,9 @@ END $$;
 CREATE TABLE IF NOT EXISTS source_records (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    kind_id INTEGER NOT NULL REFERENCES experience_kinds(id),
+    -- A record places its place in a kind or in a whole, never both (ADR-0198).
+    kind_id INTEGER REFERENCES experience_kinds(id),
+    whole_id INTEGER REFERENCES experiences(id) ON DELETE CASCADE,
     source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     external_id VARCHAR(255) NOT NULL,
     type VARCHAR(100),
@@ -3085,7 +3080,8 @@ CREATE TABLE IF NOT EXISTS source_records (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (experience_id, kind_id),
-    CONSTRAINT source_records_source_external_key UNIQUE (source_id, external_id)
+    CONSTRAINT source_records_kind_or_whole CHECK (num_nonnulls(kind_id, whole_id) = 1),
+    CONSTRAINT source_records_one_per_whole UNIQUE (source_id, whole_id, experience_id)
 );
 
 -- Declared in the CREATE TABLE above and added again here: CREATE TABLE IF NOT
@@ -3128,13 +3124,30 @@ ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_question_che
 ALTER TABLE source_records ADD CONSTRAINT source_records_question_check
     CHECK ((admission_questioned_at IS NULL) = (admission_question_verdict IS NULL)
        AND (admission_questioned_at IS NULL OR curated_fields ? 'admission'));
+-- A record in a whole (ADR-0198): db/migrations/232-a-part-record-is-a-record-in-a-whole.sql
+-- for a database whose part records were memberships of the virtual kind.
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS whole_id INTEGER REFERENCES experiences(id) ON DELETE CASCADE;
+ALTER TABLE source_records ALTER COLUMN kind_id DROP NOT NULL;
+ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_kind_or_whole;
+ALTER TABLE source_records ADD CONSTRAINT source_records_kind_or_whole CHECK (num_nonnulls(kind_id, whole_id) = 1);
+ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_one_per_whole;
+ALTER TABLE source_records ADD CONSTRAINT source_records_one_per_whole UNIQUE (source_id, whole_id, experience_id);
+-- A kind's record is found by its source's id, unique per source (ADR-0084
+-- decision 2): the run's upsert names this index as its arbiter. A record in a
+-- whole is not: the World Heritage list gives one reference to two places at
+-- once (Maloti-Drakensberg's 985ter-001, Sehlabathebe and uKhahlamba) and to
+-- two places over time (Western Tien-Shan's 1490-003), so it is one source's
+-- record of one place in one whole (source_records_one_per_whole).
 ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_source_external_key;
-ALTER TABLE source_records ADD CONSTRAINT source_records_source_external_key
-    UNIQUE (source_id, external_id);
+CREATE UNIQUE INDEX IF NOT EXISTS source_records_kind_source_external
+    ON source_records (source_id, external_id) WHERE kind_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_source_records_whole ON source_records (whole_id) WHERE whole_id IS NOT NULL;
 
-COMMENT ON TABLE source_records IS 'A place''s membership in a kind (ADR-0045 decision 4): one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival. The place itself is the experiences row.';
+COMMENT ON TABLE source_records IS 'One source''s record of a place (ADR-0198): in a kind, a membership (ADR-0045 decision 4), one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival; or in a whole, a part record, one row per (source, place, whole), carrying how the source knows the part -- its reference, its item and its view. The place itself is the experiences row.';
+COMMENT ON COLUMN source_records.kind_id IS 'The kind the record places the place in, NULL on a record in a whole (source_records_kind_or_whole, ADR-0198).';
+COMMENT ON COLUMN source_records.whole_id IS 'The whole the record places the place in as a part -- the serial World Heritage site whose component the place is -- NULL on a record in a kind (ADR-0198). Written with the part-of relation it records (component_record_follows_relation).';
 COMMENT ON COLUMN source_records.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
-COMMENT ON COLUMN source_records.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item -- unique per source (ADR-0084 decision 2). A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
+COMMENT ON COLUMN source_records.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item, a component''s reference -- in the shape of its source''s id_scheme (ADR-0198). Unique per source on a record in a kind (ADR-0084 decision 2), and not on a record in a whole, whose reference two places may carry. A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
 COMMENT ON COLUMN source_records.type IS
   'The type within this membership''s kind, where the kind has types a traveller still browses together '
   '(ADR-0045): ''cultural''/''natural''/''mixed'' for World Heritage, ''cathedral'', ''holy site'' and the rest '
@@ -3149,7 +3162,7 @@ COMMENT ON COLUMN source_records.last_seen_sync_log_id IS 'The newest run of thi
 COMMENT ON COLUMN source_records.reported_name IS 'The name this membership''s source last reported for the place, tidied as the place stores a name. With the three columns beside it, the source''s view of the place (ADR-0084): written by every run of the source whatever the place keeps, and read to tell whether the sources of one place disagree (#1246). NULL where the source reports nothing, which contradicts no other view.';
 COMMENT ON COLUMN source_records.reported_subtitle IS 'The subtitle this membership''s source last reported for the place (its view, #1246, #1795).';
 COMMENT ON COLUMN source_records.reported_image_url IS 'The picture this membership''s source last reported for the place, after the run''s picture rule (its view, #1246). Its credit is reported_image_credit.';
-COMMENT ON COLUMN source_records.wikidata_items IS 'The Wikidata items a source that knows the place by another id resolves it to (#1248): for a World Heritage membership, the items its site resolves to through P757 (siteItems, ADR-0088 as narrowed by ADR-0094), leaving out an item whose every such statement is deprecated. NULL for a Wikidata source, whose external_id is the item. One item and one point make the place that item''s, for the catalogue''s merge on an equal item (sharedItemsSql). On a part''s record in World Heritage components (kind 10), its component''s item, with wikidata_items among the record''s claims where a curator chose it (ADR-0156).';
+COMMENT ON COLUMN source_records.wikidata_items IS 'The Wikidata items a source that knows the place by another id resolves it to (#1248): for a World Heritage membership, the items its site resolves to through P757 (siteItems, ADR-0088 as narrowed by ADR-0094), leaving out an item whose every such statement is deprecated. NULL for a Wikidata source, whose external_id is the item. One item and one point make the place that item''s, for the catalogue''s merge on an equal item (sharedItemsSql). On a part''s record in its whole (World Heritage components, ADR-0198), its component''s item, with wikidata_items among the record''s claims where a curator chose it (ADR-0156).';
 COMMENT ON COLUMN source_records.reported_image_credit IS 'The credit of reported_image_url as the run resolved it from Commons ({author, license, licenseUrl, detailsUrl}, the shape of metadata.imageCredit): shown beside the picture wherever a curator is asked to choose it, and written with it to the place when chosen (#1246).';
 COMMENT ON COLUMN source_records.reported_wikipedia_url IS 'The Wikipedia article this membership''s source last reported for the place, the shape of metadata.wikipediaUrl (its view, #1975): two sources of one place under different ids that link different articles are asked about, as for the picture.';
 COMMENT ON COLUMN source_records.reported_label IS 'The label this membership''s source last sent for the place, before a twin''s suffix (#1967): a label another standing place of the catalogue carries is named apart, so every source of one item names it alike.';
@@ -3197,9 +3210,9 @@ CREATE INDEX IF NOT EXISTS idx_source_records_reader
 -- owns a region's geometry for every member writer (ADR-0068): the run, missing
 -- detection and a curator's verdict write the membership, and none of them
 -- writes the place's copy. A membership moving between places (a merge, #1247)
--- recomputes both. A place with no membership reads as listed. A membership of
--- a virtual kind lists nothing (ADR-0156): a serial site's part is listed by
--- its point and its site, as before it held one.
+-- recomputes both. A place with no membership reads as listed. A record in a
+-- whole lists nothing (ADR-0198): a serial site's part is listed by its point
+-- and its site, as before it held one.
 CREATE OR REPLACE FUNCTION recompute_place_listing(place_id INTEGER) RETURNS void AS $$
 BEGIN
     UPDATE experiences e
@@ -3209,7 +3222,7 @@ BEGIN
                    CASE WHEN bool_and(m.source_membership = 'former') THEN 'former' ELSE 'present' END AS source_membership
               FROM source_records m
              WHERE m.experience_id = place_id
-               AND m.kind_id NOT IN (SELECT k.id FROM experience_kinds k WHERE k.is_virtual)) d
+               AND m.kind_id IS NOT NULL) d
      WHERE e.id = place_id
        AND (e.missing_since IS DISTINCT FROM d.missing_since
             OR e.source_membership IS DISTINCT FROM d.source_membership);
@@ -3233,6 +3246,50 @@ CREATE TRIGGER trg_derive_place_listing
     AFTER INSERT OR DELETE OR UPDATE OF missing_since, source_membership, experience_id
     ON source_records
     FOR EACH ROW EXECUTE FUNCTION derive_place_listing();
+
+-- Whether an id has the shape of a source's id scheme (ADR-0198): the shapes
+-- @tyr/shared/identifiers declares (SOURCE_ID_SHAPES), stated here for the
+-- trigger below; partRecords.db.test.ts (controllers/experience) holds the two
+-- to each other.
+-- A component's reference carries its inscription's suffix on the number
+-- (985ter-001), sometimes a letter on the component (1102rev-001a, 823-001B,
+-- 1142-01bis) and once a sub-number (540-003a 1); the one point of a site
+-- that gains a second component and is parted carries the site's number alone
+-- (775).
+CREATE OR REPLACE FUNCTION source_id_fits_scheme(p_scheme TEXT, p_id TEXT) RETURNS BOOLEAN AS $$
+  SELECT CASE p_scheme
+           WHEN 'whc-site' THEN p_id ~ '^[0-9]+$'
+           WHEN 'whc-component' THEN p_id ~ '^[0-9]+[a-z]*(-[0-9]+[A-Za-z]*( [0-9]+)?)?$'
+           WHEN 'wikidata' THEN p_id ~ '^Q[1-9][0-9]*$'
+           WHEN 'wikidata-statement' THEN p_id ~ '^Q[1-9][0-9]*[$][0-9A-Fa-f-]+$'
+           WHEN 'curator' THEN p_id ~ '^curator-[0-9]+-[0-9]+$'
+           ELSE false
+         END
+$$ LANGUAGE sql IMMUTABLE;
+
+-- A record in a whole carries an id of its source's scheme, or a curator's
+-- own key (ADR-0198). A record in a kind is not asked yet: the database specs
+-- and the smoke fixture seed memberships under ids of their own making.
+CREATE OR REPLACE FUNCTION source_record_fits_scheme() RETURNS trigger AS $$
+DECLARE
+  scheme TEXT;
+BEGIN
+  IF NEW.whole_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  SELECT s.id_scheme INTO scheme FROM experience_sources s WHERE s.id = NEW.source_id;
+  IF NOT (source_id_fits_scheme(scheme, NEW.external_id) OR source_id_fits_scheme('curator', NEW.external_id)) THEN
+    RAISE EXCEPTION 'source record id % does not fit the % scheme of source %', NEW.external_id, scheme, NEW.source_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_source_record_fits_scheme ON source_records;
+CREATE TRIGGER trg_source_record_fits_scheme
+    BEFORE INSERT OR UPDATE OF source_id, external_id, whole_id ON source_records
+    FOR EACH ROW EXECUTE FUNCTION source_record_fits_scheme();
 
 -- Per-object record of what a run did. 'unchanged' is deliberately NOT stored;
 -- it is only counted, or every UNESCO run would write 1247 rows of noise.
@@ -3659,7 +3716,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_regions_region_rows
 -- renamed it.
 -- Gated on arrival, as every place source but the World Heritage list:
 -- Wikidata is community-edited, so a run's first rows wait for a person.
-INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     'Art Museums',
     'World''s most notable museums ranked by artwork fame, sourced from Wikidata',
@@ -3667,14 +3724,15 @@ VALUES (
     '{}'::jsonb,
     2,
     true,
-    (SELECT id FROM experience_kinds WHERE name = 'Art Museums')
+    (SELECT id FROM experience_kinds WHERE name = 'Art Museums'),
+    'wikidata'
 )
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed the public-art source, filling the Public art kind. Seeded as "Public
 -- Art & Monuments" until migration 144 split the kind by purpose (#1807). Gated
 -- on arrival, as every place source but the World Heritage list (#2335).
-INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     'Public art',
     'Notable outdoor sculptures, statues, fountains and murals worldwide, sourced from Wikidata',
@@ -3682,7 +3740,8 @@ VALUES (
     '{}'::jsonb,
     3,
     true,
-    (SELECT id FROM experience_kinds WHERE name = 'Public art')
+    (SELECT id FROM experience_kinds WHERE name = 'Public art'),
+    'wikidata'
 )
 ON CONFLICT (name) DO NOTHING;
 
@@ -3691,7 +3750,7 @@ ON CONFLICT (name) DO NOTHING;
 -- staySitelinks), read by every run and set from the admin panel; gated on
 -- arrival, since a community-edited source's first rows wait for a person
 -- (ADR-0025).
-INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     4,
     'Places of worship',
@@ -3700,7 +3759,8 @@ VALUES (
     '{"enterSitelinks": 22, "staySitelinks": 18}'::jsonb,
     4,
     true,
-    (SELECT id FROM experience_kinds WHERE name = 'Places of worship')
+    (SELECT id FROM experience_kinds WHERE name = 'Places of worship'),
+    'wikidata'
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
@@ -3710,7 +3770,7 @@ SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experie
 -- Wikipedia articles than the museum that holds it, so its pair sits lower.
 -- Gated on arrival like the source before it (ADR-0025); the first live run
 -- waits for the site door (ADR-0058 decision 7).
-INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     5,
     'Archaeology',
@@ -3719,7 +3779,8 @@ VALUES (
     '{"enterSitelinks": 22, "staySitelinks": 18, "findEnterSitelinks": 18, "findStaySitelinks": 15}'::jsonb,
     5,
     true,
-    (SELECT id FROM experience_kinds WHERE name = 'Archaeology')
+    (SELECT id FROM experience_kinds WHERE name = 'Archaeology'),
+    'wikidata'
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
@@ -3728,7 +3789,7 @@ SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experie
 -- the gather is made once, under source 3, and each source decides from it by
 -- its kind's rule. The line is in code, as Public art's is. Gated on arrival
 -- (ADR-0025).
-INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     6,
     'Monuments & memorials',
@@ -3737,7 +3798,8 @@ VALUES (
     '{}'::jsonb,
     6,
     true,
-    (SELECT id FROM experience_kinds WHERE name = 'Monuments & memorials')
+    (SELECT id FROM experience_kinds WHERE name = 'Monuments & memorials'),
+    'wikidata'
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
@@ -3745,7 +3807,7 @@ SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experie
 -- Towers' one source: Wikidata, read in the same pass. Its line reads a
 -- year's readers beside the editions and is in code (`towers/kind.ts`).
 -- Gated on arrival (ADR-0025).
-INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     7,
     'Towers',
@@ -3754,7 +3816,8 @@ VALUES (
     '{}'::jsonb,
     7,
     true,
-    (SELECT id FROM experience_kinds WHERE name = 'Towers')
+    (SELECT id FROM experience_kinds WHERE name = 'Towers'),
+    'wikidata'
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
@@ -3764,7 +3827,7 @@ SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experie
 -- work, and are in code (`bridges/kind.ts`): a canal's locks and lifts are held
 -- to a line of their own, and a canal waits for long objects (#1947, #1948).
 -- Gated on arrival (ADR-0025).
-INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     8,
     'Bridges & engineering marvels',
@@ -3773,7 +3836,8 @@ VALUES (
     '{}'::jsonb,
     8,
     true,
-    (SELECT id FROM experience_kinds WHERE name = 'Bridges & engineering marvels')
+    (SELECT id FROM experience_kinds WHERE name = 'Bridges & engineering marvels'),
+    'wikidata'
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
@@ -3781,7 +3845,7 @@ SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experie
 -- Squares & streets' one source: Wikidata, read in the same pass. Its line
 -- reads a year's readers and whether a Wikivoyage guide names the place, and
 -- is in code (`squares/kind.ts`). Gated on arrival (ADR-0025).
-INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     9,
     'Squares & streets',
@@ -3790,16 +3854,18 @@ VALUES (
     '{}'::jsonb,
     9,
     true,
-    (SELECT id FROM experience_kinds WHERE name = 'Squares & streets')
+    (SELECT id FROM experience_kinds WHERE name = 'Squares & streets'),
+    'wikidata'
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
 
--- World Heritage components' one source: the World Heritage list's own
--- components, written by the World Heritage run when it parts a site
--- (part_site_components). It has no run of its own and no gate: a membership
--- of a virtual kind offers nothing to hold back (ADR-0156 decision 4).
-INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+-- World Heritage components: the World Heritage list's own components, as
+-- records of a part in its whole (ADR-0198), written by the World Heritage run
+-- when it parts a site (part_site_components). It fills no kind, and has no
+-- run of its own and no gate: a part's record offers nothing to hold back
+-- (ADR-0156 decision 4).
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
 VALUES (
     10,
     'World Heritage components',
@@ -3808,16 +3874,17 @@ VALUES (
     '{}'::jsonb,
     10,
     false,
-    (SELECT id FROM experience_kinds WHERE name = 'World Heritage components')
+    NULL,
+    'whc-component'
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
 
 -- Every source names the kind it fills (ADR-0045 decision 3). Filled by name
 -- for a database whose rows predate the column -- the museum source under
--- either of its names -- and then required: a source row naming no kind would
--- fill nothing a reader can browse. Guarded so a re-application changes
--- nothing once the column is required.
+-- either of its names. A source whose records place a part in a whole fills
+-- no kind (ADR-0198), and every other source names one: a source row naming
+-- no kind would fill nothing a reader can browse.
 UPDATE experience_sources c
    SET kind_id = k.id
   FROM experience_kinds k
@@ -3827,12 +3894,9 @@ UPDATE experience_sources c
                   WHEN 'Top Art Museums' THEN 'Art Museums'
                   ELSE c.name
                 END;
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM experience_sources WHERE kind_id IS NULL) THEN
-        ALTER TABLE experience_sources ALTER COLUMN kind_id SET NOT NULL;
-    END IF;
-END $$;
+ALTER TABLE experience_sources DROP CONSTRAINT IF EXISTS experience_sources_fills_kind_or_wholes;
+ALTER TABLE experience_sources ADD CONSTRAINT experience_sources_fills_kind_or_wholes
+    CHECK ((kind_id IS NULL) = (id_scheme IN ('whc-component', 'wikidata-statement', 'curator')));
 
 -- =============================================================================
 -- Treasures (artworks, artifacts — can belong to multiple venues)
@@ -4425,13 +4489,13 @@ LANGUAGE sql STABLE AS $$
     JOIN experiences e ON e.id = m.experience_id AND e.merged_into_id IS NULL
     CROSS JOIN LATERAL unnest(m.wikidata_items) AS item
    WHERE p_scheme = 'wikidata' AND m.wikidata_items && p_values::text[] AND item = ANY(p_values)
-     AND m.kind_id <> 10
+     AND m.kind_id IS NOT NULL
   UNION ALL
   SELECT rec.experience_id, item, 'component-item',
          NOT EXISTS (SELECT 1 FROM source_records other
                        JOIN experiences other_place ON other_place.id = other.experience_id
                         AND other_place.merged_into_id IS NULL
-                      WHERE other.kind_id = 10 AND other.wikidata_items @> ARRAY[item]
+                      WHERE other.source_id = 10 AND other.whole_id IS NOT NULL AND other.wikidata_items @> ARRAY[item]
                         AND other.experience_id <> rec.experience_id
                         AND EXISTS (SELECT 1 FROM experience_locations other_point
                                      WHERE other_point.experience_id = other.experience_id
@@ -4444,7 +4508,8 @@ LANGUAGE sql STABLE AS $$
     FROM source_records rec
     JOIN experiences e ON e.id = rec.experience_id AND e.merged_into_id IS NULL
     CROSS JOIN LATERAL unnest(rec.wikidata_items) AS item
-   WHERE p_scheme = 'wikidata' AND rec.kind_id = 10 AND rec.wikidata_items && p_values::text[] AND item = ANY(p_values)
+   WHERE p_scheme = 'wikidata' AND rec.source_id = 10 AND rec.whole_id IS NOT NULL
+     AND rec.wikidata_items && p_values::text[] AND item = ANY(p_values)
      -- A part whose point stands, as a point's item counted only a standing point.
      AND EXISTS (SELECT 1 FROM experience_locations standing
                   WHERE standing.experience_id = rec.experience_id
@@ -4460,7 +4525,8 @@ LANGUAGE sql STABLE AS $$
            AND NOT EXISTS (SELECT 1 FROM source_records other_rec
                              JOIN experiences other_place ON other_place.id = other_rec.experience_id
                               AND other_place.merged_into_id IS NULL
-                            WHERE other_rec.kind_id = 10 AND other_rec.wikidata_items @> ARRAY[point.wikidata_item::text]
+                            WHERE other_rec.source_id = 10 AND other_rec.whole_id IS NOT NULL
+                              AND other_rec.wikidata_items @> ARRAY[point.wikidata_item::text]
                               AND other_rec.experience_id <> point.experience_id
                               AND EXISTS (SELECT 1 FROM experience_locations other_point
                                            WHERE other_point.experience_id = other_rec.experience_id
@@ -4854,17 +4920,17 @@ BEGIN
   ELSIF TG_TABLE_NAME = 'experience_separations' THEN
     ids := ARRAY[NEW.original_id, NEW.separated_id];
   ELSE
-    -- A membership of a virtual kind changes nothing the pairing reads
-    -- (ADR-0156): the part it records was marked when it was parted. Its own
-    -- IF, since an AND would not keep the other tables' rows from being asked
-    -- for a kind_id they do not have.
+    -- A record in a whole changes nothing the pairing reads (ADR-0198): the
+    -- part it records was marked when it was parted. Its own IF, since an AND
+    -- would not keep the other tables' rows from being asked for a kind_id
+    -- they do not have.
     IF TG_TABLE_NAME = 'source_records' THEN
       IF TG_OP = 'DELETE' THEN
         row_kind := OLD.kind_id;
       ELSE
         row_kind := NEW.kind_id;
       END IF;
-      IF row_kind IN (SELECT k.id FROM experience_kinds k WHERE k.is_virtual) THEN
+      IF row_kind IS NULL THEN
         RETURN NULL;
       END IF;
     END IF;
@@ -5167,49 +5233,64 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- A part's record in World Heritage components is its relation's (ADR-0156
--- decision 2): written when a component becomes a part, moved when a merge or
--- its undo moves the relation to another place, gone with the relation. Keyed
--- by the relation, since the list's own reference is not unique (Western
--- Tien-Shan renumbers, Phong Nha-Ke Bang and Hin Nam No share 951ter-001). A
--- place holds one record however many sites it is a component of, keyed by its
--- earliest relation: refresh_component_record is the rule for one place. A
--- record keyed to another relation drops the view the previous site's list
--- wrote (reported_name, reported_location): it is the new site's to write,
--- and its next run does.
-CREATE OR REPLACE FUNCTION refresh_component_record(place INTEGER) RETURNS void AS $$
+-- A part's record in its whole is its relation's (ADR-0198, narrowing
+-- ADR-0156 decision 2): one record of World Heritage components (source 10)
+-- per relation, in the relation's whole, under the component's reference.
+-- Written when a component becomes a part, moved when a merge or its undo
+-- moves the relation to another place, its reference following the
+-- relation's, and gone with the relation. A place that is a component of two
+-- sites holds one record in each. The reference is not the key: the list
+-- gives one to two places at once (Maloti-Drakensberg's 985ter-001) and to
+-- two places over time (Western Tien-Shan's 1490-003), so a record is one
+-- source's view of one place in one whole (source_records_one_per_whole).
+-- refresh_component_record is the rule for one (whole, part) pair.
+DROP FUNCTION IF EXISTS refresh_component_record(INTEGER);
+CREATE OR REPLACE FUNCTION refresh_component_record(p_whole INTEGER, p_part INTEGER) RETURNS void AS $$
 DECLARE
-  owner INTEGER;
+  ref TEXT;
 BEGIN
-  SELECT min(p.id) INTO owner FROM experience_parts p WHERE p.part_id = place AND p.reason = 'component';
-  IF owner IS NULL THEN
-    DELETE FROM source_records WHERE experience_id = place AND kind_id = 10;
+  SELECT p.external_ref INTO ref FROM experience_parts p
+   WHERE p.whole_id = p_whole AND p.part_id = p_part AND p.reason = 'component';
+  IF NOT FOUND THEN
+    DELETE FROM source_records rec
+     WHERE rec.source_id = 10 AND rec.whole_id = p_whole AND rec.experience_id = p_part;
+  ELSIF ref IS NULL THEN
+    -- A record is the list's view under the list's own id: a component the
+    -- list never gave a reference (a site's one main point, parted once a later
+    -- list names components) has none until it has a reference, and a record
+    -- whose relation loses its reference keeps what it holds -- the reference
+    -- it was last listed under, its item and a curator's claim on it -- since
+    -- no run may take a curator's claim away.
+    NULL;
   ELSE
-    UPDATE source_records
-       SET external_id = 'component:' || owner, reported_name = NULL, reported_location = NULL, updated_at = NOW()
-     WHERE experience_id = place AND kind_id = 10 AND external_id <> 'component:' || owner;
-    INSERT INTO source_records (experience_id, kind_id, source_id, external_id)
-    VALUES (place, 10, 10, 'component:' || owner)
-    ON CONFLICT (experience_id, kind_id) DO NOTHING;
+    INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
+    VALUES (p_part, p_whole, 10, ref)
+    ON CONFLICT (source_id, whole_id, experience_id) DO UPDATE
+       SET external_id = EXCLUDED.external_id, updated_at = NOW()
+     WHERE source_records.external_id IS DISTINCT FROM EXCLUDED.external_id;
   END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION component_record_follows_relation() RETURNS TRIGGER AS $$
 BEGIN
-  IF TG_OP = 'UPDATE' THEN
-    -- The record itself moves with the relation, so a merge's undo, which
-    -- moves both back, finds the row it moved.
-    UPDATE source_records SET experience_id = NEW.part_id, updated_at = NOW()
-     WHERE kind_id = 10 AND external_id = 'component:' || NEW.id AND experience_id = OLD.part_id
+  IF TG_OP = 'UPDATE' AND (OLD.whole_id, OLD.part_id) IS DISTINCT FROM (NEW.whole_id, NEW.part_id) THEN
+    -- The record itself moves with the relation, keeping its item, its view
+    -- and a curator's claims, so a merge's undo, which moves both back, finds
+    -- the row it moved. A merge moves the part's own records first
+    -- (moveMemberships), and then there is nothing left here to move.
+    UPDATE source_records rec
+       SET experience_id = NEW.part_id, whole_id = NEW.whole_id, updated_at = NOW()
+     WHERE rec.source_id = 10 AND rec.whole_id = OLD.whole_id AND rec.experience_id = OLD.part_id
        AND NOT EXISTS (SELECT 1 FROM source_records held
-                        WHERE held.experience_id = NEW.part_id AND held.kind_id = 10);
+                        WHERE held.source_id = 10 AND held.whole_id = NEW.whole_id
+                          AND held.experience_id = NEW.part_id);
   END IF;
   IF TG_OP <> 'INSERT' THEN
-    PERFORM refresh_component_record(OLD.part_id);
+    PERFORM refresh_component_record(OLD.whole_id, OLD.part_id);
   END IF;
   IF TG_OP <> 'DELETE' THEN
-    PERFORM refresh_component_record(NEW.part_id);
+    PERFORM refresh_component_record(NEW.whole_id, NEW.part_id);
   END IF;
   RETURN NULL;
 END;
@@ -5221,8 +5302,9 @@ CREATE TRIGGER trg_component_record_follows_relation
   FOR EACH ROW EXECUTE FUNCTION component_record_follows_relation();
 DROP TRIGGER IF EXISTS trg_component_record_follows_relation_move ON experience_parts;
 CREATE TRIGGER trg_component_record_follows_relation_move
-  AFTER UPDATE OF part_id ON experience_parts
-  FOR EACH ROW WHEN (OLD.part_id IS DISTINCT FROM NEW.part_id)
+  AFTER UPDATE OF whole_id, part_id, reason, external_ref ON experience_parts
+  FOR EACH ROW WHEN ((OLD.whole_id, OLD.part_id, OLD.reason, OLD.external_ref)
+                     IS DISTINCT FROM (NEW.whole_id, NEW.part_id, NEW.reason, NEW.external_ref))
   EXECUTE FUNCTION component_record_follows_relation();
 
 -- One row per build of a public dump (ADR-0101 decision 3): which dump, which
