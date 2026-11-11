@@ -19,7 +19,7 @@ import type { z } from 'zod/v4';
 import type { SiteFindsResponse } from '../../api/responses/experiences.js';
 import type { idParamSchema } from '../../types/index.js';
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, realKindSql } from '../../db/membership.js';
+import { MEMBERSHIPS, kindRecordSql } from '../../db/membership.js';
 import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
 import { siteFindOf, type SiteFindRow } from './experienceAnswerRows.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
@@ -88,7 +88,7 @@ export async function getSiteFinds(
                   EXISTS (SELECT 1 FROM ${MEMBERSHIPS} venue_kind
                             JOIN ${MEMBERSHIPS} site_kind ON site_kind.kind_id = venue_kind.kind_id
                            WHERE venue_kind.experience_id = sv.id AND site_kind.experience_id = e.id
-                             AND ${realKindSql('venue_kind')}) DESC,
+                             AND ${kindRecordSql('venue_kind')}) DESC,
                   sv.id
        ) v) AS shown_at,
       -- Dug up here by the find's own item, or from here by a curator's link

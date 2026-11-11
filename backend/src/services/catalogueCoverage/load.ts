@@ -23,7 +23,6 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { ExperienceKindsRow } from '../../db/schema.generated.js';
-import { kindIsRealSql } from '../../db/membership.js';
 import type { CoverageFiles, CoverageKind } from './files.js';
 import { filingKey, readFilingTypes, type FilingToType, type FilingTypes } from './entryTypes.js';
 
@@ -254,9 +253,8 @@ export async function replaceCoverage(files: CoverageFiles, typeFilings: FilingT
   let unusable: Error | undefined;
   try {
     await client.query('BEGIN');
-    // A virtual kind is never browsed, so the register has no record of it (ADR-0156).
     const catalogue = await client.query<Pick<ExperienceKindsRow, 'id' | 'name'>>(
-      `SELECT id, name FROM experience_kinds WHERE ${kindIsRealSql('experience_kinds')} ORDER BY id`,
+      `SELECT id, name FROM experience_kinds ORDER BY id`,
     );
     const problems = registerAgainstCatalogue(files.kinds, catalogue.rows);
     if (problems.length > 0) throw new CoverageRegisterMismatch(problems);

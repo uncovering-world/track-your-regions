@@ -24,8 +24,8 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from './experienceWriter.js';
-import { COMPONENTS_KIND_ID, MEMBERSHIPS, placeHoldsRealKindSql } from './membership.js';
-import { pointOfPartSql, shownBySql } from './placePoints.js';
+import { MEMBERSHIPS, componentRecordSql, placeHoldsKindSql } from './membership.js';
+import { pointOfPartSql, pointRecordSql, shownBySql } from './placePoints.js';
 import { publishedContentSql } from './readerPredicates.js';
 
 /** A field of a part this module writes, named as a place's claim and a held proposal name it. */
@@ -115,7 +115,7 @@ export async function writePartFields(
 
 /**
  * The parts whose point the filter `pointFilter` keeps, over `el`, as rows
- * `(part_id, name, location, external_ref)` of what each is to hold (ADR-0100,
+ * `(part_id, name, location, external_ref, point_id)` of what each is to hold (ADR-0100,
  * ADR-0156): the name the part is called for its point (`component_part_name`:
  * the list's name; where that names nothing, the part's own English article,
  * then its site's name with the reference), unless a curator named the part
@@ -140,14 +140,27 @@ export function partFollowsSql(pointFilter: string): string {
                                         WHERE wp.part_id = part.id AND wp.reason = 'component'
                                         ORDER BY wp.whole_id LIMIT 1)),
                                     part.name) END AS name,
-                 pt.location, pt.external_ref
-            FROM (SELECT DISTINCT ON (el.experience_id) el.experience_id, el.name, el.location, el.external_ref
+                 pt.location, pt.external_ref, pt.id AS point_id
+            FROM (SELECT DISTINCT ON (el.experience_id) el.id, el.experience_id, el.name, el.location, el.external_ref
                     FROM experience_locations el
                    WHERE el.merged_into_id IS NULL AND ${pointOfPartSql('el')} AND ${pointFilter}
                    ORDER BY el.experience_id, el.missing_since IS NULL DESC,
                             ${publishedContentSql('el')} DESC, el.id) pt
             JOIN experiences part ON part.id = pt.experience_id
-           WHERE NOT ${placeHoldsRealKindSql('part.id')}`;
+           WHERE NOT ${placeHoldsKindSql('part.id')}`;
+}
+
+/**
+ * The relation `relation` takes the reference of the point a row of
+ * `partFollowsSql` (`row`) names: the relation of the whole whose list placed
+ * the point, since a part of two sites carries each site's reference on that
+ * site's relation (ADR-0198), or every relation of the part for a point no
+ * list placed.
+ */
+function relationOfPointSql(relation: string, row: string): string {
+  return `(NOT EXISTS (SELECT 1 FROM experience_location_placements any_pl WHERE any_pl.location_id = ${row}.point_id)
+           OR EXISTS (SELECT 1 FROM experience_location_placements own_pl
+                       WHERE own_pl.location_id = ${row}.point_id AND own_pl.membership_id = ${relation}.membership_id))`;
 }
 
 /** The parts of the site `$1` that are not yet what their point makes them (`partFollowsSql`): the run's fast path asks it. */
@@ -157,6 +170,7 @@ export function partsBehindSql(): string {
             JOIN experiences part ON part.id = f.part_id
            WHERE part.name IS DISTINCT FROM f.name OR part.location IS DISTINCT FROM f.location
               OR EXISTS (SELECT 1 FROM experience_parts fp WHERE fp.part_id = f.part_id AND fp.reason = 'component'
+                           AND ${relationOfPointSql('fp', 'f')}
                            AND fp.external_ref IS DISTINCT FROM f.external_ref)`;
 }
 
@@ -190,7 +204,8 @@ export async function followTheirPoints(
      )
      UPDATE experience_parts p SET external_ref = f.external_ref
        FROM f
-      WHERE p.part_id = f.part_id AND p.reason = 'component' AND p.external_ref IS DISTINCT FROM f.external_ref`,
+      WHERE p.part_id = f.part_id AND p.reason = 'component' AND ${relationOfPointSql('p', 'f')}
+        AND p.external_ref IS DISTINCT FROM f.external_ref`,
     [lock.id, pointIds],
   );
 }
@@ -204,7 +219,8 @@ export interface PartItemWrite {
 
 /**
  * Write the component's Wikidata item on the record of the parts the points
- * name (`wikidata_items` of its World Heritage components membership), with a
+ * name (`wikidata_items` of its record in its whole, the one the point reads,
+ * `pointRecordSql`), with a
  * curator's claim on it (`wikidata_items` in the record's `curated_fields`),
  * under the lock of the place that shows them. Answers the points whose
  * record was written; a point that is no part's has none.
@@ -229,7 +245,7 @@ export async function writePartItems(
                                ELSE rec.curated_fields END,
             updated_at = NOW()
        FROM w JOIN experience_locations el ON el.id = w.point_id
-      WHERE rec.experience_id = el.experience_id AND rec.kind_id = ${COMPONENTS_KIND_ID}
+      WHERE rec.id = ${pointRecordSql('el', 'own_rec', 'own_rec.id')}
         AND ${pointOfPartSql('el')}
         AND ${shownBySql('el', 'ARRAY[$1::int]')}
       RETURNING w.point_id`,
@@ -258,8 +274,8 @@ export function partListingChangesSql(listed: string): string {
   return `SELECT rec.id, l.name,
                  CASE WHEN l.record_id IS NOT NULL THEN ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326) END AS location
             FROM experience_parts p
-            JOIN ${MEMBERSHIPS} rec ON rec.experience_id = p.part_id AND rec.kind_id = ${COMPONENTS_KIND_ID}
-                                   AND rec.external_id = 'component:' || p.id
+            JOIN ${MEMBERSHIPS} rec ON rec.experience_id = p.part_id AND rec.whole_id = p.whole_id
+                                   AND ${componentRecordSql('rec')}
             LEFT JOIN ${listed} l ON l.record_id = rec.id
            WHERE p.whole_id = $1 AND p.reason = 'component'
              AND (rec.reported_name IS DISTINCT FROM l.name

@@ -12,7 +12,7 @@
  */
 
 import { pool } from '../../../db/index.js';
-import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, realKindSql } from '../../../db/membership.js';
+import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, kindRecordSql } from '../../../db/membership.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import type {
   CoverageCalibrationEntriesRow, CoverageCalibrationSourcesRow, CoverageExpectationKindsRow, CoverageExpectationsRow, CoverageJudgementsRow,
@@ -196,10 +196,10 @@ const EXPECTATIONS_SQL = `
 const KNOWN_AS_SQL = `
     SELECT e.id AS experience_id, e.external_id AS id, true AS own FROM experiences e
     UNION
-    SELECT m.experience_id, m.external_id, false FROM ${MEMBERSHIPS} m WHERE ${realKindSql('m')}
+    SELECT m.experience_id, m.external_id, false FROM ${MEMBERSHIPS} m WHERE ${kindRecordSql('m')}
     UNION
     SELECT m.experience_id, item, false FROM ${MEMBERSHIPS} m CROSS JOIN LATERAL unnest(m.wikidata_items) AS item
-     WHERE ${realKindSql('m')}`;
+     WHERE ${kindRecordSql('m')}`;
 
 /**
  * By identifier and never by name. An entry's identifiers are its Wikidata id,
@@ -232,7 +232,7 @@ const MATCHES_SQL = `
   )
   SELECT DISTINCT ids.region_slug, ids.slug, e.name AS catalogue_name, m.kind_id,
          (${countedMembershipSql('m', 'e')}) AS offered,
-         (${membershipAdmittedSql('m')} AND ${membershipVisibleSql('m')} AND ${realKindSql('m')} AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}) AS shadowed
+         (${membershipAdmittedSql('m')} AND ${membershipVisibleSql('m')} AND ${kindRecordSql('m')} AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}) AS shadowed
     FROM ids
     JOIN known_as k ON k.id = ids.id
     JOIN experiences e ON e.id = k.experience_id

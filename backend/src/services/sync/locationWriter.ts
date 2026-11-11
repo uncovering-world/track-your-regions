@@ -115,7 +115,7 @@ import {
 } from './locationPairing.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { lockExperience } from '../../db/experienceWriter.js';
-import { COMPONENTS_KIND_ID, MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
 import { foldedPointsSql, pointItemClaimedSql, pointItemSql, pointOfPartSql, shownBySql } from '../../db/placePoints.js';
 import { writePartItems } from '../../db/partFieldsWriter.js';
@@ -1357,14 +1357,15 @@ export async function recordComponentItems(
                OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement
                                WHERE any_placement.location_id = el.id))`;
     const params = [experienceId, items.map(one => one.ref), items.map(one => one.item), sourceId];
-    // A part of two sites holds one record, keyed by its earliest relation:
-    // only the point under that relation's reference writes it, or each site's
-    // run would put back its own item in turn.
+    // A part holds a record in each of its wholes (ADR-0198): only a point
+    // under one of its records' references writes, and it writes the record
+    // under its own reference (writePartItems), so each site's run writes its
+    // own record.
     const ofParts = await client.query<{ id: number; item: string }>(
       `SELECT el.id, r.item FROM experience_locations el, ${answered} AND ${pointOfPartSql('el')}
-          AND EXISTS (SELECT 1 FROM experience_parts owner
-                        JOIN ${MEMBERSHIPS} rec ON rec.external_id = 'component:' || owner.id AND rec.kind_id = ${COMPONENTS_KIND_ID}
-                       WHERE owner.part_id = el.experience_id AND lower(owner.external_ref) = lower(r.ref))`, params,
+          AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} rec
+                       WHERE rec.experience_id = el.experience_id AND ${componentRecordSql('rec')}
+                         AND lower(rec.external_id) = lower(r.ref))`, params,
     );
     const onParts = await writePartItems(client, locked.lock, ofParts.rows.map(row => ({ pointId: row.id, item: row.item })));
     const onPoints = await client.query(

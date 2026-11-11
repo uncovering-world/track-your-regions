@@ -16,7 +16,6 @@ import {
   isStorableHttpUrl, isDisplayablePictureUrl, STORABLE_HTTP_URL_MESSAGE, DISPLAYABLE_PICTURE_URL_MESSAGE,
 } from '../../types/urlSafety.js';
 import { insertCuratedExperience } from '../../db/experienceWriter.js';
-import { kindIsRealSql } from '../../db/membership.js';
 import { insertCuratedPoint } from './experienceLocationWriter.js';
 import { insertManualMembership } from './membershipWriter.js';
 import { refusalFor } from './curatedUrlRefusal.js';
@@ -163,8 +162,7 @@ export async function createManualExperience(
   // has no run of its own (#819). The regional tier of ADR-0048 is where a
   // curator's list becomes a source in its own right.
   const sourceResult = await pool.query(
-    // A virtual kind holds no place a person adds (ADR-0156).
-    `SELECT s.id FROM experience_sources s JOIN experience_kinds k ON k.id = s.kind_id AND ${kindIsRealSql('k')}
+    `SELECT s.id FROM experience_sources s
       WHERE s.kind_id = $1 ORDER BY s.display_priority, s.id LIMIT 1`,
     [body.kindId],
   );

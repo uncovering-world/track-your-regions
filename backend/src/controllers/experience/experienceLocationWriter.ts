@@ -23,7 +23,7 @@
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import type { ImageCredit } from '../../services/sync/imageCredit.js';
-import { MEMBERSHIPS, placeHoldsRealKindSql } from '../../db/membership.js';
+import { MEMBERSHIPS, placeHoldsKindSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 import { pointAnsweredBySql, unreadPointSql } from './waitingCounts.js';
@@ -351,6 +351,32 @@ export interface ClaimedItemContent {
   articleUrl: string | null;
 }
 
+/** What a part's row holds and claims, read before a confirmed item fills it. */
+interface PartRowHeld {
+  part_claims: string[] | null; kinded: boolean;
+  part_image: string | null; part_subtitle: string | null; part_article: string | null;
+}
+
+/**
+ * The fields a confirmed item writes on its part's row (ADR-0156 decision 3):
+ * each where the part holds no claim on it, and, on a part that holds a kind of
+ * its own, only where the kind brought nothing, as the run fills it.
+ */
+function partFieldsOfItem(row: PartRowHeld, content: ClaimedItemContent): PartWrite['fields'] {
+  const picture = content.imageUrl !== null && content.credit !== null && isCommonsPictureUrl(content.imageUrl);
+  const article = content.articleUrl !== null && isStorableHttpUrl(content.articleUrl) ? content.articleUrl : null;
+  const claims = new Set(row.part_claims ?? []);
+  const open = (claim: string, held: string | null) => !claims.has(claim) && !(row.kinded && held !== null);
+  const fields: PartWrite['fields'] = {};
+  if (picture && open('image_url', row.part_image)) {
+    fields.image_url = content.imageUrl;
+    fields['metadata.imageCredit'] = content.credit;
+  }
+  if (content.description !== null && open('subtitle', row.part_subtitle)) fields.subtitle = content.description;
+  if (article !== null && open('metadata.wikipediaUrl', row.part_article)) fields['metadata.wikipediaUrl'] = article;
+  return fields;
+}
+
 /**
  * Record the Wikidata item a curator confirmed a component is (#1272), as the
  * curator's choice: the item, a claim on it — which a run respects and the
@@ -363,7 +389,9 @@ export interface ClaimedItemContent {
  * address, since the run's content writer leaves a part whose item a curator
  * chose alone. A point of any other place takes the item alone: it holds no
  * picture or text of its own, which its place holds (#2117). Answers whether
- * the picture was written.
+ * the item was recorded and whether the picture was written: a part the World
+ * Heritage list gives no reference has no record to hold the item (ADR-0198),
+ * and the caller refuses the answer rather than report an item it did not keep.
  */
 export async function claimPointItem(
   client: PoolClient,
@@ -371,14 +399,9 @@ export async function claimPointItem(
   locationId: number,
   item: string,
   content: ClaimedItemContent,
-): Promise<{ pictured: boolean }> {
-  const picture = content.imageUrl !== null && content.credit !== null && isCommonsPictureUrl(content.imageUrl);
-  const article = content.articleUrl !== null && isStorableHttpUrl(content.articleUrl) ? content.articleUrl : null;
-  const point = await client.query<{
-    of_part: boolean; part_claims: string[] | null; kinded: boolean;
-    part_image: string | null; part_subtitle: string | null; part_article: string | null;
-  }>(
-    `SELECT ${pointOfPartSql('el')} AS of_part, ${placeHoldsRealKindSql('el.experience_id')} AS kinded,
+): Promise<{ recorded: boolean; pictured: boolean }> {
+  const point = await client.query<PartRowHeld & { of_part: boolean }>(
+    `SELECT ${pointOfPartSql('el')} AS of_part, ${placeHoldsKindSql('el.experience_id')} AS kinded,
             part.curated_fields AS part_claims, NULLIF(part.image_url, '') AS part_image,
             NULLIF(part.subtitle, '') AS part_subtitle, NULLIF(part.metadata ->> 'wikipediaUrl', '') AS part_article
        FROM experience_locations el JOIN experiences part ON part.id = el.experience_id
@@ -386,26 +409,17 @@ export async function claimPointItem(
     [locationId, lock.id],
   );
   const row = point.rows[0];
-  if (!row) return { pictured: false };
+  if (!row) return { recorded: false, pictured: false };
   if (row.of_part) {
     // The item, and the curator's claim on it, are the part's record's
     // (ADR-0156 decision 2).
-    await writePartItems(client, lock, [{ pointId: locationId, item, claim: 'add' }]);
+    const recorded = await writePartItems(client, lock, [{ pointId: locationId, item, claim: 'add' }]);
+    if (recorded.length === 0) return { recorded: false, pictured: false };
     // A part's picture, subtitle and article are its own row's (ADR-0156
-    // decision 3), written where the part holds no claim on the field. A part
-    // that holds a kind of its own keeps what its kind brought and is only
-    // filled, as the run fills it.
-    const claims = new Set(row.part_claims ?? []);
-    const open = (claim: string, held: string | null) => !claims.has(claim) && !(row.kinded && held !== null);
-    const fields: PartWrite['fields'] = {};
-    if (picture && open('image_url', row.part_image)) {
-      fields.image_url = content.imageUrl;
-      fields['metadata.imageCredit'] = content.credit;
-    }
-    if (content.description !== null && open('subtitle', row.part_subtitle)) fields.subtitle = content.description;
-    if (article !== null && open('metadata.wikipediaUrl', row.part_article)) fields['metadata.wikipediaUrl'] = article;
+    // decision 3).
+    const fields = partFieldsOfItem(row, content);
     await writePartFields(client, lock, [{ pointId: locationId, fields }]);
-    return { pictured: fields.image_url !== undefined };
+    return { recorded: true, pictured: fields.image_url !== undefined };
   }
   await client.query(
     `UPDATE experience_locations
@@ -415,7 +429,7 @@ export async function claimPointItem(
       WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}`,
     [locationId, lock.id, item],
   );
-  return { pictured: false };
+  return { recorded: true, pictured: false };
 }
 
 /**
@@ -473,7 +487,7 @@ export async function releasePointItem(
   locationId: number,
 ): Promise<ReleasedField[]> {
   const point = await client.query<{ of_part: boolean; kinded: boolean }>(
-    `SELECT ${pointOfPartSql('el')} AS of_part, ${placeHoldsRealKindSql('el.experience_id')} AS kinded
+    `SELECT ${pointOfPartSql('el')} AS of_part, ${placeHoldsKindSql('el.experience_id')} AS kinded
        FROM experience_locations el WHERE el.id = $1 AND ${shownBySql('el', 'ARRAY[$2::int]')}`,
     [locationId, lock.id],
   );

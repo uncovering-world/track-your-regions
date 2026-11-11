@@ -54,7 +54,7 @@ import { pool } from '../../db/index.js';
 import type { QueueFacets, QueueOrderEntry } from '../../api/responses/reviewQueue.js';
 import { EMPTY_FACETS, FACETS_JSON_SQL, facetsSql, regionRootsCte } from './reviewQueueFacets.js';
 import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './reviewQueueVocabulary.js';
-import { MEMBERSHIPS, claimsFacingSql, membershipOfferedSql, placeSourceIdsSql, realKindSql } from '../../db/membership.js';
+import { MEMBERSHIPS, claimsFacingSql, membershipOfferedSql, placeSourceIdsSql, kindRecordSql } from '../../db/membership.js';
 import { linkableFindSql, mayBeFindOriginSql } from './siteFinds.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorPlaceScopeExists, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
@@ -410,7 +410,7 @@ function sourcesKeysSql(membershipScopeFilter: string): string {
              (SELECT max(COALESCE(l.completed_at, m.created_at))
                 FROM ${MEMBERSHIPS} m
                 LEFT JOIN experience_sync_logs l ON l.id = m.first_seen_sync_log_id
-               WHERE m.experience_id = e.id AND ${realKindSql('m')}) AS asked_at
+               WHERE m.experience_id = e.id AND ${kindRecordSql('m')}) AS asked_at
     ) g
     WHERE ${sourcesOpenSql('e')}
       AND NOT EXISTS (SELECT 1 FROM unnest(g.source_ids) AS m(source_id) WHERE NOT ${membershipScopeFilter})`;

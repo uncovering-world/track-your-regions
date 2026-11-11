@@ -224,6 +224,11 @@ export async function answerComponentItemsUnderLock(
       const written = await claimPointItem(
         client, lock, candidate.location_id, candidate.wikidata_item, contents.get(candidate.wikidata_item) ?? nothing,
       );
+      // A part the World Heritage list gives no reference has no record to
+      // keep its item (ADR-0198): nothing of the answer is written.
+      if (!written.recorded) {
+        return await refuse(409, `${candidate.point_name ?? 'This component'} has no World Heritage reference yet, so its item cannot be confirmed`);
+      }
       if (written.pictured) pictured += 1;
       accepted.push(logged(candidate, written.pictured));
     }

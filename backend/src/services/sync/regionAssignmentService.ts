@@ -15,7 +15,7 @@ import type { PoolClient } from 'pg';
 import type { AssignmentStatus, PlacementCounts } from '../../api/responses/admin.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { offeredLocationSql } from '../../db/readerPredicates.js';
-import { MEMBERSHIPS, placeHoldsRealKindSql } from '../../db/membership.js';
+import { MEMBERSHIPS, placeHoldsKindSql } from '../../db/membership.js';
 import { madeOfSql, placePointsSql, shownBySql, withWholesSql } from '../../db/placePoints.js';
 
 /**
@@ -37,10 +37,10 @@ const ONE_SOURCE_PLACED = withWholesSql(madeOfSql(SOURCE_PLACES));
  * A place is placed in a region for the lists that offer it, and only a place
  * with a membership is offered anywhere: a part with no kind of its own is in
  * its site's lists, not in a region's (ADR-0100), and gains regions of its own
- * with a membership of a real kind: its record in World Heritage components
- * offers nothing (ADR-0156).
+ * with a membership of a kind: its record in its whole offers nothing
+ * (ADR-0156, ADR-0198).
  */
-const LISTED_PLACE = placeHoldsRealKindSql('pp.place_id');
+const LISTED_PLACE = placeHoldsKindSql('pp.place_id');
 
 export interface AssignmentProgress {
   cancel: boolean;
