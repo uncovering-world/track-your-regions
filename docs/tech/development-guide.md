@@ -781,6 +781,25 @@ What such a change supersedes is one of five kinds:
 
 **What is rejected.** An abstraction added beside independent representations that stay authoritative indefinitely is a new layer, not a home, and is not accepted as a migration: a shared module both sides *may* import while each keeps its own copy, a registry some routes join while the rest keep their hand-written middleware and the lint rule that polices them. A slice that deletes nothing has not moved the rule; it has added one more place that states it.
 
+## A field a reader is shown is a field a curator corrects
+
+A curator's job is to make each place's card right, so everything the card tells a reader can be corrected by hand. Being able to accept or refuse a run's proposal is not enough. A refusal holds for one value only, and the source may send another tomorrow.
+
+**The rule.** A slice that shows a reader a new field of a place, whether a line, a chip, a link or a list, ships the curator's way to correct it. That means a field in the place's curation dialog (`CurationDialog`), or an editor the dialog or the card opens to a curator. The curator's value is stored as theirs and kept from the next run: a claim in `curated_fields`, or a pin on the membership. *Commemorates* arrived this way (#2144): `CommemoratesField`, stored as the curator's, with an empty list kept as "nobody".
+
+**What a correction is.** Each of these counts:
+- a field in the dialog;
+- an editor the dialog or the card opens to a curator (`PointCorrection` for a point, from the dialog's places; `WorkCorrection` for a work, from the card's work list through `WorkPreviewDialog`);
+- for a field worked out from others, the correction of what it is worked out from. A region chip changes by moving the point it is placed by; a picture's credit changes with its picture; a serial part's article follows the part's item, which the point correction sets.
+
+**What needs none.** A fact the World Heritage List states about a site (the year inscribed, whether it is in danger, its page) is shown as the list states it: the list is the authority on it, and a curator does not overrule it.
+
+A review answer alone does not count.
+
+**When a slice cannot build it.** Its pull request says so and names the issue that will build it. *Depicts* arrived with review answers only (#2404), and its correction followed as #2421.
+
+`/pr-create` asks for this before it opens a pull request, and the review bot checks it on every branch that shows a reader something new.
+
 ## Commits and Branches
 
 ### Commit Messages
