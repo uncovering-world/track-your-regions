@@ -27,6 +27,23 @@ describe('the modules a source imports at run time (#2424)', () => {
       '@tyr/shared/placeTypes',
     ]);
   });
+
+  it('reads no import a comment shows, and still reads one after a string that holds a comment marker', () => {
+    const source = [
+      "/** `… from './x.js'`: an import or a re-export. */",
+      '/**',
+      " * `import './y.js'` and `import('./z.js')`, the same.",
+      ' */',
+      "// import { old } from './old.js';",
+      '/*',
+      "  export * from './block.js';",
+      '*/',
+      "const host = 'https://example.org/*'; // not a comment opener inside the string",
+      "const QUOTE = /['\"]/g;",
+      "import { kept } from './kept.js'; // and a trailing note from './note.js'",
+    ].join('\n');
+    expect(importsOf(source)).toEqual(['./kept.js']);
+  });
 });
 
 describe('the hash of the code a step is made by (#2424)', () => {

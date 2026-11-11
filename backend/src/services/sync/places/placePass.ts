@@ -181,7 +181,7 @@ export const PASS_KIND_MODULES: readonly URL[] = [
  * The code the shared steps are made and kept by: the gather, the surroundings
  * pool, the kinds' declarations, and the format a step is kept in.
  */
-const SHARED_STEPS_CODE: readonly URL[] = [
+export const SHARED_STEPS_CODE: readonly URL[] = [
   new URL('./gather.js', import.meta.url),
   new URL('./surroundingsPool.js', import.meta.url),
   new URL('./keptGather.js', import.meta.url),

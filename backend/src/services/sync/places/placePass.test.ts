@@ -4,7 +4,8 @@ import { PLACE_PASS } from '../passes.js';
 // What a world tier admitted before the run is read from the database; none here.
 vi.mock('../admission.js', () => ({ admittedExternalIds: vi.fn(async () => new Set<string>()) }));
 
-import { gatheredPlaceKinds, PASS_KIND_MODULES, passKinds } from './placePass.js';
+import { codeHash } from './codeGraph.js';
+import { gatheredPlaceKinds, PASS_KIND_MODULES, passKinds, SHARED_STEPS_CODE } from './placePass.js';
 
 describe('the kinds of the place pass (#2320)', () => {
   const gather = () => Promise.reject(new Error('not read'));
@@ -40,5 +41,13 @@ describe('the kinds of the place pass (#2320)', () => {
     for (const module of PASS_KIND_MODULES) for (const value of Object.values(await import(module.href))) exported.add(value);
     const missing = gatheredPlaceKinds().filter(({ kind }) => !exported.has(kind)).map(({ kind }) => kind.name);
     expect(missing).toEqual([]);
+  });
+
+  it('have a code key over the code the pass runs, every module it reaches found, the key\'s own modules among them (#2424)', async () => {
+    const { files } = await codeHash(SHARED_STEPS_CODE);
+    expect(files).toEqual(expect.arrayContaining([
+      'services/sync/places/gather.ts', 'services/sync/places/keptGather.ts', 'services/sync/places/codeGraph.ts',
+      'services/sync/places/surroundingsPool.ts', 'services/sync/squares/kind.ts',
+    ]));
   });
 });
