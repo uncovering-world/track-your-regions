@@ -2534,7 +2534,7 @@ CREATE TABLE IF NOT EXISTS experience_kinds (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE experience_kinds IS 'A kind of place a traveller browses by (ADR-0045 decision 1): its own list, pin colour and count. Filled by one or more sources (experience_sources); a place''s membership in it is a row of experience_kind_memberships.';
+COMMENT ON TABLE experience_kinds IS 'A kind of place a traveller browses by (ADR-0045 decision 1): its own list, pin colour and count. Filled by one or more sources (experience_sources); a place''s membership in it is a row of source_records.';
 COMMENT ON COLUMN experience_kinds.name IS 'What a traveller calls the thing in front of them -- World Heritage Sites, Art Museums -- never a source''s name for a selection rule (ADR-0045 decision 8).';
 COMMENT ON COLUMN experience_kinds.display_priority IS 'Display order of the kind''s list and pills (lower = shown first).';
 
@@ -2696,7 +2696,7 @@ CREATE TABLE IF NOT EXISTS experiences (
     subtitle TEXT,
     description TEXT,
 
-    -- The type within a kind is the membership's (experience_kind_memberships.type,
+    -- The type within a kind is the membership's (source_records.type,
     -- ADR-0084): the Pantheon is a church as a place of worship and a site as archaeology.
     tags JSONB,  -- ["architecture", "religious", "ancient"]
 
@@ -2752,7 +2752,7 @@ BEGIN
 END $$;
 
 -- A kind's own fact is never the place's (ADR-0153): it lives on the kind's
--- membership (`experience_kind_memberships.facts`), where no other kind's run
+-- membership (`source_records.facts`), where no other kind's run
 -- writes over it. The readership notes are the keys three runs once kept them
 -- under. UNESCO's facts about an inscription are the World Heritage kind's
 -- (#2068); the tier that admitted a row, where it is the surroundings one, is
@@ -3019,7 +3019,19 @@ CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) W
 -- `pending` explicitly because it knows about the gate, so a writer that
 -- forgets this column keeps today's behaviour. The other default would let
 -- such a writer remove its rows from the product silently.
-CREATE TABLE IF NOT EXISTS experience_kind_memberships (
+--
+-- The table holds a source's records of places (#2118), and was named
+-- experience_kind_memberships until migration 230. A database that predates
+-- that migration applies it before this file: CREATE TABLE IF NOT EXISTS would
+-- otherwise stand an empty source_records beside the full table, and every
+-- reader would read the empty one.
+DO $$
+BEGIN
+    IF to_regclass('experience_kind_memberships') IS NOT NULL THEN
+        RAISE EXCEPTION 'experience_kind_memberships still exists: apply db/migrations/230-memberships-are-named-source-records.sql before re-applying 01-schema.sql';
+    END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS source_records (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     kind_id INTEGER NOT NULL REFERENCES experience_kinds(id),
@@ -3073,99 +3085,99 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (experience_id, kind_id),
-    CONSTRAINT experience_kind_memberships_source_external_key UNIQUE (source_id, external_id)
+    CONSTRAINT source_records_source_external_key UNIQUE (source_id, external_id)
 );
 
 -- Declared in the CREATE TABLE above and added again here: CREATE TABLE IF NOT
 -- EXISTS is a no-op on a database that already holds the table. NOT NULL makes
 -- this fail on one whose memberships carry no id yet, which is migration 070's
 -- to backfill first.
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS external_id VARCHAR(255) NOT NULL;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS type VARCHAR(100);
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS source_membership VARCHAR(10) NOT NULL DEFAULT 'present'
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS external_id VARCHAR(255) NOT NULL;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS type VARCHAR(100);
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS source_membership VARCHAR(10) NOT NULL DEFAULT 'present'
     CHECK (source_membership IN ('present', 'former'));
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS first_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_name TEXT;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_subtitle TEXT;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_url TEXT;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_location geometry(Point, 4326);
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_credit JSONB;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_wikipedia_url TEXT;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_label TEXT;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS wikidata_items TEXT[];
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS first_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_name TEXT;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_subtitle TEXT;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_image_url TEXT;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_location geometry(Point, 4326);
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_image_credit JSONB;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_wikipedia_url TEXT;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS reported_label TEXT;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS wikidata_items TEXT[];
 -- db/migrations/178-a-kind-keeps-its-own-facts.sql for a database whose places
 -- still hold them.
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS facts JSONB NOT NULL DEFAULT '{}'::jsonb;
-COMMENT ON COLUMN experience_kind_memberships.facts IS 'The kind''s own facts about the place (year, creators, wikidataClasses, artworkCount, admissionNote, the tier that admitted the row where it is the surroundings one, a World Heritage Site''s dateInscribed, inDanger, dangerList, criteria, areaHectares, ...), written by the source''s run every pass; one a reader is shown (the inscription year, the danger flag and its listing) waits behind the gate on a held place. No other kind''s run writes them, and a refused membership keeps its own (ADR-0153, ADR-0154, ADR-0171, ADR-0178, #1775, #2068, #2178).';
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_verdict VARCHAR(10);
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_reason TEXT;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_question_verdict VARCHAR(10);
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_question_reason TEXT;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_questioned_at TIMESTAMPTZ;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_question_sync_log_id INTEGER
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS facts JSONB NOT NULL DEFAULT '{}'::jsonb;
+COMMENT ON COLUMN source_records.facts IS 'The kind''s own facts about the place (year, creators, wikidataClasses, artworkCount, admissionNote, the tier that admitted the row where it is the surroundings one, a World Heritage Site''s dateInscribed, inDanger, dangerList, criteria, areaHectares, ...), written by the source''s run every pass; one a reader is shown (the inscription year, the danger flag and its listing) waits behind the gate on a held place. No other kind''s run writes them, and a refused membership keeps its own (ADR-0153, ADR-0154, ADR-0171, ADR-0178, #1775, #2068, #2178).';
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS admission_pin_verdict VARCHAR(10);
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS admission_pin_reason TEXT;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS admission_question_verdict VARCHAR(10);
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS admission_question_reason TEXT;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS admission_questioned_at TIMESTAMPTZ;
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS admission_question_sync_log_id INTEGER
     REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
 -- db/migrations/090-a-pin-holds-for-the-reason-it-answered.sql for a database
 -- that already holds pins: it also gives each its view.
-ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_pin_verdict_check;
-ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_pin_verdict_check
+ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_pin_verdict_check;
+ALTER TABLE source_records ADD CONSTRAINT source_records_pin_verdict_check
     CHECK (admission_pin_verdict IN ('admitted', 'refused') AND admission_question_verdict IN ('admitted', 'refused'));
-ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_question_check;
-ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_question_check
+ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_question_check;
+ALTER TABLE source_records ADD CONSTRAINT source_records_question_check
     CHECK ((admission_questioned_at IS NULL) = (admission_question_verdict IS NULL)
        AND (admission_questioned_at IS NULL OR curated_fields ? 'admission'));
-ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_source_external_key;
-ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_source_external_key
+ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_source_external_key;
+ALTER TABLE source_records ADD CONSTRAINT source_records_source_external_key
     UNIQUE (source_id, external_id);
 
-COMMENT ON TABLE experience_kind_memberships IS 'A place''s membership in a kind (ADR-0045 decision 4): one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival. The place itself is the experiences row.';
-COMMENT ON COLUMN experience_kind_memberships.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
-COMMENT ON COLUMN experience_kind_memberships.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item -- unique per source (ADR-0084 decision 2). A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
-COMMENT ON COLUMN experience_kind_memberships.type IS
+COMMENT ON TABLE source_records IS 'A place''s membership in a kind (ADR-0045 decision 4): one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival. The place itself is the experiences row.';
+COMMENT ON COLUMN source_records.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
+COMMENT ON COLUMN source_records.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item -- unique per source (ADR-0084 decision 2). A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
+COMMENT ON COLUMN source_records.type IS
   'The type within this membership''s kind, where the kind has types a traveller still browses together '
   '(ADR-0045): ''cultural''/''natural''/''mixed'' for World Heritage, ''cathedral'', ''holy site'' and the rest '
   'for a place of worship, ''site''/''museum'' for archaeology; every kind''s list, each type with the word a reader sees for it, is packages/shared/src/placeTypes.ts. '
   'NULL for an art museum. One vocabulary per kind (#814), '
   'and the membership''s rather than the place''s, since a place in two kinds has a type in each (ADR-0084). '
   'A curator''s claim on it is ''type'' in this row''s curated_fields.';
-COMMENT ON COLUMN experience_kind_memberships.missing_since IS 'When a clean run of this membership''s source, an authoritative one, first failed to list the place. A machine observation, not a verdict (ADR-0020); the source''s own, since another source may still list the place (ADR-0084).';
-COMMENT ON COLUMN experience_kind_memberships.source_membership IS 'present or former: whether this membership''s source still lists the place. Only a curator sets former; a run that lists the place again sets present, which only ever restores visibility (ADR-0020).';
-COMMENT ON COLUMN experience_kind_memberships.first_seen_sync_log_id IS 'The run of this membership''s source that first brought the place into this kind.';
-COMMENT ON COLUMN experience_kind_memberships.last_seen_sync_log_id IS 'The newest run of this membership''s source that listed the place. A conflict this source proposed in an earlier run is withdrawn once a later landed run of the same source saw the place and proposed nothing.';
-COMMENT ON COLUMN experience_kind_memberships.reported_name IS 'The name this membership''s source last reported for the place, tidied as the place stores a name. With the three columns beside it, the source''s view of the place (ADR-0084): written by every run of the source whatever the place keeps, and read to tell whether the sources of one place disagree (#1246). NULL where the source reports nothing, which contradicts no other view.';
-COMMENT ON COLUMN experience_kind_memberships.reported_subtitle IS 'The subtitle this membership''s source last reported for the place (its view, #1246, #1795).';
-COMMENT ON COLUMN experience_kind_memberships.reported_image_url IS 'The picture this membership''s source last reported for the place, after the run''s picture rule (its view, #1246). Its credit is reported_image_credit.';
-COMMENT ON COLUMN experience_kind_memberships.wikidata_items IS 'The Wikidata items a source that knows the place by another id resolves it to (#1248): for a World Heritage membership, the items its site resolves to through P757 (siteItems, ADR-0088 as narrowed by ADR-0094), leaving out an item whose every such statement is deprecated. NULL for a Wikidata source, whose external_id is the item. One item and one point make the place that item''s, for the catalogue''s merge on an equal item (sharedItemsSql). On a part''s record in World Heritage components (kind 10), its component''s item, with wikidata_items among the record''s claims where a curator chose it (ADR-0156).';
-COMMENT ON COLUMN experience_kind_memberships.reported_image_credit IS 'The credit of reported_image_url as the run resolved it from Commons ({author, license, licenseUrl, detailsUrl}, the shape of metadata.imageCredit): shown beside the picture wherever a curator is asked to choose it, and written with it to the place when chosen (#1246).';
-COMMENT ON COLUMN experience_kind_memberships.reported_wikipedia_url IS 'The Wikipedia article this membership''s source last reported for the place, the shape of metadata.wikipediaUrl (its view, #1975): two sources of one place under different ids that link different articles are asked about, as for the picture.';
-COMMENT ON COLUMN experience_kind_memberships.reported_label IS 'The label this membership''s source last sent for the place, before a twin''s suffix (#1967): a label another standing place of the catalogue carries is named apart, so every source of one item names it alike.';
-COMMENT ON COLUMN experience_kind_memberships.reported_location IS 'The coordinate this membership''s source last reported for the place (its view, #1246). Two views within ten metres agree (ADR-0027).';
-COMMENT ON COLUMN experience_kind_memberships.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
-COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
-COMMENT ON COLUMN experience_kind_memberships.admission_answered_at IS 'When a batch answer confirmed this refusal without pinning it (ADR-0067): the question is closed, and the next run applies the rule again. A run that refuses a row it had admitted clears it, so a refusal that comes back is asked again.';
-COMMENT ON COLUMN experience_kind_memberships.admission_pin_verdict IS 'The run''s verdict a curator''s admission pin answered (#1367): refused for a put-back or a confirmed refusal, admitted for a refused arrival. With admission_pin_reason, the view a later run is compared with; NULL on a row with no pin.';
-COMMENT ON COLUMN experience_kind_memberships.admission_pin_reason IS 'The run''s reason a curator''s admission pin answered (#1367), compared with a later run''s with its numbers folded; NULL for an admission.';
-COMMENT ON COLUMN experience_kind_memberships.admission_question_verdict IS 'What a run said about a pinned row against the curator''s answer (#1367): its verdict, with admission_question_reason. The row''s admission is untouched; the review queue asks the curator. NULL when nothing is asked.';
-COMMENT ON COLUMN experience_kind_memberships.admission_question_reason IS 'The asking run''s reason for a refusal; NULL for an admission (#1367).';
-COMMENT ON COLUMN experience_kind_memberships.admission_questioned_at IS 'When a run first asked the open question about this row''s pin (#1367); a later run that asks the same keeps it, one that agrees again clears it.';
-COMMENT ON COLUMN experience_kind_memberships.admission_question_sync_log_id IS 'The run that last asked about this row''s pin (#1367).';
-COMMENT ON COLUMN experience_kind_memberships.admitted_for IS 'The work whose fame qualified a museum for the works-first source ({qid, label}, ADR-0023): the reason this membership exists. The run''s own bookkeeping, never proposed to a curator (#571).';
-COMMENT ON COLUMN experience_kind_memberships.is_iconic IS 'The must-see badge, the world tier of this kind (ADR-0045 decision 5): set by a source whose admission rule is a fame line, cleared with a refusal, pinned by a curator in curated_fields. The membership''s, not the place''s: a place admitted to a second kind carries that kind''s badge on that kind''s terms.';
-COMMENT ON COLUMN experience_kind_memberships.curated_fields IS 'Field names a curator has pinned on this membership -- admission (a confirmed or overridden refusal), is_iconic, type -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
-COMMENT ON COLUMN experience_kind_memberships.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a place none of whose memberships has passed (ADR-0025; per member since ADR-0045 decision 7).';
-COMMENT ON COLUMN experience_kind_memberships.published_at IS 'When this membership became visible. NULL while pending and for every row that predates the gate. What the "New" chip counts from (#529): a gated row is found months before a reader can see it, so the run that found it is the wrong clock.';
-COMMENT ON COLUMN experience_kind_memberships.pending_change_sync_log_id IS 'The run of this membership''s source whose content proposal for the place is held while a reader can see it. NULL when nothing is held. Contents need no equivalent -- a content row is held by being written pending rather than withheld.';
+COMMENT ON COLUMN source_records.missing_since IS 'When a clean run of this membership''s source, an authoritative one, first failed to list the place. A machine observation, not a verdict (ADR-0020); the source''s own, since another source may still list the place (ADR-0084).';
+COMMENT ON COLUMN source_records.source_membership IS 'present or former: whether this membership''s source still lists the place. Only a curator sets former; a run that lists the place again sets present, which only ever restores visibility (ADR-0020).';
+COMMENT ON COLUMN source_records.first_seen_sync_log_id IS 'The run of this membership''s source that first brought the place into this kind.';
+COMMENT ON COLUMN source_records.last_seen_sync_log_id IS 'The newest run of this membership''s source that listed the place. A conflict this source proposed in an earlier run is withdrawn once a later landed run of the same source saw the place and proposed nothing.';
+COMMENT ON COLUMN source_records.reported_name IS 'The name this membership''s source last reported for the place, tidied as the place stores a name. With the three columns beside it, the source''s view of the place (ADR-0084): written by every run of the source whatever the place keeps, and read to tell whether the sources of one place disagree (#1246). NULL where the source reports nothing, which contradicts no other view.';
+COMMENT ON COLUMN source_records.reported_subtitle IS 'The subtitle this membership''s source last reported for the place (its view, #1246, #1795).';
+COMMENT ON COLUMN source_records.reported_image_url IS 'The picture this membership''s source last reported for the place, after the run''s picture rule (its view, #1246). Its credit is reported_image_credit.';
+COMMENT ON COLUMN source_records.wikidata_items IS 'The Wikidata items a source that knows the place by another id resolves it to (#1248): for a World Heritage membership, the items its site resolves to through P757 (siteItems, ADR-0088 as narrowed by ADR-0094), leaving out an item whose every such statement is deprecated. NULL for a Wikidata source, whose external_id is the item. One item and one point make the place that item''s, for the catalogue''s merge on an equal item (sharedItemsSql). On a part''s record in World Heritage components (kind 10), its component''s item, with wikidata_items among the record''s claims where a curator chose it (ADR-0156).';
+COMMENT ON COLUMN source_records.reported_image_credit IS 'The credit of reported_image_url as the run resolved it from Commons ({author, license, licenseUrl, detailsUrl}, the shape of metadata.imageCredit): shown beside the picture wherever a curator is asked to choose it, and written with it to the place when chosen (#1246).';
+COMMENT ON COLUMN source_records.reported_wikipedia_url IS 'The Wikipedia article this membership''s source last reported for the place, the shape of metadata.wikipediaUrl (its view, #1975): two sources of one place under different ids that link different articles are asked about, as for the picture.';
+COMMENT ON COLUMN source_records.reported_label IS 'The label this membership''s source last sent for the place, before a twin''s suffix (#1967): a label another standing place of the catalogue carries is named apart, so every source of one item names it alike.';
+COMMENT ON COLUMN source_records.reported_location IS 'The coordinate this membership''s source last reported for the place (its view, #1246). Two views within ten metres agree (ADR-0027).';
+COMMENT ON COLUMN source_records.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
+COMMENT ON COLUMN source_records.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
+COMMENT ON COLUMN source_records.admission_answered_at IS 'When a batch answer confirmed this refusal without pinning it (ADR-0067): the question is closed, and the next run applies the rule again. A run that refuses a row it had admitted clears it, so a refusal that comes back is asked again.';
+COMMENT ON COLUMN source_records.admission_pin_verdict IS 'The run''s verdict a curator''s admission pin answered (#1367): refused for a put-back or a confirmed refusal, admitted for a refused arrival. With admission_pin_reason, the view a later run is compared with; NULL on a row with no pin.';
+COMMENT ON COLUMN source_records.admission_pin_reason IS 'The run''s reason a curator''s admission pin answered (#1367), compared with a later run''s with its numbers folded; NULL for an admission.';
+COMMENT ON COLUMN source_records.admission_question_verdict IS 'What a run said about a pinned row against the curator''s answer (#1367): its verdict, with admission_question_reason. The row''s admission is untouched; the review queue asks the curator. NULL when nothing is asked.';
+COMMENT ON COLUMN source_records.admission_question_reason IS 'The asking run''s reason for a refusal; NULL for an admission (#1367).';
+COMMENT ON COLUMN source_records.admission_questioned_at IS 'When a run first asked the open question about this row''s pin (#1367); a later run that asks the same keeps it, one that agrees again clears it.';
+COMMENT ON COLUMN source_records.admission_question_sync_log_id IS 'The run that last asked about this row''s pin (#1367).';
+COMMENT ON COLUMN source_records.admitted_for IS 'The work whose fame qualified a museum for the works-first source ({qid, label}, ADR-0023): the reason this membership exists. The run''s own bookkeeping, never proposed to a curator (#571).';
+COMMENT ON COLUMN source_records.is_iconic IS 'The must-see badge, the world tier of this kind (ADR-0045 decision 5): set by a source whose admission rule is a fame line, cleared with a refusal, pinned by a curator in curated_fields. The membership''s, not the place''s: a place admitted to a second kind carries that kind''s badge on that kind''s terms.';
+COMMENT ON COLUMN source_records.curated_fields IS 'Field names a curator has pinned on this membership -- admission (a confirmed or overridden refusal), is_iconic, type -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
+COMMENT ON COLUMN source_records.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a place none of whose memberships has passed (ADR-0025; per member since ADR-0045 decision 7).';
+COMMENT ON COLUMN source_records.published_at IS 'When this membership became visible. NULL while pending and for every row that predates the gate. What the "New" chip counts from (#529): a gated row is found months before a reader can see it, so the run that found it is the wrong clock.';
+COMMENT ON COLUMN source_records.pending_change_sync_log_id IS 'The run of this membership''s source whose content proposal for the place is held while a reader can see it. NULL when nothing is held. Contents need no equivalent -- a content row is held by being written pending rather than withheld.';
 
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_kind ON experience_kind_memberships(kind_id, admission);
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_source ON experience_kind_memberships(source_id, experience_id);
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_pending ON experience_kind_memberships(experience_id) WHERE curation_state = 'pending';
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_held ON experience_kind_memberships(experience_id) WHERE pending_change_sync_log_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_iconic ON experience_kind_memberships(kind_id) WHERE is_iconic;
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_label ON experience_kind_memberships(reported_label);
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_missing ON experience_kind_memberships(source_id) WHERE missing_since IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_first_seen ON experience_kind_memberships(first_seen_sync_log_id);
+CREATE INDEX IF NOT EXISTS idx_source_records_kind ON source_records(kind_id, admission);
+CREATE INDEX IF NOT EXISTS idx_source_records_source ON source_records(source_id, experience_id);
+CREATE INDEX IF NOT EXISTS idx_source_records_pending ON source_records(experience_id) WHERE curation_state = 'pending';
+CREATE INDEX IF NOT EXISTS idx_source_records_held ON source_records(experience_id) WHERE pending_change_sync_log_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_source_records_iconic ON source_records(kind_id) WHERE is_iconic;
+CREATE INDEX IF NOT EXISTS idx_source_records_label ON source_records(reported_label);
+CREATE INDEX IF NOT EXISTS idx_source_records_missing ON source_records(source_id) WHERE missing_since IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_source_records_first_seen ON source_records(first_seen_sync_log_id);
 -- The memberships a reader may be shown: admitted and passed, the predicate
 -- membershipAdmittedSql and membershipVisibleSql spell (db/membership.ts), so
 -- every reader-facing read finds a place's shown memberships here without
@@ -3174,8 +3186,8 @@ CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_first_seen ON experie
 -- each one. Partial on the two terms a predicate can imply, never on the kind
 -- or the crowding, which are asked of other tables; id is carried so a read's
 -- crowding check stays inside the index.
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_reader
-    ON experience_kind_memberships(experience_id, kind_id) INCLUDE (id)
+CREATE INDEX IF NOT EXISTS idx_source_records_reader
+    ON source_records(experience_id, kind_id) INCLUDE (id)
     WHERE admission <> 'refused' AND curation_state <> 'pending';
 
 -- The place's own missing_since and source_membership, derived from its
@@ -3195,7 +3207,7 @@ BEGIN
            source_membership = d.source_membership
       FROM (SELECT CASE WHEN bool_and(m.missing_since IS NOT NULL) THEN max(m.missing_since) END AS missing_since,
                    CASE WHEN bool_and(m.source_membership = 'former') THEN 'former' ELSE 'present' END AS source_membership
-              FROM experience_kind_memberships m
+              FROM source_records m
              WHERE m.experience_id = place_id
                AND m.kind_id NOT IN (SELECT k.id FROM experience_kinds k WHERE k.is_virtual)) d
      WHERE e.id = place_id
@@ -3216,10 +3228,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_derive_place_listing ON experience_kind_memberships;
+DROP TRIGGER IF EXISTS trg_derive_place_listing ON source_records;
 CREATE TRIGGER trg_derive_place_listing
     AFTER INSERT OR DELETE OR UPDATE OF missing_since, source_membership, experience_id
-    ON experience_kind_memberships
+    ON source_records
     FOR EACH ROW EXECUTE FUNCTION derive_place_listing();
 
 -- Per-object record of what a run did. 'unchanged' is deliberately NOT stored;
@@ -3397,7 +3409,7 @@ COMMENT ON TABLE experience_locations IS 'Individual locations for multi-locatio
 -- unlike the point: a placement is the run's bookkeeping.
 CREATE TABLE IF NOT EXISTS experience_location_placements (
     location_id INTEGER NOT NULL REFERENCES experience_locations(id) ON DELETE CASCADE,
-    membership_id INTEGER NOT NULL REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
+    membership_id INTEGER NOT NULL REFERENCES source_records(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     adopted_ref TEXT,
     PRIMARY KEY (location_id, membership_id)
@@ -3995,7 +4007,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_treasures_offered
 -- what a reader's record points at.
 CREATE TABLE IF NOT EXISTS experience_treasure_placements (
     link_id INTEGER NOT NULL REFERENCES experience_treasures(id) ON DELETE CASCADE,
-    membership_id INTEGER NOT NULL REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
+    membership_id INTEGER NOT NULL REFERENCES source_records(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (link_id, membership_id)
 );
@@ -4039,7 +4051,7 @@ DECLARE
   allowed BOOLEAN;
 BEGIN
   allowed := CASE TG_TABLE_NAME
-    WHEN 'experience_kind_memberships' THEN (OLD.curation_state, NEW.curation_state) IN
+    WHEN 'source_records' THEN (OLD.curation_state, NEW.curation_state) IN
       (('pending', 'verified'), ('auto', 'verified'), ('verified', 'auto'))
     WHEN 'experience_locations' THEN (OLD.curation_state, NEW.curation_state) IN
       (('pending', 'verified'))
@@ -4057,9 +4069,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS guard_curation_state_move ON experience_kind_memberships;
+DROP TRIGGER IF EXISTS guard_curation_state_move ON source_records;
 CREATE TRIGGER guard_curation_state_move
-  BEFORE UPDATE OF curation_state ON experience_kind_memberships
+  BEFORE UPDATE OF curation_state ON source_records
   FOR EACH ROW WHEN (OLD.curation_state IS DISTINCT FROM NEW.curation_state)
   EXECUTE FUNCTION guard_curation_state_move();
 DROP TRIGGER IF EXISTS guard_curation_state_move ON experience_locations;
@@ -4237,7 +4249,7 @@ CREATE TABLE IF NOT EXISTS experience_separations (
     id SERIAL PRIMARY KEY,
     original_id INTEGER NOT NULL REFERENCES experiences(id),
     separated_id INTEGER NOT NULL REFERENCES experiences(id),
-    membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE SET NULL,
+    membership_id INTEGER REFERENCES source_records(id) ON DELETE SET NULL,
     scheme VARCHAR(12),
     value VARCHAR(64),
     verdict_written BOOLEAN NOT NULL DEFAULT false,
@@ -4275,7 +4287,7 @@ CREATE TABLE IF NOT EXISTS experience_parts (
     whole_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     part_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     reason VARCHAR(20) NOT NULL CHECK (reason IN ('component', 'wikidata_part_of', 'curator')),
-    membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
+    membership_id INTEGER REFERENCES source_records(id) ON DELETE CASCADE,
     external_ref TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (whole_id, part_id),
@@ -4379,10 +4391,10 @@ CREATE INDEX IF NOT EXISTS place_identifier_verdicts_value ON place_identifier_v
 COMMENT ON TABLE place_identifier_verdicts IS 'A curator''s word on one identifier of a place (ADR-0143 decision 5): identifies, the value names this place whatever column carries it, or none does; refers, it only refers to the place; removed, the place does not carry it. Read by place_identifier_claims() and place_identifiers_expected(), so the registry row follows the word and no run writes it back (the curator''s pin). Written only by controllers/experience/placeIdentifierController.ts, under the place''s lock.';
 
 -- The lookups the claims make by value.
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_external_id
-    ON experience_kind_memberships (external_id);
-CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_wikidata_items
-    ON experience_kind_memberships USING GIN (wikidata_items) WHERE wikidata_items IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_source_records_external_id
+    ON source_records (external_id);
+CREATE INDEX IF NOT EXISTS idx_source_records_wikidata_items
+    ON source_records USING GIN (wikidata_items) WHERE wikidata_items IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experience_parts_external_ref
     ON experience_parts (external_ref) WHERE external_ref IS NOT NULL;
 
@@ -4400,7 +4412,7 @@ CREATE OR REPLACE FUNCTION place_identifier_claims(p_scheme TEXT, p_values TEXT[
 RETURNS TABLE (experience_id INTEGER, value TEXT, basis TEXT, claims BOOLEAN)
 LANGUAGE sql STABLE AS $$
   SELECT m.experience_id, m.external_id::text, 'membership', true
-    FROM experience_kind_memberships m
+    FROM source_records m
     JOIN experiences e ON e.id = m.experience_id AND e.merged_into_id IS NULL
    WHERE p_scheme = 'wikidata' AND m.external_id = ANY(p_values) AND m.external_id ~ '^Q[0-9]+$'
   UNION ALL
@@ -4409,14 +4421,14 @@ LANGUAGE sql STABLE AS $$
            AND (SELECT count(*) FROM experience_locations one_point
                  WHERE one_point.experience_id = m.experience_id
                    AND one_point.merged_into_id IS NULL AND one_point.missing_since IS NULL) = 1
-    FROM experience_kind_memberships m
+    FROM source_records m
     JOIN experiences e ON e.id = m.experience_id AND e.merged_into_id IS NULL
     CROSS JOIN LATERAL unnest(m.wikidata_items) AS item
    WHERE p_scheme = 'wikidata' AND m.wikidata_items && p_values::text[] AND item = ANY(p_values)
      AND m.kind_id <> 10
   UNION ALL
   SELECT rec.experience_id, item, 'component-item',
-         NOT EXISTS (SELECT 1 FROM experience_kind_memberships other
+         NOT EXISTS (SELECT 1 FROM source_records other
                        JOIN experiences other_place ON other_place.id = other.experience_id
                         AND other_place.merged_into_id IS NULL
                       WHERE other.kind_id = 10 AND other.wikidata_items @> ARRAY[item]
@@ -4429,7 +4441,7 @@ LANGUAGE sql STABLE AS $$
                               AND other_place.merged_into_id IS NULL
                             WHERE other.wikidata_item = item AND other.experience_id <> rec.experience_id
                               AND other.merged_into_id IS NULL AND other.missing_since IS NULL)
-    FROM experience_kind_memberships rec
+    FROM source_records rec
     JOIN experiences e ON e.id = rec.experience_id AND e.merged_into_id IS NULL
     CROSS JOIN LATERAL unnest(rec.wikidata_items) AS item
    WHERE p_scheme = 'wikidata' AND rec.kind_id = 10 AND rec.wikidata_items && p_values::text[] AND item = ANY(p_values)
@@ -4445,7 +4457,7 @@ LANGUAGE sql STABLE AS $$
                       WHERE other.wikidata_item = point.wikidata_item
                         AND other.experience_id <> point.experience_id
                         AND other.merged_into_id IS NULL AND other.missing_since IS NULL)
-           AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships other_rec
+           AND NOT EXISTS (SELECT 1 FROM source_records other_rec
                              JOIN experiences other_place ON other_place.id = other_rec.experience_id
                               AND other_place.merged_into_id IS NULL
                             WHERE other_rec.kind_id = 10 AND other_rec.wikidata_items @> ARRAY[point.wikidata_item::text]
@@ -4459,7 +4471,7 @@ LANGUAGE sql STABLE AS $$
      AND point.merged_into_id IS NULL AND point.missing_since IS NULL
   UNION ALL
   SELECT m.experience_id, m.external_id::text, 'membership', true
-    FROM experience_kind_memberships m
+    FROM source_records m
     JOIN experiences e ON e.id = m.experience_id AND e.merged_into_id IS NULL
    WHERE p_scheme = 'whc' AND m.source_id = 1 AND m.external_id = ANY(p_values)
   UNION ALL
@@ -4547,10 +4559,10 @@ COMMENT ON FUNCTION place_identifiers_expected(TEXT, TEXT[]) IS 'The registry''s
 CREATE OR REPLACE FUNCTION place_identifier_values()
 RETURNS TABLE (scheme TEXT, value TEXT)
 LANGUAGE sql STABLE AS $$
-  SELECT 'wikidata', external_id::text FROM experience_kind_memberships WHERE external_id ~ '^Q[0-9]+$'
-  UNION SELECT 'wikidata', unnest(wikidata_items) FROM experience_kind_memberships WHERE wikidata_items IS NOT NULL
+  SELECT 'wikidata', external_id::text FROM source_records WHERE external_id ~ '^Q[0-9]+$'
+  UNION SELECT 'wikidata', unnest(wikidata_items) FROM source_records WHERE wikidata_items IS NOT NULL
   UNION SELECT 'wikidata', wikidata_item::text FROM experience_locations WHERE wikidata_item IS NOT NULL
-  UNION SELECT 'whc', external_id::text FROM experience_kind_memberships WHERE source_id = 1
+  UNION SELECT 'whc', external_id::text FROM source_records WHERE source_id = 1
   UNION SELECT 'whc', external_ref FROM experience_parts WHERE reason = 'component' AND external_ref IS NOT NULL
   UNION SELECT scheme::text, value::text FROM place_identifier_verdicts
 $$;
@@ -4609,10 +4621,10 @@ BEGIN
     UNION ALL
     SELECT value FROM place_identifiers WHERE scheme = 'wikidata' AND experience_id = ANY(p_places)
     UNION ALL
-    SELECT external_id FROM experience_kind_memberships
+    SELECT external_id FROM source_records
      WHERE experience_id = ANY(p_places) AND external_id ~ '^Q[0-9]+$'
     UNION ALL
-    SELECT unnest(wikidata_items) FROM experience_kind_memberships
+    SELECT unnest(wikidata_items) FROM source_records
      WHERE experience_id = ANY(p_places) AND wikidata_items IS NOT NULL
     UNION ALL
     SELECT wikidata_item FROM experience_locations
@@ -4625,7 +4637,7 @@ BEGIN
     UNION ALL
     SELECT value FROM place_identifiers WHERE scheme = 'whc' AND experience_id = ANY(p_places)
     UNION ALL
-    SELECT external_id FROM experience_kind_memberships WHERE experience_id = ANY(p_places) AND source_id = 1
+    SELECT external_id FROM source_records WHERE experience_id = ANY(p_places) AND source_id = 1
     UNION ALL
     SELECT external_ref FROM experience_parts
      WHERE part_id = ANY(p_places) AND reason = 'component' AND external_ref IS NOT NULL
@@ -4705,10 +4717,10 @@ END;
 $$;
 
 CREATE OR REPLACE TRIGGER trg_place_identifiers_membership_write
-  AFTER INSERT OR DELETE ON experience_kind_memberships
+  AFTER INSERT OR DELETE ON source_records
   FOR EACH ROW EXECUTE FUNCTION place_identifiers_follow_membership();
 CREATE OR REPLACE TRIGGER trg_place_identifiers_membership_update
-  AFTER UPDATE OF experience_id, source_id, external_id, wikidata_items ON experience_kind_memberships
+  AFTER UPDATE OF experience_id, source_id, external_id, wikidata_items ON source_records
   FOR EACH ROW
   WHEN ((OLD.experience_id, OLD.source_id, OLD.external_id, OLD.wikidata_items)
         IS DISTINCT FROM (NEW.experience_id, NEW.source_id, NEW.external_id, NEW.wikidata_items))
@@ -4846,7 +4858,7 @@ BEGIN
     -- (ADR-0156): the part it records was marked when it was parted. Its own
     -- IF, since an AND would not keep the other tables' rows from being asked
     -- for a kind_id they do not have.
-    IF TG_TABLE_NAME = 'experience_kind_memberships' THEN
+    IF TG_TABLE_NAME = 'source_records' THEN
       IF TG_OP = 'DELETE' THEN
         row_kind := OLD.kind_id;
       ELSE
@@ -4856,7 +4868,7 @@ BEGIN
         RETURN NULL;
       END IF;
     END IF;
-    -- experience_kind_memberships and experience_locations: the row's place, and
+    -- source_records and experience_locations: the row's place, and
     -- the place it left where it moved.
     ids := ARRAY[CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE NEW.experience_id END,
                  CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.experience_id END];
@@ -4886,11 +4898,11 @@ CREATE TRIGGER pairing_due_experience_update AFTER UPDATE ON experiences
                      OR OLD.merged_into_id IS DISTINCT FROM NEW.merged_into_id)
   EXECUTE FUNCTION mark_pairing_due();
 
-DROP TRIGGER IF EXISTS pairing_due_membership ON experience_kind_memberships;
-CREATE TRIGGER pairing_due_membership AFTER INSERT OR DELETE ON experience_kind_memberships
+DROP TRIGGER IF EXISTS pairing_due_membership ON source_records;
+CREATE TRIGGER pairing_due_membership AFTER INSERT OR DELETE ON source_records
   FOR EACH ROW EXECUTE FUNCTION mark_pairing_due();
-DROP TRIGGER IF EXISTS pairing_due_membership_update ON experience_kind_memberships;
-CREATE TRIGGER pairing_due_membership_update AFTER UPDATE ON experience_kind_memberships
+DROP TRIGGER IF EXISTS pairing_due_membership_update ON source_records;
+CREATE TRIGGER pairing_due_membership_update AFTER UPDATE ON source_records
   FOR EACH ROW WHEN (OLD.experience_id IS DISTINCT FROM NEW.experience_id
                      OR OLD.reported_name IS DISTINCT FROM NEW.reported_name
                      OR OLD.kind_id IS DISTINCT FROM NEW.kind_id
@@ -5080,7 +5092,7 @@ BEGIN
                             WHERE pl.location_id = el.id))
        AND NOT stands_for_whole_site(el.name, el.external_ref,
              (SELECT whole.name FROM experiences whole WHERE whole.id = site),
-             (SELECT m.external_id FROM experience_kind_memberships m WHERE m.id = site_membership), 2)
+             (SELECT m.external_id FROM source_records m WHERE m.id = site_membership), 2)
      ORDER BY el.id
   LOOP
     -- A component that moved is the part it moved from (#2182): its point
@@ -5171,12 +5183,12 @@ DECLARE
 BEGIN
   SELECT min(p.id) INTO owner FROM experience_parts p WHERE p.part_id = place AND p.reason = 'component';
   IF owner IS NULL THEN
-    DELETE FROM experience_kind_memberships WHERE experience_id = place AND kind_id = 10;
+    DELETE FROM source_records WHERE experience_id = place AND kind_id = 10;
   ELSE
-    UPDATE experience_kind_memberships
+    UPDATE source_records
        SET external_id = 'component:' || owner, reported_name = NULL, reported_location = NULL, updated_at = NOW()
      WHERE experience_id = place AND kind_id = 10 AND external_id <> 'component:' || owner;
-    INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id)
+    INSERT INTO source_records (experience_id, kind_id, source_id, external_id)
     VALUES (place, 10, 10, 'component:' || owner)
     ON CONFLICT (experience_id, kind_id) DO NOTHING;
   END IF;
@@ -5188,9 +5200,9 @@ BEGIN
   IF TG_OP = 'UPDATE' THEN
     -- The record itself moves with the relation, so a merge's undo, which
     -- moves both back, finds the row it moved.
-    UPDATE experience_kind_memberships SET experience_id = NEW.part_id, updated_at = NOW()
+    UPDATE source_records SET experience_id = NEW.part_id, updated_at = NOW()
      WHERE kind_id = 10 AND external_id = 'component:' || NEW.id AND experience_id = OLD.part_id
-       AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships held
+       AND NOT EXISTS (SELECT 1 FROM source_records held
                         WHERE held.experience_id = NEW.part_id AND held.kind_id = 10);
   END IF;
   IF TG_OP <> 'INSERT' THEN
@@ -5626,7 +5638,7 @@ CREATE TABLE IF NOT EXISTS experience_view_choices (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'subtitle', 'imageUrl', 'location', 'wikipediaUrl')),
-    chosen_membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE SET NULL,
+    chosen_membership_id INTEGER REFERENCES source_records(id) ON DELETE SET NULL,
     views JSONB NOT NULL,
     decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -5645,7 +5657,7 @@ CREATE TABLE IF NOT EXISTS experience_view_suggestions (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'subtitle', 'imageUrl', 'location', 'wikipediaUrl')),
     views JSONB NOT NULL,
-    suggested_membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE SET NULL,
+    suggested_membership_id INTEGER REFERENCES source_records(id) ON DELETE SET NULL,
     confidence NUMERIC(4, 3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
     probabilities JSONB NOT NULL,
     model VARCHAR(40) NOT NULL,
@@ -5769,7 +5781,7 @@ COMMENT ON COLUMN experience_planned_kind_answers.planned_kind IS 'The register'
 -- ADR-0128 decision 3). See db/migrations/137.
 CREATE TABLE IF NOT EXISTS experience_visit_questions (
     id SERIAL PRIMARY KEY,
-    membership_id INTEGER NOT NULL UNIQUE REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
+    membership_id INTEGER NOT NULL UNIQUE REFERENCES source_records(id) ON DELETE CASCADE,
     witnesses TEXT[] NOT NULL DEFAULT '{}' CHECK (witnesses <@ ARRAY['guide', 'photos', 'formal', 'map']::text[]),
     reading VARCHAR(12) NOT NULL CHECK (reading IN ('nothing', 'not-a-place', 'object')),
     confidence NUMERIC(4, 3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
@@ -6494,7 +6506,7 @@ UPDATE experience_kinds SET crowding_limit = 10, crowding_radius_km = 10
 UPDATE experience_kinds SET crowding_exempt_types = '{museum}' WHERE id = 5;
 
 CREATE TABLE IF NOT EXISTS membership_fame (
-    membership_id INTEGER PRIMARY KEY REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
+    membership_id INTEGER PRIMARY KEY REFERENCES source_records(id) ON DELETE CASCADE,
     readers INTEGER NOT NULL CHECK (readers >= 0),
     guide_editions INTEGER NOT NULL CHECK (guide_editions >= 0),
     wikipedia_editions INTEGER NOT NULL CHECK (wikipedia_editions >= 0),
@@ -6514,7 +6526,7 @@ COMMENT ON COLUMN membership_fame.readers_read_at IS 'When readers was last read
 COMMENT ON COLUMN membership_fame.guides_read_at IS 'When guide_editions was last read from a Wikivoyage usage build. NULL: no reading is dated, so guide_editions is the zero a membership is ranked at before its first reading or a value from before the column, and the place run never admits by it (ADR-0175 decision 6).';
 
 CREATE TABLE IF NOT EXISTS membership_crowding (
-    membership_id INTEGER PRIMARY KEY REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
+    membership_id INTEGER PRIMARY KEY REFERENCES source_records(id) ON DELETE CASCADE,
     outranked_by INTEGER NOT NULL CHECK (outranked_by >= 0),
     computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -6534,11 +6546,11 @@ COMMENT ON COLUMN membership_crowding.outranked_by IS 'How many candidates of it
 -- A place holding a work a reader is shown, or of a type its kind exempts,
 -- takes no pin; the writer refuses one, and should one stand, the works and
 -- the exemption decide first.
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS crowding_pin VARCHAR(10);
-ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_crowding_pin_check;
-ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_crowding_pin_check
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS crowding_pin VARCHAR(10);
+ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_crowding_pin_check;
+ALTER TABLE source_records ADD CONSTRAINT source_records_crowding_pin_check
     CHECK (crowding_pin IN ('list', 'shadow'));
-COMMENT ON COLUMN experience_kind_memberships.crowding_pin IS 'A curator''s answer to a crowded city (ADR-0180): list keeps the place among what a reader is shown and counts it as one of the ten above every unpinned neighbour of its type; shadow keeps it in the tail and never counts it among the ten. NULL: the rule decides (ADR-0172). Written by a curator only (membershipWriter.ts); who and when are the curation log''s crowding_answered rows.';
+COMMENT ON COLUMN source_records.crowding_pin IS 'A curator''s answer to a crowded city (ADR-0180): list keeps the place among what a reader is shown and counts it as one of the ten above every unpinned neighbour of its type; shadow keeps it in the tail and never counts it among the ten. NULL: the rule decides (ADR-0172). Written by a curator only (membershipWriter.ts); who and when are the curation log''s crowding_answered rows.';
 
 -- The box around a point holding every point within km of it, in degrees, so
 -- the GiST index on experiences.location finds the neighbours before the
@@ -6581,7 +6593,7 @@ CREATE OR REPLACE FUNCTION crowding_above(
 ) RETURNS TABLE (membership_id integer)
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
   SELECT d.id
-    FROM experience_kind_memberships d
+    FROM source_records d
     JOIN experiences de ON de.id = d.experience_id
     LEFT JOIN membership_fame df ON df.membership_id = d.id
    WHERE d.kind_id = of_kind AND d.type IS NOT DISTINCT FROM of_type AND d.id <> of_member
@@ -6610,7 +6622,7 @@ $$;
 CREATE OR REPLACE FUNCTION crowding_outranked_by(member integer) RETURNS integer
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
   SELECT n.better
-    FROM experience_kind_memberships c
+    FROM source_records c
     JOIN experience_kinds k ON k.id = c.kind_id AND k.crowding_limit IS NOT NULL
     JOIN experiences ce ON ce.id = c.experience_id AND ce.location IS NOT NULL
     LEFT JOIN membership_fame cf ON cf.membership_id = c.id
@@ -6638,7 +6650,7 @@ BEGIN
   PERFORM pg_advisory_xact_lock(2201, 0);
 
   DELETE FROM membership_crowding mc
-   USING experience_kind_memberships m, experiences e, experience_kinds k
+   USING source_records m, experiences e, experience_kinds k
    WHERE mc.membership_id = m.id AND e.id = m.experience_id AND k.id = m.kind_id
      AND (near IS NULL OR k.crowding_radius_km IS NULL
           OR (e.location && crowding_box(near, k.crowding_radius_km)
@@ -6646,7 +6658,7 @@ BEGIN
 
   INSERT INTO membership_crowding (membership_id, outranked_by)
   SELECT c.id, n.better
-    FROM experience_kind_memberships c
+    FROM source_records c
     JOIN experience_kinds k ON k.id = c.kind_id AND k.crowding_limit IS NOT NULL
     JOIN experiences ce ON ce.id = c.experience_id
     LEFT JOIN membership_fame cf ON cf.membership_id = c.id
@@ -6673,7 +6685,7 @@ BEGIN
   WITH candidates AS (
     SELECT f.membership_id, m.kind_id, m.type, f.readers, f.guide_editions, f.wikipedia_editions
       FROM membership_fame f
-      JOIN experience_kind_memberships m ON m.id = f.membership_id
+      JOIN source_records m ON m.id = f.membership_id
       JOIN experience_kinds k ON k.id = m.kind_id AND k.crowding_limit IS NOT NULL
       JOIN experiences e ON e.id = m.experience_id
      WHERE m.admission <> 'refused' AND e.existence <> 'lost' AND e.location IS NOT NULL
@@ -6721,9 +6733,9 @@ BEGIN
   RETURN NULL;
 END $$;
 
-DROP TRIGGER IF EXISTS crowding_follows_membership_change ON experience_kind_memberships;
+DROP TRIGGER IF EXISTS crowding_follows_membership_change ON source_records;
 CREATE CONSTRAINT TRIGGER crowding_follows_membership_change
-  AFTER UPDATE OF admission, type, kind_id, experience_id, crowding_pin ON experience_kind_memberships
+  AFTER UPDATE OF admission, type, kind_id, experience_id, crowding_pin ON source_records
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW
   WHEN (OLD.admission IS DISTINCT FROM NEW.admission OR OLD.type IS DISTINCT FROM NEW.type
@@ -6731,9 +6743,9 @@ CREATE CONSTRAINT TRIGGER crowding_follows_membership_change
         OR OLD.crowding_pin IS DISTINCT FROM NEW.crowding_pin)
   EXECUTE FUNCTION crowding_follows_membership();
 
-DROP TRIGGER IF EXISTS crowding_follows_membership_delete ON experience_kind_memberships;
+DROP TRIGGER IF EXISTS crowding_follows_membership_delete ON source_records;
 CREATE CONSTRAINT TRIGGER crowding_follows_membership_delete
-  AFTER DELETE ON experience_kind_memberships
+  AFTER DELETE ON source_records
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION crowding_follows_membership();
 
@@ -6775,7 +6787,7 @@ DECLARE point geometry;
 BEGIN
   SELECT e.location INTO point FROM experiences e
    WHERE e.id = place AND e.location IS NOT NULL
-     AND EXISTS (SELECT 1 FROM experience_kind_memberships m
+     AND EXISTS (SELECT 1 FROM source_records m
                    JOIN experience_kinds k ON k.id = m.kind_id AND k.crowding_limit IS NOT NULL
                   WHERE m.experience_id = e.id);
   IF point IS NOT NULL THEN PERFORM recount_crowding(point); END IF;
