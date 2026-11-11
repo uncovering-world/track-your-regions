@@ -128,7 +128,7 @@ export const FINDER_STEPS = Object.keys(STEP).length;
  * component it was offered the cathedral's pipe organs.
  */
 const listsPoint = (alias: string) => `(EXISTS (SELECT 1 FROM experience_location_placements pl
-                    JOIN experience_kind_memberships pm ON pm.id = pl.membership_id
+                    JOIN source_records pm ON pm.id = pl.membership_id
                    WHERE pl.location_id = ${alias}.id AND pm.source_id = $1)
                OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement
                    WHERE any_placement.location_id = ${alias}.id))`;
@@ -150,7 +150,7 @@ function sitePointsArm({ from, placeId }: PlacePointArm): string {
               (SELECT count(*)::int FROM ${pointsShownSql(placeId, 's')}
                 WHERE s.missing_since IS NULL AND s.merged_into_id IS NULL AND ${listsPoint('s')})) AS whole_site
        FROM ${from}
-       JOIN experience_kind_memberships m ON m.experience_id = ${placeId} AND m.source_id = $1
+       JOIN source_records m ON m.experience_id = ${placeId} AND m.source_id = $1
       WHERE ${pointItemSql('el')} IS NULL
         AND el.external_ref IS NOT NULL
         AND el.missing_since IS NULL

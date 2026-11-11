@@ -134,7 +134,7 @@ async function seedPlace(
   // empty while nothing says why. Admitted and published, the way a
   // trusted source's arrival is; or pending, the way a gated one's is.
   await client.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [exp.id, source.kind_id, source.id, `e2e-${exp.id}`, curationState,
@@ -267,7 +267,7 @@ async function seedRows(client: PoolClient): Promise<void> {
   // Aqueduct and its north arch.
   await client.query(
     `SELECT part_site_components(m.experience_id, m.id)
-       FROM experience_kind_memberships m
+       FROM source_records m
       WHERE m.source_id = $1 AND m.experience_id = ANY($2::int[])`,
     [unesco.id, EXPERIENCES.map((e) => e.id)],
   );

@@ -28,7 +28,7 @@ export const ContentKind = z.enum(CONTENT_KINDS)
   .describe("Which of an object's contents a part is: one of its points (`locations`) or one of its works (`treasures`).");
 export type ContentKind = z.infer<typeof ContentKind>;
 
-export const MembershipCurationState = z.enum(CHECK_VALUES.experience_kind_memberships.curation_state)
+export const MembershipCurationState = z.enum(CHECK_VALUES.source_records.curation_state)
   .describe(
     'Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a curator.'
     + ' `auto` and `verified` are shown to readers, `verified` because a person passed it.',
@@ -114,7 +114,7 @@ export const AdmissionPin = z.strictObject({
   name: z.string(),
   membershipId: z.number().int(),
   kindName: z.string(),
-  answer: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+  answer: z.enum(CHECK_VALUES.source_records.admission)
     .describe("The curator's answer the pin holds: put back (`admitted`) or kept out (`refused`)."),
   answeredReason: z.string().nullable().describe(
     "The rule's reason the answer was given to: the refusal a put-back overrode, or the one a kept-out answer agreed"
@@ -150,7 +150,7 @@ export type AdmissionPins = z.infer<typeof AdmissionPins>;
 export const AdmissionPinHandedBack = z.strictObject({
   experienceId: z.number().int(),
   membershipId: z.number().int(),
-  admission: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+  admission: z.enum(CHECK_VALUES.source_records.admission)
     .describe('The verdict the row keeps until the next run of its source decides.'),
 }).describe('An admission pin handed back (#1369): the next run decides.');
 export type AdmissionPinHandedBack = z.infer<typeof AdmissionPinHandedBack>;
@@ -158,7 +158,7 @@ export type AdmissionPinHandedBack = z.infer<typeof AdmissionPinHandedBack>;
 export const PinQuestionAnswered = z.strictObject({
   experienceId: z.number().int(),
   membershipId: z.number().int(),
-  admission: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+  admission: z.enum(CHECK_VALUES.source_records.admission)
     .describe("The verdict now standing: the curator's, kept, or the rule's, written in its place."),
   pinned: z.boolean().describe('Whether the pin still stands: true after `keep`, false after `release`.'),
 }).describe("A curator's answer to a run that asked again about their admission pin (#1367).");
@@ -168,7 +168,7 @@ export const VisitQuestionAnswered = z.strictObject({
   experienceId: z.number().int(),
   membershipId: z.number().int(),
   answer: z.enum(CHECK_VALUES.experience_visit_questions.answer),
-  admission: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+  admission: z.enum(CHECK_VALUES.source_records.admission)
     .describe('The verdict now standing on the membership: refused by the curator, or admitted as before.'),
 }).describe("A curator's answer to a run's question about an offered place with nothing to see (#1770).");
 export type VisitQuestionAnswered = z.infer<typeof VisitQuestionAnswered>;
@@ -176,7 +176,7 @@ export type VisitQuestionAnswered = z.infer<typeof VisitQuestionAnswered>;
 export const KeptOutOfKind = z.strictObject({
   experienceId: z.number().int(),
   membershipId: z.number().int(),
-  admission: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+  admission: z.enum(CHECK_VALUES.source_records.admission)
     .describe('The verdict now standing on the membership: refused, by the curator.'),
 }).describe("A curator's refusal of a published place from one of its kinds, from the place's own card (#2022).");
 export type KeptOutOfKind = z.infer<typeof KeptOutOfKind>;
@@ -300,7 +300,7 @@ export type IdentifierSettled = z.infer<typeof IdentifierSettled>;
  * empty values here rather than only described as empty.
  */
 export const AdmissionResult = publication.omit({ partsNotFound: true }).extend({
-  admission: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+  admission: z.enum(CHECK_VALUES.source_records.admission)
     .describe('The verdict now standing: `admitted` after an override, `refused` after a confirm.'),
   published: z.boolean().describe(
     'Whether this override also made the object visible. True only where the object was unread and the verdict was'

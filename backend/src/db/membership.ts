@@ -2,7 +2,7 @@
  * A place's membership in a kind, as every read asks about it (ADR-0045
  * decision 4; #822).
  *
- * A row of `experiences` is the place; a row of `experience_kind_memberships`
+ * A row of `experiences` is the place; a row of `source_records`
  * is what one kind says about it — the source that brought it, whether the
  * kind's rule admitted or refused it (ADR-0024), whether a curator has passed
  * its arrival (ADR-0025). Two of the four questions a reader-facing read has
@@ -37,7 +37,7 @@
  */
 
 /** The two tables, named once. */
-export const MEMBERSHIPS = 'experience_kind_memberships';
+export const MEMBERSHIPS = 'source_records';
 export const KINDS = 'experience_kinds';
 /** The memberships crowded out of what a reader is shown (ADR-0172). */
 export const CROWDING = 'membership_crowding';

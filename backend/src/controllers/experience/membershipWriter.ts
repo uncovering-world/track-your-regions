@@ -1,5 +1,5 @@
 /**
- * The curator's writes to `experience_kind_memberships` — a place's verdict,
+ * The curator's writes to `source_records` — a place's verdict,
  * its reason, the curator's pin on it, its gate state and the held proposal's
  * pointer — under the place's lock (ADR-0077 decision 4, #1148).
  *
@@ -237,7 +237,7 @@ export async function refuseOnMembership(
 }
 
 /** A curator's answer to a crowded city: kept in the list, kept in the shadow (ADR-0180). */
-export type CrowdingPin = CheckValue<'experience_kind_memberships', 'crowding_pin'>;
+export type CrowdingPin = CheckValue<'source_records', 'crowding_pin'>;
 
 /**
  * A curator's crowding pin on the membership (ADR-0180, #2282), or none, which

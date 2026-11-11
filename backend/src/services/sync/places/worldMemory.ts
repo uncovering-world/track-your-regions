@@ -23,7 +23,7 @@
 
 import { pool } from '../../../db/index.js';
 import { MEMBERSHIPS } from '../../../db/membership.js';
-import type { ExperienceKindMembershipsRow, ExperienceSyncLogsRow, MembershipFameRow } from '../../../db/schema.generated.js';
+import type { SourceRecordsRow, ExperienceSyncLogsRow, MembershipFameRow } from '../../../db/schema.generated.js';
 import { WORLD_FRAME } from './admissionRegister.js';
 import { standsByVenues } from './surroundingsCut.js';
 import type { WorldBars, WorldMemory } from './worldBars.js';
@@ -59,7 +59,7 @@ export async function readWorldMemory(sourceId: number): Promise<WorldMemory> {
   );
   const row = log.rows[0];
   const signals = await pool.query<
-    Pick<ExperienceKindMembershipsRow, 'external_id'> & Pick<MembershipFameRow, 'readers' | 'guide_editions'>
+    Pick<SourceRecordsRow, 'external_id'> & Pick<MembershipFameRow, 'readers' | 'guide_editions'>
     & { readers_read: boolean; guides_read: boolean }
   >(
     `SELECT m.external_id, f.readers, f.guide_editions,
@@ -77,7 +77,7 @@ export async function readWorldMemory(sourceId: number): Promise<WorldMemory> {
   }
   // The note the run wrote for the curator is the membership's `admissionNote` fact. Its words are the
   // cut's own (standsByVenues); the statement only narrows to the notes that name a venue.
-  const notes = await pool.query<Pick<ExperienceKindMembershipsRow, 'external_id'> & { note: string | null }>(
+  const notes = await pool.query<Pick<SourceRecordsRow, 'external_id'> & { note: string | null }>(
     `SELECT m.external_id, m.facts->>'admissionNote' AS note FROM ${MEMBERSHIPS} m
       WHERE m.source_id = $1 AND m.admission = 'admitted' AND m.facts->>'tier' = 'surroundings'
         AND m.facts->>'admissionNote' LIKE '%venue%'`,

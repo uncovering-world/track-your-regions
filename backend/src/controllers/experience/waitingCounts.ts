@@ -29,7 +29,7 @@
  *
  * Each predicate takes two aliases since #822: the place (`experiences`, for
  * what the source observes about the row) and its membership in a kind
- * (`experience_kind_memberships`, for the gate state and the admission), which
+ * (`source_records`, for the gate state and the admission), which
  * the query has to join — an arrival *is* a membership arriving, and what a
  * source holds is counted per membership its runs brought.
  */

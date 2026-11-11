@@ -731,7 +731,7 @@ export async function heldFieldWrites(
 /**
  * The three assignments that make the membership itself published — the
  * object's state, its publication moment and its pointer are the place's
- * membership's since #822, so these land on `experience_kind_memberships`
+ * membership's since #822, so these land on `source_records`
  * while the content assignments land on the place.
  *
  * `published_at` is stamped only where the row was actually invisible until now,

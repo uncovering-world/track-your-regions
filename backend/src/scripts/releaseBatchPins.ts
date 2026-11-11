@@ -61,7 +61,7 @@ async function batchPins(): Promise<BatchPin[]> {
        JOIN experiences o ON o.id = n.orig
        JOIN experience_sources s ON s.id = o.source_id
        JOIN experiences e ON e.id = n.place
-       JOIN experience_kind_memberships km ON km.experience_id = n.place AND km.kind_id = s.kind_id
+       JOIN source_records km ON km.experience_id = n.place AND km.kind_id = s.kind_id
        JOIN experience_kinds k ON k.id = km.kind_id
       WHERE km.curated_fields ? 'admission'
       ORDER BY k.name, e.name`,

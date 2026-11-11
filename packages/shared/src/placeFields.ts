@@ -9,7 +9,7 @@
  * question a run asks a curator are one kind's: Places of worship has nothing
  * to say about Charminar's year, and a count of the works Art Museums placed is
  * not Archaeology's. A kind's field lives on that kind's membership
- * (`experience_kind_memberships.facts`) and the place's on the place, so two
+ * (`source_records.facts`) and the place's on the place, so two
  * kinds of one place never write over each other. UNESCO's facts about an
  * inscription are the World Heritage kind's, on its membership (#2068), and
  * UNESCO's page about a site is the place's, like a website (ADR-0138).

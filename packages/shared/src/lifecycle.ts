@@ -16,7 +16,7 @@
  * disagree.
  */
 
-/** `experience_kind_memberships.admission`: whether a kind's rule accepts the place. */
+/** `source_records.admission`: whether a kind's rule accepts the place. */
 export const ADMISSIONS = ['admitted', 'refused'] as const;
 export type Admission = (typeof ADMISSIONS)[number];
 
@@ -55,7 +55,7 @@ export type CurationMove = readonly [from: CurationState, to: CurationState];
  * writer inserts it with: the gate is on the move, not on the insert.
  */
 export const CURATION_MOVES = {
-  experience_kind_memberships: [['pending', 'verified'], ['auto', 'verified'], ['verified', 'auto']],
+  source_records: [['pending', 'verified'], ['auto', 'verified'], ['verified', 'auto']],
   experience_locations: [['pending', 'verified']],
   treasures: [['pending', 'verified']],
   experience_treasures: [['pending', 'verified'], ['auto', 'pending']],

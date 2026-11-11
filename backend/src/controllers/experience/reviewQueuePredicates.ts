@@ -350,7 +350,7 @@ export function pairMembershipSql(p = 'p', m = 'm'): string {
  * (#1367, `questionPins`), on a membership `m`. The row's admission is the
  * curator's answer and stays so until someone answers the question; a pin
  * handed back takes its question with it, which the schema holds
- * (`experience_kind_memberships_question_check`).
+ * (`source_records_question_check`).
  */
 export function pinQuestionOpenSql(m = 'm'): string {
   return `${admissionPinnedSql(m)} AND ${m}.admission_questioned_at IS NOT NULL`;

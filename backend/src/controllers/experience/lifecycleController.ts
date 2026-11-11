@@ -395,7 +395,7 @@ export async function answerAdmissionUnderLock(
   // Read by the response after the transaction settles, so they have to be
   // hoisted out of the `try` block that assigns them.
   let publishes = false;
-  let curationState: CheckValue<'experience_kind_memberships', 'curation_state'>;
+  let curationState: CheckValue<'source_records', 'curation_state'>;
   let locationsPublished = 0;
   let treasureLinksPublished = 0;
   let treasuresPublished = 0;
@@ -496,7 +496,7 @@ export async function answerAdmissionUnderLock(
     publishes = admitted && before.curation_state === 'pending';
     curationState = publishes
       ? 'verified'
-      : (before.curation_state as CheckValue<'experience_kind_memberships', 'curation_state'>);
+      : (before.curation_state as CheckValue<'source_records', 'curation_state'>);
 
     // The verdict, the pin, the badge and the publication on the membership;
     // who decided, when and the note on the place, beside the lifecycle

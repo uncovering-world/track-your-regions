@@ -23,7 +23,7 @@ export async function undoPlaceMerge(
 ): Promise<MergeUndone> {
   const found = await pool.query<{ survivor_id: number; source_ids: number[] }>(
     `SELECT m.survivor_id,
-            array(SELECT DISTINCT km.source_id FROM experience_kind_memberships km
+            array(SELECT DISTINCT km.source_id FROM source_records km
                    WHERE km.id IN (SELECT jsonb_array_elements_text(m.moved->'memberships')::int)
                      AND ${realKindSql('km')}) AS source_ids
        FROM experience_merges m

@@ -92,7 +92,7 @@
  * the next, whose snapshot postdates whatever the lock holder committed: the
  * object upsert's hold and `before` snapshot, and the curator's publish,
  * decline and admission verdict. On `main` the same reads were of the locked
- * row itself and were fresh; moving the state to `experience_kind_memberships`
+ * row itself and were fresh; moving the state to `source_records`
  * (#822) is what made the second statement necessary. Folding the lock into
  * the writing statement's own sub-select is not the same thing: it waits, but
  * it chooses its rows under the pre-wait snapshot, and a membership a publish

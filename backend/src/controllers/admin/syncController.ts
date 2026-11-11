@@ -395,7 +395,7 @@ export async function findComponentItems(
     if (experienceId === undefined) return;
     const found = await pool.query<{ id: number; name: string }>(
       `SELECT e.id, e.name FROM experiences e
-        WHERE e.id = $1 AND EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = e.id AND m.source_id = $2)`,
+        WHERE e.id = $1 AND EXISTS (SELECT 1 FROM source_records m WHERE m.experience_id = e.id AND m.source_id = $2)`,
       [experienceId, sourceId],
     );
     if (!found.rows[0]) throw notFound('No site of this source has that id');

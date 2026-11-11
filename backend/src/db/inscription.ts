@@ -3,7 +3,7 @@
  *
  * UNESCO's facts about an inscription — the year, the danger flag and its
  * listing, the criteria, the area — are the World Heritage kind's, stored on
- * that kind's membership (`experience_kind_memberships.facts`), never on the
+ * that kind's membership (`source_records.facts`), never on the
  * place. A reader is shown them while the membership is offered and not
  * judged former. A site a curator confirms UNESCO delisted, kept as a former
  * World Heritage Site (`KINDS_KEPT_AS_FORMER`), shows neither a danger badge
