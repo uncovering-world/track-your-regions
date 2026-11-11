@@ -4,7 +4,7 @@ import { PLACE_PASS } from '../passes.js';
 // What a world tier admitted before the run is read from the database; none here.
 vi.mock('../admission.js', () => ({ admittedExternalIds: vi.fn(async () => new Set<string>()) }));
 
-import { gatheredPlaceKinds, passKinds } from './placePass.js';
+import { gatheredPlaceKinds, PASS_KIND_MODULES, passKinds } from './placePass.js';
 
 describe('the kinds of the place pass (#2320)', () => {
   const gather = () => Promise.reject(new Error('not read'));
@@ -33,5 +33,12 @@ describe('the kinds of the place pass (#2320)', () => {
     expect(without).toEqual([5, 2]);
     const publicArt = passKinds().find((kind) => kind.sourceIds.includes(3));
     expect(publicArt?.surroundings()).toHaveLength(2);
+  });
+
+  it('declare every kind they gather in a module the kept gather\'s code key reads (#2424)', async () => {
+    const exported = new Set<unknown>();
+    for (const module of PASS_KIND_MODULES) for (const value of Object.values(await import(module.href))) exported.add(value);
+    const missing = gatheredPlaceKinds().filter(({ kind }) => !exported.has(kind)).map(({ kind }) => kind.name);
+    expect(missing).toEqual([]);
   });
 });

@@ -84,6 +84,12 @@ export interface SyncProgress {
    */
   alone?: boolean;
   /**
+   * The pass's shared steps a dry run read back rather than made (#2424,
+   * ADR-0196), which its closing line says: one object for every source of
+   * the pass, filled as each step is read.
+   */
+  keptGather?: KeptGatherNote;
+  /**
    * The run's own steps go on after its items (#1805, `afterRun.ts`): the
    * items of the components it left without one, the near-places pairing.
    * Set once the run's writer has ended, before its entry would be dropped,
@@ -104,6 +110,13 @@ export interface VisitQuestionTally {
   unread?: number;
   /** The asking failed (a source not answering, a write refused): nothing was asked, and the next run asks. */
   failed?: boolean;
+}
+
+/** When each of the place pass's shared steps a dry run read back was kept, and the builds its key names. */
+export interface KeptGatherNote {
+  places?: Date;
+  pool?: Date;
+  builds?: string;
 }
 
 /** What a run said of the source's pins on admission (#1370). */

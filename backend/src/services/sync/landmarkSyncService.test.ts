@@ -117,6 +117,11 @@ vi.mock('./handOvers.js', () => ({
 }));
 vi.mock('./admission.js', () => ({ admittedExternalIds: vi.fn() }));
 vi.mock('./shownElsewhere.js', () => ({ placesOtherSourcesOffer: vi.fn().mockResolvedValue(new Set(['Q19675'])) }));
+// The pass's shared steps are made in every test, with no key to keep them under (#2424).
+vi.mock('./places/keptGather.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./places/keptGather.js')>()),
+  gatherKey: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('./subset/reader.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./subset/reader.js')>()),
   wikidataReaderOf: vi.fn().mockResolvedValue('live'),
