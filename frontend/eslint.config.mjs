@@ -5,6 +5,8 @@ import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import security from 'eslint-plugin-security';
 import sonarjs from 'eslint-plugin-sonarjs';
+import screenText from '../packages/shared/lint/screenText.mjs';
+import { SCREEN_TEXT_ALLOWANCE } from './screenTextAllowance.mjs';
 
 // Where a query key stands (#790): the `queryKey` option, the first argument
 // of a query client's cache calls, and a local named `…Key`. A literal array
@@ -26,21 +28,6 @@ const QUERY_KEY_SELECTORS = KEY_WRAPPERS.flatMap(wrappers => {
     `VariableDeclarator[id.name=/[kK]ey$/] > ${path}`,
   ];
 });
-
-/**
- * Where a development record would reach the screen: JSX text, a string literal
- * and a template's text. An ADR number anywhere in one; an issue number in
- * brackets ("(#523)", "(#852, #1369)") or of four digits or more. A colour of
- * three digits ('#333', '2px solid #999') is neither, and a string that is a
- * colour alone ('#0008') is let through.
- */
-const RECORD = String.raw`ADR-?\d{3,4}|\(#\d{3,5}\b|#\d{4,5}\b`;
-const SCREEN_TEXT_SELECTORS = [
-  `JSXText[value=/${RECORD}/]`,
-  // A string that is a colour and nothing else ('#0008') is let through.
-  `Literal[value=/${RECORD}/]:not(Literal[value=/^#[0-9a-fA-F]{3,8}$/])`,
-  `TemplateElement[value.raw=/${RECORD}/]`,
-];
 
 // The icon package's index loads every one of its thousands of icons:
 // the bundle tree-shakes it, but each spec that reaches the import pays
@@ -93,6 +80,7 @@ export default [
     },
     plugins: {
       'react-hooks': reactHooksPlugin,
+      'screen-text': screenText,
     },
     rules: {
       // React hooks rules
@@ -152,14 +140,13 @@ export default [
             + ":not(JSXElement[openingElement.name.name='Tooltip'] > JSXElement > JSXOpeningElement)",
           message: 'An icon-only IconButton needs an aria-label naming its action (#564), or a Tooltip directly around it.',
         },
-        // Text a person reads names no development record (#1506): an ADR or an issue
-        // number means nothing on screen and cannot be followed from the app. Comments
-        // keep theirs (RECORD above says what counts as one).
-        ...SCREEN_TEXT_SELECTORS.map(selector => ({
-          selector,
-          message: 'Text on screen names no ADR or issue number (#1506): say what the person needs to know in plain words.',
-        })),
       ],
+      // Text a person reads follows the measurable rules of
+      // docs/tech/interface-writing.md (#2433), an ADR or issue number among
+      // them (rule 7, #1506); comments keep theirs. A file whose screens a
+      // slice of #1506 rewrites carries its count of breaches until then
+      // (screenTextAllowance.mjs), and the count only goes down.
+      'screen-text/guideline': ['error', { allow: SCREEN_TEXT_ALLOWANCE }],
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)
       'sonarjs/no-clear-text-protocols': 'off', // False positives on example/docs URLs
@@ -183,6 +170,13 @@ export default [
     files: ['src/api/queryKeys.ts', 'src/**/*.test.{ts,tsx}'],
     rules: {
       'no-restricted-syntax': 'off',
+    },
+  },
+  // A spec's strings are fixtures, never on screen.
+  {
+    files: ['src/**/*.test.{ts,tsx}'],
+    rules: {
+      'screen-text/guideline': 'off',
     },
   },
   // The performance lane's runner and budget evaluator: plain ESM run by
