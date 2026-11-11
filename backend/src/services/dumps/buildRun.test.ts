@@ -99,6 +99,24 @@ describe('a build in the dump worker (ADR-0106)', () => {
     }));
   });
 
+  it('never brings a copy back on a scheduled build, though the same date may be rebuilt (#2415)', async () => {
+    // The host's newest status file could not be read, so the resolver answered with an older complete dump.
+    keepers.latest.mockResolvedValueOnce({ dumpDate: '2026-10-26', swappedAt: new Date(), needs: 'nothing' });
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'keep', scheduled: true, notBefore: '2026-11-10T09:30:00.000Z' } }, new AbortController().signal);
+    expect(keepers.build).not.toHaveBeenCalled();
+    expect(ledger.recordFile).not.toHaveBeenCalled();
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      status: 'failed', error: expect.stringMatching(/^The host answered with the dump of 12 Oct 2026, older than the copy in place, built from the dump of 26 Oct 2026\. .*Update asks the host again now/),
+    }));
+
+    // A follower's refold of the dump it was built from is the same date, and goes ahead.
+    vi.clearAllMocks();
+    keepers.latest.mockResolvedValueOnce({ dumpDate: '2026-10-12', swappedAt: new Date(), needs: 'rebuild' });
+    keepers.build.mockResolvedValueOnce({ bytes: 1, lines: 3, checksumActual: null });
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'keep', scheduled: true, notBefore: '2026-11-10T09:30:00.000Z' } }, new AbortController().signal);
+    expect(keepers.build).toHaveBeenCalledTimes(1);
+  });
+
   it('builds from the local copy named, not from what is kept, when the admin asks for that copy (#1437)', async () => {
     keepers.build.mockResolvedValue({ bytes: 1, lines: 0, checksumActual: 'c'.repeat(32), summary: 'kept 3 OpenStreetMap objects' });
     await runBuild({ id: 9, dump: 'osm-planet', request: { kind: 'keep', only: 'planet-261012.osm.pbf' } }, new AbortController().signal);
