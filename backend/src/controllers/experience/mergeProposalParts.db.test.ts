@@ -72,7 +72,7 @@ beforeEach(async () => {
     `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref) VALUES ($1, $2, 'component', $3, '108bis-003')`,
     [SITE, PART, site],
   );
-  await pool.query('UPDATE source_records SET wikidata_items = ARRAY[$2] WHERE experience_id = $1 AND kind_id = 10', [PART, ITEM]);
+  await pool.query('UPDATE source_records SET wikidata_items = ARRAY[$2] WHERE experience_id = $1 AND source_id = 10 AND whole_id IS NOT NULL', [PART, ITEM]);
   proposalId = (await pool.query<{ id: number }>(
     `INSERT INTO experience_merge_proposals (place_a, place_b, distance_m, name_similarity, exact, reach_m)
      VALUES ($1, $2, 62, 1, false, 300) RETURNING id`,

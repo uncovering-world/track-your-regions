@@ -726,7 +726,7 @@ describe('the membership the run writes beside the place', () => {
     expect(cte).toContain('(SELECT kind_id FROM experience_sources WHERE id = $1)');
     // Found again by the id its source knows the place by (ADR-0084), which
     // the membership carries from the statement that creates it.
-    expect(cte).toContain('ON CONFLICT (source_id, external_id) DO UPDATE SET');
+    expect(cte).toContain('ON CONFLICT (source_id, external_id) WHERE kind_id IS NOT NULL DO UPDATE SET');
     expect(cte).toMatch(/source_id, external_id, type, admitted_for/);
     expect(cte).toContain('FROM ins');
   });

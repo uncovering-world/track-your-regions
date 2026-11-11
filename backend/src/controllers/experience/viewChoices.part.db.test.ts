@@ -103,7 +103,7 @@ beforeEach(async () => {
   await writeExperienceLocations(SITE, [PRAETORIUM, DEUTZ], { syncLogId: null, sourceId: heritage, components: true });
   componentRecord = (await pool.query<{ id: number }>(
     `SELECT rec.id FROM experience_parts p
-       JOIN source_records rec ON rec.experience_id = p.part_id AND rec.kind_id = 10
+       JOIN source_records rec ON rec.experience_id = p.part_id AND rec.whole_id = p.whole_id AND rec.source_id = 10
       WHERE p.whole_id = $1 AND p.external_ref = $2`,
     [SITE, PRAETORIUM.externalRef],
   )).rows[0].id;

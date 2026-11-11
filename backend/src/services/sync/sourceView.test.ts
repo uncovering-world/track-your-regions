@@ -95,8 +95,8 @@ describe('the fields another source contradicts', () => {
     expect(sql).toMatch(/v\.external_id <> \$2/);
     expect(sql).toMatch(/m\.missing_since IS NULL AND m\.source_membership = 'present'/);
     // And a serial site's view of the component a part stands for, on the
-    // part's record (ADR-0156), unless the run is the site's own (#2061).
-    expect(sql).toMatch(/rec\.experience_id = \$1 AND rec\.kind_id = 10/);
+    // part's record in its whole (ADR-0198), unless the run is the site's own (#2061).
+    expect(sql).toMatch(/rec\.experience_id = \$1 AND rec\.source_id = 10 AND rec\.whole_id IS NOT NULL/);
     expect(sql).toMatch(/NOT \(v\.component AND v\.source_id = \$9\)/);
     // A field the run leaves empty where another view has one is kept too.
     expect(sql).toMatch(/NULLIF\(\$5::text, ''\) IS NULL AND NULLIF\(m\.reported_image_url, ''\) IS NOT NULL/);

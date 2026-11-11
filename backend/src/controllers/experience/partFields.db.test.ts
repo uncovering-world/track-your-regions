@@ -231,7 +231,7 @@ describe('a component item confirmed or taken back on a part that holds a kind o
 describe("a part's item, on its record in World Heritage components (ADR-0156 decision 2)", () => {
   const record = async (partId: number) => (await pool.query<{ items: string[] | null; claims: string[] }>(
     `SELECT wikidata_items AS items, curated_fields AS claims FROM source_records
-      WHERE experience_id = $1 AND kind_id = 10`, [partId],
+      WHERE experience_id = $1 AND source_id = 10 AND whole_id IS NOT NULL`, [partId],
   )).rows[0];
 
   it("is recorded by the run there, never on the point, and the registry reads it as the part's", async () => {
