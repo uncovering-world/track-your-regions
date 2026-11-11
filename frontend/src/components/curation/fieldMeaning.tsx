@@ -304,7 +304,7 @@ const COMMEMORATION_SOURCE: Readonly<Record<CommemorationVia, string>> = {
   'main-subject': 'Read from Wikidata’s “main subject”: a person or an event, or a holy figure a religious work shows',
   'named-after': 'Read from Wikidata’s “named after”, a person or an event',
   'statues-category': 'Read from English Wikipedia’s “Statues of …” category of the place’s article',
-  'depicts': 'Read from Wikidata’s “depicts”, a person the work shows',
+  'depicts': 'Read from Wikidata’s “depicts”, someone the work shows',
   'war-narrowed-by-event': 'Read as a war, narrowed to the place’s own significant event within it, as Wikidata names it',
   'war-narrowed-by-lead': 'Read as a war, narrowed to the battle, campaign or other event within it that the lead of the place’s English Wikipedia article links where it says what the place commemorates',
   'war-narrowed-to-person': 'Read as a war, narrowed to the one person the bust or statue shows: the one Wikidata says it depicts, or the one its name names and English Wikipedia knows as a person',
@@ -317,7 +317,7 @@ function commemoratesLabel(value: unknown): ReactNode {
   return subjectsLabel(commemoratesOf(value)?.subjects) ?? 'nobody named';
 }
 
-/** The holy figures a religious work depicts, as its card's "Depicts" line names them (#2404). */
+/** The people and figures a work depicts, as its card's "Depicts" line names them (#2404, #2436). */
 function depictsLabel(value: unknown): ReactNode {
   return subjectsLabel(depictsOf(value)?.subjects) ?? 'no figure named';
 }
@@ -647,8 +647,8 @@ const MEANINGS: Record<string, FieldMeaning> = {
   },
   'metadata.depicts': {
     label: 'depicts',
-    what: 'The holy figure a religious work shows: the line “Depicts: …” on its card. Christ the Redeemer depicts Jesus Christ and the Tian Tan Buddha the Buddha; neither is said to commemorate them. Read where Wikidata’s main subject, a “Statues of …” category or Wikidata’s “depicts” names a deity or a canonised person.',
-    whenItChanges: 'A figure added or dropped on Wikidata or in a category. Check it is the figure the work shows, rather than a patron saint the place is only named after.',
+    what: 'The people and figures a work shows: the line “Depicts: …” on its card. The Republic Monument shows its five founders, Christ the Redeemer shows Jesus Christ. Read from Wikidata’s “depicts”, and for a holy figure also from its main subject or a “Statues of …” category.',
+    whenItChanges: 'A figure added or dropped on Wikidata or in a category. Check that the work shows it, and that it is not a patron saint the place is only named after.',
     render: depictsLabel,
     describeChange: describeDepicts,
   },

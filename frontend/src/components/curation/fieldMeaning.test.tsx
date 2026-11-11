@@ -421,8 +421,8 @@ describe('whom a place commemorates (#2144)', () => {
 
   it('says who a proposal adds and drops, and where the proposed names were read', () => {
     expect(change('metadata.commemorates', undefined, both))
-      .toBe('Added: Dmitry Pozharsky, Kuzma Minin. Read from Wikidata’s “depicts”, a person the work shows.');
-    expect(change('metadata.commemorates', both, { via: 'depicts', subjects: [POZHARSKY] })).toBe('Removed: Kuzma Minin. Read from Wikidata’s “depicts”, a person the work shows.');
+      .toBe('Added: Dmitry Pozharsky, Kuzma Minin. Read from Wikidata’s “depicts”, someone the work shows.');
+    expect(change('metadata.commemorates', both, { via: 'depicts', subjects: [POZHARSKY] })).toBe('Removed: Kuzma Minin. Read from Wikidata’s “depicts”, someone the work shows.');
     expect(change('metadata.commemorates', both, undefined)).toBe('Removed: Dmitry Pozharsky, Kuzma Minin.');
   });
 
@@ -432,7 +432,7 @@ describe('whom a place commemorates (#2144)', () => {
     expect(said('metadata.commemorates', { via: 'curator', subjects: [] })).toBe('nobody named');
     // A run proposing someone against the curator's "nobody": who it adds, and where it read them.
     expect(change('metadata.commemorates', { via: 'curator', subjects: [] }, { via: 'depicts', subjects: [MININ] }))
-      .toBe('Added: Kuzma Minin. Read from Wikidata’s “depicts”, a person the work shows.');
+      .toBe('Added: Kuzma Minin. Read from Wikidata’s “depicts”, someone the work shows.');
   });
 
   it('is a fact readers see, so publishing it changes the card', () => {

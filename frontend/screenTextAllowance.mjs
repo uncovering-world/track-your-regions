@@ -56,7 +56,7 @@ export const SCREEN_TEXT_ALLOWANCE = {
   'src/components/curation/crowding/rowWords.ts': { breaches: 3, slice: '#2444' },
   'src/components/curation/feed/FilterChip.tsx': { breaches: 1, slice: '#2444' },
   'src/components/curation/feed/toolbarOptions.ts': { breaches: 1, slice: '#2444' },
-  'src/components/curation/fieldMeaning.tsx': { breaches: 74, slice: '#2444' },
+  'src/components/curation/fieldMeaning.tsx': { breaches: 73, slice: '#2444' },
   'src/components/curation/publishOutcome.ts': { breaches: 5, slice: '#2444' },
   'src/components/curation/queueCard.tsx': { breaches: 1, slice: '#2444' },
   'src/components/curation/refusalReason.ts': { breaches: 19, slice: '#2444' },
