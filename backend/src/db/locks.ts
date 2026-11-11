@@ -48,27 +48,50 @@
  *   last only as long as it does, so it can wait for an object's lock and never
  *   be half of a cycle — which is why neither takes `lockExperience`'s token.
  * - `assignExperienceToRegion` and the rejection writers touch
- *   `experience_regions` and `experience_rejections`, which no lock-holder waits
- *   for; their only reach into `experiences` is the audit row's key share, and
- *   the mode below is chosen so that never conflicts.
+ *   `experience_regions` and `experience_rejections`. A refresh (below) may
+ *   wait for one of those rows, and none of these waits for anything after
+ *   writing it: their only other reach into `experiences` is the audit row's
+ *   key share, and the mode below is chosen so that never conflicts. So none
+ *   of them is ever half of a cycle, and none takes a place's region keys.
  * - `assignRegionsForExperiences` — placement — is the one outside the rule that
  *   does reach the contents: its INSERT into `experience_location_regions`
- *   key-shares the point rows themselves. It can therefore be *waited for* by a
- *   transaction that changes a point's key column, which the location writer's
- *   ordinal parking does. It never waits in turn: its own reach into
- *   `experiences` is another key share, compatible with the mode below, so it
- *   cannot be the far side of a cycle. Placement is also always post-commit on
- *   the curator routes, which is what keeps that true rather than an accident.
+ *   key-shares the point rows themselves. Nothing but a place's own delete
+ *   waits for those key shares, since a point's only key column is its id,
+ *   which no writer changes. Its order is point rows, then keys, then place
+ *   rows: its last step, `refresh_place_regions()`, may wait for a place's
+ *   keys, and no key holder waits for what placement holds by then, since
+ *   none writes `experience_location_regions`. Its own reach into
+ *   `experiences` is another key share, compatible with the mode below.
+ *   Placement is also always post-commit on the curator routes.
  * - `assignExperiencesToRegions` — the admin's full rebuild of a world view —
  *   reaches the contents the same way, and for longer: it clears and rebuilds
  *   in one transaction (#1152), so the key shares its inserts take on the
- *   points, and the row locks of the automatic rows it deleted, are held until
- *   it commits, seconds on the largest world view. A location writer parking
- *   an ordinal waits that long; it is still never waited *by*, for the reason
- *   above. Its statements run in placement's order — the point-level rows,
- *   then the object-level ones, each cleared before either is inserted — so
- *   it and a run's placement of the same objects wait for each other in one
- *   direction only.
+ *   points, and the row locks of the point rows it deleted, are held until it
+ *   commits, seconds on the largest world view. Its statements run in
+ *   placement's order: the point rows cleared and placed, then every place's
+ *   keys and rows in one refresh. So it and a run's placement of the same
+ *   objects wait for each other in one direction only.
+ * - `refresh_place_regions()` writes a place's rows of `experience_regions`,
+ *   and those of the wholes it is a part of, from inside the writers above: placement
+ *   calls it last, and the triggers that follow a point's state and a part
+ *   relation call it in the curator's own transaction, under the object's lock
+ *   (ADR-0197). It takes no object lock: it locks the places it rewrites, one
+ *   advisory key per place among 1,024 under 1197, in key order
+ *   (`lock_place_regions()`), before it computes their rows, so a publish and
+ *   a placement refreshing one whole take turns, and the later one computes
+ *   with the earlier one's points. The order is objects, then keys, then
+ *   `experience_regions` rows. A refresh holding a key may wait for a row,
+ *   so a writer that writes a place's row and then refreshes it in the same
+ *   transaction takes the place's keys before the row: withdrawing a
+ *   curator's row (`unassignExperienceFromRegion`) and a merge or its undo
+ *   (`placeMerge.ts`, after both object locks). A key held is taken again at
+ *   no wait. A refresh never waits for an object lock, since every writer
+ *   takes its object locks before the writes that fire the triggers and
+ *   placement takes none. Once its keys are held it reads the places it
+ *   reaches again, and takes the keys a part relation committed meanwhile
+ *   adds. Two transactions that take keys out of order that way, or that each
+ *   refresh twice with keys in different orders, can still meet in a cycle;
+ *   Postgres aborts one, as with the identity registry's keys (ADR-0143).
  *
  * **Then the mode: `FOR NO KEY UPDATE`, not `FOR UPDATE`.** It self-conflicts, so
  * two writers on one object still serialise, and it still blocks an UPDATE or a

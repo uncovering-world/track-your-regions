@@ -118,11 +118,13 @@ describe('seedE2eFixture', () => {
     ]);
 
     // Every place is placed in the fixture region, by its row and by its point.
-    const placements = calls(client).filter(([sql]) => /INSERT INTO experience_regions/.test(sql));
-    expect(placements.map(([, params]) => params?.[1])).toEqual(Array(5).fill(E2E_REGION_ID));
     const pointPlacements = calls(client)
       .filter(([sql]) => /INSERT INTO experience_location_regions/.test(sql));
     expect(pointPlacements.map(([, params]) => params?.[0])).toEqual([100, 101, 102, 103, 104]);
+    expect(pointPlacements.map(([, params]) => params?.[1])).toEqual(Array(5).fill(E2E_REGION_ID));
+    // The place's rows are written from its point, as placement writes them (ADR-0197).
+    const placements = calls(client).filter(([sql]) => /refresh_place_regions/.test(sql));
+    expect(placements.map(([, params]) => params?.[0])).toEqual([9001, 9002, 9003, 9004, 9005]);
   });
 
   it('seeds the refused point already marked, under the Aqueduct, with no placement', async () => {

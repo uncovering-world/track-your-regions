@@ -1,13 +1,15 @@
 /**
  * Region Assignment Service
  *
- * Assigns experiences to regions based on spatial containment.
- * Uses experience_locations for per-location region assignment.
- * Also propagates assignments to ancestor regions in the hierarchy.
+ * Places every point in the regions that hold it, and from there every place
+ * in the regions of the points it shows (ADR-0197).
  *
  * A point is placed in the leaves that hold it, tested through their geometry
  * cut into pieces, and in the other regions only when no leaf holds it; every
- * ancestor's row comes from the tree (`directPlacementSql`, ADR-0054).
+ * ancestor's row comes from the tree (`directPlacementSql`, ADR-0054). A
+ * place's rows, its parts' included, are then written by the database's
+ * `refresh_place_regions()` from those point rows, the one statement of which
+ * regions a place is in and whether a reader finds it there.
  */
 
 import { Operation } from '../operationProgress.js';
@@ -16,7 +18,7 @@ import type { AssignmentStatus, PlacementCounts } from '../../api/responses/admi
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { offeredLocationSql } from '../../db/readerPredicates.js';
 import { MEMBERSHIPS, placeHoldsKindSql } from '../../db/membership.js';
-import { madeOfSql, placePointsSql, shownBySql, withWholesSql } from '../../db/placePoints.js';
+import { madeOfSql, shownBySql } from '../../db/placePoints.js';
 
 /**
  * A rebuild narrowed to one source ($2) is narrowed to the places that source
@@ -31,16 +33,11 @@ const ONE_SOURCE_PLACES = `(SELECT experience_id FROM ${MEMBERSHIPS} WHERE sourc
  */
 const SOURCE_PLACES = `ARRAY${ONE_SOURCE_PLACES}`;
 const ONE_SOURCE_POINTS = `AND ${shownBySql('el', SOURCE_PLACES)}`;
-/** The places whose regions those points decide: every place that shows one — the source's, their parts, and the wholes they are parts of. */
-const ONE_SOURCE_PLACED = withWholesSql(madeOfSql(SOURCE_PLACES));
 /**
- * A place is placed in a region for the lists that offer it, and only a place
- * with a membership is offered anywhere: a part with no kind of its own is in
- * its site's lists, not in a region's (ADR-0100), and gains regions of its own
- * with a membership of a kind: its record in its whole offers nothing
- * (ADR-0156, ADR-0198).
+ * The places whose rows those points decide, for `refresh_place_regions()`:
+ * the source's places and their parts. The refresh adds the wholes they are parts of.
  */
-const LISTED_PLACE = placeHoldsKindSql('pp.place_id');
+const ONE_SOURCE_PLACED = madeOfSql(SOURCE_PLACES);
 
 export interface AssignmentProgress {
   cancel: boolean;
@@ -49,7 +46,7 @@ export interface AssignmentProgress {
   statusMessage: string;
   directAssignments: number;       // Location-region assignments
   ancestorAssignments: number;     // Propagated to parent regions
-  experienceAssignments: number;   // Denormalized experience-region assignments
+  experienceAssignments: number;   // Place rows the refresh wrote or removed
   errors: number;
   /** The step the run is on, of the four, and how long it has run (#1356). */
   operation: Operation;
@@ -72,7 +69,11 @@ function checkCancelled(progress: AssignmentProgress): boolean {
   return true;
 }
 
-/** Step 1: drop the previous run's auto-assignments for this world view (and optionally one source). */
+/**
+ * Step 1: drop the previous run's automatic point rows for this world view
+ * (and optionally one source). The places' rows are rewritten by step 4,
+ * which removes what the new point rows no longer give.
+ */
 async function clearPreviousAssignments(
   client: PoolClient,
   worldViewId: number,
@@ -94,17 +95,7 @@ async function clearPreviousAssignments(
       ${sourceId ? ONE_SOURCE_POINTS : ''}
   `, params);
   progress.operation.note(`Cleared ${clearLocResult.rowCount} location-region auto-assignments`);
-
-  const clearExpResult = await client.query(`
-    DELETE FROM experience_regions er
-    USING regions r
-    WHERE er.region_id = r.id
-      AND r.world_view_id = $1
-      AND er.assignment_type = 'auto'
-      ${sourceId ? `AND er.experience_id = ANY(${ONE_SOURCE_PLACED})` : ''}
-  `, params);
-  progress.operation.note(`Cleared ${clearExpResult.rowCount} experience-region auto-assignments`);
-  progress.operation.advance((clearLocResult.rowCount ?? 0) + (clearExpResult.rowCount ?? 0));
+  progress.operation.advance(clearLocResult.rowCount ?? 0);
 }
 
 /**
@@ -269,8 +260,8 @@ export async function regionsHoldingPoints(
 /** The points of the objects a run or a curator has just moved. */
 // A place's points are its own and its parts' (ADR-0100), so placing a site places its parts' points.
 const THESE_EXPERIENCES = `AND ${shownBySql('el', '$2::int[]')}`;
-/** The places whose regions those points decide: every place that shows one — the given ones, their parts, and the wholes they are parts of. */
-const THESE_PLACED = withWholesSql(madeOfSql('$2::int[]'));
+/** The places whose rows those points decide: the given ones and their parts; the refresh adds the wholes they are parts of. */
+const THESE_PLACED = madeOfSql('$2::int[]');
 
 /** Step 2: insert direct location→region rows — the leaves that hold each point, and for a point no leaf holds, the other regions that do. */
 async function assignDirect(
@@ -335,40 +326,35 @@ async function assignAncestors(
   progress.operation.advance(progress.ancestorAssignments);
 }
 
-/** Step 4: denormalize location→region rows into experience→region for backward compatibility. */
-async function denormalizeExperienceRegions(
+/**
+ * Step 4: write each place's rows from the point rows, its parts' included:
+ * `refresh_place_regions()`, the database's one statement of a place's
+ * regions (ADR-0197). Every place for the whole world view, else the source's
+ * places and their parts, with the wholes they are parts of.
+ */
+async function refreshPlaceRegions(
   client: PoolClient,
   worldViewId: number,
   sourceId: number | undefined,
   progress: AssignmentProgress
 ): Promise<void> {
   progress.status = 'denormalizing';
-  progress.statusMessage = 'Denormalizing to experience-region assignments...';
+  progress.statusMessage = 'Writing each place\'s regions from its points...';
   progress.operation.step(STEP.denormalize, 'Writing each place\'s regions from its points');
-  const params = sourceId ? [worldViewId, sourceId] : [worldViewId];
 
-  const expResult = await client.query(`
-    INSERT INTO experience_regions (experience_id, region_id, assignment_type)
-    SELECT DISTINCT pp.place_id, elr.region_id, 'auto'
-    FROM experience_location_regions elr
-    -- A site is in every region one of its parts' points is (ADR-0100).
-    JOIN ${placePointsSql()} pp ON pp.location_id = elr.location_id
-    JOIN experiences e ON pp.place_id = e.id
-    JOIN regions r ON elr.region_id = r.id
-    WHERE r.world_view_id = $1
-      AND ${LISTED_PLACE}
-      ${sourceId ? `AND pp.place_id = ANY(${ONE_SOURCE_PLACED})` : ''}
-    ON CONFLICT (experience_id, region_id) DO NOTHING
-  `, params);
+  const result = await client.query<{ written: number }>(
+    `SELECT refresh_place_regions(${sourceId ? ONE_SOURCE_PLACED : 'NULL'}, $1) AS written`,
+    sourceId ? [worldViewId, sourceId] : [worldViewId],
+  );
 
-  progress.experienceAssignments = expResult.rowCount || 0;
+  progress.experienceAssignments = result.rows[0]?.written ?? 0;
   progress.operation.advance(progress.experienceAssignments);
 }
 
 /**
  * The rebuild's steps, on the transaction the caller opened: clear the
- * automatic rows, place every point again, carry the places up the tree,
- * write each experience's regions from its points, and stamp the world view.
+ * automatic point rows, place every point again, carry the points up the
+ * tree, write each place's regions from its points, and stamp the world view.
  * Answers false when a cancel stopped it between two steps, for the caller to
  * roll back.
  */
@@ -387,7 +373,7 @@ async function rebuild(
   await assignAncestors(client, worldViewId, sourceId, progress);
   if (checkCancelled(progress)) return false;
 
-  await denormalizeExperienceRegions(client, worldViewId, sourceId, progress);
+  await refreshPlaceRegions(client, worldViewId, sourceId, progress);
   // A press during the last step is honoured too: the rebuild is one
   // transaction, so stopping before the commit costs nothing.
   if (checkCancelled(progress)) return false;
@@ -400,9 +386,9 @@ async function rebuild(
 }
 
 /**
- * Assign experiences to regions based on spatial containment.
- * Uses experience_locations for per-location assignment, supporting multi-location experiences.
- * Then propagates assignments up to ancestor regions and denormalizes to experience_regions.
+ * Assign experiences to regions based on spatial containment: every point is
+ * placed in the regions that hold it and the regions above them, and every
+ * place's rows are written from the points it shows (ADR-0197).
  *
  * One transaction, clear and rebuild alike (#1152). A reader goes on seeing
  * the assignments from before until the new ones commit, and a cancel, a
@@ -453,7 +439,7 @@ export async function assignExperiencesToRegions(
     await client.query('COMMIT');
 
     progress.status = 'complete';
-    progress.statusMessage = `Complete: ${progress.directAssignments} direct, ${progress.ancestorAssignments} ancestor, ${progress.experienceAssignments} experience assignments`;
+    progress.statusMessage = `Complete: ${progress.directAssignments} direct, ${progress.ancestorAssignments} ancestor, ${progress.experienceAssignments} place rows written`;
 
     progress.operation.finish(progress.statusMessage);
 
@@ -499,7 +485,9 @@ export function cancelAssignment(worldViewId: number): boolean {
 }
 
 /**
- * Get experience counts by region for a world view
+ * How many places each region of a world view holds: the places a list can
+ * offer, with a kind of their own. A serial site's part holds rows too
+ * (ADR-0197) and is counted through its site.
  */
 export async function getExperienceCountsByRegion(
   worldViewId: number,
@@ -512,6 +500,7 @@ export async function getExperienceCountsByRegion(
       COUNT(er.experience_id) as count
     FROM regions r
     LEFT JOIN experience_regions er ON r.id = er.region_id
+      AND ${placeHoldsKindSql('er.experience_id')}
       ${sourceId ? `AND er.experience_id IN ${ONE_SOURCE_PLACES}` : ''}
     WHERE r.world_view_id = $1
     GROUP BY r.id, r.name
@@ -543,12 +532,14 @@ export async function getExperienceCountsByRegion(
  * milliseconds.
  *
  * Scoped by experience rather than by location on purpose. A point that moved
- * out of a region can leave a stale row at the *experience* level, which is a
- * union over that experience's locations — so the experience is the smallest
- * unit that can be recomputed correctly.
+ * out of a region can leave a stale row at the place's level, which is a
+ * union over the points the place shows — so the place is the smallest unit
+ * that can be recomputed correctly, and `refresh_place_regions()` recomputes
+ * it with the wholes it is a part of.
  *
  * Runs in one transaction, so the brief absence between clearing and
- * reinserting is never observable.
+ * reinserting is never observable. Answers how many place rows the refresh
+ * wrote or removed.
  */
 export async function assignRegionsForExperiences(
   experienceIds: number[],
@@ -561,21 +552,14 @@ export async function assignRegionsForExperiences(
     await client.query('BEGIN');
     const params = [worldViewId, experienceIds];
 
-    // Only `auto` rows, at both levels: a curator's manual assignment is not
-    // this function's to recompute.
+    // Only `auto` rows: a curator's manual assignment is not this function's
+    // to recompute, and the refresh below leaves the places' manual rows too.
     await client.query(`
       DELETE FROM experience_location_regions elr
       USING experience_locations el, regions r
       WHERE elr.location_id = el.id AND elr.region_id = r.id
         AND r.world_view_id = $1 AND elr.assignment_type = 'auto'
         ${THESE_EXPERIENCES}
-    `, params);
-
-    await client.query(`
-      DELETE FROM experience_regions er
-      USING regions r
-      WHERE er.region_id = r.id AND r.world_view_id = $1
-        AND er.assignment_type = 'auto' AND er.experience_id = ANY(${THESE_PLACED})
     `, params);
 
     // Offered points only, as `directPlacementSql` says. A point the source
@@ -606,19 +590,12 @@ export async function assignRegionsForExperiences(
       ON CONFLICT (location_id, region_id) DO NOTHING
     `, params);
 
-    const denorm = await client.query(`
-      INSERT INTO experience_regions (experience_id, region_id, assignment_type)
-      SELECT DISTINCT pp.place_id, elr.region_id, 'auto'
-      FROM experience_location_regions elr
-      JOIN ${placePointsSql()} pp ON pp.location_id = elr.location_id
-      JOIN regions r ON elr.region_id = r.id
-      WHERE r.world_view_id = $1 AND pp.place_id = ANY(${THESE_PLACED})
-        AND ${LISTED_PLACE}
-      ON CONFLICT (experience_id, region_id) DO NOTHING
-    `, params);
+    const refreshed = await client.query<{ written: number }>(
+      `SELECT refresh_place_regions(${THESE_PLACED}, $1) AS written`, params,
+    );
 
     await client.query('COMMIT');
-    return denorm.rowCount ?? 0;
+    return refreshed.rows[0]?.written ?? 0;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;

@@ -700,7 +700,10 @@ export async function publishUnderLock(
 
     // Placement runs here and nowhere else in this endpoint, and only for a
     // publish that released a withdrawal. Every other one changes nothing about
-    // where the object is, and not by oversight: placement's insert predicate is the
+    // where a point is. Which of the place's regions a reader finds it in does
+    // change when a point turns from unread to read, and the trigger on the
+    // point's state refreshes that in this transaction (ADR-0197). Not by
+    // oversight: placement's insert predicate is the
     // `offeredLocationSql` pair — `el.missing_since IS NULL AND el.existence <>
     // 'lost'` — and nothing else, so it filters neither `curation_state` nor
     // `admission`, and a `pending` location was already placed by the run that wrote
@@ -715,8 +718,7 @@ export async function publishUnderLock(
     //
     // A released withdrawal is the exception because the old point stops being
     // offered, and the clear is unfiltered while the insert is not — so its
-    // `experience_location_regions` rows have to go, and the experience-level
-    // union they fed has to be recomputed.
+    // `experience_location_regions` rows have to go.
     //
     // Conditional rather than unconditional because "publish places" reads as the
     // obvious symmetry and is wrong: run 53 created 18 museums, and placing them
