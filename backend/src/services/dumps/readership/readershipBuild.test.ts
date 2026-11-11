@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { monthBefore, readershipWindow, retiredCopies, summaryOf, yearCollision } from './readershipBuild.js';
+import { monthBefore, readershipWindow, retiredCopies, retiredOfYear, summaryOf, yearCollision } from './readershipBuild.js';
 
 describe('readership’s twelve months (#1436)', () => {
   it('names the months a year would share with the year in place, the year to come, or an earlier year kept (#2230)', () => {
@@ -46,7 +46,12 @@ describe('readership’s twelve months (#1436)', () => {
     ]);
   });
 
-  it('removes the local copies of months kept or past the twelve, with their leftovers, and nothing else', () => {
+  it('keeps the copies of the current twelve for the next refold, and removes only months past them (#2415)', () => {
+    const names = ['pageviews-202609-user.bz2', 'pageviews-202605-user.bz2', 'pageviews-202507-user.bz2', 'pageviews-202508-user.bz2.part'];
+    expect(retiredCopies(names, '2025-10-01', new Set())).toEqual(['pageviews-202507-user.bz2', 'pageviews-202508-user.bz2.part']);
+  });
+
+  it('removes the local copies of an earlier year\'s months kept or past its twelve, with their leftovers, and nothing else', () => {
     const names = [
       'pageviews-202609-user.bz2',
       'pageviews-202608-user.bz2.part', 'pageviews-202608-user.bz2.part.json',
@@ -60,5 +65,18 @@ describe('readership’s twelve months (#1436)', () => {
       'pageviews-202608-user.bz2.part', 'pageviews-202608-user.bz2.part.json',
       'pageviews-202609-user.bz2',
     ]);
+  });
+
+  it("retires no file of the current year, and only an earlier year's own months after its build (#2415)", () => {
+    const month = (fileName: string, windowEnd: string | null) =>
+      ({ fileName, builtAt: new Date(0), lines: 1, redirects: 59, windowEnd });
+    const kept = new Map([
+      ['2026-10-01', month('pageviews-202610-user.bz2', null)],
+      ['2026-09-01', month('pageviews-202609-user.bz2', null)],
+      ['2025-09-01', month('pageviews-202509-user.bz2', '2025-09-01')],
+      ['2025-08-01', month('pageviews-202508-user.bz2', '2025-09-01')],
+    ]);
+    expect(retiredOfYear(kept, null)).toEqual(new Set());
+    expect(retiredOfYear(kept, '2025-09-01')).toEqual(new Set(['pageviews-202509-user.bz2', 'pageviews-202508-user.bz2']));
   });
 });

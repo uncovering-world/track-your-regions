@@ -25,10 +25,11 @@
  * or no year in place (`refuseOverlappingYear`); every later current build
  * ends on a newer host month, so a year clear of both stays clear.
  *
- * A month's local copy (about 6 GB) is removed once the month is kept, and so
- * is any copy of a month kept already or older than the twelve: the kept rows
- * are what readership reads, and a month read again is downloaded again. Kept,
- * twelve copies would hold some 70 GB beside the entities dump for nothing.
+ * The current year's twelve local copies (about 6 GB each, some 70 GB) stay
+ * on disk: once the redirects copy moves, every month is folded again
+ * (`keptAlready`), and the refold reads the disk rather than downloading the
+ * twelve again (#2415). A copy of a month past the twelve is removed, and so is
+ * an earlier year's month once kept (`retiredCopies`, `retiredOfYear`).
  *
  * One month on this repository's development machine: about half an hour, the
  * single-threaded bzip2 decoder the limit (the worker's image installs no
@@ -81,28 +82,42 @@ type BuildOptions = ReadOptions & {
 
 /**
  * The files in a local copy's directory to remove once months are kept: the
- * copy of a month kept, or of a month older than the twelve, with its
- * leftovers (a ranged download's `.part` and state). A copy of a month in the
- * twelve that is not kept stays, since a cut download resumes from it.
+ * copy of a month older than the twelve, or of a month in `retire`, with its
+ * leftovers (a ranged download's `.part` and state). The current year retires
+ * none of its twelve: once the redirects copy moves, every month is folded
+ * again (`keptAlready`), and from the copy on disk rather than a second
+ * download of some 70 GB (#2415). A copy of a month not kept yet stays too,
+ * since a cut download resumes from it.
  */
-export function retiredCopies(names: readonly string[], first: string, kept: ReadonlySet<string>): string[] {
+export function retiredCopies(names: readonly string[], first: string, retire: ReadonlySet<string>): string[] {
   const isFileName = dumpNamed('pageviews-user')!.isFileName;
   return names.filter(name => {
     const copy = copyOf(name);
     if (!copy || copy.date.length !== 6) return false;
     const fileName = `pageviews-${copy.date}-user.bz2`;
     if (!isFileName(fileName) || !name.startsWith(fileName)) return false;
-    return kept.has(fileName) || `${copy.date.slice(0, 4)}-${copy.date.slice(4)}-01` < first;
+    return retire.has(fileName) || `${copy.date.slice(0, 4)}-${copy.date.slice(4)}-01` < first;
   }).sort();
 }
 
+/**
+ * The files a build retires besides the months past the twelve: none for the
+ * current year, whose twelve a refold reads again, and the months of the
+ * earlier year built (`windowEnd`), read once for a comparison. Never the
+ * current year's files from an earlier year's build.
+ */
+export function retiredOfYear(kept: ReadonlyMap<string, KeptMonth>, windowEnd: string | null): Set<string> {
+  if (windowEnd === null) return new Set();
+  return new Set([...kept.values()].filter(month => month.windowEnd === windowEnd).map(month => month.fileName));
+}
+
 /** Remove the copies `retiredCopies` names from the local copy's directory, and say so. */
-async function retireCopies(options: BuildOptions, first: string, kept: ReadonlySet<string>): Promise<void> {
+async function retireCopies(options: BuildOptions, first: string, retire: ReadonlySet<string>): Promise<void> {
   if (!options.dumpsDir) return;
-  const gone = retiredCopies(await readdir(options.dumpsDir).catch(() => [] as string[]), first, kept);
+  const gone = retiredCopies(await readdir(options.dumpsDir).catch(() => [] as string[]), first, retire);
   if (gone.length === 0) return;
   await removeCopies(options.dumpsDir, gone);
-  options.onNote?.(`removed the local copies of the months kept or past the twelve: ${gone.join(', ')}`);
+  options.onNote?.(`removed the local copies of the months past the twelve or of an earlier year: ${gone.join(', ')}`);
 }
 
 /** The host's file of `month`, verified the way the newest one is. */
@@ -183,7 +198,7 @@ export async function buildReadership(file: DumpFile, options: BuildOptions): Pr
   const year = await keepMissingMonths(file, window, windowEnd, options);
   // Dropping the months before the twelve changes the year a run reads, as keeping a month does.
   const dropped = windowEnd === null ? await swapWhenNoRunReads(options, () => dropMonthsBefore(window[0])) : 0;
-  await retireCopies(options, window[0], new Set([...(await keptMonths()).values()].map(m => m.fileName)));
+  await retireCopies(options, window[0], retiredOfYear(await keptMonths(), windowEnd));
   return { ...year.newest, checksumActual: null, summary: summaryOf(year.read, year.said, dropped, window[0], options.windowEnd) };
 }
 
@@ -197,6 +212,8 @@ async function keepMissingMonths(
   let newest = { bytes: 0, lines: 0 };
   let read = 0;
   const folded = readOnce(options);
+  // A month past the twelve goes before any download, so the disk that holds twelve has room for the next.
+  await retireCopies(options, window[0], new Set());
   for (const [i, month] of window.entries()) {
     const already = kept.get(month);
     if (keptAlready(already, month, redirects, windowEnd)) {
@@ -207,7 +224,7 @@ async function keepMissingMonths(
     options.onPhase(`Reading ${fileNameOf(month)} (month ${i + 1} of ${window.length})${options.dumpsDir ? ' into the local copy' : ' from the host'}...`);
     const monthFile = month === file.date ? file : await fileOfMonth(month, options.signal);
     const done = await keepOneMonth(monthFile, month, windowEnd, folded, options);
-    await retireCopies(options, window[0], new Set([monthFile.fileName]));
+    await retireCopies(options, window[0], windowEnd === null ? new Set() : new Set([monthFile.fileName]));
     read++;
     said.push(`${month.slice(0, 7)} ${done.kept.toLocaleString('en')} rows`);
     if (month === file.date) newest = done;
