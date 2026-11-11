@@ -5,6 +5,8 @@ import security from 'eslint-plugin-security';
 import sonarjs from 'eslint-plugin-sonarjs';
 import { readFileSync } from 'node:fs';
 import { builtinRules } from 'eslint/use-at-your-own-risk';
+import screenText from '../packages/shared/lint/screenText.mjs';
+import { SCREEN_TEXT_ALLOWANCE } from './screenTextAllowance.mjs';
 
 /** What to do instead, said once for both spellings of the mistake below. */
 const PINNED_TRANSACTION = "pool.query() does not pin a connection. Open the transaction on one client: "
@@ -526,6 +528,38 @@ const FIRST_SOURCE_RULES = [
 ];
 const provenance = { rules: { 'no-first-source-key': builtinRules.get('no-restricted-syntax') } };
 
+/**
+ * The backend's text a person reads as it was written (#2433,
+ * docs/tech/interface-writing.md § Text the backend sends), held to the same
+ * rules as the web app's by the same lint. Two readings:
+ * - **whole modules**: a dump's description and a build's messages, a run's
+ *   refusal reasons, notes and status, the Catalogue Checks' titles and
+ *   meanings, the answers of the error handler and the sign-in refusals. Every
+ *   string that reads as prose is measured, SQL, SPARQL and logs aside.
+ * - **answers alone**: the controllers and the world-view import's progress,
+ *   which also hold prompts and identifiers. Only an error answer
+ *   (`SCREEN_CALLS`) and a string given to a text property (`statusMessage`,
+ *   `message`, `reason`…) is measured.
+ * A module whose text a screen shows joins the first list. A module named in
+ * the allowance carries its count of breaches until the slice of #1506 rewrites it.
+ */
+const SCREEN_TEXT_MODULES = [
+  'src/services/dumps/**/*.ts',
+  'src/worker.ts',
+  'src/services/sync/**/*.ts',
+  'src/controllers/admin/dataAssertions/**/*.ts',
+  'src/controllers/admin/dataAssertionsController.ts',
+  'src/controllers/admin/catalogueCoverage/report.ts',
+  'src/middleware/errorHandler.ts',
+  'src/auth/strategies/oauthRefusals.ts',
+];
+const SCREEN_ANSWER_MODULES = [
+  'src/controllers/**/*.ts',
+  'src/services/worldViewImport/**/*.ts',
+  'src/services/wikivoyageExtract/**/*.ts',
+];
+const SCREEN_CALLS = ['badRequest', 'notFound', 'createError', 'failure', 'conflict', 'forbidden', 'Refusal', 'ReaderFacingError'];
+
 /** The `no-restricted-syntax` setting of every family but the ones named. */
 function restrictedSyntaxWithout(...allowed) {
   for (const family of allowed) {
@@ -893,5 +927,19 @@ export default [
       // path no spec walks.
       'no-undef': 'error',
     },
+  },
+  // The backend's screen text (SCREEN_TEXT_MODULES above); a spec's strings are fixtures.
+  {
+    files: SCREEN_ANSWER_MODULES,
+    ignores: ['src/**/*.test.ts', ...SCREEN_TEXT_MODULES],
+    plugins: { 'screen-text': screenText },
+    rules: { 'screen-text/guideline': ['error', { prose: false, calls: SCREEN_CALLS, countRecords: true, allow: SCREEN_TEXT_ALLOWANCE }] },
+  },
+  {
+    files: SCREEN_TEXT_MODULES,
+    // The admission register's derivations are the repository's record of each bar, in no answer.
+    ignores: ['src/**/*.test.ts', 'src/**/*.fixtures.ts', 'src/services/sync/places/admissionRegister.ts'],
+    plugins: { 'screen-text': screenText },
+    rules: { 'screen-text/guideline': ['error', { calls: SCREEN_CALLS, countRecords: true, allow: SCREEN_TEXT_ALLOWANCE }] },
   },
 ];
