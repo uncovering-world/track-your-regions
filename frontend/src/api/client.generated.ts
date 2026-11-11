@@ -2650,7 +2650,7 @@ export interface ExperienceDetail {
   date_inscribed: string | null;
   /** Whom or what the place commemorates, off its `metadata.commemorates` (#2144): the Lincoln Memorial names Abraham Lincoln. Empty where the runs of Public art and Monuments & memorials name nobody. */
   commemorates: CommemoratedSubject[];
-  /** The holy figure a religious work depicts, off its `metadata.depicts` (#2404): Christ the Redeemer names Jesus Christ, which is never whom it commemorates. Empty where the reading names none. */
+  /** The holy figure a religious work depicts, off its `metadata.depicts` (#2404): Christ the Redeemer names Jesus Christ, which is never whom it commemorates. A curator's list where they corrected it (#2421). Empty where the reading names none, and where the curator said it shows no named figure. */
   depicts: CommemoratedSubject[];
   created_at: string | null;
   updated_at: string | null;
@@ -3100,6 +3100,14 @@ export type EditExperienceBodyCommemoratesItem = {
   articleUrl: string | null;
 };
 
+export type EditExperienceBodyDepictsItem = {
+  /** @pattern ^Q[1-9]\d*$ */
+  item: string;
+  label: string;
+  /** @nullable */
+  articleUrl: string | null;
+};
+
 export interface EditExperienceBody {
   name?: string;
   /** @maxLength 10000 */
@@ -3119,6 +3127,8 @@ export interface EditExperienceBody {
   descriptionAdapted?: boolean;
   /** @maxItems 50 */
   commemorates?: EditExperienceBodyCommemoratesItem[];
+  /** @maxItems 50 */
+  depicts?: EditExperienceBodyDepictsItem[];
 }
 
 /**
@@ -11694,7 +11704,7 @@ export const getPatchExperiencesByIdEditUrl = (id: number,) => {
 
 /**
  * Requires a curator or an admin.
- * @summary Edit an experience's name, text, type, tags, picture, links or whom it commemorates, kept against later syncs
+ * @summary Edit an experience's name, text, type, tags, picture, links, whom it commemorates or what it depicts, kept against later syncs
  */
 export const patchExperiencesByIdEdit = async (id: number,
     editExperienceBody: EditExperienceBody, options?: Parameters<typeof apiFetch>[1]): Promise<ExperienceEditResult> => {
