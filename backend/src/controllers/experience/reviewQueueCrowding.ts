@@ -5,7 +5,9 @@
  * how many places of its kind and type stand within the radius of it, the place
  * itself among them, as its circle in the crowded-city window draws them
  * (#2358), whether the display shadows it, and, for a shadowed one, how many
- * the recount counted above it.
+ * the recount counted above it. Whether the place is measured at all, how
+ * many around it have a higher score, and for a place not measured yet the
+ * run whose end measures it (#2420).
  *
  * The card offers "Squares around (22)" and says a shadowed place is shadowed
  * from this, so the window is read only when a curator opens it: a page of
@@ -25,9 +27,10 @@
 import type { CardCrowding } from '../../api/responses/curation.js';
 import type { ReviewQueueItem } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
-import { CROWDING, KINDS, MEMBERSHIPS, membershipCrowdedSql } from '../../db/membership.js';
+import { CROWDING, FAME, KINDS, MEMBERSHIPS, membershipCrowdedSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
-import { aroundSql } from './crowdingWindow.js';
+import { aroundSql, measuringRun } from './crowdingWindow.js';
+import { measurableSql } from '../../services/sync/crowding.js';
 
 interface CrowdingRow {
   membership_id: number;
@@ -36,6 +39,9 @@ interface CrowdingRow {
   around: number;
   shadowed: boolean;
   outranked_by: number | null;
+  measured: boolean;
+  measurable: boolean;
+  better_known: number | null;
 }
 
 /**
@@ -55,20 +61,33 @@ export async function crowdingOf(
     SELECT c.id AS membership_id, k.crowding_limit, k.crowding_radius_km AS radius_km,
            around.places AS around,
            ${membershipCrowdedSql('c')} AS shadowed,
-           (SELECT crowded.outranked_by FROM ${CROWDING} crowded WHERE crowded.membership_id = c.id) AS outranked_by
+           (SELECT crowded.outranked_by FROM ${CROWDING} crowded WHERE crowded.membership_id = c.id) AS outranked_by,
+           cf.score IS NOT NULL AS measured,
+           ${measurableSql('c')} AS measurable,
+           -- The card says no better-known place stands near only where the rule's own count is zero too:
+           -- the count here also takes a neighbour that holds works or a curator keeps in the shadow, and
+           -- the rule's takes one the caller is not shown. Asked of the few places this count leaves at zero.
+           -- A place not measured yet is outranked by the places a curator keeps on the list alone, which the
+           -- rule's count counts with no score of its own.
+           CASE WHEN cf.score IS NULL THEN crowding_outranked_by(c.id)
+                WHEN around.higher = 0 THEN crowding_outranked_by(c.id)
+                ELSE around.higher END AS better_known
       FROM ${MEMBERSHIPS} c
       JOIN ${KINDS} k ON k.id = c.kind_id AND k.crowding_limit IS NOT NULL
       JOIN experiences ce ON ce.id = c.experience_id AND ce.location IS NOT NULL
+      LEFT JOIN ${FAME} cf ON cf.membership_id = c.id
       CROSS JOIN LATERAL (
-        SELECT count(*)::int AS places
+        SELECT count(*)::int AS places, (count(*) FILTER (WHERE f.score > cf.score))::int AS higher
           FROM ${MEMBERSHIPS} m
           JOIN experiences e ON e.id = m.experience_id
+          LEFT JOIN ${FAME} f ON f.membership_id = m.id
          WHERE ${aroundSql(caller.isAdmin, { kind: 'c.kind_id', point: 'ce.location', radiusKm: 'k.crowding_radius_km' })}
            AND m.type IS NOT DISTINCT FROM c.type) around
      WHERE c.id = ANY($2::int[])
        AND NOT COALESCE(c.type = ANY(k.crowding_exempt_types), FALSE)
        AND NOT place_shows_works(ce.id)`,
   [caller.userId, ids]);
+  const measuring = result.rows.some(row => !row.measured && row.measurable) ? await measuringRun() : null;
   for (const row of result.rows) {
     found.set(row.membership_id, {
       limit: row.crowding_limit,
@@ -76,6 +95,10 @@ export async function crowdingOf(
       around: row.around,
       shadowed: row.shadowed,
       outrankedBy: row.outranked_by,
+      measured: row.measured,
+      betterKnown: row.better_known,
+      measuringRun: row.measured || !row.measurable ? null : measuring,
+      measurable: row.measurable,
     });
   }
   return found;

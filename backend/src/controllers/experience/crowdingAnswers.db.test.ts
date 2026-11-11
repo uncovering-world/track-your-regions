@@ -396,13 +396,16 @@ describe("a review card's crowding (#2282)", () => {
 
     // The circle lists the others around the place; the card counts the place among them.
     const read = await circle('Schloßplatz');
-    expect(cards[0].crowding).toEqual({
-      limit: 10, radiusKm: 10, around: read.around.length + 1, shadowed: true, outrankedBy: 13,
+    expect(cards[0].crowding).toMatchObject({
+      limit: 10, radiusKm: 10, around: read.around.length + 1, shadowed: true, outrankedBy: 13, measured: true, measuringRun: null, measurable: true,
     });
     // Shown, so nothing is counted above it for the card.
-    expect(cards[1].crowding).toEqual({
+    expect(cards[1].crowding).toMatchObject({
       limit: 10, radiusKm: 10, around: BERLIN_SQUARES.length, shadowed: false, outrankedBy: null,
     });
+    // How many have a higher score is the circle's count of places scored above it.
+    const higher = read.around.filter(entry => entry.score !== null && read.place.score !== null && entry.score > read.place.score);
+    expect(cards[0].crowding?.betterKnown).toBe(higher.length);
     // A place holding a work a reader is shown is always shown (ADR-0173); a type
     // its kind exempts is never counted (ADR-0179); a card about no membership has nothing.
     expect(cards[2].crowding).toBeNull();

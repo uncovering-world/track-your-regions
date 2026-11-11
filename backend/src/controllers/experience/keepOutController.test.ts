@@ -36,7 +36,9 @@ describe('listPlaceKinds (#2282)', () => {
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] } as never)
       .mockResolvedValueOnce({ rows: [row(14, 9, 'Squares & streets'), row(15, 3, 'Public art')] } as never);
-    const crowded = { limit: 10, radiusKm: 10, around: 22, shadowed: true, outrankedBy: 13 };
+    const crowded = {
+      limit: 10, radiusKm: 10, around: 22, shadowed: true, outrankedBy: 13, measured: true, betterKnown: 15, measuringRun: null, measurable: true,
+    };
     mockedCrowding.mockResolvedValue(new Map([[14, crowded]]));
 
     const { kinds } = await listPlaceKinds({ params: { id: 1014 }, caller: { id: 7, role: 'curator' } as Express.User });

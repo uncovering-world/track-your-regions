@@ -34,13 +34,22 @@ export interface CrowdingRefresh {
   crowded: number;
 }
 
+/**
+ * Whether a membership's fame can be measured: its source knows the place by a
+ * Wikidata item, which readership, editions and guides are read for. A place
+ * a curator made by hand, or a kind a curator added with no item, never is.
+ */
+export function measurableSql(alias: string): string {
+  return `${alias}.external_id ~ '^Q[1-9][0-9]*$'`;
+}
+
 /** Measure every membership the rule reads, then score and recount the catalogue. */
 export async function refreshCrowding(): Promise<CrowdingRefresh> {
   const members = await pool.query<{ id: number; qid: string }>(
     `SELECT m.id, m.external_id AS qid
        FROM ${MEMBERSHIPS} m
        JOIN ${KINDS} k ON k.id = m.kind_id AND k.crowding_limit IS NOT NULL
-      WHERE m.external_id ~ '^Q[1-9][0-9]*$'`,
+      WHERE ${measurableSql('m')}`,
   );
   const qids = [...new Set(members.rows.map(row => row.qid))];
   const year = await readershipYear();

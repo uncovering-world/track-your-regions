@@ -19002,6 +19002,34 @@
               }
             ],
             "description": "For a shadowed place, how many places of its type within the radius count above it, as the recount stored it (`membership_crowding`, ADR-0180); null for a place the display shows."
+          },
+          "measured": {
+            "type": "boolean",
+            "description": "Whether its fame is measured: a place that arrived after the last run has no score, and until a run measures it only the places a curator keeps on the list count above it (#2420)."
+          },
+          "betterKnown": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many places of its type within the radius have a higher score than it, the rule's own count where that is zero; for a place not measured yet, how many a curator keeps on the list count above it."
+          },
+          "measuringRun": {
+            "description": "For a place not measured yet, the source of the run in progress whose end measures it; null where none runs, and for a measured place.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "measurable": {
+            "type": "boolean",
+            "description": "Whether a run can measure it: its source knows it by a Wikidata item. A place a curator made by hand is never measured."
           }
         },
         "required": [
@@ -19009,7 +19037,11 @@
           "radiusKm",
           "around",
           "shadowed",
-          "outrankedBy"
+          "outrankedBy",
+          "measured",
+          "betterKnown",
+          "measuringRun",
+          "measurable"
         ],
         "additionalProperties": false,
         "description": "How crowded a membership's city is (ADR-0172, ADR-0180): on a review card, and on a kind of a place's curation dialog."
@@ -22191,6 +22223,26 @@
                 "compared": {
                   "type": "boolean",
                   "description": "It counts above the place (`crowding_above()`): what the place is compared with."
+                },
+                "holdsWorks": {
+                  "type": "boolean",
+                  "description": "It holds a work a reader is shown, so the rule never counts it above another (ADR-0173)."
+                },
+                "pin": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "list",
+                        "shadow"
+                      ],
+                      "description": "A curator's answer: list keeps the place among what a reader is shown and counts it as one of the ten; shadow keeps it in the tail and never counts it (ADR-0180)."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "A curator's word on it: kept on the list, or kept in the shadow, which the rule never counts above another."
                 }
               },
               "required": [
@@ -22205,7 +22257,9 @@
                 "guideUsed",
                 "score",
                 "standing",
-                "compared"
+                "compared",
+                "holdsWorks",
+                "pin"
               ],
               "additionalProperties": false
             },
@@ -22216,6 +22270,17 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
             "description": "How many of the places it is compared with `around` leaves out: new arrivals outside the caller's scope, and ones whose source no longer lists them, which the rule counts and the review queue does not show."
+          },
+          "measurable": {
+            "type": "boolean",
+            "description": "Whether a run can measure the place: its source knows it by a Wikidata item. A place a curator made by hand never is."
+          },
+          "measuringRun": {
+            "description": "For a place not measured yet, the source of the run in progress whose end measures it (#2420); null where none runs, and for a measured place.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -22224,7 +22289,9 @@
           "kind",
           "typeExempt",
           "around",
-          "comparedUnlisted"
+          "comparedUnlisted",
+          "measurable",
+          "measuringRun"
         ],
         "additionalProperties": false,
         "description": "A place of a crowded city in its own circle (#2358): what the rule compares it with."
