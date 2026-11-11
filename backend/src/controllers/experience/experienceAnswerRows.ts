@@ -49,7 +49,7 @@ function commemoratedOf(metadata: Record<string, unknown> | null): CommemoratedS
   return servedSubjects(commemoratesOf(metadata?.commemorates)?.subjects);
 }
 
-/** The holy figure a religious work depicts, as `metadata.depicts` stores it (#2404): none where it holds none. */
+/** The people and figures a work depicts, as `metadata.depicts` stores it (#2404, #2436): none where it holds none. */
 function depictedOf(metadata: Record<string, unknown> | null): CommemoratedSubject[] {
   return servedSubjects(depictsOf(metadata?.depicts)?.subjects);
 }

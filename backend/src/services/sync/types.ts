@@ -401,9 +401,11 @@ export interface WikidataLandmark {
    */
   commemorates?: Commemorates;
   /**
-   * The holy figure a religious work depicts, read with `commemorates`
-   * (#2404): Christ the Redeemer depicts Jesus Christ. Absent where no step
-   * reading what the work shows names one.
+   * The people and figures a work depicts, read with `commemorates`: the
+   * holy figures a step reading what the work shows names (#2404), then
+   * everyone else its `P180` names (#2436). Christ the Redeemer depicts Jesus
+   * Christ, the Republic Monument its five founders. Absent where no one is
+   * named.
    */
   depicts?: Depicts;
 }

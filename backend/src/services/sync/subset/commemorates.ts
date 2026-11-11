@@ -29,6 +29,16 @@ export const WAR = 'Q198';
 /** Wikidata's "occurrence" (Q1190554), the root of the classes of what a war is narrowed to: Westerplatte, a peninsula with dates, is none (#2412). */
 export const OCCURRENCE = 'Q1190554';
 
+/**
+ * The roots of the classes a named figure of fiction, myth or legend is an
+ * instance of, or a personification: what a work shows that is no person and
+ * no holy figure, and still someone a card names (#2436). Don Quixote and
+ * Sancho Panza are characters (Q95074), Medusa a mythical character
+ * (Q4271324), Silvius Brabo a legendary figure (Q13002315), Germania and The
+ * Motherland personifications (Q207174). A horse, a lion or a sword is none.
+ */
+export const FIGURE_CLASSES = ['Q95074', 'Q4271324', 'Q13002315', 'Q207174'] as const;
+
 /** Wikidata's "human" (Q5). */
 const HUMAN = 'Q5';
 
@@ -58,7 +68,8 @@ export async function subsetSubjectClaims(ids: string[]): Promise<Map<string, Su
  */
 export async function subsetSubjectKinds(ids: string[]): Promise<Map<string, SubjectKind>> {
   const [kept, terms, deities, wars] = await Promise.all([entitiesOf(ids), termsOf(ids), subsetClassTree(DEITY), subsetClassTree(WAR)]);
-  const occurrences = await classesUnderOccurrence([...kept.values()].flatMap(({ entity }) => itemsOf(bestStatements(entity.claims.P31))));
+  const valueClasses = [...kept.values()].flatMap(({ entity }) => itemsOf(bestStatements(entity.claims.P31)));
+  const [occurrences, figures] = await Promise.all([classesUnder(valueClasses, [OCCURRENCE]), classesUnder(valueClasses, FIGURE_CLASSES)]);
   const out = new Map<string, SubjectKind>();
   for (const id of ids) {
     const label = terms.get(id)?.label;
@@ -76,6 +87,7 @@ export async function subsetSubjectKinds(ids: string[]): Promise<Map<string, Sub
       classical: classes.some(cls => Object.hasOwn(CLASSICAL_MYTHOLOGY_CLASSES, cls)),
       war: classes.some(cls => wars.has(cls)),
       occurrence: classes.some(cls => occurrences.has(cls)),
+      figure: classes.some(cls => figures.has(cls)),
       span: spanOf(timeOf(claims.P580) ?? timeOf(claims.P585), timeOf(claims.P582) ?? timeOf(claims.P585)),
     });
   }
@@ -83,17 +95,17 @@ export async function subsetSubjectKinds(ids: string[]): Promise<Map<string, Sub
 }
 
 /**
- * Which of the classes are kinds of occurrence, through the subset's class
- * closure: asked of the few classes the subjects carry, where the whole tree
- * under occurrence holds hundreds of thousands of classes.
+ * Which of the classes are one of the roots or under one, through the
+ * subset's class closure: asked of the few classes the subjects carry, where
+ * the whole tree under occurrence holds hundreds of thousands of classes.
  */
-async function classesUnderOccurrence(classes: string[]): Promise<Set<string>> {
+async function classesUnder(classes: string[], roots: readonly string[]): Promise<Set<string>> {
   if (!classes.length) return new Set();
   const result = await pool.query<{ class: string }>(
-    'SELECT DISTINCT class FROM wikidata_class_closure WHERE class = ANY($1::text[]) AND ancestor = $2',
-    [[...new Set(classes)], OCCURRENCE],
+    'SELECT DISTINCT class FROM wikidata_class_closure WHERE class = ANY($1::text[]) AND ancestor = ANY($2::text[])',
+    [[...new Set(classes)], [...roots]],
   );
-  return new Set(result.rows.map(row => row.class));
+  return new Set([...classes.filter(cls => roots.includes(cls)), ...result.rows.map(row => row.class)]);
 }
 
 /** A Wikidata time (`+1945-04-16T00:00:00Z`) as a sortable `±YYYYMMDD`, or null for none. */

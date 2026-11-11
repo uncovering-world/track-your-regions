@@ -28,6 +28,15 @@ const BODHISATTVA = 'Q178149';
 const WORLD_WAR = 'Q103495';
 const BATTLE = 'Q178561';
 const MYTHICAL_CHARACTER = 'Q4271324';
+// What the Monument to Miguel de Cervantes and the Niederwalddenkmal show (#2436), as the subset holds them on 2026-11-11.
+const SANCHO = 'Q630823';
+const LITERARY_CHARACTER = 'Q3658341';
+const CHARACTER = 'Q95074';
+const GERMANIA = 'Q328257';
+const NATIONAL_PERSONIFICATION = 'Q1142281';
+const PERSONIFICATION = 'Q207174';
+const LA_GITANILLA = 'Q555967';
+const WRITTEN_WORK = 'Q47461344';
 /** The Buddha's canonization status on the subset (2026-11-09): thaumaturge. */
 const THAUMATURGE = 'Q1349880';
 
@@ -48,6 +57,9 @@ const ENTITIES: Record<string, { label: string; claims: Record<string, unknown[]
   [GUAN_YIN]: { label: 'Guan Yin', claims: { P31: [{ id: `${GUAN_YIN}$1`, value: BODHISATTVA }] } },
   // A class the subset holds at deprecated rank only names nothing.
   [MYTHICAL_CHARACTER]: { label: 'mythical character', claims: { P31: [{ id: `${MYTHICAL_CHARACTER}$1`, rank: 'deprecated', value: DEITY }] } },
+  [SANCHO]: { label: 'Sancho Panza', claims: { P31: [{ id: `${SANCHO}$1`, value: LITERARY_CHARACTER }] } },
+  [GERMANIA]: { label: 'Germania', claims: { P31: [{ id: `${GERMANIA}$1`, value: NATIONAL_PERSONIFICATION }] } },
+  [LA_GITANILLA]: { label: 'La gitanilla', claims: { P31: [{ id: `${LA_GITANILLA}$1`, value: WRITTEN_WORK }] } },
   [WW2]: {
     label: 'World War II',
     claims: {
@@ -74,9 +86,15 @@ const ENTITIES: Record<string, { label: string; claims: Record<string, unknown[]
   },
 };
 
-/** The class closure's rows this spec writes: a battle and a world war are occurrences, a peninsula only itself. */
+/**
+ * The class closure's rows this spec writes: a battle and a world war are
+ * occurrences, a peninsula only itself; a literary character is a character
+ * and a national personification a personification, a written work neither.
+ */
 const CLOSURE: ReadonlyArray<readonly [string, string]> = [
   [BATTLE, BATTLE], [BATTLE, OCCURRENCE], [WORLD_WAR, WORLD_WAR], [WORLD_WAR, OCCURRENCE], [PENINSULA, PENINSULA],
+  [LITERARY_CHARACTER, LITERARY_CHARACTER], [LITERARY_CHARACTER, CHARACTER],
+  [NATIONAL_PERSONIFICATION, NATIONAL_PERSONIFICATION], [NATIONAL_PERSONIFICATION, PERSONIFICATION], [WRITTEN_WORK, WRITTEN_WORK],
 ];
 
 /** The statement ids of this spec's subclass edges, by which it deletes them and nothing else. */
@@ -130,6 +148,12 @@ describe('what a subject of the reading is, read from the subset (#2404)', () =>
     expect(kinds.get(WW2)).toMatchObject({ war: true, event: true, occurrence: true, span: { from: 19390901, to: 19450902 } });
     expect(kinds.get(BERLIN)).toMatchObject({ war: false, event: true, occurrence: true, span: { from: 19450416, to: 19450502 } });
     expect(kinds.get(JESUS)).toBeUndefined();
+  });
+
+  it('reads a figure of fiction and a personification as figures, and a novel as none (#2436)', async () => {
+    const kinds = await subsetSubjectKinds([SANCHO, GERMANIA, LA_GITANILLA, BERLIN]);
+    expect([SANCHO, GERMANIA, LA_GITANILLA, BERLIN].map((id) => kinds.get(id)?.figure)).toEqual([true, true, false, false]);
+    expect(kinds.get(SANCHO)).toMatchObject({ human: false, holy: false });
   });
 
   it('reads an item with dates that is no occurrence as none (#2412)', async () => {

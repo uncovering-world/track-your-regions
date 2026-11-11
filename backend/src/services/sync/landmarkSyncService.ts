@@ -283,8 +283,8 @@ function countriesOf(landmark: WikidataLandmark, casts: readonly LandmarkCast[] 
 }
 
 /**
- * Whom or what the place commemorates, and the holy figure a religious work
- * depicts, each the place's own and shown on its card (#2144, #2404). Each is
+ * Whom or what the place commemorates, and the people and figures the work
+ * depicts, each the place's own and shown on its card (#2144, #2404, #2436). Each is
  * absent where the reading names nobody, which on Public art's and Monuments &
  * memorials' runs proposes removing a value the place held; every other run
  * keeps it (`WRITTEN_BY_SOURCES`).
@@ -422,8 +422,8 @@ async function upsertLandmarkExperience(
 }
 
 /**
- * Whom or what each admitted place commemorates and the holy figure a
- * religious work depicts, onto its item, and Public art's plain sculpture that
+ * Whom or what each admitted place commemorates and the people and figures
+ * it depicts, onto its item, and Public art's plain sculpture that
  * shows one made a religious statue (#2279, `typeByDepicted`).
  */
 async function readWhatEachCommemorates(items: WikidataLandmark[], sourceId: number, sparql: SparqlFn, progress: SyncProgress): Promise<void> {
@@ -479,8 +479,8 @@ async function fetchLandmarkItems(
   await refuseGone(items, filtered, sparql, { id: (item) => item.qid, name: (item) => item.label, type: (item) => item.type }, LOG_PREFIX,
     classifier.gone);
   await classifier.retype?.(items, sparql);
-  // Whom or what each admitted place commemorates, and the holy figure a
-  // religious work depicts, once the kinds have decided (#2144, #2404): Public
+  // Whom or what each admitted place commemorates, and the people and figures
+  // it depicts, once the kinds have decided (#2144, #2404, #2436): Public
   // art's and Monuments & memorials' alone, whose writers `WRITTEN_BY_SOURCES`
   // names. Every other kind keeps what the place holds.
   if (SUBJECT_LINE_SOURCE_IDS.includes(sourceId)) await readWhatEachCommemorates(items, sourceId, sparql, progress);

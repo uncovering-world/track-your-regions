@@ -330,8 +330,8 @@ export const METADATA_SET_KEYS: ReadonlySet<string> = new Set(['creators']);
 
 /**
  * The metadata keys whose two values are the same when they name the same
- * items: whom a place commemorates (#2144) and the holy figure a religious
- * work depicts (#2404). A label or an article Wikidata
+ * items: whom a place commemorates (#2144) and the people and figures a work
+ * depicts (#2404, #2436). A label or an article Wikidata
  * re-words, or another step of the reading naming the same people, is no
  * change a curator is asked about (`sameSubjects`); nor is a run that reads
  * nobody where a curator's list names nobody.

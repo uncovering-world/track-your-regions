@@ -81,15 +81,33 @@ const FOREFATHERS = 'Q4343546';
 const PILGRIMAGE = 'Q1644573';
 const BOMBING_OF_HIROSHIMA = 'Q703203';
 
+// The Monument to Miguel de Cervantes in Madrid (Q4343253), as the subset holds it on 2026-11-11.
+const CERVANTES = 'Q5682';
+const QUIJANO = 'Q944201';
+const SANCHO = 'Q630823';
+const LA_GITANILLA = 'Q555967';
+// The Niederwalddenkmal (Q646012) commemorates the Franco-Prussian War and shows Germania, a personification.
+const GERMANIA = 'Q328257';
+const FRANCO_PRUSSIAN_WAR = 'Q46083';
+const REPUBLIC_MONUMENT = 'Q1143790';
+// The Trevi Fountain (Q185382) depicts Triton (Q148030) and Oceanus (Q161419), deities the subset files under no classical class.
+const TREVI_FOUNTAIN = 'Q185382';
+const CHRIST_THE_REDEEMER = 'Q79961';
+// A bust written for the test, filed under a war's memorials and depicting Atatürk (Q5152), as the bust in warNarrowing.test.ts.
+const ATATURK_BUST = 'Q900000003';
+const TRITON = 'Q148030';
+const OCEANUS = 'Q161419';
+
 const article = (title: string) => `https://en.wikipedia.org/wiki/${title}`;
 const claims = (over: Partial<SubjectClaims> = {}): SubjectClaims => ({
   commemorates: [], mainSubjects: [], namedAfter: [], depicts: [], significantEvents: [], ...over,
 });
-const NOT: Omit<SubjectKind, 'label'> = { human: false, event: false, holy: false, classical: false, war: false, occurrence: false, span: null };
+const NOT: Omit<SubjectKind, 'label'> = { human: false, event: false, holy: false, classical: false, war: false, occurrence: false, figure: false, span: null };
 const person = (label: string): SubjectKind => ({ ...NOT, label, human: true });
 const event = (label: string): SubjectKind => ({ ...NOT, label, event: true, occurrence: true });
 const thing = (label: string): SubjectKind => ({ ...NOT, label });
 const holy = (label: string, human = true): SubjectKind => ({ ...NOT, label, human, holy: true });
+const figure = (label: string): SubjectKind => ({ ...NOT, label, figure: true });
 
 const KINDS = new Map<string, SubjectKind>([
   [LINCOLN, person('Abraham Lincoln')],
@@ -111,6 +129,14 @@ const KINDS = new Map<string, SubjectKind>([
   [WENCESLAS, holy('Saint Wenceslaus I, Duke of Bohemia')],
   [MARY, holy('Mary')],
   [PILGRIMAGE, thing('pilgrimage')],
+  [CERVANTES, person('Miguel de Cervantes')],
+  [QUIJANO, figure('Alonso Quijano')],
+  [SANCHO, figure('Sancho Panza')],
+  [LA_GITANILLA, thing('La gitanilla')],
+  [GERMANIA, figure('Germania')],
+  [FRANCO_PRUSSIAN_WAR, event('Franco-Prussian War')],
+  [TRITON, holy('Triton', false)],
+  [OCEANUS, holy('Oceanus', false)],
   ...REPUBLIC_FOUNDERS.map((item, i) => [item, person(`Founder ${i + 1}`)] as const),
   [WW2, { ...event('World War II'), war: true, span: { from: 19390901, to: 19450902 } }],
   [BATTLE_OF_BERLIN, { ...event('Battle of Berlin'), span: { from: 19450416, to: 19450502 } }],
@@ -176,6 +202,7 @@ describe('what a work shows (#2404)', () => {
     expect(readingOfPlace(claims({ mainSubjects: [JESUS] }), NOTHING_FILED, KINDS, ARTICLES)).toEqual({
       commemorates: null,
       depicts: { via: 'main-subject', subjects: [{ item: JESUS, label: 'Jesus Christ', articleUrl: null }] },
+      holyFigures: [JESUS],
     });
   });
 
@@ -216,6 +243,41 @@ describe('what a work shows (#2404)', () => {
       .commemorates?.subjects.map((s) => s.item)).toEqual(REPUBLIC_FOUNDERS);
     expect(subjectsOfPlace(claims({ depicts: REPUBLIC_FOUNDERS.slice(0, MAX_DEDICATED_FIGURES) }), NOTHING_FILED, KINDS, ARTICLES)?.subjects)
       .toHaveLength(MAX_DEDICATED_FIGURES);
+  });
+});
+
+describe('what a work shows (#2436)', () => {
+  it('names the five founders the Republic Monument shows, though it commemorates none of them', () => {
+    const monument = readingOfPlace(claims({ depicts: REPUBLIC_FOUNDERS }), NOTHING_FILED, KINDS, ARTICLES, 'Republic Monument');
+    expect(monument.commemorates).toBeNull();
+    expect([monument.depicts?.via, monument.depicts?.subjects.map((s) => s.item)]).toEqual(['depicts', REPUBLIC_FOUNDERS]);
+  });
+
+  it('names the characters a monument shows beside its dedication, and not the novel', () => {
+    const madrid = readingOfPlace(claims({ depicts: [QUIJANO, SANCHO, CERVANTES, LA_GITANILLA] }), NOTHING_FILED, KINDS, ARTICLES);
+    expect(madrid.commemorates?.subjects.map((s) => s.item)).toEqual([CERVANTES]);
+    expect(madrid.depicts?.subjects.map((s) => s.label)).toEqual(['Alonso Quijano', 'Sancho Panza']);
+  });
+
+  it('names a personification, and leaves the dedication as it was read', () => {
+    const niederwald = readingOfPlace(claims({ commemorates: [FRANCO_PRUSSIAN_WAR], depicts: [GERMANIA] }), NOTHING_FILED, KINDS, ARTICLES);
+    expect(niederwald.commemorates?.subjects.map((s) => s.item)).toEqual([FRANCO_PRUSSIAN_WAR]);
+    expect(niederwald.depicts?.subjects.map((s) => s.item)).toEqual([GERMANIA]);
+  });
+
+  it('names no one on a column whose one person is its dedication: its lions and battles are no one', () => {
+    expect(readingOfPlace(claims({ depicts: [NELSON, LION, BATTLE, NILE, CAPE_ST_VINCENT, TRAFALGAR] }), NOTHING_FILED, KINDS, ARTICLES).depicts)
+      .toBeNull();
+  });
+
+  it('says a list is read from depicts once no holy figure a step named is left on it', () => {
+    const statue = readingOfPlace(claims({ commemorates: [JESUS], mainSubjects: [JESUS], depicts: [SANCHO] }), NOTHING_FILED, KINDS, ARTICLES);
+    expect([statue.depicts?.via, statue.depicts?.subjects.map((s) => s.item)]).toEqual(['depicts', [SANCHO]]);
+  });
+
+  it('puts the holy figure a statue is about first, then the figures it also shows, each once', () => {
+    const statue = readingOfPlace(claims({ mainSubjects: [JESUS], depicts: [PAUL, JESUS, SANCHO] }), NOTHING_FILED, KINDS, ARTICLES);
+    expect([statue.depicts?.via, statue.depicts?.subjects.map((s) => s.item)]).toEqual(['main-subject', [JESUS, PAUL, SANCHO]]);
   });
 });
 
@@ -281,6 +343,10 @@ describe('reading the places of a run', () => {
       [BRANDENBURG_GATE, claims({ namedAfter: [BRANDENBURG_AN_DER_HAVEL] })],
       [TREPTOW_MEMORIAL, claims({ commemorates: [WW2] })],
       [HIROSHIMA_PEACE_MEMORIAL, claims({ significantEvents: [BOMBING_OF_HIROSHIMA] })],
+      [REPUBLIC_MONUMENT, claims({ depicts: REPUBLIC_FOUNDERS })],
+      [TREVI_FOUNTAIN, claims({ depicts: [TRITON, OCEANUS] })],
+      [CHRIST_THE_REDEEMER, claims({ mainSubjects: [JESUS] })],
+      [ATATURK_BUST, claims({ depicts: [REPUBLIC_FOUNDERS[0]] })],
     ]));
     vi.mocked(subsetSubjectKinds).mockImplementation(async (ids) => new Map(ids.flatMap((id) => (KINDS.has(id) ? [[id, KINDS.get(id)!] as const] : []))));
     vi.mocked(subsetEnglishArticles).mockImplementation(async (ids) => new Map(ids.flatMap((id) => (ARTICLES.has(id) ? [[id, ARTICLES.get(id)!] as const] : []))));
@@ -330,6 +396,14 @@ describe('reading the places of a run', () => {
     expect(found.get(LINCOLN_MEMORIAL)?.commemorates?.via).toBe('commemorates');
   });
 
+  it('names no one under Depicts whom a narrowed war leaves the place commemorating (#2436)', async () => {
+    const read = wiki({ 'Atatürk bust': ['World War II memorials in Turkey'] }, { 'World War II': WW2 });
+    vi.mocked(read.leads).mockResolvedValue(new Map([['Atatürk bust', 'A bust of Atatürk.']]));
+    const found = await readCommemorates([{ qid: ATATURK_BUST, articleUrl: article('Atatürk_bust'), label: 'Atatürk bust' }], subsetOnlyDoor(), read);
+    expect(found.get(ATATURK_BUST)?.commemorates).toMatchObject({ via: 'war-narrowed-to-person', subjects: [{ item: REPUBLIC_FOUNDERS[0] }] });
+    expect(found.get(ATATURK_BUST)?.depicts).toBeNull();
+  });
+
   it('narrows a war its categories read to the significant event Wikidata names for the place', async () => {
     const read = wiki({ 'Hiroshima Peace Memorial': ['World War II memorials in Japan'] }, { 'World War II': WW2 });
     vi.mocked(read.leads).mockResolvedValue(new Map([['Hiroshima Peace Memorial', 'The ruin serves as a memorial to the people killed in the bombing.']]));
@@ -339,6 +413,18 @@ describe('reading the places of a run', () => {
     expect(found.get(HIROSHIMA_PEACE_MEMORIAL)?.commemorates).toEqual({
       via: 'war-narrowed-by-event', subjects: [{ item: BOMBING_OF_HIROSHIMA, label: 'atomic bombing of Hiroshima', articleUrl: null }],
     });
+  });
+
+  it('makes no work religious for what its own depicts adds, only for a holy figure the reading named (#2279, #2436)', async () => {
+    const found = await readCommemorates([
+      { qid: REPUBLIC_MONUMENT, articleUrl: null, label: 'Republic Monument' },
+      { qid: TREVI_FOUNTAIN, articleUrl: null, label: 'Trevi Fountain' },
+      { qid: CHRIST_THE_REDEEMER, articleUrl: null, label: 'Christ the Redeemer' },
+    ], subsetOnlyDoor(), wiki({}, {}));
+    expect(found.get(CHRIST_THE_REDEEMER)?.religious).toBe(true);
+    expect(found.get(REPUBLIC_MONUMENT)?.depicts?.subjects).toHaveLength(REPUBLIC_FOUNDERS.length);
+    expect(found.get(TREVI_FOUNTAIN)?.depicts?.subjects.map((s) => s.label)).toEqual(['Triton', 'Oceanus']);
+    expect([found.get(REPUBLIC_MONUMENT)?.religious, found.get(TREVI_FOUNTAIN)?.religious]).toEqual([undefined, undefined]);
   });
 
   it('takes a category\'s subject only a redirect names where it is a person, an event or a holy figure (#2416)', async () => {
