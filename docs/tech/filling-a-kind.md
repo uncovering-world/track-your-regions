@@ -978,8 +978,11 @@ A parameter changes in four steps, never fewer (ADR-0175 decision 5):
 A candidate value is tried with a dry run of its kind alone (*Preview <kind> alone* on the pass's
 card, `SyncRunOptions.alone`, `docs/tech/experiences.md` § Several kinds from one gather): the gather is read
 whole and only that kind works out its changes, in minutes rather than the whole pass's
-three quarters of an hour. Before the change merges, one dry run of the whole pass shows that no
-other kind moved with it.
+three quarters of an hour. A second dry run on the same builds, admitted rows and code reads the
+gather and the surroundings pool kept from the first (ADR-0196), and its closing line says so:
+the dry run of the whole pass after a one-kind dry run of the same head, say. A change to any
+kind's rule, classes or surroundings door makes them again (#2448).
+Before the change merges, one dry run of the whole pass shows that no other kind moved with it.
 
 The new value goes into the register with its new derivation, evidence and date, and the
 evidence is a report under `docs/research/` that an issue or an ADR cites. The harness the review

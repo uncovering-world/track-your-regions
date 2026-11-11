@@ -214,6 +214,7 @@ and accepted by it.
 | [0193](0193-public-art-files-its-works-under-eight-types-and-a-retype-passes-the-gate.md) | Public art files its works under eight types, and a retype passes the gate | Accepted | 2026-11-10 |
 | [0194](0194-the-openstreetmap-layer-keeps-whole-the-lines-of-the-streets-squares-and-streets-reads.md) | The OpenStreetMap layer keeps whole the lines of the streets Squares & streets reads | Accepted — decision 1 narrowed by [0192](0192-a-walked-street-is-read-from-the-cafes-restaurants-and-bars-around-it.md) | 2026-11-10 |
 | [0195](0195-every-copy-built-from-a-dump-updates-itself-and-no-swap-lands-under-a-run.md) | Every copy built from a dump updates itself, and no swap lands under a run | Accepted | 2026-11-10 |
+| [0196](0196-a-dry-run-of-the-place-pass-reads-the-shared-steps-kept-on-the-same-inputs.md) | A dry run of the place pass reads the shared steps kept on the same inputs | Accepted | 2026-11-11 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
