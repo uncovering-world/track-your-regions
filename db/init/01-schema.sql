@@ -2877,7 +2877,7 @@ COMMENT ON COLUMN experience_sync_logs.world_bars IS 'The world bars a place kin
 -- compared main against a branch stand on the same inputs, and a swap between
 -- them shows. Written holding the swap lock (services/dumps/swapGuard.ts).
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS copies_read JSONB;
-COMMENT ON COLUMN experience_sync_logs.copies_read IS 'The dump date of each copy built from a dump that was in place when the run started, by the dump it is built from: {"wikidata-entities": "2026-10-26", "pageviews-user": "2026-09-01", ...} (#2415). A copy not built then is left out. NULL is a run from before migration 226.';
+COMMENT ON COLUMN experience_sync_logs.copies_read IS 'The dump date of each copy built from a dump that was in place when the run started, by the dump it is built from: {"wikidata-entities": "2026-10-26", "pageviews-user": "2026-09-01#59@2026-10-01×12", ...} (#2415). After a #, what tells two states of a copy apart beyond its dump date: for readership, which redirects builds folded its twelve months, as build@date×months. A copy not built then is left out. NULL is a run from before migration 226.';
 
 -- A run writes where it stands to its row as it goes (#1131), and its running
 -- counts to the total_* columns above: a restart then leaves a row that says

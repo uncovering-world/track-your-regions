@@ -52,4 +52,11 @@ describe("a run's row and the copies it reads (#2415)", () => {
     await expect(openRunLog(async () => 859)).rejects.toThrow('the subset is being swapped');
     expect(client.release).toHaveBeenCalledWith(refused);
   });
+
+  it('records a revision beside a dump date where the date alone does not tell two states apart', async () => {
+    keeper.latest.mockResolvedValue({ dumpDate: '2026-10-01', revision: '59@2026-10-01×8,64@2026-11-01×4' });
+    await openRunLog(async () => 859);
+    const update = client.query.mock.calls.find(([sql]) => String(sql).startsWith('UPDATE'))!;
+    expect(Object.values(JSON.parse(String((update[1] as unknown[])[1])))).toContain('2026-10-01#59@2026-10-01×8,64@2026-11-01×4');
+  });
 });

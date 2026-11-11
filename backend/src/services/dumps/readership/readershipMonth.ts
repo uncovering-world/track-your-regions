@@ -176,6 +176,8 @@ export interface KeptMonth {
   builtAt: Date;
   lines: number;
   redirects: number | null;
+  /** The dump date of the redirects it was folded with, an ISO day, or null where none were in place. */
+  redirectsDate: string | null;
   /** The window the month was asked for by name, `YYYY-MM-01`, or null for a month of the current year (#2230). */
   windowEnd: string | null;
 }
@@ -185,13 +187,16 @@ export interface KeptMonth {
  * of the redirects it was folded with, and the window it was asked for (#2230).
  */
 export async function keptMonths(): Promise<Map<string, KeptMonth>> {
-  const result = await pool.query<{ month: string; file_name: string; built_at: Date; lines: string; redirects: number | null; window_end: string | null }>(
+  const result = await pool.query<{
+    month: string; file_name: string; built_at: Date; lines: string; redirects: number | null; redirects_date: string | null; window_end: string | null;
+  }>(
     `SELECT to_char(month, 'YYYY-MM-DD') AS month, file_name, built_at, lines, redirects_build_id AS redirects,
-            to_char(window_end, 'YYYY-MM-DD') AS window_end
+            to_char(redirects_dump_date, 'YYYY-MM-DD') AS redirects_date, to_char(window_end, 'YYYY-MM-DD') AS window_end
        FROM readership_month_files ORDER BY month`,
   );
   return new Map(result.rows.map(r => [r.month, {
-    fileName: r.file_name, builtAt: r.built_at, lines: Number(r.lines), redirects: r.redirects, windowEnd: r.window_end,
+    fileName: r.file_name, builtAt: r.built_at, lines: Number(r.lines), redirects: r.redirects, redirectsDate: r.redirects_date,
+    windowEnd: r.window_end,
   }]));
 }
 

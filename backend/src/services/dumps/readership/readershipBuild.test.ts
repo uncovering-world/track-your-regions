@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { monthBefore, readershipWindow, retiredCopies, retiredOfYear, summaryOf, yearCollision } from './readershipBuild.js';
+import { monthBefore, readershipWindow, retiredCopies, retiredOfYear, summaryOf, yearCollision, yearStanding } from './readershipBuild.js';
 
 describe('readership’s twelve months (#1436)', () => {
   it('names the months a year would share with the year in place, the year to come, or an earlier year kept (#2230)', () => {
@@ -69,7 +69,7 @@ describe('readership’s twelve months (#1436)', () => {
 
   it("retires no file of the current year, and only an earlier year's own months after its build (#2415)", () => {
     const month = (fileName: string, windowEnd: string | null) =>
-      ({ fileName, builtAt: new Date(0), lines: 1, redirects: 59, windowEnd });
+      ({ fileName, builtAt: new Date(0), lines: 1, redirects: 59, redirectsDate: '2026-10-01', windowEnd });
     const kept = new Map([
       ['2026-10-01', month('pageviews-202610-user.bz2', null)],
       ['2026-09-01', month('pageviews-202609-user.bz2', null)],
@@ -78,5 +78,22 @@ describe('readership’s twelve months (#1436)', () => {
     ]);
     expect(retiredOfYear(kept, null)).toEqual(new Set());
     expect(retiredOfYear(kept, '2025-09-01')).toEqual(new Set(['pageviews-202509-user.bz2', 'pageviews-202508-user.bz2']));
+  });
+
+  it('stays readable while its months wait to be folded with the redirects that moved, and whole only once they are (#2415)', () => {
+    const year = (redirectsOf: (month: string) => number) => new Map(readershipWindow('2026-10-01').map(month =>
+      [month, { fileName: `pageviews-${month.slice(0, 4)}${month.slice(5, 7)}-user.bz2`, builtAt: new Date(0), lines: 1, redirects: redirectsOf(month),
+        redirectsDate: redirectsOf(month) === 59 ? '2026-10-01' : '2026-11-01', windowEnd: null }]));
+    // Folded with redirects build 59; the redirects copy has since swapped in build 64.
+    expect(yearStanding(year(() => 59), 64)).toMatchObject({ newest: '2026-10-01', readable: true, whole: false, revision: '59@2026-10-01×12' });
+    // Halfway through the refold: still readable, still not whole, and recorded as a fold of its own.
+    expect(yearStanding(year(month => (month >= '2026-05-01' ? 64 : 59)), 64))
+      .toMatchObject({ readable: true, whole: false, revision: '59@2026-10-01×6,64@2026-11-01×6' });
+    expect(yearStanding(year(() => 64), 64)).toMatchObject({ readable: true, whole: true, revision: '64@2026-11-01×12' });
+    // A month missing is no year to read.
+    const missing = year(() => 64);
+    missing.delete('2026-03-01');
+    expect(yearStanding(missing, 64)).toMatchObject({ readable: false, whole: false });
+    expect(yearStanding(new Map(), 64)).toBeNull();
   });
 });

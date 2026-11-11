@@ -304,6 +304,8 @@ export const SyncLog = z.strictObject({
     dump: z.string().describe('The dump the copy is built from.'),
     title: z.string().describe('What the copy is, as the Public Dumps page names it.'),
     dumpDate: z.string().describe('The dump date of the copy in place when the run started, an ISO day.'),
+    revision: z.string().nullable().describe('What told the copy apart beyond its dump date, where that alone does not: '
+      + 'for readership, which redirects builds folded its twelve months, as `build@redirectsDate×months` (#2415). Null otherwise.'),
     datedBy: z.enum(['day', 'month']).describe('Whether the date is a day\'s dump or the last month of counts.'),
   })).nullable()
     .describe('Each copy built from a dump that was in place when the run started (#2415), which no swap changes while the run is alive. Null for a run from before.'),

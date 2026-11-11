@@ -317,17 +317,46 @@ export function summaryOf(read: number, said: readonly string[], dropped: number
  * admin asked for may be newer than anything the current year holds, as
  * before the first current build, and is never what the runs read.
  */
-export async function latestReadership(): Promise<{ dumpDate: string; swappedAt: Date; needs: CopyNeeds } | null> {
-  const kept = await keptMonths();
-  const redirects = await redirectsInPlace();
+export async function latestReadership(): Promise<{ dumpDate: string; swappedAt: Date; needs: CopyNeeds; readable: boolean; revision: string } | null> {
+  const standing = yearStanding(await keptMonths(), await redirectsInPlace());
+  if (!standing) return null;
+  return {
+    dumpDate: standing.newest, swappedAt: standing.builtAt, needs: standing.whole ? 'nothing' : 'rebuild',
+    readable: standing.readable, revision: standing.revision,
+  };
+}
+
+/**
+ * Where the current year stands: its newest month, whether it is whole (every
+ * month of the twelve held and folded with the redirects in place), and
+ * whether the runs can read it (every month held, folded with whichever
+ * redirects). Once the redirects copy moves, the year is not whole until it is
+ * folded again (`followsInputs`), but the runs go on reading the months as they
+ * were folded meanwhile: a refold queued and run takes hours, and a few
+ * articles renamed in a month are the whole difference.
+ */
+export function yearStanding(kept: ReadonlyMap<string, KeptMonth>, redirects: number | null) {
   const months = [...kept.entries()].filter(([, month]) => month.windowEnd === null).map(([month]) => month).sort();
   if (months.length === 0) return null;
   const newest = months[months.length - 1];
-  const whole = readershipWindow(newest).every(month => {
-    const held = kept.get(month);
-    return held !== undefined && held.windowEnd === null && held.redirects === redirects;
-  });
-  return { dumpDate: newest, swappedAt: kept.get(newest)!.builtAt, needs: whole ? 'nothing' : 'rebuild' };
+  const window = readershipWindow(newest);
+  const held = window.map(month => kept.get(month)).filter(month => month !== undefined && month.windowEnd === null);
+  const readable = held.length === window.length;
+  return { newest, builtAt: kept.get(newest)!.builtAt, readable, revision: foldsOf(held), whole: readable && held.every(month => month!.redirects === redirects) };
+}
+
+/**
+ * Which redirects builds folded `months`, each as `build@date×months` (`59@2026-10-01×8`),
+ * lowest build first: what a run records beside the dump date. The build tells two folds
+ * apart where one date was built twice; the date is what the run history shows.
+ */
+function foldsOf(months: ReadonlyArray<KeptMonth | undefined>): string {
+  const folds = new Map<string, number>();
+  for (const month of months) {
+    const build = month?.redirects === null || month?.redirects === undefined ? 'none' : `${month.redirects}@${month.redirectsDate ?? ''}`;
+    folds.set(build, (folds.get(build) ?? 0) + 1);
+  }
+  return [...folds].sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true })).map(([build, n]) => `${build}×${n}`).join(',');
 }
 
 /** The earlier years kept beside the current one (#2230), each by the month it ends on, `YYYY-MM`, oldest first. */

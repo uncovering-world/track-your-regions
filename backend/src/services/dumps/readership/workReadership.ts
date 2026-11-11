@@ -13,7 +13,7 @@
 import { pool } from '../../../db/index.js';
 import { countedEditions } from '../wikipedia/redirectBuild.js';
 import { latestReadership, readershipWindow } from './readershipBuild.js';
-import { redirectsInPlace } from './readershipMonth.js';
+import { keptMonths } from './readershipMonth.js';
 
 /** ADR-0055 decision 3: a pair is judged on its phone share from this many views a year. */
 export const AUTOMATED_FROM_VIEWS = 5_000;
@@ -24,18 +24,25 @@ export const BURST_WEEK_SHARE = 0.25;
 /** ADR-0055 decision 4: a monthly coefficient of variation from this is a burst. */
 export const BURST_MONTHLY_CV = 0.5;
 
-/** The year a reading is taken over: its months, and the editions a door counts. */
-export interface ReadershipYear { months: string[]; editions: string[] }
+/**
+ * The year a run reads: its twelve months, the editions counted, and what the
+ * twelve were folded with (`fold`: each month's redirects build and when it was
+ * kept), which changes as a refold keeps each month again.
+ */
+export interface ReadershipYear { months: string[]; editions: string[]; fold: string }
 
 /**
- * The year in place, or null when no reading can be trusted: no year built,
- * or one whose months are not all folded with the redirects in place (#1650),
- * which a rebuild is still reading again.
+ * The year in place, or null where no year is built or a month of the twelve
+ * is missing. A year whose months were folded with redirects since moved is
+ * read as it was folded while its refold waits (`yearStanding`, #2415).
  */
 export async function readershipYear(): Promise<ReadershipYear | null> {
   const latest = await latestReadership();
-  if (!latest || latest.needs !== 'nothing') return null;
-  return { months: readershipWindow(latest.dumpDate), editions: await countedEditions() };
+  if (!latest?.readable) return null;
+  const months = readershipWindow(latest.dumpDate);
+  const kept = await keptMonths();
+  const fold = months.map(month => `${month}:${kept.get(month)?.redirects ?? ''}:${kept.get(month)?.builtAt.getTime() ?? ''}`).join();
+  return { months, editions: await countedEditions(), fold };
 }
 
 const logOdds = (share: number) => {
@@ -130,15 +137,15 @@ const ranksRead = new Map<string, Promise<number | null>>();
  * every item the year keeps, over the editions a door counts, or null where
  * fewer items are kept. A readers' floor stated as a rank follows the level of
  * readership, as the world tier's quantile bars do, and no class a kind asks
- * by moves it. Read once per year, rank and fold: a new redirects build folds
- * the same months again (#1650), and the floor is read again over the new
- * sums. The sum is the raw one, before decision 3 sets any pair aside.
+ * by moves it. Read once per year, rank and fold: the key is what the twelve
+ * were folded with (`fold`), so a month folded again (#1650, a refold while the
+ * year was read as it stood, #2415) reads the floor again over the new sums. The sum is the raw one, before decision 3 sets any pair aside.
  * Decision 3 judges no pair under 5,000 views a year, so the surroundings
  * floor of 3,000 reads the same either way; at the street-art mark of 10,000
  * the raw sum puts the rank's count slightly higher than a filtered one would.
  */
 export async function readersAtRank(year: ReadershipYear, rank: number): Promise<number | null> {
-  const key = `${await redirectsInPlace()}|${year.months.join()}|${year.editions.join()}|${rank}`;
+  const key = `${year.fold}|${year.editions.join()}|${rank}`;
   let read = ranksRead.get(key);
   if (!read) {
     read = pool.query<{ views: string }>(

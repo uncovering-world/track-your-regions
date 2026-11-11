@@ -40,7 +40,7 @@ describe('refreshCrowding', () => {
   });
 
   it('writes every signal, a place no source names at zero, and refreshes in the same transaction', async () => {
-    vi.mocked(readershipYear).mockResolvedValueOnce({ months: ['2025-10-01'], editions: ['enwiki'] });
+    vi.mocked(readershipYear).mockResolvedValueOnce({ months: ['2025-10-01'], editions: ['enwiki'], fold: '2025-10-01:59:0' });
     expect(await refreshCrowding()).toEqual({ measured: 2, stale: [], crowded: 124 });
     const calls = client.query.mock.calls.map(c => c as [string, unknown[]?]);
     expect(calls.map(([sql]) => sql.trim().split(/\s/)[0])).toEqual(['BEGIN', 'INSERT', 'DELETE', 'SELECT', 'COMMIT']);
