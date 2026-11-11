@@ -3,12 +3,23 @@
  */
 
 /**
- * Format an ISO date string to a locale-aware date+time string.
- * Returns 'Never' for null/empty values.
+ * A day and a month in words, "2 Nov", with the year only where it is not this
+ * one, "2 Nov 2025": a date in numbers reads as two different days on either
+ * side of the Atlantic (docs/tech/interface-writing.md, rule 5).
+ */
+function dayOf(date: Date): Intl.DateTimeFormatOptions {
+  const thisYear = date.getFullYear() === new Date().getFullYear();
+  return thisYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' };
+}
+
+/**
+ * An ISO date as its day and its time to the minute, "2 Nov, 21:54", in the
+ * reader's locale and time. Returns 'Never' for null/empty values.
  */
 export function formatDateTime(dateStr: string | null): string {
   if (!dateStr) return 'Never';
-  return new Date(dateStr).toLocaleString();
+  const date = new Date(dateStr);
+  return date.toLocaleString(undefined, { ...dayOf(date), hour: '2-digit', minute: '2-digit' });
 }
 
 /** An ISO date as the day it falls on, "1 October", in the reader's locale. */
@@ -18,7 +29,7 @@ export function formatDay(dateStr: string): string {
 
 /**
  * Format an ISO date string as a relative time (e.g., "5m ago", "2d ago").
- * Falls back to locale date after the given threshold (default 30 days).
+ * Falls back to the day, "2 Nov", after the given threshold (default 30 days).
  *
  * @param fallbackAfterMs - Switch to locale date after this many ms (default: 30 days)
  */
@@ -30,7 +41,7 @@ export function formatRelativeTime(
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
 
-  if (diffMs >= fallbackAfterMs) return date.toLocaleDateString();
+  if (diffMs >= fallbackAfterMs) return date.toLocaleDateString(undefined, dayOf(date));
 
   const diffMin = Math.floor(diffMs / 60000);
   if (diffMin < 1) return 'just now';
