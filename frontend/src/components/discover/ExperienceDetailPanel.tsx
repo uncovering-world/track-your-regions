@@ -314,8 +314,8 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
           </Typography>
         )}
 
-        {/* Whom or what it commemorates, and the holy figure a religious work
-            depicts: the lines Map mode's card carries too (#2144, #2404). */}
+        {/* Whom or what it commemorates, and the people and figures the work
+            shows: the lines Map mode's card carries too (#2144, #2404, #2436). */}
         <CommemoratesLine subjects={details?.commemorates} mb={2} />
         <CommemoratesLine subjects={details?.depicts} word="Depicts" mb={2} />
 

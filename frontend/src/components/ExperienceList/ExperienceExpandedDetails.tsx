@@ -345,8 +345,8 @@ function ExperienceExpandedDetailsComponent({
         </Typography>
       )}
 
-      {/* Whom or what it commemorates (#2144), and the holy figure a religious
-          work depicts (#2404), from the same detail read. */}
+      {/* Whom or what it commemorates (#2144), and the people and figures the
+          work shows (#2404, #2436), from the same detail read. */}
       <CommemoratesLine subjects={details?.commemorates} />
       <CommemoratesLine subjects={details?.depicts} word="Depicts" />
 
