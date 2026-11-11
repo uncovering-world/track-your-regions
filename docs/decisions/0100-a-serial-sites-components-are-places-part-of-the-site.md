@@ -1,7 +1,7 @@
 # ADR-0100: A serial site's components are places, part of the site
 
 **Date:** 2026-10-13
-**Status:** Accepted — decision 4 narrowed by [ADR-0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md): the run finds a part by its item and adds its kind there, rather than the catalogue merging the two afterwards; decisions 2 and 3 narrowed by [ADR-0156](0156-a-virtual-kind-holds-how-a-source-knows-a-part.md): a part holds a membership of the virtual kind World Heritage components, which carries its item and the list's view of it; decision 3 narrowed by [ADR-0189](0189-a-component-renumbered-or-moved-stays-its-part-found-by-its-name.md): the run finds a part by its name where the reference changed or the point moved
+**Status:** Accepted — decision 4 narrowed by [ADR-0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md): the run finds a part by its item and adds its kind there, rather than the catalogue merging the two afterwards; decisions 2 and 3 narrowed by [ADR-0156](0156-a-virtual-kind-holds-how-a-source-knows-a-part.md): a part holds a membership of the virtual kind World Heritage components, which carries its item and the list's view of it; decision 3 narrowed by [ADR-0189](0189-a-component-renumbered-or-moved-stays-its-part-found-by-its-name.md): the run finds a part by its name where the reference changed or the point moved; decisions 1 and 3 narrowed by [ADR-0198](0198-every-sources-record-of-a-place-is-one-row-in-a-kind-or-in-a-whole.md): the part's record in its whole carries the component's reference, and the relation records what the part records claim
 
 ---
 
