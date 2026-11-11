@@ -587,8 +587,8 @@ describe('region membership a reader can see', () => {
     answerEveryRead();
   });
 
-  /** The membership predicate, recognised by the aliases only it uses. */
-  const MEMBERSHIP = /mem_elr\.region_id = er\.region_id/;
+  /** The membership predicate: the row says a point a reader may see put the place there (ADR-0197). */
+  const MEMBERSHIP = /er\.listing = 'offered'/;
 
   const reads: Array<{ name: string; run: () => Promise<unknown>; statements: number }> = [
     {
@@ -627,15 +627,16 @@ describe('region membership a reader can see', () => {
     });
   }
 
-  it('asks it of the whole point a reader may see, not of the gate alone', async () => {
+  it('asks the row, which the refresh marked from the whole point a reader may see, not the points again', async () => {
+    // `refresh_place_regions()` writes `offered` only where an offered and
+    // published point put the place there (ADR-0197); the list no longer
+    // walks the place's points into the point rows for each of its rows.
     await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId'), 
       { params: { regionId: '1' }, query: {}, user: undefined } as never, makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
-    const clause = sql.slice(sql.indexOf('mem_elr'));
-    expect(clause).toContain('mem_el.missing_since IS NULL');
-    expect(clause).toContain("mem_el.existence <> 'lost'");
-    expect(clause).toContain("mem_el.curation_state <> 'pending'");
+    expect(sql).toMatch(MEMBERSHIP);
+    expect(sql).not.toMatch(/experience_location_regions/);
   });
 
   it('keeps asking it of a reader who asked to see what is gone', async () => {
@@ -659,8 +660,7 @@ describe('region membership a reader can see', () => {
     await answerRoute(routeAt(experienceReadRoutes, '/:id'), { params: { id: '281' } } as never, makeRes() as never);
 
     const [sql, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
-    expect(sql).toMatch(/mem_elr\.region_id = er\.region_id/);
-    expect(sql).toMatch(/\(\$3::boolean OR/);
+    expect(sql).toMatch(/\(\$3::boolean OR er\.listing = 'offered'\)/);
     expect(params[2]).toBe(false);
   });
 });
@@ -721,9 +721,7 @@ describe('searchExperiences region context', () => {
     // The same predicate `getExperience`'s regions[] uses (#521), and for the
     // same reason: the caller acts on this list by opening a card at one of
     // these regions, so a region whose own list would drop it is not an answer.
-    expect(sql).toMatch(/mem_elr\.region_id = er\.region_id/);
-    expect(sql).toMatch(/mem_el\.missing_since IS NULL/);
-    expect(sql).toMatch(/mem_el\.curation_state <> 'pending'/);
+    expect(sql).toMatch(/er\.listing = 'offered'/);
   });
 
   it('leaves out a pair a curator turned down, which the region\'s own list also drops', async () => {

@@ -248,7 +248,7 @@ describe('reads that show a point', () => {
     await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'),
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);
 
-    expect(locationRead()).toMatch(/mem_elr\.region_id = er\.region_id/);
+    expect(locationRead()).toMatch(/er\.listing = 'offered'/);
   });
 
   it('answers for them in the other branch too', async () => {
@@ -258,7 +258,7 @@ describe('reads that show a point', () => {
       { params: { regionId: '7' }, query: { includeChildren: 'false' } } as never,
       makeRes() as never);
 
-    expect(locationRead()).toMatch(/mem_elr\.region_id = er\.region_id/);
+    expect(locationRead()).toMatch(/er\.listing = 'offered'/);
   });
 });
 

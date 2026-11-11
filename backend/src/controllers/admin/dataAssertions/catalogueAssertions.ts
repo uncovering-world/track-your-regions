@@ -253,8 +253,8 @@ const twoOfferedPlacesAtOneReference: CatalogueAssertion = {
  * can be written unread while the object itself is published. Without one, a
  * withdrawal applied with no arrival to hold it leaves the same emptiness. A
  * third is a curator's manual region claim outliving every visible point of
- * the object it holds, which `readerRegionMembershipSql` names as the residue
- * its own exemption leaves and points here (#521).
+ * the object it holds: the residue a manual row's always being `offered`
+ * leaves (#521, ADR-0197).
  *
  * `lost` objects are excluded rather than counted: a place that no longer
  * stands is deliberately off every list and map while staying in a visit

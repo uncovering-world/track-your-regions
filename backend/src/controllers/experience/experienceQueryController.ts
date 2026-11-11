@@ -198,11 +198,11 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       -- Named to a reader only where a point they may see put the object there
       -- (#521). This list is a claim a reader acts on — Discover's detail panel
       -- offers each region as somewhere to go — so it has to name the regions
-      -- whose own lists will hold the object, not the ones the roll-up holds.
+      -- whose own lists will hold the object, the rows marked offered.
       -- Relaxed on the same boolean as the row itself, and for the ADR's own
       -- reason: a curator reading a queue item has to be shown where publishing
       -- will put it, which is the one thing an unrelaxed list could never say.
-      AND ($3::boolean OR ${readerRegionMembershipSql('er.experience_id')})
+      AND ($3::boolean OR ${readerRegionMembershipSql()})
     ORDER BY wv.name, r.name
   `, [id, isAdmin, maySeeUnread]);
 

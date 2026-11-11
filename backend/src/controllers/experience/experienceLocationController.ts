@@ -128,7 +128,7 @@ export async function getRegionExperienceLocations(
       region_places AS MATERIALIZED (
         SELECT DISTINCT er.experience_id FROM experience_regions er
         WHERE er.region_id IN (SELECT id FROM descendant_regions)
-          AND ${readerRegionMembershipSql('er.experience_id')}
+          AND ${readerRegionMembershipSql()}
       )
       ${overPlacePoints(({ from, placeId }) => `
       SELECT
@@ -184,7 +184,7 @@ export async function getRegionExperienceLocations(
       WITH region_places AS MATERIALIZED (
         SELECT er.experience_id FROM experience_regions er
         WHERE er.region_id = $1
-          AND ${readerRegionMembershipSql('er.experience_id')}
+          AND ${readerRegionMembershipSql()}
       )
       ${overPlacePoints(({ from, placeId }) => `
       SELECT

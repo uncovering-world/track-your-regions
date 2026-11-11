@@ -199,9 +199,9 @@ export function buildRegionQueries(opts: {
   // would not un-hide one that is also unread, so it must not be counted as
   // something the toggle would reveal.
   const lostHiddenPredicate = `e.existence = 'lost' AND ${experienceOfferedToReaderSql()}`;
-  // What puts an object in this region, asked of the points a reader may see
-  // rather than of the roll-up alone (#521) — `readerRegionMembershipSql` says
-  // why the roll-up cannot answer it. It goes on the WHERE of all four
+  // What puts an object in this region: a point a reader may see, as its row
+  // says (#521, ADR-0197) — `readerRegionMembershipSql` says why a row alone
+  // is not enough without that mark. It goes on the WHERE of all four
   // statements (the whole-region count asks it of the place, through
   // `placedInReaderRegionsSql`) rather than into `lifecyclePredicate`:
   // membership is not a lifecycle question, and a count that carried it in

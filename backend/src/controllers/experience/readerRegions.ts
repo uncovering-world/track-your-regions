@@ -53,7 +53,7 @@ export function readerRegionsJsonSql(experienceIdExpr: string): string {
           -- there (#521), for the reason the by-id read gives: this list is a
           -- claim the caller acts on — it opens a card at one of these regions
           -- — so it has to name the regions whose own lists will hold it.
-          AND ${readerRegionMembershipSql('er.experience_id')}
+          AND ${readerRegionMembershipSql()}
           -- And not a pair a curator turned down. A rejection leaves the
           -- membership row standing (curationRegionController.ts upserts into
           -- experience_rejections and deletes nothing), while every
