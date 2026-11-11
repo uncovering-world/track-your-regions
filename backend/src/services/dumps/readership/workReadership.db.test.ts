@@ -72,7 +72,7 @@ afterAll(async () => {
 
 describe('a work read back from the readership year', () => {
   it('reads the year in place over the counted editions, the most read first', async () => {
-    expect(await readershipYear()).toEqual({ months, editions: ['enwiki', 'dewiki'] });
+    expect(await readershipYear()).toMatchObject({ months, editions: ['enwiki', 'dewiki'] });
   });
 
   it('reads nothing of a month kept for an earlier year, however it is dated or read (#2230)', async () => {
@@ -87,7 +87,7 @@ describe('a work read back from the readership year', () => {
       [WORK],
     );
     const year = await readershipYear();
-    expect(year).toEqual({ months, editions: ['enwiki', 'dewiki'] });
+    expect(year).toMatchObject({ months, editions: ['enwiki', 'dewiki'] });
     expect((await readWorks(year!, [WORK])).views.get(WORK)).toBe(12_000);
   });
 
@@ -133,16 +133,24 @@ describe('a work read back from the readership year', () => {
     await pool.query('DELETE FROM readership_months WHERE item = $1', [TOP]);
     expect(await readersAtRank(year, 1)).toBe(12_000_000_000);
     expect(await readersAtRank(year, 1_000_000_000)).toBeNull();
-    // A new redirects build folds the year again, and the rank is read again over it.
+    // A new redirects build alone moves no rank: the year is still the twelve as they were folded (#2415).
     await pool.query(
       `INSERT INTO wikipedia_redirect_builds (build_id, dump_date, editions) VALUES ($1, '2026-11-01', '{}')`,
       [pageviewsBuild],
     );
-    expect(await readersAtRank(year, 1)).toBeLessThan(12_000_000_000);
+    expect(await readersAtRank((await readershipYear())!, 1)).toBe(12_000_000_000);
+    // A month folded again is a new fold, and the rank is read again over it.
+    await pool.query(`UPDATE readership_month_files SET built_at = built_at + interval '1 hour' WHERE month = $1::date`, [months[0]]);
+    expect(await readersAtRank((await readershipYear())!, 1)).toBeLessThan(12_000_000_000);
   });
 
-  it('reads nothing while a month is not folded with the redirects in place', async () => {
+  it('reads the year as it was folded while a month waits to be folded with the redirects in place (#2415)', async () => {
     await pool.query(`UPDATE readership_month_files SET redirects_build_id = NULL WHERE month = $1::date`, [months[0]]);
+    expect(await readershipYear()).toMatchObject({ months, editions: ['enwiki', 'dewiki'] });
+  });
+
+  it('reads nothing while a month of the twelve is missing', async () => {
+    await pool.query(`DELETE FROM readership_month_files WHERE month = $1::date`, [months[0]]);
     expect(await readershipYear()).toBeNull();
   });
 });

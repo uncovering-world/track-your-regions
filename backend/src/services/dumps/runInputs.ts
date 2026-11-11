@@ -16,9 +16,10 @@ import { keeperOf } from './keepers.js';
 import { underReadLock } from './swapGuard.js';
 
 /**
- * Each kept copy a run reads, by its dump date; a copy not built yet is left
- * out, and so is one no run reads (`readByRuns: false`), whose swap waits for
- * nothing.
+ * Each kept copy a run reads, by its dump date, and after a `#` its revision
+ * where its dump date alone does not tell two states of it apart (readership's
+ * folds, `Kept.revision`); a copy not built yet is left out, and so is one no
+ * run reads (`readByRuns: false`), whose swap waits for nothing.
  */
 export async function copiesInPlace(): Promise<Record<string, string>> {
   const copies: Record<string, string> = {};
@@ -26,7 +27,7 @@ export async function copiesInPlace(): Promise<Record<string, string>> {
     const keeper = keeperOf(dump.key);
     if (keeper?.readByRuns === false) continue;
     const kept = await keeper?.latest();
-    if (kept) copies[dump.key] = kept.dumpDate;
+    if (kept) copies[dump.key] = kept.revision ? `${kept.dumpDate}#${kept.revision}` : kept.dumpDate;
   }
   return copies;
 }

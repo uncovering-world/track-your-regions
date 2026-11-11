@@ -108,11 +108,12 @@ export type SyncLogRow = Pick<ExperienceSyncLogsRow,
 };
 
 /** The copies a run read, named as the Public Dumps page names them, in the catalogue's order (#2415). */
-function copiesReadOf(copies: Record<string, string> | null): SyncLog['copies_read'] {
+export function copiesReadOf(copies: Record<string, string> | null): SyncLog['copies_read'] {
   if (!copies) return null;
-  return DUMPS.filter(dump => copies[dump.key]).map(dump => ({
-    dump: dump.key, title: keeperOf(dump.key)?.title ?? dump.title, dumpDate: copies[dump.key], datedBy: dump.datedBy,
-  }));
+  return DUMPS.filter(dump => copies[dump.key]).map(dump => {
+    const [dumpDate, revision] = copies[dump.key].split('#');
+    return { dump: dump.key, title: keeperOf(dump.key)?.title ?? dump.title, dumpDate, revision: revision ?? null, datedBy: dump.datedBy };
+  });
 }
 
 export function syncLogOf(row: SyncLogRow): SyncLog {

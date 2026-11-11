@@ -37,6 +37,13 @@ export interface Kept {
   swappedAt: Date;
   /** What it needs to match the code's rules (#1583): nothing, a re-derive, or a build from the dump. */
   needs: CopyNeeds;
+  /**
+   * What, beyond its dump date, tells two states of the copy apart: for
+   * readership, which redirects builds folded its twelve months
+   * (`build@date×months`), so a run before the refold and one after it read the
+   * same dump date and still record different copies (#2415).
+   */
+  revision?: string;
 }
 
 export interface Keeper {
