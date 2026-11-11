@@ -361,7 +361,7 @@ export const editExperienceBodySchema = z.object({
   name: storedName(COLUMN_WIDTHS.experiences.name).optional(),
   description: z.string().max(10000).optional(),
   subtitle: z.string().max(10000).optional(),
-  type: z.string().max(COLUMN_WIDTHS.experience_kind_memberships.type).optional(),
+  type: z.string().max(COLUMN_WIDTHS.source_records.type).optional(),
   imageUrl: safeImageUrlSchema,
   tags: z.array(z.string().max(100)).max(50).optional(),
   websiteUrl: safeUrlSchema,
@@ -386,7 +386,7 @@ export const createManualExperienceBodySchema = z.object({
   // bound is whichever column is narrower.
   name: storedName(Math.min(COLUMN_WIDTHS.experiences.name, COLUMN_WIDTHS.experience_locations.name)),
   description: z.string().max(10000).optional(),
-  type: z.string().max(COLUMN_WIDTHS.experience_kind_memberships.type).optional()
+  type: z.string().max(COLUMN_WIDTHS.source_records.type).optional()
     .describe('The type within the kind the place is created under, never the kind itself, which is `kindId`.'),
   longitude: z.number().min(-180).max(180),
   latitude: z.number().min(-90).max(90),
@@ -818,7 +818,7 @@ export const keepOutOfKindBodySchema = z.object({
 /** A place put into a kind no run offers it in, from its card (#2035): the kind, its type, the curator's words. */
 export const addToKindBodySchema = z.object({
   kindId: bodyRowIdSchema,
-  type: z.string().max(COLUMN_WIDTHS.experience_kind_memberships.type).optional()
+  type: z.string().max(COLUMN_WIDTHS.source_records.type).optional()
     .describe('The type within the kind, from its vocabulary; absent for a kind that has none.'),
   note: z.string().max(1000).optional(),
 });
@@ -833,7 +833,7 @@ export const crowdingGroupQuerySchema = z.object({
   worldViewId: rowIdSchema.optional()
     .describe("For `none`: the world view whose leaves place a place, as the shadowed arrivals' read takes it."),
   kind: rowIdSchema,
-  type: z.string().min(1).max(COLUMN_WIDTHS.experience_kind_memberships.type).optional(),
+  type: z.string().min(1).max(COLUMN_WIDTHS.source_records.type).optional(),
 });
 
 /** `/review/crowding/place/:membershipId`: the place a crowded city's window opens in its own circle (#2358). */
@@ -1129,7 +1129,7 @@ export const publishExperienceBodySchema = z.object({
    * The run whose held proposal the caller was looking at.
    *
    * Compared under the place's write lock against the membership's
-   * `pending_change_sync_log_id` (`experience_kind_memberships`, #822)
+   * `pending_change_sync_log_id` (`source_records`, #822)
    * — not against the newest changeset, as `accept-source` does. The card names
    * the run the pointer names, and a newer run overwrites the pointer, so
    * equality with the pointer is exactly the staleness question. Absent is a

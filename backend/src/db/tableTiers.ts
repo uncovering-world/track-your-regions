@@ -57,7 +57,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   experience_curation_log: 'serving',
   experience_hand_overs: 'serving',
   experience_held_decisions: 'serving',
-  experience_kind_memberships: 'serving',
+  source_records: 'serving',
   experience_kind_suggestions: 'serving',
   experience_kinds: 'serving',
   experience_location_placements: 'serving',

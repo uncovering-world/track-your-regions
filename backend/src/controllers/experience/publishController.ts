@@ -738,7 +738,7 @@ export async function publishUnderLock(
       result: {
         experienceId,
         curationState: contentsOnly
-          ? (before.curation_state as CheckValue<'experience_kind_memberships', 'curation_state'>)
+          ? (before.curation_state as CheckValue<'source_records', 'curation_state'>)
           : 'verified',
         appliedFields: applied,
         claimedFieldsSkipped,

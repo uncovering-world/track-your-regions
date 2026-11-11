@@ -1,6 +1,6 @@
 /**
  * The keys of a run's record that are its kind's own, and where they live:
- * on the run's membership, `experience_kind_memberships.facts` (ADR-0153,
+ * on the run's membership, `source_records.facts` (ADR-0153,
  * #1775).
  *
  * A run sends one record about a place. Most of it is the place's — its name,

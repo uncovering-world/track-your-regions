@@ -1,7 +1,7 @@
 /**
  * Which run's proposal a visible membership is holding, said once.
  *
- * `experience_kind_memberships.pending_change_sync_log_id` is what the
+ * `source_records.pending_change_sync_log_id` is what the
  * curator's held card resolves to find the proposal it shows — the
  * membership's since #822, on the membership the run's own source brought —
  * and the writers set it: the object upsert, for a field of the object's own

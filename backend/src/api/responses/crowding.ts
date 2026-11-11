@@ -17,7 +17,7 @@ import { CHECK_VALUES } from '../../db/schema.generated.js';
 import { PlacementFailure } from './curation.js';
 import { ImageCredit } from './experiences.js';
 
-const CrowdingPin = z.enum(CHECK_VALUES.experience_kind_memberships.crowding_pin)
+const CrowdingPin = z.enum(CHECK_VALUES.source_records.crowding_pin)
   .describe("A curator's answer: list keeps the place among what a reader is shown and counts it as one of the ten; "
     + 'shadow keeps it in the tail and never counts it (ADR-0180).');
 

@@ -91,7 +91,7 @@ export const SCALAR_TYPES: Record<string, string> = {
 
 const IDENTIFIER = /^[A-Za-z_]\w*$/;
 
-/** `experience_kind_memberships` → `ExperienceKindMemberships`. */
+/** `source_records` → `SourceRecords`. */
 export function pascalCase(name: string): string {
   return name
     .split(/[^A-Za-z0-9]+/)

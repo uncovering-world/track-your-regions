@@ -63,7 +63,7 @@ export async function proposeFindSites(): Promise<number | null> {
        SELECT DISTINCT t.id, t.external_id, et.experience_id AS museum_id
          FROM treasures t
          JOIN experience_treasures et ON et.treasure_id = t.id AND et.missing_since IS NULL
-         JOIN experience_kind_memberships mm ON mm.experience_id = et.experience_id
+         JOIN source_records mm ON mm.experience_id = et.experience_id
               AND mm.kind_id = $1 AND mm.admission = 'admitted'
         WHERE t.metadata->'foundAt' IS NULL AND t.treasure_type <> 'painting'
           AND NOT EXISTS (SELECT 1 FROM find_site_links l WHERE l.treasure_id = t.id)
@@ -82,12 +82,12 @@ export async function proposeFindSites(): Promise<number | null> {
          JOIN experiences own ON own.id = p.museum_id
          CROSS JOIN LATERAL (
            SELECT e.id, ST_Distance(p.pt::geography, e.location::geography) AS distance,
-                  EXISTS (SELECT 1 FROM experience_kind_memberships m
+                  EXISTS (SELECT 1 FROM source_records m
                            WHERE m.experience_id = e.id AND m.kind_id = $1 AND m.type = 'museum') AS museum
              FROM experiences e
             WHERE e.location && ST_Expand(p.pt, $6) AND ST_DWithin(p.pt::geography, e.location::geography, $3)
               AND e.id <> p.museum_id
-              AND EXISTS (SELECT 1 FROM experience_kind_memberships m
+              AND EXISTS (SELECT 1 FROM source_records m
                            WHERE m.experience_id = e.id AND m.kind_id IN ($1, $2) AND m.admission = 'admitted')
             ORDER BY distance LIMIT 1) s
         WHERE NOT ST_DWithin(p.pt::geography, own.location::geography, $4)

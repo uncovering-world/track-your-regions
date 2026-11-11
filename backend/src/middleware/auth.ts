@@ -327,7 +327,7 @@ export function curatorPlaceScopeExists(place: '$2' | 'e.id', user: '$1' | '$4' 
       WHERE ca.user_id = ${user}
         AND (ca.scope_type = 'global'
              OR (ca.scope_type = 'source'
-                 AND EXISTS (SELECT 1 FROM experience_kind_memberships held_by
+                 AND EXISTS (SELECT 1 FROM source_records held_by
                               WHERE held_by.experience_id = ${place} AND held_by.source_id = ca.source_id)))
     )`;
 }

@@ -318,10 +318,10 @@ const SYNC_CHANGE_WRITE_RULES = spelledWriteRules('experience_sync_changes', SYN
  * (`FOR UPDATE`, `FOR NO KEY UPDATE`) and an upsert's `DO UPDATE` end the same
  * way and are not writes to the table, so the lookbehind lets them pass.
  */
-const MEMBERSHIP_WRITE = 'experience_kind_memberships is written by its writer modules only (ADR-0077): add a named write '
+const MEMBERSHIP_WRITE = 'source_records is written by its writer modules only (ADR-0077): add a named write '
   + 'to src/controllers/experience/membershipWriter.ts, taking the place\'s LockedExperience token.';
 const MEMBERSHIP_WRITE_RULES = [
-  ...spelledWriteRules('experience_kind_memberships', MEMBERSHIP_WRITE),
+  ...spelledWriteRules('source_records', MEMBERSHIP_WRITE),
   {
     selector: "TemplateLiteral:has(> Identifier[name='MEMBERSHIPS']) > TemplateElement[tail=false]"
       + `[value.raw=/(?<!\\b(FOR(\\s+NO\\s+KEY)?|DO)\\s+)\\b${GATE_WRITE_VERBS}\\s*$/i]`,
