@@ -25,8 +25,53 @@ const SHARED = '@tyr/shared/';
 /** A statement that imports or re-exports types alone, which carry no code. */
 const TYPE_ONLY = /^[ \t]*(?:import|export)[ \t]+type[ \t{]/m;
 
-/** The modules a source imports at run time, as specifiers, relative or of `@tyr/shared`, each once. */
-export function importsOf(source: string): string[] {
+/** Where `marker` next appears from `from`, plus `past`; the end of the source where it does not. */
+function closeAt(source: string, marker: string, from: number, past: number): number {
+  const found = source.indexOf(marker, from);
+  return found === -1 ? source.length : found + past;
+}
+
+/** Where a string quoted at `at` ends: at its closing quote, or at its line for a quote other than a backtick. */
+function stringEnd(source: string, at: number, quote: string): number {
+  let end = at + 1;
+  while (end < source.length && source[end] !== quote && (quote === '`' || source[end] !== '\n')) end += source[end] === '\\' ? 2 : 1;
+  return source[end] === quote ? end + 1 : end;
+}
+
+/** The comment or quoted string that opens at `at`, by where it ends; null where neither opens there. */
+function tokenAt(source: string, at: number): { end: number; comment: boolean } | null {
+  const opener = source.slice(at, at + 2);
+  if (opener === '/*') return { end: closeAt(source, '*/', at + 2, 2), comment: true };
+  if (opener === '//') return { end: closeAt(source, '\n', at, 0), comment: true };
+  const quote = source[at];
+  return quote === "'" || quote === '"' || quote === '`' ? { end: stringEnd(source, at, quote), comment: false } : null;
+}
+
+/**
+ * The source without its comments, so an import a comment shows as an example
+ * is not read as one. Quotes are followed only to tell a `//` inside a string
+ * from a comment; a quoted string ends at its line, so a quote inside a regular
+ * expression literal leaves the next line's reading untouched.
+ */
+function withoutComments(source: string): string {
+  let kept = '';
+  let at = 0;
+  while (at < source.length) {
+    const token = tokenAt(source, at);
+    if (!token) {
+      kept += source[at];
+      at += 1;
+    } else {
+      if (!token.comment) kept += source.slice(at, token.end);
+      at = token.end;
+    }
+  }
+  return kept;
+}
+
+/** The modules a source imports at run time, as specifiers, relative or of `@tyr/shared`, each once; an import in a comment is none. */
+export function importsOf(text: string): string[] {
+  const source = withoutComments(text);
   const found = new Set<string>();
   for (const match of source.matchAll(FROM)) {
     // The statement the `from` closes: everything since the one before it.
