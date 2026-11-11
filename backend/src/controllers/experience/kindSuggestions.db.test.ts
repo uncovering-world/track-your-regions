@@ -81,7 +81,7 @@ beforeEach(async () => {
     [JAIL],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
      SELECT $1, s.kind_id, s.id, 'Q1052406', 'pending' FROM experience_sources s WHERE s.name = 'Monuments & memorials'`,
     [JAIL],
   );
@@ -129,7 +129,7 @@ describe("Jev's reading of which kind an arriving place belongs to (#2342)", () 
 
     // Kept out of Public art by its rule: refused, which only a refusal is said to be.
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, admission)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, admission)
        SELECT $1, s.kind_id, s.id, 'Q1052406', 'pending', 'refused' FROM experience_sources s WHERE s.name = 'Public art'`,
       [JAIL]);
     await pool.query('DELETE FROM experience_kind_suggestions WHERE experience_id = $1', [JAIL]);
@@ -150,7 +150,7 @@ describe("Jev's reading of which kind an arriving place belongs to (#2342)", () 
   it('shows no answer about a place a curator answered while Jev was reading it', async () => {
     mockedAsk.mockImplementation(async () => {
       await pool.query(
-        `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
+        `UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
         [JAIL],
       );
       return answered(`planned-${PLANNED}`, 0.85);
@@ -163,7 +163,7 @@ describe("Jev's reading of which kind an arriving place belongs to (#2342)", () 
 
   it('asks nothing of a place that is not arriving, and refuses an answer about it', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
       [JAIL],
     );
 
@@ -233,7 +233,7 @@ describe("Jev's reading of which kind an arriving place belongs to (#2342)", () 
     expect((await kindsUsage()).compared - before.compared).toBe(0);
 
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
       [JAIL],
     );
     const after = await kindsUsage();

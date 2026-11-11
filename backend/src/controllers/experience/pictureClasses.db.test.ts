@@ -36,7 +36,7 @@ beforeEach(async () => {
     [PLACE, commons('Museum.jpg')],
   );
   membership = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at,
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at,
                                               reported_image_url)
      SELECT $1, s.kind_id, s.id, 'Q-museum-9466', 'admitted', 'verified', NOW(), $2 FROM experience_sources s WHERE s.id = 2
      RETURNING id`,
@@ -78,7 +78,7 @@ describe("the pictures a place's review card shows (#2192)", () => {
           fields: [{ field: 'imageUrl', old: commons('Q-work-9466-00.jpg'), new: commons('Tablet%20engraving%201865.jpg'), held: true }],
         }] } })],
     );
-    await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = $2 WHERE id = $1', [membership, log.rows[0].id]);
+    await pool.query('UPDATE source_records SET pending_change_sync_log_id = $2 WHERE id = $1', [membership, log.rows[0].id]);
 
     const pictures = await picturesOfPlace(PLACE);
 

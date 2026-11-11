@@ -109,7 +109,7 @@ describe('getWorldPoints', () => {
     it('is a column the point is drawn with, not a predicate — so the join is LEFT', async () => {
       const { sql } = await ask();
       // The kind the place is shown under, read once for every place (#1893).
-      expect(sql).toMatch(/LEFT JOIN \(SELECT DISTINCT ON \(shown\.experience_id\) shown\.\* FROM experience_kind_memberships shown/);
+      expect(sql).toMatch(/LEFT JOIN \(SELECT DISTINCT ON \(shown\.experience_id\) shown\.\* FROM source_records shown/);
       expect(sql).toMatch(/\) m ON m\.experience_id = e\.id/);
     });
   });
@@ -205,7 +205,7 @@ describe('getWorldPoints', () => {
       const fold = sql.slice(sql.indexOf('folded AS ('), sql.indexOf('SELECT\n', sql.indexOf('folded AS (')));
       expect(fold).toContain('count(*) OVER (PARTITION BY experience_id)');
       expect(fold).toContain('FROM places');
-      expect(fold).not.toContain('LEFT JOIN experience_kind_memberships');
+      expect(fold).not.toContain('LEFT JOIN source_records');
     });
   });
 

@@ -168,7 +168,7 @@ describe('setExperienceState', () => {
 
     // The flag is each membership's (ADR-0084), so the verdict clears it on
     // every membership of the place; the place's own copy follows from them.
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'));
     expect(update?.sql).toContain('missing_since = NULL');
     expect(update?.sql).toContain('WHERE experience_id = $1');
     // A false alarm leaves a kind a curator already answered former alone (#1264).
@@ -500,7 +500,7 @@ describe('setExperienceAdmission', () => {
     await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.params[1]).toBe('admitted');
     expect(JSON.parse(String(update.params[3]))).toContain('admission');
     // This row was already `auto` — visible before the rule caught it — so
@@ -519,7 +519,7 @@ describe('setExperienceAdmission', () => {
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override', remember: false } } as never,
       makeRes() as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.params[1]).toBe('admitted');
     expect(JSON.parse(String(update.params[3]))).not.toContain('admission');
     const log = queries.find(q => q.sql.includes('INSERT INTO experience_curation_log'))!;
@@ -535,7 +535,7 @@ describe('setExperienceAdmission', () => {
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm', remember: false } } as never,
       makeRes() as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(JSON.parse(String(update.params[3]))).toContain('admission');
   });
 
@@ -548,7 +548,7 @@ describe('setExperienceAdmission', () => {
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never,
       makeRes() as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.params[1]).toBe('refused');
     // Pinned either way: a curator who looked at the thing outranks the rule in
     // both directions, so a later run must not re-admit a confirmed row.
@@ -568,7 +568,7 @@ describe('setExperienceAdmission', () => {
     // so whatever the flag holds after it is what it holds for good (#760).
     // The same fragment the run's two refusal writes use, so a curator's pin on
     // `is_iconic` is honoured here exactly as it is there.
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(collapse(update.sql)).toContain(collapse(CLEAR_ICONIC));
   });
 
@@ -584,7 +584,7 @@ describe('setExperienceAdmission', () => {
     // An admitted museum without the badge is a legitimate state (ADR-0045
     // decision 5); what the badge should mean beyond works-first admission is
     // #603's question, not this endpoint's.
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.sql).not.toContain('is_iconic');
   });
 
@@ -599,7 +599,7 @@ describe('setExperienceAdmission', () => {
 
     // The refused set is the list the archaeology kind gets built from, so
     // the rule's objection has to survive being agreed with.
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.params[2]).toBe('not an art museum');
   });
 
@@ -612,7 +612,7 @@ describe('setExperienceAdmission', () => {
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never,
       makeRes() as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.params[2]).toBeNull();
   });
 
@@ -638,7 +638,7 @@ describe('setExperienceAdmission', () => {
     await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.sql).toContain(`curation_state = 'verified'`);
     expect(update.sql).toContain('published_at = COALESCE(published_at, NOW())');
     expect(res.json).toHaveBeenCalledWith(
@@ -758,7 +758,7 @@ describe('setExperienceAdmission', () => {
     await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.sql).not.toContain('curation_state');
     expect(update.sql).not.toContain('published_at');
     // Not just zero counts — no content statement fires at all, so a row with
@@ -800,7 +800,7 @@ describe('setExperienceAdmission', () => {
     await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.sql).not.toContain('curation_state');
     expect(update.sql).not.toContain('published_at');
     // Confirming never publishes the object, and must not publish its
@@ -858,7 +858,7 @@ describe('setExperienceAdmission', () => {
     await answerRoute(postAdmission, 
       { params: { id: '5' }, user: ADMIN, body: { decision: 'override' } } as never, res as never);
 
-    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    const update = queries.find(q => q.sql.includes('UPDATE source_records'))!;
     expect(update.params[1]).toBe('admitted');
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ experienceId: 5, admission: 'admitted', published: false }));

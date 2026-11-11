@@ -27,7 +27,7 @@ async function clear(): Promise<void> {
 
 async function member(source: string, admission: string, read = true): Promise<number> {
   return (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at, admission)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at, admission)
      SELECT $1, s.kind_id, s.id, $2, CASE WHEN $5::boolean THEN 'verified' ELSE 'pending' END, CASE WHEN $5::boolean THEN NOW() END, $3
        FROM experience_sources s WHERE s.name = $4 RETURNING id`,
     [reims, QID, admission, source, read],
@@ -36,7 +36,7 @@ async function member(source: string, admission: string, read = true): Promise<n
 
 /** Whether Archaeology's refusal asks a curator anything. */
 const asked = async () => (await pool.query<{ open: boolean }>(
-  `SELECT (${refusedOpenSql('m')}) AS open FROM experience_kind_memberships m WHERE m.id = $1`, [archaeologyMembership],
+  `SELECT (${refusedOpenSql('m')}) AS open FROM source_records m WHERE m.id = $1`, [archaeologyMembership],
 )).rows[0].open;
 
 beforeEach(async () => {
@@ -61,7 +61,7 @@ describe("a kind's refusal of a place another kind offers (#1838)", () => {
     expect(await asked()).toBe(false);
     const row = await pool.query<{ admission: string; pinned: boolean; answered_at: Date | null }>(
       `SELECT admission, curated_fields ? 'admission' AS pinned, admission_answered_at AS answered_at
-         FROM experience_kind_memberships WHERE id = $1`, [archaeologyMembership],
+         FROM source_records WHERE id = $1`, [archaeologyMembership],
     );
     expect(row.rows[0]).toEqual({ admission: 'refused', pinned: false, answered_at: null });
   });
@@ -69,17 +69,17 @@ describe("a kind's refusal of a place another kind offers (#1838)", () => {
   it('asks nothing while the other kind\'s source has stopped listing the place and nobody has judged it', async () => {
     // Readers still find the place under Places of worship until a curator
     // answers the missing card (placeKindsSql).
-    await pool.query('UPDATE experience_kind_memberships SET missing_since = NOW() WHERE id = $1', [worshipMembership]);
+    await pool.query('UPDATE source_records SET missing_since = NOW() WHERE id = $1', [worshipMembership]);
     expect(await asked()).toBe(false);
   });
 
   it('asks again once the other kind refuses the place too', async () => {
-    await pool.query("UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1", [worshipMembership]);
+    await pool.query("UPDATE source_records SET admission = 'refused' WHERE id = $1", [worshipMembership]);
     expect(await asked()).toBe(true);
   });
 
   it('asks while the other kind holds the place unread', async () => {
-    await pool.query('DELETE FROM experience_kind_memberships WHERE id = $1', [worshipMembership]);
+    await pool.query('DELETE FROM source_records WHERE id = $1', [worshipMembership]);
     worshipMembership = await member('Places of worship', 'admitted', false);
     expect(await asked()).toBe(true);
   });

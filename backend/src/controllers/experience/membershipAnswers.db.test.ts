@@ -29,7 +29,7 @@ let otherMembership = 0;
 async function membership(id: number): Promise<{ curation_state: string; admission: string; pinned: boolean }> {
   const result = await pool.query(
     `SELECT curation_state, admission, curated_fields ? 'admission' AS pinned
-       FROM experience_kind_memberships WHERE id = $1`,
+       FROM source_records WHERE id = $1`,
     [id],
   );
   return result.rows[0];
@@ -45,7 +45,7 @@ async function insertMembership(
   placeId: number, sourceName: string, state: 'auto' | 'pending', externalId: string,
 ): Promise<number> {
   const result = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $3, $2::text, CASE WHEN $2::text = 'auto' THEN NOW() END
        FROM experience_sources s WHERE s.name = $4
      RETURNING id`,
@@ -97,7 +97,7 @@ describe('an answer that names its membership (ADR-0084)', () => {
 
   it('answers the refusal of the membership it names', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission = 'refused', admission_reason = 'a fixture rule'
+      `UPDATE source_records SET admission = 'refused', admission_reason = 'a fixture rule'
         WHERE id = ANY($1::int[])`,
       [[artMembership, archaeologyMembership]],
     );

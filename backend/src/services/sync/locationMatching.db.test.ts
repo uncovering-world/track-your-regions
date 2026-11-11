@@ -71,7 +71,7 @@ beforeEach(async () => {
     [HORSEMAN, source, QID, LON, LAT],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, 'auto', NOW())`,
     [HORSEMAN, row.kind_id, source, QID],
   );

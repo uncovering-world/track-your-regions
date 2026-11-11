@@ -68,7 +68,7 @@ describe('places no kind offers that hold a famous work no kind shows (#1821)', 
       [LIBRARY_PLACE_ID],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'listing-fixture', 'admitted', 'auto', NOW() FROM experience_sources s WHERE s.id = 2`,
       [LIBRARY_PLACE_ID],
     );
@@ -102,7 +102,7 @@ describe('places no kind offers that hold a famous work no kind shows (#1821)', 
       [OWN_PLACE_ID, OWN_PLACE],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, $2, 'admitted', 'auto', NOW() FROM experience_sources s WHERE s.id = 3`,
       [OWN_PLACE_ID, OWN_PLACE],
     );

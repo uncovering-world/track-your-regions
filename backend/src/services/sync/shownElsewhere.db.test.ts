@@ -26,7 +26,7 @@ async function clear(): Promise<void> {
 
 async function member(sourceId: number, state: 'pending' | 'auto' = 'auto'): Promise<void> {
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state)
      SELECT $1, s.kind_id, s.id, $2, 'admitted', $3 FROM experience_sources s WHERE s.id = $4`,
     [UFFIZI, UFFIZI_QID, state, sourceId],
   );

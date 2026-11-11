@@ -46,7 +46,7 @@ async function place(id: number, type: string, state: string): Promise<void> {
   );
   // The type within the kind is the membership's (ADR-0084).
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
      VALUES ($1, 5, 5, (SELECT external_id FROM experiences WHERE id = $1), $3, 'admitted', $2)`,
     [id, state, type],
   );
@@ -146,10 +146,10 @@ describe('the finds on view of a site', () => {
     // Archaeology rule has turned the site down. The place is still on show,
     // through its other kind, but it is no site a reader is sent to for finds.
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission = 'refused' WHERE experience_id = $1 AND kind_id = 5`, [DIG],
+      `UPDATE source_records SET admission = 'refused' WHERE experience_id = $1 AND kind_id = 5`, [DIG],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, curation_state)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state)
        VALUES ($1, 4, 4, 'Q9560-dig-as-worship', 'temple', 'auto')`,
       [DIG],
     );

@@ -50,7 +50,7 @@ async function heldRun(venue: number, order: readonly string[]): Promise<number>
     [logId, venue, `Q-venue-${venue}`, JSON.stringify({ treasures: { added: [], withdrawn: [], returned: [], changed } })],
   );
   await pool.query(
-    'UPDATE experience_kind_memberships SET pending_change_sync_log_id = $2 WHERE experience_id = $1',
+    'UPDATE source_records SET pending_change_sync_log_id = $2 WHERE experience_id = $1',
     [venue, logId],
   );
   return logId;
@@ -74,7 +74,7 @@ beforeEach(async () => {
       [venue, sourceId, `Q-venue-${venue}`, name],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state)
        VALUES ($1, $2, $3, (SELECT external_id FROM experiences WHERE id = $1), 'admitted', 'verified')`,
       [venue, source.rows[0].kind_id, sourceId],
     );

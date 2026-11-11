@@ -54,7 +54,7 @@ beforeEach(async () => {
     [CAPITOLINE, artMuseums.id, QID],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
      VALUES ($1, $2, $3, $4, NULL, 'auto', NOW()), ($1, $5, $6, $4, 'museum', 'auto', NOW())`,
     [CAPITOLINE, artMuseums.kind_id, artMuseums.id, QID, archaeology.kind_id, archaeology.id],
@@ -83,7 +83,7 @@ describe('a place in several kinds (ADR-0084)', () => {
 
   it('carries each kind\'s own listing, so a kind its source delisted reads former alone (#1289)', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET source_membership = 'former', missing_since = NOW()
+      `UPDATE source_records SET source_membership = 'former', missing_since = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [CAPITOLINE, archaeology.id],
     );
@@ -100,9 +100,9 @@ describe('a place in several kinds (ADR-0084)', () => {
   it('leaves out a kind that has not been shown to readers yet', async () => {
     // An arrival nobody has passed: a membership cannot move back to pending
     // (ADR-0070), so the fixture brings it that way.
-    await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $2', [CAPITOLINE, archaeology.id]);
+    await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND source_id = $2', [CAPITOLINE, archaeology.id]);
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, curation_state)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state)
        VALUES ($1, $2, $3, $4, 'museum', 'pending')`,
       [CAPITOLINE, archaeology.kind_id, archaeology.id, QID],
     );
@@ -121,7 +121,7 @@ describe('a place in several kinds (ADR-0084)', () => {
 
   it('is not on the map of a kind whose membership a rule refused', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission = 'refused'
+      `UPDATE source_records SET admission = 'refused'
         WHERE experience_id = $1 AND source_id = $2`,
       [CAPITOLINE, archaeology.id],
     );

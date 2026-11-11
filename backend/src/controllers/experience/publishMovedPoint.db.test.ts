@@ -61,7 +61,7 @@ async function heldRun(fields: Array<{ field: string; old: unknown; new: unknown
     [logId, SITE, JSON.stringify(fields.map((f) => ({ ...f, significance: 'minor', curatedConflict: false, held: true })))],
   );
   await pool.query(
-    'UPDATE experience_kind_memberships SET pending_change_sync_log_id = $2 WHERE experience_id = $1',
+    'UPDATE source_records SET pending_change_sync_log_id = $2 WHERE experience_id = $1',
     [SITE, logId],
   );
   return logId;
@@ -90,7 +90,7 @@ beforeEach(async () => {
     [SITE, sourceId, STORED.lon, STORED.lat],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state)
      VALUES ($1, $2, $3, (SELECT external_id FROM experiences WHERE id = $1), 'admitted', 'verified')`,
     [SITE, source.rows[0].kind_id, sourceId],
   );

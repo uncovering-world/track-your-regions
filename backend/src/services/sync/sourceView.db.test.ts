@@ -56,7 +56,7 @@ async function place(): Promise<{ name: string; subtitle: string; image_url: str
 async function views(): Promise<Record<number, { name: string; image: string; lon: number }>> {
   const result = await pool.query<{ source_id: number; name: string; image: string; lon: number }>(
     `SELECT source_id, reported_name AS name, reported_image_url AS image, ST_X(reported_location) AS lon
-       FROM experience_kind_memberships WHERE experience_id = $1`,
+       FROM source_records WHERE experience_id = $1`,
     [CATHEDRAL],
   );
   return Object.fromEntries(result.rows.map(row => [row.source_id, { name: row.name, image: row.image, lon: row.lon }]));
@@ -74,7 +74,7 @@ async function seed(state: 'pending' | 'auto'): Promise<void> {
     [CATHEDRAL, worship, QID],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, CASE WHEN s.id = $5 THEN $6 ELSE $2 END,
             $3::text, CASE WHEN $3::text = 'auto' THEN NOW() END
@@ -151,7 +151,7 @@ describe('a source\'s view of a place (ADR-0084)', () => {
 
     const stored = await pool.query<{ article: string; reported: Record<number, string> }>(
       `SELECT e.metadata->>'wikipediaUrl' AS article,
-              (SELECT jsonb_object_agg(m.source_id, m.reported_wikipedia_url) FROM experience_kind_memberships m
+              (SELECT jsonb_object_agg(m.source_id, m.reported_wikipedia_url) FROM source_records m
                 WHERE m.experience_id = e.id) AS reported
          FROM experiences e WHERE e.id = $1`,
       [CATHEDRAL],
@@ -279,7 +279,7 @@ describe('a source\'s view of a place (ADR-0084)', () => {
     await seed('pending');
     await upsertExperienceRecord(params(worship));
     await pool.query(
-      `UPDATE experience_kind_memberships SET missing_since = NOW()
+      `UPDATE source_records SET missing_since = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [CATHEDRAL, worship],
     );
@@ -292,7 +292,7 @@ describe('a source\'s view of a place (ADR-0084)', () => {
   it('lets two sources that know the place by one Wikidata item write the newer reading, and asks nothing', async () => {
     // Both memberships under the one item: a second Wikidata source beside Places of worship.
     await seed('pending');
-    await pool.query('UPDATE experience_kind_memberships SET external_id = $2 WHERE experience_id = $1', [CATHEDRAL, QID]);
+    await pool.query('UPDATE source_records SET external_id = $2 WHERE experience_id = $1', [CATHEDRAL, QID]);
     await upsertExperienceRecord({ ...params(worship), externalId: QID });
 
     const outcome = await upsertExperienceRecord({ ...params(unesco), externalId: QID, imageUrl: UNESCO_PICTURE });
@@ -314,7 +314,7 @@ describe('a source\'s view of a place (ADR-0084)', () => {
     // UNESCO's view keeps the picture readers see; Places of worship, a gated
     // source, then proposes another picture and a new subtitle.
     await pool.query(
-      `UPDATE experience_kind_memberships SET reported_image_url = $2
+      `UPDATE source_records SET reported_image_url = $2
         WHERE experience_id = $1 AND source_id = $3`,
       [CATHEDRAL, WORSHIP_PICTURE, unesco],
     );

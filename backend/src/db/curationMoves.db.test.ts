@@ -49,10 +49,10 @@ afterAll(async () => {
 /** Insert one row of `table` in state `from`, and answer how to update it. */
 async function rowIn(table: CuratedTable, from: CurationState, n: number): Promise<{ where: string; params: unknown[] }> {
   switch (table) {
-    case 'experience_kind_memberships': {
-      await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1', [experienceId]);
+    case 'source_records': {
+      await pool.query('DELETE FROM source_records WHERE experience_id = $1', [experienceId]);
       const inserted = await pool.query<{ id: number }>(
-        `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+        `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
          VALUES ($1, (SELECT kind_id FROM experience_sources WHERE id = $2), $2, (SELECT external_id FROM experiences WHERE id = $1), $3) RETURNING id`,
         [experienceId, SOURCE_ID, from],
       );

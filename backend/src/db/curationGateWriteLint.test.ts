@@ -29,7 +29,7 @@ async function reported(code: string, filePath: string): Promise<string[]> {
 const CONFLICT = /^experience_conflict_decisions is written by its writer module only/;
 const HELD = /^experience_held_decisions is written by its writer module only/;
 const SYNC_CHANGE = /^experience_sync_changes is written by its writer module only/;
-const MEMBERSHIP = /^experience_kind_memberships is written by its writer modules only/;
+const MEMBERSHIP = /^source_records is written by its writer modules only/;
 const EXPERIENCE = /^experiences is written by its writer modules only/;
 const REGION = /^regions is written by its writer modules only/;
 const COMPONENT_ITEM = /^experience_component_item_proposals is written by its writer modules only/;
@@ -75,7 +75,7 @@ describe('the curation gate lint rules', () => {
         + '  UPDATE ${MEMBERSHIPS} m SET admission = $2 FROM k WHERE m.kind_id = k.id`;\n',
       'src/controllers/experience/lifecycleController.ts'],
     ['a spelled membership insert in a handler', MEMBERSHIP,
-      'export const q = `INSERT INTO experience_kind_memberships (experience_id, kind_id) VALUES ($1, $2)`;\n',
+      'export const q = `INSERT INTO source_records (experience_id, kind_id) VALUES ($1, $2)`;\n',
       'src/controllers/experience/manualExperienceController.ts'],
     ['an interpolated membership delete in a service', MEMBERSHIP,
       MEMBERSHIPS_IMPORT + 'export const q = `DELETE FROM ${MEMBERSHIPS} WHERE experience_id = $1`;\n',
@@ -170,7 +170,7 @@ describe('the curation gate lint rules', () => {
       MEMBERSHIPS_IMPORT + 'export const q = `INSERT INTO ${MEMBERSHIPS} (experience_id) VALUES ($1)`;\n',
       'src/services/sync/experienceUpsert.ts'],
     ['the seed', MEMBERSHIP,
-      'export const q = `INSERT INTO experience_kind_memberships (experience_id) VALUES ($1)`;\n',
+      'export const q = `INSERT INTO source_records (experience_id) VALUES ($1)`;\n',
       'src/db/seed/lint-fixture.ts'],
     ['the seed, for a change record', SYNC_CHANGE,
       'export const q = `INSERT INTO experience_sync_changes (sync_log_id) VALUES ($1)`;\n',

@@ -43,7 +43,7 @@ beforeEach(async () => {
     [FARNESINA, QID, NAME],
   );
   membershipId = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curated_fields,
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curated_fields,
        admission_pin_verdict, admission_pin_reason,
        admission_question_verdict, admission_question_reason, admission_questioned_at)
      SELECT $1, s.kind_id, s.id, $2, 'admitted', '["admission"]', 'refused', $3, 'refused', $4, NOW()
@@ -68,7 +68,7 @@ const membership = async () => (await pool.query<{
 }>(
   `SELECT admission, curated_fields ? 'admission' AS pinned, admission_reason, admission_pin_reason,
           admission_question_verdict
-     FROM experience_kind_memberships WHERE id = $1`,
+     FROM source_records WHERE id = $1`,
   [membershipId],
 )).rows[0];
 
@@ -116,7 +116,7 @@ describe("a run's question about a pin, in the queue", () => {
   it('says when the run asks again in the words the curator answered over (#1370)', async () => {
     // A run started to ask again about the pins: the same refusal, its counts aside.
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission_pin_reason = '17 sitelinks: below the line',
+      `UPDATE source_records SET admission_pin_reason = '17 sitelinks: below the line',
               admission_question_reason = '19 sitelinks: below the line' WHERE id = $1`,
       [membershipId],
     );

@@ -118,7 +118,7 @@ describe('refuseArrival', () => {
     await answerRoute(postRefuseArrival, 
       { params: { id: '5' }, user: CURATOR, body: { note: 'a parish church' } } as never, res as never);
 
-    const membership = client.queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
+    const membership = client.queries.find(q => q.sql.includes('UPDATE source_records'));
     expect(membership?.sql).toContain("admission = 'refused'");
     expect(membership?.sql).toContain('is_iconic = CASE');
     expect(membership?.params).toEqual([40, CURATOR_REFUSAL_REASON, JSON.stringify(['admission']), 5]);
@@ -142,7 +142,7 @@ describe('refuseArrival', () => {
   it('keeps an earlier pin beside the admission one', async () => {
     const client = makeClient({ ...ARRIVAL, curated_fields: ['is_iconic'] });
     await answerRoute(postRefuseArrival, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
-    const membership = client.queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
+    const membership = client.queries.find(q => q.sql.includes('UPDATE source_records'));
     expect(JSON.parse(membership?.params?.[2] as string)).toEqual(['is_iconic', 'admission']);
   });
 

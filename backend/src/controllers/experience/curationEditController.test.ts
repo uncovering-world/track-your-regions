@@ -489,7 +489,7 @@ describe('editExperience and an emptied field', () => {
     // The type within the kind is the membership's (ADR-0084): written there,
     // claimed there, the place's own column untouched.
     const membership = mockClientQuery.mock.calls.find(
-      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE experience_kind_memberships'),
+      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE source_records'),
     ) as [string, unknown[]];
     expect(membership[0]).toContain(`m.curated_fields || '["type"]'::jsonb`);
     expect(membership[1]).toEqual([EXPERIENCE_ID, SOURCE_ID, null]);

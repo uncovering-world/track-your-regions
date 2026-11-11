@@ -39,7 +39,7 @@ async function place(id: number, source: string, ref: string, lon: number): Prom
     [id, ref, lon, MOGAO.lat, source],
   );
   const membership = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = $3 RETURNING id`,
     [id, ref, source],
   );
@@ -109,7 +109,7 @@ describe('the source of a folded point, run again (#1662)', () => {
     expect(again.needsAssignment).toEqual([]);
     const placedBy = await pool.query<{ source: string }>(
       `SELECT s.name AS source FROM experience_location_placements p
-         JOIN experience_kind_memberships m ON m.id = p.membership_id JOIN experience_sources s ON s.id = m.source_id
+         JOIN source_records m ON m.id = p.membership_id JOIN experience_sources s ON s.id = m.source_id
         WHERE p.location_id = $1 ORDER BY s.name`, [heritagePoint],
     );
     expect(placedBy.rows.map(row => row.source)).toEqual(['Archaeology', 'UNESCO World Heritage Sites']);

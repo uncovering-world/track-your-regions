@@ -197,7 +197,7 @@ describe('declineHeldValue', () => {
     // On the membership, where the pointer lives (#822); the place is not
     // written at all.
     expect(queries.find(q => q.sql.includes('UPDATE experiences'))).toBeUndefined();
-    const write = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
+    const write = queries.find(q => q.sql.includes('UPDATE source_records'));
     expect(write?.sql).toContain('pending_change_sync_log_id = NULL');
     expect(write?.params).toEqual([77, 1138]);
     expect(write?.sql).not.toContain('curated_fields');

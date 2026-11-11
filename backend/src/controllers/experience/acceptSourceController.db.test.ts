@@ -93,7 +93,7 @@ beforeEach(async () => {
     [PLACE, sourceId, TREVI.lon, TREVI.lat, JSON.stringify({ website: 'https://curator.example/aqua-virgo' })],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state)
      VALUES ($1, $2, $3, 'Q600139', 'admitted', 'verified')`,
     [PLACE, source.rows[0].kind_id, sourceId],
   );

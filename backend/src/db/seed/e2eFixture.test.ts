@@ -105,7 +105,7 @@ describe('seedE2eFixture', () => {
     await seedE2eFixture();
 
     const memberships = calls(client)
-      .filter(([sql]) => /INSERT INTO experience_kind_memberships/.test(sql))
+      .filter(([sql]) => /INSERT INTO source_records/.test(sql))
       .map(([, params]) => [params?.[0], params?.[3], params?.[4], params?.[5] instanceof Date]);
     // Each under the id its place was written with, which is what a run would
     // find it by (ADR-0084).

@@ -83,7 +83,7 @@ describe('the pairs the rule finds', () => {
 
   it('says whether the two share a kind, over every membership, so the pass can leave such a pair apart', () => {
     expect(sql).toContain('a.kind_ids && b.kind_ids AS shared_kind');
-    expect(sql).toContain('ARRAY(SELECT DISTINCT km.kind_id FROM experience_kind_memberships km WHERE km.experience_id = e.id) AS kind_ids');
+    expect(sql).toContain('ARRAY(SELECT DISTINCT km.kind_id FROM source_records km WHERE km.experience_id = e.id) AS kind_ids');
   });
 });
 
@@ -103,7 +103,7 @@ describe('a place\'s folded names', () => {
   it('are its own name, each source\'s view of it and its names in other languages, unaccented and lower-cased', () => {
     expect(sql).toContain('unaccent(lower(btrim(named.n)))');
     expect(sql).toContain('SELECT e.name AS n');
-    expect(sql).toContain('SELECT rn.reported_name FROM experience_kind_memberships rn WHERE rn.experience_id = e.id');
+    expect(sql).toContain('SELECT rn.reported_name FROM source_records rn WHERE rn.experience_id = e.id');
     expect(sql).toContain("jsonb_typeof(e.name_local) = 'object'");
   });
 

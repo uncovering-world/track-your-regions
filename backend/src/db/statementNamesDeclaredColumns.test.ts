@@ -352,7 +352,7 @@ describe('the schema as read', () => {
     // The type within a kind is the membership's since ADR-0084, declared in
     // that CREATE TABLE and added again by its ALTER.
     expect(tables.get('experiences')).not.toContain('type');
-    expect(tables.get('experience_kind_memberships')).toContain('type');
+    expect(tables.get('source_records')).toContain('type');
     // `ALTER TABLE world_views ADD COLUMN IF NOT EXISTS is_public …`
     expect(tables.get('world_views')).toContain('is_public');
     // `ALTER TABLE experience_sources ADD COLUMN IF NOT EXISTS requires_curation …`

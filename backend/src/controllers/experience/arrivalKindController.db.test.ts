@@ -46,7 +46,7 @@ beforeEach(async () => {
     [MONUMENT, publicArt.id, QID],
   );
   arrival = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
      VALUES ($1, $2, $3, $4, 'sculpture', 'admitted', 'pending') RETURNING id`,
     [MONUMENT, publicArt.kind_id, publicArt.id, QID],
   )).rows[0].id;
@@ -61,7 +61,7 @@ const move = (body: { kindId: number; type?: string; stays: boolean; note?: stri
   moveArrivalUnderLock(MONUMENT, adminId, null, monuments.id, body);
 const membership = async (id: number) => (await pool.query(
   `SELECT kind_id, type, admission, admission_reason, curated_fields, curation_state, published_at IS NOT NULL AS published
-     FROM experience_kind_memberships WHERE id = $1`, [id],
+     FROM source_records WHERE id = $1`, [id],
 )).rows[0];
 const logged = async () => (await pool.query(
   'SELECT action, details FROM experience_curation_log WHERE experience_id = $1 ORDER BY id', [MONUMENT],
@@ -124,7 +124,7 @@ describe('an arrival answered with the kind it belongs in', () => {
     expect((await move({ kindId: monuments.kind_id, type: 'monument', stays: false })).refusal)
       .toMatchObject({ status: 409 });
 
-    await pool.query("UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE id = $1", [arrival]);
+    await pool.query("UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE id = $1", [arrival]);
     const towers = await sourceNamed('Towers');
     expect((await moveArrivalUnderLock(MONUMENT, adminId, null, towers.id,
       { kindId: towers.kind_id, type: 'tower', stays: false })).refusal).toMatchObject({ status: 409 });

@@ -32,7 +32,7 @@ describe('retirePassAfterNewContent', () => {
 
     const [sql, params] = calls[0];
     // The pass is the membership's since #822 (ADR-0045 decision 4).
-    expect(sql).toContain('UPDATE experience_kind_memberships m');
+    expect(sql).toContain('UPDATE source_records m');
     expect(sql).toContain("SET curation_state = 'auto'");
     // Scoped to `verified`, so the statement can only ever move a row one way.
     // A `pending` membership is not published and has nothing to decay; an

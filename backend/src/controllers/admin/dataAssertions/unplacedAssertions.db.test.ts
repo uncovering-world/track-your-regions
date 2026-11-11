@@ -35,7 +35,7 @@ async function offer(id: number, name: string, longitude: number, latitude = 40.
     [id, name, longitude, latitude],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1::int, s.kind_id, s.id, $1::text, 'auto', NOW() FROM experience_sources s WHERE s.name = 'UNESCO World Heritage Sites'`,
     [id],
   );

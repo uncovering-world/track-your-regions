@@ -32,7 +32,7 @@ async function pinned(id: number, name: string, admission: 'admitted' | 'refused
     [id, `Q${id}-pin-fixture`, name],
   );
   memberships[id] = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, admission_reason,
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, admission_reason,
        curated_fields, admission_pin_verdict, admission_pin_reason)
      SELECT $1, s.kind_id, s.id, $2, $3::text, CASE WHEN $3::text = 'refused' THEN $4::text END, '["admission"]', 'refused', $4::text
        FROM experience_sources s WHERE s.name = 'Art Museums' RETURNING id`,
@@ -65,7 +65,7 @@ const membership = async (id: number) => (await pool.query<{
 }>(
   `SELECT admission, curated_fields ? 'admission' AS pinned, admission_answered_at IS NOT NULL AS answered,
           admission_pin_reason AS pin_reason
-     FROM experience_kind_memberships WHERE id = $1`,
+     FROM source_records WHERE id = $1`,
   [memberships[id]],
 )).rows[0];
 
@@ -113,7 +113,7 @@ describe("a curator's admission pins", () => {
 
   it("refuses to hand back a curator's own refusal of an arrival: it answered no rule, and the put-back is its way back", async () => {
     await pool.query(
-      "UPDATE experience_kind_memberships SET admission_pin_verdict = 'admitted', admission_pin_reason = NULL WHERE id = $1",
+      "UPDATE source_records SET admission_pin_verdict = 'admitted', admission_pin_reason = NULL WHERE id = $1",
       [memberships[BRITISH]],
     );
     const { pins } = await listAdmissionPins({ query: { experienceId: BRITISH }, caller: caller() });
@@ -126,7 +126,7 @@ describe("a curator's admission pins", () => {
 
   it("keeps the view a pin answered when a curator answers the row again: a put-back of their own refusal", async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission_pin_verdict = 'admitted', admission_pin_reason = NULL,
+      `UPDATE source_records SET admission_pin_verdict = 'admitted', admission_pin_reason = NULL,
               admission_reason = 'kept out by a curator' WHERE id = $1`,
       [memberships[BRITISH]],
     );

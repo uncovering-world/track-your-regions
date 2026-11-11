@@ -91,7 +91,7 @@ async function plantBerlinSquares(base: number): Promise<Map<string, { place: nu
       [place, SQUARES, `Q${place}`, name, lon, lat],
     );
     const membership = await pool.query<{ id: number }>(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
        VALUES ($1, $2, $2, $3, 'square', $4, $5) RETURNING id`,
       [place, SQUARES, `Q${place}`, state, state === 'pending' ? null : new Date()],
     );
@@ -110,7 +110,7 @@ async function plantBerlinSquares(base: number): Promise<Map<string, { place: nu
 async function shadowedSquares(base: number): Promise<string[]> {
   return (await pool.query<{ name: string }>(
     `SELECT e.name FROM membership_crowding c
-       JOIN experience_kind_memberships m ON m.id = c.membership_id
+       JOIN source_records m ON m.id = c.membership_id
        JOIN experiences e ON e.id = m.experience_id
       WHERE e.id >= $1 AND e.id < $2 ORDER BY e.id`, [base, base + BERLIN_SQUARES.length])).rows.map(row => row.name);
 }
@@ -130,7 +130,7 @@ async function plant(id: number, name: string, kind: number, type: string, lat: 
      VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
     [id, kind, `Q${id}`, name, lon, lat]);
   const membership = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
      VALUES ($1, $2, $2, $3, $4, 'verified', NOW()) RETURNING id`, [id, kind, `Q${id}`, type])).rows[0].id;
   await pool.query(
     'INSERT INTO membership_fame (membership_id, readers, guide_editions, wikipedia_editions, score) VALUES ($1, 50000, 2, 30, 0.5)',
@@ -180,7 +180,7 @@ async function placeInBerlin(): Promise<void> {
 }
 
 const pin = async (name: string, value: 'list' | 'shadow' | null): Promise<void> => {
-  await pool.query('UPDATE experience_kind_memberships SET crowding_pin = $2 WHERE id = $1',
+  await pool.query('UPDATE source_records SET crowding_pin = $2 WHERE id = $1',
     [squares.get(name)!.membership, value]);
 };
 
@@ -238,13 +238,13 @@ describe("a curator's crowding pins (ADR-0180)", () => {
 
   it('reads no pin of a refused square', async () => {
     await pin('Kottbusser Tor', 'list');
-    await pool.query("UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1",
+    await pool.query("UPDATE source_records SET admission = 'refused' WHERE id = $1",
       [squares.get('Kottbusser Tor')!.membership]);
     expect(await shadowedSquares(BASE)).not.toContain('Hackescher Markt');
   });
 
   it('refuses a pin the vocabulary does not hold', async () => {
-    await expect(pool.query("UPDATE experience_kind_memberships SET crowding_pin = 'top' WHERE id = $1",
+    await expect(pool.query("UPDATE source_records SET crowding_pin = 'top' WHERE id = $1",
       [squares.get('Schloßplatz')!.membership])).rejects.toThrow(/crowding_pin_check/);
   });
 });
@@ -418,7 +418,7 @@ describe('answers applied together', () => {
       membershipId: id('Kottbusser Tor'), answer: 'list', pin: 'list', published: true, refused: false,
     })]);
     const membership = await pool.query<{ curation_state: string; crowding_pin: string }>(
-      'SELECT curation_state, crowding_pin FROM experience_kind_memberships WHERE id = $1', [id('Kottbusser Tor')]);
+      'SELECT curation_state, crowding_pin FROM source_records WHERE id = $1', [id('Kottbusser Tor')]);
     expect(membership.rows[0]).toEqual({ curation_state: 'verified', crowding_pin: 'list' });
     const shadowed = await shadowedSquares(BASE);
     expect(shadowed).not.toContain('Kottbusser Tor');
@@ -459,7 +459,7 @@ describe('answers applied together', () => {
     })]);
     expect(report.refused).toEqual([expect.objectContaining({ membershipId: id('Alexanderplatz'), status: 409 })]);
     const membership = await pool.query<{ curation_state: string; crowding_pin: string | null }>(
-      'SELECT curation_state, crowding_pin FROM experience_kind_memberships WHERE id = $1', [id('Frankfurter Tor')]);
+      'SELECT curation_state, crowding_pin FROM source_records WHERE id = $1', [id('Frankfurter Tor')]);
     expect(membership.rows[0]).toEqual({ curation_state: 'verified', crowding_pin: null });
     // Left to the rule, it stands where the rule put it: in the tail.
     expect(await shadowedSquares(BASE)).toContain('Frankfurter Tor');
@@ -480,7 +480,7 @@ describe('answers applied together', () => {
         await new Promise(resolve => setTimeout(resolve, 20));
       }
       await other.query(
-        "UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW(), crowding_pin = 'shadow' WHERE id = $1",
+        "UPDATE source_records SET curation_state = 'verified', published_at = NOW(), crowding_pin = 'shadow' WHERE id = $1",
         [id('Frankfurter Tor')]);
       await other.query('COMMIT');
 
@@ -490,7 +490,7 @@ describe('answers applied together', () => {
         membershipId: id('Frankfurter Tor'), status: 409, error: expect.stringContaining('published meanwhile'),
       })]);
       const membership = await pool.query<{ crowding_pin: string | null }>(
-        'SELECT crowding_pin FROM experience_kind_memberships WHERE id = $1', [id('Frankfurter Tor')]);
+        'SELECT crowding_pin FROM source_records WHERE id = $1', [id('Frankfurter Tor')]);
       expect(membership.rows[0].crowding_pin).toBe('shadow');
     } finally {
       other.release();
@@ -501,7 +501,7 @@ describe('answers applied together', () => {
     const report = await answer([{ membershipId: id('Schloßplatz'), answer: 'refuse' }]);
     expect(report.answered).toEqual([expect.objectContaining({ answer: 'refuse', refused: true, published: false })]);
     const membership = await pool.query<{ admission: string; pinned: boolean }>(
-      "SELECT admission, curated_fields ? 'admission' AS pinned FROM experience_kind_memberships WHERE id = $1",
+      "SELECT admission, curated_fields ? 'admission' AS pinned FROM source_records WHERE id = $1",
       [id('Schloßplatz')]);
     expect(membership.rows[0]).toEqual({ admission: 'refused', pinned: true });
   });
@@ -518,7 +518,7 @@ describe('answers applied together', () => {
     ]);
     expect(report.answered.map(row => row.membershipId)).toEqual([id('Hermannplatz')]);
     const pins = await pool.query<{ id: number; crowding_pin: string | null }>(
-      'SELECT id, crowding_pin FROM experience_kind_memberships WHERE id = ANY($1) ORDER BY id', [[sanLuigi, neuesMuseum]]);
+      'SELECT id, crowding_pin FROM source_records WHERE id = ANY($1) ORDER BY id', [[sanLuigi, neuesMuseum]]);
     expect(pins.rows.map(row => row.crowding_pin)).toEqual([null, null]);
   });
 
@@ -530,7 +530,7 @@ describe('answers applied together', () => {
       { id: curatorId, role: 'curator' } as Express.User);
     expect(report).toMatchObject({ answered: [], refused: [], outOfScope: 1 });
     const membership = await pool.query<{ crowding_pin: string | null }>(
-      'SELECT crowding_pin FROM experience_kind_memberships WHERE id = $1', [id('Kottbusser Tor')]);
+      'SELECT crowding_pin FROM source_records WHERE id = $1', [id('Kottbusser Tor')]);
     expect(membership.rows[0].crowding_pin).toBeNull();
   });
 });

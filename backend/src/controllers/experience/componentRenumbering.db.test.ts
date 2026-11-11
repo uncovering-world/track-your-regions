@@ -100,7 +100,7 @@ beforeEach(async () => {
     [SITE, sourceId],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, '1490-fixture', 'auto', NOW())`,
     [SITE, source.kind_id, sourceId],
   );

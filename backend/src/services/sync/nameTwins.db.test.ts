@@ -49,7 +49,7 @@ async function name(id: number): Promise<string> {
 async function views(id: number): Promise<{ name: string; label: string }[]> {
   const result = await pool.query<{ name: string; label: string }>(
     `SELECT reported_name AS name, reported_label AS label
-       FROM experience_kind_memberships WHERE experience_id = $1 ORDER BY source_id`,
+       FROM source_records WHERE experience_id = $1 ORDER BY source_id`,
     [id],
   );
   return result.rows;
@@ -77,7 +77,7 @@ async function seed(
     [id, sources[0], externalId, name],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, curation_state, published_at, reported_name, reported_label)
      SELECT $1, s.kind_id, s.id, $2, $5::text, CASE WHEN $5::text = 'auto' THEN NOW() END, $4, $6
        FROM experience_sources s WHERE s.id = ANY($3::int[])`,
@@ -125,7 +125,7 @@ describe('a twin is named apart across the catalogue (#1967)', () => {
     await seed(TREPTOWER, TREPTOWER_ID, [publicArt, monuments], NAMED_APART, 'pending');
     await seed(TIERGARTEN, TIERGARTEN_ID, [monuments], LABEL);
     await pool.query(
-      "UPDATE experience_kind_memberships SET admission = 'refused' WHERE experience_id = $1", [TIERGARTEN],
+      "UPDATE source_records SET admission = 'refused' WHERE experience_id = $1", [TIERGARTEN],
     );
 
     await upsertExperienceRecord(record(publicArt));
@@ -138,7 +138,7 @@ describe('a twin is named apart across the catalogue (#1967)', () => {
     await seed(TREPTOWER, TREPTOWER_ID, [publicArt, monuments], NAMED_APART, 'pending');
     await seed(TIERGARTEN, TIERGARTEN_ID, [monuments], LABEL);
     await pool.query(
-      "UPDATE experience_kind_memberships SET source_membership = 'former' WHERE experience_id = $1", [TIERGARTEN],
+      "UPDATE source_records SET source_membership = 'former' WHERE experience_id = $1", [TIERGARTEN],
     );
 
     await upsertExperienceRecord(record(monuments));

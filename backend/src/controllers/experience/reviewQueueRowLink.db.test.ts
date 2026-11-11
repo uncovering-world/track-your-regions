@@ -38,7 +38,7 @@ beforeEach(async () => {
       [id, qid, `${NAMES[i]} ${TAG}`, i],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
        SELECT $1, s.kind_id, s.id, $2, 'pending' FROM experience_sources s WHERE s.name = 'Archaeology'`,
       [id, qid],
     );
@@ -82,7 +82,7 @@ describe("a link to a row past the queue's first page (#843)", () => {
     expect(linked.from).not.toBeNull();
 
     // A curator answers the row the link named: published, it asks nothing.
-    await pool.query("UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1", [IDS[3]]);
+    await pool.query("UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1", [IDS[3]]);
     const again = await page({ from: linked.from!, row: { kind: 'waiting', id: IDS[3] } });
 
     expect(again.keys.map(k => k.id)).toEqual([IDS[2], IDS[4]]);

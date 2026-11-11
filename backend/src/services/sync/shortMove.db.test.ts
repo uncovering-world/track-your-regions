@@ -43,7 +43,7 @@ async function publishedPlace(id: number, qid: string, at: { lon: number; lat: n
     [id, archaeology, qid, at.lon, at.lat],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at, admission)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at, admission)
      VALUES ($1, $2, $3, $4, 'verified', NOW(), 'admitted')`,
     [id, kind, archaeology, qid],
   );
@@ -162,7 +162,7 @@ describe('a point a reader sees, moved a short way', () => {
          INSERT INTO experience_locations (experience_id, external_ref, ordinal, location, curation_state)
          VALUES ($1, $2, 1, ST_SetSRID(ST_MakePoint($3, $4), 4326), 'auto') RETURNING id)
        INSERT INTO experience_location_placements (location_id, membership_id)
-       SELECT point.id, m.id FROM point, experience_kind_memberships m WHERE m.experience_id = $1`,
+       SELECT point.id, m.id FROM point, source_records m WHERE m.experience_id = $1`,
       [LYSICRATES, QID, STORED.lon, STORED.lat],
     );
     await writeExperienceLocations(

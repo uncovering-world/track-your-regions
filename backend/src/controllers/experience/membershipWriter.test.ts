@@ -38,7 +38,7 @@ describe('answering a refusal', () => {
       admitted: false, pin: false, publishes: false, reason: 'no works of its own', curated: [],
     });
     const sql = collapse(queries[0].sql);
-    expect(sql).toContain('UPDATE experience_kind_memberships m');
+    expect(sql).toContain('UPDATE source_records m');
     expect(sql).toContain('admission_answered_at = NOW()');
     expect(sql).toContain(collapse(CLEAR_ICONIC));
     expect(sql).not.toContain('published_at');
@@ -135,7 +135,7 @@ describe('the other curator writes', () => {
   it('inserts the manual create\'s membership for the place whose token it spends', async () => {
     const { client, queries } = fakeClient();
     await insertManualMembership(client, KUNSTHALLE, 2, null);
-    expect(collapse(queries[0].sql)).toContain('INSERT INTO experience_kind_memberships');
+    expect(collapse(queries[0].sql)).toContain('INSERT INTO source_records');
     expect(queries[0].params).toEqual([412, 2, null]);
   });
 });

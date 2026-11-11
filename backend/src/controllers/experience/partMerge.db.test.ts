@@ -69,7 +69,7 @@ beforeEach(async () => {
     [THEBES, heritage.id],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, '87-fixture', 'auto', NOW())`,
     [THEBES, heritage.kind_id, heritage.id],
   );
@@ -82,7 +82,7 @@ beforeEach(async () => {
     [COMPLEX],
   );
   const membership = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, 'Q522862-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'
      RETURNING id`,
     [COMPLEX],
@@ -140,7 +140,7 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
     await writeExperienceLocations(THEBES, [{ ...KARNAK, name: 'Temple of Amun-Ra at Karnak', lon: KARNAK.lon + 0.0001 }, LUXOR], run);
 
     const record = await pool.query<{ name: string; lon: number }>(
-      `SELECT reported_name AS name, ST_X(reported_location) AS lon FROM experience_kind_memberships
+      `SELECT reported_name AS name, ST_X(reported_location) AS lon FROM source_records
         WHERE experience_id = $1 AND kind_id = 10`, [COMPLEX],
     );
     expect(record.rows).toEqual([{ name: 'Temple of Amun-Ra at Karnak', lon: KARNAK.lon + 0.0001 }]);
@@ -215,7 +215,7 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
     const ITEM = 'Q99952286';
     /** The complex known by the item, and the given components' points carrying it as their item. */
     async function itemOn(...refs: string[]): Promise<void> {
-      await pool.query(`UPDATE experience_kind_memberships SET external_id = $2 WHERE experience_id = $1`, [COMPLEX, ITEM]);
+      await pool.query(`UPDATE source_records SET external_id = $2 WHERE experience_id = $1`, [COMPLEX, ITEM]);
       await pool.query(
         `UPDATE experience_locations el SET wikidata_item = $1
            FROM experience_parts p WHERE p.whole_id = $2 AND el.experience_id = p.part_id AND p.external_ref = ANY($3::text[])`,
@@ -234,9 +234,9 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
     it('folds an arrival nobody has passed into the part, the place a run would have found by its item', async () => {
       await itemOn(KARNAK.externalRef);
       // The complex as a gated source's run leaves it: its membership an arrival nobody has passed.
-      await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1', [COMPLEX]);
+      await pool.query('DELETE FROM source_records WHERE experience_id = $1', [COMPLEX]);
       await pool.query(
-        `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+        `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
          SELECT $1, s.kind_id, s.id, $2, 'pending' FROM experience_sources s WHERE s.name = 'Places of worship'`,
         [COMPLEX, ITEM],
       );
@@ -249,7 +249,7 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
       expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: templeId });
       // Beside its record in World Heritage components, which it keeps (ADR-0156).
       const held = await pool.query<{ curation_state: string; external_id: string }>(
-        `SELECT curation_state, external_id FROM experience_kind_memberships
+        `SELECT curation_state, external_id FROM source_records
           WHERE experience_id = $1 ORDER BY kind_id`, [templeId],
       );
       expect(held.rows).toEqual([
@@ -267,7 +267,7 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
     it('joins the part with the place a curator confirms its item is, once the answer is written', async () => {
       // The complex is the item; the temple's point has no item yet, and the
       // finder proposes the complex's item for it (#1272).
-      await pool.query('UPDATE experience_kind_memberships SET external_id = $2 WHERE experience_id = $1', [COMPLEX, ITEM]);
+      await pool.query('UPDATE source_records SET external_id = $2 WHERE experience_id = $1', [COMPLEX, ITEM]);
       const templeId = (await parts()).find(p => p.external_ref === KARNAK.externalRef)!.part_id;
       const point = (await pool.query<{ id: number }>('SELECT id FROM experience_locations WHERE experience_id = $1', [templeId])).rows[0].id;
       const proposal = (await pool.query<{ id: number }>(

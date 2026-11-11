@@ -59,7 +59,7 @@ beforeEach(async () => {
   artMuseums = await sourceNamed('Art Museums');
   await place(GALLERY, 'East Side Gallery (add fixture)');
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, admission, admission_reason, curation_state, published_at)
      VALUES ($1, $2, $3, $4, 'refused', 'a stretch of the Berlin Wall that Wikidata types art museum', 'auto', NOW())`,
     [GALLERY, artMuseums.kind_id, artMuseums.id, QID],
@@ -106,7 +106,7 @@ describe('adding a place to a kind', () => {
     const row = (await pool.query(
       `SELECT external_id, type, admission, curated_fields, curation_state, published_at IS NOT NULL AS published,
               admission_pin_verdict
-         FROM experience_kind_memberships WHERE id = $1`,
+         FROM source_records WHERE id = $1`,
       [result!.membershipId],
     )).rows[0];
     expect(row).toEqual({
@@ -130,15 +130,15 @@ describe('adding a place to a kind', () => {
   });
 
   it('keeps its own key on a place that carries no Wikidata item', async () => {
-    await pool.query('UPDATE experience_kind_memberships SET external_id = $2 WHERE experience_id = $1', [GALLERY, 'curator-1-1']);
+    await pool.query('UPDATE source_records SET external_id = $2 WHERE experience_id = $1', [GALLERY, 'curator-1-1']);
     const { result } = await add({ kindId: publicArt.kind_id, type: 'street-art' });
-    const row = (await pool.query('SELECT external_id FROM experience_kind_memberships WHERE id = $1', [result!.membershipId])).rows[0];
+    const row = (await pool.query('SELECT external_id FROM source_records WHERE id = $1', [result!.membershipId])).rows[0];
     expect(row.external_id).toBe(`${QID}-${GALLERY}`);
   });
 
   it('claims no type when none was given, so a run that lists the place may file one', async () => {
     const { result } = await add({ kindId: publicArt.kind_id });
-    const row = (await pool.query('SELECT type, curated_fields FROM experience_kind_memberships WHERE id = $1', [result!.membershipId])).rows[0];
+    const row = (await pool.query('SELECT type, curated_fields FROM source_records WHERE id = $1', [result!.membershipId])).rows[0];
     expect(row).toEqual({ type: null, curated_fields: ['admission'] });
   });
 
@@ -148,7 +148,7 @@ describe('adding a place to a kind', () => {
     expect(pins.pins.map(pin => pin.membershipId)).not.toContain(result!.membershipId);
     expect((await handBackPinUnderLock(GALLERY, adminId, null, { membershipId: result!.membershipId })).refusal)
       .toMatchObject({ status: 409 });
-    const row = (await pool.query('SELECT curated_fields FROM experience_kind_memberships WHERE id = $1', [result!.membershipId])).rows[0];
+    const row = (await pool.query('SELECT curated_fields FROM source_records WHERE id = $1', [result!.membershipId])).rows[0];
     expect(row.curated_fields).toEqual(['admission', 'type']);
   });
 
@@ -172,7 +172,7 @@ describe('adding a place to a kind', () => {
     const { result } = await streetArt();
     const membershipId = result!.membershipId;
     // What the run's upsert stamps on a membership it lists.
-    await pool.query('UPDATE experience_kind_memberships SET last_seen_at = NOW() WHERE id = $1', [membershipId]);
+    await pool.query('UPDATE source_records SET last_seen_at = NOW() WHERE id = $1', [membershipId]);
 
     const pins = await listAdmissionPins({ query: { experienceId: GALLERY }, caller: admin() });
     expect(pins.pins.find(pin => pin.membershipId === membershipId)).toMatchObject({ answer: 'admitted', added: true });
@@ -209,7 +209,7 @@ describe('what an add refuses, with nothing written', () => {
   it('an item another place already holds in that kind', async () => {
     await place(OTHER, 'Another wall (add fixture)');
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        VALUES ($1, $2, $3, $4, 'auto', NOW())`,
       [OTHER, publicArt.kind_id, publicArt.id, QID],
     );

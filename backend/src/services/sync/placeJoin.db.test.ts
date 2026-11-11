@@ -52,7 +52,7 @@ const params = (sourceId: number, externalId: string, overrides: Partial<Experie
 async function clear(): Promise<void> {
   await pool.query(
     `DELETE FROM experiences WHERE id = ANY($1::int[])
-        OR id IN (SELECT experience_id FROM experience_kind_memberships WHERE external_id = ANY($2::text[]))`,
+        OR id IN (SELECT experience_id FROM source_records WHERE external_id = ANY($2::text[]))`,
     [[AJANTA, SERIAL], ITEMS],
   );
   await pool.query('DELETE FROM workbench.wikidata_redirects WHERE source = ANY($1::text[]) OR target = ANY($1::text[])', [ITEMS]);
@@ -66,7 +66,7 @@ async function site(id: number, ref: string, items: string[], points: { lon: num
     [id, heritage, ref, points[0].lon, points[0].lat],
   );
   const membership = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, wikidata_items, curation_state, published_at,
         reported_name, reported_location)
      SELECT $1, kind_id, id, $3, $4, 'auto', NOW(), 'Ajanta Caves', ST_SetSRID(ST_MakePoint($5, $6), 4326)
@@ -89,7 +89,7 @@ async function site(id: number, ref: string, items: string[], points: { lon: num
 /** The places that hold a membership keyed by this item, in id order. */
 async function placesOf(item: string): Promise<number[]> {
   return (await pool.query<{ experience_id: number }>(
-    'SELECT experience_id FROM experience_kind_memberships WHERE external_id = $1 ORDER BY experience_id', [item],
+    'SELECT experience_id FROM source_records WHERE external_id = $1 ORDER BY experience_id', [item],
   )).rows.map(r => r.experience_id);
 }
 
@@ -120,7 +120,7 @@ describe('a run finds the place its item identifies (ADR-0143 decision 3)', () =
     expect(await placesOf(ITEM)).toEqual([AJANTA]);
     const joined = await pool.query(
       `SELECT m.curation_state, ST_X(m.reported_location) AS lon, e.name, ST_X(e.location) AS place_lon
-         FROM experience_kind_memberships m JOIN experiences e ON e.id = m.experience_id
+         FROM source_records m JOIN experiences e ON e.id = m.experience_id
         WHERE m.source_id = $1 AND m.external_id = $2`,
       [worship, ITEM],
     );
@@ -176,7 +176,7 @@ describe('a run finds the place its item identifies (ADR-0143 decision 3)', () =
     // A second worship item read as the same place would need a second
     // membership in one kind, which a place cannot hold; its run makes its own.
     await pool.query(
-      `UPDATE experience_kind_memberships SET external_id = 'Q9980004' WHERE source_id = $1 AND external_id = $2`,
+      `UPDATE source_records SET external_id = 'Q9980004' WHERE source_id = $1 AND external_id = $2`,
       [worship, ITEM],
     );
     const outcome = await upsertExperienceRecord(params(worship, ITEM), { syncLogId: null });
@@ -224,7 +224,7 @@ describe('a run finds the place its item identifies (ADR-0143 decision 3)', () =
     /** The membership after the run read the new item: still passed, nothing held. */
     async function membershipOf(experienceId: number) {
       return (await pool.query<{ curation_state: string; pending_change_sync_log_id: number | null }>(
-        'SELECT curation_state, pending_change_sync_log_id FROM experience_kind_memberships WHERE experience_id = $1', [experienceId],
+        'SELECT curation_state, pending_change_sync_log_id FROM source_records WHERE experience_id = $1', [experienceId],
       )).rows;
     }
 
@@ -240,7 +240,7 @@ describe('a run finds the place its item identifies (ADR-0143 decision 3)', () =
       const { experienceId } = await upsertExperienceRecord(params(worship, OLD_ITEM, { name: 'A moved temple' }), { syncLogId: null });
       // A curator passed the arrival: the move must neither retire that pass nor raise a card.
       await pool.query(
-        `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`, [experienceId],
+        `UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`, [experienceId],
       );
       // Under the run's own log, so a proposal would set the held pointer (Places of worship is gated).
       const outcome = await upsertExperienceRecord(params(worship, MOVED_ITEM, { name: 'A moved temple' }), { syncLogId: runId });
@@ -264,7 +264,7 @@ describe('a run finds the place its item identifies (ADR-0143 decision 3)', () =
       // curator's pass (`verified` → `auto`); the key's move is no such field.
       await pool.query('UPDATE experience_sources SET requires_curation = false WHERE id = $1', [worship]);
       const { experienceId } = await upsertExperienceRecord(params(worship, OLD_ITEM, { name: 'A moved temple' }), { syncLogId: null });
-      await pool.query(`UPDATE experience_kind_memberships SET curation_state = 'verified' WHERE experience_id = $1`, [experienceId]);
+      await pool.query(`UPDATE source_records SET curation_state = 'verified' WHERE experience_id = $1`, [experienceId]);
 
       await upsertExperienceRecord(params(worship, MOVED_ITEM, { name: 'A moved temple' }), { syncLogId: runId });
 

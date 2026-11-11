@@ -350,7 +350,7 @@ describe('a work arrives marked as unread', () => {
     const sql = String(linkCall()[0]).replace(/\s+/g, ' ');
     expect(sql).toContain('CASE WHEN (SELECT requires_curation FROM experience_sources WHERE id = $3)');
     expect(linkCall()[1]).toEqual([EXPERIENCE_ID, 900, MUSEUM_SOURCE_ID]);
-    expect(sql).toContain('INSERT INTO experience_treasure_placements (link_id, membership_id) SELECT this_link.id, m.id FROM this_link JOIN experience_kind_memberships m ON m.experience_id = $1 AND m.source_id = $3');
+    expect(sql).toContain('INSERT INTO experience_treasure_placements (link_id, membership_id) SELECT this_link.id, m.id FROM this_link JOIN source_records m ON m.experience_id = $1 AND m.source_id = $3');
     expect(sql).toContain('WHERE et.experience_id = $1 AND et.treasure_id = $2 AND NOT EXISTS (SELECT 1 FROM ins)');
   });
 });

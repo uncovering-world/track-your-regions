@@ -165,7 +165,7 @@ describe('the generated file', () => {
   const rendered = renderSchemaTypes(columns, enumRows, checks);
 
   it('names things the way a reader expects', () => {
-    expect(pascalCase('experience_kind_memberships')).toBe('ExperienceKindMemberships');
+    expect(pascalCase('source_records')).toBe('SourceRecords');
     expect(rowTypeName('users')).toBe('UsersRow');
   });
 

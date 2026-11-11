@@ -48,7 +48,7 @@ beforeEach(async () => {
   );
   for (const [key, source] of [['worship', 4], ['archaeology', 5]] as const) {
     const row = await pool.query<{ id: number }>(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q-church-9465', 'admitted', 'verified', NOW() FROM experience_sources s WHERE s.id = $2
        RETURNING id`,
       [PLACE, source],
@@ -65,7 +65,7 @@ afterAll(async () => {
 describe("the websites a place's review card shows (#2165)", () => {
   it("reads the place's own and a held proposal's", async () => {
     const held = await changeSet(4, [{ field: 'metadata.website', new: 'https://church.example/new/', held: true }], { changeType: 'held' });
-    await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = $2 WHERE id = $1', [memberships.worship, held]);
+    await pool.query('UPDATE source_records SET pending_change_sync_log_id = $2 WHERE id = $1', [memberships.worship, held]);
 
     expect(await websitesOfPlace(PLACE)).toEqual(['https://church.example/', 'https://church.example/new/']);
   });

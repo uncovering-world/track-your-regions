@@ -157,7 +157,7 @@ beforeEach(async () => {
     [SITE],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at, wikidata_items)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at, wikidata_items)
      SELECT $1, s.kind_id, s.id, '9840-fixture', 'auto', NOW(), $2 FROM experience_sources s WHERE s.id = 1`,
     [SITE, [SITE_ITEM]],
   );
@@ -323,7 +323,7 @@ describe('findComponentItems', () => {
       [other, `${other}-fixture`],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at, wikidata_items)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at, wikidata_items)
        SELECT $1, s.kind_id, s.id, $2, 'auto', NOW(), $3 FROM experience_sources s WHERE s.id = 1`,
       [other, `${other}-fixture`, [otherSiteItem(other)]],
     );
@@ -435,7 +435,7 @@ describe('findComponentItems', () => {
     // nameless and referenced by its item, as a run of that source writes it:
     // read as a component, it stood beside the castra the near rule offers.
     const worship = await pool.query<{ id: number }>(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q98430', 'auto', NOW() FROM experience_sources s WHERE s.id = 4 RETURNING id`,
       [SITE],
     );

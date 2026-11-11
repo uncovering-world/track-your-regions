@@ -99,7 +99,7 @@ describe('createManualExperience curation state', () => {
     expect(place).not.toMatch(/curation_state/);
     expect(place).not.toMatch(/published_at/);
 
-    const membership = statementFor(/INSERT INTO experience_kind_memberships/);
+    const membership = statementFor(/INSERT INTO source_records/);
     expect(membership).toMatch(/curation_state/);
     expect(membership).toMatch(/'verified'/);
     expect(membership).toMatch(/published_at/);
@@ -110,7 +110,7 @@ describe('createManualExperience curation state', () => {
     expect(membership).not.toMatch(/requires_curation/);
     expect(membership).not.toMatch(/CASE/);
     const [, membershipParams] = mockClientQuery.mock.calls.find(
-      ([callSql]) => typeof callSql === 'string' && /INSERT INTO experience_kind_memberships/.test(callSql),
+      ([callSql]) => typeof callSql === 'string' && /INSERT INTO source_records/.test(callSql),
     ) as [string, unknown[]];
     expect(membershipParams).toEqual([EXPERIENCE_ID, SOURCE_ID, null]);
 

@@ -370,7 +370,7 @@ describe('lifecycle visibility across the read paths', () => {
       const reads = mockedQuery.mock.calls
         .map(c => String(c[0]))
         .filter(sql => !/WITH RECURSIVE chain AS \(\s*SELECT id, merged_into_id/.test(sql))
-        .filter(sql => /\b(FROM|JOIN) experiences\b/.test(sql) || sql.includes('FROM experience_kind_memberships'));
+        .filter(sql => /\b(FROM|JOIN) experiences\b/.test(sql) || sql.includes('FROM source_records'));
       expect(reads.length).toBeGreaterThan(0);
       // One membership both admitted and passed (#1275): the offered rule
       // hides a refused place as it hides an unread one.
@@ -767,7 +767,7 @@ describe('searchExperiences region context', () => {
     // through the membership rather than the source's name (#592, #819).
     expect(sql).toContain('ek.name AS kind_name');
     // The membership the place is shown under, whichever source brought it (#1893).
-    expect(sql).toContain('LEFT JOIN LATERAL (SELECT shown.* FROM experience_kind_memberships shown');
+    expect(sql).toContain('LEFT JOIN LATERAL (SELECT shown.* FROM source_records shown');
     expect(sql).not.toContain('em.source_id = e.source_id');
     expect(sql).toContain('m.kind_name');
   });

@@ -161,7 +161,7 @@ describe('flagMissingExperiences', () => {
     // flag follows from its memberships, so the run writes none of it there.
     const statements = sent();
     const mark = statements.find(sql => /^UPDATE/.test(sql.trim())) as string;
-    expect(mark).toContain('UPDATE experience_kind_memberships m SET missing_since = NOW()');
+    expect(mark).toContain('UPDATE source_records m SET missing_since = NOW()');
     expect(statements.some(sql => /UPDATE experiences/.test(sql))).toBe(false);
     // The places are locked first, in id order, the order a curator's write
     // takes them before their memberships.

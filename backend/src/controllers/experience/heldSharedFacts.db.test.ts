@@ -48,19 +48,19 @@ async function heldRun(source: number, placeFields: object[] = []): Promise<numb
       JSON.stringify({ treasures: { added: [], withdrawn: [], returned: [], changed } })],
   );
   await pool.query(
-    'UPDATE experience_kind_memberships SET pending_change_sync_log_id = $3 WHERE experience_id = $1 AND source_id = $2',
+    'UPDATE source_records SET pending_change_sync_log_id = $3 WHERE experience_id = $1 AND source_id = $2',
     [MUSEUM, source, logId],
   );
   return logId;
 }
 
 const pointers = async () => (await pool.query<{ source_id: number; pending_change_sync_log_id: number | null }>(
-  `SELECT source_id, pending_change_sync_log_id FROM experience_kind_memberships
+  `SELECT source_id, pending_change_sync_log_id FROM source_records
     WHERE experience_id = $1 ORDER BY source_id`, [MUSEUM],
 )).rows.map(row => row.pending_change_sync_log_id);
 
 const typeOf = async (membership: number) => (await pool.query<{ type: string | null }>(
-  'SELECT type FROM experience_kind_memberships WHERE id = $1', [membership],
+  'SELECT type FROM source_records WHERE id = $1', [membership],
 )).rows[0].type;
 
 const statueYear = async () =>
@@ -81,7 +81,7 @@ beforeEach(async () => {
   );
   for (const [key, source] of [['art', 2], ['archaeology', 5]] as const) {
     const row = await pool.query<{ id: number }>(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q-museum-9460', 'admitted', 'verified', NOW() FROM experience_sources s WHERE s.id = $2
        RETURNING id`,
       [MUSEUM, source],

@@ -302,7 +302,7 @@ describe('writeExperienceLocations', () => {
     // The run's own or nobody's (ADR-0084): a point only another source places
     // is that source's to withdraw, and a shared point stays while it is placed.
     const mark = statements.find(s => MARK.test(s))!.replace(/\s+/g, ' ');
-    expect(mark).toContain('mine.membership_id = (SELECT id FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $6)');
+    expect(mark).toContain('mine.membership_id = (SELECT id FROM source_records WHERE experience_id = $1 AND source_id = $6)');
     expect(mark).toContain('OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement');
     expect(mark).toContain('unplaced AS ( DELETE FROM experience_location_placements pl USING gone');
     expect(mark).toContain('(other.location_id, other.membership_id) NOT IN (SELECT location_id, membership_id FROM unplaced)');

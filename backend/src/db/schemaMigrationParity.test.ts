@@ -31,15 +31,18 @@ import { repoFile } from '../testSupport/repoFile.js';
 const collapse = (sql: string) => sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ');
 /**
  * Migration 055 (#819) renamed the source table and its foreign keys after
- * 018 and 046 were written, and a migration is immutable: the two still say
- * `experience_categories` and `category_id`, and the schema file says what
- * the database says now. The parity asserted below is over the shape of a
- * guard, not its spelling, so the older file is read under the newer names.
+ * 018 and 046 were written, and migration 230 (#2118) renamed the membership
+ * table to `source_records`; a migration is immutable, so the older files
+ * still say `experience_categories`, `category_id` and
+ * `experience_kind_memberships`, and the schema file says what the database
+ * says now. The parity asserted below is over the shape of a guard, not its
+ * spelling, so an older file is read under the newer names.
  */
-const renamedBy055 = (sql: string) =>
-  sql.replace(/experience_categories/g, 'experience_sources').replace(/\bcategory_id\b/g, 'source_id');
+const renamedSince = (sql: string) =>
+  sql.replace(/experience_categories/g, 'experience_sources').replace(/\bcategory_id\b/g, 'source_id')
+    .replace(/experience_kind_memberships/g, 'source_records');
 const schema = collapse(readFileSync(repoFile('db', 'init', '01-schema.sql'), 'utf8'));
-const migration = collapse(renamedBy055(
+const migration = collapse(renamedSince(
   readFileSync(repoFile('db', 'migrations', '018-curation-gate.sql'), 'utf8'),
 ));
 /**
@@ -124,7 +127,7 @@ const locationVerdictMigration = collapse(locationVerdictMigrationRaw);
  * #822 they are the membership's (ADR-0045 decision 7 — a kind holds the gated
  * members per member), moved there by migration 046. So 018 still adds them to
  * `experiences`, as history, while the schema file carries them on
- * `experience_kind_memberships` and never on `experiences` any more.
+ * `source_records` and never on `experiences` any more.
  */
 const OBJECT_GATE_COLUMNS = ['curation_state', 'published_at', 'pending_change_sync_log_id'];
 /** The parts' gate columns, still where 018 put them. */
@@ -137,7 +140,7 @@ const splitMigrationRaw = readFileSync(
   repoFile('db', 'migrations', '046-a-kind-is-its-own-table-and-a-membership-its-own-row.sql'),
   'utf8',
 );
-const splitMigration = collapse(renamedBy055(splitMigrationRaw));
+const splitMigration = collapse(renamedSince(splitMigrationRaw));
 
 /**
  * The sources a fresh database publishes from on arrival (#2335): the World
@@ -180,7 +183,7 @@ function experiencesTable(sql: string): string {
   expect(table, 'the experiences block was cut short').toContain('UNIQUE(source_id, external_id)');
   return table;
 }
-const membershipTable = (sql: string) => createTable(sql, 'experience_kind_memberships');
+const membershipTable = (sql: string) => createTable(sql, 'source_records');
 
 describe('the curation gate exists in both schema homes', () => {
   for (const [table, column] of PART_GATE_COLUMNS) {
@@ -956,9 +959,9 @@ describe('a kind and a membership exist in both schema homes', () => {
     // the columns gone; the guard is what lets the file be re-runnable rather
     // than fail on `e.admission` at step 4.
     expect(splitMigration).toContain(
-      "IF EXISTS ( SELECT 1 FROM information_schema.columns WHERE table_name = 'experiences' AND column_name = 'admission' ) THEN INSERT INTO experience_kind_memberships",
+      "IF EXISTS ( SELECT 1 FROM information_schema.columns WHERE table_name = 'experiences' AND column_name = 'admission' ) THEN INSERT INTO source_records",
     );
-    expect(splitMigration.indexOf('INSERT INTO experience_kind_memberships'))
+    expect(splitMigration.indexOf('INSERT INTO source_records'))
       .toBeLessThan(splitMigration.indexOf('DROP COLUMN IF EXISTS admission'));
   });
 

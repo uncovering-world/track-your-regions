@@ -36,7 +36,7 @@ async function place(): Promise<Listing> {
 async function membership(sourceId: number): Promise<Listing> {
   const result = await pool.query<Listing>(
     `SELECT missing_since IS NOT NULL AS missing, source_membership AS listing
-       FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $2`,
+       FROM source_records WHERE experience_id = $1 AND source_id = $2`,
     [LOUVRE, sourceId],
   );
   return result.rows[0];
@@ -48,7 +48,7 @@ async function membership(sourceId: number): Promise<Listing> {
  */
 async function stopListing(sourceId: number) {
   const seen = await pool.query<{ ids: string[] | null }>(
-    `SELECT array_agg(external_id) AS ids FROM experience_kind_memberships WHERE source_id = $1 AND external_id <> $2`,
+    `SELECT array_agg(external_id) AS ids FROM source_records WHERE source_id = $1 AND external_id <> $2`,
     [sourceId, LOUVRE_QID],
   );
   return flagMissingExperiences(sourceId, 0, false, seen.rows[0].ids ?? []);
@@ -79,7 +79,7 @@ beforeEach(async () => {
     [LOUVRE, artMuseums, LOUVRE_QID],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, 'auto', NOW()), ($1, $5, $6, $4, 'auto', NOW())`,
     [LOUVRE, art.kind_id, artMuseums, LOUVRE_QID, arch.kind_id, archaeology],

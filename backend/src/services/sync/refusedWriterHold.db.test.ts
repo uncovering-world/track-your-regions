@@ -57,7 +57,7 @@ const record = (sourceId: number): ExperienceUpsertParams => ({
 async function clear(): Promise<void> {
   const ids = Object.values(logs);
   if (ids.length > 0) {
-    await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [MONUMENT]);
+    await pool.query('UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [MONUMENT]);
     await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = ANY($1::int[])', [ids]);
     await pool.query('DELETE FROM experience_sync_logs WHERE id = ANY($1::int[])', [ids]);
     logs = {};
@@ -78,7 +78,7 @@ async function given(memberships: { publicArt: [string, string]; monuments: [str
   );
   const passed = (state: string) => (state === 'pending' ? null : new Date());
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7), ($1, $8, $9, $4, $10, $11, $12)`,
     [MONUMENT, art.kind_id, art.id, MONUMENT_QID, memberships.publicArt[0], memberships.publicArt[1], passed(memberships.publicArt[1]),
@@ -97,7 +97,7 @@ const commemorates = async () => (await pool.query<{ value: unknown }>(
 )).rows[0].value;
 
 const pointers = async () => Object.fromEntries((await pool.query<{ source_id: number; pointer: number | null }>(
-  `SELECT source_id, pending_change_sync_log_id AS pointer FROM experience_kind_memberships WHERE experience_id = $1`,
+  `SELECT source_id, pending_change_sync_log_id AS pointer FROM source_records WHERE experience_id = $1`,
   [MONUMENT],
 )).rows.map(row => [row.source_id, row.pointer]));
 
@@ -148,7 +148,7 @@ describe("a place field's change on a refused membership (#2391)", () => {
   it('clears the question a refusing run asked before', async () => {
     await given({ publicArt: ['refused', 'verified'], monuments: ['admitted', 'verified'] });
     await pool.query(
-      'UPDATE experience_kind_memberships SET pending_change_sync_log_id = $3 WHERE experience_id = $1 AND source_id = $2',
+      'UPDATE source_records SET pending_change_sync_log_id = $3 WHERE experience_id = $1 AND source_id = $2',
       [MONUMENT, publicArt, logs[publicArt]],
     );
 

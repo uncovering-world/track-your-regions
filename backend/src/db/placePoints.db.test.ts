@@ -98,7 +98,7 @@ beforeEach(async () => {
 
   await place(SITE, 'Ancient Thebes with its Necropolis (parts fixture)', 32.6396, 25.7188);
   const membership = membershipId = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
     [SITE, `${SITE}-fixture`],
   )).rows[0].id;
@@ -203,7 +203,7 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     // A part with a kind of its own has a list row, read through its own
     // regions: the Temple of Karnak as a place of worship.
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q522862-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
       [KARNAK],
     );
@@ -405,7 +405,7 @@ describe("a part's point with no name of its own (#1924)", () => {
     // that holds a kind names itself (`followTheirPoints` skips it), so the
     // point's emptied name does not rename the part.
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
       [KARNAK, `${KARNAK}-worship`],
     );
@@ -448,7 +448,7 @@ describe("a part's point with no name of its own (#1924)", () => {
     // that waits (ADR-0025 decision 5), so the point keeps the name it had,
     // the part's, rather than the source's label for the component.
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
        SELECT $1, s.kind_id, s.id, $2, 'pending' FROM experience_sources s WHERE s.id = 4`,
       [KARNAK, `${KARNAK}-worship`],
     );
@@ -472,7 +472,7 @@ describe("a part's point with no name of its own (#1924)", () => {
 
     // Published, the kind is the part's own, and its point is called by its own name.
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = 4`,
       [KARNAK],
     );
@@ -481,7 +481,7 @@ describe("a part's point with no name of its own (#1924)", () => {
 
   it("keeps a curator's name for the point on the point, and the part its own name", async () => {
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
       [KARNAK, `${KARNAK}-worship`],
     );
@@ -533,7 +533,7 @@ describe("a part's point with no picture of its own (#1946)", () => {
     // its point, which that kind placed, carries none, and the component's
     // point that carried one was folded into it.
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
       [KARNAK, `${KARNAK}-worship`],
     );
@@ -603,9 +603,9 @@ describe('a part reads as a place (ADR-0100, #1425)', () => {
   });
 
   it("closes the part's card where its site is closed, or where its source no longer lists it", async () => {
-    await pool.query("UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1", [membershipId]);
+    await pool.query("UPDATE source_records SET admission = 'refused' WHERE id = $1", [membershipId]);
     await expect(getExperience({ params: { id: KARNAK }, caller: undefined })).rejects.toThrow(/not found/i);
-    await pool.query("UPDATE experience_kind_memberships SET admission = 'admitted' WHERE id = $1", [membershipId]);
+    await pool.query("UPDATE source_records SET admission = 'admitted' WHERE id = $1", [membershipId]);
     await pool.query('UPDATE experience_locations SET missing_since = NOW() WHERE id = $1', [karnakPoint]);
     await expect(getExperience({ params: { id: KARNAK }, caller: undefined })).rejects.toThrow(/not found/i);
     await expect(markVisited({ params: { experienceId: KARNAK }, body: {}, caller: traveller() })).rejects.toThrow(/not found/i);
