@@ -10,7 +10,7 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import type { LockedExperience } from '../../db/experienceWriter.js';
-import { COMPONENTS_KIND_ID, MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
 import { followTheirPoints, partListingChangesSql, partsBehindSql, writePartListings } from '../../db/partFieldsWriter.js';
 import { foldedPointsSql } from '../../db/placePoints.js';
 import { bindParams, incomingCte, type IncomingLocation } from './locationIncoming.js';
@@ -27,8 +27,8 @@ import { bindParams, incomingCte, type IncomingLocation } from './locationIncomi
  */
 export const COMPONENT_LISTINGS = `SELECT DISTINCT ON (rec.id) rec.id AS record_id, i.name, i.lon, i.lat
     FROM experience_parts p
-    JOIN ${MEMBERSHIPS} rec ON rec.experience_id = p.part_id AND rec.kind_id = ${COMPONENTS_KIND_ID}
-                           AND rec.external_id = 'component:' || p.id
+    JOIN ${MEMBERSHIPS} rec ON rec.experience_id = p.part_id AND rec.whole_id = p.whole_id
+                           AND ${componentRecordSql('rec')}
     JOIN experience_locations c ON c.external_ref = p.external_ref AND c.missing_since IS NULL
      AND ((c.experience_id = p.part_id AND c.merged_into_id IS NULL)
           OR c.id = ANY(ARRAY(SELECT ff.id FROM ${foldedPointsSql('ARRAY[p.part_id]')} ff)))

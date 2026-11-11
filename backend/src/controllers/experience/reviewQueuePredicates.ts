@@ -20,7 +20,7 @@
 import { approximatePointOpenSql } from '../../services/sync/pointHints.js';
 import {
   MEMBERSHIPS, admissionAnsweredSql, admissionPinnedSql, membershipAdmittedSql, membershipCrowdedSql, membershipOfferedSql,
-  placeHoldsRealKindSql, realKindSql,
+  placeHoldsKindSql, kindRecordSql,
 } from '../../db/membership.js';
 import { openViewFieldsSql } from '../../db/sourceViews.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
@@ -230,8 +230,8 @@ export function claimKeySql(field: string, keyMapParam: string, familyParam: str
 export function sourcesOpenSql(e = 'e'): string {
   return `(EXISTS (SELECT 1 FROM ${MEMBERSHIPS} a JOIN ${MEMBERSHIPS} b
                      ON b.experience_id = a.experience_id AND a.external_id <> b.external_id
-                    WHERE a.experience_id = ${e}.id AND ${realKindSql('a')} AND ${realKindSql('b')})
-           OR (${placeHoldsRealKindSql(`${e}.id`)}
+                    WHERE a.experience_id = ${e}.id AND ${kindRecordSql('a')} AND ${kindRecordSql('b')})
+           OR (${placeHoldsKindSql(`${e}.id`)}
                AND EXISTS (SELECT 1 FROM experience_parts p WHERE p.part_id = ${e}.id AND p.reason = 'component')))
           AND cardinality(${openViewFieldsSql(e + '.id')}) > 0`;
 }
@@ -334,7 +334,7 @@ export function mergeProposalOpenSql(p = 'p', a = 'a', b = 'b'): string {
 
 /**
  * The memberships whose sources a pair `p` is in scope by, over the membership
- * alias `m`: every real kind of either place, and of the site a serial site's
+ * alias `m`: every kind of either place, and of the site a serial site's
  * part with no kind of its own is answered for under (`answeringPlaceOfSql`,
  * #1250), as a write on its point is. The keys phase, the card's scope and the
  * answer (`mergeProposalController.ts`) read it alike.
@@ -342,7 +342,7 @@ export function mergeProposalOpenSql(p = 'p', a = 'a', b = 'b'): string {
 export function pairMembershipSql(p = 'p', m = 'm'): string {
   const a = answeringPlaceOfSql(p + '.place_a');
   const b = answeringPlaceOfSql(p + '.place_b');
-  return `${m}.experience_id IN (${a}, ${b}) AND ${realKindSql(m)}`;
+  return `${m}.experience_id IN (${a}, ${b}) AND ${kindRecordSql(m)}`;
 }
 
 /**

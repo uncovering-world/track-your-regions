@@ -20,7 +20,7 @@
 import type { QueryResult } from 'pg';
 import type { MergePair } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
-import { COMPONENTS_KIND_ID, KINDS, MEMBERSHIPS, kindIsRealSql, realKindSql, rowKindJoinSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, componentRecordSql, kindRecordSql, rowKindJoinSql } from '../../db/membership.js';
 import { answeringPlaceOfSql, partOfNameSql } from '../../db/placePoints.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
@@ -34,7 +34,7 @@ import { mergeProposalOpenSql } from './reviewQueuePredicates.js';
  */
 export function kindNamesSql(place: string): string {
   return `(SELECT COALESCE(jsonb_agg(k.name ORDER BY k.display_priority, k.id), '[]'::jsonb)
-             FROM ${MEMBERSHIPS} km JOIN ${KINDS} k ON k.id = km.kind_id AND ${kindIsRealSql('k')}
+             FROM ${MEMBERSHIPS} km JOIN ${KINDS} k ON k.id = km.kind_id
             WHERE km.experience_id = ${place}.id)`;
 }
 
@@ -47,9 +47,9 @@ export function kindNamesSql(place: string): string {
  * a place whose point was never written is not yet the place its item names. A
  * point its source withdrew is not one of the place's points (#1360). The
  * registry's `site-items` claim states the same rule (`place_identifier_claims()`),
- * over a real kind's memberships. A part's record in World Heritage components
+ * over a kind's memberships. A part's record in its whole
  * (ADR-0156) is the registry's `component-item`, read by `itemSql` for a part
- * no real kind gives an item.
+ * no kind gives an item.
  */
 function membershipItemSql(membership: string, place: string): string {
   return `CASE WHEN ${membership}.external_id ~ '^Q[0-9]+$' THEN ${membership}.external_id
@@ -70,11 +70,12 @@ function membershipItemSql(membership: string, place: string): string {
 export function itemSql(place: string): string {
   return `COALESCE(
            (SELECT ${membershipItemSql('km', place)} FROM ${MEMBERSHIPS} km
-             WHERE km.experience_id = ${place}.id AND ${realKindSql('km')} AND ${membershipItemSql('km', place)} IS NOT NULL
+             WHERE km.experience_id = ${place}.id AND ${kindRecordSql('km')} AND ${membershipItemSql('km', place)} IS NOT NULL
              ORDER BY km.id LIMIT 1),
            (SELECT rec.wikidata_items[1] FROM ${MEMBERSHIPS} rec
-             WHERE rec.experience_id = ${place}.id AND rec.kind_id = ${COMPONENTS_KIND_ID}
-               AND cardinality(rec.wikidata_items) = 1))`;
+             WHERE rec.experience_id = ${place}.id AND ${componentRecordSql('rec')}
+               AND cardinality(rec.wikidata_items) = 1
+             ORDER BY rec.whole_id LIMIT 1))`;
 }
 
 /**
@@ -135,7 +136,7 @@ const PAIRS = `(SELECT jsonb_agg(jsonb_build_object(
  * phase scoped the row.
  */
 const ANCHOR_MEMBERSHIP = `(SELECT m.id FROM ${MEMBERSHIPS} m
-                             WHERE m.experience_id = ${answeringPlaceOfSql('e.id')} AND ${realKindSql('m')}
+                             WHERE m.experience_id = ${answeringPlaceOfSql('e.id')} AND ${kindRecordSql('m')}
                              ORDER BY m.id LIMIT 1)`;
 
 /** A pair as the statement builds it, before its items' terms are read. */

@@ -32,7 +32,7 @@
 import { jsonEquals } from '@tyr/shared/equality';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
-import { MEMBERSHIPS, placeHoldsRealKindSql } from '../../db/membership.js';
+import { MEMBERSHIPS, placeHoldsKindSql } from '../../db/membership.js';
 import { writePartFields, type PartField, type PartWrite } from '../../db/partFieldsWriter.js';
 import { publishedContentSql } from '../../db/readerPredicates.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
@@ -161,7 +161,7 @@ export async function writePointContents(
           ORDER BY holder.image_url, holder.id
        )
        SELECT el.id AS point_id, el.name, el.external_ref, part.curated_fields AS claims,
-              ${placeHoldsRealKindSql('part.id')} AS kinded,
+              ${placeHoldsKindSql('part.id')} AS kinded,
               ((SELECT requires_curation FROM experience_sources WHERE id = $6)
                AND ${publishedContentSql('el')}) AS gated_visible,
               NULLIF(part.image_url, '') AS old_image,

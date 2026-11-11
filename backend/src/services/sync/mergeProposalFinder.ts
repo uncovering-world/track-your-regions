@@ -61,7 +61,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, kindIsRealSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
 import { offeredLocationSql, placeOrPartOfferedSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { partOfNameSql } from '../../db/placePoints.js';
@@ -270,7 +270,7 @@ export const PROPOSAL_ROWS_SQL = `
 
 /** The names of the kinds a place's memberships give it, in display order. */
 function kindNamesSql(e: string): string {
-  return `ARRAY(SELECT k.name FROM ${MEMBERSHIPS} km JOIN ${KINDS} k ON k.id = km.kind_id AND ${kindIsRealSql('k')}
+  return `ARRAY(SELECT k.name FROM ${MEMBERSHIPS} km JOIN ${KINDS} k ON k.id = km.kind_id
                  WHERE km.experience_id = ${e}.id ORDER BY k.display_priority, k.id)`;
 }
 

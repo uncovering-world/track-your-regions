@@ -36,7 +36,7 @@
  * it is the point of (ADR-0100 decision 5).
  */
 
-import { COMPONENTS_KIND_ID, MEMBERSHIPS, placeHoldsRealKindSql, placeOfferedSql } from './membership.js';
+import { MEMBERSHIPS, componentRecordSql, placeHoldsKindSql, placeOfferedSql } from './membership.js';
 
 /** One way a place shows a point: the tables it is read from, and the place it is shown by. */
 export interface PlacePointArm {
@@ -199,7 +199,7 @@ export function answeringPlaceSql(point = 'el'): string {
  * asked through, as a write on its point is.
  */
 export function answeringPlaceOfSql(place: string): string {
-  return `COALESCE(CASE WHEN NOT ${placeHoldsRealKindSql(place)}
+  return `COALESCE(CASE WHEN NOT ${placeHoldsKindSql(place)}
                         THEN ${wholeOfSql(place)} END, ${place})`;
 }
 
@@ -270,12 +270,12 @@ export function pointNameSql(point = 'el'): string {
 
 /**
  * `pointNameSql` as the catalogue holds the part, by any membership of a real
- * kind (`placeHoldsRealKindSql`), read or not, as the writers that name a
+ * kind (`placeHoldsKindSql`), read or not, as the writers that name a
  * part's point ask it: what the World Heritage reading compares with UNESCO's
  * list, never a reader's read.
  */
 export function pointNameAsHeldSql(point = 'el'): string {
-  return pointNameBySql(point, placeHoldsRealKindSql('prt_name.id'));
+  return pointNameBySql(point, placeHoldsKindSql('prt_name.id'));
 }
 
 /** A point's name, `kinded` saying over `prt_name` whether its part names itself. */
@@ -347,7 +347,7 @@ export function pointClaimsSql(point = 'el'): string {
 
 /** `pointClaimsSql` as the catalogue holds the part, as `pointNameAsHeldSql` names its point: a run's record of a point. */
 export function pointClaimsAsHeldSql(point = 'el'): string {
-  return pointClaimsBySql(point, placeHoldsRealKindSql('prt_own.id'));
+  return pointClaimsBySql(point, placeHoldsKindSql('prt_own.id'));
 }
 
 /** A point's claims, `kinded` saying over `prt_own` whether its part names itself. */
@@ -366,14 +366,27 @@ function pointClaimsBySql(point: string, kinded: string): string {
 }
 
 /**
+ * The record of World Heritage components the point `point` reads as its
+ * part's (ADR-0198): the part holds one in each whole, and the one under the
+ * point's reference, compared as the run compares it (case aside, `823-001B`),
+ * is the point's, else the earliest whole's. `columns` is
+ * what to select of it, under `alias`.
+ */
+export function pointRecordSql(point: string, alias: string, columns: string): string {
+  return `(SELECT ${columns} FROM ${MEMBERSHIPS} ${alias}
+            WHERE ${alias}.experience_id = ${point}.experience_id AND ${componentRecordSql(alias)}
+            ORDER BY (lower(${alias}.external_id) = lower(${point}.external_ref)) IS TRUE DESC, ${alias}.whole_id
+            LIMIT 1)`;
+}
+
+/**
  * The Wikidata item the point `point` is, as an SQL expression: a serial
- * site's part's off its record in World Heritage components (ADR-0156
- * decision 2), any other point's its own.
+ * site's part's off its record in its whole (ADR-0156 decision 2, ADR-0198),
+ * any other point's its own.
  */
 export function pointItemSql(point = 'el'): string {
   return `CASE WHEN ${pointOfPartSql(point)}
-               THEN (SELECT pi_rec.wikidata_items[1] FROM ${MEMBERSHIPS} pi_rec
-                      WHERE pi_rec.experience_id = ${point}.experience_id AND pi_rec.kind_id = ${COMPONENTS_KIND_ID})
+               THEN ${pointRecordSql(point, 'pi_rec', 'pi_rec.wikidata_items[1]')}
                ELSE ${point}.wikidata_item END`;
 }
 
@@ -383,8 +396,7 @@ export function pointItemSql(point = 'el'): string {
  */
 export function pointItemClaimedSql(point = 'el'): string {
   return `CASE WHEN ${pointOfPartSql(point)}
-               THEN COALESCE((SELECT pc_rec.curated_fields ? 'wikidata_items' FROM ${MEMBERSHIPS} pc_rec
-                               WHERE pc_rec.experience_id = ${point}.experience_id AND pc_rec.kind_id = ${COMPONENTS_KIND_ID}), false)
+               THEN COALESCE(${pointRecordSql(point, 'pc_rec', "pc_rec.curated_fields ? 'wikidata_items'")}, false)
                ELSE COALESCE(${point}.curated_fields ? 'wikidata_item', false) END`;
 }
 
@@ -396,7 +408,7 @@ export function pointItemClaimedSql(point = 'el'): string {
 export function itemHeldSql(item: string): string {
   return `(EXISTS (SELECT 1 FROM experience_locations held_point WHERE held_point.wikidata_item = ${item})
            OR EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held_rec
-                       WHERE held_rec.kind_id = ${COMPONENTS_KIND_ID} AND held_rec.wikidata_items @> ARRAY[(${item})::text]))`;
+                       WHERE ${componentRecordSql('held_rec')} AND held_rec.wikidata_items @> ARRAY[(${item})::text]))`;
 }
 
 /**

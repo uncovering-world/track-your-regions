@@ -59,7 +59,7 @@ import {
   offeredToReaderSql,
   publishedContentSql,
 } from '../../../db/readerPredicates.js';
-import { MEMBERSHIPS, placeHoldsRealKindSql } from '../../../db/membership.js';
+import { MEMBERSHIPS, placeHoldsKindSql } from '../../../db/membership.js';
 import {
   answeringPlaceSql, placePointsSql, pointOfPartSql, pointsShownSql, pointVisitsSql,
 } from '../../../db/placePoints.js';
@@ -483,7 +483,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
            AND e.metadata->>'imageCredit' IS NULL
            -- A serial site's part with no kind of its own is reported through
            -- its point below, whose credit waits on its site's card (ADR-0156).
-           AND (${placeHoldsRealKindSql('e.id')}
+           AND (${placeHoldsKindSql('e.id')}
                 OR NOT EXISTS (SELECT 1 FROM experience_parts own_part
                                 WHERE own_part.part_id = e.id AND own_part.reason = 'component'))
          UNION ALL
@@ -539,7 +539,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
           FROM experience_locations el
           JOIN experiences shown ON shown.id = el.experience_id
          WHERE shown.image_url IS NOT NULL AND shown.image_url <> '' AND el.merged_into_id IS NULL
-           AND ${pointOfPartSql('el')} AND NOT ${placeHoldsRealKindSql('el.experience_id')}
+           AND ${pointOfPartSql('el')} AND NOT ${placeHoldsKindSql('el.experience_id')}
            AND ${drawableHostSql('shown.image_url')}
            AND shown.metadata->>'imageCredit' IS NULL
          ORDER BY 1, 3`,

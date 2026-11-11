@@ -1009,7 +1009,7 @@ async function writeUnderLock(
              $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb, $35::text, $27::text[], $36::text,
              $37::jsonb
         FROM ins
-      ON CONFLICT (source_id, external_id) DO UPDATE SET
+      ON CONFLICT (source_id, external_id) WHERE kind_id IS NOT NULL DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
         -- The type within the kind is the membership's (ADR-0084), behind the
         -- membership's own claim and behind the gate, as the place's content is

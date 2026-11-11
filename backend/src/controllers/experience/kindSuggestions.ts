@@ -15,12 +15,12 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
-import { KINDS, kindIsRealSql } from '../../db/membership.js';
+import { KINDS } from '../../db/membership.js';
 import { INSCRIBED_KIND_ID } from './kindAddController.js';
 
 /**
  * The kinds Jev is offered, as rows `(kind_id, slug, name, definition, issue)`
- * in the order the question lists them: every real kind of the catalogue but
+ * in the order the question lists them: every kind of the catalogue but
  * World Heritage Sites, with the register's definition of it (its name where
  * the register holds none), then every place kind the register plans. A live
  * kind's row has no slug, a planned one's no kind id.
@@ -30,7 +30,7 @@ export function kindOptionsSql(): string {
                   COALESCE(ck.definition, k.name)::text AS definition, NULL::int AS issue, 0 AS rank
              FROM ${KINDS} k
              LEFT JOIN coverage_kinds ck ON ck.experience_kind_id = k.id AND ck.status = 'live'
-            WHERE ${kindIsRealSql('k')} AND k.id <> ${INSCRIBED_KIND_ID}
+            WHERE k.id <> ${INSCRIBED_KIND_ID}
            UNION ALL
            SELECT NULL, ck.slug::text, ck.name::text, ck.definition, ck.issue_number, 1
              FROM coverage_kinds ck

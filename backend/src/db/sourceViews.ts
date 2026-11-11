@@ -15,7 +15,7 @@
  */
 
 import { SHORT_MOVE_METERS } from '@tyr/shared/moves';
-import { COMPONENTS_KIND_ID, MEMBERSHIPS, membershipAdmittedSql, realKindSql } from './membership.js';
+import { MEMBERSHIPS, componentRecordSql, membershipAdmittedSql, kindRecordSql } from './membership.js';
 
 /**
  * The fields a view holds, in the words a run's change set and the review
@@ -50,12 +50,12 @@ export function membershipViewSql(alias = 'm'): ViewSql {
  * Every standing view of a place, as rows under `alias`: each admitted
  * membership's (`reported_*`), and, on a part of a serial site, the view the site's source
  * holds of the component (#2061, #2063): the name and coordinate the list gives
- * it, on the part's record in World Heritage components (ADR-0156 decision 2),
+ * it, on the part's record in its whole (ADR-0156 decision 2, ADR-0198),
  * which the site's run writes (`writePartListings`) and a merge carries to the
  * place it keeps — Karnak's "Temple of Karnak" stands on the Karnak Temple
  * Complex beside Archaeology's view of it.
  *
- * The record is a membership of a virtual kind, which offers nothing, so the
+ * The record is in a whole, not a kind, and offers nothing, so the
  * component view reads as the site's source's: `kind_id` and `source_id` are
  * the site membership's, which the sources card names it by and a run of the
  * site's own source is never compared with (`otherViewsSql`). `membership_id`
@@ -83,14 +83,15 @@ export function placeViewsSql(placeExpr: string, alias = 'v'): string {
                   m.reported_image_credit, m.reported_location, m.reported_wikipedia_url, m.type
              FROM ${MEMBERSHIPS} m
             WHERE m.experience_id = ${placeExpr} AND ${viewStandsSql('m')} AND ${membershipAdmittedSql('m')}
-              AND ${realKindSql('m')}
+              AND ${kindRecordSql('m')}
            UNION ALL
            SELECT rec.id, w.kind_id, w.source_id, p.external_ref, true, w.experience_id, rec.reported_name, NULL::text,
                   NULL::text, NULL::jsonb, rec.reported_location, NULL::text, w.type
              FROM ${MEMBERSHIPS} rec
-             JOIN experience_parts p ON p.part_id = rec.experience_id AND rec.external_id = 'component:' || p.id
+             JOIN experience_parts p ON p.part_id = rec.experience_id AND p.whole_id = rec.whole_id
+                                    AND p.reason = 'component'
              JOIN ${MEMBERSHIPS} w ON w.id = p.membership_id
-            WHERE rec.experience_id = ${placeExpr} AND rec.kind_id = ${COMPONENTS_KIND_ID}
+            WHERE rec.experience_id = ${placeExpr} AND ${componentRecordSql('rec')}
               AND (rec.reported_name IS NOT NULL OR rec.reported_location IS NOT NULL)
               AND ${viewStandsSql('w')} AND ${membershipAdmittedSql('w')}) AS ${alias}`;
 }
@@ -104,7 +105,7 @@ export function placeViewsSql(placeExpr: string, alias = 'v'): string {
 export function placeViewSourcesSql(placeExpr: string): string {
   return `(SELECT COALESCE(array_agg(DISTINCT s.source_id ORDER BY s.source_id), '{}'::int[])
              FROM (SELECT m.source_id FROM ${MEMBERSHIPS} m
-                    WHERE m.experience_id = ${placeExpr} AND ${realKindSql('m')}
+                    WHERE m.experience_id = ${placeExpr} AND ${kindRecordSql('m')}
                    UNION ALL
                    SELECT v.source_id FROM ${placeViewsSql(placeExpr)} WHERE v.component) s)`;
 }

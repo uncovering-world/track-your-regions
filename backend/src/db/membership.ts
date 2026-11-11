@@ -45,11 +45,11 @@ export const CROWDING = 'membership_crowding';
 export const FAME = 'membership_fame';
 
 /**
- * World Heritage components, the virtual kind each serial site's part holds
- * its record in (ADR-0156 decision 2): seeded under this id by migration 181,
- * which the schema's triggers name too.
+ * World Heritage components, the source of a serial site's part's record in
+ * its whole (ADR-0198): seeded under this id by migration 181, which the
+ * schema's triggers name too.
  */
-export const COMPONENTS_KIND_ID = 10;
+export const COMPONENT_SOURCE_ID = 10;
 
 const INNER = 'km';
 
@@ -72,41 +72,44 @@ export function membershipVisibleSql(alias = 'm'): string {
 }
 
 /**
- * The membership is in a kind a reader browses, not a virtual one (ADR-0156
- * decision 1): World Heritage components records how the World Heritage list
- * knows a serial site's part and offers nothing. `alias` is the membership
- * alias, or a source's, which names its kind the same way. Composed into every
- * predicate here that offers a place or names the
- * kind it is shown under, and never into `membershipAdmittedSql` or
- * `membershipVisibleSql`, which a reader negates to find a refused or an
- * unread membership: a virtual one is neither.
+ * The record places its place in a kind, not in a whole (ADR-0198): a serial
+ * site's part's record of World Heritage components says how the World
+ * Heritage list knows the part and offers nothing. `alias` is the record
+ * alias, or a source's, which names its kind the same way: a source whose
+ * records are in a whole fills no kind. Composed into every predicate here
+ * that offers a place or names the kind it is shown under, and never into
+ * `membershipAdmittedSql` or `membershipVisibleSql`, which a reader negates to
+ * find a refused or an unread membership: a record in a whole is neither. A
+ * read that joins the record's kind needs nothing more, since a record in a
+ * whole has none to join.
  */
-export function realKindSql(alias = 'm'): string {
-  return `${alias}.kind_id IN (SELECT real_kind.id FROM ${KINDS} real_kind WHERE ${kindIsRealSql('real_kind')})`;
+export function kindRecordSql(alias = 'm'): string {
+  return `${alias}.kind_id IS NOT NULL`;
 }
 
 /**
- * The kind `kind` (an `experience_kinds` alias) is one a reader browses, not
- * a virtual one: `realKindSql` for a read that already joins the kind.
+ * The record `alias` is a serial site's part's record of World Heritage
+ * components in its whole (ADR-0198): one per relation, under the component's
+ * reference, with its item and the list's view of the part.
  */
-export function kindIsRealSql(kind = 'k'): string {
-  return `NOT ${kind}.is_virtual`;
+export function componentRecordSql(alias = 'rec'): string {
+  return `${alias}.source_id = ${COMPONENT_SOURCE_ID} AND ${alias}.whole_id IS NOT NULL`;
 }
 
 /**
- * The place holds a membership of a real kind: a kind of its own, the test
- * that tells a serial site's part that a merge made another kind's place from
- * one shown only through its site (ADR-0100 decision 2, ADR-0156). `place` is
- * an SQL expression naming the place's id.
+ * The place holds a membership of a kind: a kind of its own, the test that
+ * tells a serial site's part that a merge made another kind's place from one
+ * shown only through its site (ADR-0100 decision 2, ADR-0156). `place` is an
+ * SQL expression naming the place's id.
  */
-export function placeHoldsRealKindSql(place: string): string {
+export function placeHoldsKindSql(place: string): string {
   return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held_kind
-                   WHERE held_kind.experience_id = ${place} AND ${realKindSql('held_kind')})`;
+                   WHERE held_kind.experience_id = ${place} AND ${kindRecordSql('held_kind')})`;
 }
 
-/** Both of the above, of the same membership, in a real kind. */
+/** Both of the above, of the same membership, in a kind. */
 export function membershipOfferedSql(alias = 'm'): string {
-  return `${membershipAdmittedSql(alias)} AND ${membershipVisibleSql(alias)} AND ${realKindSql(alias)}`;
+  return `${membershipAdmittedSql(alias)} AND ${membershipVisibleSql(alias)} AND ${kindRecordSql(alias)}`;
 }
 
 /**
@@ -133,7 +136,7 @@ export function membershipShownSql(alias = 'm'): string {
 
 function someMembershipSql(experienceAlias: string, predicate: (alias: string) => string): string {
   return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} ${INNER}
-        WHERE ${INNER}.experience_id = ${experienceAlias}.id AND ${predicate(INNER)} AND ${realKindSql(INNER)})`;
+        WHERE ${INNER}.experience_id = ${experienceAlias}.id AND ${predicate(INNER)} AND ${kindRecordSql(INNER)})`;
 }
 
 /** Some kind accepts the place. `alias` is the `experiences` alias. */
@@ -229,7 +232,7 @@ export function membershipToAnswerSql(
     ? `(${INNER}.admission = 'refused') DESC`
     : `(${INNER}.curation_state = 'pending') DESC, (${INNER}.pending_change_sync_log_id IS NOT NULL) DESC`;
   return `(SELECT ${INNER}.id FROM ${MEMBERSHIPS} ${INNER}
-        JOIN ${KINDS} k ON k.id = ${INNER}.kind_id AND ${kindIsRealSql('k')}
+        JOIN ${KINDS} k ON k.id = ${INNER}.kind_id
         WHERE ${INNER}.experience_id = ${experienceIdExpr}
           AND (${namedExpr} IS NULL OR ${INNER}.id = ${namedExpr})
         ORDER BY ${first}, k.display_priority, ${INNER}.id
@@ -298,7 +301,7 @@ export function iconicPinnedSql(alias = 'm'): string {
  */
 export function shownMembershipSql(experienceExpr: string): string {
   return `(SELECT shown.id FROM ${MEMBERSHIPS} shown
-             JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id AND ${kindIsRealSql('shown_kind')}
+             JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id
             WHERE shown.experience_id = ${experienceExpr}
             ORDER BY ${SHOWN_ORDER}
             LIMIT 1)`;
@@ -315,7 +318,7 @@ const SHOWN_ORDER = `(${membershipShownSql('shown')}) DESC, (${membershipOffered
  */
 export function placeSourceIdsSql(experience = 'e'): string {
   return `ARRAY(SELECT DISTINCT ps.source_id FROM ${MEMBERSHIPS} ps
-                 WHERE ps.experience_id = ${experience}.id AND ${realKindSql('ps')} ORDER BY 1)`;
+                 WHERE ps.experience_id = ${experience}.id AND ${kindRecordSql('ps')} ORDER BY 1)`;
 }
 
 /**
@@ -341,7 +344,7 @@ export function placeSourceIdsSql(experience = 'e'): string {
  */
 export function rowKindJoinSql(experience = 'e', membership = 'm', kind = 'k'): string {
   return `LEFT JOIN LATERAL (SELECT shown.* FROM ${MEMBERSHIPS} shown
-             JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id AND ${kindIsRealSql('shown_kind')}
+             JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id
             WHERE shown.experience_id = ${experience}.id
             ORDER BY ${SHOWN_ORDER}
             LIMIT 1) ${membership} ON true
@@ -365,7 +368,7 @@ export function rowKindJoinSql(experience = 'e', membership = 'm', kind = 'k'): 
  */
 export function catalogueKindJoinSql(experience = 'e', membership = 'm', kind = 'k'): string {
   return `LEFT JOIN (SELECT DISTINCT ON (shown.experience_id) shown.* FROM ${MEMBERSHIPS} shown
-             JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id AND ${kindIsRealSql('shown_kind')}
+             JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id
             WHERE ${membershipShownSql('shown')}
             ORDER BY shown.experience_id, ${SHOWN_ORDER}) ${membership} ON ${membership}.experience_id = ${experience}.id
       LEFT JOIN ${KINDS} ${kind} ON ${kind}.id = ${membership}.kind_id`;
@@ -524,5 +527,5 @@ export function kindMembershipJoinSql(
 export function placeHasKindSql(experience: string, kindExpr: string): string {
   return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} ${INNER}
         WHERE ${INNER}.experience_id = ${experience}.id AND ${INNER}.kind_id = ${kindExpr}
-          AND ${realKindSql(INNER)})`;
+          AND ${kindRecordSql(INNER)})`;
 }
