@@ -77,7 +77,7 @@ What follows from the split, in the code as it stands:
 - **A curator answers the membership** where the endpoint is keyed on the place — `/:id/publish`, `/:id/decline-held`, `/:id/refuse-arrival`, `/:id/admission`, and each row of the batch answer. The body names it (`membershipId`, #1264): the review queue's arrival, held and refusal cards carry the membership they ask about (`membership_id`), the web sends it back from the card and from a batch row (`namedMembership`, `toAnswerRows`), and *Publish all waiting* names the membership its source brought. `membershipToAnswerSql` (`db/membership.ts`) answers with the named membership where it belongs to the place and with none where it does not, which every writer refuses as a question no longer open; the curator's scope is resolved for the named membership's source (`answeredSourceId`), so an answer about one source's question is that source's curators' to give; with none named it picks the one waiting for a publish or a decline, the refused one for a verdict, which is the place's only one until a merge (#1247). The publication and the verdict land on the membership; the content, and who decided and when, on the place. The queue asks the three gated kinds and a refusal of every membership no other kind offers to readers (#1838), and a missing card of the kind whose source stopped listing a place another still lists (§ The gate's own three kinds); what remains of #1264 is asking unread contents of the kind that placed them.
 - **Counts follow ADR-0046 decision 8** (`experienceCounts.ts`): a kind's count is of memberships — `/kinds`' `experience_count` and the tree's per-kind counts — and a region's count is of places; equal today, apart from the first merge.
 - **Two catalogue checks state what every run rests on**: `place-without-membership` and `membership-source-disagrees-with-row` (some membership of every place carries the place's own `source_id` and `external_id`, which stay unique among places — a serial site's component part excepted, brought under a `part:<id>` pair no membership carries and found through its whole). No reader reads that pair since #1893: the kind is the shown membership's, and a curator's scope over the place as a whole is any source it holds a membership of (`curatorPlaceScopeExists`, the maintainer's decision), for its region assignments and rejections too (`checkCuratorScope`); an answer about one membership is scoped by the membership the writer answers (`answeredSourceId`), and a type edit by the shown membership it writes. The lint rule `provenance/no-first-source-key` refuses a new comparison with the first source.
-- **Two rows that are one place are merged, and a merge can be undone** (#1247, ADR-0046, [ADR-0086](../decisions/0086-a-merge-is-a-record-that-moves-a-place-into-another-and-back.md)). `mergePlaces` (`controllers/experience/placeMerge.ts`) folds one place into another in one transaction, under both places' object locks taken in id order (`lockTwoExperiences`), through each table's writer module: the folded place's memberships (`moveMemberships`), its points (`movePoints`) — a point whose `external_ref` equals one of the survivor's is that point, both sources reading one Wikidata item, and where each place holds exactly one standing point the two are one point whatever their references (ADR-0088 decision 3: a World Heritage site of one point knows it by its UNESCO number, a place of worship by its item), so `foldPoints` moves its placements onto the survivor's point and marks it `merged_into_id`, and `offeredLocationSql` offers it no more (the folded point keeps the reference its source knows it by, so that source's later runs pair their point with it, down a chain of merges, follow it quietly where a curator has not claimed the field, and never report, place or show it, while the point a reader sees keeps the run's placement: `foldedPointsSql`, `placePoints.ts`, #1662; before that a run added its point to the place again, 192 points on 191 places on 2026-10-18, 191 of them arrivals; migration 123 folded the 189 placed only by sources with a folded twin there, and on the ones another source reading the same item places too it moved only the twin's source's placement onto the kept point) — its work links (`moveLinks`; a work both link keeps the survivor's link and state, and the folded link's placements move onto it, `foldLinks`), its changeset rows and answers (`moveChangesOfPlace`, `moveHeldDecisions`, `moveConflictDecisions`, an answer the survivor already holds for the field standing), and its region refusals, and a curator's assignments of it to a region the survivor is not in (`moveManualAssignments`: placement recomputes only the automatic rows from the points, so without it the folded place's address would lead to a place that region does not list), and the part-of relations it is in, as the part or as the whole (`moveParts`, `partWriter.ts`, ADR-0100 decision 4, #1250): the Temple of Karnak folded into the Karnak Temple Complex of Places of worship leaves the complex the part of Ancient Thebes, under the component's reference. A merge of a place with its own whole or part is refused, since that pair is *part of*, not one place. A part that holds a kind of its own is a place in its own right: the writer that names and places a component part for its point skips it (`followTheirPoints`, `partFieldsWriter.ts`), and it answers for its own point (`answeringPlaceSql`, `placePoints.ts`), so a curator's correction of that point is judged under its own source and regions, moves its own anchor and is written to its own history. The undo gives a part back the name and coordinate its point has now, which the site's run may have changed while the merge stood (`followTheirPoints`). Every traveller's visit is reconciled as ADR-0046 decision 5 says — the earlier date, both notes, and where both carry a rating and they differ, the one recorded with the later visit — onto the survivor's visit, or as a copy where the traveller marked only the folded place, and a folded point's visits onto the survivor's point; the folded visits stay where they were. The folded place is marked `merged_into_id` and kept: it holds no membership, so no reader offers it, and the catalogue check `place-without-membership` skips it. Two places in one kind are refused, since one place holds one membership per kind. What moved is the merge's row in `experience_merges`, and `undoMerge` moves exactly that back — the survivor's visits as they were, unless a traveller has written to one since, the folded points and links with their own placements, and the pair of near places a curator's *one place* answer ran the merge for, open again (`reopenMergedPair`, #1249) — under the same locks; anything written to the survivor since stays with it, and merges are undone last first — one is refused while a later merge folded its survivor, or folded another place into it, and is still in effect. Both places' histories carry `merged` and `merge_undone`; the catalogue's own merge names no curator (`curator_id` is null on a `merged` row and on no other). After either, the places are placed again (`placeAfterRelease`). Places sharing a Wikidata item — the registry's word (ADR-0143 decision 2, `place_identifiers`): an item two live places each claim as their own, through a membership's id, a World Heritage site of one point's one item (ADR-0088) or a standing point's item (#1250), and never an item two parts carry, as the Saint Thaddeus ensemble's chapels hold the monastery's, nor one a curator said only refers to the place — merge into the one a kind offers with the lowest id, so the Temple of Karnak folds into the Karnak Temple Complex whatever their ids; where no kind offers either — a serial site's component part is shown through its whole and holds no kind of its own — the part keeps its row and the arrival nobody has passed folds into it, the state a run reaches when it finds the part by its item (ADR-0143 decision 3): the Tower of Belem holding its pending Towers membership (`joinPlacesClaimingOneItem`, `sharedItemsSql`, `equalItemMerges.ts`; the pass that preceded the join found 174 shared items on the development catalogue on 2026-10-18, among them Tō-ji, the Giant Wild Goose Pagoda and Takht-i-Bahi), one place at a time, after every real run of a source (`joinPlacesClaimingOneItem`, called by `startSync` once the run is over, however it ended, since a run cancelled or failed half-way still wrote what it wrote — the join is a curation write, which the sync layer sits below; a preview joins nothing) and after a component-items answer, for the items it confirmed (`answerComponentItemsUnderLock`, after its commit). A run finds the place an item names before it creates one (`lockIdentifiedPlace`, ADR-0143 decision 3), so what the join meets is an item recorded on a place that exists — a World Heritage run or the component-items card recording, on a component's point, the item another kind's place already is — and the two are one place by the time the run or the answer is over, the row a kind offers keeping its id; the catalogue check `identifiers-on-several-places` lists what is still apart, the registry's rows the join reads (`sharedItemsSql`); a pair a curator took apart — an undone merge between its places, whatever its reason — is never joined again, since the undo is their word that the two are not one place, and the registry goes on listing the item for them to settle; a curator undoes a merge from the place that stayed (`POST /api/experiences/merges/:mergeId/undo`, in that place's scope and every moved membership's source's, the audit rows naming the region). The join goes on past a merge that throws, logging it. **The folded place's address answers with the survivor's card**: `getExperience` reads the place by id and, on a miss, follows `merged_into_id` down to the place that stands (`survivorOf`) and answers with it, so the answer's id is the survivor's, and the web moves the address there (`docs/tech/addresses.md` § Degradation is silent). Both history rows carry the two places' names as they stood and the kinds the merge moved (`survivorName`, `foldedName`, `kinds`), read under the locks; a curator undoes a merge with *Undo this merge* on the `merged` row of the place that stayed (`CurationHistory.tsx`, offered until a `merge_undone` row for the same merge follows it), and the server's refusal — a later merge still in effect — is shown where it was asked. **The place that stayed reads the folded entry's history too** (#1366): the decisions made about the folded entry — a pin on the membership the merge moved among them — stay on that entry's id, so the history reads every entry a standing merge folded into the place, down a chain, and labels each such row with the entry it was about; such a row offers neither *Undo this merge* nor *Take back*, and once the merge is undone the rows are the folded entry's alone again.
+- **Two rows that are one place are merged, and a merge can be undone** (#1247, ADR-0046, [ADR-0086](../decisions/0086-a-merge-is-a-record-that-moves-a-place-into-another-and-back.md)). `mergePlaces` (`controllers/experience/placeMerge.ts`) folds one place into another in one transaction, under both places' object locks taken in id order (`lockTwoExperiences`), through each table's writer module: the folded place's memberships (`moveMemberships`), its points (`movePoints`) — a point whose `external_ref` equals one of the survivor's is that point, both sources reading one Wikidata item, and where each place holds exactly one standing point the two are one point whatever their references (ADR-0088 decision 3: a World Heritage site of one point knows it by its UNESCO number, a place of worship by its item), so `foldPoints` moves its placements onto the survivor's point and marks it `merged_into_id`, and `offeredLocationSql` offers it no more (the folded point keeps the reference its source knows it by, so that source's later runs pair their point with it, down a chain of merges, follow it quietly where a curator has not claimed the field, and never report, place or show it, while the point a reader sees keeps the run's placement: `foldedPointsSql`, `placePoints.ts`, #1662; before that a run added its point to the place again, 192 points on 191 places on 2026-10-18, 191 of them arrivals; migration 123 folded the 189 placed only by sources with a folded twin there, and on the ones another source reading the same item places too it moved only the twin's source's placement onto the kept point) — its work links (`moveLinks`; a work both link keeps the survivor's link and state, and the folded link's placements move onto it, `foldLinks`), its changeset rows and answers (`moveChangesOfPlace`, `moveHeldDecisions`, `moveConflictDecisions`, an answer the survivor already holds for the field standing), and its region refusals, and a curator's assignments of it to a region the survivor holds no assignment in (`moveManualAssignments`: placement recomputes only the automatic rows from the points, so without it the folded place's address would lead to a place that region does not list; the curator's row takes the place of an automatic row the survivor holds there, its own or one a moved point has just given it, and keeps its id, so the undo moves it back the same way and the place that gave it up is refreshed), and the part-of relations it is in, as the part or as the whole (`moveParts`, `partWriter.ts`, ADR-0100 decision 4, #1250): the Temple of Karnak folded into the Karnak Temple Complex of Places of worship leaves the complex the part of Ancient Thebes, under the component's reference. A merge of a place with its own whole or part is refused, since that pair is *part of*, not one place. A part that holds a kind of its own is a place in its own right: the writer that names and places a component part for its point skips it (`followTheirPoints`, `partFieldsWriter.ts`), and it answers for its own point (`answeringPlaceSql`, `placePoints.ts`), so a curator's correction of that point is judged under its own source and regions, moves its own anchor and is written to its own history. The undo gives a part back the name and coordinate its point has now, which the site's run may have changed while the merge stood (`followTheirPoints`). Every traveller's visit is reconciled as ADR-0046 decision 5 says — the earlier date, both notes, and where both carry a rating and they differ, the one recorded with the later visit — onto the survivor's visit, or as a copy where the traveller marked only the folded place, and a folded point's visits onto the survivor's point; the folded visits stay where they were. The folded place is marked `merged_into_id` and kept: it holds no membership, so no reader offers it, and the catalogue check `place-without-membership` skips it. Two places in one kind are refused, since one place holds one membership per kind. What moved is the merge's row in `experience_merges`, and `undoMerge` moves exactly that back — the survivor's visits as they were, unless a traveller has written to one since, the folded points and links with their own placements, and the pair of near places a curator's *one place* answer ran the merge for, open again (`reopenMergedPair`, #1249) — under the same locks; anything written to the survivor since stays with it, and merges are undone last first — one is refused while a later merge folded its survivor, or folded another place into it, and is still in effect. Both places' histories carry `merged` and `merge_undone`; the catalogue's own merge names no curator (`curator_id` is null on a `merged` row and on no other). After either, the places are placed again (`placeAfterRelease`). Places sharing a Wikidata item — the registry's word (ADR-0143 decision 2, `place_identifiers`): an item two live places each claim as their own, through a membership's id, a World Heritage site of one point's one item (ADR-0088) or a standing point's item (#1250), and never an item two parts carry, as the Saint Thaddeus ensemble's chapels hold the monastery's, nor one a curator said only refers to the place — merge into the one a kind offers with the lowest id, so the Temple of Karnak folds into the Karnak Temple Complex whatever their ids; where no kind offers either — a serial site's component part is shown through its whole and holds no kind of its own — the part keeps its row and the arrival nobody has passed folds into it, the state a run reaches when it finds the part by its item (ADR-0143 decision 3): the Tower of Belem holding its pending Towers membership (`joinPlacesClaimingOneItem`, `sharedItemsSql`, `equalItemMerges.ts`; the pass that preceded the join found 174 shared items on the development catalogue on 2026-10-18, among them Tō-ji, the Giant Wild Goose Pagoda and Takht-i-Bahi), one place at a time, after every real run of a source (`joinPlacesClaimingOneItem`, called by `startSync` once the run is over, however it ended, since a run cancelled or failed half-way still wrote what it wrote — the join is a curation write, which the sync layer sits below; a preview joins nothing) and after a component-items answer, for the items it confirmed (`answerComponentItemsUnderLock`, after its commit). A run finds the place an item names before it creates one (`lockIdentifiedPlace`, ADR-0143 decision 3), so what the join meets is an item recorded on a place that exists — a World Heritage run or the component-items card recording, on a component's point, the item another kind's place already is — and the two are one place by the time the run or the answer is over, the row a kind offers keeping its id; the catalogue check `identifiers-on-several-places` lists what is still apart, the registry's rows the join reads (`sharedItemsSql`); a pair a curator took apart — an undone merge between its places, whatever its reason — is never joined again, since the undo is their word that the two are not one place, and the registry goes on listing the item for them to settle; a curator undoes a merge from the place that stayed (`POST /api/experiences/merges/:mergeId/undo`, in that place's scope and every moved membership's source's, the audit rows naming the region). The join goes on past a merge that throws, logging it. **The folded place's address answers with the survivor's card**: `getExperience` reads the place by id and, on a miss, follows `merged_into_id` down to the place that stands (`survivorOf`) and answers with it, so the answer's id is the survivor's, and the web moves the address there (`docs/tech/addresses.md` § Degradation is silent). Both history rows carry the two places' names as they stood and the kinds the merge moved (`survivorName`, `foldedName`, `kinds`), read under the locks; a curator undoes a merge with *Undo this merge* on the `merged` row of the place that stayed (`CurationHistory.tsx`, offered until a `merge_undone` row for the same merge follows it), and the server's refusal — a later merge still in effect — is shown where it was asked. **The place that stayed reads the folded entry's history too** (#1366): the decisions made about the folded entry — a pin on the membership the merge moved among them — stay on that entry's id, so the history reads every entry a standing merge folded into the place, down a chain, and labels each such row with the entry it was about; such a row offers neither *Undo this merge* nor *Take back*, and once the merge is undone the rows are the folded entry's alone again.
 - **A curator separates one kind's membership into a place of its own** ([ADR-0144](../decisions/0144-a-curator-separates-one-kinds-membership-into-a-place-of-its-own.md), #1885): the way back from a merge, and from a run finding the place by an identifier it carries (ADR-0143), which writes no merge record. `separateMembership` (`controllers/experience/membershipSeparation.ts`, `POST /api/experiences/:id/kinds/:kindId/separate`, the dialog's `KindSeparation`) works on the membership rather than on a record:
   - The new place is made from the original's content and the membership's own view (`insertSeparatedExperience`, `reported_*`).
   - The points and work links only that membership places move (`movePoints`, `moveLinks`); one another membership places too is copied, and the separated membership places the copy (`copyPointsFor`, `copyLinksFor`).
@@ -109,7 +109,7 @@ The inventory this section held — every reader of `category_id` on both stacks
 - `experiences`: the place (`location`, optional `boundary`, the curator's claims, whether its sources still list it as a derivation of its memberships)
 - `experience_kinds`: what a traveller browses by (ADR-0045 decision 1); five rows under the sources' ids
 - `source_records`: a place's membership in a kind (ADR-0045 decision 4, #822) — the source that brought it, the admission verdict and its reason, `admitted_for`, the must-see badge, the curator's pins on those, and the gate state of the arrival
-- `experience_regions`: assignment to regions (`assignment_type = auto | manual`)
+- `experience_regions`: the regions a place is in, its parts included, one row per region (`assignment_type = auto | manual`; `listing`, whether a reader finds it there, ADR-0197)
 - `user_visited_experiences`: per-user visit state
 - `experience_sync_logs`: sync audit log by source (`source_id`)
 
@@ -171,11 +171,10 @@ position it gives a place (`readerPositionSql`), the visit reads and writes over
 the review card's "made of N places", the component-items card (its candidates, its points, its
 answers and Jev's suggestions) and region placement, where a site is placed in every region one of
 its parts' points is: `assignRegionsForExperiences` re-places a site's parts' points with it and,
-given a part, places its whole again (`withWholesSql`), and a source's rebuild clears and re-places
-the points its places show, so a World Heritage rebuild reaches a part that holds no membership of
-its own. The
-same rule answers everything else that asks about a site's points (#1428): a region list's check
-that a place stands in the region (`readerRegionMembershipSql`); a traveller's tick on a point, which
+given a part, writes its whole's rows again (`refresh_place_regions()` walks up, ADR-0197), and a
+source's rebuild clears and re-places the points its places show, so a World Heritage rebuild
+reaches a part that holds no membership of its own. The
+same rule answers everything else that asks about a site's points (#1428): a traveller's tick on a point, which
 counts on every offered place that shows it and is taken back from each only once none of its points
 is left visited; the run's own reads in `locationWriter.ts`, `pointContentWriter.ts` and the
 component finder, which reads a part's point as a component of its site; the review queue's keys,
@@ -1838,8 +1837,9 @@ the site's own points. **A component that moves stays its part** (ADR-0189, #218
 on the part whose point it replaces, by its name — the point it holds under a gate, or one the list
 dropped, on a part with no other point standing — rather than being parted, so a move or a
 renumbering makes no second place of one reserve; the part then follows the point a reader sees,
-a standing one before a withdrawn one and a published one before an arrival (`partFollowsSql`). A part with no kind of its own carries no `experience_regions` rows: region
-placement derives them only for a place with a membership, and the lists find a part through its site.
+a standing one before a withdrawn one and a published one before an arrival (`partFollowsSql`). A part with no kind of its own carries `experience_regions` rows of its
+own like any place (ADR-0197), and no list offers it: every reader's set composes a record in a
+kind (`kindRecordSql`), so the lists find a part through its site.
 The smoke fixture parts its two-point World Heritage site the same way (`e2eFixture.ts`).
 
 **A site's components are the entries of `components_list`** (`parseComponentsList`,
@@ -5588,7 +5588,9 @@ articles, since a subject saved without the article it has would be a line with 
 ### Region assignment
 
 - `experience_regions` and `experience_location_regions` reference `regions(id)` only — there is no direct experience-to-division relation. Experiences reach the administrative base layer through a mirror world view imported from it (`source_type = 'base_layer'`, one region per division), never directly; assignment always targets a region, whether it belongs to a hand-built world view or to the base layer mirror. See [ADR-0018](../decisions/0018-base-layer-mirror-world-view.md)
-- Spatial assignment writes `auto` rows to `experience_regions`
+- Spatial assignment places each point into `experience_location_regions` (the leaves that hold
+  it and every region above them), and `refresh_place_regions()` writes every place's `auto` rows
+  of `experience_regions` from those (below)
 - Manual curator assignment writes/overwrites `manual`
 - Re-assignment and sync flows only clear/recompute `auto`, preserving manual curation.
   This holds at the location level only because a sync now *keeps* the row of a point that
@@ -5597,6 +5599,70 @@ articles, since a subject saved without the article it has would be a line with 
   `ON DELETE CASCADE`, so the cascade took `manual` rows along with `auto` ones — it does
   not read `assignment_type`. A location the source stops offering still loses its
   assignments, which is correct: the place is no longer there
+
+**A place's rows: one junction, written by one function** ([ADR-0197](../decisions/0197-a-places-regions-are-one-row-per-region-written-by-one-function-from-the-points-it-shows.md),
+#2120). `experience_regions` holds the regions of every place with a point, a serial site's
+parts included. A place's automatic rows are the regions of the points it shows: its own and its
+direct parts' (`place_shown_points()`), the two arms every reader of its points reads
+(`PLACE_POINT_ARMS`, `placePoints.ts`), so a region never lists a place whose points no reader is
+shown; what a nested whole shows is #2121's. They are among the points placement places (offered,
+not turned down). Each row carries `listing`:
+
+| `listing` | When | Who finds the place there |
+|---|---|---|
+| `offered` | a point a reader may see (offered and published) puts the place here | readers and curators |
+| `scope` | only an unread point puts it here, while a visible one puts it elsewhere: a move waiting for a curator, a seventh temple of Malta's Megalithic Temples unread in Ċentrali | curators |
+| `fallback` | the place shows no visible point anywhere, and its unread points put it here: an arrival waiting for a curator | curators |
+
+A manual row is always `offered`. `refresh_place_regions(places, world_view)` (in
+`db/init/01-schema.sql`) walks up from the places it is given to the wholes they are direct parts of, computes
+the expected rows from the point rows (`place_regions_expected()`), and writes only what differs: a
+second call writes nothing, and a manual row is never touched. It reads no geometry, so it is cheap
+enough to run in a curator's transaction. Before it computes anything it locks the places it will
+rewrite, one advisory key per place among 1,024 under 1197 taken in key order, as the identity
+registry does (ADR-0143): two parts of a new whole placed at once in two transactions would
+otherwise each compute the whole without the other's point, and the later write would keep its
+stale listing. The keys are `lock_place_regions()`'s, and the order is objects, then keys, then
+rows: a refresh holding a key may wait for a place's row, so a writer that writes a row and then
+refreshes takes the keys first (withdrawing a curator's row, a merge and its undo; `db/locks.ts`).
+A part relation's trigger refreshes the old and the new places in one call, so one statement
+takes its keys in one order. Once the keys are held, `lock_place_regions()` reads the places it
+reaches again: a wait may have let a part relation commit that makes the place a part of a site,
+and the site's keys are then taken too, until the reach holds still. A key so added that is lower
+than one already held is taken out of order, and two transactions doing that over one pair of
+keys meet in a cycle, which Postgres breaks by aborting one. Who calls it:
+
+- placement, as its last step, in place of the copy it used to make (both ways in below; the full
+  rebuild passes NULL, every place);
+- statement-level triggers on `experience_locations` (an update that changes a point's place or its
+  `curation_state`, `refused_at`, `missing_since`, `existence` or `merged_into_id`, and a delete)
+  and on `experience_parts` (any write). So a publish, a refusal, a verdict on a point, a merge's
+  moves and a part relation made or taken away keep the rows right in the writer's own transaction,
+  and a publish needs no placement for what readers find. A moved coordinate is still placement's:
+  the trigger refreshes from where a point was placed, never places it;
+- a curator withdrawing their manual row (`unassignExperienceFromRegion`), so the automatic row the
+  place's points give there comes back at once;
+- a merge or its undo moving a manual row from one place to the other (`moveManualAssignments`):
+  the row takes the place of the automatic row the receiving place holds in that region, which the
+  refresh a moved point sets off may have written a statement earlier, and the place that gave it
+  up is refreshed, so it holds the automatic row its own points give there.
+
+Besides placement, the one writer of a point's rows is the curator's new place
+(`manualExperienceController.ts`), which writes the place's manual row in the same region beside
+them, so nothing is left to refresh. `experience_location_regions` stays as placement's record of where each point lies until the point
+tables go (#2124): the refresh reads it, and so does a point's own `in_region` and region path in
+the region's points batch. No reader decides a place's regions from it. A part's own read names its
+regions; no list offers a part without a kind of its own, since every reader's set composes a
+record in a kind (ADR-0100 decision 2, ADR-0198). The catalogue check `place-regions-out-of-step`
+compares the rows with what the function makes.
+
+Measured on the development catalogue on 2026-11-11 (a read of the expected rows against the rows
+held, 0.3 s for every place): 72,083 expected rows, 15,778 of them new, and 194 held rows no
+longer given, all of places a merge folded. Most new rows are the parts'; 824 are of places that
+hold a kind of their own and held no rows, because the kind arrived after their point was placed.
+One of those a reader is offered: Park Güell, a part of the Works of Antoni Gaudí whose Public art
+membership arrived on 2026-11-09, three weeks after its point was placed, and which no region's
+list held until then.
 
 **Two ways in, for two different questions.** A sync places what moved, by itself, at the end
 of the run — `placeMovedExperiences` in `placement.ts` calls
@@ -6177,29 +6243,28 @@ landing `pending` and its placement finishing is the same window every other reg
 already treats as "not yet in any region" — including the curation queue's own scope filter,
 which this matches rather than diverges from.
 
-**Region membership is asked of the points a reader can see, not of the roll-up.**
-`experience_regions` is placement's denormalisation of where an object's *points* are, and
-placement writes it from every **offered** point — `pending` ones included, because decision 5
-holds contents by writing them invisible and an unplaced one would leave the region curator's
-queue empty. A read that answers "what is in this region" from that table alone therefore offers
-an object on the strength of a row no reader is shown: the region's list gains it, the
-`location_count` beside it reads through `publishedContentSql` and says none of its points are on
-offer here, the marker batch draws nothing, and opening it lists places in other regions (#521).
-`readerRegionMembershipSql()` (`db/readerPredicates.ts`) is the further question — does this
-region hold a point of this object that is offered *and* published — and every reader-facing
+**Region membership is asked of the row's `listing`, which says whether a point a reader can see
+put the place there** (ADR-0197). Placement writes a place's rows from every **offered** point it
+shows — `pending` ones included, because decision 5 holds contents by writing them invisible and an
+unplaced one would leave the region curator's queue empty. A read that answered "what is in this
+region" from the rows alone would offer an object on the strength of a row no reader is shown: the
+region's list gains it, the `location_count` beside it reads through `publishedContentSql` and says
+none of its points are on offer here, the marker batch draws nothing, and opening it lists places in
+other regions (#521). So `refresh_place_regions()` marks each row: `offered` where a point that is
+offered *and* published puts the place there, `scope` where only an unread one does while a visible
+one puts it elsewhere, `fallback` where the place shows no visible point at all.
+`readerRegionMembershipSql()` (`db/readerPredicates.ts`) asks for `offered`, and every reader-facing
 region read carries it: the by-region list and its count in both branches, the marker batch in
 both branches, `region-counts`, and the `regions[]` of both
 reads that answer where an object is — `GET /:id` and, since #592, `GET /search`, whose array is
-what a search row opens. A **manual** assignment is exempt, since a curator adding an object to a region is not
-deriving membership from a point and that claim carries no `experience_location_regions` row to
-find — it is how an object whose only point falls just outside the boundary (#469) or lies
-offshore (#470) reaches a region's list at all. That exemption is permanent and reaches a row
-placement wrote: `assignExperienceToRegion` upserts `assignment_type = 'manual'`, so a curator
-putting a rejected-but-auto-placed object back into a region flips the row for good, and
-placement's clear touches `auto` rows only. It is the reading rather than an oversight — the case
-the exemption exists for has no backing point by construction — and it does not produce the
-pinless row the predicate exists to prevent, since the marker batch answers with the object's
-places wherever they are (`representablePlaces` falls back to the out-of-region ones). A claim
+what a search row opens. A **manual** assignment is always `offered` (a check on the table), since a
+curator adding an object to a region is not deriving membership from a point — it is how an object
+whose only point falls just outside the boundary (#469) or lies offshore (#470) reaches a region's
+list at all. `assignExperienceToRegion` upserts `assignment_type = 'manual'` and `listing =
+'offered'`, so a curator putting a rejected-but-auto-placed object back into a region flips the row
+for good, and the refresh never writes a manual row. It does not produce a pinless row, since the
+marker batch answers with the object's places wherever they are (`representablePlaces` falls back
+to the out-of-region ones). A claim
 that should no longer stand is removed with `removeExperienceFromRegion`, which deletes a row of
 either type. The curator's side reads the roll-up whole and is
 unchanged (`experienceScope.ts`, `reviewQueueContext.ts`, `publishWaitingController.ts`), which is
@@ -6900,7 +6965,8 @@ every filter; each facet is a second aggregate over the same union under every f
 own*, so a chip states what picking it would leave rather than what is already on screen. Kind,
 source, region and run, plus how much is set aside. The region facet counts through the root row
 placement already writes — `assignAncestors` propagates a point's region to every ancestor and
-step 4 of `regionAssignmentService.ts` denormalises the chain into `experience_regions` — rather
+step 4 of `regionAssignmentService.ts` writes each place's rows from that chain
+(`refresh_place_regions()`) — rather
 than by walking the tree, which is a measured choice: walking cost 330 ms. The dependency on that propagation is confined to
 the count; the region *filter* walks its own subtree, so what a curator filters by does not rest
 on it. The facet offers the roots of every public world view plus whatever region this curator is
@@ -7213,13 +7279,14 @@ the venue's links (ADR-0044) — is under the rule for exactly that reason and t
 first; `createManualExperience` creates the object in the same transaction, so the INSERT's
 own row lock is the "object first" the rule asks for, and its point insert spends the token that
 insert hands back (`insertCuratedExperience`); the region and rejection writers
-touch rows no lock-holder waits for, reaching `experiences` only through the audit row's key
-share, which the mode below is chosen never to conflict with; and **placement**
-(`assignRegionsForExperiences`) does key-share the point rows through
-`experience_location_regions`, so a transaction that changes a point's key column — the
-writer's ordinal parking — can wait for it, but it never waits in turn, since its own reach
-into `experiences` is another key share. `db/locks.ts` says the same in the same order, and is
-where a writer that joins the set will look.
+touch rows a refresh of the place may wait for, but none of them waits for anything after
+writing one, since its other reach into `experiences` is the audit row's key share, which the
+mode below is chosen never to conflict with (a curator's withdrawal, which refreshes the place
+after its row, takes the place's region keys before it, § Region assignment); and **placement** (`assignRegionsForExperiences`)
+key-shares the point rows through `experience_location_regions`, which nothing but a place's own
+delete waits for, since a point's only key column is its id. Placement's last step waits for the
+places' region keys, and no key holder waits for anything placement holds by then. `db/locks.ts`
+states the same rules, and is where a writer that joins the set will look.
 
 **The lock is taken through `lockExperience`, and a write under it takes its token**
 (ADR-0069). `db/experienceWriter.ts` runs the `OBJECT_LOCK` statement on the caller's

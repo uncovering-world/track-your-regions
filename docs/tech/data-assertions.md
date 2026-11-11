@@ -67,6 +67,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | places | Visits recorded against a place no reader-facing read offers | watch |
 | regions | An object offered to readers that no region holds | invariant |
 | regions | A place the source still offers that no region holds | invariant |
+| regions | A place whose regions no longer match its points | invariant |
 | regions | A region framed as the whole world while its geometry is not | invariant |
 | regions | A region whose anchor point is more than 500 km from its own geometry | watch |
 | regions | A parent region whose geometry covers less than nine tenths of what its children hold | invariant |
@@ -232,9 +233,8 @@ The third is the failure ADR-0025 decision 5 exists to prevent: a list entry
 with no pin, in a product where the list and the map are two views of one set.
 Two routes reach it — an object's only place written unread under a gate, or a
 withdrawal applied with no arrival to hold it — and a third is a curator's
-manual region claim outliving every visible place of the object it holds, which
-`readerRegionMembershipSql` names as the residue its own exemption leaves
-(#521).
+manual region claim outliving every visible place of the object it holds, the
+residue a manual row's always being `offered` leaves (#521, ADR-0197).
 
 The fourth is a **watch** rather than an invariant, and ADR-0022 is why: a
 traveller who stood somewhere stood there, and the record cannot depend on a
@@ -242,7 +242,7 @@ source still listing the place. Those rows are legitimate, so the count is a
 number to watch and the panel offers no way to accept it. It is grouped by place
 and never reads the person — who went where is not an admin's business here.
 
-The two region assertions are a pair: an object no region holds cannot be
+The first two region assertions are a pair: an object no region holds cannot be
 browsed to at all, while a place no region holds is a pin that votes nowhere,
 and an object with several places can be findable while one component is counted
 in no region. Both are debt today, and reading the rows as a traveller says why
@@ -268,6 +268,20 @@ Ninh, the province the bay is in, which is a real question. A point farther
 than 30 km from every leaf is the open ocean (#470), and the row says that no
 region is within reach. Measured on world view 5 on 2026-10-18: 33 objects in
 no region, 28 with a suggestion, and the statement takes about 1.5 s.
+
+The third (`place-regions-out-of-step`, `unplacedAssertions.ts`) holds a place's
+region rows to what their points give (ADR-0197). Nothing writes a place's
+automatic rows of `experience_regions` but `refresh_place_regions()`, which
+placement and the triggers on a point's state and a part relation call; a write
+that skipped them (a trigger disabled for a bulk load, a placement that failed
+after its point rows) leaves a place listed where none of its points lies, missing
+from a region one does, or offered to readers where only an unread point puts
+it. The check compares every held automatic row, and every row the function
+expects (`place_regions_expected()` over `places_with_regions()`), and names each
+difference, saying in words who finds the place there now and who its points
+say should; a curator's manual row is never out of step. Region Assignment for
+the world view settles every row, and `SELECT refresh_place_regions(ARRAY[id])`
+one place.
 
 The five geometry rules exist because defects keep being found by a person
 looking at a map and by nothing else in the repository (#668): three regions
