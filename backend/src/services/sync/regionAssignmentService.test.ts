@@ -172,13 +172,14 @@ describe('assignExperiencesToRegions', () => {
 
     const progress = await assignExperiencesToRegions(4250);
 
+    // The places' rows are the database's to write from the point rows
+    // (`refresh_place_regions()`, ADR-0197), every place for a whole world view.
     expect(statements.map(head)).toEqual([
       'BEGIN',
       'DELETE FROM experience_location_regions',
-      'DELETE FROM experience_regions',
       'WITH offered AS',
       'WITH RECURSIVE ancestors',
-      'INSERT INTO experience_regions',
+      'SELECT refresh_place_regions(NULL, $1)',
       'UPDATE world_views SET',
       'COMMIT',
     ]);
@@ -223,7 +224,7 @@ describe('assignExperiencesToRegions', () => {
   it('destroys a client whose ROLLBACK failed too, rather than pooling it mid-transaction', async () => {
     const lost = new Error('Connection terminated unexpectedly');
     const { client } = fakeClient((sql) => {
-      if (/^DELETE FROM experience_regions/.test(sql.trim()) || sql === 'ROLLBACK') throw lost;
+      if (/^SELECT refresh_place_regions/.test(sql.trim()) || sql === 'ROLLBACK') throw lost;
     });
     mockedConnect.mockResolvedValue(client);
 
@@ -234,7 +235,7 @@ describe('assignExperiencesToRegions', () => {
 
   it('rolls back a cancel pressed during the last step, rather than committing after it was taken (#1356)', async () => {
     const { client, statements } = fakeClient((sql) => {
-      if (/^INSERT INTO experience_regions/.test(sql.trim())) cancelAssignment(4254);
+      if (/^SELECT refresh_place_regions/.test(sql.trim())) cancelAssignment(4254);
     });
     mockedConnect.mockResolvedValue(client);
 
@@ -247,7 +248,7 @@ describe('assignExperiencesToRegions', () => {
 
   it('rolls back a cancel that lands after the clear, and commits nothing', async () => {
     const { client, statements } = fakeClient((sql) => {
-      if (/^DELETE FROM experience_regions/.test(sql.trim())) cancelAssignment(4253);
+      if (/^DELETE FROM experience_location_regions/.test(sql.trim())) cancelAssignment(4253);
     });
     mockedConnect.mockResolvedValue(client);
 
@@ -259,7 +260,6 @@ describe('assignExperiencesToRegions', () => {
     expect(statements.map(head)).toEqual([
       'BEGIN',
       'DELETE FROM experience_location_regions',
-      'DELETE FROM experience_regions',
       'ROLLBACK',
     ]);
     // The panel says the press was taken while the step in flight ends (#1356).

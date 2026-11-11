@@ -6,7 +6,7 @@
 
 import type { z } from 'zod/v4';
 import type { RegionMembershipResult } from '../../api/responses/curation.js';
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import type {
   assignExperienceBodySchema, idAndRegionIdParamSchema, idParamSchema, rejectExperienceBodySchema, unrejectExperienceBodySchema,
@@ -140,12 +140,14 @@ export async function assignExperienceToRegion(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Insert manual assignment (or update to manual if auto already exists)
+    // Insert manual assignment (or update to manual if auto already exists).
+    // A curator's row is one readers find (ADR-0197), whatever the automatic
+    // row it replaces said.
     await client.query(`
-      INSERT INTO experience_regions (experience_id, region_id, assignment_type, assigned_by)
-      VALUES ($1, $2, 'manual', $3)
+      INSERT INTO experience_regions (experience_id, region_id, assignment_type, assigned_by, listing)
+      VALUES ($1, $2, 'manual', $3, 'offered')
       ON CONFLICT (experience_id, region_id)
-      DO UPDATE SET assignment_type = 'manual', assigned_by = $3
+      DO UPDATE SET assignment_type = 'manual', assigned_by = $3, listing = 'offered'
     `, [experienceId, regionId, userId]);
 
     // Clear any rejection for this experience-region pair
@@ -193,23 +195,50 @@ export async function unassignExperienceFromRegion(
     throw createError('You do not have curator permissions for this region', 403);
   }
 
-  // Only remove manual assignments (never remove auto-computed spatial assignments)
-  const result = await pool.query(
-    `DELETE FROM experience_regions
-     WHERE experience_id = $1 AND region_id = $2 AND assignment_type = 'manual'
-     RETURNING id`,
-    [experienceId, regionId],
-  );
+  // The withdrawal, the rows it gives back and the audit row stand or fall
+  // together, on one client: a refresh that failed after a committed delete
+  // would leave the curator's row gone and its removal unlogged.
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
 
-  if (result.rowCount === 0) {
-    throw notFound('No manual assignment found for this experience in this region');
+    // The place's keys before its row (ADR-0197, db/locks.ts): the refresh
+    // below needs them, and a refresh already holding them may be waiting
+    // for the row this delete would hold.
+    await client.query('SELECT lock_place_regions(ARRAY[$1::int])', [experienceId]);
+
+    // Only remove manual assignments (never remove auto-computed spatial assignments)
+    const result = await client.query(
+      `DELETE FROM experience_regions
+       WHERE experience_id = $1 AND region_id = $2 AND assignment_type = 'manual'
+       RETURNING id`,
+      [experienceId, regionId],
+    );
+
+    if (result.rowCount === 0) {
+      throw notFound('No manual assignment found for this experience in this region');
+    }
+
+    // A curator's row stood where the place's own points may put it too: the
+    // automatic row those points give comes back now, not at the next
+    // placement (ADR-0197).
+    await client.query('SELECT refresh_place_regions(ARRAY[$1::int])', [experienceId]);
+
+    // Log the action
+    await client.query(`
+      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id)
+      VALUES ($1, $2, 'removed_from_region', $3)
+    `, [experienceId, userId, regionId]);
+
+    await client.query('COMMIT');
+  } catch (error) {
+    // A client whose ROLLBACK also failed must be destroyed, not pooled.
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
   }
-
-  // Log the action
-  await pool.query(`
-    INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id)
-    VALUES ($1, $2, 'removed_from_region', $3)
-  `, [experienceId, userId, regionId]);
 
   return { success: true, experienceId, regionId };
 }

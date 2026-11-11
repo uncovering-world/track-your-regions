@@ -162,6 +162,7 @@ export async function mergePlaces(
 
 /** The moves, in the order `db/locks.ts` asks: the objects are locked; their contents follow. */
 async function moveEverything(client: PoolClient, folded: LockedExperience, survivor: LockedExperience): Promise<MergeRecord> {
+  await lockRegionKeys(client, folded, survivor);
   const foldedPoints = await foldPoints(client, folded, survivor);
   const points = await movePoints(client, folded, survivor);
   const foldedLinks = await foldLinks(client, folded, survivor);
@@ -182,6 +183,16 @@ async function moveEverything(client: PoolClient, folded: LockedExperience, surv
   };
 }
 
+/**
+ * Both places' region keys, taken after their object locks and before any of
+ * their rows: the moves below write `experience_regions` rows and set off
+ * refreshes of both, and a refresh elsewhere already holding a key may be
+ * waiting for one of those rows (ADR-0197, `db/locks.ts`).
+ */
+async function lockRegionKeys(client: PoolClient, folded: LockedExperience, survivor: LockedExperience): Promise<void> {
+  await client.query('SELECT lock_place_regions(ARRAY[$1::int, $2::int])', [folded.id, survivor.id]);
+}
+
 /** A region's refusal of the folded place, where the survivor has none in that region. */
 async function moveRejections(client: PoolClient, from: number, to: number, only?: number[]): Promise<number[]> {
   const result = await client.query<{ id: number }>(
@@ -196,12 +207,25 @@ async function moveRejections(client: PoolClient, from: number, to: number, only
 
 /**
  * A curator's assignment of the folded place to a region, where the survivor
- * is in none of that region's rows: the placement the run recomputes after the
- * merge derives the automatic rows from the points, and a manual one is a
- * curator's word no point repeats, so without the move the folded place's
- * address would lead to a place that region does not list.
+ * holds no assignment of its own there: the refresh derives the automatic rows
+ * from the points, and a manual one is a curator's word no point repeats, so
+ * without the move the folded place's address would lead to a place that
+ * region does not list. The curator's word wins over an automatic row the
+ * place taking it holds in that region - one its own points give, or one the
+ * refresh the point moves set off has just written - so that row gives way and
+ * the manual row moves with its id, which the undo moves back the same way.
+ * The place giving it up is refreshed, to hold the automatic row its own
+ * points give there.
  */
 async function moveManualAssignments(client: PoolClient, from: number, to: number, only?: number[]): Promise<number[]> {
+  await client.query(
+    `DELETE FROM experience_regions s
+      USING experience_regions f
+      WHERE s.experience_id = $2 AND s.assignment_type IS DISTINCT FROM 'manual'
+        AND f.experience_id = $1 AND f.assignment_type = 'manual' AND f.region_id = s.region_id
+        AND ($3::int[] IS NULL OR f.id = ANY($3::int[]))`,
+    [from, to, only ?? null],
+  );
   const result = await client.query<{ id: number }>(
     `UPDATE experience_regions f SET experience_id = $2
       WHERE f.experience_id = $1 AND f.assignment_type = 'manual' AND ($3::int[] IS NULL OR f.id = ANY($3::int[]))
@@ -209,6 +233,9 @@ async function moveManualAssignments(client: PoolClient, from: number, to: numbe
       RETURNING f.id`,
     [from, to, only ?? null],
   );
+  if (result.rows.length > 0) {
+    await client.query('SELECT refresh_place_regions(ARRAY[$1::int])', [from]);
+  }
   return result.rows.map(row => row.id);
 }
 
@@ -427,6 +454,7 @@ export async function undoMerge(
 async function moveEverythingBack(
   client: PoolClient, record: MergeRecord, folded: LockedExperience, survivor: LockedExperience,
 ): Promise<void> {
+  await lockRegionKeys(client, folded, survivor);
   await restoreVisits(client, record);
   await unfoldLinks(client, record.foldedLinks);
   await moveLinks(client, survivor, folded, record.links);

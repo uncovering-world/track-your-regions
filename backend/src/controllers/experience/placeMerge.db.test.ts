@@ -4,6 +4,7 @@ import { mergePlaces, undoMerge } from './placeMerge.js';
 import { joinPlacesClaimingOneItem } from './equalItemMerges.js';
 import { getExperience } from './experienceQueryController.js';
 import { getCurationLog } from './curationLogController.js';
+import { assignRegionsForExperiences } from '../../services/sync/regionAssignmentService.js';
 
 /**
  * A merge of two places and its undo (#1247, ADR-0046, ADR-0086), executed
@@ -25,6 +26,11 @@ const WORK_QID = 'Q9700-merge-fixture-work';
 const TWICE = '00000000-0000-4000-8000-000000009700';
 const ONCE = '00000000-0000-4000-8000-000000009701';
 const CURATOR = '00000000-0000-4000-8000-000000009702';
+/** A world view of the fixture's: a root over two leaves, around the baths and around the Pantheon. */
+const ROME = 9706;
+const PIGNA = 97060;
+const CIAMBELLA = 97061;
+const ROTONDA = 97062;
 
 let twiceId = 0;
 let onceId = 0;
@@ -39,6 +45,8 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = ANY($1)', [places]);
   await pool.query('DELETE FROM experience_regions WHERE experience_id = ANY($1)', [places]);
   await pool.query('DELETE FROM experiences WHERE id = ANY($1)', [places]);
+  await pool.query('DELETE FROM regions WHERE world_view_id = $1', [ROME]);
+  await pool.query('DELETE FROM world_views WHERE id = $1', [ROME]);
   await pool.query('DELETE FROM treasures WHERE external_id = $1', [WORK_QID]);
   await pool.query('DELETE FROM users WHERE uuid = ANY($1::text[])', [[TWICE, ONCE, CURATOR]]);
 }
@@ -232,6 +240,82 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
 
     await undoMerge(merged.result!.mergeId, curatorId);
     expect(await holder()).toEqual([SITE]);
+  });
+
+  describe("a curator's assignment where a point the merge moves places the survivor too", () => {
+    // The folded place's second point, the Baths of Agrippa behind the
+    // Pantheon, is placed by the run's own placement in a world view of the
+    // fixture's: boxes around the two points under one root, not the rione's
+    // boundary. The baths lie in Arco della Ciambella, the Pantheon in Piazza
+    // della Rotonda, both in Pigna, so the placement every merge and undo runs
+    // after it commits writes the same point rows the spec starts from.
+    let manualId = 0;
+    const rowsIn = async (regionId: number) => (await pool.query<{ id: number; experience_id: number; assignment_type: string }>(
+      `SELECT id, experience_id, assignment_type FROM experience_regions
+        WHERE region_id = $1 AND experience_id = ANY($2) ORDER BY experience_id`,
+      [regionId, [WORSHIP, SITE]],
+    )).rows;
+    const placeBoth = () => assignRegionsForExperiences([WORSHIP, SITE], ROME);
+    /** The curator's word on the folded place in a region, over the row its points gave it there. */
+    const assignSite = async (regionId: number) => {
+      const manual = await pool.query<{ id: number }>(
+        `INSERT INTO experience_regions (experience_id, region_id, assignment_type, assigned_by, listing)
+         VALUES ($1, $2, 'manual', $3, 'offered')
+         ON CONFLICT (experience_id, region_id) DO UPDATE SET assignment_type = 'manual', assigned_by = $3, listing = 'offered'
+         RETURNING id`,
+        [SITE, regionId, curatorId],
+      );
+      manualId = manual.rows[0].id;
+    };
+
+    beforeEach(async () => {
+      await pool.query(`INSERT INTO world_views (id, name, is_default) VALUES ($1, 'Merge fixture', false)`, [ROME]);
+      await pool.query(
+        `INSERT INTO regions (id, world_view_id, name, parent_region_id, is_leaf, geom) VALUES
+           ($1, $4, 'Pigna', NULL, false, NULL),
+           ($2, $4, 'Arco della Ciambella', $1, true, ST_Multi(ST_MakeEnvelope(12.4743, 41.8972, 12.4756, 41.8982, 4326))),
+           ($3, $4, 'Piazza della Rotonda', $1, true, ST_Multi(ST_MakeEnvelope(12.4762, 41.8980, 12.4775, 41.8992, 4326)))`,
+        [PIGNA, CIAMBELLA, ROTONDA, ROME],
+      );
+      await pool.query(
+        `INSERT INTO experience_locations (experience_id, name, external_ref, location)
+         VALUES ($1, 'Baths of Agrippa', 'merge-fixture-baths', ST_SetSRID(ST_MakePoint(12.4749, 41.8977), 4326))`,
+        [SITE],
+      );
+      await placeBoth();
+    });
+
+    it('moves the manual row, its id kept, over the automatic one the moved point gave, and moves it back', async () => {
+      // The survivor has no point in Arco della Ciambella; the baths give it one.
+      expect(await rowsIn(CIAMBELLA)).toEqual([{ id: expect.any(Number), experience_id: SITE, assignment_type: 'auto' }]);
+      await assignSite(CIAMBELLA);
+
+      // The merge re-places the survivor once it commits, and placing it again
+      // keeps the curator's row where the baths' point gives an automatic one.
+      const merged = await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
+      expect(await rowsIn(CIAMBELLA)).toEqual([{ id: manualId, experience_id: WORSHIP, assignment_type: 'manual' }]);
+      await placeBoth();
+      expect(await rowsIn(CIAMBELLA)).toEqual([{ id: manualId, experience_id: WORSHIP, assignment_type: 'manual' }]);
+
+      await undoMerge(merged.result!.mergeId, curatorId);
+      expect(await rowsIn(CIAMBELLA)).toEqual([{ id: manualId, experience_id: SITE, assignment_type: 'manual' }]);
+    });
+
+    it('gives the survivor back its own automatic row once the undo takes the manual one away', async () => {
+      // Both places are in Pigna by their own points before the merge.
+      expect((await rowsIn(PIGNA)).map(row => [row.experience_id, row.assignment_type]))
+        .toEqual([[WORSHIP, 'auto'], [SITE, 'auto']]);
+      await assignSite(PIGNA);
+
+      const merged = await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
+      expect(await rowsIn(PIGNA)).toEqual([{ id: manualId, experience_id: WORSHIP, assignment_type: 'manual' }]);
+
+      await undoMerge(merged.result!.mergeId, curatorId);
+      expect(await rowsIn(PIGNA)).toEqual([
+        { id: expect.any(Number), experience_id: WORSHIP, assignment_type: 'auto' },
+        { id: manualId, experience_id: SITE, assignment_type: 'manual' },
+      ]);
+    });
   });
 
   it('refuses two places of one kind, and changes nothing', async () => {

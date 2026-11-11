@@ -148,11 +148,6 @@ async function seedPlace(
     [exp.id, exp.name, curationState, exp.lon, exp.lat],
   );
 
-  await client.query(
-    'INSERT INTO experience_regions (experience_id, region_id) VALUES ($1, $2)',
-    [exp.id, E2E_REGION_ID],
-  );
-
   // Without this, experienceLocationController's `in_region` EXISTS
   // check is false for every fixture location, ExperienceMarkers filters
   // all three out, and the map renders no markers even though the
@@ -162,6 +157,10 @@ async function seedPlace(
      VALUES ($1, $2, 'manual')`,
     [location.id, E2E_REGION_ID],
   );
+
+  // The place's row as placement writes it, from its point (ADR-0197): a
+  // pending arrival's says so, as a run's would.
+  await client.query('SELECT refresh_place_regions(ARRAY[$1::int])', [exp.id]);
 }
 
 /**

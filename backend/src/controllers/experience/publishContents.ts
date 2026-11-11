@@ -167,8 +167,10 @@ export async function pointMovedWithObject(client: PoolClient, lock: LockedExper
  * world — and, since ADR-0053, a third term, `el.refused_at IS NULL`, while its clear
  * is unfiltered: so a point that stopped being offered, and a point a curator
  * turned down, each leave `experience_location_regions` rows behind that only a
- * re-place can drop, and only a re-place can recompute the experience-level
- * union they fed. A writer that sets any of the three has to call this.
+ * re-place can drop. A writer that sets any of the three has to call this. The
+ * place's own rows do not wait for it: the trigger on the point's state
+ * refreshes them in the writer's transaction (`refresh_place_regions()`,
+ * ADR-0197).
  *
  * Reports failure rather than throwing, the way `recordPlacementFailure`
  * downgrades a run to `partial`: by the time this runs the publication is

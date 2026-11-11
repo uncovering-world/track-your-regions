@@ -555,6 +555,7 @@ export interface ExperienceRegionsRow {
   assignment_type: string | null;
   assigned_by: number | null;
   created_at: Date | null;
+  listing: string;
 }
 
 /** The table `experience_rejections`. */
@@ -1674,6 +1675,7 @@ export const COLUMN_WIDTHS = {
   },
   experience_regions: {
     assignment_type: 20,
+    listing: 8,
   },
   experience_separations: {
     scheme: 12,
@@ -1870,6 +1872,9 @@ export const CHECK_VALUES = {
   },
   experience_point_hints: {
     source: ["item", "osm-ref", "osm-name"],
+  },
+  experience_regions: {
+    listing: ["offered", "fallback", "scope"],
   },
   experience_sources: {
     id_scheme: ["whc-site", "whc-component", "wikidata", "wikidata-statement", "curator"],

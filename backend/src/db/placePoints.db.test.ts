@@ -247,6 +247,8 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
   it("keeps the site in its region's list on its part's point alone (#1428)", async () => {
     await pool.query(`UPDATE experience_regions SET assignment_type = 'auto' WHERE experience_id = $1`, [SITE]);
     await pool.query('DELETE FROM experience_location_regions WHERE location_id = $1', [luxorPoint]);
+    // The site's row is written again from the part's point alone (ADR-0197).
+    await pool.query('SELECT refresh_place_regions(ARRAY[$1::int])', [SITE]);
     const list = await getExperiencesByRegion({
       params: { regionId }, query: experiencesByRegionQuerySchema.parse({ includeChildren: 'false' }), caller: undefined,
     });
@@ -323,13 +325,20 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     }
   });
 
-  it('places no part with no kind of its own in a region: its site is the one listed (#1424)', async () => {
+  it('lists no part with no kind of its own in a region, though it holds its rows: its site is the one listed (#1424)', async () => {
     await pool.query(
       `INSERT INTO experience_location_regions (location_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
       [karnakPoint, KARNAK_REGION],
     );
     await assignRegionsForExperiences([SITE], KARNAK_WORLD_VIEW);
-    expect((await pool.query('SELECT 1 FROM experience_regions WHERE experience_id = $1', [KARNAK])).rowCount).toBe(0);
+    // A part is placed like any place (ADR-0197); no list offers it as one.
+    expect((await pool.query('SELECT 1 FROM experience_regions WHERE experience_id = $1 AND region_id = $2',
+      [KARNAK, KARNAK_REGION])).rowCount).toBe(1);
+    const list = await getExperiencesByRegion({
+      params: { regionId: KARNAK_REGION }, query: experiencesByRegionQuerySchema.parse({ includeChildren: 'false' }),
+      caller: undefined,
+    });
+    expect(list.experiences.map(e => e.id)).toEqual([SITE]);
   });
 
   it("answers the review queue in its schema, a part's answered point on the site's card (#1424)", async () => {
