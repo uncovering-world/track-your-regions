@@ -55,12 +55,15 @@ export const PAGE_COLUMNS = { 0: 'page_id', 1: 'page_namespace', 2: 'page_title'
  * The editions a door counts, by their sitelink site code, the most read first:
  * those over the line in the current year's months. A month of an earlier year
  * kept beside it (`window_end` set, #2230) is no run's to read, and summed in
- * it would carry an edition over the line on two years' views.
+ * it would carry an edition over the line on two years' views. Only the twelve
+ * months ending on the newest are summed: a month a cancelled build left
+ * before them is the next build's to drop, never a thirteenth month's views.
  */
 export async function countedEditions(): Promise<string[]> {
   const result = await pool.query<{ site: string }>(
     `SELECT e.key AS site FROM readership_month_files f, jsonb_each_text(f.editions) e
       WHERE f.window_end IS NULL
+        AND f.month > (SELECT max(month) FROM readership_month_files WHERE window_end IS NULL) - interval '12 months'
       GROUP BY e.key HAVING sum(e.value::bigint) >= $1 ORDER BY sum(e.value::bigint) DESC, e.key`,
     [COUNTED_EDITION_VIEWS],
   );

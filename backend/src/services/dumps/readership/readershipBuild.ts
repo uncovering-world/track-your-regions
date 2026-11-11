@@ -181,7 +181,8 @@ export async function buildReadership(file: DumpFile, options: BuildOptions): Pr
   if (windowEnd !== null && file.date !== windowEnd) throw new Error(`The year ending ${options.windowEnd} is built from that month's file, not from ${file.fileName}`);
   const window = readershipWindow(file.date);
   const year = await keepMissingMonths(file, window, windowEnd, options);
-  const dropped = windowEnd === null ? await dropMonthsBefore(window[0]) : 0;
+  // Dropping the months before the twelve changes the year a run reads, as keeping a month does.
+  const dropped = windowEnd === null ? await swapWhenNoRunReads(options, () => dropMonthsBefore(window[0])) : 0;
   await retireCopies(options, window[0], new Set([...(await keptMonths()).values()].map(m => m.fileName)));
   return { ...year.newest, checksumActual: null, summary: summaryOf(year.read, year.said, dropped, window[0], options.windowEnd) };
 }
