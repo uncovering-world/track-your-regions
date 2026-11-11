@@ -150,10 +150,29 @@ export function PassNote({ log }: { log: Pick<SyncLog, 'pass_log_id' | 'pass_sou
  * run started. Two runs compared against each other stand on the same inputs
  * when these match.
  */
+/**
+ * Readership's fold as the run history says it (#2415): which redirects its
+ * twelve months were folded with, by their dump date, and how many months
+ * each where a refold was halfway. Nothing for a copy whose date says it all.
+ */
+export function foldWords(revision: string | null): string {
+  if (!revision) return '';
+  const folds = revision.split(',').map(fold => {
+    const [build, months] = fold.split('×');
+    const date = build.split('@')[1];
+    return { said: date ? `the redirects of ${dumpDate(date, 'day')}` : 'no redirects', months: Number(months) };
+  });
+  if (folds.length === 1) return `, folded with ${folds[0].said}`;
+  const parts = folds.map((fold, i) => `${i === 0 ? fold.said : fold.said.replace('the redirects of ', '')} (${fold.months}${i === 0 ? ' months' : ''})`);
+  return `, folded with ${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
+
 export function CopiesReadNote({ log }: { log: Pick<SyncLog, 'copies_read'> }) {
   if (!log.copies_read || log.copies_read.length === 0) return null;
   return (
-    <Tooltip title={<>{log.copies_read.map(copy => <div key={copy.dump}>{copy.title}: {dumpDate(copy.dumpDate, copy.datedBy)}</div>)}</>}>
+    <Tooltip title={<>{log.copies_read.map(copy => (
+      <div key={copy.dump}>{copy.title}: {dumpDate(copy.dumpDate, copy.datedBy)}{foldWords(copy.revision)}</div>
+    ))}</>}>
       <Typography variant="caption" color="text.secondary" display="block" tabIndex={0}>
         Read {log.copies_read.length === 1 ? 'one copy' : `${log.copies_read.length} copies`} of the public dumps
       </Typography>

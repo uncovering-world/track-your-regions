@@ -1132,7 +1132,7 @@ export type SyncLogCopiesRead = ({
   /** The dump date of the copy in place when the run started, an ISO day. */
   dumpDate: string;
   /**
-     * What told the copy apart beyond its dump date, where that alone does not: for readership, which redirects builds folded its twelve months, as `build×months` (#2415). Null otherwise.
+     * What told the copy apart beyond its dump date, where that alone does not: for readership, which redirects builds folded its twelve months, as `build@redirectsDate×months` (#2415). Null otherwise.
      * @nullable
      */
   revision: string | null;
@@ -1283,7 +1283,7 @@ export type SyncLogDetailCopiesRead = ({
   /** The dump date of the copy in place when the run started, an ISO day. */
   dumpDate: string;
   /**
-     * What told the copy apart beyond its dump date, where that alone does not: for readership, which redirects builds folded its twelve months, as `build×months` (#2415). Null otherwise.
+     * What told the copy apart beyond its dump date, where that alone does not: for readership, which redirects builds folded its twelve months, as `build@redirectsDate×months` (#2415). Null otherwise.
      * @nullable
      */
   revision: string | null;
