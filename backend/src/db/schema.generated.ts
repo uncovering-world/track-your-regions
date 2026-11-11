@@ -356,48 +356,6 @@ export interface ExperienceHeldDecisionsRow {
   source_id: number | null;
 }
 
-/** The table `experience_kind_memberships`. */
-export interface ExperienceKindMembershipsRow {
-  id: number;
-  experience_id: number;
-  kind_id: number;
-  source_id: number;
-  external_id: string;
-  type: string | null;
-  admission: string;
-  admission_reason: string | null;
-  admission_answered_at: Date | null;
-  admission_pin_verdict: string | null;
-  admission_pin_reason: string | null;
-  admission_question_verdict: string | null;
-  admission_question_reason: string | null;
-  admission_questioned_at: Date | null;
-  admission_question_sync_log_id: number | null;
-  admitted_for: unknown | null;
-  is_iconic: boolean;
-  curated_fields: unknown;
-  curation_state: string;
-  published_at: Date | null;
-  pending_change_sync_log_id: number | null;
-  missing_since: Date | null;
-  source_membership: string;
-  first_seen_sync_log_id: number | null;
-  last_seen_sync_log_id: number | null;
-  last_seen_at: Date | null;
-  reported_name: string | null;
-  reported_subtitle: string | null;
-  reported_image_url: string | null;
-  reported_location: string | null;
-  reported_image_credit: unknown | null;
-  reported_wikipedia_url: string | null;
-  reported_label: string | null;
-  wikidata_items: string[] | null;
-  facts: unknown;
-  created_at: Date;
-  updated_at: Date;
-  crowding_pin: string | null;
-}
-
 /** The table `experience_kind_suggestions`. */
 export interface ExperienceKindSuggestionsRow {
   id: number;
@@ -1134,6 +1092,48 @@ export interface SeparatedVisitQuestionsRow {
   answered_at: Date | null;
 }
 
+/** The table `source_records`. */
+export interface SourceRecordsRow {
+  id: number;
+  experience_id: number;
+  kind_id: number;
+  source_id: number;
+  external_id: string;
+  type: string | null;
+  admission: string;
+  admission_reason: string | null;
+  admission_answered_at: Date | null;
+  admission_pin_verdict: string | null;
+  admission_pin_reason: string | null;
+  admission_question_verdict: string | null;
+  admission_question_reason: string | null;
+  admission_questioned_at: Date | null;
+  admission_question_sync_log_id: number | null;
+  admitted_for: unknown | null;
+  is_iconic: boolean;
+  curated_fields: unknown;
+  curation_state: string;
+  published_at: Date | null;
+  pending_change_sync_log_id: number | null;
+  missing_since: Date | null;
+  source_membership: string;
+  first_seen_sync_log_id: number | null;
+  last_seen_sync_log_id: number | null;
+  last_seen_at: Date | null;
+  reported_name: string | null;
+  reported_subtitle: string | null;
+  reported_image_url: string | null;
+  reported_location: string | null;
+  reported_image_credit: unknown | null;
+  reported_wikipedia_url: string | null;
+  reported_label: string | null;
+  wikidata_items: string[] | null;
+  facts: unknown;
+  created_at: Date;
+  updated_at: Date;
+  crowding_pin: string | null;
+}
+
 /** The table `treasures`. */
 export interface TreasuresRow {
   id: number;
@@ -1430,7 +1430,6 @@ export const RELATION_SCHEMAS = {
   experience_curation_log: "public",
   experience_hand_overs: "public",
   experience_held_decisions: "public",
-  experience_kind_memberships: "public",
   experience_kind_suggestions: "public",
   experience_kinds: "public",
   experience_location_placements: "public",
@@ -1486,6 +1485,7 @@ export const RELATION_SCHEMAS = {
   regions: "public",
   schema_migrations: "public",
   separated_visit_questions: "public",
+  source_records: "public",
   treasures: "public",
   user_auth_providers: "public",
   user_new_badge_views: "public",
@@ -1626,16 +1626,6 @@ export const COLUMN_WIDTHS = {
     field: 100,
     answer: 10,
   },
-  experience_kind_memberships: {
-    external_id: 255,
-    type: 100,
-    admission: 10,
-    admission_pin_verdict: 10,
-    admission_question_verdict: 10,
-    curation_state: 10,
-    source_membership: 10,
-    crowding_pin: 10,
-  },
   experience_kind_suggestions: {
     reading: 7,
     planned_kind: 80,
@@ -1773,6 +1763,16 @@ export const COLUMN_WIDTHS = {
   separated_visit_questions: {
     answer: 10,
   },
+  source_records: {
+    external_id: 255,
+    type: 100,
+    admission: 10,
+    admission_pin_verdict: 10,
+    admission_question_verdict: 10,
+    curation_state: 10,
+    source_membership: 10,
+    crowding_pin: 10,
+  },
   treasures: {
     external_id: 255,
     name: 500,
@@ -1839,12 +1839,6 @@ export const CHECK_VALUES = {
   experience_held_decisions: {
     answer: ["published", "refused"],
     part_kind: ["locations", "treasures"],
-  },
-  experience_kind_memberships: {
-    admission: ["admitted", "refused"],
-    crowding_pin: ["list", "shadow"],
-    curation_state: ["pending", "auto", "verified"],
-    source_membership: ["present", "former"],
   },
   experience_kind_suggestions: {
     reading: ["live", "planned", "none"],
@@ -1936,6 +1930,12 @@ export const CHECK_VALUES = {
   },
   separated_visit_questions: {
     answer: ["original", "separated", "both"],
+  },
+  source_records: {
+    admission: ["admitted", "refused"],
+    crowding_pin: ["list", "shadow"],
+    curation_state: ["pending", "auto", "verified"],
+    source_membership: ["present", "former"],
   },
   treasures: {
     curation_state: ["pending", "auto", "verified"],
