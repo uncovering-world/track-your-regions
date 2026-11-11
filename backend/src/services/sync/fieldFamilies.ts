@@ -95,7 +95,7 @@ const KEPT_BY_EVERY_OTHER_FAMILY: Readonly<Record<SourceFamily, readonly string[
  */
 export const WRITTEN_BY_SOURCES: Readonly<Record<string, readonly number[]>> = {
   commemorates: SUBJECT_LINE_SOURCE_IDS,
-  // The holy figure a religious work depicts, read with it (#2404).
+  // The people and figures a work depicts, read with it (#2404, #2436).
   depicts: SUBJECT_LINE_SOURCE_IDS,
 };
 

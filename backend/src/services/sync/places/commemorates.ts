@@ -48,6 +48,13 @@
  * Luther and not the eight reformers and princes around him, and Istanbul's
  * Republic Monument, naming none of its five founders, names no dedication.
  *
+ * What a work shows is also everyone its `P180` names (#2436), a person, a
+ * holy figure or a named figure of fiction, myth or legend (`someone`), after
+ * the holy figures and with no one the dedication names: the Republic
+ * Monument depicts its five founders, the Monument to Miguel de Cervantes Don
+ * Quixote and Sancho Panza. A horse, a lion or a sword is no one. This never
+ * changes the dedication.
+ *
  * Statements are read at their best rank, in the item's order; a category's
  * subjects by item id. A person is `P31` human (Q5); an event carries a point
  * in time (`P585`), a start (`P580`) or an end (`P582`). A value with no label
@@ -75,7 +82,7 @@ import {
 } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
 import { CLASSICAL_MYTHOLOGY_CLASSES } from '../publicArt/classes.js';
-import { DEITY, OCCURRENCE, spanOf, subsetSubjectClaims, subsetSubjectKinds, WAR } from '../subset/commemorates.js';
+import { DEITY, FIGURE_CLASSES, OCCURRENCE, spanOf, subsetSubjectClaims, subsetSubjectKinds, WAR } from '../subset/commemorates.js';
 import { articleUrl } from '../subset/values.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureArticleItems, structureCategories } from '../wikipediaStructure.js';
@@ -116,6 +123,8 @@ export interface SubjectKind {
   war: boolean;
   /** An occurrence (`P31` under Q1190554): what a war may be narrowed to, where an item with dates may be a peninsula. */
   occurrence: boolean;
+  /** A named figure of fiction, myth or legend, or a personification (`FIGURE_CLASSES`): someone a work shows (#2436). */
+  figure: boolean;
   /** When it happened: its start (`P580`) or point in time (`P585`) to its end (`P582`), where Wikidata says. */
   span: Span | null;
 }
@@ -131,7 +140,7 @@ export interface FiledSubjects {
   statueCategories: number;
 }
 
-/** The two values of one place: whom it commemorates, and the holy figures it depicts. */
+/** The two values of one place: whom it commemorates, and the people and figures it depicts. */
 export interface PlaceReading {
   commemorates: Commemorates | null;
   depicts: Depicts | null;
@@ -142,6 +151,12 @@ export interface PlaceReading {
    * Marcus Aurelius carries Paul the Apostle and is named for the emperor.
    */
   religious?: boolean;
+  /**
+   * The holy figures the reading's own steps named, apart from the people and
+   * figures `P180` adds: what alone decides `religious`, so a fountain's
+   * Triton and Oceanus make no religious statue of the Trevi Fountain (#2436).
+   */
+  holyFigures?: string[];
 }
 
 /**
@@ -217,6 +232,8 @@ const anyone: Accepts = () => true;
 const humanOrEvent: Accepts = (kind) => kind.human || kind.event;
 const human: Accepts = (kind) => kind.human;
 const humanEventOrHoly: Accepts = (kind) => kind.human || kind.event || kind.holy;
+/** Someone a card names among what a work shows: a person, a holy figure, a named figure of fiction, myth or legend (#2436). */
+const someone: Accepts = (kind) => kind.human || kind.holy || kind.figure;
 
 const SHOWS: ReadonlySet<CommemorationStep> = new Set<CommemorationStep>(DEPICTION_STEPS);
 
@@ -251,9 +268,10 @@ function subjectsOfStep(
 
 /**
  * The two values of one place: the accepted values of the first step that
- * names a dedication, and the holy figures of the first step reading what the
- * work shows that names one, each with its labels and articles, at most
- * `MAX_COMMEMORATED_SUBJECTS` of them, or null where no step does.
+ * names a dedication, and what the work shows (the holy figures of the first
+ * step reading it that names one, then everyone `P180` names), each with its
+ * labels and articles, at most `MAX_COMMEMORATED_SUBJECTS` of them, or null
+ * where no step does.
  */
 export function readingOfPlace(
   claims: SubjectClaims,
@@ -280,13 +298,23 @@ export function readingOfPlace(
     }
     if (!reading.depicts && holy.length) reading.depicts = { via: via as DepictionStep, subjects: holy };
   }
-  // A figure the dedication already names is not said twice: the Statue of St.
-  // Wenceslas commemorates him, and depicting him adds nothing.
+  // Everyone `P180` names follows the holy figures, the people of a scene
+  // among them (#2436): the Republic Monument shows its five founders, though
+  // it commemorates none of them.
+  const seen = new Set<string>();
+  const figures = [...(reading.depicts?.subjects ?? []), ...subjectsOfStep([[claims.depicts, someone]], false, kinds, articles).dedicated]
+    .filter((subject) => !seen.has(subject.item) && seen.add(subject.item));
+  // A figure the dedication already names is not said twice: Nelson's Column
+  // commemorates Horatio Nelson, and depicting him adds nothing.
   const dedicatedTo = new Set(reading.commemorates?.subjects.map((subject) => subject.item));
-  const shown = reading.depicts?.subjects.filter((subject) => !dedicatedTo.has(subject.item)) ?? [];
+  const shown = figures.filter((subject) => !dedicatedTo.has(subject.item));
+  const holyFigures = (reading.depicts?.subjects ?? []).map((subject) => subject.item).filter((item) => !dedicatedTo.has(item));
+  // The step that named the first figure kept, which is `P180` where no holy figure a step named is left.
+  const via = holyFigures.length && reading.depicts ? reading.depicts.via : 'depicts';
   return {
     commemorates: reading.commemorates,
-    depicts: reading.depicts && shown.length ? { via: reading.depicts.via, subjects: shown.slice(0, MAX_COMMEMORATED_SUBJECTS) } : null,
+    depicts: shown.length ? { via, subjects: shown.slice(0, MAX_COMMEMORATED_SUBJECTS) } : null,
+    ...(holyFigures.length ? { holyFigures } : {}),
   };
 }
 
@@ -334,7 +362,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
   const out = new Map<string, SubjectKind>();
   for (const batch of chunk(qids, BATCH)) {
     const rows = await sparql(`
-      SELECT ?v ?vLabel ?human ?event ?holy ?classical ?war ?occurrence ?start ?end ?at WHERE {
+      SELECT ?v ?vLabel ?human ?event ?holy ?classical ?war ?occurrence ?figure ?start ?end ?at WHERE {
         VALUES ?v { ${values(batch)} }
         OPTIONAL { ?v wdt:P31 wd:Q5 . BIND(true AS ?human) }
         OPTIONAL { ?v wdt:P585|wdt:P580|wdt:P582 ?when . BIND(true AS ?event) }
@@ -346,6 +374,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
         OPTIONAL { VALUES ?myth { ${values(Object.keys(CLASSICAL_MYTHOLOGY_CLASSES))} } ?v wdt:P31 ?myth . BIND(true AS ?classical) }
         OPTIONAL { ?v wdt:P31/wdt:P279* wd:${WAR} . BIND(true AS ?war) }
         OPTIONAL { ?v wdt:P31/wdt:P279* wd:${OCCURRENCE} . BIND(true AS ?occurrence) }
+        OPTIONAL { VALUES ?root { ${values([...FIGURE_CLASSES])} } ?v wdt:P31/wdt:P279* ?root . BIND(true AS ?figure) }
         OPTIONAL { ?v wdt:P580 ?start }
         OPTIONAL { ?v wdt:P582 ?end }
         OPTIONAL { ?v wdt:P585 ?at }
@@ -366,6 +395,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
         classical: Boolean(row.classical) || Boolean(known?.classical),
         war: Boolean(row.war) || Boolean(known?.war),
         occurrence: Boolean(row.occurrence) || Boolean(known?.occurrence),
+        figure: Boolean(row.figure) || Boolean(known?.figure),
         span: known?.span ?? spanOf(times.start ?? times.at, times.end ?? times.at),
       });
     }
@@ -461,11 +491,26 @@ export async function readCommemorates(
   const out = new Map<string, PlaceReading>();
   for (const { qid, label } of places) {
     const reading = readingOfPlace(claims.get(qid) ?? NO_CLAIMS, filed.get(qid) ?? NONE, known, articles, label);
-    const religious = !reading.commemorates && Boolean(reading.depicts?.subjects.some((subject) => !known.get(subject.item)?.classical));
+    // A holy figure the reading's own steps named that no classical myth holds, never one `P180` adds.
+    const religious = !reading.commemorates && Boolean(reading.holyFigures?.some((item) => !known.get(item)?.classical));
     if (reading.commemorates || reading.depicts) out.set(qid, religious ? { ...reading, religious } : reading);
   }
   await narrowWarReadings(places, out, claims, { kinds: known, articles }, wiki, (items) => fetchSubjectKinds(sparql, items));
+  for (const reading of out.values()) withoutDedicated(reading);
   return out;
+}
+
+/**
+ * A reading whose war a narrowing replaced with a person the work shows names
+ * that person under *Depicts* no more (#2436): the Kemal Atatürk Memorial
+ * commemorates Atatürk once his war is narrowed to him, and depicting him adds
+ * nothing. The retype was decided before (`holyFigures`) and stands.
+ */
+function withoutDedicated(reading: PlaceReading): void {
+  if (!reading.commemorates || !reading.depicts) return;
+  const dedicated = new Set(reading.commemorates.subjects.map((subject) => subject.item));
+  const subjects = reading.depicts.subjects.filter((subject) => !dedicated.has(subject.item));
+  if (subjects.length !== reading.depicts.subjects.length) reading.depicts = subjects.length ? { ...reading.depicts, subjects } : null;
 }
 
 /**

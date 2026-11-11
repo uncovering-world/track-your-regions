@@ -80,6 +80,7 @@ import {
   MEMBERSHIPS, membershipAdmittedSql, membershipVisibleSql, placeOfferedSql, placeVisibleSql, sourcePlacesSql, withTypeClaim,
 } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
+import { withSubjectsOnOneLine } from './subjectLinesKept.js';
 import {
   claimedMetadataKeys, computeChangeSet, METADATA_SET_KEYS, nothingProposed, passesAsUnseen, passingColumns, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS,
   type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
@@ -538,11 +539,12 @@ async function previewUpsert(sent: ExperienceUpsertParams): Promise<UpsertOutcom
   const row = result.rows[0];
   const curatedFields = withTypeClaim(row.curated_fields, row.type_claimed);
   // What another source of the place contradicts is no proposal of this run's,
-  // asked of the same views the run would ask (`sourceView.ts`).
-  const written = withKeptOutlineSource(keptForFamilies(
+  // asked of the same views the run would ask (`sourceView.ts`), and the
+  // subject lines kept apart as the run keeps them (#2436).
+  const written = withSubjectsOnOneLine(withKeptOutlineSource(keptForFamilies(
     keptAsStored(params, row, await fieldsKeptAsStored(pool, row.id, params, row)),
     row, await otherFamiliesFields(pool, row.id, params.sourceId),
-  ), row);
+  ), row), row);
   const incoming = snapshotFromParams(
     written, await incomingOutline(pool, params, row),
     await shortMovePasses(pool, row.id, row, written, Boolean(row.was_held)),
@@ -798,12 +800,13 @@ async function writeUnderLock(
   // place contradicts is kept as the place holds it (`sourceView.ts`), and so is
   // a field another family of sources brings (`fieldFamilies.ts`). The run's own
   // view is still recorded on its membership, from `params`.
+  // A subject a curator's claimed line lists is left out of the other (#2436).
   const written = locked === null || stored === null
     ? params
-    : withKeptOutlineSource(keptForFamilies(
+    : withSubjectsOnOneLine(withKeptOutlineSource(keptForFamilies(
       keptAsStored(params, stored, await fieldsKeptAsStored(client, locked.id, params, stored)),
       stored, await otherFamiliesFields(client, locked.id, params.sourceId),
-    ), stored);
+    ), stored), stored);
 
   const shortMove = stored !== null && await shortMovePasses(client, stored.id as number, stored, written, held);
   const { place: placeMetadata, facts, factsKept, passing } = metadataToWrite(written, held ? stored : null);

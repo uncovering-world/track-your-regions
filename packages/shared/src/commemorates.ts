@@ -32,6 +32,12 @@
  * corrects the line as they correct *Commemorates*, and may move a subject
  * from one line to the other (#2421): Big Vishnu depicts Vishnu as well as
  * Garuda. Their list is theirs (`via: 'curator'`), claimed and kept the same way.
+ *
+ * The same line also names everyone else a work shows, as Wikidata's
+ * *depicts* names them (#2436): the people of a scene, figures of fiction,
+ * myth and legend, a personification. The Republic Monument in Istanbul
+ * commemorates none of its five founders and depicts all five. Nobody the
+ * dedication names is named again.
  */
 
 /**
@@ -115,9 +121,11 @@ export interface Commemorates {
 }
 
 /**
- * What `metadata.depicts` holds: the holy figures a religious work shows, and
- * the step or the curator that named them. A run's list is never empty; a
- * curator's may be, as their word that the work shows no named figure (#2421).
+ * What `metadata.depicts` holds: the holy figures a religious work shows and
+ * everyone else Wikidata's *depicts* names, and the step that named the first
+ * (`via: 'depicts'` for a work with no holy figure), or the curator that named
+ * them. A run's list is never empty; a curator's may be, as their word that
+ * the work shows no named figure (#2421).
  */
 export interface Depicts {
   via: DepictionStep | typeof CURATOR_COMMEMORATION;
@@ -173,9 +181,8 @@ export function subjectItems(value: unknown): string[] {
 /**
  * The items both of a place's lines name, whom it commemorates and what it
  * depicts, each read as stored: none where a subject stands on one line. A
- * curator's edit and the publication of a held line keep it so (#2421). A run
- * writing to an arrival that waits for a curator does not yet, and its reading
- * is #2436's.
+ * curator's edit and the publication of a held line keep it so (#2421), and so
+ * does a run beside a curator's claimed line (#2436).
  */
 export function onBothLines(commemorates: unknown, depicts: unknown): string[] {
   const depicted = new Set(depictsOf(depicts)?.subjects.map(subject => subject.item) ?? []);
