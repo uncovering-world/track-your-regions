@@ -396,7 +396,7 @@ export const experienceCurationRoutes = [
   // Edit an experience's fields (curator)
   defineRoute({
     method: 'patch', path: '/:id/edit', access: 'curator', cache: 'no-store',
-    summary: 'Edit an experience\'s name, text, type, tags, picture, links or whom it commemorates, kept against later syncs',
+    summary: 'Edit an experience\'s name, text, type, tags, picture, links, whom it commemorates or what it depicts, kept against later syncs',
     params: idParamSchema,
     body: editExperienceBodySchema,
     response: ExperienceEditResult,

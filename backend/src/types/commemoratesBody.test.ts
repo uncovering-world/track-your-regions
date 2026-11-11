@@ -60,3 +60,22 @@ describe('an English Wikipedia article', () => {
     expect(isEnglishWikipediaArticleUrl(value)).toBe(expected);
   });
 });
+
+// Big Vishnu (Q12498977) shows Vishnu (Q11380) riding Garuda (Q188676).
+const VISHNU = { item: 'Q11380', label: 'Vishnu', articleUrl: 'https://en.wikipedia.org/wiki/Vishnu' };
+const GARUDA = { item: 'Q188676', label: 'Garuda', articleUrl: 'https://en.wikipedia.org/wiki/Garuda' };
+
+describe("a curator's list of the figures a work depicts (#2421)", () => {
+  it('takes the same shape as whom a place commemorates, and the empty list', () => {
+    expect(editExperienceBodySchema.safeParse({ depicts: [VISHNU, GARUDA] }).success).toBe(true);
+    expect(editExperienceBodySchema.safeParse({ depicts: [] }).data).toEqual({ depicts: [] });
+    expect(editExperienceBodySchema.safeParse({ depicts: [{ ...VISHNU, articleUrl: 'javascript:alert(1)' }] }).success).toBe(false);
+  });
+
+  it('takes a subject moved from one line to the other, and refuses one on both', () => {
+    expect(editExperienceBodySchema.safeParse({ commemorates: [LINCOLN], depicts: [VISHNU] }).success).toBe(true);
+    const both = editExperienceBodySchema.safeParse({ commemorates: [VISHNU], depicts: [VISHNU, GARUDA] });
+    expect(both.success).toBe(false);
+    expect(both.error?.issues[0].path).toEqual(['depicts']);
+  });
+});

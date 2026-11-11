@@ -620,4 +620,42 @@ describe('editExperience and whom a place commemorates (#2144)', () => {
     await expect(editWith({ commemorates: [{ ...WAR, articleUrl: 'javascript:alert(1)' }] }).done).rejects.toThrow();
     expect(mockClientQuery.mock.calls.some(([sql]) => String(sql).includes('UPDATE experiences'))).toBe(false);
   });
+
+  // Big Vishnu (Q12498977) reads "Depicts: Garuda" from its main subject; the
+  // statue shows Vishnu (Q11380) riding Garuda (Q188676) (#2421).
+  const GARUDA = { item: 'Q188676', label: 'Garuda', articleUrl: 'https://en.wikipedia.org/wiki/Garuda' };
+  const VISHNU = { item: 'Q11380', label: 'Vishnu', articleUrl: 'https://en.wikipedia.org/wiki/Vishnu' };
+
+  it("stores the curator's list of what a work depicts as theirs and claims it (#2421)", async () => {
+    const before = { via: 'main-subject', subjects: [GARUDA] };
+    queueQueries({ lockedCurated: [], lockedRow: { metadata: { depicts: before } } });
+
+    await editWith({ depicts: [VISHNU, GARUDA] }).done;
+
+    expect(patch()).toEqual({ depicts: { via: 'curator', subjects: [VISHNU, GARUDA] } });
+    expect(updatedClaims()).toEqual(['metadata.depicts']);
+    expect(audited()['metadata.depicts']).toEqual({ old: before, new: { via: 'curator', subjects: [VISHNU, GARUDA] } });
+  });
+
+  it('moves a subject from one line to the other in one edit, both lines claimed (#2421)', async () => {
+    // A holy figure the reading put under Commemorates, listed under Depicts instead.
+    queueQueries({ lockedCurated: [], lockedRow: { metadata: { commemorates: { via: 'statues-category', subjects: [GARUDA] } } } });
+
+    await editWith({ commemorates: [], depicts: [GARUDA] }).done;
+
+    expect(patch()).toEqual({
+      commemorates: { via: 'curator', subjects: [] },
+      depicts: { via: 'curator', subjects: [GARUDA] },
+    });
+    expect(updatedClaims()).toEqual(['metadata.commemorates', 'metadata.depicts']);
+  });
+
+  it('refuses a list of figures sent alone that names whom the place already commemorates, and writes nothing (#2421)', async () => {
+    queueQueries({ lockedCurated: [], lockedRow: { metadata: { commemorates: { via: 'statues-category', subjects: [GARUDA] } } } });
+
+    const { res, done } = editWith({ depicts: [VISHNU, GARUDA] });
+    await done;
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(mockClientQuery.mock.calls.some(([sql]) => String(sql).includes('UPDATE experiences'))).toBe(false);
+  });
 });

@@ -24,7 +24,9 @@ import { refusalFor } from './curatedUrlRefusal.js';
 import { heldSettledDetails, settleHeldByEdit } from './heldSettledByEdit.js';
 import { CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import { HELD_CREDIT_FIELD } from '@tyr/shared/pictures';
-import { CURATOR_COMMEMORATION, type CommemoratedSubject, type Commemorates } from '@tyr/shared/commemorates';
+import {
+  CURATOR_COMMEMORATION, onBothLines, type CommemoratedSubject, type Commemorates,
+} from '@tyr/shared/commemorates';
 
 type IdParams = z.output<typeof idParamSchema>;
 
@@ -44,6 +46,8 @@ interface EditPayload {
   descriptionAdapted: boolean | undefined;
   /** The curator's list of whom the place commemorates, whole, undefined where the edit does not touch it (#2144). */
   commemorates: CommemoratedSubject[] | undefined;
+  /** The curator's list of the figures the work depicts, whole, undefined where the edit does not touch it (#2421). */
+  depicts: CommemoratedSubject[] | undefined;
   /**
    * Whose picture the *new* one is, resolved before the write.
    *
@@ -83,6 +87,7 @@ function parseEditPayload(body: Record<string, unknown>): EditPayload {
     hasWikipediaUpdate: wikipediaUrl !== undefined,
     descriptionAdapted: body.descriptionAdapted as boolean | undefined,
     commemorates: body.commemorates as CommemoratedSubject[] | undefined,
+    depicts: body.depicts as CommemoratedSubject[] | undefined,
   };
 }
 
@@ -94,7 +99,7 @@ function validateEditPayload(payload: EditPayload): string | null {
     ?? refusalFor(imageUrl, isDisplayablePictureUrl, DISPLAYABLE_PICTURE_URL_MESSAGE);
   if (refusal) return refusal;
   const hasMetadataUpdate = hasWebsiteUpdate || hasWikipediaUpdate || payload.descriptionAdapted !== undefined
-    || payload.commemorates !== undefined;
+    || payload.commemorates !== undefined || payload.depicts !== undefined;
   if (updates.length === 0 && !hasMetadataUpdate) {
     return 'No fields to update';
   }
@@ -124,17 +129,21 @@ function metadataPatchOf(payload: EditPayload): Record<string, unknown> | null {
   // list is stored as one rather than as no value: a claim protects only a key
   // the row carries (`claimedMetadataKeys`), so "nobody" must be a value for
   // the next run to keep it.
-  const commemorates = curatorCommemorates(payload);
+  // The figures it depicts, the same way (#2421): an empty list is the
+  // curator's word that the work shows no named figure.
+  const commemorates = curatorList(payload.commemorates);
   if (commemorates) patch.commemorates = commemorates;
+  const depicts = curatorList(payload.depicts);
+  if (depicts) patch.depicts = depicts;
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
-/** The value a curator's list is stored as, or undefined where the edit does not touch it. */
-function curatorCommemorates(payload: EditPayload): Commemorates | undefined {
-  if (payload.commemorates === undefined) return undefined;
+/** The value a curator's list of subjects is stored as, or undefined where the edit does not touch it. */
+function curatorList(subjects: CommemoratedSubject[] | undefined): Commemorates | undefined {
+  if (subjects === undefined) return undefined;
   return {
     via: CURATOR_COMMEMORATION,
-    subjects: payload.commemorates.map(({ item, label, articleUrl }) => ({ item, label, articleUrl })),
+    subjects: subjects.map(({ item, label, articleUrl }) => ({ item, label, articleUrl })),
   };
 }
 
@@ -276,15 +285,35 @@ function editedFields(payload: EditPayload): Map<string, unknown> {
   if (payload.hasWebsiteUpdate) edited.set('metadata.website', payload.websiteUrl || null);
   if (payload.hasWikipediaUpdate) edited.set('metadata.wikipediaUrl', payload.wikipediaUrl || null);
   if (payload.imageCredit) edited.set(HELD_CREDIT_FIELD, payload.imageCredit);
-  const commemorates = curatorCommemorates(payload);
+  const commemorates = curatorList(payload.commemorates);
   if (commemorates) edited.set('metadata.commemorates', commemorates);
+  const depicts = curatorList(payload.depicts);
+  if (depicts) edited.set('metadata.depicts', depicts);
   return edited;
+}
+
+/**
+ * Refuses an edit that leaves a subject on both of the card's lines, the line
+ * it does not send read as the place holds it: the body's own check compares
+ * only lines it carries, and a list of figures sent alone may name whom the
+ * place already commemorates (#2421).
+ */
+function refuseSubjectOnBothLines(payload: Pick<EditPayload, 'commemorates' | 'depicts'>, metadata: unknown): void {
+  if (payload.commemorates === undefined && payload.depicts === undefined) return;
+  const held = (metadata ?? {}) as Record<string, unknown>;
+  const lines = {
+    commemorates: payload.commemorates ? { via: CURATOR_COMMEMORATION, subjects: payload.commemorates } : held.commemorates,
+    depicts: payload.depicts ? { via: CURATOR_COMMEMORATION, subjects: payload.depicts } : held.depicts,
+  };
+  if (onBothLines(lines.commemorates, lines.depicts).length > 0) {
+    throw badRequest('A subject stands on one line: whom the place commemorates, or what it depicts');
+  }
 }
 
 /**
  * Edit an experience's fields
  * PATCH /api/experiences/:id/edit
- * Body: { name?, description?, subtitle?, type?, imageUrl?, tags?, websiteUrl?, wikipediaUrl?, descriptionAdapted?, commemorates? }
+ * Body: { name?, description?, subtitle?, type?, imageUrl?, tags?, websiteUrl?, wikipediaUrl?, descriptionAdapted?, commemorates?, depicts? }
  * An empty string clears the field: the column is stored as NULL, and the
  * clearing is claimed like any other edit (`clearedToNull`).
  *
@@ -365,6 +394,7 @@ export async function editExperience(
     // edit: 404, as the read would have answered a moment later. The catch
     // below rolls the transaction back.
     if (!locked) throw notFound('Experience not found');
+    refuseSubjectOnBothLines(payload, locked.row.metadata);
     const before: Record<string, unknown> = { ...locked.row };
     // The type within the kind is the membership's (ADR-0084), claimed there:
     // for a type edit the shown membership read above, whose source's scope the

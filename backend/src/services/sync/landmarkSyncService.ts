@@ -42,6 +42,7 @@ import { PUBLIC_CLOCK_CLASSES, STREET_ART_CLASSES, type PublicArtTrees } from '.
 import type { SparqlFn } from './wikidataQueries.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, typeByDepicted, type KindRule } from './publicArt/kindRules.js';
 import { PUBLIC_ART_SOURCES } from './passes.js';
+import { SUBJECT_LINE_SOURCE_IDS } from '@tyr/shared/commemorates';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import {
   delay,
@@ -482,7 +483,7 @@ async function fetchLandmarkItems(
   // religious work depicts, once the kinds have decided (#2144, #2404): Public
   // art's and Monuments & memorials' alone, whose writers `WRITTEN_BY_SOURCES`
   // names. Every other kind keeps what the place holds.
-  if (PUBLIC_ART_SOURCES.includes(sourceId)) await readWhatEachCommemorates(items, sourceId, sparql, progress);
+  if (SUBJECT_LINE_SOURCE_IDS.includes(sourceId)) await readWhatEachCommemorates(items, sourceId, sparql, progress);
   // What the admitted places hold, read before the first is written, so the
   // coverage floor is measured over the whole run (ADR-0044).
   const held = await classifier.contents?.read(items, sparql, progress);

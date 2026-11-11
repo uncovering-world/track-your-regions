@@ -28,8 +28,19 @@
  * apart, as `metadata.depicts` in the same shape (`Depicts`), and the card
  * says "Depicts: Jesus Christ" on a line of its own. Only the steps that read
  * what a work shows name one (`DEPICTION_STEPS`); a statement or a category
- * that says whom a place is a memorial to stays a dedication.
+ * that says whom a place is a memorial to stays a dedication. A curator
+ * corrects the line as they correct *Commemorates*, and may move a subject
+ * from one line to the other (#2421): Big Vishnu depicts Vishnu as well as
+ * Garuda. Their list is theirs (`via: 'curator'`), claimed and kept the same way.
  */
+
+/**
+ * The sources whose runs read whom a place commemorates and what it depicts:
+ * Public art (3) and Monuments & memorials (6), read in one pass. A place
+ * either holds may carry both lines, so its curation dialog corrects them, and
+ * every other run keeps what the place holds (#2144, #2404, #2421).
+ */
+export const SUBJECT_LINE_SOURCE_IDS: readonly number[] = [3, 6];
 
 /** The steps of the reading, in the order they are tried; the first that names anyone answers. */
 export const COMMEMORATION_STEPS = [
@@ -105,11 +116,11 @@ export interface Commemorates {
 
 /**
  * What `metadata.depicts` holds: the holy figures a religious work shows, and
- * the step that named them. A run writes it and no curator lists it, so it is
- * never empty.
+ * the step or the curator that named them. A run's list is never empty; a
+ * curator's may be, as their word that the work shows no named figure (#2421).
  */
 export interface Depicts {
-  via: DepictionStep;
+  via: DepictionStep | typeof CURATOR_COMMEMORATION;
   subjects: CommemoratedSubject[];
 }
 
@@ -140,18 +151,35 @@ export function commemoratesOf(value: unknown): Commemorates | null {
   return subjects.length || via === CURATOR_COMMEMORATION ? { via, subjects } : null;
 }
 
-const DEPICTION_VIAS: ReadonlySet<string> = new Set<string>(DEPICTION_STEPS);
+const DEPICTION_VIAS: ReadonlySet<string> = new Set<string>([...DEPICTION_STEPS, CURATOR_COMMEMORATION]);
 
-/** A stored `metadata.depicts` in this shape, key by key, or null where it is none or names nobody. */
+/**
+ * A stored `metadata.depicts` in this shape, key by key, or null where it is
+ * none or names nobody. A curator's list is kept even when it is empty, as
+ * `commemoratesOf` keeps one (#2421): the work shows no named figure.
+ */
 export function depictsOf(value: unknown): Depicts | null {
   if (!isRecord(value) || typeof value.via !== 'string' || !DEPICTION_VIAS.has(value.via) || !Array.isArray(value.subjects)) return null;
+  const via = value.via as Depicts['via'];
   const subjects = value.subjects.map(subjectOf).filter((s): s is CommemoratedSubject => s !== null);
-  return subjects.length ? { via: value.via as DepictionStep, subjects } : null;
+  return subjects.length || via === CURATOR_COMMEMORATION ? { via, subjects } : null;
 }
 
 /** The items a stored value names, none for anything not in this shape. */
 export function subjectItems(value: unknown): string[] {
   return commemoratesOf(value)?.subjects.map(subject => subject.item) ?? [];
+}
+
+/**
+ * The items both of a place's lines name, whom it commemorates and what it
+ * depicts, each read as stored: none where a subject stands on one line. A
+ * curator's edit and the publication of a held line keep it so (#2421). A run
+ * writing to an arrival that waits for a curator does not yet, and its reading
+ * is #2436's.
+ */
+export function onBothLines(commemorates: unknown, depicts: unknown): string[] {
+  const depicted = new Set(depictsOf(depicts)?.subjects.map(subject => subject.item) ?? []);
+  return subjectItems(commemorates).filter(item => depicted.has(item));
 }
 
 /**
