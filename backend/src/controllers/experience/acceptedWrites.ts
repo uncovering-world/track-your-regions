@@ -26,6 +26,7 @@ import {
   assignmentFor, isKindFactField, isMetadataField, isNameLocalField, nextMetadata, nextNameLocal,
   type CreditPin, type ProposedField,
 } from './publishHeldFields.js';
+import { keepSubjectsOnOneLine } from './subjectLines.js';
 
 const CREDIT_FIELD = 'metadata.imageCredit';
 
@@ -89,7 +90,8 @@ export function acceptedWrites(
   }
 
   const pin = creditPinFor(accepted, acceptedImage, pictureCredit);
-  const metadata = nextMetadata(stored.metadata, merged, remainingClaims, pin);
+  const next = nextMetadata(stored.metadata, merged, remainingClaims, pin);
+  const metadata = next && keepSubjectsOnOneLine(next, merged.map(entry => entry.field));
   if (metadata !== null) writes.assignments.push(`metadata = ${bind(JSON.stringify(metadata))}::jsonb`);
   const names = nextNameLocal(stored.name_local, merged);
   if (names !== null) writes.assignments.push(`name_local = ${bind(JSON.stringify(names))}::jsonb`);

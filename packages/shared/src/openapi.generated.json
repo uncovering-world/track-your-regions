@@ -12980,7 +12980,7 @@
     "/api/experiences/{id}/edit": {
       "patch": {
         "operationId": "patchExperiencesByIdEdit",
-        "summary": "Edit an experience's name, text, type, tags, picture, links or whom it commemorates, kept against later syncs",
+        "summary": "Edit an experience's name, text, type, tags, picture, links, whom it commemorates or what it depicts, kept against later syncs",
         "tags": [
           "experiences"
         ],
@@ -24862,6 +24862,34 @@
               ],
               "additionalProperties": false
             }
+          },
+          "depicts": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "item": {
+                  "type": "string",
+                  "pattern": "^Q[1-9]\\d*$"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "articleUrl": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "item",
+                "label",
+                "articleUrl"
+              ],
+              "additionalProperties": false
+            }
           }
         }
       },
@@ -25368,7 +25396,7 @@
             "items": {
               "$ref": "#/components/schemas/CommemoratedSubject"
             },
-            "description": "The holy figure a religious work depicts, off its `metadata.depicts` (#2404): Christ the Redeemer names Jesus Christ, which is never whom it commemorates. Empty where the reading names none."
+            "description": "The holy figure a religious work depicts, off its `metadata.depicts` (#2404): Christ the Redeemer names Jesus Christ, which is never whom it commemorates. A curator's list where they corrected it (#2421). Empty where the reading names none, and where the curator said it shows no named figure."
           },
           "created_at": {
             "anyOf": [

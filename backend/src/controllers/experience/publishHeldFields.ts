@@ -28,6 +28,7 @@ import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelec
 import type { PoolClient } from 'pg';
 import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
 import { tidyLabel } from '@tyr/shared/labels';
+import { keepSubjectsOnOneLine } from './subjectLines.js';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
 export interface ProposedField {
@@ -697,7 +698,8 @@ export async function heldFieldWrites(
     { imageUrl: before.image_url, credit: creditOf(before.metadata) },
     writes.applied.includes('imageUrl'),
   );
-  const metadata = nextMetadata(before.metadata, writable, claimed, pin);
+  const next = nextMetadata(before.metadata, writable, claimed, pin);
+  const metadata = next && keepSubjectsOnOneLine(next, writable.map(field => field.field));
   if (metadata !== null) {
     writes.assignments.push(`metadata = ${bind(JSON.stringify(metadata))}::jsonb`);
     writes.applied.push(...writable.filter(field => isMetadataField(field.field) && !isKindFactField(field.field))

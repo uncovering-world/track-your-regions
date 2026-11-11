@@ -22,7 +22,7 @@
 import type { PoolClient } from 'pg';
 import { MEMBERSHIPS, membershipAdmittedSql } from '../../db/membership.js';
 import { viewStandsSql } from '../../db/sourceViews.js';
-import { PUBLIC_ART_SOURCES } from './passes.js';
+import { SUBJECT_LINE_SOURCE_IDS } from '@tyr/shared/commemorates';
 
 export type SourceFamily = 'unesco' | 'wikidata';
 
@@ -94,9 +94,9 @@ const KEPT_BY_EVERY_OTHER_FAMILY: Readonly<Record<SourceFamily, readonly string[
  * Gustave Eiffel, nor the Marco Polo Bridge (Lugou) Marco Polo.
  */
 export const WRITTEN_BY_SOURCES: Readonly<Record<string, readonly number[]>> = {
-  commemorates: PUBLIC_ART_SOURCES,
+  commemorates: SUBJECT_LINE_SOURCE_IDS,
   // The holy figure a religious work depicts, read with it (#2404).
-  depicts: PUBLIC_ART_SOURCES,
+  depicts: SUBJECT_LINE_SOURCE_IDS,
 };
 
 /** The keys of `WRITTEN_BY_SOURCES` the run of `sourceId` does not write and a writer of which admits the place. */

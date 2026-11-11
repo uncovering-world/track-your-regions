@@ -373,7 +373,13 @@ export const editExperienceBodySchema = z.object({
   // Whom or what the place commemorates, the curator's list whole (#2144):
   // stored as theirs and claimed, so the next run keeps it, the empty list too.
   commemorates: commemoratesListSchema.optional(),
-});
+  // The figures a work depicts, the curator's list whole, kept the same way (#2421).
+  depicts: commemoratesListSchema.optional(),
+}).refine(
+  body => !body.commemorates || !body.depicts
+    || !body.commemorates.some(subject => body.depicts?.some(shown => shown.item === subject.item)),
+  { message: 'A subject stands on one line: whom the place commemorates, or what it depicts', path: ['depicts'] },
+);
 
 export const createManualExperienceBodySchema = z.object({
   // Written as the place's name and again as its first location's, so the

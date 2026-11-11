@@ -331,7 +331,8 @@ export const ExperienceDetail = z.strictObject({
   ),
   depicts: z.array(CommemoratedSubject).describe(
     'The holy figure a religious work depicts, off its `metadata.depicts` (#2404): Christ the Redeemer names Jesus'
-    + ' Christ, which is never whom it commemorates. Empty where the reading names none.',
+    + ' Christ, which is never whom it commemorates. A curator\'s list where they corrected it (#2421). Empty where the'
+    + ' reading names none, and where the curator said it shows no named figure.',
   ),
   created_at: timestamp,
   updated_at: timestamp,
