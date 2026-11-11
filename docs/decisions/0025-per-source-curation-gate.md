@@ -1,7 +1,7 @@
 # ADR-0025: A source is trusted or it is not, and the product says which
 
 **Date:** 2026-08-10
-**Status:** Accepted — decision 5 narrowed by ADR-0037
+**Status:** Accepted — decision 5 narrowed by ADR-0037, and on the reader's side by [ADR-0197](0197-a-places-regions-are-one-row-per-region-written-by-one-function-from-the-points-it-shows.md): whether a point a reader may see puts a place in a region is stored on its region row
 
 ---
 

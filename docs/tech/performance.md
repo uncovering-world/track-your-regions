@@ -968,6 +968,10 @@ Europe's locations read 148 → 136 ms, and the list, the counts, Italy and
 Lazio stay within a few milliseconds of where they were, measured with the
 migration's statements in a rolled-back transaction.
 
+Since migration 231 the place index is `idx_experience_regions_region_listing`,
+holding the place and its `listing` (ADR-0197): a reader's region read asks the
+row's listing and no longer walks the place's points into the point rows.
+
 Measured and not taken:
 
 - **The list and the locations read asked of the place**, as the count
