@@ -98,7 +98,7 @@ function around(place: CrowdingGroupPlace, compared: boolean, distanceM: number)
   const { membershipId, experienceId, name, latitude, longitude, standing, readers, wikipediaEditions, guideUsed, score } = place;
   return {
     membershipId, experienceId, name, latitude, longitude, standing, distanceM, compared,
-    readers, wikipediaEditions, guideUsed, score,
+    readers, wikipediaEditions, guideUsed, score, holdsWorks: false, pin: null,
   };
 }
 
@@ -112,6 +112,8 @@ export const schlossplatzCircle: CrowdingPlaceView = {
     .filter(place => place.membershipId !== SCHLOSSPLATZ)
     .map((place, index) => around(place, place.score !== null && place.score > 0.7 && !place.holdsWorks, 700 + index * 300)),
   comparedUnlisted: 0,
+  measuringRun: null,
+  measurable: true,
 };
 
 /** The review page's crowded cities: Berlin's squares and Rome's churches. */

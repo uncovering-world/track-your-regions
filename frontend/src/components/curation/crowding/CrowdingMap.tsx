@@ -7,8 +7,9 @@
  *   is staged — framed on the group's places.
  * - **A place's circle**: the kind's radius around the place, drawn on the
  *   sphere as a dashed circle (`radiusCircle`) and framed (`frameGeoJson`,
- *   which handles a circle over the antimeridian); the better-known places
- *   inside it that it is compared with marked, the others faded, the place
+ *   which handles a circle over the antimeridian); every place inside it in
+ *   its group's look (`circleGroups`): the better known it is compared with
+ *   marked, the less known faded, the ones not measured yet hollow, the place
  *   itself ringed.
  *
  * A dot and its row light up together: the pointer on either sets the hovered
@@ -25,6 +26,7 @@ import type { CrowdingGroupPlace, CrowdingPlaceView } from '../../../api/crowdin
 import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../../constants/mapStyles';
 import { frameGeoJson } from '../../../utils/mapUtils';
 import { GuardedMap } from '../../shared/GuardedMap';
+import { CIRCLE_GROUPS, circleGroups, groupOf, GROUP_WORDS, type CircleGroup } from './circleGroups';
 import { drawnStanding, type DrawnStanding, type Staging } from './crowdingStaging';
 import { distanceWords, whyWords, type RuleWords } from './rowWords';
 
@@ -38,9 +40,18 @@ const STANDING_LOOK: Record<DrawnStanding, Look> = {
   refused: { fill: 'error.main', edge: 'error.main', size: 12 },
 };
 
-/** In a place's circle: what it is compared with, what is not, and the place itself. */
-const COMPARED_LOOK: Look = { fill: 'primary.main', edge: 'common.white', size: 12, ring: 'primary.dark' };
-const FADED_LOOK: Look = { fill: 'grey.400', edge: 'grey.400', size: 8 };
+/**
+ * In a place's circle, one look for each group its list names (`circleGroups`,
+ * #2420), and the place itself. A place not measured yet is hollow, so it
+ * reads apart from a less-known one without its colour.
+ */
+const GROUP_LOOK: Record<CircleGroup, Look> = {
+  compared: { fill: 'primary.main', edge: 'common.white', size: 12, ring: 'primary.dark' },
+  uncounted: { fill: 'background.paper', edge: 'primary.main', size: 10 },
+  less: { fill: 'grey.500', edge: 'grey.500', size: 8 },
+  measured: { fill: 'grey.500', edge: 'grey.500', size: 8 },
+  unmeasured: { fill: 'background.paper', edge: 'grey.600', size: 8 },
+};
 const PLACE_LOOK: Look = { fill: 'common.white', edge: 'warning.main', size: 18 };
 
 /** The Earth's mean radius, in kilometres: the sphere the circle is drawn on. */
@@ -122,12 +133,15 @@ function dotsOf(view: CrowdingMapView, staging: Staging): Drawn[] {
   }
   const { place, around } = view.view;
   return [
-    ...around.map(entry => ({
-      id: entry.membershipId, name: entry.name, latitude: entry.latitude, longitude: entry.longitude,
-      look: entry.compared ? COMPARED_LOOK : FADED_LOOK,
-      says: `${entry.name}, ${distanceWords(entry.distanceM)}${entry.compared ? ': better known, compared with it' : ': not compared'}`,
-      layer: entry.compared ? 1 : 0,
-    })),
+    ...around.map(entry => {
+      const group = groupOf(entry, view.view);
+      return {
+        id: entry.membershipId, name: entry.name, latitude: entry.latitude, longitude: entry.longitude,
+        look: GROUP_LOOK[group],
+        says: `${entry.name}, ${distanceWords(entry.distanceM)}: ${GROUP_WORDS[group]}`,
+        layer: group === 'compared' ? 1 : 0,
+      };
+    }),
     {
       id: place.membershipId, name: place.name, latitude: place.latitude, longitude: place.longitude,
       look: PLACE_LOOK, says: place.name, layer: 2,
@@ -148,11 +162,15 @@ function Swatch({ look, label }: { look: Look; label: string }) {
   );
 }
 
-/** The map's legend, so the colours read the same on the map and in the list. */
-export function CrowdingLegend({ view }: { view: 'region' | 'place' }) {
+/**
+ * The map's legend, so the colours read the same on the map and in the list:
+ * in a place's circle, the groups its list names, in the list's words.
+ */
+export function CrowdingLegend({ view }: { view: CrowdingMapView }) {
+  const groups = view.kind === 'place' ? circleGroups(view.view) : null;
   return (
     <Stack direction="row" columnGap={2} rowGap={0.5} flexWrap="wrap">
-      {view === 'region' ? (
+      {!groups ? (
         <>
           <Swatch look={STANDING_LOOK.shown} label="on the region page" />
           <Swatch look={STANDING_LOOK.shadowed} label="shadowed" />
@@ -162,8 +180,9 @@ export function CrowdingLegend({ view }: { view: 'region' | 'place' }) {
       ) : (
         <>
           <Swatch look={PLACE_LOOK} label="the place" />
-          <Swatch look={COMPARED_LOOK} label="better known, within its circle: what it is compared with" />
-          <Swatch look={FADED_LOOK} label="not compared" />
+          {CIRCLE_GROUPS.filter(group => groups[group].length > 0).map(group => (
+            <Swatch key={group} look={GROUP_LOOK[group]} label={GROUP_WORDS[group]} />
+          ))}
         </>
       )}
     </Stack>

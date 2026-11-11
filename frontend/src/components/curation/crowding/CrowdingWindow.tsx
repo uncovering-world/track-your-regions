@@ -257,7 +257,7 @@ function WindowBody({ layout, read, circle, placeLoading, failed, inRegion, stag
       >
         <Box data-testid="crowding-map-pane" sx={placed.mapPane}>
           <CrowdingMap view={map} staging={staging} hovered={hovered} frame={placed.mapFrame} onHover={onHover} onOpen={onOpen} />
-          <Box sx={{ mt: 1 }}><CrowdingLegend view={map.kind} /></Box>
+          <Box sx={{ mt: 1 }}><CrowdingLegend view={map} /></Box>
         </Box>
       </Box>
       {/* In a dialog the list scrolls beside the map; in a page pane under it on a laptop, and on with the page on the widest. */}
