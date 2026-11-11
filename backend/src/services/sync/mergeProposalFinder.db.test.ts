@@ -58,7 +58,7 @@ async function place({ id, name, source, lon, state = 'auto', admission = 'admit
     [id, `fixture-${id}`, name, lon, ISLAND.lat, source],
   );
   const membership = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
             (experience_id, kind_id, source_id, external_id, curation_state, published_at, reported_name, admission, facts)
      SELECT $1, s.kind_id, s.id, $2, $3::text, CASE WHEN $3::text = 'auto' THEN NOW() END, $4, $6, $7::jsonb
        FROM experience_sources s WHERE s.name = $5 RETURNING id`,
@@ -104,7 +104,7 @@ beforeAll(async () => {
   await place({ id: P.partTwin, name: 'Fixture Temple', source: 'Places of worship', lon: east(20060) });
   await pool.query(
     `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id)
-     SELECT $1, $2, 'component', m.id FROM experience_kind_memberships m WHERE m.experience_id = $1`,
+     SELECT $1, $2, 'component', m.id FROM source_records m WHERE m.experience_id = $1`,
     [P.whole, P.part],
   );
   // A part as the World Heritage run parts a component: no kind of its own, offered through its whole.
@@ -121,7 +121,7 @@ beforeAll(async () => {
   );
   await pool.query(
     `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
-     SELECT $1, $2, 'component', m.id, 'fixture-whole-002' FROM experience_kind_memberships m WHERE m.experience_id = $1`,
+     SELECT $1, $2, 'component', m.id, 'fixture-whole-002' FROM source_records m WHERE m.experience_id = $1`,
     [P.whole, P.belfry],
   );
   await place({ id: P.belfryTwin, name: 'Fixture Belfry', source: 'Places of worship', lon: east(20520) });
@@ -238,7 +238,7 @@ describe('pairing a place again when what the rule reads changes (#1950)', () =>
 
     // What publishing the arrival does to it: the membership and its point become a reader's.
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
       [P.windmillArrival],
     );
     await pool.query(`UPDATE experience_locations SET curation_state = 'verified' WHERE experience_id = $1`, [P.windmillArrival]);
@@ -253,7 +253,7 @@ describe('pairing a place again when what the rule reads changes (#1950)', () =>
     await drainPairing();
     expect(await pairOf(P.well)).toBeUndefined();
 
-    await pool.query(`UPDATE experience_kind_memberships SET admission = 'admitted' WHERE experience_id = $1`, [P.wellRefused]);
+    await pool.query(`UPDATE source_records SET admission = 'admitted' WHERE experience_id = $1`, [P.wellRefused]);
     await drainPairing();
 
     expect(await pairOf(P.well)).toMatchObject({ place_b: P.wellRefused, exact: true });
@@ -264,13 +264,13 @@ describe('pairing a place again when what the rule reads changes (#1950)', () =>
     expect(await pairOf(P.belfry)).toMatchObject({ place_b: P.belfryTwin });
 
     // The site refused: its part is no longer offered, and its pair is forgotten.
-    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE experience_id = $1`, [P.whole]);
+    await pool.query(`UPDATE source_records SET admission = 'refused' WHERE experience_id = $1`, [P.whole]);
     expect(await marked([P.belfry])).toEqual([]);
     await drainPairing();
     expect(await pairOf(P.belfry)).toBeUndefined();
 
     // The refusal taken back: the part is paired again.
-    await pool.query(`UPDATE experience_kind_memberships SET admission = 'admitted' WHERE experience_id = $1`, [P.whole]);
+    await pool.query(`UPDATE source_records SET admission = 'admitted' WHERE experience_id = $1`, [P.whole]);
     await drainPairing();
     expect(await pairOf(P.belfry)).toMatchObject({ place_b: P.belfryTwin });
   });

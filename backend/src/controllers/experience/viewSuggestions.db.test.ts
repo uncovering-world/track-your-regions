@@ -20,7 +20,7 @@ vi.mock('./experienceScope.js', async (importOriginal) => ({
   resolveEverySourceScope: vi.fn(async (_user: number, _role: string, id: number) => {
     const { pool: db } = await import('../../db/index.js');
     const rows = await db.query<{ source_id: number }>(
-      'SELECT DISTINCT source_id FROM experience_kind_memberships WHERE experience_id = $1 ORDER BY source_id', [id],
+      'SELECT DISTINCT source_id FROM source_records WHERE experience_id = $1 ORDER BY source_id', [id],
     );
     return { permitted: true, logRegionId: null, sourceIds: rows.rows.map(row => row.source_id) };
   }),
@@ -49,7 +49,7 @@ async function clear(): Promise<void> {
 
 async function membership(source: string, externalId: string, name: string): Promise<number> {
   const row = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at,
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at,
        reported_name, reported_location)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW(), $3, ST_SetSRID(ST_MakePoint(23.3402, 42.1333), 4326)
        FROM experience_sources s WHERE s.name = $4 RETURNING id`,
@@ -90,7 +90,7 @@ describe("Jev's suggestion on the sources card (#1260)", () => {
     expect(await ask()).toEqual({ configured: true, suggestions: [{ field: 'name', membershipId: unescoView, confidence: 0.96 }] });
     expect(mockedAsk).toHaveBeenCalledTimes(1);
 
-    await pool.query(`UPDATE experience_kind_memberships SET reported_name = 'Rila Monastery of St John' WHERE id = $1`, [wikidataView]);
+    await pool.query(`UPDATE source_records SET reported_name = 'Rila Monastery of St John' WHERE id = $1`, [wikidataView]);
     await ask();
 
     expect(mockedAsk).toHaveBeenCalledTimes(2);
@@ -98,7 +98,7 @@ describe("Jev's suggestion on the sources card (#1260)", () => {
 
   it('shows no answer about views a source changed while Jev was answering, and still counts the call', async () => {
     mockedAsk.mockImplementation(async () => {
-      await pool.query(`UPDATE experience_kind_memberships SET reported_name = 'Rila Monastery of St John' WHERE id = $1`, [wikidataView]);
+      await pool.query(`UPDATE source_records SET reported_name = 'Rila Monastery of St John' WHERE id = $1`, [wikidataView]);
       return { choice: `view${unescoView}`, probabilities: {}, confidence: 0.96, model: 'jev-1.13.0', inputTokens: 428 };
     });
 
@@ -138,7 +138,7 @@ describe("Jev's suggestion on the sources card (#1260)", () => {
     await ask();
     await chooseViewsUnderLock(RILA, curatorId, null, [{ field: 'name', membershipId: wikidataView }],
       (await pool.query<{ source_id: number }>(
-        'SELECT DISTINCT source_id FROM experience_kind_memberships WHERE experience_id = $1 ORDER BY source_id', [RILA],
+        'SELECT DISTINCT source_id FROM source_records WHERE experience_id = $1 ORDER BY source_id', [RILA],
       )).rows.map(row => row.source_id));
 
     const after = await getJevUsage();

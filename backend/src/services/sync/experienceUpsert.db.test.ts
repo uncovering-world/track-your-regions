@@ -74,7 +74,7 @@ beforeEach(async () => {
     [LOUVRE, artMuseums, LOUVRE_QID],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, 'auto', NOW()), ($1, $5, $6, $4, 'auto', NOW())`,
     [LOUVRE, art.kind_id, artMuseums, LOUVRE_QID, arch.kind_id, archaeology],
@@ -92,7 +92,7 @@ describe('a run reaches its places through its own membership (ADR-0084)', () =>
 
     const membership = await pool.query(
       `SELECT m.experience_id, m.external_id, e.source_id, e.external_id AS place_external_id
-         FROM experience_kind_memberships m JOIN experiences e ON e.id = m.experience_id
+         FROM source_records m JOIN experiences e ON e.id = m.experience_id
         WHERE m.source_id = $1 AND m.external_id = $2`,
       [archaeology, NEW_SITE_QID],
     );
@@ -124,7 +124,7 @@ describe('a run reaches its places through its own membership (ADR-0084)', () =>
         [archaeology, NEW_SITE_QID],
       );
       await first.query(
-        `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id)
+        `INSERT INTO source_records (experience_id, kind_id, source_id, external_id)
          SELECT $1, kind_id, id, $2 FROM experience_sources WHERE id = $3`,
         [made.rows[0].id, NEW_SITE_QID, archaeology],
       );
@@ -156,7 +156,7 @@ describe('a run reaches its places through its own membership (ADR-0084)', () =>
     // (ADR-0084). Archaeology is gated and the place is visible, so its
     // proposal is held on its own membership; Art Museums' is untouched.
     const types = async () => (await pool.query(
-      `SELECT source_id, type FROM experience_kind_memberships WHERE experience_id = $1 ORDER BY source_id`,
+      `SELECT source_id, type FROM source_records WHERE experience_id = $1 ORDER BY source_id`,
       [LOUVRE],
     )).rows;
     const held = await upsertExperienceRecord({ ...params(archaeology, LOUVRE_QID, 'Louvre Museum'), type: 'museum' });
@@ -169,7 +169,7 @@ describe('a run reaches its places through its own membership (ADR-0084)', () =>
     // A curator's claim on that membership's type meets the next proposal as a
     // conflict, and leaves the other membership alone.
     await pool.query(
-      `UPDATE experience_kind_memberships SET type = 'site', curated_fields = '["type"]'::jsonb
+      `UPDATE source_records SET type = 'site', curated_fields = '["type"]'::jsonb
         WHERE experience_id = $1 AND source_id = $2`,
       [LOUVRE, archaeology],
     );
@@ -185,7 +185,7 @@ describe('a run reaches its places through its own membership (ADR-0084)', () =>
     await markNotAdmitted(archaeology, [LOUVRE_QID], 'not in the admitted set', false);
 
     const memberships = await pool.query(
-      `SELECT source_id, admission FROM experience_kind_memberships WHERE experience_id = $1 ORDER BY source_id`,
+      `SELECT source_id, admission FROM source_records WHERE experience_id = $1 ORDER BY source_id`,
       [LOUVRE],
     );
     expect(memberships.rows).toEqual([
@@ -198,7 +198,7 @@ describe('a run reaches its places through its own membership (ADR-0084)', () =>
     await markNotAdmitted(archaeology, ['some-other-site'], 'not in the admitted set', false);
 
     const memberships = await pool.query(
-      `SELECT source_id, admission FROM experience_kind_memberships WHERE experience_id = $1 ORDER BY source_id`,
+      `SELECT source_id, admission FROM source_records WHERE experience_id = $1 ORDER BY source_id`,
       [LOUVRE],
     );
     expect(memberships.rows).toEqual([
@@ -228,7 +228,7 @@ describe('the anchor of a place of several points (ADR-0095)', () => {
     const created = await upsertExperienceRecord(params(archaeology, NEW_SITE_QID, 'A new site'));
     // Passed by a curator, so a reader sees it and the gate holds what the source changes.
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
@@ -238,7 +238,7 @@ describe('the anchor of a place of several points (ADR-0095)', () => {
     )).rows[0].id;
     const state = async () => (await pool.query<{ lon: number; pointer: number | null }>(
       `SELECT ST_X(e.location) AS lon, m.pending_change_sync_log_id AS pointer
-         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+         FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2
         WHERE e.id = $1`,
       [created.experienceId, archaeology],
     )).rows[0];
@@ -254,7 +254,7 @@ describe('the anchor of a place of several points (ADR-0095)', () => {
       );
       expect(await state()).toEqual({ lon: 4.78, pointer: log });
     } finally {
-      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
       await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
     }
@@ -267,7 +267,7 @@ describe("a place's name, given its first capital (#2137, ADR-0160)", () => {
     const created = await upsertExperienceRecord(params(artMuseums, NEW_SITE_QID, 'A new site'));
     await pool.query(`UPDATE experiences SET name = 'place de la Concorde' WHERE id = $1`, [created.experienceId]);
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, artMuseums],
     );
@@ -281,7 +281,7 @@ describe("a place's name, given its first capital (#2137, ADR-0160)", () => {
       await upsertExperienceRecord(params(artMuseums, NEW_SITE_QID, 'place de la Concorde'), { syncLogId: log });
       const row = (await pool.query<{ name: string; state: string; pointer: number | null }>(
         `SELECT e.name, m.curation_state AS state, m.pending_change_sync_log_id AS pointer
-           FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+           FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2
           WHERE e.id = $1`,
         [created.experienceId, artMuseums],
       )).rows[0];
@@ -298,7 +298,7 @@ describe("a place's countries, which no reader sees (#1579)", () => {
   it('are written on a verified place without retiring its verification or asking a curator', async () => {
     const created = await upsertExperienceRecord(params(artMuseums, NEW_SITE_QID, 'A new site'));
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, artMuseums],
     );
@@ -317,7 +317,7 @@ describe("a place's countries, which no reader sees (#1579)", () => {
         );
         const row = (await pool.query<{ names: string[]; state: string; pointer: number | null }>(
           `SELECT e.country_names AS names, m.curation_state AS state, m.pending_change_sync_log_id AS pointer
-             FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+             FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2
             WHERE e.id = $1`,
           [created.experienceId, artMuseums],
         )).rows[0];
@@ -344,7 +344,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
   it('writes a credit re-read for the same file and an area moved under a tenth, and asks about the rest', async () => {
     const created = await upsertExperienceRecord(site({ imageCredit: OLD_CREDIT, areaHectares: 821.7474 }));
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
@@ -356,7 +356,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     // the area lives (#2068): the record as the run names it.
     const state = async () => (await pool.query<{ metadata: Record<string, unknown>; pointer: number | null; state: string }>(
       `SELECT e.metadata || m.facts AS metadata, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
-         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+         FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2
         WHERE e.id = $1`,
       [created.experienceId, archaeology],
     )).rows[0];
@@ -383,7 +383,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       expect(held.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.imageCredit']);
       expect(await state()).toMatchObject({ metadata: expect.objectContaining({ imageCredit: NEW_CREDIT, areaHectares: 1000 }), pointer: log });
     } finally {
-      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
       await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
     }
@@ -394,7 +394,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     // credit for that file brought by Archaeology.
     const created = await upsertExperienceRecord(site({}));
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
@@ -404,7 +404,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     )).rows[0].id;
     const state = async () => (await pool.query<{ credit: unknown; pointer: number | null; state: string }>(
       `SELECT e.metadata -> 'imageCredit' AS credit, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
-         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+         FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2
         WHERE e.id = $1`,
       [created.experienceId, archaeology],
     )).rows[0];
@@ -416,7 +416,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
         .toEqual([['metadata.imageCredit', 'same-file-credit']]);
       expect(await state()).toEqual({ credit: kuhn, pointer: null, state: 'verified' });
     } finally {
-      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
       await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
     }
@@ -427,7 +427,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     // Archaeology by its membership's id.
     const created = await upsertExperienceRecord(site({ wikidataQid: undefined }));
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
@@ -437,7 +437,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     )).rows[0].id;
     const state = async () => (await pool.query<{ qid: string | null; pointer: number | null; state: string }>(
       `SELECT e.metadata ->> 'wikidataQid' AS qid, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
-         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+         FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2
         WHERE e.id = $1`,
       [created.experienceId, archaeology],
     )).rows[0];
@@ -452,7 +452,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       expect(replaced.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.wikidataQid']);
       expect(await state()).toEqual({ qid: 'Q9441', pointer: log, state: 'verified' });
     } finally {
-      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
       await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
     }
@@ -470,7 +470,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     )).rows[0].metadata;
     const record = (subtitle: string) => ({ ...site(held), subtitle });
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
@@ -480,7 +480,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     )).rows[0].id;
     const state = async () => (await pool.query<{ subtitle: string | null; pointer: number | null; state: string }>(
       `SELECT e.subtitle, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
-         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+         FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2
         WHERE e.id = $1`,
       [created.experienceId, archaeology],
     )).rows[0];
@@ -495,7 +495,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       expect(replaced.changeSet.heldFields.map(f => f.field)).toEqual(['subtitle']);
       expect(await state()).toEqual({ subtitle: line, pointer: log, state: 'verified' });
     } finally {
-      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('UPDATE experiences SET subtitle = NULL WHERE id = $1', [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
       await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
@@ -515,7 +515,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     });
     await upsertExperienceRecord(record(text, { ar: 'old' }, 1915));
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
@@ -528,7 +528,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     }>(
       `SELECT e.description, e.name_local ->> 'ar' AS ar, (m.facts ->> 'year')::int AS year,
               m.pending_change_sync_log_id AS pointer, m.curation_state AS state
-         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+         FROM experiences e JOIN source_records m ON m.experience_id = e.id AND m.source_id = $2
         WHERE e.id = $1`,
       [created.experienceId, archaeology],
     )).rows[0];
@@ -564,7 +564,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       expect(claimed.changeSet.curatedConflicts.map(f => f.field)).toEqual(['nameLocal.ar']);
       expect((await state()).ar).toBe('newer');
     } finally {
-      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query(`UPDATE experiences SET curated_fields = '[]'::jsonb, name_local = NULL WHERE id = $1`, [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
       await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
@@ -580,7 +580,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     )).rows[0].metadata;
     const record = (type: string | null) => ({ ...site(held), type, typeVocabulary: ['site', 'museum'] });
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW(), type = 'sculpture'
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW(), type = 'sculpture'
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
@@ -590,7 +590,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     )).rows[0].id;
     const state = async () => (await pool.query<{ type: string | null; pointer: number | null; state: string }>(
       `SELECT m.type, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
-         FROM experience_kind_memberships m WHERE m.experience_id = $1 AND m.source_id = $2`,
+         FROM source_records m WHERE m.experience_id = $1 AND m.source_id = $2`,
       [created.experienceId, archaeology],
     )).rows[0];
     try {
@@ -610,7 +610,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
       expect(retyped.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['type', 'type-within-vocabulary']]);
       expect(await state()).toEqual({ type: 'museum', pointer: null, state: 'verified' });
     } finally {
-      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
       await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
     }
@@ -619,7 +619,7 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
   it('asks about a credit that changed its licence, and one beside another picture', async () => {
     const created = await upsertExperienceRecord(site({ imageCredit: OLD_CREDIT }));
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [created.experienceId, archaeology],
     );
@@ -682,7 +682,7 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
         JSON.stringify({ unescoUrl: UNESCO_PAGE, wikidataQid: ACROPOLIS_QID })],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships
+      `INSERT INTO source_records
          (experience_id, kind_id, source_id, external_id, curation_state, published_at, facts)
        VALUES ($1, $2, $3, $4, 'auto', NOW(), $9), ($1, $5, $6, $7, 'auto', NOW(), $8)`,
       [ACROPOLIS, unesco.kind_id, unesco.id, ACROPOLIS_WHC, arch.kind_id, arch.id, ACROPOLIS_QID,
@@ -692,12 +692,12 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
 
   // The classes are Archaeology's own fact, kept on its membership (ADR-0153).
   const archaeologyClasses = async () => (await pool.query<{ classes: string[] | null }>(
-    `SELECT facts -> 'wikidataClasses' AS classes FROM experience_kind_memberships
+    `SELECT facts -> 'wikidataClasses' AS classes FROM source_records
       WHERE experience_id = $1 AND external_id = $2`, [ACROPOLIS, ACROPOLIS_QID],
   )).rows[0].classes;
 
   const inscription = async () => (await pool.query<{ facts: Record<string, unknown> }>(
-    `SELECT facts FROM experience_kind_memberships WHERE experience_id = $1 AND external_id = $2`,
+    `SELECT facts FROM source_records WHERE experience_id = $1 AND external_id = $2`,
     [ACROPOLIS, ACROPOLIS_WHC],
   )).rows[0].facts;
 
@@ -751,7 +751,7 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
 
   it('follows the run again, through the gate, once the other family no longer lists the place', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET missing_since = NOW() WHERE experience_id = $1 AND external_id = $2`,
+      `UPDATE source_records SET missing_since = NOW() WHERE experience_id = $1 AND external_id = $2`,
       [ACROPOLIS, ACROPOLIS_WHC],
     );
     const outcome = await upsertExperienceRecord({
@@ -881,7 +881,7 @@ describe("a place's outline belongs to the source that drew it (ADR-0146, #1968)
   it('is held by no source whose membership left the place, so another extent-reading source may replace it', async () => {
     await upsertExperienceRecord(draw(DRAWN));
     // The Archaeology membership leaves the place (a separation, a merge's undo).
-    await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $2', [LOUVRE, archaeology]);
+    await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND source_id = $2', [LOUVRE, archaeology]);
 
     await upsertExperienceRecord(params(artMuseums, LOUVRE_QID, 'Louvre Museum'));
     expect(await outline()).toMatchObject({ drawn: true, owner: archaeology });
@@ -895,7 +895,7 @@ describe("a place's outline belongs to the source that drew it (ADR-0146, #1968)
     await upsertExperienceRecord({ ...draw(DRAWN), metadata: { wikidataQid: LOUVRE_QID, osm } });
     // Archaeology stops listing the place; its membership stays, marked missing.
     await pool.query(
-      'UPDATE experience_kind_memberships SET missing_since = NOW() WHERE experience_id = $1 AND source_id = $2', [LOUVRE, archaeology],
+      'UPDATE source_records SET missing_since = NOW() WHERE experience_id = $1 AND source_id = $2', [LOUVRE, archaeology],
     );
     await upsertExperienceRecord(params(artMuseums, LOUVRE_QID, 'Louvre Museum'));
     const kept = (await pool.query<{ osm: unknown; drawn: boolean }>(
@@ -923,7 +923,7 @@ describe("a place's outline belongs to the source that drew it (ADR-0146, #1968)
 
 describe("a kind's own fact, on its membership (ADR-0153, #1775)", () => {
   const factsOf = async (sourceId: number) => (await pool.query<{ facts: Record<string, unknown> }>(
-    'SELECT facts FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $2', [LOUVRE, sourceId],
+    'SELECT facts FROM source_records WHERE experience_id = $1 AND source_id = $2', [LOUVRE, sourceId],
   )).rows[0].facts;
 
   it('is written on the run\'s membership and left off the place', async () => {

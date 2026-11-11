@@ -37,7 +37,7 @@ beforeEach(async () => {
     [PILES],
   );
   const membership = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, '1363-fixture', 'auto', NOW() FROM experience_sources s
       WHERE s.name = 'UNESCO World Heritage Sites' RETURNING id`,
     [PILES],

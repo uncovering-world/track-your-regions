@@ -53,7 +53,7 @@ beforeEach(async () => {
     [THEBES, heritage.id],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, '87-fields-fixture', 'auto', NOW())`,
     [THEBES, heritage.kind_id, heritage.id],
   );
@@ -127,7 +127,7 @@ describe("a curator's correction of a part's point (ADR-0156)", () => {
     // by the part's name. A rename lands there, not on a point the read skips.
     const before = await luxor();
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
        SELECT $1, s.kind_id, s.id, 'Q-luxor-fixture', 'pending' FROM experience_sources s WHERE s.id = 4`,
       [before.part_id],
     );
@@ -193,7 +193,7 @@ describe('a component item confirmed or taken back on a part that holds a kind o
     // The Luxor Temple as Places of worship brought it: a picture of its own, no subtitle.
     await pool.query('UPDATE experiences SET image_url = $2 WHERE id = $1', [before.part_id, kinds]);
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        VALUES ($1, 4, 4, 'Q9970002', 'verified', NOW())`, [before.part_id],
     );
     const row = async () => (await pool.query<{ image_url: string | null; subtitle: string | null }>(
@@ -230,7 +230,7 @@ describe('a component item confirmed or taken back on a part that holds a kind o
 
 describe("a part's item, on its record in World Heritage components (ADR-0156 decision 2)", () => {
   const record = async (partId: number) => (await pool.query<{ items: string[] | null; claims: string[] }>(
-    `SELECT wikidata_items AS items, curated_fields AS claims FROM experience_kind_memberships
+    `SELECT wikidata_items AS items, curated_fields AS claims FROM source_records
       WHERE experience_id = $1 AND kind_id = 10`, [partId],
   )).rows[0];
 

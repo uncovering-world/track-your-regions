@@ -71,7 +71,7 @@ async function clear(): Promise<void> {
   await pool.query(
     `DELETE FROM experiences
       WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1)
-         OR id IN (SELECT experience_id FROM experience_kind_memberships WHERE external_id = $2)`,
+         OR id IN (SELECT experience_id FROM source_records WHERE external_id = $2)`,
     [SITE, ITEM],
   );
   await pool.query('DELETE FROM experiences WHERE id = $1', [SITE]);
@@ -96,14 +96,14 @@ beforeEach(async () => {
     [SITE, heritage],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, '9491-fixture', 'auto', NOW())`,
     [SITE, unesco.kind_id, heritage],
   );
   await writeExperienceLocations(SITE, [PRAETORIUM, DEUTZ], { syncLogId: null, sourceId: heritage, components: true });
   componentRecord = (await pool.query<{ id: number }>(
     `SELECT rec.id FROM experience_parts p
-       JOIN experience_kind_memberships rec ON rec.experience_id = p.part_id AND rec.kind_id = 10
+       JOIN source_records rec ON rec.experience_id = p.part_id AND rec.kind_id = 10
       WHERE p.whole_id = $1 AND p.external_ref = $2`,
     [SITE, PRAETORIUM.externalRef],
   )).rows[0].id;
@@ -154,7 +154,7 @@ describe("the curator is asked which view a serial site's part shows (#2063)", (
   it('writes the chosen view to the part and stands answered', async () => {
     const part = await praetorium();
     const theRun = (await pool.query<{ id: number }>(
-      'SELECT id FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $2', [part.id, archaeology],
+      'SELECT id FROM source_records WHERE experience_id = $1 AND source_id = $2', [part.id, archaeology],
     )).rows[0].id;
 
     const outcome = await chooseViewsUnderLock(part.id, curatorId, null, [

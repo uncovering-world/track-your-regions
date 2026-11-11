@@ -51,7 +51,7 @@ async function place(id: number, source: string, visitedPoint: boolean): Promise
     [id, QID, source],
   );
   const membership = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = $3 RETURNING id`,
     [id, QID, source],
   );
@@ -114,7 +114,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
       { id: WORSHIP, merged_into_id: null }, { id: SITE, merged_into_id: WORSHIP },
     ]);
     const kinds = await pool.query<{ experience_id: number }>(
-      'SELECT experience_id FROM experience_kind_memberships WHERE experience_id = ANY($1)', [[WORSHIP, SITE]],
+      'SELECT experience_id FROM source_records WHERE experience_id = ANY($1)', [[WORSHIP, SITE]],
     );
     expect(kinds.rows.map(row => row.experience_id)).toEqual([WORSHIP, WORSHIP]);
 
@@ -182,7 +182,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
       { id: WORSHIP, merged_into_id: null }, { id: SITE, merged_into_id: null },
     ]);
     const kinds = await pool.query<{ experience_id: number }>(
-      'SELECT experience_id FROM experience_kind_memberships WHERE experience_id = ANY($1) ORDER BY experience_id',
+      'SELECT experience_id FROM source_records WHERE experience_id = ANY($1) ORDER BY experience_id',
       [[WORSHIP, SITE]],
     );
     expect(kinds.rows.map(row => row.experience_id)).toEqual([WORSHIP, SITE]);
@@ -236,7 +236,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
 
   it('refuses two places of one kind, and changes nothing', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET kind_id = (SELECT kind_id FROM experience_sources WHERE name = 'Places of worship')
+      `UPDATE source_records SET kind_id = (SELECT kind_id FROM experience_sources WHERE name = 'Places of worship')
         WHERE experience_id = $1`,
       [SITE],
     );
@@ -289,7 +289,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
       [MUSEUM],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
@@ -311,7 +311,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
       [MUSEUM],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
@@ -333,7 +333,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
       [MUSEUM],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
@@ -369,7 +369,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
       [MUSEUM],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
@@ -397,7 +397,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
       [MUSEUM],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Public art'`,
       [MUSEUM],
     );

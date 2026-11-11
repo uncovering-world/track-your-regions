@@ -92,7 +92,7 @@ describe('publishing a held proposal', () => {
 
     // Until this endpoint existed only a later run proposing nothing at all
     // ever cleared it, so a `held` card had no answer.
-    expect(only(queries, 'UPDATE experience_kind_memberships').sql).toContain('pending_change_sync_log_id = NULL');
+    expect(only(queries, 'UPDATE source_records').sql).toContain('pending_change_sync_log_id = NULL');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ fromSyncLogId: 53 }));
   });
 
@@ -112,7 +112,7 @@ describe('publishing a held proposal', () => {
     const update = only(queries, 'UPDATE experiences');
     expect(update.sql).toContain('name = ');
     expect(update.sql).not.toContain('subtitle = ');
-    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
+    expect(only(queries, 'UPDATE source_records').sql)
       .not.toContain('pending_change_sync_log_id = NULL');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: ['name'], heldLeftOpen: 1,
@@ -152,7 +152,7 @@ describe('publishing a held proposal', () => {
     expect(update.sql).toContain('name = ');
     expect(update.sql).not.toContain('subtitle = ');
     // Nothing else was left open, so the card goes.
-    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
+    expect(only(queries, 'UPDATE source_records').sql)
       .toContain('pending_change_sync_log_id = NULL');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ appliedFields: ['name'] }));
   });
@@ -222,7 +222,7 @@ describe('publishing a held proposal', () => {
     // Not even through COALESCE: the rows that predate the gate carry `published_at`
     // NULL, having been visible for months, and stamping one now would not
     // restart a window but invent one.
-    expect(only(queries, 'UPDATE experience_kind_memberships').sql).not.toContain('published_at');
+    expect(only(queries, 'UPDATE source_records').sql).not.toContain('published_at');
   });
 
   it('reads the proposal under the lock that writes it', async () => {
@@ -309,7 +309,7 @@ describe('publishing a held proposal', () => {
     // The type within the kind is the membership's (ADR-0084): published onto
     // the membership being published, never onto the place.
     expect(update.sql).not.toContain(' type = ');
-    expect(only(queries, 'UPDATE experience_kind_memberships SET type = $3').sql).toContain('WHERE id = $2 AND experience_id = $1');
+    expect(only(queries, 'UPDATE source_records SET type = $3').sql).toContain('WHERE id = $2 AND experience_id = $1');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: expect.arrayContaining(['nameLocal', 'tags', 'location', 'countryCodes', 'countryNames', 'metadata']),
     }));
@@ -479,7 +479,7 @@ describe('publishing a held proposal', () => {
     // Nothing was applied — the only held field was claimed — but the row is
     // still marked read and the stale pointer still clears, since a fully
     // claimed proposal has nothing further to hold onto.
-    const membership = only(queries, 'UPDATE experience_kind_memberships');
+    const membership = only(queries, 'UPDATE source_records');
     expect(membership.sql).toContain(`curation_state = 'verified'`);
     expect(membership.sql).toContain('pending_change_sync_log_id = NULL');
     expect(only(queries, 'UPDATE experiences').sql).not.toContain('name = ');

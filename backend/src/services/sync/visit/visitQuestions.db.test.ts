@@ -42,7 +42,7 @@ function progressOf(dryRun = false): SyncProgress {
 
 const questions = async () => (await pool.query<{ reading: string; witnesses: string[]; answer: string | null }>(
   `SELECT q.reading, q.witnesses, q.answer FROM experience_visit_questions q
-     JOIN experience_kind_memberships m ON m.id = q.membership_id WHERE m.experience_id = $1`, [EBORACUM],
+     JOIN source_records m ON m.id = q.membership_id WHERE m.experience_id = $1`, [EBORACUM],
 )).rows;
 
 beforeEach(async () => {
@@ -58,7 +58,7 @@ beforeEach(async () => {
     [EBORACUM],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, 'Q958954', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Archaeology'`,
     [EBORACUM],
   );
@@ -124,7 +124,7 @@ describe('a run asks a curator about an offered place with nothing to see (#1770
 
   it('asks nothing of a place whose admission a curator pinned, nor of World Heritage', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET curated_fields = '["admission"]'::jsonb,
+      `UPDATE source_records SET curated_fields = '["admission"]'::jsonb,
               admission_pin_verdict = 'admitted' WHERE experience_id = $1`,
       [EBORACUM],
     );
@@ -140,7 +140,7 @@ describe('a run asks a curator about an offered place with nothing to see (#1770
 
   it('asks nothing of a place another kind offers that is also on the World Heritage list (#1926)', async () => {
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'whs-9770-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = 1`,
       [EBORACUM],
     );

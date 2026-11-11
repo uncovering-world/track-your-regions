@@ -46,7 +46,7 @@ async function clear(): Promise<void> {
 }
 
 const membershipOf = async (source: string): Promise<number> => (await pool.query<{ id: number }>(
-  `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at,
+  `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at,
                                             reported_name)
    SELECT $1, s.kind_id, s.id, $2, 'auto', NOW(), $4 FROM experience_sources s WHERE s.name = $3 RETURNING id`,
   [PANTHEON, QID, source, NAME],
@@ -108,7 +108,7 @@ async function otherPlace(source: string): Promise<number> {
     [OTHER, QID, NAME, source],
   );
   const membership = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = $3 RETURNING id`,
     [OTHER, QID, source],
   )).rows[0].id;
@@ -152,7 +152,7 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
     const { separatedId } = outcome.result!;
 
     const kinds = await pool.query<{ id: number; experience_id: number }>(
-      'SELECT id, experience_id FROM experience_kind_memberships WHERE id = ANY($1) ORDER BY id', [[worshipMembership, siteMembership]],
+      'SELECT id, experience_id FROM source_records WHERE id = ANY($1) ORDER BY id', [[worshipMembership, siteMembership]],
     );
     expect(kinds.rows).toEqual([{ id: worshipMembership, experience_id: PANTHEON }, { id: siteMembership, experience_id: separatedId }]);
 
@@ -395,7 +395,7 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
   it("gives the new place its view's article, even on a view that recorded no name (#1975)", async () => {
     await pool.query(`UPDATE experiences SET metadata = '{"wikipediaUrl": "https://en.wikipedia.org/wiki/Pantheon,_Rome"}'::jsonb WHERE id = $1`, [PANTHEON]);
     await pool.query(
-      'UPDATE experience_kind_memberships SET reported_name = NULL, reported_wikipedia_url = $2 WHERE id = $1',
+      'UPDATE source_records SET reported_name = NULL, reported_wikipedia_url = $2 WHERE id = $1',
       [worshipMembership, 'https://en.wikipedia.org/wiki/Santa_Maria_ad_Martyres'],
     );
     const { result } = await separateMembership({ placeId: PANTHEON, membershipId: worshipMembership, separatedBy: curatorId });
@@ -409,7 +409,7 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
     await separateMembership({ placeId: PANTHEON, membershipId: siteMembership, separatedBy: curatorId });
     const outcome = await separateMembership({ placeId: PANTHEON, membershipId: worshipMembership, separatedBy: curatorId });
     expect(outcome.refusal).toMatchObject({ status: 409 });
-    const left = await pool.query('SELECT experience_id FROM experience_kind_memberships WHERE id = $1', [worshipMembership]);
+    const left = await pool.query('SELECT experience_id FROM source_records WHERE id = $1', [worshipMembership]);
     expect(left.rows).toEqual([{ experience_id: PANTHEON }]);
   });
 

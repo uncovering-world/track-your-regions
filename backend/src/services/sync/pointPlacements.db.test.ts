@@ -41,7 +41,7 @@ async function placers(ref: string): Promise<number[]> {
   const result = await pool.query<{ source_id: number }>(
     `SELECT m.source_id
        FROM experience_location_placements p
-       JOIN experience_kind_memberships m ON m.id = p.membership_id
+       JOIN source_records m ON m.id = p.membership_id
        JOIN experience_locations el ON el.id = p.location_id
       WHERE el.experience_id = $1 AND el.external_ref = $2
       ORDER BY m.source_id`,
@@ -79,7 +79,7 @@ beforeEach(async () => {
     [ALTAMIRA, publicArt, QID, ROUNDED.lon, ROUNDED.lat],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id)
      VALUES ($1, $2, $3, $4), ($1, $5, $6, $4)`,
     [ALTAMIRA, art.kind_id, publicArt, QID, arch.kind_id, archaeology],
   );
@@ -90,7 +90,7 @@ beforeEach(async () => {
        INSERT INTO experience_locations (experience_id, external_ref, ordinal, location)
        VALUES ($1, $2, 1, ST_SetSRID(ST_MakePoint($3, $4), 4326)) RETURNING id)
      INSERT INTO experience_location_placements (location_id, membership_id)
-     SELECT point.id, m.id FROM point, experience_kind_memberships m
+     SELECT point.id, m.id FROM point, source_records m
       WHERE m.experience_id = $1 AND m.source_id = $5`,
     [ALTAMIRA, PRECISE.externalRef, PRECISE.lon, PRECISE.lat, archaeology],
   );

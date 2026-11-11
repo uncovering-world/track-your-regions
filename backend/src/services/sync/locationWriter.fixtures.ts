@@ -58,7 +58,7 @@ export const MARK = /missing_since = NOW\(\)/;
 /** The arm that writes a point the experience did not have. */
 export const INSERT = /INSERT INTO experience_locations/;
 /** The statement that retires the venue's pass because it gained a point. */
-export const DECAY = /UPDATE experience_kind_memberships m SET curation_state = 'auto'/;
+export const DECAY = /UPDATE source_records m SET curation_state = 'auto'/;
 /** The statement that names, on each arrival, the point it replaces. */
 export const PAIR = /SET withdrawal_deferred_for_location_id = m\.old_id/;
 /** The arm that takes a held point out of the list without withdrawing it. */

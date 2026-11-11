@@ -35,7 +35,7 @@ async function clear(): Promise<void> {
 }
 
 const membership = async (source: string, curationState: 'auto' | 'pending'): Promise<number> => (await pool.query<{ id: number }>(
-  `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+  `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
    SELECT $1, s.kind_id, s.id, $2, $3, $5
      FROM experience_sources s WHERE s.name = $4 RETURNING id`,
   [CONCORD, QID, curationState, source, curationState === 'pending' ? null : new Date()],
@@ -66,7 +66,7 @@ afterAll(async () => {
 
 /** Places of worship as an arrival nobody has passed: a gate state no run moves a passed row back to. */
 const arriving = async (): Promise<void> => {
-  await pool.query('DELETE FROM experience_kind_memberships WHERE id = $1', [worship]);
+  await pool.query('DELETE FROM source_records WHERE id = $1', [worship]);
   worship = await membership('Places of worship', 'pending');
 };
 
@@ -104,7 +104,7 @@ describe('taking a published place out of one kind', () => {
     expect((await keepOut(archaeology)).result).toEqual({ experienceId: CONCORD, membershipId: archaeology, admission: 'refused' });
 
     const row = (await pool.query<{ admission: string; pinned: boolean; admission_reason: string }>(
-      "SELECT admission, curated_fields ? 'admission' AS pinned, admission_reason FROM experience_kind_memberships WHERE id = $1",
+      "SELECT admission, curated_fields ? 'admission' AS pinned, admission_reason FROM source_records WHERE id = $1",
       [archaeology],
     )).rows[0];
     expect(row).toEqual({ admission: 'refused', pinned: true, admission_reason: CURATOR_REFUSAL_REASON });

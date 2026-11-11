@@ -38,7 +38,7 @@ beforeEach(async () => {
   );
   // Archaeology admitted but unread; Art Museums passed but refused by its rule.
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
             (experience_id, kind_id, source_id, external_id, curation_state, published_at, admission, admission_reason)
      SELECT $1, s.kind_id, s.id, $2, v.state, CASE WHEN v.state = 'auto' THEN NOW() END, v.admission, v.reason
        FROM (VALUES ('Archaeology', 'pending', 'admitted', NULL), ('Art Museums', 'auto', 'refused', 'not an art museum'))
@@ -76,7 +76,7 @@ describe("a region's list and the place no membership offers (#1275)", () => {
 
   it('lists the place under the kind whose membership offers it, once one does', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission = 'admitted', admission_reason = NULL
+      `UPDATE source_records SET admission = 'admitted', admission_reason = NULL
         WHERE experience_id = $1 AND source_id = $2`,
       [PLACE, artSource],
     );

@@ -64,7 +64,7 @@ describe('publishing an arrival', () => {
 
     // The membership itself, and the two states that make it visible (#822):
     // the publication lands on the place's membership, the content on the place.
-    const update = only(queries, 'UPDATE experience_kind_memberships');
+    const update = only(queries, 'UPDATE source_records');
     expect(update.sql).toContain(`curation_state = 'verified'`);
     expect(update.params).toEqual([77, 5]);
     // Its contents go with it, by id: the rows the arrival's section drew, read
@@ -86,7 +86,7 @@ describe('publishing an arrival', () => {
     // COALESCE rather than NOW(): nothing returns a published row to `pending`
     // today, so this is a floor rather than a live case — but a bare NOW() here
     // is the shape that would restart a New-chip window if one ever did.
-    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
+    expect(only(queries, 'UPDATE source_records').sql)
       .toContain('published_at = COALESCE(published_at, NOW())');
   });
 

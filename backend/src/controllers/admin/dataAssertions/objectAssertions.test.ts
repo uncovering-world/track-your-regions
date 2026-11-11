@@ -63,7 +63,7 @@ describe('the danger flag against its tag', () => {
     // own, never inside the `metadata` catch-all, so only its own name is asked.
     // The pointer is the membership's (#822), so the changeset is reached
     // through it.
-    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.pending_change_sync_log_id = ch.sync_log_id');
+    expect(sql).toContain('JOIN source_records m ON m.experience_id = e.id AND m.pending_change_sync_log_id = ch.sync_log_id');
     expect(sql).toContain("AND (f->>'held')::boolean");
     expect(sql).toContain("AND f->>'field' = 'metadata.inDanger')");
     expect(sql).not.toContain("'metadata')");
@@ -76,7 +76,7 @@ describe('the danger flag against its tag', () => {
     expect(sql).not.toContain(collapse(heldFieldRefusedSql('e.id', 'ch.sync_log_id')));
     // The flag is the World Heritage membership's (#2068), whatever its state:
     // a delisted site's stored flag still has to agree with its tag.
-    expect(sql).toContain('LEFT JOIN experience_kind_memberships wh ON wh.experience_id = e.id AND wh.kind_id = 1');
+    expect(sql).toContain('LEFT JOIN source_records wh ON wh.experience_id = e.id AND wh.kind_id = 1');
     expect(sql).toContain("wh.facts->'inDanger' = 'true'::jsonb");
   });
 
@@ -114,7 +114,7 @@ describe('a refused row still wearing the Iconic badge', () => {
     // The flag as stored is what a read of it on its own -- the Iconic filter,
     // an export -- would hand a reader, so it is the stored value that is
     // asked, not a reader composite.
-    expect(sql).toContain('FROM experience_kind_memberships m');
+    expect(sql).toContain('FROM source_records m');
     expect(sql).toContain("WHERE m.admission = 'refused' AND m.is_iconic");
     expect(sql).toContain('JOIN experience_sources c ON c.id = m.source_id');
     expect(assertion.kind).toBe('invariant');
@@ -147,7 +147,7 @@ describe('an admitted public-art row typed as a building', () => {
     // The memberships Public art and Monuments & memorials brought (#822,
     // ADR-0132): their classes and their admission are those sources',
     // whatever else the place belongs to, and a place both admit is one row.
-    expect(sql).toContain('CROSS JOIN LATERAL ( SELECT m.facts FROM experience_kind_memberships m');
+    expect(sql).toContain('CROSS JOIN LATERAL ( SELECT m.facts FROM source_records m');
     expect(sql).toContain('m.experience_id = e.id AND m.source_id IN (3, 6)');
     expect(sql).toContain('ORDER BY m.source_id LIMIT 1 ) m');
     expect(sql).toContain("m.admission = 'admitted'");
@@ -256,7 +256,7 @@ describe('a place that belongs to no kind', () => {
     // (#822), so such a row is on no screen and in no queue. Not filtered on
     // lifecycle: a lost or refused place with a membership is answered, one
     // without is never asked.
-    expect(sql).toContain('WHERE NOT EXISTS ( SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = e.id )');
+    expect(sql).toContain('WHERE NOT EXISTS ( SELECT 1 FROM source_records m WHERE m.experience_id = e.id )');
     expect(sql).not.toMatch(/admission|curation_state|existence/);
     expect(assertion.kind).toBe('invariant');
   });
@@ -397,7 +397,7 @@ describe('the name a filter cannot find', () => {
     // read as text it would be asked a question about a value it is not.
     // The makers are a kind's reading (ADR-0153), so they are read off each
     // membership, and a place two kinds name the makers of is one row.
-    expect(sql).toContain("SELECT DISTINCT 'place', e.id, e.name, 'creators' FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id");
+    expect(sql).toContain("SELECT DISTINCT 'place', e.id, e.name, 'creators' FROM experiences e JOIN source_records m ON m.experience_id = e.id");
     expect(sql).toContain("jsonb_array_elements(m.facts->'creators') c WHERE jsonb_typeof(c.value) = 'string'");
     expect(sql).toContain(collapse(`el.name <> ${tidyLabelSql('el.name')}`));
     expect(sql).toContain(collapse(`t.name <> ${tidyLabelSql('t.name')}`));

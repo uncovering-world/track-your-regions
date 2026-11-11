@@ -69,7 +69,7 @@ beforeEach(async () => {
     [LUPANAR],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
      SELECT $1, s.kind_id, s.id, 'Q157747', 'pending' FROM experience_sources s WHERE s.name = 'Archaeology'`,
     [LUPANAR],
   );
@@ -122,7 +122,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
   it('shows no answer about a place a curator answered while Jev was reading it', async () => {
     mockedAsk.mockImplementation(async () => {
       await pool.query(
-        `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
+        `UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
         [LUPANAR],
       );
       return answered('part', 0.75);
@@ -133,7 +133,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
 
   it('asks nothing of a place that is not arriving', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
       [LUPANAR],
     );
 
@@ -144,7 +144,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
   it('asks nothing of a place on the World Heritage list, and records nothing (#1926)', async () => {
     // The place is also a World Heritage site, as the Pont du Gard is.
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'whs-9768-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = 1`,
       [LUPANAR],
     );
@@ -163,7 +163,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
     // leaves what the reading was recorded for as it was: the stored reading
     // would be served, were the list not read first.
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, admission)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, admission)
        SELECT $1, s.kind_id, s.id, 'whs-9768-fixture', 'pending', 'refused' FROM experience_sources s WHERE s.id = 1`,
       [LUPANAR],
     );
@@ -175,7 +175,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
   it("is asked in the arriving source's scope, not in the scope of the place's other kinds", async () => {
     // The place is also an art museum the curator does not look after.
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q157747', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [LUPANAR],
     );
@@ -232,7 +232,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
   it("counts the arrival's own publication, not an earlier one of the place's other kind", async () => {
     mockedAsk.mockResolvedValue(answered('visit', 0.95));
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, 'Q157747', 'auto', NOW() - INTERVAL '1 day'
          FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [LUPANAR],
@@ -244,7 +244,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
     expect(visits(await getJevUsage()).compared - visits(before).compared).toBe(0);
 
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND curation_state = 'pending'`,
       [LUPANAR],
     );

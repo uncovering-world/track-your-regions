@@ -110,7 +110,7 @@ async function place(
     [id, `Point of ${id}`, lon, lat],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
      VALUES ($1, $2, $3, (SELECT external_id FROM experiences WHERE id = $1), $6, $4, $5)`,
     [id, kind.kind, kind.source, admission, state, kind.type],
   );
@@ -243,7 +243,7 @@ beforeAll(async () => {
   await place(PLACES.pendingMissing, TOPS.pendingMissing, AT.lon + 30, dig, 'admitted', 'pending');
   await pool.query(`UPDATE experiences SET missing_since = NOW() WHERE id = $1`, [PLACES.pendingMissing]);
   await place(PLACES.heritage, UNESCO, AT.lon + 5, { source: 1, kind: 1, type: 'cultural' }, 'admitted', 'verified');
-  await pool.query('UPDATE experience_kind_memberships SET wikidata_items = $2 WHERE experience_id = $1', [PLACES.heritage, [HERITAGE_ITEM]]);
+  await pool.query('UPDATE source_records SET wikidata_items = $2 WHERE experience_id = $1', [PLACES.heritage, [HERITAGE_ITEM]]);
   // Fourteen kilometres from the centre, offered, and named by no entry: the other direction's one row (#1601).
   await place(PLACES.unnamed, QID.unnamed, AT.lon + 0.2, dig, 'admitted', 'verified', { sitelinksCount: 7 });
   // 1.2 degrees east at seventy north is 46 km, inside a 50 km reach that a box of 0.9 degrees would miss.
@@ -268,7 +268,7 @@ beforeAll(async () => {
   await work(WORKS.shown, PLACES.offered);
   await work(WORKS.hidden, PLACES.pending);
   await pool.query(
-    `INSERT INTO membership_crowding (membership_id, outranked_by) SELECT id, 10 FROM experience_kind_memberships WHERE experience_id = $1`,
+    `INSERT INTO membership_crowding (membership_id, outranked_by) SELECT id, 10 FROM source_records WHERE experience_id = $1`,
     [PLACES.crowded],
   );
   await runs();

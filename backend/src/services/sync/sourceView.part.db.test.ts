@@ -56,7 +56,7 @@ async function clear(): Promise<void> {
   await pool.query(
     `DELETE FROM experiences
       WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1)
-         OR id IN (SELECT experience_id FROM experience_kind_memberships WHERE external_id = $2)`,
+         OR id IN (SELECT experience_id FROM source_records WHERE external_id = $2)`,
     [SITE, ITEM],
   );
   await pool.query('DELETE FROM experiences WHERE id = $1', [SITE]);
@@ -76,7 +76,7 @@ beforeEach(async () => {
     [SITE, heritage],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, '9490-fixture', 'auto', NOW())`,
     [SITE, unesco.kind_id, heritage],
   );
@@ -104,7 +104,7 @@ describe("a serial site's part keeps UNESCO's view of it (#2061)", () => {
     expect(stored.name).toBe('Köln-Praetorium');
     expect(stored.lon).toBeCloseTo(PRAETORIUM.lon, 6);
     const view = await pool.query<{ name: string }>(
-      'SELECT reported_name AS name FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $2',
+      'SELECT reported_name AS name FROM source_records WHERE experience_id = $1 AND source_id = $2',
       [part.id, archaeology],
     );
     expect(view.rows[0].name).toBe('Colonia Claudia Ara Agrippinensium');
@@ -114,7 +114,7 @@ describe("a serial site's part keeps UNESCO's view of it (#2061)", () => {
     const part = await praetorium();
     await upsertExperienceRecord(record(), { syncLogId: null });
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW()
         WHERE experience_id = $1 AND source_id = $2`,
       [part.id, archaeology],
     );

@@ -147,7 +147,7 @@ describe('the placement', () => {
     await reconcileLinks(EXPERIENCE_ID, { sourceId: SOURCE_ID, offered: [900, 901], placedElsewhere: [], withdraw: true });
 
     const sql = sent(client).find(s => s.includes(PLACE))!;
-    expect(sql).toContain('(SELECT id FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $3)');
+    expect(sql).toContain('(SELECT id FROM source_records WHERE experience_id = $1 AND source_id = $3)');
     expect(sql).toContain('et.treasure_id = ANY($2::int[])');
     expect(sql).toContain('ON CONFLICT DO NOTHING');
     const call = client.query.mock.calls.find(c => String(c[0]).includes(PLACE))!;
@@ -218,7 +218,7 @@ describe('the mark', () => {
     // Archaeology still places there (ADR-0084).
     expect(sql).toMatch(/^WITH candidate AS \( SELECT et\.id FROM experience_treasures et/);
     expect(sql).toContain('unplaced AS ( DELETE FROM experience_treasure_placements pl USING candidate c');
-    expect(sql).toContain('pl.membership_id = (SELECT id FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $4)');
+    expect(sql).toContain('pl.membership_id = (SELECT id FROM source_records WHERE experience_id = $1 AND source_id = $4)');
     expect(sql).toContain('WHERE et.id IN (SELECT id FROM candidate)');
     expect(sql).toContain('AND NOT EXISTS ( SELECT 1 FROM experience_treasure_placements other WHERE other.link_id = et.id');
     // The statement's snapshot still holds the deleted placements, so the

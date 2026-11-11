@@ -42,7 +42,7 @@ beforeEach(async () => {
     [GARDNER, sourceId, QID],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curated_fields,
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curated_fields,
        admission_pin_verdict, admission_pin_reason)
      SELECT $1, s.kind_id, s.id, $2, 'admitted', '["admission"]', 'refused', $3 FROM experience_sources s WHERE s.id = $4`,
     [GARDNER, QID, ANSWERED, sourceId],
@@ -68,7 +68,7 @@ async function membership() {
   }>(
     `SELECT admission, admission_question_verdict, admission_question_reason, admission_questioned_at,
             admission_question_sync_log_id
-       FROM experience_kind_memberships WHERE experience_id = $1`,
+       FROM source_records WHERE experience_id = $1`,
     [GARDNER],
   )).rows[0];
 }
@@ -96,7 +96,7 @@ describe("a run's question about a curator's admission pin (#1367)", () => {
     expect((await membership()).admission_question_verdict).toBeNull();
 
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission_pin_reason = $2 WHERE experience_id = $1`,
+      `UPDATE source_records SET admission_pin_reason = $2 WHERE experience_id = $1`,
       [GARDNER, "17 sitelinks: below the world tier's line (22 to enter, 18 to stay)"],
     );
     await run([{ externalId: QID, reason: "19 sitelinks: below the world tier's line (22 to enter, 18 to stay)" }], []);
@@ -106,7 +106,7 @@ describe("a run's question about a curator's admission pin (#1367)", () => {
   it("asks nothing when only the rule's word for the measure changed (#1589)", async () => {
     // The Warsaw Uprising Monument's pin, answered before #1240 renamed the measure.
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission_pin_reason = $2 WHERE experience_id = $1`,
+      `UPDATE source_records SET admission_pin_reason = $2 WHERE experience_id = $1`,
       [GARDNER, "17 sitelinks: below the world tier's line (22 to enter, 18 to stay)"],
     );
     await run([{ externalId: QID, reason: "16 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)" }], []);
@@ -134,11 +134,11 @@ describe("a run's question about a curator's admission pin (#1367)", () => {
 
   it('asks nothing of a pin a curator answered after the run read it', async () => {
     const membershipId = (await pool.query<{ id: number }>(
-      'SELECT id FROM experience_kind_memberships WHERE experience_id = $1', [GARDNER],
+      'SELECT id FROM source_records WHERE experience_id = $1', [GARDNER],
     )).rows[0].id;
     // The curator kept the pin over another reason in between: the view the run read is not the pin's any more.
     await pool.query(
-      "UPDATE experience_kind_memberships SET admission_pin_reason = 'site, not a venue: museum' WHERE id = $1",
+      "UPDATE source_records SET admission_pin_reason = 'site, not a venue: museum' WHERE id = $1",
       [membershipId],
     );
     await writePinQuestions([{
@@ -157,7 +157,7 @@ describe("a run's question about a curator's admission pin (#1367)", () => {
   });
 
   it('asks nothing about a row whose pin was handed back while the run ran', async () => {
-    await pool.query("UPDATE experience_kind_memberships SET curated_fields = '[]' WHERE experience_id = $1", [GARDNER]);
+    await pool.query("UPDATE source_records SET curated_fields = '[]' WHERE experience_id = $1", [GARDNER]);
     await run([{ externalId: QID, reason: 'site, not a venue: museum' }], []);
 
     expect((await membership()).admission_question_verdict).toBeNull();
@@ -211,11 +211,11 @@ describe("a run started to ask again about the source's pins (#1370)", () => {
 
 describe('a question stands only on a pinned row', () => {
   it('is refused by the schema on a row nobody pinned', async () => {
-    await pool.query("UPDATE experience_kind_memberships SET curated_fields = '[]' WHERE experience_id = $1", [GARDNER]);
+    await pool.query("UPDATE source_records SET curated_fields = '[]' WHERE experience_id = $1", [GARDNER]);
     await expect(pool.query(
-      `UPDATE experience_kind_memberships
+      `UPDATE source_records
           SET admission_question_verdict = 'refused', admission_questioned_at = NOW() WHERE experience_id = $1`,
       [GARDNER],
-    )).rejects.toThrow(/experience_kind_memberships_question_check/);
+    )).rejects.toThrow(/source_records_question_check/);
   });
 });

@@ -41,7 +41,7 @@ beforeEach(async () => {
     [SITE, UNESCO],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, '9853-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = $2`,
     [SITE, UNESCO],
   );
@@ -49,7 +49,7 @@ beforeEach(async () => {
 
 /** The area UNESCO inscribed, on the site's World Heritage membership (#2068). */
 const inscribe = (hectares: number) => pool.query(
-  `UPDATE experience_kind_memberships SET facts = jsonb_build_object('areaHectares', $2::numeric)
+  `UPDATE source_records SET facts = jsonb_build_object('areaHectares', $2::numeric)
     WHERE experience_id = $1 AND kind_id = 1`, [SITE, hectares],
 );
 

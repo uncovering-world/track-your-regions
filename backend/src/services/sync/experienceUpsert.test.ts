@@ -120,7 +120,7 @@ function given(stored: Record<string, unknown> | null, written: Record<string, u
     // The membership names the place the run's source knows by its id, before
     // the lock and again after it (`lockSourcedExperience`, ADR-0084), under
     // the run's own key (no redirect followed, #1895).
-    if (/SELECT m\.experience_id AS id, m\.external_id AS "from" FROM experience_kind_memberships m/.test(sql)) {
+    if (/SELECT m\.experience_id AS id, m\.external_id AS "from" FROM source_records m/.test(sql)) {
       return { rows: stored ? [{ id: stored.id, from: PARAMS.externalId }] : [] };
     }
     // The lock, in a statement of its own, answers with the id or nothing;
@@ -214,7 +214,7 @@ function assignmentsIn(setList: string): Map<string, string> {
 
 /** The membership CTE, from its INSERT to its RETURNING. */
 function membershipCteOf(sql: string): string {
-  const start = sql.indexOf('INSERT INTO experience_kind_memberships');
+  const start = sql.indexOf('INSERT INTO source_records');
   return sql.slice(start, sql.indexOf('RETURNING', start));
 }
 
@@ -559,7 +559,7 @@ describe('one transaction per object, the row locked first', () => {
     expect(params).toEqual([501]);
     // The place is found through the source's membership (ADR-0084), before
     // the lock and again once it is held.
-    const lookups = sql.filter(s => /SELECT m\.experience_id AS id, m\.external_id AS "from" FROM experience_kind_memberships m/.test(s));
+    const lookups = sql.filter(s => /SELECT m\.experience_id AS id, m\.external_id AS "from" FROM source_records m/.test(s));
     expect(lookups).toHaveLength(2);
     // By the run's own key, or by an item Wikidata has since redirected to it (#1895).
     expect(collapse(lookups[0])).toContain('WHERE m.source_id = $1 AND (m.external_id = $2 OR m.external_id IN (SELECT r.source FROM workbench.wikidata_redirects r WHERE r.target = $2))');
@@ -574,7 +574,7 @@ describe('one transaction per object, the row locked first', () => {
     expect(snapshot).not.toContain('FOR NO KEY UPDATE');
     // The run's own membership joined, not required: a place the run joins by
     // its item has none yet (ADR-0143 decision 3).
-    expect(collapse(snapshot)).toContain('LEFT JOIN experience_kind_memberships sm ON sm.experience_id = e.id AND sm.source_id = $1 AND sm.external_id = $3 WHERE e.id = $2');
+    expect(collapse(snapshot)).toContain('LEFT JOIN source_records sm ON sm.experience_id = e.id AND sm.source_id = $1 AND sm.external_id = $3 WHERE e.id = $2');
     // Whether the source had stopped listing the place is its own membership's.
     expect(snapshot).toContain('sm.missing_since, sm.source_membership');
     expect(snapshotParams).toEqual([PARAMS.sourceId, 501, PARAMS.externalId]);
@@ -722,7 +722,7 @@ describe('the membership the run writes beside the place', () => {
     const cte = membershipCteOf(upsert()[0]);
     // The kind is read off the source, never passed in: a parameter would be a
     // second source of truth that could disagree with the column.
-    expect(cte).toContain('INSERT INTO experience_kind_memberships');
+    expect(cte).toContain('INSERT INTO source_records');
     expect(cte).toContain('(SELECT kind_id FROM experience_sources WHERE id = $1)');
     // Found again by the id its source knows the place by (ADR-0084), which
     // the membership carries from the statement that creates it.
@@ -825,9 +825,9 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // claimed there, and the place carries none.
     expect(assigned.has('type')).toBe(false);
     const typeArm = assignmentsIn(membershipSetListOf(upsert()[0])).get('type');
-    expect(typeArm).toMatch(/^CASE WHEN experience_kind_memberships\.curated_fields \? 'type' THEN experience_kind_memberships\.type/);
+    expect(typeArm).toMatch(/^CASE WHEN source_records\.curated_fields \? 'type' THEN source_records\.type/);
     expect(typeArm).toContain(HOLD);
-    expect(typeArm).toContain('THEN experience_kind_memberships.type ELSE EXCLUDED.type END');
+    expect(typeArm).toContain('THEN source_records.type ELSE EXCLUDED.type END');
   });
 
   it('writes tags past the gate, and keeps them behind a claim', async () => {
@@ -909,7 +909,7 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // — "nothing is held" about the row whose content this run just held — and
     // the queue's `held` card would be unreachable for ever (#518, #519).
     const [pointer, params] = callMatching(/SET pending_change_sync_log_id = \$2/);
-    expect(pointer).toContain('UPDATE experience_kind_memberships');
+    expect(pointer).toContain('UPDATE source_records');
     expect(pointer).toMatch(/curation_state <> 'pending'/);
     expect(params).toEqual([501, 42]);
     // On the same connection, inside the transaction — not on the pool.
@@ -925,7 +925,7 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // writes a run id.
     const setList = membershipSetListOf(upsert()[0]);
     expect(setList).toContain(`pending_change_sync_log_id = CASE WHEN ${HOLD}`);
-    expect(setList).toContain('THEN experience_kind_memberships.pending_change_sync_log_id');
+    expect(setList).toContain('THEN source_records.pending_change_sync_log_id');
     expect(setList).toContain('ELSE NULL');
     expect(setList).not.toContain('$15');
     // And the place's own set list no longer names the pointer at all.
@@ -975,7 +975,7 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // exists — the column means "NULL when nothing is held". On this source's
     // membership, under the gate, and never an unread one.
     const [cleared, params] = callMatching(/SET pending_change_sync_log_id = NULL/);
-    expect(cleared).toContain('UPDATE experience_kind_memberships');
+    expect(cleared).toContain('UPDATE source_records');
     expect(cleared).toMatch(/m\.source_id = \$2/);
     expect(cleared).toMatch(/curation_state <> 'pending'/);
     expect(cleared).toMatch(/EXISTS \(/);
@@ -1051,7 +1051,7 @@ describe('a trusted source decays a curator pass', () => {
 
     const [decay] = callMatching(/curation_state = 'auto'/);
     // The pass is the membership's since #822, and the one this source brought.
-    expect(decay).toContain('UPDATE experience_kind_memberships');
+    expect(decay).toContain('UPDATE source_records');
     expect(decay).toMatch(/m\.experience_id = \$1 AND m\.source_id = \$2[\s\S]*m\.curation_state = 'verified'/);
   });
 
@@ -1250,7 +1250,7 @@ describe('the extent a run writes', () => {
     const assigned = assignmentsOf(upsert()[0]);
     const keeps = "CASE WHEN (experiences.curated_fields ? 'boundary' OR NOT $34::boolean "
       + 'OR (experiences.boundary IS NOT NULL AND experiences.boundary_source_id IS NOT NULL '
-      + 'AND experiences.boundary_source_id <> $1::integer AND EXISTS (SELECT 1 FROM experience_kind_memberships owner_m '
+      + 'AND experiences.boundary_source_id <> $1::integer AND EXISTS (SELECT 1 FROM source_records owner_m '
       + 'WHERE owner_m.experience_id = experiences.id AND owner_m.source_id = experiences.boundary_source_id))) ';
     const arm = (column: string) => assigned.get(column)?.replace(/\s+/g, ' ');
     expect(arm('boundary')).toBe(`${keeps}THEN experiences.boundary ELSE EXCLUDED.boundary END,`);
@@ -1288,7 +1288,7 @@ describe('the extent a run writes', () => {
     const stored = storedRow({ boundary_hash: 'a-first-tracing', area_km2: '0.0568', boundary_source_id: PARAMS.sourceId, was_held: true });
     client.query.mockImplementation(async (sql: string) => {
       if (/INSERT INTO experiences/.test(sql)) return { rows: [writtenRow()] };
-      if (/SELECT m\.experience_id AS id, m\.external_id AS "from" FROM experience_kind_memberships m/.test(sql)) {
+      if (/SELECT m\.experience_id AS id, m\.external_id AS "from" FROM source_records m/.test(sql)) {
         return { rows: [{ id: stored.id, from: PARAMS.externalId }] };
       }
       if (/FOR NO KEY UPDATE/.test(sql)) return { rows: [{ id: stored.id }] };

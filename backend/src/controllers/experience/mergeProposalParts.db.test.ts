@@ -48,7 +48,7 @@ async function place(id: number, name: string, source: string | null, lon: numbe
   );
   if (source === null) return null;
   const membership = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = $3 RETURNING id`,
     [id, `fixture-${id}`, source],
   );
@@ -72,7 +72,7 @@ beforeEach(async () => {
     `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref) VALUES ($1, $2, 'component', $3, '108bis-003')`,
     [SITE, PART, site],
   );
-  await pool.query('UPDATE experience_kind_memberships SET wikidata_items = ARRAY[$2] WHERE experience_id = $1 AND kind_id = 10', [PART, ITEM]);
+  await pool.query('UPDATE source_records SET wikidata_items = ARRAY[$2] WHERE experience_id = $1 AND kind_id = 10', [PART, ITEM]);
   proposalId = (await pool.query<{ id: number }>(
     `INSERT INTO experience_merge_proposals (place_a, place_b, distance_m, name_similarity, exact, reach_m)
      VALUES ($1, $2, 62, 1, false, 300) RETURNING id`,

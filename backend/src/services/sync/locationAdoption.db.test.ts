@@ -27,7 +27,7 @@ async function clear(): Promise<void> {
 async function member(sourceId: number): Promise<number> {
   const kind = (await pool.query<{ kind_id: number }>('SELECT kind_id FROM experience_sources WHERE id = $1', [sourceId])).rows[0].kind_id;
   return (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, 'verified', NOW()) RETURNING id`,
     [DOME, kind, sourceId, `${QID}-${sourceId}`],
   )).rows[0].id;

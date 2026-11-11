@@ -45,10 +45,10 @@ describe('the place-level predicates', () => {
   it('ask "some membership of this place" with one EXISTS over the membership table', () => {
     for (const fragment of [placeAdmittedSql('e'), placeVisibleSql('e'), placeOfferedSql('e')]) {
       const sql = collapse(fragment);
-      expect(sql).toMatch(/^EXISTS \(SELECT 1 FROM experience_kind_memberships km WHERE km\.experience_id = e\.id AND /);
+      expect(sql).toMatch(/^EXISTS \(SELECT 1 FROM source_records km WHERE km\.experience_id = e\.id AND /);
       expect(sql.match(/EXISTS/g)).toHaveLength(1);
     }
-    expect(MEMBERSHIPS).toBe('experience_kind_memberships');
+    expect(MEMBERSHIPS).toBe('source_records');
   });
 
   it('ask it of a real kind, once, so a part offers nothing by its record in World Heritage components (ADR-0156)', () => {

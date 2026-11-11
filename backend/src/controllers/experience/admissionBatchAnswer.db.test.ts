@@ -36,7 +36,7 @@ async function state(): Promise<State> {
             m.curated_fields ? 'admission' AS pinned,
             ${admissionAnsweredSql('m')} AS answered,
             (${refusedOpenSql('m')}) AS open
-       FROM experience_kind_memberships m
+       FROM source_records m
       WHERE m.experience_id = $1`,
     [EXPERIENCE_ID],
   );
@@ -67,7 +67,7 @@ beforeEach(async () => {
     [EXPERIENCE_ID, sourceId, EXTERNAL_ID],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, admission, admission_reason, curation_state)
      VALUES ($1, $2, $3, (SELECT external_id FROM experiences WHERE id = $1), 'refused', $4, 'auto')`,
     [EXPERIENCE_ID, source.rows[0].kind_id, sourceId, REASON],

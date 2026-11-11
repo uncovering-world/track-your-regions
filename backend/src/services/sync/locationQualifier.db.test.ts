@@ -39,7 +39,7 @@ beforeEach(async () => {
     [CHURCHES, archaeology, QID, POINT.lon, POINT.lat],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, 'verified', NOW())`,
     [CHURCHES, source.kind_id, archaeology, QID],
   );

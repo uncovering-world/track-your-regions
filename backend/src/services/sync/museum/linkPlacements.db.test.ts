@@ -35,7 +35,7 @@ async function placers(ref: string): Promise<number[]> {
   const result = await pool.query<{ source_id: number }>(
     `SELECT m.source_id
        FROM experience_treasure_placements p
-       JOIN experience_kind_memberships m ON m.id = p.membership_id
+       JOIN source_records m ON m.id = p.membership_id
        JOIN experience_treasures et ON et.id = p.link_id
        JOIN treasures t ON t.id = et.treasure_id
       WHERE et.experience_id = $1 AND t.external_id = $2
@@ -69,7 +69,7 @@ beforeEach(async () => {
     [LOUVRE, artMuseums, LOUVRE_QID],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id)
      VALUES ($1, $2, $3, $4), ($1, $5, $6, $4)`,
     [LOUVRE, art.kind_id, artMuseums, LOUVRE_QID, arch.kind_id, archaeology],
   );

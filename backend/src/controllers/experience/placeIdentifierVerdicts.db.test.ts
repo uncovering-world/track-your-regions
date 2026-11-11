@@ -43,7 +43,7 @@ async function place(id: number, source: { id: number }, externalId: string, nam
 
 async function membership(placeId: number, source: { id: number; kind_id: number }, externalId: string): Promise<number> {
   return (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, 'auto', NOW()) RETURNING id`,
     [placeId, source.kind_id, source.id, externalId],
   )).rows[0].id;
@@ -140,7 +140,7 @@ describe("a curator's word on an identifier (ADR-0143 decision 5)", () => {
     const outcome = await settle(CHURCH, OWN, 'removed');
     expect(outcome.refusal).toBeUndefined();
     expect(await held(OWN)).toEqual([]);
-    await pool.query('UPDATE experience_kind_memberships SET external_id = $1 WHERE experience_id = $2', [OWN, CHURCH]);
+    await pool.query('UPDATE source_records SET external_id = $1 WHERE experience_id = $2', [OWN, CHURCH]);
     expect(await held(OWN)).toEqual([]);
     expect(await outOfStep()).toBe(0);
 

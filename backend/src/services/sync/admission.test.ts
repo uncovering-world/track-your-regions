@@ -274,7 +274,7 @@ describe('markIconic', () => {
 
     const badged = await markIconic(2, ['Q19675', 'Q160236'], false);
 
-    expect(lastSql()).toContain('UPDATE experience_kind_memberships m SET is_iconic = true');
+    expect(lastSql()).toContain('UPDATE source_records m SET is_iconic = true');
     expect(lastSql()).toContain('m.external_id = ANY($2::text[])');
     expect(lastSql()).toContain('AND NOT m.is_iconic');
     expect(lastParams()).toEqual([2, ['Q19675', 'Q160236']]);
@@ -323,7 +323,7 @@ describe('unmarkIconic', () => {
 
     const cleared = await unmarkIconic(5, ['Q6373'], false);
 
-    expect(lastSql()).toContain('UPDATE experience_kind_memberships m SET is_iconic = false');
+    expect(lastSql()).toContain('UPDATE source_records m SET is_iconic = false');
     expect(lastSql()).toContain('AND NOT (m.external_id = ANY($2::text[]))');
     expect(lastSql()).toContain("AND m.admission = 'admitted'");
     expect(lastSql()).toContain('AND m.is_iconic');

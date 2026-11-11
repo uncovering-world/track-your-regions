@@ -33,7 +33,7 @@ beforeEach(async () => {
     [SITE, UNESCO, SHARED.lon, SHARED.lat],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, '9854-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = $2`,
     [SITE, UNESCO],
   );

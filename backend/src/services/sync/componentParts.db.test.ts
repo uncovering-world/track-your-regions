@@ -62,7 +62,7 @@ beforeEach(async () => {
       [id, source.id, `${id}-fixture`, name],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        VALUES ($1, $2, $3, $4, 'auto', NOW())`,
       [id, source.kind_id, source.id, `${id}-fixture`],
     );
@@ -129,7 +129,7 @@ describe("a serial site's components become its parts (ADR-0100)", () => {
       [THEBES],
     )).rows[0].id;
     const membership = (await pool.query<{ id: number }>(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        VALUES ($1, $2, $3, 'Q1189146-fixture', 'auto', NOW()) RETURNING id`,
       [THEBES, archaeology.kind_id, archaeology.id],
     )).rows[0].id;
@@ -217,7 +217,7 @@ describe('a component that stands for its whole site is not parted (#1899)', () 
     await pool.query('UPDATE experiences SET merged_into_id = $1 WHERE id = $2', [THEBES, karnak.part_id]);
 
     const membership = (await pool.query<{ id: number }>(
-      'SELECT id FROM experience_kind_memberships WHERE experience_id = $1', [THEBES],
+      'SELECT id FROM source_records WHERE experience_id = $1', [THEBES],
     )).rows[0].id;
     await pool.query('SELECT part_site_components($1, $2)', [THEBES, membership]);
 

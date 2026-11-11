@@ -118,7 +118,7 @@ describe('getReviewQueue', () => {
     const [refusedSql] = callMatching(`NOT ${admissionAnsweredSql('m')}`);
     expect(refusedSql).toContain("m.admission = 'refused'");
     // Every membership a rule refused, each in scope by its own source (#1264).
-    expect(refusedSql).toMatch(/JOIN experience_kind_memberships m ON m\.experience_id = e\.id\s/);
+    expect(refusedSql).toMatch(/JOIN source_records m ON m\.experience_id = e\.id\s/);
     expect(refusedSql).not.toContain('m.source_id = e.source_id');
     expect(refusedSql).toContain('m.admission_reason');
   });
@@ -149,7 +149,7 @@ describe('getReviewQueue', () => {
     // Every kept-out membership of a place, one card each under its own kind
     // and narrowed by its own source (#1264), so another source's refusal does
     // not surface under this source's chip.
-    expect(keptOutSql).toMatch(/JOIN experience_kind_memberships m ON m\.experience_id = e\.id\s/);
+    expect(keptOutSql).toMatch(/JOIN source_records m ON m\.experience_id = e\.id\s/);
     expect(keptOutSql).not.toContain('m.source_id = e.source_id');
   });
 
@@ -385,7 +385,7 @@ describe('getReviewQueue', () => {
       // Every kind's question off its own membership (ADR-0153), so a place two
       // kinds doubt carries both, and only off a membership its source still
       // lists, whose run can still take the question back.
-      expect(sql).toMatch(/string_agg\(note_m\.facts->>'admissionNote', ' ' ORDER BY note_m\.source_id\), ''\)\s+FROM experience_kind_memberships note_m\s+WHERE note_m\.experience_id = \S+\.id AND note_m\.missing_since IS NULL AND note_m\.source_membership = 'present'\) AS admission_note/);
+      expect(sql).toMatch(/string_agg\(note_m\.facts->>'admissionNote', ' ' ORDER BY note_m\.source_id\), ''\)\s+FROM source_records note_m\s+WHERE note_m\.experience_id = \S+\.id AND note_m\.missing_since IS NULL AND note_m\.source_membership = 'present'\) AS admission_note/);
     }
   });
 
@@ -696,7 +696,7 @@ describe('getReviewQueue', () => {
     // An arrival is a membership arriving (#822): its state and its
     // admission are read off the membership, joined to the place — any
     // membership, one card each, in scope by its own source (#1264).
-    expect(sql).toMatch(/JOIN experience_kind_memberships m ON m\.experience_id = e\.id\s/);
+    expect(sql).toMatch(/JOIN source_records m ON m\.experience_id = e\.id\s/);
     expect(sql).not.toContain('m.source_id = e.source_id');
     expect(sql).toContain('ca.source_id = m.source_id');
     expect(sql).toContain("m.curation_state = 'pending'");
@@ -723,7 +723,7 @@ describe('getReviewQueue', () => {
     // Every membership of the place, one card each (#1264): a proposal is held
     // on the membership whose source's run made it, so two memberships hold two
     // runs' proposals and never one proposal twice.
-    expect(sql).toMatch(/JOIN experience_kind_memberships m ON m\.experience_id = e\.id\s/);
+    expect(sql).toMatch(/JOIN source_records m ON m\.experience_id = e\.id\s/);
     expect(sql).not.toContain('m.source_id = e.source_id');
     expect(sql).toContain('ca.source_id = m.source_id');
     // jsonb_agg over an empty set returns NULL, and an empty card is worse than

@@ -229,7 +229,7 @@ describe('refusing to publish', () => {
 
     // The other direction, or the guard above could be an unconditional refusal.
     expect(res.status).not.toHaveBeenCalled();
-    expect(only(queries, 'UPDATE experience_kind_memberships').sql).toContain(`curation_state = 'verified'`);
+    expect(only(queries, 'UPDATE source_records').sql).toContain(`curation_state = 'verified'`);
   });
 
   it('destroys a client whose rollback also failed', async () => {

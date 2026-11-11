@@ -125,7 +125,7 @@ describe('waitingCountsBySource', () => {
     const [sql] = mockedQuery.mock.calls[0] as [string];
     // Per source of the membership, not per row: what a source holds is the
     // memberships its runs brought (#822).
-    expect(sql).toContain('FROM experience_kind_memberships m');
+    expect(sql).toContain('FROM source_records m');
     expect(sql).toContain('GROUP BY m.source_id');
     for (const kind of [arrivalWaitingSql(), heldWaitingSql(), contentsWaitingSql()]) {
       expect(sql).toContain(kind);

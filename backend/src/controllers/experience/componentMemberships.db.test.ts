@@ -53,7 +53,7 @@ beforeEach(async () => {
     [BELFRIES, source.id],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, '9560-fixture', 'auto', NOW())`,
     [BELFRIES, source.kind_id, source.id],
   );
@@ -70,7 +70,7 @@ describe('a part holds a membership of the virtual kind World Heritage component
     const parts = await partsOf(BELFRIES);
     expect(parts).toHaveLength(2);
     const held = await pool.query<{ experience_id: number; source_id: number; external_id: string; curation_state: string }>(
-      `SELECT experience_id, source_id, external_id, curation_state FROM experience_kind_memberships
+      `SELECT experience_id, source_id, external_id, curation_state FROM source_records
         WHERE kind_id = $1 AND experience_id = ANY($2::int[]) ORDER BY experience_id`,
       [COMPONENTS_KIND, parts.map(part => part.part_id)],
     );
@@ -109,7 +109,7 @@ describe('a part holds a membership of the virtual kind World Heritage component
   it('moves the record with its relation, as a merge and its undo move it, and drops it with the relation', async () => {
     const [mons, bruges] = await partsOf(BELFRIES);
     const recordOf = async (link: number) => (await pool.query<{ experience_id: number }>(
-      'SELECT experience_id FROM experience_kind_memberships WHERE kind_id = $1 AND external_id = $2',
+      'SELECT experience_id FROM source_records WHERE kind_id = $1 AND external_id = $2',
       [COMPONENTS_KIND, `component:${link}`],
     )).rows.map(row => row.experience_id);
     // A place another kind brought, which a merge makes the part.
@@ -136,7 +136,7 @@ describe('a part holds a membership of the virtual kind World Heritage component
   it('keeps one record for a part of two sites, keyed by the relation that remains', async () => {
     const [mons] = await partsOf(BELFRIES);
     const keysOf = async () => (await pool.query<{ external_id: string }>(
-      'SELECT external_id FROM experience_kind_memberships WHERE kind_id = $1 AND experience_id = $2',
+      'SELECT external_id FROM source_records WHERE kind_id = $1 AND experience_id = $2',
       [COMPONENTS_KIND, mons.part_id],
     )).rows.map(row => row.external_id);
     const other = (await pool.query<{ id: number }>(
@@ -168,10 +168,10 @@ describe('a part holds a membership of the virtual kind World Heritage component
     const [part] = await partsOf(BELFRIES);
     await pool.query('DELETE FROM experience_pairing_due WHERE experience_id = $1', [part.part_id]);
     await pool.query(
-      'UPDATE experience_kind_memberships SET reported_name = $3 WHERE experience_id = $1 AND kind_id = $2',
+      'UPDATE source_records SET reported_name = $3 WHERE experience_id = $1 AND kind_id = $2',
       [part.part_id, COMPONENTS_KIND, 'Beffroi de Mons (as the list names it)'],
     );
-    await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1 AND kind_id = $2', [part.part_id, COMPONENTS_KIND]);
+    await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND kind_id = $2', [part.part_id, COMPONENTS_KIND]);
     const due = await pool.query('SELECT 1 FROM experience_pairing_due WHERE experience_id = $1', [part.part_id]);
     expect(due.rowCount).toBe(0);
   });
@@ -181,7 +181,7 @@ describe("what the site's list says of a component, on the part's record (ADR-01
   const views = async () => (await pool.query<{ ref: string; name: string | null; lon: number | null }>(
     `SELECT p.external_ref AS ref, rec.reported_name AS name, ST_X(rec.reported_location) AS lon
        FROM experience_parts p
-       JOIN experience_kind_memberships rec ON rec.experience_id = p.part_id AND rec.kind_id = $2
+       JOIN source_records rec ON rec.experience_id = p.part_id AND rec.kind_id = $2
       WHERE p.whole_id = $1 ORDER BY p.external_ref`, [BELFRIES, COMPONENTS_KIND],
   )).rows;
 
@@ -203,7 +203,7 @@ describe("what the site's list says of a component, on the part's record (ADR-01
 
   it('is written by a run that changes no point, where the record holds another', async () => {
     await pool.query(
-      'UPDATE experience_kind_memberships SET reported_name = NULL, reported_location = NULL WHERE kind_id = $1 AND experience_id IN (SELECT part_id FROM experience_parts WHERE whole_id = $2)',
+      'UPDATE source_records SET reported_name = NULL, reported_location = NULL WHERE kind_id = $1 AND experience_id IN (SELECT part_id FROM experience_parts WHERE whole_id = $2)',
       [COMPONENTS_KIND, BELFRIES],
     );
     await writeExperienceLocations(BELFRIES, [MONS, BRUGES], run);
@@ -224,7 +224,7 @@ describe("what the site's list says of a component, on the part's record (ADR-01
     const [, mons] = await partsOf(BELFRIES);
     const record = async () => (await pool.query<{ external_id: string; name: string | null; lon: number | null }>(
       `SELECT external_id, reported_name AS name, ST_X(reported_location) AS lon
-         FROM experience_kind_memberships WHERE kind_id = $1 AND experience_id = $2`,
+         FROM source_records WHERE kind_id = $1 AND experience_id = $2`,
       [COMPONENTS_KIND, mons.part_id],
     )).rows;
     const other = (await pool.query<{ id: number }>(

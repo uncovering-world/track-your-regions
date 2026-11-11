@@ -42,7 +42,7 @@ async function clear(): Promise<void> {
 
 async function typeOf(i: number): Promise<string | null> {
   return (await pool.query<{ type: string | null }>(
-    `SELECT m.type FROM experience_kind_memberships m JOIN experience_sources s ON s.id = m.source_id
+    `SELECT m.type FROM source_records m JOIN experience_sources s ON s.id = m.source_id
       WHERE s.name = 'Monuments & memorials' AND m.external_id = $1`, [qid(i)],
   )).rows[0].type;
 }
@@ -57,7 +57,7 @@ beforeEach(async () => {
       [FIRST + i, qid(i), f.name],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, type, curated_fields)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, type, curated_fields)
        SELECT $1, s.kind_id, s.id, $2, $3::text, $4, $5::jsonb
          FROM experience_sources s WHERE s.name = 'Monuments & memorials'`,
       [FIRST + i, qid(i), f.admission, f.type, JSON.stringify(f.curated)],

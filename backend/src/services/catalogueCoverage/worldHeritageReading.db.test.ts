@@ -28,7 +28,7 @@ async function place(id: number, externalId: string, name: string, missing = fal
     [id, externalId, name, COUNTRY],
   );
   const membership = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at, missing_since)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at, missing_since)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW(), CASE WHEN $3::boolean THEN NOW() END
        FROM experience_sources s WHERE s.id = 1 RETURNING id`,
     [id, externalId, missing],

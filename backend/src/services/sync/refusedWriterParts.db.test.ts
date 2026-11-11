@@ -54,7 +54,7 @@ async function sourceNamed(name: string): Promise<Source> {
 async function clear(): Promise<void> {
   const ids = Object.values(logs);
   await pool.query(
-    'UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = ANY($1::int[])',
+    'UPDATE source_records SET pending_change_sync_log_id = NULL WHERE experience_id = ANY($1::int[])',
     [[ALTAMIRA, GHENT]],
   );
   if (ids.length > 0) await pool.query('DELETE FROM experience_sync_logs WHERE id = ANY($1::int[])', [ids]);
@@ -72,7 +72,7 @@ async function place(id: number, qid: string, name: string, memberships: [Source
   );
   for (const [source, admission] of memberships) {
     await pool.query(
-      `INSERT INTO experience_kind_memberships
+      `INSERT INTO source_records
          (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
        VALUES ($1, $2, $3, $4, $5, 'verified', NOW())`,
       [id, source.kind_id, source.id, qid, admission],
@@ -85,7 +85,7 @@ async function place(id: number, qid: string, name: string, memberships: [Source
 }
 
 const pointers = async (id: number) => Object.fromEntries((await pool.query<{ source_id: number; pointer: number | null }>(
-  'SELECT source_id, pending_change_sync_log_id AS pointer FROM experience_kind_memberships WHERE experience_id = $1', [id],
+  'SELECT source_id, pending_change_sync_log_id AS pointer FROM source_records WHERE experience_id = $1', [id],
 )).rows.map(row => [row.source_id, row.pointer]));
 
 const asked = (delta: ContentsDelta) => delta.changed.flatMap(entry => entry.fields.filter(f => f.held).map(f => f.field));

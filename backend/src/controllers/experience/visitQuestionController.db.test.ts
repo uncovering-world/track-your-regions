@@ -42,7 +42,7 @@ beforeEach(async () => {
     [EBORACUM, QID, NAME],
   );
   membershipId = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = 'Archaeology' RETURNING id`,
     [EBORACUM, QID],
   )).rows[0].id;
@@ -67,7 +67,7 @@ const state = async () => (await pool.query<{
 }>(
   `SELECT m.admission, m.curated_fields ? 'admission' AS pinned, m.admission_reason,
           q.answer, q.answered_by, q.answered_at IS NOT NULL AS answered
-     FROM experience_kind_memberships m JOIN experience_visit_questions q ON q.membership_id = m.id
+     FROM source_records m JOIN experience_visit_questions q ON q.membership_id = m.id
     WHERE m.id = $1`,
   [membershipId],
 )).rows[0];
@@ -88,7 +88,7 @@ describe("a run's question about a place with nothing to see, in the queue", () 
 
   it('asks nothing once a curator pinned the admission another way', async () => {
     await pool.query(
-      `UPDATE experience_kind_memberships SET curated_fields = '["admission"]', admission_pin_verdict = 'admitted'
+      `UPDATE source_records SET curated_fields = '["admission"]', admission_pin_verdict = 'admitted'
         WHERE id = $1`,
       [membershipId],
     );

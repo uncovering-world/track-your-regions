@@ -29,7 +29,7 @@ async function place(id: number, name: string, lat: number, lon: number, type: s
     [id, `Q${id}`, name, lon, lat],
   );
   const membership = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
      VALUES ($1, $2, 4, $3, $4, 'verified', NOW()) RETURNING id`,
     [id, WORSHIP, `Q${id}`, type],
   );
@@ -43,7 +43,7 @@ async function place(id: number, name: string, lat: number, lon: number, type: s
 const crowded = async (): Promise<number[]> =>
   (await pool.query<{ experience_id: number }>(
     `SELECT m.experience_id FROM membership_crowding c
-       JOIN experience_kind_memberships m ON m.id = c.membership_id
+       JOIN source_records m ON m.id = c.membership_id
       WHERE m.experience_id >= $1 ORDER BY 1`, [BASE])).rows.map(row => row.experience_id);
 
 async function clear(): Promise<void> {
@@ -85,15 +85,15 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
     // another type, and Frascati lies 25 km out.
     expect(await crowded()).toEqual([BASE + 11, BASE + 12]);
     const outranked = await pool.query<{ outranked_by: number }>(
-      `SELECT c.outranked_by FROM membership_crowding c JOIN experience_kind_memberships m ON m.id = c.membership_id
+      `SELECT c.outranked_by FROM membership_crowding c JOIN source_records m ON m.id = c.membership_id
         WHERE m.experience_id = $1`, [BASE + 12]);
     expect(outranked.rows[0].outranked_by).toBe(11);
   });
 
   it('recounts around a place a curator refuses, as the refusal commits', async () => {
-    await pool.query("UPDATE experience_kind_memberships SET admission = 'refused' WHERE experience_id = $1", [BASE + 1]);
+    await pool.query("UPDATE source_records SET admission = 'refused' WHERE experience_id = $1", [BASE + 1]);
     expect(await crowded()).toEqual([BASE + 12]);
-    await pool.query("UPDATE experience_kind_memberships SET admission = 'admitted' WHERE experience_id = $1", [BASE + 1]);
+    await pool.query("UPDATE source_records SET admission = 'admitted' WHERE experience_id = $1", [BASE + 1]);
     expect(await crowded()).toEqual([BASE + 11, BASE + 12]);
   });
 
@@ -107,10 +107,10 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
       // The first recount runs now, in a transaction not yet committed; the
       // second starts while the first holds its rows, and must wait for it.
       await first.query('BEGIN');
-      await first.query("UPDATE experience_kind_memberships SET admission = 'refused' WHERE experience_id = $1", [BASE + 1]);
+      await first.query("UPDATE source_records SET admission = 'refused' WHERE experience_id = $1", [BASE + 1]);
       await first.query('SET CONSTRAINTS ALL IMMEDIATE');
       await second.query('BEGIN');
-      await second.query("UPDATE experience_kind_memberships SET admission = 'refused' WHERE experience_id = $1", [BASE + 2]);
+      await second.query("UPDATE source_records SET admission = 'refused' WHERE experience_id = $1", [BASE + 2]);
       const recount = second.query('SET CONSTRAINTS ALL IMMEDIATE');
       await new Promise(resolve => setTimeout(resolve, 200));
       await first.query('COMMIT');
@@ -140,7 +140,7 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
        VALUES ($1, 4, $2, 'Church 13', ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
       [id, `Q${id}`, ROME.lon, ROME.lat]);
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
        VALUES ($1, $2, 4, $3, 'church', 'verified', NOW())`, [id, WORSHIP, `Q${id}`]);
     expect(await crowded()).toEqual([BASE + 11, BASE + 12]);
   });
@@ -176,20 +176,20 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
     for (const [id, guides] of [[BASE + 5, 2], [BASE + 6, 7]] as const) {
       await pool.query(
         `UPDATE membership_fame f SET readers = 8000, wikipedia_editions = 8, guide_editions = $2
-           FROM experience_kind_memberships m WHERE m.id = f.membership_id AND m.experience_id = $1`, [id, guides]);
+           FROM source_records m WHERE m.id = f.membership_id AND m.experience_id = $1`, [id, guides]);
     }
     await pool.query('SELECT refresh_crowding()');
     const scores = (await pool.query<{ experience_id: number; score: number }>(
-      `SELECT m.experience_id, f.score FROM membership_fame f JOIN experience_kind_memberships m ON m.id = f.membership_id
+      `SELECT m.experience_id, f.score FROM membership_fame f JOIN source_records m ON m.id = f.membership_id
         WHERE m.experience_id = ANY($1) ORDER BY 1`, [[BASE + 5, BASE + 6]])).rows;
     expect(scores[0].score).toBe(scores[1].score);
     // A guide still counts: one Wikivoyage edition against none lifts the place.
     await pool.query(
       `UPDATE membership_fame f SET guide_editions = 0
-         FROM experience_kind_memberships m WHERE m.id = f.membership_id AND m.experience_id = $1`, [BASE + 5]);
+         FROM source_records m WHERE m.id = f.membership_id AND m.experience_id = $1`, [BASE + 5]);
     await pool.query('SELECT refresh_crowding()');
     const [unguided, guided] = (await pool.query<{ score: number }>(
-      `SELECT f.score FROM membership_fame f JOIN experience_kind_memberships m ON m.id = f.membership_id
+      `SELECT f.score FROM membership_fame f JOIN source_records m ON m.id = f.membership_id
         WHERE m.experience_id = ANY($1) ORDER BY m.experience_id`, [[BASE + 5, BASE + 6]])).rows;
     expect(guided.score).toBeGreaterThan(unguided.score);
   });
@@ -202,7 +202,7 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
       await pool.query('SELECT refresh_crowding()');
       expect(await crowded()).toEqual([]);
       const scored = await pool.query<{ scored: number }>(
-        `SELECT count(*)::int AS scored FROM membership_fame f JOIN experience_kind_memberships m ON m.id = f.membership_id
+        `SELECT count(*)::int AS scored FROM membership_fame f JOIN source_records m ON m.id = f.membership_id
           WHERE m.experience_id >= $1 AND m.type = 'church' AND f.score IS NOT NULL`, [BASE]);
       expect(scored.rows[0].scored).toBe(0);
     } finally {

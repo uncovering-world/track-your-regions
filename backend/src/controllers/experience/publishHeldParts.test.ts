@@ -275,7 +275,7 @@ describe('publishing the held fields of an object\'s parts', () => {
       heldLeftOpen: 1,
     }));
     // The attribution is still the open question, so the card stays.
-    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
+    expect(only(queries, 'UPDATE source_records').sql)
       .not.toContain('pending_change_sync_log_id = NULL');
   });
 
@@ -558,7 +558,7 @@ describe('publishing the held fields of an object\'s parts', () => {
       // the card for a look at the siblings, and the card has to be there.
       heldLeftOpen: 1,
     }));
-    expect(only(queries, 'UPDATE experience_kind_memberships').sql)
+    expect(only(queries, 'UPDATE source_records').sql)
       .not.toContain('pending_change_sync_log_id = NULL');
   });
 });

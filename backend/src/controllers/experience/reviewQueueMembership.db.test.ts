@@ -61,7 +61,7 @@ beforeEach(async () => {
     [PLACE, artSource, QID, NAME],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, v.state, CASE WHEN v.state = 'auto' THEN NOW() END
        FROM (VALUES ('Art Museums', 'auto'), ('Archaeology', 'pending')) AS v(source, state)
        JOIN experience_sources s ON s.name = v.source`,
@@ -89,7 +89,7 @@ async function unreadPoint(): Promise<number> {
 
 async function membershipOf(source: number): Promise<number> {
   const result = await pool.query<{ id: number }>(
-    'SELECT id FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $2', [PLACE, source],
+    'SELECT id FROM source_records WHERE experience_id = $1 AND source_id = $2', [PLACE, source],
   );
   return result.rows[0].id;
 }
@@ -186,7 +186,7 @@ describe('a waiting question of each membership (#1264)', () => {
     // question.
     const archaeology = await membershipOf(archaeologySource);
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE id = $1`,
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE id = $1`,
       [archaeology],
     );
     const point = await unreadPoint();
@@ -241,7 +241,7 @@ describe('unread contents of each membership that placed them (#1290)', () => {
     const art = await membershipOf(artSource);
     const archaeology = await membershipOf(archaeologySource);
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE id = $1`,
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW() WHERE id = $1`,
       [archaeology],
     );
     return { art, archaeology };
@@ -387,9 +387,9 @@ describe('unread contents of each membership that placed them (#1290)', () => {
     // Museums sorts first among the kinds, so once offered it would be asked
     // through Art — the publish reads its reach before that, and leaves it.
     // Written afresh: a membership's state never moves back to pending (ADR-0070).
-    await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1', [PLACE]);
+    await pool.query('DELETE FROM source_records WHERE experience_id = $1', [PLACE]);
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, $2, v.state, CASE WHEN v.state = 'auto' THEN NOW() END
          FROM (VALUES ('Art Museums', 'pending'), ('Archaeology', 'auto')) AS v(source, state)
          JOIN experience_sources s ON s.name = v.source`,
@@ -412,9 +412,9 @@ describe('unread contents of each membership that placed them (#1290)', () => {
     // Archaeology readers see the place; the Art Museums arrival was refused by
     // its rule. Putting it back publishes what the arrival's section drew — its
     // own point — and not the find the Archaeology run placed (#1290).
-    await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1', [PLACE]);
+    await pool.query('DELETE FROM source_records WHERE experience_id = $1', [PLACE]);
     await pool.query(
-      `INSERT INTO experience_kind_memberships
+      `INSERT INTO source_records
               (experience_id, kind_id, source_id, external_id, curation_state, published_at, admission, admission_reason)
        SELECT $1, s.kind_id, s.id, $2, v.state, CASE WHEN v.state = 'auto' THEN NOW() END, v.admission, v.reason
          FROM (VALUES ('Art Museums', 'pending', 'refused', 'not a museum'), ('Archaeology', 'auto', 'admitted', NULL))
@@ -458,7 +458,7 @@ describe('a refusal of each membership (#1264)', () => {
   async function refuseArchaeology(): Promise<number> {
     const archaeology = await membershipOf(archaeologySource);
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission = 'refused', admission_reason = 'not an archaeological site'
+      `UPDATE source_records SET admission = 'refused', admission_reason = 'not an archaeological site'
         WHERE id = $1`,
       [archaeology],
     );
@@ -483,7 +483,7 @@ describe('a refusal of each membership (#1264)', () => {
   it('asks it under the kind whose rule refused once no other kind offers the place', async () => {
     const archaeology = await refuseArchaeology();
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission = 'refused', admission_reason = 'not a museum' WHERE id = $1`,
+      `UPDATE source_records SET admission = 'refused', admission_reason = 'not a museum' WHERE id = $1`,
       [await membershipOf(artSource)],
     );
 
@@ -503,7 +503,7 @@ describe('a refusal of each membership (#1264)', () => {
 
   it('keeps a confirmed refusal in the kept-out list under its own kind', async () => {
     const archaeology = await refuseArchaeology();
-    await pool.query('UPDATE experience_kind_memberships SET admission_answered_at = NOW() WHERE id = $1', [archaeology]);
+    await pool.query('UPDATE source_records SET admission_answered_at = NOW() WHERE id = $1', [archaeology]);
 
     const queue = await getReviewQueue({
       query: reviewQueueQuerySchema.parse({ q: NAME }),
@@ -522,7 +522,7 @@ describe('a refusal of each membership (#1264)', () => {
     const archaeology = await refuseArchaeology();
     const art = await membershipOf(artSource);
     await pool.query(
-      `UPDATE experience_kind_memberships SET admission = 'refused', admission_reason = 'not an art museum'
+      `UPDATE source_records SET admission = 'refused', admission_reason = 'not an art museum'
         WHERE id = $1`,
       [art],
     );
@@ -544,7 +544,7 @@ describe('a refusal of each membership (#1264)', () => {
     // A script released the unread batch answer's pin (ADR-0096) and recorded how:
     // its sentence is the system's, never the curator's note.
     const archaeology = await refuseArchaeology();
-    await pool.query('UPDATE experience_kind_memberships SET admission_answered_at = NOW() WHERE id = $1', [archaeology]);
+    await pool.query('UPDATE source_records SET admission_answered_at = NOW() WHERE id = $1', [archaeology]);
     await pool.query(
       `INSERT INTO experience_curation_log (experience_id, curator_id, action, details) VALUES ($1, $2, 'admission_pin_released', $3)`,
       [PLACE, adminId, JSON.stringify({
@@ -570,7 +570,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
   async function archaeologyDropped(): Promise<number> {
     const archaeology = await membershipOf(archaeologySource);
     await pool.query(
-      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW(),
+      `UPDATE source_records SET curation_state = 'verified', published_at = NOW(),
               missing_since = NOW() WHERE id = $1`,
       [archaeology],
     );
@@ -608,7 +608,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
 
     expect(outcome.refusal).toBeUndefined();
     const rows = await pool.query<{ id: number; admission: string; source_membership: string; missing_since: Date | null }>(
-      'SELECT id, admission, source_membership, missing_since FROM experience_kind_memberships WHERE experience_id = $1',
+      'SELECT id, admission, source_membership, missing_since FROM source_records WHERE experience_id = $1',
       [PLACE],
     );
     const byId = Object.fromEntries(rows.rows.map(row => [row.id, row]));
@@ -633,7 +633,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
 
     expect(outcome.refusal).toBeUndefined();
     const row = await pool.query(
-      'SELECT admission, missing_since FROM experience_kind_memberships WHERE id = $1', [archaeology],
+      'SELECT admission, missing_since FROM source_records WHERE id = $1', [archaeology],
     );
     expect(row.rows[0]).toMatchObject({ admission: 'admitted', missing_since: null });
   });
@@ -641,7 +641,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
   it('keeps a delisted World Heritage Site, marked former, in its kind', async () => {
     const heritage = await sourceId('UNESCO World Heritage Sites');
     const added = await pool.query<{ id: number }>(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state,
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state,
               published_at, missing_since)
        SELECT $1, s.kind_id, s.id, '9600-whs', 'verified', NOW(), NOW() FROM experience_sources s WHERE s.id = $2
        RETURNING id`,
@@ -657,7 +657,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
 
     expect(outcome.refusal).toBeUndefined();
     const row = await pool.query(
-      'SELECT admission, source_membership FROM experience_kind_memberships WHERE id = $1', [membershipId],
+      'SELECT admission, source_membership FROM source_records WHERE id = $1', [membershipId],
     );
     expect(row.rows[0]).toEqual({ admission: 'admitted', source_membership: 'former' });
   });
@@ -670,7 +670,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
     await answerStateUnderLock(PLACE, adminId, null, {
       membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
     });
-    await pool.query('UPDATE experience_kind_memberships SET missing_since = NOW() WHERE id = $1', [await membershipOf(artSource)]);
+    await pool.query('UPDATE source_records SET missing_since = NOW() WHERE id = $1', [await membershipOf(artSource)]);
 
     const place = await pool.query('SELECT missing_since FROM experiences WHERE id = $1', [PLACE]);
     expect(place.rows[0].missing_since).not.toBeNull();
@@ -681,7 +681,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
 
   it('leaves a kind\'s question to the place once every source has dropped it', async () => {
     const archaeology = await archaeologyDropped();
-    await pool.query('UPDATE experience_kind_memberships SET missing_since = NOW() WHERE id = $1', [await membershipOf(artSource)]);
+    await pool.query('UPDATE source_records SET missing_since = NOW() WHERE id = $1', [await membershipOf(artSource)]);
 
     const outcome = await answerStateUnderLock(PLACE, adminId, null, {
       membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
@@ -699,7 +699,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
       membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
     });
     const art = await membershipOf(artSource);
-    await pool.query('UPDATE experience_kind_memberships SET missing_since = NOW() WHERE id = $1', [art]);
+    await pool.query('UPDATE source_records SET missing_since = NOW() WHERE id = $1', [art]);
 
     const outcome = await answerStateUnderLock(PLACE, adminId, null, {
       membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true },
@@ -707,7 +707,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
 
     expect(outcome.refusal).toBeUndefined();
     const rows = await pool.query<{ id: number; source_membership: string }>(
-      'SELECT id, source_membership FROM experience_kind_memberships WHERE experience_id = $1', [PLACE],
+      'SELECT id, source_membership FROM source_records WHERE experience_id = $1', [PLACE],
     );
     const listing = Object.fromEntries(rows.rows.map(row => [row.id, row.source_membership]));
     expect(listing).toEqual({ [archaeology]: 'former', [art]: 'present' });

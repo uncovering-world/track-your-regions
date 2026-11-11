@@ -93,7 +93,7 @@ beforeEach(async () => {
     [SITE],
   );
   membershipId = (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, '9860-fixture', 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
     [SITE],
   )).rows[0].id;

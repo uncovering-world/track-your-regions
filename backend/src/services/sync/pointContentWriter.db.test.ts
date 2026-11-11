@@ -92,7 +92,7 @@ beforeEach(async () => {
     [PILES, sourceId],
   );
   const membership = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, kind_id, id, '1363-fixture', 'verified', NOW() FROM experience_sources WHERE id = $2 RETURNING id`,
     [PILES, sourceId],
   );
@@ -212,7 +212,7 @@ describe("a component's own picture and subtitle, on its part (ADR-0156)", () =>
     // Riesi as another kind brought it: a picture of its own, and no subtitle.
     await pool.query(`UPDATE experiences SET image_url = $2 WHERE id = $1`, [riesi, BOURG_OLD]);
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        VALUES ($1, 5, 5, 'Q9840002', 'verified', NOW())`, [riesi],
     );
 

@@ -61,7 +61,7 @@ beforeEach(async () => {
     [UFFIZI, COLOSSEUM, artSource],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships
+    `INSERT INTO source_records
             (experience_id, kind_id, source_id, external_id, curation_state, published_at, admission)
      SELECT e.id, s.kind_id, s.id, e.external_id, 'auto', NOW(), 'admitted'
        FROM experiences e JOIN experience_sources s ON s.id = e.source_id

@@ -32,7 +32,7 @@ describe('a kind counts its memberships', () => {
 
   it('spells the whole count as one subquery over the membership table', () => {
     const sql = collapse(kindCountSql('s.kind_id'));
-    expect(sql).toMatch(/^\(SELECT COUNT\(DISTINCT km\.id\) FROM experience_kind_memberships km JOIN experiences ke ON ke\.id = km\.experience_id WHERE km\.kind_id = s\.kind_id AND /);
+    expect(sql).toMatch(/^\(SELECT COUNT\(DISTINCT km\.id\) FROM source_records km JOIN experiences ke ON ke\.id = km\.experience_id WHERE km\.kind_id = s\.kind_id AND /);
     expect(sql).toContain(collapse(countedMembershipSql('km', 'ke')));
     // Not off the place's source column: the count is of memberships in the
     // kind, which is what a place in two kinds counts once in each of.

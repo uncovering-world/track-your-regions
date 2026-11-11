@@ -34,7 +34,7 @@ async function clear(): Promise<void> {
 async function membership(source: string, externalId: string, name: string, picture: string, lon: number, lat: number,
   credit: object | null): Promise<number> {
   const row = await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at,
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at,
        reported_name, reported_image_url, reported_image_credit, reported_location)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW(), $3, $4, $5::jsonb, ST_SetSRID(ST_MakePoint($6, $7), 4326)
        FROM experience_sources s WHERE s.name = $8 RETURNING id`,
@@ -45,7 +45,7 @@ async function membership(source: string, externalId: string, name: string, pict
 
 /** The place's sources, as the curator's scope was resolved over them. */
 const sources = async () => (await pool.query<{ source_id: number }>(
-  'SELECT DISTINCT source_id FROM experience_kind_memberships WHERE experience_id = $1 ORDER BY source_id', [RILA],
+  'SELECT DISTINCT source_id FROM source_records WHERE experience_id = $1 ORDER BY source_id', [RILA],
 )).rows.map(row => row.source_id);
 const open = async () => (await pool.query<{ fields: string[] }>(
   `SELECT ${openViewFieldsSql('e.id')} AS fields FROM experiences e WHERE e.id = $1`, [RILA],
@@ -112,14 +112,14 @@ describe('two sources that describe one place differently (#1246)', () => {
     expect(outcome.result?.changed).toEqual([]);
     expect(await open()).toEqual([]);
 
-    await pool.query(`UPDATE experience_kind_memberships SET reported_name = 'Rila Monastery of St John' WHERE id = $1`, [wikidataView]);
+    await pool.query(`UPDATE source_records SET reported_name = 'Rila Monastery of St John' WHERE id = $1`, [wikidataView]);
 
     expect(await open()).toEqual(['name']);
     expect((await place()).name).toBe('Rila Monastery');
   });
 
   it('never shows a picture without its photographer: refuses one nobody credited, takes one Commons named', async () => {
-    await pool.query('UPDATE experience_kind_memberships SET reported_image_credit = NULL WHERE id = $1', [wikidataView]);
+    await pool.query('UPDATE source_records SET reported_image_credit = NULL WHERE id = $1', [wikidataView]);
 
     const refused = await chooseViewsUnderLock(
       RILA, curatorId, null, [{ field: 'imageUrl', membershipId: wikidataView }], await sources(),
@@ -140,7 +140,7 @@ describe('two sources that describe one place differently (#1246)', () => {
   });
 
   it('refuses a credit read for a picture the source has since replaced', async () => {
-    await pool.query('UPDATE experience_kind_memberships SET reported_image_credit = NULL WHERE id = $1', [wikidataView]);
+    await pool.query('UPDATE source_records SET reported_image_credit = NULL WHERE id = $1', [wikidataView]);
     const read = { author: 'Raggatt2000', license: 'CC BY-SA 3.0', licenseUrl: '', detailsUrl: '' };
 
     const outcome = await chooseViewsUnderLock(
@@ -174,8 +174,8 @@ describe('two sources that describe one place differently (#1246)', () => {
     const site = 'https://en.wikipedia.org/wiki/Rila_Monastery';
     const saint = 'https://en.wikipedia.org/wiki/Monastery_of_Saint_John_of_Rila';
     await pool.query(`UPDATE experiences SET metadata = jsonb_build_object('wikipediaUrl', $2::text) WHERE id = $1`, [RILA, site]);
-    await pool.query('UPDATE experience_kind_memberships SET reported_wikipedia_url = $2 WHERE id = $1', [unescoView, site]);
-    await pool.query('UPDATE experience_kind_memberships SET reported_wikipedia_url = $2 WHERE id = $1', [wikidataView, saint]);
+    await pool.query('UPDATE source_records SET reported_wikipedia_url = $2 WHERE id = $1', [unescoView, site]);
+    await pool.query('UPDATE source_records SET reported_wikipedia_url = $2 WHERE id = $1', [wikidataView, saint]);
     expect(await open()).toEqual(['name', 'imageUrl', 'wikipediaUrl']);
 
     const outcome = await chooseViewsUnderLock(
@@ -192,7 +192,7 @@ describe('two sources that describe one place differently (#1246)', () => {
 
   it('asks nothing of two views under one id, which read one Wikidata item (ADR-0085)', async () => {
     // Both memberships under one Wikidata item: the ADR's case, read one item.
-    await pool.query(`UPDATE experience_kind_memberships SET external_id = 'Q207945' WHERE id = $1`, [unescoView]);
+    await pool.query(`UPDATE source_records SET external_id = 'Q207945' WHERE id = $1`, [unescoView]);
 
     expect(await open()).toEqual([]);
   });
@@ -201,13 +201,13 @@ describe('two sources that describe one place differently (#1246)', () => {
     // The Golden Gate's shape: a kind's rule refused the place while its source
     // still lists it. Its view counted while listed and raised a question the
     // card had no source to answer for.
-    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1`, [wikidataView]);
+    await pool.query(`UPDATE source_records SET admission = 'refused' WHERE id = $1`, [wikidataView]);
 
     expect(await open()).toEqual([]);
     expect((await querySources([RILA])).rows).toEqual([]);
 
     // Admitted again, its view is a source's once more and the question is back.
-    await pool.query(`UPDATE experience_kind_memberships SET admission = 'admitted' WHERE id = $1`, [wikidataView]);
+    await pool.query(`UPDATE source_records SET admission = 'admitted' WHERE id = $1`, [wikidataView]);
     expect(await open()).toEqual(['name', 'imageUrl']);
   });
 
@@ -220,11 +220,11 @@ describe('two sources that describe one place differently (#1246)', () => {
     expect(await open()).toEqual([]);
 
     // Its kind refuses the place: the answer holds over the views that stand.
-    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1`, [third]);
+    await pool.query(`UPDATE source_records SET admission = 'refused' WHERE id = $1`, [third]);
     expect(await open()).toEqual([]);
 
     // Admitted again with a new name: a view the answer never saw, so it is asked.
-    await pool.query(`UPDATE experience_kind_memberships SET admission = 'admitted', reported_name = 'Rilski manastir' WHERE id = $1`, [third]);
+    await pool.query(`UPDATE source_records SET admission = 'admitted', reported_name = 'Rilski manastir' WHERE id = $1`, [third]);
     expect(await open()).toEqual(['name']);
   });
 
@@ -239,7 +239,7 @@ describe('two sources that describe one place differently (#1246)', () => {
 
     // The chosen view's kind refuses the place: the name readers see is no
     // standing source's now, while UNESCO and Places of worship still disagree.
-    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1`, [third]);
+    await pool.query(`UPDATE source_records SET admission = 'refused' WHERE id = $1`, [third]);
     expect(await open()).toEqual(['name']);
   });
 
@@ -254,7 +254,7 @@ describe('two sources that describe one place differently (#1246)', () => {
     ], await sources());
     expect(await open()).toEqual([]);
 
-    await pool.query('DELETE FROM experience_kind_memberships WHERE id = $1', [third]);
+    await pool.query('DELETE FROM source_records WHERE id = $1', [third]);
     expect((await pool.query(
       "SELECT chosen_membership_id FROM experience_view_choices WHERE experience_id = $1 AND field = 'name'", [RILA],
     )).rows).toEqual([{ chosen_membership_id: null }]);
@@ -272,7 +272,7 @@ describe('two sources that describe one place differently (#1246)', () => {
     ], await sources());
     expect(await open()).toEqual([]);
 
-    await pool.query(`UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1`, [third]);
+    await pool.query(`UPDATE source_records SET admission = 'refused' WHERE id = $1`, [third]);
     expect(await open()).toEqual([]);
   });
 });

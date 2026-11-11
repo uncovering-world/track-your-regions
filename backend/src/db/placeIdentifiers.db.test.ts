@@ -50,7 +50,7 @@ async function membership(
   placeId: number, source: { id: number; kind_id: number }, externalId: string, items: string[] | null = null,
 ): Promise<number> {
   return (await pool.query<{ id: number }>(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, wikidata_items, curation_state, published_at)
+    `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, wikidata_items, curation_state, published_at)
      VALUES ($1, $2, $3, $4, $5, 'auto', NOW()) RETURNING id`,
     [placeId, source.kind_id, source.id, externalId, items],
   )).rows[0].id;
@@ -180,7 +180,7 @@ describe('the place identifier registry (ADR-0143 decision 2)', () => {
       await first.query('BEGIN');
       await second.query('BEGIN');
       await first.query(
-        `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+        `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
          VALUES ($1, $2, $3, $4, 'auto')`, [COPY, worship.kind_id, worship.id, OTHER_ITEM],
       );
       const archaeology = (await pool.query<{ id: number; kind_id: number }>(
@@ -188,7 +188,7 @@ describe('the place identifier registry (ADR-0143 decision 2)', () => {
       )).rows[0];
       let settled = false;
       const waiting = second.query(
-        `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+        `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
          VALUES ($1, $2, $3, $4, 'auto')`, [PART_A, archaeology.kind_id, archaeology.id, OTHER_ITEM],
       ).finally(() => { settled = true; });
       await new Promise(resolve => setTimeout(resolve, 300));
