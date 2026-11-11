@@ -107,10 +107,17 @@ export const CrowdingPlaceView = z.strictObject({
     ...FameSignals,
     standing: CrowdingStanding,
     compared: z.boolean().describe('It counts above the place (`crowding_above()`): what the place is compared with.'),
+    holdsWorks: z.boolean().describe('It holds a work a reader is shown, so the rule never counts it above another (ADR-0173).'),
+    pin: CrowdingPin.nullable().describe('A curator\'s word on it: kept on the list, or kept in the shadow, which the rule never counts above another.'),
   })).describe('Every other place of its kind and type within the radius, best known first.'),
   comparedUnlisted: z.number().int()
     .describe('How many of the places it is compared with `around` leaves out: new arrivals outside the caller\'s scope, '
       + 'and ones whose source no longer lists them, which the rule counts and the review queue does not show.'),
+  measurable: z.boolean()
+    .describe('Whether a run can measure the place: its source knows it by a Wikidata item. A place a curator made by hand never is.'),
+  measuringRun: z.string().nullable()
+    .describe('For a place not measured yet, the source of the run in progress whose end measures it (#2420); '
+      + 'null where none runs, and for a measured place.'),
 }).describe('A place of a crowded city in its own circle (#2358): what the rule compares it with.');
 export type CrowdingPlaceView = z.infer<typeof CrowdingPlaceView>;
 

@@ -40,6 +40,7 @@ import type {
   crowdingGroupQuerySchema, crowdingPlaceParamSchema, crowdingPlaceQuerySchema, shadowedArrivalsQuerySchema,
 } from '../../types/index.js';
 import { notRejectedInSql } from './experienceRegionQuery.js';
+import { measurableSql } from '../../services/sync/crowding.js';
 import type { CrowdingPin } from './membershipWriter.js';
 import { queueScopeSql, regionSubtreeCte } from './reviewQueueKeys.js';
 
@@ -48,6 +49,26 @@ const GROUP_PLACES_MAX = 1000;
 
 /** The most places one circle lists: the densest type on dev, Rome's churches, holds about 150 within 10 km. */
 const AROUND_MAX = 500;
+
+/**
+ * The source of the run in progress whose end measures fame again: every run
+ * that is not a dry run measures every place of a kind with the rule in its
+ * after-step (`refreshCrowding`), so a place not measured yet waits for the
+ * first such run to end (#2420). Alive as the swap of a dump copy reads it:
+ * `running`, with its progress written in the last five minutes. Null where
+ * none runs. The after-step runs once a run's row has closed, so for those
+ * minutes a place reads as waiting for the next run, which is still true.
+ */
+export async function measuringRun(): Promise<string | null> {
+  const result = await pool.query<{ name: string }>(
+    `SELECT s.name
+       FROM experience_sync_logs l JOIN experience_sources s ON s.id = l.source_id
+      WHERE l.status = 'running' AND NOT l.is_dry_run
+        AND COALESCE(l.progress_at, l.started_at) > NOW() - interval '5 minutes'
+      ORDER BY l.started_at
+      LIMIT 1`);
+  return result.rows[0]?.name ?? null;
+}
 
 /** How many of the better-known places a hover names. */
 const NAMED_ABOVE = 3;
@@ -113,6 +134,8 @@ function groupLeafSql({ isAdmin, worldView, within }: { isAdmin: string; worldVi
 
 interface PlaceRow {
   membership_id: number;
+  /** Whether a run can measure it (`measurableSql`). */
+  measurable: boolean;
   experience_id: number;
   name: string;
   latitude: number;
@@ -176,6 +199,7 @@ function placeColumnsSql(isAdmin: boolean, radiusKm: string, reads: string): { c
              m.curation_state = 'pending' AS arriving,
              ${membershipCrowdedSql('m')} AS crowded,
              m.crowding_pin AS pin,
+             ${measurableSql('m')} AS measurable,
              place_shows_works(e.id) AS holds_works,
              (${reads}) AS reads, above.better, above.names AS better_known,
              ${queueScopeSql(isAdmin, 'm.source_id')} AS can_answer`,
@@ -313,7 +337,8 @@ export async function getCrowdingGroup(
  * counts a new arrival the curator's scope leaves out, and one whose source no
  * longer lists it; the circle lists neither, as the review queue does not, and
  * says how many it leaves out (`comparedUnlisted`), so its list and the
- * place's count still add up.
+ * place's count still add up. A place not measured yet is compared with
+ * nothing, and the read names the run whose end measures it (`measuringRun`).
  */
 export async function getCrowdingPlace(
   { params: { membershipId }, query, caller }: {
@@ -356,7 +381,7 @@ export async function getCrowdingPlace(
     // $1 the caller, $2 the kind, $3 the place, $4 the radius, $5 the type, $6 the membership.
     pool.query<Signals & {
       membership_id: number; experience_id: number; name: string; latitude: number; longitude: number;
-      distance_m: number; arriving: boolean; crowded: boolean; compared: boolean;
+      distance_m: number; arriving: boolean; crowded: boolean; compared: boolean; holds_works: boolean; pin: CrowdingPin | null;
     }>(`${CURATOR_SCOPED_REGIONS_CTE}${above}
       SELECT m.id AS membership_id, e.id AS experience_id, e.name,
              ST_Y(e.location) AS latitude, ST_X(e.location) AS longitude,
@@ -364,7 +389,9 @@ export async function getCrowdingPlace(
              ${FAME_SIGNALS},
              m.curation_state = 'pending' AS arriving,
              ${membershipCrowdedSql('m')} AS crowded,
-             m.id IN (SELECT membership_id FROM above) AS compared
+             m.id IN (SELECT membership_id FROM above) AS compared,
+             -- Why a better-known neighbour may not count: its works, or a curator's shadow (#2420).
+             place_shows_works(e.id) AS holds_works, m.crowding_pin AS pin
         FROM ${MEMBERSHIPS} m
         JOIN experiences e ON e.id = m.experience_id
         LEFT JOIN ${FAME} f ON f.membership_id = m.id
@@ -382,6 +409,7 @@ export async function getCrowdingPlace(
   ]);
   const place = placeRead.rows[0];
   if (!place) throw notFound('Membership not found');
+  const measuring = place.score === null && !exempt && place.measurable ? await measuringRun() : null;
 
   return {
     place: toPlace(place, kind, exempt),
@@ -398,8 +426,12 @@ export async function getCrowdingPlace(
       ...signalsOf(row),
       standing: standingOf(row),
       compared: !exempt && row.compared,
+      holdsWorks: row.holds_works,
+      pin: row.pin,
     })),
     comparedUnlisted: exempt ? 0 : unlistedRead.rows[0]?.unlisted ?? 0,
+    measurable: place.measurable,
+    measuringRun: measuring,
   };
 }
 

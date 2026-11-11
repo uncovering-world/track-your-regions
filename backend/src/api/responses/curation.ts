@@ -211,6 +211,14 @@ export const CardCrowding = z.strictObject({
   outrankedBy: z.number().int().nullable().describe(
     'For a shadowed place, how many places of its type within the radius count above it, as the recount stored it'
     + ' (`membership_crowding`, ADR-0180); null for a place the display shows.'),
+  measured: z.boolean().describe('Whether its fame is measured: a place that arrived after the last run has no score, and until a run measures it only the places a curator keeps on the list count above it (#2420).'),
+  betterKnown: z.number().int().nullable().describe(
+    'How many places of its type within the radius have a higher score than it, the rule\'s own count where that is zero; '
+    + 'for a place not measured yet, how many a curator keeps on the list count above it.'),
+  measuringRun: z.string().nullable().describe(
+    'For a place not measured yet, the source of the run in progress whose end measures it; null where none runs, and for a measured place.'),
+  measurable: z.boolean().describe(
+    'Whether a run can measure it: its source knows it by a Wikidata item. A place a curator made by hand is never measured.'),
 }).describe("How crowded a membership's city is (ADR-0172, ADR-0180): on a review card, and on a kind of a place's curation dialog.");
 export type CardCrowding = z.infer<typeof CardCrowding>;
 
