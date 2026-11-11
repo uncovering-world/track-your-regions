@@ -66,7 +66,7 @@ describe("a place's kinds on its curation dialog", () => {
     // Schloßplatz in Berlin: a square of Squares & streets, 22 squares within 10 km, and in Public art, which has no rule.
     const SQUARES: PlaceKindStanding = {
       ...WORSHIP, membershipId: 14, kindId: 9, kindName: 'Squares & streets', type: 'square',
-      crowding: { limit: 10, radiusKm: 10, around: 22, shadowed: true, outrankedBy: 13 },
+      crowding: { limit: 10, radiusKm: 10, around: 22, shadowed: true, outrankedBy: 13, measured: true, betterKnown: 15, measuringRun: null, measurable: true },
     };
     const PUBLIC_ART: PlaceKindStanding = { ...WORSHIP, membershipId: 15, kindId: 3, kindName: 'Public art', type: null };
     mockedKinds.mockResolvedValue({ kinds: [SQUARES, PUBLIC_ART], addable: [] });

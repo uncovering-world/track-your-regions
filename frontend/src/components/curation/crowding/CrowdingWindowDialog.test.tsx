@@ -85,12 +85,80 @@ describe('the window opened from a card', () => {
     expect(screen.getByText(/^The rule shadows it: 13 better-known squares stand within 10 km of it\./)).toBeInTheDocument();
     expect(screen.getByText('The answer is about Schloßplatz alone. Every other square keeps its own standing.')).toBeInTheDocument();
 
-    const compared = within(screen.getByRole('region', { name: 'What it is compared with' }));
-    expect(compared.getByText('What it is compared with · the 13 better known within 10 km')).toBeInTheDocument();
+    const around = within(screen.getByRole('region', { name: 'The places around it' }));
+    expect(around.getByText('13 better-known squares within 10 km. One other is less known.')).toBeInTheDocument();
+    const compared = within(around.getByRole('region', { name: 'better known, compared with it' }));
     expect(compared.getByRole('button', { name: 'Alexanderplatz' })).toBeInTheDocument();
     expect(compared.getByText('0.7 km')).toBeInTheDocument();
     expect(compared.queryByRole('button', { name: 'Kulturforum' })).toBeNull();
-    expect(compared.getByText(/^For the rule to show it, fewer than 10 squares better known than it/)).toBeInTheDocument();
+    // The button counts every square around, so the circle names the ones the rule does not count against it too.
+    const less = within(around.getByRole('region', { name: 'less known, not counted against it' }));
+    expect(less.getByRole('button', { name: 'Kulturforum' })).toBeInTheDocument();
+    expect(around.getByText(/^For the rule to show it, fewer than 10 squares better known than it/)).toBeInTheDocument();
+  });
+
+  it('lists a better-known neighbour the rule leaves out apart from the less known, with its reason (#2420)', async () => {
+    // A square holding works a reader is shown, scored above Schloßplatz: ADR-0173 never counts it against another.
+    mockedPlace.mockResolvedValue({
+      ...schlossplatzCircle,
+      around: [...schlossplatzCircle.around, {
+        ...schlossplatzCircle.around[0], membershipId: 998, name: 'Museum Island square', score: 0.9, compared: false, holdsWorks: true,
+      }],
+    });
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    const around = within(screen.getByRole('region', { name: 'The places around it' }));
+    expect(around.getByText('13 better-known squares within 10 km. One more better known is not counted. One other is less known.'))
+      .toBeInTheDocument();
+    const uncounted = within(around.getByRole('region', { name: 'better known, not counted against it' }));
+    expect(uncounted.getByRole('button', { name: 'Museum Island square' })).toBeInTheDocument();
+    expect(uncounted.getByText('It holds works readers are shown.')).toBeInTheDocument();
+    expect(within(around.getByRole('region', { name: 'less known, not counted against it' })).queryByRole('button', { name: 'Museum Island square' }))
+      .toBeNull();
+  });
+
+  it('lists a neighbour a curator keeps on the list as compared with a place not measured yet', async () => {
+    mockedPlace.mockResolvedValue({
+      ...schlossplatzCircle,
+      place: { ...schlossplatzCircle.place, score: null, outrankedBy: null, ruleCrowded: false },
+      around: schlossplatzCircle.around.map((entry, i) => ({ ...entry, compared: i === 0, pin: i === 0 ? 'list' as const : null })),
+      measuringRun: null,
+    });
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    const around = within(screen.getByRole('region', { name: 'The places around it' }));
+    expect(within(around.getByRole('region', { name: 'better known, compared with it' })).getByRole('button', { name: 'Alexanderplatz' }))
+      .toBeInTheDocument();
+    expect(around.getByText('Not measured yet: only the one a curator keeps on the list counts above it until the next sync run ends.'))
+      .toBeInTheDocument();
+    expect(around.queryByText(/nothing is compared/)).toBeNull();
+  });
+
+  it('lists the neighbours of a place not measured yet by their own figures, and never says nothing is above it (#2420)', async () => {
+    // The Russian Church in Florence on 2026-11-10: arrived after fame was measured, while the next run went on.
+    mockedPlace.mockResolvedValue({
+      ...schlossplatzCircle,
+      place: { ...schlossplatzCircle.place, score: null, outrankedBy: null, ruleCrowded: false },
+      around: [
+        ...schlossplatzCircle.around.map(entry => ({ ...entry, compared: false })),
+        { ...schlossplatzCircle.around[0], membershipId: 999, name: 'Marx-Engels-Forum', score: null, readers: null, compared: false },
+      ],
+      measuringRun: 'Squares & streets',
+    });
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    const around = within(screen.getByRole('region', { name: 'The places around it' }));
+    expect(around.getByText('Not measured yet: nothing is compared with it until the run of Squares & streets in progress ends.'))
+      .toBeInTheDocument();
+    expect(around.queryByText(/better-known|best-known/)).toBeNull();
+    expect(around.queryByRole('region', { name: 'better known, compared with it' })).toBeNull();
+    expect(within(around.getByRole('region', { name: 'measured, not compared with it' })).getByRole('button', { name: 'Alexanderplatz' }))
+      .toBeInTheDocument();
+    expect(within(around.getByRole('region', { name: 'not measured yet' })).getByRole('button', { name: 'Marx-Engels-Forum' }))
+      .toBeInTheDocument();
   });
 
   it("shows what the place's score is made of, its count against the line, and the same for what it is compared with (#2400)", async () => {
@@ -99,7 +167,7 @@ describe('the window opened from a card', () => {
 
     expect(screen.getByText('Readers a year 20,000 · Editions 17 · Guide yes · Score 0.70 · Better within 10 km 13 of 10'))
       .toBeInTheDocument();
-    const compared = within(screen.getByRole('region', { name: 'What it is compared with' }));
+    const compared = within(screen.getByRole('region', { name: 'better known, compared with it' }));
     expect(compared.getByText('Readers a year 209,401 · Editions 47 · Guide yes · Score 0.95')).toBeInTheDocument();
     // A place not read yet is a dash, never a zero.
     expect(compared.getByText('Readers a year — · Editions 18 · Guide — · Score 0.73')).toBeInTheDocument();
@@ -125,10 +193,11 @@ describe('the window opened from a card', () => {
     renderWindow();
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
 
-    const compared = within(screen.getByRole('region', { name: 'What it is compared with' }));
-    expect(compared.getByText('What it is compared with · the 13 better known within 10 km')).toBeInTheDocument();
-    expect(compared.queryByRole('button', { name: 'Frankfurter Tor' })).toBeNull();
-    expect(compared.getByText('and 2 not listed here: outside your scope, or no longer offered by their source')).toBeInTheDocument();
+    const around = within(screen.getByRole('region', { name: 'The places around it' }));
+    expect(around.getByText(/^13 better-known squares within 10 km\./)).toBeInTheDocument();
+    expect(around.queryByRole('button', { name: 'Frankfurter Tor' })).toBeNull();
+    expect(around.getByText('2 more better known are not listed here: outside your scope, or no longer offered by their source.'))
+      .toBeInTheDocument();
   });
 
   it('shows the place’s picture with its credit as a line, and opens it enlarged (ADR-0182)', async () => {
@@ -150,7 +219,7 @@ describe('the window opened from a card', () => {
     renderWindow();
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
 
-    fireEvent.click(within(screen.getByRole('region', { name: 'What it is compared with' })).getByRole('button', { name: 'Potsdamer Platz' }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'The places around it' })).getByRole('button', { name: 'Potsdamer Platz' }));
     await waitFor(() => expect(mockedPlace).toHaveBeenLastCalledWith(2));
   });
 

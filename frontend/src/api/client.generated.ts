@@ -4569,6 +4569,17 @@ export interface CardCrowding {
   shadowed: boolean;
   /** For a shadowed place, how many places of its type within the radius count above it, as the recount stored it (`membership_crowding`, ADR-0180); null for a place the display shows. */
   outrankedBy: number | null;
+  /** Whether its fame is measured: a place that arrived after the last run has no score, and until a run measures it only the places a curator keeps on the list count above it (#2420). */
+  measured: boolean;
+  /** How many places of its type within the radius have a higher score than it, the rule's own count where that is zero; for a place not measured yet, how many a curator keeps on the list count above it. */
+  betterKnown: number | null;
+  /**
+     * For a place not measured yet, the source of the run in progress whose end measures it; null where none runs, and for a measured place.
+     * @nullable
+     */
+  measuringRun: string | null;
+  /** Whether a run can measure it: its source knows it by a Wikidata item. A place a curator made by hand is never measured. */
+  measurable: boolean;
 }
 
 /**
@@ -5364,6 +5375,17 @@ export const CrowdingPlaceViewAroundItemStanding = {
   new: 'new',
 } as const;
 
+/**
+ * A curator's word on it: kept on the list, or kept in the shadow, which the rule never counts above another.
+ */
+export type CrowdingPlaceViewAroundItemPin = typeof CrowdingPlaceViewAroundItemPin[keyof typeof CrowdingPlaceViewAroundItemPin] | null;
+
+
+export const CrowdingPlaceViewAroundItemPin = {
+  list: 'list',
+  shadow: 'shadow',
+} as const;
+
 export type CrowdingPlaceViewAroundItem = {
   /**
      * @minimum -9007199254740991
@@ -5402,6 +5424,10 @@ export type CrowdingPlaceViewAroundItem = {
   standing: CrowdingPlaceViewAroundItemStanding;
   /** It counts above the place (`crowding_above()`): what the place is compared with. */
   compared: boolean;
+  /** It holds a work a reader is shown, so the rule never counts it above another (ADR-0173). */
+  holdsWorks: boolean;
+  /** A curator's word on it: kept on the list, or kept in the shadow, which the rule never counts above another. */
+  pin: CrowdingPlaceViewAroundItemPin;
 };
 
 /**
@@ -5421,6 +5447,13 @@ export interface CrowdingPlaceView {
      * @maximum 9007199254740991
      */
   comparedUnlisted: number;
+  /** Whether a run can measure the place: its source knows it by a Wikidata item. A place a curator made by hand never is. */
+  measurable: boolean;
+  /**
+     * For a place not measured yet, the source of the run in progress whose end measures it (#2420); null where none runs, and for a measured place.
+     * @nullable
+     */
+  measuringRun: string | null;
 }
 
 export type ShadowedArrivalsGroupsItem = {
