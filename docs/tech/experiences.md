@@ -5295,7 +5295,7 @@ curator, with the count and the reference in the cut's note on the card.
 ### Whom or what a place commemorates (#2144)
 
 **What the card shows.** A place Public art or Monuments & memorials offers
-(`PUBLIC_ART_SOURCES` in `passes.ts`) carries whom or what it commemorates where one of six steps
+(`SUBJECT_LINE_SOURCE_IDS` in `@tyr/shared/commemorates`) carries whom or what it commemorates where one of six steps
 names anyone, and its card says so in one line, "Commemorates: Abraham Lincoln", each name linked
 to its English Wikipedia article where it has one (`CommemoratesLine`). Towers, Bridges &
 engineering marvels and Squares & streets read none of it, though their runs are the same
@@ -5440,8 +5440,8 @@ articleUrl }] }`, with `via` naming the step that answered (`COMMEMORATION_STEPS
 `metadata.depicts` in the same shape, its `via` one of `DEPICTION_STEPS` (`depictsOf`): written
 by the same runs, kept by the same rule (`WRITTEN_BY_SOURCES`), compared by its items
 (`sameSubjects`), served as `ExperienceDetail.depicts` and drawn as "Depicts: …" by the same
-line (`CommemoratesLine` with `word="Depicts"`). No curator lists it: a wrong figure is a held
-proposal a curator turns down, or a fix on Wikidata. It is
+line (`CommemoratesLine` with `word="Depicts"`). A curator corrects it as they correct
+*Commemorates* (#2421, below), and their list is `{ via: 'curator', subjects }` there too. It is
 absent where no step names anyone and no curator listed anyone. It is a field of the place,
 shown (`@tyr/shared/placeFields`): a memorial church keeps it under Places of worship whichever kind's
 run read it. The object read serves it as `ExperienceDetail.commemorates`, `[{ qid, label,
@@ -5457,7 +5457,7 @@ in `fieldMeaning.tsx`).
 **The keep rule.** Only Public art's and Monuments & memorials' runs write the field, and every
 Wikidata source is one family, so it is kept per source rather than per family:
 `WRITTEN_BY_SOURCES` in `fieldFamilies.ts` names the sources that write a key
-(`PUBLIC_ART_SOURCES` for this one), and a run of any other source writes it as the place holds
+(`SUBJECT_LINE_SOURCE_IDS` from `@tyr/shared/commemorates` for this one), and a run of any other source writes it as the place holds
 it while a membership of one of those sources stands on the place and admits it (`fieldsOfOthers`,
 [ADR-0190](../decisions/0190-a-place-field-some-sources-read-is-kept-while-one-of-them-stands.md)).
 A memorial church's Places of worship run or a Towers run of a memorial tower therefore never
@@ -5478,6 +5478,25 @@ tidied as every stored name is and within Wikidata's limit on one, and an articl
 the old and new lists on the `edited` row of the curation log, which the history names
 (`curationLog.ts`); a held proposal of the field is answered by the items it names
 (`sameAsProposed` in `heldSettledByEdit.ts`).
+
+*Depicts* is corrected the same way (#2421). The dialog shows its field on a place a source that
+reads it holds, Public art or Monuments & memorials, or where the line is already there
+(`carriesDepicts` in `CurationDialog.tsx`). The edit sends `depicts` beside `commemorates`, held to
+the same shape. `editExperience` stores the list as the curator's and claims `metadata.depicts`.
+Big Vishnu, read as "Depicts: Garuda" from its main subject, gets Vishnu added. Each chip can
+also be moved to the other line (`SubjectLinesFields`), so a holy figure the reading named as commemorated
+is listed under *Depicts*, and the other way round. A move sends both lists, so both are claimed.
+A subject stands on one line in what a curator writes: the form never offers one the other line
+lists, and the edit is refused when a subject would stand on both, the line it does not send read as
+the place holds it (`refuseSubjectOnBothLines`). A run keeps apart its own two readings
+(`dedicatedTo` in `places/commemorates.ts`). Beside a curator's claimed line it may still read the
+other line with the same subject. On a published place that change is held, and publishing it,
+from the review card or by accepting the source, leaves out of the line it publishes whoever the
+other line lists (`keepSubjectsOnOneLine` in `subjectLines.ts`, over `onBothLines` in
+`@tyr/shared/commemorates`): Big Vishnu's run reading Vishnu as commemorated publishes no one a
+curator listed under *Depicts*. The dialog's two lists open only once the stored ones are read, and
+its *Depicts* field also shows where a reading source holds the place still waiting for a curator. An emptied *Depicts* is stored as an empty curator's list,
+which `depictsOf` keeps, as `commemoratesOf` keeps one: the work shows no named figure.
 
 A curator who removes every subject stores `{ via: 'curator', subjects: [] }`, not an absent
 key: a claim holds only a key the stored row carries (`claimedMetadataKeys` in `changeSet.ts`), so
