@@ -277,12 +277,28 @@ describe('the curation gate exists in both schema homes', () => {
     // Naming the column is not enough: what the seed passes is the gate a fresh
     // database runs with. Every place source is gated on arrival but the World
     // Heritage list, UNESCO's own official list, and its components' record, a
-    // virtual kind that offers nothing to hold back (#2335, ADR-0156).
+    // record in a whole that offers nothing to hold back (#2335, ADR-0156,
+    // ADR-0198), and which fills no kind.
     for (const seed of seeds) {
       const name = /VALUES \( (?:\d+, )?'([^']+)'/.exec(seed)?.[1];
       expect(name, `a seed names no source: ${seed.slice(0, 80)}`).toBeDefined();
       const gated = !UNGATED_SOURCES.includes(name!);
-      expect(seed, `${name} is seeded ${gated ? 'ungated' : 'gated'}`).toMatch(gated ? /, true, \(SELECT|, true, \d+ ?\)/ : /, false, \(SELECT|, false, \d+ ?\)/);
+      expect(seed, `${name} is seeded ${gated ? 'ungated' : 'gated'}`).toMatch(gated ? /, true, \(SELECT|, true, \d+ ?\)/ : /, false, \(SELECT|, false, NULL,|, false, \d+ ?\)/);
+    }
+  });
+
+  it('every seeded source declares the scheme of its ids in 01-schema.sql (ADR-0198)', () => {
+    // The column has no default: a seed that left it out would fail on a fresh
+    // database, and one that named the wrong scheme would hold its records to
+    // the wrong shape. The World Heritage list knows a property by its number
+    // and a component by its reference; every other seeded source is a
+    // Wikidata one.
+    for (const seed of sourceSeeds) {
+      const name = /VALUES \( (?:\d+, )?'([^']+)'/.exec(seed)![1];
+      const schemes: Record<string, string> = { 'UNESCO World Heritage Sites': 'whc-site', 'World Heritage components': 'whc-component' };
+      const scheme = schemes[name] ?? 'wikidata';
+      expect(seed, `${name} declares no id scheme`).toContain('kind_id, id_scheme)');
+      expect(seed, `${name} is seeded under another scheme`).toContain(`, '${scheme}' ) ON CONFLICT`);
     }
   });
 
@@ -902,22 +918,30 @@ describe('a kind and a membership exist in both schema homes', () => {
     expect(schema).toContain(addColumn);
     expect(splitMigration).toContain(addColumn);
     expect(createTable(schema, 'experience_sources')).toContain('kind_id INTEGER REFERENCES experience_kinds(id)');
+    // A source fills a kind, but one whose records place a part in a whole
+    // (ADR-0198): migration 046 required the kind, and the schema file now
+    // holds a source to one or the other.
     for (const seed of sourceSeeds) {
       expect(seed).toContain('kind_id');
-      expect(seed).toMatch(/\(SELECT id FROM experience_kinds WHERE name = '[^']+'\)/);
+      expect(seed).toMatch(/\(SELECT id FROM experience_kinds WHERE name = '[^']+'\)|, NULL, 'whc-component' \)/);
     }
-    for (const sql of [schema, splitMigration]) {
-      expect(sql).toContain('ALTER TABLE experience_sources ALTER COLUMN kind_id SET NOT NULL');
-    }
+    expect(splitMigration).toContain('ALTER TABLE experience_sources ALTER COLUMN kind_id SET NOT NULL');
+    expect(schema).toContain(
+      "CHECK ((kind_id IS NULL) = (id_scheme IN ('whc-component', 'wikidata-statement', 'curator')))",
+    );
   });
 
   it('both files declare the membership table with the same key', () => {
     // One membership per (place, kind): the row a merge moves (ADR-0046
-    // decision 5) and a kind's count counts (decision 8).
+    // decision 5) and a kind's count counts (decision 8). The schema file's
+    // kind is nullable since a record may place its place in a whole instead
+    // (ADR-0198), which a check holds to one of the two.
+    expect(membershipTable(splitMigration)).toContain('kind_id INTEGER NOT NULL REFERENCES experience_kinds(id)');
+    expect(membershipTable(schema)).toContain('kind_id INTEGER REFERENCES experience_kinds(id)');
+    expect(membershipTable(schema)).toContain('CONSTRAINT source_records_kind_or_whole CHECK (num_nonnulls(kind_id, whole_id) = 1)');
     for (const sql of [schema, splitMigration]) {
       const table = membershipTable(sql);
       expect(table).toContain('experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE');
-      expect(table).toContain('kind_id INTEGER NOT NULL REFERENCES experience_kinds(id)');
       expect(table).toContain('source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE');
       expect(table).toContain("admission VARCHAR(10) NOT NULL DEFAULT 'admitted' CHECK (admission IN ('admitted', 'refused'))");
       expect(table).toContain("curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb");

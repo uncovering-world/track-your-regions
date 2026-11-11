@@ -15,7 +15,8 @@ import {
   placeAdmittedSql,
   placeOfferedSql,
   placeVisibleSql,
-  realKindSql,
+  componentRecordSql,
+  kindRecordSql,
 } from './membership.js';
 
 const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
@@ -28,16 +29,17 @@ describe('the membership-level predicates', () => {
     expect(membershipVisibleSql('x')).toBe("x.curation_state <> 'pending'");
   });
 
-  it('compose the offered one from the two, on the same alias, in a real kind', () => {
-    expect(membershipOfferedSql('x')).toBe(`${membershipAdmittedSql('x')} AND ${membershipVisibleSql('x')} AND ${realKindSql('x')}`);
+  it('compose the offered one from the two, on the same alias, in a kind', () => {
+    expect(membershipOfferedSql('x')).toBe(`${membershipAdmittedSql('x')} AND ${membershipVisibleSql('x')} AND ${kindRecordSql('x')}`);
   });
 
-  it('leave a virtual kind out of the offered one only, since a reader negates the other two (ADR-0156)', () => {
-    // NOT admitted reads as refused and NOT visible as unread: a membership of
-    // World Heritage components is neither, so neither may say it is.
-    expect(membershipAdmittedSql('x')).not.toContain('is_virtual');
-    expect(membershipVisibleSql('x')).not.toContain('is_virtual');
-    expect(realKindSql('x')).toBe('x.kind_id IN (SELECT real_kind.id FROM experience_kinds real_kind WHERE NOT real_kind.is_virtual)');
+  it('leave a record in a whole out of the offered one only, since a reader negates the other two (ADR-0198)', () => {
+    // NOT admitted reads as refused and NOT visible as unread: a part's record
+    // of World Heritage components is neither, so neither may say it is.
+    expect(membershipAdmittedSql('x')).not.toContain('kind_id');
+    expect(membershipVisibleSql('x')).not.toContain('kind_id');
+    expect(kindRecordSql('x')).toBe('x.kind_id IS NOT NULL');
+    expect(componentRecordSql('x')).toBe('x.source_id = 10 AND x.whole_id IS NOT NULL');
   });
 });
 
@@ -53,7 +55,7 @@ describe('the place-level predicates', () => {
 
   it('ask it of a real kind, once, so a part offers nothing by its record in World Heritage components (ADR-0156)', () => {
     for (const fragment of [placeAdmittedSql('e'), placeVisibleSql('e'), placeOfferedSql('e')]) {
-      expect(collapse(fragment).split(realKindSql('km'))).toHaveLength(2);
+      expect(collapse(fragment).split(kindRecordSql('km'))).toHaveLength(2);
     }
   });
 

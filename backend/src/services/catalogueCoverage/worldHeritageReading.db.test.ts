@@ -54,7 +54,7 @@ beforeEach(async () => {
     `INSERT INTO experiences (id, source_id, external_id, name, location) VALUES ($1, 1, 'part:9981-003', 'Fixture Bridge', ST_SetSRID(ST_MakePoint(10, 10), 4326))`,
     [PART],
   );
-  await pool.query(`INSERT INTO experience_parts (whole_id, part_id, reason, membership_id) VALUES ($1, $2, 'component', $3)`, [SITE, PART, membership]);
+  await pool.query(`INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref) VALUES ($1, $2, 'component', $3, '9981-003')`, [SITE, PART, membership]);
   await point(PART, '9981-003', 'Fixture Bridge');
   // A component under a renumbered reference, and one whose point a merge
   // folded into the point another kind's place keeps (ADR-0088 decision 3).

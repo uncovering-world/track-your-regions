@@ -97,7 +97,7 @@ describe('a source\'s point within ten metres of a point a reader sees (#1846)',
     // UNESCO shows two points 3 m apart; Archaeology offers two, 0 m and 1 m
     // from the first. Both are nearest the first: one takes it, and the other
     // takes the second rather than being written beside them.
-    const second = { externalRef: '775-b', name: 'Second component', lon: UNESCO_POINT.lon + 0.0000326, lat: UNESCO_POINT.lat };
+    const second = { externalRef: '775-003', name: 'Second component', lon: UNESCO_POINT.lon + 0.0000326, lat: UNESCO_POINT.lat };
     await writeExperienceLocations(DOME, [UNESCO_POINT, second], { syncLogId: null, sourceId: unesco });
     await pool.query("UPDATE experience_locations SET curation_state = 'verified' WHERE experience_id = $1 AND curation_state = 'pending'", [DOME]);
     const result = await writeExperienceLocations(DOME, [
@@ -226,7 +226,7 @@ describe('a source\'s point within ten metres of a point a reader sees (#1846)',
   it('writes a point farther than ten metres as a point of its own on a place of several points', async () => {
     // A second UNESCO component: the place stands on two points, and the
     // ten metres decide (ADR-0137).
-    const second = { externalRef: '775-b', name: 'A second component', lon: UNESCO_POINT.lon + 0.01, lat: UNESCO_POINT.lat };
+    const second = { externalRef: '775-003', name: 'A second component', lon: UNESCO_POINT.lon + 0.01, lat: UNESCO_POINT.lat };
     await writeExperienceLocations(DOME, [UNESCO_POINT, second], { syncLogId: null, sourceId: unesco });
     await pool.query("UPDATE experience_locations SET curation_state = 'verified' WHERE experience_id = $1 AND curation_state = 'pending'", [DOME]);
     const farther = { ...WIKIDATA_POINT, lat: UNESCO_POINT.lat + 0.00018 };

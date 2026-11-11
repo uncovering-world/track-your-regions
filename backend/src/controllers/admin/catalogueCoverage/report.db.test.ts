@@ -134,9 +134,9 @@ const entry = (slug: string, over: Partial<CoverageExpectation>): CoverageExpect
 });
 
 async function files(): Promise<CoverageFiles> {
-  // The register holds the kinds a traveller browses: never a virtual one (ADR-0156).
+  // The register holds the kinds a traveller browses, and a part's record is in no kind (ADR-0198).
   const { rows } = await pool.query<{ id: number; name: string }>(
-    'SELECT id, name FROM experience_kinds WHERE NOT is_virtual ORDER BY id',
+    'SELECT id, name FROM experience_kinds ORDER BY id',
   );
   const proposed = { status: 'proposed', experience_kind_id: null, issue: null, vision: null, in_venue: false } as const;
   return {

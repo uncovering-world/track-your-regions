@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../db/index.js', () => ({ pool: { query: vi.fn() } }));
 
-import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, realKindSql } from '../../../db/membership.js';
+import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, kindRecordSql } from '../../../db/membership.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
@@ -723,7 +723,7 @@ describe('the statements', () => {
 
   it('call a place shadowed when a kind admits it and crowds it out (ADR-0172), and read the display rule and the type from the kind and the filing', () => {
     const sql = collapse(coverageSql.MATCHES_SQL);
-    expect(sql).toContain(collapse(`(${membershipAdmittedSql('m')} AND ${membershipVisibleSql('m')} AND ${realKindSql('m')} AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}) AS shadowed`));
+    expect(sql).toContain(collapse(`(${membershipAdmittedSql('m')} AND ${membershipVisibleSql('m')} AND ${kindRecordSql('m')} AND ${hideLostSql('e')} AND ${membershipCrowdedSql('m')}) AS shadowed`));
     expect(sql).toContain('false AS shadowed');
     expect(collapse(coverageSql.KINDS_SQL)).toContain('(SELECT k.crowding_limit FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_limit');
     expect(collapse(coverageSql.KINDS_SQL)).toContain('(SELECT k.crowding_radius_km FROM experience_kinds k WHERE k.id = ck.experience_kind_id) AS crowding_radius_km');

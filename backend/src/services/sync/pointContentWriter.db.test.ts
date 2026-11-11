@@ -80,8 +80,8 @@ const articles = async () => (await pool.query<{ external_ref: string; article: 
 beforeEach(async () => {
   await clear();
   const source = await pool.query<{ id: number }>(
-    `INSERT INTO experience_sources (name, description, display_priority, requires_curation, kind_id)
-     SELECT $1, 'A gated source for this test', 99, true, kind_id FROM experience_sources
+    `INSERT INTO experience_sources (name, description, display_priority, requires_curation, kind_id, id_scheme)
+     SELECT $1, 'A gated source for this test', 99, true, kind_id, id_scheme FROM experience_sources
       WHERE name = 'UNESCO World Heritage Sites' RETURNING id`,
     [SOURCE_NAME],
   );

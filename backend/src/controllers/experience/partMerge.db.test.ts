@@ -141,7 +141,7 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
 
     const record = await pool.query<{ name: string; lon: number }>(
       `SELECT reported_name AS name, ST_X(reported_location) AS lon FROM source_records
-        WHERE experience_id = $1 AND kind_id = 10`, [COMPLEX],
+        WHERE experience_id = $1 AND source_id = 10 AND whole_id IS NOT NULL`, [COMPLEX],
     );
     expect(record.rows).toEqual([{ name: 'Temple of Amun-Ra at Karnak', lon: KARNAK.lon + 0.0001 }]);
   });
@@ -247,14 +247,14 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
       // The site keeps its part under the same reference, and the part now holds
       // the arrival, still waiting for a curator: the resolver's state (ADR-0143).
       expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: templeId });
-      // Beside its record in World Heritage components, which it keeps (ADR-0156).
+      // Beside its record in its whole, under the component's reference, which it keeps (ADR-0198).
       const held = await pool.query<{ curation_state: string; external_id: string }>(
         `SELECT curation_state, external_id FROM source_records
           WHERE experience_id = $1 ORDER BY kind_id`, [templeId],
       );
       expect(held.rows).toEqual([
         { curation_state: 'pending', external_id: ITEM },
-        { curation_state: 'auto', external_id: expect.stringMatching(/^component:\d+$/) },
+        { curation_state: 'auto', external_id: KARNAK.externalRef },
       ]);
     });
 

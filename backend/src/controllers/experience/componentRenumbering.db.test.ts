@@ -146,6 +146,20 @@ describe('a renumbered list keeps one part per component (#2182)', () => {
     expect(after.get(KARABASTAU.name)!.points.map(p => p.missing)).toEqual([true]);
   });
 
+  it('keeps two records under 1490-003 in the site, the dropped Karabastau area\'s and the renumbered Boraldaitau area\'s (ADR-0198)', async () => {
+    await writeExperienceLocations(SITE, AFTER, run);
+    const after = await parts();
+
+    // A reference is not a record's key: the list gave 1490-003 to the Karabastau
+    // area and now gives it to the Boraldaitau area, two places, each its own record.
+    const records = await pool.query<{ experience_id: number; external_id: string }>(
+      `SELECT experience_id, external_id FROM source_records
+        WHERE whole_id = $1 AND source_id = 10 AND external_id = '1490-003' ORDER BY experience_id`, [SITE],
+    );
+    expect(records.rows.map(row => row.experience_id))
+      .toEqual([after.get(KARABASTAU.name)!.part_id, after.get(BORALDAITAU.name)!.part_id].sort((a, b) => a - b));
+  });
+
   it('asks about a moved component as moved, with its new number, and about the dropped one as gone', async () => {
     await writeExperienceLocations(SITE, AFTER, run);
 

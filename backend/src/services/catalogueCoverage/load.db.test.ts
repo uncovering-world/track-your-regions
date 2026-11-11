@@ -20,7 +20,7 @@ const SLUGS: Record<number, string> = {
 /** A live record for every kind the catalogue has, under the catalogue's own names. */
 async function liveKinds(): Promise<CoverageFiles['kinds']> {
   const { rows } = await pool.query<{ id: number; name: string }>(
-    'SELECT id, name FROM experience_kinds WHERE NOT is_virtual ORDER BY id',
+    'SELECT id, name FROM experience_kinds ORDER BY id',
   );
   return rows.map(row => ({
     slug: SLUGS[row.id] ?? `kind-${row.id}`, name: row.name, form: 'place', definition: `${row.name}.`, status: 'live',
