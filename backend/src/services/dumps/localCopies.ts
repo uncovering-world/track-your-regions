@@ -46,8 +46,9 @@ export function copyOf(name: string): Copy | null {
  * file of, with their leftovers. Only a dump a newer file replaces has
  * copies to remove (`datedBy: 'day'`): the monthly pageview files are twelve
  * different months, which readership reads together (ADR-0055 decision 1),
- * and none of them is an older copy of another; readership's build removes
- * each once its month is kept (`retiredCopies`, #1436). `isFileName` is the
+ * and none of them is an older copy of another; readership's build keeps the
+ * current year's twelve and removes only a month past them, or an earlier
+ * year's month once kept (`retiredCopies`, #1436, #2415). `isFileName` is the
  * catalog's test for the dump's files.
  */
 export async function olderCopies(dir: string, fileName: string, isFileName: (name: string) => boolean): Promise<string[]> {
