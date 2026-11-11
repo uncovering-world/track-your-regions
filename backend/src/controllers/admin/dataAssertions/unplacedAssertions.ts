@@ -197,5 +197,53 @@ const offeredPlaceInNoRegion: CatalogueAssertion = {
   },
 };
 
+/**
+ * A place's automatic region row its points no longer give, a row they give
+ * that the place lacks, or a row whose listing says otherwise.
+ *
+ * Nothing writes a place's automatic rows but `refresh_place_regions()`, which
+ * placement and the triggers on a point's state and a part relation call
+ * (ADR-0197); a write that skipped them (a trigger disabled for a bulk load,
+ * placement failing after its point rows) leaves a place listed where its
+ * points are not, or missing where they are. The expected rows are the
+ * refresh's own (`place_regions_expected()`) over every place it covers
+ * (`places_with_regions()`). A curator's manual row is never out of step.
+ */
+const placeRegionsOutOfStep: CatalogueAssertion = {
+  id: 'place-regions-out-of-step',
+  area: 'regions',
+  title: 'A place whose regions no longer match its points',
+  kind: 'invariant',
+  meaning:
+    'The regions this place is listed in no longer match where its points lie, or what readers may see '
+    + 'of them. A change skipped the update that keeps the two together. Running Region Assignment for '
+    + 'the world view brings them back.',
+  sql: `WITH expected AS (
+          SELECT x.experience_id, x.region_id, x.listing
+            FROM place_regions_expected(places_with_regions()) x
+        )
+        SELECT COALESCE(x.experience_id, er.experience_id) AS experience_id,
+               e.name AS experience_name,
+               r.name AS region_name,
+               x.listing AS expected_listing,
+               er.listing AS held_listing
+          FROM expected x
+          FULL JOIN experience_regions er
+            ON er.experience_id = x.experience_id AND er.region_id = x.region_id
+          JOIN experiences e ON e.id = COALESCE(x.experience_id, er.experience_id)
+          JOIN regions r ON r.id = COALESCE(x.region_id, er.region_id)
+         WHERE er.experience_id IS NULL
+            OR (er.assignment_type IS DISTINCT FROM 'manual'
+                AND (x.experience_id IS NULL OR x.listing IS DISTINCT FROM er.listing))
+         ORDER BY e.name, r.name`,
+  describe: row => {
+    const held = { '': 'is not listed', offered: 'is listed for readers' }[text(row, 'held_listing')]
+      ?? 'is listed for curators only';
+    const expected = { '': 'its points do not put it there', offered: 'its points list it for readers' }[
+      text(row, 'expected_listing')] ?? 'its points list it for curators only';
+    return `${text(row, 'experience_name')} in ${text(row, 'region_name')} ${held}, but ${expected} `
+      + `(experience ${count(row, 'experience_id')})`;
+  },
+};
 
-export const unplacedAssertions: CatalogueAssertion[] = [heldByNoRegion, offeredPlaceInNoRegion];
+export const unplacedAssertions: CatalogueAssertion[] = [heldByNoRegion, offeredPlaceInNoRegion, placeRegionsOutOfStep];

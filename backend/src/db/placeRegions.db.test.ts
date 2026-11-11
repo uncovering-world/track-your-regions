@@ -6,6 +6,7 @@ import { MEMBERSHIPS } from './membership.js';
 import { assignExperiencesToRegions, assignRegionsForExperiences } from '../services/sync/regionAssignmentService.js';
 import { getExperiencesByRegion } from '../controllers/experience/experienceQueryController.js';
 import { getRegionExperienceLocations } from '../controllers/experience/experienceLocationController.js';
+import { unplacedAssertions } from '../controllers/admin/dataAssertions/unplacedAssertions.js';
 import { experiencesByRegionQuerySchema, regionLocationsQuerySchema } from '../types/index.js';
 
 /**
@@ -485,5 +486,21 @@ describe("a place's regions (ADR-0197)", () => {
 
     expect(progress.status).toBe('complete');
     expect(await Promise.all(PLACES.map(rows))).toEqual(before);
+  });
+
+  it('is nothing the out-of-step check reports, until a row is changed by hand', async () => {
+    const check = unplacedAssertions.find(a => a.id === 'place-regions-out-of-step');
+    expect(check).toBeDefined();
+    const fixtureRows = async () => (await pool.query(check!.sql)).rows
+      .filter(row => PLACES.includes(Number(row.experience_id)));
+
+    expect(await fixtureRows()).toEqual([]);
+
+    await pool.query(
+      `UPDATE experience_regions SET listing = 'scope' WHERE experience_id = $1 AND region_id = $2`, [MUSEUM, LEAF_A],
+    );
+    expect(await fixtureRows()).toEqual([expect.objectContaining({
+      experience_id: MUSEUM, region_name: 'Leaf A', expected_listing: 'offered', held_listing: 'scope',
+    })]);
   });
 });

@@ -98,3 +98,32 @@ describe('a place no region holds', () => {
     })).toBe('Beaches of the D-Day Landings — Gold Beach: on offer and in no region (location 7042)');
   });
 });
+
+describe("a place's region row its points no longer give", () => {
+  const assertion = byId('place-regions-out-of-step');
+  const sql = collapse(assertion.sql);
+
+  it("compares the rows with the refresh's own, over every place it covers (ADR-0197)", () => {
+    expect(sql).toContain('FROM place_regions_expected(places_with_regions()) x');
+    expect(sql).toContain('FULL JOIN experience_regions er');
+  });
+
+  it("never reports a curator's manual row", () => {
+    expect(sql).toContain("er.assignment_type IS DISTINCT FROM 'manual'");
+  });
+
+  it('says in words who finds the place there now, and who its points say should', () => {
+    expect(assertion.describe({
+      experience_id: 38881, experience_name: 'Park Güell', region_name: 'Catalonia',
+      expected_listing: 'offered', held_listing: null,
+    })).toBe('Park Güell in Catalonia is not listed, but its points list it for readers (experience 38881)');
+    expect(assertion.describe({
+      experience_id: 9645, experience_name: 'A museum', region_name: 'Leaf A',
+      expected_listing: 'offered', held_listing: 'scope',
+    })).toBe('A museum in Leaf A is listed for curators only, but its points list it for readers (experience 9645)');
+    expect(assertion.describe({
+      experience_id: 37452, experience_name: 'Monastery of Haghpat', region_name: 'Lori',
+      expected_listing: null, held_listing: 'offered',
+    })).toBe('Monastery of Haghpat in Lori is listed for readers, but its points do not put it there (experience 37452)');
+  });
+});
