@@ -5537,7 +5537,14 @@ the line it writes whoever the claimed line lists (`withSubjectsOnOneLine` in
 reading Vishnu and Garuda as commemorated writes *Commemorates: Garuda*, and on an arrival that
 waits for a curator, which a run writes directly, too. Publishing a held line, from the review card
 or by accepting the source, does the same against the line it leaves (`keepSubjectsOnOneLine` in
-`subjectLines.ts`, over `onBothLines` in `@tyr/shared/commemorates`). The dialog's two lists open only once the stored ones are read, and
+`subjectLines.ts`, over `onBothLines` in `@tyr/shared/commemorates`). Where the same held change
+still proposes the other line and that answer is open, the line is read as the change proposes it,
+so publishing the two one at a time leaves what publishing them together does (#2476): Republic
+Monument's *Depicts*, published before its *Commemorates* moved from its five figures to Atatürk,
+keeps the four others. A line a curator claimed is read as the curator's, since no publish writes it.
+One order still matters: a line published while its twin is open, and the twin's change then
+declined, leaves the place's older twin beside it, since a decline writes no metadata; a subject can
+then stand on both lines until a curator edits one, which `refuseSubjectOnBothLines` then asks for. The dialog's two lists open only once the stored ones are read, and
 its *Depicts* field also shows where a reading source holds the place still waiting for a curator. An emptied *Depicts* is stored as an empty curator's list,
 which `depictsOf` keeps, as `commemoratesOf` keeps one: the work shows no named figure.
 
