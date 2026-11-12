@@ -129,11 +129,11 @@ describe('adding a place to a kind', () => {
     expect((await standings()).addable.map(kind => kind.kindId)).not.toContain(publicArt.kind_id);
   });
 
-  it('keeps its own key on a place that carries no Wikidata item', async () => {
+  it("takes a curator's key on a place that carries no Wikidata item and whose own key fits no scheme", async () => {
     await pool.query('UPDATE source_records SET external_id = $2 WHERE experience_id = $1', [GALLERY, 'curator-1-1']);
     const { result } = await add({ kindId: publicArt.kind_id, type: 'street-art' });
     const row = (await pool.query('SELECT external_id FROM source_records WHERE id = $1', [result!.membershipId])).rows[0];
-    expect(row.external_id).toBe(`${QID}-${GALLERY}`);
+    expect(row.external_id).toMatch(new RegExp(`^curator-${adminId}-[0-9]+$`));
   });
 
   it('claims no type when none was given, so a run that lists the place may file one', async () => {
