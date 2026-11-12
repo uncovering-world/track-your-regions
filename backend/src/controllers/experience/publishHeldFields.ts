@@ -28,7 +28,7 @@ import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelec
 import type { PoolClient } from 'pg';
 import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
 import { tidyLabel } from '@tyr/shared/labels';
-import { keepSubjectsOnOneLine } from './subjectLines.js';
+import { keepSubjectsOnOneLine, SUBJECT_LINES, type OpenLines } from './subjectLines.js';
 
 /** One entry of a run's `changed_fields`, as the changeset stores it. */
 export interface ProposedField {
@@ -575,6 +575,18 @@ function objectRow(field: string): HeldRowRef {
 }
 
 /**
+ * The subject lines this proposal still holds open beyond what this call
+ * publishes, as it proposes them (#2476). A line a curator claimed is not
+ * among them: no publish writes it, so the curator's list is the one that stays.
+ */
+function openLines(open: ProposedField[], selected: ProposedField[], claimed: string[]): OpenLines {
+  return Object.fromEntries(open
+    .filter(field => !selected.includes(field) && (SUBJECT_LINES as readonly string[]).includes(field.field)
+      && !claimed.includes(claimKeyFor(field.field)))
+    .map(field => [field.field, field.new]));
+}
+
+/**
  * Turn the run's held proposal into assignments, deciding what to skip.
  *
  * Reads the changeset inside the caller's transaction, under the lock the caller
@@ -699,7 +711,7 @@ export async function heldFieldWrites(
     writes.applied.includes('imageUrl'),
   );
   const next = nextMetadata(before.metadata, writable, claimed, pin);
-  const metadata = next && keepSubjectsOnOneLine(next, writable.map(field => field.field));
+  const metadata = next && keepSubjectsOnOneLine(next, writable.map(field => field.field), openLines(open, selected, claimed));
   if (metadata !== null) {
     writes.assignments.push(`metadata = ${bind(JSON.stringify(metadata))}::jsonb`);
     writes.applied.push(...writable.filter(field => isMetadataField(field.field) && !isKindFactField(field.field))
