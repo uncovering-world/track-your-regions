@@ -19,7 +19,7 @@ import { Box, ButtonBase, Chip, Stack, Tooltip, Typography } from '@mui/material
 import type { CrowdingAnswer, CrowdingGroupPlace } from '../../../api/crowding';
 import { AnswerButtons } from './AnswerButtons';
 import { drawnStanding, listPart, type DrawnStanding, type Staging } from './crowdingStaging';
-import { FigureCells, FigureHeadings, HOVERED_TINT, stickyName } from './FigureTable';
+import { FigureCells, FigureHeadings, HOVERED_TINT, stickyName, VenueCreditLine, type FigureColumns } from './FigureTable';
 import { PlaceCell } from './PlaceCell';
 import { nounOf, placeNote, whyWords, type RuleWords } from './rowWords';
 
@@ -46,7 +46,7 @@ const MOVED_WORDS: Record<DrawnStanding, string> = {
   refused: '→ not taken',
 };
 
-function Row({ place, rank, first, rule, typeExempt, staging, hovered, onHover, onOpen, onAnswer }: {
+function Row({ place, rank, first, rule, typeExempt, staging, columns, hovered, onHover, onOpen, onAnswer }: {
   place: CrowdingGroupPlace;
   /** Its place in the group's fame order, from one. */
   rank: number;
@@ -54,6 +54,8 @@ function Row({ place, rank, first, rule, typeExempt, staging, hovered, onHover, 
   rule: RuleWords;
   typeExempt: boolean;
   staging: Staging;
+  /** The table's columns: the fame and score, and the venues where the kind keeps them. */
+  columns: FigureColumns;
   hovered: boolean;
   onHover: (membershipId: number | null) => void;
   onOpen: (membershipId: number) => void;
@@ -101,7 +103,7 @@ function Row({ place, rank, first, rule, typeExempt, staging, hovered, onHover, 
             </Box>
           </PlaceCell>
         </Box>
-        <FigureCells signals={place} />
+        <FigureCells columns={columns} signals={place} />
       </Box>
     </Tooltip>
   );
@@ -115,7 +117,7 @@ function Row({ place, rank, first, rule, typeExempt, staging, hovered, onHover, 
  * of its part. There the part's words wrap within the rows' rank and name
  * tracks, so each heading stands over its column whatever the words' length.
  */
-function Part({ words, children }: { words: string; children: ReactNode }) {
+function Part({ words, columns, children }: { words: string; columns: FigureColumns; children: ReactNode }) {
   return (
     <Box role="rowgroup" aria-label={words}>
       <Box role="row" sx={{
@@ -127,19 +129,21 @@ function Part({ words, children }: { words: string; children: ReactNode }) {
         <Box role="columnheader" sx={{ flex: { xs: `0 0 ${HEADER_WIDTH_XS}`, sm: '1 1 0' }, minWidth: 0 }}>
           <Typography variant="subtitle2" component="h3">{words}</Typography>
         </Box>
-        <FigureHeadings />
+        <FigureHeadings columns={columns} />
       </Box>
       {children}
     </Box>
   );
 }
 
-export function RegionList({ places, rule, typeExempt, staging, hovered, onHover, onOpen, onAnswer }: {
+export function RegionList({ places, rule, typeExempt, staging, columns, hovered, onHover, onOpen, onAnswer }: {
   /** The group's places, best known first. */
   places: readonly CrowdingGroupPlace[];
   rule: RuleWords;
   typeExempt: boolean;
   staging: Staging;
+  /** The table's columns: the fame and score, and the venues where the kind keeps them. */
+  columns: FigureColumns;
   hovered: number | null;
   onHover: (membershipId: number | null) => void;
   /** A place's name clicked: its own circle opens. */
@@ -161,6 +165,7 @@ export function RegionList({ places, rule, typeExempt, staging, hovered, onHover
       rank={rank}
       first={rank === 1}
       rule={rule}
+      columns={columns}
       typeExempt={typeExempt}
       staging={staging}
       hovered={hovered === place.membershipId}
@@ -174,7 +179,7 @@ export function RegionList({ places, rule, typeExempt, staging, hovered, onHover
   return (
     <Box component="section" aria-label="The region's list" sx={{ overflowX: { xs: 'auto', sm: 'visible' } }}>
       <Box role="table" aria-label="The region's places and their figures" sx={{ minWidth: { xs: 'max-content', sm: 0 } }}>
-        <Part words={`On the region page · ${onPage}${arrivingWords} — best known first`}>
+        <Part words={`On the region page · ${onPage}${arrivingWords} — best known first`} columns={columns}>
           {page.length === 0 && (
             <Box role="row">
               <Typography role="cell" variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
@@ -184,8 +189,9 @@ export function RegionList({ places, rule, typeExempt, staging, hovered, onHover
           )}
           {page.map(row)}
         </Part>
-        {tail.length > 0 && <Part words={`Shadowed · ${tail.length}, in the list’s tail`}>{tail.map(row)}</Part>}
+        {tail.length > 0 && <Part words={`Shadowed · ${tail.length}, in the list’s tail`} columns={columns}>{tail.map(row)}</Part>}
       </Box>
+      <VenueCreditLine columns={columns} />
     </Box>
   );
 }

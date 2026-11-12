@@ -23,6 +23,7 @@ export function squarePlace(over: Partial<CrowdingGroupPlace> & Pick<CrowdingGro
     wikipediaEditions: 17,
     guideUsed: true,
     score: 0.5,
+    venues: null,
     standing: 'shown',
     crowded: false,
     outrankedBy: null,
@@ -65,7 +66,7 @@ export const ALEXANDERPLATZ_LOOK: Pick<CrowdingGroupPlace, 'wikipediaUrl' | 'ima
 export const berlinSquares: CrowdingGroupPlace[] = [
   ...LISTED.map((name, index) => squarePlace({
     membershipId: index + 1, name, score: 0.95 - index * 0.02,
-    ...(index === 0 ? { ...ALEXANDERPLATZ_LOOK, readers: 209401, wikipediaEditions: 47 } : {}),
+    ...(index === 0 ? { ...ALEXANDERPLATZ_LOOK, readers: 209401, wikipediaEditions: 47, venues: { figure: 64, per100m: false } } : {}),
   })),
   squarePlace({
     membershipId: FRANKFURTER_TOR, name: 'Frankfurter Tor', score: 0.74, outrankedBy: 10, betterKnown: TOP_THREE,
@@ -80,7 +81,7 @@ export const berlinSquares: CrowdingGroupPlace[] = [
   squarePlace({ membershipId: ROSA_LUXEMBURG_PLATZ, name: 'Rosa-Luxemburg-Platz', score: 0.71, standing: 'new' }),
   squarePlace({
     membershipId: SCHLOSSPLATZ, name: 'Schloßplatz', score: 0.7, outrankedBy: 13, betterKnown: TOP_THREE,
-    standing: 'new', crowded: true, ruleCrowded: true,
+    standing: 'new', crowded: true, ruleCrowded: true, venues: { figure: 3, per100m: false },
   }),
   squarePlace({ membershipId: KULTURFORUM, name: 'Kulturforum', score: 0.6, holdsWorks: true, pinnable: false }),
 ];
@@ -88,17 +89,17 @@ export const berlinSquares: CrowdingGroupPlace[] = [
 /** Berlin's squares as its region page shows them. */
 export const berlinGroup: CrowdingGroup = {
   group: { regionId: 7, regionName: 'Berlin', kindId: 9, type: 'square' },
-  kind: { id: 9, name: 'Squares & streets', limit: 10, radiusKm: 10 },
+  kind: { id: 9, name: 'Squares & streets', limit: 10, radiusKm: 10, readsVenues: true, venueRadiusM: 200 },
   typeExempt: false,
   places: berlinSquares,
   truncated: false,
 };
 
 function around(place: CrowdingGroupPlace, compared: boolean, distanceM: number): CrowdingAroundPlace {
-  const { membershipId, experienceId, name, latitude, longitude, standing, readers, wikipediaEditions, guideUsed, score } = place;
+  const { membershipId, experienceId, name, latitude, longitude, standing, readers, wikipediaEditions, guideUsed, score, venues } = place;
   return {
     membershipId, experienceId, name, latitude, longitude, standing, distanceM, compared,
-    readers, wikipediaEditions, guideUsed, score, holdsWorks: false, pin: null,
+    readers, wikipediaEditions, guideUsed, score, venues, holdsWorks: false, pin: null,
   };
 }
 
