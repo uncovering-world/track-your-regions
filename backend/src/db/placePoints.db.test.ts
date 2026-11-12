@@ -2,14 +2,15 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import { anchorToItsPoint, lockExperience } from './experienceWriter.js';
 import { setPointVerdict } from '../controllers/experience/experienceLocationWriter.js';
-import { pointsShownSql, someoneVisitedPointSql } from './placePoints.js';
+import { pointsShownSql } from './placePoints.js';
+import { someoneVisitedPointSql } from './visits.js';
 import { getExperienceLocations, getRegionExperienceLocations } from '../controllers/experience/experienceLocationController.js';
 import { editLocation } from '../controllers/experience/locationEditController.js';
 import {
   getExperienceVisitedStatus, getVisitedLocationIds, markAllLocationsVisited, markLocationVisited,
   unmarkAllLocationsVisited, unmarkLocationVisited,
 } from '../controllers/experience/locationVisitController.js';
-import { markVisited, unmarkVisited } from '../controllers/experience/experienceVisitController.js';
+import { getVisitedIds, markVisited, unmarkVisited } from '../controllers/experience/experienceVisitController.js';
 import { getReviewQueue } from '../controllers/experience/reviewQueueController.js';
 import { ReviewQueue } from '../api/responses/reviewQueue.js';
 import { catalogueAssertions } from '../controllers/admin/dataAssertions/catalogueAssertions.js';
@@ -127,7 +128,6 @@ afterAll(async () => {
 const traveller = () => ({ id: userId, role: 'user' }) as Express.User;
 /** The places the traveller holds a visit to, and the points. */
 const HELD = 'SELECT experience_id FROM user_visited_experiences WHERE user_id = $1 ORDER BY experience_id';
-const POINT_VISITS = 'SELECT location_id FROM user_visited_locations WHERE user_id = $1 ORDER BY location_id';
 
 describe("a place's points are its own and its parts' (ADR-0100)", () => {
   it('draws the part on the map under the site, and the part alone nowhere', async () => {
@@ -257,13 +257,12 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     expect(list.experiences.map(e => e.id)).toContain(SITE);
   });
 
-  it('records a tick on the part on the part, counts it on the site, and takes both back (#1428, #1425)', async () => {
+  it('records a tick on the part on the part alone, and the site reads it partly visited (#1428, #2120)', async () => {
     const marked = await markLocationVisited({ params: { locationId: karnakPoint }, body: {}, caller: traveller() });
     expect(marked).toMatchObject({ locationId: karnakPoint, experienceId: KARNAK });
-    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }, { experience_id: KARNAK }]);
-    expect((await pool.query(POINT_VISITS, [userId])).rows).toEqual([]);
+    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: KARNAK }]);
     expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
-      .toMatchObject({ visitedLocations: 1, totalLocations: 2 });
+      .toMatchObject({ visitedStatus: 'partial', visitedLocations: 1, totalLocations: 2 });
 
     await unmarkLocationVisited({ params: { locationId: karnakPoint }, caller: traveller() });
     expect((await pool.query(HELD, [userId])).rows).toEqual([]);
@@ -622,11 +621,14 @@ describe('a part reads as a place (ADR-0100, #1425)', () => {
     await expect(markVisited({ params: { experienceId: KARNAK }, body: {}, caller: traveller() })).rejects.toThrow(/not found/i);
   });
 
-  it('records a visit to the part by its id on the part, cascades it to the site, and clears the site with it', async () => {
+  it('records a visit to the part by its id on the part, which the site reads, and takes it back', async () => {
     await markVisited({ params: { experienceId: KARNAK }, body: {}, caller: traveller() });
-    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }, { experience_id: KARNAK }]);
+    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: KARNAK }]);
     const visited = await getVisitedLocationIds({ query: { experienceId: SITE }, caller: traveller() });
     expect(visited.visitedLocationIds).toEqual([karnakPoint]);
+    const states = await getVisitedIds({ query: {}, caller: traveller() });
+    expect(states.visitedIds.filter(id => id === SITE || id === KARNAK).sort()).toEqual([SITE, KARNAK].sort());
+    expect(states.partialIds.filter(id => id === SITE || id === KARNAK)).toEqual([SITE]);
 
     await unmarkVisited({ params: { experienceId: KARNAK }, caller: traveller() });
     expect((await pool.query(HELD, [userId])).rows).toEqual([]);
@@ -645,43 +647,37 @@ describe('a part reads as a place (ADR-0100, #1425)', () => {
     });
     expect(marked.locationsMarked).toBe(2);
     expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }, { experience_id: KARNAK }]);
-    expect((await pool.query(POINT_VISITS, [userId])).rows).toEqual([{ location_id: luxorPoint }]);
     expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
       .toMatchObject({ visitedStatus: 'visited', visitedLocations: 2 });
 
     const unmarked = await unmarkAllLocationsVisited({ params: { experienceId: SITE }, query: {}, caller: traveller() });
     expect(unmarked.locationsUnmarked).toBe(2);
     expect((await pool.query(HELD, [userId])).rows).toEqual([]);
-    expect((await pool.query(POINT_VISITS, [userId])).rows).toEqual([]);
   });
 
-  it("tells a curator a component's point was visited when the visit is its part's", async () => {
+  it("tells a curator a point was visited when the visit is its own place's", async () => {
     const visited = `SELECT ${someoneVisitedPointSql('el')} AS visited FROM experience_locations el WHERE el.id = $1`;
     expect((await pool.query(visited, [karnakPoint])).rows).toEqual([{ visited: false }]);
     await pool.query('INSERT INTO user_visited_experiences (user_id, experience_id) VALUES ($1, $2)', [userId, KARNAK]);
     expect((await pool.query(visited, [karnakPoint])).rows).toEqual([{ visited: true }]);
-    // A visit to the site is no visit to each of its points.
+    // A visit to the site is a visit to its own point, never to a part's.
+    await pool.query('DELETE FROM user_visited_experiences WHERE user_id = $1', [userId]);
     await pool.query('INSERT INTO user_visited_experiences (user_id, experience_id) VALUES ($1, $2)', [userId, SITE]);
-    expect((await pool.query(visited, [luxorPoint])).rows).toEqual([{ visited: false }]);
+    expect((await pool.query(visited, [luxorPoint])).rows).toEqual([{ visited: true }]);
+    expect((await pool.query(visited, [karnakPoint])).rows).toEqual([{ visited: false }]);
   });
 
   it("watches a part's visit once its point leaves every map, as it watches a point's", async () => {
     await pool.query('INSERT INTO user_visited_experiences (user_id, experience_id) VALUES ($1, $2)', [userId, KARNAK]);
     await pool.query('UPDATE experience_locations SET missing_since = NOW() WHERE id = $1', [karnakPoint]);
     const check = catalogueAssertions.find(a => a.id === 'visits-on-places-no-reader-is-shown');
-    const rows = (await pool.query(check!.sql)).rows.filter(row => row.location_id === karnakPoint);
-    expect(rows).toEqual([expect.objectContaining({ place_name: 'Temple of Karnak', ticks: '1' })]);
+    const rows = (await pool.query(check!.sql)).rows.filter(row => row.experience_id === KARNAK);
+    expect(rows).toEqual([expect.objectContaining({ experience_name: 'Temple of Karnak (parts fixture)', ticks: '1' })]);
   });
 
-  it("takes back a tick a part's point still holds from before its parting", async () => {
-    await pool.query('INSERT INTO user_visited_locations (user_id, location_id) VALUES ($1, $2)', [userId, karnakPoint]);
-    await unmarkLocationVisited({ params: { locationId: karnakPoint }, caller: traveller() });
-    expect((await pool.query(POINT_VISITS, [userId])).rows).toEqual([]);
-  });
-
-  it('marks all of a part by its id as a visit to the site too, and unmarks the site with it', async () => {
+  it('marks all of a part by its id on the part alone, which the site reads, and unmarks it', async () => {
     await markAllLocationsVisited({ params: { experienceId: KARNAK }, query: {}, caller: traveller() });
-    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }, { experience_id: KARNAK }]);
+    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: KARNAK }]);
 
     await unmarkAllLocationsVisited({ params: { experienceId: KARNAK }, query: {}, caller: traveller() });
     expect((await pool.query(HELD, [userId])).rows).toEqual([]);

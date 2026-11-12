@@ -53,15 +53,15 @@
  */
 
 import {
+  claimablePlaceSql,
   experienceOfferedToReaderSql,
   hideLostSql,
   offeredLocationSql,
-  offeredToReaderSql,
   publishedContentSql,
 } from '../../../db/readerPredicates.js';
 import { MEMBERSHIPS, placeHoldsKindSql } from '../../../db/membership.js';
 import {
-  answeringPlaceSql, placePointsSql, pointOfPartSql, pointsShownSql, pointVisitsSql,
+  answeringPlaceSql, pointOfPartSql, pointsShownSql,
 } from '../../../db/placePoints.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { heldFieldRefusedSql, heldPartRefusedSql } from '../../experience/heldDecisions.js';
@@ -314,24 +314,24 @@ const visitsOnPlacesNoReaderIsShown: CatalogueAssertion = {
     'Expected, and accepted by ADR-0022: a visit outlives the source listing the place. Watch the '
     + 'number rather than the rows — a jump means a run took a batch of places off the map, and each '
     + 'one is a record somebody can no longer see.',
-  sql: `SELECT el.id AS location_id,
-               el.name AS place_name,
+  // A visit is a row on the place ticked (#2120). No reader is shown the
+  // place: it is not one a reader may claim (a part through its site,
+  // ADR-0100), or no point it shows, its own or its parts', is offered. A
+  // visit on a place a merge folded is never read and is not counted.
+  sql: `SELECT v.experience_id,
                e.name AS experience_name,
                count(*) AS ticks
-          FROM ${pointVisitsSql()} v
-          JOIN experience_locations el ON el.id = v.location_id
-          JOIN experiences e ON e.id = ${answeringPlaceSql()}
-         -- Shown by no offered place: neither its own nor a site it is part of (ADR-0100).
-         WHERE NOT EXISTS (SELECT 1 FROM ${placePointsSql()} pp
-                             JOIN experiences shower ON shower.id = pp.place_id
-                            WHERE pp.location_id = el.id AND ${offeredToReaderSql('shower')})
-         GROUP BY el.id, el.name, e.name
+          FROM user_visited_experiences v
+          JOIN experiences e ON e.id = v.experience_id AND e.merged_into_id IS NULL
+         WHERE NOT (${claimablePlaceSql('e')}
+                    AND EXISTS (SELECT 1 FROM ${pointsShownSql('e.id', 'sp')}
+                                 WHERE ${offeredLocationSql('sp')} AND ${publishedContentSql('sp')}))
+         GROUP BY v.experience_id, e.name
          ORDER BY count(*) DESC, e.name`,
   describe: row => {
     const ticks = count(row, 'ticks');
-    const place = text(row, 'place_name') || `location ${count(row, 'location_id')}`;
-    return `${text(row, 'experience_name')} — ${place}: `
-      + `${ticks} ${ticks === 1 ? 'visit' : 'visits'} on a place no reader is shown`;
+    return `${text(row, 'experience_name')}: ${ticks} ${ticks === 1 ? 'visit' : 'visits'} on a place `
+      + `no reader is shown (experience ${count(row, 'experience_id')})`;
   },
 };
 

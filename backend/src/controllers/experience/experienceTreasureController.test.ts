@@ -32,7 +32,6 @@ import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 import { userRoutes } from '../../routes/userRoutes.js';
 import { linkKindsSql, membershipOfferedSql } from '../../db/membership.js';
-import { partOfPointSql } from '../../db/placePoints.js';
 
 /** The user routes these specs answer through (ADR-0071). */
 const postViewedTreasure = routeAt(userRoutes, '/me/viewed-treasures/:treasureId', 'post');
@@ -373,14 +372,12 @@ describe('markTreasureViewed auto-mark — #520', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ experienceName: null }));
   });
 
-  it('gates the locations it auto-marks visited, both container and content', async () => {
+  it('marks the venue visited and nothing else: no point of it, no part, no whole (#2120)', async () => {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ id: 3, name: 'Pending Painting' }] }) // treasure lookup
+      .mockResolvedValueOnce({ rows: [{ id: 3, name: 'A painting' }] }) // treasure lookup
       .mockResolvedValueOnce({ rows: [] }) // INSERT INTO user_viewed_treasures
       .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] }) // linkResult: the treasure is linked
-      .mockResolvedValueOnce({ rows: [] }) // INSERT INTO user_visited_experiences
-      .mockResolvedValueOnce({ rows: [] }) // INSERT INTO user_visited_locations (the one under test)
-      .mockResolvedValueOnce({ rows: [] }) // INSERT INTO user_visited_experiences, the parts' points
+      .mockResolvedValueOnce({ rows: [] }) // INSERT INTO user_visited_experiences, the venue
       .mockResolvedValueOnce({ rows: [{ name: 'Museum' }] }); // SELECT name FROM experiences
 
     await answerRoute(postViewedTreasure,
@@ -388,18 +385,10 @@ describe('markTreasureViewed auto-mark — #520', () => {
       makeRes() as never,
     );
 
-    const insertLocations = mockedQuery.mock.calls
-      .map(c => String(c[0]))
-      .find(sql => /INSERT INTO user_visited_locations/.test(sql));
-    expect(insertLocations).toBeDefined();
-    expect(insertLocations).toContain(experienceOfferedToReaderSql('e'));
-    expect(insertLocations).toMatch(/el\.curation_state <> 'pending'/);
-    expect(insertLocations).toContain(`${partOfPointSql()} IS NULL`);
-    // A part's point is visited on the part (ADR-0100), under the same gate.
-    const insertParts = String(mockedQuery.mock.calls[5][0]);
-    expect(insertParts).toContain('INSERT INTO user_visited_experiences');
-    expect(insertParts).toContain(`${partOfPointSql()} IS NOT NULL`);
-    expect(insertParts).toContain(experienceOfferedToReaderSql('e'));
-    expect(insertParts).toMatch(/el\.curation_state <> 'pending'/);
+    const visits = mockedQuery.mock.calls.filter(c => /INSERT INTO user_visited_experiences/.test(String(c[0])));
+    expect(visits).toHaveLength(1);
+    expect(visits[0][1]).toEqual([5, 2]);
+    // The venue read under a share lock, as every visit write reads its place.
+    expect(String(visits[0][0])).toMatch(/e\.merged_into_id IS NULL[\s\S]*FOR SHARE OF e/);
   });
 });

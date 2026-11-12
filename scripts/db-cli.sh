@@ -839,11 +839,10 @@ cmd_status() {
 
         echo ""
         echo -e "${BLUE}Users & activity:${NC}"
-        local user_count visited_regions_count visited_exp_count visited_loc_count viewed_content_count curator_assignment_count
+        local user_count visited_regions_count visited_exp_count viewed_content_count curator_assignment_count
         user_count=$(table_count "$active" "users")
         visited_regions_count=$(table_count "$active" "user_visited_regions")
         visited_exp_count=$(table_count "$active" "user_visited_experiences")
-        visited_loc_count=$(table_count "$active" "user_visited_locations")
         viewed_content_count=$(table_count "$active" "user_viewed_treasures")
         curator_assignment_count=$(table_count "$active" "curator_assignments")
 
@@ -851,7 +850,6 @@ cmd_status() {
         echo "  curator_assignments:      $curator_assignment_count"
         echo "  user_visited_regions:     $visited_regions_count"
         echo "  user_visited_experiences: $visited_exp_count"
-        echo "  user_visited_locations:   $visited_loc_count"
         echo "  user_viewed_treasures:    $viewed_content_count"
 
         if table_exists "$active" "users"; then

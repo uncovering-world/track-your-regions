@@ -51,7 +51,7 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM users WHERE uuid = ANY($1::text[])', [[TWICE, ONCE, CURATOR]]);
 }
 
-async function place(id: number, source: string, visitedPoint: boolean): Promise<number> {
+async function place(id: number, source: string): Promise<number> {
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      SELECT $1, s.id, $2, 'Pantheon (merge fixture)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
@@ -72,9 +72,6 @@ async function place(id: number, source: string, visitedPoint: boolean): Promise
     'INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)',
     [point.rows[0].id, membership.rows[0].id],
   );
-  if (visitedPoint) {
-    await pool.query('INSERT INTO user_visited_locations (user_id, location_id) VALUES ($1, $2)', [onceId, point.rows[0].id]);
-  }
   return point.rows[0].id;
 }
 
@@ -86,8 +83,8 @@ beforeEach(async () => {
     [TWICE, ONCE, CURATOR],
   );
   [twiceId, onceId, curatorId] = users.rows.map(row => row.id);
-  await place(WORSHIP, 'Places of worship', false);
-  await place(SITE, 'Archaeology', true);
+  await place(WORSHIP, 'Places of worship');
+  await place(SITE, 'Archaeology');
   const work = await pool.query<{ id: number }>(
     `INSERT INTO treasures (external_id, name, treasure_type) VALUES ($1, 'Pantheon dome', 'artwork') RETURNING id`,
     [WORK_QID],
@@ -144,15 +141,9 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
       [twiceId, WORSHIP],
     );
     expect(twice.rows[0]).toEqual({ day: '2019-08-10', notes: 'Mass on Sunday\n\nThe oculus at noon', rating: 4 });
-    // The one who marked only the folded row is marked on the place, and on its point.
+    // The one who marked only the folded row is marked on the place.
     const once = await pool.query('SELECT 1 FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2', [onceId, WORSHIP]);
     expect(once.rowCount).toBe(1);
-    const point = await pool.query(
-      `SELECT 1 FROM user_visited_locations v JOIN experience_locations el ON el.id = v.location_id
-        WHERE v.user_id = $1 AND el.experience_id = $2 AND el.merged_into_id IS NULL`,
-      [onceId, WORSHIP],
-    );
-    expect(point.rowCount).toBe(1);
 
     const log = await pool.query<{ curator_id: number | null; action: string }>(
       'SELECT curator_id, action FROM experience_curation_log WHERE experience_id = ANY($1)', [[WORSHIP, SITE]],

@@ -1202,15 +1202,6 @@ export interface UserVisitedExperiencesRow {
   rating: number | null;
 }
 
-/** The table `user_visited_locations`. */
-export interface UserVisitedLocationsRow {
-  id: number;
-  user_id: number;
-  location_id: number;
-  visited_at: Date | null;
-  notes: string | null;
-}
-
 /** The table `user_visited_regions`. */
 export interface UserVisitedRegionsRow {
   id: number;
@@ -1502,7 +1493,6 @@ export const RELATION_SCHEMAS = {
   user_new_badge_views: "public",
   user_viewed_treasures: "public",
   user_visited_experiences: "public",
-  user_visited_locations: "public",
   user_visited_regions: "public",
   users: "public",
   wikidata_cache_policy: "workbench",

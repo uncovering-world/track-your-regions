@@ -25294,6 +25294,10 @@
             "type": "boolean",
             "description": "Its points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5)."
           },
+          "has_parts": {
+            "type": "boolean",
+            "description": "A whole shown by its parts, such as a serial site: its visit is read from its parts, which are ticked one by one, so its row shows the state and ticks nothing (#2120)."
+          },
           "treasure_count": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -25379,6 +25383,7 @@
           "kinds",
           "location_count",
           "cast_points",
+          "has_parts",
           "treasure_count",
           "finds_count",
           "source_membership",
@@ -25705,6 +25710,10 @@
               }
             ],
             "description": "The site this place is a part of (ADR-0100): the Temple of Karnak of Ancient Thebes. A part with no kind of its own is shown under its whole's kind."
+          },
+          "has_own_point": {
+            "type": "boolean",
+            "description": "Whether the place shows a point of its own a reader may see. On a whole, a tick on that point is a visit on the whole itself, as on the point named for the whole of the City of Graz beside its historic centre, so its card offers no separate \"visited, not sure which part\" (#2120)."
           }
         },
         "required": [
@@ -25742,7 +25751,8 @@
           "source_name",
           "source_description",
           "regions",
-          "part_of"
+          "part_of",
+          "has_own_point"
         ],
         "additionalProperties": false,
         "description": "One object, as its own page reads it."
@@ -40445,7 +40455,26 @@
               "type": "integer",
               "minimum": -9007199254740991,
               "maximum": 9007199254740991
-            }
+            },
+            "description": "The objects the reader has visited, wholly or in part."
+          },
+          "partialIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "description": "Those of them visited in part: a serial site with some of its components, or ticked as a whole."
+          },
+          "wholeTickedIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "description": "The wholes the reader ticked as a whole, without naming a part: \"I was there, I don't remember which part\". Not a whole showing a point of its own, where that tick is the point's (#2120)."
           },
           "total": {
             "type": "integer",
@@ -40455,10 +40484,12 @@
         },
         "required": [
           "visitedIds",
+          "partialIds",
+          "wholeTickedIds",
           "total"
         ],
         "additionalProperties": false,
-        "description": "The objects the reader has marked visited."
+        "description": "The objects the reader has visited, and which of them only in part."
       },
       "VisitedLocationIds": {
         "type": "object",

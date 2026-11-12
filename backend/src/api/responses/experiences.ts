@@ -237,6 +237,10 @@ export const Experience = z.strictObject({
   location_count: z.number().int(),
   cast_points: z.boolean()
     .describe('Its points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5).'),
+  has_parts: z.boolean().describe(
+    'A whole shown by its parts, such as a serial site: its visit is read from its parts, which are ticked one by one,'
+    + ' so its row shows the state and ticks nothing (#2120).',
+  ),
   treasure_count: z.number().int().describe('Offered and published links to works.'),
   finds_count: z.number().int()
     .describe('Finds dug up at this place, or taken from it by a confirmed link (#2242), and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row with neither.'),
@@ -360,6 +364,11 @@ export const ExperienceDetail = z.strictObject({
       .describe("The part's own point: the id its whole's card opens it at."),
   }).nullable()
     .describe('The site this place is a part of (ADR-0100): the Temple of Karnak of Ancient Thebes. A part with no kind of its own is shown under its whole\'s kind.'),
+  has_own_point: z.boolean().describe(
+    'Whether the place shows a point of its own a reader may see. On a whole, a tick on that point is a visit on the'
+    + ' whole itself, as on the point named for the whole of the City of Graz beside its historic centre, so its card'
+    + ' offers no separate "visited, not sure which part" (#2120).',
+  ),
 }).describe('One object, as its own page reads it.');
 export type ExperienceDetail = z.infer<typeof ExperienceDetail>;
 

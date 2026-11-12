@@ -33,7 +33,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { claimableToReaderSql, experienceOfferedToReaderSql, experienceShownToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
+import { claimablePlaceSql, claimableToReaderSql, experienceOfferedToReaderSql, experienceShownToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 import { userRoutes } from '../../routes/userRoutes.js';
@@ -113,7 +113,8 @@ function clientSql(client: ReturnType<typeof pinClient>): string[] {
 
 /** The one statement that reads the location table. */
 function locationRead(): string {
-  const reads = sentSql().filter(sql => /FROM experience_locations/i.test(sql));
+  // The read that finds the points, not the write that reads each point's place again.
+  const reads = sentSql().filter(sql => /FROM experience_locations/i.test(sql) && !/INSERT INTO/i.test(sql));
   expect(reads).toHaveLength(1);
   return reads[0];
 }
@@ -292,7 +293,6 @@ describe('a visit outlives the point', () => {
     // else. The visit row itself is never touched; what it means for a place
     // nobody offers any more is a curator's question, not this endpoint's.
     expect(locationRead()).toMatch(/el\.missing_since IS NULL/);
-    expect(locationRead()).not.toMatch(/uvl\.id IS NOT NULL/);
   });
 
   it('marks only the points still on offer when asked to mark them all', async () => {
@@ -335,88 +335,103 @@ describe('a visit outlives the point', () => {
     expect(locationRead()).toMatch(/el\.curation_state <> 'pending'/);
   });
 
-  it('still lets a user take back a visit to a point that was withdrawn', async () => {
-    mockedQuery.mockResolvedValue({ rows: [{ count: '0' }], rowCount: 1 });
+  it('clears only the visits on places whose points the traveller is shown', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ experience_id: 42, count: 0 }], rowCount: 1 });
 
     await answerRoute(deleteMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
       makeRes() as never);
 
-    // Filtering here would strand the record: the point is invisible, so
-    // nothing else could ever clear it.
-    const deletes = sentSql().filter(sql => /DELETE FROM user_visited_locations/i.test(sql));
+    // A click never clears a visit the traveller cannot see (#2120): a part
+    // whose points were withdrawn or are unread keeps its visit. The place
+    // itself, whose card the click is on, goes with the shown parts.
+    const deletes = sentSql().filter(sql => /DELETE FROM user_visited_experiences/i.test(sql));
     expect(deletes).toHaveLength(1);
-    expect(deletes[0]).not.toMatch(/missing_since/);
-
-    // The count beside it is the half that matters on the region-scoped
-    // branch, which clears one region's visits and can leave a withdrawn
-    // point's visit standing elsewhere. Unfiltered, unticking the last region
-    // a reader can see keeps a `user_visited_experiences` row the progress
-    // view contradicts.
-    const counts = sentSql().filter(sql => /COUNT\(\*\) as count/i.test(sql));
-    expect(counts).toHaveLength(1);
-    expect(counts[0]).toMatch(/el\.missing_since IS NULL/);
+    expect(deletes[0]).toContain(claimableToReaderSql());
+    expect(deletes[0]).toMatch(/SELECT place\.experience_id FROM place UNION SELECT shown\.experience_id FROM shown/);
+    expect(deletes[0]).toContain(claimablePlaceSql());
+    // Every place and point the delete takes back a visit for is read under a
+    // share lock, as every visit write reads what it writes for.
+    expect(deletes[0]).toMatch(/FOR SHARE OF el\)/);
+    expect(deletes[0]).toMatch(/FOR SHARE OF e\)/);
   });
 
-  it('lets the experience-level record reach zero when the last visible tick goes', async () => {
+  it("reads the region's points under a share lock when it takes their visits back", async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ experience_id: 42, count: 0 }], rowCount: 1 });
+
+    await answerRoute(deleteMarkAllLocations,
+      { params: { experienceId: '42' }, query: { regionId: '7' }, user: { id: 5 } } as never,
+      makeRes() as never);
+
+    const deletes = sentSql().filter(sql => /DELETE FROM user_visited_experiences/i.test(sql));
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]).toMatch(/FOR SHARE OF el\)/);
+    expect(deletes[0]).not.toMatch(/FROM place/);
+  });
+
+  it("takes back a tick on a point as its own place's visit, and nothing else", async () => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [{ experience_id: 42, count: '0' }], rowCount: 1 });
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ experience_id: 7, shown_by: 7 }, { experience_id: 7, shown_by: 42 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 });
 
     await answerRoute(deleteVisitedLocation,
-      { params: { locationId: '7' }, user: { id: 5 } } as never, makeRes() as never);
+      { params: { locationId: '70' }, user: { id: 5 } } as never, makeRes() as never);
 
-    // A visit surviving on a withdrawn point would otherwise hold the count at
-    // one for ever: the list would keep its check, the progress view would
-    // report none visited, and there would be no tick on screen to remove.
-    // Before locations were kept, the withdrawn row and its visit went together
-    // and this count reached zero on its own. Asked of every place that shows
-    // the point, a site it is part of included (ADR-0100).
+    // A whole the point's place is a part of is read through the part
+    // (#2120): nothing of the whole's is written or deleted here. The point's
+    // place is read in the delete, under the tick's share lock on the point.
     const clears = sentSql().filter(sql => /DELETE FROM user_visited_experiences/i.test(sql));
     expect(clears).toHaveLength(1);
-    expect(clears[0]).toMatch(/NOT EXISTS[\s\S]*el\.missing_since IS NULL/);
-    expect(clears[0]).toContain('uve.experience_id = ANY($2::int[])');
+    expect(clears[0]).toMatch(/FROM experience_locations el[\s\S]*FOR SHARE OF el/);
+    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([5, 70]);
+    // Only a point the traveller is shown, as a tick is gated (#2120).
+    expect(String(mockedQuery.mock.calls[0][0])).toContain(claimableToReaderSql());
   });
 });
 
-/**
- * A transaction has to hold one connection for its whole length — #532.
- *
- * `pool.query('BEGIN')` reads as a transaction and is not one: pg.Pool checks
- * out an arbitrary idle client, runs the BEGIN on it and releases it with the
- * transaction still open. The statements that follow may land on other
- * connections, and a *different reader's* write that checks out the leaked
- * client joins the stray transaction — to be rolled back with it. These two
- * handlers write in bulk, so what a stray ROLLBACK undoes here is somebody
- * else's tick beside a place they did visit.
- *
- * The assertion is therefore not "the statements ran" but "they ran on the one
- * client the handler checked out", which a return to `pool.query('BEGIN')`
- * fails outright: nothing is addressed to a client at all.
- */
-describe('a transaction is pinned to one connection', () => {
+describe('the visits a "mark all" writes and takes back', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
-    // A point of the place's own: no part place to visit instead (ADR-0100).
-    mockedQuery.mockResolvedValue({ rows: [{ id: 1, part_id: null, count: '0' }], rowCount: 1 });
+    mockedQuery.mockResolvedValue({ rows: [{ id: 1, experience_id: 42, count: 0 }], rowCount: 1 });
   });
 
-  it('marks every location on the pinned client, BEGIN through COMMIT', async () => {
-    const client = pinClient();
+  it("writes the points' places in one statement, each read again as it is written", async () => {
+    mockedQuery.mockReset();
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 1, experience_id: 42 }, { id: 2, experience_id: 43 }, { id: 3, experience_id: 43 }] })
+      .mockResolvedValueOnce({ rows: [{ marked: 3 }] });
+    const res = makeRes();
 
     await answerRoute(postMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
-      makeRes() as never);
+      res as never);
 
-    const onClient = clientSql(client);
-    expect(onClient[0]).toBe('BEGIN');
-    expect(onClient.at(-1)).toBe('COMMIT');
-    expect(onClient.filter(sql => /INSERT INTO user_visited_locations/i.test(sql))).toHaveLength(1);
-    // The place's own visit, and the sites it is a part of (ADR-0100).
-    expect(onClient.filter(sql => /INSERT INTO user_visited_experiences/i.test(sql))).toHaveLength(2);
-    expect(client.release).toHaveBeenCalledTimes(1);
+    // A merge moving a point between the read and the write is waited for,
+    // and the visit lands where the point then stands (#2120); the answer
+    // counts the points the write read.
+    const inserts = mockedQuery.mock.calls.filter(c => /INSERT INTO user_visited_experiences/.test(String(c[0])));
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0][1]).toEqual([5, [1, 2, 3]]);
+    expect(String(inserts[0][0])).toMatch(/el\.merged_into_id IS NULL\s+FOR SHARE OF el/);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ locationsMarked: 3 }));
   });
 
-  it('takes the visits back on the pinned client, both deletes included', async () => {
+  it('answers 404 where a merge folded every point before the write read them', async () => {
+    mockedQuery.mockReset();
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 1, experience_id: 42 }] })
+      .mockResolvedValueOnce({ rows: [{ marked: 0 }] });
+    const res = makeRes();
+
+    await answerRoute(postMarkAllLocations,
+      { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
+      res as never);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('takes the visits back on the pinned client, BEGIN through COMMIT', async () => {
     const client = pinClient();
 
     await answerRoute(deleteMarkAllLocations,
@@ -426,26 +441,21 @@ describe('a transaction is pinned to one connection', () => {
     const onClient = clientSql(client);
     expect(onClient[0]).toBe('BEGIN');
     expect(onClient.at(-1)).toBe('COMMIT');
-    expect(onClient.filter(sql => /DELETE FROM user_visited_locations/i.test(sql))).toHaveLength(1);
-    // The parts' visits, the place's own once none is left, and the sites it is a part of (ADR-0100).
-    expect(onClient.filter(sql => /DELETE FROM user_visited_experiences/i.test(sql))).toHaveLength(3);
+    expect(onClient.filter(sql => /DELETE FROM user_visited_experiences/i.test(sql))).toHaveLength(1);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 
   it('rolls back and hands the connection back when a statement fails', async () => {
     const client = pinClient();
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })  // the points on offer
+      .mockReset()
       .mockResolvedValueOnce({ rows: [] })           // BEGIN
-      .mockRejectedValueOnce(new Error('insert failed'));
+      .mockRejectedValueOnce(new Error('delete failed'));
 
-    await expect(answerRoute(postMarkAllLocations,
+    await expect(answerRoute(deleteMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
-      makeRes() as never)).rejects.toThrow('insert failed');
+      makeRes() as never)).rejects.toThrow('delete failed');
 
-    // Both halves matter: an unclosed transaction on a client nobody released
-    // is exactly the state this issue is about, and the release is what stops
-    // the next request from inheriting it.
     expect(clientSql(client)).toContain('ROLLBACK');
     expect(client.release).toHaveBeenCalledTimes(1);
   });
@@ -482,6 +492,25 @@ describe('the single-mark write and the visited-ids read — #520', () => {
     const [sql] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain(experienceOfferedToReaderSql('e'));
     expect(sql).toMatch(/el\.curation_state <> 'pending'/);
+  });
+
+  it("writes the tick on the point's place as it stands, and answers 404 for a point folded meanwhile", async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 99, name: 'See', experience_id: 42, shown_by: 42, shown_by_name: 'Lake' }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = makeRes();
+
+    await answerRoute(postVisitedLocation,
+      { params: { locationId: '99' }, body: {}, user: { id: 5 } } as never,
+      res as never,
+    );
+
+    // The place is read again with the write, under a share lock on the
+    // point: a merge that folded it in between leaves nothing to write (#2120).
+    const [write, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
+    expect(write).toMatch(/INSERT INTO user_visited_experiences[\s\S]*FROM experience_locations el[\s\S]*FOR SHARE OF el/);
+    expect(params).toEqual([5, 99, null]);
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it('lists only visited locations a reader may still see', async () => {

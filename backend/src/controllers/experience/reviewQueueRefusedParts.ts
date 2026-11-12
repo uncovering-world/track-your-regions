@@ -36,7 +36,8 @@ import { objectContextSelectSql } from './reviewQueueContext.js';
 import { contentsMembershipToAnswerSql, contentsTakeableSql, linkMembershipSql, pointMembershipSql } from './waitingCounts.js';
 import { MEMBERSHIPS, membershipToAnswerSql, rowKindJoinSql } from '../../db/membership.js';
 import { type AnsweredQueryContext, CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
-import { answeringPlaceSql, pointsShownSql, someoneVisitedPointSql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
+import { someoneVisitedPointSql } from '../../db/visits.js';
 
 /**
  * The one act that marks a part refused, for the log join above.

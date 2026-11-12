@@ -13,10 +13,10 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  claimablePlaceSql,
   experienceOfferedToReaderSql,
   hideLostSql,
   offeredLocationSql,
-  offeredToReaderSql,
   publishedContentSql,
 } from '../../../db/readerPredicates.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
@@ -219,23 +219,24 @@ describe('visits on places no reader is shown', () => {
   const assertion = byId('visits-on-places-no-reader-is-shown');
   const sql = collapse(assertion.sql);
 
-  it('negates the reader composite rather than a chosen part of it, over every place that shows the point', () => {
-    expect(sql).toContain('WHERE NOT EXISTS (SELECT 1 FROM');
-    expect(sql).toContain(collapse(offeredToReaderSql('shower')));
+  it('negates what makes a place one a reader may claim and see a point of, rather than a chosen part of it', () => {
+    expect(sql).toContain(`WHERE NOT (${collapse(claimablePlaceSql('e'))}`);
+    expect(sql).toContain(collapse(offeredLocationSql('sp')));
+    expect(sql).toContain(collapse(publishedContentSql('sp')));
+  });
+
+  it('never counts a visit on a place a merge folded, which no read shows (#2120)', () => {
+    expect(sql).toContain('e.merged_into_id IS NULL');
   });
 
   it('counts by place and never reads the person, whose whereabouts are not a maintainer\'s', () => {
-    expect(sql).toMatch(/GROUP BY el\.id/);
+    expect(sql).toMatch(/GROUP BY v\.experience_id/);
     expect(sql).not.toMatch(/user_id|email|display_name/);
   });
 
-  it('falls back to the location id where a place carries no name', () => {
-    expect(assertion.describe({
-      location_id: 8143, place_name: null, experience_name: 'Monasteries of Haghpat', ticks: 1,
-    })).toContain('location 8143');
-    expect(assertion.describe({
-      location_id: 8143, place_name: 'Monastery of Haghpat', experience_name: 'Monasteries', ticks: 2,
-    })).toContain('2 visits');
+  it('names the place and how many visits it holds', () => {
+    expect(assertion.describe({ experience_id: 37451, experience_name: 'Sanahin Bridge', ticks: 2 }))
+      .toBe('Sanahin Bridge: 2 visits on a place no reader is shown (experience 37451)');
   });
 });
 

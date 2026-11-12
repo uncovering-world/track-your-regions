@@ -13,8 +13,9 @@
  * that too. The asymmetry between the two axes is the whole reason this endpoint is
  * not a copy of the object-level one.
  *
- * The other rule worth pinning is that nothing here deletes. A visit record points
- * at the row, and `user_visited_locations.location_id` cascades (ADR-0022).
+ * The other rule worth pinning is that nothing here deletes. The point's region rows,
+ * a curator's manual assignment among them, cascade from it, and a later run finds
+ * the point again by its identity (ADR-0022).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -483,8 +484,9 @@ describe('setLocationState', () => {
       makeRes() as never,
     );
 
-    // `user_visited_locations.location_id` cascades, so a delete here would erase
-    // someone's record of having stood there — the whole point of ADR-0022.
+    // A delete here would take the point's region rows with it, a curator's
+    // manual assignment among them, and the identity a later run finds it by:
+    // what ADR-0022 keeps.
     expect(queries.filter(q => /DELETE/i.test(q.sql))).toEqual([]);
   });
 });

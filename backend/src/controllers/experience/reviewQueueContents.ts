@@ -36,7 +36,8 @@ import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
-import { answeringPlaceSql, pointOfPartSql, pointsShownSql, someoneVisitedPointSql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointOfPartSql, pointsShownSql } from '../../db/placePoints.js';
+import { someoneVisitedPointSql } from '../../db/visits.js';
 
 /**
  * The held fields of an object's parts, as the held card carries them.

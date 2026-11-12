@@ -9,8 +9,9 @@ import type { ExperienceVisitMarked, ExperienceVisitUnmarked, VisitedExperienceI
 import { pool } from '../../db/index.js';
 import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
 import { claimablePlaceSql } from '../../db/readerPredicates.js';
-import { dropUnvisitedWholes, visitWholes } from './wholeVisits.js';
 import { placeHasKindSql } from '../../db/membership.js';
+import { placeAtWriteSql, showsOwnPointSql, showsPartsSql, visitStatesSql } from '../../db/visits.js';
+import { computeVisitedStatus } from '@tyr/shared/visits';
 import { notFound } from '../../middleware/errorHandler.js';
 import type { experienceIdParamSchema, markVisitedBodySchema, visitedIdsQuerySchema } from '../../types/index.js';
 
@@ -46,17 +47,19 @@ export async function markVisited(
   // stays a visit after a refusal.
   //
   // A part of a serial site is a place a traveller visits (ADR-0100 decision
-  // 5): offered where its whole is, and its visit cascades to the whole below.
+  // 5): offered where its whole is. The whole reads it from the part (#2120).
   const expResult = await pool.query<Pick<ExperiencesRow, 'name'>>(
     `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${claimablePlaceSql()}`,
     [experienceId],
   );
   if (expResult.rows.length === 0) throw notFound('Experience not found');
 
-  // Upsert visited record
+  // Upsert visited record, on the place as it stands when the row is
+  // written: a share lock on it waits for a merge folding it to commit, and a
+  // folded place takes no visit (#2120).
   const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'visited_at' | 'notes' | 'rating'>>(`
     INSERT INTO user_visited_experiences (user_id, experience_id, notes, rating, visited_at)
-    VALUES ($1, $2, $3, $4, NOW())
+    ${placeAtWriteSql('$2', '$1, e.id, $3, $4, NOW()')}
     ON CONFLICT (user_id, experience_id) DO UPDATE SET
       notes = COALESCE($3, user_visited_experiences.notes),
       rating = COALESCE($4, user_visited_experiences.rating),
@@ -64,11 +67,7 @@ export async function markVisited(
     RETURNING id, visited_at, notes, rating
   `, [userId, experienceId, notes, rating]);
 
-  // Having been to the Temple of Karnak is having been to Ancient Thebes
-  // (ADR-0046 decision 7): the wholes a reader may claim, as a tick on the
-  // temple's point records them.
-  await visitWholes(userId, experienceId);
-
+  if (result.rows.length === 0) throw notFound('Experience not found');
   const visit = result.rows[0];
   return {
     success: true,
@@ -84,20 +83,28 @@ export async function markVisited(
 /**
  * Unmark experience as visited
  * DELETE /api/users/me/visited-experiences/:experienceId
+ *
+ * The place's own visit only. A whole's parts were ticked one by one, some of
+ * them in regions the traveller is not looking at, so taking back the whole's
+ * own tick leaves them (#2120); its card's *Unmark all* clears them. Only a
+ * place a reader may be shown: a stale page never clears the visit on a place
+ * since folded or refused, which no click reaches.
  */
 export async function unmarkVisited(
   { params: { experienceId }, caller }: { params: ExperienceParams; caller: Express.User },
 ): Promise<ExperienceVisitUnmarked> {
+  // The place read in the delete under a share lock, as every visit write
+  // reads what it writes for: a merge folding it commits first, and a folded
+  // place's visit, which the merge copied onto the survivor, stays (#2120).
   const result = await pool.query(
-    'DELETE FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2 RETURNING id',
+    `DELETE FROM user_visited_experiences v
+      USING (${placeAtWriteSql('$2', 'e.id', claimablePlaceSql())}) pl
+      WHERE v.user_id = $1 AND v.experience_id = pl.id
+      RETURNING v.id`,
     [caller.id, experienceId]
   );
 
   if (result.rowCount === 0) throw notFound('Visit record not found');
-
-  // A whole the reader holds no other visited point of goes with its last
-  // part, as unticking a part's point clears it (ADR-0100).
-  await dropUnvisitedWholes(caller.id, experienceId);
 
   return { success: true, experienceId };
 }
@@ -105,35 +112,42 @@ export async function unmarkVisited(
 /**
  * Get visited experience IDs for quick lookup
  * GET /api/users/me/visited-experiences/ids
+ *
+ * Every place the reader has a state in, read one way for Map mode and
+ * Discover alike (`visitStatesSql`, `computeVisitedStatus`): `visitedIds`
+ * holds the places visited or partly visited, `partialIds` the partly
+ * visited among them. Haghpat and Sanahin with two of its three monasteries
+ * visited is in both. `wholeTickedIds` holds the wholes ticked as a whole,
+ * which the whole's card offers to take back.
  */
 export async function getVisitedIds(
   { query: { kindId }, caller }: { query: z.output<typeof visitedIdsQuerySchema>; caller: Express.User },
 ): Promise<VisitedExperienceIds> {
-  const userId = caller.id;
+  const result = await pool.query<{
+    place_id: number; ticked: boolean; total: number; visited: number; has_parts: boolean; has_own_point: boolean;
+  }>(`
+    SELECT s.place_id, s.ticked, s.total, s.visited,
+           ${showsPartsSql('s.place_id')} AS has_parts,
+           ${showsOwnPointSql('s.place_id')} AS has_own_point
+      FROM ${visitStatesSql('$1')} s
+      ${kindId
+        // In the kind by any of its memberships, not only the one its first
+        // source brought (ADR-0084, #1245).
+        ? `JOIN experiences e ON e.id = s.place_id WHERE ${placeHasKindSql('e', '$2')}`
+        : ''}
+  `, kindId ? [caller.id, kindId] : [caller.id]);
 
-  let query = `
-    SELECT uve.experience_id
-    FROM user_visited_experiences uve
-  `;
-
-  const params: number[] = [userId];
-
-  if (kindId) {
-    query += `
-      JOIN experiences e ON uve.experience_id = e.id
-      -- In the kind by any of its memberships, not only the one its first
-      -- source brought (ADR-0084, #1245).
-      WHERE uve.user_id = $1 AND ${placeHasKindSql('e', '$2')}
-    `;
-    params.push(kindId);
-  } else {
-    query += ' WHERE uve.user_id = $1';
+  const visitedIds: number[] = [];
+  const partialIds: number[] = [];
+  const wholeTickedIds: number[] = [];
+  for (const row of result.rows) {
+    const status = computeVisitedStatus(row.visited, row.total, row.ticked);
+    if (status === 'not_visited') continue;
+    visitedIds.push(row.place_id);
+    if (status === 'partial') partialIds.push(row.place_id);
+    // Not a whole showing a point of its own: there the tick is that point's.
+    if (row.ticked && row.has_parts && !row.has_own_point) wholeTickedIds.push(row.place_id);
   }
 
-  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'experience_id'>>(query, params);
-
-  return {
-    visitedIds: result.rows.map(r => r.experience_id),
-    total: result.rows.length,
-  };
+  return { visitedIds, partialIds, wholeTickedIds, total: visitedIds.length };
 }

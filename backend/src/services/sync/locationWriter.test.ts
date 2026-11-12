@@ -73,10 +73,10 @@ describe('writeExperienceLocations', () => {
 
     await writeExperienceLocations(1, [A, B]);
 
-    // `user_visited_locations.location_id` and
-    // `experience_location_regions.location_id` both cascade, so any delete
-    // here destroys a user's record of having been somewhere. There is no
-    // longer a delete of any shape to get wrong.
+    // `experience_location_regions.location_id` cascades, so any delete here
+    // takes a curator's manual region assignment with it, and ends the identity
+    // the source's next run finds the point by (ADR-0022). There is no longer a
+    // delete of any shape to get wrong.
     expect(statements.filter(s => /DELETE FROM experience_locations/i.test(s))).toEqual([]);
   });
 

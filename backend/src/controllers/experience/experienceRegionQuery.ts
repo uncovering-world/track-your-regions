@@ -30,6 +30,7 @@ import { isNewSql, type NewBadgeReaderParam } from './experienceNewBadge.js';
 import { dangerSelectSql } from './experienceDanger.js';
 import { findsOnViewCountSql } from './siteFinds.js';
 import { pointsShownSql } from '../../db/placePoints.js';
+import { showsPartsSql } from '../../db/visits.js';
 
 /**
  * Not rejected by a curator from any of the regions `regionsSql` selects
@@ -91,6 +92,9 @@ export function rowColumnsSql(
         e.country_names,
         -- Whether its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).
         e.cast_points,
+        -- Whether it is a whole a reader is shown by its parts, whose visit is
+        -- read from them: its row shows the state and ticks nothing (#2120).
+        ${showsPartsSql('e.id')} AS has_parts,
         e.image_url,
         -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
         -- Commons, and the licences most of them carry ask one thing of a page
