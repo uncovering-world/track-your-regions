@@ -1,11 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { argumentsFor, assertTestStack, EXCLUDED, RUNS, SCHEMATHESIS } from './api-contract.mjs';
+import {
+  argumentsFor, assertTestStack, EXCLUDED, OUTSIDE, outsideArgumentsFor, outsideConfig, RUNS, SCHEMATHESIS,
+} from './api-contract.mjs';
 import { repoFile } from './repo-root.mjs';
 
 const document = JSON.parse(readFileSync(repoFile('packages', 'shared', 'src', 'openapi.generated.json'), 'utf8'));
 const operations = Object.values(document.paths).flatMap((methods) => Object.entries(methods)
-  .map(([method, operation]) => ({ method, id: operation.operationId, access: operation['x-access'] })));
+  .map(([method, operation]) => ({
+    method, id: operation.operationId, access: operation['x-access'],
+    parameters: (operation.parameters ?? []).map((parameter) => `${parameter.in}.${parameter.name}`),
+  })));
 
 describe('the API contract lane', () => {
   it('leaves out only operations the document has, so a renamed path cannot quietly let one back in', () => {
@@ -42,6 +47,47 @@ describe('the API contract lane', () => {
     expect(() => assertTestStack('http://localhost:8080', '5301')).toThrow(/Refusing/);
     expect(() => assertTestStack('http://localhost:3001', '3001')).toThrow(/Refusing/);
     expect(() => assertTestStack('https://example.org', '5301')).toThrow(/Refusing/);
+  });
+
+  describe('the routes that call a service outside the stack (#2428)', () => {
+    it('are GET routes the document has, each read by a caller its access admits', () => {
+      for (const [id, route] of Object.entries(OUTSIDE)) {
+        const operation = operations.find((one) => one.id === id);
+        expect(operation?.method, id).toBe('get');
+        expect(RUNS.find((run) => run.caller === route.caller).access, id).toContain(operation.access);
+      }
+    });
+
+    it('are left out of every generated run', () => {
+      for (const run of RUNS) {
+        const args = argumentsFor(run, 'http://localhost:5301').join(' ');
+        for (const id of Object.keys(OUTSIDE)) expect(args).toContain(`--exclude-operation-id ${id}`);
+      }
+    });
+
+    it('are read with every declared parameter fixed, optional ones too, so no generated value reaches the service', () => {
+      for (const [id, route] of Object.entries(OUTSIDE)) {
+        const fixed = Object.keys(route.parameters({ point: 1 }));
+        expect(operations.find((one) => one.id === id).parameters.filter((name) => !fixed.includes(name)), id).toEqual([]);
+      }
+      expect(outsideConfig('curator', { point: 42 })).toContain('"path.locationId" = 42');
+    });
+
+    it("read an outside service's failure as the route's answer, and a 500 still as a server error", () => {
+      const config = outsideConfig('curator', { point: 42 });
+      expect(config).toContain('not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 502, 503, 504]');
+      expect(config).not.toMatch(/\b500\b/);
+    });
+
+    it('are requested once each, valid data only, with no phase that varies a request', () => {
+      for (const caller of ['curator', 'admin']) {
+        const args = outsideArgumentsFor(caller, 'http://localhost:5301').join(' ');
+        expect(args).toContain('--phases fuzzing --mode positive --max-examples 1');
+        expect(args).not.toMatch(/coverage|examples,|negative/);
+        expect(args).toContain('--rate-limit 1/s');
+        expect(args).toContain('--request-timeout 30 --max-response-time 30');
+      }
+    });
   });
 
   it('runs Schemathesis pinned by digest', () => {

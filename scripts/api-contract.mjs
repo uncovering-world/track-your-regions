@@ -19,8 +19,17 @@
  * **Reads only.** The stack is shared with the smoke and database lanes, and a
  * write would change what they read, so every POST, PUT, PATCH and DELETE is
  * left out; the GET routes left out besides are named below with the reason.
+ *
+ * **No generated request reaches a service outside the stack** (#2428). A GET
+ * route that calls one (`OUTSIDE`) is left out of the four runs and read in a
+ * run of its own, once, with fixed values: a real place, never a generated or
+ * a malformed one. Its answer is checked like any other, an outside service's
+ * failure included, which the route answers with its declared error.
  */
 import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { repoFile } from './repo-root.mjs';
 
@@ -35,26 +44,93 @@ export const TEST_BACKEND_PORT = process.env.TEST_BACKEND_PORT || '5301';
 /** The dev stack's backend port, refused even when a test port is set to it. */
 const DEV_BACKEND_PORT = '3001';
 
-/** GET routes left out by name, and why: each starts long work or calls a service outside the stack. */
+/** GET routes left out by name, and why: each signs in elsewhere, starts long work or is rate-limited on purpose. */
 export const EXCLUDED = {
   getAuthGoogle: 'redirects to Google',
   getAuthGoogleCallback: 'finishes a Google sign-in the lane never started',
   getAuthApple: 'redirects to Apple',
-  getGeocodeSearch: 'asks OpenStreetMap Nominatim',
-  getGeocodeReverse: 'asks OpenStreetMap Nominatim what stands at a point',
-  getGeocodeArticlePointById: "asks Wikipedia for the point a place's article gives",
-  getGeocodeSuggestImage: 'asks Wikidata',
-  getAiStatus: 'lists OpenAI models when a key is set',
-  getAiModels: 'lists OpenAI models when a key is set',
-  getAdminImageProxy: 'fetches from Wikimedia Commons',
-  getExperiencesByIdWebsiteChecks: 'requests the official websites a place names, anywhere on the internet',
-  getExperiencesByIdPictureClasses: "asks Wikimedia Commons about a place's pictures",
-  getExperiencesLocationsByLocationIdNearbyPictures: 'asks Wikimedia Commons for the files geotagged near a point',
   getAdminDataAssertions: 'runs every catalogue check, and is limited to five calls a minute on purpose',
   getWorldViewsRegionsByRegionIdGeometryComputeStream: 'computes and stores a region geometry',
   getAdminWvImportMatchesByWorldViewIdColorMatchStream: 'starts the colour-match pipeline',
   getAdminWvImportMatchesByWorldViewIdCoverageStream: 'runs the coverage analysis',
 };
+
+/** The fixture's first place (`e2eFixture.ts`), whose routes an outside call is read through. */
+export const FIXTURE_PLACE_ID = 9001;
+
+/**
+ * The GET routes that call a service outside the stack, each with the caller
+ * that reads it and the one request it is read with: the Brandenburg Gate
+ * (Q82425) at its point for the geography, the fixture's place and point for a
+ * place's own reads. `point` is the fixture place's point, read from the stack.
+ */
+export const OUTSIDE = {
+  getGeocodeSearch: { service: 'OpenStreetMap Nominatim', caller: 'curator', parameters: () => ({ 'query.q': 'Brandenburger Tor', 'query.limit': 1 }) },
+  getGeocodeReverse: { service: 'OpenStreetMap Nominatim', caller: 'curator', parameters: () => ({ 'query.lat': 52.516272, 'query.lon': 13.377722 }) },
+  getGeocodeArticlePointById: { service: 'Wikipedia', caller: 'curator', parameters: () => ({ 'path.id': FIXTURE_PLACE_ID }) },
+  getGeocodeSuggestImage: {
+    service: 'Wikidata', caller: 'curator',
+    parameters: () => ({ 'query.wikidataId': 'Q82425', 'query.name': 'Brandenburg Gate', 'query.lat': 52.516272, 'query.lng': 13.377722 }),
+  },
+  getExperiencesByIdWebsiteChecks: { service: "the websites a place names", caller: 'curator', parameters: () => ({ 'path.id': FIXTURE_PLACE_ID }) },
+  getExperiencesByIdPictureClasses: { service: 'Wikimedia Commons', caller: 'curator', parameters: () => ({ 'path.id': FIXTURE_PLACE_ID }) },
+  getExperiencesLocationsByLocationIdNearbyPictures: {
+    service: 'Wikimedia Commons', caller: 'curator', parameters: ({ point }) => ({ 'path.locationId': point }),
+  },
+  getAiStatus: { service: 'OpenAI, where a key is set', caller: 'admin', parameters: () => ({}) },
+  getAiModels: { service: 'OpenAI, where a key is set', caller: 'admin', parameters: () => ({}) },
+  getAdminImageProxy: {
+    service: 'Wikimedia Commons', caller: 'admin',
+    parameters: () => ({ 'query.url': 'https://commons.wikimedia.org/wiki/Special:FilePath/Brandenburger%20Tor%20morgens.jpg?width=330' }),
+  },
+};
+
+/** One TOML string, quoted. */
+const tomlValue = (value) => (typeof value === 'number' ? String(value) : JSON.stringify(value));
+
+/**
+ * The statuses a route answers for a service outside the stack that failed it
+ * (`services/outsideStatus.ts`: 502, or 504 for its own deadline), read by the
+ * outside runs as an answer rather than as the route's server error; a 500
+ * stays one. The AI routes are the exception the runs never meet: they call
+ * OpenAI only where a key is set.
+ */
+export const OUTSIDE_FAILURES = [502, 503, 504];
+
+/** The Schemathesis configuration that fixes every parameter of the outside routes a caller reads, optional ones included. */
+export function outsideConfig(caller, context) {
+  const statuses = ['"2xx"', '"3xx"', '"4xx"', ...OUTSIDE_FAILURES].join(', ');
+  return `[checks]\nnot_a_server_error.expected-statuses = [${statuses}]\n\n` + Object.entries(OUTSIDE)
+    .filter(([, route]) => route.caller === caller)
+    .map(([id, route]) => {
+      const values = Object.entries(route.parameters(context)).map(([name, value]) => `"${name}" = ${tomlValue(value)}`);
+      return `[[operations]]\ninclude-operation-id = "${id}"\nparameters = { ${values.join(', ')} }\n`;
+    })
+    .join('\n');
+}
+
+/**
+ * The arguments of a caller's outside run: its routes only, each requested
+ * once with its fixed values and valid data only, one request a second
+ * (Nominatim's own pace). It waits 30 s, longer than the backend's own
+ * timeouts toward the services that have one, so a failure there is read as
+ * the route's declared error; the image proxy's download has none.
+ */
+export function outsideArgumentsFor(caller, url) {
+  const ids = Object.entries(OUTSIDE).filter(([, route]) => route.caller === caller).map(([id]) => id);
+  return [
+    '--config-file', '/config/schemathesis.toml',
+    'run', '/spec/openapi.generated.json', '--url', url,
+    ...ids.flatMap((id) => ['--include-operation-id', id]),
+    '--checks', 'all', '--exclude-checks', EXCLUDED_CHECKS.join(','),
+    '--phases', 'fuzzing', '--mode', 'positive', '--max-examples', '1', '--seed', '1091',
+    // How fast a third party answers is its own, not the route's contract:
+    // the response-time check, which fails a ten-second answer by default,
+    // allows what the request timeout does.
+    '--rate-limit', '1/s', '--request-timeout', '30', '--max-response-time', '30',
+    '--no-color',
+  ];
+}
 
 /**
  * Checks left out, and why. `unsupported_method` expects 405 for a method a
@@ -91,7 +167,7 @@ export function argumentsFor(run, url) {
     // write and every named GET out.
     ...run.access.flatMap((access) => ['--include-by', `/x-access == "${access}"`]),
     ...['POST', 'PUT', 'PATCH', 'DELETE'].flatMap((method) => ['--exclude-method', method]),
-    ...Object.keys(EXCLUDED).flatMap((id) => ['--exclude-operation-id', id]),
+    ...[...Object.keys(EXCLUDED), ...Object.keys(OUTSIDE)].flatMap((id) => ['--exclude-operation-id', id]),
     '--checks', 'all', '--exclude-checks', EXCLUDED_CHECKS.join(','),
     '--phases', 'examples,coverage,fuzzing',
     '--max-examples', String(run.maxExamples ?? 25), '--seed', '1091',
@@ -112,14 +188,41 @@ export function assertTestStack(url, testPort = TEST_BACKEND_PORT) {
   }
 }
 
+/**
+ * A fetch whose network failure says why, undici's own message being only
+ * "fetch failed". A pooled connection the backend closed while a
+ * Schemathesis run went on ("other side closed") is asked again once, on a
+ * fresh connection.
+ */
+async function fetchSaying(url, init) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      if (attempt === 1 && error.cause?.code === 'UND_ERR_SOCKET') continue;
+      throw new Error(`${init?.method ?? 'GET'} ${url} failed: ${error.cause?.code ?? ''} ${error.cause?.message ?? error.message}`.trim());
+    }
+  }
+}
+
 async function tokenFor(url, account) {
-  const response = await fetch(`${url}/api/auth/login`, {
+  const response = await fetchSaying(`${url}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(account),
   });
   if (!response.ok) throw new Error(`Signing in as ${account.email} answered ${response.status}`);
   return (await response.json()).accessToken;
+}
+
+/** The fixture place's point, as the stack serves it: the point the nearby-pictures route is read at. */
+async function fixturePoint(url) {
+  const response = await fetchSaying(`${url}/api/experiences/${FIXTURE_PLACE_ID}/locations`);
+  if (!response.ok) throw new Error(`Reading the fixture's point answered ${response.status}`);
+  const body = await response.json();
+  const id = (Array.isArray(body) ? body : body.locations)?.[0]?.id;
+  if (typeof id !== 'number') throw new Error("The fixture's first place has no point to read");
+  return id;
 }
 
 async function main() {
@@ -139,6 +242,29 @@ async function main() {
       ...(token ? ['-H', `Authorization: Bearer ${token}`] : []),
     ], { stdio: 'inherit' });
     if (result.status !== 0) failed.push(run.caller);
+  }
+  // The routes that call a service outside the stack, read once each with fixed values.
+  const context = { point: await fixturePoint(url) };
+  const config = mkdtempSync(join(tmpdir(), 'api-contract-'));
+  // Readable by the container's own user: mkdtemp makes the directory its owner's alone.
+  chmodSync(config, 0o755);
+  try {
+    for (const caller of [...new Set(Object.values(OUTSIDE).map((route) => route.caller))]) {
+      const file = join(config, 'schemathesis.toml');
+      writeFileSync(file, outsideConfig(caller, context));
+      // Not masked by the umask, as a mode given to writeFileSync is.
+      chmodSync(file, 0o644);
+      // Signed in afresh: an access token lasts 15 minutes, and the curator's generated run takes longer.
+      const token = await tokenFor(url, accounts[caller]);
+      console.log(`\n=== ${caller}: the routes that call a service outside the stack, once each ===`);
+      const result = spawnSync('docker', [
+        'run', '--rm', '--network', 'host', '-v', `${spec}:/spec:ro,z`, '-v', `${config}:/config:ro,z`, SCHEMATHESIS,
+        ...outsideArgumentsFor(caller, url), '-H', `Authorization: Bearer ${token}`,
+      ], { stdio: 'inherit' });
+      if (result.status !== 0) failed.push(`${caller} (outside)`);
+    }
+  } finally {
+    rmSync(config, { recursive: true, force: true });
   }
   console.log(failed.length === 0 ? '\nAPI contract: every run passed.' : `\nAPI contract: failures as ${failed.join(', ')}.`);
   return failed.length === 0 ? 0 : 1;
