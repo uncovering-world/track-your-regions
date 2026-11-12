@@ -219,6 +219,7 @@ and accepted by it.
 | [0198](0198-every-sources-record-of-a-place-is-one-row-in-a-kind-or-in-a-whole.md) | Every source's record of a place is one row, in a kind or in a whole | Accepted — decision 3 narrowed by [0200](0200-every-line-of-the-world-heritage-list-is-a-record-and-holds-its-points-item.md) | 2026-11-12 |
 | [0199](0199-a-visit-is-one-row-on-the-place-ticked-and-a-whole-is-read-through-its-parts.md) | A visit is one row on the place ticked, and a whole is read through its parts | Accepted | 2026-11-12 |
 | [0200](0200-every-line-of-the-world-heritage-list-is-a-record-and-holds-its-points-item.md) | Every line of the World Heritage list is a record, and holds its point's item | Accepted | 2026-11-12 |
+| [0201](0201-a-dedication-two-language-models-read-alike-from-a-places-lead-is-written-without-a-curators-yes.md) | A dedication two language models read alike from a place's lead is written without a curator's yes | Accepted | 2026-11-12 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

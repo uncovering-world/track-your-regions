@@ -5372,7 +5372,7 @@ pass, since no verdict reads them back.
 ### Whom or what a place commemorates (#2144)
 
 **What the card shows.** A place Public art or Monuments & memorials offers
-(`SUBJECT_LINE_SOURCE_IDS` in `@tyr/shared/commemorates`) carries whom or what it commemorates where one of six steps
+(`SUBJECT_LINE_SOURCE_IDS` in `@tyr/shared/commemorates`) carries whom or what it commemorates where one of seven steps
 names anyone, and its card says so in one line, "Commemorates: Abraham Lincoln", each name linked
 to its English Wikipedia article where it has one (`CommemoratesLine`). Towers, Bridges &
 engineering marvels and Squares & streets read none of it, though their runs are the same
@@ -5411,6 +5411,9 @@ be saved back with one name removed:
 6. `P180` *depicts*, a person only: Nelson's Column → Horatio Nelson, not the lions or the
    battles on its plinth. Its *Monuments and memorials to Horatio Nelson* names a title that is a
    redirect English Wikipedia's redirect table does not hold, so the copy finds no page for it.
+7. The lead of the place's English Wikipedia article, where two language models name the same
+   linked article as the dedication and it is a person, an occurrence or a group (`via: 'lead'`,
+   below): the Shaheed Minar in Dhaka → the Bengali language movement.
 
 **What a religious work shows is not whom it commemorates** (#2404). A holy figure — an
 instance of a class under *deity* (Q178885) at any rank but deprecated, as Jesus Christ is beside
@@ -5505,6 +5508,45 @@ campaign ends three days after World War I and stays outside it at the Basra Mem
 Measured on 2026-11-10 over the 1,531 admitted places of Public art and Monuments & memorials on the
 development subset, main against this reading: four places changed, the four above (the Hiroshima
 Peace Memorial, Arcul de Triumf, Miła 18 and the Shukhevych bust), and none of the whole-war readings.
+
+**A dedication read from the lead** (`places/leadDedication.ts`, #2472,
+[ADR-0201](../decisions/0201-a-dedication-two-language-models-read-alike-from-a-places-lead-is-written-without-a-curators-yes.md)).
+Some monuments state their dedication only in their article's lead: the Shaheed Minar in Dhaka was
+"established to commemorate those killed during the Bengali language movement", and the Jallianwala
+Bagh is preserved in the memory of those killed in the massacre of 1919. After a war is narrowed,
+every place no step named a dedication for has the lead of its English article read live
+(`fetchLeads`, with its revision, flagged as a model's input so a site's `ai-input=no` refuses it).
+The lead's prose is written with each link marked `⟦words→Article title⟧` (`markedLead` in
+`warNarrowing.ts`: infobox, references, templates and files dropped as `proseOf` drops them, a
+category link dropped, another namespaced link kept as its words) and sent, with the place's name,
+to two models, each on its own (`services/ai/leadDedicationModels.ts`): Claude Haiku 5.5 and the
+OpenAI model AI Settings names for `lead_dedication`, gpt-5-mini by default. Both are told the same
+instructions (`leadInstructions`, #2472's measured prompt, with the repository's untrusted-data
+rule) and answer in one JSON shape (structured outputs) whose link is one of the lead's own titles
+or "none" (`dedicationSchema`); an answer naming any other title is refused on our side
+(`linkNamed`). A dedication is written only where
+
+1. both models name the same article (`agreedLink`),
+2. that title resolves to an item, as a category's title does, and
+3. the run's reading of Wikidata calls the item a human, an occurrence or a group of people
+   (`dedicatedTo`: `group` is an instance of a class under group of humans Q16334295, ethnic
+   group Q41710, noble family Q13417114 or family Q8436, `GROUP_CLASSES` in
+   `subset/commemorates.ts`). Ghana, named where a monument marks its independence, is none.
+
+The value is `{ via: 'lead', subjects: [the one subject] }`, written by the run with no suggestion
+waiting on a curator first, and it takes the run's path as every step's value does: a change to a
+place visitors see is held wherever the source holds its changes, and the review card says the
+lead's two models read it (`COMMEMORATION_SOURCE` in `fieldMeaning.tsx`). A curator's claim on the
+line still wins. A work it names a dedication
+for is no religious statue. Measured on #2435's places on the English wikitext the step reads, the pair typed this way named
+14 right, one arguable and one wrong (ADR-0201 has both measurements). Each answer is kept per model with the revision of the lead it read
+(`workbench.lead_dedication_readings`, migration 240): a model is asked only where no answer of its
+own holds the lead's current revision, so a lead that did not change keeps its reading from one
+pass to the next and costs nothing. A failed call keeps no answer, and the place is asked again on
+the next pass. Four places are asked at once. Each model's calls of a pass are logged once to the
+AI usage log under `lead_dedication`, Claude's priced at `CLAUDE_USD_PER_MILLION_TOKENS`. Without
+`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` the step reads nothing, said once in the backend's log, and
+nothing else changes.
 
 Statements are read at their best rank, in the item's order, and a category's subjects by item
 id. A person is `P31` human (Q5); an event carries a point in time (`P585`), a start (`P580`) or an

@@ -44,7 +44,8 @@ the policy page is the authority.
 | planet.openstreetmap.org | dump | yes | — |
 | data.unesco.org (`whc001`) | live, one export a run | yes | — |
 | Jev (TypeSafe) | live, keyed | yes | — |
-| OpenAI | live, keyed, admin only | unverified: the usage policies are unread | a person reads them |
+| OpenAI | live, keyed, admin and the monuments' run | unverified: the usage policies are unread | a person reads them |
+| Anthropic (Claude) | live, keyed, the monuments' run | unverified: the usage policy is unread | a person reads it |
 | Place websites (the review card's check) | live, per card | **gap** | #2354 |
 | Have I Been Pwned (Pwned Passwords) | live, per registration | yes | — |
 | Google and Apple sign-in | OAuth | owed before deploy | #1177 |
@@ -124,8 +125,9 @@ the policy page is the authority.
   Identification, batching and the callers' own retries are as before (`sourceRetry.ts`). The turn
   is per process: the coverage `lookup` runs as a process of its own and keeps its own.
 - *What reaches a model:* English Wikipedia leads read from the `extracts` API (`articleLeads`,
-  1,500 characters) are sent to Jev for a visit reading (#1996) and for a kind reading (#2342). The
-  text is CC BY-SA. The read is
+  1,500 characters) are sent to Jev for a visit reading (#1996) and for a kind reading (#2342), and
+  the wikitext of a monument's lead (`fetchLeads`, section 0, one page an ask) to Claude and an
+  OpenAI model for its dedication (#2472, ADR-0201). The text is CC BY-SA. Each read is
   flagged `modelInput`, so a site's `ai-input=no` signal would stop it, and enwiki states none.
 
 **Commons thumbnails** (`commons.wikimedia.org/wiki/Special:FilePath/…?width=N`, drawn by the
@@ -323,10 +325,12 @@ diffs, `dumps/osm/planetCurrent.ts`).
   (ADR-0087). The run path sends `userAgent()` without the bot marker; the API is keyed.
 
 **OpenAI** (the `openai` SDK, `api.openai.com`; `services/ai/openaiShared.ts`,
-`services/ai/chatCompletion.ts`, `openaiVisionMatch.ts`, `wvImportAIController.ts`; every route is
-admin only).
+`services/ai/chatCompletion.ts`, `openaiVisionMatch.ts`, `wvImportAIController.ts`, every route
+admin only; and `services/ai/leadDedicationModels.ts`, asked by the Public art and Monuments &
+memorials run, #2472).
 - *Sent:* region and division names and paths, Wikivoyage wikitext, learned rules, an admin's place
-  description, map images. No user's data.
+  description, map images; from the run, a monument's name and the lead of its English Wikipedia
+  article. No user's data.
 - *Rules:*
   - [your data](https://developers.openai.com/api/docs/guides/your-data): API data is not used for
     training by default, abuse-monitoring logs are kept up to 30 days, and the Responses API stores
@@ -334,6 +338,19 @@ admin only).
   - the usage policies page refused our fetch on 2026-11-04 and is to be read by a person.
 - *Unverified* until a person reads the usage policies; nothing read so far is broken. The SDK sends its own User-Agent, an exception to `userAgent.ts`; the
   web-search calls do not set `store: false`.
+
+**Anthropic** (the `@anthropic-ai/sdk` SDK, `api.anthropic.com`, `services/ai/leadDedicationModels.ts`,
+keyed by `ANTHROPIC_API_KEY`, ADR-0201).
+- *Sent:* a monument's name and the lead of its English Wikipedia article, its links marked, asked
+  which link names its dedication; catalogue data, nothing about a user.
+- *Code:* the Messages API, Claude Haiku 5.5 with a JSON-schema output format, a 120 s timeout and
+  the SDK's retries (four, which honour `Retry-After`); four places at a time, beside the same
+  question to OpenAI. A model is asked about a lead only where no answer of its own holds the lead's
+  current revision (`workbench.lead_dedication_readings`): about 160 leads have no line on a pass,
+  and only a lead edited since its last reading is asked again.
+- *Rules:* the commercial terms and the usage policy govern API use; neither was read for this line.
+- *Unverified* until a person reads them. The SDK sends its own User-Agent, an exception to
+  `userAgent.ts`.
 
 **Place websites** (the review card's website check, `services/websiteCheck/checkWebsite.ts`, #2165).
 - *Code:*
