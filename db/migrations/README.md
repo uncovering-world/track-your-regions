@@ -530,6 +530,13 @@ ordinal, drops the column, and asserts that every point reads the item and claim
 registry holds what it expects for every value refreshed. **Run it before the next re-application of
 `01-schema.sql`**, which refuses to run while `experience_locations` still carries `wikidata_item`.
 
+`239-a-kind-record-fits-its-scheme.sql` holds a record in a kind to its source's id scheme, as a
+record in a whole already was (#2118, ADR-0198 decision 2): `source_record_fits_scheme()` stops
+letting a record in a kind through, so an id that fits neither the source's scheme nor a curator's
+key is refused on write. It writes no row: it asserts first that every record in a kind fits, and
+refuses a database where one does not, naming up to twenty (none of the 20,402 on the development
+catalogue on 2026-11-12).
+
 `054-leaf-pieces-for-placement.sql` adds `region_geom_pieces` — each leaf region's geometry cut by
 `ST_Subdivide` into pieces of at most 256 vertices — with the trigger that keeps it, and cuts every
 leaf that has a geometry (#851, [ADR-0054](../../docs/decisions/0054-placement-reads-leaves-through-their-pieces.md)).
