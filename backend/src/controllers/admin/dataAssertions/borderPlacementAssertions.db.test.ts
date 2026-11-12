@@ -12,7 +12,7 @@ import { borderPlacementAssertions } from './borderPlacementAssertions.js';
 
 const assertion = borderPlacementAssertions[0];
 const PLACE = 9971;
-const QID = 'Q99710001';
+const QID = 'Q9971097';
 const KOTAYK_ITEM = 'Q99710002';
 const CURATOR = '00000000-0000-4000-8000-000000009971';
 let curatorId = 0;
@@ -106,7 +106,7 @@ describe('a place within a kilometre of another region, its side not confirmed (
   });
 
   it('reads a World Heritage row by the item its number resolves to', async () => {
-    await placeAt(44.8165, 'UNESCO World Heritage Sites', '99971');
+    await placeAt(44.8165, 'UNESCO World Heritage Sites', '9971');
     await chainTo(KOTAYK_ITEM, 'Kotayk Fixture Province');
     expect((await asked())[0]).toMatchObject({ other_name: 'Kotayk Fixture', answer: 'names-other' });
   });

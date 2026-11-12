@@ -13,7 +13,7 @@ import { workAssertions } from './workAssertions.js';
 const LIBRARY = 'Q814779-fixture';
 const VOYNICH = 'Q179492-fixture';
 const MINOR = 'Q1-minor-fixture';
-const OWN_PLACE = 'Q9202-fixture';
+const OWN_PLACE = 'Q9971001';
 const OWN_PLACE_ID = 9971;
 const LIBRARY_PLACE_ID = 9972;
 const TOWN = 'Q1726-fixture';
@@ -22,7 +22,7 @@ const CITY_CLASS = 'Q515-fixture';
 const check = workAssertions.find(a => a.id === 'works-in-no-offered-place')!;
 
 async function clear(): Promise<void> {
-  await pool.query('DELETE FROM workbench.gathered_work_venues WHERE work_qid LIKE $1', ['%-fixture']);
+  await pool.query('DELETE FROM workbench.gathered_work_venues WHERE work_qid LIKE $1 OR work_qid = $2', ['%-fixture', OWN_PLACE]);
   await pool.query('DELETE FROM workbench.wikidata_claims WHERE subject = $1', [TOWN]);
   await pool.query('DELETE FROM workbench.wikidata_class_closure WHERE class = $1', [CITY_CLASS]);
   await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[OWN_PLACE_ID, LIBRARY_PLACE_ID]]);
@@ -64,12 +64,12 @@ describe('places no kind offers that hold a famous work no kind shows (#1821)', 
     // As a World Heritage site is: its membership keyed by its listing, its item an identifying registry row.
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
-       VALUES ($1, 2, 'listing-fixture', 'Beinecke Library (fixture)', ST_SetSRID(ST_MakePoint(-72.93, 41.31), 4326))`,
+       VALUES ($1, 2, 'Q9972001', 'Beinecke Library (fixture)', ST_SetSRID(ST_MakePoint(-72.93, 41.31), 4326))`,
       [LIBRARY_PLACE_ID],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'listing-fixture', 'admitted', 'auto', NOW() FROM experience_sources s WHERE s.id = 2`,
+       SELECT $1, s.kind_id, s.id, 'Q9972001', 'admitted', 'auto', NOW() FROM experience_sources s WHERE s.id = 2`,
       [LIBRARY_PLACE_ID],
     );
     expect(await listed()).toHaveLength(1);
