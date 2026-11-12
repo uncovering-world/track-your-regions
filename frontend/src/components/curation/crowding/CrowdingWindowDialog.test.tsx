@@ -73,10 +73,10 @@ describe("the region list's numbers (#2400)", () => {
     // Each part of the list carries the figures' headings in its header, which sticks while the part scrolls.
     const page = within(list.getByRole('rowgroup', { name: /^On the region page/ }));
     expect(page.getAllByRole('columnheader').map(cell => cell.textContent))
-      .toEqual([expect.stringMatching(/^On the region page/), 'Readers a year', 'Editions', 'In Wikivoyage', 'Score']);
+      .toEqual([expect.stringMatching(/^On the region page/), 'Readers a year', 'Editions', 'In Wikivoyage', 'Score', 'Venues']);
     const cells = (name: string) => rowOf(name).getAllByRole('cell').map(cell => cell.textContent);
-    expect(cells('Alexanderplatz')).toEqual(['209,401', '47', 'yes', '0.95']);
-    expect(cells('Leipziger Platz')).toEqual(['—', '18', '—', '0.73']);
+    expect(cells('Alexanderplatz')).toEqual(['209,401', '47', 'yes', '0.95', '64']);
+    expect(cells('Leipziger Platz')).toEqual(['—', '18', '—', '0.73', '—']);
   });
 });
 
@@ -173,19 +173,19 @@ describe('the window opened from a card', () => {
 
     const table = within(screen.getByRole('table', { name: 'Its figures and the places around it' }));
     expect(table.getAllByRole('columnheader').map(cell => cell.textContent))
-      .toEqual(['Place', 'Readers a year', 'Editions', 'In Wikivoyage', 'Score', '', 'Distance']);
+      .toEqual(['Place', 'Readers a year', 'Editions', 'In Wikivoyage', 'Score', 'Venues', '', 'Distance']);
     const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map(cell => cell.textContent);
     // The place itself is the first row, marked, with no rule's count in it: the card's sentence says that once.
-    expect(cells(table.getByRole('row', { name: 'Schloßplatz, this place' }))).toEqual(['20,000', '17', 'yes', '0.70', '', '']);
+    expect(cells(table.getByRole('row', { name: 'Schloßplatz, this place' }))).toEqual(['20,000', '17', 'yes', '0.70', '3', '', '']);
     expect(screen.queryByText(/Better within/)).toBeNull();
     const compared = within(screen.getByRole('rowgroup', { name: 'better known, compared with it' }));
     const rowOf = (name: string) => compared.getByRole('button', { name }).closest('[role="row"]') as HTMLElement;
     // Each place's name heads its row, and its figures stand in the headings' columns before its standing and distance.
     expect(within(rowOf('Alexanderplatz')).getByRole('rowheader')).toHaveTextContent('Alexanderplatz');
-    expect(cells(rowOf('Alexanderplatz'))).toEqual(['209,401', '47', 'yes', '0.95', '', '0.7 km']);
+    expect(cells(rowOf('Alexanderplatz'))).toEqual(['209,401', '47', 'yes', '0.95', '64', '', '0.7 km']);
     // A place not read yet is a dash, never a zero, and its hint says so without a tab stop of its own.
-    expect(cells(rowOf('Leipziger Platz')).slice(0, 4)).toEqual(['—', '18', '—', '0.73']);
-    expect(within(rowOf('Leipziger Platz')).getAllByLabelText('Not measured yet.')).toHaveLength(2);
+    expect(cells(rowOf('Leipziger Platz')).slice(0, 5)).toEqual(['—', '18', '—', '0.73', '—']);
+    expect(within(rowOf('Leipziger Platz')).getAllByLabelText('Not measured yet.')).toHaveLength(3);
     expect(within(rowOf('Leipziger Platz')).getAllByLabelText('Not measured yet.')[0]).not.toHaveAttribute('tabindex');
   });
 

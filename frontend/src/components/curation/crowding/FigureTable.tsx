@@ -7,16 +7,18 @@
  * are a table, not a sentence). A value not read yet is a dash, never a zero,
  * and its hint says so.
  *
- * The headings and the cells share one fixed grid (`FIGURE_COLUMNS`), so a
+ * The headings and the cells share one fixed grid (`figureColumns`), so a
  * list built of separate rows still lines its figures up under its headings.
+ * A kind whose places the place pass counts venues around (ADR-0192) has a
+ * fifth column, after the score, since the venues are no part of it.
  */
 
-import { Box, Tooltip, Typography } from '@mui/material';
+import { Box, Link, Tooltip, Typography } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material';
 import type { ReactNode } from 'react';
 import type { CrowdingGroupPlace } from '../../../api/crowding';
 
-type Signals = Pick<CrowdingGroupPlace, 'readers' | 'wikipediaEditions' | 'guideUsed' | 'score'>;
+type Signals = Pick<CrowdingGroupPlace, 'readers' | 'wikipediaEditions' | 'guideUsed' | 'score' | 'venues'>;
 
 const DASH = '—';
 const NOT_MEASURED = 'Not measured yet.';
@@ -39,7 +41,7 @@ function guideText(used: boolean | null): string | null {
 }
 
 /** The measures a place's fame is made of, and its score, in the order they are read. */
-export const FIGURE_COLUMNS: readonly FigureColumn[] = [
+const FAME_COLUMNS: readonly FigureColumn[] = [
   {
     heading: 'Readers a year', width: '7rem', align: 'right',
     hint: 'Readers of its Wikipedia articles over the last year.',
@@ -62,11 +64,55 @@ export const FIGURE_COLUMNS: readonly FigureColumn[] = [
   },
 ];
 
+/** A place's venues: a count around its point, or a figure per 100 m along a street read along its line (ADR-0194). */
+function venueText({ venues }: Signals): string | null {
+  if (venues === null) return null;
+  return venues.per100m ? `${venues.figure.toFixed(1)} / 100 m` : Math.round(venues.figure).toLocaleString('en');
+}
+
+/** The venue column's hint: what it counts, within what, and that the score does not read it. */
+function venueHint(radiusM: number | null): string {
+  const around = radiusM === null ? '' : `within ${radiusM} m of it, or `;
+  return `Cafés, restaurants, bars and other places to eat or drink ${around}per 100 m along a street read along its line. Not part of the score.`;
+}
+
+const VENUES = 'Venues';
+
+/** The columns a group's table holds, a fifth for a kind whose venues are kept. */
+export type FigureColumns = readonly FigureColumn[];
+
+/** The table's columns for a kind: its fame and score, and its venues where a place pass keeps them. */
+export function figureColumns(kind: { readsVenues: boolean; venueRadiusM: number | null }): FigureColumns {
+  if (!kind.readsVenues) return FAME_COLUMNS;
+  return [...FAME_COLUMNS, { heading: VENUES, width: '7rem', align: 'right', hint: venueHint(kind.venueRadiusM), text: venueText }];
+}
+
+/** Whether a table holds the venue column, which shows OpenStreetMap's data and so carries its credit. */
+export const showsVenues = (columns: FigureColumns) => columns.some(column => column.heading === VENUES);
+
+/**
+ * The credit the venue column owes OpenStreetMap (ADR-0059 decision 3): its
+ * figures are counted from the OpenStreetMap layer's cafés, restaurants and
+ * bars, so the credit stands under the table, visible without interaction,
+ * and only where the column does.
+ */
+export function VenueCreditLine({ columns }: { columns: FigureColumns }) {
+  if (!showsVenues(columns)) return null;
+  return (
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 1.5, py: 0.75 }}>
+      {'Venues counted on OpenStreetMap · '}
+      <Link href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" color="inherit" underline="hover">
+        © OpenStreetMap contributors
+      </Link>
+    </Typography>
+  );
+}
+
 /** The grid the headings and every row's cells share. */
-export const FIGURES_GRID = FIGURE_COLUMNS.map(column => column.width).join(' ');
+const gridOf = (columns: FigureColumns) => columns.map(column => column.width).join(' ');
 
 /** The width of the whole block, for a row that sets it beside other content. */
-export const FIGURES_WIDTH = `calc(${FIGURE_COLUMNS.map(column => column.width).join(' + ')})`;
+export const figuresWidth = (columns: FigureColumns) => `calc(${columns.map(column => column.width).join(' + ')})`;
 
 /**
  * The name column on a phone: it stays in view while the figures scroll beside it, so a
@@ -111,10 +157,10 @@ function NotMeasured() {
 }
 
 /** The table's headings, each with its hint, inside the row that holds them. */
-export function FigureHeadings() {
+export function FigureHeadings({ columns }: { columns: FigureColumns }) {
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: FIGURES_GRID, flexShrink: 0 }}>
-      {FIGURE_COLUMNS.map(column => (
+    <Box sx={{ display: 'grid', gridTemplateColumns: gridOf(columns), flexShrink: 0 }}>
+      {columns.map(column => (
         <Typography key={column.heading} role="columnheader" variant="caption" color="text.secondary"
           sx={{ px: 0.75, textAlign: column.align, whiteSpace: 'nowrap' }}>
           <Hinted hint={column.hint}>{column.heading}</Hinted>
@@ -125,10 +171,10 @@ export function FigureHeadings() {
 }
 
 /** One place's figures, in the headings' columns; a value not read yet is a dash with its hint. */
-export function FigureCells({ signals, strong = false }: { signals: Signals; strong?: boolean }) {
+export function FigureCells({ columns, signals, strong = false }: { columns: FigureColumns; signals: Signals; strong?: boolean }) {
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: FIGURES_GRID, flexShrink: 0 }}>
-      {FIGURE_COLUMNS.map(column => {
+    <Box sx={{ display: 'grid', gridTemplateColumns: gridOf(columns), flexShrink: 0 }}>
+      {columns.map(column => {
         const text = column.text(signals);
         return (
           <Typography key={column.heading} role="cell" variant="body2" color={text === null ? 'text.secondary' : 'text.primary'}

@@ -46,7 +46,7 @@ const PANTHEON = 40;
 /** Rome's churches as Rome's page holds them: the Pantheon shown, Santa Maria Antiqua new and shadowed. */
 const romeGroup: CrowdingGroup = {
   group: { regionId: 8, regionName: 'Rome', kindId: 4, type: 'church' },
-  kind: { id: 4, name: 'Places of worship', limit: 10, radiusKm: 10 },
+  kind: { id: 4, name: 'Places of worship', limit: 10, radiusKm: 10, readsVenues: false, venueRadiusM: null },
   typeExempt: false,
   places: [
     squarePlace({ membershipId: PANTHEON, name: 'Pantheon', score: 0.98 }),

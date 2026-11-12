@@ -37,6 +37,7 @@ import {
   answerRows, applySummary, outcomeLines, stageAnswer, type Answerable, type Staging,
 } from './crowdingStaging';
 import { PlaceView } from './PlaceView';
+import { figureColumns } from './FigureTable';
 import { RegionList } from './RegionList';
 import { countsLine, groupTitle, nounOf, type RuleWords } from './rowWords';
 
@@ -244,6 +245,7 @@ function WindowBody({ layout, read, circle, placeLoading, failed, inRegion, stag
   if (!read || !rule || !shown) return <LoadingSpinner padding={4} />;
   // The previous place's card while the next one loads: a press there would answer the place being left.
   const frozen = !inRegion && placeLoading;
+  const columns = figureColumns(read.kind);
   const map = circle && !inRegion
     ? { kind: 'place' as const, view: circle }
     : { kind: 'region' as const, places: read.places, rule, typeExempt: read.typeExempt };
@@ -264,13 +266,13 @@ function WindowBody({ layout, read, circle, placeLoading, failed, inRegion, stag
       <Box sx={placed.list}>
         {map.kind === 'region' ? (
           <RegionList
-            places={read.places} rule={rule} typeExempt={read.typeExempt} staging={staging}
+            places={read.places} rule={rule} typeExempt={read.typeExempt} staging={staging} columns={columns}
             hovered={hovered} onHover={onHover} onOpen={onOpen} onAnswer={onAnswer}
           />
         ) : (
           <Box sx={{ opacity: placeLoading ? 0.6 : 1 }}>
             <PlaceView
-              view={map.view} rule={rule} staging={staging} frozen={frozen}
+              view={map.view} rule={rule} staging={staging} frozen={frozen} columns={columns}
               hovered={hovered} onHover={onHover} onOpen={onOpen}
               onAnswer={answer => onAnswer(map.view.place, answer)}
             />

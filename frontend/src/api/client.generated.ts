@@ -5231,6 +5231,10 @@ export type CrowdingGroupKind = {
   limit: number;
   /** The radius they are counted within. */
   radiusKm: number;
+  /** Whether the place pass keeps the cafés, restaurants and bars it counts around the places of the kind (ADR-0192, #2454): true once a pass has kept them. */
+  readsVenues: boolean;
+  /** The radius of a point the venues are counted within; null where none is kept. */
+  venueRadiusM: number | null;
 };
 
 /**
@@ -5252,6 +5256,16 @@ export const CrowdingGroupPlacePin = {
   list: 'list',
   shadow: 'shadow',
 } as const;
+
+/**
+ * The cafés, restaurants and bars the place pass last counted around it (ADR-0192), no part of the score; null for a kind that reads none, or before a pass counts them.
+ */
+export type CrowdingGroupPlaceVenues = {
+  /** The venues within the kind's radius of its point, or per 100 m along its line. */
+  figure: number;
+  /** Whether the street was read along its line (ADR-0194), the figure then per 100 m. */
+  per100m: boolean;
+} | null;
 
 /**
  * One place of a crowded city's group, as its region page would show it.
@@ -5296,6 +5310,8 @@ export interface CrowdingGroupPlace {
      * @nullable
      */
   score: number | null;
+  /** The cafés, restaurants and bars the place pass last counted around it (ADR-0192), no part of the score; null for a kind that reads none, or before a pass counts them. */
+  venues: CrowdingGroupPlaceVenues;
   /** Where it stands now: on the region page, in its tail, or a new arrival nobody has passed. */
   standing: CrowdingGroupPlaceStanding;
   /** In the tail now, or for a new arrival, once passed. */
@@ -5361,7 +5377,21 @@ export type CrowdingPlaceViewKind = {
   limit: number;
   /** The radius they are counted within. */
   radiusKm: number;
+  /** Whether the place pass keeps the cafés, restaurants and bars it counts around the places of the kind (ADR-0192, #2454): true once a pass has kept them. */
+  readsVenues: boolean;
+  /** The radius of a point the venues are counted within; null where none is kept. */
+  venueRadiusM: number | null;
 };
+
+/**
+ * The cafés, restaurants and bars the place pass last counted around it (ADR-0192), no part of the score; null for a kind that reads none, or before a pass counts them.
+ */
+export type CrowdingPlaceViewAroundItemVenues = {
+  /** The venues within the kind's radius of its point, or per 100 m along its line. */
+  figure: number;
+  /** Whether the street was read along its line (ADR-0194), the figure then per 100 m. */
+  per100m: boolean;
+} | null;
 
 /**
  * Where it stands now: on the region page, in its tail, or a new arrival nobody has passed.
@@ -5420,6 +5450,8 @@ export type CrowdingPlaceViewAroundItem = {
      * @nullable
      */
   score: number | null;
+  /** The cafés, restaurants and bars the place pass last counted around it (ADR-0192), no part of the score; null for a kind that reads none, or before a pass counts them. */
+  venues: CrowdingPlaceViewAroundItemVenues;
   /** Where it stands now: on the region page, in its tail, or a new arrival nobody has passed. */
   standing: CrowdingPlaceViewAroundItemStanding;
   /** It counts above the place (`crowding_above()`): what the place is compared with. */
