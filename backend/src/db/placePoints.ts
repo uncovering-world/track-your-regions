@@ -36,7 +36,7 @@
  * it is the point of (ADR-0100 decision 5).
  */
 
-import { MEMBERSHIPS, componentRecordSql, placeHoldsKindSql, placeOfferedSql } from './membership.js';
+import { MEMBERSHIPS, componentRecordSql, placeHoldsKindSql, placeOfferedSql, siteMembershipSql } from './membership.js';
 
 /** One way a place shows a point: the tables it is read from, and the place it is shown by. */
 export interface PlacePointArm {
@@ -170,10 +170,12 @@ export function partOfFactsSql(place: string): string {
              'name', whole_facts.name,
              'unesco_id', site_facts.external_id,
              'unesco_url', whole_facts.metadata->>'unescoUrl',
-             'component_ref', part_facts.external_ref)
+             'component_ref', part_ref.external_id)
            FROM experience_parts part_facts
            JOIN experiences whole_facts ON whole_facts.id = part_facts.whole_id
-           LEFT JOIN ${MEMBERSHIPS} site_facts ON site_facts.id = part_facts.membership_id
+           LEFT JOIN ${MEMBERSHIPS} site_facts ON part_facts.reason = 'component' AND ${siteMembershipSql('site_facts', 'part_facts')}
+           LEFT JOIN ${MEMBERSHIPS} part_ref ON part_ref.experience_id = part_facts.part_id
+                                            AND part_ref.whole_id = part_facts.whole_id AND ${componentRecordSql('part_ref')}
           WHERE part_facts.part_id = ${place} AND part_facts.whole_id = ${wholeOfSql(place)})`;
 }
 

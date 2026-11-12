@@ -26,8 +26,8 @@ import { moveChangesOfPlace } from '../../services/sync/changeRecorder.js';
 import { moveConflictDecisions } from './conflictDecisions.js';
 import { foldPoints, movePoints, unfoldPoints, type FoldedPoints } from './experienceLocationWriter.js';
 import { moveHeldDecisions } from './heldDecisions.js';
-import { moveMemberships } from './membershipWriter.js';
-import { arePartAndWhole, moveParts } from './partWriter.js';
+import { moveMemberships, moveWholeRecords } from './membershipWriter.js';
+import { arePartAndWhole } from './partWriter.js';
 import { followTheirPoints } from '../../db/partFieldsWriter.js';
 import { reopenMergedPair } from './mergeProposalAnswers.js';
 import { reopenSeparationsUndoneBy } from './separationReopening.js';
@@ -67,8 +67,12 @@ export interface MergeRecord {
   assignments?: number[];
   /** A curator's choices between two sources' views of the folded place (#1246). */
   viewChoices?: number[];
-  /** The part-of relations the folded place was in, as the part or as the whole (ADR-0100 decision 4). */
-  parts?: number[];
+  /**
+   * The records in a whole whose whole was the folded place (ADR-0198): a
+   * merge recorded before records carried the relation named the relations
+   * instead (`parts`), which moved with the folded place's own records.
+   */
+  wholeRecords?: number[];
   /**
    * The visits a folded visit was copied in as, and the survivor's visits it
    * reconciled, before and after: the undo takes back only what nobody has
@@ -174,23 +178,33 @@ async function moveEverything(client: PoolClient, folded: LockedExperience, surv
   const rejections = await moveRejections(client, folded.id, survivor.id);
   const assignments = await moveManualAssignments(client, folded.id, survivor.id);
   const viewChoices = await moveViewChoices(client, folded, survivor);
-  const parts = await moveParts(client, folded, survivor);
+  const wholeRecords = await moveWholeRecords(client, folded, survivor);
   const visits = await reconcileVisits(client, folded.id, survivor.id);
   const pointVisits = await reconcilePointVisits(client, foldedPoints);
   return {
     memberships, points, foldedPoints, links, foldedLinks, changes, heldDecisions, conflictDecisions, rejections,
-    assignments, viewChoices, parts, visits, pointVisits,
+    assignments, viewChoices, wholeRecords, visits, pointVisits,
   };
 }
 
 /**
- * Both places' region keys, taken after their object locks and before any of
- * their rows: the moves below write `experience_regions` rows and set off
- * refreshes of both, and a refresh elsewhere already holding a key may be
- * waiting for one of those rows (ADR-0197, `db/locks.ts`).
+ * The region keys of every place the moves below reach, taken after both
+ * object locks and before any of their rows (ADR-0197, `db/locks.ts`): the
+ * moves write `experience_regions` rows and set off refreshes, and a refresh
+ * elsewhere already holding a key may be waiting for one of those rows. The
+ * record moves remake part relations (ADR-0198), whose refreshes reach both
+ * places, the parts of either and the wholes either is a part of, so their
+ * keys, and those of the wholes above them, are taken in the same ordered
+ * pass rather than one refresh at a time.
  */
 async function lockRegionKeys(client: PoolClient, folded: LockedExperience, survivor: LockedExperience): Promise<void> {
-  await client.query('SELECT lock_place_regions(ARRAY[$1::int, $2::int])', [folded.id, survivor.id]);
+  await client.query(
+    `SELECT lock_place_regions(ARRAY(
+       SELECT unnest(ARRAY[$1::int, $2::int])
+       UNION SELECT prt.part_id FROM experience_parts prt WHERE prt.whole_id IN ($1, $2)
+       UNION SELECT prt.whole_id FROM experience_parts prt WHERE prt.part_id IN ($1, $2)))`,
+    [folded.id, survivor.id],
+  );
 }
 
 /** A region's refusal of the folded place, where the survivor has none in that region. */
@@ -468,7 +482,7 @@ async function moveEverythingBack(
   // A merge recorded before assignments moved recorded none, and moves none back.
   await moveManualAssignments(client, survivor.id, folded.id, record.assignments ?? []);
   await moveViewChoices(client, survivor, folded, record.viewChoices ?? []);
-  await moveParts(client, survivor, folded, record.parts ?? []);
+  await moveWholeRecords(client, survivor, folded, record.wholeRecords ?? []);
   // Whichever of the two is a component part again is named and placed for its
   // point: while the merge stood, the site's run may have renamed or moved the
   // point it had folded, and a place no relation named did not follow.

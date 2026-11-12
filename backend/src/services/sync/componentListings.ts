@@ -29,7 +29,7 @@ export const COMPONENT_LISTINGS = `SELECT DISTINCT ON (rec.id) rec.id AS record_
     FROM experience_parts p
     JOIN ${MEMBERSHIPS} rec ON rec.experience_id = p.part_id AND rec.whole_id = p.whole_id
                            AND ${componentRecordSql('rec')}
-    JOIN experience_locations c ON c.external_ref = p.external_ref AND c.missing_since IS NULL
+    JOIN experience_locations c ON c.external_ref = rec.external_id AND c.missing_since IS NULL
      AND ((c.experience_id = p.part_id AND c.merged_into_id IS NULL)
           OR c.id = ANY(ARRAY(SELECT ff.id FROM ${foldedPointsSql('ARRAY[p.part_id]')} ff)))
     JOIN incoming i ON i.ordinal = c.ordinal AND i.external_ref = c.external_ref
