@@ -51,6 +51,9 @@ export const FAME = 'membership_fame';
  */
 export const COMPONENT_SOURCE_ID = 10;
 
+/** The World Heritage list, the source whose membership of a site its components' records answer to. */
+export const WORLD_HERITAGE_SOURCE_ID = 1;
+
 const INNER = 'km';
 
 /**
@@ -94,6 +97,16 @@ export function kindRecordSql(alias = 'm'): string {
  */
 export function componentRecordSql(alias = 'rec'): string {
   return `${alias}.source_id = ${COMPONENT_SOURCE_ID} AND ${alias}.whole_id IS NOT NULL`;
+}
+
+/**
+ * The World Heritage membership `membership` of the site a part is a component
+ * of, as a join condition over `wholeOf`, an alias with the site's `whole_id`
+ * (a part's record or its relation, ADR-0198): the membership the part's
+ * reference and view answer to.
+ */
+export function siteMembershipSql(membership: string, wholeOf: string): string {
+  return `${membership}.experience_id = ${wholeOf}.whole_id AND ${membership}.source_id = ${WORLD_HERITAGE_SOURCE_ID}`;
 }
 
 /**

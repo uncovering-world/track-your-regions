@@ -92,6 +92,17 @@
  *   adds. Two transactions that take keys out of order that way, or that each
  *   refresh twice with keys in different orders, can still meet in a cycle;
  *   Postgres aborts one, as with the identity registry's keys (ADR-0143).
+ * - `parts_follow_records()` writes `experience_parts` from inside a write of
+ *   a record in a whole (ADR-0198), so the refresh a part relation sets off
+ *   runs in that record writer's transaction, after its object locks: the
+ *   World Heritage run's `part_site_components()` under the site's lock,
+ *   which writes no `experience_regions` row before it, and a merge or its
+ *   undo, whose record moves remake relations of both places, of the parts of
+ *   either and of the wholes either is a part of. The merge takes the keys of
+ *   all of those in one ordered pass before its first row (`lockRegionKeys`),
+ *   so every refresh its moves set off takes keys it already holds. The
+ *   derivation itself takes no lock and writes a relation only under the
+ *   object locks of the record's writer.
  *
  * **Then the mode: `FOR NO KEY UPDATE`, not `FOR UPDATE`.** It self-conflicts, so
  * two writers on one object still serialise, and it still blocks an UPDATE or a

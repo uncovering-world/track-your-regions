@@ -414,6 +414,37 @@ export async function moveMemberships(
 }
 
 /**
+ * Move the records whose whole is `from` into the whole `to` (ADR-0198): on a
+ * merge, every record in the folded place as a whole; on its undo, the ones
+ * the merge moved, named. A record the survivor's whole already holds of the
+ * same source for the same place stays, since a source has one record of a
+ * place in a whole. A record of the folded place in itself, which
+ * `moveMemberships` has made a record of `to` in `from`, becomes a record of
+ * `to` in itself, which claims no part (`refresh_part_relation`); left behind,
+ * it would make the survivor a part of the place folded into it. The relation
+ * follows each record (`parts_follow_records()`). The ids moved are the
+ * merge's record of them, and the undo moves them back after its own
+ * memberships, so the place is again recorded in itself.
+ */
+export async function moveWholeRecords(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+  only?: number[],
+): Promise<number[]> {
+  const result = await client.query<{ id: number }>(
+    `UPDATE ${MEMBERSHIPS} rec SET whole_id = $2, updated_at = NOW()
+      WHERE rec.whole_id = $1 AND ($3::int[] IS NULL OR rec.id = ANY($3::int[]))
+        AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held
+                         WHERE held.source_id = rec.source_id AND held.whole_id = $2
+                           AND held.experience_id = rec.experience_id)
+      RETURNING rec.id`,
+    [from.id, to.id, only ?? null],
+  );
+  return result.rows.map(row => row.id);
+}
+
+/**
  * Whether the membership `sourceId` brought to the place claims its type — the
  * claim a proposal of that source's run meets (ADR-0084: the type within a
  * kind is the membership's, and so is a curator's pin on it).

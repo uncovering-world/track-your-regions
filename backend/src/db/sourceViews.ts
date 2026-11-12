@@ -15,7 +15,7 @@
  */
 
 import { SHORT_MOVE_METERS } from '@tyr/shared/moves';
-import { MEMBERSHIPS, componentRecordSql, membershipAdmittedSql, kindRecordSql } from './membership.js';
+import { MEMBERSHIPS, componentRecordSql, membershipAdmittedSql, kindRecordSql, siteMembershipSql } from './membership.js';
 
 /**
  * The fields a view holds, in the words a run's change set and the review
@@ -85,12 +85,12 @@ export function placeViewsSql(placeExpr: string, alias = 'v'): string {
             WHERE m.experience_id = ${placeExpr} AND ${viewStandsSql('m')} AND ${membershipAdmittedSql('m')}
               AND ${kindRecordSql('m')}
            UNION ALL
-           SELECT rec.id, w.kind_id, w.source_id, p.external_ref, true, w.experience_id, rec.reported_name, NULL::text,
+           SELECT rec.id, w.kind_id, w.source_id, rec.external_id::text, true, w.experience_id, rec.reported_name, NULL::text,
                   NULL::text, NULL::jsonb, rec.reported_location, NULL::text, w.type
              FROM ${MEMBERSHIPS} rec
              JOIN experience_parts p ON p.part_id = rec.experience_id AND p.whole_id = rec.whole_id
                                     AND p.reason = 'component'
-             JOIN ${MEMBERSHIPS} w ON w.id = p.membership_id
+             JOIN ${MEMBERSHIPS} w ON ${siteMembershipSql('w', 'rec')}
             WHERE rec.experience_id = ${placeExpr} AND ${componentRecordSql('rec')}
               AND (rec.reported_name IS NOT NULL OR rec.reported_location IS NOT NULL)
               AND ${viewStandsSql('w')} AND ${membershipAdmittedSql('w')}) AS ${alias}`;

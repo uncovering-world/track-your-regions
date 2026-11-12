@@ -5,7 +5,7 @@
  * this module is their one writer: the World Heritage run's content writer, a
  * curator's correction of the part's point, a confirmed or taken-back
  * component item and a published held proposal all write through it. So are
- * the part's name and coordinate and its relation's reference, which the
+ * the part's name and coordinate and its record's reference, which the
  * writers of its point write here after their own write (`followTheirPoints`),
  * and a curator's name for the part (`writePartFields`). The
  * component's Wikidata item and what the site's list says of the component
@@ -24,7 +24,7 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from './experienceWriter.js';
-import { MEMBERSHIPS, componentRecordSql, placeHoldsKindSql } from './membership.js';
+import { MEMBERSHIPS, componentRecordSql, placeHoldsKindSql, siteMembershipSql } from './membership.js';
 import { pointOfPartSql, pointRecordSql, shownBySql } from './placePoints.js';
 import { publishedContentSql } from './readerPredicates.js';
 
@@ -121,7 +121,7 @@ export async function writePartFields(
  * then its site's name with the reference), unless a curator named the part
  * (`name` in its claims); its point's coordinate, since a place of one point
  * stands where its point does (ADR-0095); and its point's reference, for its
- * relation. A part whose component moved holds the point it moved from beside
+ * record. A part whose component moved holds the point it moved from beside
  * the one it moved to until the old one goes (#2182), and follows the one a
  * reader sees: a standing point before a withdrawn one, a published one
  * before an arrival waiting for a curator, then the older.
@@ -151,16 +151,20 @@ export function partFollowsSql(pointFilter: string): string {
 }
 
 /**
- * The relation `relation` takes the reference of the point a row of
- * `partFollowsSql` (`row`) names: the relation of the whole whose list placed
+ * The part's record `record` takes the reference of the point a row of
+ * `partFollowsSql` (`row`) names: the record in the whole whose list placed
  * the point, since a part of two sites carries each site's reference on that
- * site's relation (ADR-0198), or every relation of the part for a point no
- * list placed.
+ * site's record (ADR-0198), or every record of the part for a point no list
+ * placed; and only a reference of a component's shape, since the record is
+ * the list's view under the list's id.
  */
-function relationOfPointSql(relation: string, row: string): string {
-  return `(NOT EXISTS (SELECT 1 FROM experience_location_placements any_pl WHERE any_pl.location_id = ${row}.point_id)
-           OR EXISTS (SELECT 1 FROM experience_location_placements own_pl
-                       WHERE own_pl.location_id = ${row}.point_id AND own_pl.membership_id = ${relation}.membership_id))`;
+function recordOfPointSql(record: string, row: string): string {
+  return `${componentRecordSql(record)} AND ${record}.experience_id = ${row}.part_id
+          AND source_id_fits_scheme('whc-component', ${row}.external_ref)
+          AND (NOT EXISTS (SELECT 1 FROM experience_location_placements any_pl WHERE any_pl.location_id = ${row}.point_id)
+               OR EXISTS (SELECT 1 FROM experience_location_placements own_pl
+                            JOIN ${MEMBERSHIPS} own_site ON own_site.id = own_pl.membership_id
+                           WHERE own_pl.location_id = ${row}.point_id AND ${siteMembershipSql('own_site', record)}))`;
 }
 
 /** The parts of the site `$1` that are not yet what their point makes them (`partFollowsSql`): the run's fast path asks it. */
@@ -169,13 +173,12 @@ export function partsBehindSql(): string {
   return `SELECT 1 FROM (${partFollowsSql(ofSite)}) f
             JOIN experiences part ON part.id = f.part_id
            WHERE part.name IS DISTINCT FROM f.name OR part.location IS DISTINCT FROM f.location
-              OR EXISTS (SELECT 1 FROM experience_parts fp WHERE fp.part_id = f.part_id AND fp.reason = 'component'
-                           AND ${relationOfPointSql('fp', 'f')}
-                           AND fp.external_ref IS DISTINCT FROM f.external_ref)`;
+              OR EXISTS (SELECT 1 FROM ${MEMBERSHIPS} fr WHERE ${recordOfPointSql('fr', 'f')}
+                           AND fr.external_id IS DISTINCT FROM f.external_ref)`;
 }
 
 /**
- * Write each part's name, coordinate and relation's reference from its point
+ * Write each part's name, coordinate and record's reference from its point
  * (`partFollowsSql`), under the lock of the place that shows the points: the
  * points `pointIds`, or every point of a part the place shows where it is
  * null. Each writer of what a part is named or placed for calls it after its
@@ -202,10 +205,9 @@ export async function followTheirPoints(
         WHERE part.id = f.part_id
           AND (part.name IS DISTINCT FROM f.name OR part.location IS DISTINCT FROM f.location)
      )
-     UPDATE experience_parts p SET external_ref = f.external_ref
+     UPDATE ${MEMBERSHIPS} rec SET external_id = f.external_ref, updated_at = NOW()
        FROM f
-      WHERE p.part_id = f.part_id AND p.reason = 'component' AND ${relationOfPointSql('p', 'f')}
-        AND p.external_ref IS DISTINCT FROM f.external_ref`,
+      WHERE ${recordOfPointSql('rec', 'f')} AND rec.external_id IS DISTINCT FROM f.external_ref`,
     [lock.id, pointIds],
   );
 }
