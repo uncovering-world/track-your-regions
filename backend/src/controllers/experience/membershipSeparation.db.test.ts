@@ -355,6 +355,42 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
     expect(await textOf(result!.separatedId)).toEqual(edit);
   });
 
+  it("refuses a World Heritage site's only kind, its record of its own list line being no kind (ADR-0200)", async () => {
+    const unescoMembership = await membershipOf('UNESCO World Heritage Sites');
+    await pool.query('DELETE FROM source_records WHERE id = ANY($1::int[])', [[worshipMembership, siteMembership]]);
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($1, $1, 10, '9710-001')`,
+      [PANTHEON],
+    );
+
+    const outcome = await separateMembership({ placeId: PANTHEON, membershipId: unescoMembership, separatedBy: curatorId });
+    expect(outcome.refusal).toMatchObject({ status: 409, error: expect.stringContaining('only kind') });
+    const records = await pool.query('SELECT 1 FROM source_records WHERE experience_id = $1', [PANTHEON]);
+    expect(records.rowCount).toBe(2);
+  });
+
+  it("takes the site's record of its own list line with UNESCO's membership, and brings it back on the undo (ADR-0200)", async () => {
+    const unescoMembership = await membershipOf('UNESCO World Heritage Sites');
+    await pointPlacedBy('Rotunda', 12.4769, [unescoMembership]);
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, wikidata_items, curated_fields)
+       VALUES ($1, $1, 10, '9710-001', ARRAY['Q9710001'], '["wikidata_items"]')`,
+      [PANTHEON],
+    );
+    const lineOf = async () => (await pool.query<{ experience_id: number; whole_id: number; items: string[]; claims: string[] }>(
+      `SELECT experience_id, whole_id, wikidata_items AS items, curated_fields AS claims FROM source_records
+        WHERE source_id = 10 AND external_id = '9710-001'`,
+    )).rows;
+
+    const { result } = await separateMembership({ placeId: PANTHEON, membershipId: unescoMembership, separatedBy: curatorId });
+    const separated = result!.separatedId;
+    expect(await lineOf()).toEqual([{ experience_id: separated, whole_id: separated, items: ['Q9710001'], claims: ['wikidata_items'] }]);
+
+    const undone = await undoSeparation(result!.separationId, curatorId);
+    expect(undone.refusal).toBeUndefined();
+    expect(await lineOf()).toEqual([{ experience_id: PANTHEON, whole_id: PANTHEON, items: ['Q9710001'], claims: ['wikidata_items'] }]);
+  });
+
   it("keeps a curator's own description on the original when UNESCO's membership leaves (ADR-0149)", async () => {
     const unescoMembership = await membershipOf('UNESCO World Heritage Sites');
     await pointPlacedBy('Rotunda', 12.4769, [unescoMembership]);

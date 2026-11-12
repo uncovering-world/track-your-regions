@@ -234,13 +234,11 @@ describe("a part's item, on its record in World Heritage components (ADR-0156 de
       WHERE experience_id = $1 AND source_id = 10 AND whole_id IS NOT NULL`, [partId],
   )).rows[0];
 
-  it("is recorded by the run there, never on the point, and the registry reads it as the part's", async () => {
+  it("is recorded by the run there, and the registry reads it as the part's", async () => {
     const before = await luxor();
     expect(await recordComponentItems(THEBES, [{ ref: LUXOR.externalRef, item: 'Q9970001' }], run.sourceId)).toBe(1);
 
     expect((await record(before.part_id)).items).toEqual(['Q9970001']);
-    const point = await pool.query<{ wikidata_item: string | null }>('SELECT wikidata_item FROM experience_locations WHERE id = $1', [before.point_id]);
-    expect(point.rows[0].wikidata_item).toBeNull();
     const registry = await pool.query<{ identifies: boolean; basis: string[] }>(
       `SELECT identifies, basis FROM place_identifiers WHERE experience_id = $1 AND scheme = 'wikidata' AND value = 'Q9970001'`,
       [before.part_id],

@@ -232,8 +232,8 @@ describe("a site's candidate component items (#1272)", () => {
 
   it('waits on another site confirming the same item, and then reads it as taken', async () => {
     // Another site's answer holds the fort's lock: this one must wait, not read
-    // the item as free, and once the other has recorded the fort on its point
-    // and committed, read it as taken. The item's lock is what the site's lock
+    // the item as free, and once the other has recorded the fort on its
+    // component's record and committed, read it as taken. The item's lock is what the site's lock
     // cannot give, since the two sites' rows are different.
     const other = await pool.connect();
     try {
@@ -245,7 +245,12 @@ describe("a site's candidate component items (#1272)", () => {
       ], content(null, null)).then(outcome => { settled = true; return outcome; });
       await new Promise(resolve => setTimeout(resolve, 300));
       expect(settled).toBe(false);
-      await other.query('UPDATE experience_locations SET wikidata_item = $1 WHERE id = $2', [BOLOGA_FORT, points.buciumi]);
+      await other.query(
+        `UPDATE source_records SET wikidata_items = ARRAY[$1]
+          WHERE source_id = 10 AND whole_id = $3
+            AND experience_id = (SELECT experience_id FROM experience_locations WHERE id = $2)`,
+        [BOLOGA_FORT, points.buciumi, SITE],
+      );
       await other.query('COMMIT');
 
       const outcome = await answer;

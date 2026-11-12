@@ -255,8 +255,9 @@ describe('a place that belongs to no kind', () => {
     // Every reader-facing read asks the four questions through the memberships
     // (#822), so such a row is on no screen and in no queue. Not filtered on
     // lifecycle: a lost or refused place with a membership is answered, one
-    // without is never asked.
-    expect(sql).toContain('WHERE NOT EXISTS ( SELECT 1 FROM source_records m WHERE m.experience_id = e.id )');
+    // without is never asked. A record in a whole, a site's record of its own
+    // list line among them (ADR-0200), is no kind.
+    expect(sql).toContain('WHERE NOT EXISTS ( SELECT 1 FROM source_records m WHERE m.experience_id = e.id AND m.kind_id IS NOT NULL )');
     expect(sql).not.toMatch(/admission|curation_state|existence/);
     expect(assertion.kind).toBe('invariant');
   });
@@ -293,7 +294,7 @@ describe('a place none of whose memberships carries the source and id it was bro
   });
 
   it('leaves a place with no membership at all to the check that names that', () => {
-    expect(sql).toContain(`WHERE EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id)`);
+    expect(sql).toContain(`WHERE EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND m.kind_id IS NOT NULL)`);
   });
 
   it('names the source and the id, since those are what the run looks for', () => {

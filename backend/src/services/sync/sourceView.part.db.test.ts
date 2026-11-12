@@ -81,9 +81,9 @@ beforeEach(async () => {
     [SITE, unesco.kind_id, heritage],
   );
   await writeExperienceLocations(SITE, [PRAETORIUM, DEUTZ], { syncLogId: null, sourceId: heritage, components: true });
-  // The component-items pass binds the point to the item it found.
+  // The component-items pass binds the component's record to the item it found.
   await pool.query(
-    'UPDATE experience_locations SET wikidata_item = $3 WHERE experience_id = (SELECT experience_id FROM source_records WHERE whole_id = $1 AND source_id = 10 AND external_id = $2)',
+    'UPDATE source_records SET wikidata_items = ARRAY[$3] WHERE whole_id = $1 AND source_id = 10 AND external_id = $2',
     [SITE, PRAETORIUM.externalRef, ITEM],
   );
 });
