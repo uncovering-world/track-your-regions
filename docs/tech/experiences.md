@@ -5368,7 +5368,8 @@ holds stays while its venues reach 0.8 of the share, and leaves under it as a pl
 other test does. It reads the kind's own places, never a quarter:
 Kreuzberg and Friedrichshain are a neighbourhood, a kind of their own. Its arrivals wait for a
 curator, with the count and the reference in the cut's note on the card. A real pass that read the
-layer keeps what it counted for every place of the kind (`place_venues`, `keepVenueFigures` in
+layer keeps what it counted for every place of the kind the cut measures or the source holds, a
+curator's put-back below the floors among them (`place_venues`, `keepVenueFigures` in
 `places/venueFigures.ts`, #2454), replacing the source's rows: the count around a point with its
 radius, or the figure per 100 m with the length of the lines. It is keyed by the source and the
 item, since the pool counts a new arrival before its run writes the membership, and the crowded
