@@ -604,15 +604,20 @@ export async function insertManualMembership(
  *
  * Its id within the source is a Wikidata item the place already carries on
  * another membership, so a run of the kind's source that later lists the item
- * writes this membership rather than a second one; a place with none keeps its
- * own key. Another place of the source holding that item is the unique
- * violation the handler answers.
+ * writes this membership rather than a second one. A place with none keeps
+ * its own key where that key fits the source's scheme or is a curator's, and
+ * otherwise takes a curator's key of its own (`curator-<curator>-<ms>`, as a
+ * manual create's is): the place's own key may be another source's id, a World
+ * Heritage number or a part's, which the record's scheme refuses (ADR-0198).
+ * Another place of the source holding that item is the unique violation the
+ * handler answers.
  */
 export async function insertCuratorKindMembership(
   client: PoolClient,
   lock: LockedExperience,
   sourceId: number,
   type: string | null,
+  curatorId: number,
 ): Promise<number> {
   const inserted = await client.query<{ id: number }>(`
     INSERT INTO ${MEMBERSHIPS} (
@@ -624,7 +629,11 @@ export async function insertCuratorKindMembership(
         (SELECT other.external_id FROM ${MEMBERSHIPS} other
           WHERE other.experience_id = $1 AND other.external_id ~ '^Q[0-9]+$'
           ORDER BY other.id LIMIT 1),
-        (SELECT external_id FROM experiences WHERE id = $1)
+        (SELECT e.external_id FROM experiences e
+          WHERE e.id = $1
+            AND (source_id_fits_scheme((SELECT s.id_scheme FROM experience_sources s WHERE s.id = $2), e.external_id)
+                 OR source_id_fits_scheme('curator', e.external_id))),
+        $4::text
       ),
       $3::text, 'admitted',
       -- A type is claimed only where one was given, so a run may still file one.
@@ -632,6 +641,6 @@ export async function insertCuratorKindMembership(
       'verified', NOW()
     )
     RETURNING id
-  `, [lock.id, sourceId, type]);
+  `, [lock.id, sourceId, type, `curator-${curatorId}-${Date.now()}`]);
   return inserted.rows[0].id;
 }
