@@ -14,24 +14,26 @@
  * already holds: the address grammar (`buildAppUrl`, which
  * `useReviewAddress` reads) and the router.
  *
- * The address is written whole, in the first world view the read says places
- * the object, at the smallest region that holds it there — the list arrives
- * most specific first (`readerRegionsJsonSql`), across every world view a
- * reader may see — on the map, since a page with no lens has no mode to
- * keep; pushed, so Back returns to the card. That world view may not be the
- * one the curator last had open, which `PlaceLink` never does and the
- * inventory row says so: reading the open one needs the navigation context,
- * the very module the chunk must not reach. A place no world view places
- * is its name, as `PlaceLink` says it.
+ * The address is written whole, in the world view the curator last had open
+ * (`lastWorldView`, which the navigation context keeps and this chunk reads
+ * without reaching it), at the smallest region that holds the object there
+ * (`openableRegion`, `PlaceLink`'s rule); where that world view does not
+ * place it, in the first one the read says does — the list arrives most
+ * specific first (`readerRegionsJsonSql`), across every world view a reader
+ * may see. On the map, since a page with no lens has no mode to keep; pushed,
+ * so Back returns to the card. A place no world view places is its name, as
+ * `PlaceLink` says it.
  */
 
 import { Link } from '@mui/material';
 import { Link as RouterLink } from 'react-router';
 import type { LinkedPlace } from '../../api/experiences';
 import { buildAppUrl } from '../../utils/appUrl';
+import { lastWorldView } from '../../utils/lastWorldView';
+import { openableRegion } from '../../utils/openableRegion';
 
 export function ReviewPlaceLink({ place }: { place: LinkedPlace }) {
-  const region = place.regions[0];
+  const region = openableRegion(place.regions, lastWorldView()) ?? place.regions[0];
   if (!region) return <>{place.name}</>;
   const href = buildAppUrl(
     { mode: 'map', worldViewId: region.world_view_id, regionId: region.id, experienceId: place.id, pointId: null, kindId: null },
