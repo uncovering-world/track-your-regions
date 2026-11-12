@@ -39,6 +39,15 @@ export const OCCURRENCE = 'Q1190554';
  */
 export const FIGURE_CLASSES = ['Q95074', 'Q4271324', 'Q13002315', 'Q207174'] as const;
 
+/**
+ * The roots of the classes a group of people is an instance of, which a
+ * dedication read from a place's lead may name (#2472): a group of humans
+ * (Q16334295), an ethnic group (Q41710), a noble family (Q13417114), a family
+ * (Q8436). The measurement of #2472 typed its answers by these, with human
+ * and occurrence.
+ */
+export const GROUP_CLASSES = ['Q16334295', 'Q41710', 'Q13417114', 'Q8436'] as const;
+
 /** Wikidata's "human" (Q5). */
 const HUMAN = 'Q5';
 
@@ -62,14 +71,17 @@ export async function subsetSubjectClaims(ids: string[]): Promise<Map<string, Su
 }
 
 /**
- * Each value's label, whether it is a human or an event, and whether it is a
- * holy figure (an instance of a class under deity, or canonised, `P411`); a
- * value with no label in any language has no entry.
+ * Each value's label, whether it is a human or an event, whether it is a
+ * holy figure (an instance of a class under deity, or canonised, `P411`), a
+ * figure or a group of people; a value with no label in any language has no
+ * entry.
  */
 export async function subsetSubjectKinds(ids: string[]): Promise<Map<string, SubjectKind>> {
   const [kept, terms, deities, wars] = await Promise.all([entitiesOf(ids), termsOf(ids), subsetClassTree(DEITY), subsetClassTree(WAR)]);
   const valueClasses = [...kept.values()].flatMap(({ entity }) => itemsOf(bestStatements(entity.claims.P31)));
-  const [occurrences, figures] = await Promise.all([classesUnder(valueClasses, [OCCURRENCE]), classesUnder(valueClasses, FIGURE_CLASSES)]);
+  const [occurrences, figures, groups] = await Promise.all([
+    classesUnder(valueClasses, [OCCURRENCE]), classesUnder(valueClasses, FIGURE_CLASSES), classesUnder(valueClasses, GROUP_CLASSES),
+  ]);
   const out = new Map<string, SubjectKind>();
   for (const id of ids) {
     const label = terms.get(id)?.label;
@@ -88,6 +100,7 @@ export async function subsetSubjectKinds(ids: string[]): Promise<Map<string, Sub
       war: classes.some(cls => wars.has(cls)),
       occurrence: classes.some(cls => occurrences.has(cls)),
       figure: classes.some(cls => figures.has(cls)),
+      group: classes.some(cls => groups.has(cls)),
       span: spanOf(timeOf(claims.P580) ?? timeOf(claims.P585), timeOf(claims.P582) ?? timeOf(claims.P585)),
     });
   }
