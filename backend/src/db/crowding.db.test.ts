@@ -26,12 +26,12 @@ async function place(id: number, name: string, lat: number, lon: number, type: s
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      VALUES ($1, 4, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326))`,
-    [id, `Q${id}`, name, lon, lat],
+    [id, `Q${id}001`, name, lon, lat],
   );
   const membership = await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
      VALUES ($1, $2, 4, $3, $4, 'verified', NOW()) RETURNING id`,
-    [id, WORSHIP, `Q${id}`, type],
+    [id, WORSHIP, `Q${id}001`, type],
   );
   await pool.query(
     'INSERT INTO membership_fame (membership_id, readers, guide_editions, wikipedia_editions) VALUES ($1, $2, $3, $4)',
@@ -138,10 +138,10 @@ describe('a crowded city shows the ten best known of a type (ADR-0172)', () => {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
        VALUES ($1, 4, $2, 'Church 13', ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
-      [id, `Q${id}`, ROME.lon, ROME.lat]);
+      [id, `Q${id}001`, ROME.lon, ROME.lat]);
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
-       VALUES ($1, $2, 4, $3, 'church', 'verified', NOW())`, [id, WORSHIP, `Q${id}`]);
+       VALUES ($1, $2, 4, $3, 'church', 'verified', NOW())`, [id, WORSHIP, `Q${id}001`]);
     expect(await crowded()).toEqual([BASE + 11, BASE + 12]);
   });
 

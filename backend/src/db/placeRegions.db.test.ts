@@ -54,7 +54,7 @@ async function place(id: number, name: string, lon: number, lat: number): Promis
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      SELECT $1, s.id, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)
        FROM experience_sources s WHERE s.name = 'Art Museums'`,
-    [id, `${id}-place-regions-fixture`, name, lon, lat],
+    [id, `Q${id}001`, name, lon, lat],
   );
 }
 
@@ -63,7 +63,7 @@ async function offeredMembership(id: number): Promise<void> {
   await pool.query(
     `INSERT INTO ${MEMBERSHIPS} (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
-    [id, `${id}-place-regions-fixture`],
+    [id, `Q${id}001`],
   );
 }
 
