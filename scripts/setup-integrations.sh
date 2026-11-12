@@ -123,6 +123,25 @@ run_integrations_wizard() {
     fi
   fi
 
+  # --- Anthropic ---
+  if [ -n "$(env_value ANTHROPIC_API_KEY)" ]; then
+    echo -e "  ${GREEN}\xe2\x9c\x93${NC} Anthropic (dedications from a lead) already configured."
+  else
+    echo ""
+    echo "  Anthropic — with the OpenAI key, reads a monument's dedication from its Wikipedia lead."
+    echo "    Get an API key: https://platform.claude.com/settings/keys"
+    if confirm "  Configure Anthropic now?"; then
+      local anthropic
+      anthropic="$(prompt_value 'ANTHROPIC_API_KEY' 1)"
+      if [ -n "$anthropic" ]; then
+        set_kv ANTHROPIC_API_KEY "$anthropic"
+        echo -e "  ${GREEN}\xe2\x9c\x93 Saved Anthropic key.${NC}"
+      else
+        echo -e "    ${YELLOW}Skipped — no key entered.${NC}"
+      fi
+    fi
+  fi
+
   # --- GADM map data ---
   offer_gadm
 

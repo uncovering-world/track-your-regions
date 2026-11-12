@@ -46,6 +46,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       # Jev (TypeSafe), optional: a suggested answer on the sources card (#1260)
       JEV_API_KEY: ${JEV_API_KEY:-}
+      # Anthropic, optional: with OPENAI_API_KEY, a dedication read from a monument's lead (#2472)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Authentication
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
