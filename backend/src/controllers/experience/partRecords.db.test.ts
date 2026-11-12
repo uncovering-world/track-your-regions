@@ -7,9 +7,10 @@ import {
 import { answeringPlaceSql, pointItemSql } from '../../db/placePoints.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 import { claimPointItem } from './experienceLocationWriter.js';
+import { followTheirPoints } from '../../db/partFieldsWriter.js';
 import { listKinds } from './experienceQueryController.js';
 import { getSources } from '../admin/syncController.js';
-import { mergePlaces } from './placeMerge.js';
+import { mergePlaces, undoMerge } from './placeMerge.js';
 import { writeExperienceLocations, type LocationWriteRun } from '../../services/sync/locationWriter.js';
 
 /**
@@ -43,9 +44,16 @@ const CONQUES = { name: 'Conques, Abbey Church of Sainte-Foy', externalRef: '964
 
 /** A second site a belfry is also a component of, its id below the Belfries' so the earliest whole is the other one. */
 const OTHER_SITE = 9558;
+/** A place the Belfries' site is folded into, to see its parts' records follow the whole. */
+const BELFRIES_ELSEWHERE = 9557;
+/** A site of one component that stands for the whole site, recorded in itself, and the place it is folded into. */
+const WHOLE_SITE = 9644;
+const WHOLE_SITE_ELSEWHERE = 9645;
+const CURATORS = 'Curators (part records fixture)';
+const ADMIN = '00000000-0000-4000-8000-000000009557';
 
 const COMPONENTS_SOURCE = 10;
-const SITES = [BELFRIES, SEVILLE, MALOTI, SANTIAGO, OTHER_SITE];
+const SITES = [BELFRIES, SEVILLE, MALOTI, SANTIAGO, OTHER_SITE, BELFRIES_ELSEWHERE, WHOLE_SITE, WHOLE_SITE_ELSEWHERE];
 
 let run: LocationWriteRun;
 let heritage: { id: number; kind_id: number };
@@ -53,9 +61,11 @@ let heritage: { id: number; kind_id: number };
 async function partsOf(site: number) {
   return (await pool.query<{ link_id: number; part_id: number; location_id: number }>(
     `SELECT p.id AS link_id, p.part_id, el.id AS location_id
-       FROM experience_parts p JOIN experience_locations el ON el.experience_id = p.part_id
+       FROM experience_parts p
+       JOIN source_records pr ON pr.experience_id = p.part_id AND pr.whole_id = p.whole_id AND pr.source_id = 10
+       JOIN experience_locations el ON el.experience_id = p.part_id
       WHERE p.whole_id = $1 AND p.reason = 'component'
-      ORDER BY p.external_ref, p.part_id`, [site],
+      ORDER BY pr.external_id, p.part_id`, [site],
   )).rows;
 }
 
@@ -68,7 +78,12 @@ async function recordsOf(site: number) {
 }
 
 async function clear(): Promise<void> {
-  await pool.query('DELETE FROM experience_merges WHERE survivor_id = $1 OR folded_id = $1', [SEVILLE_CATHEDRAL_OF_WORSHIP]);
+  await pool.query('DELETE FROM experience_merges WHERE survivor_id = ANY($1::int[]) OR folded_id = ANY($1::int[])',
+    [[SEVILLE_CATHEDRAL_OF_WORSHIP, BELFRIES_ELSEWHERE, WHOLE_SITE_ELSEWHERE]]);
+  await pool.query('UPDATE experiences SET merged_into_id = NULL WHERE merged_into_id = ANY($1::int[])',
+    [[BELFRIES_ELSEWHERE, WHOLE_SITE_ELSEWHERE]]);
+  // Records of the fixture's curator source go with the source.
+  await pool.query('DELETE FROM experience_sources WHERE name = $1', [CURATORS]);
   await pool.query(
     `UPDATE experience_locations SET merged_into_id = NULL
       WHERE experience_id IN (SELECT part_id FROM experience_parts WHERE whole_id = ANY($1::int[])) OR experience_id = $2`,
@@ -83,6 +98,7 @@ async function clear(): Promise<void> {
   );
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = ANY($1::int[])', [[...SITES, SEVILLE_CATHEDRAL_OF_WORSHIP]]);
   await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[...SITES, SEVILLE_CATHEDRAL_OF_WORSHIP]]);
+  await pool.query('DELETE FROM users WHERE uuid = $1', [ADMIN]);
 }
 
 async function site(id: number, ref: string, name: string, lon: number, lat: number): Promise<void> {
@@ -148,7 +164,7 @@ describe('a part holds its record in its whole (ADR-0198)', () => {
     expect((await getSources()).map(source => source.id)).not.toContain(COMPONENTS_SOURCE);
   });
 
-  it('moves the record with its relation, as a merge and its undo move it, follows its reference, and drops it with the relation', async () => {
+  it('derives the relation from the record: moved with it, as a merge and its undo move it, and gone with it', async () => {
     const [bruges, mons] = await partsOf(BELFRIES);
     // A place another kind brought, which a merge makes the part.
     const merged = (await pool.query<{ id: number }>(
@@ -157,25 +173,30 @@ describe('a part holds its record in its whole (ADR-0198)', () => {
        RETURNING id`,
       [run.sourceId],
     )).rows[0].id;
-    const monsRecord = async () => (await recordsOf(BELFRIES)).filter(record => record.name === MONS.name);
+    const relations = async () => (await pool.query<{ part_id: number; reason: string }>(
+      'SELECT part_id, reason FROM experience_parts WHERE whole_id = $1 ORDER BY part_id', [BELFRIES],
+    )).rows;
+    const moveMons = (from: number, to: number) => pool.query(
+      'UPDATE source_records SET experience_id = $3 WHERE experience_id = $1 AND whole_id = $2', [from, BELFRIES, to],
+    );
 
     try {
-      await pool.query('UPDATE experience_parts SET part_id = $2 WHERE id = $1', [mons.link_id, merged]);
-      expect(await monsRecord()).toEqual([{ experience_id: merged, external_id: MONS.externalRef, kind_id: null, name: MONS.name }]);
-      await pool.query('UPDATE experience_parts SET part_id = $2 WHERE id = $1', [mons.link_id, mons.part_id]);
-      expect((await monsRecord()).map(record => record.experience_id)).toEqual([mons.part_id]);
+      await moveMons(mons.part_id, merged);
+      expect(await relations()).toEqual([bruges.part_id, merged].sort((a, b) => a - b)
+        .map(part_id => ({ part_id, reason: 'component' })));
+      await moveMons(merged, mons.part_id);
+      expect((await relations()).map(relation => relation.part_id)).toEqual([bruges.part_id, mons.part_id].sort((a, b) => a - b));
+      // The relation keeps its id while its record stands.
+      expect((await partsOf(BELFRIES)).find(part => part.part_id === bruges.part_id)!.link_id).toBe(bruges.link_id);
 
-      await pool.query(`UPDATE experience_parts SET external_ref = '9560-030' WHERE id = $1`, [mons.link_id]);
-      expect((await monsRecord()).map(record => record.external_id)).toEqual(['9560-030']);
-
-      await pool.query('DELETE FROM experience_parts WHERE id = $1', [bruges.link_id]);
-      expect((await recordsOf(BELFRIES)).map(record => record.experience_id)).toEqual([mons.part_id]);
+      await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND whole_id = $2', [bruges.part_id, BELFRIES]);
+      expect((await relations()).map(relation => relation.part_id)).toEqual([mons.part_id]);
     } finally {
       await pool.query('DELETE FROM experiences WHERE id = $1', [merged]);
     }
   });
 
-  it('keeps a record in each whole for a part of two sites, each going with its own relation', async () => {
+  it('keeps a record in each whole for a part of two sites, each making its own relation', async () => {
     const [, mons] = await partsOf(BELFRIES);
     const other = (await pool.query<{ id: number }>(
       `INSERT INTO experiences (source_id, external_id, name, location)
@@ -189,37 +210,42 @@ describe('a part holds its record in its whole (ADR-0198)', () => {
     )).rows;
 
     try {
-      const second = (await pool.query<{ id: number }>(
-        `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
-         SELECT $1, part_id, 'component', membership_id, '9561-001' FROM experience_parts WHERE id = $2
-         RETURNING id`,
-        [other, mons.link_id],
-      )).rows[0].id;
+      await pool.query(
+        `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($1, $2, 10, '9561-001')`,
+        [mons.part_id, other],
+      );
+      const wholes = async () => (await pool.query<{ whole_id: number }>(
+        'SELECT whole_id FROM experience_parts WHERE part_id = $1 ORDER BY whole_id', [mons.part_id],
+      )).rows.map(row => row.whole_id);
+      expect(await wholes()).toEqual([BELFRIES, other].sort((a, b) => a - b));
       // The Belfries' list still speaks for its own record; the second site's is the second site's to write.
       expect(await wholesOf()).toEqual([
         { whole_id: BELFRIES, external_id: MONS.externalRef, name: MONS.name },
         { whole_id: other, external_id: '9561-001', name: null },
       ]);
 
-      await pool.query('DELETE FROM experience_parts WHERE id = $1', [mons.link_id]);
+      await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND whole_id = $2', [mons.part_id, BELFRIES]);
       expect(await wholesOf()).toEqual([{ whole_id: other, external_id: '9561-001', name: null }]);
-      await pool.query('DELETE FROM experience_parts WHERE id = $1', [second]);
-      expect(await wholesOf()).toEqual([]);
+      expect(await wholes()).toEqual([other]);
     } finally {
       await pool.query('DELETE FROM experiences WHERE id = $1', [other]);
     }
   });
 
-  it('marks no place for pairing when the record is written', async () => {
+  it('marks no place for pairing when what the record says changes, and marks both when the part it makes goes', async () => {
     const [part] = await partsOf(BELFRIES);
-    await pool.query('DELETE FROM experience_pairing_due WHERE experience_id = $1', [part.part_id]);
+    const due = async () => (await pool.query(
+      'SELECT 1 FROM experience_pairing_due WHERE experience_id = ANY($1::int[])', [[part.part_id, BELFRIES]],
+    )).rowCount;
+    await pool.query('DELETE FROM experience_pairing_due WHERE experience_id = ANY($1::int[])', [[part.part_id, BELFRIES]]);
     await pool.query(
       'UPDATE source_records SET reported_name = $3 WHERE experience_id = $1 AND whole_id = $2',
       [part.part_id, BELFRIES, 'Belfry of Bruges (as the list names it)'],
     );
+    expect(await due()).toBe(0);
+    // The relation the record made goes with it, which the pairing reads, as it did when a relation was written.
     await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND whole_id = $2', [part.part_id, BELFRIES]);
-    const due = await pool.query('SELECT 1 FROM experience_pairing_due WHERE experience_id = $1', [part.part_id]);
-    expect(due.rowCount).toBe(0);
+    expect(await due()).toBe(2);
   });
 });
 
@@ -331,48 +357,62 @@ async function monsRecord(partId: number) {
   )).rows;
 }
 
-/** A second serial site a belfry is a component of too, under that site's own membership and reference. */
+/** A second serial site a belfry is a component of too, by that site's record of it under its own reference. */
 async function partOfOtherSite(partId: number, ref: string): Promise<void> {
   await site(OTHER_SITE, '9558', 'Another serial site (fixture)', 3.9, 50.4);
   await pool.query(
-    `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
-     SELECT $1, $2, 'component', m.id, $3 FROM source_records m WHERE m.experience_id = $1 AND m.kind_id IS NOT NULL`,
-    [OTHER_SITE, partId, ref],
+    'INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($1, $2, 10, $3)',
+    [partId, OTHER_SITE, ref],
   );
 }
 
 describe("a component's reference and its record (ADR-0198)", () => {
-  it("keeps the record, its item and a curator's claim while its relation names no reference, and takes the reference back", async () => {
+  it("keeps the record, its item and a curator's claim while its point names no reference, and takes the next reference", async () => {
     const [, mons] = await partsOf(BELFRIES);
     await pool.query(
       `UPDATE source_records SET wikidata_items = ARRAY['Q9560029'], curated_fields = '["wikidata_items"]'
         WHERE experience_id = $1 AND whole_id = $2`, [mons.part_id, BELFRIES],
     );
-    await pool.query('UPDATE experience_parts SET external_ref = NULL WHERE id = $1', [mons.link_id]);
+    const follow = async (ref: string | null) => {
+      await pool.query('UPDATE experience_locations SET external_ref = $2 WHERE id = $1', [mons.location_id, ref]);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const locked = await lockExperience(client, BELFRIES);
+        await followTheirPoints(client, locked!.lock, null);
+        await client.query('COMMIT');
+      } finally {
+        client.release();
+      }
+    };
+    await follow(null);
     // No run may take a curator's claim away: the record stands under the reference it was last listed under.
     expect(await monsRecord(mons.part_id)).toEqual([{ external_id: MONS.externalRef, items: ['Q9560029'], claims: ['wikidata_items'] }]);
-    await pool.query(`UPDATE experience_parts SET external_ref = '9560-030' WHERE id = $1`, [mons.link_id]);
+    await follow('9560-030');
     expect(await monsRecord(mons.part_id)).toEqual([{ external_id: '9560-030', items: ['Q9560029'], claims: ['wikidata_items'] }]);
+    // And a part's relation stands throughout: it is the record's.
+    expect((await partsOf(BELFRIES)).map(part => part.part_id)).toContain(mons.part_id);
   });
 
-  it("writes a site's reference on its own relation only, for a part of two sites", async () => {
+  it("writes a site's reference on its own record only, for a part of two sites", async () => {
     const [, mons] = await partsOf(BELFRIES);
     await partOfOtherSite(mons.part_id, '9558-001');
-    // The Belfries' run names Mons anew, and writes what its point says on the relations it follows.
+    // The Belfries' run names Mons anew, and writes what its point says on the records it follows.
     await writeExperienceLocations(BELFRIES, [{ ...MONS, name: 'Beffroi de Mons (Hainaut)' }, BRUGES], run);
-    const relations = await pool.query<{ whole_id: number; external_ref: string }>(
-      'SELECT whole_id, external_ref FROM experience_parts WHERE part_id = $1 ORDER BY whole_id', [mons.part_id],
+    const records = await pool.query<{ whole_id: number; external_id: string }>(
+      `SELECT whole_id, external_id FROM source_records WHERE experience_id = $1 AND source_id = $2 ORDER BY whole_id`,
+      [mons.part_id, COMPONENTS_SOURCE],
     );
-    expect(relations.rows).toEqual([
-      { whole_id: OTHER_SITE, external_ref: '9558-001' },
-      { whole_id: BELFRIES, external_ref: MONS.externalRef },
+    expect(records.rows).toEqual([
+      { whole_id: OTHER_SITE, external_id: '9558-001' },
+      { whole_id: BELFRIES, external_id: MONS.externalRef },
     ]);
   });
 
   it('reads the record under the point\'s reference whatever its case, before an earlier whole\'s', async () => {
     const [, mons] = await partsOf(BELFRIES);
     await partOfOtherSite(mons.part_id, '9558-001');
-    await pool.query(`UPDATE experience_parts SET external_ref = '9560-029B' WHERE id = $1`, [mons.link_id]);
+    await pool.query(`UPDATE source_records SET external_id = '9560-029B' WHERE experience_id = $1 AND whole_id = $2`, [mons.part_id, BELFRIES]);
     await pool.query(`UPDATE experience_locations SET external_ref = '9560-029b' WHERE id = $1`, [mons.location_id]);
     await pool.query(
       `UPDATE source_records SET wikidata_items = CASE whole_id WHEN $2 THEN ARRAY['Q9560029'] ELSE ARRAY['Q9558001'] END
@@ -384,14 +424,15 @@ describe("a component's reference and its record (ADR-0198)", () => {
     expect(item.rows[0].item).toBe('Q9560029');
   });
 
-  it('refuses to keep an item for a part with no record, and writes nothing', async () => {
+  it('refuses to keep an item where nothing the answering place shows would keep it, and writes nothing', async () => {
     const [, mons] = await partsOf(BELFRIES);
-    // As a component the list never gave a reference: a part with no record.
-    await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND whole_id = $2', [mons.part_id, BELFRIES]);
+    // A part is a part by its record, so every part's point has one; what is left
+    // to refuse is a point the locked place does not show: Mons under another site.
+    await site(OTHER_SITE, '9558', 'Another serial site (fixture)', 3.9, 50.4);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const locked = await lockExperience(client, BELFRIES);
+      const locked = await lockExperience(client, OTHER_SITE);
       const outcome = await claimPointItem(client, locked!.lock, mons.location_id, 'Q9560029', {
         imageUrl: null, credit: null, description: 'belfry in Mons', articleUrl: null,
       });
@@ -400,26 +441,132 @@ describe("a component's reference and its record (ADR-0198)", () => {
     } finally {
       client.release();
     }
-    expect(await monsRecord(mons.part_id)).toEqual([]);
+    expect(await monsRecord(mons.part_id)).toEqual([{ external_id: MONS.externalRef, items: null, claims: [] }]);
   });
 
-  it('writes a site whose one main point had no reference once a later list names its components', async () => {
+  it('parts only the components a later list names, when the site\'s one main point had no reference', async () => {
     // The Routes of Santiago de Compostela in France on the development
     // catalogue: a site with no components list holds one main point with no
-    // reference (unescoSyncService), which a list of components later parts.
+    // reference (unescoSyncService); a list of components later parts its
+    // components, and the main point, which the list does not name, stays the
+    // site's own.
     await site(SANTIAGO, '9643', 'Routes of Santiago de Compostela in France (fixture)', 2.5, 44.0);
     await writeExperienceLocations(SANTIAGO, [{ name: null, externalRef: null, lon: 2.5, lat: 44.0 }], run);
     await writeExperienceLocations(SANTIAGO, [ARLES, CONQUES], run);
 
-    const relations = await pool.query<{ part_id: number; external_ref: string | null }>(
-      'SELECT part_id, external_ref FROM experience_parts WHERE whole_id = $1 ORDER BY part_id', [SANTIAGO],
+    const records = await recordsOf(SANTIAGO);
+    expect(records.map(record => record.external_id)).toEqual([ARLES.externalRef, CONQUES.externalRef]);
+    const relations = await pool.query<{ part_id: number }>(
+      'SELECT part_id FROM experience_parts WHERE whole_id = $1 ORDER BY part_id', [SANTIAGO],
     );
-    const named = relations.rows.filter(relation => relation.external_ref !== null);
-    expect(named.map(relation => relation.external_ref).sort()).toEqual([ARLES.externalRef, CONQUES.externalRef]);
-    // Every relation with a reference has its record under it, and none without one has a record.
-    expect((await recordsOf(SANTIAGO)).map(record => [record.experience_id, record.external_id]))
-      .toEqual(named.map(relation => [relation.part_id, relation.external_ref])
-        .sort((a, b) => String(a[1]).localeCompare(String(b[1]))));
+    expect(relations.rows.map(relation => relation.part_id))
+      .toEqual(records.map(record => record.experience_id).sort((a, b) => a - b));
+    const own = await pool.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM experience_locations WHERE experience_id = $1 AND external_ref IS NULL', [SANTIAGO],
+    );
+    expect(own.rows[0].count).toBe(1);
+  });
+});
+
+describe('"part of" follows the records that claim it (ADR-0198 decision 5)', () => {
+  const relationOf = async (whole: number, part: number) => (await pool.query<{ reason: string }>(
+    'SELECT reason FROM experience_parts WHERE whole_id = $1 AND part_id = $2', [whole, part],
+  )).rows.map(row => row.reason);
+
+  it("lets a curator's record decide alone: refused takes the part out though the list claims it, admitted puts one in", async () => {
+    const [, mons] = await partsOf(BELFRIES);
+    const curators = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sources (name, display_priority, requires_curation, kind_id, id_scheme)
+       VALUES ($1, 99, false, NULL, 'curator') RETURNING id`, [CURATORS],
+    )).rows[0].id;
+    const curatorRecord = (await pool.query<{ id: number }>(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission)
+       VALUES ($1, $2, $3, 'curator-1-9557', 'refused') RETURNING id`, [mons.part_id, BELFRIES, curators],
+    )).rows[0].id;
+    expect(await relationOf(BELFRIES, mons.part_id)).toEqual([]);
+    await pool.query(`UPDATE source_records SET admission = 'admitted' WHERE id = $1`, [curatorRecord]);
+    expect(await relationOf(BELFRIES, mons.part_id)).toEqual(['component']);
+    // The list's record gone, the curator's word alone keeps the part, as the curator's.
+    await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND whole_id = $2 AND source_id = $3',
+      [mons.part_id, BELFRIES, COMPONENTS_SOURCE]);
+    expect(await relationOf(BELFRIES, mons.part_id)).toEqual(['curator']);
+  });
+
+  it('makes no part of a place recorded in itself', async () => {
+    const [, mons] = await partsOf(BELFRIES);
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($1, $1, 10, '9560-040')`,
+      [mons.part_id],
+    );
+    expect(await relationOf(mons.part_id, mons.part_id)).toEqual([]);
+  });
+
+  it('folds a site recorded in itself without making the survivor its part, and records it in itself again on the undo', async () => {
+    const adminId = (await pool.query<{ id: number }>(
+      `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'An admin', 'admin') RETURNING id`, [ADMIN],
+    )).rows[0].id;
+    // A site of one component that stands for the whole site: the list's line recorded in the site itself.
+    await site(WHOLE_SITE, '9644', 'A site of one component (fixture)', 10.0, 45.0);
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($1, $1, 10, '9644-001')`,
+      [WHOLE_SITE],
+    );
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location)
+       SELECT $1, s.id, 'Q9645', 'The same site as a place of worship', ST_SetSRID(ST_MakePoint(10.0, 45.0), 4326)
+         FROM experience_sources s WHERE s.name = 'Places of worship'`, [WHOLE_SITE_ELSEWHERE],
+    );
+    await pool.query(
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q9645', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
+      [WHOLE_SITE_ELSEWHERE],
+    );
+    const relations = async () => (await pool.query(
+      'SELECT 1 FROM experience_parts WHERE whole_id = ANY($1::int[]) OR part_id = ANY($1::int[])',
+      [[WHOLE_SITE, WHOLE_SITE_ELSEWHERE]],
+    )).rowCount;
+    const selfRecord = async () => (await pool.query<{ experience_id: number; whole_id: number }>(
+      `SELECT experience_id, whole_id FROM source_records WHERE source_id = $1 AND external_id = '9644-001'`,
+      [COMPONENTS_SOURCE],
+    )).rows;
+
+    const outcome = await mergePlaces({ survivorId: WHOLE_SITE_ELSEWHERE, foldedId: WHOLE_SITE, mergedBy: adminId, reason: 'curator' });
+    expect(outcome.refusal).toBeUndefined();
+    expect(await relations()).toBe(0);
+    expect(await selfRecord()).toEqual([{ experience_id: WHOLE_SITE_ELSEWHERE, whole_id: WHOLE_SITE_ELSEWHERE }]);
+
+    expect((await undoMerge(outcome.result!.mergeId, adminId)).refusal).toBeUndefined();
+    expect(await relations()).toBe(0);
+    expect(await selfRecord()).toEqual([{ experience_id: WHOLE_SITE, whole_id: WHOLE_SITE }]);
+  });
+
+  it("moves the parts' records with a whole a merge folds, and back on its undo", async () => {
+    const parts = (await partsOf(BELFRIES)).map(part => part.part_id);
+    const adminId = (await pool.query<{ id: number }>(
+      `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'An admin', 'admin') RETURNING id`, [ADMIN],
+    )).rows[0].id;
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location)
+       SELECT $1, s.id, 'Q9557', 'Belfries (another kind)', ST_SetSRID(ST_MakePoint(3.5, 50.8), 4326)
+         FROM experience_sources s WHERE s.name = 'Places of worship'`, [BELFRIES_ELSEWHERE],
+    );
+    await pool.query(
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q9557', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
+      [BELFRIES_ELSEWHERE],
+    );
+    const wholesOf = async () => (await pool.query<{ whole_id: number }>(
+      'SELECT DISTINCT whole_id FROM experience_parts WHERE part_id = ANY($1::int[])', [parts],
+    )).rows.map(row => row.whole_id);
+
+    const outcome = await mergePlaces({ survivorId: BELFRIES_ELSEWHERE, foldedId: BELFRIES, mergedBy: adminId, reason: 'curator' });
+    expect(outcome.refusal).toBeUndefined();
+    expect(await wholesOf()).toEqual([BELFRIES_ELSEWHERE]);
+    expect((await recordsOf(BELFRIES_ELSEWHERE)).map(record => record.external_id)).toEqual([BRUGES.externalRef, MONS.externalRef]);
+
+    expect((await undoMerge(outcome.result!.mergeId, adminId)).refusal).toBeUndefined();
+    expect(await wholesOf()).toEqual([BELFRIES]);
+    expect((await recordsOf(BELFRIES)).map(record => record.external_id)).toEqual([BRUGES.externalRef, MONS.externalRef]);
   });
 });
 

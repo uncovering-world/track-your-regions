@@ -84,12 +84,12 @@ beforeEach(async () => {
     `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'curator') RETURNING id`, [CURATOR],
   )).rows[0].id;
   await place(SITE, heritage, '9990-fixture', 'Monastery of Saint Thaddeus');
-  const site = await membership(SITE, heritage, '9990-fixture');
+  await membership(SITE, heritage, '9990-fixture');
   for (const [part, ref, name] of [[PART_A, '9990-001', 'The chapel'], [PART_B, '9990-002', 'The village']] as const) {
     await place(part, heritage, ref, name);
     await pool.query(
-      `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref) VALUES ($1, $2, 'component', $3, $4)`,
-      [SITE, part, site, ref],
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($2, $1, 10, $3)`,
+      [SITE, part, ref],
     );
     await pool.query(
       `INSERT INTO experience_locations (experience_id, name, external_ref, wikidata_item, location)

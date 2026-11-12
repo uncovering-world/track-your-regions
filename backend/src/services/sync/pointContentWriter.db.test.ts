@@ -50,9 +50,9 @@ async function part(
   );
   const partId = placed.rows[0].id;
   await pool.query(
-    `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
-     VALUES ($1, $2, 'component', $3, $4)`,
-    [PILES, partId, membershipId, ref],
+    `INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
+     VALUES ($2, $1, 10, $3)`,
+    [PILES, partId, ref],
   );
   const point = await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
@@ -66,15 +66,15 @@ async function part(
 const stored = async () => (await pool.query<{
   external_ref: string; image_url: string | null; credit: unknown; subtitle: string | null;
 }>(
-  `SELECT p.external_ref, e.image_url, e.metadata -> 'imageCredit' AS credit, e.subtitle
-     FROM experience_parts p JOIN experiences e ON e.id = p.part_id
-    WHERE p.whole_id = $1 ORDER BY p.external_ref`, [PILES],
+  `SELECT pr.external_id AS external_ref, e.image_url, e.metadata -> 'imageCredit' AS credit, e.subtitle
+     FROM experience_parts p JOIN source_records pr ON pr.experience_id = p.part_id AND pr.whole_id = p.whole_id AND pr.source_id = 10 JOIN experiences e ON e.id = p.part_id
+    WHERE p.whole_id = $1 ORDER BY pr.external_id`, [PILES],
 )).rows;
 
 const articles = async () => (await pool.query<{ external_ref: string; article: string | null }>(
-  `SELECT p.external_ref, e.metadata ->> 'wikipediaUrl' AS article
-     FROM experience_parts p JOIN experiences e ON e.id = p.part_id
-    WHERE p.whole_id = $1 ORDER BY p.external_ref`, [PILES],
+  `SELECT pr.external_id AS external_ref, e.metadata ->> 'wikipediaUrl' AS article
+     FROM experience_parts p JOIN source_records pr ON pr.experience_id = p.part_id AND pr.whole_id = p.whole_id AND pr.source_id = 10 JOIN experiences e ON e.id = p.part_id
+    WHERE p.whole_id = $1 ORDER BY pr.external_id`, [PILES],
 )).rows.map(row => [row.external_ref, row.article]);
 
 beforeEach(async () => {
@@ -172,7 +172,7 @@ describe("a component's own picture and subtitle, on its part (ADR-0156)", () =>
     // Bourg shows readers an article already.
     await pool.query(
       `UPDATE experiences SET metadata = metadata || '{"wikipediaUrl": "https://en.wikipedia.org/wiki/Bourg_old"}'::jsonb
-        WHERE id = (SELECT part_id FROM experience_parts WHERE whole_id = $1 AND external_ref = '1363-016')`, [PILES],
+        WHERE id = (SELECT experience_id FROM source_records WHERE whole_id = $1 AND source_id = 10 AND external_id = '1363-016')`, [PILES],
     );
     const changed = await writePointContents(PILES, [
       { ref: '1363-002', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: article('Riesi') },
@@ -207,7 +207,7 @@ describe("a component's own picture and subtitle, on its part (ADR-0156)", () =>
   it('only fills a part that holds a kind of its own, which keeps what its kind brought', async () => {
     const run = { syncLogId: null, sourceId };
     const riesi = (await pool.query<{ part_id: number }>(
-      `SELECT part_id FROM experience_parts WHERE whole_id = $1 AND external_ref = '1363-002'`, [PILES],
+      `SELECT experience_id AS part_id FROM source_records WHERE whole_id = $1 AND source_id = 10 AND external_id = '1363-002'`, [PILES],
     )).rows[0].part_id;
     // Riesi as another kind brought it: a picture of its own, and no subtitle.
     await pool.query(`UPDATE experiences SET image_url = $2 WHERE id = $1`, [riesi, BOURG_OLD]);

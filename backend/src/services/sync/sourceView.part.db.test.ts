@@ -46,8 +46,8 @@ const record = (): ExperienceUpsertParams => ({
 async function praetorium(): Promise<{ id: number; name: string; subtitle: string | null; image_url: string | null; lon: number }> {
   return (await pool.query(
     `SELECT e.id, e.name, e.subtitle, e.image_url, ST_X(e.location) AS lon
-       FROM experience_parts p JOIN experiences e ON e.id = p.part_id
-      WHERE p.whole_id = $1 AND p.external_ref = $2`,
+       FROM experience_parts p JOIN source_records pr ON pr.experience_id = p.part_id AND pr.whole_id = p.whole_id AND pr.source_id = 10 JOIN experiences e ON e.id = p.part_id
+      WHERE p.whole_id = $1 AND pr.external_id = $2`,
     [SITE, PRAETORIUM.externalRef],
   )).rows[0];
 }
@@ -83,7 +83,7 @@ beforeEach(async () => {
   await writeExperienceLocations(SITE, [PRAETORIUM, DEUTZ], { syncLogId: null, sourceId: heritage, components: true });
   // The component-items pass binds the point to the item it found.
   await pool.query(
-    'UPDATE experience_locations SET wikidata_item = $3 WHERE experience_id = (SELECT part_id FROM experience_parts WHERE whole_id = $1 AND external_ref = $2)',
+    'UPDATE experience_locations SET wikidata_item = $3 WHERE experience_id = (SELECT experience_id FROM source_records WHERE whole_id = $1 AND source_id = 10 AND external_id = $2)',
     [SITE, PRAETORIUM.externalRef, ITEM],
   );
 });

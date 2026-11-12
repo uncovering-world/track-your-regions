@@ -97,7 +97,7 @@ beforeEach(async () => {
   )).rows[0].id;
 
   await place(SITE, 'Ancient Thebes with its Necropolis (parts fixture)', 32.6396, 25.7188);
-  const membership = membershipId = (await pool.query<{ id: number }>(
+  membershipId = (await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
     [SITE, `${SITE}-fixture`],
@@ -111,9 +111,9 @@ beforeEach(async () => {
   await place(KARNAK, 'Temple of Karnak (parts fixture)', 32.6573, 25.7188);
   karnakPoint = await point(KARNAK, 'Temple of Karnak', '87-001', 32.6573, 25.7188, regionId);
   await pool.query(
-    `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
-     VALUES ($1, $2, 'component', $3, '87-001')`,
-    [SITE, KARNAK, membership],
+    `INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
+     VALUES ($2, $1, 10, '87-001')`,
+    [SITE, KARNAK],
   );
 });
 

@@ -103,8 +103,7 @@ beforeAll(async () => {
   await place({ id: P.part, name: 'Fixture Temple', source: 'UNESCO World Heritage Sites', lon: east(20050) });
   await place({ id: P.partTwin, name: 'Fixture Temple', source: 'Places of worship', lon: east(20060) });
   await pool.query(
-    `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
-     SELECT $1, $2, 'component', m.id, '9727-001' FROM source_records m WHERE m.experience_id = $1`,
+    `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($2, $1, 10, '9727-001')`,
     [P.whole, P.part],
   );
   // A part as the World Heritage run parts a component: no kind of its own, offered through its whole.
@@ -120,8 +119,7 @@ beforeAll(async () => {
     [P.belfry, east(20500), ISLAND.lat],
   );
   await pool.query(
-    `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
-     SELECT $1, $2, 'component', m.id, '9727-002' FROM source_records m WHERE m.experience_id = $1`,
+    `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($2, $1, 10, '9727-002')`,
     [P.whole, P.belfry],
   );
   await place({ id: P.belfryTwin, name: 'Fixture Belfry', source: 'Places of worship', lon: east(20520) });
