@@ -116,9 +116,10 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 ### SourceRecord
 
 - **Description**: One source's record of a place, the table `source_records` (#2118):
-  in a kind or in a whole, never both (ADR-0198). A record in a whole is a serial World
-  Heritage site's part's record of World Heritage components, one per (source, whole,
-  place), under the component's reference. A record in a kind is a place's membership in
+  in a kind or in a whole, never both (ADR-0198). A record in a whole is a line of the
+  World Heritage list, a record of World Heritage components under the line's reference:
+  a serial site's part's in its site, one per (source, whole, place), or a site's own line
+  in the site itself, which makes no part (ADR-0200). A record in a kind is a place's membership in
   a kind — one row per (place, kind), what
   one row of `Experience` carried until #822: the source that brought it, whether the
   kind's rule admitted it and why, the work that qualified a museum, the must-see badge
@@ -129,7 +130,8 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 - **Attributes**:
   - `ExperienceID`: The place
   - `KindID`: The kind, on a record in a kind
-  - `WholeID`: The whole the place is a part of, on a record in a whole
+  - `WholeID`: The whole the place is a part of, on a record in a whole; the place itself
+    on a site's record of its own line
   - `SourceID`: The source (`ExperienceSource`) that brought the membership
   - `ExternalID`: The id that source knows the place by, in the shape of the source's
     `IDScheme`; unique per source on a record in a kind — what a run
@@ -144,7 +146,11 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `Admission` / `AdmissionReason`: 'admitted' or 'refused', and the rule's reason
   - `AdmittedFor`: The work that qualified a museum (JSONB `{qid, label}`)
   - `IsIconic`: The must-see badge within the kind
-  - `CuratedFields`: The curator's pins on `admission`, `is_iconic` and `type`
+  - `WikidataItems`: The items a source that knows the place by another id resolves it to;
+    on a record of World Heritage components, the item of its line (ADR-0156, ADR-0200)
+  - `ListingOrdinal`: Where a record of World Heritage components' line comes in the list
+  - `CuratedFields`: The curator's pins on `admission`, `is_iconic` and `type`, and on a
+    record of World Heritage components its confirmed item (`wikidata_items`)
   - `CurationState` / `PublishedAt` / `PendingChangeSyncLogID`: The gate state of the
     arrival, when it was passed, and the run whose proposal is being held
 

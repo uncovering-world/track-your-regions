@@ -216,7 +216,8 @@ and accepted by it.
 | [0195](0195-every-copy-built-from-a-dump-updates-itself-and-no-swap-lands-under-a-run.md) | Every copy built from a dump updates itself, and no swap lands under a run | Accepted | 2026-11-10 |
 | [0196](0196-a-dry-run-of-the-place-pass-reads-the-shared-steps-kept-on-the-same-inputs.md) | A dry run of the place pass reads the shared steps kept on the same inputs | Accepted | 2026-11-11 |
 | [0197](0197-a-places-regions-are-one-row-per-region-written-by-one-function-from-the-points-it-shows.md) | A place's regions are one row per region, written by one function from the points it shows | Accepted | 2026-11-11 |
-| [0198](0198-every-sources-record-of-a-place-is-one-row-in-a-kind-or-in-a-whole.md) | Every source's record of a place is one row, in a kind or in a whole | Accepted | 2026-11-12 |
+| [0198](0198-every-sources-record-of-a-place-is-one-row-in-a-kind-or-in-a-whole.md) | Every source's record of a place is one row, in a kind or in a whole | Accepted — decision 3 narrowed by [0200](0200-every-line-of-the-world-heritage-list-is-a-record-and-holds-its-points-item.md) | 2026-11-12 |
+| [0200](0200-every-line-of-the-world-heritage-list-is-a-record-and-holds-its-points-item.md) | Every line of the World Heritage list is a record, and holds its point's item | Accepted | 2026-11-12 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
