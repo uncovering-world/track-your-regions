@@ -3,7 +3,7 @@ import { Box, ButtonBase, Typography, Checkbox, IconButton, Link, Tooltip } from
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import { useExperienceContext, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { useAuth } from '../../hooks/useAuth';
-import { useViewedTreasures } from '../../hooks/useVisitedExperiences';
+import { useViewedTreasures, useVisitWritePending } from '../../hooks/useVisitedExperiences';
 import type { ExperienceTreasure } from '../../api/experiences';
 import type { ArtworkPreview } from '../../hooks/useExperienceContext';
 import { WorkThumbnail } from '../shared/WorkThumbnail';
@@ -28,13 +28,15 @@ import { useReaderEdition, wikipediaWords } from '../shared/WikipediaArticleLink
  * nothing — and on some sources a picture failing to load is the common case
  * rather than the edge one (#557).
  */
-function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleViewed, setArtworkPreview, onCorrect }: {
+function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleViewed, toggleDisabled, setArtworkPreview, onCorrect }: {
   content: ExperienceTreasure;
   /** The place's kinds, where it has several: the work is marked with those that hold it (#1263). */
   placeKinds?: WorkKind[];
   isViewed: boolean;
   isAuthenticated: boolean;
   onToggleViewed: (e: React.MouseEvent) => void;
+  /** A visit write of the traveller is on its way: seeing a work writes its venue's visit, so this waits for it (#2120). */
+  toggleDisabled: boolean;
   setArtworkPreview: (preview: ArtworkPreview | null) => void;
   /** A curator's way into correcting this work; absent for everyone else. */
   onCorrect?: (work: ExperienceTreasure) => void;
@@ -86,6 +88,7 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
               : `${content.name} — mark as seen`,
           }}
           onClick={onToggleViewed}
+          disabled={toggleDisabled}
           sx={{ p: 0.25, flexShrink: 0, '&.Mui-checked': { color: 'success.main' } }}
         />
       )}
@@ -187,6 +190,7 @@ export function ArtworksList({ contents, total, experienceId, kindId, placeKinds
   const { setArtworkPreview } = useExperienceContext();
   const { isAuthenticated } = useAuth();
   const { viewedIds, viewedCount, markViewed, unmarkViewed } = useViewedTreasures(experienceId);
+  const visitWritePending = useVisitWritePending();
   // Showing every work does not change the row's height, and so reports nothing:
   // this list is a 300 px scroller, and the link that reveals the rest only exists
   // once there are more than ten of them — which already overflows it. The box is
@@ -237,6 +241,7 @@ export function ArtworksList({ contents, total, experienceId, kindId, placeKinds
             isViewed={viewedIds.has(content.id)}
             isAuthenticated={isAuthenticated}
             onToggleViewed={(e) => handleToggleViewed(content.id, e)}
+            toggleDisabled={visitWritePending}
             setArtworkPreview={setArtworkPreview}
             onCorrect={onCorrect}
           />

@@ -33,6 +33,8 @@ interface ContentsSectionProps {
   viewedIds: Set<number>;
   onMarkViewed: (id: number) => void;
   onUnmarkViewed: (id: number) => void;
+  /** A visit write of the traveller is on its way: every tile waits for it (#2120). */
+  visitWritePending?: boolean;
   /** A curator's way into correcting one of these works (#731). */
   onCorrect?: (work: ExperienceTreasure) => void;
   /**
@@ -58,6 +60,7 @@ export function ContentsSection({
   viewedIds,
   onMarkViewed,
   onUnmarkViewed,
+  visitWritePending = false,
   onCorrect,
   kindId,
   placeKinds,
@@ -177,6 +180,7 @@ export function ContentsSection({
               onToggleViewed={() => (viewedIds.has(content.id)
                 ? onUnmarkViewed(content.id)
                 : onMarkViewed(content.id))}
+              toggleDisabled={visitWritePending}
               onCorrect={onCorrect}
             />
           ))}

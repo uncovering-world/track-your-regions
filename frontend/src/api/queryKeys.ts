@@ -192,6 +192,8 @@ export const queryKeys = {
     treasuresAll: ['viewed-treasures'] as const,
     treasures: (userId: Caller, experienceId: Id) => ['viewed-treasures', caller(userId), experienceId] as const,
     regions: (userId: Caller, worldViewId: Id) => ['visited-regions', caller(userId), worldViewId] as const,
+    /** The mutation key every write of a visit carries, so one read says whether any is on its way (#2120). */
+    write: ['visit-write'] as const,
   },
 
   ai: {

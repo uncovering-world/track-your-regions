@@ -179,4 +179,9 @@ describe('PointCard', () => {
     fireEvent.click(await screen.findByRole('checkbox', { name: 'I have been to Riesi' }));
     expect(onToggle).toHaveBeenCalled();
   });
+
+  it('holds the visit while a visit write of the traveller is on its way (#2120)', async () => {
+    renderCard(8189, { visited: { isVisited: false, onToggle: vi.fn(), disabled: true } });
+    expect(await screen.findByRole('checkbox', { name: 'I have been to Riesi' })).toBeDisabled();
+  });
 });

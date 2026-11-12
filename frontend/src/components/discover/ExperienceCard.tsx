@@ -3,7 +3,7 @@
  * Shows thumbnail, kind, country, name, and visited status.
  */
 
-import { Box, Typography, Chip, Checkbox, Tooltip, IconButton } from '@mui/material';
+import { Box, ButtonBase, Typography, Chip, Checkbox, Tooltip, IconButton } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TuneIcon from '@mui/icons-material/Tune';
@@ -17,6 +17,8 @@ import { LifecycleChip } from '../shared/LifecycleChip';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 import { PlaceSubtitle } from '../shared/PlaceSubtitle';
+import { VisitStatusMark } from '../shared/VisitStatusMark';
+import type { VisitedStatus } from '../../api/visited';
 
 interface CardSurfaceInputs {
   isRejected: boolean | undefined;
@@ -60,12 +62,16 @@ function computeCardSurfaceStyle(input: CardSurfaceInputs): CardSurfaceStyle {
 interface ExperienceCardProps {
   experience: Experience;
   isVisited: boolean;
+  /** Visited in part (#2120): a whole some of whose parts the traveller ticked. */
+  isPartlyVisited?: boolean;
   isHovered?: boolean;
   isSelected?: boolean;
   onClick: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   onVisitedToggle?: (e: React.MouseEvent) => void;
+  /** A visit write is on its way: the checkbox waits for it (#2120). */
+  visitDisabled?: boolean;
   showCheckbox: boolean;
   /** Curator: opens curation dialog */
   onCurate?: () => void;
@@ -74,15 +80,23 @@ interface ExperienceCardProps {
 export function ExperienceCard({
   experience,
   isVisited,
+  isPartlyVisited = false,
   isHovered = false,
   isSelected = false,
   onClick,
   onMouseEnter,
   onMouseLeave,
   onVisitedToggle,
+  visitDisabled = false,
   showCheckbox,
   onCurate,
 }: ExperienceCardProps) {
+  let visitState: VisitedStatus = 'not_visited';
+  if (isPartlyVisited) visitState = 'partial';
+  else if (isVisited) visitState = 'visited';
+  // A card reads as done only when the place is: a whole visited in part keeps
+  // its full colour, title and picture, since parts of it are still ahead (#2120).
+  const isDone = visitState === 'visited';
   const isRejected = experience.is_rejected;
   const imageUrl = extractImageUrl(experience.image_url);
   // The kind's colour, refined by the type where the types are told apart —
@@ -90,7 +104,7 @@ export function ExperienceCard({
   const colors = experienceColors(experience.kind_id, experience.type);
   const catStyle = { bg: colors.bg, text: colors.text, border: colors.primary };
 
-  const cardStyle = computeCardSurfaceStyle({ isRejected, isVisited, isHovered, isSelected, catStyle });
+  const cardStyle = computeCardSurfaceStyle({ isRejected, isVisited: isDone, isHovered, isSelected, catStyle });
   const { bgcolor, borderLeftColor, cardOpacity, titleColor } = cardStyle;
 
   return (
@@ -135,7 +149,7 @@ export function ExperienceCard({
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              filter: isVisited ? 'saturate(0.4)' : 'none',
+              filter: isDone ? 'saturate(0.4)' : 'none',
             }}
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
@@ -159,7 +173,7 @@ export function ExperienceCard({
             </Typography>
           </Box>
         )}
-        {isVisited && (
+        {isDone && (
           <CheckCircleIcon
             sx={{
               position: 'absolute',
@@ -177,19 +191,33 @@ export function ExperienceCard({
       {/* Text content */}
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.25 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-          <Typography
-            variant="body2"
-            noWrap
-            sx={{
-              fontWeight: 600,
-              fontSize: '0.8rem',
-              lineHeight: 1.3,
-              textDecoration: (isRejected || isVisited) ? 'line-through' : 'none',
-              color: titleColor,
+          {/* The name is the card's one control that opens it, so a keyboard
+              reaches every place: a whole's card holds no checkbox to stop on,
+              and its parts are ticked on the panel this opens (#2120). */}
+          <ButtonBase
+            disableRipple
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick();
             }}
+            sx={{ minWidth: 0, maxWidth: '100%', justifyContent: 'flex-start', textAlign: 'left', borderRadius: 0.5 }}
           >
-            {experience.name}
-          </Typography>
+            <Typography
+              component="span"
+              variant="body2"
+              noWrap
+              sx={{
+                display: 'block',
+                fontWeight: 600,
+                fontSize: '0.8rem',
+                lineHeight: 1.3,
+                textDecoration: (isRejected || isDone) ? 'line-through' : 'none',
+                color: titleColor,
+              }}
+            >
+              {experience.name}
+            </Typography>
+          </ButtonBase>
           {experience.is_new && (
             <Chip
               label="New"
@@ -277,9 +305,17 @@ export function ExperienceCard({
             </IconButton>
           </Tooltip>
         )}
-        {showCheckbox && (
+        {/* A whole is ticked by its parts, on its panel: its card shows the
+            state and ticks nothing, as Map mode's row does (#2120). */}
+        {showCheckbox && experience.has_parts && (
+          <Box sx={{ display: 'inline-flex', m: '-7px' }}>
+            <VisitStatusMark status={visitState} size={20} />
+          </Box>
+        )}
+        {showCheckbox && !experience.has_parts && (
           <Checkbox
             checked={isVisited}
+            disabled={visitDisabled}
             size="small"
             onClick={(e) => {
               e.stopPropagation();

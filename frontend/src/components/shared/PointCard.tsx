@@ -70,7 +70,12 @@ export interface PointCardProps {
   /** Said once the object's points have answered without this part, so the caller drops it from the address. */
   onPointGone: () => void;
   /** Whether the visitor has been there, and the way to say so; absent for a visitor who is not signed in. */
-  visited?: { isVisited: boolean; onToggle: () => void } | null;
+  visited?: {
+    isVisited: boolean;
+    onToggle: () => void;
+    /** A visit write of the traveller is on its way: the checkbox waits for it (#2120). */
+    disabled?: boolean;
+  } | null;
   /** Said in the layout phase whenever the card's height may have changed, for a list that measures its rows. */
   onHeightChange?: () => void;
 }
@@ -278,6 +283,7 @@ export function PointCard({
               <Checkbox
                 size="small"
                 checked={visited.isVisited}
+                disabled={visited.disabled}
                 onChange={visited.onToggle}
                 sx={{ '&.Mui-checked': { color: 'success.main' } }}
               />

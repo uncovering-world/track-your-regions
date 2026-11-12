@@ -1425,14 +1425,27 @@ export interface VisitedRegionBody {
 }
 
 /**
- * The objects the reader has marked visited.
+ * The objects the reader has visited, and which of them only in part.
  */
 export interface VisitedExperienceIds {
   /**
+     * The objects the reader has visited, wholly or in part.
      * @items.minimum -9007199254740991
      * @items.maximum 9007199254740991
      */
   visitedIds: number[];
+  /**
+     * Those of them visited in part: a serial site with some of its components, or ticked as a whole.
+     * @items.minimum -9007199254740991
+     * @items.maximum 9007199254740991
+     */
+  partialIds: number[];
+  /**
+     * The wholes the reader ticked as a whole, without naming a part: "I was there, I don't remember which part". Not a whole showing a point of its own, where that tick is the point's (#2120).
+     * @items.minimum -9007199254740991
+     * @items.maximum 9007199254740991
+     */
+  wholeTickedIds: number[];
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
@@ -2396,6 +2409,8 @@ export interface Experience {
   location_count: number;
   /** Its points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5). */
   cast_points: boolean;
+  /** A whole shown by its parts, such as a serial site: its visit is read from its parts, which are ticked one by one, so its row shows the state and ticks nothing (#2120). */
+  has_parts: boolean;
   /**
      * Offered and published links to works.
      * @minimum -9007199254740991
@@ -2683,6 +2698,8 @@ export interface ExperienceDetail {
   regions: ExperienceRegionRef[];
   /** The site this place is a part of (ADR-0100): the Temple of Karnak of Ancient Thebes. A part with no kind of its own is shown under its whole's kind. */
   part_of: ExperienceDetailPartOf;
+  /** Whether the place shows a point of its own a reader may see. On a whole, a tick on that point is a visit on the whole itself, as on the point named for the whole of the City of Graz beside its historic centre, so its card offers no separate "visited, not sure which part" (#2120). */
+  has_own_point: boolean;
 }
 
 /**

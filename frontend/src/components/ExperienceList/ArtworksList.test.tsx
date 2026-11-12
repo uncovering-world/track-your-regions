@@ -38,12 +38,14 @@ vi.mock('../../hooks/useExperienceContext', async () => {
 let signedIn = false;
 /** Which works this reader has already seen, so the flipped label can be reached. */
 const viewed = new Set<number>();
+let visitWritePending = false;
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: signedIn }) }));
 
 vi.mock('../../hooks/useVisitedExperiences', () => ({
   useViewedTreasures: () => ({
     viewedIds: viewed, viewedCount: viewed.size, markViewed: vi.fn(), unmarkViewed: vi.fn(),
   }),
+  useVisitWritePending: () => visitWritePending,
 }));
 
 // The link a find spot becomes (#894) reads the world view and writes the
@@ -500,5 +502,22 @@ describe("a work's article", () => {
     renderList([work({ name: 'Stele of Lemnos', external_id: 'Q3501422', wikipedia_read: true, wikipedia_url: null })]);
 
     expect(screen.queryByRole('link', { name: /Wikipedia/ })).toBeNull();
+  });
+});
+
+describe("a work's seen toggle while a visit write is on its way", () => {
+  // Seeing a work writes its venue's visit (#2120), so the toggle waits as
+  // every control that writes a visit does.
+  afterEach(() => { signedIn = false; visitWritePending = false; });
+
+  it('waits for it, and is offered again once it lands', () => {
+    signedIn = true;
+    visitWritePending = true;
+    const { unmount } = renderList();
+    expect(screen.getByRole('checkbox', { name: /Mesha Stele — mark as seen/ })).toBeDisabled();
+    unmount();
+    visitWritePending = false;
+    renderList();
+    expect(screen.getByRole('checkbox', { name: /Mesha Stele — mark as seen/ })).not.toBeDisabled();
   });
 });

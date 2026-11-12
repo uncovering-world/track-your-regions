@@ -4,13 +4,10 @@ import {
   Chip,
   ListItemText,
   IconButton,
-  Tooltip,
   CircularProgress,
 } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
-import AddIcon from '@mui/icons-material/Add';
-import RemoveIcon from '@mui/icons-material/Remove';
 import type {
   Experience,
   RegionExperienceLocation,
@@ -32,10 +29,10 @@ import {
 import { PlacesCountChip, foldLabel } from './PlacesCountChip';
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
 import { PointCard } from '../shared/PointCard';
+import { VisitStatusMark } from '../shared/VisitStatusMark';
 import type { LocationRowData } from './LocationRow';
 import { isFoldable } from '../experienceMarkers/buildMarkers';
 import type { VisitedStatus } from '../../api/visited';
-import { computeVisitedStatus } from '@tyr/shared/visits';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -52,6 +49,12 @@ export interface ExperienceListItemProps {
   /** The batch settled — an in-region count derived from `locations` is meaningful. */
   locationsResolved: boolean;
   isLocationVisited: (locationId: number) => boolean;
+  /**
+   * The place's own state, from the one read Discover draws from too
+   * (`useVisitedExperiences().visitedStatusOf`, #2120): a serial site with
+   * some of its parts visited is partly visited in every region's list.
+   */
+  visitedStatus: VisitedStatus;
   isSelected: boolean;
   /**
    * The row is one of the selected place's echoes: its card is open elsewhere —
@@ -78,12 +81,13 @@ export interface ExperienceListItemProps {
   onLeave: () => void;
   onClick: (experience: Experience) => void;
   onLocationVisitedToggle: (locationId: number, isVisited: boolean) => void;
+  /** Mark or unmark the object's places in the region. */
+  onToggleAllLocations: (experienceId: number, markAsVisited: boolean) => void;
   /**
-   * Mark or unmark the object's places in the region — or every one of them
-   * where `everywhere` is set: an edition's tick reads every cast, so its
-   * untick has to reach the cast it was ticked by (ADR-0145 decision 5).
+   * Tick the place itself, or take its own tick back: the checkbox of a place
+   * of no parts and the card's buttons, the same as Discover's (#2120).
    */
-  onToggleAllLocations: (experienceId: number, markAsVisited: boolean, everywhere?: boolean) => void;
+  onTogglePlace: (experienceId: number, tick: boolean) => void;
   onLocationHover: (experienceId: number, locationId: number | null) => void;
   /** This object is drawn as a single pin because the reader asked for that. */
   isCollapsed: boolean;
@@ -146,6 +150,7 @@ function ExperienceListItemComponent({
   locations,
   locationsResolved,
   isLocationVisited,
+  visitedStatus,
   isSelected,
   isMarked = false,
   isAboveGroups = false,
@@ -158,6 +163,7 @@ function ExperienceListItemComponent({
   onClick,
   onLocationVisitedToggle,
   onToggleAllLocations,
+  onTogglePlace,
   onLocationHover,
   isCollapsed,
   onToggleCollapse,
@@ -245,19 +251,14 @@ function ExperienceListItemComponent({
   const foldable = isFoldable(locations);
   const foldTooltip = foldLabel(foldable, isCollapsed, inRegionCount || totalLocations, totalLocations);
 
-  // The row's visited state, read over its in-region places — except for an
-  // edition, whose every cast is the whole work: a visit to *Maman* in Bilbao
-  // marks it visited on Canada's list too (ADR-0145 decision 5).
-  const castPoints = experience.cast_points;
-  const inRegionVisitedStatus = useMemo((): VisitedStatus => {
-    if (inRegionCount === 0) return 'not_visited';
-    const counted = castPoints ? locations ?? [] : inRegionLocations;
-    return computeVisitedStatus(counted.filter(loc => isLocationVisited(loc.id)).length, inRegionCount, castPoints);
-  }, [castPoints, locations, inRegionLocations, inRegionCount, isLocationVisited]);
-
-  // Derive checkbox state from in-region locations
-  const isPartiallyVisited = inRegionVisitedStatus === 'partial';
-  const isFullyVisited = inRegionVisitedStatus === 'visited';
+  // The row's visited state is the place's own, read once for Map mode and
+  // Discover alike: a visit to *Maman* in Bilbao marks it visited on Canada's
+  // list too, and Haghpat and Sanahin with two monasteries visited is partly
+  // visited wherever it is listed (#2120).
+  const isFullyVisited = visitedStatus === 'visited';
+  // A whole is ticked by its parts, on its card, so its row shows the state
+  // and ticks nothing (#2120).
+  const isWhole = experience.has_parts;
 
   /**
    * The card's hover handler, bound to this experience once rather than per render.
@@ -317,26 +318,10 @@ function ExperienceListItemComponent({
     [onRemoveFromRegion, experience],
   );
 
-  // Handle root checkbox click - always use batch operation (works for single and multi-location)
+  // The checkbox of a place of no parts is the place's own tick.
   const handleRootCheckboxClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Toggle all in-region locations: if not all visited, mark all; else unmark
-    // all — every cast of an edition, since a cast outside the region may be
-    // what ticked it.
-    const markAll = inRegionVisitedStatus !== 'visited';
-    onToggleAllLocations(experience.id, markAll, !markAll && castPoints);
-  };
-
-  // Batch mark all in-region locations
-  const handleMarkAll = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onToggleAllLocations(experience.id, true);
-  };
-
-  // Batch unmark all in-region locations
-  const handleUnmarkAll = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onToggleAllLocations(experience.id, false);
+    onTogglePlace(experience.id, visitedStatus === 'not_visited');
   };
 
   return (
@@ -397,18 +382,15 @@ function ExperienceListItemComponent({
         // A drag that selected the name is not a toggle (#1190).
         onClick={(event) => { if (!endsTextSelectionIn(event.currentTarget)) onClick(experience); }}
       >
-        {/* Checkbox for visited status + batch buttons when partial.
-            Disabled until the batch settles, and for a stronger reason than the
-            chip's: the visited state is derived from in-region locations, so an
-            unresolved batch makes `inRegionCount` 0, which short-circuits
-            `inRegionVisitedStatus` to 'not_visited' — every row would render
-            unchecked, indistinguishable from genuinely unvisited, and stay that
-            way rather than flicker. The toggle inherits it: it passes
-            `inRegionVisitedStatus !== 'visited'`, always true while unresolved,
-            so a fully-visited experience could be re-marked but never unmarked
-            and the click would look like it did nothing. */}
+        {/* A place of no parts: its checkbox. A whole: its state. */}
         {showCheckbox && (
-          <VisitIcon data-partial={isPartiallyVisited}>
+          <VisitIcon>
+            {isWhole ? (
+              // Where the checkbox's `edge="start"` puts its box.
+              <Box sx={{ display: 'inline-flex', ml: '-12px' }}>
+                <VisitStatusMark status={visitedStatus} idleColor="var(--tyr-row-color)" />
+              </Box>
+            ) : (
             <VisitCheckbox
               edge="start"
               // No ripple in a list row. MUI mounts `TouchRipple` for every
@@ -417,34 +399,9 @@ function ExperienceListItemComponent({
               // reader scrolling past it will ever see.
               disableRipple
               checked={isFullyVisited}
-              indeterminate={isPartiallyVisited}
-              disabled={isLoading || !locationsResolved}
+              disabled={isLoading}
               onClick={handleRootCheckboxClick}
             />
-            {/* Batch buttons when partial - mark all / unmark all */}
-            {isPartiallyVisited && (
-              <Box sx={{ display: 'flex', ml: -0.5 }}>
-                <Tooltip title="Mark all in region">
-                  <IconButton
-                    size="small"
-                    onClick={handleMarkAll}
-                    disabled={isLoading}
-                    sx={{ p: 0.25, color: 'success.main' }}
-                  >
-                    <AddIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Unmark all in region">
-                  <IconButton
-                    size="small"
-                    onClick={handleUnmarkAll}
-                    disabled={isLoading}
-                    sx={{ p: 0.25, color: '#EF4444' }}
-                  >
-                    <RemoveIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Tooltip>
-              </Box>
             )}
           </VisitIcon>
         )}
@@ -550,6 +507,7 @@ function ExperienceListItemComponent({
           visited={showCheckbox ? {
             isVisited: isLocationVisited(selectedPointId),
             onToggle: () => onLocationVisitedToggle(selectedPointId, isLocationVisited(selectedPointId)),
+            disabled: isLoading,
           } : null}
           onHeightChange={reportHeightChange}
         />
@@ -561,10 +519,11 @@ function ExperienceListItemComponent({
           locations={locations}
           locationsResolved={locationsResolved}
           isLocationVisited={isLocationVisited}
-          isFullyVisited={isFullyVisited}
           locationRefs={locationRefs}
           showCheckbox={showCheckbox}
+          onTogglePlace={onTogglePlace}
           onToggleAllLocations={onToggleAllLocations}
+          visitWritePending={isLoading}
           onLocationVisitedToggle={onLocationVisitedToggle}
           onLocationHover={handleLocationHover}
           onCurate={handleCurate}

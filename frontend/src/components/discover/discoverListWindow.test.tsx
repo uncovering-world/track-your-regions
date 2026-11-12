@@ -121,6 +121,8 @@ function renderList(
         hasCuratorScope={false}
         isAuthenticated={false}
         visitedIds={new Set()}
+        partialIds={new Set()}
+        visitWritePending={false}
         selectedExperienceId={null}
         onBack={noop}
         onSelectExperience={noop}

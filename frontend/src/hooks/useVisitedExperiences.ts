@@ -3,7 +3,7 @@
  */
 
 import { useMemo, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { invalidateVisitedStatus } from '../utils/queryInvalidation';
 import {
@@ -12,6 +12,7 @@ import {
   unmarkExperienceVisited, unmarkLocationVisited, unmarkTreasureViewed,
 } from '../api/visited';
 import { queryKeys } from '../api/queryKeys';
+import type { VisitedStatus } from '../api/visited';
 
 /**
  * Hook for managing experience-level visited status (backward compatible)
@@ -28,13 +29,28 @@ export function useVisitedExperiences(kindId?: number) {
     staleTime: 60000, // 1 minute
   });
 
-  // Convert to Set for O(1) lookup
+  // Convert to Set for O(1) lookup. `visitedIds` holds the places visited
+  // wholly or in part, `partialIds` those in part (#2120): one read, which
+  // Map mode and Discover both draw from.
   const visitedIdsSet = useMemo(() => {
     return new Set(data?.visitedIds || []);
   }, [data?.visitedIds]);
+  const partialIdsSet = useMemo(() => {
+    return new Set(data?.partialIds || []);
+  }, [data?.partialIds]);
+  const visitedStatusOf = useCallback((experienceId: number): VisitedStatus => {
+    if (!visitedIdsSet.has(experienceId)) return 'not_visited';
+    return partialIdsSet.has(experienceId) ? 'partial' : 'visited';
+  }, [visitedIdsSet, partialIdsSet]);
+  // A whole ticked as a whole, its parts not named: what its card's button shows.
+  const wholeTickedIdsSet = useMemo(() => new Set(data?.wholeTickedIds || []), [data?.wholeTickedIds]);
+  const isWholeTicked = useCallback(
+    (experienceId: number) => wholeTickedIdsSet.has(experienceId), [wholeTickedIdsSet],
+  );
 
   // Mark as visited mutation
   const markVisitedMutation = useMutation({
+    mutationKey: queryKeys.visited.write,
     mutationFn: markExperienceVisited,
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
@@ -43,6 +59,7 @@ export function useVisitedExperiences(kindId?: number) {
 
   // Unmark as visited mutation
   const unmarkVisitedMutation = useMutation({
+    mutationKey: queryKeys.visited.write,
     mutationFn: unmarkExperienceVisited,
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
@@ -51,6 +68,9 @@ export function useVisitedExperiences(kindId?: number) {
 
   return {
     visitedIds: visitedIdsSet,
+    partialIds: partialIdsSet,
+    visitedStatusOf,
+    isWholeTicked,
     visitedCount: data?.total || 0,
     isLoading,
     refetch,
@@ -83,6 +103,7 @@ export function useVisitedLocations(experienceId?: number) {
 
   // Mark location as visited mutation
   const markLocationVisitedMutation = useMutation({
+    mutationKey: queryKeys.visited.write,
     mutationFn: markLocationVisited,
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
@@ -91,6 +112,7 @@ export function useVisitedLocations(experienceId?: number) {
 
   // Unmark location as visited mutation
   const unmarkLocationVisitedMutation = useMutation({
+    mutationKey: queryKeys.visited.write,
     mutationFn: unmarkLocationVisited,
     onSuccess: () => {
       invalidateVisitedStatus(queryClient);
@@ -99,6 +121,7 @@ export function useVisitedLocations(experienceId?: number) {
 
   // Mark locations of an experience as visited (optionally filtered by region)
   const markAllLocationsMutation = useMutation({
+    mutationKey: queryKeys.visited.write,
     mutationFn: ({ experienceId, regionId }: { experienceId: number; regionId?: number }) =>
       markAllLocationsVisited(experienceId, regionId),
     onSuccess: () => {
@@ -108,6 +131,7 @@ export function useVisitedLocations(experienceId?: number) {
 
   // Unmark locations of an experience as visited (optionally filtered by region)
   const unmarkAllLocationsMutation = useMutation({
+    mutationKey: queryKeys.visited.write,
     mutationFn: ({ experienceId, regionId }: { experienceId: number; regionId?: number }) =>
       unmarkAllLocationsVisited(experienceId, regionId),
     onSuccess: () => {
@@ -154,6 +178,7 @@ export function useViewedTreasures(experienceId?: number) {
   }, [data?.viewedTreasureIds]);
 
   const markViewedMutation = useMutation({
+    mutationKey: queryKeys.visited.write,
     mutationFn: ({ treasureId, experienceId }: { treasureId: number; experienceId?: number }) =>
       markTreasureViewed(treasureId, experienceId),
     onSuccess: () => {
@@ -202,4 +227,14 @@ export function useExperienceVisitedStatus(experienceId: number | null) {
     isLoading,
     refetch,
   };
+}
+
+/**
+ * Whether any write of this traveller's visits is on its way: a tick or untick
+ * of a place or a point, a mark or unmark of many, a seen work's venue. Every
+ * control that writes a visit waits on it, so a second click never races the
+ * first (#2120).
+ */
+export function useVisitWritePending(): boolean {
+  return useIsMutating({ mutationKey: queryKeys.visited.write }) > 0;
 }

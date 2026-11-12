@@ -4,7 +4,7 @@
  */
 
 import { useAuth } from '../../hooks/useAuth';
-import { useVisitedLocations } from '../../hooks/useVisitedExperiences';
+import { useVisitedLocations, useVisitWritePending } from '../../hooks/useVisitedExperiences';
 import { PointCard, type PointCardObject } from '../shared/PointCard';
 
 export function DiscoverPointCard({ experience, pointId, onBack, onOpenPoint, onPointGone }: {
@@ -16,6 +16,7 @@ export function DiscoverPointCard({ experience, pointId, onBack, onOpenPoint, on
 }) {
   const { isAuthenticated } = useAuth();
   const { isLocationVisited, markLocationVisited, unmarkLocationVisited } = useVisitedLocations(experience.id);
+  const visitWritePending = useVisitWritePending();
   const visited = isLocationVisited(pointId);
   return (
     <PointCard
@@ -27,6 +28,7 @@ export function DiscoverPointCard({ experience, pointId, onBack, onOpenPoint, on
       visited={isAuthenticated ? {
         isVisited: visited,
         onToggle: () => (visited ? unmarkLocationVisited(pointId) : markLocationVisited(pointId)),
+        disabled: visitWritePending,
       } : null}
     />
   );

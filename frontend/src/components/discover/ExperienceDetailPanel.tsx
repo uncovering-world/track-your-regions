@@ -39,6 +39,7 @@ import { LocationsSection, type PanelLocation } from './LocationsSection';
 import {
   useVisitedExperiences,
   useVisitedLocations,
+  useVisitWritePending,
   useExperienceVisitedStatus,
   useViewedTreasures,
 } from '../../hooks/useVisitedExperiences';
@@ -57,6 +58,8 @@ import { ContentsSection } from './ContentsSection';
 import { locationLabel, pointOfRow } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import { queryKeys } from '../../api/queryKeys';
+import { VISIT_BUTTON_LABEL, offersWholeTick } from '../shared/visitWords';
+import { WholeVisitButton } from '../shared/WholeVisitButton';
 
 interface ExperienceDetailPanelProps {
   experience: Experience;
@@ -108,7 +111,10 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
   });
 
   // Visited state
-  const { visitedIds, markVisited, unmarkVisited } = useVisitedExperiences();
+  const { visitedStatusOf, isWholeTicked, markVisited, unmarkVisited } = useVisitedExperiences();
+  // Any visit write of this traveller on its way: every control here that
+  // writes one waits on it (#2120).
+  const visitWritePending = useVisitWritePending();
   const {
     markLocationVisited,
     unmarkLocationVisited,
@@ -144,6 +150,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
 
   const totalLocations = locationsData?.totalLocations || 0;
   const isMultiLocation = totalLocations > 1;
+  // A whole lists its places even where it shows one: they are what a
+  // traveller ticks it by (#2120).
+  const listsPlaces = isMultiLocation || experience.has_parts;
 
   // The region's batch, as Discover's map reads it — lost places' points
   // included (#609) — so the same key and no second request: the region path and
@@ -273,7 +282,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
         </Box>
 
         {/* Visited summary for multi-location */}
-        {isAuthenticated && isMultiLocation && (
+        {isAuthenticated && listsPlaces && (
           <Box sx={{ mb: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
               {/* An edition is seen at any one cast (ADR-0145 decision 5): no fraction of casts to reach. */}
@@ -339,8 +348,19 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
 
         <Divider sx={{ my: 2 }} />
 
+        {/* A whole ticked without naming a part, on its panel as on Map mode's card. */}
+        {isAuthenticated && offersWholeTick(experience, details) && (
+          <Box sx={{ mb: 2 }}>
+            <WholeVisitButton
+              disabled={visitWritePending}
+              ticked={isWholeTicked(experience.id)}
+              onToggle={() => (isWholeTicked(experience.id) ? unmarkVisited(experience.id) : markVisited(experience.id))}
+            />
+          </Box>
+        )}
+
         {/* Locations section */}
-        {isMultiLocation && (
+        {listsPlaces && (
           <LocationsSection
             experienceId={experience.id}
             objectName={experience.name}
@@ -351,6 +371,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             onUnmarkLocation={unmarkLocationVisited}
             onMarkAll={() => markAllLocations({ experienceId: experience.id })}
             onUnmarkAll={() => unmarkAllLocations({ experienceId: experience.id })}
+            visitWritePending={visitWritePending}
             // A place is corrected wherever a curator whose scope reaches it is
             // looking at one (#583, #613); the single place has no row here and is
             // reached through the object screen.
@@ -390,16 +411,21 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
         </Snackbar>
 
         {/* Single-location visited button */}
-        {isAuthenticated && !isMultiLocation && (
+        {isAuthenticated && !listsPlaces && (
           <Box sx={{ mb: 2 }}>
+            {/* The place's own tick, as Map mode's card writes it (#2120). */}
             <Button
-              variant={visitedIds.has(experience.id) ? 'outlined' : 'contained'}
+              variant={visitedStatusOf(experience.id) === 'not_visited' ? 'contained' : 'outlined'}
               size="small"
-              onClick={() => visitedIds.has(experience.id) ? unmarkVisited(experience.id) : markVisited(experience.id)}
-              startIcon={visitedIds.has(experience.id) ? <CheckCircleIcon /> : undefined}
-              color={visitedIds.has(experience.id) ? 'success' : 'primary'}
+              disabled={visitWritePending}
+              onClick={() => {
+                if (visitedStatusOf(experience.id) === 'not_visited') markVisited(experience.id);
+                else unmarkVisited(experience.id);
+              }}
+              startIcon={visitedStatusOf(experience.id) === 'visited' ? <CheckCircleIcon /> : undefined}
+              color={visitedStatusOf(experience.id) === 'visited' ? 'success' : 'primary'}
             >
-              {visitedIds.has(experience.id) ? 'Visited' : 'Mark Visited'}
+              {VISIT_BUTTON_LABEL[visitedStatusOf(experience.id)]}
             </Button>
           </Box>
         )}
@@ -422,6 +448,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             viewedIds={viewedIds}
             onMarkViewed={(id) => markViewed({ treasureId: id, experienceId: experience.id })}
             onUnmarkViewed={unmarkViewed}
+            visitWritePending={visitWritePending}
             // The same rule one level over (#731): a work is corrected wherever a
             // curator whose scope reaches its place is looking at one, and this
             // grid is one of the places.

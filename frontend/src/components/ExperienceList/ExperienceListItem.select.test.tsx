@@ -29,6 +29,7 @@ function renderRow(isSelected = false) {
           locations={[]}
           locationsResolved
           isLocationVisited={() => false}
+          visitedStatus="not_visited"
           isSelected={isSelected}
           locationRefs={{ current: new Map() }}
           itemRefs={{ current: new Map() }}
@@ -39,6 +40,7 @@ function renderRow(isSelected = false) {
           onClick={onClick}
           onLocationVisitedToggle={() => {}}
           onToggleAllLocations={() => {}}
+          onTogglePlace={() => {}}
           onLocationHover={() => {}}
           isCollapsed={false}
           onToggleCollapse={() => {}}
