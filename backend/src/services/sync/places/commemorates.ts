@@ -216,6 +216,19 @@ export const CONCERNING_CATEGORIES: readonly RegExp[] = [
   /^(?:The )?(?!Monuments and memorials )(\p{Lu}.*?) (?:monuments and memorials|memorials) in \p{Lu}.*$/u,
 ];
 
+/**
+ * A memorials category's X with the place after it taken off (#2434):
+ * *Monuments and memorials to Mustafa Kemal Atatürk in Turkey* captures
+ * "Mustafa Kemal Atatürk in Turkey", which is no article's title. The place is
+ * the name after the last " in ", a word with a capital letter, "the" before it
+ * allowed. Null where X holds none.
+ */
+export function withoutPlace(title: string): string | null {
+  const at = title.lastIndexOf(' in ');
+  // A country's name may take "the" before it: "Abraham Lincoln in the United States".
+  return at > 0 && /^(?:the )?\p{Lu}/u.test(title.slice(at + ' in '.length)) ? title.slice(0, at) : null;
+}
+
 /** A category that names whom a statue shows, X captured, as `MEMORIALS_CATEGORY`. */
 export const STATUES_CATEGORY = /^Statues of (?:the )?(\p{Lu}.*)$/u;
 
@@ -427,6 +440,22 @@ async function readFiled(places: readonly CommemorationPlace[], wiki: Commemorat
   }));
   const asked = [...new Set([...named.values()].flatMap(({ memorials, concerning, statues }) => [...memorials, ...concerning, ...statues]))];
   const items = asked.length ? await wiki.articleItems(asked) : new Map<string, ResolvedArticle>();
+  // A memorials category's X that resolves to nothing is asked again without
+  // the place after it (#2434); one that resolves whole keeps its "in".
+  const shortened = new Map([...new Set([...named.values()].flatMap(({ memorials }) => memorials))]
+    .filter((title) => !items.has(title))
+    .flatMap((title) => {
+      const short = withoutPlace(title);
+      return short ? [[title, short] as const] : [];
+    }));
+  if (shortened.size) {
+    for (const [title, item] of await wiki.articleItems([...new Set(shortened.values())])) items.set(title, item);
+  }
+  const resolvedTitle = (title: string) => {
+    const short = shortened.get(title);
+    return short !== undefined && items.has(short) ? short : title;
+  };
+  for (const [qid, subjects] of named) named.set(qid, { ...subjects, memorials: subjects.memorials.map(resolvedTitle) });
   const itemsOf = (titles: readonly string[]) => [...new Set(titles.flatMap((title) => items.get(title)?.item ?? []))].sort(byItem);
   // A place's item is direct where one of its own categories names its title; a
   // title another place's category names says nothing about this one's.

@@ -43,7 +43,7 @@ import type { SparqlFn } from '../wikidataQueries.js';
 import { MAX_COMMEMORATED_SUBJECTS } from '@tyr/shared/commemorates';
 import {
   categoryTitles, CONCERNING_CATEGORIES, fetchSubjectClaims, fetchSubjectKinds, MAX_DEDICATED_FIGURES, MEMORIALS_CATEGORY, readCommemorates,
-  readingOfPlace, STATUES_CATEGORY, type CommemorationWiki, type FiledSubjects, type ResolvedArticle, type SubjectClaims, type SubjectKind,
+  readingOfPlace, STATUES_CATEGORY, withoutPlace, type CommemorationWiki, type FiledSubjects, type ResolvedArticle, type SubjectClaims, type SubjectKind,
 } from './commemorates.js';
 import { namedInPlace } from './placeNames.js';
 
@@ -415,6 +415,25 @@ describe('reading the places of a run', () => {
     });
   });
 
+  it('names the subject of a memorials category with a place after it (#2434)', async () => {
+    // The Republic Monument is filed under the category with Turkey after Atatürk, which resolves to no article whole.
+    const read = wiki({ 'Republic Monument': ['Monuments and memorials to Mustafa Kemal Atatürk in Turkey'] },
+      { 'Mustafa Kemal Atatürk': REPUBLIC_FOUNDERS[0] });
+    const found = await readCommemorates([{ qid: REPUBLIC_MONUMENT, articleUrl: article('Republic_Monument'), label: 'Republic Monument' }],
+      subsetOnlyDoor(), read);
+    expect(found.get(REPUBLIC_MONUMENT)?.commemorates).toMatchObject({ via: 'memorials-category', subjects: [{ item: REPUBLIC_FOUNDERS[0] }] });
+    expect(read.articleItems).toHaveBeenLastCalledWith(['Mustafa Kemal Atatürk']);
+  });
+
+  it('keeps a memorials subject whose own title says "in" where it resolves whole (#2434)', async () => {
+    // A title written for the test: the whole capture is an article, so nothing is taken off it.
+    const read = wiki({ 'Republic Monument': ['Memorials to Women in Science'] }, { 'Women in Science': REPUBLIC_FOUNDERS[1] });
+    const found = await readCommemorates([{ qid: REPUBLIC_MONUMENT, articleUrl: article('Republic_Monument'), label: 'Republic Monument' }],
+      subsetOnlyDoor(), read);
+    expect(found.get(REPUBLIC_MONUMENT)?.commemorates?.subjects.map((s) => s.item)).toEqual([REPUBLIC_FOUNDERS[1]]);
+    expect(read.articleItems).toHaveBeenCalledTimes(1);
+  });
+
   it('makes no work religious for what its own depicts adds, only for a holy figure the reading named (#2279, #2436)', async () => {
     const found = await readCommemorates([
       { qid: REPUBLIC_MONUMENT, articleUrl: null, label: 'Republic Monument' },
@@ -512,5 +531,17 @@ describe('the live twins', () => {
     const answer = await fetchSubjectKinds(sparql, [JESUS, WW2]);
     expect(answer.get(JESUS)).toEqual(holy('Jesus Christ'));
     expect(answer.get(WW2)).toEqual(KINDS.get(WW2));
+  });
+});
+
+describe('a memorials subject with its place taken off (#2434)', () => {
+  it('takes off the place after the last " in ", and nothing where none follows', () => {
+    expect(withoutPlace('Mustafa Kemal Atatürk in Turkey')).toBe('Mustafa Kemal Atatürk');
+    expect(withoutPlace('World War II in Italy')).toBe('World War II');
+    expect(withoutPlace('Abraham Lincoln in the United States')).toBe('Abraham Lincoln');
+    expect(withoutPlace('Horatio Nelson')).toBeNull();
+    // A lowercase word after the last "in" names no place, and no earlier "in" is taken instead.
+    expect(withoutPlace('Freedom in exile')).toBeNull();
+    expect(withoutPlace('Women in Science in exile')).toBeNull();
   });
 });
