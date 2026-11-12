@@ -16,6 +16,7 @@ import { badRequest, failure, notFound } from '../middleware/errorHandler.js';
 import type { geocodeSearchQuerySchema, suggestImageQuerySchema } from '../types/index.js';
 import { userAgent } from '../config/userAgent.js';
 import { NominatimError, searchNominatim } from '../services/nominatim.js';
+import { passedStatus, unreachedStatus } from '../services/outsideStatus.js';
 
 // No bot marker: both lookups here run while a curator waits on the dialog.
 const USER_AGENT = userAgent();
@@ -47,9 +48,9 @@ export async function searchPlaces(
       limit, extratags: true, userAgent: USER_AGENT, signal: AbortSignal.timeout(PLACE_SEARCH_TIMEOUT_MS),
     });
   } catch (error) {
-    if (error instanceof NominatimError) throw failure('Nominatim request failed', error.status);
+    if (error instanceof NominatimError) throw failure('Nominatim request failed', passedStatus(error.status));
     console.error('Nominatim search error:', error);
-    throw failure('Geocode search failed', 500);
+    throw failure('Geocode search failed', unreachedStatus(error));
   }
   return {
     results: places.map((item) => ({
@@ -365,7 +366,7 @@ export async function suggestImage(
     }
   } catch (error) {
     console.error('Image suggestion error:', error);
-    throw failure('Image suggestion failed', 500);
+    throw failure('Image suggestion failed', unreachedStatus(error));
   }
   if (!suggestion) throw notFound('No image found');
   return suggestion;

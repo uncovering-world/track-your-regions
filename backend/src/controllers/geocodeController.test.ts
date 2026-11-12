@@ -34,11 +34,23 @@ describe('searchPlaces', () => {
     });
   });
 
-  it('answers 500 with its own message when Nominatim cannot be reached', async () => {
+  it('answers 502 with its own message when Nominatim cannot be reached, never a 500 of its own', async () => {
     // Each spec asks its own question: the same one would be answered from the cache.
     fetchMock.mockRejectedValueOnce(new Error('socket hang up'));
     await expect(search({ q: 'Söyembikä Tower' }))
-      .rejects.toMatchObject({ statusCode: 500, message: 'Geocode search failed' });
+      .rejects.toMatchObject({ statusCode: 502, message: 'Geocode search failed' });
+  });
+
+  it('answers 504 when Nominatim does not answer before the deadline', async () => {
+    fetchMock.mockRejectedValueOnce(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    await expect(search({ q: 'Kul Sharif Mosque' }))
+      .rejects.toMatchObject({ statusCode: 504, message: 'Geocode search failed' });
+  });
+
+  it("answers 502 for Nominatim's own server error, never a 500 of its own", async () => {
+    fetchMock.mockResolvedValueOnce(new Response('[]', { status: 500 }));
+    await expect(search({ q: 'Kremlin of Kazan' }))
+      .rejects.toMatchObject({ statusCode: 502, message: 'Nominatim request failed' });
   });
 
   it("passes Nominatim's refusal on with its status", async () => {
