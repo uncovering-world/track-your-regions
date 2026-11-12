@@ -493,8 +493,6 @@ export interface ExperiencePartsRow {
   whole_id: number;
   part_id: number;
   reason: string;
-  membership_id: number | null;
-  external_ref: string | null;
   created_at: Date;
 }
 
