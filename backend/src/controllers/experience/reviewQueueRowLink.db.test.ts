@@ -30,7 +30,7 @@ beforeEach(async () => {
   );
   adminId = user.rows[0].id;
   for (const [i, id] of IDS.entries()) {
-    const qid = `Q${id}-row-link-fixture`;
+    const qid = `Q${id}001`;
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
        SELECT $1, s.id, $2, $3, ST_SetSRID(ST_MakePoint(12.3 + $4::int * 0.5, 41.7), 4326)

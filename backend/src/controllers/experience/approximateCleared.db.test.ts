@@ -29,12 +29,12 @@ beforeEach(async () => {
   await clear();
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, '9854-fixture', 'Echmiatsin fixture', ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
+     VALUES ($1, $2, '9854', 'Echmiatsin fixture', ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
     [SITE, UNESCO, SHARED.lon, SHARED.lat],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, '9854-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = $2`,
+     SELECT $1, s.kind_id, s.id, '9854', 'verified', NOW() FROM experience_sources s WHERE s.id = $2`,
     [SITE, UNESCO],
   );
   await writeExperienceLocations(SITE, [

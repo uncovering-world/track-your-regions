@@ -11,11 +11,11 @@ import { mergePlaces } from './placeMerge.js';
  * Archaeology point into the World Heritage one (ADR-0088 decision 3).
  */
 
-const HERITAGE = 9990;
-const DIG = 9991;
+const HERITAGE = 9946;
+const DIG = 9947;
 /** A place of worship on the same caves, for a chain of two merges. */
-const SHRINE = 9992;
-const ITEM = 'Q99990-fixture';
+const SHRINE = 9948;
+const ITEM = 'Q9947001';
 const MOGAO = { lon: 94.8089, lat: 40.0375 };
 
 let archaeology = 0;
@@ -56,7 +56,7 @@ async function place(id: number, source: string, ref: string, lon: number): Prom
 beforeEach(async () => {
   await clear();
   archaeology = (await pool.query<{ id: number }>(`SELECT id FROM experience_sources WHERE name = 'Archaeology'`)).rows[0].id;
-  heritagePoint = await place(HERITAGE, 'UNESCO World Heritage Sites', '440-fixture', MOGAO.lon);
+  heritagePoint = await place(HERITAGE, 'UNESCO World Heritage Sites', '9946', MOGAO.lon);
   // The item's coordinate is 10.7 km east of UNESCO's, as on the development catalogue.
   digPoint = await place(DIG, 'Archaeology', ITEM, MOGAO.lon + 0.126);
 });
@@ -134,7 +134,7 @@ describe('the source of a folded point, run again (#1662)', () => {
 
   it('finds its point down a chain of merges', async () => {
     // The Archaeology row first merged into a place of worship, which a later merge folded into the site.
-    await place(SHRINE, 'Places of worship', 'Q99992-fixture', MOGAO.lon + 0.002);
+    await place(SHRINE, 'Places of worship', 'Q9948001', MOGAO.lon + 0.002);
     await merge(SHRINE, DIG);
     await merge(HERITAGE, SHRINE);
     const result = await run(MOGAO.lon + 0.126);

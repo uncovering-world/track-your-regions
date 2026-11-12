@@ -23,8 +23,8 @@ const P = {
 } as const;
 const ALL = Object.values(P);
 const ITEM: Record<number, string> = {
-  [P.site]: 'Q999975000', [P.district]: 'Q999975001', [P.square]: 'Q999975002', [P.squareTwin]: 'Q999975003',
-  [P.abbey]: 'Q999975004', [P.abbeyTwin]: 'Q999975005', [P.fort]: 'Q999975006', [P.fortTwin]: 'Q999975007',
+  [P.site]: 'Q9750003', [P.district]: 'Q9751003', [P.square]: 'Q9752003', [P.squareTwin]: 'Q9753003',
+  [P.abbey]: 'Q9754003', [P.abbeyTwin]: 'Q9755003', [P.fort]: 'Q9756003', [P.fortTwin]: 'Q9757003',
 };
 const ITEMS = Object.values(ITEM);
 const ADMIN = '00000000-0000-4000-8000-000000009750';

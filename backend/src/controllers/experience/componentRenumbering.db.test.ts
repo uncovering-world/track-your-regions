@@ -97,12 +97,12 @@ beforeEach(async () => {
   run = { syncLogId: null, sourceId, components: true };
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, '1490-fixture', 'Western Tien-Shan (renumbering fixture)', ST_SetSRID(ST_MakePoint(70.27, 42.40), 4326))`,
+     VALUES ($1, $2, '9953', 'Western Tien-Shan (renumbering fixture)', ST_SetSRID(ST_MakePoint(70.27, 42.40), 4326))`,
     [SITE, sourceId],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     VALUES ($1, $2, $3, '1490-fixture', 'auto', NOW())`,
+     VALUES ($1, $2, $3, '9953', 'auto', NOW())`,
     [SITE, source.kind_id, sourceId],
   );
   await writeExperienceLocations(SITE, BEFORE, run);

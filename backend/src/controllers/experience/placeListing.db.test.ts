@@ -16,7 +16,7 @@ import { answerStateUnderLock } from './lifecycleController.js';
  */
 
 const LOUVRE = 9450;
-const LOUVRE_QID = 'Q9450-louvre-fixture';
+const LOUVRE_QID = 'Q9450001';
 const USER_UUID = '00000000-0000-4000-8000-000000009450';
 
 let artMuseums = 0;

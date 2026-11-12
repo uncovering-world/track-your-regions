@@ -16,7 +16,7 @@ import { admissionAnsweredSql } from '../../db/membership.js';
  */
 
 const EXPERIENCE_ID = 9400;
-const EXTERNAL_ID = 'Q9400-egyptian-museum';
+const EXTERNAL_ID = 'Q9400001';
 const USER_UUID = '00000000-0000-4000-8000-000000009400';
 const REASON = 'folded into Neues Museum — housed in it, 11 m away';
 

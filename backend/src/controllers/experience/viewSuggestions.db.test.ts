@@ -68,12 +68,12 @@ beforeEach(async () => {
   )).rows[0].id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     SELECT $1, s.id, '216', 'Rila Monastery', ST_SetSRID(ST_MakePoint(23.3402, 42.1333), 4326)
+     SELECT $1, s.id, '9810', 'Rila Monastery', ST_SetSRID(ST_MakePoint(23.3402, 42.1333), 4326)
        FROM experience_sources s WHERE s.name = 'UNESCO World Heritage Sites'`,
     [RILA],
   );
-  unescoView = await membership('UNESCO World Heritage Sites', '216', 'Rila Monastery');
-  wikidataView = await membership('Places of worship', 'Q207945', 'Monastery of Saint John of Rila');
+  unescoView = await membership('UNESCO World Heritage Sites', '9810', 'Rila Monastery');
+  wikidataView = await membership('Places of worship', 'Q9810001', 'Monastery of Saint John of Rila');
   mockedAsk.mockResolvedValue({
     choice: `view${unescoView}`, probabilities: {}, confidence: 0.96, model: 'jev-1.13.0', inputTokens: 428,
   });

@@ -45,12 +45,12 @@ async function place(id: number, type: string, state: string): Promise<void> {
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      VALUES ($1, 5, $2, $3, ST_SetSRID(ST_MakePoint(32.67, 26.14), 4326))`,
-    [id, `Q-place-${id}`, `Place ${id}`],
+    [id, `Q${id}001`, `Place ${id}`],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
      VALUES ($1, 5, 5, $2, $3, 'admitted', $4)`,
-    [id, `Q-place-${id}`, type, state],
+    [id, `Q${id}001`, type, state],
   );
 }
 

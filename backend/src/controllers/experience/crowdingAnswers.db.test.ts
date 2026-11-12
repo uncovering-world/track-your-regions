@@ -88,12 +88,12 @@ async function plantBerlinSquares(base: number): Promise<Map<string, { place: nu
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
        VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
-      [place, SQUARES, `Q${place}`, name, lon, lat],
+      [place, SQUARES, `Q${place}001`, name, lon, lat],
     );
     const membership = await pool.query<{ id: number }>(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
        VALUES ($1, $2, $2, $3, 'square', $4, $5) RETURNING id`,
-      [place, SQUARES, `Q${place}`, state, state === 'pending' ? null : new Date()],
+      [place, SQUARES, `Q${place}001`, state, state === 'pending' ? null : new Date()],
     );
     await pool.query(
       `INSERT INTO membership_fame (membership_id, readers, guide_editions, wikipedia_editions, score)
@@ -117,7 +117,7 @@ async function shadowedSquares(base: number): Promise<string[]> {
 
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM place_venues WHERE qid = ANY($1::text[])',
-    [Array.from({ length: 100 }, (_, i) => `Q${BASE + i}`)]);
+    [Array.from({ length: 100 }, (_, i) => `Q${BASE + i}001`)]);
   await pool.query('DELETE FROM experiences WHERE id >= $1 AND id < $2', [BASE, BASE + 100]);
   await pool.query('DELETE FROM world_views WHERE id = $1', [DISTRICTS_VIEW]);
   await pool.query("DELETE FROM treasures WHERE external_id = 'Q928215-calling'");
@@ -130,10 +130,10 @@ async function plant(id: number, name: string, kind: number, type: string, lat: 
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
-    [id, kind, `Q${id}`, name, lon, lat]);
+    [id, kind, `Q${id}001`, name, lon, lat]);
   const membership = (await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
-     VALUES ($1, $2, $2, $3, $4, 'verified', NOW()) RETURNING id`, [id, kind, `Q${id}`, type])).rows[0].id;
+     VALUES ($1, $2, $2, $3, $4, 'verified', NOW()) RETURNING id`, [id, kind, `Q${id}001`, type])).rows[0].id;
   await pool.query(
     'INSERT INTO membership_fame (membership_id, readers, guide_editions, wikipedia_editions, score) VALUES ($1, 50000, 2, 30, 0.5)',
     [membership]);
@@ -365,7 +365,7 @@ describe("a crowded city as its region's page shows it (#2358)", () => {
   it('carries the venues the place pass kept around each square, and no venue column for a kind that keeps none (#2454)', async () => {
     await pool.query(
       `INSERT INTO place_venues (source_id, qid, venues, radius_m) VALUES ($1, $2, 64, 200)`,
-      [SQUARES, `Q${squares.get('Alexanderplatz')!.place}`]);
+      [SQUARES, `Q${squares.get('Alexanderplatz')!.place}001`]);
 
     const listed = await group();
     expect(listed.kind).toMatchObject({ readsVenues: true, venueRadiusM: 200 });

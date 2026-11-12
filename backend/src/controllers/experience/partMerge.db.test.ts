@@ -66,31 +66,31 @@ beforeEach(async () => {
   run = { syncLogId: null, sourceId: heritage.id, components: true };
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, '87-fixture', 'Ancient Thebes (part merge fixture)', ST_SetSRID(ST_MakePoint(32.65, 25.71), 4326))`,
+     VALUES ($1, $2, '9960', 'Ancient Thebes (part merge fixture)', ST_SetSRID(ST_MakePoint(32.65, 25.71), 4326))`,
     [THEBES, heritage.id],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     VALUES ($1, $2, $3, '87-fixture', 'auto', NOW())`,
+     VALUES ($1, $2, $3, '9960', 'auto', NOW())`,
     [THEBES, heritage.kind_id, heritage.id],
   );
   await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
 
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     SELECT $1, s.id, 'Q522862-fixture', 'Karnak Temple Complex', ST_SetSRID(ST_MakePoint(32.6575, 25.7189), 4326)
+     SELECT $1, s.id, 'Q9961001', 'Karnak Temple Complex', ST_SetSRID(ST_MakePoint(32.6575, 25.7189), 4326)
        FROM experience_sources s WHERE s.name = 'Places of worship'`,
     [COMPLEX],
   );
   const membership = await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, 'Q522862-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'
+     SELECT $1, s.kind_id, s.id, 'Q9961001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'
      RETURNING id`,
     [COMPLEX],
   );
   complexPoint = (await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, name, external_ref, location)
-     VALUES ($1, 'Karnak Temple Complex', 'Q522862-fixture', ST_SetSRID(ST_MakePoint(32.6575, 25.7189), 4326)) RETURNING id`,
+     VALUES ($1, 'Karnak Temple Complex', 'Q9961001', ST_SetSRID(ST_MakePoint(32.6575, 25.7189), 4326)) RETURNING id`,
     [COMPLEX],
   )).rows[0].id;
   await pool.query('INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)',
@@ -213,7 +213,7 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
   });
 
   describe('the catalogue\'s merge on an equal item (#1250)', () => {
-    const ITEM = 'Q99952286';
+    const ITEM = 'Q9961002';
     /** The complex known by the item, and the given components' records carrying it as their item. */
     async function itemOn(...refs: string[]): Promise<void> {
       await pool.query(`UPDATE source_records SET external_id = $2 WHERE experience_id = $1`, [COMPLEX, ITEM]);

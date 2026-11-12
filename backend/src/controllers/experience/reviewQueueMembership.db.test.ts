@@ -22,7 +22,7 @@ import { reviewQueueQuerySchema } from '../../types/index.js';
 
 const PLACE = 9600;
 const NAME = 'Capitoline Museums (queue fixture)';
-const QID = 'Q9600-capitoline-queue-fixture';
+const QID = 'Q9600001';
 const ADMIN_UUID = '00000000-0000-4000-8000-000000009600';
 const CURATOR_UUID = '00000000-0000-4000-8000-000000009601';
 
@@ -643,7 +643,7 @@ describe('a kind whose source stopped listing the place (#1264)', () => {
     const added = await pool.query<{ id: number }>(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state,
               published_at, missing_since)
-       SELECT $1, s.kind_id, s.id, '9600-whs', 'verified', NOW(), NOW() FROM experience_sources s WHERE s.id = $2
+       SELECT $1, s.kind_id, s.id, '9600', 'verified', NOW(), NOW() FROM experience_sources s WHERE s.id = $2
        RETURNING id`,
       [PLACE, heritage],
     );

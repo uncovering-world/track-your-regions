@@ -15,7 +15,7 @@ import { getWorldPoints } from './worldPointsController.js';
  */
 
 const CAPITOLINE = 9490;
-const QID = 'Q9490-capitoline-fixture';
+const QID = 'Q9490501';
 const AROUND_ROME = '12.40,41.85,12.55,41.95';
 
 let artMuseums = { id: 0, kind_id: 0 };

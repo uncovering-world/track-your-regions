@@ -75,12 +75,12 @@ beforeEach(async () => {
   await clear();
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, 1, '9839-fixture', 'Mozu-Furuichi fixture', ST_SetSRID(ST_MakePoint(135.48, 34.56), 4326))`,
+     VALUES ($1, 1, '9839', 'Mozu-Furuichi fixture', ST_SetSRID(ST_MakePoint(135.48, 34.56), 4326))`,
     [SITE],
   );
   membershipId = (await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, '9839-fixture', 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
+     SELECT $1, s.kind_id, s.id, '9839', 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
     [SITE],
   )).rows[0].id;
   await point('1593-001', 'Daisen Kofun', 135.47);

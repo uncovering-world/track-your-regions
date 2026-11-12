@@ -68,7 +68,7 @@ async function heldRun(fields: object[]): Promise<void> {
   )).rows[0].id;
   await pool.query(
     `INSERT INTO experience_sync_changes (sync_log_id, experience_id, external_id, change_type, changed_fields)
-     VALUES ($1, $2, 'Q-tree-9470', 'held', $3)`,
+     VALUES ($1, $2, 'Q9470001', 'held', $3)`,
     [syncLog, PLACE, JSON.stringify(fields)],
   );
   await pool.query(
@@ -85,13 +85,13 @@ beforeEach(async () => {
   )).rows[0].id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, subtitle, location)
-     VALUES ($1, 6, 'Q-tree-9470', 'Tree of Sadness (fixture)', 'A memorial.',
+     VALUES ($1, 6, 'Q9470001', 'Tree of Sadness (fixture)', 'A memorial.',
              ST_SetSRID(ST_MakePoint(44.6, 43.18), 4326))`,
     [PLACE],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, 'Q-tree-9470', 'admitted', 'verified', NOW() FROM experience_sources s WHERE s.id = 6`,
+     SELECT $1, s.kind_id, s.id, 'Q9470001', 'admitted', 'verified', NOW() FROM experience_sources s WHERE s.id = 6`,
     [PLACE],
   );
   await heldRun([SUBTITLE, WEBSITE]);

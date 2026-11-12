@@ -41,7 +41,7 @@ async function arrival(at: { lon: number; lat: number }, ordinal = 1): Promise<n
   const row = await pool.query<{ id: number }>(
     `INSERT INTO experience_locations
        (experience_id, external_ref, ordinal, location, curation_state, withdrawal_deferred_for_location_id)
-     VALUES ($1, 'Q47611', $5, ST_SetSRID(ST_MakePoint($2, $3), 4326), 'pending', $4) RETURNING id`,
+     VALUES ($1, 'Q9460903', $5, ST_SetSRID(ST_MakePoint($2, $3), 4326), 'pending', $4) RETURNING id`,
     [SITE, at.lon, at.lat, storedPoint, ordinal],
   );
   return row.rows[0].id;
@@ -57,7 +57,7 @@ async function heldRun(fields: Array<{ field: string; old: unknown; new: unknown
   syncLogs.push(logId);
   await pool.query(
     `INSERT INTO experience_sync_changes (sync_log_id, experience_id, external_id, change_type, changed_fields)
-     VALUES ($1, $2, 'Q47611', 'held', $3)`,
+     VALUES ($1, $2, 'Q9460903', 'held', $3)`,
     [logId, SITE, JSON.stringify(fields.map((f) => ({ ...f, significance: 'minor', curatedConflict: false, held: true })))],
   );
   await pool.query(
@@ -86,7 +86,7 @@ beforeEach(async () => {
   userId = user.rows[0].id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, 'Q47611', 'Ephesus', ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
+     VALUES ($1, $2, 'Q9460903', 'Ephesus', ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
     [SITE, sourceId, STORED.lon, STORED.lat],
   );
   await pool.query(
@@ -96,7 +96,7 @@ beforeEach(async () => {
   );
   const stored = await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, external_ref, location, curation_state)
-     VALUES ($1, 'Q47611', ST_SetSRID(ST_MakePoint($2, $3), 4326), 'verified') RETURNING id`,
+     VALUES ($1, 'Q9460903', ST_SetSRID(ST_MakePoint($2, $3), 4326), 'verified') RETURNING id`,
     [SITE, STORED.lon, STORED.lat],
   );
   storedPoint = stored.rows[0].id;
@@ -213,7 +213,7 @@ async function pairing(id: number): Promise<{ replaces: number | null; refused: 
 
 /** The source offers the object's one point at `at`, as the next run would. */
 const nextRun = (at: { lon: number; lat: number }) => writeExperienceLocations(
-  SITE, [{ name: null, externalRef: 'Q47611', lon: at.lon, lat: at.lat }], { syncLogId: null, sourceId },
+  SITE, [{ name: null, externalRef: 'Q9460903', lon: at.lon, lat: at.lat }], { syncLogId: null, sourceId },
 );
 
 describe('a no to an object\'s moved point', () => {

@@ -105,12 +105,12 @@ async function site(id: number, ref: string, name: string, lon: number, lat: num
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
-    [id, heritage.id, `${ref}-fixture`, name, lon, lat],
+    [id, heritage.id, ref, name, lon, lat],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, 'auto', NOW())`,
-    [id, heritage.kind_id, heritage.id, `${ref}-fixture`],
+    [id, heritage.kind_id, heritage.id, ref],
   );
 }
 
@@ -290,7 +290,7 @@ describe("what the site's list says of a component, on the part's record (ADR-01
 
 describe('the real shapes of a list (ADR-0198)', () => {
   it("keeps Seville Cathedral's record, 383bis-001, on the place of worship it was merged with, and writes the list's view there", async () => {
-    await site(SEVILLE, '383', 'Cathedral, Alcázar and Archivo de Indias in Seville (fixture)', -5.9925, 37.3845);
+    await site(SEVILLE, '9640', 'Cathedral, Alcázar and Archivo de Indias in Seville (fixture)', -5.9925, 37.3845);
     await writeExperienceLocations(SEVILLE, [CATHEDRAL, ALCAZAR, ARCHIVO], run);
     const parted = await recordsOf(SEVILLE);
     expect(parted.map(record => [record.external_id, record.name])).toEqual([
@@ -300,19 +300,19 @@ describe('the real shapes of a list (ADR-0198)', () => {
     // The cathedral as Places of worship brings it, with its own point, which a merge makes the part.
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
-       SELECT $1, s.id, 'Q9641', 'Seville Cathedral', ST_SetSRID(ST_MakePoint(-5.99312, 37.38572), 4326)
+       SELECT $1, s.id, 'Q9641001', 'Seville Cathedral', ST_SetSRID(ST_MakePoint(-5.99312, 37.38572), 4326)
          FROM experience_sources s WHERE s.name = 'Places of worship'`,
       [SEVILLE_CATHEDRAL_OF_WORSHIP],
     );
     const membership = await pool.query<{ id: number }>(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q9641', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'
+       SELECT $1, s.kind_id, s.id, 'Q9641001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'
        RETURNING id`,
       [SEVILLE_CATHEDRAL_OF_WORSHIP],
     );
     const point = await pool.query<{ id: number }>(
       `INSERT INTO experience_locations (experience_id, name, external_ref, location)
-       VALUES ($1, 'Seville Cathedral', 'Q9641', ST_SetSRID(ST_MakePoint(-5.99312, 37.38572), 4326)) RETURNING id`,
+       VALUES ($1, 'Seville Cathedral', 'Q9641001', ST_SetSRID(ST_MakePoint(-5.99312, 37.38572), 4326)) RETURNING id`,
       [SEVILLE_CATHEDRAL_OF_WORSHIP],
     );
     await pool.query('INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)',
@@ -339,7 +339,7 @@ describe('the real shapes of a list (ADR-0198)', () => {
   });
 
   it("keeps Maloti-Drakensberg's two parks two parts, each with its record under the one reference 985ter-001", async () => {
-    await site(MALOTI, '985', 'Maloti-Drakensberg Park (fixture)', 29.3, -29.6);
+    await site(MALOTI, '9642', 'Maloti-Drakensberg Park (fixture)', 29.3, -29.6);
     await writeExperienceLocations(MALOTI, [SEHLABATHEBE, UKHAHLAMBA], run);
     const records = await recordsOf(MALOTI);
     expect(records.map(record => record.external_id)).toEqual(['985ter-001', '985ter-001']);
@@ -513,12 +513,12 @@ describe('"part of" follows the records that claim it (ADR-0198 decision 5)', ()
     );
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
-       SELECT $1, s.id, 'Q9645', 'The same site as a place of worship', ST_SetSRID(ST_MakePoint(10.0, 45.0), 4326)
+       SELECT $1, s.id, 'Q9645901', 'The same site as a place of worship', ST_SetSRID(ST_MakePoint(10.0, 45.0), 4326)
          FROM experience_sources s WHERE s.name = 'Places of worship'`, [WHOLE_SITE_ELSEWHERE],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q9645', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
+       SELECT $1, s.kind_id, s.id, 'Q9645901', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
       [WHOLE_SITE_ELSEWHERE],
     );
     const relations = async () => (await pool.query(
@@ -547,12 +547,12 @@ describe('"part of" follows the records that claim it (ADR-0198 decision 5)', ()
     )).rows[0].id;
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
-       SELECT $1, s.id, 'Q9557', 'Belfries (another kind)', ST_SetSRID(ST_MakePoint(3.5, 50.8), 4326)
+       SELECT $1, s.id, 'Q9557001', 'Belfries (another kind)', ST_SetSRID(ST_MakePoint(3.5, 50.8), 4326)
          FROM experience_sources s WHERE s.name = 'Places of worship'`, [BELFRIES_ELSEWHERE],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q9557', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
+       SELECT $1, s.kind_id, s.id, 'Q9557001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
       [BELFRIES_ELSEWHERE],
     );
     const wholesOf = async () => (await pool.query<{ whole_id: number }>(

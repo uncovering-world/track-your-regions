@@ -32,7 +32,7 @@ async function changeSet(source: number, fields: object[], { dryRun = false, cha
   syncLogs.push(logId);
   await pool.query(
     `INSERT INTO experience_sync_changes (sync_log_id, experience_id, external_id, change_type, changed_fields)
-     VALUES ($1, $2, 'Q-church-9465', $3, $4)`,
+     VALUES ($1, $2, 'Q9465001', $3, $4)`,
     [logId, PLACE, changeType, JSON.stringify(fields)],
   );
   return logId;
@@ -42,14 +42,14 @@ beforeEach(async () => {
   await clear();
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location, metadata)
-     VALUES ($1, 4, 'Q-church-9465', 'Fixture Church', ST_SetSRID(ST_MakePoint(12.47, 41.9), 4326),
+     VALUES ($1, 4, 'Q9465001', 'Fixture Church', ST_SetSRID(ST_MakePoint(12.47, 41.9), 4326),
              '{"website": "https://church.example/"}')`,
     [PLACE],
   );
   for (const [key, source] of [['worship', 4], ['archaeology', 5]] as const) {
     const row = await pool.query<{ id: number }>(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q-church-9465', 'admitted', 'verified', NOW() FROM experience_sources s WHERE s.id = $2
+       SELECT $1, s.kind_id, s.id, 'Q9465001', 'admitted', 'verified', NOW() FROM experience_sources s WHERE s.id = $2
        RETURNING id`,
       [PLACE, source],
     );

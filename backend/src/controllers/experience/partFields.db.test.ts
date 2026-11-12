@@ -16,7 +16,7 @@ import { editExperienceBodySchema, experienceLocationsQuerySchema } from '../../
  * it, and the site's read serves it as the point's description.
  */
 
-const THEBES = 9970;
+const THEBES = 9985;
 const KARNAK = { name: 'Temple of Karnak', externalRef: '87-001', lon: 32.6573, lat: 25.7188 };
 const LUXOR = { name: 'Luxor Temple', externalRef: '87-002', lon: 32.6390, lat: 25.6995 };
 const ADMIN = '00000000-0000-4000-8000-000000009970';
@@ -49,12 +49,12 @@ beforeEach(async () => {
   run = { syncLogId: null, sourceId: heritage.id, components: true };
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, '87-fields-fixture', 'Ancient Thebes (part fields fixture)', ST_SetSRID(ST_MakePoint(32.65, 25.71), 4326))`,
+     VALUES ($1, $2, '9985', 'Ancient Thebes (part fields fixture)', ST_SetSRID(ST_MakePoint(32.65, 25.71), 4326))`,
     [THEBES, heritage.id],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     VALUES ($1, $2, $3, '87-fields-fixture', 'auto', NOW())`,
+     VALUES ($1, $2, $3, '9985', 'auto', NOW())`,
     [THEBES, heritage.kind_id, heritage.id],
   );
   await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
@@ -128,7 +128,7 @@ describe("a curator's correction of a part's point (ADR-0156)", () => {
     const before = await luxor();
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
-       SELECT $1, s.kind_id, s.id, 'Q-luxor-fixture', 'pending' FROM experience_sources s WHERE s.id = 4`,
+       SELECT $1, s.kind_id, s.id, 'Q9985901', 'pending' FROM experience_sources s WHERE s.id = 4`,
       [before.part_id],
     );
     await editLocation({
@@ -194,7 +194,7 @@ describe('a component item confirmed or taken back on a part that holds a kind o
     await pool.query('UPDATE experiences SET image_url = $2 WHERE id = $1', [before.part_id, kinds]);
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       VALUES ($1, 4, 4, 'Q9970002', 'verified', NOW())`, [before.part_id],
+       VALUES ($1, 4, 4, 'Q9985002', 'verified', NOW())`, [before.part_id],
     );
     const row = async () => (await pool.query<{ image_url: string | null; subtitle: string | null }>(
       'SELECT image_url, subtitle FROM experiences WHERE id = $1', [before.part_id],
@@ -204,7 +204,7 @@ describe('a component item confirmed or taken back on a part that holds a kind o
     try {
       await client.query('BEGIN');
       const locked = await lockExperience(client, before.part_id);
-      const outcome = await claimPointItem(client, locked!.lock, before.point_id, 'Q9970001', {
+      const outcome = await claimPointItem(client, locked!.lock, before.point_id, 'Q9985001', {
         imageUrl: picture, credit: { author: 'A photographer', license: 'CC BY 4.0', licenseUrl: null, detailsUrl: null },
         description: 'ancient Egyptian temple', articleUrl: null,
       });
@@ -236,11 +236,11 @@ describe("a part's item, on its record in World Heritage components (ADR-0156 de
 
   it("is recorded by the run there, and the registry reads it as the part's", async () => {
     const before = await luxor();
-    expect(await recordComponentItems(THEBES, [{ ref: LUXOR.externalRef, item: 'Q9970001' }], run.sourceId)).toBe(1);
+    expect(await recordComponentItems(THEBES, [{ ref: LUXOR.externalRef, item: 'Q9985001' }], run.sourceId)).toBe(1);
 
-    expect((await record(before.part_id)).items).toEqual(['Q9970001']);
+    expect((await record(before.part_id)).items).toEqual(['Q9985001']);
     const registry = await pool.query<{ identifies: boolean; basis: string[] }>(
-      `SELECT identifies, basis FROM place_identifiers WHERE experience_id = $1 AND scheme = 'wikidata' AND value = 'Q9970001'`,
+      `SELECT identifies, basis FROM place_identifiers WHERE experience_id = $1 AND scheme = 'wikidata' AND value = 'Q9985001'`,
       [before.part_id],
     );
     expect(registry.rows).toEqual([{ identifies: true, basis: ['component-item'] }]);
@@ -252,17 +252,17 @@ describe("a part's item, on its record in World Heritage components (ADR-0156 de
     try {
       await client.query('BEGIN');
       const locked = await lockExperience(client, THEBES);
-      await claimPointItem(client, locked!.lock, before.point_id, 'Q9970002', {
+      await claimPointItem(client, locked!.lock, before.point_id, 'Q9985002', {
         imageUrl: null, credit: null, description: null, articleUrl: null,
       });
       await client.query('COMMIT');
     } finally {
       client.release();
     }
-    expect(await record(before.part_id)).toMatchObject({ items: ['Q9970002'], claims: expect.arrayContaining(['wikidata_items']) });
+    expect(await record(before.part_id)).toMatchObject({ items: ['Q9985002'], claims: expect.arrayContaining(['wikidata_items']) });
 
-    expect(await recordComponentItems(THEBES, [{ ref: LUXOR.externalRef, item: 'Q9970001' }], run.sourceId)).toBe(0);
-    expect((await record(before.part_id)).items).toEqual(['Q9970002']);
+    expect(await recordComponentItems(THEBES, [{ ref: LUXOR.externalRef, item: 'Q9985001' }], run.sourceId)).toBe(0);
+    expect((await record(before.part_id)).items).toEqual(['Q9985002']);
 
     const again = await pool.connect();
     try {

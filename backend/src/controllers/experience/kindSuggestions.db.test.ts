@@ -74,7 +74,7 @@ beforeEach(async () => {
   );
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, subtitle, location, country_names, metadata)
-     SELECT $1, s.id, 'Q1052406', 'Cellular Jail', 'colonial prison in India',
+     SELECT $1, s.id, 'Q92342001', 'Cellular Jail', 'colonial prison in India',
             ST_SetSRID(ST_MakePoint(92.7488, 11.6745), 4326), ARRAY['India'],
             jsonb_build_object('wikipediaUrl', 'https://en.wikipedia.org/wiki/Cellular_Jail')
        FROM experience_sources s WHERE s.name = 'Monuments & memorials'`,
@@ -82,7 +82,7 @@ beforeEach(async () => {
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
-     SELECT $1, s.kind_id, s.id, 'Q1052406', 'pending' FROM experience_sources s WHERE s.name = 'Monuments & memorials'`,
+     SELECT $1, s.kind_id, s.id, 'Q92342001', 'pending' FROM experience_sources s WHERE s.name = 'Monuments & memorials'`,
     [JAIL],
   );
 });
@@ -130,7 +130,7 @@ describe("Jev's reading of which kind an arriving place belongs to (#2342)", () 
     // Kept out of Public art by its rule: refused, which only a refusal is said to be.
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, admission)
-       SELECT $1, s.kind_id, s.id, 'Q1052406', 'pending', 'refused' FROM experience_sources s WHERE s.name = 'Public art'`,
+       SELECT $1, s.kind_id, s.id, 'Q92342001', 'pending', 'refused' FROM experience_sources s WHERE s.name = 'Public art'`,
       [JAIL]);
     await pool.query('DELETE FROM experience_kind_suggestions WHERE experience_id = $1', [JAIL]);
     expect((await ask()).suggestion?.kind).toEqual({ id: publicArt, name: 'Public art', held: 'kept_out' });
