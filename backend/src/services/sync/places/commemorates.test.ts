@@ -1,5 +1,5 @@
 /**
- * Whom or what a place commemorates (#2144): the six steps, the first that
+ * Whom or what a place commemorates (#2144): the seven steps, the first that
  * names anyone answering, on the places the reading was measured on. Every id
  * is the development subset's (2026-11-08): the Lincoln Memorial (Q213559)
  * commemorates Abraham Lincoln (Q91); the Statue of Unity (Q7604504) is filed
@@ -99,6 +99,10 @@ const ATATURK_BUST = 'Q900000003';
 const TRITON = 'Q148030';
 const OCEANUS = 'Q161419';
 
+// A dedication only the lead states (#2472): the Shaheed Minar in Dhaka (Q2425991) and the Bengali language movement (Q1975418).
+const SHAHEED_MINAR = 'Q2425991';
+const LANGUAGE_MOVEMENT = 'Q1975418';
+
 const article = (title: string) => `https://en.wikipedia.org/wiki/${title}`;
 /** A lead as English Wikipedia answers it, at one revision. */
 const lead = (wikitext: string): Lead => ({ wikitext, revid: 1 });
@@ -144,6 +148,7 @@ const KINDS = new Map<string, SubjectKind>([
   [WW2, { ...event('World War II'), war: true, span: { from: 19390901, to: 19450902 } }],
   [BATTLE_OF_BERLIN, { ...event('Battle of Berlin'), span: { from: 19450416, to: 19450502 } }],
   [BOMBING_OF_HIROSHIMA, { ...event('atomic bombing of Hiroshima'), span: { from: 19450806, to: 19450806 } }],
+  [LANGUAGE_MOVEMENT, event('Bengali language movement')],
 ]);
 const ARTICLES = new Map([[LINCOLN, article('Abraham_Lincoln')], [NELSON, article('Horatio_Nelson,_1st_Viscount_Nelson')]]);
 const NOTHING_FILED: FiledSubjects = { memorials: [], concerning: [], statues: [], statueCategories: 0 };
@@ -416,6 +421,22 @@ describe('reading the places of a run', () => {
     expect(found.get(HIROSHIMA_PEACE_MEMORIAL)?.commemorates).toEqual({
       via: 'war-narrowed-by-event', subjects: [{ item: BOMBING_OF_HIROSHIMA, label: 'atomic bombing of Hiroshima', articleUrl: null }],
     });
+  });
+
+  it('reads a dedication from the lead for a place no step names, and asks nothing about one a step named (#2472)', async () => {
+    const read = wiki({}, { 'Bengali language movement': LANGUAGE_MOVEMENT });
+    vi.mocked(read.leads).mockResolvedValue(new Map([['Shaheed Minar, Dhaka',
+      lead('It was established to [[memorialization|commemorate]] those killed during the [[Bengali language movement]].')]]));
+    const answer = { stated: true, link: 'Bengali language movement', subject_text: '', year: '1952', evidence: '' };
+    const models = ['claude-haiku-5-5', 'gpt-5-mini'].map((model) => ({ model, ask: vi.fn(async () => answer), logUsage: vi.fn(async () => undefined) }));
+    const store = { kept: vi.fn(async () => new Map()), keep: vi.fn(async () => undefined) };
+    const found = await readCommemorates([
+      { qid: SHAHEED_MINAR, articleUrl: article('Shaheed_Minar,_Dhaka'), label: 'Shaheed Minar' },
+      { qid: LINCOLN_MEMORIAL, articleUrl: article('Lincoln_Memorial') },
+    ], subsetOnlyDoor(), read, { models, store });
+    expect(found.get(SHAHEED_MINAR)?.commemorates).toMatchObject({ via: 'lead', subjects: [{ item: LANGUAGE_MOVEMENT, label: 'Bengali language movement' }] });
+    expect(read.leads).toHaveBeenCalledWith(['Shaheed Minar, Dhaka'], true);
+    expect(found.get(LINCOLN_MEMORIAL)?.commemorates?.via).toBe('commemorates');
   });
 
   it('names the subject of a memorials category with a place after it (#2434)', async () => {
