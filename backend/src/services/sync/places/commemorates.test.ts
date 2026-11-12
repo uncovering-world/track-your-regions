@@ -46,6 +46,7 @@ import {
   readingOfPlace, STATUES_CATEGORY, withoutPlace, type CommemorationWiki, type FiledSubjects, type ResolvedArticle, type SubjectClaims, type SubjectKind,
 } from './commemorates.js';
 import { namedInPlace } from './placeNames.js';
+import type { Lead } from './warNarrowing.js';
 
 const LINCOLN_MEMORIAL = 'Q213559';
 const LINCOLN = 'Q91';
@@ -99,6 +100,8 @@ const TRITON = 'Q148030';
 const OCEANUS = 'Q161419';
 
 const article = (title: string) => `https://en.wikipedia.org/wiki/${title}`;
+/** A lead as English Wikipedia answers it, at one revision. */
+const lead = (wikitext: string): Lead => ({ wikitext, revid: 1 });
 const claims = (over: Partial<SubjectClaims> = {}): SubjectClaims => ({
   commemorates: [], mainSubjects: [], namedAfter: [], depicts: [], significantEvents: [], ...over,
 });
@@ -329,7 +332,7 @@ describe('reading the places of a run', () => {
       if (items[t]) return [[t, { item: items[t], redirected: false }]];
       return redirects[t] ? [[t, { item: redirects[t], redirected: true }]] : [];
     }))),
-    leads: vi.fn(async () => new Map<string, string>()),
+    leads: vi.fn(async () => new Map<string, Lead>()),
   });
 
   beforeEach(() => {
@@ -384,7 +387,7 @@ describe('reading the places of a run', () => {
   it('narrows a war to the battle the lead of the place says it commemorates', async () => {
     const read = wiki({}, { 'Battle of Berlin': BATTLE_OF_BERLIN });
     vi.mocked(read.leads).mockResolvedValue(new Map([['Soviet War Memorial (Treptower Park)',
-      'The memorial commemorates the soldiers who fell in the [[Battle of Berlin]].']]));
+      lead('The memorial commemorates the soldiers who fell in the [[Battle of Berlin]].')]]));
     const found = await readCommemorates([
       { qid: TREPTOW_MEMORIAL, articleUrl: article('Soviet_War_Memorial_(Treptower_Park)') },
       { qid: LINCOLN_MEMORIAL, articleUrl: article('Lincoln_Memorial') },
@@ -398,7 +401,7 @@ describe('reading the places of a run', () => {
 
   it('names no one under Depicts whom a narrowed war leaves the place commemorating (#2436)', async () => {
     const read = wiki({ 'Atatürk bust': ['World War II memorials in Turkey'] }, { 'World War II': WW2 });
-    vi.mocked(read.leads).mockResolvedValue(new Map([['Atatürk bust', 'A bust of Atatürk.']]));
+    vi.mocked(read.leads).mockResolvedValue(new Map([['Atatürk bust', lead('A bust of Atatürk.')]]));
     const found = await readCommemorates([{ qid: ATATURK_BUST, articleUrl: article('Atatürk_bust'), label: 'Atatürk bust' }], subsetOnlyDoor(), read);
     expect(found.get(ATATURK_BUST)?.commemorates).toMatchObject({ via: 'war-narrowed-to-person', subjects: [{ item: REPUBLIC_FOUNDERS[0] }] });
     expect(found.get(ATATURK_BUST)?.depicts).toBeNull();
@@ -406,7 +409,7 @@ describe('reading the places of a run', () => {
 
   it('narrows a war its categories read to the significant event Wikidata names for the place', async () => {
     const read = wiki({ 'Hiroshima Peace Memorial': ['World War II memorials in Japan'] }, { 'World War II': WW2 });
-    vi.mocked(read.leads).mockResolvedValue(new Map([['Hiroshima Peace Memorial', 'The ruin serves as a memorial to the people killed in the bombing.']]));
+    vi.mocked(read.leads).mockResolvedValue(new Map([['Hiroshima Peace Memorial', lead('The ruin serves as a memorial to the people killed in the bombing.')]]));
     const found = await readCommemorates([
       { qid: HIROSHIMA_PEACE_MEMORIAL, articleUrl: article('Hiroshima_Peace_Memorial'), label: 'Hiroshima Peace Memorial' },
     ], subsetOnlyDoor(), read);

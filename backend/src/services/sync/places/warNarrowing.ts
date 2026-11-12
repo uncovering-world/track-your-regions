@@ -114,15 +114,91 @@ function fileLinkAt(text: string, from: number): number {
   return match ? from + match.index : -1;
 }
 
-/** The articles a stretch of prose links, in the order they appear: no namespaced link, first letter raised as a title is. */
+/**
+ * The article a link names, as its title: what comes before a pipe or a
+ * section mark, underscores as spaces, first letter raised as a title is.
+ * Null for a namespaced link (a category, a help page, another wiki) and for
+ * a link to a section of the same page.
+ */
+function linkTitle(link: string): string | null {
+  const title = link.split('|')[0].split('#')[0].trim().replace(/_/g, ' ');
+  if (!title || /^[^:]+:/.test(title)) return null;
+  return title.charAt(0).toUpperCase() + title.slice(1);
+}
+
+/** The articles a stretch of prose links, in the order they appear: no namespaced link. */
 function linksOf(prose: string): string[] {
-  const titles: string[] = [];
-  for (const [, link] of prose.matchAll(LINK)) {
-    const title = link.split('|')[0].split('#')[0].trim().replace(/_/g, ' ');
-    if (!title || /^[^:]+:/.test(title)) continue;
-    titles.push(title.charAt(0).toUpperCase() + title.slice(1));
+  return [...prose.matchAll(LINK)].flatMap(([, link]) => linkTitle(link) ?? []);
+}
+
+/**
+ * A link and the small letters straight after it, which English Wikipedia
+ * shows as part of the link's words: `[[soldier]]s` reads "soldiers".
+ */
+// eslint-disable-next-line sonarjs/slow-regex -- as `LINK`: the negated class cannot match the `]` that closes it
+const LINK_WITH_TRAIL = /\[\[([^\]]+)\]\]([a-z]*)/g;
+
+/** A lead as a model reads it (#2472): its prose with each link marked, and the articles those marks name. */
+export interface MarkedLead {
+  /** The prose, each link written `⟦words→Article title⟧`, paragraphs one per line. */
+  text: string;
+  /** The articles the marks name, once each, sorted. */
+  titles: string[];
+}
+
+/**
+ * Prose without its HTML tags, read one character at a time: a tag is cut from
+ * its `<` to the next `>`, and a bracket that opens no tag is dropped too, so
+ * no `<` or `>` is left whatever the tags nest in.
+ */
+function withoutTags(text: string): string {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const end = c === '<' && /^\/?[a-z]/i.test(text.slice(i + 1, i + 3)) ? text.indexOf('>', i + 1) : -1;
+    if (end >= 0) {
+      i = end + 1;
+    } else {
+      if (c !== '<' && c !== '>') out += c;
+      i++;
+    }
   }
-  return titles;
+  return out;
+}
+
+/**
+ * A lead's prose with every article it links marked as `⟦words→Article
+ * title⟧` (#2472): what `proseOf` keeps, its bold and italic quotes, HTML tags
+ * and behaviour switches dropped, a namespaced link reduced to its words (none
+ * for a category), each title read as `linksOf` reads it, one paragraph a
+ * line. The Shaheed Minar
+ * "established to [[memorialization|commemorate]] those killed during the
+ * [[Bengali language movement]]" reads "established to
+ * ⟦commemorate→Memorialization⟧ those killed during the ⟦Bengali language
+ * movement→Bengali language movement⟧".
+ */
+export function markedLead(wikitext: string): MarkedLead {
+  const titles = new Set<string>();
+  const marked = proseOf(wikitext).replace(LINK_WITH_TRAIL, (_whole, link: string, trail: string) => {
+    const [target, ...label] = link.split('|');
+    const piped = label.join('|').trim();
+    const title = linkTitle(link);
+    if (!title) return piped ? piped + trail : '';
+    titles.add(title);
+    // The pipe trick, `[[Foo (bar)|]]`, shows the target's words.
+    return `⟦${(piped || target.trim()) + trail}→${title}⟧`;
+  });
+  const text = withoutTags(marked)
+    .replace(/'{2,}/g, '')
+    .replace(/__[A-Z]+__/g, '')
+    .replace(/&nbsp;/g, ' ')
+    // A paragraph ends at a blank line; a single line end inside one is a space, as English Wikipedia shows it.
+    .split(/\n[ \t]*\n/)
+    .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+  return { text, titles: [...titles].sort() };
 }
 
 /** The articles the dedication sentences of a lead link, in the order they appear, once each. */
@@ -290,9 +366,9 @@ export async function narrowWarReadings(
     const title = enwikiTitleOf(place.articleUrl);
     return title ? [[place.qid, title] as const] : [];
   }));
-  const leads = titleOf.size ? await wiki.leads([...new Set(titleOf.values())]) : new Map<string, string>();
+  const leads = titleOf.size ? await wiki.leads([...new Set(titleOf.values())]) : new Map<string, Lead>();
   const linksOfPlace = new Map([...titleOf].flatMap(([qid, title]) => {
-    const lead = leads.get(title);
+    const lead = leads.get(title)?.wikitext;
     return lead ? [[qid, { dedicated: dedicationLinks(lead), linked: leadLinks(lead) }] as const] : [];
   }));
   const titles = [...new Set([...linksOfPlace.values()].flatMap(({ linked }) => linked))];
@@ -351,28 +427,36 @@ async function biographiesNamed(
 
 /** One page's lead as `prop=revisions` answers it under `formatversion=2`. */
 interface RevisionPage {
-  revisions?: { slots?: { main?: { content?: string } } }[];
+  revisions?: { revid?: number; slots?: { main?: { content?: string } } }[];
+}
+
+/** An article's lead: its wikitext, and the revision it was read from, which says whether it changed since (#2472). */
+export interface Lead {
+  wikitext: string;
+  revid: number;
 }
 
 /**
- * The wikitext of each article's lead (section 0), by the title asked; an
- * article the API has no page for has no entry. One ask per article, since a
+ * The wikitext of each article's lead (section 0) and the revision it was
+ * read from, by the title asked; an article the API has no page for has no
+ * entry. One ask per article, since a
  * section is answered for one page at a time. A lead that cannot be read, its
  * retries spent or the host refusing it, has no entry either and is logged:
  * its war stays as the reading named it. A cancelled run stops here.
  */
-export async function fetchLeads(titles: readonly string[], options: CategoryOptions): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+export async function fetchLeads(titles: readonly string[], options: CategoryOptions): Promise<Map<string, Lead>> {
+  const out = new Map<string, Lead>();
   const budget = options.budget ?? new WaitBudget(0);
   for (const title of titles) {
     if (options.isCancelled?.()) break;
     try {
       const answer = await askWikipediaOnce({
-        action: 'query', prop: 'revisions', rvprop: 'content', rvslots: 'main', rvsection: '0',
+        action: 'query', prop: 'revisions', rvprop: 'content|ids', rvslots: 'main', rvsection: '0',
         redirects: '1', format: 'json', formatversion: '2', titles: title,
       }, options, budget, `the lead of ${title}`);
-      const content = (pagesOf(answer)[0] as unknown as RevisionPage | undefined)?.revisions?.[0]?.slots?.main?.content;
-      if (content) out.set(title, content);
+      const revision = (pagesOf(answer)[0] as unknown as RevisionPage | undefined)?.revisions?.[0];
+      const content = revision?.slots?.main?.content;
+      if (content && revision?.revid) out.set(title, { wikitext: content, revid: revision.revid });
     } catch (error) {
       if (options.isCancelled?.()) throw error;
       console.warn(`${LOG_PREFIX} the lead of ${title} was not read, its war stays: ${error instanceof Error ? error.message : String(error)}`);
