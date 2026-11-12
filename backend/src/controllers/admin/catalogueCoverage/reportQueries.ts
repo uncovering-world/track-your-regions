@@ -12,7 +12,9 @@
  */
 
 import { pool } from '../../../db/index.js';
-import { MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, kindRecordSql } from '../../../db/membership.js';
+import {
+  MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql, kindRecordSql, siteLineRecordSql,
+} from '../../../db/membership.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import type {
   CoverageCalibrationEntriesRow, CoverageCalibrationSourcesRow, CoverageExpectationKindsRow, CoverageExpectationsRow, CoverageJudgementsRow,
@@ -236,7 +238,8 @@ const MATCHES_SQL = `
     FROM ids
     JOIN known_as k ON k.id = ids.id
     JOIN experiences e ON e.id = k.experience_id
-    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+    -- A site's record of its own list line (ADR-0200) is neither a kind nor a work.
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND NOT ${siteLineRecordSql('m')}
   UNION ALL
   SELECT ids.region_slug, ids.slug, t.name AS catalogue_name, NULL::int AS kind_id,
          (${publishedContentSql('t')} AND EXISTS (SELECT 1 ${venuesShowingSql('t')})) AS offered,

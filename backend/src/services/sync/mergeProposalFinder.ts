@@ -167,14 +167,17 @@ export function reachSql(e = 'e'): string {
 
 /**
  * The names a place is known by, folded for comparison: its own name, each
- * source's view of it (`reported_name`) and its names in other languages
+ * source's view of it (`reported_name`, a part's in its site among them) and its names in other languages
  * (`name_local`), unaccented and in lower case, as an array of distinct
  * strings.
  */
 export function foldedNamesSql(e = 'e'): string {
   return `ARRAY(SELECT DISTINCT unaccent(lower(btrim(named.n)))
             FROM (SELECT ${e}.name AS n
-                  UNION ALL SELECT rn.reported_name FROM ${MEMBERSHIPS} rn WHERE rn.experience_id = ${e}.id
+                  -- A site's record of its own list line (ADR-0200) names a
+                  -- component of it, not the place.
+                  UNION ALL SELECT rn.reported_name FROM ${MEMBERSHIPS} rn
+                             WHERE rn.experience_id = ${e}.id AND rn.whole_id IS DISTINCT FROM rn.experience_id
                   UNION ALL SELECT loc.v FROM jsonb_each_text(
                     CASE WHEN jsonb_typeof(${e}.name_local) = 'object' THEN ${e}.name_local ELSE '{}'::jsonb END) AS loc(k, v)
                  ) named

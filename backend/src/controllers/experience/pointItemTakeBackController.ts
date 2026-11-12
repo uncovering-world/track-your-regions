@@ -3,9 +3,10 @@
  * component (#1317).
  * POST /api/experiences/locations/:locationId/take-back-item
  *
- * The confirmation (#1314) wrote the item on the point as the curator's
- * choice — `wikidata_item` with a claim on it — and what the item gave the
- * point: its picture, credit and description. The take-back is the way back a
+ * The confirmation (#1314) wrote the item on the record of the point's list
+ * line as the curator's choice — `wikidata_items`, with a claim on it among
+ * that record's claims (ADR-0200) — and what the item gave the point's part:
+ * its picture, credit and description. The take-back is the way back a
  * merge has (ADR-0086): the item and its claim come off, and the picture and
  * the description come off with them where no curator has claimed the field
  * since — a point with no item has no run-written picture or description, so

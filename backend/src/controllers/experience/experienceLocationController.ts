@@ -294,7 +294,8 @@ export async function getExperienceLocations(
   const maySeeUnreadIdx = params.length + 1;
   params.push(maySeeUnread);
 
-  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'wikidata_item'> & {
+  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at'> & {
+    wikidata_item: string | null;
     curation_state: CheckValue<'experience_locations', 'curation_state'>;
     description: string | null;
     is_part: boolean;

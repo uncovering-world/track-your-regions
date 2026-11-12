@@ -369,48 +369,47 @@ function pointClaimsBySql(point: string, kinded: string): string {
 
 /**
  * The record of World Heritage components the point `point` reads as its
- * part's (ADR-0198): the part holds one in each whole, and the one under the
- * point's reference, compared as the run compares it (case aside, `823-001B`),
- * is the point's, else the earliest whole's. `columns` is
- * what to select of it, under `alias`.
+ * line's (ADR-0198, ADR-0200): a part holds one in each whole, and the one
+ * under the point's reference, compared as the run compares it (case aside,
+ * `823-001B`), is the point's, else the earliest whole's; a site's own point
+ * reads the site's record of itself only under its own reference, since a
+ * site of two own lines (Ohrid's 99quater-001 and -002) records one of them.
+ * `columns` is what to select of it, under `alias`.
  */
 export function pointRecordSql(point: string, alias: string, columns: string): string {
   return `(SELECT ${columns} FROM ${MEMBERSHIPS} ${alias}
             WHERE ${alias}.experience_id = ${point}.experience_id AND ${componentRecordSql(alias)}
+              AND (${alias}.whole_id <> ${alias}.experience_id
+                   OR lower(${alias}.external_id) = lower(${point}.external_ref))
             ORDER BY (lower(${alias}.external_id) = lower(${point}.external_ref)) IS TRUE DESC, ${alias}.whole_id
             LIMIT 1)`;
 }
 
 /**
- * The Wikidata item the point `point` is, as an SQL expression: a serial
- * site's part's off its record in its whole (ADR-0156 decision 2, ADR-0198),
- * any other point's its own.
+ * The Wikidata item the point `point` is, as an SQL expression: off its
+ * line's record (`pointRecordSql`), a part's in its whole or a site's in itself
+ * (ADR-0156 decision 2, ADR-0200). A point no record answers has none.
  */
 export function pointItemSql(point = 'el'): string {
-  return `CASE WHEN ${pointOfPartSql(point)}
-               THEN ${pointRecordSql(point, 'pi_rec', 'pi_rec.wikidata_items[1]')}
-               ELSE ${point}.wikidata_item END`;
+  return pointRecordSql(point, 'pi_rec', 'pi_rec.wikidata_items[1]');
 }
 
 /**
- * A curator chose the item of the point `point` (#1272): on a part's record
- * (`wikidata_items` among its claims), else on the point itself.
+ * A curator chose the item of the point `point` (#1272): `wikidata_items`
+ * among the claims of its line's record.
  */
 export function pointItemClaimedSql(point = 'el'): string {
-  return `CASE WHEN ${pointOfPartSql(point)}
-               THEN COALESCE(${pointRecordSql(point, 'pc_rec', "pc_rec.curated_fields ? 'wikidata_items'")}, false)
-               ELSE COALESCE(${point}.curated_fields ? 'wikidata_item', false) END`;
+  return `COALESCE(${pointRecordSql(point, 'pc_rec', "pc_rec.curated_fields ? 'wikidata_items'")}, false)`;
 }
 
 /**
- * Some component already is the item `item` (an SQL expression): a part's
- * record or a point carries it, since a component is one item and an item one
- * component.
+ * Some component already is the item `item` (an SQL expression): a record of
+ * a list line carries it, a part's or a site's own (ADR-0200), since a
+ * component is one item and an item one component.
  */
 export function itemHeldSql(item: string): string {
-  return `(EXISTS (SELECT 1 FROM experience_locations held_point WHERE held_point.wikidata_item = ${item})
-           OR EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held_rec
-                       WHERE ${componentRecordSql('held_rec')} AND held_rec.wikidata_items @> ARRAY[(${item})::text]))`;
+  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held_rec
+                   WHERE ${componentRecordSql('held_rec')} AND held_rec.wikidata_items @> ARRAY[(${item})::text])`;
 }
 
 /**

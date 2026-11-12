@@ -20,7 +20,7 @@
 import type { QueryResult } from 'pg';
 import type { MergePair } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, componentRecordSql, kindRecordSql, rowKindJoinSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, kindRecordSql, partRecordSql, rowKindJoinSql } from '../../db/membership.js';
 import { answeringPlaceOfSql, partOfNameSql } from '../../db/placePoints.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
@@ -73,7 +73,7 @@ export function itemSql(place: string): string {
              WHERE km.experience_id = ${place}.id AND ${kindRecordSql('km')} AND ${membershipItemSql('km', place)} IS NOT NULL
              ORDER BY km.id LIMIT 1),
            (SELECT rec.wikidata_items[1] FROM ${MEMBERSHIPS} rec
-             WHERE rec.experience_id = ${place}.id AND ${componentRecordSql('rec')}
+             WHERE rec.experience_id = ${place}.id AND ${partRecordSql('rec')}
                AND cardinality(rec.wikidata_items) = 1
              ORDER BY rec.whole_id LIMIT 1))`;
 }

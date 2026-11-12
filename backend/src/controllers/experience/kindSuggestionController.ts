@@ -30,7 +30,7 @@ import type { z } from 'zod/v4';
 import type { KindSuggestion, PlannedKindAnswered } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience } from '../../db/experienceWriter.js';
-import { MEMBERSHIPS, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
+import { MEMBERSHIPS, kindRecordSql, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
 import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
 import { askJevChoice, jevConfigured, JevAnswerRefused } from '../../services/jev/jevClient.js';
 import { articleLead } from '../../services/sync/visit/visitReading.js';
@@ -78,7 +78,7 @@ async function placeOf(experienceId: number): Promise<PlaceRow | null> {
                       WHEN ${membershipOfferedSql('held')} THEN 'offered'
                       WHEN NOT ${membershipAdmittedSql('held')} THEN 'kept_out'
                       ELSE 'arriving' END)
-               FROM ${MEMBERSHIPS} held WHERE held.experience_id = e.id) AS held_kinds,
+               FROM ${MEMBERSHIPS} held WHERE held.experience_id = e.id AND ${kindRecordSql('held')}) AS held_kinds,
             ${newestKindReadingSql('e')} AS stored,
             (SELECT jsonb_object_agg(a.planned_kind, a.belongs) FROM experience_planned_kind_answers a
               WHERE a.experience_id = e.id) AS answers
