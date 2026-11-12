@@ -21,7 +21,7 @@ import type {
   addLearnedRuleBodySchema, aiRuleIdParamSchema, aiSettingKeyParamSchema, aiSettingValueBodySchema,
   applyRuleReviewBodySchema,
 } from '../../types/index.js';
-import { getAllSettings, updateSetting } from '../../services/ai/aiSettingsService.js';
+import { featureDefaultSettings, getAllSettings, updateSetting } from '../../services/ai/aiSettingsService.js';
 import { getUsageSummary } from '../../services/ai/aiUsageLogger.js';
 import { getAllPricing, updatePricingFromRemote } from '../../services/ai/pricingService.js';
 import { getAllRules, addRule, deleteRule, updateRuleText, deleteRules, PREDEFINED_RULES } from '../../services/ai/learnedRulesService.js';
@@ -29,7 +29,8 @@ import { reviewRules } from '../../services/ai/ruleReviewService.js';
 import { isOpenAIAvailable } from '../../services/ai/openaiShared.js';
 
 export async function getAISettings(): Promise<AISettings> {
-  const settings = await getAllSettings();
+  // A feature with its own default and no stored choice shows that default, the model it runs on.
+  const settings = { ...featureDefaultSettings(), ...await getAllSettings() };
   const models = getAllPricing().map(p => ({ id: p.model, inputPer1M: p.inputPer1M, outputPer1M: p.outputPer1M }));
   return { settings, models };
 }
