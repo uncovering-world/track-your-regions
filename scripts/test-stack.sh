@@ -504,7 +504,16 @@ run_api_contract() {
   ensure_up
   local accounts
   accounts="$(compose exec -T backend npx tsx -e "import('./src/db/seed/e2eFixture.ts').then((m) => console.log(JSON.stringify({ traveller: m.E2E_TRAVELLER, curator: m.E2E_CURATOR, admin: m.E2E_ADMIN })))" | tail -n 1)"
-  node scripts/api-contract.mjs --url "http://localhost:${BACKEND_PORT}" --accounts "$accounts"
+  # A failed lane prints the backend's last lines before the stack goes: a
+  # request that took the backend down is otherwise only "fetch failed".
+  local status=0
+  node scripts/api-contract.mjs --url "http://localhost:${BACKEND_PORT}" --accounts "$accounts" || status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "API contract failed: the backend's last ${READINESS_LOG_LINES} lines follow"
+    compose ps backend || true
+    compose logs --no-color --tail "$READINESS_LOG_LINES" backend || true
+  fi
+  return "$status"
 }
 
 cmd_help() {
