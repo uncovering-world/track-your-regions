@@ -56,11 +56,11 @@ async function membership(
   )).rows[0].id;
 }
 
-async function point(placeId: number, ref: string, item: string | null = null): Promise<number> {
+async function point(placeId: number, ref: string): Promise<number> {
   return (await pool.query<{ id: number }>(
-    `INSERT INTO experience_locations (experience_id, name, external_ref, wikidata_item, location)
-     VALUES ($1, $2, $2, $3, ST_SetSRID(ST_MakePoint(75.70, 20.55), 4326)) RETURNING id`,
-    [placeId, ref, item],
+    `INSERT INTO experience_locations (experience_id, name, external_ref, location)
+     VALUES ($1, $2, $2, ST_SetSRID(ST_MakePoint(75.70, 20.55), 4326)) RETURNING id`,
+    [placeId, ref],
   )).rows[0].id;
 }
 
@@ -139,16 +139,16 @@ describe('the place identifier registry (ADR-0143 decision 2)', () => {
     for (const [part, ref] of [[PART_A, '9972-001'], [PART_B, '9972-002']] as const) {
       await place(part, heritage, ref, `Part ${ref}`);
       await pool.query(
-        `INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
-         VALUES ($2, $1, 10, $3)`, [SERIAL, part, ref],
+        `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, wikidata_items)
+         VALUES ($2, $1, 10, $3, ARRAY[$4])`, [SERIAL, part, ref, ENSEMBLE],
       );
-      await point(part, ref, ENSEMBLE);
+      await point(part, ref);
     }
     expect(await held([ENSEMBLE])).toEqual([`${SERIAL}:refers`, `${PART_A}:refers`, `${PART_B}:refers`]);
     expect(await held(['9972-001', '9972-002'])).toEqual([`${PART_A}:identifies`, `${PART_B}:identifies`]);
 
-    // The second part's point is given its own item: the first part's becomes its own.
-    await pool.query('UPDATE experience_locations SET wikidata_item = $1 WHERE experience_id = $2', [OTHER_ITEM, PART_B]);
+    // The second part's record is given its own item: the first part's becomes its own.
+    await pool.query('UPDATE source_records SET wikidata_items = ARRAY[$1] WHERE experience_id = $2 AND whole_id IS NOT NULL', [OTHER_ITEM, PART_B]);
     expect(await held([ENSEMBLE])).toEqual([`${SERIAL}:refers`, `${PART_A}:identifies`]);
     expect(await held([OTHER_ITEM])).toEqual([`${SERIAL}:refers`, `${PART_B}:identifies`]);
     expect(await outOfStep()).toBe(0);

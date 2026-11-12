@@ -88,13 +88,14 @@ beforeEach(async () => {
   for (const [part, ref, name] of [[PART_A, '9990-001', 'The chapel'], [PART_B, '9990-002', 'The village']] as const) {
     await place(part, heritage, ref, name);
     await pool.query(
-      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($2, $1, 10, $3)`,
-      [SITE, part, ref],
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, wikidata_items)
+       VALUES ($2, $1, 10, $3, ARRAY[$4])`,
+      [SITE, part, ref, ENSEMBLE],
     );
     await pool.query(
-      `INSERT INTO experience_locations (experience_id, name, external_ref, wikidata_item, location)
-       VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint(44.55, 39.09), 4326))`,
-      [part, name, ref, ENSEMBLE],
+      `INSERT INTO experience_locations (experience_id, name, external_ref, location)
+       VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint(44.55, 39.09), 4326))`,
+      [part, name, ref],
     );
   }
   await place(CHURCH, worship, OWN, 'A church');
@@ -115,8 +116,8 @@ describe("a curator's word on an identifier (ADR-0143 decision 5)", () => {
     expect(outcome.result).toMatchObject({ verdict: 'identifies', identifies: true });
     expect(await held(ENSEMBLE)).toEqual([`${PART_A}:identifies`, `${PART_B}:refers`]);
 
-    // A run rewriting the point's item changes nothing: the word stands.
-    await pool.query('UPDATE experience_locations SET wikidata_item = $1 WHERE experience_id = $2', [ENSEMBLE, PART_B]);
+    // A run rewriting the component's item changes nothing: the word stands.
+    await pool.query('UPDATE source_records SET wikidata_items = ARRAY[$1] WHERE experience_id = $2 AND whole_id IS NOT NULL', [ENSEMBLE, PART_B]);
     expect(await held(ENSEMBLE)).toEqual([`${PART_A}:identifies`, `${PART_B}:refers`]);
     expect(await outOfStep()).toBe(0);
 
@@ -158,9 +159,9 @@ describe("a curator's word on an identifier (ADR-0143 decision 5)", () => {
   });
 
   it('keeps the join off a place whose curator took the item off it', async () => {
-    // The chapel's point carries the church's item: the join would fold the
+    // The chapel's record carries the church's item: the join would fold the
     // part into the church, the place a reader is shown. The word stands.
-    await pool.query('UPDATE experience_locations SET wikidata_item = $1 WHERE experience_id = $2', [OWN, PART_A]);
+    await pool.query('UPDATE source_records SET wikidata_items = ARRAY[$1] WHERE experience_id = $2 AND whole_id IS NOT NULL', [OWN, PART_A]);
     expect(await held(OWN)).toEqual([`${PART_A}:refers`, `${CHURCH}:refers`]);
     expect((await settle(PART_A, OWN, 'removed', 'The item is the church, not the chapel')).refusal).toBeUndefined();
     expect(await held(OWN)).toEqual([`${CHURCH}:identifies`]);

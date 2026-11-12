@@ -78,7 +78,12 @@ afterAll(async () => {
 describe('where a roughly placed component may stand', () => {
   it('keeps the object with its reference, its own item and a nearby namesake, each with its distance', async () => {
     const gayaneh = await point('9855-002', 'Church Saint Gayaneh and surrounding buildings', SHARED);
-    await pool.query('UPDATE experience_locations SET wikidata_item = $2 WHERE id = $1', [gayaneh, OWN_ITEM]);
+    // Its item, on the site's record of the line (ADR-0200).
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, wikidata_items)
+       VALUES ($1, $1, 10, '9855-002', ARRAY[$2])`,
+      [SITE, OWN_ITEM],
+    );
 
     expect(await findPointHints(SITE)).toEqual({ points: 1, hints: 3 });
     const hints = await hintsOf(gayaneh);

@@ -214,13 +214,12 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
 
   describe('the catalogue\'s merge on an equal item (#1250)', () => {
     const ITEM = 'Q99952286';
-    /** The complex known by the item, and the given components' points carrying it as their item. */
+    /** The complex known by the item, and the given components' records carrying it as their item. */
     async function itemOn(...refs: string[]): Promise<void> {
       await pool.query(`UPDATE source_records SET external_id = $2 WHERE experience_id = $1`, [COMPLEX, ITEM]);
       await pool.query(
-        `UPDATE experience_locations el SET wikidata_item = $1
-           FROM source_records pr WHERE pr.whole_id = $2 AND pr.source_id = 10 AND el.experience_id = pr.experience_id
-            AND pr.external_id = ANY($3::text[])`,
+        `UPDATE source_records pr SET wikidata_items = ARRAY[$1]
+          WHERE pr.whole_id = $2 AND pr.source_id = 10 AND pr.external_id = ANY($3::text[])`,
         [ITEM, THEBES, refs],
       );
     }

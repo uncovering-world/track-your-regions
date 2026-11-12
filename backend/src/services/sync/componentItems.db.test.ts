@@ -1,31 +1,46 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
+import { pointItemSql } from '../../db/placePoints.js';
 import { recordComponentItems } from './locationWriter.js';
 
 /**
- * A World Heritage run records each component point's Wikidata item (#1269),
- * against PostgreSQL, on three components of Prehistoric Pile Dwellings around
- * the Alps (1363): one resolves to its item, one held an item no item carries
- * any more and loses it, and one a curator chose an item for keeps that.
+ * A World Heritage run records each component's Wikidata item on the record
+ * of its line (#1269, ADR-0156 decision 2), against PostgreSQL, on three
+ * components of Prehistoric Pile Dwellings around the Alps (1363), each a part
+ * of the site as the run leaves a site of several points: one resolves to its
+ * item, one held an item no item carries any more and loses it, and one a
+ * curator chose an item for keeps that.
  */
 
 const PILES = 9820;
 
 async function clear(): Promise<void> {
+  await pool.query('DELETE FROM experiences WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1)', [PILES]);
   await pool.query('DELETE FROM experiences WHERE id = $1', [PILES]);
 }
 
-async function point(ref: string, item: string | null, claimed: boolean, membershipId: number): Promise<void> {
+async function point(ref: string, lon: number, membershipId: number): Promise<void> {
   const row = await pool.query<{ id: number }>(
-    `INSERT INTO experience_locations (experience_id, name, external_ref, location, wikidata_item, curated_fields)
-     VALUES ($1, $2, $2, ST_SetSRID(ST_MakePoint(9.0, 47.5), 4326), $3, $4::jsonb) RETURNING id`,
-    [PILES, ref, item, JSON.stringify(claimed ? ['wikidata_item'] : [])],
+    `INSERT INTO experience_locations (experience_id, name, external_ref, location)
+     VALUES ($1, $2, $2, ST_SetSRID(ST_MakePoint($3, 47.5), 4326)) RETURNING id`,
+    [PILES, ref, lon],
   );
   await pool.query('INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)', [row.rows[0].id, membershipId]);
 }
 
+/** The item a part's record holds, and a curator's claim on it, as the run would find it. */
+async function recordItem(ref: string, item: string, claimed: boolean): Promise<void> {
+  await pool.query(
+    `UPDATE source_records SET wikidata_items = ARRAY[$3], curated_fields = $4::jsonb
+      WHERE source_id = 10 AND whole_id = $1 AND external_id = $2`,
+    [PILES, ref, item, JSON.stringify(claimed ? ['wikidata_items'] : [])],
+  );
+}
+
 const items = async () => (await pool.query<{ external_ref: string; wikidata_item: string | null }>(
-  'SELECT external_ref, wikidata_item FROM experience_locations WHERE experience_id = $1 ORDER BY external_ref', [PILES],
+  `SELECT el.external_ref, ${pointItemSql('el')} AS wikidata_item
+     FROM experience_locations el JOIN experience_parts p ON p.part_id = el.experience_id
+    WHERE p.whole_id = $1 ORDER BY el.external_ref`, [PILES],
 )).rows;
 
 beforeEach(async () => {
@@ -43,9 +58,12 @@ beforeEach(async () => {
     [PILES],
   );
   const id = membership.rows[0].id;
-  await point('1363-061', null, false, id);
-  await point('1363-070', 'Q31828921', false, id);
-  await point('1363-099', 'Q99999999', true, id);
+  await point('1363-061', 9.0, id);
+  await point('1363-070', 9.1, id);
+  await point('1363-099', 9.2, id);
+  await pool.query('SELECT part_site_components($1, $2)', [PILES, id]);
+  await recordItem('1363-070', 'Q31828921', false);
+  await recordItem('1363-099', 'Q99999999', true);
 });
 
 afterAll(async () => {

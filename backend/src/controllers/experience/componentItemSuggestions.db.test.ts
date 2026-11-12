@@ -42,6 +42,7 @@ let points: Record<string, number> = {};
 let proposals: Record<string, number> = {};
 
 async function clear(): Promise<void> {
+  await pool.query('DELETE FROM experiences WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1)', [SITE]);
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = $1', [SITE]);
   await pool.query('DELETE FROM experiences WHERE id = $1', [SITE]);
   await pool.query('DELETE FROM users WHERE uuid = $1', [CURATOR]);
@@ -73,7 +74,8 @@ const ask = () => suggestComponentItems({ params: { id: SITE }, caller: { id: cu
 
 const stored = async () => (await pool.query<{ wikidata_item: string; judgement: string | null; input_tokens: number }>(
   `SELECT s.wikidata_item, s.judgement, s.input_tokens FROM experience_component_item_suggestions s
-     JOIN experience_locations el ON el.id = s.location_id WHERE el.experience_id = $1 ORDER BY s.id`, [SITE],
+     JOIN experience_locations el ON el.id = s.location_id
+    WHERE el.experience_id IN (SELECT part_id FROM experience_parts WHERE whole_id = $1) ORDER BY s.id`, [SITE],
 )).rows;
 
 const jevSays = (answers: Record<string, { choice: string; confidence: number } | { refused: true }>) => ({
@@ -101,6 +103,9 @@ beforeEach(async () => {
     bologa: await point('9860-001', 'Bologa', 46.8853, 22.8752),
     buciumi: await point('9860-002', 'Buciumi', 47.0383, 23.0581),
   };
+  // Each component a part of the site, as the run leaves a site of several
+  // points: a confirmed item is its part's record's (ADR-0156, ADR-0200).
+  await pool.query('SELECT part_site_components($1, $2)', [SITE, membershipId]);
   proposals = {
     fort: await proposal(points.bologa, BOLOGA_FORT, 'Castrul Bologa', 20, 1, true),
     tower: await proposal(points.bologa, BOLOGA_TOWER, 'Turnul Bologa', 410, 0.52, false),

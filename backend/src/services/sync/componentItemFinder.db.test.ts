@@ -98,9 +98,18 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id = ANY($1)', [[SITE, ...OTHER_SITES]]);
 }
 
+/** A component's item, on the record of its line: the site's record of its own line here (ADR-0200). */
+async function lineItem(place: number, ref: string, item: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, wikidata_items)
+     VALUES ($1, $1, 10, $2, ARRAY[$3])`,
+    [place, ref, item],
+  );
+}
+
 /** Leaves the fixture site with no resolved component, so it falls back on the classes the other sites teach. */
 async function fallBack(): Promise<void> {
-  await pool.query(`UPDATE experience_locations SET wikidata_item = NULL WHERE id = $1`, [points.resolved]);
+  await pool.query('DELETE FROM source_records WHERE source_id = 10 AND whole_id = $1', [SITE]);
   for (const site of OTHER_SITES) {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
@@ -108,10 +117,11 @@ async function fallBack(): Promise<void> {
       [site, `${site}-fixture`],
     );
     await pool.query(
-      `INSERT INTO experience_locations (experience_id, name, external_ref, location, wikidata_item)
-       VALUES ($1, 'A resolved castrum', $2, ST_SetSRID(ST_MakePoint(10, 50), 4326), $3)`,
-      [site, `${site}-001`, otherSiteItem(site)],
+      `INSERT INTO experience_locations (experience_id, name, external_ref, location)
+       VALUES ($1, 'A resolved castrum', $2, ST_SetSRID(ST_MakePoint(10, 50), 4326))`,
+      [site, `${site}-001`],
     );
+    await lineItem(site, `${site}-001`, otherSiteItem(site));
   }
   vi.mocked(queries.classesOfItems).mockImplementation(async (items: readonly string[]) =>
     new Map(items.map(item => [item, OTHER_SITES.map(otherSiteItem).includes(item) ? [CASTRUM] : []])));
@@ -119,10 +129,11 @@ async function fallBack(): Promise<void> {
 
 async function point(ref: string, name: string, lat: number, lon: number, item: string | null): Promise<number> {
   const row = await pool.query<{ id: number }>(
-    `INSERT INTO experience_locations (experience_id, name, external_ref, location, wikidata_item)
-     VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326), $6) RETURNING id`,
-    [SITE, name, ref, lon, lat, item],
+    `INSERT INTO experience_locations (experience_id, name, external_ref, location)
+     VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)) RETURNING id`,
+    [SITE, name, ref, lon, lat],
   );
+  if (item) await lineItem(SITE, ref, item);
   return row.rows[0].id;
 }
 

@@ -17,7 +17,7 @@ import { PlaceIdentifiers, identifierHref } from './PlaceIdentifiers';
 const BELEM_PART = 40369;
 
 const row = (over: Partial<PlaceIdentifier> = {}): PlaceIdentifier => ({
-  scheme: 'wikidata', value: 'Q215003', identifies: false, claimsIdentity: true, basis: ['point'],
+  scheme: 'wikidata', value: 'Q215003', identifies: false, claimsIdentity: true, basis: ['component-item'],
   verdict: null, note: null, others: [{ id: 40590, name: 'Belém Tower', identifies: false }], ...over,
 });
 
