@@ -601,6 +601,28 @@ describe('a record is in a kind or in a whole, under an id of its source (ADR-01
     }
   });
 
+  it("refuses a record in a kind whose id is not of its source's scheme, and takes a curator's key", async () => {
+    const place = (await pool.query<{ id: number }>(
+      `INSERT INTO experiences (source_id, external_id, name, location)
+       VALUES ($1, '9563', 'A fourth site (fixture)', ST_SetSRID(ST_MakePoint(3.9, 50.4), 4326)) RETURNING id`,
+      [heritage.id],
+    )).rows[0].id;
+    const record = (id: string) => pool.query(
+      'INSERT INTO source_records (experience_id, kind_id, source_id, external_id) VALUES ($1, $2, $3, $4)',
+      [place, heritage.kind_id, heritage.id, id],
+    );
+    try {
+      await expect(record('9563-fixture')).rejects.toMatchObject({ code: '23514', message: expect.stringContaining('9563-fixture') });
+      await expect(record('Q9563')).rejects.toMatchObject({ code: '23514' });
+      await record('curator-1-2');
+      await expect(pool.query(
+        'UPDATE source_records SET external_id = $2 WHERE experience_id = $1 AND kind_id IS NOT NULL', [place, 'Q9563'],
+      )).rejects.toMatchObject({ code: '23514' });
+    } finally {
+      await pool.query('DELETE FROM experiences WHERE id = $1', [place]);
+    }
+  });
+
   it('refuses a second record of one source for one place in one whole', async () => {
     const [part] = await partsOf(BELFRIES);
     await expect(insert({ kind: null, whole: BELFRIES, id: '9560-051', place: part.part_id }))
