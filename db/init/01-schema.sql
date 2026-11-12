@@ -3296,16 +3296,14 @@ CREATE OR REPLACE FUNCTION source_id_fits_scheme(p_scheme TEXT, p_id TEXT) RETUR
          END
 $$ LANGUAGE sql IMMUTABLE;
 
--- A record in a whole carries an id of its source's scheme, or a curator's
--- own key (ADR-0198). A record in a kind is not asked yet: the database specs
--- and the smoke fixture seed memberships under ids of their own making.
+-- Every record carries an id of its source's scheme, or a curator's own key
+-- (ADR-0198): a record in a whole, and since db/migrations/239 a record in a
+-- kind, whose id a run finds its place by -- a World Heritage site's number, a
+-- Wikidata item -- or a curator's create or add names (curator-<user>-<ms>).
 CREATE OR REPLACE FUNCTION source_record_fits_scheme() RETURNS trigger AS $$
 DECLARE
   scheme TEXT;
 BEGIN
-  IF NEW.whole_id IS NULL THEN
-    RETURN NEW;
-  END IF;
   SELECT s.id_scheme INTO scheme FROM experience_sources s WHERE s.id = NEW.source_id;
   IF NOT (source_id_fits_scheme(scheme, NEW.external_id) OR source_id_fits_scheme('curator', NEW.external_id)) THEN
     RAISE EXCEPTION 'source record id % does not fit the % scheme of source %', NEW.external_id, scheme, NEW.source_id
