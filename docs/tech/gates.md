@@ -909,10 +909,23 @@ backend's port included:
   those accounts only into a database whose name says `test`, and their credentials are read from
   the fixture module rather than restated.
 - **Reads only.** Locally the stack may be the one the smoke and database lanes read, and a write
-  would change what they read. The GET routes that start long work or call a service outside the stack (OAuth
-  redirects, Nominatim, Wikidata, Wikimedia, OpenAI, the geometry and colour-match streams, the
-  catalogue checks) are left out by name, each with its reason, in `EXCLUDED`.
-  `scripts/api-contract.test.mjs` fails on a name the document no longer has.
+  would change what they read. The GET routes that cannot be read at all are left out by name,
+  each with its reason, in `EXCLUDED`. `scripts/api-contract.test.mjs` fails on a name the document
+  no longer has.
+- **No generated request reaches a service outside the stack** (#2428). A GET route that calls one
+  (`OUTSIDE`: the geocode reads, the picture and website reads, the image proxy, the AI status) is
+  left out of the four runs and read in a run of its own, once, with fixed values a Schemathesis
+  configuration file sets (`outsideConfig`): a real place, the Brandenburg Gate at its point, or the
+  fixture's place and point. It runs with valid data only, one request a second, and waits 30 s,
+  longer than the backend's own timeouts toward Nominatim, Wikidata, Commons' API and a place's
+  website, so a service that fails there is read as the route's declared error. A route answers a
+  service that failed it with 502, or 504 where its own deadline ran out, and never with its own
+  500 (`services/outsideStatus.ts`); the outside runs read 502, 503 and 504 as answers, and a 500
+  still fails the lane (`OUTSIDE_FAILURES`). How fast the outside service answers is not checked. The image proxy's
+  download (`fetchPicture`) has no deadline of its own, so a Commons that hangs fails the lane at
+  30 s rather than reading the route's 502. The AI routes call OpenAI only where a key is
+  set, which CI never sets, so there they read the answer of a server with no key. Each run is a handful of requests to the real services, from the
+  runner's address.
 - **One check left out.** `unsupported_method` expects 405 for a method a path does not declare.
   Express answers 404, and a 405 with its `Allow` header is a behaviour to decide on its own.
 

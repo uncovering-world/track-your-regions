@@ -30,11 +30,11 @@ the policy page is the authority.
 | Service | Route | Complies | Open |
 |---|---|---|---|
 | Wikidata Query Service | live, small; bulk from the subset | yes (#1307) | — |
-| Wikimedia Action API (Wikidata, Commons, Wikipedia, Wikivoyage) | live, small | yes, within one process | — |
+| Wikimedia Action API (Wikidata, Commons, Wikipedia, Wikivoyage) | live, small; the API contract lane reads its routes once a run | yes, within one process | — |
 | Commons thumbnails (`Special:FilePath`) | browser | yes | — |
 | dumps.wikimedia.org | dump | yes | — |
 | maps.wikimedia.org geoshapes | none since #2084 | — | — |
-| Nominatim | live, interactive | yes | — |
+| Nominatim | live, interactive; the API contract lane reads two routes once a run | yes | — |
 | Overpass API and its mirrors | live, fallback | yes | — |
 | QLever (OSM planet) | live, small batches | yes | — |
 | tile.openstreetmap.org | browser | **no** (the app depends on it) | #651 |
