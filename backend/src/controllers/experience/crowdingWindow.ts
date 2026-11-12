@@ -31,7 +31,7 @@ import type {
 import type { ImageCredit } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
 import {
-  FAME, KINDS, MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql,
+  FAME, KINDS, kindRecordSql, MEMBERSHIPS, membershipAdmittedSql, membershipCrowdedSql, membershipVisibleSql,
 } from '../../db/membership.js';
 import { hideLostSql } from '../../db/readerPredicates.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
@@ -80,6 +80,9 @@ interface KindRule {
   crowding_limit: number | null;
   crowding_radius_km: number | null;
   crowding_exempt_types: string[];
+  /** Whether a place pass kept the venues around the kind's places, and the radius of a point it counted them within (#2454). */
+  reads_venues: boolean;
+  venue_radius_m: number | null;
 }
 
 /**
@@ -147,6 +150,8 @@ interface PlaceRow {
   wikipedia_editions: number | null;
   guide_used: boolean | null;
   score: number | null;
+  venues: number | null;
+  venues_along: boolean | null;
   arriving: boolean;
   crowded: boolean;
   pin: CrowdingPin | null;
@@ -158,8 +163,8 @@ interface PlaceRow {
   can_answer: boolean;
 }
 
-/** What a place's score is made of and the score, as a row reads them (`FAME_SIGNALS`). */
-type Signals = Pick<PlaceRow, 'readers' | 'wikipedia_editions' | 'guide_used' | 'score'>;
+/** What a place's score is made of and the score, as a row reads them (`FAME_SIGNALS`), and its venues. */
+type Signals = Pick<PlaceRow, 'readers' | 'wikipedia_editions' | 'guide_used' | 'score' | 'venues' | 'venues_along'>;
 
 /**
  * What a place's score is made of and the score itself, over its fame row `f`
@@ -170,11 +175,22 @@ type Signals = Pick<PlaceRow, 'readers' | 'wikipedia_editions' | 'guide_used' | 
 const FAME_SIGNALS = `CASE WHEN f.readers_read_at IS NOT NULL THEN f.readers END AS readers,
              f.wikipedia_editions,
              CASE WHEN f.guides_read_at IS NOT NULL THEN f.guide_editions > 0 END AS guide_used,
-             f.score`;
+             f.score, pv.venues, pv.along_m IS NOT NULL AS venues_along`;
+
+/**
+ * The fame row `f` and the venues `pv` the place pass kept for the membership
+ * `m` (#2454), by the source that brought it and the item it knows it by. Only
+ * a record in a kind: a part's record in a whole may share its source's id.
+ */
+const FAME_JOINS = `LEFT JOIN ${FAME} f ON f.membership_id = m.id
+        LEFT JOIN place_venues pv ON pv.source_id = m.source_id AND pv.qid = m.external_id AND ${kindRecordSql('m')}`;
 
 /** The signals of a row as the response names them. */
-function signalsOf(row: Signals): Pick<CrowdingGroupPlace, 'readers' | 'wikipediaEditions' | 'guideUsed' | 'score'> {
-  return { readers: row.readers, wikipediaEditions: row.wikipedia_editions, guideUsed: row.guide_used, score: row.score };
+function signalsOf(row: Signals): Pick<CrowdingGroupPlace, 'readers' | 'wikipediaEditions' | 'guideUsed' | 'score' | 'venues'> {
+  return {
+    readers: row.readers, wikipediaEditions: row.wikipedia_editions, guideUsed: row.guide_used, score: row.score,
+    venues: row.venues === null ? null : { figure: row.venues, per100m: row.venues_along === true },
+  };
 }
 
 /**
@@ -203,7 +219,7 @@ function placeColumnsSql(isAdmin: boolean, radiusKm: string, reads: string): { c
              place_shows_works(e.id) AS holds_works,
              (${reads}) AS reads, above.better, above.names AS better_known,
              ${queueScopeSql(isAdmin, 'm.source_id')} AS can_answer`,
-    joins: `LEFT JOIN ${FAME} f ON f.membership_id = m.id
+    joins: `${FAME_JOINS}
         CROSS JOIN LATERAL (
           SELECT count(*)::int AS better,
                  (array_agg(de.name ORDER BY df.score DESC NULLS LAST, de.name)
@@ -254,7 +270,13 @@ function standingOf(row: Pick<PlaceRow, 'arriving' | 'crowded'>): 'new' | 'shado
 /** The kind's rule, or a refusal where it has none: a kind that shows every place has no crowded city. */
 async function readRule(kindId: number): Promise<KindRule & { crowding_limit: number; crowding_radius_km: number }> {
   const result = await pool.query<KindRule>(
-    `SELECT id, name, crowding_limit, crowding_radius_km, crowding_exempt_types FROM ${KINDS} WHERE id = $1`, [kindId]);
+    `SELECT k.id, k.name, k.crowding_limit, k.crowding_radius_km, k.crowding_exempt_types,
+            v.kind_id IS NOT NULL AS reads_venues, v.radius_m AS venue_radius_m
+       FROM ${KINDS} k
+       LEFT JOIN (SELECT s.kind_id, max(pv.radius_m) AS radius_m
+                    FROM place_venues pv JOIN experience_sources s ON s.id = pv.source_id
+                   WHERE s.kind_id = $1 GROUP BY s.kind_id) v ON v.kind_id = k.id
+      WHERE k.id = $1`, [kindId]);
   const kind = result.rows[0];
   if (!kind) throw notFound('Kind not found');
   if (kind.crowding_limit === null || kind.crowding_radius_km === null) {
@@ -264,7 +286,10 @@ async function readRule(kindId: number): Promise<KindRule & { crowding_limit: nu
 }
 
 function kindOf(kind: KindRule & { crowding_limit: number; crowding_radius_km: number }) {
-  return { id: kind.id, name: kind.name, limit: kind.crowding_limit, radiusKm: kind.crowding_radius_km };
+  return {
+    id: kind.id, name: kind.name, limit: kind.crowding_limit, radiusKm: kind.crowding_radius_km,
+    readsVenues: kind.reads_venues, venueRadiusM: kind.venue_radius_m,
+  };
 }
 
 /**
@@ -394,7 +419,7 @@ export async function getCrowdingPlace(
              place_shows_works(e.id) AS holds_works, m.crowding_pin AS pin
         FROM ${MEMBERSHIPS} m
         JOIN experiences e ON e.id = m.experience_id
-        LEFT JOIN ${FAME} f ON f.membership_id = m.id
+        ${FAME_JOINS}
         CROSS JOIN (SELECT ce.location AS point FROM experiences ce WHERE ce.id = $3) centre
        WHERE ${aroundSql(isAdmin)} AND m.type IS NOT DISTINCT FROM $5::text AND m.id <> $6
        ORDER BY f.score DESC NULLS LAST, e.name, m.id

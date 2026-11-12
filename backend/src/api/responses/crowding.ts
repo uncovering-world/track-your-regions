@@ -29,6 +29,11 @@ const CrowdingKind = z.strictObject({
   name: z.string(),
   limit: z.number().int().describe('How many better-known places of a type shadow a place.'),
   radiusKm: z.number().describe('The radius they are counted within.'),
+  readsVenues: z.boolean()
+    .describe('Whether the place pass keeps the cafés, restaurants and bars it counts around the places of the kind '
+      + '(ADR-0192, #2454): true once a pass has kept them.'),
+  venueRadiusM: z.number().int().nullable()
+    .describe('The radius of a point the venues are counted within; null where none is kept.'),
 });
 
 /**
@@ -46,6 +51,12 @@ const FameSignals = {
     .describe('Whether a Wikivoyage edition uses its item: what its fame reads of the guides (ADR-0177); null before '
       + 'the guides are read.'),
   score: z.number().nullable().describe('Its fame among its kind and type worldwide (ADR-0172); null before it is scored.'),
+  venues: z.strictObject({
+    figure: z.number().describe('The venues within the kind\'s radius of its point, or per 100 m along its line.'),
+    per100m: z.boolean().describe('Whether the street was read along its line (ADR-0194), the figure then per 100 m.'),
+  }).nullable()
+    .describe('The cafés, restaurants and bars the place pass last counted around it (ADR-0192), no part of the '
+      + 'score; null for a kind that reads none, or before a pass counts them.'),
 };
 
 const CrowdingGroupRef = z.strictObject({

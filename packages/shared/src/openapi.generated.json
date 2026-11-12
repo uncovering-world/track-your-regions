@@ -21845,13 +21845,32 @@
               "radiusKm": {
                 "type": "number",
                 "description": "The radius they are counted within."
+              },
+              "readsVenues": {
+                "type": "boolean",
+                "description": "Whether the place pass keeps the cafés, restaurants and bars it counts around the places of the kind (ADR-0192, #2454): true once a pass has kept them."
+              },
+              "venueRadiusM": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The radius of a point the venues are counted within; null where none is kept."
               }
             },
             "required": [
               "id",
               "name",
               "limit",
-              "radiusKm"
+              "radiusKm",
+              "readsVenues",
+              "venueRadiusM"
             ],
             "additionalProperties": false
           },
@@ -21968,6 +21987,32 @@
               "null"
             ]
           },
+          "venues": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "figure": {
+                    "type": "number",
+                    "description": "The venues within the kind's radius of its point, or per 100 m along its line."
+                  },
+                  "per100m": {
+                    "type": "boolean",
+                    "description": "Whether the street was read along its line (ADR-0194), the figure then per 100 m."
+                  }
+                },
+                "required": [
+                  "figure",
+                  "per100m"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cafés, restaurants and bars the place pass last counted around it (ADR-0192), no part of the score; null for a kind that reads none, or before a pass counts them."
+          },
           "standing": {
             "type": "string",
             "enum": [
@@ -22046,6 +22091,7 @@
           "wikipediaEditions",
           "guideUsed",
           "score",
+          "venues",
           "standing",
           "crowded",
           "outrankedBy",
@@ -22128,13 +22174,32 @@
               "radiusKm": {
                 "type": "number",
                 "description": "The radius they are counted within."
+              },
+              "readsVenues": {
+                "type": "boolean",
+                "description": "Whether the place pass keeps the cafés, restaurants and bars it counts around the places of the kind (ADR-0192, #2454): true once a pass has kept them."
+              },
+              "venueRadiusM": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The radius of a point the venues are counted within; null where none is kept."
               }
             },
             "required": [
               "id",
               "name",
               "limit",
-              "radiusKm"
+              "radiusKm",
+              "readsVenues",
+              "venueRadiusM"
             ],
             "additionalProperties": false
           },
@@ -22211,6 +22276,32 @@
                     "null"
                   ]
                 },
+                "venues": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "figure": {
+                          "type": "number",
+                          "description": "The venues within the kind's radius of its point, or per 100 m along its line."
+                        },
+                        "per100m": {
+                          "type": "boolean",
+                          "description": "Whether the street was read along its line (ADR-0194), the figure then per 100 m."
+                        }
+                      },
+                      "required": [
+                        "figure",
+                        "per100m"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The cafés, restaurants and bars the place pass last counted around it (ADR-0192), no part of the score; null for a kind that reads none, or before a pass counts them."
+                },
                 "standing": {
                   "type": "string",
                   "enum": [
@@ -22256,6 +22347,7 @@
                 "wikipediaEditions",
                 "guideUsed",
                 "score",
+                "venues",
                 "standing",
                 "compared",
                 "holdsWorks",

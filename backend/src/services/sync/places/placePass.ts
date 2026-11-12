@@ -46,6 +46,7 @@ import type { SurroundingsPool } from './surroundingsPool.js';
 import { SURROUNDINGS_CUT } from './surroundingsCut.js';
 import { gatherKey, placesOf, poolOf, type PassKeep } from './keptGather.js';
 import type { SubjectRunner } from '../publicArt/subjects.js';
+import { keepVenueFigures, type VenueSource } from './venueFigures.js';
 
 /** One kind of the pass: its request of the gather, its part of the surroundings pool and the sources it runs as. */
 interface PassKind {
@@ -162,6 +163,26 @@ async function surroundingsPoolOf(gathered: GatheredPlaces, sparql: SparqlFn, ru
   return poolOf(keep, members, SURROUNDINGS_CUT, groups, run);
 }
 
+/** The sources whose kinds read the venues around their places, with the classes those places are of. */
+function venueSources(gathered: GatheredPlaces): VenueSource[] {
+  return passKinds().flatMap((kind) => {
+    const classes = new Set(kind.surroundings().flatMap((reader) => [...reader.venueClasses(gathered)]));
+    return classes.size === 0 ? [] : kind.sourceIds.map((sourceId) => ({ sourceId, classes }));
+  });
+}
+
+/**
+ * The pool, once a real pass has kept the venues it counted for the curator
+ * (`venueFigures.ts`, #2454). A dry run keeps none, and a failure to keep them
+ * is logged rather than stopping the pass: no verdict reads them back.
+ */
+async function keepVenues(read: SurroundingsPool, gathered: GatheredPlaces, dryRun: boolean): Promise<SurroundingsPool> {
+  if (dryRun) return read;
+  await keepVenueFigures(read, venueSources(gathered), SURROUNDINGS_CUT)
+    .catch((error: unknown) => { console.error('[Places] Keeping the venues the pass counted failed:', error); });
+  return read;
+}
+
 /**
  * The modules the pass's kinds are declared in: a kind's classes, entrances
  * and editions are code the gather runs, so they are part of the code a kept
@@ -253,7 +274,9 @@ function placeGather({ refreshCache, dryRun }: Pick<SyncRunOptions, 'refreshCach
     return {
       gathered, sparql, run,
       surroundings: () => {
-        surroundings ??= SURROUNDINGS_CUT.enabled && readsSubset(sparql) ? surroundingsPoolOf(gathered, sparql, run, keep) : Promise.resolve(null);
+        surroundings ??= SURROUNDINGS_CUT.enabled && readsSubset(sparql)
+          ? surroundingsPoolOf(gathered, sparql, run, keep).then((read) => keepVenues(read, gathered, dryRun === true))
+          : Promise.resolve(null);
         return surroundings;
       },
       works: {
