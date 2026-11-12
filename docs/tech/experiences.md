@@ -5326,7 +5326,14 @@ and a place another test holds never leaves for having few cafés. A place the v
 holds stays while its venues reach 0.8 of the share, and leaves under it as a place held by any
 other test does. It reads the kind's own places, never a quarter:
 Kreuzberg and Friedrichshain are a neighbourhood, a kind of their own. Its arrivals wait for a
-curator, with the count and the reference in the cut's note on the card.
+curator, with the count and the reference in the cut's note on the card. A real pass that read the
+layer keeps what it counted for every place of the kind (`place_venues`, `keepVenueFigures` in
+`places/venueFigures.ts`, #2454), replacing the source's rows: the count around a point with its
+radius, or the figure per 100 m with the length of the lines. It is keyed by the source and the
+item, since the pool counts a new arrival before its run writes the membership, and the crowded
+city's table reads it beside a place's fame. A dry run, and a pass whose layer could not be read,
+leave the kept figures as they stand, and a failure to keep them is logged without stopping the
+pass, since no verdict reads them back.
 
 ### Whom or what a place commemorates (#2144)
 
@@ -5963,7 +5970,14 @@ Maggiore, and crowds out 51 more of its churches.
     table (`FigureTable`, #2454): one column per measure under a heading (Readers a year,
     Editions, In Wikivoyage, Score), counts grouped in thousands and the score to two decimals,
     right-aligned in tabular figures, a dash with a "Not measured yet" hint where nothing is read.
-    Each heading has a hint on hover and keyboard focus that says what it counts. The region's
+    Each heading has a hint on hover and keyboard focus that says what it counts. A kind whose
+    venues a place pass keeps (`readsVenues` on the read's kind: Squares & streets) has a fifth
+    column after the score, Venues: the venues the venue test counts (cafés, restaurants, bars, pubs,
+    fast food, ice cream and beer gardens) within 200 m of a square, or
+    per 100 m along a street read along its line ("4.2 / 100 m"), from `place_venues` by the
+    membership's source and item; its hint says the score does not read it. The figures are
+    counted on OpenStreetMap, so a table that shows the column carries "Venues counted on
+    OpenStreetMap · © OpenStreetMap contributors" under it (`VenueCreditLine`, ADR-0059 decision 3). The region's
     list puts the headings in each part's header, which from `sm` up sticks while the part scrolls,
     and every row's figures under them; on a phone the table scrolls sideways instead. The place's circle puts the place's
     own row first and marked, with the places around it below in the same columns, so each
