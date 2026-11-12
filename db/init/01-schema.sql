@@ -3170,7 +3170,7 @@ CREATE INDEX IF NOT EXISTS idx_source_records_whole ON source_records (whole_id)
 
 COMMENT ON TABLE source_records IS 'One source''s record of a place (ADR-0198): in a kind, a membership (ADR-0045 decision 4), one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival; or in a whole, a part record, one row per (source, place, whole), carrying how the source knows the part -- its reference, its item and its view. The place itself is the experiences row.';
 COMMENT ON COLUMN source_records.kind_id IS 'The kind the record places the place in, NULL on a record in a whole (source_records_kind_or_whole, ADR-0198).';
-COMMENT ON COLUMN source_records.whole_id IS 'The whole the record places the place in as a part -- the serial World Heritage site whose component the place is -- NULL on a record in a kind (ADR-0198). Written with the part-of relation it records (component_record_follows_relation).';
+COMMENT ON COLUMN source_records.whole_id IS 'The whole the record places the place in as a part -- the serial World Heritage site whose component the place is -- NULL on a record in a kind (ADR-0198). The part-of relation follows it (parts_follow_records, ADR-0198 decision 5).';
 COMMENT ON COLUMN source_records.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
 COMMENT ON COLUMN source_records.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item, a component''s reference -- in the shape of its source''s id_scheme (ADR-0198). Unique per source on a record in a kind (ADR-0084 decision 2), and not on a record in a whole, whose reference two places may carry. A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
 COMMENT ON COLUMN source_records.type IS
@@ -4369,22 +4369,27 @@ CREATE TABLE IF NOT EXISTS separated_visit_questions (
 CREATE INDEX IF NOT EXISTS idx_separated_visit_questions_user ON separated_visit_questions(user_id) WHERE answer IS NULL;
 COMMENT ON TABLE separated_visit_questions IS 'A traveller''s question which of two places they visited, raised when a curator separated the place they marked (ADR-0144, #1887): the visit stays on the original place until they answer.';
 
--- A place that is part of another (ADR-0100). See db/migrations/093.
+-- A place that is part of another (ADR-0100), derived from the records that
+-- claim it (ADR-0198 decision 5): parts_follow_records() is its one writer.
+-- See db/migrations/093 and 233.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'experience_parts' AND column_name IN ('external_ref', 'membership_id')) THEN
+        RAISE EXCEPTION 'experience_parts still carries external_ref or membership_id: apply db/migrations/233-part-of-follows-the-records.sql before re-applying 01-schema.sql';
+    END IF;
+END $$;
 CREATE TABLE IF NOT EXISTS experience_parts (
     id SERIAL PRIMARY KEY,
     whole_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     part_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     reason VARCHAR(20) NOT NULL CHECK (reason IN ('component', 'wikidata_part_of', 'curator')),
-    membership_id INTEGER REFERENCES source_records(id) ON DELETE CASCADE,
-    external_ref TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (whole_id, part_id),
-    CHECK (whole_id <> part_id),
-    CHECK (reason <> 'component' OR membership_id IS NOT NULL)
+    CHECK (whole_id <> part_id)
 );
 CREATE INDEX IF NOT EXISTS idx_experience_parts_part ON experience_parts(part_id);
-COMMENT ON TABLE experience_parts IS 'A place that is part of another (ADR-0046 decision 6, ADR-0100): a component of a serial World Heritage site, placed by the site''s membership under its reference (component); a Wikidata part-of statement (wikidata_part_of); or a curator''s (curator).';
-COMMENT ON COLUMN experience_parts.external_ref IS 'The reference the site''s source knows a component by (527ter-002); null on a part that is not a component.';
+COMMENT ON TABLE experience_parts IS 'A place that is part of another (ADR-0046 decision 6, ADR-0100), derived from the source records that claim it (ADR-0198 decision 5) by parts_follow_records(), its one writer: a pair stands while a record in the whole claims it, and a curator''s record decides alone where there is one. reason names the strongest claim: a component of a serial World Heritage site (component), a Wikidata part-of statement (wikidata_part_of), or a curator alone (curator).';
 
 -- Where a component the World Heritage list placed only roughly may stand
 -- (#1853), worked out by the Find component items pass from the subset and the
@@ -4457,10 +4462,10 @@ CREATE TABLE IF NOT EXISTS place_identifiers (
 CREATE UNIQUE INDEX IF NOT EXISTS place_identifiers_identifying
     ON place_identifiers (scheme, value) WHERE identifies;
 CREATE INDEX IF NOT EXISTS place_identifiers_value ON place_identifiers (scheme, value);
-COMMENT ON TABLE place_identifiers IS 'A place''s external identifiers (ADR-0143 decision 2): a Wikidata item, a World Heritage reference (whc: a site''s id or a component''s), an OpenStreetMap object. Derived from the columns that hold them (a membership''s external id and items, a component point''s item, a part''s reference) by place_identifier_claims() and kept current by refresh_place_identifiers(); written by nothing else. A membership''s (source, external id) is its own key and is not repeated here.';
+COMMENT ON TABLE place_identifiers IS 'A place''s external identifiers (ADR-0143 decision 2): a Wikidata item, a World Heritage reference (whc: a site''s id or a component''s), an OpenStreetMap object. Derived from the columns that hold them (a record''s external id and items, a component point''s item, a part''s reference on its record in its whole) by place_identifier_claims() and kept current by refresh_place_identifiers(); written by nothing else. A membership''s (source, external id) is its own key and is not repeated here.';
 COMMENT ON COLUMN place_identifiers.identifies IS 'This value names this place, and no other live place: what a run''s lookup may follow. False where it only refers to the place (a serial site''s items, an item two components carry) and on every place of a value two places claim.';
 COMMENT ON COLUMN place_identifiers.claims_identity IS 'Some column this row is derived from says the value is this place. A value claimed by two live places is identifying on neither, and the catalogue check identifiers-on-several-places lists it.';
-COMMENT ON COLUMN place_identifiers.basis IS 'Which columns carry the value for this place: membership (a source knows the place by it), site-items (a World Heritage site''s items), component-item (a serial site''s part''s item on its record in World Heritage components, ADR-0156), point (a standing point''s item), component (a part''s reference), curator (a curator''s word, place_identifier_verdicts).';
+COMMENT ON COLUMN place_identifiers.basis IS 'Which columns carry the value for this place: membership (a source knows the place by it), site-items (a World Heritage site''s items), component-item (a serial site''s part''s item on its record in World Heritage components, ADR-0156), point (a standing point''s item), component (a part''s reference on its record in its whole, ADR-0198), curator (a curator''s word, place_identifier_verdicts).';
 COMMENT ON COLUMN place_identifiers.recorded_at IS 'When the place first carried the value; kept while it carries it.';
 
 -- A curator's word on one identifier of a place (ADR-0143 decision 5, #1896):
@@ -4483,8 +4488,6 @@ CREATE INDEX IF NOT EXISTS idx_source_records_external_id
     ON source_records (external_id);
 CREATE INDEX IF NOT EXISTS idx_source_records_wikidata_items
     ON source_records USING GIN (wikidata_items) WHERE wikidata_items IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_experience_parts_external_ref
-    ON experience_parts (external_ref) WHERE external_ref IS NOT NULL;
 
 -- Which live places carry each value, and whether each says the value is the
 -- place. The one statement of the rules (ADR-0143 decision 2), which the
@@ -4565,15 +4568,15 @@ LANGUAGE sql STABLE AS $$
     JOIN experiences e ON e.id = m.experience_id AND e.merged_into_id IS NULL
    WHERE p_scheme = 'whc' AND m.source_id = 1 AND m.external_id = ANY(p_values)
   UNION ALL
-  SELECT prt.part_id, prt.external_ref, 'component',
-         NOT EXISTS (SELECT 1 FROM experience_parts other
-                       JOIN experiences other_part ON other_part.id = other.part_id
+  SELECT rec.experience_id, rec.external_id::text, 'component',
+         NOT EXISTS (SELECT 1 FROM source_records other
+                       JOIN experiences other_part ON other_part.id = other.experience_id
                         AND other_part.merged_into_id IS NULL
-                      WHERE other.reason = 'component' AND other.external_ref = prt.external_ref
-                        AND other.part_id <> prt.part_id)
-    FROM experience_parts prt
-    JOIN experiences e ON e.id = prt.part_id AND e.merged_into_id IS NULL
-   WHERE p_scheme = 'whc' AND prt.reason = 'component' AND prt.external_ref = ANY(p_values)
+                      WHERE other.source_id = 10 AND other.whole_id IS NOT NULL
+                        AND other.external_id = rec.external_id AND other.experience_id <> rec.experience_id)
+    FROM source_records rec
+    JOIN experiences e ON e.id = rec.experience_id AND e.merged_into_id IS NULL
+   WHERE p_scheme = 'whc' AND rec.source_id = 10 AND rec.whole_id IS NOT NULL AND rec.external_id = ANY(p_values)
   UNION ALL
   -- A curator's word (ADR-0143 decision 5): identifies claims whether or not a
   -- column carries the value; refers carries it without claiming; removed is
@@ -4653,7 +4656,7 @@ LANGUAGE sql STABLE AS $$
   UNION SELECT 'wikidata', unnest(wikidata_items) FROM source_records WHERE wikidata_items IS NOT NULL
   UNION SELECT 'wikidata', wikidata_item::text FROM experience_locations WHERE wikidata_item IS NOT NULL
   UNION SELECT 'whc', external_id::text FROM source_records WHERE source_id = 1
-  UNION SELECT 'whc', external_ref FROM experience_parts WHERE reason = 'component' AND external_ref IS NOT NULL
+  UNION SELECT 'whc', external_id::text FROM source_records WHERE source_id = 10 AND whole_id IS NOT NULL
   UNION SELECT scheme::text, value::text FROM place_identifier_verdicts
 $$;
 COMMENT ON FUNCTION place_identifier_values() IS 'Every value of each scheme a column carries (ADR-0143 decision 2).';
@@ -4729,8 +4732,8 @@ BEGIN
     UNION ALL
     SELECT external_id FROM source_records WHERE experience_id = ANY(p_places) AND source_id = 1
     UNION ALL
-    SELECT external_ref FROM experience_parts
-     WHERE part_id = ANY(p_places) AND reason = 'component' AND external_ref IS NOT NULL
+    SELECT external_id FROM source_records
+     WHERE experience_id = ANY(p_places) AND source_id = 10 AND whole_id IS NOT NULL
     UNION ALL
     SELECT value FROM place_identifier_verdicts WHERE scheme = 'whc' AND experience_id = ANY(p_places)) carried
    WHERE v IS NOT NULL;
@@ -4764,7 +4767,10 @@ BEGIN
     PERFORM refresh_place_identifiers_of(
       array_remove(ARRAY[OLD.experience_id, CASE WHEN TG_OP <> 'DELETE' THEN NEW.experience_id END], NULL),
       OLD.wikidata_items || CASE WHEN OLD.external_id ~ '^Q[0-9]+$' THEN OLD.external_id::text END,
-      CASE WHEN OLD.source_id = 1 THEN ARRAY[OLD.external_id::text] END);
+      -- A World Heritage reference: a site's number, or a component's on its
+      -- record in a whole (ADR-0198).
+      CASE WHEN OLD.source_id = 1 OR (OLD.source_id = 10 AND OLD.whole_id IS NOT NULL)
+           THEN ARRAY[OLD.external_id::text] END);
   END IF;
   RETURN NULL;
 END;
@@ -4784,19 +4790,6 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION place_identifiers_follow_part() RETURNS trigger
-LANGUAGE plpgsql AS $$
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    PERFORM refresh_place_identifiers_of(ARRAY[NEW.part_id]);
-  ELSE
-    PERFORM refresh_place_identifiers_of(
-      array_remove(ARRAY[OLD.part_id, CASE WHEN TG_OP <> 'DELETE' THEN NEW.part_id END], NULL),
-      NULL, ARRAY[OLD.external_ref]);
-  END IF;
-  RETURN NULL;
-END;
-$$;
 
 CREATE OR REPLACE FUNCTION place_identifiers_follow_place() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -4826,14 +4819,8 @@ CREATE OR REPLACE TRIGGER trg_place_identifiers_point_update
         IS DISTINCT FROM (NEW.experience_id, NEW.wikidata_item, NEW.merged_into_id IS NULL, NEW.missing_since IS NULL))
   EXECUTE FUNCTION place_identifiers_follow_point();
 
-CREATE OR REPLACE TRIGGER trg_place_identifiers_part_write
-  AFTER INSERT OR DELETE ON experience_parts
-  FOR EACH ROW EXECUTE FUNCTION place_identifiers_follow_part();
-CREATE OR REPLACE TRIGGER trg_place_identifiers_part_update
-  AFTER UPDATE OF part_id, reason, external_ref ON experience_parts
-  FOR EACH ROW
-  WHEN ((OLD.part_id, OLD.reason, OLD.external_ref) IS DISTINCT FROM (NEW.part_id, NEW.reason, NEW.external_ref))
-  EXECUTE FUNCTION place_identifiers_follow_part();
+-- A part relation carries no identifier: a component's reference is its
+-- record's (ADR-0198), which trg_place_identifiers_membership_* follow.
 
 -- A curator's word refreshes its value: the row follows the word at once.
 CREATE OR REPLACE FUNCTION place_identifiers_follow_verdict() RETURNS trigger
@@ -5214,6 +5201,12 @@ BEGIN
       UPDATE experience_locations SET experience_id = part WHERE id = component.id;
       CONTINUE;
     END IF;
+    -- A part is a line the list names, under its reference (ADR-0198): a point
+    -- the list gives no reference (a site's one main point, before a list of
+    -- components) is no component and stays the site's own.
+    IF component.external_ref IS NULL THEN
+      CONTINUE;
+    END IF;
 
     -- A part folded back into this site once its point stood for the whole
     -- site (migration 161) is revived rather than made again: it keeps the
@@ -5238,10 +5231,10 @@ BEGIN
       RETURNING id INTO part;
     END IF;
 
-    -- The relation's trigger writes the part's record in World Heritage
-    -- components (component_record_follows_relation).
-    INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
-    VALUES (site, part, 'component', site_membership, component.external_ref);
+    -- The part's record of World Heritage components in its site, under the
+    -- component's reference; the relation follows it (parts_follow_records).
+    INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
+    VALUES (part, site, 10, component.external_ref);
 
     UPDATE experience_locations SET experience_id = part WHERE id = component.id;
 
@@ -5257,79 +5250,81 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- A part's record in its whole is its relation's (ADR-0198, narrowing
--- ADR-0156 decision 2): one record of World Heritage components (source 10)
--- per relation, in the relation's whole, under the component's reference.
--- Written when a component becomes a part, moved when a merge or its undo
--- moves the relation to another place, its reference following the
--- relation's, and gone with the relation. A place that is a component of two
--- sites holds one record in each. The reference is not the key: the list
--- gives one to two places at once (Maloti-Drakensberg's 985ter-001) and to
--- two places over time (Western Tien-Shan's 1490-003), so a record is one
--- source's view of one place in one whole (source_records_one_per_whole).
--- refresh_component_record is the rule for one (whole, part) pair.
-DROP FUNCTION IF EXISTS refresh_component_record(INTEGER);
-CREATE OR REPLACE FUNCTION refresh_component_record(p_whole INTEGER, p_part INTEGER) RETURNS void AS $$
+-- "Part of" is derived from the records that claim it (ADR-0198 decision 5):
+-- a (whole, part) pair stands while a record in the whole claims it, and a
+-- curator's record decides alone where there is one -- admitted puts the place
+-- in, refused takes it out -- so no run undoes a curator's word. reason names
+-- the strongest claim: a component (whc-component), a Wikidata statement
+-- (wikidata-statement), else the curator's. A record of a place in itself (a
+-- component standing for its whole site) claims no part. The relation keeps
+-- its id while it stands, so what names it by id keeps naming it, and nothing
+-- references it by key. refresh_part_relation is the rule for one pair and
+-- writes only what differs, so the triggers that follow experience_parts
+-- (pairing marks, a place's regions) fire only on a change.
+CREATE OR REPLACE FUNCTION refresh_part_relation(p_whole INTEGER, p_part INTEGER) RETURNS void AS $$
 DECLARE
-  ref TEXT;
+  claim RECORD;
+  wanted TEXT;
+  held TEXT;
 BEGIN
-  SELECT p.external_ref INTO ref FROM experience_parts p
-   WHERE p.whole_id = p_whole AND p.part_id = p_part AND p.reason = 'component';
-  IF NOT FOUND THEN
-    DELETE FROM source_records rec
-     WHERE rec.source_id = 10 AND rec.whole_id = p_whole AND rec.experience_id = p_part;
-  ELSIF ref IS NULL THEN
-    -- A record is the list's view under the list's own id: a component the
-    -- list never gave a reference (a site's one main point, parted once a later
-    -- list names components) has none until it has a reference, and a record
-    -- whose relation loses its reference keeps what it holds -- the reference
-    -- it was last listed under, its item and a curator's claim on it -- since
-    -- no run may take a curator's claim away.
-    NULL;
-  ELSE
-    INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
-    VALUES (p_part, p_whole, 10, ref)
-    ON CONFLICT (source_id, whole_id, experience_id) DO UPDATE
-       SET external_id = EXCLUDED.external_id, updated_at = NOW()
-     WHERE source_records.external_id IS DISTINCT FROM EXCLUDED.external_id;
+  IF p_whole IS NULL OR p_part IS NULL OR p_whole = p_part THEN
+    RETURN;
+  END IF;
+  SELECT count(*) AS records,
+         bool_or(s.id_scheme = 'curator') AS curated,
+         bool_or(s.id_scheme = 'curator' AND rec.admission = 'admitted') AS curator_in,
+         bool_or(s.id_scheme = 'whc-component') AS component,
+         bool_or(s.id_scheme = 'wikidata-statement') AS statement
+    INTO claim
+    FROM source_records rec JOIN experience_sources s ON s.id = rec.source_id
+   WHERE rec.whole_id = p_whole AND rec.experience_id = p_part;
+  IF claim.records > 0 AND NOT (claim.curated AND NOT claim.curator_in) THEN
+    wanted := CASE WHEN claim.component THEN 'component'
+                   WHEN claim.statement THEN 'wikidata_part_of'
+                   ELSE 'curator' END;
+  END IF;
+  SELECT p.reason INTO held FROM experience_parts p WHERE p.whole_id = p_whole AND p.part_id = p_part;
+  IF wanted IS NULL AND held IS NOT NULL THEN
+    DELETE FROM experience_parts WHERE whole_id = p_whole AND part_id = p_part;
+  ELSIF wanted IS NOT NULL AND held IS NULL THEN
+    INSERT INTO experience_parts (whole_id, part_id, reason) VALUES (p_whole, p_part, wanted);
+  ELSIF wanted IS DISTINCT FROM held THEN
+    UPDATE experience_parts SET reason = wanted WHERE whole_id = p_whole AND part_id = p_part;
   END IF;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION component_record_follows_relation() RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION parts_follow_records() RETURNS trigger AS $$
 BEGIN
-  IF TG_OP = 'UPDATE' AND (OLD.whole_id, OLD.part_id) IS DISTINCT FROM (NEW.whole_id, NEW.part_id) THEN
-    -- The record itself moves with the relation, keeping its item, its view
-    -- and a curator's claims, so a merge's undo, which moves both back, finds
-    -- the row it moved. A merge moves the part's own records first
-    -- (moveMemberships), and then there is nothing left here to move.
-    UPDATE source_records rec
-       SET experience_id = NEW.part_id, whole_id = NEW.whole_id, updated_at = NOW()
-     WHERE rec.source_id = 10 AND rec.whole_id = OLD.whole_id AND rec.experience_id = OLD.part_id
-       AND NOT EXISTS (SELECT 1 FROM source_records held
-                        WHERE held.source_id = 10 AND held.whole_id = NEW.whole_id
-                          AND held.experience_id = NEW.part_id);
-  END IF;
   IF TG_OP <> 'INSERT' THEN
-    PERFORM refresh_component_record(OLD.whole_id, OLD.part_id);
+    PERFORM refresh_part_relation(OLD.whole_id, OLD.experience_id);
   END IF;
   IF TG_OP <> 'DELETE' THEN
-    PERFORM refresh_component_record(NEW.whole_id, NEW.part_id);
+    PERFORM refresh_part_relation(NEW.whole_id, NEW.experience_id);
   END IF;
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_component_record_follows_relation ON experience_parts;
-CREATE TRIGGER trg_component_record_follows_relation
-  AFTER INSERT OR DELETE ON experience_parts
-  FOR EACH ROW EXECUTE FUNCTION component_record_follows_relation();
-DROP TRIGGER IF EXISTS trg_component_record_follows_relation_move ON experience_parts;
-CREATE TRIGGER trg_component_record_follows_relation_move
-  AFTER UPDATE OF whole_id, part_id, reason, external_ref ON experience_parts
-  FOR EACH ROW WHEN ((OLD.whole_id, OLD.part_id, OLD.reason, OLD.external_ref)
-                     IS DISTINCT FROM (NEW.whole_id, NEW.part_id, NEW.reason, NEW.external_ref))
-  EXECUTE FUNCTION component_record_follows_relation();
+-- Only a record in a whole is followed, so a run's writes of its memberships
+-- pay a WHEN and no call.
+DROP TRIGGER IF EXISTS trg_parts_follow_records_insert ON source_records;
+CREATE TRIGGER trg_parts_follow_records_insert
+  AFTER INSERT ON source_records
+  FOR EACH ROW WHEN (NEW.whole_id IS NOT NULL)
+  EXECUTE FUNCTION parts_follow_records();
+DROP TRIGGER IF EXISTS trg_parts_follow_records_delete ON source_records;
+CREATE TRIGGER trg_parts_follow_records_delete
+  AFTER DELETE ON source_records
+  FOR EACH ROW WHEN (OLD.whole_id IS NOT NULL)
+  EXECUTE FUNCTION parts_follow_records();
+DROP TRIGGER IF EXISTS trg_parts_follow_records_update ON source_records;
+CREATE TRIGGER trg_parts_follow_records_update
+  AFTER UPDATE OF experience_id, whole_id, source_id, admission ON source_records
+  FOR EACH ROW WHEN ((OLD.whole_id IS NOT NULL OR NEW.whole_id IS NOT NULL)
+                     AND (OLD.experience_id, OLD.whole_id, OLD.source_id, OLD.admission)
+                         IS DISTINCT FROM (NEW.experience_id, NEW.whole_id, NEW.source_id, NEW.admission))
+  EXECUTE FUNCTION parts_follow_records();
 
 -- =============================================================================
 -- A place's regions (ADR-0197)
