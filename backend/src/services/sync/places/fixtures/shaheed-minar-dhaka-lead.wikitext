@@ -1,0 +1,31 @@
+{{Other uses|Shaheed Minar{{!}}Shaheed Minar}}
+{{EngvarB|date=February 2017}}
+{{Use dmy dates|date=February 2017}}
+{{Infobox building
+| name = Central Shaheed Minar
+| native_name = {{lang|bn|কেন্দ্রীয় শহিদ মিনার}}
+| image = Shaheed Minar, Dhaka, Bangladesh.jpg
+| caption = Shaheed Minar in 2014
+| building_type = Monument
+| architectural_style = Modern
+| structural_system =
+| address = Dhaka University area and adjacent to Dhaka Medical College Hospital
+| location = University of Dhaka, Dhaka,  Bangladesh
+| architect = [[Hamidur Rahman (artist)|Hamidur Rahman]]<br />[[Novera Ahmed]]
+| structural_engineer =
+| services_engineer =
+| coordinates =
+| awards =
+| references =
+| status = completed
+| height = 14 m (46 ft)
+}}
+
+The '''Shaheed Minar''' ({{langx|bn|শহীদ মিনার}} [[Romanisation of Bengali|romanised]]: 'Shohid Minar' {{literally|The Martyr Tower}}) is a national monument in [[Dhaka]], [[Bangladesh]], established to [[memorialization|commemorate]] those killed during the [[Bengali language movement]] demonstrations of 1952 in then [[East Pakistan]].
+
+On 21 and 22 February 1952, students from Dhaka University and Dhaka Medical College and political activists were killed when the Pakistani police force opened fire on Bengali protesters who were demanding official status for their native language, [[Bengali language|Bengali]].<ref>{{citation |author=Bashir Al Helal |chapter=Language Movement |chapter-url=http://en.banglapedia.org/index.php?title=Language_Movement |title=Banglapedia: National Encyclopedia of Bangladesh |editor=[[Sirajul Islam]] and Ahmed A. Jamal |publisher=[[Asiatic Society of Bangladesh]] |year=2012 |edition=Second |url-status=dead |url=http://en.banglapedia.org/index.php?title=Language_Movement |archive-url=https://web.archive.org/web/20160307033428/http://en.banglapedia.org/index.php?title=Language_Movement |archive-date=7 March 2016 |df=dmy-all }}</ref> The massacre occurred near [[Dhaka Medical College]] and [[Ramna Park]] in Dhaka. A makeshift monument was erected on 23 February<ref>{{cite book |last=Al Helal |first=Bashir |author-link=Bashir Al Helal |date=2003 |title=Bhasa Andolaner Itihas |trans-title=History of the Language Movement |language=bn |location=Dhaka |publisher=[[Agamee Prakashani]] |pages=474–476 |isbn=984-401-523-5}}</ref><ref name=Banglapedia/> by students of [[Dhaka Medical College and Hospital|Dhaka Medical College]] and other educational institutions, but soon demolished on 26
+February<ref name=Banglapedia/> by the police force.
+
+The Language Movement gained momentum, and after a long struggle, Bengali gained official status in Pakistan (with [[Urdu]]) in 1956. To commemorate the dead, the Shaheed Minar was designed and built by Bangladeshi sculptors [[Hamidur Rahman (artist)|Hamidur Rahman]] and [[Novera Ahmed]]. Construction was delayed under [[martial law]], but the monument was completed in 1963. It remained standing until the [[Bangladesh Liberation War]] in 1971, when it was completely demolished during [[Operation Searchlight]]. After Bangladesh gained independence later that year, it was rebuilt. It was expanded in 1983.
+
+National, mourning, cultural and other activities are held each year on 21 February (''Ekushey February'') to mark [[Language Movement Day]] or ''Shaheed Dibas'' (Martyrs' Day), centred on the Shaheed Minar. Since 2000, 21 February is also recognised as [[International Mother Language Day]].

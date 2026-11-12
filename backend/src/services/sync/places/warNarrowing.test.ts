@@ -14,13 +14,16 @@
  * wikitext is written for the test, in the shape of a lead.
  */
 
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../wikipediaCategories.js', async (actual) => ({ ...(await actual<object>()), askWikipediaOnce: vi.fn() }));
 
 import { askWikipediaOnce } from '../wikipediaCategories.js';
 import type { SubjectKind } from './commemorates.js';
-import { BIOGRAPHY_CATEGORY, dedicationLinks, fetchLeads, leadLinks, narrowWars, overlaps, within, type WarEvidence } from './warNarrowing.js';
+import {
+  BIOGRAPHY_CATEGORY, dedicationLinks, fetchLeads, leadLinks, markedLead, narrowWars, overlaps, within, type WarEvidence,
+} from './warNarrowing.js';
 
 const WW2 = 'Q362';
 const WW1 = 'Q361';
@@ -198,7 +201,14 @@ describe('the links of a lead and the categories of a biography', () => {
 });
 
 describe('reading the leads', () => {
-  const page = (content: string) => ({ query: { pages: [{ title: 't', revisions: [{ slots: { main: { content } } }] }] } });
+  const page = (content: string, revid = 7) => ({ query: { pages: [{ title: 't', revisions: [{ revid, slots: { main: { content } } }] }] } });
+
+  it('reads each lead with the revision it was read from (#2472)', async () => {
+    vi.mocked(askWikipediaOnce).mockReset().mockResolvedValueOnce(page('It commemorates the [[Battle of Berlin]].', 1356230814));
+    const leads = await fetchLeads(['Soviet War Memorial (Treptower Park)'], { userAgent: 'test' });
+    expect(leads.get('Soviet War Memorial (Treptower Park)')).toEqual({ wikitext: 'It commemorates the [[Battle of Berlin]].', revid: 1356230814 });
+    expect(vi.mocked(askWikipediaOnce).mock.calls[0][0]).toMatchObject({ rvprop: 'content|ids', rvsection: '0' });
+  });
 
   it('goes on past a lead it cannot read, which keeps its war', async () => {
     vi.mocked(askWikipediaOnce).mockReset()
@@ -217,5 +227,40 @@ describe('reading the leads', () => {
     await expect(fetchLeads(['Basra Memorial', 'Dunkirk Memorial'], { userAgent: 'test', isCancelled: () => cancelled }))
       .rejects.toThrow('cancelled');
     expect(askWikipediaOnce).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a lead marked for a model to read (#2472)', () => {
+  // The lead of "Shaheed Minar, Dhaka" as English Wikipedia served it on 2026-11-12, revision 1356230814.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- a fixture beside the spec, by a fixed name
+  const SHAHEED_MINAR = readFileSync(new URL('./fixtures/shaheed-minar-dhaka-lead.wikitext', import.meta.url), 'utf8');
+
+  it('marks each link of the prose with its words and its article, and drops the infobox, references and templates', () => {
+    const { text } = markedLead(SHAHEED_MINAR);
+    expect(text.split('\n')[0]).toBe("The Shaheed Minar ( ⟦romanised→Romanisation of Bengali⟧: 'Shohid Minar' ) is a national monument in "
+      + '⟦Dhaka→Dhaka⟧, ⟦Bangladesh→Bangladesh⟧, established to ⟦commemorate→Memorialization⟧ those killed during the '
+      + '⟦Bengali language movement→Bengali language movement⟧ demonstrations of 1952 in then ⟦East Pakistan→East Pakistan⟧.');
+    expect(text).not.toMatch(/Infobox|<ref|\{\{|'''|Banglapedia|Asiatic Society/);
+    expect(text).toContain("on 21 February (Ekushey February) to mark ⟦Language Movement Day→Language Movement Day⟧");
+    expect(text.split('\n')).toHaveLength(4);
+  });
+
+  it('names the articles the marks name, once each and sorted', () => {
+    // A link inside a reference (Sirajul Islam, the Asiatic Society) is no link of the prose.
+    expect(markedLead(SHAHEED_MINAR).titles).toEqual([
+      'Bangladesh', 'Bangladesh Liberation War', 'Bengali language', 'Bengali language movement', 'Dhaka', 'Dhaka Medical College',
+      'Dhaka Medical College and Hospital', 'East Pakistan', 'Hamidur Rahman (artist)', 'International Mother Language Day',
+      'Language Movement Day', 'Martial law', 'Memorialization', 'Novera Ahmed', 'Operation Searchlight', 'Ramna Park',
+      'Romanisation of Bengali', 'Urdu',
+    ]);
+  });
+
+  it("keeps a namespaced link's words and no article, a category's neither, and a link's trailing letters in its words", () => {
+    expect(markedLead("A [[Help:IPA/Punjabi|[dʒə]]] memorial to the [[soldier]]s of the [[Battle of Berlin|battle]]."
+      + ' [[Category:Memorials]]').text)
+      .toBe('A [dʒə] memorial to the ⟦soldiers→Soldier⟧ of the ⟦battle→Battle of Berlin⟧.');
+    expect(markedLead('[[Pipe (trick)|]] and [[#History|its history]]').text).toBe('⟦Pipe (trick)→Pipe (trick)⟧ and its history');
+    // A tag nested in a broken one leaves no bracket behind.
+    expect(markedLead('A <<small>small>tower</small> in [[Paris]].').text).toBe('A smalltower in ⟦Paris→Paris⟧.');
   });
 });

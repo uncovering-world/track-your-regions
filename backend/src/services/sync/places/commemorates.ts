@@ -88,7 +88,7 @@ import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureArticleItems, structureCategories } from '../wikipediaStructure.js';
 import { enwikiTitleOf, fetchWikipediaCategories, type CategoryOptions } from '../wikipediaCategories.js';
 import { resolveWikipediaArticles } from '../wikipediaArticles.js';
-import { fetchLeads, narrowWarReadings, type Span } from './warNarrowing.js';
+import { fetchLeads, narrowWarReadings, type Lead, type Span } from './warNarrowing.js';
 import { namedInPlace } from './placeNames.js';
 import type { SyncProgress } from '../types.js';
 
@@ -177,12 +177,14 @@ export interface ResolvedArticle {
 /**
  * English Wikipedia as the reading reads it: each article's categories, the
  * item of each article titled so or redirected to from that title, and the
- * wikitext of an article's lead, which narrows a war (`warNarrowing.ts`).
+ * wikitext of an article's lead with its revision, which narrows a war
+ * (`warNarrowing.ts`) and is what a model reads a dedication from.
  */
 export interface CommemorationWiki {
   categories(titles: string[]): Promise<Map<string, string[]>>;
   articleItems(titles: string[]): Promise<Map<string, ResolvedArticle>>;
-  leads(titles: string[]): Promise<Map<string, string>>;
+  /** `forModel`: the leads go to a language model, which a site's `ai-input=no` signal refuses (`modelInput`). */
+  leads(titles: string[], forModel?: boolean): Promise<Map<string, Lead>>;
 }
 
 /** The place the reading is asked about: its item, and its English Wikipedia article. */
@@ -550,7 +552,7 @@ export function structureWiki(options: CategoryOptions): CommemorationWiki {
   return {
     categories: structureCategories,
     articleItems: async (titles) => new Map((await structureArticleItems(titles)).map((a) => [a.title, { item: a.item, redirected: a.redirected }])),
-    leads: (titles) => fetchLeads(titles, options),
+    leads: (titles, forModel) => fetchLeads(titles, forModel ? { ...options, modelInput: true } : options),
   };
 }
 
@@ -563,7 +565,7 @@ function liveWiki(options: CategoryOptions): CommemorationWiki {
       // The live API follows a redirect without saying so: every answer is taken as the title's own.
       return new Map([...resolved].map(([tag, item]) => [tag.slice('en:'.length), { item, redirected: false }]));
     },
-    leads: (titles) => fetchLeads(titles, options),
+    leads: (titles, forModel) => fetchLeads(titles, forModel ? { ...options, modelInput: true } : options),
   };
 }
 
