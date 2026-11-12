@@ -11,7 +11,9 @@
  * place.
  *
  * - the membership itself, with its identifier (`external_id`), so the
- *   registry holds the new place claiming it;
+ *   registry holds the new place claiming it, and, for a World Heritage
+ *   membership, the site's record of its own list line with the line's item
+ *   (ADR-0200);
  * - the points and work links it places: those it alone places move, and
  *   those another membership places too are copied to the new place, the
  *   separated membership placing the copy;
@@ -34,11 +36,11 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { insertSeparatedExperience, lockExperience, returnSeparatedUnescoText, type LockedExperience } from '../../db/experienceWriter.js';
-import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, kindRecordSql } from '../../db/membership.js';
 import { moveChangesOfPlace } from '../../services/sync/changeRecorder.js';
 import { copyPointsFor, movePoints } from './experienceLocationWriter.js';
 import { moveHeldDecisions } from './heldDecisions.js';
-import { moveMemberships } from './membershipWriter.js';
+import { moveMemberships, moveSiteLineRecord } from './membershipWriter.js';
 import { takeBackIdentifierVerdict, writeIdentifierVerdict } from './placeIdentifierVerdictWriter.js';
 import { mergePlaces } from './placeMerge.js';
 import { placeAfterRelease } from './publishContents.js';
@@ -122,6 +124,7 @@ async function moveWhatIsItsOwn(
   const copiedLinks = await copyLinksFor(client, from, to, membershipId, links.shared);
   const movedLinks = await moveLinks(client, from, to, links.alone);
   await moveMemberships(client, from, to, [membershipId]);
+  if (sourceId === WORLD_HERITAGE_SOURCE_ID) await moveSiteLineRecord(client, from, to);
   const changeIds = (await client.query<{ id: string }>(
     `SELECT c.id FROM experience_sync_changes c JOIN experience_sync_logs run ON run.id = c.sync_log_id
       WHERE c.experience_id = $1 AND run.source_id = $2`,
@@ -178,7 +181,10 @@ export async function separateMembership(
     }
     const found = (await client.query<Separable>(
       `SELECT m.experience_id, e.merged_into_id, m.source_id, m.external_id, k.name AS kind_name,
-              (SELECT count(*)::int FROM ${MEMBERSHIPS} other WHERE other.experience_id = e.id) AS memberships,
+              -- Its kinds: a record in a whole, the site's record of its own
+              -- list line among them (ADR-0200), is no kind to separate from.
+              (SELECT count(*)::int FROM ${MEMBERSHIPS} other
+                WHERE other.experience_id = e.id AND ${kindRecordSql('other')}) AS memberships,
               EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.part_id = e.id AND prt.reason = 'component') AS is_part
          FROM ${MEMBERSHIPS} m JOIN experiences e ON e.id = m.experience_id JOIN ${KINDS} k ON k.id = m.kind_id
         WHERE m.id = $1`,

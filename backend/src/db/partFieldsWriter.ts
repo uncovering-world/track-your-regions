@@ -24,7 +24,10 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from './experienceWriter.js';
-import { MEMBERSHIPS, componentRecordSql, placeHoldsKindSql, siteMembershipSql } from './membership.js';
+import {
+  COMPONENT_SOURCE_ID, MEMBERSHIPS, WORLD_HERITAGE_SOURCE_ID, componentRecordSql, partRecordSql, placeHoldsKindSql,
+  siteMembershipSql,
+} from './membership.js';
 import { pointOfPartSql, pointRecordSql, shownBySql } from './placePoints.js';
 import { publishedContentSql } from './readerPredicates.js';
 
@@ -159,7 +162,7 @@ export function partFollowsSql(pointFilter: string): string {
  * the list's view under the list's id.
  */
 function recordOfPointSql(record: string, row: string): string {
-  return `${componentRecordSql(record)} AND ${record}.experience_id = ${row}.part_id
+  return `${partRecordSql(record)} AND ${record}.experience_id = ${row}.part_id
           AND source_id_fits_scheme('whc-component', ${row}.external_ref)
           AND (NOT EXISTS (SELECT 1 FROM experience_location_placements any_pl WHERE any_pl.location_id = ${row}.point_id)
                OR EXISTS (SELECT 1 FROM experience_location_placements own_pl
@@ -212,6 +215,79 @@ export async function followTheirPoints(
   );
 }
 
+/**
+ * The site `$1`'s own list line, as rows `(external_ref)`: the reference of
+ * the point of its own the site shows, whose line no part holds (a site of one
+ * component, or one that stands for the whole site, #1899), placed by the
+ * site's World Heritage membership or by none, in a component's shape; the
+ * point a reader sees first, standing before withdrawn and published before an
+ * arrival. No row where the site shows no such point. The one statement of
+ * which line the site's record of itself holds (ADR-0200).
+ */
+export function siteLineSql(): string {
+  return `SELECT el.external_ref
+            FROM experience_locations el
+           WHERE el.experience_id = $1 AND el.merged_into_id IS NULL
+             AND source_id_fits_scheme('whc-component', el.external_ref)
+             AND (NOT EXISTS (SELECT 1 FROM experience_location_placements any_pl WHERE any_pl.location_id = el.id)
+                  OR EXISTS (SELECT 1 FROM experience_location_placements own_pl
+                               JOIN ${MEMBERSHIPS} own_site ON own_site.id = own_pl.membership_id
+                              WHERE own_pl.location_id = el.id AND own_site.experience_id = $1
+                                AND own_site.source_id = ${WORLD_HERITAGE_SOURCE_ID}))
+           ORDER BY el.missing_since IS NULL DESC, ${publishedContentSql('el')} DESC, el.ordinal NULLS LAST, el.id
+           LIMIT 1`;
+}
+
+/**
+ * Whether the site's record of its own line `record` follows the site to the
+ * line under `ref` (ADR-0200): the same component renumbered (`823bis-001` to
+ * `823ter-001`, `whc_ref_bare`), which keeps its item; or another line, which
+ * the record takes without the item, unless a curator chose that item. A
+ * curator's item is never moved to another line nor taken off by a run: the
+ * record stays on the line the curator answered for, and the line the site
+ * shows instead has no record, and so no item, until the curator takes the
+ * choice back.
+ */
+function siteLineMovesSql(record: string, ref: string): string {
+  return `(whc_ref_bare(${record}.external_id) IS NOT DISTINCT FROM whc_ref_bare(${ref})
+           OR NOT ${record}.curated_fields ? 'wikidata_items')`;
+}
+
+/** The site `$1`'s own line no record of itself holds yet, or one its record would follow: the run's fast path asks it. */
+export function siteLineBehindSql(): string {
+  return `SELECT 1 FROM (${siteLineSql()}) line
+            LEFT JOIN ${MEMBERSHIPS} self ON self.source_id = ${COMPONENT_SOURCE_ID} AND self.whole_id = $1
+                                         AND self.experience_id = $1
+           WHERE self.id IS NULL
+              OR (self.external_id IS DISTINCT FROM line.external_ref
+                  AND ${siteLineMovesSql('self', 'line.external_ref')})`;
+}
+
+/**
+ * Write the site's record of its own list line, under the site's lock
+ * (ADR-0200): World Heritage components' record of the site in itself, under
+ * the reference of the line the site shows (`siteLineSql`). It claims no part
+ * (`refresh_part_relation`), and holds the line's view, position and item as
+ * a part's record does. When the site shows another line, the record follows
+ * it as `siteLineMovesSql` says. A site that shows no own line keeps the record
+ * it has, with a curator's claim on its item, until a list of components parts
+ * its line and the part takes the record (`part_site_components`).
+ */
+export async function followTheSiteLine(client: PoolClient, lock: LockedExperience): Promise<void> {
+  await client.query(
+    `INSERT INTO ${MEMBERSHIPS} AS rec (experience_id, whole_id, source_id, external_id)
+     SELECT $1, $1, ${COMPONENT_SOURCE_ID}, line.external_ref FROM (${siteLineSql()}) line
+     ON CONFLICT (source_id, whole_id, experience_id) DO UPDATE
+        SET external_id = EXCLUDED.external_id,
+            wikidata_items = CASE WHEN whc_ref_bare(rec.external_id) IS NOT DISTINCT FROM whc_ref_bare(EXCLUDED.external_id)
+                                  THEN rec.wikidata_items END,
+            updated_at = NOW()
+      WHERE rec.external_id IS DISTINCT FROM EXCLUDED.external_id
+        AND ${siteLineMovesSql('rec', 'EXCLUDED.external_id')}`,
+    [lock.id],
+  );
+}
+
 /** One part's item: the item (null takes it off) and what becomes of a curator's claim on it. */
 export interface PartItemWrite {
   pointId: number;
@@ -220,12 +296,12 @@ export interface PartItemWrite {
 }
 
 /**
- * Write the component's Wikidata item on the record of the parts the points
- * name (`wikidata_items` of its record in its whole, the one the point reads,
- * `pointRecordSql`), with a
- * curator's claim on it (`wikidata_items` in the record's `curated_fields`),
- * under the lock of the place that shows them. Answers the points whose
- * record was written; a point that is no part's has none.
+ * Write the component's Wikidata item on the record of the line each point
+ * names (`wikidata_items` of the record the point reads, `pointRecordSql`: a
+ * part's in its whole, a site's own in itself, ADR-0200), with a curator's
+ * claim on it (`wikidata_items` in the record's `curated_fields`), under the
+ * lock of the place that shows them. Answers the points whose record was
+ * written; a point no record answers has none, and keeps no item.
  */
 export async function writePartItems(
   client: PoolClient,
@@ -248,7 +324,6 @@ export async function writePartItems(
             updated_at = NOW()
        FROM w JOIN experience_locations el ON el.id = w.point_id
       WHERE rec.id = ${pointRecordSql('el', 'own_rec', 'own_rec.id')}
-        AND ${pointOfPartSql('el')}
         AND ${shownBySql('el', 'ARRAY[$1::int]')}
       RETURNING w.point_id`,
     [lock.id, JSON.stringify(rows)],
@@ -256,41 +331,44 @@ export async function writePartItems(
   return result.rows.map(row => row.point_id);
 }
 
-/** What the site's list gives one component: its name and coordinate, for the record they are written on. */
+/** What the site's list gives one line: its name, coordinate and position, for the record they are written on. */
 export interface PartListing {
   recordId: number;
   name: string | null;
   lon: number;
   lat: number;
+  ordinal: number;
 }
 
 /**
- * The records of the site `$1`'s parts whose view the listings `listed` change,
- * as rows `(id, name, location)` of what each is to hold: the name and
- * coordinate of its listing, or none for a record no listing names.
- * `listed` is a relation of `(record_id, name, lon, lat)`. The one statement of
+ * The records of the site `$1`'s list lines whose view the listings `listed`
+ * change -- its parts' records in it and its record of itself (ADR-0200) --
+ * as rows `(id, name, location, ordinal)` of what each is to hold: the name,
+ * coordinate and position of its listing, or none for a record no listing
+ * names, since a line the list no longer gives has no place in it. `listed`
+ * is a relation of `(record_id, name, lon, lat, ordinal)`. The one statement of
  * what the site's run changes on the records (`writePartListings`), and of
  * whether it has anything to change (the run's fast path, `locationWriter.ts`).
  */
 export function partListingChangesSql(listed: string): string {
   return `SELECT rec.id, l.name,
-                 CASE WHEN l.record_id IS NOT NULL THEN ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326) END AS location
-            FROM experience_parts p
-            JOIN ${MEMBERSHIPS} rec ON rec.experience_id = p.part_id AND rec.whole_id = p.whole_id
-                                   AND ${componentRecordSql('rec')}
+                 CASE WHEN l.record_id IS NOT NULL THEN ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326) END AS location,
+                 l.ordinal
+            FROM ${MEMBERSHIPS} rec
             LEFT JOIN ${listed} l ON l.record_id = rec.id
-           WHERE p.whole_id = $1 AND p.reason = 'component'
+           WHERE rec.whole_id = $1 AND ${componentRecordSql('rec')}
              AND (rec.reported_name IS DISTINCT FROM l.name
+                  OR rec.listing_ordinal IS DISTINCT FROM l.ordinal
                   OR (rec.reported_location IS NULL) <> (l.record_id IS NULL)
                   OR NOT ST_Equals(rec.reported_location, ST_SetSRID(ST_MakePoint(l.lon, l.lat), 4326)))`;
 }
 
 /**
- * Write the site's source's view of each of its components on the part's
- * record in World Heritage components (`reported_name`, `reported_location`,
- * ADR-0156 decision 2), under the site's lock: the name and coordinate its
- * list gives the component, as the list gives them, whatever a curator made
- * of the part's point. The record of a component the list no longer gives
+ * Write the site's source's view of each of its list lines on the line's
+ * record (`reported_name`, `reported_location`, `listing_ordinal`, ADR-0156
+ * decision 2, ADR-0200), under the site's lock: the name, coordinate and
+ * position its list gives the line, as the list gives them, whatever a curator
+ * made of the point. The record of a component the list no longer gives
  * loses its view, since a source that stopped listing a component says nothing
  * of it (`viewStandsSql`). Only the records of the parts whose relation names
  * the locked site are written, so a part merged into another kind's place
@@ -301,14 +379,16 @@ export async function writePartListings(
   lock: LockedExperience,
   listings: readonly PartListing[],
 ): Promise<number> {
-  const rows = listings.map(listing => ({ record_id: listing.recordId, name: listing.name, lon: listing.lon, lat: listing.lat }));
+  const rows = listings.map(listing => (
+    { record_id: listing.recordId, name: listing.name, lon: listing.lon, lat: listing.lat, ordinal: listing.ordinal }));
   const result = await client.query(
     `WITH listed AS (
-       SELECT * FROM jsonb_to_recordset($2::jsonb) AS l(record_id int, name text, lon float8, lat float8)
+       SELECT * FROM jsonb_to_recordset($2::jsonb) AS l(record_id int, name text, lon float8, lat float8, ordinal int)
      ),
      view AS (${partListingChangesSql('listed')})
      UPDATE ${MEMBERSHIPS} rec
-        SET reported_name = view.name, reported_location = view.location, updated_at = NOW()
+        SET reported_name = view.name, reported_location = view.location, listing_ordinal = view.ordinal,
+            updated_at = NOW()
        FROM view
       WHERE rec.id = view.id`,
     [lock.id, JSON.stringify(rows)],

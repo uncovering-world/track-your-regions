@@ -27,7 +27,7 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
@@ -409,6 +409,29 @@ export async function moveMemberships(
       WHERE experience_id = $1 AND ($3::int[] IS NULL OR id = ANY($3::int[]))
       RETURNING id`,
     [from.id, to.id, only ?? null],
+  );
+  return result.rows.map(row => row.id);
+}
+
+/**
+ * Move the site's record of its own list line (ADR-0200) from `from` to `to`,
+ * as a record of `to` in itself: on a separation of the site's World Heritage
+ * membership, whose run writes it, so the line's item and a curator's claim on
+ * it go where the list's site goes. A merge back folds it as any record in the
+ * folded place (`moveWholeRecords`). Answers the ids moved.
+ */
+export async function moveSiteLineRecord(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+): Promise<number[]> {
+  const result = await client.query<{ id: number }>(
+    `UPDATE ${MEMBERSHIPS} rec SET experience_id = $2, whole_id = $2, updated_at = NOW()
+      WHERE rec.experience_id = $1 AND rec.whole_id = $1 AND ${componentRecordSql('rec')}
+        AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} held
+                         WHERE held.source_id = rec.source_id AND held.whole_id = $2 AND held.experience_id = $2)
+      RETURNING rec.id`,
+    [from.id, to.id],
   );
   return result.rows.map(row => row.id);
 }

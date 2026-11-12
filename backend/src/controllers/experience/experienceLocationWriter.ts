@@ -387,11 +387,13 @@ function partFieldsOfItem(row: PartRowHeld, content: ClaimedItemContent): PartWr
  * no picture — and only a Commons file, as every writer of a picture refuses
  * anything else. The item's English article goes with it (#1963), only a web
  * address, since the run's content writer leaves a part whose item a curator
- * chose alone. A point of any other place takes the item alone: it holds no
- * picture or text of its own, which its place holds (#2117). Answers whether
- * the item was recorded and whether the picture was written: a part the World
- * Heritage list gives no reference has no record to hold the item (ADR-0198),
- * and the caller refuses the answer rather than report an item it did not keep.
+ * chose alone. A site's own point takes the item alone, on the site's record
+ * of its list line (ADR-0200): it holds no picture or text of its own, which
+ * its place holds (#2117). Answers whether the item was recorded and whether
+ * the picture was written: a point no list line's record stands for (a part or
+ * a point the World Heritage list gives no reference, ADR-0198) has no record
+ * to hold the item, and the caller refuses the answer rather than report an
+ * item it did not keep.
  */
 export async function claimPointItem(
   client: PoolClient,
@@ -410,26 +412,16 @@ export async function claimPointItem(
   );
   const row = point.rows[0];
   if (!row) return { recorded: false, pictured: false };
-  if (row.of_part) {
-    // The item, and the curator's claim on it, are the part's record's
-    // (ADR-0156 decision 2).
-    const recorded = await writePartItems(client, lock, [{ pointId: locationId, item, claim: 'add' }]);
-    if (recorded.length === 0) return { recorded: false, pictured: false };
-    // A part's picture, subtitle and article are its own row's (ADR-0156
-    // decision 3).
-    const fields = partFieldsOfItem(row, content);
-    await writePartFields(client, lock, [{ pointId: locationId, fields }]);
-    return { recorded: true, pictured: fields.image_url !== undefined };
-  }
-  await client.query(
-    `UPDATE experience_locations
-        SET wikidata_item = $3,
-            curated_fields = CASE WHEN curated_fields ? 'wikidata_item' THEN curated_fields
-                                  ELSE curated_fields || '["wikidata_item"]'::jsonb END
-      WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}`,
-    [locationId, lock.id, item],
-  );
-  return { recorded: true, pictured: false };
+  // The item, and the curator's claim on it, are the record's of the point's
+  // list line (ADR-0156 decision 2, ADR-0200).
+  const recorded = await writePartItems(client, lock, [{ pointId: locationId, item, claim: 'add' }]);
+  if (recorded.length === 0) return { recorded: false, pictured: false };
+  if (!row.of_part) return { recorded: true, pictured: false };
+  // A part's picture, subtitle and article are its own row's (ADR-0156
+  // decision 3).
+  const fields = partFieldsOfItem(row, content);
+  await writePartFields(client, lock, [{ pointId: locationId, fields }]);
+  return { recorded: true, pictured: fields.image_url !== undefined };
 }
 
 /**
@@ -492,17 +484,9 @@ export async function releasePointItem(
     [locationId, lock.id],
   );
   if (!point.rows[0]) return [];
-  // The item and the claim on it go: off a part's record (ADR-0156 decision
-  // 2), off any other point itself.
-  if (point.rows[0].of_part) {
-    await writePartItems(client, lock, [{ pointId: locationId, item: null, claim: 'drop' }]);
-  } else {
-    await client.query(
-      `UPDATE experience_locations SET wikidata_item = NULL, curated_fields = curated_fields - 'wikidata_item'
-        WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}`,
-      [locationId, lock.id],
-    );
-  }
+  // The item and the claim on it go off the record of the point's list line
+  // (ADR-0156 decision 2, ADR-0200).
+  await writePartItems(client, lock, [{ pointId: locationId, item: null, claim: 'drop' }]);
   // A part that holds a kind of its own keeps every value on its row: its kind
   // writes them too, so none of them is known to be the confirmation's. A
   // point of any other place held nothing beside the item (#2117).
@@ -740,11 +724,11 @@ export async function copyPointsFor(
   for (const id of ids) {
     const copied = await client.query<{ id: number }>(
       `INSERT INTO experience_locations (
-         experience_id, name, external_ref, ordinal, location, missing_since, wikidata_item,
+         experience_id, name, external_ref, ordinal, location, missing_since,
          curation_state, refused_at, curated_fields, source_membership, existence,
          state_decided_by, state_decided_at, state_note
        )
-       SELECT $2, name, external_ref, ordinal, location, missing_since, wikidata_item,
+       SELECT $2, name, external_ref, ordinal, location, missing_since,
               curation_state, refused_at, curated_fields, source_membership, existence,
               state_decided_by, state_decided_at, state_note
          FROM experience_locations WHERE id = $3 AND experience_id = $1

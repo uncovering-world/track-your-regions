@@ -91,12 +91,34 @@ export function kindRecordSql(alias = 'm'): string {
 }
 
 /**
- * The record `alias` is a serial site's part's record of World Heritage
- * components in its whole (ADR-0198): one per relation, under the component's
- * reference, with its item and the list's view of the part.
+ * The record `alias` is a record of World Heritage components, one per line of
+ * a site's list (ADR-0198, ADR-0200): a part's in its whole, one per relation,
+ * or the site's own line's in the site itself; under the line's reference,
+ * with its item and the list's view of the line.
  */
 export function componentRecordSql(alias = 'rec'): string {
   return `${alias}.source_id = ${COMPONENT_SOURCE_ID} AND ${alias}.whole_id IS NOT NULL`;
+}
+
+/**
+ * The record `alias` is a site's record of its own list line, in itself
+ * (ADR-0200): World Heritage components' record whose whole is its place. It
+ * is in no kind and no whole another place is; a read of a place's records
+ * that means its memberships asks `kindRecordSql`, and one that keeps a part's
+ * records in a whole and leaves this one out asks its negation, which is never
+ * NULL.
+ */
+export function siteLineRecordSql(alias = 'rec'): string {
+  return `(${componentRecordSql(alias)} AND ${alias}.whole_id = ${alias}.experience_id)`;
+}
+
+/**
+ * The record `alias` is a part's record of World Heritage components in a
+ * whole other than itself (ADR-0198): a site's record of its own list line, in
+ * itself (ADR-0200), is no part's and makes no part.
+ */
+export function partRecordSql(alias = 'rec'): string {
+  return `${componentRecordSql(alias)} AND ${alias}.whole_id <> ${alias}.experience_id`;
 }
 
 /**

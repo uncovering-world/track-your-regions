@@ -119,10 +119,13 @@ export async function mergePlaces(
     if (survivor.mergedInto !== null || folded.mergedInto !== null) {
       return await refuse({ status: 409, error: 'One of the two places has already been merged into another' });
     }
+    // A site's record of its own list line (ADR-0200) is no part's: two sites
+    // meet on their kind.
     const shared = await client.query<{ kind_id: number | null }>(
       `SELECT f.kind_id FROM ${MEMBERSHIPS} f
          JOIN ${MEMBERSHIPS} s ON s.kind_id = f.kind_id
-                              OR (s.source_id = f.source_id AND s.whole_id IS NOT NULL AND f.whole_id IS NOT NULL)
+                              OR (s.source_id = f.source_id AND s.whole_id <> s.experience_id
+                                  AND f.whole_id <> f.experience_id)
         WHERE f.experience_id = $1 AND s.experience_id = $2`,
       [foldedId, survivorId],
     );

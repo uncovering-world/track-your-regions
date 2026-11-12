@@ -71,7 +71,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql, sourcePlacesSql } from '../../db/membership.js';
+import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql, kindRecordSql, sourcePlacesSql } from '../../db/membership.js';
 
 // The pins are the membership's since #822 and are spelled in db/membership.ts,
 // where every reader of them can reach them; re-exported here so the writers
@@ -228,7 +228,7 @@ export async function heldByOtherSources(sourceId: number, items: readonly strin
        FROM place_identifiers pi
        JOIN ${MEMBERSHIPS} o ON o.experience_id = pi.experience_id
       WHERE pi.scheme = 'wikidata' AND pi.identifies AND pi.value = ANY($2::text[])
-        AND o.source_id <> $1 AND o.admission = 'admitted'`,
+        AND o.source_id <> $1 AND o.admission = 'admitted' AND ${kindRecordSql('o')}`,
     [sourceId, [...items]],
   );
   return new Set(result.rows.map((row) => row.value));

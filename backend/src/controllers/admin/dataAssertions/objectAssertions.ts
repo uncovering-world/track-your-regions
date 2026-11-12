@@ -473,7 +473,7 @@ const placeWithoutMembership: CatalogueAssertion = {
           FROM experiences e
           JOIN experience_sources c ON c.id = e.source_id
          WHERE NOT EXISTS (
-           SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id
+           SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND ${kindRecordSql('m')}
          )
            -- A place folded into another by a merge keeps none, by design (ADR-0086).
            AND e.merged_into_id IS NULL
@@ -522,7 +522,7 @@ const membershipSourceDisagreesWithRow: CatalogueAssertion = {
                row_source.name AS row_source_name
           FROM experiences e
           JOIN experience_sources row_source ON row_source.id = e.source_id
-         WHERE EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id)
+         WHERE EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND ${kindRecordSql('m')})
            AND NOT EXISTS (
              SELECT 1 FROM ${MEMBERSHIPS} m
               WHERE m.experience_id = e.id

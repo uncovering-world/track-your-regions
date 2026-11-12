@@ -117,7 +117,7 @@ import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicat
 import { lockExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
 import { inscribedAreaSql } from '../../db/inscription.js';
-import { foldedPointsSql, pointItemClaimedSql, pointItemSql, pointOfPartSql, shownBySql } from '../../db/placePoints.js';
+import { foldedPointsSql, pointItemClaimedSql, pointItemSql, shownBySql } from '../../db/placePoints.js';
 import { writePartItems } from '../../db/partFieldsWriter.js';
 import { listingsDrift, partsBehind, writeParts } from './componentListings.js';
 import { completePairing } from './locationMatching.js';
@@ -1322,11 +1322,12 @@ export interface ComponentItem {
  * Record each component point's Wikidata item (#1269), every run: the item
  * whose World Heritage Site ID equals the point's reference, or none where no
  * item or more than one carries it. A point is matched by its reference, case
- * folded, among the points this run answers for, and written on a part's
- * record in World Heritage components (ADR-0156 decision 2) or on any other
- * point itself; a curator's claim on the item, which the component-items card's
- * confirmation writes and its take-back clears (#1317), is never overridden.
- * Answers how many points changed.
+ * folded, among the points this run answers for, and written on the record of
+ * the point's list line in World Heritage components (ADR-0156 decision 2,
+ * ADR-0200): a part's in its site, or the site's record of its own line. A
+ * point no record stands for keeps no item. A curator's claim on the item,
+ * which the component-items card's confirmation writes and its take-back
+ * clears (#1317), is never overridden. Answers how many points changed.
  */
 export async function recordComponentItems(
   experienceId: number,
@@ -1344,8 +1345,9 @@ export async function recordComponentItems(
       return 0;
     }
     // The points this run answers for, matched by reference, whose item is
-    // not a curator's and differs: a part's is on its record (ADR-0156
-    // decision 2), any other point's on the point.
+    // not a curator's and differs. The item is on the record of the point's
+    // list line (ADR-0156 decision 2, ADR-0200): a part's in its site, a site's
+    // own line's in the site itself.
     const answered = `unnest($2::text[], $3::text[]) AS r(ref, item)
         WHERE ${ownPointSql('el')}
           AND lower(el.external_ref) = lower(r.ref)
@@ -1360,19 +1362,16 @@ export async function recordComponentItems(
     // A part holds a record in each of its wholes (ADR-0198): only a point
     // under one of its records' references writes, and it writes the record
     // under its own reference (writePartItems), so each site's run writes its
-    // own record.
-    const ofParts = await client.query<{ id: number; item: string }>(
-      `SELECT el.id, r.item FROM experience_locations el, ${answered} AND ${pointOfPartSql('el')}
+    // own record. A point no record stands for keeps no item.
+    const ofLines = await client.query<{ id: number; item: string }>(
+      `SELECT el.id, r.item FROM experience_locations el, ${answered}
           AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} rec
                        WHERE rec.experience_id = el.experience_id AND ${componentRecordSql('rec')}
                          AND lower(rec.external_id) = lower(r.ref))`, params,
     );
-    const onParts = await writePartItems(client, locked.lock, ofParts.rows.map(row => ({ pointId: row.id, item: row.item })));
-    const onPoints = await client.query(
-      `UPDATE experience_locations el SET wikidata_item = r.item FROM ${answered} AND NOT ${pointOfPartSql('el')}`, params,
-    );
+    const written = await writePartItems(client, locked.lock, ofLines.rows.map(row => ({ pointId: row.id, item: row.item })));
     await client.query('COMMIT');
-    return onParts.length + (onPoints.rowCount ?? 0);
+    return written.length;
   } catch (error) {
     unusable = await rollbackQuietly(client);
     throw error;
