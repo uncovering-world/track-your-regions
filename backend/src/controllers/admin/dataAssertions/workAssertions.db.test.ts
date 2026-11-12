@@ -13,7 +13,7 @@ import { workAssertions } from './workAssertions.js';
 const MUSEUM = 9960;
 const OTHER_MUSEUM = 9961;
 const OWN_PLACE = 9962;
-const VENUS = 'Q131397-fixture';
+const VENUS = 'Q9962001';
 
 const check = workAssertions.find(a => a.id === 'work-no-offered-place-holds')!;
 let venusId = 0;
@@ -23,7 +23,7 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM treasures WHERE external_id = $1', [VENUS]);
 }
 
-async function place(id: number, name: string, admission: 'admitted' | 'refused', externalId = `${id}-fixture`): Promise<void> {
+async function place(id: number, name: string, admission: 'admitted' | 'refused', externalId = `Q${id}902`): Promise<void> {
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      VALUES ($1, 2, $2, $3, ST_SetSRID(ST_MakePoint(16.36, 48.2), 4326))`,
@@ -58,14 +58,14 @@ describe('works no place a reader is offered holds (#1444)', () => {
     const rows = await listed();
     expect(rows).toEqual([expect.objectContaining({ work_name: 'Venus of Willendorf', held_by: 'Natural History Museum, Vienna (fixture)' })]);
     expect(check.describe(rows[0])).toBe(
-      'Venus of Willendorf (Q131397-fixture, 67 sitelinks) is held only by Natural History Museum, Vienna (fixture), which no kind offers a reader',
+      'Venus of Willendorf (Q9962001, 67 sitelinks) is held only by Natural History Museum, Vienna (fixture), which no kind offers a reader',
     );
   });
 
   it('lists a work no venue holds any more', async () => {
     await pool.query('UPDATE experience_treasures SET missing_since = NOW() WHERE treasure_id = $1', [venusId]);
     const rows = await listed();
-    expect(check.describe(rows[0])).toBe('Venus of Willendorf (Q131397-fixture, 67 sitelinks) is held by no place');
+    expect(check.describe(rows[0])).toBe('Venus of Willendorf (Q9962001, 67 sitelinks) is held by no place');
   });
 
   it('leaves out a work an offered place holds', async () => {
@@ -108,7 +108,7 @@ describe('works no place a reader is offered holds (#1444)', () => {
     );
     const rows = await listed();
     expect(check.describe(rows[0])).toBe(
-      'Venus of Willendorf (Q131397-fixture, 67 sitelinks) is held only by Natural History Museum, Vienna (fixture), '
+      'Venus of Willendorf (Q9962001, 67 sitelinks) is held only by Natural History Museum, Vienna (fixture), '
       + 'which no kind offers a reader; and An offered museum (fixture), where a curator refused it',
     );
   });

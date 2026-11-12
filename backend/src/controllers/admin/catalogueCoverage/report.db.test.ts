@@ -30,9 +30,9 @@ const PLACES = {
 } as const;
 const WORKS = { shown: 'Q96000010', hidden: 'Q96000011' } as const;
 const QID = {
-  offered: 'Q96000001', pending: 'Q96000002', refused: 'Q96000003', lost: 'Q96000004', otherItem: 'Q96000005', unnamed: 'Q96000006',
-  north: 'Q96000007', acrossTheLine: 'Q96000008', byThePole: 'Q96000009', crowded: 'Q96000012',
-  abroad: 'Q96000013', astride: 'Q96000014', abroadByItem: 'Q96000015',
+  offered: 'Q9601096', pending: 'Q9602096', refused: 'Q9603096', lost: 'Q9604096', otherItem: 'Q9605096', unnamed: 'Q9607096',
+  north: 'Q9608096', acrossTheLine: 'Q9609096', byThePole: 'Q9610096', crowded: 'Q9612096',
+  abroad: 'Q9613096', astride: 'Q9614096', abroadByItem: 'Q9615096',
 } as const;
 
 /**
@@ -48,10 +48,10 @@ const ENTITIES: Record<string, unknown> = {
 async function clearEntities(): Promise<void> {
   await pool.query('DELETE FROM workbench.wikidata_entities WHERE id = ANY($1::text[])', [Object.keys(ENTITIES)]);
 }
-const UNESCO = '96001';
+const UNESCO = '9606';
 /** The items the calibration lists name and no fixture place holds (#1864, #1988). */
 const TOPS = {
-  refusedByRun: 'Q96000050', underLine: 'Q96000051', outOfReach: 'Q96000052', pendingMissing: 'Q96000053',
+  refusedByRun: 'Q96000050', underLine: 'Q96000051', outOfReach: 'Q96000052', pendingMissing: 'Q9611096',
   findNotHeld: 'Q96000054', findUnderLine: 'Q96000055',
   // Held through the offered dig (#2151): a temple that is part of it, and a hall it has as a part; and a whole the dig is a part of.
   partOfDig: 'Q96000056', digHasIt: 'Q96000057', wholeOfDig: 'Q96000058',
