@@ -18,6 +18,7 @@ import { failure, notFound } from '../middleware/errorHandler.js';
 import type { idParamSchema, placeAtPointQuerySchema } from '../types/index.js';
 import { userAgent } from '../config/userAgent.js';
 import { NominatimError, reverseNominatim, type NominatimAtPoint } from '../services/nominatim.js';
+import { passedStatus, unreachedStatus } from '../services/outsideStatus.js';
 import { articleCoordinate } from '../services/wikipediaCoordinate.js';
 
 // No bot marker: a curator opened the dialog and waits on it.
@@ -55,9 +56,9 @@ export async function placeAtPoint(
       userAgent: USER_AGENT, signal: AbortSignal.timeout(REVERSE_TIMEOUT_MS),
     }));
   } catch (error) {
-    if (error instanceof NominatimError) throw failure('Nominatim request failed', error.status);
+    if (error instanceof NominatimError) throw failure('Nominatim request failed', passedStatus(error.status));
     console.error('Nominatim reverse error:', error);
-    throw failure('Reverse lookup failed', 500);
+    throw failure('Reverse lookup failed', unreachedStatus(error));
   }
 }
 
