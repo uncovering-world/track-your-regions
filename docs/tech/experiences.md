@@ -7019,7 +7019,14 @@ was decided on ("17 sitelinks: below the world tier's line …") and a count tha
 new reason; the measure's two names, "sitelinks" and "Wikipedia editions" since #1240, are folded
 to one word as well, so the Warsaw Uprising Monument, answered over "17 sitelinks: …", is not asked
 about over "16 Wikipedia editions: …" (#1589; migration 113 closed the questions runs had raised
-for the rename alone). The pin holds silently when the run says what it answered, when the rule has come
+for the rename alone). The rule's words about itself are dropped first (#2430): the bars a fame
+refusal spells out in parentheses after "bars" or "line", and what a run kept "as last read".
+What is compared is then the place's facts before the colon and the kind of refusal, so a
+reworded or drifting bar asks nothing, and a fact of the place that changed asks. Aqua Claudia,
+Phnom Kulen and Gemiler Island, put back and asked about again on 2026-11-10 only because the
+bars' list gained "or the World Heritage List inscribes it", were closed by migration 237. A run
+would not have closed them, since a question the run still says stays (`stillAsks`).
+`foldedReasonSql` folds the same in the database, where a question's date is kept. The pin holds silently when the run says what it answered, when the rule has come
 round to the curator's own answer (a put-back it now admits, an arrival a curator refused that
 it now refuses), and when it refuses a confirmed refusal in other words, which keeps the row out
 either way; otherwise — a put-back refused for another reason, a confirmed refusal the rule
