@@ -515,6 +515,21 @@ database where a standing old merge would still not undo a relation it moved. **
 re-application of `01-schema.sql`**, which refuses to run while `experience_parts` still carries
 either column.
 
+`234-every-list-line-is-a-record.sql` makes every line of the World Heritage list a record (#2118,
+ADR-0200): a site that shows a line of its own (a site of one component, a component that stands
+for its whole site) gets World Heritage components' record of the site in itself under that line's
+reference, which places it in no whole and makes no part; `source_records.listing_ordinal` holds
+where a line comes in the list; and a point's Wikidata item is its line's record's, so
+`experience_locations.wikidata_item` goes. It replaces the registry's functions and the point
+trigger before the rows, refuses a database where a point carries an item no line's record would
+hold, writes the 807 records of the development catalogue in one insert with the registry's row
+trigger off and refreshes their values once, gives each the item and claim its line's point read —
+the point's own, or for a site that is also another site's part (Zacatecas, part of the Camino Real
+de Tierra Adentro) its part record's until the site's next run — gives each part's record its line's
+ordinal, drops the column, and asserts that every point reads the item and claim it read before, that `experience_parts` is unchanged and that the
+registry holds what it expects for every value refreshed. **Run it before the next re-application of
+`01-schema.sql`**, which refuses to run while `experience_locations` still carries `wikidata_item`.
+
 `054-leaf-pieces-for-placement.sql` adds `region_geom_pieces` — each leaf region's geometry cut by
 `ST_Subdivide` into pieces of at most 256 vertices — with the trigger that keeps it, and cuts every
 leaf that has a geometry (#851, [ADR-0054](../../docs/decisions/0054-placement-reads-leaves-through-their-pieces.md)).

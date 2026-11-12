@@ -410,7 +410,6 @@ export interface ExperienceLocationsRow {
   location: string;
   created_at: Date | null;
   missing_since: Date | null;
-  wikidata_item: string | null;
   curation_state: string;
   refused_at: Date | null;
   curated_fields: unknown;
@@ -1141,6 +1140,7 @@ export interface SourceRecordsRow {
   facts: unknown;
   created_at: Date;
   updated_at: Date;
+  listing_ordinal: number | null;
   crowding_pin: string | null;
 }
 
@@ -1651,7 +1651,6 @@ export const COLUMN_WIDTHS = {
   experience_locations: {
     name: 500,
     external_ref: 255,
-    wikidata_item: 20,
     curation_state: 10,
     source_membership: 10,
     existence: 10,

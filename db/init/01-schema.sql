@@ -3167,10 +3167,13 @@ ALTER TABLE source_records DROP CONSTRAINT IF EXISTS source_records_source_exter
 CREATE UNIQUE INDEX IF NOT EXISTS source_records_kind_source_external
     ON source_records (source_id, external_id) WHERE kind_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_source_records_whole ON source_records (whole_id) WHERE whole_id IS NOT NULL;
+-- Every line of the World Heritage list is a record (ADR-0200): a part's in its
+-- site, and the site's own line in the site itself. See db/migrations/234.
+ALTER TABLE source_records ADD COLUMN IF NOT EXISTS listing_ordinal INTEGER;
 
 COMMENT ON TABLE source_records IS 'One source''s record of a place (ADR-0198): in a kind, a membership (ADR-0045 decision 4), one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival; or in a whole, a part record, one row per (source, place, whole), carrying how the source knows the part -- its reference, its item and its view. The place itself is the experiences row.';
 COMMENT ON COLUMN source_records.kind_id IS 'The kind the record places the place in, NULL on a record in a whole (source_records_kind_or_whole, ADR-0198).';
-COMMENT ON COLUMN source_records.whole_id IS 'The whole the record places the place in as a part -- the serial World Heritage site whose component the place is -- NULL on a record in a kind (ADR-0198). The part-of relation follows it (parts_follow_records, ADR-0198 decision 5).';
+COMMENT ON COLUMN source_records.whole_id IS 'The whole the record places the place in as a part -- the serial World Heritage site whose component the place is -- NULL on a record in a kind (ADR-0198). The part-of relation follows it (parts_follow_records, ADR-0198 decision 5). The place itself on a site''s record of its own list line (ADR-0200), which places it in no whole and makes no part.';
 COMMENT ON COLUMN source_records.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
 COMMENT ON COLUMN source_records.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item, a component''s reference -- in the shape of its source''s id_scheme (ADR-0198). Unique per source on a record in a kind (ADR-0084 decision 2), and not on a record in a whole, whose reference two places may carry. A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
 COMMENT ON COLUMN source_records.type IS
@@ -3187,11 +3190,12 @@ COMMENT ON COLUMN source_records.last_seen_sync_log_id IS 'The newest run of thi
 COMMENT ON COLUMN source_records.reported_name IS 'The name this membership''s source last reported for the place, tidied as the place stores a name. With the three columns beside it, the source''s view of the place (ADR-0084): written by every run of the source whatever the place keeps, and read to tell whether the sources of one place disagree (#1246). NULL where the source reports nothing, which contradicts no other view.';
 COMMENT ON COLUMN source_records.reported_subtitle IS 'The subtitle this membership''s source last reported for the place (its view, #1246, #1795).';
 COMMENT ON COLUMN source_records.reported_image_url IS 'The picture this membership''s source last reported for the place, after the run''s picture rule (its view, #1246). Its credit is reported_image_credit.';
-COMMENT ON COLUMN source_records.wikidata_items IS 'The Wikidata items a source that knows the place by another id resolves it to (#1248): for a World Heritage membership, the items its site resolves to through P757 (siteItems, ADR-0088 as narrowed by ADR-0094), leaving out an item whose every such statement is deprecated. NULL for a Wikidata source, whose external_id is the item. One item and one point make the place that item''s, for the catalogue''s merge on an equal item (sharedItemsSql). On a part''s record in its whole (World Heritage components, ADR-0198), its component''s item, with wikidata_items among the record''s claims where a curator chose it (ADR-0156).';
+COMMENT ON COLUMN source_records.wikidata_items IS 'The Wikidata items a source that knows the place by another id resolves it to (#1248): for a World Heritage membership, the items its site resolves to through P757 (siteItems, ADR-0088 as narrowed by ADR-0094), leaving out an item whose every such statement is deprecated. NULL for a Wikidata source, whose external_id is the item. One item and one point make the place that item''s, for the catalogue''s merge on an equal item (sharedItemsSql). On a record of World Heritage components (ADR-0198), the item of the list line it stands for -- a part''s component, or a site''s own line on the site''s record of itself (ADR-0200) -- with wikidata_items among the record''s claims where a curator chose it (ADR-0156).';
 COMMENT ON COLUMN source_records.reported_image_credit IS 'The credit of reported_image_url as the run resolved it from Commons ({author, license, licenseUrl, detailsUrl}, the shape of metadata.imageCredit): shown beside the picture wherever a curator is asked to choose it, and written with it to the place when chosen (#1246).';
 COMMENT ON COLUMN source_records.reported_wikipedia_url IS 'The Wikipedia article this membership''s source last reported for the place, the shape of metadata.wikipediaUrl (its view, #1975): two sources of one place under different ids that link different articles are asked about, as for the picture.';
 COMMENT ON COLUMN source_records.reported_label IS 'The label this membership''s source last sent for the place, before a twin''s suffix (#1967): a label another standing place of the catalogue carries is named apart, so every source of one item names it alike.';
 COMMENT ON COLUMN source_records.reported_location IS 'The coordinate this membership''s source last reported for the place (its view, #1246). Two views within ten metres agree (ADR-0027).';
+COMMENT ON COLUMN source_records.listing_ordinal IS 'Where the line this record stands for comes in its source''s list, on a record of World Heritage components (ADR-0200): the ordinal the run paired the line''s point by, written with the record''s view. NULL on a record in a kind, and where the list gives the line no point.';
 COMMENT ON COLUMN source_records.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
 COMMENT ON COLUMN source_records.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
 COMMENT ON COLUMN source_records.admission_answered_at IS 'When a batch answer confirmed this refusal without pinning it (ADR-0067): the question is closed, and the next run applies the rule again. A run that refuses a row it had admitted clears it, so a refusal that comes back is asked again.';
@@ -3203,7 +3207,7 @@ COMMENT ON COLUMN source_records.admission_questioned_at IS 'When a run first as
 COMMENT ON COLUMN source_records.admission_question_sync_log_id IS 'The run that last asked about this row''s pin (#1367).';
 COMMENT ON COLUMN source_records.admitted_for IS 'The work whose fame qualified a museum for the works-first source ({qid, label}, ADR-0023): the reason this membership exists. The run''s own bookkeeping, never proposed to a curator (#571).';
 COMMENT ON COLUMN source_records.is_iconic IS 'The must-see badge, the world tier of this kind (ADR-0045 decision 5): set by a source whose admission rule is a fame line, cleared with a refusal, pinned by a curator in curated_fields. The membership''s, not the place''s: a place admitted to a second kind carries that kind''s badge on that kind''s terms.';
-COMMENT ON COLUMN source_records.curated_fields IS 'Field names a curator has pinned on this membership -- admission (a confirmed or overridden refusal), is_iconic, type -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
+COMMENT ON COLUMN source_records.curated_fields IS 'Field names a curator has pinned on this record -- admission (a confirmed or overridden refusal), is_iconic, type, and on a record of World Heritage components wikidata_items (a confirmed item, ADR-0200) -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
 COMMENT ON COLUMN source_records.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a place none of whose memberships has passed (ADR-0025; per member since ADR-0045 decision 7).';
 COMMENT ON COLUMN source_records.published_at IS 'When this membership became visible. NULL while pending and for every row that predates the gate. What the "New" chip counts from (#529): a gated row is found months before a reader can see it, so the run that found it is the wrong clock.';
 COMMENT ON COLUMN source_records.pending_change_sync_log_id IS 'The run of this membership''s source whose content proposal for the place is held while a reader can see it. NULL when nothing is held. Contents need no equivalent -- a content row is held by being written pending rather than withheld.';
@@ -3502,9 +3506,16 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_placements_membership
     ON experience_location_placements(membership_id);
 COMMENT ON COLUMN experience_locations.name IS 'Component name (e.g., individual fort name within a serial nomination)';
 COMMENT ON COLUMN experience_locations.external_ref IS 'Source-specific reference (e.g., "1739-005" for UNESCO)';
--- The point's own Wikidata item, where Wikidata has one (#1269).
-ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS wikidata_item VARCHAR(20);
-COMMENT ON COLUMN experience_locations.wikidata_item IS 'The Wikidata item this point is, where one is known, for a point whose place is not a serial site''s part: a World Heritage site''s own point, the item whose World Heritage Site ID (P757, any rank but a deprecated-only statement) equals external_ref, recorded by every run; null where no item or more than one carries the reference. A part''s item is its record''s in World Heritage components (wikidata_items, ADR-0156). A claim on it (''wikidata_item'' in curated_fields) is written when a curator accepts a proposed item on the review queue (#1272), and is never overridden by a run (#1269).';
+-- A point's Wikidata item is its list line's record's (ADR-0200): a site's
+-- own point's item is on the site's record of itself in World Heritage
+-- components, as a part's is on its record there. See db/migrations/234.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'experience_locations' AND column_name = 'wikidata_item') THEN
+        RAISE EXCEPTION 'experience_locations still carries wikidata_item: apply db/migrations/234-every-list-line-is-a-record.sql before re-applying 01-schema.sql';
+    END IF;
+END $$;
 
 -- A candidate Wikidata item for a component no item records the reference of
 -- (#1272): a proposal for a curator, never a fact (ADR-0046). See
@@ -3548,8 +3559,6 @@ COMMENT ON COLUMN experience_component_item_proposals.register_disagrees IS 'Whe
 ALTER TABLE experience_component_item_proposals
     ADD COLUMN IF NOT EXISTS answered_by_catalogue BOOLEAN NOT NULL DEFAULT false;
 COMMENT ON COLUMN experience_component_item_proposals.answered_by_catalogue IS 'Whether the catalogue accepted this candidate by its rule rather than a curator (#1839, ADR-0141): the point''s own name within 50 m, nothing contradicting it. answered_by is null then, as it is for a curator since deleted, so the figures about curators'' answers read this instead.';
-CREATE INDEX IF NOT EXISTS idx_experience_locations_wikidata_item
-    ON experience_locations(wikidata_item) WHERE wikidata_item IS NOT NULL;
 
 -- A World Heritage reference without the inscription's variant: `829ter-001`
 -- and `829bis-001` are both `829-001`, the property's number and the part. The
@@ -3622,7 +3631,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_refused ON experience_locati
 -- (#488), NOT NULL for the reason given on `treasures.curated_fields`. See
 -- db/migrations/027.
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
-COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location, and wikidata_item, written when a curator confirms a proposed item on the review queue (#1272) and respected by every run. Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
+COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name and location, respected by every run. A curator''s confirmed item is a claim on the point''s record (wikidata_items in source_records.curated_fields, ADR-0200). Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
 
 -- A moved point is a withdrawal plus an insert, and under a gated source the two
 -- halves become visible at different moments: the insert lands `pending`, so
@@ -4462,10 +4471,10 @@ CREATE TABLE IF NOT EXISTS place_identifiers (
 CREATE UNIQUE INDEX IF NOT EXISTS place_identifiers_identifying
     ON place_identifiers (scheme, value) WHERE identifies;
 CREATE INDEX IF NOT EXISTS place_identifiers_value ON place_identifiers (scheme, value);
-COMMENT ON TABLE place_identifiers IS 'A place''s external identifiers (ADR-0143 decision 2): a Wikidata item, a World Heritage reference (whc: a site''s id or a component''s), an OpenStreetMap object. Derived from the columns that hold them (a record''s external id and items, a component point''s item, a part''s reference on its record in its whole) by place_identifier_claims() and kept current by refresh_place_identifiers(); written by nothing else. A membership''s (source, external id) is its own key and is not repeated here.';
+COMMENT ON TABLE place_identifiers IS 'A place''s external identifiers (ADR-0143 decision 2): a Wikidata item, a World Heritage reference (whc: a site''s id or a component''s), an OpenStreetMap object. Derived from the columns that hold them (a record''s external id and items, a part''s reference on its record in its whole) by place_identifier_claims() and kept current by refresh_place_identifiers(); written by nothing else. A membership''s (source, external id) is its own key and is not repeated here.';
 COMMENT ON COLUMN place_identifiers.identifies IS 'This value names this place, and no other live place: what a run''s lookup may follow. False where it only refers to the place (a serial site''s items, an item two components carry) and on every place of a value two places claim.';
 COMMENT ON COLUMN place_identifiers.claims_identity IS 'Some column this row is derived from says the value is this place. A value claimed by two live places is identifying on neither, and the catalogue check identifiers-on-several-places lists it.';
-COMMENT ON COLUMN place_identifiers.basis IS 'Which columns carry the value for this place: membership (a source knows the place by it), site-items (a World Heritage site''s items), component-item (a serial site''s part''s item on its record in World Heritage components, ADR-0156), point (a standing point''s item), component (a part''s reference on its record in its whole, ADR-0198), curator (a curator''s word, place_identifier_verdicts).';
+COMMENT ON COLUMN place_identifiers.basis IS 'Which columns carry the value for this place: membership (a source knows the place by it), site-items (a World Heritage site''s items), component-item (the item of a list line on its record in World Heritage components: a part''s, or a site''s own line''s, ADR-0156, ADR-0200), component (a part''s reference on its record in its whole, ADR-0198), curator (a curator''s word, place_identifier_verdicts).';
 COMMENT ON COLUMN place_identifiers.recorded_at IS 'When the place first carried the value; kept while it carries it.';
 
 -- A curator's word on one identifier of a place (ADR-0143 decision 5, #1896):
@@ -4494,9 +4503,10 @@ CREATE INDEX IF NOT EXISTS idx_source_records_wikidata_items
 -- equal-item merge reads through the registry:
 -- a Wikidata source's id is its place; a World Heritage site's items are its
 -- place only as one item on a place of one standing point, and otherwise name
--- its parts; a standing point's item, and a part's on its record in World
--- Heritage components (ADR-0156), is its place unless another live place
--- carries it the same way too, which makes it an ensemble's (the chapels and
+-- its parts; a list line's item on its record in World Heritage components
+-- (ADR-0156, ADR-0200) -- a part's, or a site's own line's on the site's record
+-- of itself -- is its place unless another live place carries it the same way
+-- too, which makes it an ensemble's (the chapels and
 -- the village of Saint Thaddeus carry the monastery's). The World Heritage
 -- source is source 1, whose ids are the sites' references.
 CREATE OR REPLACE FUNCTION place_identifier_claims(p_scheme TEXT, p_values TEXT[])
@@ -4527,41 +4537,15 @@ LANGUAGE sql STABLE AS $$
                         AND EXISTS (SELECT 1 FROM experience_locations other_point
                                      WHERE other_point.experience_id = other.experience_id
                                        AND other_point.merged_into_id IS NULL AND other_point.missing_since IS NULL))
-           AND NOT EXISTS (SELECT 1 FROM experience_locations other
-                             JOIN experiences other_place ON other_place.id = other.experience_id
-                              AND other_place.merged_into_id IS NULL
-                            WHERE other.wikidata_item = item AND other.experience_id <> rec.experience_id
-                              AND other.merged_into_id IS NULL AND other.missing_since IS NULL)
     FROM source_records rec
     JOIN experiences e ON e.id = rec.experience_id AND e.merged_into_id IS NULL
     CROSS JOIN LATERAL unnest(rec.wikidata_items) AS item
    WHERE p_scheme = 'wikidata' AND rec.source_id = 10 AND rec.whole_id IS NOT NULL
      AND rec.wikidata_items && p_values::text[] AND item = ANY(p_values)
-     -- A part whose point stands, as a point's item counted only a standing point.
+     -- A place whose point stands: an item on a withdrawn line names nothing.
      AND EXISTS (SELECT 1 FROM experience_locations standing
                   WHERE standing.experience_id = rec.experience_id
                     AND standing.merged_into_id IS NULL AND standing.missing_since IS NULL)
-  UNION ALL
-  SELECT point.experience_id, point.wikidata_item::text, 'point',
-         NOT EXISTS (SELECT 1 FROM experience_locations other
-                       JOIN experiences other_place ON other_place.id = other.experience_id
-                        AND other_place.merged_into_id IS NULL
-                      WHERE other.wikidata_item = point.wikidata_item
-                        AND other.experience_id <> point.experience_id
-                        AND other.merged_into_id IS NULL AND other.missing_since IS NULL)
-           AND NOT EXISTS (SELECT 1 FROM source_records other_rec
-                             JOIN experiences other_place ON other_place.id = other_rec.experience_id
-                              AND other_place.merged_into_id IS NULL
-                            WHERE other_rec.source_id = 10 AND other_rec.whole_id IS NOT NULL
-                              AND other_rec.wikidata_items @> ARRAY[point.wikidata_item::text]
-                              AND other_rec.experience_id <> point.experience_id
-                              AND EXISTS (SELECT 1 FROM experience_locations other_point
-                                           WHERE other_point.experience_id = other_rec.experience_id
-                                             AND other_point.merged_into_id IS NULL AND other_point.missing_since IS NULL))
-    FROM experience_locations point
-    JOIN experiences e ON e.id = point.experience_id AND e.merged_into_id IS NULL
-   WHERE p_scheme = 'wikidata' AND point.wikidata_item = ANY(p_values)
-     AND point.merged_into_id IS NULL AND point.missing_since IS NULL
   UNION ALL
   SELECT m.experience_id, m.external_id::text, 'membership', true
     FROM source_records m
@@ -4572,11 +4556,14 @@ LANGUAGE sql STABLE AS $$
          NOT EXISTS (SELECT 1 FROM source_records other
                        JOIN experiences other_part ON other_part.id = other.experience_id
                         AND other_part.merged_into_id IS NULL
-                      WHERE other.source_id = 10 AND other.whole_id IS NOT NULL
+                      WHERE other.source_id = 10 AND other.whole_id IS NOT NULL AND other.whole_id <> other.experience_id
                         AND other.external_id = rec.external_id AND other.experience_id <> rec.experience_id)
     FROM source_records rec
     JOIN experiences e ON e.id = rec.experience_id AND e.merged_into_id IS NULL
-   WHERE p_scheme = 'whc' AND rec.source_id = 10 AND rec.whole_id IS NOT NULL AND rec.external_id = ANY(p_values)
+   -- A site's record of its own line (ADR-0200) names the site by its site's
+   -- number, which its World Heritage membership already carries.
+   WHERE p_scheme = 'whc' AND rec.source_id = 10 AND rec.whole_id IS NOT NULL AND rec.whole_id <> rec.experience_id
+     AND rec.external_id = ANY(p_values)
   UNION ALL
   -- A curator's word (ADR-0143 decision 5): identifies claims whether or not a
   -- column carries the value; refers carries it without claiming; removed is
@@ -4654,9 +4641,9 @@ RETURNS TABLE (scheme TEXT, value TEXT)
 LANGUAGE sql STABLE AS $$
   SELECT 'wikidata', external_id::text FROM source_records WHERE external_id ~ '^Q[0-9]+$'
   UNION SELECT 'wikidata', unnest(wikidata_items) FROM source_records WHERE wikidata_items IS NOT NULL
-  UNION SELECT 'wikidata', wikidata_item::text FROM experience_locations WHERE wikidata_item IS NOT NULL
   UNION SELECT 'whc', external_id::text FROM source_records WHERE source_id = 1
-  UNION SELECT 'whc', external_id::text FROM source_records WHERE source_id = 10 AND whole_id IS NOT NULL
+  UNION SELECT 'whc', external_id::text FROM source_records
+         WHERE source_id = 10 AND whole_id IS NOT NULL AND whole_id <> experience_id
   UNION SELECT scheme::text, value::text FROM place_identifier_verdicts
 $$;
 COMMENT ON FUNCTION place_identifier_values() IS 'Every value of each scheme a column carries (ADR-0143 decision 2).';
@@ -4720,9 +4707,6 @@ BEGIN
     SELECT unnest(wikidata_items) FROM source_records
      WHERE experience_id = ANY(p_places) AND wikidata_items IS NOT NULL
     UNION ALL
-    SELECT wikidata_item FROM experience_locations
-     WHERE experience_id = ANY(p_places) AND wikidata_item IS NOT NULL
-    UNION ALL
     SELECT value FROM place_identifier_verdicts WHERE scheme = 'wikidata' AND experience_id = ANY(p_places)) carried
    WHERE v IS NOT NULL;
   SELECT array_agg(DISTINCT v) INTO refs FROM (
@@ -4755,7 +4739,9 @@ $$;
 COMMENT ON FUNCTION refresh_place_identifiers_of(INTEGER[], TEXT[], TEXT[]) IS 'Refreshes every value these places hold in the registry or carry now, and the Wikidata items and World Heritage references named beside them, all their keys taken in one ordered pass (ADR-0143 decision 2).';
 
 -- One trigger function per table, fired for the rows whose identifying columns
--- changed: the place a row hangs on before and after the write is refreshed.
+-- changed: the place a row hangs on before and after the write is refreshed. A
+-- point carries no identifier, and is followed because whether it stands
+-- decides its place's claims (a site of one point, a line whose point stands).
 CREATE OR REPLACE FUNCTION place_identifiers_follow_membership() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -4783,8 +4769,7 @@ BEGIN
     PERFORM refresh_place_identifiers_of(ARRAY[NEW.experience_id]);
   ELSE
     PERFORM refresh_place_identifiers_of(
-      array_remove(ARRAY[OLD.experience_id, CASE WHEN TG_OP <> 'DELETE' THEN NEW.experience_id END], NULL),
-      ARRAY[OLD.wikidata_item::text]);
+      array_remove(ARRAY[OLD.experience_id, CASE WHEN TG_OP <> 'DELETE' THEN NEW.experience_id END], NULL));
   END IF;
   RETURN NULL;
 END;
@@ -4813,10 +4798,10 @@ CREATE OR REPLACE TRIGGER trg_place_identifiers_point_write
   AFTER INSERT OR DELETE ON experience_locations
   FOR EACH ROW EXECUTE FUNCTION place_identifiers_follow_point();
 CREATE OR REPLACE TRIGGER trg_place_identifiers_point_update
-  AFTER UPDATE OF experience_id, wikidata_item, merged_into_id, missing_since ON experience_locations
+  AFTER UPDATE OF experience_id, merged_into_id, missing_since ON experience_locations
   FOR EACH ROW
-  WHEN ((OLD.experience_id, OLD.wikidata_item, OLD.merged_into_id IS NULL, OLD.missing_since IS NULL)
-        IS DISTINCT FROM (NEW.experience_id, NEW.wikidata_item, NEW.merged_into_id IS NULL, NEW.missing_since IS NULL))
+  WHEN ((OLD.experience_id, OLD.merged_into_id IS NULL, OLD.missing_since IS NULL)
+        IS DISTINCT FROM (NEW.experience_id, NEW.merged_into_id IS NULL, NEW.missing_since IS NULL))
   EXECUTE FUNCTION place_identifiers_follow_point();
 
 -- A part relation carries no identifier: a component's reference is its
@@ -5233,8 +5218,15 @@ BEGIN
 
     -- The part's record of World Heritage components in its site, under the
     -- component's reference; the relation follows it (parts_follow_records).
-    INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
-    VALUES (part, site, 10, component.external_ref);
+    -- A line the site's record of itself stood for (ADR-0200) moves with its
+    -- point, its item, a curator's claim on it and its view with it.
+    UPDATE source_records SET experience_id = part, updated_at = NOW()
+     WHERE source_id = 10 AND whole_id = site AND experience_id = site
+       AND lower(external_id) = lower(component.external_ref);
+    IF NOT FOUND THEN
+      INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
+      VALUES (part, site, 10, component.external_ref);
+    END IF;
 
     UPDATE experience_locations SET experience_id = part WHERE id = component.id;
 
