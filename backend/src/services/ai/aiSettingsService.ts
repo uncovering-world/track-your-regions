@@ -32,7 +32,14 @@ function invalidateCache(): void {
 /** Per-feature default models (override the global default). */
 const FEATURE_DEFAULTS: Record<string, string> = {
   cv_cluster_match: 'o4-mini',
+  // The OpenAI half of the pair that reads a monument's dedication from its lead (ADR-0201, #2472): the model it was measured with.
+  lead_dedication: 'gpt-5-mini',
 };
+
+/** Each feature's own default model as the setting it stands for (`model.<feature>`), for a reader of the settings to show what runs. */
+export function featureDefaultSettings(): Record<string, string> {
+  return Object.fromEntries(Object.entries(FEATURE_DEFAULTS).map(([feature, model]) => [`model.${feature}`, model]));
+}
 
 /** Get the model ID configured for a feature. Uses per-feature default, then global default (gpt-4.1-mini). */
 export async function getModelForFeature(feature: string): Promise<string> {

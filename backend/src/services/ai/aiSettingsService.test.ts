@@ -48,6 +48,10 @@ describe('reading a setting', () => {
     expect(await service.getModelForFeature('never_configured')).toBe('gpt-4.1-mini');
     expect(await service.getSetting('absent')).toBeUndefined();
   });
+
+  it('names each feature default as the setting it stands for, so the panel shows the model a run uses', () => {
+    expect(service.featureDefaultSettings()).toMatchObject({ 'model.cv_cluster_match': 'o4-mini', 'model.lead_dedication': 'gpt-5-mini' });
+  });
 });
 
 describe('updateSetting', () => {
