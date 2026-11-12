@@ -5336,7 +5336,11 @@ be saved back with one name removed:
 2. English Wikipedia's *Monuments and memorials to X*, *Memorials to X* or *Monuments to X*
    category of the place's article (`MEMORIALS_CATEGORY`): X, a name with a capital first letter
    and a leading *the* dropped, is resolved to the article titled X exactly, and that article to
-   its item. The Statue of Unity is filed under *Memorials to Vallabhbhai Patel*. A class of people
+   its item. The Statue of Unity is filed under *Memorials to Vallabhbhai Patel*. A title with a
+   place after X, *Monuments and memorials to Mustafa Kemal Atatürk in Turkey* on the Republic
+   Monument, captures "X in Y", which is no article's title. X is asked again without the place
+   after its last " in " (`withoutPlace`, the place a word with a capital letter, "the" before it allowed), and the whole
+   capture is kept where it resolves, so a title whose own name holds "in" is not cut (#2434). A class of people
    is written with a small letter in a category title (*Statues of military personnel*) and names
    nobody. The same step reads the categories that say what a memorial concerns
    (`CONCERNING_CATEGORIES`): *Monuments and memorials related to X* or *concerning X*, *X
