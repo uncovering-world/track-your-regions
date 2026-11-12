@@ -4,9 +4,10 @@
  * router, so what is asserted is the URL a curator lands on.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
+import { rememberWorldView } from '../../utils/lastWorldView';
 import { ReviewPlaceLink } from './ReviewPlaceLink';
 
 /** The Pergamon Museum, as the arrived row's shownAt names it on dev (2026-11-01). */
@@ -36,7 +37,34 @@ function renderAt(path: string, place = PERGAMON, onRowClick = vi.fn()) {
   return onRowClick;
 }
 
+/** The same museum placed by a second world view too, a curator's own (ids made up for the test). */
+const PLACED_TWICE = {
+  ...PERGAMON,
+  regions: [
+    ...PERGAMON.regions,
+    { id: 9101, name: 'Berlin-Mitte', world_view_id: 9, world_view_name: 'Neighbourhoods' },
+  ],
+};
+
+afterEach(() => rememberWorldView(null));
+
 describe('ReviewPlaceLink', () => {
+  it('opens the card in the world view the curator last had open, where that one places it (#2474)', () => {
+    rememberWorldView(9);
+    renderAt('/review', PLACED_TWICE);
+
+    expect(screen.getByRole('link', { name: 'Pergamon Museum' }))
+      .toHaveAttribute('href', '/wv/9/r/9101-berlin-mitte/e/14539-pergamon-museum');
+  });
+
+  it('falls back to the first world view that places it, where the one last open does not', () => {
+    rememberWorldView(77);
+    renderAt('/review', PLACED_TWICE);
+
+    expect(screen.getByRole('link', { name: 'Pergamon Museum' }))
+      .toHaveAttribute('href', '/wv/5/r/6901-berlin/e/14539-pergamon-museum');
+  });
+
   it('opens the card on the map at the smallest region of the first world view that places it, from /review', () => {
     const onRowClick = renderAt('/review?q=altes');
 

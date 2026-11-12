@@ -9,6 +9,7 @@ import { useAppAddress } from './useAppAddress';
 import { useAddressedRegion, type SelectRegionOptions } from './useAddressedRegion';
 import { RegionHoverProvider } from './useRegionHover';
 import { queryKeys } from '../api/queryKeys';
+import { rememberWorldView } from '../utils/lastWorldView';
 
 export type { SelectRegionOptions } from './useAddressedRegion';
 
@@ -95,6 +96,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   // Selected world view ID - available immediately from URL, falls back to selected object
   const selectedWorldViewId = selectedWorldView?.id ?? urlWorldViewId;
+
+  // The world view a place page shows, kept for the pages whose address names
+  // none (#2474): the review page opens a place in it. Off a place page the
+  // address is null, and what was last open stands.
+  useEffect(() => {
+    if (address !== null) rememberWorldView(urlWorldViewId);
+  }, [address, urlWorldViewId]);
 
   // Check if current world view is custom (not GADM default)
   // An address naming a world view implies custom: the default writes no segment.
