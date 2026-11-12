@@ -29,14 +29,14 @@ async function pinned(id: number, name: string, admission: 'admitted' | 'refused
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      SELECT $1, s.id, $2, $3, ST_SetSRID(ST_MakePoint(12.47, 41.89), 4326) FROM experience_sources s WHERE s.name = 'Art Museums'`,
-    [id, `Q${id}-pin-fixture`, name],
+    [id, `Q${id}001`, name],
   );
   memberships[id] = (await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, admission_reason,
        curated_fields, admission_pin_verdict, admission_pin_reason)
      SELECT $1, s.kind_id, s.id, $2, $3::text, CASE WHEN $3::text = 'refused' THEN $4::text END, '["admission"]', 'refused', $4::text
        FROM experience_sources s WHERE s.name = 'Art Museums' RETURNING id`,
-    [id, `Q${id}-pin-fixture`, admission, reason],
+    [id, `Q${id}001`, admission, reason],
   )).rows[0].id;
   await pool.query(
     `INSERT INTO experience_curation_log (experience_id, curator_id, action, details) VALUES ($1, $2, $3, $4)`,

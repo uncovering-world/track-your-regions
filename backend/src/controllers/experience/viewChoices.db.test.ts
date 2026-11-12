@@ -61,12 +61,12 @@ beforeEach(async () => {
   )).rows[0].id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, image_url, location)
-     SELECT $1, s.id, '216', 'Rila Monastery', $2, ST_SetSRID(ST_MakePoint(23.340187, 42.133298), 4326)
+     SELECT $1, s.id, '9800', 'Rila Monastery', $2, ST_SetSRID(ST_MakePoint(23.340187, 42.133298), 4326)
        FROM experience_sources s WHERE s.name = 'UNESCO World Heritage Sites'`,
     [RILA, UNESCO_PICTURE],
   );
-  unescoView = await membership('UNESCO World Heritage Sites', '216', 'Rila Monastery', UNESCO_PICTURE, 23.340187, 42.133298, null);
-  wikidataView = await membership('Places of worship', 'Q207945', 'Monastery of Saint John of Rila', WIKIDATA_PICTURE,
+  unescoView = await membership('UNESCO World Heritage Sites', '9800', 'Rila Monastery', UNESCO_PICTURE, 23.340187, 42.133298, null);
+  wikidataView = await membership('Places of worship', 'Q9800001', 'Monastery of Saint John of Rila', WIKIDATA_PICTURE,
     23.340278, 42.133333, WIKIDATA_CREDIT);
 });
 
@@ -191,8 +191,14 @@ describe('two sources that describe one place differently (#1246)', () => {
   });
 
   it('asks nothing of two views under one id, which read one Wikidata item (ADR-0085)', async () => {
-    // Both memberships under one Wikidata item: the ADR's case, read one item.
-    await pool.query(`UPDATE source_records SET external_id = 'Q207945' WHERE id = $1`, [unescoView]);
+    // Both memberships under one Wikidata item, the ADR's case: a second Wikidata
+    // source in place of UNESCO, whose ids are site numbers (ADR-0198).
+    await pool.query(
+      `UPDATE source_records
+          SET (source_id, kind_id, external_id) = (SELECT s.id, s.kind_id, 'Q9800001' FROM experience_sources s WHERE s.name = 'Archaeology')
+        WHERE id = $1`,
+      [unescoView],
+    );
 
     expect(await open()).toEqual([]);
   });
@@ -214,7 +220,7 @@ describe('two sources that describe one place differently (#1246)', () => {
   it('keeps an answer when a view it recorded leaves, and asks again when one arrives (#2212)', async () => {
     // The Golden Gate's shape: the name answered over three views, one of them
     // a kind's that later refused the place. A third source on Rila stands in.
-    const third = await membership('Archaeology', 'Q999001', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
+    const third = await membership('Archaeology', 'Q9800002', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
     const outcome = await chooseViewsUnderLock(RILA, curatorId, null, await keepingChoices(RILA), await sources());
     expect(outcome.result?.changed).toEqual([]);
     expect(await open()).toEqual([]);
@@ -229,7 +235,7 @@ describe('two sources that describe one place differently (#1246)', () => {
   });
 
   it('asks again when the view the answer chose leaves, since no standing source gives the value shown (#2212)', async () => {
-    const third = await membership('Archaeology', 'Q999001', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
+    const third = await membership('Archaeology', 'Q9800002', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
     const outcome = await chooseViewsUnderLock(RILA, curatorId, null, [
       { field: 'name', membershipId: third },
       { field: 'imageUrl', membershipId: unescoView },
@@ -247,7 +253,7 @@ describe('two sources that describe one place differently (#1246)', () => {
     // A part's World Heritage components record goes with its last component
     // relation, and the choice's `chosen_membership_id` goes null with it
     // (ON DELETE SET NULL) — the shape of a keep, read off the values instead.
-    const third = await membership('Archaeology', 'Q999001', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
+    const third = await membership('Archaeology', 'Q9800002', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
     await chooseViewsUnderLock(RILA, curatorId, null, [
       { field: 'name', membershipId: third },
       { field: 'imageUrl', membershipId: unescoView },
@@ -265,7 +271,7 @@ describe('two sources that describe one place differently (#1246)', () => {
     // A curator's own name, kept over the sources: in no recorded view, so it
     // never reads as a value a departed view gave.
     await pool.query(`UPDATE experiences SET name = 'Rila Monastery of Saint Ivan' WHERE id = $1`, [RILA]);
-    const third = await membership('Archaeology', 'Q999001', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
+    const third = await membership('Archaeology', 'Q9800002', 'Rila', UNESCO_PICTURE, 23.340187, 42.133298, null);
     await chooseViewsUnderLock(RILA, curatorId, null, [
       { field: 'name', membershipId: null },
       { field: 'imageUrl', membershipId: unescoView },

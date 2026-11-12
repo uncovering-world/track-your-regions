@@ -46,14 +46,14 @@ async function conflictRun(): Promise<number> {
   });
   await pool.query(
     `INSERT INTO experience_sync_changes (sync_log_id, experience_id, external_id, change_type, changed_fields, contents)
-     VALUES ($1, $2, 'Q600139', 'conflict', $3, $4)`,
+     VALUES ($1, $2, 'Q9612001', 'conflict', $3, $4)`,
     [logId, PLACE,
       JSON.stringify([
         conflict('location', TREVI, SALONE),
         conflict('metadata.website', 'https://curator.example/aqua-virgo', 'https://source.example/aqua-virgo'),
       ]),
       JSON.stringify({ locations: { added: [], returned: [], withdrawn: [], changed: [{
-        item: { ref: 'Q600139', name: 'Vicus Caprarius, by the Trevi Fountain' },
+        item: { ref: 'Q9612001', name: 'Vicus Caprarius, by the Trevi Fountain' },
         fields: [conflict('location', TREVI, SALONE)],
       }] } })],
   );
@@ -88,18 +88,18 @@ beforeEach(async () => {
   userId = user.rows[0].id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location, curated_fields, metadata)
-     VALUES ($1, $2, 'Q600139', 'Aqua Virgo', ST_SetSRID(ST_MakePoint($3, $4), 4326),
+     VALUES ($1, $2, 'Q9612001', 'Aqua Virgo', ST_SetSRID(ST_MakePoint($3, $4), 4326),
              '["location", "metadata.website"]', $5)`,
     [PLACE, sourceId, TREVI.lon, TREVI.lat, JSON.stringify({ website: 'https://curator.example/aqua-virgo' })],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state)
-     VALUES ($1, $2, $3, 'Q600139', 'admitted', 'verified')`,
+     VALUES ($1, $2, $3, 'Q9612001', 'admitted', 'verified')`,
     [PLACE, source.rows[0].kind_id, sourceId],
   );
   const stored = await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, external_ref, name, location, curation_state, curated_fields)
-     VALUES ($1, 'Q600139', 'Vicus Caprarius, by the Trevi Fountain', ST_SetSRID(ST_MakePoint($2, $3), 4326),
+     VALUES ($1, 'Q9612001', 'Vicus Caprarius, by the Trevi Fountain', ST_SetSRID(ST_MakePoint($2, $3), 4326),
              'verified', '["name", "location"]') RETURNING id`,
     [PLACE, TREVI.lon, TREVI.lat],
   );

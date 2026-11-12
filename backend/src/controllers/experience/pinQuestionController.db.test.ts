@@ -17,7 +17,7 @@ import { getReviewQueue } from './reviewQueueController.js';
  */
 
 const FARNESINA = 9530;
-const QID = 'Q9530-farnesina-fixture';
+const QID = 'Q9530001';
 const NAME = 'Villa Farnesina (pin fixture)';
 const ANSWERED = 'probe: site class villa — put back by the kept-out card';
 const ASKED = 'site, not a venue: villa — named by Galatea (25 sitelinks)';

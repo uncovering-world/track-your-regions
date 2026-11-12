@@ -91,13 +91,13 @@ beforeEach(async () => {
   )).rows[0].id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location, metadata)
-     VALUES ($1, $2, '9491-fixture', 'Frontiers of the Roman Empire (fixture)', ST_SetSRID(ST_MakePoint(6.96, 50.94), 4326),
-             '{"unescoUrl": "https://whc.unesco.org/en/list/9491-fixture"}')`,
+     VALUES ($1, $2, '9491', 'Frontiers of the Roman Empire (fixture)', ST_SetSRID(ST_MakePoint(6.96, 50.94), 4326),
+             '{"unescoUrl": "https://whc.unesco.org/en/list/9491"}')`,
     [SITE, heritage],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     VALUES ($1, $2, $3, '9491-fixture', 'auto', NOW())`,
+     VALUES ($1, $2, $3, '9491', 'auto', NOW())`,
     [SITE, unesco.kind_id, heritage],
   );
   await writeExperienceLocations(SITE, [PRAETORIUM, DEUTZ], { syncLogId: null, sourceId: heritage, components: true });
@@ -136,15 +136,15 @@ describe("the curator is asked which view a serial site's part shows (#2063)", (
     const [card] = (await querySources([part.id])).rows;
 
     expect(card.part_of).toEqual({
-      id: SITE, name: 'Frontiers of the Roman Empire (fixture)', unesco_id: '9491-fixture',
-      unesco_url: 'https://whc.unesco.org/en/list/9491-fixture', component_ref: PRAETORIUM.externalRef,
+      id: SITE, name: 'Frontiers of the Roman Empire (fixture)', unesco_id: '9491',
+      unesco_url: 'https://whc.unesco.org/en/list/9491', component_ref: PRAETORIUM.externalRef,
     });
     const location = card.source_views.find((row: { field: string }) => row.field === 'location');
     expect(location.metres).toBeGreaterThan(250);
     expect(location.views).toEqual(expect.arrayContaining([
       expect.objectContaining({
         membership_id: componentRecord, component: true, external_id: PRAETORIUM.externalRef,
-        source_page: 'https://whc.unesco.org/en/list/9491-fixture',
+        source_page: 'https://whc.unesco.org/en/list/9491',
       }),
       expect.objectContaining({ component: false, external_id: ITEM }),
     ]));

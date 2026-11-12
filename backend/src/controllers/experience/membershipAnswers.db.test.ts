@@ -18,7 +18,7 @@ import { answeredSourceId } from './experienceScope.js';
 
 const CAPITOLINE = 9500;
 const OTHER_PLACE = 9501;
-const QID = 'Q9500-capitoline-fixture';
+const QID = 'Q9500001';
 const USER_UUID = '00000000-0000-4000-8000-000000009500';
 
 let userId = 0;
@@ -70,7 +70,7 @@ beforeEach(async () => {
   );
   artMembership = await insertMembership(CAPITOLINE, 'Art Museums', 'auto', QID);
   archaeologyMembership = await insertMembership(CAPITOLINE, 'Archaeology', 'pending', QID);
-  otherMembership = await insertMembership(OTHER_PLACE, 'Archaeology', 'pending', `${QID}-other`);
+  otherMembership = await insertMembership(OTHER_PLACE, 'Archaeology', 'pending', 'Q9501001');
 });
 
 afterAll(async () => {

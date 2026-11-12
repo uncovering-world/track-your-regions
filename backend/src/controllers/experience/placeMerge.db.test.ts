@@ -21,7 +21,7 @@ const WORSHIP = 9700;
 const SITE = 9701;
 /** A third place with a lower id, for a merge that folds the survivor of an earlier one. */
 const MUSEUM = 9699;
-const QID = 'Q99309';
+const QID = 'Q9700001';
 const WORK_QID = 'Q9700-merge-fixture-work';
 const TWICE = '00000000-0000-4000-8000-000000009700';
 const ONCE = '00000000-0000-4000-8000-000000009701';
@@ -368,13 +368,13 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
   it("answers the folded place's address with the surviving place's card, down a chain of merges", async () => {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
-       SELECT $1, s.id, 'Q9699-merge-fixture', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
+       SELECT $1, s.id, 'Q9699001', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
          FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
+       SELECT $1, s.kind_id, s.id, 'Q9699001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
     const read = (id: number) => getExperience({ params: { id }, caller: undefined });
@@ -390,13 +390,13 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
   it('refuses to undo a merge whose survivor has since been merged into another place', async () => {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
-       SELECT $1, s.id, 'Q9699-merge-fixture', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
+       SELECT $1, s.id, 'Q9699001', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
          FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
+       SELECT $1, s.kind_id, s.id, 'Q9699001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
     const first = await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
@@ -412,13 +412,13 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
   it("reads the decisions made about every entry folded into the place, down a chain, while the merges stand (#1366)", async () => {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
-       SELECT $1, s.id, 'Q9699-merge-fixture', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
+       SELECT $1, s.id, 'Q9699001', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
          FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
+       SELECT $1, s.kind_id, s.id, 'Q9699001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
     // The archaeological site's admission was pinned before any merge.
@@ -448,13 +448,13 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
   it("keeps a folded entry's earlier merge into another place, since undone, in the history (#1366)", async () => {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
-       SELECT $1, s.id, 'Q9699-merge-fixture', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
+       SELECT $1, s.id, 'Q9699001', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
          FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
+       SELECT $1, s.kind_id, s.id, 'Q9699001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [MUSEUM],
     );
     // The site went into the museum first, by mistake, and came back out.
@@ -476,13 +476,13 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
   it('undoes two merges into one place last first', async () => {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
-       SELECT $1, s.id, 'Q9699-merge-fixture', 'Pantheon (merge fixture monument)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
+       SELECT $1, s.id, 'Q9699001', 'Pantheon (merge fixture monument)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
          FROM experience_sources s WHERE s.name = 'Public art'`,
       [MUSEUM],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Public art'`,
+       SELECT $1, s.kind_id, s.id, 'Q9699001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Public art'`,
       [MUSEUM],
     );
     // Both fold into the place of worship, the monument second.

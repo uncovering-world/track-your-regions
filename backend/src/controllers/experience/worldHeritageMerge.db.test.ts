@@ -6,7 +6,7 @@ import { undoMerge } from './placeMerge.js';
 /**
  * A World Heritage site of one point is its one Wikidata item (#1248,
  * ADR-0088), against PostgreSQL. Chartres Cathedral is a World Heritage row
- * (81, one point) and a place of worship (Q180274) thirty metres apart: they
+ * (81, one point) and a place of worship (Q9831083) thirty metres apart: they
  * merge, to one point. A serial site of two points sharing an item, a site
  * whose id resolves to two items, and a site whose point was never written
  * merge with nothing. Osun-Osogbo is the same shape with a point each source
@@ -90,20 +90,20 @@ beforeEach(async () => {
   await clear();
   const unesco = 'UNESCO World Heritage Sites';
   const worship = 'Places of worship';
-  await place(CHARTRES, unesco, '81-fixture', ['Q180274'], [['81-001', 1.4878, 48.4477]]);
-  await place(CHARTRES_WORSHIP, worship, 'Q180274', null, [['Q180274', 1.4876, 48.4479]]);
-  await place(SERIAL, unesco, '9832-fixture', ['Q98320'], [['9832-001', 10, 10], ['9832-002', 10.01, 10.01]]);
-  await place(SERIAL_WORSHIP, worship, 'Q98320', null, [['Q98320', 10, 10]]);
-  await place(TWO_ITEMS, unesco, '9834-fixture', ['Q98340', 'Q98341'], [['9834-001', 20, 20]]);
-  await place(TWO_ITEMS_WORSHIP, worship, 'Q98340', null, [['Q98340', 20, 20]]);
-  await place(NO_POINT, unesco, '9836-fixture', ['Q98360'], []);
-  await place(NO_POINT_WORSHIP, worship, 'Q98360', null, [['Q98360', 30, 30]]);
+  await place(CHARTRES, unesco, '9830', ['Q9831083'], [['81-001', 1.4878, 48.4477]]);
+  await place(CHARTRES_WORSHIP, worship, 'Q9831083', null, [['Q9831083', 1.4876, 48.4479]]);
+  await place(SERIAL, unesco, '9832', ['Q9833083'], [['9832-001', 10, 10], ['9832-002', 10.01, 10.01]]);
+  await place(SERIAL_WORSHIP, worship, 'Q9833083', null, [['Q9833083', 10, 10]]);
+  await place(TWO_ITEMS, unesco, '9834', ['Q9835083', 'Q9835084'], [['9834-001', 20, 20]]);
+  await place(TWO_ITEMS_WORSHIP, worship, 'Q9835083', null, [['Q9835083', 20, 20]]);
+  await place(NO_POINT, unesco, '9836', ['Q9837083'], []);
+  await place(NO_POINT_WORSHIP, worship, 'Q9837083', null, [['Q9837083', 30, 30]]);
   // 190 m apart, as on the development catalogue; each place also holds a
   // point its source withdrew.
-  await place(OSUN, unesco, '9838-fixture', ['Q98380'], [['9838-001', 40, 40]]);
+  await place(OSUN, unesco, '9838', ['Q9839083'], [['9838-001', 40, 40]]);
   await withdrawnPoint(OSUN, '9838-002', 40.01, 40.01);
-  await place(OSUN_GROVE, worship, 'Q98380', null, [['Q98380', 40.0022, 40]]);
-  await withdrawnPoint(OSUN_GROVE, 'Q98380', 40, 40);
+  await place(OSUN_GROVE, worship, 'Q9839083', null, [['Q9839083', 40.0022, 40]]);
+  await withdrawnPoint(OSUN_GROVE, 'Q9839083', 40, 40);
 });
 
 afterAll(async () => {
@@ -113,9 +113,9 @@ afterAll(async () => {
 
 describe('a World Heritage site of one point and its one item (ADR-0088)', () => {
   it('merges with the place of worship sharing its item, to one point, and with nothing else', async () => {
-    const report = await joinPlacesClaimingOneItem(['Q180274', 'Q98320', 'Q98340', 'Q98341', 'Q98360']);
+    const report = await joinPlacesClaimingOneItem(['Q9831083', 'Q9833083', 'Q9835083', 'Q9835084', 'Q9837083']);
 
-    expect(report.merged).toEqual([expect.objectContaining({ qid: 'Q180274', survivorId: CHARTRES, foldedId: CHARTRES_WORSHIP })]);
+    expect(report.merged).toEqual([expect.objectContaining({ qid: 'Q9831083', survivorId: CHARTRES, foldedId: CHARTRES_WORSHIP })]);
     expect(report.refused).toEqual([]);
     expect(await standingPoints(CHARTRES)).toEqual([{ placements: 2 }]);
     expect(await standingPoints(CHARTRES_WORSHIP)).toEqual([]);
@@ -126,15 +126,15 @@ describe('a World Heritage site of one point and its one item (ADR-0088)', () =>
   });
 
   it('counts only standing points: a withdrawn one neither keeps a site from its item nor adds a pin (#1360)', async () => {
-    const report = await joinPlacesClaimingOneItem(['Q98380']);
+    const report = await joinPlacesClaimingOneItem(['Q9839083']);
 
-    expect(report.merged).toEqual([expect.objectContaining({ qid: 'Q98380', survivorId: OSUN, foldedId: OSUN_GROVE })]);
+    expect(report.merged).toEqual([expect.objectContaining({ qid: 'Q9839083', survivorId: OSUN, foldedId: OSUN_GROVE })]);
     expect(await pins(OSUN)).toEqual(['9838-001']);
     expect(await pins(OSUN_GROVE)).toEqual([]);
   });
 
   it('gives both places back their own point on an undo', async () => {
-    const report = await joinPlacesClaimingOneItem(['Q180274']);
+    const report = await joinPlacesClaimingOneItem(['Q9831083']);
     const curator = await pool.query<{ id: number }>(
       `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'curator') RETURNING id`, [CURATOR],
     );

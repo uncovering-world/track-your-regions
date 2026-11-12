@@ -13,7 +13,7 @@ import { experiencesByRegionQuerySchema } from '../../types/index.js';
 
 const PLACE = 9880;
 const NAME = 'Capitoline Museums (offered fixture)';
-const QID = 'Q9880-capitoline-offered-fixture';
+const QID = 'Q9880001';
 
 let regionId = 0;
 let artSource = 0;

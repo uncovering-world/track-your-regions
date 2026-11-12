@@ -62,7 +62,7 @@ beforeEach(async () => {
   )).rows[0].id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location, country_names, metadata)
-     SELECT $1, s.id, 'Q157747', 'Lupanar', ST_SetSRID(ST_MakePoint(14.48733, 40.74950), 4326), ARRAY['Italy'],
+     SELECT $1, s.id, 'Q9768001', 'Lupanar', ST_SetSRID(ST_MakePoint(14.48733, 40.74950), 4326), ARRAY['Italy'],
             jsonb_build_object('wikipediaUrl', 'https://en.wikipedia.org/wiki/Lupanar_(Pompeii)',
                                'osm', jsonb_build_object('tag', 'historic=archaeological_site'))
        FROM experience_sources s WHERE s.name = 'Archaeology'`,
@@ -70,7 +70,7 @@ beforeEach(async () => {
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
-     SELECT $1, s.kind_id, s.id, 'Q157747', 'pending' FROM experience_sources s WHERE s.name = 'Archaeology'`,
+     SELECT $1, s.kind_id, s.id, 'Q9768001', 'pending' FROM experience_sources s WHERE s.name = 'Archaeology'`,
     [LUPANAR],
   );
 });
@@ -145,7 +145,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
     // The place is also a World Heritage site, as the Pont du Gard is.
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'whs-9768-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = 1`,
+       SELECT $1, s.kind_id, s.id, '9768', 'verified', NOW() FROM experience_sources s WHERE s.id = 1`,
       [LUPANAR],
     );
 
@@ -164,7 +164,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
     // would be served, were the list not read first.
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, admission)
-       SELECT $1, s.kind_id, s.id, 'whs-9768-fixture', 'pending', 'refused' FROM experience_sources s WHERE s.id = 1`,
+       SELECT $1, s.kind_id, s.id, '9768', 'pending', 'refused' FROM experience_sources s WHERE s.id = 1`,
       [LUPANAR],
     );
 
@@ -176,7 +176,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
     // The place is also an art museum the curator does not look after.
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q157747', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
+       SELECT $1, s.kind_id, s.id, 'Q9768001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [LUPANAR],
     );
 
@@ -233,7 +233,7 @@ describe("Jev's reading of an arriving place (#1768)", () => {
     mockedAsk.mockResolvedValue(answered('visit', 0.95));
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q157747', 'auto', NOW() - INTERVAL '1 day'
+       SELECT $1, s.kind_id, s.id, 'Q9768001', 'auto', NOW() - INTERVAL '1 day'
          FROM experience_sources s WHERE s.name = 'Art Museums'`,
       [LUPANAR],
     );

@@ -21,7 +21,7 @@ import { findsOnViewCountSql } from './siteFinds.js';
 const DIG = 9560;
 const SHOWN = 9561;
 const UNREAD = 9562;
-const DIG_QID = 'Q9560-dig';
+const DIG_QID = 'Q9560001';
 const WORKS = {
   onView: 'Q9560-bronze-mask',
   onlyUnread: 'Q9560-gold-cup',
@@ -42,7 +42,7 @@ async function place(id: number, type: string, state: string): Promise<void> {
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      VALUES ($1, 5, $2, $3, ST_SetSRID(ST_MakePoint(22.75, 37.73), 4326))`,
-    [id, id === DIG ? DIG_QID : `Q-venue-${id}`, `Place ${id}`],
+    [id, id === DIG ? DIG_QID : `Q${id}001`, `Place ${id}`],
   );
   // The type within the kind is the membership's (ADR-0084).
   await pool.query(
@@ -150,7 +150,7 @@ describe('the finds on view of a site', () => {
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, type, curation_state)
-       VALUES ($1, 4, 4, 'Q9560-dig-as-worship', 'temple', 'auto')`,
+       VALUES ($1, 4, 4, 'Q9560002', 'temple', 'auto')`,
       [DIG],
     );
 

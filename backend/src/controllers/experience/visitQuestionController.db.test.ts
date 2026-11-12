@@ -18,7 +18,7 @@ import { answerVisitQuestionUnderLock, VISIT_REFUSAL_REASON } from './visitQuest
  */
 
 const EBORACUM = 9771;
-const QID = 'Q9771-eboracum-fixture';
+const QID = 'Q9771001';
 const NAME = 'Eboracum (visit question fixture)';
 const ADMIN = '00000000-0000-4000-8000-000000009771';
 

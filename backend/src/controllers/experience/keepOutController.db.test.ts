@@ -18,7 +18,7 @@ import { getReviewQueue } from './reviewQueueController.js';
  */
 
 const CONCORD = 9772;
-const QID = 'Q9772-concord-fixture';
+const QID = 'Q9772001';
 const NAME = 'Temple of Concord (keep-out fixture)';
 const ADMIN = '00000000-0000-4000-8000-000000009772';
 const CURATOR = '00000000-0000-4000-8000-000000009773';

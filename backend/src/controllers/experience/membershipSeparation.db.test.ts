@@ -19,7 +19,7 @@ import { mergePlaces, undoMerge } from './placeMerge.js';
 const PANTHEON = 9710;
 /** A place another source brought on the same item, for a merge and for a join after the separation. */
 const OTHER = 9712;
-const QID = 'Q99309';
+const QID = 'Q9710001';
 const WORK_QID = 'Q9710-separation-fixture-work';
 const TRAVELLER = '00000000-0000-4000-8000-000000009710';
 const CURATOR = '00000000-0000-4000-8000-000000009711';
@@ -49,7 +49,8 @@ const membershipOf = async (source: string): Promise<number> => (await pool.quer
   `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at,
                                             reported_name)
    SELECT $1, s.kind_id, s.id, $2, 'auto', NOW(), $4 FROM experience_sources s WHERE s.name = $3 RETURNING id`,
-  [PANTHEON, QID, source, NAME],
+  // UNESCO knows the place by its number, every other source by the item.
+  [PANTHEON, source === 'UNESCO World Heritage Sites' ? '9710' : QID, source, NAME],
 )).rows[0].id;
 
 const pointPlacedBy = async (name: string, lon: number, memberships: number[]): Promise<number> => {
@@ -374,7 +375,7 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
     await pointPlacedBy('Rotunda', 12.4769, [unescoMembership]);
     await pool.query(
       `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, wikidata_items, curated_fields)
-       VALUES ($1, $1, 10, '9710-001', ARRAY['Q9710001'], '["wikidata_items"]')`,
+       VALUES ($1, $1, 10, '9710-001', ARRAY['Q9710002'], '["wikidata_items"]')`,
       [PANTHEON],
     );
     const lineOf = async () => (await pool.query<{ experience_id: number; whole_id: number; items: string[]; claims: string[] }>(
@@ -384,11 +385,11 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
 
     const { result } = await separateMembership({ placeId: PANTHEON, membershipId: unescoMembership, separatedBy: curatorId });
     const separated = result!.separatedId;
-    expect(await lineOf()).toEqual([{ experience_id: separated, whole_id: separated, items: ['Q9710001'], claims: ['wikidata_items'] }]);
+    expect(await lineOf()).toEqual([{ experience_id: separated, whole_id: separated, items: ['Q9710002'], claims: ['wikidata_items'] }]);
 
     const undone = await undoSeparation(result!.separationId, curatorId);
     expect(undone.refusal).toBeUndefined();
-    expect(await lineOf()).toEqual([{ experience_id: PANTHEON, whole_id: PANTHEON, items: ['Q9710001'], claims: ['wikidata_items'] }]);
+    expect(await lineOf()).toEqual([{ experience_id: PANTHEON, whole_id: PANTHEON, items: ['Q9710002'], claims: ['wikidata_items'] }]);
   });
 
   it("keeps a curator's own description on the original when UNESCO's membership leaves (ADR-0149)", async () => {

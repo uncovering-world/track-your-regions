@@ -18,7 +18,7 @@ import { answerAdmissionUnderLock } from './lifecycleController.js';
 
 const GALLERY = 9781;
 const OTHER = 9782;
-const QID = 'Q9000009781';
+const QID = 'Q9781001';
 const ADMIN = '00000000-0000-4000-8000-000000009781';
 const CURATOR = '00000000-0000-4000-8000-000000009782';
 

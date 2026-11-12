@@ -32,13 +32,13 @@ beforeEach(async () => {
   await clear();
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location, image_url)
-     VALUES ($1, 2, 'Q-museum-9466', 'Fixture Museum', ST_SetSRID(ST_MakePoint(12.47, 41.9), 4326), $2)`,
+     VALUES ($1, 2, 'Q9466001', 'Fixture Museum', ST_SetSRID(ST_MakePoint(12.47, 41.9), 4326), $2)`,
     [PLACE, commons('Museum.jpg')],
   );
   membership = (await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, admission, curation_state, published_at,
                                               reported_image_url)
-     SELECT $1, s.kind_id, s.id, 'Q-museum-9466', 'admitted', 'verified', NOW(), $2 FROM experience_sources s WHERE s.id = 2
+     SELECT $1, s.kind_id, s.id, 'Q9466001', 'admitted', 'verified', NOW(), $2 FROM experience_sources s WHERE s.id = 2
      RETURNING id`,
     [PLACE, commons('Museum%20by%20the%20source.jpg')],
   )).rows[0].id;
@@ -70,7 +70,7 @@ describe("the pictures a place's review card shows (#2192)", () => {
     syncLogs.push(log.rows[0].id);
     await pool.query(
       `INSERT INTO experience_sync_changes (sync_log_id, experience_id, external_id, change_type, changed_fields, contents)
-       VALUES ($1, $2, 'Q-museum-9466', 'held', $3, $4)`,
+       VALUES ($1, $2, 'Q9466001', 'held', $3, $4)`,
       [log.rows[0].id, PLACE,
         JSON.stringify([{ field: 'imageUrl', new: commons('Museum%20proposed.jpg'), held: true }]),
         JSON.stringify({ treasures: { changed: [{

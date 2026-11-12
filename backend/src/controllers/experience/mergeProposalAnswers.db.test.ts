@@ -39,15 +39,17 @@ async function clear(): Promise<void> {
 }
 
 async function place(id: number, name: string, source: string, lon: number): Promise<void> {
+  // The id the source knows the place by, in its scheme: a World Heritage site's number, else an item.
+  const key = source === 'UNESCO World Heritage Sites' ? String(id) : `Q${id}001`;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      SELECT $1, s.id, $2, $3, ST_SetSRID(ST_MakePoint($4, 54.7745), 4326) FROM experience_sources s WHERE s.name = $5`,
-    [id, `fixture-${id}`, name, lon, source],
+    [id, key, name, lon, source],
   );
   const membership = await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = $3 RETURNING id`,
-    [id, `fixture-${id}`, source],
+    [id, key, source],
   );
   const point = await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)

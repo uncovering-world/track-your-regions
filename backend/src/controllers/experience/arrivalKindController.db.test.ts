@@ -14,7 +14,7 @@ import { answerArrivalWithKind, moveArrivalUnderLock } from './arrivalKindContro
  */
 
 const MONUMENT = 9791;
-const QID = 'Q9000009791';
+const QID = 'Q9791001';
 const ADMIN = '00000000-0000-4000-8000-000000009791';
 
 let adminId = 0;

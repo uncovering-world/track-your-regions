@@ -56,8 +56,8 @@ beforeEach(async () => {
   );
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location) VALUES
-       ($1, $3, 'Q9613-uffizi-fixture', 'Uffizi (can-curate fixture)', ST_SetSRID(ST_MakePoint(11.25528, 43.76778), 4326)),
-       ($2, $3, 'Q9613-colosseum-fixture', 'Colosseum (can-curate fixture)', ST_SetSRID(ST_MakePoint(12.49222, 41.89028), 4326))`,
+       ($1, $3, 'Q96132001', 'Uffizi (can-curate fixture)', ST_SetSRID(ST_MakePoint(11.25528, 43.76778), 4326)),
+       ($2, $3, 'Q96133001', 'Colosseum (can-curate fixture)', ST_SetSRID(ST_MakePoint(12.49222, 41.89028), 4326))`,
     [UFFIZI, COLOSSEUM, artSource],
   );
   await pool.query(
