@@ -25,6 +25,15 @@ describe('a published line beside the other line', () => {
     expect(keepSubjectsOnOneLine(metadata, ['metadata.commemorates'])).toEqual({ depicts: CURATORS_DEPICTS, website: 'https://gwkbali.com' });
   });
 
+  it('reads the other line as its open change proposes it, where the same proposal still holds one (#2476)', () => {
+    // The run's Commemorates names Vishnu and Garuda; its change is still open
+    // and proposes Garuda alone, so Vishnu stays under the published Depicts.
+    const metadata = { commemorates: { via: 'commemorates', subjects: [VISHNU, GARUDA] }, depicts: { via: 'depicts', subjects: [VISHNU] } };
+    const open = { 'metadata.commemorates': { via: 'commemorates', subjects: [GARUDA] } };
+    expect(keepSubjectsOnOneLine(metadata, ['metadata.depicts'], open)).toBe(metadata);
+    expect(keepSubjectsOnOneLine(metadata, ['metadata.depicts'])).toEqual({ commemorates: metadata.commemorates });
+  });
+
   it('changes nothing where no subject stands on both, or where both lines are published together', () => {
     const apart = { depicts: CURATORS_DEPICTS, commemorates: { via: 'commemorates', subjects: [GARUDA] } };
     expect(keepSubjectsOnOneLine(apart, ['metadata.commemorates'])).toBe(apart);
