@@ -5871,11 +5871,16 @@ Maggiore, and crowds out 51 more of its churches.
     the place with its exact count, the group it is listed under (its leaf, as the shadowed
     arrivals are grouped, `groupLeafSql`), and every other place of its kind and type within the
     radius (`aroundSql`, the review card's count), each marked `compared` where it counts above the
-    place and each with the same signals and score as a row of the list. The web shows them on
-    every row of the list, on the place's card with its count against the line ("Better within
-    10 km 13 of 10") and under each place it is compared with, as one line with counts grouped in
-    thousands and the score to two decimals: "Readers a year 209,401 · Editions 47 · Guide yes ·
-    Score 0.70", a dash where nothing is read (`FameFigures`). What it is compared with is `crowding_above()` itself: the set `crowding_better()`
+    place and each with the same signals and score as a row of the list. The web shows them as a
+    table (`FigureTable`, #2454): one column per measure under a heading (Readers a year,
+    Editions, In Wikivoyage, Score), counts grouped in thousands and the score to two decimals,
+    right-aligned in tabular figures, a dash with a "Not measured yet" hint where nothing is read.
+    Each heading has a hint on hover and keyboard focus that says what it counts. The region's
+    list puts the headings in each part's header, which from `sm` up sticks while the part scrolls,
+    and every row's figures under them; on a phone the table scrolls sideways instead. The place's circle puts the place's
+    own row first and marked, with the places around it below in the same columns, so each
+    figure stands above the ones it is compared with. Its count against the line is said once, in
+    the card's sentence, not in a row. On a narrow screen the table scrolls sideways. What it is compared with is `crowding_above()` itself: the set `crowding_better()`
     counts, so the list and the count are one rule. On dev it took 4 ms around the Pantheon.
   - **The answer is a pin on the membership** (`source_records.crowding_pin`, written
     by `setCrowdingPin` in `membershipWriter.ts` and by no run). `list`: never crowded out, and it
