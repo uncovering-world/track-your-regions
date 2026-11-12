@@ -58,6 +58,40 @@ describe('whether a run asks about a pin again', () => {
   });
 });
 
+describe("a reason with the rule's own words dropped (#2430)", () => {
+  // Aqua Claudia, put back on 2 Nov and asked about again on 10 Nov, as the development stack holds both reasons.
+  const answered = "24 Wikipedia editions and 46,234 readers a year, no guide uses it and Atlas Obscura does not list it: under the world tier's bars (34 Wikipedia editions, 150,543 readers a year, or 25,421 where a guide uses it or Atlas Obscura lists it; a place held stays at 0.8 of any)";
+  const now = "24 Wikipedia editions and 45,185 readers a year, no guide uses it and Atlas Obscura does not list it: under the world tier's bars (34 Wikipedia editions, 147,764 readers a year, or 24,931 where a guide uses it, Atlas Obscura lists it or the World Heritage List inscribes it; a place held stays at 0.8 of any)";
+
+  it('asks nothing when only the bars the rule spells out changed', () => {
+    expect(foldedReason(now)).toBe(foldedReason(answered));
+    expect(asksAgain({ answer: 'admitted', answered: { verdict: 'refused', reason: answered } }, { verdict: 'refused', reason: now }))
+      .toBe(false);
+  });
+
+  it('asks nothing when a signal is only as last read', () => {
+    const lastRead = now.replace('45,185 readers a year', '45,185 readers a year as last read')
+      .replace('no guide uses it', 'no guide uses it (the guides as last read)');
+    expect(foldedReason(lastRead)).toBe(foldedReason(answered));
+  });
+
+  it('asks when a fact of the place changed, or the refusal is of another kind', () => {
+    const guided = now.replace('no guide uses it', 'a Wikivoyage guide uses it');
+    expect(asksAgain({ answer: 'admitted', answered: { verdict: 'refused', reason: answered } }, { verdict: 'refused', reason: guided }))
+      .toBe(true);
+    // The Flame of Liberty, put back over the fame line and now refused for its class.
+    expect(asksAgain(
+      { answer: 'admitted', answered: { verdict: 'refused', reason: "17 sitelinks: below the world tier's line (22 to enter, 18 to stay)" } },
+      { verdict: 'refused', reason: 'no monument or memorial class' },
+    )).toBe(true);
+  });
+
+  it('keeps a parenthesis that is the place\'s own fact', () => {
+    expect(foldedReason('its famous works cannot be seen — Salvator Mundi (whereabouts unknown)'))
+      .toBe('its famous works cannot be seen — Salvator Mundi (whereabouts unknown)');
+  });
+});
+
 describe('a reason with its numbers folded', () => {
   it('folds every run of digits, and keeps the words', () => {
     expect(foldedReason('not an art museum — painting-share: 3 painting(s) vs 12 sculptural work(s)'))
