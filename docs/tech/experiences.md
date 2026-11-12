@@ -8909,12 +8909,14 @@ held fields of the object and its parts with both versions, and `arrived`
 or already on show in another museum's list — named, *already on show at Pergamon Museum*, with the
 museum linked to its card (`shownAt`, a `LinkedPlace` with its kind, built in
 `reviewQueueContents.ts`; `shownElsewhere`, #2207). The link is the review page's own,
-`ReviewPlaceLink`: an address written whole with `buildAppUrl` in the first world view the read says
-places the museum, at its smallest region there, on the map, since the review page is no place and
-has no lens to keep — and not the shell's `PlaceLink`, whose one import from the review chunk made
+`ReviewPlaceLink`: an address written whole with `buildAppUrl` in the world view the curator last
+had open, at the museum's smallest region there, on the map, since the review page is no place and
+has no lens to keep. Where that world view does not place the museum, the link takes the first one
+the read says does. It is not the shell's `PlaceLink`, whose one import from the review chunk made
 Rolldown cut `useAppAddress`, the navigation context and a handful of icons out of the entry chunk,
-requests at startup over the request budget; so the link may open a world view other than the one
-the curator last had open, the one exception to the inventory's rule. Its name is its
+requests at startup over the request budget. The world view last open is read instead from the
+session's storage, where the navigation context keeps it (`lastWorldView`, #2474): a module that
+imports nothing, so the review chunk reaches no more of the shell than before. Its name is its
 one door — into `WorkPreviewDialog`, where it is corrected (#731); its Wikipedia article comes
 first and the Wikidata item is the small id beside it (`SourceId`). A point's name opens
 `PointPreviewDialog` where it can be corrected (#583). The heading counts what arrived and says
