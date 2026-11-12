@@ -114,7 +114,7 @@ async function fallBack(): Promise<void> {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
        VALUES ($1, 1, $2, 'Another fixture site', ST_SetSRID(ST_MakePoint(10, 50), 4326))`,
-      [site, `${site}-fixture`],
+      [site, `${site}`],
     );
     await pool.query(
       `INSERT INTO experience_locations (experience_id, name, external_ref, location)
@@ -164,12 +164,12 @@ beforeEach(async () => {
   await clear();
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, 1, '9840-fixture', 'Component item fixture', ST_SetSRID(ST_MakePoint(21.87, 61.59), 4326))`,
+     VALUES ($1, 1, '9840', 'Component item fixture', ST_SetSRID(ST_MakePoint(21.87, 61.59), 4326))`,
     [SITE],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at, wikidata_items)
-     SELECT $1, s.kind_id, s.id, '9840-fixture', 'auto', NOW(), $2 FROM experience_sources s WHERE s.id = 1`,
+     SELECT $1, s.kind_id, s.id, '9840', 'auto', NOW(), $2 FROM experience_sources s WHERE s.id = 1`,
     [SITE, [SITE_ITEM]],
   );
   points = {
@@ -331,12 +331,12 @@ describe('findComponentItems', () => {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
        VALUES ($1, 1, $2, 'Another fixture site', ST_SetSRID(ST_MakePoint(10, 50), 4326))`,
-      [other, `${other}-fixture`],
+      [other, `${other}`],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at, wikidata_items)
        SELECT $1, s.kind_id, s.id, $2, 'auto', NOW(), $3 FROM experience_sources s WHERE s.id = 1`,
-      [other, `${other}-fixture`, [otherSiteItem(other)]],
+      [other, `${other}`, [otherSiteItem(other)]],
     );
     vi.mocked(queries.partsOfSites).mockClear();
 
@@ -447,10 +447,10 @@ describe('findComponentItems', () => {
     // read as a component, it stood beside the castra the near rule offers.
     const worship = await pool.query<{ id: number }>(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q98430', 'auto', NOW() FROM experience_sources s WHERE s.id = 4 RETURNING id`,
+       SELECT $1, s.kind_id, s.id, 'Q9840001', 'auto', NOW() FROM experience_sources s WHERE s.id = 4 RETURNING id`,
       [SITE],
     );
-    points.worship = await point('Q98430', '', 46.8852, 22.8753, null);
+    points.worship = await point('Q9840001', '', 46.8852, 22.8753, null);
     await pool.query('UPDATE experience_locations SET name = NULL WHERE id = $1', [points.worship]);
     await pool.query('INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)', [points.worship, worship.rows[0].id]);
     // What an earlier pass, before the rule, proposed for it: cleared, not left open on the card.

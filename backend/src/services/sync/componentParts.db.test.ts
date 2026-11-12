@@ -60,12 +60,12 @@ beforeEach(async () => {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
        VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint(32.65, 25.71), 4326))`,
-      [id, source.id, `${id}-fixture`, name],
+      [id, source.id, `${id}`, name],
     );
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        VALUES ($1, $2, $3, $4, 'auto', NOW())`,
-      [id, source.kind_id, source.id, `${id}-fixture`],
+      [id, source.kind_id, source.id, `${id}`],
     );
   }
 });
@@ -132,7 +132,7 @@ describe("a serial site's components become its parts (ADR-0100)", () => {
     )).rows[0].id;
     const membership = (await pool.query<{ id: number }>(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       VALUES ($1, $2, $3, 'Q1189146-fixture', 'auto', NOW()) RETURNING id`,
+       VALUES ($1, $2, $3, 'Q9950001', 'auto', NOW()) RETURNING id`,
       [THEBES, archaeology.kind_id, archaeology.id],
     )).rows[0].id;
     await pool.query('INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)', [dig, membership]);
@@ -203,7 +203,7 @@ describe('a component that stands for its whole site is not parted (#1899)', () 
 
   it('keeps a point named like the site, or carrying its reference, as the site\'s own, and parts the rest', async () => {
     const own = { name: 'Ancient Thebes (parts fixture)', externalRef: '87-000', lon: 32.65, lat: 25.71 };
-    const siteRef = { name: null, externalRef: `${THEBES}-fixture`, lon: 32.651, lat: 25.711 };
+    const siteRef = { name: null, externalRef: `${THEBES}`, lon: 32.651, lat: 25.711 };
     await writeExperienceLocations(THEBES, [own, siteRef, KARNAK], run);
 
     expect((await parts(THEBES)).map(p => p.external_ref)).toEqual(['87-001']);

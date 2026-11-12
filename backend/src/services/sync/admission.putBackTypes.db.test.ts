@@ -34,7 +34,7 @@ const FIXTURES: Fixture[] = [
   { name: 'A refusal a curator confirmed', type: null, curated: ['admission'], admission: 'refused' },
 ];
 
-const qid = (i: number): string => `Q${FIRST + i}-put-back-fixture`;
+const qid = (i: number): string => `Q${FIRST + i}904`;
 
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id BETWEEN $1 AND $2', [FIRST, FIRST + FIXTURES.length - 1]);

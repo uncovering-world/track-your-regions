@@ -20,9 +20,9 @@ import type { ContentsDelta, ProcessedContent } from './types.js';
  */
 
 const ALTAMIRA = 9480;
-const ALTAMIRA_QID = 'Q9480-altamira-parts-fixture';
+const ALTAMIRA_QID = 'Q9480901';
 const GHENT = 9490;
-const GHENT_QID = 'Q9490-msk-ghent-fixture';
+const GHENT_QID = 'Q9490902';
 const WORK_QID = 'Q9490-christ-carrying-the-cross-fixture';
 
 const pointOf = (source: string) => ({ externalRef: `Q9480-${source}`, lon: -4.11975, lat: 43.376944 });

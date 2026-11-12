@@ -53,13 +53,13 @@ beforeEach(async () => {
   )).rows[0].id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     SELECT $1, s.id, 'Q958954', 'Eboracum', ST_SetSRID(ST_MakePoint(-1.0803, 53.9623), 4326)
+     SELECT $1, s.id, 'Q9770001', 'Eboracum', ST_SetSRID(ST_MakePoint(-1.0803, 53.9623), 4326)
        FROM experience_sources s WHERE s.name = 'Archaeology'`,
     [EBORACUM],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, 'Q958954', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Archaeology'`,
+     SELECT $1, s.kind_id, s.id, 'Q9770001', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Archaeology'`,
     [EBORACUM],
   );
 });
@@ -141,7 +141,7 @@ describe('a run asks a curator about an offered place with nothing to see (#1770
   it('asks nothing of a place another kind offers that is also on the World Heritage list (#1926)', async () => {
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'whs-9770-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = 1`,
+       SELECT $1, s.kind_id, s.id, '9770', 'verified', NOW() FROM experience_sources s WHERE s.id = 1`,
       [EBORACUM],
     );
     const asked = doors();

@@ -25,13 +25,13 @@ const WORKS = {
 async function place(id: number, name: string, lon: number, lat: number, kindName: string, type: string): Promise<void> {
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     SELECT $1::int, s.id, $1::text, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)
+     SELECT $1::int, s.id, 'Q' || $1::text || '001', $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)
        FROM experience_sources s JOIN experience_kinds k ON k.id = s.kind_id WHERE k.name = $5 LIMIT 1`,
     [id, name, lon, lat, kindName],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at, admission, type)
-     SELECT $1::int, k.id, s.id, $1::text, 'auto', NOW(), 'admitted', $3
+     SELECT $1::int, k.id, s.id, 'Q' || $1::text || '001', 'auto', NOW(), 'admitted', $3
        FROM experience_kinds k JOIN experience_sources s ON s.kind_id = k.id WHERE k.name = $2 LIMIT 1`,
     [id, kindName, type],
   );

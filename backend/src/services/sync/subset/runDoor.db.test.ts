@@ -13,9 +13,9 @@ import { unreadOnSubset } from './runDoor.js';
 
 const SOURCE = 5;
 const KIND = 5;
-const TROY = 'Q22647';
-const BRITISH_MUSEUM = 'Q6373';
-const ROSETTA = 'Q48584';
+const TROY = 'Q914621001';
+const BRITISH_MUSEUM = 'Q914622001';
+const ROSETTA = 'Q914623001';
 const ROWS: Array<[number, string, string, string]> = [
   [914621, TROY, 'Troy', '2026-10-10'],
   [914622, BRITISH_MUSEUM, 'British Museum', '2026-10-10'],

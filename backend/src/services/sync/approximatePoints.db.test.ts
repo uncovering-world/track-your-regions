@@ -37,12 +37,12 @@ beforeEach(async () => {
   await clear();
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, '9853-fixture', 'Echmiatsin fixture', ST_SetSRID(ST_MakePoint(44.2951388889, 40.1593055556), 4326))`,
+     VALUES ($1, $2, '9853', 'Echmiatsin fixture', ST_SetSRID(ST_MakePoint(44.2951388889, 40.1593055556), 4326))`,
     [SITE, UNESCO],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, '9853-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = $2`,
+     SELECT $1, s.kind_id, s.id, '9853', 'verified', NOW() FROM experience_sources s WHERE s.id = $2`,
     [SITE, UNESCO],
   );
 });
@@ -109,29 +109,29 @@ describe('how roughly the list placed a component', () => {
   it('leaves a point that stands for a site ten times its minute unmarked (#1903)', async () => {
     // The Okavango Delta, 2 023 590 ha, given one point to the whole minute: it stands for the delta well enough.
     await inscribe(2023590);
-    await writeExperienceLocations(SITE, [{ externalRef: '9853-fixture', name: 'Okavango fixture', lon: 22.9, lat: -19.3 }],
+    await writeExperienceLocations(SITE, [{ externalRef: '9853', name: 'Okavango fixture', lon: 22.9, lat: -19.3 }],
       { syncLogId: null, sourceId: UNESCO, components: true });
-    expect(await recorded()).toEqual([{ ref: '9853-fixture', approximate: null }]);
+    expect(await recorded()).toEqual([{ ref: '9853', approximate: null }]);
   });
 
   it("still marks a compact site's own point (#1903)", async () => {
     // The Longmen Grottoes, 331 ha, whose list point stands 10 km from the caves: still asked.
     await inscribe(331);
-    await writeExperienceLocations(SITE, [{ externalRef: '9853-fixture', name: 'Longmen fixture', lon: 112.4666666667, lat: 34.4666666667 }],
+    await writeExperienceLocations(SITE, [{ externalRef: '9853', name: 'Longmen fixture', lon: 112.4666666667, lat: 34.4666666667 }],
       { syncLogId: null, sourceId: UNESCO, components: true });
-    expect(await recorded()).toEqual([{ ref: '9853-fixture', approximate: 'whole-minute' }]);
+    expect(await recorded()).toEqual([{ ref: '9853', approximate: 'whole-minute' }]);
   });
 
   it('marks the same point again when only the site\'s area crosses its minute ten times', async () => {
-    const wholeSite = [{ externalRef: '9853-fixture', name: 'Okavango fixture', lon: 22.9, lat: -19.3 }];
+    const wholeSite = [{ externalRef: '9853', name: 'Okavango fixture', lon: 22.9, lat: -19.3 }];
     const run = { syncLogId: null, sourceId: UNESCO, components: true };
     await inscribe(331);
     await writeExperienceLocations(SITE, wholeSite, run);
-    expect(await recorded()).toEqual([{ ref: '9853-fixture', approximate: 'whole-minute' }]);
+    expect(await recorded()).toEqual([{ ref: '9853', approximate: 'whole-minute' }]);
 
     // The same point offered again: only the area moved, past the fast path that leaves points as they are.
     await inscribe(2023590);
     await writeExperienceLocations(SITE, wholeSite, run);
-    expect(await recorded()).toEqual([{ ref: '9853-fixture', approximate: null }]);
+    expect(await recorded()).toEqual([{ ref: '9853', approximate: null }]);
   });
 });

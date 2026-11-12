@@ -20,7 +20,7 @@ import { writeExperienceLocations } from './locationWriter.js';
  */
 
 const ALTAMIRA = 9470;
-const QID = 'Q9470-altamira-fixture';
+const QID = 'Q9470901';
 const PRECISE = { name: null, externalRef: 'Q9470-precise', lon: -4.11975, lat: 43.376944 };
 const ROUNDED = { name: null, externalRef: 'Q9470-rounded', lon: -4.11667, lat: 43.38333 };
 

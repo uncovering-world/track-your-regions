@@ -14,9 +14,9 @@ import { writeExperienceLocations } from './locationWriter.js';
  */
 
 const LYSICRATES = 9837;
-const QID = 'Q9837-lysicrates-fixture';
+const QID = 'Q9837001';
 const NEIGHBOUR = 9838;
-const NEIGHBOUR_QID = 'Q9838-neighbour-fixture';
+const NEIGHBOUR_QID = 'Q9838001';
 const DISTRICT = 98370001;
 const NEXT_DISTRICT = 98370002;
 

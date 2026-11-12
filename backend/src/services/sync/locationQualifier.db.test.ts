@@ -12,7 +12,7 @@ import { writeExperienceLocations } from './locationWriter.js';
  */
 
 const CHURCHES = 9850;
-const QID = 'Q9850-wooden-churches-fixture';
+const QID = 'Q9850001';
 const REF = '1053-001';
 const POINT = { externalRef: REF, lon: 21.9725, lat: 49.8986 };
 

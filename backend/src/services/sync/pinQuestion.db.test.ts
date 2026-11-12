@@ -17,7 +17,7 @@ import type { SyncProgress } from './types.js';
  */
 
 const GARDNER = 9520;
-const QID = 'Q9520-gardner-fixture';
+const QID = 'Q9520001';
 const ANSWERED = 'its famous works cannot be seen — The Storm on the Sea of Galilee (whereabouts unknown)';
 
 let sourceId = 0;
