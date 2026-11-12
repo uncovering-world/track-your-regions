@@ -91,6 +91,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   gathered_work_venues: 'workbench',
   geometry_computations: 'serving',
   import_runs: 'serving',
+  lead_dedication_readings: 'workbench',
   membership_crowding: 'serving',
   membership_fame: 'serving',
   osm_layer_builds: 'workbench',
