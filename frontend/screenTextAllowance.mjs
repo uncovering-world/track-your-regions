@@ -51,7 +51,6 @@ export const SCREEN_TEXT_ALLOWANCE = {
   'src/components/curation/crowding/CrowdedCities.tsx': { breaches: 1, slice: '#2444' },
   'src/components/curation/crowding/CrowdingWindow.tsx': { breaches: 2, slice: '#2444' },
   'src/components/curation/crowding/PlaceView.tsx': { breaches: 1, slice: '#2444' },
-  'src/components/curation/crowding/RegionList.tsx': { breaches: 1, slice: '#2444' },
   'src/components/curation/crowding/crowdingWords.ts': { breaches: 1, slice: '#2444' },
   'src/components/curation/crowding/rowWords.ts': { breaches: 3, slice: '#2444' },
   'src/components/curation/feed/FilterChip.tsx': { breaches: 1, slice: '#2444' },

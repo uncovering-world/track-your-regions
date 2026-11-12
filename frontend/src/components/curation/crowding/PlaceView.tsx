@@ -3,16 +3,18 @@
  * group in its own circle, beside the map that draws it. Its card shows what
  * the place is — its picture with its credit as a line, enlarged on a press
  * (ADR-0182), and its article — the rule's reading of it with its exact count, and its own
- * answers, which are about it alone, and what its score is made of with the
- * rule's count against its line (`FameFigures`, #2400). Below, every place of
- * its type within the radius, the ones the card's button counts, in their groups
- * (`circleGroups`, #2420): the better known it is compared with, the less known,
- * and the ones not measured yet. Each is listed best known first, with the same
- * numbers and its distance, and each opens its own circle.
+ * answers, which are about it alone. Below, a table (#2454): the place's own
+ * row first and marked, then every place of its type within the radius, the
+ * ones the card's button counts, in their groups (`circleGroups`, #2420): the
+ * better known it is compared with, the less known, and the ones not measured
+ * yet. Each is listed best known first, with its figures in the headings'
+ * columns (`FigureTable`, #2400) and its distance, and each opens its own
+ * circle. On a narrow screen the table scrolls sideways.
  */
 
 import { useState } from 'react';
-import { Box, ButtonBase, Chip, Link, Paper, Stack, Typography } from '@mui/material';
+import { alpha, Box, ButtonBase, Chip, Link, Paper, Stack, Typography } from '@mui/material';
+import type { Theme } from '@mui/material';
 import type { CrowdingAnswer, CrowdingPlaceView } from '../../../api/crowding';
 import { extractImageUrl, toThumbnailUrl } from '../../../utils/imageUrl';
 import { safeHref } from '../../../utils/safeHref';
@@ -22,7 +24,7 @@ import { ReaderEditionBeside } from '../../shared/WikipediaArticleLink';
 import { AnswerButtons } from './AnswerButtons';
 import { CIRCLE_GROUPS, circleGroups, circleHeading, GROUP_WORDS, uncountedReason } from './circleGroups';
 import { drawnStanding, type Staging } from './crowdingStaging';
-import { FameFigures } from './FameFigures';
+import { FIGURES_WIDTH, FigureCells, FigureHeadings, HOVERED_TINT, stickyName } from './FigureTable';
 import { STANDING_COLOR } from './RegionList';
 import { distanceWords, nounOf, ruleReading, type RuleWords } from './rowWords';
 
@@ -55,6 +57,49 @@ function Picture({ name, imageUrl, credit }: Pick<CrowdingPlaceView['place'], 'n
   );
 }
 
+/** The width the table keeps on a narrow screen, where it scrolls sideways rather than squeeze its columns. */
+const TABLE_MIN_WIDTH = { xs: 'max-content', sm: `calc(${FIGURES_WIDTH} + 28rem)` };
+
+/** A row's grid: its rank, its name, its figures, its standing and its distance. On a phone the name column is fixed, and held in view. */
+const ROW_GRID = {
+  display: 'grid', alignItems: 'center', columnGap: 1,
+  gridTemplateColumns: {
+    xs: `2rem 10rem ${FIGURES_WIDTH} 4.5rem 4.5rem`,
+    sm: `2rem minmax(10rem, 1fr) ${FIGURES_WIDTH} 4.5rem 4.5rem`,
+  },
+};
+
+const OWN_TINT = (theme: Theme) => alpha(theme.palette.warning.main, 0.08);
+
+/** The table's heading row: the figures' headings with their hints, between the place's name and its distance. */
+function HeadingRow() {
+  return (
+    <Box role="row" sx={{ ...ROW_GRID, px: 1.5, pt: 1, pb: 0.5 }}>
+      <span />
+      <Typography role="columnheader" variant="caption" color="text.secondary" sx={stickyName()}>Place</Typography>
+      <FigureHeadings />
+      <span role="columnheader" aria-label="Where it stands" />
+      <Typography role="columnheader" variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>Distance</Typography>
+    </Box>
+  );
+}
+
+/** The place itself, first and marked, so each of its figures stands above the ones it is compared with. */
+function OwnRow({ place }: { place: CrowdingPlaceView['place'] }) {
+  return (
+    <Box role="row" aria-label={`${place.name}, this place`} sx={{ ...ROW_GRID, px: 1.5, py: 0.75, bgcolor: OWN_TINT, borderBottom: 1, borderColor: 'divider' }}>
+      <Typography aria-hidden variant="caption" color="warning.dark">this</Typography>
+      <Typography role="rowheader" variant="body2" fontWeight={500} sx={stickyName(OWN_TINT)}>{place.name}</Typography>
+      <FigureCells signals={place} strong />
+      <span role="cell" />
+      <span role="cell" />
+    </Box>
+  );
+}
+
+/** A neighbour's standing in words where it is not shown on the region page. */
+const STANDING_WORDS: Record<CrowdingPlaceView['around'][number]['standing'], string> = { shown: '', new: 'new', shadowed: 'shadowed' };
+
 /** A place around it: its rank in its group, its name opening its own circle, its figures and its distance. */
 function NeighbourRow({ entry, index, reason, hovered, onHover, onOpen }: {
   entry: CrowdingPlaceView['around'][number];
@@ -69,26 +114,25 @@ function NeighbourRow({ entry, index, reason, hovered, onHover, onOpen }: {
     <Box
       onMouseEnter={() => onHover(entry.membershipId)}
       onMouseLeave={() => onHover(null)}
-      sx={{
-        display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider',
-        bgcolor: hovered ? 'action.selected' : undefined,
-      }}
+      role="row"
+      sx={{ ...ROW_GRID, px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: hovered ? 'action.selected' : undefined }}
     >
-      <Typography variant="caption" color="text.secondary" sx={{ width: 28, fontVariantNumeric: 'tabular-nums' }}>{index + 1}</Typography>
-      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+      {/* The rank is the rows' order, which a screen reader reads already. */}
+      <Typography aria-hidden variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>{index + 1}</Typography>
+      <Box role="rowheader" sx={stickyName(hovered ? HOVERED_TINT : undefined, { minWidth: 0 })}>
         <ButtonBase
           onClick={() => onOpen(entry.membershipId)}
           sx={{ typography: 'body2', justifyContent: 'flex-start', textAlign: 'left', '&:hover': { textDecoration: 'underline' } }}
         >
           {entry.name}
         </ButtonBase>
-        <FameFigures signals={entry} />
         {reason && <Typography variant="caption" color="text.secondary" display="block">{reason}</Typography>}
       </Box>
-      {entry.standing !== 'shown' && (
-        <Typography variant="caption" color="text.secondary">{entry.standing === 'new' ? 'new' : 'shadowed'}</Typography>
-      )}
-      <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+      <FigureCells signals={entry} />
+      <Typography role="cell" variant="caption" color="text.secondary">
+        {STANDING_WORDS[entry.standing]}
+      </Typography>
+      <Typography role="cell" variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
         {distanceWords(entry.distanceM)}
       </Typography>
     </Box>
@@ -131,10 +175,6 @@ export function PlaceView({ view, rule, staging, frozen = false, hovered, onHove
               <ReaderEditionBeside article={place.wikipediaUrl} />
             </Stack>
           )}
-          <FameFigures
-            signals={place}
-            better={place.outrankedBy === null ? undefined : { count: place.outrankedBy, radiusKm: rule.radiusKm, limit: rule.limit }}
-          />
           <Typography variant="body2">{ruleReading(place, rule, view.typeExempt)}</Typography>
           <AnswerButtons place={place} staging={staging} frozen={frozen} size="medium" onAnswer={onAnswer} />
           <Typography variant="caption" color="text.secondary">
@@ -147,11 +187,19 @@ export function PlaceView({ view, rule, staging, frozen = false, hovered, onHove
         <Box sx={{ px: 1.5, py: 1, borderBottom: 1, borderColor: 'divider', bgcolor: 'action.hover' }}>
           <Typography variant="subtitle2" component="h3">{circleHeading(view, rule)}</Typography>
         </Box>
+        <Box role="table" aria-label="Its figures and the places around it" sx={{ overflowX: 'auto' }}>
+        <Box sx={{ minWidth: TABLE_MIN_WIDTH }}>
+        <HeadingRow />
+        <OwnRow place={place} />
         {CIRCLE_GROUPS.filter(group => groups[group].length > 0).map(group => (
-          <Box key={group} component="section" aria-label={GROUP_WORDS[group]}>
-            <Typography variant="overline" component="h4" color="text.secondary" display="block" sx={{ px: 1.5, pt: 1, lineHeight: 1.6 }}>
-              {`${GROUP_WORDS[group]} · ${groups[group].length}`}
-            </Typography>
+          <Box key={group} role="rowgroup" aria-label={GROUP_WORDS[group]}>
+            <Box role="row">
+              <Box role="cell" sx={{ display: 'inline-block', position: 'sticky', left: 0 }}>
+                <Typography variant="overline" component="h4" color="text.secondary" sx={{ px: 1.5, pt: 1, lineHeight: 1.6 }}>
+                  {`${GROUP_WORDS[group]} · ${groups[group].length}`}
+                </Typography>
+              </Box>
+            </Box>
             {groups[group].map((entry, index) => (
               <NeighbourRow key={entry.membershipId} entry={entry} index={index}
                 reason={group === 'uncounted' ? uncountedReason(entry) : undefined} hovered={hovered === entry.membershipId}
@@ -159,6 +207,8 @@ export function PlaceView({ view, rule, staging, frozen = false, hovered, onHove
             ))}
           </Box>
         ))}
+        </Box>
+        </Box>
         {unlisted > 0 && (
           <Typography variant="caption" color="text.secondary" display="block" sx={{ px: 1.5, py: 0.75 }}>
             {`${unlisted} more better known are not listed here: outside your scope, or no longer offered by their source.`}

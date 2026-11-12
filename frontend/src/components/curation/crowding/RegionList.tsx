@@ -6,18 +6,20 @@
  * the rule would put it once passed.
  *
  * Each row shows what its place is (`PlaceCell`: its picture, credit and
- * article, #2345), a note on its standing, what its score is made of and the
- * score (`FameFigures`, #2400), and the answers its standing takes
- * (`AnswerButtons`). A hover says why the place stands where it stands
+ * article, #2345), a note on its standing and the answers its standing takes
+ * (`AnswerButtons`), and, in a block of the same columns on every row under
+ * the list's headings, what its score is made of and the score
+ * (`FigureTable`, #2400, #2454). A hover says why the place stands where it stands
  * (`whyWords`) and lights its dot on the map; a click on its name opens the
  * place in its own circle.
  */
 
+import type { ReactNode } from 'react';
 import { Box, ButtonBase, Chip, Stack, Tooltip, Typography } from '@mui/material';
 import type { CrowdingAnswer, CrowdingGroupPlace } from '../../../api/crowding';
 import { AnswerButtons } from './AnswerButtons';
 import { drawnStanding, listPart, type DrawnStanding, type Staging } from './crowdingStaging';
-import { FameFigures } from './FameFigures';
+import { FigureCells, FigureHeadings, HOVERED_TINT, stickyName } from './FigureTable';
 import { PlaceCell } from './PlaceCell';
 import { nounOf, placeNote, whyWords, type RuleWords } from './rowWords';
 
@@ -29,6 +31,13 @@ export const STANDING_COLOR: Record<DrawnStanding, 'primary' | 'default' | 'warn
   refused: 'error',
 };
 
+
+/** A row's rank track, in pixels. */
+const RANK_WIDTH = 28;
+/** A row's name track on a phone, where the figures scroll sideways beside it. */
+const NAME_WIDTH_XS = '12rem';
+/** A part header's name column on a phone: the rank and name tracks with the row's gap (`gap: 1`) between them. */
+const HEADER_WIDTH_XS = `calc(${RANK_WIDTH}px + 8px + ${NAME_WIDTH_XS})`;
 /** Where a staged answer moves a place, said on its chip. */
 const MOVED_WORDS: Record<DrawnStanding, string> = {
   shown: '→ on the page',
@@ -56,6 +65,7 @@ function Row({ place, rank, first, rule, typeExempt, staging, hovered, onHover, 
   return (
     <Tooltip title={whyWords(place, rule, typeExempt)} placement="left" enterDelay={300} disableInteractive>
       <Box
+        role="row"
         data-testid={`crowding-place-${place.membershipId}`}
         onMouseEnter={() => onHover(place.membershipId)}
         onMouseLeave={() => onHover(null)}
@@ -65,10 +75,11 @@ function Row({ place, rank, first, rule, typeExempt, staging, hovered, onHover, 
           bgcolor: hovered ? 'action.selected' : undefined,
         }}
       >
-        <Typography variant="caption" color="text.secondary" sx={{ width: 28, flexShrink: 0, pt: 0.25, fontVariantNumeric: 'tabular-nums' }}>
+        {/* The rank is the rows' order, which a screen reader reads already. */}
+        <Typography aria-hidden variant="caption" color="text.secondary" sx={{ width: RANK_WIDTH, flexShrink: 0, pt: 0.25, fontVariantNumeric: 'tabular-nums' }}>
           {rank}
         </Typography>
-        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Box role="rowheader" sx={stickyName(hovered ? HOVERED_TINT : undefined, { flexGrow: { xs: 0, sm: 1 }, flexShrink: { xs: 0, sm: 1 }, width: { xs: NAME_WIDTH_XS, sm: 'auto' }, minWidth: 0 })}>
           <PlaceCell
             row={place}
             title={(
@@ -85,25 +96,40 @@ function Row({ place, rank, first, rule, typeExempt, staging, hovered, onHover, 
             )}
           >
             {note && <Typography variant="caption" color="text.secondary" display="block">{note}</Typography>}
-            <FameFigures signals={place} />
+            <Box sx={{ mt: 0.5 }}>
+              <AnswerButtons place={place} staging={staging} onAnswer={answer => onAnswer(place, answer)} />
+            </Box>
           </PlaceCell>
         </Box>
-        <Box sx={{ flexShrink: 0, maxWidth: '50%' }}>
-          <AnswerButtons place={place} staging={staging} onAnswer={answer => onAnswer(place, answer)} />
-        </Box>
+        <FigureCells signals={place} />
       </Box>
     </Tooltip>
   );
 }
 
-function PartHeader({ children }: { children: string }) {
+/**
+ * A part of the list, the region page's or its tail's, under a header that
+ * names it and carries the figures' headings. From `sm` up the header sticks
+ * while the part scrolls, so a figure is never read without its heading; on a
+ * phone the table scrolls sideways instead, and the header stays at the top
+ * of its part. There the part's words wrap within the rows' rank and name
+ * tracks, so each heading stands over its column whatever the words' length.
+ */
+function Part({ words, children }: { words: string; children: ReactNode }) {
   return (
-    <Box sx={{
-      px: 1.5, py: 1, bgcolor: 'action.hover', borderBottom: 1, borderColor: 'divider',
-      position: 'sticky', top: 0, zIndex: 1,
-    }}
-    >
-      <Typography variant="subtitle2" component="h3">{children}</Typography>
+    <Box role="rowgroup" aria-label={words}>
+      <Box role="row" sx={{
+        display: 'flex', alignItems: 'flex-end', gap: 1, px: 1.5, py: 1,
+        bgcolor: 'background.paper', backgroundImage: theme => `linear-gradient(${theme.palette.action.hover}, ${theme.palette.action.hover})`,
+        borderBottom: 1, borderColor: 'divider', position: 'sticky', top: 0, zIndex: 2,
+      }}
+      >
+        <Box role="columnheader" sx={{ flex: { xs: `0 0 ${HEADER_WIDTH_XS}`, sm: '1 1 0' }, minWidth: 0 }}>
+          <Typography variant="subtitle2" component="h3">{words}</Typography>
+        </Box>
+        <FigureHeadings />
+      </Box>
+      {children}
     </Box>
   );
 }
@@ -143,17 +169,23 @@ export function RegionList({ places, rule, typeExempt, staging, hovered, onHover
       onAnswer={onAnswer}
     />
   );
+  // Only a phone scrolls the table sideways: a scroll box there is also the scrollport the
+  // part headers stick to, and on a wider screen the pane around the list scrolls instead.
   return (
-    <Box component="section" aria-label="The region's list">
-      <PartHeader>{`On the region page · ${onPage}${arrivingWords} — best known first`}</PartHeader>
-      {page.length === 0 && (
-        <Typography variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
-          The region page shows none of its {nounOf(rule, 2)}.
-        </Typography>
-      )}
-      {page.map(row)}
-      {tail.length > 0 && <PartHeader>{`Shadowed · ${tail.length}, in the list’s tail`}</PartHeader>}
-      {tail.map(row)}
+    <Box component="section" aria-label="The region's list" sx={{ overflowX: { xs: 'auto', sm: 'visible' } }}>
+      <Box role="table" aria-label="The region's places and their figures" sx={{ minWidth: { xs: 'max-content', sm: 0 } }}>
+        <Part words={`On the region page · ${onPage}${arrivingWords} — best known first`}>
+          {page.length === 0 && (
+            <Box role="row">
+              <Typography role="cell" variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
+                The region page shows none of its {nounOf(rule, 2)}.
+              </Typography>
+            </Box>
+          )}
+          {page.map(row)}
+        </Part>
+        {tail.length > 0 && <Part words={`Shadowed · ${tail.length}, in the list’s tail`}>{tail.map(row)}</Part>}
+      </Box>
     </Box>
   );
 }
