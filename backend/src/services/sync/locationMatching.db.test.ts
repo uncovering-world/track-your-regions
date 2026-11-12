@@ -19,7 +19,7 @@ import { writeExperienceLocations } from './locationWriter.js';
  */
 
 const HORSEMAN = 9549;
-const QID = 'Q9549-bronze-horseman-fixture';
+const QID = 'Q9549001';
 const REF = 'Q672444';
 const LAT = 59.9364;
 const LON = 30.3022;

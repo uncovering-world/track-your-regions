@@ -20,8 +20,8 @@ import { KIND_FACT_KEYS } from './kindFacts.js';
  */
 
 const LOUVRE = 9440;
-const LOUVRE_QID = 'Q9440-louvre-fixture';
-const NEW_SITE_QID = 'Q9441-new-site-fixture';
+const LOUVRE_QID = 'Q9440001';
+const NEW_SITE_QID = 'Q9441001';
 
 let artMuseums = 0;
 let archaeology = 0;
@@ -44,8 +44,8 @@ const params = (sourceId: number, externalId: string, name: string): ExperienceU
 });
 
 const ACROPOLIS = 9442;
-const ACROPOLIS_QID = 'Q9442-acropolis-fixture';
-const ACROPOLIS_WHC = '9442-whc-fixture';
+const ACROPOLIS_QID = 'Q9442001';
+const ACROPOLIS_WHC = '9442';
 
 async function clear(): Promise<void> {
   await pool.query(

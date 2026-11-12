@@ -13,7 +13,7 @@ import { writePointContents } from './pointContentWriter.js';
  * subtitle and the run keeps it.
  */
 
-const PILES = 9840;
+const PILES = 9987;
 const SOURCE_NAME = 'Point contents fixture source';
 const RIESI = 'http://commons.wikimedia.org/wiki/Special:FilePath/Riesi%20Pfahlbau.jpg';
 const SEE = 'http://commons.wikimedia.org/wiki/Special:FilePath/See%20Pfahlbau.jpg';
@@ -88,19 +88,19 @@ beforeEach(async () => {
   sourceId = source.rows[0].id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, '1363-fixture', 'Prehistoric Pile Dwellings around the Alps', ST_SetSRID(ST_MakePoint(9.0, 47.5), 4326))`,
+     VALUES ($1, $2, '9987', 'Prehistoric Pile Dwellings around the Alps', ST_SetSRID(ST_MakePoint(9.0, 47.5), 4326))`,
     [PILES, sourceId],
   );
   const membership = await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, kind_id, id, '1363-fixture', 'verified', NOW() FROM experience_sources WHERE id = $2 RETURNING id`,
+     SELECT $1, kind_id, id, '9987', 'verified', NOW() FROM experience_sources WHERE id = $2 RETURNING id`,
     [PILES, sourceId],
   );
   membershipId = membership.rows[0].id;
-  await part('1363-002', 'Riesi', 'verified');
-  await part('1363-015', 'Port', 'pending', { claims: ['subtitle'], subtitle: "A curator's words" });
-  await part('1363-016', 'Bourg', 'verified', { subtitle: 'pile dwelling', picture: { url: BOURG_OLD, credit: OLD_CREDIT } });
-  await part('1363-061', 'See', 'pending');
+  await part('9987-002', 'Riesi', 'verified');
+  await part('9987-015', 'Port', 'pending', { claims: ['subtitle'], subtitle: "A curator's words" });
+  await part('9987-016', 'Bourg', 'verified', { subtitle: 'pile dwelling', picture: { url: BOURG_OLD, credit: OLD_CREDIT } });
+  await part('9987-061', 'See', 'pending');
 });
 
 afterAll(async () => {
@@ -111,35 +111,35 @@ afterAll(async () => {
 describe("a component's own picture and subtitle, on its part (ADR-0156)", () => {
   it('holds what a reader sees, fills what is empty, writes what nobody has passed, and keeps a claim', async () => {
     const changed = await writePointContents(PILES, [
-      { ref: '1363-002', imageUrl: RIESI, imageCredit: CREDIT, subtitle: 'pile dwelling at Riesi', articleUrl: null },
-      { ref: '1363-015', imageUrl: null, imageCredit: null, subtitle: 'pile dwelling at Port', articleUrl: null },
-      { ref: '1363-016', imageUrl: BOURG_NEW, imageCredit: CREDIT, subtitle: 'pile dwelling at Bourg', articleUrl: null },
-      { ref: '1363-061', imageUrl: SEE, imageCredit: CREDIT, subtitle: 'pile dwelling at See', articleUrl: null },
+      { ref: '9987-002', imageUrl: RIESI, imageCredit: CREDIT, subtitle: 'pile dwelling at Riesi', articleUrl: null },
+      { ref: '9987-015', imageUrl: null, imageCredit: null, subtitle: 'pile dwelling at Port', articleUrl: null },
+      { ref: '9987-016', imageUrl: BOURG_NEW, imageCredit: CREDIT, subtitle: 'pile dwelling at Bourg', articleUrl: null },
+      { ref: '9987-061', imageUrl: SEE, imageCredit: CREDIT, subtitle: 'pile dwelling at See', articleUrl: null },
     ], { syncLogId: null, sourceId });
 
     expect(await stored()).toEqual([
-      { external_ref: '1363-002', image_url: RIESI, credit: CREDIT, subtitle: 'pile dwelling at Riesi' },
-      { external_ref: '1363-015', image_url: null, credit: null, subtitle: "A curator's words" },
-      { external_ref: '1363-016', image_url: BOURG_OLD, credit: OLD_CREDIT, subtitle: 'pile dwelling' },
-      { external_ref: '1363-061', image_url: SEE, credit: CREDIT, subtitle: 'pile dwelling at See' },
+      { external_ref: '9987-002', image_url: RIESI, credit: CREDIT, subtitle: 'pile dwelling at Riesi' },
+      { external_ref: '9987-015', image_url: null, credit: null, subtitle: "A curator's words" },
+      { external_ref: '9987-016', image_url: BOURG_OLD, credit: OLD_CREDIT, subtitle: 'pile dwelling' },
+      { external_ref: '9987-061', image_url: SEE, credit: CREDIT, subtitle: 'pile dwelling at See' },
     ]);
     const flags = (ref: string) => changed.find(entry => entry.item.ref === ref)?.fields
       .map(field => [field.field, field.held, field.curatedConflict]);
-    expect(flags('1363-002')).toEqual([
+    expect(flags('9987-002')).toEqual([
       ['image_url', false, false], ['metadata.imageCredit', false, false], ['subtitle', false, false],
     ]);
-    expect(flags('1363-016')).toEqual([
+    expect(flags('9987-016')).toEqual([
       ['image_url', true, false], ['metadata.imageCredit', true, false], ['subtitle', true, false],
     ]);
-    expect(changed.find(entry => entry.item.ref === '1363-016')?.fields
+    expect(changed.find(entry => entry.item.ref === '9987-016')?.fields
       .find(field => field.field === 'metadata.imageCredit')?.new).toEqual(CREDIT);
-    expect(flags('1363-015')).toEqual([['subtitle', false, true]]);
+    expect(flags('9987-015')).toEqual([['subtitle', false, true]]);
   });
 
   it('holds a new credit for a picture a reader sees, and fills a missing one', async () => {
     const run = { syncLogId: null, sourceId };
     const changed = await writePointContents(PILES, [
-      { ref: '1363-016', imageUrl: BOURG_OLD, imageCredit: CREDIT, subtitle: 'pile dwelling', articleUrl: null },
+      { ref: '9987-016', imageUrl: BOURG_OLD, imageCredit: CREDIT, subtitle: 'pile dwelling', articleUrl: null },
     ], run);
     expect(changed[0].fields.map(field => [field.field, field.held])).toEqual([['metadata.imageCredit', true]]);
     expect((await stored())[2].credit).toEqual(OLD_CREDIT);
@@ -147,23 +147,23 @@ describe("a component's own picture and subtitle, on its part (ADR-0156)", () =>
 
   it('keeps the credit it holds for the same file, and takes picture and credit away together', async () => {
     const run = { syncLogId: null, sourceId };
-    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: SEE, imageCredit: CREDIT, subtitle: null, articleUrl: null }], run);
+    await writePointContents(PILES, [{ ref: '9987-061', imageUrl: SEE, imageCredit: CREDIT, subtitle: null, articleUrl: null }], run);
 
-    expect(await writePointContents(PILES, [{ ref: '1363-061', imageUrl: SEE, imageCredit: null, subtitle: null, articleUrl: null }], run))
+    expect(await writePointContents(PILES, [{ ref: '9987-061', imageUrl: SEE, imageCredit: null, subtitle: null, articleUrl: null }], run))
       .toEqual([]);
-    expect((await stored())[3]).toEqual({ external_ref: '1363-061', image_url: SEE, credit: CREDIT, subtitle: null });
+    expect((await stored())[3]).toEqual({ external_ref: '9987-061', image_url: SEE, credit: CREDIT, subtitle: null });
 
-    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: null }], run);
-    expect((await stored())[3]).toEqual({ external_ref: '1363-061', image_url: null, credit: null, subtitle: null });
+    await writePointContents(PILES, [{ ref: '9987-061', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: null }], run);
+    expect((await stored())[3]).toEqual({ external_ref: '9987-061', image_url: null, credit: null, subtitle: null });
   });
 
   it('gives a second part the credit another place holds for the same file', async () => {
     const run = { syncLogId: null, sourceId };
-    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: SEE, imageCredit: CREDIT, subtitle: null, articleUrl: null }], run);
+    await writePointContents(PILES, [{ ref: '9987-061', imageUrl: SEE, imageCredit: CREDIT, subtitle: null, articleUrl: null }], run);
     // Riesi resolves to an item with the same picture, and the run asked
     // Commons nothing about a file a place already holds a credit for.
-    await writePointContents(PILES, [{ ref: '1363-002', imageUrl: SEE, imageCredit: null, subtitle: null, articleUrl: null }], run);
-    expect((await stored())[0]).toEqual({ external_ref: '1363-002', image_url: SEE, credit: CREDIT, subtitle: null });
+    await writePointContents(PILES, [{ ref: '9987-002', imageUrl: SEE, imageCredit: null, subtitle: null, articleUrl: null }], run);
+    expect((await stored())[0]).toEqual({ external_ref: '9987-002', image_url: SEE, credit: CREDIT, subtitle: null });
   });
 
   it("writes a part's own article as its picture and subtitle are written, and asks nothing where it changes nothing (#1963)", async () => {
@@ -172,62 +172,62 @@ describe("a component's own picture and subtitle, on its part (ADR-0156)", () =>
     // Bourg shows readers an article already.
     await pool.query(
       `UPDATE experiences SET metadata = metadata || '{"wikipediaUrl": "https://en.wikipedia.org/wiki/Bourg_old"}'::jsonb
-        WHERE id = (SELECT experience_id FROM source_records WHERE whole_id = $1 AND source_id = 10 AND external_id = '1363-016')`, [PILES],
+        WHERE id = (SELECT experience_id FROM source_records WHERE whole_id = $1 AND source_id = 10 AND external_id = '9987-016')`, [PILES],
     );
     const changed = await writePointContents(PILES, [
-      { ref: '1363-002', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: article('Riesi') },
-      { ref: '1363-016', imageUrl: BOURG_OLD, imageCredit: OLD_CREDIT, subtitle: 'pile dwelling', articleUrl: article('Bourg') },
-      { ref: '1363-061', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: 'javascript:alert(1)' },
+      { ref: '9987-002', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: article('Riesi') },
+      { ref: '9987-016', imageUrl: BOURG_OLD, imageCredit: OLD_CREDIT, subtitle: 'pile dwelling', articleUrl: article('Bourg') },
+      { ref: '9987-061', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: 'javascript:alert(1)' },
     ], run);
 
     // Riesi showed none and is filled; Bourg's is what readers see, so the new
     // one waits for a curator; a value that is no web address is no article.
     expect(await articles()).toEqual([
-      ['1363-002', article('Riesi')], ['1363-015', null], ['1363-016', 'https://en.wikipedia.org/wiki/Bourg_old'], ['1363-061', null],
+      ['9987-002', article('Riesi')], ['9987-015', null], ['9987-016', 'https://en.wikipedia.org/wiki/Bourg_old'], ['9987-061', null],
     ]);
     const field = (entries: typeof changed, ref: string) => entries.find(entry => entry.item.ref === ref)?.fields
       .find(one => one.field === 'metadata.wikipediaUrl');
-    expect(field(changed, '1363-002')).toMatchObject({ held: false, new: article('Riesi') });
-    expect(field(changed, '1363-016')).toMatchObject({ held: true, old: 'https://en.wikipedia.org/wiki/Bourg_old', new: article('Bourg') });
+    expect(field(changed, '9987-002')).toMatchObject({ held: false, new: article('Riesi') });
+    expect(field(changed, '9987-016')).toMatchObject({ held: true, old: 'https://en.wikipedia.org/wiki/Bourg_old', new: article('Bourg') });
     // The article is written beside the credit, never in its place.
     expect((await stored())[2].credit).toEqual(OLD_CREDIT);
 
     // The article a reader is shown offered again asks nothing.
     const same = await writePointContents(PILES, [
-      { ref: '1363-016', imageUrl: BOURG_OLD, imageCredit: OLD_CREDIT, subtitle: 'pile dwelling', articleUrl: 'https://en.wikipedia.org/wiki/Bourg_old' },
+      { ref: '9987-016', imageUrl: BOURG_OLD, imageCredit: OLD_CREDIT, subtitle: 'pile dwelling', articleUrl: 'https://en.wikipedia.org/wiki/Bourg_old' },
     ], run);
-    expect(field(same, '1363-016')).toBeUndefined();
+    expect(field(same, '9987-016')).toBeUndefined();
 
     // An item that has no article any more takes it from a part nobody has passed.
-    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: article('See') }], run);
-    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: null }], run);
-    expect((await articles())[3]).toEqual(['1363-061', null]);
+    await writePointContents(PILES, [{ ref: '9987-061', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: article('See') }], run);
+    await writePointContents(PILES, [{ ref: '9987-061', imageUrl: null, imageCredit: null, subtitle: null, articleUrl: null }], run);
+    expect((await articles())[3]).toEqual(['9987-061', null]);
   });
 
   it('only fills a part that holds a kind of its own, which keeps what its kind brought', async () => {
     const run = { syncLogId: null, sourceId };
     const riesi = (await pool.query<{ part_id: number }>(
-      `SELECT experience_id AS part_id FROM source_records WHERE whole_id = $1 AND source_id = 10 AND external_id = '1363-002'`, [PILES],
+      `SELECT experience_id AS part_id FROM source_records WHERE whole_id = $1 AND source_id = 10 AND external_id = '9987-002'`, [PILES],
     )).rows[0].part_id;
     // Riesi as another kind brought it: a picture of its own, and no subtitle.
     await pool.query(`UPDATE experiences SET image_url = $2 WHERE id = $1`, [riesi, BOURG_OLD]);
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       VALUES ($1, 5, 5, 'Q9840002', 'verified', NOW())`, [riesi],
+       VALUES ($1, 5, 5, 'Q9987002', 'verified', NOW())`, [riesi],
     );
 
     const changed = await writePointContents(PILES, [
-      { ref: '1363-002', imageUrl: RIESI, imageCredit: CREDIT, subtitle: 'pile dwelling at Riesi', articleUrl: null },
+      { ref: '9987-002', imageUrl: RIESI, imageCredit: CREDIT, subtitle: 'pile dwelling at Riesi', articleUrl: null },
     ], run);
 
-    expect((await stored())[0]).toEqual({ external_ref: '1363-002', image_url: BOURG_OLD, credit: null, subtitle: 'pile dwelling at Riesi' });
+    expect((await stored())[0]).toEqual({ external_ref: '9987-002', image_url: BOURG_OLD, credit: null, subtitle: 'pile dwelling at Riesi' });
     expect(changed[0].fields.map(field => field.field)).toEqual(['subtitle']);
   });
 
   it('writes no picture that is not a Commons file, and no credit beside it', async () => {
     await writePointContents(PILES, [
-      { ref: '1363-061', imageUrl: 'https://whc.unesco.org/uploads/sites/gallery/site_1363.jpg', imageCredit: CREDIT, subtitle: null, articleUrl: null },
+      { ref: '9987-061', imageUrl: 'https://whc.unesco.org/uploads/sites/gallery/site_1363.jpg', imageCredit: CREDIT, subtitle: null, articleUrl: null },
     ], { syncLogId: null, sourceId });
-    expect((await stored())[3]).toEqual({ external_ref: '1363-061', image_url: null, credit: null, subtitle: null });
+    expect((await stored())[3]).toEqual({ external_ref: '9987-061', image_url: null, credit: null, subtitle: null });
   });
 });

@@ -16,8 +16,8 @@ import { upsertExperienceRecord, type ExperienceUpsertParams } from './experienc
  */
 
 const CATHEDRAL = 9480;
-const QID = 'Q9480-cologne-fixture';
-const WHC = '9480-whc-fixture';
+const QID = 'Q9480001';
+const WHC = '9480';
 const COMMONS = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
 const WORSHIP_PICTURE = `${COMMONS}Cologne-fixture-worship.jpg`;
 const UNESCO_PICTURE = `${COMMONS}Cologne-fixture-unesco.jpg`;
@@ -290,12 +290,19 @@ describe('a source\'s view of a place (ADR-0084)', () => {
   });
 
   it('lets two sources that know the place by one Wikidata item write the newer reading, and asks nothing', async () => {
-    // Both memberships under the one item: a second Wikidata source beside Places of worship.
+    // Both memberships under the one item: a second Wikidata source beside Places of
+    // worship, in place of UNESCO, whose ids are site numbers (ADR-0198).
     await seed('pending');
-    await pool.query('UPDATE source_records SET external_id = $2 WHERE experience_id = $1', [CATHEDRAL, QID]);
+    const second = (await pool.query<{ id: number; kind_id: number }>(
+      `SELECT id, kind_id FROM experience_sources WHERE name = 'Archaeology'`,
+    )).rows[0];
+    await pool.query(
+      'UPDATE source_records SET source_id = $3, kind_id = $4, external_id = $2 WHERE experience_id = $1 AND source_id = $5',
+      [CATHEDRAL, QID, second.id, second.kind_id, unesco],
+    );
     await upsertExperienceRecord({ ...params(worship), externalId: QID });
 
-    const outcome = await upsertExperienceRecord({ ...params(unesco), externalId: QID, imageUrl: UNESCO_PICTURE });
+    const outcome = await upsertExperienceRecord({ ...params(second.id), externalId: QID, imageUrl: UNESCO_PICTURE });
 
     expect((await place()).image_url).toBe(UNESCO_PICTURE);
     expect(outcome.changeSet.changedFields.map(field => field.field)).toContain('imageUrl');

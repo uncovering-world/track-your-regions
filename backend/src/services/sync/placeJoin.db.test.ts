@@ -16,7 +16,7 @@ import { upsertSingleLocation } from './syncUtils.js';
  */
 
 const AJANTA = 9980;
-const SERIAL = 9981;
+const SERIAL = 9984;
 const ITEM = 'Q9980001';
 const SERIAL_ITEM = 'Q9980002';
 const NEW_ITEM = 'Q9980003';
@@ -103,7 +103,7 @@ beforeEach(async () => {
   heritage = id('UNESCO World Heritage Sites');
   worship = id('Places of worship');
   archaeology = id('Archaeology');
-  await site(AJANTA, '9980-fixture', [ITEM], [AJANTA_POINT]);
+  await site(AJANTA, '9980', [ITEM], [AJANTA_POINT]);
 });
 
 afterAll(async () => {
@@ -165,7 +165,7 @@ describe('a run finds the place its item identifies (ADR-0143 decision 3)', () =
   });
 
   it('creates a place where the item only refers to one: a serial site\'s items name its parts', async () => {
-    await site(SERIAL, '9981-fixture', [SERIAL_ITEM], [AJANTA_POINT, { lon: 75.71, lat: 20.56 }]);
+    await site(SERIAL, '9984', [SERIAL_ITEM], [AJANTA_POINT, { lon: 75.71, lat: 20.56 }]);
     const outcome = await upsertExperienceRecord(params(worship, SERIAL_ITEM), { syncLogId: null });
     expect(outcome.experienceId).not.toBe(SERIAL);
     expect(outcome.changeSet.changeType).toBe('created');

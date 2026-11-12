@@ -72,12 +72,12 @@ beforeEach(async () => {
   archaeology = sources.rows.find(row => row.name === 'Archaeology')!.id;
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, '9490-fixture', 'Frontiers of the Roman Empire (fixture)', ST_SetSRID(ST_MakePoint(6.96, 50.94), 4326))`,
+     VALUES ($1, $2, '9490', 'Frontiers of the Roman Empire (fixture)', ST_SetSRID(ST_MakePoint(6.96, 50.94), 4326))`,
     [SITE, heritage],
   );
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     VALUES ($1, $2, $3, '9490-fixture', 'auto', NOW())`,
+     VALUES ($1, $2, $3, '9490', 'auto', NOW())`,
     [SITE, unesco.kind_id, heritage],
   );
   await writeExperienceLocations(SITE, [PRAETORIUM, DEUTZ], { syncLogId: null, sourceId: heritage, components: true });

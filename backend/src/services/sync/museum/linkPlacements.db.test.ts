@@ -14,7 +14,7 @@ import { reconcileLinks } from './linkWithdrawal.js';
  */
 
 const LOUVRE = 9460;
-const LOUVRE_QID = 'Q9460-louvre-fixture';
+const LOUVRE_QID = 'Q9460901';
 const WORKS = { painting: 'Q9461-painting-fixture', find: 'Q9462-find-fixture', shared: 'Q9463-shared-fixture' };
 
 let artMuseums = 0;

@@ -79,14 +79,14 @@ beforeEach(async () => {
   );
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, 'rebuild-9764', 'Rebuild buoy', ST_SetSRID(ST_MakePoint(-140, -40), 4326))`,
+     VALUES ($1, $2, 'Q9764001', 'Rebuild buoy', ST_SetSRID(ST_MakePoint(-140, -40), 4326))`,
     [EXPERIENCE_ID, source.rows[0].id],
   );
   // A place is in a region's lists through a membership (ADR-0100): one with
   // none is a part, whose site the lists find instead.
   await pool.query(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, 'rebuild-9764', 'auto', NOW() FROM experience_sources s WHERE s.id = $2`,
+     SELECT $1, s.kind_id, s.id, 'Q9764001', 'auto', NOW() FROM experience_sources s WHERE s.id = $2`,
     [EXPERIENCE_ID, source.rows[0].id],
   );
   await pool.query(

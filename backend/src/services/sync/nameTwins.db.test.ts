@@ -15,8 +15,8 @@ import { upsertExperienceRecord, type ExperienceUpsertParams } from './experienc
 
 const TREPTOWER = 9481;
 const TIERGARTEN = 9482;
-const TREPTOWER_ID = 'Q48441-twin-fixture';
-const TIERGARTEN_ID = 'Q32660126-twin-fixture';
+const TREPTOWER_ID = 'Q9481001';
+const TIERGARTEN_ID = 'Q9482001';
 const LABEL = 'Soviet War Memorial';
 const NAMED_APART = "Soviet War Memorial (Berlin's Treptower Park)";
 

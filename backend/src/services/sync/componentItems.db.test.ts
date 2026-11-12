@@ -47,13 +47,13 @@ beforeEach(async () => {
   await clear();
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     SELECT $1, s.id, '1363-fixture', 'Prehistoric Pile Dwellings around the Alps', ST_SetSRID(ST_MakePoint(9.0, 47.5), 4326)
+     SELECT $1, s.id, '9820', 'Prehistoric Pile Dwellings around the Alps', ST_SetSRID(ST_MakePoint(9.0, 47.5), 4326)
        FROM experience_sources s WHERE s.name = 'UNESCO World Heritage Sites'`,
     [PILES],
   );
   const membership = await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, '1363-fixture', 'auto', NOW() FROM experience_sources s
+     SELECT $1, s.kind_id, s.id, '9820', 'auto', NOW() FROM experience_sources s
       WHERE s.name = 'UNESCO World Heritage Sites' RETURNING id`,
     [PILES],
   );

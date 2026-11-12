@@ -29,7 +29,7 @@ async function member(sourceId: number): Promise<number> {
   return (await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, 'verified', NOW()) RETURNING id`,
-    [DOME, kind, sourceId, `${QID}-${sourceId}`],
+    [DOME, kind, sourceId, (sourceId === unesco ? String(DOME) : `Q${DOME}00${sourceId}`)],
   )).rows[0].id;
 }
 

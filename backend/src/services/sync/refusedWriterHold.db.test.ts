@@ -15,7 +15,7 @@ import { upsertExperienceRecord, type ExperienceUpsertParams } from './experienc
  */
 
 const MONUMENT = 9460;
-const MONUMENT_QID = 'Q9460-karl-marx-monument-fixture';
+const MONUMENT_QID = 'Q9460902';
 
 const MARX = { item: 'Q9061', label: 'Karl Marx', articleUrl: null };
 const ENGELS = { item: 'Q34666', label: 'Friedrich Engels', articleUrl: null };

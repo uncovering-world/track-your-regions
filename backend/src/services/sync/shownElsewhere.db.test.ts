@@ -12,7 +12,7 @@ import { placesOtherSourcesOffer, worksShownByOtherSources } from './shownElsewh
  */
 
 const UFFIZI = 951252;
-const UFFIZI_QID = 'Q51252-shown-fixture';
+const UFFIZI_QID = 'Q951252001';
 const VENUS_QID = 'Q774967-shown-fixture';
 
 let artMuseums = 0;
