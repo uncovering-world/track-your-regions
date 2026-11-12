@@ -886,6 +886,16 @@ export interface PlaceIdentifiersRow {
   recorded_at: Date;
 }
 
+/** The table `place_venues`. */
+export interface PlaceVenuesRow {
+  source_id: number;
+  qid: string;
+  venues: number;
+  radius_m: number | null;
+  along_m: number | null;
+  measured_at: Date;
+}
+
 /** The table `readership_month_files`. */
 export interface ReadershipMonthFilesRow {
   month: Date;
@@ -1468,6 +1478,7 @@ export const RELATION_SCHEMAS = {
   osm_objects: "workbench",
   place_identifier_verdicts: "public",
   place_identifiers: "public",
+  place_venues: "public",
   readership_month_files: "workbench",
   readership_months: "workbench",
   readership_staging: "workbench",

@@ -116,6 +116,8 @@ async function shadowedSquares(base: number): Promise<string[]> {
 }
 
 async function clear(): Promise<void> {
+  await pool.query('DELETE FROM place_venues WHERE qid = ANY($1::text[])',
+    [Array.from({ length: 100 }, (_, i) => `Q${BASE + i}`)]);
   await pool.query('DELETE FROM experiences WHERE id >= $1 AND id < $2', [BASE, BASE + 100]);
   await pool.query('DELETE FROM world_views WHERE id = $1', [DISTRICTS_VIEW]);
   await pool.query("DELETE FROM treasures WHERE external_id = 'Q928215-calling'");
@@ -358,6 +360,24 @@ describe("a crowded city as its region's page shows it (#2358)", () => {
       readers: alex.readers, wikipediaEditions: alex.wikipediaEditions, guideUsed: true, score: alex.score,
     });
     expect(read.around.find(row => row.name === 'Leipziger Platz')).toMatchObject({ readers: null, guideUsed: null });
+  });
+
+  it('carries the venues the place pass kept around each square, and no venue column for a kind that keeps none (#2454)', async () => {
+    await pool.query(
+      `INSERT INTO place_venues (source_id, qid, venues, radius_m) VALUES ($1, $2, 64, 200)`,
+      [SQUARES, `Q${squares.get('Alexanderplatz')!.place}`]);
+
+    const listed = await group();
+    expect(listed.kind).toMatchObject({ readsVenues: true, venueRadiusM: 200 });
+    expect(listed.places.find(row => row.name === 'Alexanderplatz')!.venues).toEqual({ figure: 64, per100m: false });
+    // A square the pass counted nothing for reads none, never a zero.
+    expect(listed.places.find(row => row.name === 'Leipziger Platz')!.venues).toBeNull();
+    const read = await circle('Schloßplatz');
+    expect(read.around.find(row => row.name === 'Alexanderplatz')!.venues).toEqual({ figure: 64, per100m: false });
+
+    const church = await getCrowdingPlace({ params: { membershipId: sanLuigi }, query: {}, caller: admin() });
+    expect(church.kind).toMatchObject({ readsVenues: false, venueRadiusM: null });
+    expect(church.place.venues).toBeNull();
   });
 
   it("lists another scope's published squares unanswerable, and none of its new ones", async () => {

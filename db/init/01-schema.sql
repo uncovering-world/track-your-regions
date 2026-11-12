@@ -6884,6 +6884,28 @@ ALTER TABLE membership_crowding ADD CONSTRAINT membership_crowding_outranked_by_
 COMMENT ON TABLE membership_crowding IS 'The memberships crowded out of what a reader is shown (ADR-0172): crowding_limit or more candidates of the same kind and type within crowding_radius_km, holding no work a reader is shown, count above it, or a curator keeps it in the shadow (crowding_pin, ADR-0180). A place holding such a work is never here (ADR-0173), and nor is a place a curator keeps in the list. Absent means shown. A reader finds a crowded-out place by search and opens its card; no list, map or count holds it.';
 COMMENT ON COLUMN membership_crowding.outranked_by IS 'How many candidates of its kind and type within the radius count above it (crowding_better()): the better known and the ones a curator keeps in the list, less the ones a curator keeps in the shadow and the ones holding a work a reader is shown (ADR-0173, ADR-0180). Under crowding_limit only for a place a curator keeps in the shadow.';
 
+-- The cafés, restaurants and bars around a place of a kind that reads them
+-- (ADR-0192, #2454), as the place pass last counted them: within the cut's
+-- radius of its point, or per 100 m along a street read along its line
+-- (ADR-0194). Keyed by the source and the item that source knows the place by,
+-- since the pass counts a candidate before its run writes the membership of a
+-- new arrival. A curator reads it beside the place's fame in a crowded city;
+-- it is no part of the score.
+CREATE TABLE IF NOT EXISTS place_venues (
+    source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
+    qid TEXT NOT NULL CHECK (qid ~ '^Q[1-9][0-9]*$'),
+    venues REAL NOT NULL CHECK (venues >= 0),
+    radius_m INTEGER CHECK (radius_m > 0),
+    along_m INTEGER CHECK (along_m > 0),
+    measured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (source_id, qid),
+    CHECK ((radius_m IS NULL) <> (along_m IS NULL))
+);
+COMMENT ON TABLE place_venues IS 'The cafés, restaurants and bars the place pass last counted around each place of a kind that reads them (ADR-0192), by the source and the item it knows the place by. Written by a real pass that read the venue layer, replacing the source''s rows; a dry run and a pass that could not read the layer leave them as they stand. Read beside the place''s fame in a crowded city, never scored (#2454).';
+COMMENT ON COLUMN place_venues.venues IS 'The venues within radius_m of the place''s point, or the venues per 100 m along its line where along_m is set (ADR-0194).';
+COMMENT ON COLUMN place_venues.radius_m IS 'The radius of the point the venues were counted within; NULL for a street read along its line.';
+COMMENT ON COLUMN place_venues.along_m IS 'The length of the street''s lines the venues were counted along; NULL for a place read at its point.';
+
 -- A curator's answer to a crowded city (ADR-0180, #2282): which places of a
 -- type around a place a reader is shown is a question of priorities among the
 -- neighbours, judged in one window, and the answer holds until a curator
