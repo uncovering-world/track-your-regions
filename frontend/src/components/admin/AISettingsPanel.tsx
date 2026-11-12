@@ -48,6 +48,7 @@ const FEATURE_LABELS: Record<string, { label: string; description: string }> = {
   'model.rule_review': { label: 'Rule Review', description: 'Reviews learned AI rules for duplicates and contradictions. Triggered from the Extraction Rules panel.' },
   'model.vision_match': { label: 'Vision Match', description: 'Uses GPT-4o vision to identify which GADM divisions fall within a region by analyzing the region\'s map image. Triggered by the "Suggest with AI" button in the union/split preview dialog.' },
   'model.cv_cluster_match': { label: 'CV Cluster Match', description: 'Matches K-means color clusters to Wikivoyage region names using geographic knowledge of GADM division names. Triggered by "AI Suggest" in the CV match assignment review.' },
+  'model.lead_dedication': { label: 'Dedication from a lead', description: 'Reads whom a monument was raised for from the opening of its English Wikipedia article, beside Claude Haiku. A dedication is written only where both name the same linked article. Runs during the Public art and Monuments & memorials sync, for an article whose text changed.' },
 };
 
 /** Maps raw feature names (from DB) to display labels */
@@ -61,6 +62,7 @@ const RAW_FEATURE_LABELS: Record<string, string> = {
   rule_review: 'Rule Review',
   vision_match: 'Vision Match',
   cv_cluster_match: 'CV Cluster Match',
+  lead_dedication: 'Dedication from a lead',
 };
 
 const FEATURE_KEYS = Object.keys(FEATURE_LABELS);
@@ -82,6 +84,7 @@ const SESSION_ESTIMATES: Record<string, { inputTokens: number; outputTokens: num
   'model.rule_review': { inputTokens: 2_000, outputTokens: 1_000, session: 'Review learned rules', description: '1 call to analyze all rules for duplicates/contradictions' },
   'model.vision_match': { inputTokens: 5_000, outputTokens: 500, session: 'Single vision match call', description: '1 GPT-4o vision call per region: image analysis + division list matching' },
   'model.cv_cluster_match': { inputTokens: 4_000, outputTokens: 500, session: 'Single cluster-to-region match', description: '1 call per CV match: division names per cluster → region name mapping' },
+  'model.lead_dedication': { inputTokens: 130_000, outputTokens: 130_000, session: 'First sync of Public art and Monuments & memorials', description: 'About 160 leads. Later syncs ask only about changed articles.' },
 };
 
 function formatCost(cost: number): string {

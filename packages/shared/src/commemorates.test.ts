@@ -10,6 +10,8 @@ describe('whom a place commemorates, as stored (#2144)', () => {
     expect(commemoratesOf({ via: 'depicts', subjects: [{ ...POZHARSKY, extra: 1 }, MININ] }))
       .toEqual({ via: 'depicts', subjects: [POZHARSKY, MININ] });
     expect(commemoratesOf({ via: 'guess', subjects: [POZHARSKY] })).toBeNull();
+    // The step that reads a dedication from the place's lead (#2472) is a step like any other.
+    expect(commemoratesOf({ via: 'lead', subjects: [MININ] })).toEqual({ via: 'lead', subjects: [MININ] });
     expect(commemoratesOf({ via: 'depicts', subjects: [{ item: 'Q15756', label: '' }] })).toBeNull();
     expect(commemoratesOf(null)).toBeNull();
   });
