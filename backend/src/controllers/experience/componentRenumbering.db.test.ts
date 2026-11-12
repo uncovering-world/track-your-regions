@@ -47,15 +47,16 @@ interface PartRow {
 /** Each part of the site with its points, by the name the part carries. */
 async function parts(): Promise<Map<string, PartRow>> {
   const rows = (await pool.query<PartRow>(
-    `SELECT p.part_id, p.external_ref AS relation_ref, e.name AS part_name,
+    `SELECT p.part_id, pr.external_id AS relation_ref, e.name AS part_name,
             jsonb_agg(jsonb_build_object('id', el.id, 'ref', el.external_ref, 'missing', el.missing_since IS NOT NULL,
                                          'pending', el.curation_state = 'pending',
                                          'held', el.withdrawal_deferred_for_location_id) ORDER BY el.id) AS points
        FROM experience_parts p
+       JOIN source_records pr ON pr.experience_id = p.part_id AND pr.whole_id = p.whole_id AND pr.source_id = 10
        JOIN experiences e ON e.id = p.part_id
        JOIN experience_locations el ON el.experience_id = p.part_id
       WHERE p.whole_id = $1 AND p.reason = 'component'
-      GROUP BY p.part_id, p.external_ref, e.name`, [SITE],
+      GROUP BY p.part_id, pr.external_id, e.name`, [SITE],
   )).rows;
   return new Map(rows.map(row => [row.part_name, row]));
 }

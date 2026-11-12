@@ -33,9 +33,9 @@ async function clear(): Promise<void> {
 
 const luxor = async () => (await pool.query<{ part_id: number; point_id: number; subtitle: string | null; claims: string[] }>(
   `SELECT p.part_id, el.id AS point_id, e.subtitle, e.curated_fields AS claims
-     FROM experience_parts p JOIN experiences e ON e.id = p.part_id
+     FROM experience_parts p JOIN source_records pr ON pr.experience_id = p.part_id AND pr.whole_id = p.whole_id AND pr.source_id = 10 JOIN experiences e ON e.id = p.part_id
      JOIN experience_locations el ON el.experience_id = p.part_id
-    WHERE p.whole_id = $1 AND p.external_ref = $2`, [THEBES, LUXOR.externalRef],
+    WHERE p.whole_id = $1 AND pr.external_id = $2`, [THEBES, LUXOR.externalRef],
 )).rows[0];
 
 beforeEach(async () => {
@@ -171,8 +171,8 @@ describe("a curator's correction of a part's point (ADR-0156)", () => {
       caller: { id: adminId, role: 'admin' } as Express.User,
     });
     const part = await pool.query<{ name: string }>(
-      `SELECT e.name FROM experience_parts p JOIN experiences e ON e.id = p.part_id
-        WHERE p.whole_id = $1 AND p.external_ref = $2`, [THEBES, nameless.externalRef],
+      `SELECT e.name FROM experience_parts p JOIN source_records pr ON pr.experience_id = p.part_id AND pr.whole_id = p.whole_id AND pr.source_id = 10 JOIN experiences e ON e.id = p.part_id
+        WHERE p.whole_id = $1 AND pr.external_id = $2`, [THEBES, nameless.externalRef],
     );
     expect(part.rows[0].name).toBe('Thebes and its Necropolis (part fields fixture) (87-005)');
   });

@@ -65,12 +65,12 @@ beforeEach(async () => {
     `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'curator') RETURNING id`, [CURATOR],
   )).rows[0].id;
   await place(CATHEDRAL, 'Svetitskhoveli Cathedral', 'Places of worship', 44.7208);
-  const site = await place(SITE, 'Historical Monuments of Mtskheta (fixture)', 'UNESCO World Heritage Sites', 44.7200);
+  await place(SITE, 'Historical Monuments of Mtskheta (fixture)', 'UNESCO World Heritage Sites', 44.7200);
   await place(PART, 'Svetitskhoveli Cathedral', null, 44.72155);
   // The relation's trigger writes the part's record; the run then records the component's item on it.
   await pool.query(
-    `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref) VALUES ($1, $2, 'component', $3, '108bis-003')`,
-    [SITE, PART, site],
+    `INSERT INTO source_records (experience_id, whole_id, source_id, external_id) VALUES ($2, $1, 10, '108bis-003')`,
+    [SITE, PART],
   );
   await pool.query('UPDATE source_records SET wikidata_items = ARRAY[$2] WHERE experience_id = $1 AND source_id = 10 AND whole_id IS NOT NULL', [PART, ITEM]);
   proposalId = (await pool.query<{ id: number }>(

@@ -44,8 +44,9 @@ async function clear(): Promise<void> {
 /** Thebes' parts, by their component reference. */
 async function parts() {
   return (await pool.query<{ part_id: number; external_ref: string; name: string }>(
-    `SELECT p.part_id, p.external_ref, e.name FROM experience_parts p JOIN experiences e ON e.id = p.part_id
-      WHERE p.whole_id = $1 ORDER BY p.external_ref`, [THEBES],
+    `SELECT p.part_id, pr.external_id AS external_ref, e.name FROM experience_parts p
+       JOIN source_records pr ON pr.experience_id = p.part_id AND pr.whole_id = p.whole_id AND pr.source_id = 10 JOIN experiences e ON e.id = p.part_id
+      WHERE p.whole_id = $1 ORDER BY pr.external_id`, [THEBES],
   )).rows;
 }
 
@@ -218,7 +219,8 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
       await pool.query(`UPDATE source_records SET external_id = $2 WHERE experience_id = $1`, [COMPLEX, ITEM]);
       await pool.query(
         `UPDATE experience_locations el SET wikidata_item = $1
-           FROM experience_parts p WHERE p.whole_id = $2 AND el.experience_id = p.part_id AND p.external_ref = ANY($3::text[])`,
+           FROM source_records pr WHERE pr.whole_id = $2 AND pr.source_id = 10 AND el.experience_id = pr.experience_id
+            AND pr.external_id = ANY($3::text[])`,
         [ITEM, THEBES, refs],
       );
     }

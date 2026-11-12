@@ -135,12 +135,12 @@ describe('the place identifier registry (ADR-0143 decision 2)', () => {
 
   it('holds an item two parts carry as their ensemble\'s, and a part\'s own item as the part\'s', async () => {
     await place(SERIAL, heritage, '9972-fixture', 'A serial site');
-    const site = await membership(SERIAL, heritage, '9972-fixture', [ENSEMBLE, OTHER_ITEM]);
+    await membership(SERIAL, heritage, '9972-fixture', [ENSEMBLE, OTHER_ITEM]);
     for (const [part, ref] of [[PART_A, '9972-001'], [PART_B, '9972-002']] as const) {
       await place(part, heritage, ref, `Part ${ref}`);
       await pool.query(
-        `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
-         VALUES ($1, $2, 'component', $3, $4)`, [SERIAL, part, site, ref],
+        `INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
+         VALUES ($2, $1, 10, $3)`, [SERIAL, part, ref],
       );
       await point(part, ref, ENSEMBLE);
     }

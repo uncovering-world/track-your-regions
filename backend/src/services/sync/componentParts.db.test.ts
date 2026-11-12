@@ -25,12 +25,13 @@ let run: LocationWriteRun;
 
 async function parts(site: number) {
   return (await pool.query<{ part_id: number; external_ref: string | null; name: string; location_id: number }>(
-    `SELECT p.part_id, p.external_ref, e.name, el.id AS location_id
+    `SELECT p.part_id, pr.external_id AS external_ref, e.name, el.id AS location_id
        FROM experience_parts p
+       JOIN source_records pr ON pr.experience_id = p.part_id AND pr.whole_id = p.whole_id AND pr.source_id = 10
        JOIN experiences e ON e.id = p.part_id
        JOIN experience_locations el ON el.experience_id = p.part_id
       WHERE p.whole_id = $1 AND p.reason = 'component'
-      ORDER BY p.external_ref`, [site],
+      ORDER BY pr.external_id`, [site],
   )).rows;
 }
 
@@ -42,7 +43,7 @@ async function ownPoints(site: number) {
 
 async function clear(): Promise<void> {
   await pool.query(
-    'DELETE FROM experiences WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = ANY($1::int[]))',
+    'DELETE FROM experiences WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = ANY($1::int[])) OR merged_into_id = ANY($1::int[])',
     [[THEBES, GIZA]],
   );
   await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[THEBES, GIZA]]);
@@ -81,10 +82,11 @@ describe("a serial site's components become its parts (ADR-0100)", () => {
     const parted = await parts(THEBES);
     expect(parted.map(p => [p.external_ref, p.name])).toEqual([['87-001', 'Temple of Karnak'], ['87-002', 'Luxor Temple']]);
     expect(await ownPoints(THEBES)).toEqual([]);
-    // The relation carries the site's membership, the one that placed the point.
+    // The point is placed by the site's World Heritage membership, which the part's record answers to.
     const membership = await pool.query<{ placed: boolean }>(
       `SELECT bool_and(EXISTS (SELECT 1 FROM experience_location_placements pl
-                                WHERE pl.location_id = el.id AND pl.membership_id = p.membership_id)) AS placed
+                                 JOIN source_records site ON site.id = pl.membership_id
+                                WHERE pl.location_id = el.id AND site.experience_id = p.whole_id AND site.source_id = 1)) AS placed
          FROM experience_parts p JOIN experience_locations el ON el.experience_id = p.part_id
         WHERE p.whole_id = $1`, [THEBES],
     );
@@ -211,9 +213,10 @@ describe('a component that stands for its whole site is not parted (#1899)', () 
   it('revives a part migration 161 folded once its point stops standing for the site', async () => {
     await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
     const karnak = (await parts(THEBES)).find(p => p.external_ref === '87-001')!;
-    // Folded as migration 161 folds a part: the point home, the relation gone, the place folded into the site.
+    // Folded as migration 161 folds a part: the point home, the part's record and so its relation gone,
+    // the place folded into the site.
     await pool.query('UPDATE experience_locations SET experience_id = $1 WHERE id = $2', [THEBES, karnak.location_id]);
-    await pool.query('DELETE FROM experience_parts WHERE part_id = $1', [karnak.part_id]);
+    await pool.query('DELETE FROM source_records WHERE experience_id = $1 AND whole_id = $2', [karnak.part_id, THEBES]);
     await pool.query('UPDATE experiences SET merged_into_id = $1 WHERE id = $2', [THEBES, karnak.part_id]);
 
     const membership = (await pool.query<{ id: number }>(
