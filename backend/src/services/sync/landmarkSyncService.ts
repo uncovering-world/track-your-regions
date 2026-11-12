@@ -34,6 +34,7 @@ import type { FiledAsMonument } from './publicArt/publicArtTest.js';
 import { mergeSurroundings, surroundingsReader, type SurroundingsKind, type SurroundingsReader } from './places/surroundingsTier.js';
 import { goneWorkReason, refuseGone, type StandingFacts } from './places/gone.js';
 import { commemorationWiki, readCommemorates } from './places/commemorates.js';
+import { leadDedicationReader } from './places/leadDedication.js';
 import { worldHistory, type WorldHistory } from './places/worldMemory.js';
 import { readStreetArt } from './publicArt/streetArtPlaces.js';
 import { streetArtContents, type PlaceContents } from './publicArt/streetArtWorks.js';
@@ -428,7 +429,7 @@ async function upsertLandmarkExperience(
  */
 async function readWhatEachCommemorates(items: WikidataLandmark[], sourceId: number, sparql: SparqlFn, progress: SyncProgress): Promise<void> {
   progress.statusMessage = 'Reading whom or what each place commemorates...';
-  const readings = await readCommemorates(items, sparql, await commemorationWiki(progress));
+  const readings = await readCommemorates(items, sparql, await commemorationWiki(progress), await leadDedicationReader(() => progress.cancel));
   for (const item of items) {
     const reading = readings.get(item.qid);
     if (reading?.commemorates) item.commemorates = reading.commemorates;

@@ -1,7 +1,7 @@
 /**
  * Whom or what a place commemorates (#2144): the subjects the card of a place
  * Public art or Monuments & memorials offers names on its "Commemorates" line,
- * read in six steps, the first that names anyone answering. A later step is
+ * read in seven steps, the first that names anyone answering. A later step is
  * not read for a place an earlier one answered. Towers, Bridges & engineering
  * marvels and Squares & streets read none of it (`WRITTEN_BY_SOURCES`): their
  * namesake is the engineer or the patron, and the Eiffel Tower does not
@@ -21,6 +21,11 @@
  * 5. *Statues of X*, resolved as in step 2.
  * 6. `P180` *depicts*, a person only: Nelson's Column → Horatio Nelson, and
  *    not the lions or the battles on its plinth.
+ * 7. The lead of the place's English Wikipedia article, where two language
+ *    models name the same linked article as whom or what the place was raised
+ *    for, a person, an occurrence or a group (`leadDedication.ts`, #2472):
+ *    the Shaheed Minar in Dhaka → the Bengali language movement. Read after
+ *    a war is narrowed, and only where the run has both models' keys.
  *
  * Step 2 also reads English Wikipedia's *Monuments and memorials related to X*
  * or *concerning X*, *X monuments and memorials* and *X memorials in Y*, X a
@@ -90,6 +95,7 @@ import { enwikiTitleOf, fetchWikipediaCategories, type CategoryOptions } from '.
 import { resolveWikipediaArticles } from '../wikipediaArticles.js';
 import { fetchLeads, narrowWarReadings, type Lead, type Span } from './warNarrowing.js';
 import { namedInPlace } from './placeNames.js';
+import { readLeadDedications, type LeadDedicationReader } from './leadDedication.js';
 import type { SyncProgress } from '../types.js';
 
 const BATCH = 50;
@@ -507,10 +513,12 @@ const NONE: FiledSubjects = { memorials: [], concerning: [], statues: [], statue
 /**
  * The reading of every place asked about, by its item; a place no step
  * answers has no entry. `sparql` is the run's door to Wikidata, `wiki` its
- * door to English Wikipedia's categories (`commemorationWiki`).
+ * door to English Wikipedia's categories (`commemorationWiki`), and `leads`
+ * the two models that read a dedication from a lead, null where the
+ * deployment has no key for one (`leadDedicationReader`).
  */
 export async function readCommemorates(
-  places: readonly CommemorationPlace[], sparql: SparqlFn, wiki: CommemorationWiki,
+  places: readonly CommemorationPlace[], sparql: SparqlFn, wiki: CommemorationWiki, leads: LeadDedicationReader | null = null,
 ): Promise<Map<string, PlaceReading>> {
   if (!places.length) return new Map();
   const claims = await fetchSubjectClaims(sparql, [...new Set(places.map((place) => place.qid))]);
@@ -531,7 +539,9 @@ export async function readCommemorates(
     const religious = !reading.commemorates && Boolean(reading.holyFigures?.some((item) => !known.get(item)?.classical));
     if (reading.commemorates || reading.depicts) out.set(qid, religious ? { ...reading, religious } : reading);
   }
-  await narrowWarReadings(places, out, claims, { kinds: known, articles }, wiki, (items) => fetchSubjectKinds(sparql, items));
+  const kindsOf = (items: string[]) => fetchSubjectKinds(sparql, items);
+  await narrowWarReadings(places, out, claims, { kinds: known, articles }, wiki, kindsOf);
+  if (leads) await readLeadDedications(places, out, { kinds: known, articles }, wiki, kindsOf, leads);
   for (const reading of out.values()) withoutDedicated(reading);
   return out;
 }
