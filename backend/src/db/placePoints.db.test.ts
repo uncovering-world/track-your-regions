@@ -34,6 +34,8 @@ import {
 
 const SITE = 9890;
 const KARNAK = 9891;
+/** Karnak's Wikidata item, the fixture's own (Q, the place's id and three digits). */
+const KARNAK_ITEM = 'Q9891001';
 /** Another site with a part of its own, so a read that confuses whose parts are whose counts too many. */
 const OTHER_SITE = 9892;
 const OTHER_PART = 9893;
@@ -61,7 +63,7 @@ async function place(id: number, name: string, lon: number, lat: number): Promis
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      VALUES ($1, 1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326))`,
-    [id, `${id}-fixture`, name, lon, lat],
+    [id, `${id}`, name, lon, lat],
   );
 }
 
@@ -100,7 +102,7 @@ beforeEach(async () => {
   membershipId = (await pool.query<{ id: number }>(
     `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
-    [SITE, `${SITE}-fixture`],
+    [SITE, `${SITE}`],
   )).rows[0].id;
   await pool.query(
     `INSERT INTO experience_regions (experience_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
@@ -162,7 +164,7 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     await pool.query(
       `INSERT INTO experience_component_item_proposals
               (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
-       VALUES ($1, 'Q9891', 'Karnak Temple Complex', 125, 0.62, false, 'near')`,
+       VALUES ($1, '${KARNAK_ITEM}', 'Karnak Temple Complex', 125, 0.62, false, 'near')`,
       [karnakPoint],
     );
     const card = (await queryComponentItems([SITE])).rows[0];
@@ -204,7 +206,7 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     // regions: the Temple of Karnak as a place of worship.
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q522862-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
+       SELECT $1, s.kind_id, s.id, '${KARNAK_ITEM}', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
       [KARNAK],
     );
     await pool.query(
@@ -416,7 +418,7 @@ describe("a part's point with no name of its own (#1924)", () => {
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
-      [KARNAK, `${KARNAK}-worship`],
+      [KARNAK, KARNAK_ITEM],
     );
     await pool.query('UPDATE experience_locations SET name = NULL WHERE id = $1', [karnakPoint]);
 
@@ -444,7 +446,7 @@ describe("a part's point with no name of its own (#1924)", () => {
     await pool.query(
       `INSERT INTO experience_component_item_proposals
               (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
-       VALUES ($1, 'Q9891', 'Karnak Temple Complex', 125, 0.62, false, 'near')`,
+       VALUES ($1, '${KARNAK_ITEM}', 'Karnak Temple Complex', 125, 0.62, false, 'near')`,
       [karnakPoint],
     );
     const card = (await queryComponentItems([SITE])).rows[0];
@@ -459,7 +461,7 @@ describe("a part's point with no name of its own (#1924)", () => {
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
        SELECT $1, s.kind_id, s.id, $2, 'pending' FROM experience_sources s WHERE s.id = 4`,
-      [KARNAK, `${KARNAK}-worship`],
+      [KARNAK, KARNAK_ITEM],
     );
     const readerNames = async () => {
       const own = await getExperienceLocations({
@@ -492,7 +494,7 @@ describe("a part's point with no name of its own (#1924)", () => {
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
-      [KARNAK, `${KARNAK}-worship`],
+      [KARNAK, KARNAK_ITEM],
     );
     await editLocation({
       params: { locationId: karnakPoint },
@@ -544,7 +546,7 @@ describe("a part's point with no picture of its own (#1946)", () => {
     await pool.query(
       `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
        SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
-      [KARNAK, `${KARNAK}-worship`],
+      [KARNAK, KARNAK_ITEM],
     );
     await pool.query(
       `UPDATE experiences SET image_url = $2, metadata = jsonb_build_object('imageCredit', $3::jsonb) WHERE id = $1`,

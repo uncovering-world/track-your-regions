@@ -97,9 +97,9 @@ beforeEach(async () => {
   adminId = (await pool.query<{ id: number }>(
     `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'An admin', 'admin') RETURNING id`, [ADMIN],
   )).rows[0].id;
-  await place(AJANTA, heritage, '9970-fixture', 'Ajanta Caves');
-  await membership(AJANTA, heritage, '9970-fixture', [ITEM]);
-  await point(AJANTA, '9970-fixture');
+  await place(AJANTA, heritage, '9970', 'Ajanta Caves');
+  await membership(AJANTA, heritage, '9970', [ITEM]);
+  await point(AJANTA, '9970');
 });
 
 afterAll(async () => {
@@ -109,7 +109,7 @@ afterAll(async () => {
 
 describe('the place identifier registry (ADR-0143 decision 2)', () => {
   it("makes a site of one point its one item, and its own reference the site's", async () => {
-    expect(await held([ITEM, '9970-fixture'])).toEqual([`${AJANTA}:identifies`, `${AJANTA}:identifies`]);
+    expect(await held([ITEM, '9970'])).toEqual([`${AJANTA}:identifies`, `${AJANTA}:identifies`]);
     expect(await outOfStep()).toBe(0);
   });
 
@@ -134,8 +134,8 @@ describe('the place identifier registry (ADR-0143 decision 2)', () => {
   });
 
   it('holds an item two parts carry as their ensemble\'s, and a part\'s own item as the part\'s', async () => {
-    await place(SERIAL, heritage, '9972-fixture', 'A serial site');
-    await membership(SERIAL, heritage, '9972-fixture', [ENSEMBLE, OTHER_ITEM]);
+    await place(SERIAL, heritage, '9972', 'A serial site');
+    await membership(SERIAL, heritage, '9972', [ENSEMBLE, OTHER_ITEM]);
     for (const [part, ref] of [[PART_A, '9972-001'], [PART_B, '9972-002']] as const) {
       await place(part, heritage, ref, `Part ${ref}`);
       await pool.query(

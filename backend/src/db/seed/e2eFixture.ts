@@ -116,6 +116,7 @@ async function seedPlace(
   exp: { id: number; name: string; lon: number; lat: number },
   source: Source,
   curationState: 'auto' | 'pending',
+  externalId: string,
 ): Promise<void> {
   // Unlike regions.geom, experiences.location and experience_locations.location
   // are NOT NULL, so an insert-then-update split fails on the insert itself.
@@ -125,7 +126,7 @@ async function seedPlace(
   await client.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
-    [exp.id, source.id, `e2e-${exp.id}`, exp.name, exp.lon, exp.lat],
+    [exp.id, source.id, externalId, exp.name, exp.lon, exp.lat],
   );
 
   // The place's membership in the kind its source fills (#822). Without
@@ -137,7 +138,7 @@ async function seedPlace(
     `INSERT INTO source_records
        (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      VALUES ($1, $2, $3, $4, $5, $6)`,
-    [exp.id, source.kind_id, source.id, `e2e-${exp.id}`, curationState,
+    [exp.id, source.kind_id, source.id, externalId, curationState,
       curationState === 'auto' ? new Date() : null],
   );
 
@@ -258,8 +259,9 @@ async function seedRows(client: PoolClient): Promise<void> {
     [REGION_WKT, E2E_REGION_ID],
   );
 
-  for (const exp of EXPERIENCES) await seedPlace(client, exp, unesco, 'auto');
-  for (const exp of ARRIVALS) await seedPlace(client, exp, worship, 'pending');
+  // Each under an id of its source's scheme: a World Heritage site's number, a Wikidata item.
+  for (const exp of EXPERIENCES) await seedPlace(client, exp, unesco, 'auto', String(exp.id));
+  for (const exp of ARRIVALS) await seedPlace(client, exp, worship, 'pending', `Q${exp.id}001`);
   await seedRefusedPoint(client, REFUSED_POINT);
   // A World Heritage site of two points is a serial site, whose components are
   // places part of it, as the run leaves them (ADR-0100): the Testland

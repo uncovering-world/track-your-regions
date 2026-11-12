@@ -14,7 +14,7 @@ import { pool } from './index.js';
  * not a move; the fixture object and work are deleted before and after.
  */
 
-const EXTERNAL_ID = 'curation-moves-fixture';
+const EXTERNAL_ID = '96251';
 const WORK_EXTERNAL_ID = 'Q-curation-moves-fixture';
 const SOURCE_ID = 1;
 
