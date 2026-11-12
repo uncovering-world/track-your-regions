@@ -114,6 +114,17 @@ describe("a run's question about a curator's admission pin (#1367)", () => {
     expect((await membership()).admission_question_verdict).toBeNull();
   });
 
+  it("asks nothing when only the rule's bars or a signal read as last read changed (#2430)", async () => {
+    // Aqua Claudia's pin and the reason run 18:38 on 10 Nov gave, the bars' list grown and the readers as last read.
+    await pool.query(
+      `UPDATE source_records SET admission_pin_reason = $2 WHERE experience_id = $1`,
+      [GARDNER, "24 Wikipedia editions and 46,234 readers a year, no guide uses it and Atlas Obscura does not list it: under the world tier's bars (34 Wikipedia editions, 150,543 readers a year, or 25,421 where a guide uses it or Atlas Obscura lists it; a place held stays at 0.8 of any)"],
+    );
+    await run([{ externalId: QID, reason: "24 Wikipedia editions and 45,185 readers a year, no guide uses it and Atlas Obscura does not list it: under the world tier's bars (34 Wikipedia editions, 147,764 readers a year, or 24,931 where a guide uses it, Atlas Obscura lists it or the World Heritage List inscribes it; a place held stays at 0.8 of any)".replace('45,185 readers a year', '45,185 readers a year as last read') }], []);
+
+    expect((await membership()).admission_question_verdict).toBeNull();
+  });
+
   it('closes the question once the rule admits what the curator put back', async () => {
     await run([{ externalId: QID, reason: 'site, not a venue: museum' }], []);
     await run([], [QID]);

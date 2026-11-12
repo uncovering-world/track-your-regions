@@ -22,7 +22,15 @@
  * measurements it was decided on — "17 sitelinks: below the world tier's line
  * (22 to enter, 18 to stay)", "painting-share: 3 painting(s) vs 9 sculptural
  * work(s)" — and a count that ticks is not a new reason, nor is the measure's
- * other name ("16 Wikipedia editions: …", #1589).
+ * other name ("16 Wikipedia editions: …", #1589). Nor are the rule's own words
+ * about itself (#2430): the bars a fame refusal lists after "bars" or "line",
+ * which change when the rule is reworded or the bars drift ("… or the World
+ * Heritage List inscribes it"), and what a run kept "as last read" because it
+ * could not read it. What is left is the place's facts before the colon,
+ * "24 Wikipedia editions and # readers a year, no guide uses it", and the
+ * kind of refusal: a fact of the place that changes, a guide that came or went,
+ * is a new reason, and a reworded rule is not. The Aqua Claudia, put back on
+ * 2 Nov, was asked about again on 10 Nov only because the bars' list grew.
  */
 
 import type { Admission } from '@tyr/shared/lifecycle';
@@ -50,9 +58,26 @@ export interface PinnedView {
  */
 const MEASURE_WORDS = /\b(?:sitelinks?|Wikipedia editions?)\b/gi;
 
-/** A reason with every run of digits folded to one mark, and the measure's words to one word. */
+/**
+ * The rule's words about itself inside a reason (#2430), dropped before two
+ * reasons are compared: the guides and the readers as last read, and the bars
+ * a fame refusal spells out after "bars" or "line". `foldedReasonSql` drops
+ * the same, in the same order.
+ */
+const RULE_WORDS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/ \(the guides as last read\)/g, ''],
+  [/ as last read\b/g, ''],
+  [/\b(bars?|line) \([^()]*\)/g, '$1'],
+];
+
+/**
+ * A reason with the rule's words about itself dropped, every run of digits
+ * folded to one mark, and the measure's words to one word.
+ */
 export function foldedReason(reason: string | null): string | null {
-  return reason === null ? null : reason.replace(/\d+/g, '#').replace(MEASURE_WORDS, 'editions').trim();
+  if (reason === null) return null;
+  const facts = RULE_WORDS.reduce((text, [words, kept]) => text.replace(words, kept), reason);
+  return facts.replace(/\d+/g, '#').replace(MEASURE_WORDS, 'editions').trim();
 }
 
 /** Whether a run's view of a pinned membership is a question for the curator. */
@@ -126,9 +151,13 @@ export interface PinQuestion {
   read: Pick<PinnedRow, 'answer' | 'answeredVerdict' | 'answeredReason'>;
 }
 
-/** `reason` folded as `foldedReason` folds one — the numbers and the measure's words — in SQL. */
+/** `reason` folded as `foldedReason` folds one — the rule's own words, the numbers and the measure's words — in SQL. */
 export function foldedReasonSql(reason: string): string {
-  return `btrim(regexp_replace(regexp_replace(${reason}, '\\d+', '#', 'g'), '\\m(sitelinks?|Wikipedia editions?)\\M', 'editions', 'gi'))`;
+  // eslint-disable-next-line screen-text/guideline -- SQL regular expressions, not text on screen: the rule's SQL test does not know regexp_replace
+  const facts = `regexp_replace(regexp_replace(regexp_replace(${reason},`
+    + ` ' \\(the guides as last read\\)', '', 'g'), ' as last read\\M', '', 'g'),`
+    + ` '\\m(bars?|line) \\([^()]*\\)', '\\1', 'g')`;
+  return `btrim(regexp_replace(regexp_replace(${facts}, '\\d+', '#', 'g'), '\\m(sitelinks?|Wikipedia editions?)\\M', 'editions', 'gi'))`;
 }
 
 /**
