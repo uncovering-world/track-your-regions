@@ -13,6 +13,7 @@
  */
 
 import { pool, rollbackQuietly } from '../../../db/index.js';
+import { kindRecordSql, MEMBERSHIPS } from '../../../db/membership.js';
 import type { SurroundingsCut } from './surroundingsCut.js';
 import type { SurroundingsPool } from './surroundingsPool.js';
 
@@ -31,28 +32,43 @@ export interface VenueFigure {
   alongM: number | null;
 }
 
-/**
- * The figures the pool read for every place of a source that reads venues, or
- * null where the pool read none: no source of the pass reads them, or the
- * layer in place keeps no venue.
- */
-export function venueFigures(read: SurroundingsPool, sources: readonly VenueSource[], cut: Pick<SurroundingsCut, 'venueRadiusM'>): VenueFigure[] | null {
+/** The venues the pool read for these sources, or null where it read none: no source reads them, or the layer kept no venue. */
+function readVenues(read: SurroundingsPool, sources: readonly VenueSource[]): Exclude<SurroundingsPool['venues'], { unread: string } | undefined> | null {
   const venues = read.venues;
-  if (sources.length === 0 || !venues || venues.unread !== undefined) return null;
-  const figures: VenueFigure[] = [];
-  for (const [qid, figure] of venues.counts) {
+  return sources.length === 0 || !venues || venues.unread !== undefined ? null : venues;
+}
+
+/**
+ * The figures the pool read for every place of a source that reads venues that
+ * the cut measures or the source already holds, or null where the pool read
+ * none: no source of the pass reads them, or the layer in place keeps no venue.
+ * A candidate is a place the cut measures (`PoolVenues.around`); a place a
+ * curator put back in below the cut's floors is no candidate and is held
+ * (`held`, the source's own ids). The venues are counted around every square
+ * and street of the pool, nearly all of which no kind offers.
+ */
+export function venueFigures(
+  read: SurroundingsPool, sources: readonly VenueSource[], cut: Pick<SurroundingsCut, 'venueRadiusM'>, held: ReadonlySet<string> = new Set(),
+): VenueFigure[] | null {
+  const venues = readVenues(read, sources);
+  if (!venues) return null;
+  const kept = [...venues.counts].filter(([qid]) => venues.around.has(qid) || held.has(qid));
+  return kept.flatMap(([qid, figure]) => {
     const classes = read.rows.get(qid)?.classes ?? [];
     const line = venues.along.get(qid);
-    for (const source of sources) {
-      if (!classes.some((c) => source.classes.has(c))) continue;
-      figures.push({
-        sourceId: source.sourceId, qid, venues: figure,
-        radiusM: line ? null : cut.venueRadiusM,
-        alongM: line ? Math.max(1, Math.round(line.metres)) : null,
-      });
-    }
-  }
-  return figures;
+    return sources.filter((source) => classes.some((c) => source.classes.has(c))).map((source) => ({
+      sourceId: source.sourceId, qid, venues: figure,
+      radiusM: line ? null : cut.venueRadiusM,
+      alongM: line ? Math.max(1, Math.round(line.metres)) : null,
+    }));
+  });
+}
+
+/** The items the sources hold a record in a kind under, whatever the cut makes of them. */
+async function heldItems(sourceIds: number[]): Promise<Set<string>> {
+  const result = await pool.query<{ external_id: string }>(
+    `SELECT m.external_id FROM ${MEMBERSHIPS} m WHERE m.source_id = ANY($1::int[]) AND ${kindRecordSql('m')}`, [sourceIds]);
+  return new Set(result.rows.map((row) => row.external_id));
 }
 
 /**
@@ -60,8 +76,9 @@ export function venueFigures(read: SurroundingsPool, sources: readonly VenueSour
  * written where it read none. Answers the rows kept, or null.
  */
 export async function keepVenueFigures(read: SurroundingsPool, sources: readonly VenueSource[], cut: Pick<SurroundingsCut, 'venueRadiusM'>): Promise<number | null> {
-  const figures = venueFigures(read, sources, cut);
-  if (figures === null) return null;
+  // Nothing is asked of the database where the pool read no venue.
+  if (!readVenues(read, sources)) return null;
+  const figures = venueFigures(read, sources, cut, await heldItems(sources.map((s) => s.sourceId)))!;
   const client = await pool.connect();
   let unusable: Error | undefined;
   try {

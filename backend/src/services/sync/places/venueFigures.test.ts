@@ -20,19 +20,37 @@ const read = (venues: SurroundingsPool['venues']): SurroundingsPool => ({
 
 const SQUARES = { sourceId: 9, classes: new Set([SQUARE_CLASS]) };
 const CUT = { venueRadiusM: 200 };
+// A candidate's area as the cut reads it; its numbers do not matter here.
+const AREA = { places: 10, best: [40, 30], along: false } as never;
 
 describe('the venues a place pass keeps (#2454)', () => {
   it('keeps a square counted around its point and a street counted along its line, for the source whose places they are', () => {
     const figures = venueFigures(read({
       counts: new Map([['Q-largo', 36], ['Q-street', 4.2], ['Q-church', 12]]),
       along: new Map([['Q-street', { metres: 850.4, venues: 36, artery: false }]]),
-      around: new Map(),
+      around: new Map([['Q-largo', AREA], ['Q-street', AREA], ['Q-church', AREA]]),
       arteries: new Set(),
     }), [SQUARES], CUT);
     expect(figures).toEqual([
       { sourceId: 9, qid: 'Q-largo', venues: 36, radiusM: 200, alongM: null },
       { sourceId: 9, qid: 'Q-street', venues: 4.2, radiusM: null, alongM: 850 },
     ]);
+  });
+
+  it('keeps a candidate only: a place the cut does not measure is counted around and kept nowhere', () => {
+    const figures = venueFigures(read({
+      counts: new Map([['Q-largo', 36], ['Q-street', 4.2]]),
+      along: new Map(), around: new Map([['Q-largo', AREA]]), arteries: new Set(),
+    }), [SQUARES], CUT);
+    expect(figures?.map((figure) => figure.qid)).toEqual(['Q-largo']);
+  });
+
+  it("keeps a place the source holds below the cut's floors, a curator's put-back among them", () => {
+    const figures = venueFigures(read({
+      counts: new Map([['Q-largo', 36], ['Q-street', 4.2]]),
+      along: new Map(), around: new Map(), arteries: new Set(),
+    }), [SQUARES], CUT, new Set(['Q-street']));
+    expect(figures?.map((figure) => figure.qid)).toEqual(['Q-street']);
   });
 
   it('keeps nothing where the layer kept no venue, so the last kept figures stand', () => {
