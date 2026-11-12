@@ -51,6 +51,7 @@ const EXPERIENCE_ROW = {
   part_of_id: null,
   part_of_name: null,
   part_of_point_id: null,
+  has_own_point: true,
 };
 
 // Mirrors the confirmed leak: experience 281 assigned to a region in hidden

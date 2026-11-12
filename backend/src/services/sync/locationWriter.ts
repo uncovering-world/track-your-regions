@@ -12,11 +12,10 @@
  *
  * So a location that has not moved must keep its row, and therefore its id.
  *
- * **And a location the source stopped offering keeps its row too.** The same
- * cascade runs from `user_visited_locations.location_id`, so deleting the row
- * of a withdrawn point takes a person's record of having stood there — a fact
- * no later run can put back, unlike anything else here. Instead the row is
- * marked: `missing_since` records when a run first offered the experience
+ * **And a location the source stopped offering keeps its row too.** Deleting
+ * the row of a withdrawn point would take a curator's verdict on it and its
+ * manual region assignments with it, which no later run can put back. Instead
+ * the row is marked: `missing_since` records when a run first offered the experience
  * without it, `ordinal` goes to NULL because it has no place in a list it is
  * no longer in, and every reader-facing query passes it over. A source that
  * offers the point again finds the same row and gives it its place back.

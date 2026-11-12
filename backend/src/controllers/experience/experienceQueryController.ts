@@ -40,6 +40,7 @@ import type {
   experienceRegionCountsQuerySchema, experienceSearchQuerySchema, experiencesByRegionQuerySchema,
   idParamSchema, regionIdParamSchema,
 } from '../../types/index.js';
+import { showsOwnPointSql } from '../../db/visits.js';
 
 /**
  * Get single experience by ID
@@ -154,6 +155,9 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       -- card opens it at (ADR-0100).
       pw.id AS part_of_id,
       pw.name AS part_of_name,
+      -- A point of its own a reader may see: on a whole, the point a tick
+      -- on which is the whole's own visit (#2120).
+      ${showsOwnPointSql('e.id')} AS has_own_point,
       CASE WHEN pw.id IS NOT NULL THEN
         (SELECT min(own.id) FROM experience_locations own WHERE own.experience_id = e.id) END AS part_of_point_id,
       -- Every kind the place is offered in, none the primary one (#1245).

@@ -2824,7 +2824,8 @@ CREATE INDEX IF NOT EXISTS idx_experience_regions_region_listing
     ON experience_regions(region_id) INCLUDE (experience_id, listing);
 DROP INDEX IF EXISTS idx_experience_regions_region_rows;
 
--- User visited experiences (similar pattern to user_visited_regions)
+-- A traveller's visits: one row on each place they ticked (#2120). A whole
+-- is read as visited through its parts' rows, never written.
 CREATE TABLE IF NOT EXISTS user_visited_experiences (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -2835,7 +2836,7 @@ CREATE TABLE IF NOT EXISTS user_visited_experiences (
     UNIQUE(user_id, experience_id)
 );
 
-COMMENT ON TABLE user_visited_experiences IS 'Tracks which experiences users have visited';
+COMMENT ON TABLE user_visited_experiences IS 'A traveller''s visits, one row on each place they ticked: a part, a place, or a whole ticked as a whole. A whole is read as visited through its direct parts'' rows, never written; a row on a place a merge folded is kept for the undo and never read (#2120).';
 COMMENT ON COLUMN user_visited_experiences.rating IS 'Optional user rating from 1-5 stars';
 
 CREATE INDEX IF NOT EXISTS idx_user_visited_experiences_user ON user_visited_experiences(user_id);
@@ -3571,11 +3572,9 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT AS $$
     SELECT regexp_replace(regexp_replace(lower(btrim(ref)), '\s+', ' ', 'g'), '^(\d+)[a-z]+', '\1')
 $$;
 
--- A location the source stopped offering is marked, not deleted: both
--- `user_visited_locations.location_id` and
--- `experience_location_regions.location_id` cascade on delete, so removing the
--- row destroys the user's record of having been there and every region
--- assignment on it, manual ones included. `ordinal` goes with it — a row the
+-- A location the source stopped offering is marked, not deleted:
+-- `experience_location_regions.location_id` cascades on delete, so removing
+-- the row destroys every region assignment on it, manual ones included. `ordinal` goes with it — a row the
 -- source no longer lists has no position in that list, and NULL sorts last.
 -- Repeated as ALTERs so a database created before this picks them up when this
 -- file is re-applied; both are no-ops on a fresh one. See db/migrations/013.
@@ -3702,20 +3701,6 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_undecided
     ON experience_locations(experience_id)
     WHERE missing_since IS NOT NULL AND source_membership = 'present' AND existence = 'extant';
 
--- User visited locations (tracks visits to individual locations)
-CREATE TABLE IF NOT EXISTS user_visited_locations (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    location_id INTEGER NOT NULL REFERENCES experience_locations(id) ON DELETE CASCADE,
-    visited_at TIMESTAMPTZ DEFAULT NOW(),
-    notes TEXT,
-    UNIQUE(user_id, location_id)
-);
-
-COMMENT ON TABLE user_visited_locations IS 'Tracks which individual locations users have visited';
-
-CREATE INDEX IF NOT EXISTS idx_user_visited_locations_user ON user_visited_locations(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_visited_locations_location ON user_visited_locations(location_id);
 
 -- Location-Region junction (assigns locations to regions based on spatial containment)
 CREATE TABLE IF NOT EXISTS experience_location_regions (
@@ -5113,7 +5098,7 @@ $$ LANGUAGE sql IMMUTABLE;
 -- It is named for its point (component_part_name) and stands where its point
 -- does, both written by the writers of the point (followTheirPoints); its
 -- picture, subtitle and article are the part row's (ADR-0156). A part with no kind of
--- its own has no regions of its own: lists find it through its site. A
+-- its own is listed nowhere: lists find it through its site. A
 -- component that stands for its whole site (stands_for_whole_site) is not
 -- parted: it stays the site's own point, since a part named like the site
 -- would show the site twice (#1899); one that stops standing for it is
@@ -5227,12 +5212,6 @@ BEGIN
     END IF;
 
     UPDATE experience_locations SET experience_id = part WHERE id = component.id;
-
-    INSERT INTO user_visited_experiences (user_id, experience_id, visited_at, notes)
-    SELECT uvl.user_id, part, uvl.visited_at, uvl.notes
-      FROM user_visited_locations uvl WHERE uvl.location_id = component.id
-    ON CONFLICT (user_id, experience_id) DO NOTHING;
-    DELETE FROM user_visited_locations WHERE location_id = component.id;
 
     parted := parted + 1;
   END LOOP;

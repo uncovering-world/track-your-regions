@@ -392,8 +392,8 @@ async function applyProposedFields(
     // claim off a 2 km correction and the row stops being a candidate: the run
     // withdraws it and inserts the source's point beside it, which raises a
     // `withdrawn` card for a component nobody delisted — the question the curator
-    // has just answered — and leaves `user_visited_locations` and every manual
-    // region row on a pin no reader is shown. That is the cost ADR-0027 accepts
+    // has just answered — and leaves every manual region row on a pin no
+    // reader is shown. That is the cost ADR-0027 accepts
     // for a source that genuinely moved something, and nobody has accepted it for
     // an acceptance.
     //

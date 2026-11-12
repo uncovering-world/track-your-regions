@@ -27,9 +27,15 @@ export const VisitedRegions = z.array(VisitedRegion).describe('The reader\'s vis
 export type VisitedRegions = z.infer<typeof VisitedRegions>;
 
 export const VisitedExperienceIds = z.strictObject({
-  visitedIds: z.array(z.number().int()),
+  visitedIds: z.array(z.number().int()).describe('The objects the reader has visited, wholly or in part.'),
+  partialIds: z.array(z.number().int())
+    .describe('Those of them visited in part: a serial site with some of its components, or ticked as a whole.'),
+  wholeTickedIds: z.array(z.number().int()).describe(
+    'The wholes the reader ticked as a whole, without naming a part: "I was there, I don\'t remember which part".'
+    + ' Not a whole showing a point of its own, where that tick is the point\'s (#2120).',
+  ),
   total: z.number().int(),
-}).describe('The objects the reader has marked visited.');
+}).describe('The objects the reader has visited, and which of them only in part.');
 export type VisitedExperienceIds = z.infer<typeof VisitedExperienceIds>;
 
 export const ExperienceVisitMarked = z.strictObject({

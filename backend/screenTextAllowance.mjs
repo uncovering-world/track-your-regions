@@ -49,7 +49,7 @@ export const SCREEN_TEXT_ALLOWANCE = {
   'src/controllers/admin/afterRun.ts': { breaches: 1, slice: '#2447' },
   'src/controllers/admin/aiController.ts': { breaches: 2, slice: '#2447' },
   'src/controllers/admin/dataAssertions/borderPlacementAssertions.ts': { breaches: 8, slice: '#2447' },
-  'src/controllers/admin/dataAssertions/catalogueAssertions.ts': { breaches: 16, slice: '#2447' },
+  'src/controllers/admin/dataAssertions/catalogueAssertions.ts': { breaches: 15, slice: '#2447' },
   'src/controllers/admin/dataAssertions/coverageAssertions.ts': { breaches: 19, slice: '#2447' },
   'src/controllers/admin/dataAssertions/divisionTreeAssertions.ts': { breaches: 5, slice: '#2447' },
   'src/controllers/admin/dataAssertions/identifierAssertions.ts': { breaches: 7, slice: '#2447' },

@@ -79,7 +79,6 @@ export interface MergeRecord {
    * written to since.
    */
   visits: ReconciledVisits;
-  pointVisits: ReconciledVisits;
 }
 
 interface Refusal {
@@ -183,10 +182,9 @@ async function moveEverything(client: PoolClient, folded: LockedExperience, surv
   const viewChoices = await moveViewChoices(client, folded, survivor);
   const wholeRecords = await moveWholeRecords(client, folded, survivor);
   const visits = await reconcileVisits(client, folded.id, survivor.id);
-  const pointVisits = await reconcilePointVisits(client, foldedPoints);
   return {
     memberships, points, foldedPoints, links, foldedLinks, changes, heldDecisions, conflictDecisions, rejections,
-    assignments, viewChoices, wholeRecords, visits, pointVisits,
+    assignments, viewChoices, wholeRecords, visits,
   };
 }
 
@@ -292,39 +290,6 @@ async function reconcileVisits(client: PoolClient, folded: number, survivor: num
         AND NOT EXISTS (SELECT 1 FROM user_visited_experiences s WHERE s.experience_id = $2 AND s.user_id = f.user_id)
      RETURNING id, visited_at::text AS visited_at, notes, rating`,
     [folded, survivor],
-  );
-  return { inserted: inserted.rows, updated: pairUp(before.rows, after.rows) };
-}
-
-/** The same for a folded point's visits, onto the survivor's point it was folded into. A point visit has no rating. */
-async function reconcilePointVisits(client: PoolClient, folded: FoldedPoints): Promise<ReconciledVisits> {
-  if (folded.points.length === 0) return { inserted: [], updated: [] };
-  const from = folded.points.map(pair => pair.point);
-  const into = folded.points.map(pair => pair.target);
-  const before = await client.query<VisitSnapshot>(
-    `SELECT s.id, s.visited_at::text AS visited_at, s.notes
-       FROM unnest($1::int[], $2::int[]) AS pair(point, target)
-       JOIN user_visited_locations f ON f.location_id = pair.point
-       JOIN user_visited_locations s ON s.location_id = pair.target AND s.user_id = f.user_id`,
-    [from, into],
-  );
-  const after = await client.query<VisitSnapshot>(
-    `UPDATE user_visited_locations s
-        SET visited_at = LEAST(s.visited_at, f.visited_at), notes = ${joinedNotesSql('s', 'f')}
-       FROM unnest($1::int[], $2::int[]) AS pair(point, target)
-       JOIN user_visited_locations f ON f.location_id = pair.point
-      WHERE s.location_id = pair.target AND s.user_id = f.user_id
-      RETURNING s.id, s.visited_at::text AS visited_at, s.notes`,
-    [from, into],
-  );
-  const inserted = await client.query<VisitSnapshot>(
-    `INSERT INTO user_visited_locations (user_id, location_id, visited_at, notes)
-     SELECT f.user_id, pair.target, f.visited_at, f.notes
-       FROM unnest($1::int[], $2::int[]) AS pair(point, target)
-       JOIN user_visited_locations f ON f.location_id = pair.point
-      WHERE NOT EXISTS (SELECT 1 FROM user_visited_locations s WHERE s.location_id = pair.target AND s.user_id = f.user_id)
-     RETURNING id, visited_at::text AS visited_at, notes`,
-    [from, into],
   );
   return { inserted: inserted.rows, updated: pairUp(before.rows, after.rows) };
 }
@@ -499,30 +464,16 @@ async function moveEverythingBack(
  * a note or a rating a traveller added afterwards stays with the place.
  */
 async function restoreVisits(client: PoolClient, record: MergeRecord): Promise<void> {
-  await restoreVisitsIn(client, 'user_visited_experiences', record.visits, true);
-  await restoreVisitsIn(client, 'user_visited_locations', record.pointVisits, false);
-}
-
-async function restoreVisitsIn(
-  client: PoolClient,
-  table: 'user_visited_experiences' | 'user_visited_locations',
-  visits: ReconciledVisits,
-  rated: boolean,
-): Promise<void> {
-  const unchanged = (at: number) => {
-    const rating = rated ? ` AND rating IS NOT DISTINCT FROM $${at + 2}::int` : '';
-    return `visited_at IS NOT DISTINCT FROM $${at}::timestamptz AND notes IS NOT DISTINCT FROM $${at + 1}${rating}`;
-  };
-  const values = (visit: VisitSnapshot) => (rated ? [visit.visited_at, visit.notes, visit.rating ?? null] : [visit.visited_at, visit.notes]);
-  for (const copy of visits.inserted) {
-    await client.query(`DELETE FROM ${table} WHERE id = $1 AND ${unchanged(2)}`, [copy.id, ...values(copy)]);
+  const unchanged = 'visited_at IS NOT DISTINCT FROM $2::timestamptz AND notes IS NOT DISTINCT FROM $3 '
+    + 'AND rating IS NOT DISTINCT FROM $4::int';
+  const values = (visit: VisitSnapshot) => [visit.visited_at, visit.notes, visit.rating ?? null];
+  for (const copy of record.visits.inserted) {
+    await client.query(`DELETE FROM user_visited_experiences WHERE id = $1 AND ${unchanged}`, [copy.id, ...values(copy)]);
   }
-  for (const { before, after } of visits.updated) {
-    const set = rated ? 'visited_at = $2, notes = $3, rating = $4' : 'visited_at = $2, notes = $3';
-    const from = rated ? 5 : 4;
+  for (const { before, after } of record.visits.updated) {
     await client.query(
-      `UPDATE ${table} SET ${set} WHERE id = $1 AND ${unchanged(from)}`,
-      [before.id, ...values(before), ...values(after)],
+      `UPDATE user_visited_experiences SET visited_at = $5, notes = $6, rating = $7 WHERE id = $1 AND ${unchanged}`,
+      [before.id, ...values(after), ...values(before)],
     );
   }
 }

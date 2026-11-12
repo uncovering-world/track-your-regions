@@ -22,13 +22,14 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
+import { claimablePlaceSql, experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
 import { placeHasKindSql } from '../../db/membership.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { userRoutes } from '../../routes/userRoutes.js';
 
 /** The user routes these specs answer through (ADR-0071). */
 const postVisitedExperience = routeAt(userRoutes, '/me/visited-experiences/:experienceId', 'post');
+const deleteVisitedExperience = routeAt(userRoutes, '/me/visited-experiences/:experienceId', 'delete');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -89,16 +90,31 @@ describe('markVisited — #520', () => {
       res as never,
     );
 
-    expect(mockedQuery).toHaveBeenCalledTimes(3);
+    // One row, on the place itself: a whole it is a part of reads it (#2120),
+    // read in the insert under a share lock, as every visit write reads its place.
+    expect(mockedQuery).toHaveBeenCalledTimes(2);
     const insert = String(mockedQuery.mock.calls[1][0]);
     expect(insert).toContain('INSERT INTO user_visited_experiences');
-    // Then the wholes the place is a part of, which a visit to it cascades to (ADR-0100).
-    const cascade = String(mockedQuery.mock.calls[2][0]);
-    expect(cascade).toContain('FROM experience_parts prt');
-    expect(mockedQuery.mock.calls[2][1]).toEqual([5, 281]);
+    expect(insert).toMatch(/e\.merged_into_id IS NULL[\s\S]*FOR SHARE OF e/);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true, experienceId: 281, experienceName: 'Published Site',
     }));
+  });
+});
+
+describe('unmarkVisited', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  it('takes back the place\'s own visit, reading the place under a share lock and only while a reader may be shown it', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 9 }], rowCount: 1 });
+
+    await answerRoute(deleteVisitedExperience,
+      { params: { experienceId: '281' }, user: { id: 5 } } as never, makeRes() as never);
+
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/DELETE FROM user_visited_experiences[\s\S]*FOR SHARE OF e/);
+    expect(sql).toContain(claimablePlaceSql());
+    expect(params).toEqual([5, 281]);
   });
 });
 
@@ -106,7 +122,7 @@ describe('the visited ids of one kind', () => {
   beforeEach(() => mockedQuery.mockReset());
 
   it('finds a visited place by any of its memberships, not only the one its first source brought', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ experience_id: 6214 }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ place_id: 6214, ticked: true, total: 1, visited: 1 }] });
 
     await answerRoute(routeAt(userRoutes, '/me/visited-experiences/ids'),
       { query: { kindId: '5' }, user: { id: 5 } } as never,

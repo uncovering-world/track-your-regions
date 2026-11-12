@@ -160,26 +160,25 @@ describe("a serial site's components become its parts (ADR-0100)", () => {
     expect(karnak).toMatchObject({ part_id: before.part_id, external_ref: '87bis-001', name: 'Karnak Temple Complex' });
   });
 
-  it("moves a traveller's visit to a component onto the part it becomes (ADR-0100 decision 5)", async () => {
+  it("keeps a traveller's visit on the site when the point it stood on becomes a part (#2120)", async () => {
+    // While Karnak was the site's one point, a tick on it was the site's
+    // visit: a visit is a row on the place the point belongs to. Parting the
+    // point writes nothing for the traveller, and the site keeps the visit.
     await writeExperienceLocations(THEBES, [KARNAK], run);
-    const [karnakPoint] = await ownPoints(THEBES);
     const userId = (await pool.query<{ id: number }>(
       `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A traveller', 'user') RETURNING id`, [TRAVELLER],
     )).rows[0].id;
     await pool.query(
-      `INSERT INTO user_visited_locations (user_id, location_id, notes) VALUES ($1, $2, 'the hypostyle hall at dawn')`,
-      [userId, karnakPoint],
+      `INSERT INTO user_visited_experiences (user_id, experience_id, notes) VALUES ($1, $2, 'the hypostyle hall at dawn')`,
+      [userId, THEBES],
     );
 
     await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
 
-    const karnak = (await parts(THEBES)).find(p => p.location_id === karnakPoint);
     const visits = await pool.query(
       'SELECT experience_id, notes FROM user_visited_experiences WHERE user_id = $1', [userId],
     );
-    expect(visits.rows).toEqual([{ experience_id: karnak?.part_id, notes: 'the hypostyle hall at dawn' }]);
-    const left = await pool.query('SELECT 1 FROM user_visited_locations WHERE user_id = $1', [userId]);
-    expect(left.rowCount).toBe(0);
+    expect(visits.rows).toEqual([{ experience_id: THEBES, notes: 'the hypostyle hall at dawn' }]);
   });
 });
 

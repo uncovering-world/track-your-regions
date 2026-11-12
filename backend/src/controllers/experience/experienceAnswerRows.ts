@@ -106,6 +106,8 @@ export interface ExperienceListRow {
   location_count: number;
   /** The points are casts of one work (ADR-0145 decision 5). */
   cast_points: boolean;
+  /** A whole shown by its parts (#2120). */
+  has_parts: boolean;
   treasure_count: number;
   finds_count: number;
   source_membership: Membership;
@@ -142,6 +144,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     kinds: kindsOf(row.kinds),
     location_count: row.location_count,
     cast_points: row.cast_points,
+    has_parts: row.has_parts,
     treasure_count: row.treasure_count,
     finds_count: row.finds_count,
     created_at: row.created_at?.toISOString(),
@@ -191,6 +194,7 @@ export interface ExperienceDetailRow {
   part_of_id: number | null;
   part_of_name: string | null;
   part_of_point_id: number | null;
+  has_own_point: boolean;
 }
 
 export function experienceDetailOf(row: ExperienceDetailRow, regions: ExperienceRegionRef[]): ExperienceDetail {
@@ -232,6 +236,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     part_of: row.part_of_id === null || row.part_of_name === null
       ? null
       : { id: row.part_of_id, name: row.part_of_name, point_id: row.part_of_point_id },
+    has_own_point: row.has_own_point,
   };
 }
 

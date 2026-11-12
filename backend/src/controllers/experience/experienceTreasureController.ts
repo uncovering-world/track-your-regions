@@ -16,7 +16,6 @@ import {
   readableByIdSql,
   linkedForReaderSql,
   offeredLinkSql,
-  offeredLocationSql,
   publishedContentSql,
   venueCountSql,
   venuesSql,
@@ -24,11 +23,11 @@ import {
 import { treasureOf, type TreasureRow } from './experienceAnswerRows.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
-import { partOfPointSql, shownBySql } from '../../db/placePoints.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type {
   idParamSchema, markTreasureViewedBodySchema, treasureIdParamSchema, viewedTreasureIdsQuerySchema,
 } from '../../types/index.js';
+import { placeAtWriteSql } from '../../db/visits.js';
 
 /**
  * Get contents (treasures) for an experience
@@ -235,8 +234,7 @@ export async function markTreasureViewed(
 
   if (experienceId) {
     // Verify the treasure is linked to this experience, and that neither the
-    // container nor the link itself is unread — the same two gates the
-    // location auto-mark below carries, for the same reason: without them, a
+    // container nor the link itself is unread: without them, a
     // caller who could see this treasure (checked above) but not this
     // particular museum, or not this particular link, would auto-mark a
     // `pending` experience visited through the auto-mark's `INSERT INTO
@@ -251,36 +249,20 @@ export async function markTreasureViewed(
       [experienceId, treasureId],
     );
     if (linkResult.rows.length > 0) {
+      // On the venue as it stands when the row is written, under the share
+      // lock every visit write takes: a venue a merge folds meanwhile takes no
+      // visit.
       await pool.query(`
         INSERT INTO user_visited_experiences (user_id, experience_id, visited_at)
-        VALUES ($1, $2, NOW())
+        ${placeAtWriteSql('$2', '$1, e.id, NOW()')}
         ON CONFLICT (user_id, experience_id) DO NOTHING
       `, [userId, experienceId]);
 
-      // Auto-mark all locations of the experience as visited — the ones on
-      // offer and read by someone. A point the source withdrew is on no list
-      // this reader saw, so recording a visit to it would be a claim they
-      // never made — and the same is true of a point nobody has checked yet
-      // (ADR-0025): without the curation_state gate, viewing one treasure in
-      // a museum would manufacture visits to every one of its unread points
-      // (#520 — the write path this reasoning did not account for).
-      //
-      // A part's point is visited on the part (ADR-0100 decision 5), as a
-      // tick on it is.
-      const offered = `FROM experience_locations el
-        JOIN experiences e ON e.id = $2
-        WHERE ${shownBySql('el', 'ARRAY[$2::int]')} AND ${offeredLocationSql()}
-          AND ${experienceOfferedToReaderSql()} AND ${publishedContentSql('el')}`;
-      await pool.query(`
-        INSERT INTO user_visited_locations (user_id, location_id, visited_at)
-        SELECT $1, el.id, NOW() ${offered} AND ${partOfPointSql()} IS NULL
-        ON CONFLICT (user_id, location_id) DO NOTHING
-      `, [userId, experienceId]);
-      await pool.query(`
-        INSERT INTO user_visited_experiences (user_id, experience_id, visited_at)
-        SELECT DISTINCT $1, el.experience_id, NOW() ${offered} AND ${partOfPointSql()} IS NOT NULL
-        ON CONFLICT (user_id, experience_id) DO NOTHING
-      `, [userId, experienceId]);
+      // The venue's visit and nothing else (#2120): its own points read
+      // visited through it, and a whole it is a part of reads it through its
+      // part. Seeing a work in Antwerp Cathedral marks the cathedral, which
+      // the Belfries of Belgium and France read as one of their belfries,
+      // and marks no other belfry.
 
       const expResult = await pool.query('SELECT name FROM experiences WHERE id = $1', [experienceId]);
       experienceName = expResult.rows[0]?.name || null;
