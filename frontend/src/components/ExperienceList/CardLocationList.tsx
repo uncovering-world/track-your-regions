@@ -86,6 +86,48 @@ function pathBelow(path: string | null | undefined, group: string): string | nul
 /** What the search reads of a place: its name, or its reference where it has none, and the reference. */
 const searchText = (loc: LocationRowData) => locationLabelWithRef(pointOfRow(loc));
 
+interface InRegionVisitsProps {
+  objectName: string;
+  visited: number;
+  total: number;
+  onMarkAll?: () => void;
+  onUnmarkAll?: () => void;
+  /** A visit write is on its way: both wait for it, so a second click never races the first. */
+  disabled?: boolean;
+}
+
+/**
+ * How many of the places in this region are visited, and for a whole the two
+ * buttons that mark or unmark them together, each shown only where it would
+ * change one (#2120). Said in words and reaching only this region's places:
+ * Discover's panel, which reaches every place, says *Mark all* and *Unmark
+ * all*. Each accessible name starts with the words on screen and names the
+ * place.
+ */
+function InRegionVisits({ objectName, visited, total, onMarkAll, onUnmarkAll, disabled = false }: InRegionVisitsProps) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 1, mb: 1 }}>
+      <Typography variant="caption" color="text.secondary">
+        In this region: {visited}/{total} visited
+      </Typography>
+      {onMarkAll && visited < total && (
+        <Button size="small" variant="text" sx={{ py: 0, minWidth: 0 }} disabled={disabled}
+          aria-label={`Mark all in region: ${objectName}`}
+          onClick={(e) => { e.stopPropagation(); onMarkAll(); }}>
+          Mark all in region
+        </Button>
+      )}
+      {onUnmarkAll && visited > 0 && (
+        <Button size="small" variant="text" color="inherit" sx={{ py: 0, minWidth: 0 }} disabled={disabled}
+          aria-label={`Unmark all in region: ${objectName}`}
+          onClick={(e) => { e.stopPropagation(); onUnmarkAll(); }}>
+          Unmark all in region
+        </Button>
+      )}
+    </Box>
+  );
+}
+
 export interface CardLocationListProps {
   /** The object these places belong to, which each one's copied full name begins with. */
   objectName: string;
@@ -94,6 +136,15 @@ export interface CardLocationListProps {
   showCheckbox: boolean;
   isAuthenticated: boolean;
   inRegionVisitedCount: number;
+  /**
+   * A whole's places in this region, marked or unmarked together, each button
+   * shown only where it would change one of them (#2120). Absent for a place
+   * of no parts, which is ticked from its row.
+   */
+  onMarkAllInRegion?: () => void;
+  onUnmarkAllInRegion?: () => void;
+  /** A visit write is on its way: the region's two buttons and the places' checkboxes wait for it. */
+  visitWritePending?: boolean;
   onLocationHover: (locationId: number | null) => void;
   onLocationVisitedToggle: (locationId: number, isVisited: boolean) => void;
   registerRef: (locationId: number, element: HTMLElement | null) => void;
@@ -115,6 +166,9 @@ export function CardLocationList({
   showCheckbox,
   isAuthenticated,
   inRegionVisitedCount,
+  onMarkAllInRegion,
+  onUnmarkAllInRegion,
+  visitWritePending = false,
   onLocationHover,
   onLocationVisitedToggle,
   registerRef,
@@ -176,7 +230,9 @@ export function CardLocationList({
   // card cannot see this state — so the report is made from here.
   useLayoutEffect(() => {
     onHeightChange?.();
-  }, [inRegionExpanded, outOfRegionExpanded, search, photoOnly, openGroups, allShownGroups, onHeightChange]);
+    // The visited count too: a button coming or going beside it can wrap the
+    // line on a narrow card.
+  }, [inRegionExpanded, outOfRegionExpanded, search, photoOnly, openGroups, allShownGroups, inRegionVisitedCount, onHeightChange]);
 
   /**
    * Where an out-of-region place is, minus what every one of them shares: if all
@@ -215,9 +271,14 @@ export function CardLocationList({
   return (
     <Box sx={{ mb: 2 }}>
       {isAuthenticated && showCheckbox && (
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-          In this region: {inRegionVisitedCount}/{inRegionCount} visited
-        </Typography>
+        <InRegionVisits
+          objectName={objectName}
+          visited={inRegionVisitedCount}
+          total={inRegionCount}
+          onMarkAll={onMarkAllInRegion}
+          onUnmarkAll={onUnmarkAllInRegion}
+          disabled={visitWritePending}
+        />
       )}
       {!isAuthenticated && (
         <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
@@ -266,6 +327,7 @@ export function CardLocationList({
             location={loc}
             objectName={objectName}
             showCheckbox={isAuthenticated && showCheckbox}
+            checkboxDisabled={visitWritePending}
             onHover={onLocationHover}
             onVisitedToggle={onLocationVisitedToggle}
             registerRef={registerRef}

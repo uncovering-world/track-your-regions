@@ -42,7 +42,7 @@ import { useHoverActions } from '../hooks/useHoverContext';
 import { useAuth } from '../hooks/useAuth';
 import { useNewBadgeImpressions } from '../hooks/useNewBadgeImpressions';
 import { tailPins } from '../hooks/useRegionTail';
-import { useVisitedExperiences, useVisitedLocations } from '../hooks/useVisitedExperiences';
+import { useVisitedExperiences, useVisitedLocations, useVisitWritePending } from '../hooks/useVisitedExperiences';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import { fetchExperienceKinds, type Experience, type ExperienceTreasure } from '../api/experiences';
 import { unrejectExperience, removeExperienceFromRegion } from '../api/curation';
@@ -103,14 +103,15 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   const { isAuthenticated, isCurator, user } = useAuth();
   const { selectedRegion } = useNavigation();
   const queryClient = useQueryClient();
-  const { isMarking, isUnmarking } = useVisitedExperiences();
+  const { visitedStatusOf, markVisited, unmarkVisited } = useVisitedExperiences();
+  // Any visit write of this traveller on its way, a seen work's venue included:
+  // every control that writes one waits on it (#2120).
+  const isMutating = useVisitWritePending();
   const {
     markLocationVisited,
     unmarkLocationVisited,
     markAllLocations,
     unmarkAllLocations,
-    isMarking: isMarkingLocation,
-    isUnmarking: isUnmarkingLocation,
     isLocationVisited,
   } = useVisitedLocations();
 
@@ -463,14 +464,22 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     }
   }, [markLocationVisited, unmarkLocationVisited]);
 
-  const handleToggleAllLocations = useCallback((experienceId: number, markAsVisited: boolean, everywhere = false) => {
-    const inRegion = everywhere ? undefined : regionId ?? undefined;
+  const handleToggleAllLocations = useCallback((experienceId: number, markAsVisited: boolean) => {
+    const inRegion = regionId ?? undefined;
     if (markAsVisited) {
       markAllLocations({ experienceId, regionId: inRegion });
     } else {
       unmarkAllLocations({ experienceId, regionId: inRegion });
     }
   }, [markAllLocations, unmarkAllLocations, regionId]);
+
+  // The place's own tick, the one Discover writes (#2120): a place of no parts
+  // from its row, a whole only from its card, as one visit on the whole that
+  // names no part. Taking it back takes back that one row.
+  const handleTogglePlace = useCallback((experienceId: number, tick: boolean) => {
+    if (tick) markVisited(experienceId);
+    else unmarkVisited(experienceId);
+  }, [markVisited, unmarkVisited]);
 
   const handleLocationHover = useCallback((experienceId: number, locationId: number | null) => {
     setHoveredFromList(locationId === null ? null : experienceId, locationId);
@@ -540,8 +549,6 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     [activeExperiences, tail.places, seenExperienceIds],
   );
   useNewBadgeImpressions(shownExperiences, isAuthenticated, user?.id);
-
-  const isMutating = isMarking || isUnmarking || isMarkingLocation || isUnmarkingLocation;
 
   if (experiencesLoading) {
     return <LoadingSpinner size={24} />;
@@ -627,6 +634,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       locations={locations}
       locationsResolved={resolved}
       isLocationVisited={isLocationVisited}
+      visitedStatus={visitedStatusOf(exp.id)}
       // Hover is not passed down. It arrives at the row and at the place from
       // the store, each subscribing to its own boolean, so a mouse move does not
       // re-render this list to hand a new prop to every row it holds.
@@ -644,6 +652,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       onClick={handleClick}
       onLocationVisitedToggle={handleLocationVisitedToggle}
       onToggleAllLocations={handleToggleAllLocations}
+      onTogglePlace={handleTogglePlace}
       onLocationHover={handleLocationHover}
       isRejected={rejected}
       onCurate={exp.can_curate ? handleCurate : undefined}

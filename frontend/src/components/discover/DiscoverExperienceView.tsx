@@ -27,7 +27,7 @@ import { FoldPlacesControl } from '../experienceMarkers/FoldPlacesControl';
 import { DiscoverExperienceList } from './DiscoverExperienceList';
 import { DiscoverHoverCard } from './DiscoverHoverCard';
 import { useAuth } from '../../hooks/useAuth';
-import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
+import { useVisitedExperiences, useVisitWritePending } from '../../hooks/useVisitedExperiences';
 import { LazyAddExperienceDialog, LazyCurationDialog } from '../shared/lazyCurationDialogs';
 import { MapUnavailable } from '../shared/MapUnavailable';
 import { isWebGLAvailable } from '../../utils/webgl';
@@ -226,7 +226,8 @@ export function DiscoverExperienceView({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const { isAuthenticated, isCurator } = useAuth();
-  const { visitedIds, markVisited, unmarkVisited } = useVisitedExperiences();
+  const { visitedIds, partialIds, markVisited, unmarkVisited } = useVisitedExperiences();
+  const visitWritePending = useVisitWritePending();
   const [search, setSearch] = useState('');
 
   // Curator state
@@ -549,6 +550,8 @@ export function DiscoverExperienceView({
   const handleVisitedToggle = useCallback(
     (experienceId: number, isVisited: boolean, e: React.MouseEvent) => {
       e.stopPropagation();
+      // The checkbox of a place of no parts, as Map mode's (#2120); a whole's
+      // card shows its state and has no checkbox.
       if (isVisited) {
         unmarkVisited(experienceId);
       } else {
@@ -640,6 +643,8 @@ export function DiscoverExperienceView({
           hasCuratorScope={hasCuratorScope}
           isAuthenticated={isAuthenticated}
           visitedIds={visitedIds}
+          partialIds={partialIds}
+          visitWritePending={visitWritePending}
           selectedExperienceId={selectedExperienceId}
           onBack={onBack}
           onSelectExperience={onSelectExperience}

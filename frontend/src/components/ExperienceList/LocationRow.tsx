@@ -70,6 +70,8 @@ interface LocationRowProps {
   /** The object the place belongs to, which its copied full name begins with (#1268). */
   objectName: string;
   showCheckbox: boolean;
+  /** A visit write is on its way: the checkbox waits for it, so a tick never races a bulk write (#2120). */
+  checkboxDisabled?: boolean;
   /** Out-of-region places are shown dimmed, are not hoverable, and carry a path. */
   outOfRegion?: boolean;
   regionPath?: string | null;
@@ -122,7 +124,7 @@ function dimmedCursor(opener: ReturnType<typeof openHandlers>): 'pointer' | 'def
 }
 
 function LocationRowComponent({
-  location, objectName, showCheckbox, outOfRegion, regionPath,
+  location, objectName, showCheckbox, checkboxDisabled = false, outOfRegion, regionPath,
   onHover, onVisitedToggle, registerRef, onCorrect, onOpen,
 }: LocationRowProps) {
   const point = pointOfRow(location);
@@ -226,6 +228,7 @@ function LocationRowComponent({
                 <Checkbox
                   edge="end"
                   checked={location.isVisited}
+                  disabled={checkboxDisabled}
                   size="small"
                   onChange={() => onVisitedToggle(location.id, location.isVisited)}
                   sx={{ '&.Mui-checked': { color: 'success.main' } }}

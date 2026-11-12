@@ -8,7 +8,6 @@ import {
   styled,
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
-import { PARTIAL_AMBER } from '../../utils/kindColors';
 
 /**
  * The row's chrome as classes made once, not as `sx` objects made per row.
@@ -30,7 +29,7 @@ import { PARTIAL_AMBER } from '../../utils/kindColors';
  * the `.Mui-checked` rule that turns a ticked box green.
  *
  * What varies per *state* goes through data attributes, so the class stays one
- * class: `data-selected`, `data-marked`, `data-visited`, `data-partial`, and the `data-hovered`
+ * class: `data-selected`, `data-marked`, `data-visited`, and the `data-hovered`
  * the row writes on itself.
  */
 // The generic re-declares `component`, which `styled()` drops from MUI's
@@ -58,13 +57,11 @@ export const VisitIcon = styled(ListItemIcon)({
   minWidth: 36,
   display: 'flex',
   alignItems: 'center',
-  '&[data-partial="true"]': { minWidth: 72 },
 });
 
 export const VisitCheckbox = styled(Checkbox)(({ theme }) => ({
   color: 'var(--tyr-row-color)',
   '&.Mui-checked': { color: theme.palette.success.main },
-  '&.MuiCheckbox-indeterminate': { color: PARTIAL_AMBER },
 }));
 
 export const KindIcon = styled(ListItemIcon)({ minWidth: 32 });

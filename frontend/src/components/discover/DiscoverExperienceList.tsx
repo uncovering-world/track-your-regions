@@ -40,8 +40,12 @@ import { typeLabelFor } from '../../utils/experienceTypes';
 interface DiscoverExperienceRowProps {
   experience: Experience;
   isVisited: boolean;
+  /** Visited in part: a serial site with some of its places visited (#2120). */
+  isPartlyVisited: boolean;
   isSelected: boolean;
   showCheckbox: boolean;
+  /** A visit write is on its way: the checkbox waits for it (#2120). */
+  visitDisabled: boolean;
   canCurate: boolean;
   // Every callback takes the experience it concerns rather than closing over
   // it: this component is memoised, and a closure rebuilt per parent render is
@@ -62,8 +66,10 @@ interface DiscoverExperienceRowProps {
 export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
   experience,
   isVisited,
+  isPartlyVisited,
   isSelected,
   showCheckbox,
+  visitDisabled,
   canCurate,
   onSelect,
   onHoverEnter,
@@ -76,6 +82,7 @@ export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
     <ExperienceCard
       experience={experience}
       isVisited={isVisited}
+      isPartlyVisited={isPartlyVisited}
       isHovered={isHovered}
       isSelected={isSelected}
       onClick={() => onSelect(experience.id)}
@@ -83,6 +90,7 @@ export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
       onMouseLeave={onHoverLeave}
       onVisitedToggle={(e) => onVisitedToggle(experience.id, isVisited, e)}
       showCheckbox={showCheckbox}
+      visitDisabled={visitDisabled}
       onCurate={canCurate ? () => onCurate(experience) : undefined}
     />
   );
@@ -153,6 +161,9 @@ interface DiscoverExperienceListProps {
   hasCuratorScope: boolean;
   isAuthenticated: boolean;
   visitedIds: Set<number>;
+  partialIds: Set<number>;
+  /** A visit write of this traveller is on its way: every row's checkbox waits for it (#2120). */
+  visitWritePending: boolean;
   selectedExperienceId: number | null;
   onBack: () => void;
   onSelectExperience: (id: number) => void;
@@ -184,6 +195,8 @@ export function DiscoverExperienceList({
   hasCuratorScope,
   isAuthenticated,
   visitedIds,
+  partialIds,
+  visitWritePending,
   selectedExperienceId,
   onBack,
   onSelectExperience,
@@ -420,8 +433,10 @@ export function DiscoverExperienceList({
                     <DiscoverExperienceRow
                       experience={exp}
                       isVisited={visitedIds.has(exp.id)}
+                      isPartlyVisited={partialIds.has(exp.id)}
                       isSelected={selectedExperienceId === exp.id}
                       showCheckbox={isAuthenticated}
+                      visitDisabled={visitWritePending}
                       canCurate={exp.can_curate === true}
                       onSelect={onSelectExperience}
                       onHoverEnter={onCardMouseEnter}

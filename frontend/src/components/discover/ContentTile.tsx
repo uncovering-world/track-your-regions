@@ -18,13 +18,15 @@ import { WorkKindDots } from '../shared/WorkKindChips';
  * each cell a second child, and a tile is a thing rather than a shape the loop
  * happens to make.
  */
-export function ContentTile({ content, placeKinds, isViewed, isAuthenticated, onToggleViewed, onCorrect }: {
+export function ContentTile({ content, placeKinds, isViewed, isAuthenticated, onToggleViewed, toggleDisabled = false, onCorrect }: {
   content: ExperienceTreasure;
   /** The place's kinds, where it has several: the tile is marked with those that hold the work (#1263). */
   placeKinds?: WorkKind[];
   isViewed: boolean;
   isAuthenticated: boolean;
   onToggleViewed: () => void;
+  /** A visit write of the traveller is on its way: seeing a work writes its venue's visit, so the tile waits for it (#2120). */
+  toggleDisabled?: boolean;
   /** A curator's way into correcting this work (#731); absent for everyone else. */
   onCorrect?: (work: ExperienceTreasure) => void;
 }) {
@@ -190,7 +192,9 @@ export function ContentTile({ content, placeKinds, isViewed, isAuthenticated, on
             ? `${content.name} — mark as not seen`
             : `${content.name} — mark as seen`}
           sx={{ ...frame, cursor: 'pointer' }}
-          onClick={onToggleViewed}
+          disabled={toggleDisabled}
+          // A disabled `ButtonBase` drawn as a `div` still hears a click.
+          onClick={toggleDisabled ? undefined : onToggleViewed}
         >
           {face}
         </ButtonBase>

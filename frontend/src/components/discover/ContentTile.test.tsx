@@ -57,7 +57,7 @@ function work(over: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
 }
 
 function renderTile(
-  over: Partial<ExperienceTreasure> = {}, isViewed = false, isAuthenticated = true,
+  over: Partial<ExperienceTreasure> = {}, isViewed = false, isAuthenticated = true, toggleDisabled = false,
 ) {
   const onToggleViewed = vi.fn();
   const utils = render(
@@ -66,6 +66,7 @@ function renderTile(
       isViewed={isViewed}
       isAuthenticated={isAuthenticated}
       onToggleViewed={onToggleViewed}
+      toggleDisabled={toggleDisabled}
     />,
   );
   return { ...utils, onToggleViewed };
@@ -80,6 +81,14 @@ describe('a work in the contents grid', () => {
 
     fireEvent.keyDown(tile, { key: 'Enter' });
     expect(onToggleViewed).toHaveBeenCalled();
+  });
+
+  it('waits while a visit write is on its way: seeing a work writes its venue\'s visit (#2120)', () => {
+    const { onToggleViewed } = renderTile({}, false, true, true);
+    const tile = screen.getByRole('button', { name: /Mesha Stele — mark as seen/ });
+    expect(tile).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(tile);
+    expect(onToggleViewed).not.toHaveBeenCalled();
   });
 
   it('says what the press will do, not what the tile is', () => {

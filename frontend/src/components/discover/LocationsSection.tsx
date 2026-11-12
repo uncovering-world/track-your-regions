@@ -89,6 +89,8 @@ interface LocationsSectionProps {
   onUnmarkLocation: (id: number) => void;
   onMarkAll: () => void;
   onUnmarkAll: () => void;
+  /** A visit write of this traveller is on its way: every control here that writes one waits for it (#2120). */
+  visitWritePending?: boolean;
   /** A curator's way into correcting a place, handed to every row unchanged. */
   onCorrect?: (location: PanelLocation) => void;
   /** Open a place on a card of its own (#1271), handed to every row unchanged. */
@@ -110,6 +112,7 @@ export function LocationsSection({
   onUnmarkLocation,
   onMarkAll,
   onUnmarkAll,
+  visitWritePending = false,
   onCorrect,
   onOpen,
 }: LocationsSectionProps) {
@@ -268,12 +271,12 @@ export function LocationsSection({
             {isAuthenticated && (
               <>
                 <Tooltip title="Mark all visited">
-                  <IconButton size="small" onClick={onMarkAll} color="success">
+                  <IconButton size="small" onClick={onMarkAll} color="success" disabled={visitWritePending}>
                     <DoneAllIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Unmark all">
-                  <IconButton size="small" onClick={onUnmarkAll} color="default">
+                  <IconButton size="small" onClick={onUnmarkAll} color="default" disabled={visitWritePending}>
                     <RemoveDoneIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
@@ -285,10 +288,10 @@ export function LocationsSection({
         {/* Batch actions for smaller lists */}
         {isAuthenticated && totalCount <= LOCATIONS_COLLAPSE_THRESHOLD && totalCount > 1 && (
           <Box sx={{ display: 'flex', gap: 0.5, mb: 1 }}>
-            <Button size="small" variant="text" startIcon={<DoneAllIcon />} onClick={onMarkAll}>
+            <Button size="small" variant="text" startIcon={<DoneAllIcon />} onClick={onMarkAll} disabled={visitWritePending}>
               Mark all
             </Button>
-            <Button size="small" variant="text" startIcon={<RemoveDoneIcon />} onClick={onUnmarkAll}>
+            <Button size="small" variant="text" startIcon={<RemoveDoneIcon />} onClick={onUnmarkAll} disabled={visitWritePending}>
               Unmark all
             </Button>
           </Box>
@@ -339,6 +342,7 @@ export function LocationsSection({
                     isAuthenticated={isAuthenticated}
                     onMarkLocation={onMarkLocation}
                     onUnmarkLocation={onUnmarkLocation}
+                    visitWritePending={visitWritePending}
                     onCorrect={onCorrect}
                     onOpen={onOpen}
                   />
@@ -389,6 +393,7 @@ interface PanelLocationRowProps {
   isAuthenticated: boolean;
   onMarkLocation: (id: number) => void;
   onUnmarkLocation: (id: number) => void;
+  visitWritePending: boolean;
   onCorrect?: (location: PanelLocation) => void;
   onOpen?: (pointId: number, pointName: string) => void;
 }
@@ -410,6 +415,7 @@ function PanelLocationRow({
   isAuthenticated,
   onMarkLocation,
   onUnmarkLocation,
+  visitWritePending,
   onCorrect,
   onOpen,
 }: PanelLocationRowProps) {
@@ -502,6 +508,7 @@ function PanelLocationRow({
       {isAuthenticated && (
         <Checkbox
           checked={loc.isVisited}
+          disabled={visitWritePending}
           size="small"
           // Named, because a bare checkbox is announced as "checkbox, not checked"
           // and nothing else — neither which place it is nor what ticking it says.

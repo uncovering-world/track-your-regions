@@ -50,7 +50,9 @@ import { ShareButton } from '../shared/ShareButton';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
 import { VisitedStatusButton } from './VisitedStatusButton';
-import { computeVisitedStatus } from '@tyr/shared/visits';
+import { VISIT_BUTTON_LABEL, offersWholeTick } from '../shared/visitWords';
+import { WholeVisitButton } from '../shared/WholeVisitButton';
+import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
 import { typeChipsFor } from './typeChips';
@@ -68,15 +70,14 @@ export interface ExperienceExpandedDetailsProps {
   /** The batch settled — an in-region count derived from `locations` is meaningful. */
   locationsResolved: boolean;
   isLocationVisited: (locationId: number) => boolean;
-  isFullyVisited: boolean;
   locationRefs: React.MutableRefObject<Map<number, HTMLElement>>;
   showCheckbox: boolean;
-  /**
-   * Mark or unmark the object's places in the region — or every one of them
-   * where `everywhere` is set: an edition's tick reads every cast, so its
-   * untick has to reach the cast it was ticked by (ADR-0145 decision 5).
-   */
-  onToggleAllLocations: (experienceId: number, markAsVisited: boolean, everywhere?: boolean) => void;
+  /** Tick the place itself, or take its own tick back (#2120). */
+  onTogglePlace: (experienceId: number, tick: boolean) => void;
+  /** Mark or unmark a whole's places in the region (#2120). */
+  onToggleAllLocations: (experienceId: number, markAsVisited: boolean) => void;
+  /** A visit write is on its way, as the row's controls know it. */
+  visitWritePending?: boolean;
   onLocationVisitedToggle: (locationId: number, isVisited: boolean) => void;
   onLocationHover: (locationId: number | null) => void;
   onCurate?: () => void;
@@ -105,10 +106,11 @@ function ExperienceExpandedDetailsComponent({
   locations,
   locationsResolved,
   isLocationVisited,
-  isFullyVisited,
   locationRefs,
   showCheckbox,
+  onTogglePlace,
   onToggleAllLocations,
+  visitWritePending = false,
   onLocationVisitedToggle,
   onLocationHover,
   onCurate,
@@ -186,9 +188,10 @@ function ExperienceExpandedDetailsComponent({
   const inRegionCount = inRegionLocs.length;
   const inRegionVisitedCount = inRegionLocs.filter(l => l.isVisited).length;
 
-  // Compute visited status for multi-location badge
+  // The place's own state, the one read its row and Discover draw from (#2120).
   const visitedLocations = locationsWithRegionInfo.filter(l => l.isVisited).length;
-  const visitedStatus: VisitedStatus = computeVisitedStatus(visitedLocations, totalLocations, experience.cast_points);
+  const { visitedStatusOf, isWholeTicked } = useVisitedExperiences();
+  const visitedStatus: VisitedStatus = visitedStatusOf(experience.id);
 
   // Resolved once, by the same helper the row's hover preload calls, so the two
   // cannot ask for different files. It answers with an empty string for a remote
@@ -238,6 +241,17 @@ function ExperienceExpandedDetailsComponent({
   }, [imageReady, onHeightChange]);
 
   const isMultiLocation = totalLocations > 1;
+  // A whole lists its places even where it shows one, since they are what a
+  // traveller ticks it by (#2120).
+  const listsPlaces = isMultiLocation || experience.has_parts;
+  // A whole's places in this region, marked or unmarked together; its places
+  // elsewhere are left alone (#2120).
+  const inRegionActions = experience.has_parts
+    ? {
+      onMarkAllInRegion: () => onToggleAllLocations(experience.id, true),
+      onUnmarkAllInRegion: () => onToggleAllLocations(experience.id, false),
+    }
+    : {};
 
   // The row's own type, or every kind of the place beside its type on the card
   // above the groups (#1915) — built where the two cards' rule is stated once.
@@ -383,7 +397,7 @@ function ExperienceExpandedDetailsComponent({
       )}
 
       {/* Multi-location list */}
-      {isMultiLocation && locationsWithRegionInfo.length > 0 && (
+      {listsPlaces && locationsWithRegionInfo.length > 0 && (
         <CardLocationList
           objectName={experience.name}
           inRegionLocs={inRegionLocs}
@@ -391,6 +405,8 @@ function ExperienceExpandedDetailsComponent({
           showCheckbox={showCheckbox}
           isAuthenticated={isAuthenticated}
           inRegionVisitedCount={inRegionVisitedCount}
+          {...inRegionActions}
+          visitWritePending={visitWritePending}
           onLocationHover={onLocationHover}
           onLocationVisitedToggle={onLocationVisitedToggle}
           registerRef={registerLocationRef}
@@ -411,38 +427,38 @@ function ExperienceExpandedDetailsComponent({
 
       {/* Actions */}
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-        {/* Disabled until the batch settles, for the same reason as the row
-            checkbox and with the same consequence: `isFullyVisited` comes from
-            `inRegionVisitedStatus`, which an unresolved batch short-circuits to
-            'not_visited'. The button would then read "Mark Visited" for an
-            experience already visited, and pass `!isFullyVisited` — always
-            true — so it could be re-marked and never unmarked, and the click
-            would look inert. This is the single-location path, which is most
-            rows: `totalLocations` falls back to `experience.location_count`, so
-            it renders long before any location has arrived. */}
-        {isAuthenticated && showCheckbox && !isMultiLocation && (
+        {/* The place's own tick, the row checkbox's (#2120). */}
+        {isAuthenticated && showCheckbox && !listsPlaces && (
           <Button
-            variant={isFullyVisited ? 'outlined' : 'contained'}
+            variant={visitedStatus === 'not_visited' ? 'contained' : 'outlined'}
             size="small"
-            disabled={!locationsResolved}
+            disabled={visitWritePending}
             onClick={(e) => {
               e.stopPropagation();
-              onToggleAllLocations(experience.id, !isFullyVisited, isFullyVisited && experience.cast_points);
+              onTogglePlace(experience.id, visitedStatus === 'not_visited');
             }}
-            startIcon={isFullyVisited ? <CheckCircleIcon /> : null}
-            color={isFullyVisited ? 'success' : 'primary'}
+            startIcon={visitedStatus === 'visited' ? <CheckCircleIcon /> : null}
+            color={visitedStatus === 'visited' ? 'success' : 'primary'}
           >
-            {isFullyVisited ? 'Visited' : 'Mark Visited'}
+            {VISIT_BUTTON_LABEL[visitedStatus]}
           </Button>
         )}
         {/* And withheld entirely rather than shown as `0/N Visited`, which is
             the same confident zero the ratio chip above no longer states. */}
-        {isAuthenticated && showCheckbox && isMultiLocation && locationsResolved && (
+        {isAuthenticated && showCheckbox && listsPlaces && locationsResolved && (
           <VisitedStatusButton
             visitedStatus={visitedStatus}
             visitedCount={visitedLocations}
             totalCount={totalLocations}
             castPoints={experience.cast_points}
+          />
+        )}
+        {/* A whole ticked without naming a part, on its card and never its row. */}
+        {isAuthenticated && showCheckbox && offersWholeTick(experience, details) && (
+          <WholeVisitButton
+            disabled={visitWritePending}
+            ticked={isWholeTicked(experience.id)}
+            onToggle={() => onTogglePlace(experience.id, !isWholeTicked(experience.id))}
           />
         )}
         {/* The visitor's second verb, beside the first: send the place (#1192).

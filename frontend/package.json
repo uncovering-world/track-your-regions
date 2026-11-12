@@ -28,7 +28,7 @@
       "name": "entry chunk (gzip)",
       "path": "dist/assets/index-*.js",
       "gzip": true,
-      "limit": "182 kB"
+      "limit": "187 kB"
     },
     {
       "name": "startup shared chunk (gzip)",
