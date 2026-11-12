@@ -5797,6 +5797,18 @@ CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikidata_redirects (
 CREATE INDEX IF NOT EXISTS idx_wikidata_redirects_target ON workbench.wikidata_redirects (target);
 COMMENT ON TABLE workbench.wikidata_redirects IS 'An item Wikidata redirected to another (ADR-0143 decision 3, #1895): the redirect page''s item and the item it points to, from wikidatawiki''s redirect and page tables of one run. A lookup of a place by its item is widened to the items redirected to or from it (withRedirects in backend/src/db/experienceWriter.ts), so a place registered under an item Wikidata has since merged away is still found. Built whole by the wikidata-redirects keeper; read by the runs and the catalogue checks, never by a reader route.';
 
+-- What a language model read from an article's lead as a place's dedication (#2472). See db/migrations/240.
+CREATE TABLE IF NOT EXISTS workbench.lead_dedication_readings (
+    wiki TEXT NOT NULL,
+    title TEXT NOT NULL,
+    model TEXT NOT NULL,
+    revid BIGINT NOT NULL,
+    answer TEXT,
+    read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (wiki, title, model)
+);
+COMMENT ON TABLE workbench.lead_dedication_readings IS 'What one language model read from the lead of one article as the dedication of the place it describes (#2472, ADR-0201): the wiki (enwiki), the article''s title as the run asked it, the model, the revision of the lead it read, and the linked article it named (null for none). The commemorates reading (places/leadDedication.ts) asks a model again only where the lead''s current revision is not the one kept, and replaces the row; a failed call keeps none. Read by the run alone, never by a reader route.';
+
 -- Where the place pass's famous works lie (#1821). See db/migrations/216.
 CREATE TABLE IF NOT EXISTS workbench.gathered_work_venues (
     work_qid TEXT NOT NULL,

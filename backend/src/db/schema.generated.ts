@@ -817,6 +817,16 @@ export interface ImportRunsRow {
   source_dump_date: Date | null;
 }
 
+/** The table `lead_dedication_readings`. */
+export interface LeadDedicationReadingsRow {
+  wiki: string;
+  title: string;
+  model: string;
+  revid: string;
+  answer: string | null;
+  read_at: Date;
+}
+
 /** The table `membership_crowding`. */
 export interface MembershipCrowdingRow {
   membership_id: number;
@@ -1463,6 +1473,7 @@ export const RELATION_SCHEMAS = {
   gathered_work_venues: "workbench",
   geometry_computations: "public",
   import_runs: "public",
+  lead_dedication_readings: "workbench",
   membership_crowding: "public",
   membership_fame: "public",
   osm_layer_builds: "workbench",
