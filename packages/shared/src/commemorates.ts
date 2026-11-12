@@ -8,7 +8,9 @@
  * them (`via`): Wikidata's *commemorates* statement first, then English
  * Wikipedia's *Monuments and memorials to …* categories, the main subject and
  * the namesake where each is a person or an event, the *Statues of …*
- * categories, and last the person a statue depicts
+ * categories, the person a statue depicts, and last, for a place none of
+ * those names, the linked article two language models both read from the
+ * lead of its English Wikipedia article as its dedication (#2472)
  * (`backend/src/services/sync/places/commemorates.ts`). Two values are the same
  * when they name the same items (`sameSubjects`): a label or an article
  * Wikidata re-words, or another step naming the same people, changes nothing
@@ -56,6 +58,7 @@ export const COMMEMORATION_STEPS = [
   'named-after',
   'statues-category',
   'depicts',
+  'lead',
 ] as const;
 
 export type CommemorationStep = (typeof COMMEMORATION_STEPS)[number];

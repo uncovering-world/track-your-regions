@@ -305,6 +305,7 @@ const COMMEMORATION_SOURCE: Readonly<Record<CommemorationVia, string>> = {
   'named-after': 'Read from Wikidata’s “named after”, a person or an event',
   'statues-category': 'Read from English Wikipedia’s “Statues of …” category of the place’s article',
   'depicts': 'Read from Wikidata’s “depicts”, someone the work shows',
+  'lead': 'Read from the lead of the place’s English Wikipedia article, where two language models both named the same linked article',
   'war-narrowed-by-event': 'Read as a war, narrowed to the place’s own significant event within it, as Wikidata names it',
   'war-narrowed-by-lead': 'Read as a war, narrowed to the battle, campaign or other event within it that the lead of the place’s English Wikipedia article links where it says what the place commemorates',
   'war-narrowed-to-person': 'Read as a war, narrowed to the one person the bust or statue shows: the one Wikidata says it depicts, or the one its name names and English Wikipedia knows as a person',
@@ -640,8 +641,8 @@ const MEANINGS: Record<string, FieldMeaning> = {
   },
   'metadata.commemorates': {
     label: 'commemorates',
-    what: 'Whom or what the place commemorates: the line “Commemorates: …” on its card, each name linked to its Wikipedia article. Read from Wikidata’s “commemorates” first, then English Wikipedia’s “Monuments and memorials to …” categories, the main subject or the namesake where it is a person or an event, the “Statues of …” categories, and last the person a statue depicts. The Lincoln Memorial commemorates Abraham Lincoln, Nelson’s Column Horatio Nelson.',
-    whenItChanges: 'A name added or dropped on Wikidata or in a category. Check each name against the place: a namesake can be the pope who paid for a fountain rather than whom it honours, and a statue can show someone it was not raised to.',
+    what: 'Whom or what the place was raised to commemorate, each name linked to its Wikipedia article. Read first from Wikidata and English Wikipedia’s categories, then the main subject, the namesake and the person a statue depicts. Last, two language models must name the same person, event or group linked in the article’s opening.',
+    whenItChanges: 'Check each name against the place when one is added or dropped on Wikidata, in a category or in the article’s opening. A namesake can be the pope who paid for a fountain, and a statue can show someone it was not raised to. A memorial to victims can be given their cause, such as Terrorism, instead of the victims.',
     render: commemoratesLabel,
     describeChange: describeCommemorates,
   },

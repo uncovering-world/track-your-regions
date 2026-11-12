@@ -426,6 +426,13 @@ describe('whom a place commemorates (#2144)', () => {
     expect(change('metadata.commemorates', both, undefined)).toBe('Removed: Dmitry Pozharsky, Kuzma Minin.');
   });
 
+  it('says a dedication read from the lead was named alike by two language models (#2472)', () => {
+    // The Shaheed Minar in Dhaka (Q2425991) commemorates the Bengali language movement (Q1975418), which only its lead states.
+    const movement = { item: 'Q1975418', label: 'Bengali language movement', articleUrl: 'https://en.wikipedia.org/wiki/Bengali_language_movement' };
+    expect(change('metadata.commemorates', undefined, { via: 'lead', subjects: [movement] })).toBe('Added: Bengali language movement. '
+      + 'Read from the lead of the place’s English Wikipedia article, where two language models both named the same linked article.');
+  });
+
   it("says a curator's list is theirs, and reads their empty list as nobody named", () => {
     expect(change('metadata.commemorates', both, { via: 'curator', subjects: [MININ] }))
       .toBe('Removed: Dmitry Pozharsky. Listed by a curator.');
