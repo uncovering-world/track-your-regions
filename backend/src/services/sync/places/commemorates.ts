@@ -82,7 +82,7 @@ import {
 } from '../wikidataUtils.js';
 import { readsSubset } from '../subset/reader.js';
 import { CLASSICAL_MYTHOLOGY_CLASSES } from '../publicArt/classes.js';
-import { DEITY, FIGURE_CLASSES, OCCURRENCE, spanOf, subsetSubjectClaims, subsetSubjectKinds, WAR } from '../subset/commemorates.js';
+import { DEITY, FIGURE_CLASSES, GROUP_CLASSES, OCCURRENCE, spanOf, subsetSubjectClaims, subsetSubjectKinds, WAR } from '../subset/commemorates.js';
 import { articleUrl } from '../subset/values.js';
 import { latestStructure } from '../../dumps/wikipedia/structureTables.js';
 import { structureArticleItems, structureCategories } from '../wikipediaStructure.js';
@@ -125,6 +125,8 @@ export interface SubjectKind {
   occurrence: boolean;
   /** A named figure of fiction, myth or legend, or a personification (`FIGURE_CLASSES`): someone a work shows (#2436). */
   figure: boolean;
+  /** A group of people, a family or an ethnic group (`GROUP_CLASSES`): whom a dedication read from a lead may name (#2472). */
+  group: boolean;
   /** When it happened: its start (`P580`) or point in time (`P585`) to its end (`P582`), where Wikidata says. */
   span: Span | null;
 }
@@ -178,7 +180,8 @@ export interface ResolvedArticle {
  * English Wikipedia as the reading reads it: each article's categories, the
  * item of each article titled so or redirected to from that title, and the
  * wikitext of an article's lead with its revision, which narrows a war
- * (`warNarrowing.ts`) and is what a model reads a dedication from.
+ * (`warNarrowing.ts`) and names a dedication no other step does
+ * (`leadDedication.ts`).
  */
 export interface CommemorationWiki {
   categories(titles: string[]): Promise<Map<string, string[]>>;
@@ -377,7 +380,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
   const out = new Map<string, SubjectKind>();
   for (const batch of chunk(qids, BATCH)) {
     const rows = await sparql(`
-      SELECT ?v ?vLabel ?human ?event ?holy ?classical ?war ?occurrence ?figure ?start ?end ?at WHERE {
+      SELECT ?v ?vLabel ?human ?event ?holy ?classical ?war ?occurrence ?figure ?group ?start ?end ?at WHERE {
         VALUES ?v { ${values(batch)} }
         OPTIONAL { ?v wdt:P31 wd:Q5 . BIND(true AS ?human) }
         OPTIONAL { ?v wdt:P585|wdt:P580|wdt:P582 ?when . BIND(true AS ?event) }
@@ -390,6 +393,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
         OPTIONAL { ?v wdt:P31/wdt:P279* wd:${WAR} . BIND(true AS ?war) }
         OPTIONAL { ?v wdt:P31/wdt:P279* wd:${OCCURRENCE} . BIND(true AS ?occurrence) }
         OPTIONAL { VALUES ?root { ${values([...FIGURE_CLASSES])} } ?v wdt:P31/wdt:P279* ?root . BIND(true AS ?figure) }
+        OPTIONAL { VALUES ?people { ${values([...GROUP_CLASSES])} } ?v wdt:P31/wdt:P279* ?people . BIND(true AS ?group) }
         OPTIONAL { ?v wdt:P580 ?start }
         OPTIONAL { ?v wdt:P582 ?end }
         OPTIONAL { ?v wdt:P585 ?at }
@@ -411,6 +415,7 @@ export async function fetchSubjectKinds(sparql: SparqlFn, qids: string[]): Promi
         war: Boolean(row.war) || Boolean(known?.war),
         occurrence: Boolean(row.occurrence) || Boolean(known?.occurrence),
         figure: Boolean(row.figure) || Boolean(known?.figure),
+        group: Boolean(row.group) || Boolean(known?.group),
         span: known?.span ?? spanOf(times.start ?? times.at, times.end ?? times.at),
       });
     }
