@@ -89,7 +89,7 @@ export async function addUnderLock(
 
     const locked = await lockExperience(client, experienceId);
     if (!locked) return await refuse({ status: 404, error: 'Experience not found' });
-    const added = await addKindWithin(client, locked.lock, kindId, sourceId, type ?? null);
+    const added = await addKindWithin(client, locked.lock, kindId, sourceId, type ?? null, userId);
     if ('refusal' in added) return await refuse(added.refusal);
     const { membershipId, kind } = added;
     await client.query(`
@@ -123,6 +123,7 @@ export async function addKindWithin(
   kindId: number,
   sourceId: number,
   type: string | null,
+  curatorId: number,
 ): Promise<{ membershipId: number; kind: string } | { refusal: AnswerRefusal }> {
   const read = await client.query<{ kind: string; held: boolean }>(
     `SELECT kd.name AS kind,
@@ -139,7 +140,7 @@ export async function addKindWithin(
   // Another place holding the item in this source is the one conflict the
   // read above cannot see; the caller's rollback ends the aborted transaction.
   try {
-    return { membershipId: await insertCuratorKindMembership(client, lock, sourceId, type), kind: kind.kind };
+    return { membershipId: await insertCuratorKindMembership(client, lock, sourceId, type, curatorId), kind: kind.kind };
   } catch (error) {
     if ((error as { code?: string }).code !== '23505') throw error;
     return { refusal: { status: 409, error: `Another place holds this place's Wikidata item in ${kind.kind}` } };

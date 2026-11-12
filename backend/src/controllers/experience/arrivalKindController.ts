@@ -132,7 +132,7 @@ export async function moveArrivalUnderLock(
       return await refuse({ status: 400, error: `The place arrived in ${arrival.kind as string}; choose another kind` });
     }
 
-    const added = await addKindWithin(client, locked.lock, kindId, targetSourceId, type ?? null);
+    const added = await addKindWithin(client, locked.lock, kindId, targetSourceId, type ?? null, userId);
     if ('refusal' in added) return await refuse(added.refusal);
     const fromKind = arrival.kind as string;
 
