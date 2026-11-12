@@ -499,6 +499,22 @@ view and claims, asserts one record per relation, and deletes kind 10 and `is_vi
 reader-facing row changes. **Run it before the next re-application of `01-schema.sql`**, which
 declares `id_scheme` required and no longer seeds kind 10.
 
+`233-part-of-follows-the-records.sql` derives "part of" from the records that claim it (#2118,
+ADR-0198 decision 5): one trigger on `source_records` (`parts_follow_records()`) writes
+`experience_parts`, `part_site_components()` writes a part's record rather than its relation, the
+registry reads a component's reference off its record, and the relation's own `external_ref` and
+`membership_id` go. It writes no row of the catalogue: it asserts that the relations the records
+derive are the ones the table holds and that each relation's reference and membership are its
+record's and its whole's, drops the old triggers before the columns their lists name, replaces the
+functions, and asserts the derivation again. Merges recorded before it named the relations they moved
+(`moved.parts`), and their undo now moves records: the file refuses a database holding one that moved
+a relation as its whole, and gives each one that moved a part the id of that part's record among its
+memberships where it lacks it, so its undo moves the record and the relation back (174 merges of
+2026-10-18 to 23 on the development catalogue, recorded before parts had records), then refuses a
+database where a standing old merge would still not undo a relation it moved. **Run it before the next
+re-application of `01-schema.sql`**, which refuses to run while `experience_parts` still carries
+either column.
+
 `054-leaf-pieces-for-placement.sql` adds `region_geom_pieces` — each leaf region's geometry cut by
 `ST_Subdivide` into pieces of at most 256 vertices — with the trigger that keeps it, and cuts every
 leaf that has a geometry (#851, [ADR-0054](../../docs/decisions/0054-placement-reads-leaves-through-their-pieces.md)).
