@@ -6554,7 +6554,7 @@ Every read `frontend/src/api/experiences.ts` and `frontend/src/api/worldPoints.t
 
 Every response `requireAuth` lets through here carries `Cache-Control: private, no-store` and `Vary: Authorization`, set by the middleware itself: the bodies are one traveller's own history, and `no-store` is what keeps them out of the browser's disk cache after sign-out (#710; the reasoning is in `docs/security/SECURITY.md` § Headers). A request that never reaches it is refused by the route's limiter at 429, which runs first and carries nothing of the caller's to keep; a request `requireAuth` lets through is parsed after it, so a malformed one answers 400 under the same `no-store`. Every route on the user router is declared `signed-in` (ADR-0071), which builds `requireAuth` into its chain.
 
-Every call the web makes here lives in `frontend/src/api/visited.ts`, and its answer is a schema in `backend/src/api/responses/visited.ts` (ADR-0066), built key by key, a visit's `visited_at` leaving as an ISO string or null. The point routes (`/visited-locations/:locationId`) record the visit on the point's own place (below).
+Every call the web makes here lives in `frontend/src/api/visited.ts`, and its answer is a schema in `backend/src/api/responses/visited.ts` (ADR-0066), built key by key, a visit's `marked_at` leaving as an ISO string or null. The point routes (`/visited-locations/:locationId`) record the visit on the point's own place (below).
 
 | Method | Endpoint |
 |--------|----------|
@@ -6633,6 +6633,42 @@ how many points that statement read, and 404 for none. On screen, every control 
 visit, in Map mode's row and card and in Discover's list and panel, waits while any visit write of
 the traveller is on its way: each such write carries one mutation key, and
 `useVisitWritePending()` reads them all. Nested wholes are #2121's.
+
+**A visit holds its trips, each with an approximate date** (#2120, #773,
+[ADR-0202](../decisions/0202-a-visit-holds-its-trips-each-with-an-approximate-date.md)). A trip is a row
+of `user_visit_trips` under one visit: `year`, `month` and `day`, each nullable, so the precision is
+which are set and all three empty is a trip whose date the traveller does not remember; a month only
+within a year, a day only within a month the month has, from 1900 to next year
+(`@tyr/shared/approximateDates`). The table's checks hold the shape and the earliest year, 1900; the
+latest, next year, is held by the body schema `tripDateBodySchema` alone, since a bound that moves with
+the calendar cannot be a check.
+The visit stays one row per traveller and place, and a visit with no trip has no date: migration 236
+wrote none for the visits made before it, since the visit's own moment, renamed `marked_at` from
+`visited_at`, is when the tick was made. The routes, all under `/api/users/me` and of the caller's own
+visits only, another traveller's trip answering 404:
+
+| Route | What it does |
+|---|---|
+| `GET /visited-experiences/:experienceId/trips` | the place's trips, newest first, an undated one last (`tripOrderSql`), and whether the place itself is visited |
+| `POST /visited-experiences/:experienceId/trips` | adds a trip, ticking the place where it was not; a visit takes at most 365 this way (`TRIPS_PER_VISIT`) |
+| `PATCH /trips/:tripId`, `DELETE /trips/:tripId` | changes a trip's date; removes a trip, answering it for an Undo that adds it again; the visit stays |
+| `POST /visits/restore` | puts back visits an untick removed, each with its trips, in one transaction; at most 1,000 visits and 10,000 trips (`RESTORE_LIMITS`), any of them on one visit |
+
+Each write reads the place or the visit it writes for inside its own statement under a share lock
+(`placeAtWriteSql`, `ownTripAtWriteSql`). Every untick, of a place, a point or all of a place's places,
+answers the visits it removed with their trips (`removed`, read by `removeVisitsSql` in the statement
+that deletes them), so the untick can be undone in place. A removal never deletes what its Undo would
+refuse or what its answer leaves out (`removeVisitsOn`, in one transaction): one statement locks the
+visits, and the next counts the visits and trips it would take and deletes them. That second statement
+starts once every visit is held, so it sees a trip added and committed on one while the untick waited,
+and no trip is added, moved or removed under a held visit. Where they pass `RESTORE_LIMITS` it deletes
+nothing and answers 400, "remove them one region at a time" (`removedVisitsOf`). No traveller reaches
+it: the largest whole holds 758 parts, and adding
+stops at 365 trips a visit; a merge or a restore can leave one visit with more, which a removal and its
+Undo still take whole. A merge copies a folded visit's trips onto
+the survivor's visit, two trips on one date staying two, and its undo removes exactly those
+(`reconcileVisits`, `restoreVisits` in `placeMerge.ts`); a copy the undo would take away stays while it
+holds a trip the traveller added since.
 
 One of these filters `admission` and the rest do not, and the split is the line in § Lifecycle
 filtering rather than an oversight. `visited-status` describes an experience to a reader — its

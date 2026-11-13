@@ -396,7 +396,7 @@ chapters:
       desc: "Sensitive data identified and classified"
       level: 1
       status: pass
-      notes: "User travel data, visited regions, auth tokens identified as sensitive"
+      notes: "User travel data, visited regions, auth tokens identified as sensitive. The dates of a traveller's trips (user_visit_trips, #2120, ADR-0202) are travel data of the same class: read and written only under /api/users/me, of the caller's own visits"
     V14.2.2:
       desc: "Sensitive data not cached in server components (load balancers, application caches)"
       level: 2
