@@ -20,6 +20,7 @@
 
 import type { Experience, ExperienceLocation } from '../../api/experiences';
 import { representablePlaces } from '../experienceMarkers/buildMarkers';
+import { ownPoint } from '../../utils/placePosition';
 import { pointInView, type ViewBounds } from '../../utils/viewBounds';
 
 /**
@@ -31,9 +32,9 @@ import { pointInView, type ViewBounds } from '../../utils/viewBounds';
  *
  * The branches are `buildExperienceMarkers`' own, because agreeing with the map
  * is the whole point of this module: a place's own coordinate while the batch
- * holds none of its points, and nothing at all for an object made of parts
- * then (#2122) — which no view can leave out, as a missing view leaves out
- * nothing.
+ * holds none of its points, and nothing at all for a whole then, which has no
+ * coordinate (#2122) and which no view can leave out, as a missing view leaves
+ * out nothing.
  */
 export function experienceIdsInView(
   experiences: Experience[],
@@ -45,8 +46,13 @@ export function experienceIdsInView(
     const places = representablePlaces(locationsByExperience[exp.id]);
     const inView = places.length > 0
       ? places.some(loc => pointInView(loc.longitude, loc.latitude, bounds))
-      : exp.has_parts || pointInView(exp.longitude, exp.latitude, bounds);
+      : inViewWithout(ownPoint(exp), bounds);
     if (inView) ids.add(exp.id);
   }
   return ids;
+}
+
+/** A place none of whose points is at hand: in view at its own coordinate, and always for a whole, which has none. */
+function inViewWithout(own: [number, number] | null, bounds: ViewBounds): boolean {
+  return own === null || pointInView(own[0], own[1], bounds);
 }

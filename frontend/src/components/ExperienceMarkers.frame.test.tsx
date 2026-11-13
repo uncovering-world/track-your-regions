@@ -1,8 +1,7 @@
 /**
- * What a click in the list frames (#2122): what the map is drawing. An object
- * made of parts has no coordinate of its own, and the map draws nothing for it
- * while the region's batch holds none of its parts, so the click moves nothing
- * rather than flying to a point with nothing on it.
+ * What a click in the list frames (#2122): a whole is framed by its places, or
+ * by the frame of them its row carries while the region's batch holds none,
+ * and never flown to a coordinate of its own, which it does not have.
  *
  * The map is a stub that records what the camera was asked to do.
  */
@@ -64,10 +63,11 @@ vi.mock('../hooks/useRegionLocations', async (importOriginal) => ({
 
 import { ExperienceMarkers } from './ExperienceMarkers';
 
-/** Seville's site: the cathedral, the Alcázar and the Archivo de Indias. */
+/** Seville's site: the cathedral, the Alcázar and the Archivo de Indias, and no coordinate of its own. */
 const SEVILLE = {
   id: 1175, name: 'Cathedral, Alcázar and Archivo de Indias in Seville', kind_name: 'World Heritage Sites', kind_id: 1,
-  has_parts: true, longitude: -5.992326, latitude: 37.384788,
+  has_parts: true, longitude: null, latitude: null,
+  focus: { bbox: [-5.993096, 37.383833, -5.991556, 37.385742], anchorPoint: [-5.992326, 37.384788] },
 } as Experience;
 
 const at = (id: number, longitude: number, latitude: number) =>
@@ -91,21 +91,31 @@ beforeEach(() => {
   camera.flyTo.length = 0;
 });
 
-describe('a click in the list frames what the map draws', () => {
+describe('a click in the list frames a whole by its places', () => {
   it('frames Seville by its three places once the batch holds them', () => {
     clickInTheList(SEVILLE, { 1175: [at(1, -5.9931, 37.3858), at(2, -5.9910, 37.3833), at(3, -5.9925, 37.3846)] });
     expect(camera.cameraForBounds).toEqual([[[-5.9931, 37.3833], [-5.991, 37.3858]]]);
     expect(camera.flyTo).toHaveLength(1);
   });
 
-  it('moves nothing for an object made of parts while the batch holds none of them', () => {
+  it('frames it by the frame of its places while the batch holds none', () => {
     clickInTheList(SEVILLE);
-    expect(camera.cameraForBounds).toEqual([]);
+    expect(camera.cameraForBounds).toEqual([[[-5.993096, 37.383833], [-5.991556, 37.385742]]]);
+    expect(camera.flyTo).toHaveLength(1);
+  });
+
+  it('flies a whole across the antimeridian through its anchor', () => {
+    clickInTheList({ ...SEVILLE, focus: { bbox: [179.5, -16.8, -179.6, -16.5], anchorPoint: [179.95, -16.65] } });
+    expect((camera.flyTo[0] as { center: [number, number] }).center).toEqual([179.95, -16.65]);
+  });
+
+  it('moves nothing for a whole that shows no place', () => {
+    clickInTheList({ ...SEVILLE, focus: undefined });
     expect(camera.flyTo).toEqual([]);
   });
 
   it('flies a place of its own to its own coordinate', () => {
-    clickInTheList({ ...SEVILLE, id: 13223, name: 'Seville Cathedral', has_parts: false, longitude: -5.9931, latitude: 37.3858 });
+    clickInTheList({ ...SEVILLE, id: 13223, name: 'Seville Cathedral', has_parts: false, longitude: -5.9931, latitude: 37.3858, focus: undefined });
     expect(camera.flyTo).toEqual([{ center: [-5.9931, 37.3858], zoom: 8, duration: 800 }]);
   });
 });

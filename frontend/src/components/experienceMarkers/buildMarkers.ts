@@ -13,6 +13,7 @@
 import type { Experience, ExperienceLocation } from '../../api/experiences';
 import { experienceColor } from '../../utils/kindColors';
 import { pinLabel } from '../../utils/locationLabel';
+import { ownPoint } from '../../utils/placePosition';
 
 const NO_KIND_TYPES: ReadonlyMap<string, string> = new Map();
 
@@ -109,19 +110,20 @@ function mergedKinds(kinds: readonly ShownKind[]): ShownKind[] {
  * is not `undefined`, so a guard on `!locations` alone dropped such a row with
  * no marker and no error, which is a row whose hover does nothing.
  *
- * None for an object made of parts: it has no coordinate a traveller can go to
- * (#2122), only its parts, and they are drawn once the batch holds them.
+ * None for a whole: it has no coordinate a traveller can go to (#2122), only
+ * its places, and they are drawn once the batch holds them.
  */
 function standInMarkers(exp: Experience): Omit<MarkerData, 'kindColors'>[] {
-  if (exp.has_parts) return [];
+  const own = ownPoint(exp);
+  if (!own) return [];
   return [{
     id: String(exp.id),
     experienceId: exp.id,
     experienceIds: [exp.id],
     locationId: null,
     experience: exp,
-    longitude: exp.longitude,
-    latitude: exp.latitude,
+    longitude: own[0],
+    latitude: own[1],
     locationName: null,
   }];
 }

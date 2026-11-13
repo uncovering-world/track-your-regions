@@ -192,3 +192,20 @@ export function frameGeoJson(
   if (!focus) return;
   smartFitBounds(mapLike, focus.bbox, { minZoom: 0, ...options, anchorPoint: focus.anchorPoint });
 }
+
+/**
+ * Frame the focus the server measured over a whole's places (`focus` on a
+ * place's row, #2122) while the surface holds none of them: the same frame
+ * `frameGeoJson` measures over the places once they are at hand, so the same
+ * zoom floor of 0. The camera goes through the anchor for a box over the
+ * antimeridian, so places either side of it are one window rather than the
+ * world. Nothing frames a focus that is not there.
+ */
+export function frameFocus(
+  mapLike: MapLike | null | undefined,
+  focus: GeoFocus | null | undefined,
+  options: FrameOptions = {},
+): void {
+  if (!mapLike || !focus) return;
+  smartFitBounds(mapLike, focus.bbox, { minZoom: 0, ...options, anchorPoint: focus.anchorPoint });
+}

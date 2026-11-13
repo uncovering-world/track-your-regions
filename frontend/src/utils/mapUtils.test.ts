@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { focusFromGeoJson, frameGeoJson, smartFitBounds } from './mapUtils';
+import { focusFromGeoJson, frameFocus, frameGeoJson, smartFitBounds } from './mapUtils';
 import type { MapLike } from './mapUtils';
 
 /**
@@ -297,5 +297,41 @@ describe('smartFitBounds', () => {
     const flown = calls.flyTo as { center: [number, number] }[];
     expect(flown[0].center).toEqual([179.34, -16.75]);
     expect(flown[1].center[0]).not.toBeCloseTo(179.34, 1);
+  });
+});
+
+describe('frameFocus', () => {
+  // The frame the server measures over a whole's places (#2122), flown while
+  // the surface holds none of them.
+  it('frames the Struve Geodetic Arc from Hammerfest to the Danube as its plain box', () => {
+    const { map, calls } = mockMap();
+    frameFocus(map, { bbox: [22.745833, 45.332596, 28.927881, 70.67], anchorPoint: [25.836857, 58.001298] }, { maxZoom: 12 });
+    const asked = calls.cameraForBounds[0] as { bounds: [[number, number], [number, number]] };
+    expect(asked.bounds).toEqual([[22.745833, 45.332596], [28.927881, 70.67]]);
+    expect(calls.flyTo).toHaveLength(1);
+  });
+
+  it('flies a whole across the antimeridian through its anchor, with the zoom of the shifted box', () => {
+    const { map, calls } = mockMap();
+    frameFocus(map, { bbox: [179.5, -16.8, -179.6, -16.5], anchorPoint: [179.95, -16.65] });
+    const asked = calls.cameraForBounds[0] as { bounds: [[number, number], [number, number]] };
+    expect(asked.bounds[0][0]).toBe(179.5);
+    expect(asked.bounds[1][0]).toBeCloseTo(180.4, 6);
+    expect((calls.flyTo[0] as { center: [number, number] }).center).toEqual([179.95, -16.65]);
+  });
+
+  it('frames a whole spread over three continents at the zoom its box asks for', () => {
+    // Le Corbusier's works, from La Plata to Tokyo, in one view.
+    const { map, calls } = mockMap();
+    frameFocus(map, { bbox: [-57.941825, -34.911342, 139.775833, 51.183667], anchorPoint: [40.917004, 8.136163] });
+    expect((calls.flyTo[0] as { zoom: number }).zoom).toBe(3);
+  });
+
+  it('leaves the map alone for a whole that shows no place', () => {
+    const { map, calls } = mockMap();
+    frameFocus(map, undefined);
+    frameFocus(null, { bbox: [0, 0, 1, 1], anchorPoint: [0.5, 0.5] });
+    expect(calls.cameraForBounds).toHaveLength(0);
+    expect(calls.flyTo).toHaveLength(0);
   });
 });

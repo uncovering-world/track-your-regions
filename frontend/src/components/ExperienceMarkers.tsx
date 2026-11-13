@@ -29,6 +29,7 @@ import { useEffect, useMemo, useRef, useCallback } from 'react';
 import { useMap, Source, Layer } from 'react-map-gl/maplibre';
 import * as maplibregl from 'maplibre-gl';
 import { buildExperienceMarkers, representablePlaces } from './experienceMarkers/buildMarkers';
+import { ownPoint } from '../utils/placePosition';
 import {
   SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER, SOURCE_EXTENT,
   EMPTY_FC, buildPointHoverData, buildPointsHoverData,
@@ -45,7 +46,7 @@ import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../h
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience, ExperienceLocation } from '../api/experiences';
 import { locationLabel, locationLabelWithRef, pinLabel, pointOfRow } from '../utils/locationLabel';
-import { frameGeoJson } from '../utils/mapUtils';
+import { frameFocus, frameGeoJson } from '../utils/mapUtils';
 import { placeKindNames } from '../utils/placeKinds';
 import { pointPicture } from '../utils/pointPicture';
 
@@ -213,13 +214,12 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     const shown = shownPlacesFor(selectedExperienceId);
     if (!shown) {
       const exp = getExperienceById(selectedExperienceId);
-      // An object made of parts has no point of its own to draw (#2122).
-      if (!exp || exp.has_parts) return EMPTY_FC;
+      // A whole has no point of its own to draw (#2122).
+      const own = exp ? ownPoint(exp) : null;
+      if (!own) return EMPTY_FC;
       // The place's own point stands for no one place and carries no name of
       // its own; the popup reads the place (#1917).
-      return buildHighlightData([
-        { coordinates: [exp.longitude, exp.latitude], locationId: null, name: null },
-      ]);
+      return buildHighlightData([{ coordinates: own, locationId: null, name: null }]);
     }
 
     // Named as the pin is: the one point of a museum is the museum and carries
@@ -381,16 +381,15 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
           duration: 800,
         });
       } else {
-        // Its places not loaded yet: a place flies to its own coordinate. An
-        // object made of parts has none, and the map draws nothing for it while
-        // none of its parts is at hand, so it frames nothing (#2122).
+        // Its places not loaded yet: a place flies to its own coordinate, and a
+        // whole, which has none, is framed by the frame of its places the
+        // server measured (#2122). A whole showing no place frames nothing.
         const exp = getExperienceById(flyToExperienceId);
-        if (exp && !exp.has_parts) {
-          map.flyTo({
-            center: [exp.longitude, exp.latitude],
-            zoom: Math.max(map.getZoom(), 8),
-            duration: 800,
-          });
+        const own = exp ? ownPoint(exp) : null;
+        if (own) {
+          map.flyTo({ center: own, zoom: Math.max(map.getZoom(), 8), duration: 800 });
+        } else {
+          frameFocus(map, exp?.focus, { padding: 80, duration: 800, maxZoom: 12 });
         }
       }
       clearFlyTo();

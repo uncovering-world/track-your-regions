@@ -92,14 +92,18 @@ export interface DiscoverHoverWiring {
 
 /** What the view hands the map's own listeners. */
 export interface DiscoverHover {
-  mapHoverCallbackRef: React.MutableRefObject<(id: number | null) => void>;
+  mapHoverCallbackRef: React.MutableRefObject<(id: number | null, at?: [number, number]) => void>;
   highlightHoverCallbackRef: React.MutableRefObject<(locationId: number | null) => void>;
   onCardMouseEnter: (expId: number) => void;
   onCardMouseLeave: () => void;
 }
 
-/** The preview the overlay card shows for a hovered marker. */
-function previewOf(exp: Experience): HoverPreview {
+/**
+ * The preview the overlay card shows for a hovered marker, at the pin's own
+ * point: a whole has no coordinate of its own (#2122), and the pin is one of
+ * its places.
+ */
+function previewOf(exp: Experience, at: [number, number]): HoverPreview {
   const rawImg = extractImageUrl(exp.image_url);
   return {
     experienceId: exp.id,
@@ -113,8 +117,8 @@ function previewOf(exp: Experience): HoverPreview {
     findsCount: exp.finds_count,
     imageUrl: rawImg ? toThumbnailUrl(rawImg, 250) : null,
     imageCredit: exp.image_credit ?? null,
-    longitude: exp.longitude,
-    latitude: exp.latitude,
+    longitude: at[0],
+    latitude: at[1],
   };
 }
 
@@ -143,12 +147,12 @@ export function useDiscoverHover({
 
   // Map hover → the store. A ref because the map's listeners are registered
   // once, on mount, by `useDiscoverMap` — they must see this render's callback.
-  const mapHoverCallbackRef = useRef<(id: number | null) => void>(() => {});
-  mapHoverCallbackRef.current = (id: number | null) => {
+  const mapHoverCallbackRef = useRef<(id: number | null, at?: [number, number]) => void>(() => {});
+  mapHoverCallbackRef.current = (id: number | null, at?: [number, number]) => {
     setHoveredFromMarker(id);
-    if (id != null) {
+    if (id != null && at) {
       const exp = experiencesRef.current.find(e => e.id === id);
-      if (exp) setHoverPreview(previewOf(exp));
+      if (exp) setHoverPreview(previewOf(exp, at));
     }
     // Leaving needs no explicit preview clear: the store drops the preview with
     // the hover, exactly as the map-mode marker path relies on.

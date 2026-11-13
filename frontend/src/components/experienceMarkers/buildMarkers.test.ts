@@ -94,7 +94,7 @@ describe('an object made of several places', () => {
     // A whole made of parts has no coordinate a traveller can go to (#2122):
     // Seville's World Heritage site is its three places, and no dot of its own
     // stands in for them before they load.
-    const seville = makeExperience(1175, { has_parts: true, location_count: 3 });
+    const seville = makeExperience(1175, { has_parts: true, location_count: 3, longitude: null, latitude: null });
     expect(buildExperienceMarkers([seville], {}, new Set())).toEqual([]);
     expect(buildExperienceMarkers([seville], { 1175: [] }, new Set())).toEqual([]);
   });
@@ -107,7 +107,7 @@ describe('a point two listed objects show', () => {
     kind_id, kind_name, kind_priority, type, source_id: kind_id, external_id: 'Q', source_membership: 'present' as const,
   });
   const site = makeExperience(1175, {
-    has_parts: true, kind_id: 1, type: 'cultural', kinds: [kind(1, 'World Heritage Sites', 1, 'cultural')],
+    has_parts: true, longitude: null, latitude: null, kind_id: 1, type: 'cultural', kinds: [kind(1, 'World Heritage Sites', 1, 'cultural')],
   });
   const cathedral = makeExperience(13223, {
     has_parts: false, kind_id: 4, type: 'cathedral', kinds: [kind(4, 'Places of worship', 4, 'cathedral')],

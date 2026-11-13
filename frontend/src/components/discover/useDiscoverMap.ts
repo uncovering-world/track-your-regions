@@ -36,8 +36,8 @@ export interface DiscoverMapWiring {
   selectedFromMapIdRef: React.MutableRefObject<number | null>;
   /** Set when the reader moved the camera themself, including a cluster click. */
   movedByReaderRef: React.MutableRefObject<boolean>;
-  /** Hover from the map, reported to the list. */
-  mapHoverCallbackRef: React.MutableRefObject<(id: number | null) => void>;
+  /** Hover from the map, reported to the list with the pin's point. */
+  mapHoverCallbackRef: React.MutableRefObject<(id: number | null, at?: [number, number]) => void>;
   /** Hover on a highlight dot, reported with the location it belongs to. */
   highlightHoverCallbackRef: React.MutableRefObject<(locationId: number | null) => void>;
   onSelectExperience: (id: number) => void;
@@ -183,7 +183,7 @@ export function useDiscoverMap({
             setHoverRing(coords);
 
             // Notify React (triggers list auto-scroll + card highlight + hover card)
-            mapHoverCallbackRef.current?.(id);
+            mapHoverCallbackRef.current?.(id, coords);
           }
         }
       };
@@ -325,7 +325,7 @@ export function useDiscoverMap({
           // check absorbs. The hover is the pin's now, so there is nothing of
           // the dot's left to clear — hence no `highlightHoverCallbackRef`.
           mapCurrentHoveredKey = keyOf(pin);
-          mapHoverCallbackRef.current?.(pin.properties?.experienceId as number);
+          mapHoverCallbackRef.current?.(pin.properties?.experienceId as number, pointOf(pin));
           return;
         }
         if (!fromAMove || !onACluster(e.point)) map.getCanvas().style.cursor = '';
