@@ -64,8 +64,7 @@ function termIdsOf(casts: Map<string, Kept>): string[] {
  * has ended. A cast placed nowhere stands where its point is.
  */
 function readingOf(id: string, claims: CompactEntity['claims'], terms: Map<string, Terms>): CastItemReading | null {
-  const wkt = bestStatements(claims.P625).map(s => wktOf(s.value))
-    .reduce<string | null>((keptWkt, next) => preferredCoordinate(keptWkt, next), null);
+  const wkt = preferredCoordinate(bestStatements(claims.P625).map(s => wktOf(s.value)));
   if (!wkt) return null;
   const placed = bestStatements(claims.P276).filter(s => itemOf(s.value) !== null);
   const standing = itemsOf(placed.filter(s => !hasEnded(s)));

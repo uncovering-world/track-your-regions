@@ -24,7 +24,7 @@ import type { ContainerFacts, EntityFacts, PoolCast, PoolEntity } from '../publi
 import { namingPart } from '../publicArt/castNaming.js';
 import type { SubjectFacts } from '../publicArt/subjects.js';
 import { countryOfPlace, openCountries, standingCountries, type PlaceCountry } from '../publicArt/countryOfPlace.js';
-import { parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
+import { parseWktPoint, preferredCoordinate, preferredPicture, withCoordinate } from '../wikidataUtils.js';
 import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
 import {
   articleUrl, bestStatements, hasEnded, itemOf, itemsOf, outrankedStatements, picturesOf, standingStatements, textOf,
@@ -39,7 +39,7 @@ function poolEntity(
 ): PoolEntity | null {
   const { claims } = kept.entity;
   const points = bestStatements(claims.P625).filter(s => parseWktPoint(wktOf(s.value) ?? '') !== null);
-  const wkt = points.map(s => wktOf(s.value)!).reduce<string | null>((kept, next) => preferredCoordinate(kept, next), null);
+  const wkt = preferredCoordinate(points.map(s => wktOf(s.value)));
   if (!wkt && !placeless) return null;
   const itemPictures = picturesOf(claims.P18);
   const picture = itemPictures.reduce<string | null>((kept, url) => preferredPicture(kept, url), null);
@@ -59,14 +59,17 @@ function poolEntity(
   // point — two parts named on one point are one cast, called by the
   // lowest-numbered (`namingPart`) — and the edition is two or more points, as
   // the live reader reads the same rows (`castsOf` in `publicArt/queries.ts`).
-  const byPlace = new Map<string, string>();
+  const byPlace = new Map<string, string[]>();
   for (const statement of points) {
     const wkt = wktOf(statement.value);
     if (!wkt) continue;
-    for (const place of partsOf(statement)) byPlace.set(place, preferredCoordinate(byPlace.get(place) ?? null, wkt) ?? wkt);
+    for (const place of partsOf(statement)) byPlace.set(place, withCoordinate(byPlace.get(place) ?? [], wkt));
   }
   const byPoint = new Map<string, string[]>();
-  for (const [place, placeWkt] of byPlace) byPoint.set(placeWkt, [...(byPoint.get(placeWkt) ?? []), place]);
+  for (const [place, placeWkts] of byPlace) {
+    const placeWkt = preferredCoordinate(placeWkts)!;
+    byPoint.set(placeWkt, [...(byPoint.get(placeWkt) ?? []), place]);
+  }
   const casts: PoolCast[] | undefined = byPoint.size >= 2 ? [...byPoint].flatMap(([pointWkt, places]) => {
     const at = parseWktPoint(pointWkt);
     if (!at) return [];
