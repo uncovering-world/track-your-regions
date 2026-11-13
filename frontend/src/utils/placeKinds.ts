@@ -107,6 +107,11 @@ export function cardAsksFinds(
 /** World Heritage: any of its places may be where a find came from (#2242). */
 const WORLD_HERITAGE_KIND_ID = 1;
 
+/** The place stands in World Heritage Sites, on its row or among its kinds: a site may be made of parts (#2118). */
+export function standsInWorldHeritage(row: { kind_id: number; kinds?: PlaceKind[] | null }): boolean {
+  return row.kind_id === WORLD_HERITAGE_KIND_ID || (row.kinds ?? []).some(kind => kind.kind_id === WORLD_HERITAGE_KIND_ID);
+}
+
 /** One kind of a place, by its id and its type within the kind. */
 function mayBeOriginIn(kindId: number, type: string | null | undefined): boolean {
   return kindId === WORLD_HERITAGE_KIND_ID || hasExtent(kindId, type);

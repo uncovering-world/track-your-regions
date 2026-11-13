@@ -55,6 +55,8 @@ import { ExtentLine } from '../shared/ExtentLine';
 import { CommemoratesLine } from '../shared/CommemoratesLine';
 import { DescriptionText } from '../shared/DescriptionText';
 import { PartOfLine } from '../shared/PartOfLine';
+import { LazyPlaceParts } from '../curation/parts/LazyPlaceParts';
+import { standsInWorldHeritage } from '../../utils/placeKinds';
 import { ContentsSection } from './ContentsSection';
 import { locationLabel, pointOfRow } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
@@ -471,6 +473,17 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
           onClose={() => setCorrectingWork(null)}
           onDone={setCorrectionNotice}
         />
+
+        {/* A curator's Parts and Part of, on the card itself (#2118). */}
+        {onCurate && (
+          <Box sx={{ mt: 2 }}>
+            <LazyPlaceParts
+              experienceId={experience.id}
+              regionId={address?.regionId ?? null}
+              isSite={standsInWorldHeritage(experience)}
+            />
+          </Box>
+        )}
 
         <Divider sx={{ my: 2 }} />
 
