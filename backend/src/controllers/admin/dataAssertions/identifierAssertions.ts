@@ -40,7 +40,8 @@ const identifiersOnSeveralPlaces: CatalogueAssertion = {
     + 'item are joined by the catalogue after a run and after a component-items answer, so a Wikidata row '
     + 'here is a pair that join refused, such as two places in one kind, or one a curator took apart, which '
     + 'the join never touches again. Merging the two settles it; so does taking the identifier off the place '
-    + 'it does not name.',
+    + 'it does not name. A place made of parts, or two parts of one place, is never merged, so only taking '
+    + 'it off settles that pair.',
   sql: `SELECT pi.scheme, pi.value,
                array_agg(pi.experience_id ORDER BY pi.experience_id) AS place_ids,
                array_agg(e.name ORDER BY pi.experience_id) AS names
@@ -140,9 +141,44 @@ const identifiersRedirected: CatalogueAssertion = {
   describe: row => `${text(row, 'name')} (#${count(row, 'experience_id')}): ${text(row, 'value')} redirects to ${text(row, 'target')}`,
 };
 
-/** The registry's rules: the duplicates it reports, its own drift, then the items Wikidata moved. */
+/**
+ * A merge standing on a place made of parts.
+ *
+ * A whole is never merged with anything (ADR-0203): a serial site is its parts
+ * on the ground, and what is one place with another kind's place is one of
+ * them. The merge refuses a whole and the registry gives it no item, so a row
+ * here is a merge the catalogue holds from before that rule, which only a
+ * curator's undo settles: the merge records what it moved, so the undo from
+ * the place's history gives the other place back its kind and its point, and
+ * the join never merges the two again, since the undone merge is a curator's
+ * word.
+ */
+const mergeOntoAWhole: CatalogueAssertion = {
+  id: 'merge-onto-a-whole',
+  area: 'objects',
+  title: 'A place made of parts that another place was merged into',
+  kind: 'invariant',
+  meaning:
+    'A place made of parts is never merged with anything, since its parts are what a traveller stands at. '
+    + 'A curator undoes the merge from the history on its card. '
+    + 'The other place is then its own place again, with its kind and its pin.',
+  sql: `SELECT m.id AS merge_id, m.survivor_id, s.name AS survivor_name, m.folded_id, f.name AS folded_name,
+               m.merged_by IS NULL AS by_catalogue
+          FROM experience_merges m
+          JOIN experiences s ON s.id = m.survivor_id
+          JOIN experiences f ON f.id = m.folded_id
+         WHERE m.undone_at IS NULL
+           AND (place_is_whole(m.survivor_id) OR place_is_whole(m.folded_id))
+         ORDER BY s.name, m.id`,
+  describe: row => `${text(row, 'folded_name')} (#${count(row, 'folded_id')}) was merged into `
+    + `${text(row, 'survivor_name')} (#${count(row, 'survivor_id')}) `
+    + `${row.by_catalogue ? 'by the catalogue' : 'by a curator'}`,
+};
+
+/** The registry's rules: the duplicates it reports, its own drift, the items Wikidata moved, then merges onto a whole. */
 export const identifierAssertions: CatalogueAssertion[] = [
   identifiersOnSeveralPlaces,
   placeIdentifiersOutOfStep,
   identifiersRedirected,
+  mergeOntoAWhole,
 ];
