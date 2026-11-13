@@ -16,6 +16,11 @@
  * their ensemble, nor one a curator said only refers to the place (#1896); the
  * catalogue check `identifiers-on-several-places` lists the same rows.
  *
+ * A place made of parts claims no item (ADR-0203), so the registry never
+ * offers one here, and the join also leaves out a pair of two parts of one
+ * whole, which the merge refuses: the rule is stated where the join reads it,
+ * so a curator's word that a whole is an item does not make it join.
+ *
  * Each such item is joined into one place, one place at a time. The place
  * some kind offers, with the lowest id, keeps its id and its address: the
  * Temple of Karnak folds into the Karnak Temple Complex of Places of worship,
@@ -69,14 +74,20 @@ function sharedItemsSql(onlyParam: string): string {
                JOIN experiences e ON e.id = pi.experience_id
               WHERE pi.scheme = 'wikidata' AND pi.claims_identity AND NOT pi.identifies
                 AND (${onlyParam}::text[] IS NULL OR pi.value = ANY(${onlyParam}::text[]))
+                -- ADR-0203: a place made of parts is never merged.
+                AND NOT place_is_whole(e.id)
            ) held
           GROUP BY held.qid
          HAVING count(*) > 1
        ) g
-      -- A pair a curator took apart is not joined again: the undone merge's record
-      -- is their word that the two are not one place, which stands until they say
-      -- otherwise; the registry goes on listing the item for them to settle.
-      WHERE NOT EXISTS (SELECT 1 FROM experience_merges undone
+      -- Two parts of one whole stay two places (ADR-0203).
+      WHERE NOT EXISTS (SELECT 1 FROM experience_parts pa
+                          JOIN experience_parts pb ON pb.whole_id = pa.whole_id AND pb.part_id <> pa.part_id
+                         WHERE pa.part_id = ANY(g.place_ids) AND pb.part_id = ANY(g.place_ids))
+        -- A pair a curator took apart is not joined again: the undone merge's record
+        -- is their word that the two are not one place, which stands until they say
+        -- otherwise; the registry goes on listing the item for them to settle.
+        AND NOT EXISTS (SELECT 1 FROM experience_merges undone
                          WHERE undone.undone_at IS NOT NULL
                            AND undone.survivor_id = ANY(g.place_ids) AND undone.folded_id = ANY(g.place_ids))`;
 }

@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { writeExperienceLocations, type LocationWriteRun } from '../../services/sync/locationWriter.js';
-import { mergePlaces, undoMerge } from './placeMerge.js';
+import { mergePlaces, undoMerge, WHOLE_REFUSAL } from './placeMerge.js';
 import { answerComponentItemsUnderLock } from './componentItemController.js';
 import { joinPlacesClaimingOneItem } from './equalItemMerges.js';
 import { editLocation } from './locationEditController.js';
@@ -180,10 +180,10 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
     expect(temple.rows[0].name).toBe('Temple of Amun-Ra at Karnak');
   });
 
-  it('refuses to fold a site and its own part into one place', async () => {
+  it('refuses to fold a site and its own part into one place, a place made of parts never being merged', async () => {
     await mergeKarnak();
     const outcome = await mergePlaces({ survivorId: THEBES, foldedId: COMPLEX, mergedBy: adminId, reason: 'curator' });
-    expect(outcome.refusal).toEqual({ status: 409, error: 'One of the two places is part of the other, which is not one place' });
+    expect(outcome.refusal).toEqual({ status: 409, error: WHOLE_REFUSAL });
   });
 
   it('moves the place\'s own anchor with its one point when a curator corrects it', async () => {
