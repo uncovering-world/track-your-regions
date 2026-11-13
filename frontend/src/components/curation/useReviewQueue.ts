@@ -64,9 +64,9 @@ export interface ReviewQueueRead {
   refusedParts: ReviewQueueItem[];
   /**
    * The filters as one string — the address without the selected row, which names a card
-   * rather than asking the server anything, and without the tab and its crowded city's
-   * group, which name another list. A page watching *this* sees a filter change and not a
-   * row click or a tab switch.
+   * rather than asking the server anything, without the tab and its crowded city's group,
+   * which name another list, and without the map, which draws this one (#2477). A page
+   * watching *this* sees a filter change and not a row click, a tab switch or the map.
    */
   filterKey: string;
   /**
