@@ -18,7 +18,7 @@ import { pool } from '../../db/index.js';
 import {
   KINDS, MEMBERSHIPS, admissionAnsweredSql, keptAsFormerSql, placeSourceIdsSql, rowKindJoinSql,
 } from '../../db/membership.js';
-import type { reviewQueueQuerySchema } from '../../types/index.js';
+import type { reviewQueueMapQuerySchema, reviewQueueQuerySchema } from '../../types/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorPlaceScopeExists } from '../../middleware/auth.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import {
@@ -39,7 +39,7 @@ import { queryConflicts } from './reviewQueueConflicts.js';
 import {
   QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys, queueScopeSql,
 } from './reviewQueueKeys.js';
-import type { QueueFilters, QueueKind, WaitingSub } from './reviewQueueKeys.js';
+import type { QueueFilters, QueueKind, QueueSelection, WaitingSub } from './reviewQueueKeys.js';
 import {
   arrivalOpenSql, heldOpenSql, membershipMissingOpenSql, missingOpenSql, offeredElsewhereSql, refusedOpenSql,
 } from './reviewQueuePredicates.js';
@@ -50,12 +50,15 @@ import { PG_INTEGER_MAX } from '../../types/rowId.js';
 
 /** The request as `reviewQueueQuerySchema` leaves it. */
 type ReviewQueueQuery = z.output<typeof reviewQueueQuerySchema>;
+/** The chips alone, as `reviewQueueMapQuerySchema` leaves them: what the list and the map both take. */
+type QueueSelectionQuery = z.output<typeof reviewQueueMapQuerySchema>;
 
 /** The words a `kind` chip may carry: the classes of open question and the three sub-kinds. */
 const KIND_WORDS = new Set<string>([...QUEUE_KINDS, ...WAITING_SUBS]);
 
 /**
- * The request's controls as the keys phase reads them.
+ * The request's chips as the keys phase reads them: the list's and the map's
+ * (`reviewQueueMapController.ts`), so both select the same questions.
  *
  * A word the vocabulary does not know is dropped rather than refused, and a
  * `kind` of nothing but unknown words filters nothing: the filter set is the
@@ -67,7 +70,7 @@ const KIND_WORDS = new Set<string>([...QUEUE_KINDS, ...WAITING_SUBS]);
  * each id in it, and an id that never reaches the SQL is one Postgres is never
  * asked to fit into an `int[]`.
  */
-function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
+export function queueSelection(query: QueueSelectionQuery): QueueSelection {
   const words = (value: string | undefined): string[] => (value ? value.split(',') : []);
   return {
     q: query.q,
@@ -78,6 +81,13 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
     regionId: query.region,
     runId: query.run,
     showAside: query.aside === 'show',
+  };
+}
+
+/** The request as the list reads it: the chips, the order and one page. */
+function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
+  return {
+    ...queueSelection(query),
     sort: query.sort === 'question' ? 'question' : 'date',
     cursor: query.cursor,
     from: query.from,

@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { queryQueueKeys } from './reviewQueueKeys.js';
+import { queryQueueMap } from './reviewQueueMapController.js';
 import { getReviewQueue } from './reviewQueueController.js';
 import { publishUnderLock } from './publishController.js';
 import { refuseContentsUnderLock } from './curatorRefusalController.js';
@@ -127,6 +128,37 @@ describe('a waiting question of each membership (#1264)', () => {
     await assign(archaeologySource);
     const archaeologyCurator = await queryQueueKeys({ userId: curatorId, isAdmin: false, filters: filters() });
     expect(archaeologyCurator.total).toBe(1);
+  });
+
+  it('draws it on the map at the place, under the chips and the scope the list reads (#2477)', async () => {
+    await unreadPoint();
+    const map = await queryQueueMap({ userId: adminId, isAdmin: true, selection: { q: NAME } });
+    // One marker for the place: its arrival and its unread palace are one waiting question.
+    expect(map).toEqual({
+      places: [{
+        placeId: PLACE, lon: 12.48278, lat: 41.89306, questions: [{ kind: 'waiting', subs: ['arrival', 'contents'] }],
+      }],
+      unplaced: 0,
+    });
+
+    const heldOnly = await queryQueueMap({ userId: adminId, isAdmin: true, selection: { q: NAME, kinds: ['held'] } });
+    expect(heldOnly.places).toEqual([]);
+
+    // A region chip reaches the statement, which Postgres runs: the fixture's place is in no region.
+    const unplacedRegion = await queryQueueMap({ userId: adminId, isAdmin: true, selection: { q: NAME, regionId: 'none', runId: 1 } });
+    expect(unplacedRegion.places.map((p) => p.placeId)).toEqual([]);
+    const inRegion = await queryQueueMap({ userId: adminId, isAdmin: true, selection: { q: NAME, regionId: 2147483000 } });
+    expect(inRegion).toEqual({ places: [], unplaced: 0 });
+    const regionOnly = await queryQueueMap({ userId: adminId, isAdmin: true, selection: { regionId: 2147483000 } });
+    expect(regionOnly.places).toEqual([]);
+
+    // A curator of Archaeology alone is asked the arrival and not the art museum's unread palace.
+    await pool.query(
+      `INSERT INTO curator_assignments (user_id, scope_type, source_id, assigned_by) VALUES ($1, 'source', $2, $3)`,
+      [curatorId, archaeologySource, adminId],
+    );
+    const curator = await queryQueueMap({ userId: curatorId, isAdmin: false, selection: { q: NAME } });
+    expect(curator.places.map(place => place.questions)).toEqual([[{ kind: 'waiting', subs: ['arrival'] }]]);
   });
 
   it("draws the arrival as the Archaeology membership's", async () => {
