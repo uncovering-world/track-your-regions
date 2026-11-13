@@ -14,7 +14,7 @@
  */
 
 import {
-  applyPreferred, extractQid, foldPreferred, isQid, parseWktPoint, preferredCoordinate, LABEL_LANGS, type PreferredValues, type SparqlBinding,
+  applyPreferred, extractQid, foldPreferred, isQid, parseWktPoint, preferredCoordinate, withCoordinate, LABEL_LANGS, type PreferredValues, type SparqlBinding,
 } from '../wikidataUtils.js';
 import { foldLabel } from '@tyr/shared/labels';
 import {
@@ -182,7 +182,7 @@ interface CountryReading {
    * one part are the same cast written twice, folded as any item's point is
    * (`preferredCoordinate`, ADR-0085).
    */
-  places: Map<string, { wkt: string; label: string | null }>;
+  places: Map<string, { wkt: string; coordinates: string[]; label: string | null }>;
 }
 
 /** One more row of an entity folded into what its rows say about its country. */
@@ -199,8 +199,10 @@ function readCountry(reading: CountryReading | undefined, row: SparqlBinding, wk
     next.parts.set(wkt, named);
     const part = extractQid(row.part.value);
     const place = next.places.get(part);
+    const coordinates = withCoordinate(place?.coordinates ?? [], wkt);
     next.places.set(part, {
-      wkt: preferredCoordinate(place?.wkt ?? null, wkt) ?? wkt,
+      wkt: preferredCoordinate(coordinates) ?? wkt,
+      coordinates,
       label: place?.label ?? row.partLabel?.value ?? null,
     });
   }

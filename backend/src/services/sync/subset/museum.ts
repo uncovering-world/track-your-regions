@@ -33,8 +33,8 @@ const isUnknown = (value: CompactValue): boolean =>
 
 /** The kept point of the best statements, folded as every reader folds them; null without one. */
 function pointOf(statements: CompactStatement[] | undefined): string | null {
-  return bestStatements(statements).map(s => wktOf(s.value)).filter((w): w is string => w !== null && parseWktPoint(w) !== null)
-    .reduce<string | null>((kept, next) => preferredCoordinate(kept, next), null);
+  return preferredCoordinate(bestStatements(statements).map(s => wktOf(s.value))
+    .filter((w): w is string => w !== null && parseWktPoint(w) !== null));
 }
 
 function pictureOf(statements: CompactStatement[] | undefined): string | null {

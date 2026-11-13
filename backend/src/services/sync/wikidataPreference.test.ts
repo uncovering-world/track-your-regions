@@ -24,37 +24,50 @@ describe('the picture every reader keeps', () => {
   });
 });
 
-describe('the coordinate every reader keeps', () => {
-  // Cave of Altamira (Q133575): to the arc-second, and rounded to the arc-minute.
-  const precise = 'Point(-4.11975 43.376944444444)';
-  const rounded = 'Point(-4.11667 43.38333)';
+describe('the coordinate a reader keeps before it knows the place (ADR-0204)', () => {
+  // Messene (Q1022117): Mavromati to three decimals, and a bot's point 15 km off to two.
+  const mavromati = 'Point(21.92 37.175)';
+  const bot = 'Point(22 37.05)';
 
-  it('is the more precisely written, in either order', () => {
-    expect(preferredCoordinate(precise, rounded)).toBe(precise);
-    expect(preferredCoordinate(rounded, precise)).toBe(precise);
+  it('reads nothing into how finely far-apart coordinates are written: the smaller latitude, in either order', () => {
+    expect(preferredCoordinate([mavromati, bot])).toBe(bot);
+    expect(preferredCoordinate([bot, mavromati])).toBe(bot);
   });
 
-  it('breaks a tie of precision by the smaller latitude, then longitude', () => {
-    expect(preferredCoordinate('Point(10 50.5)', 'Point(10 50.4)')).toBe('Point(10 50.4)');
-    expect(preferredCoordinate('Point(10.2 50.4)', 'Point(10.1 50.4)')).toBe('Point(10.1 50.4)');
+  it('takes the more finely written of two writings of one spot, within a short move', () => {
+    // Maman in Minato written twice, once rounded: 120 m apart.
+    expect(preferredCoordinate(['Point(139.73 35.66)', 'Point(139.7296602 35.6610104)'])).toBe('Point(139.7296602 35.6610104)');
+    expect(preferredCoordinate(['Point(139.7296602 35.6610104)', 'Point(139.73 35.66)'])).toBe('Point(139.7296602 35.6610104)');
+  });
+
+  it('keeps one answer for three points whatever order they arrive in, where only neighbours are one spot', () => {
+    // Each 211 m from the middle one, 424 m from each other: the first by latitude and its one spot.
+    const south = 'Point(0 10.001)';
+    const middle = 'Point(0 10.0029)';
+    const north = 'Point(0 10.00481234)';
+    const orders = [
+      [south, middle, north], [south, north, middle], [middle, south, north],
+      [middle, north, south], [north, south, middle], [north, middle, south],
+    ];
+    expect(new Set(orders.map(order => preferredCoordinate(order)))).toEqual(new Set([middle]));
+  });
+
+  it('breaks a tie of latitude by the smaller longitude', () => {
+    expect(preferredCoordinate(['Point(10.2 50.4)', 'Point(10.1 50.4)'])).toBe('Point(10.1 50.4)');
   });
 
   it('keeps one that parses over one that does not, and either over none', () => {
-    expect(preferredCoordinate('nowhere', precise)).toBe(precise);
-    expect(preferredCoordinate(null, rounded)).toBe(rounded);
-    expect(preferredCoordinate(precise, null)).toBe(precise);
+    expect(preferredCoordinate(['nowhere', mavromati])).toBe(mavromati);
+    expect(preferredCoordinate([null, bot])).toBe(bot);
+    expect(preferredCoordinate([mavromati, null])).toBe(mavromati);
   });
 
-  it('decides one point written on two globes by its text, in either order', () => {
-    const earth = 'Point(-3.6 26.1)';
-    const moon = '<http://www.wikidata.org/entity/Q405> Point(-3.6 26.1)';
-    expect(preferredCoordinate(earth, moon)).toBe(preferredCoordinate(moon, earth));
-  });
-
-  it('reads a point on another globe by its own digits', () => {
+  it('keeps a point on this planet over one written on another globe, in either order', () => {
     // Fallen Astronaut's coordinate carries the Moon's IRI in front of it.
+    const earth = 'Point(-3.61 26.13)';
     const moon = '<http://www.wikidata.org/entity/Q405> Point(-3.6 26.1)';
-    expect(preferredCoordinate(moon, 'Point(-3.61 26.13)')).toBe('Point(-3.61 26.13)');
+    expect(preferredCoordinate([earth, moon])).toBe(earth);
+    expect(preferredCoordinate([moon, earth])).toBe(earth);
   });
 });
 

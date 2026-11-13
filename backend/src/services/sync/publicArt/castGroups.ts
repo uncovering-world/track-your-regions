@@ -22,7 +22,7 @@
 import { type Door, doorOf, values } from '../wikidataQueries.js';
 import { readsSubset } from '../subset/reader.js';
 import { subsetCastItems } from '../subset/castGroups.js';
-import { extractQid, isQid, parseWktPoint, preferredCoordinate, LABEL_LANGS, type SparqlBinding } from '../wikidataUtils.js';
+import { extractQid, isQid, parseWktPoint, preferredCoordinate, withCoordinate, LABEL_LANGS, type SparqlBinding } from '../wikidataUtils.js';
 import type { CastItemReading } from '../subset/castGroups.js';
 import { namingPart } from './castNaming.js';
 import type { EntityFacts, PoolEntity } from './queries.js';
@@ -42,6 +42,8 @@ export interface CastItem {
 
 interface CastReading {
   wkt: string | null;
+  /** Every coordinate the cast's rows offered: what `wkt` is kept from. */
+  coordinates: string[];
   label: string | null;
   classes: Set<string>;
   /** Each placement named, and whether any best-rank statement still places the cast there. */
@@ -76,7 +78,8 @@ function castFromSubset(reading: CastItemReading): CastItem | null {
 
 /** One more row of the casts question folded into what is read of its cast. */
 function readCastRow(reading: CastReading, cast: string, row: SparqlBinding): void {
-  reading.wkt = preferredCoordinate(reading.wkt, row.coord?.value || null);
+  reading.coordinates = withCoordinate(reading.coordinates, row.coord?.value);
+  reading.wkt = preferredCoordinate(reading.coordinates);
   reading.label ??= row.castLabel?.value && row.castLabel.value !== cast ? row.castLabel.value : null;
   const cls = extractQid(row.cls?.value ?? '');
   if (isQid(cls)) reading.classes.add(cls);
@@ -98,7 +101,7 @@ function readCastRows(rows: SparqlBinding[]): Map<string, Map<string, CastReadin
     const cast = extractQid(row.cast?.value ?? '');
     if (!isQid(group) || !isQid(cast)) continue;
     const ofGroup = readings.get(group) ?? new Map<string, CastReading>();
-    const reading = ofGroup.get(cast) ?? { wkt: null, label: null, classes: new Set(), placements: new Map(), countries: new Set() };
+    const reading = ofGroup.get(cast) ?? { wkt: null, coordinates: [], label: null, classes: new Set(), placements: new Map(), countries: new Set() };
     readCastRow(reading, cast, row);
     ofGroup.set(cast, reading);
     readings.set(group, ofGroup);

@@ -17,6 +17,7 @@ import {
   WaitBudget,
   type SourceWait,
 } from './sourceRetry.js';
+import { distanceMeters, SHORT_MOVE_METERS } from '@tyr/shared/moves';
 import { userAgent } from '../../config/userAgent.js';
 import type { Operation } from '../operationProgress.js';
 import { assertRobotsAllow } from '../robots/robotsSignals.js';
@@ -144,41 +145,63 @@ export function preferredPicture(a: string | null, b: string | null): string | n
   return b < a ? b : a;
 }
 
-/** Decimal places of the coordinate's more finely written axis, the precision Wikidata stored it at. */
+/** Decimal places of the coordinate's more finely written axis. */
 function decimalsOf(wkt: string): number {
   const match = /Point\(([-\d.]+)\s+([-\d.]+)\)/i.exec(wkt);
   if (!match) return -1;
   return Math.max(...[match[1], match[2]].map(axis => (axis.split('.')[1] ?? '').length));
 }
 
+/** Two texts in code-unit order, as `Array.prototype.sort` orders strings. */
+const byText = (a: string, b: string): number => (a < b ? -1 : Number(a > b));
+
 /**
- * Of two coordinates an item carries at its best rank (as WKT), the one every
- * reader keeps (ADR-0085): the more precisely written, then the smaller latitude
- * and longitude, so the answer does not depend on the order rows arrive in.
+ * Of the coordinates an item carries at its best rank (as WKT), the one a
+ * reader keeps before it knows the place it writes (ADR-0085 as narrowed by
+ * ADR-0204). It is a function of the set, never of the order the rows arrive
+ * in: of the points on this planet (else all), the first by latitude, then
+ * longitude, then text; and, of the points within a short move of that one,
+ * one spot written more than once, the most finely written. Farther apart, how
+ * finely a coordinate is written says nothing about which is right:
+ * Pergamon's item holds the acropolis and, to six decimals, a whole arc-minute
+ * in the town 1.4 km off. A run that writes a place chooses among them with
+ * the place's outline and its other sources (`itemCoordinate.ts`), and falls
+ * back on this one where nothing tells them apart. A WKT that does not parse
+ * is kept only where none does.
  *
- * The Cave of Altamira holds two: one to the arc-second and one rounded to the
- * arc-minute, 752 m away, and two sources each kept a different one. A WKT that
- * does not parse loses to one that does.
+ * It takes the whole set because the one-spot rule is no order of pairs: two
+ * points each within a short move of a third may stand farther apart, and a
+ * pairwise fold over three such points keeps a different one in a different
+ * order.
  */
-export function preferredCoordinate(a: string | null, b: string | null): string | null {
-  if (!a) return b || null;
-  if (!b) return a;
-  const [pa, pb] = [parseWktPoint(a), parseWktPoint(b)];
-  if (!pb) return a;
-  if (!pa) return b;
-  const [da, db] = [decimalsOf(a), decimalsOf(b)];
-  if (da !== db) return da > db ? a : b;
-  if (pa.lat !== pb.lat) return pa.lat < pb.lat ? a : b;
-  if (pa.lon !== pb.lon) return pa.lon < pb.lon ? a : b;
-  // One point written on two globes: the text decides, so whether it is on
-  // Earth does not depend on the rows' order either.
-  return a <= b ? a : b;
+export function preferredCoordinate(wkts: Iterable<string | null | undefined>): string | null {
+  const texts = [...new Set([...wkts].filter((wkt): wkt is string => Boolean(wkt)))].sort();
+  const parsed = texts.flatMap(wkt => {
+    const at = parseWktPoint(wkt);
+    return at ? [{ wkt, at, onEarth: !wkt.startsWith('<') }] : [];
+  });
+  if (parsed.length === 0) return texts[0] ?? null;
+  // Wikidata writes a point on another globe with the globe's IRI in front of it.
+  const onEarth = parsed.filter(point => point.onEarth);
+  const candidates = (onEarth.length > 0 ? onEarth : parsed)
+    .sort((a, b) => a.at.lat - b.at.lat || a.at.lon - b.at.lon || byText(a.wkt, b.wkt));
+  const [first] = candidates;
+  const oneSpot = candidates.filter(point =>
+    distanceMeters(first.at.lon, first.at.lat, point.at.lon, point.at.lat) <= SHORT_MOVE_METERS);
+  return oneSpot.reduce((kept, point) => (decimalsOf(point.wkt) > decimalsOf(kept.wkt) ? point : kept)).wkt;
+}
+
+/** `kept` with `next` among them, once each and in text order: an item's coordinates read so far. */
+export function withCoordinate(kept: readonly string[], next: string | null | undefined): string[] {
+  return next && !kept.includes(next) ? [...kept, next].sort() : [...kept];
 }
 
 /** The picture and the coordinate (as WKT) a reader keeps of one item so far. */
 export interface PreferredValues {
   imageUrl: string | null;
   wkt: string | null;
+  /** Every coordinate the item's rows offered, in text order: what `wkt` is kept from. */
+  coordinates: string[];
   /** Every picture the item's rows offered, in URL order: what a place may keep (#1778). */
   pictures: string[];
 }
@@ -195,9 +218,11 @@ export function foldPreferred(
   wkt: string | null,
 ): PreferredValues {
   const pictures = kept?.pictures ?? [];
+  const coordinates = withCoordinate(kept?.coordinates ?? [], wkt);
   return {
     imageUrl: preferredPicture(kept?.imageUrl ?? null, imageUrl),
-    wkt: preferredCoordinate(kept?.wkt ?? null, wkt),
+    wkt: preferredCoordinate(coordinates),
+    coordinates,
     pictures: imageUrl && !pictures.includes(imageUrl) ? [...pictures, imageUrl].sort() : pictures,
   };
 }
