@@ -20,15 +20,15 @@
  * measured showing up in the very next request.
  *
  * Two sources, mirroring `ExperienceMarkers`:
- *   world-points — the catalogue's points: the heat, the pins, the fold's badge,
- *                  and the pins a capped read draws in the heat's place
+ *   world-points — the catalogue's points: the heat, the pins, and the pins a
+ *                  capped read draws in the heat's place
  *   world-hover  — the ring under the pointer, written straight to the source
  *                  so that a hover re-renders nothing (this component *is* the
  *                  map's sources and layers)
  *
- * Mounted inside `<Map>`, so what it renders is sources and layers; the two
- * controls that belong to it — the kind chips and the fold chip — are rendered
- * by `RegionMapVT` beside the map's other chrome.
+ * Mounted inside `<Map>`, so what it renders is sources and layers; the
+ * control that belongs to it — the kind chips — is rendered by `RegionMapVT`
+ * beside the map's other chrome.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -70,13 +70,11 @@ const POINTS_STALE_TIME = 300000;
 interface WorldExperiencePointsProps {
   /** The kind on the map, or null for every kind at once. */
   kindId: number | null;
-  /** One pin per object instead of one per place. */
-  folded: boolean;
   /** The kind's own name for the hover card; a point carries only its id. */
   kindNameOf: (kindId: number | null) => string | null;
 }
 
-export function WorldExperiencePoints({ kindId, folded, kindNameOf }: WorldExperiencePointsProps) {
+export function WorldExperiencePoints({ kindId, kindNameOf }: WorldExperiencePointsProps) {
   const { current: mapRef } = useMap();
   const { setHoverPreview } = useHoverActions();
   const { go } = useAppAddress();
@@ -93,7 +91,7 @@ export function WorldExperiencePoints({ kindId, folded, kindNameOf }: WorldExper
    * zoom free — the question there is the whole world at every position.
    */
   const [view, setView] = useState<WorldPointsQuery>(
-    () => queryForView(kindId, folded, 0, { west: -180, south: -85, east: 180, north: 85 }),
+    () => queryForView(kindId, 0, { west: -180, south: -85, east: 180, north: 85 }),
   );
 
   useEffect(() => {
@@ -105,13 +103,13 @@ export function WorldExperiencePoints({ kindId, folded, kindNameOf }: WorldExper
         west: bounds.getWest(), south: bounds.getSouth(),
         east: bounds.getEast(), north: bounds.getNorth(),
       };
-      const next = queryForView(kindId, folded, map.getZoom(), viewport);
+      const next = queryForView(kindId, map.getZoom(), viewport);
       setView(current => (sameQuestion(current, next) ? current : next));
     };
     sample();
     map.on('moveend', sample);
     return () => { map.off('moveend', sample); };
-  }, [mapRef, kindId, folded]);
+  }, [mapRef, kindId]);
 
   const { data: answer } = useQuery({
     queryKey: queryKeys.experiences.worldPoints(view),
@@ -142,7 +140,7 @@ export function WorldExperiencePoints({ kindId, folded, kindNameOf }: WorldExper
    *
    * So a **chip switch keeps the previous kind on screen for the round trip**,
    * the way a pan keeps the previous box. Nothing here could do otherwise: an
-   * answer echoes the tier and the fold it was built for but never the kind it
+   * answer echoes the tier it was built for but never the kind it
    * was asked for, so a stale kind is not detectable from one — and the pins it
    * draws are true places either way, which is the same reason the box is not
    * compared.

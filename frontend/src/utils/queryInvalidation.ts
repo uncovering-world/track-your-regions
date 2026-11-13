@@ -33,7 +33,7 @@ export function invalidateExperiences(
   queryClient.invalidateQueries({ queryKey: queryKeys.discover.regionCountsAll });
   queryClient.invalidateQueries({ queryKey: queryKeys.experiences.all });
   // The map's world layer (#910), unscoped on purpose: it is keyed on the kind,
-  // the tier, the fold and the box, and a curator's verdict is not. Any of the
+  // the tier and the box, and a curator's verdict is not. Any of the
   // writes that reach this helper can change what it draws — a refused
   // arrival, a lost place, a withdrawn point — and there is no region in that
   // key to narrow by.

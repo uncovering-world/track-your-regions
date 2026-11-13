@@ -204,10 +204,10 @@ export function useWorldPointInteractions({
     };
 
     // Registered on the map rather than per layer, which is what the region
-    // markers do — and here it is not a preference. The badge layers exist only
-    // while the reader has folded, so a registration that waited for all three
-    // waited for ever and the pins answered no hover at all; and naming a layer
-    // the style does not hold makes `queryRenderedFeatures` fire an error.
+    // markers do — and here it is not a preference. The pin layers exist only
+    // at the tiers that draw pins (`worldLayersFor`), so a registration that
+    // waited for all of them waited for ever, and naming a layer the style does
+    // not hold makes `queryRenderedFeatures` fire an error.
     // Asking the map which of them are drawn, per event, is what survives a
     // layer arriving and leaving under it.
     const drawnLayers = () => WORLD_MARKER_LAYERS.filter(id => map.getLayer(id));

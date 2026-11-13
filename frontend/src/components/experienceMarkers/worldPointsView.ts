@@ -10,7 +10,7 @@
  * detailed read is already in hand when the first pin appears.
  *
  * **How much world.** Below the band, the whole of it: the answer is 37 kB for
- * every kind at once (18 kB folded), the first screen *is* the world, and one
+ * every kind at once, the first screen *is* the world, and one
  * cache entry means panning and zooming out there costs nothing at all. Above
  * the band a viewport is a small fraction of the world and carrying names for
  * the rest would be most of the payload, so the read is boxed — snapped
@@ -107,14 +107,12 @@ export function detailForZoom(zoom: number): PointsDetail {
  */
 export function queryForView(
   kindId: number | null,
-  folded: boolean,
   zoom: number,
   bounds: ViewportBounds,
 ): WorldPointsQuery {
   const detail = detailForZoom(zoom);
   return {
     kindId,
-    folded,
     detail,
     box: detail === 'markers' ? boxForViewport(bounds) : null,
   };
@@ -137,7 +135,6 @@ export function queryForView(
 export function sameQuestion(a: WorldPointsQuery, b: WorldPointsQuery): boolean {
   return a.kindId === b.kindId
     && a.detail === b.detail
-    && a.folded === b.folded
     && (a.box === null || b.box === null
       ? a.box === b.box
       : a.box.west === b.box.west && a.box.south === b.box.south

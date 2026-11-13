@@ -139,10 +139,9 @@ interface UseMapInteractionsOptions {
  * top of that would be the map answering one gesture twice.
  *
  * Asked of the map rather than read off `event.features`, and the reason is the
- * badge layers: they exist only while the reader has folded, so listing them in
- * `interactiveLayerIds` would name layers the style does not hold and make
- * every query fire an error — while leaving them out would let a click on a
- * badge fall through to the region under it.
+ * pin layers: they exist only at the tiers that draw pins, so listing them in
+ * `interactiveLayerIds` would name layers the style does not always hold and
+ * make every query fire an error.
  */
 function onAWorldPoint(map: MapRef | null, at: MapLayerMouseEvent['point']): boolean {
   if (!map) return false;

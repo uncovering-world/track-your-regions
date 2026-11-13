@@ -1,10 +1,8 @@
 /**
- * The world layer's chrome: which kind the map draws, and whether a serial site
- * is its places or one pin (#910).
+ * The world layer's chrome: which kind the map draws (#910).
  *
- * One file and one component, because the two chips answer one question
- * together — what is on this map — and `RegionMapVT` is already the map's
- * chrome, its four tile sources and its loading states.
+ * A file of its own, because `RegionMapVT` is already the map's chrome, its
+ * four tile sources and its loading states.
  *
  * The question the world layer exists to answer is "where in the world is this
  * kind of place", so the control is the kinds themselves rather than a menu:
@@ -23,36 +21,14 @@
  * off the map.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import { Box, Chip } from '@mui/material';
 import type { ExperienceKind } from '../../api/experiences';
 import { kindColor, shortKindName } from '../../utils/kindColors';
-import { FoldChip } from '../experienceMarkers/FoldPlacesControl';
 import type { WorldLayerState } from './useWorldLayer';
 
 export function WorldLayerControls({ world }: { world: WorldLayerState }) {
-  return (
-    <WorldKindControl kinds={world.kinds} selected={world.kindId} onSelect={world.setKind}>
-      {/* The same chip the per-object fold uses, in this layer's own row rather
-          than floating at the top centre. What it says is about the map rather
-          than about one object — the world map's answer to the Rock Art of the
-          Mediterranean Basin drawing 734 of the pins in Aragón — and it belongs
-          beside the kinds for the same reason: together they are what this map
-          is showing.
-
-          Also the only arrangement in which the two cannot collide. Floated, the
-          chip is centred and the kind box is 340 px from the left, so they
-          overlapped on any map pane under about 873 px — measured at 820, where
-          the chip sat over "Art Museums 124" and, being the higher z-index, took
-          the click with it. A row that wraps has no such width. */}
-      <FoldChip
-        inline
-        folded={world.folded}
-        label={world.folded ? 'Show every place' : 'Show one pin per site'}
-        onToggle={world.toggleFold}
-      />
-    </WorldKindControl>
-  );
+  return <WorldKindControl kinds={world.kinds} selected={world.kindId} onSelect={world.setKind} />;
 }
 
 /**
@@ -96,11 +72,9 @@ interface WorldKindControlProps {
   /** null is every kind at once. */
   selected: number | null;
   onSelect: (kindId: number | null) => void;
-  /** Whatever else belongs in this band — today the fold chip. */
-  children?: ReactNode;
 }
 
-function WorldKindControl({ kinds, selected, onSelect, children }: WorldKindControlProps) {
+function WorldKindControl({ kinds, selected, onSelect }: WorldKindControlProps) {
   const band = useRef<HTMLDivElement>(null);
 
   // Measured rather than computed: the band's height follows the kind count,
@@ -123,9 +97,8 @@ function WorldKindControl({ kinds, selected, onSelect, children }: WorldKindCont
     };
   }, [kinds.length]);
 
-  // The fold still has something to say with no kinds to choose between, and a
-  // read that has not answered yet is not a reason to take it off the map.
-  if (kinds.length === 0) return <Box ref={band} sx={CONTROL_BAND}>{children}</Box>;
+  // Nothing to choose between until the kinds have answered.
+  if (kinds.length === 0) return null;
 
   return (
     <Box ref={band} role="group" aria-label="Kinds of place on the map" sx={CONTROL_BAND}>
@@ -144,7 +117,6 @@ function WorldKindControl({ kinds, selected, onSelect, children }: WorldKindCont
           onClick={() => onSelect(kind.id)}
         />
       ))}
-      {children}
     </Box>
   );
 }

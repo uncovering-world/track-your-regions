@@ -143,7 +143,7 @@ export const queryKeys = {
      * (`worldPointsView.ts`) is for.
      */
     worldPoints: (query: WorldPointsQuery) =>
-      ['world-points', query.kindId, query.detail, query.folded, query.box] as const,
+      ['world-points', query.kindId, query.detail, query.box] as const,
   },
 
   discover: {

@@ -449,7 +449,6 @@ export function RegionMapVT() {
         {world.active && (
           <WorldExperiencePoints
             kindId={world.kindId}
-            folded={world.folded}
             kindNameOf={world.kindNameOf}
           />
         )}
@@ -474,7 +473,7 @@ export function RegionMapVT() {
         <SelectedObjectFoldControl regionId={selectedRegion.id} />
       )}
 
-      {/* Which kind the world layer draws, and whether it is folded (#910) */}
+      {/* Which kind the world layer draws (#910) */}
       {world.active && <WorldLayerControls world={world} />}
 
       {/* Experience/location hover preview (explore mode). Its own subscriber to

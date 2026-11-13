@@ -48,8 +48,8 @@ function makeWrapper() {
 }
 
 /**
- * Whether the map draws the catalogue instead of a region, which kind it draws,
- * and whether it is folded (#910).
+ * Whether the map draws the catalogue instead of a region, and which kind it
+ * draws (#910).
  */
 describe('useWorldLayer', () => {
   beforeEach(() => {
@@ -153,16 +153,6 @@ describe('useWorldLayer', () => {
     addressState.address = { ...MAP_ROOT, kindId: 999 };
     mockFetchKinds.mockReturnValue(new Promise(() => {}));
     render();
-    expect(mockGo).not.toHaveBeenCalled();
-  });
-
-  it('starts unfolded — every place — and toggles', () => {
-    const { result } = render();
-    expect(result.current.folded).toBe(false);
-    act(() => result.current.toggleFold());
-    expect(result.current.folded).toBe(true);
-    // And stays out of the address: it is a way of looking at what is on the
-    // screen, not a place, and Back through it would be a step nobody took.
     expect(mockGo).not.toHaveBeenCalled();
   });
 });
