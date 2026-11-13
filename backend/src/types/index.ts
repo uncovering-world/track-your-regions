@@ -58,7 +58,7 @@ export const getSubdivisionsQuerySchema = z.object({
  */
 // eslint-disable-next-line sonarjs/no-control-regex -- the NUL byte is the point: a pattern is what the OpenAPI document carries, a refine is not
 const NO_NUL = /^[^\u0000]*$/;
-const searchText = (min: number, max: number) => z.string().min(min).max(max).regex(NO_NUL, 'A NUL byte cannot be searched for');
+export const searchText = (min: number, max: number) => z.string().min(min).max(max).regex(NO_NUL, 'A NUL byte cannot be searched for');
 
 export const getGeometryQuerySchema = z.object({
   detail: detailLevelSchema,

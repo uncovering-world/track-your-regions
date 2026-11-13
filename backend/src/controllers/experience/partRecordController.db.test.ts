@@ -3,6 +3,7 @@ import { pool } from '../../db/index.js';
 import { lockTwoExperiences } from '../../db/experienceWriter.js';
 import { setCuratorPartRecord } from './membershipWriter.js';
 import { addPart, holdPartWords, takeOutPart } from './partRecordController.js';
+import { findPartCandidates, listPlaceParts } from './partRecordRead.js';
 
 /**
  * A curator makes a place a part of a whole, or takes it out, from either
@@ -25,7 +26,14 @@ const ENSEMBLE = 9864;
 const TABLE = 9865;
 const FOLDED = 9866;
 const CHAIN = [9871, 9872, 9873, 9874, 9875];
-const ALL = [SITE, CATHEDRAL, GIRALDA, ENSEMBLE, TABLE, FOLDED, ...CHAIN];
+/** Places of another region than Seville's: one waiting for a curator, one offered; and one waiting in Seville's. */
+const ELSEWHERE_UNREAD = 9876;
+const ELSEWHERE_OFFERED = 9877;
+const HERE_UNREAD = 9878;
+const ALL = [SITE, CATHEDRAL, GIRALDA, ENSEMBLE, TABLE, FOLDED, ...CHAIN, ELSEWHERE_UNREAD, ELSEWHERE_OFFERED, HERE_UNREAD];
+const WORLD_VIEW = 98610;
+const ANDALUSIA = 98611;
+const HUBEI = 98612;
 const ADMIN = '00000000-0000-4000-8000-000000009861';
 const CURATOR = '00000000-0000-4000-8000-000000009862';
 
@@ -36,14 +44,21 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM experience_merges WHERE survivor_id = ANY($1::int[])', [ALL]);
   await pool.query('UPDATE experiences SET merged_into_id = NULL WHERE id = ANY($1::int[])', [ALL]);
   await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [ALL]);
+  await pool.query(
+    'DELETE FROM curator_assignments WHERE user_id IN (SELECT id FROM users WHERE uuid = ANY($1::text[]))', [[ADMIN, CURATOR]],
+  );
   await pool.query('DELETE FROM users WHERE uuid = ANY($1::text[])', [[ADMIN, CURATOR]]);
+  await pool.query('DELETE FROM regions WHERE world_view_id = $1', [WORLD_VIEW]);
+  await pool.query('DELETE FROM world_views WHERE id = $1', [WORLD_VIEW]);
 }
 
-async function place(id: number, name: string, sourceId: number, kindId: number | null, lon = -5.9927): Promise<void> {
+async function place(
+  id: number, name: string, sourceId: number, kindId: number | null, lon = -5.9927, lat = 37.3846,
+): Promise<void> {
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, 37.3846), 4326))`,
-    [id, sourceId, `Q98610${id}`, name, lon],
+     VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
+    [id, sourceId, `Q98610${id}`, name, lon, lat],
   );
   if (kindId !== null) {
     await pool.query(
@@ -261,3 +276,198 @@ describe('taking a part out', () => {
   });
 });
 
+describe("the sections' reads in a curator's scope", () => {
+  const curator = () => ({ id: curatorId, role: 'curator' } as Express.User);
+
+  /** Seville's places in Andalusia, a curator scoped to it, and three Zixiao places 60–80 m from the cathedral. */
+  async function regions(): Promise<void> {
+    await pool.query("INSERT INTO world_views (id, name, is_default) VALUES ($1, 'Parts scope fixture', false)", [WORLD_VIEW]);
+    await pool.query(
+      `INSERT INTO regions (id, world_view_id, name, parent_region_id, is_leaf)
+       VALUES ($1, $3, 'Andalusia (fixture)', NULL, true), ($2, $3, 'Hubei (fixture)', NULL, true)`,
+      [ANDALUSIA, HUBEI, WORLD_VIEW],
+    );
+    await place(ELSEWHERE_UNREAD, 'Zixiao Palace (fixture)', 4, null, -5.9925);
+    await place(ELSEWHERE_OFFERED, 'Zixiao Palace hall (fixture)', 4, 4, -5.9924);
+    await place(HERE_UNREAD, 'Zixiao annex (fixture)', 4, null, -5.9923);
+    // An arrival no curator has passed: in its kind, waiting, never published.
+    await pool.query(
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state)
+       SELECT id, 4, 4, 'Q98610' || id, 'pending' FROM unnest($1::int[]) AS id`,
+      [[ELSEWHERE_UNREAD, HERE_UNREAD]],
+    );
+    await pool.query(
+      `INSERT INTO experience_regions (experience_id, region_id, assignment_type)
+       SELECT id, $2::int, 'manual' FROM unnest($1::int[]) AS id
+       UNION ALL SELECT id, $3::int, 'manual' FROM unnest($4::int[]) AS id`,
+      [[SITE, CATHEDRAL, GIRALDA, HERE_UNREAD], ANDALUSIA, HUBEI, [ELSEWHERE_UNREAD, ELSEWHERE_OFFERED]],
+    );
+    await pool.query(
+      "INSERT INTO curator_assignments (user_id, scope_type, region_id, assigned_by) VALUES ($1, 'region', $2, $3)",
+      [curatorId, ANDALUSIA, adminId],
+    );
+  }
+
+  const takenOf = (rows: { place: { id: number }; taken: string | null }[]) =>
+    Object.fromEntries(rows.map(row => [row.place.id, row.taken]));
+
+  it("never offers an unread place outside the caller's scope, and says why an offered one cannot be chosen", async () => {
+    await regions();
+    for (const query of [{ role: 'part' as const, q: 'Zixiao' }, { role: 'part' as const }]) {
+      const mine = takenOf((await findPartCandidates({ params: { id: SITE }, query, caller: curator() })).candidates);
+      expect(mine).not.toHaveProperty(String(ELSEWHERE_UNREAD));
+      expect(mine[ELSEWHERE_OFFERED]).toBe('scope');
+      expect(mine[HERE_UNREAD]).toBeNull();
+
+      const everyone = takenOf((await findPartCandidates({ params: { id: SITE }, query, caller: admin() })).candidates);
+      expect(everyone[ELSEWHERE_UNREAD]).toBeNull();
+      expect(everyone[ELSEWHERE_OFFERED]).toBeNull();
+    }
+  });
+
+  it('measures a candidate only from parts the caller may see, and never names a hidden one', async () => {
+    await regions();
+    // The unread part in another region stands 18 m from the annex; Seville
+    // Cathedral, a part the curator may see, 71 m.
+    await add(SITE, ELSEWHERE_UNREAD);
+    const query = { role: 'part' as const, q: 'Zixiao annex' };
+    const mine = (await findPartCandidates({ params: { id: SITE }, query, caller: curator() })).candidates;
+    expect(mine.find(row => row.place.id === HERE_UNREAD)).toMatchObject({ near_name: 'Seville Cathedral (fixture)' });
+    expect(mine.find(row => row.place.id === HERE_UNREAD)!.distance_m).toBeGreaterThan(60);
+    expect(JSON.stringify(mine)).not.toContain('Zixiao Palace (fixture)');
+
+    const everyone = (await findPartCandidates({ params: { id: SITE }, query, caller: admin() })).candidates;
+    expect(everyone.find(row => row.place.id === HERE_UNREAD)).toMatchObject({ near_name: 'Zixiao Palace (fixture)' });
+  });
+
+  it("lists a whole's parts the caller may see, and says which are outside the caller's scope", async () => {
+    await regions();
+    await add(SITE, ELSEWHERE_UNREAD);
+    await add(SITE, ELSEWHERE_OFFERED, { note: 'A hall of the palace' });
+    const mine = (await listPlaceParts({ params: { id: SITE }, caller: curator() })).parts;
+    expect(mine.map(row => [row.place.id, row.in_scope])).toEqual([[CATHEDRAL, true], [ELSEWHERE_OFFERED, false]]);
+    const everyone = (await listPlaceParts({ params: { id: SITE }, caller: admin() })).parts;
+    expect(everyone.map(row => row.place.id)).toContain(ELSEWHERE_UNREAD);
+
+    // The note is read as the place's own history shows it: a row naming a
+    // region outside the caller's scope reads as none.
+    expect(mine.find(row => row.place.id === ELSEWHERE_OFFERED)?.curator?.note).toBe('A hall of the palace');
+    await pool.query(
+      "UPDATE experience_curation_log SET region_id = $2 WHERE experience_id = $1 AND action = 'part_added'", [SITE, HUBEI],
+    );
+    const hidden = (await listPlaceParts({ params: { id: SITE }, caller: curator() })).parts;
+    expect(hidden.find(row => row.place.id === ELSEWHERE_OFFERED)?.curator).toMatchObject({ note: null, by_you: false });
+    const shown = (await listPlaceParts({ params: { id: SITE }, caller: admin() })).parts;
+    expect(shown.find(row => row.place.id === ELSEWHERE_OFFERED)?.curator?.note).toBe('A hall of the palace');
+  });
+});
+
+describe('what the sections read', () => {
+  it("lists a whole's parts with whose word makes each, and a kept-out one after them", async () => {
+    await add(SITE, GIRALDA, { note: 'The bell tower' });
+    await takeOut(SITE, CATHEDRAL, 'Not the cathedral');
+    const read = await listPlaceParts({ params: { id: SITE }, caller: admin() });
+    expect(read).toMatchObject({ experienceId: SITE, in_kind: true, merged_onto: false, wholes: [] });
+    expect(read.parts.map(row => [row.place.id, row.standing])).toEqual([[GIRALDA, true], [CATHEDRAL, false]]);
+    expect(read.parts[0]).toMatchObject({
+      list: null, statement: false, place: { kind_name: 'Towers' },
+      curator: { admission: 'admitted', by_you: true, note: 'The bell tower' },
+    });
+    expect(read.parts[1]).toMatchObject({
+      list: { reference: '383bis-001', name: null },
+      curator: { admission: 'refused', by_you: true, note: 'Not the cathedral' },
+    });
+
+    const fromThePart = await listPlaceParts({ params: { id: CATHEDRAL }, caller: admin() });
+    expect(fromThePart.wholes.map(row => [row.place.id, row.standing])).toEqual([[SITE, false]]);
+  });
+
+  it("offers the places near a whole's parts, nearest first, and says which cannot be chosen", async () => {
+    const near = await findPartCandidates({ params: { id: SITE }, query: { role: 'part' }, caller: admin() });
+    expect(near.near).toBe(true);
+    const ids = near.candidates.map(row => row.place.id);
+    expect(ids).toContain(GIRALDA);
+    expect(ids).not.toContain(ENSEMBLE);
+    const giralda = near.candidates.find(row => row.place.id === GIRALDA)!;
+    expect(giralda).toMatchObject({ near_name: 'Seville Cathedral (fixture)', taken: null, kept_out: false });
+    expect(giralda.distance_m).toBeGreaterThan(50);
+    expect(giralda.distance_m).toBeLessThan(80);
+    // A standing part is no suggestion; asked by name, it says why it cannot be chosen.
+    expect(ids).not.toContain(CATHEDRAL);
+    const byName = await findPartCandidates({ params: { id: SITE }, query: { role: 'part', q: 'Cathedral' }, caller: admin() });
+    expect(byName.candidates.find(row => row.place.id === CATHEDRAL)).toMatchObject({ taken: 'already', distance_m: 0 });
+    expect(byName.candidates.find(row => row.place.id === SITE)).toMatchObject({ taken: 'self' });
+
+    const named = await findPartCandidates({ params: { id: CATHEDRAL }, query: { role: 'part', q: 'Seville' }, caller: admin() });
+    expect(named.candidates.find(row => row.place.id === SITE)).toMatchObject({ taken: 'loop' });
+    expect(named.candidates.find(row => row.place.id === CATHEDRAL)).toMatchObject({ taken: 'self' });
+  });
+
+  it('offers a whole 4.85 km east of a place at 65°N, inside the 5 km a whole is offered from', async () => {
+    // At the Solovetsky Islands' latitude a degree of longitude is 47 km, so
+    // 4.85 km east is 0.103°: outside a fixed box of 0.1°.
+    const [here, whole, itsPart] = CHAIN;
+    await place(here, 'Solovetsky Monastery (fixture)', 4, 4, 35.70, 65.02);
+    await place(whole, 'A whole east of it (fixture)', 5, 5, 35.70 + 0.1031, 65.02);
+    await place(itsPart, 'Its part (fixture)', 5, 5, 35.70 + 0.1031, 65.03);
+    await add(whole, itsPart, { makesWhole: true });
+
+    const wholes = await findPartCandidates({ params: { id: here }, query: { role: 'whole' }, caller: admin() });
+    const found = wholes.candidates.find(row => row.place.id === whole);
+    expect(found).toBeDefined();
+    expect(found!.distance_m).toBeGreaterThan(4800);
+    expect(found!.distance_m).toBeLessThan(5000);
+  });
+
+  it('finds a place across the antimeridian from an empty whole', async () => {
+    // Taveuni in Fiji: 179.997°E and 179.997°W at 16.8°S stand 640 m apart.
+    const [whole, across] = CHAIN;
+    await place(whole, 'A whole east of the line (fixture)', 5, 5, 179.997, -16.8);
+    await place(across, 'A place west of the line (fixture)', 4, 4, -179.997, -16.8);
+    const near = await findPartCandidates({ params: { id: whole }, query: { role: 'part' }, caller: admin() });
+    const found = near.candidates.find(row => row.place.id === across);
+    expect(found).toBeDefined();
+    expect(found!.distance_m).toBeGreaterThan(600);
+    expect(found!.distance_m).toBeLessThan(680);
+  });
+
+  it('finds a place near a pole whatever its longitude', async () => {
+    // Two places 556 m from the South Pole and 120° apart stand 963 m from each
+    // other: inside the kilometre a part is offered from, outside any box a
+    // cosine clamp would allow.
+    const [whole, across] = CHAIN;
+    await place(whole, 'A whole by the pole (fixture)', 5, 5, 0, -89.995);
+    await place(across, 'A place across the pole (fixture)', 4, 4, 120, -89.995);
+    const near = await findPartCandidates({ params: { id: whole }, query: { role: 'part' }, caller: admin() });
+    const found = near.candidates.find(row => row.place.id === across);
+    expect(found).toBeDefined();
+    expect(found!.distance_m).toBeGreaterThan(900);
+    expect(found!.distance_m).toBeLessThan(1000);
+  });
+
+  it('names the part nearest in metres, not in degrees', async () => {
+    // A place at (0°, 60°N); one part 0.015° east (837 m), another 0.012° north
+    // (1,334 m). In degrees the northern one is nearer.
+    const [whole, east, north, candidate] = CHAIN;
+    await place(whole, 'A whole (fixture)', 5, 5, 0.005, 60.005);
+    await place(east, 'The part to the east (fixture)', 5, 5, 0.015, 60);
+    await place(north, 'The part to the north (fixture)', 5, 5, 0, 60.012);
+    await place(candidate, 'A place between them (fixture)', 4, 4, 0, 60);
+    await add(whole, east, { makesWhole: true });
+    await add(whole, north);
+
+    const near = await findPartCandidates({ params: { id: whole }, query: { role: 'part' }, caller: admin() });
+    const found = near.candidates.find(row => row.place.id === candidate);
+    expect(found).toMatchObject({ near_name: 'The part to the east (fixture)' });
+    expect(found!.distance_m).toBeGreaterThan(830);
+    expect(found!.distance_m).toBeLessThan(845);
+  });
+
+  it('offers an empty whole the places near it, and a part the wholes near it', async () => {
+    const ensemble = await findPartCandidates({ params: { id: ENSEMBLE }, query: { role: 'part' }, caller: admin() });
+    expect(ensemble.candidates.map(row => [row.place.id, row.near_name])).toEqual([[TABLE, null]]);
+
+    const wholes = await findPartCandidates({ params: { id: GIRALDA }, query: { role: 'whole' }, caller: admin() });
+    expect(wholes.candidates.map(row => row.place.id)).toEqual([SITE]);
+  });
+});

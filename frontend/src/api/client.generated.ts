@@ -6783,6 +6783,180 @@ export interface KeptOutOfKind {
   admission: KeptOutOfKindAdmission;
 }
 
+export type PlacePartsPartsItemPlace = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** @nullable */
+  subtitle: string | null;
+  /**
+     * The kind the place stands in, first by display order; null for a place in no kind of its own.
+     * @nullable
+     */
+  kind_name: string | null;
+  /** Every kind the place stands in waits for a curator: no reader is shown it yet. */
+  waiting: boolean;
+  /** @nullable */
+  image_url: string | null;
+  /** Whose photograph the picture is, shown with it. */
+  image_credit: ImageCredit | null;
+  /** @nullable */
+  longitude: number | null;
+  /** @nullable */
+  latitude: number | null;
+};
+
+/**
+ * UNESCO's list names the place among the whole's components.
+ */
+export type PlacePartsPartsItemList = {
+  /** The reference the World Heritage list gives the line ("383bis-001"). */
+  reference: string;
+  /**
+     * The name the list gives the line, where it is not the place's.
+     * @nullable
+     */
+  name: string | null;
+} | null;
+
+/**
+ * admitted: a curator made the place a part; refused: a curator keeps it out while a source names it.
+ */
+export type PlacePartsPartsItemCuratorAdmission = typeof PlacePartsPartsItemCuratorAdmission[keyof typeof PlacePartsPartsItemCuratorAdmission];
+
+
+export const PlacePartsPartsItemCuratorAdmission = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+export type PlacePartsPartsItemCurator = {
+  /** admitted: a curator made the place a part; refused: a curator keeps it out while a source names it. */
+  admission: PlacePartsPartsItemCuratorAdmission;
+  /** @nullable */
+  answered_at: string | null;
+  /** The caller gave the word last. */
+  by_you: boolean;
+  /**
+     * The curator's own words, kept in both places' histories.
+     * @nullable
+     */
+  note: string | null;
+} | null;
+
+export type PlacePartsPartsItem = {
+  place: PlacePartsPartsItemPlace;
+  /** The caller's scope reaches the other place, so the pair is theirs to answer; a place outside it is listed only while readers are offered it. */
+  in_scope: boolean;
+  /** The place is a part of the whole now; false on a row a curator keeps out. */
+  standing: boolean;
+  /** UNESCO's list names the place among the whole's components. */
+  list: PlacePartsPartsItemList;
+  /** A Wikidata statement says the place is a part of the whole. */
+  statement: boolean;
+  curator: PlacePartsPartsItemCurator;
+};
+
+export type PlacePartsWholesItemPlace = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** @nullable */
+  subtitle: string | null;
+  /**
+     * The kind the place stands in, first by display order; null for a place in no kind of its own.
+     * @nullable
+     */
+  kind_name: string | null;
+  /** Every kind the place stands in waits for a curator: no reader is shown it yet. */
+  waiting: boolean;
+  /** @nullable */
+  image_url: string | null;
+  /** Whose photograph the picture is, shown with it. */
+  image_credit: ImageCredit | null;
+  /** @nullable */
+  longitude: number | null;
+  /** @nullable */
+  latitude: number | null;
+};
+
+/**
+ * UNESCO's list names the place among the whole's components.
+ */
+export type PlacePartsWholesItemList = {
+  /** The reference the World Heritage list gives the line ("383bis-001"). */
+  reference: string;
+  /**
+     * The name the list gives the line, where it is not the place's.
+     * @nullable
+     */
+  name: string | null;
+} | null;
+
+/**
+ * admitted: a curator made the place a part; refused: a curator keeps it out while a source names it.
+ */
+export type PlacePartsWholesItemCuratorAdmission = typeof PlacePartsWholesItemCuratorAdmission[keyof typeof PlacePartsWholesItemCuratorAdmission];
+
+
+export const PlacePartsWholesItemCuratorAdmission = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+export type PlacePartsWholesItemCurator = {
+  /** admitted: a curator made the place a part; refused: a curator keeps it out while a source names it. */
+  admission: PlacePartsWholesItemCuratorAdmission;
+  /** @nullable */
+  answered_at: string | null;
+  /** The caller gave the word last. */
+  by_you: boolean;
+  /**
+     * The curator's own words, kept in both places' histories.
+     * @nullable
+     */
+  note: string | null;
+} | null;
+
+export type PlacePartsWholesItem = {
+  place: PlacePartsWholesItemPlace;
+  /** The caller's scope reaches the other place, so the pair is theirs to answer; a place outside it is listed only while readers are offered it. */
+  in_scope: boolean;
+  /** The place is a part of the whole now; false on a row a curator keeps out. */
+  standing: boolean;
+  /** UNESCO's list names the place among the whole's components. */
+  list: PlacePartsWholesItemList;
+  /** A Wikidata statement says the place is a part of the whole. */
+  statement: boolean;
+  curator: PlacePartsWholesItemCurator;
+};
+
+/**
+ * A place's parts and the wholes it is a part of, with whose word makes each one, for the curator's card (#2118).
+ */
+export interface PlaceParts {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  name: string;
+  /** The place stands in a kind of its own, so its first part makes it a place made of parts. */
+  in_kind: boolean;
+  /** Another place stands merged into it, so it takes no first part until the merge is undone. */
+  merged_onto: boolean;
+  /** Its parts, standing first, then the places a curator keeps out. */
+  parts: PlacePartsPartsItem[];
+  /** The wholes it is a part of, then the ones a curator keeps it out of. */
+  wholes: PlacePartsWholesItem[];
+}
+
 export interface PartWordBody {
   /**
      * @maximum 2147483647
@@ -6831,6 +7005,91 @@ export interface PartWordAnswered {
   recordId: number | null;
   /** The place was the whole's first part: the whole is now a place made of parts. */
   becameWhole: boolean;
+}
+
+export type PartCandidatesRole = typeof PartCandidatesRole[keyof typeof PartCandidatesRole];
+
+
+export const PartCandidatesRole = {
+  part: 'part',
+  whole: 'whole',
+} as const;
+
+export type PartCandidatesCandidatesItemPlace = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** @nullable */
+  subtitle: string | null;
+  /**
+     * The kind the place stands in, first by display order; null for a place in no kind of its own.
+     * @nullable
+     */
+  kind_name: string | null;
+  /** Every kind the place stands in waits for a curator: no reader is shown it yet. */
+  waiting: boolean;
+  /** @nullable */
+  image_url: string | null;
+  /** Whose photograph the picture is, shown with it. */
+  image_credit: ImageCredit | null;
+  /** @nullable */
+  longitude: number | null;
+  /** @nullable */
+  latitude: number | null;
+};
+
+/**
+ * Why it cannot be chosen: the place itself, a part (or whole) already, a whole of the place at some level, or a place readers are offered outside the caller's scope. A place no reader is offered is listed only in scope.
+ */
+export type PartCandidatesCandidatesItemTaken = typeof PartCandidatesCandidatesItemTaken[keyof typeof PartCandidatesCandidatesItemTaken] | null;
+
+
+export const PartCandidatesCandidatesItemTaken = {
+  self: 'self',
+  already: 'already',
+  loop: 'loop',
+  scope: 'scope',
+} as const;
+
+export type PartCandidatesCandidatesItem = {
+  place: PartCandidatesCandidatesItemPlace;
+  /**
+     * Metres from the nearest of the whole's parts, or from the place itself.
+     * @nullable
+     */
+  distance_m: number | null;
+  /**
+     * The part the distance is measured from; null where it is the place itself.
+     * @nullable
+     */
+  near_name: string | null;
+  /** Why it cannot be chosen: the place itself, a part (or whole) already, a whole of the place at some level, or a place readers are offered outside the caller's scope. A place no reader is offered is listed only in scope. */
+  taken: PartCandidatesCandidatesItemTaken;
+  /** A curator keeps it out of the whole: choosing it puts it back. */
+  kept_out: boolean;
+  /**
+     * Another whole it is a part of, which it stays a part of.
+     * @nullable
+     */
+  also_part_of: string | null;
+};
+
+/**
+ * Places a curator may add as a part of a place, or wholes to add it to, nearest first (#2118).
+ */
+export interface PartCandidates {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  role: PartCandidatesRole;
+  /** No name was asked: the places nearest the anchor, within a kilometre for parts. */
+  near: boolean;
+  candidates: PartCandidatesCandidatesItem[];
 }
 
 export interface TakeOutPartBody {
@@ -8718,6 +8977,24 @@ export type GetExperiencesByIdFindLinksCandidatesParams = {
    */
   q: string;
 };
+
+export type GetExperiencesByIdPartCandidatesParams = {
+  role: GetExperiencesByIdPartCandidatesRole;
+  /**
+   * @minLength 2
+   * @maxLength 100
+   * @pattern ^[^\u0000]*$
+   */
+  q?: string;
+};
+
+export type GetExperiencesByIdPartCandidatesRole = typeof GetExperiencesByIdPartCandidatesRole[keyof typeof GetExperiencesByIdPartCandidatesRole];
+
+
+export const GetExperiencesByIdPartCandidatesRole = {
+  part: 'part',
+  whole: 'whole',
+} as const;
 
 export type GetGeocodeSearchParams = {
   /**
@@ -13496,6 +13773,31 @@ return apiFetch<KeptOutOfKind>(getPostExperiencesByIdKeepOutUrl(id),
 
 
 
+export const getGetExperiencesByIdPartsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/parts`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary List a place's parts and the wholes it is a part of, with whose word makes each one
+ */
+export const getExperiencesByIdParts = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<PlaceParts> => {
+
+  return apiFetch<PlaceParts>(getGetExperiencesByIdPartsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export const getPostExperiencesByIdPartsUrl = (id: number,) => {
 
 
@@ -13531,6 +13833,40 @@ return apiFetch<PartWordAnswered>(getPostExperiencesByIdPartsUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(partWordBody)
+  }
+);}
+
+
+
+export const getGetExperiencesByIdPartCandidatesUrl = (id: number,
+    params: GetExperiencesByIdPartCandidatesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/${encodeURIComponent(String(id))}/part-candidates?${stringifiedParams}` : `/api/experiences/${encodeURIComponent(String(id))}/part-candidates`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Find places to add as a part of a place, or wholes to add it to, nearest first
+ */
+export const getExperiencesByIdPartCandidates = async (id: number,
+    params: GetExperiencesByIdPartCandidatesParams, options?: Parameters<typeof apiFetch>[1]): Promise<PartCandidates> => {
+
+  return apiFetch<PartCandidates>(getGetExperiencesByIdPartCandidatesUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 
