@@ -168,6 +168,13 @@ export const queryKeys = {
      *  a hand-back and a separation, which change a kind's standing from elsewhere in the dialog, every one. */
     placeKindsAll: ['curation', 'placeKinds'] as const,
     placeKinds: (experienceId: Id) => ['curation', 'placeKinds', experienceId] as const,
+    /** A place's parts and the wholes it is a part of (#2118). A word on a pair invalidates every place's, since it moves two cards. */
+    placePartsAll: ['curation', 'placeParts'] as const,
+    placeParts: (experienceId: Id) => ['curation', 'placeParts', experienceId] as const,
+    /** The places a part section's search offers, by place, role and the name typed (#2118). */
+    partCandidatesAll: ['curation', 'partCandidates'] as const,
+    partCandidates: (experienceId: Id, role: 'part' | 'whole', q: string) =>
+      ['curation', 'partCandidates', experienceId, role, q] as const,
     scopes: ['curator-scopes'] as const,
     /** Every read of the crowded-city window (#2282): what an answer invalidates, since a pin recounts its neighbours. */
     crowdingWindowAll: ['curation', 'crowdingWindow'] as const,

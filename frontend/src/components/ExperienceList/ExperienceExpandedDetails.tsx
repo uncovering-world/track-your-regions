@@ -43,6 +43,7 @@ import { ExtentLine } from '../shared/ExtentLine';
 import { CommemoratesLine } from '../shared/CommemoratesLine';
 import { DescriptionText } from '../shared/DescriptionText';
 import { PartOfLine } from '../shared/PartOfLine';
+import { LazyPlaceParts } from '../curation/parts/LazyPlaceParts';
 import { PlaceLinks } from '../shared/PlaceLinks';
 import { descriptionBeyondSubtitle } from '../shared/PlaceSubtitle';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
@@ -58,7 +59,7 @@ import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
 import { typeChipsFor } from './typeChips';
-import { cardAsksFinds } from '../../utils/placeKinds';
+import { cardAsksFinds, standsInWorldHeritage } from '../../utils/placeKinds';
 
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
@@ -417,6 +418,16 @@ function ExperienceExpandedDetailsComponent({
           onHeightChange={onHeightChange}
           onOpen={onOpenPlace}
           onCorrect={onCorrectPlace}
+        />
+      )}
+
+      {/* A curator's Parts and Part of, on the card itself (#2118). */}
+      {onCurate && !isRejected && (
+        <LazyPlaceParts
+          experienceId={experience.id}
+          regionId={null}
+          isSite={standsInWorldHeritage(experience)}
+          onHeightChange={onHeightChange}
         />
       )}
 
