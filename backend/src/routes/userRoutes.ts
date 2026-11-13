@@ -23,6 +23,7 @@ import {
   TreasureViewUnmarked,
   TripRemoved,
   TripSaved,
+  TripsDated,
   ViewedTreasureIds,
   VisitedExperienceIds,
   VisitedLocationIds,
@@ -71,8 +72,12 @@ import {
   markTreasureViewed,
   unmarkTreasureViewed,
 } from '../controllers/experience/index.js';
-import { addTrip, changeTrip, getTrips, removeTrip, restoreVisits } from '../controllers/experience/tripController.js';
-import { restoreVisitsBodySchema, tripDateBodySchema, tripIdParamSchema } from '../types/trips.js';
+import {
+  addTrip, addTrips, changeTrip, changeTrips, getTrips, removeTrip, restoreVisits,
+} from '../controllers/experience/tripController.js';
+import {
+  addTripsBodySchema, changeTripsBodySchema, restoreVisitsBodySchema, tripDateBodySchema, tripIdParamSchema,
+} from '../types/trips.js';
 
 /** The fields every route here shares: the caller's own data. */
 const OWN = { access: 'signed-in', cache: 'no-store', limiter: authenticatedLimiter } as const;
@@ -197,6 +202,20 @@ export const userRoutes = [
     params: tripIdParamSchema,
     response: TripRemoved,
     handler: removeTrip,
+  }),
+  defineRoute({
+    ...OWN, method: 'post', path: '/me/trips',
+    summary: 'Add one trip with one date to each of several places the caller has visited: the date offered after a tick',
+    body: addTripsBodySchema,
+    response: TripsDated,
+    handler: addTrips,
+  }),
+  defineRoute({
+    ...OWN, method: 'put', path: '/me/trips',
+    summary: 'Give several of the caller\'s trips new dates at once',
+    body: changeTripsBodySchema,
+    response: TripsDated,
+    handler: changeTrips,
   }),
   defineRoute({
     ...OWN, method: 'post', path: '/me/visits/restore',

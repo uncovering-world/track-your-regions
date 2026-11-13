@@ -100,6 +100,8 @@ export interface PublicUser {
   emailVerified: boolean;
   /** How the account signs in: a password, or an OAuth provider. */
   authProvider: PublicUserAuthProvider;
+  /** When the account was made: a new traveller's first ticks are mostly past travels (#2120). Null where no time was recorded, an account then read as not new. */
+  createdAt: string | null;
 }
 
 /**
@@ -1464,6 +1466,21 @@ export interface MarkVisitedBody {
 }
 
 /**
+ * A place a tick gave a visit it did not have.
+ */
+export interface TickedPlace {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  name: string;
+  /** Where the tick was: the point ticked, or the place's own point for a tick on the place. */
+  longitude: number;
+  latitude: number;
+}
+
+/**
  * An object marked visited, or its visit renewed.
  */
 export interface ExperienceVisitMarked {
@@ -1485,6 +1502,8 @@ export interface ExperienceVisitMarked {
   /** @nullable */
   notes: string | null;
   rating: number | null;
+  /** The place, when the tick gave it a visit it did not have: none when it only renewed one. */
+  ticked: TickedPlace[];
 }
 
 export type RemovedVisitTripsItem = {
@@ -1585,6 +1604,51 @@ export interface TripRemoved {
   trip: Trip;
 }
 
+export interface AddTripsBody {
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     * @items.maximum 2147483647
+     * @items.exclusiveMinimum 0
+     */
+  experienceIds: number[];
+  date: TripDateBody;
+}
+
+export type TripsDatedTripsItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  trip: Trip;
+};
+
+/**
+ * Trips added to several places at once, or several trips given one date: what the offer of a date after a tick writes (#2120).
+ */
+export interface TripsDated {
+  success: true;
+  trips: TripsDatedTripsItem[];
+}
+
+export type ChangeTripsBodyTripsItem = {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  id: number;
+  date: TripDateBody;
+};
+
+export interface ChangeTripsBody {
+  /**
+     * @minItems 1
+     * @maxItems 10000
+     */
+  trips: ChangeTripsBodyTripsItem[];
+}
+
 export type RestoreVisitsBodyVisitsItem = {
   /**
      * @maximum 2147483647
@@ -1675,6 +1739,8 @@ export interface LocationVisitMarked {
   marked_at: string | null;
   /** @nullable */
   notes: string | null;
+  /** The point's own place, at the point, when the tick gave it a visit it did not have: none when it only renewed one. */
+  ticked: TickedPlace[];
 }
 
 /**
@@ -1771,6 +1837,8 @@ export interface AllLocationsMarked {
      * @maximum 9007199254740991
      */
   locationsMarked: number;
+  /** The places the marking gave a visit they did not have, each at the first of its points marked. */
+  ticked: TickedPlace[];
 }
 
 /**
@@ -11057,6 +11125,84 @@ export const deleteUsersMeTripsByTripId = async (tripId: number, options?: Param
     method: 'DELETE'
 
 
+  }
+);}
+
+
+
+export const getPostUsersMeTripsUrl = () => {
+
+
+
+
+  return `/api/users/me/trips`
+}
+
+/**
+ * Requires a signed-in caller.
+ * @summary Add one trip with one date to each of several places the caller has visited: the date offered after a tick
+ */
+export const postUsersMeTrips = async (addTripsBody: AddTripsBody, options?: Parameters<typeof apiFetch>[1]): Promise<TripsDated> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<TripsDated>(getPostUsersMeTripsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(addTripsBody)
+  }
+);}
+
+
+
+export const getPutUsersMeTripsUrl = () => {
+
+
+
+
+  return `/api/users/me/trips`
+}
+
+/**
+ * Requires a signed-in caller.
+ * @summary Give several of the caller's trips new dates at once
+ */
+export const putUsersMeTrips = async (changeTripsBody: ChangeTripsBody, options?: Parameters<typeof apiFetch>[1]): Promise<TripsDated> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<TripsDated>(getPutUsersMeTripsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(changeTripsBody)
   }
 );}
 

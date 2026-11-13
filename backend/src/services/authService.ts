@@ -472,6 +472,7 @@ export function toPublicUser(user: User): PublicUser {
     avatarUrl: user.avatarUrl,
     emailVerified: user.emailVerified,
     authProvider: user.authProvider,
+    createdAt: user.createdAt?.toISOString() ?? null,
   };
 }
 
@@ -490,7 +491,7 @@ function mapUserRow(row: Record<string, unknown>): User {
     authProvider: row.auth_provider as AuthProvider | null,
     providerId: row.provider_id as string | null,
     emailVerified: row.email_verified as boolean,
-    createdAt: row.created_at as Date,
+    createdAt: row.created_at instanceof Date ? row.created_at : null,
     lastSeenAt: row.last_seen_at as Date,
   };
 }

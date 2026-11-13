@@ -11,7 +11,9 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pool } from './index.js';
 import { MEMBERSHIPS } from './membership.js';
 import { unmarkVisited } from '../controllers/experience/experienceVisitController.js';
-import { addTrip, changeTrip, getTrips, removeTrip, restoreVisits } from '../controllers/experience/tripController.js';
+import {
+  addTrip, addTrips, changeTrip, changeTrips, getTrips, removeTrip, restoreVisits,
+} from '../controllers/experience/tripController.js';
 import {
   RESTORE_LIMITS, TOO_MANY_TRIPS, TOO_MUCH_TO_UNDO, TRIPS_PER_VISIT, restoreVisitsBodySchema,
 } from '../types/trips.js';
@@ -106,6 +108,22 @@ describe("a visit's trips (#2120)", () => {
     expect(await dates(travellerId)).toEqual([[2022, 3, null]]);
     expect(await getTrips({ params: { experienceId: UFFIZI }, caller: caller(otherId) }))
       .toMatchObject({ visited: false, trips: [] });
+  });
+
+  it('dates several places at once, only those the traveller has a visit on, and moves several trips at once', async () => {
+    const ignored = await addTrips({ body: { experienceIds: [UFFIZI], date: date(2015) }, caller: caller(travellerId) });
+    expect(ignored.trips).toEqual([]);
+
+    await add(travellerId, date(null));
+    // The places are a set: the Uffizi named twice still takes one trip.
+    const added = await addTrips({ body: { experienceIds: [UFFIZI, UFFIZI], date: date(2015) }, caller: caller(travellerId) });
+    expect(added.trips).toEqual([{ experienceId: UFFIZI, trip: expect.objectContaining({ year: 2015, month: null }) }]);
+
+    const moves = [{ id: added.trips[0].trip.id, date: date(2016, 5) }];
+    expect((await changeTrips({ body: { trips: moves }, caller: caller(otherId) })).trips).toEqual([]);
+    const moved = await changeTrips({ body: { trips: moves }, caller: caller(travellerId) });
+    expect(moved.trips).toEqual([{ experienceId: UFFIZI, trip: expect.objectContaining({ year: 2016, month: 5, day: null }) }]);
+    expect(await dates(travellerId)).toEqual([[2016, 5, null], [null, null, null]]);
   });
 
   it('takes a trip up to the 365th, and refuses the next in words', async () => {

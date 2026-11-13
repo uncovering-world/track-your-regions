@@ -37,6 +37,7 @@ function user(overrides: Partial<PublicUser> = {}): PublicUser {
     avatarUrl: null,
     emailVerified: true,
     authProvider: 'local',
+    createdAt: '2026-09-01T10:00:00.000Z',
     ...overrides,
   };
 }

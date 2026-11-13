@@ -13,7 +13,7 @@
 import type { z } from 'zod/v4';
 import type {
   AllLocationsMarked, AllLocationsUnmarked, ExperienceVisitedStatusResponse, LocationVisitMarked, LocationVisitUnmarked,
-  VisitedLocationIds,
+  TickedPlace, VisitedLocationIds,
 } from '../../api/responses/visited.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { computeVisitedStatus } from '@tyr/shared/visits';
@@ -26,7 +26,7 @@ import {
   publishedContentSql,
 } from '../../db/readerPredicates.js';
 import {
-  liveVisitsSql, placeAtWriteSql, pointPlaceAtWriteSql, removedVisitsOf, removeVisits, removeVisitsOn,
+  liveVisitsSql, placeAtWriteSql, pointPlaceAtWriteSql, removedVisitsOf, removeVisits, removeVisitsOn, tickedPlaceJsonSql,
 } from '../../db/visits.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type {
@@ -135,13 +135,22 @@ export async function markLocationVisited(
 
   // The visit is the point's own place's (#2120): the part's for a part's
   // point, the place's for any other point, read again as it is written.
-  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'marked_at' | 'notes'>>(`
-    INSERT INTO user_visited_experiences (user_id, experience_id, notes, marked_at)
-    ${pointPlaceAtWriteSql('ARRAY[$2::int]', '$1, el.experience_id, $3, NOW()')}
-    ON CONFLICT (user_id, experience_id) DO UPDATE SET
-      notes = COALESCE($3, user_visited_experiences.notes),
-      marked_at = NOW()
-    RETURNING id, marked_at, notes
+  // `ticked` answers the place at the point ticked, where the traveller says
+  // they stood, and only when the tick made the visit: a tick that renews one
+  // offers no date for a visit the traveller already had.
+  const result = await pool.query<
+    Pick<UserVisitedExperiencesRow, 'id' | 'marked_at' | 'notes'> & { inserted: boolean; ticked: TickedPlace }
+  >(`
+    WITH point AS (${pointPlaceAtWriteSql('ARRAY[$2::int]', 'el.experience_id, el.location')}),
+    visit AS (
+      INSERT INTO user_visited_experiences (user_id, experience_id, notes, marked_at)
+      SELECT $1, point.experience_id, $3, NOW() FROM point
+      ON CONFLICT (user_id, experience_id) DO UPDATE SET
+        notes = COALESCE($3, user_visited_experiences.notes),
+        marked_at = NOW()
+      RETURNING id, experience_id, marked_at, notes, (xmax = 0) AS inserted)
+    SELECT visit.id, visit.marked_at, visit.notes, visit.inserted, ${tickedPlaceJsonSql('e', 'point.location')} AS ticked
+      FROM visit JOIN experiences e ON e.id = visit.experience_id CROSS JOIN point
   `, [userId, locationId, notes]);
 
   // A merge folded the point while the tick was on its way.
@@ -156,6 +165,7 @@ export async function markLocationVisited(
     id: visit.id,
     marked_at: visit.marked_at?.toISOString() ?? null,
     notes: visit.notes,
+    ticked: visit.inserted ? [visit.ticked] : [],
   };
 }
 
@@ -249,15 +259,25 @@ export async function markAllLocationsVisited(
   // under a share lock on the point: a merge moving it commits first and the
   // visit lands where the point now stands, and a point it folded is skipped
   // (#2120). What is answered is the points the write read: none left is a
-  // 404, as for one point.
-  const written = await pool.query<{ marked: number }>(`
-    WITH points AS (${pointPlaceAtWriteSql('$2::int[]', 'el.experience_id')}),
+  // 404, as for one point. `ticked` is the places the marking gave a visit,
+  // each at the first of its points marked, where the traveller says they
+  // stood rather than the place's own point.
+  const written = await pool.query<{ marked: number; ticked: TickedPlace[] }>(`
+    WITH points AS (${pointPlaceAtWriteSql('$2::int[]', 'el.id, el.experience_id, el.location')}),
     visits AS (
       INSERT INTO user_visited_experiences (user_id, experience_id, marked_at)
       SELECT $1, points.experience_id, NOW() FROM points
       ON CONFLICT (user_id, experience_id) DO NOTHING
+      RETURNING experience_id
+    ),
+    first_points AS (
+      SELECT DISTINCT ON (points.experience_id) points.experience_id, points.location
+        FROM points ORDER BY points.experience_id, points.id
     )
-    SELECT count(*)::int AS marked FROM points
+    SELECT (SELECT count(*)::int FROM points) AS marked,
+           COALESCE((SELECT json_agg(${tickedPlaceJsonSql('e', 'first_points.location')} ORDER BY e.id)
+                       FROM visits JOIN experiences e ON e.id = visits.experience_id
+                       JOIN first_points ON first_points.experience_id = e.id), '[]'::json) AS ticked
   `, [userId, locationsResult.rows.map(row => row.id)]);
   const locationsMarked = written.rows[0]?.marked ?? 0;
   if (locationsMarked === 0) throw notFound('Experience not found or has no locations in this region');
@@ -267,6 +287,7 @@ export async function markAllLocationsVisited(
     experienceId,
     regionId,
     locationsMarked,
+    ticked: written.rows[0].ticked,
   };
 }
 
