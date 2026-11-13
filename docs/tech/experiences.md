@@ -6704,7 +6704,8 @@ the calendar cannot be a check.
 The visit stays one row per traveller and place, and a visit with no trip has no date: migration 236
 wrote none for the visits made before it, since the visit's own moment, renamed `marked_at` from
 `visited_at`, is when the tick was made. The routes, all under `/api/users/me` and of the caller's own
-visits only, another traveller's trip answering 404:
+visits only: a route naming one trip answers 404 for another traveller's, and a batch leaves another
+traveller's trip, or a place the caller has no visit on, out of its answer:
 
 | Route | What it does |
 |---|---|
@@ -6712,9 +6713,11 @@ visits only, another traveller's trip answering 404:
 | `POST /visited-experiences/:experienceId/trips` | adds a trip, ticking the place where it was not; a visit takes at most 365 this way (`TRIPS_PER_VISIT`) |
 | `PATCH /trips/:tripId`, `DELETE /trips/:tripId` | changes a trip's date; removes a trip, answering it for an Undo that adds it again; the visit stays |
 | `POST /visits/restore` | puts back visits an untick removed, each with its trips, in one transaction; at most 1,000 visits and 10,000 trips (`RESTORE_LIMITS`), any of them on one visit |
+| `POST /trips` | adds one trip with one date to each of several places the caller has a visit on, a place named twice taking one; a place unticked meanwhile, or whose visit holds 365 trips, is left out of the answer and never ticked (`ownVisitsAtWriteSql`) |
+| `PUT /trips` | gives several of the caller's trips new dates in one statement, each trip named once or the request answers 400; another traveller's trip, or one removed meanwhile, is left out of the answer (`ownTripAtWriteSql`) |
 
 Each write reads the place or the visit it writes for inside its own statement under a share lock
-(`placeAtWriteSql`, `ownTripAtWriteSql`). Every untick, of a place, a point or all of a place's places,
+(`placeAtWriteSql`, `ownTripAtWriteSql`, `ownVisitsAtWriteSql`). Every untick, of a place, a point or all of a place's places,
 answers the visits it removed with their trips (`removed`, read by `removeVisitsSql` in the statement
 that deletes them), so the untick can be undone in place. A removal never deletes what its Undo would
 refuse or what its answer leaves out (`removeVisitsOn`, in one transaction): one statement locks the
@@ -6756,6 +6759,16 @@ runs, gone once the visits are back, offered again if it fails, with "Your visit
 again." under it. Every trip write carries
 `queryKeys.visited.write`, so every visit control waits on it, and refreshes the visits and the trips
 (`invalidateVisitedStatus`).
+
+**Every tick answers the places it gave a visit** (#2120), with their names and where the tick was
+(`ticked`, a `TickedPlace` list built by `tickedPlaceJsonSql`): the place at its own point for a tick on
+the place; the point's own place at the point ticked for a tick on a point, since a point of the Struve
+Geodetic Arc stands hundreds of kilometres from the place's own; and for *Mark all* the places newly
+marked, each at the first of its points marked. A tick that only renews a visit, as from a stale tab,
+answers none, as *Mark all* run again does (`xmax = 0` on the upsert). With the account's sign-up time
+(`PublicUser.createdAt`, null where the row records none, an account then not new), a client can offer
+a date for the visit just made, and tell a trip from a backfill by where and when the ticks were, without
+reading the places again; `POST /trips` and `PUT /trips` write such dates, one request for a batch.
 
 One of these filters `admission` and the rest do not, and the split is the line in § Lifecycle
 filtering rather than an oversight. `visited-status` describes an experience to a reader — its
