@@ -84,14 +84,18 @@ export interface CrowdingWindowParts {
  * the list, its pane sticky within the column the row stretches to the list's
  * height, just below the screen's top as the page scrolls; the tab folds its
  * list of groups to a bar meanwhile, so the two have the room (#2487). On a
- * narrower screen the map stands over the list and scrolls with the rest.
+ * narrower screen the map stands over the list: from a tablet's width the
+ * list scrolls in a box of its own (`list`), and on a phone both scroll with
+ * the page.
  */
 export const CROWDING_LAYOUT = {
   // Narrower on a laptop, so the table beside it keeps a name column a row's name, chip and article fit on.
   mapColumn: { width: { xs: '100%', lg: 320, xl: 400 }, flexShrink: 0, borderRight: { lg: 1 }, borderColor: { lg: 'divider' } },
   mapPane: { p: 2, position: { lg: 'sticky' }, top: { lg: 16 } },
   mapFrame: { height: 420 },
-  list: { flexGrow: 1, minWidth: 0 },
+  // Between a tablet's width and a laptop's the list scrolls in a box of its own, both ways, so the table's
+  // headings stick within it; from a laptop's width the table fits beside the map and the page scrolls.
+  list: { flexGrow: 1, minWidth: 0, overflow: { sm: 'auto', lg: 'visible' }, maxHeight: { sm: '75vh', lg: 'none' } },
 } as const satisfies Record<string, SxProps<Theme>>;
 
 /** The answers a request carried, by membership. */
@@ -181,9 +185,8 @@ function WindowBody({ read, circle, placeLoading, failed, inRegion, staging, hov
         ) : (
           <Box sx={{ opacity: placeLoading ? 0.6 : 1 }}>
             <PlaceView
-              view={map.view} rule={rule} staging={staging} frozen={frozen} columns={columns}
-              hovered={hovered} onHover={onHover} onOpen={onOpen}
-              onAnswer={answer => onAnswer(map.view.place, answer)}
+              view={map.view} places={read.places} rule={rule} staging={staging} frozen={frozen} columns={columns}
+              hovered={hovered} onHover={onHover} onOpen={onOpen} onAnswer={onAnswer}
             />
           </Box>
         )}
