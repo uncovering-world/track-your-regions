@@ -8,6 +8,7 @@
 
 import { MEMBERSHIPS, partRecordSql, placeOfferedSql } from '../../../db/membership.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
+import { MOST_LEVELS } from '../../experience/partRecordController.js';
 import { count, text } from './assertion.js';
 import type { AssertionRow, CatalogueAssertion } from './assertion.js';
 
@@ -128,8 +129,81 @@ const itemOnFarParts: CatalogueAssertion = {
   },
 };
 
-/** The parts' rules: one line, one part; one item, one place. */
+/**
+ * How far the check walks a chain down, past any depth a writer makes: a chain
+ * to this many places, and a loop of up to this many, whose closing step back
+ * to its start is taken at the limit.
+ */
+const WALK_LIMIT = 32;
+
+/**
+ * A whole that is, through its parts, a part of itself, or a chain of wholes
+ * and parts longer than four places (#2118, #2126).
+ *
+ * A curator's word refuses both (`partRecordController.ts`), and curators'
+ * words take one key in turn, so two of them cannot close a loop together.
+ * The other writers of part records do not ask: the World Heritage run makes
+ * a site's component its part (`part_site_components()`) whatever the site is
+ * a part of, so a site a curator made a part of a place, whose component the
+ * run then finds that place to be, closes a loop; and a merge's record moves
+ * join two places' chains. The longest chain on the development catalogue on
+ * 2026-11-13 held two places (Zacatecas in the Camino Real de Tierra
+ * Adentro). A loop would make every walk up a whole's chain circle, and a
+ * visit cascade up it. A curator takes the wrong part out on the card of a
+ * place the row names.
+ *
+ * One row per place a loop starts at, its least id, with the places the
+ * shortest such loop goes round (a second loop through the same least place
+ * shows once the first is undone);
+ * one row per topmost whole of a chain too deep, with its longest chain and
+ * how many places that is, counted to `WALK_LIMIT`.
+ */
+const partsInALoopOrTooDeep: CatalogueAssertion = {
+  id: 'parts-in-a-loop-or-too-deep',
+  area: 'places',
+  title: `A place that is a part of itself, or a chain of more than ${MOST_LEVELS} places`,
+  kind: 'invariant',
+  meaning:
+    'A place cannot be a part of its own part, and wholes nest at most four places deep. '
+    + 'A curator takes the wrong part out under Parts on the card of a place named.',
+  sql: `WITH RECURSIVE chain AS (
+          SELECT ARRAY[prt.whole_id, prt.part_id] AS path, prt.part_id AS last, false AS closes, false AS revisits
+            FROM experience_parts prt
+          UNION ALL
+          SELECT c.path || prt.part_id, prt.part_id, prt.part_id = c.path[1], prt.part_id = ANY(c.path[2:])
+            FROM chain c JOIN experience_parts prt ON prt.whole_id = c.last
+           WHERE NOT c.closes AND NOT c.revisits
+             AND (cardinality(c.path) < ${WALK_LIMIT} OR prt.part_id = c.path[1])
+        ), loops AS (
+          SELECT DISTINCT ON (c.path[1]) c.path[1] AS whole_id, true AS loop, cardinality(c.path) - 1 AS places, c.path
+            FROM chain c
+           WHERE c.closes AND c.path[1] = (SELECT min(member) FROM unnest(c.path) AS member)
+           ORDER BY c.path[1], cardinality(c.path)
+        ), deep AS (
+          SELECT DISTINCT ON (c.path[1]) c.path[1] AS whole_id, false AS loop, cardinality(c.path) AS places, c.path
+            FROM chain c
+           WHERE NOT c.closes AND NOT c.revisits AND cardinality(c.path) > ${MOST_LEVELS}
+             AND NOT EXISTS (SELECT 1 FROM experience_parts up WHERE up.part_id = c.path[1])
+           ORDER BY c.path[1], cardinality(c.path) DESC
+        )
+        SELECT found.whole_id, found.loop, found.places,
+               ARRAY(SELECT e.name || ' (#' || e.id || ')' FROM unnest(found.path) WITH ORDINALITY AS u(id, n)
+                       JOIN experiences e ON e.id = u.id ORDER BY u.n) AS chain
+          FROM (SELECT * FROM loops UNION ALL SELECT * FROM deep) found
+         ORDER BY found.loop DESC, found.whole_id`,
+  describe: (row: AssertionRow) => {
+    // Names come from outside; each is read as `text` reads a column.
+    const chain = Array.isArray(row.chain) ? (row.chain as unknown[]).map(one => text({ one }, 'one')) : [];
+    const places = count(row, 'places');
+    let shape = `A loop of ${places} places`;
+    if (!row.loop) shape = places >= WALK_LIMIT ? `${WALK_LIMIT} places deep or more` : `${places} places deep`;
+    return `${shape}: ${chain.join(' › ')}`;
+  },
+};
+
+/** The parts' rules: one line, one part; one item, one place; no loop, four places at most. */
 export const partAssertions: CatalogueAssertion[] = [
   partsOfOneWholeAtOneSpot,
   itemOnFarParts,
+  partsInALoopOrTooDeep,
 ];

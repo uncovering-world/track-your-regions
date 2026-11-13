@@ -17,7 +17,9 @@ const NORTH = 9681;
 const SOUTH = 9682;
 const COPY = 9683;
 const UNREAD = 9684;
-const PLACES = [SITE, NORTH, SOUTH, COPY, UNREAD];
+const LOWER = 9685;
+const LOWEST = 9686;
+const PLACES = [SITE, NORTH, SOUTH, COPY, UNREAD, LOWER, LOWEST];
 const PARK = 'Q9680001';
 const COMPONENTS_SOURCE = 10;
 
@@ -117,5 +119,73 @@ describe('two parts of one site under one reference at one spot', () => {
 
     await pool.query('UPDATE experience_locations SET refused_at = NOW() WHERE experience_id = $1', [COPY]);
     expect(await rowsOf('parts-of-one-whole-at-one-spot')).toEqual([]);
+  });
+});
+
+describe('a loop of parts, or a chain over four places (#2118)', () => {
+  /** A curator's record making `part` a part of `whole`, written as the card's writer writes it. */
+  async function curatorPart(whole: number, part: number): Promise<void> {
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission, curation_state, published_at)
+       VALUES ($1, $2, 11, $3, 'admitted', 'verified', NOW())`,
+      [part, whole, `curator-1-${whole}${part}`],
+    );
+  }
+  const rule = partAssertions.find(assertion => assertion.id === 'parts-in-a-loop-or-too-deep')!;
+  const chainRows = async () => (await pool.query<Record<string, unknown>>(rule.sql)).rows
+    .filter(row => PLACES.includes(Number(row.whole_id)));
+
+  it('names a chain seven places deep once, from its top, with its true depth', async () => {
+    expect(await chainRows()).toEqual([]);
+    await parcel(COPY, '9680-004', -15.70);
+    await parcel(UNREAD, '9680-005', -15.80);
+    await parcel(LOWER, '9680-006', -15.90);
+    await parcel(LOWEST, '9680-007', -16.00);
+    // The site over its parcel, and each parcel over the next.
+    await curatorPart(NORTH, SOUTH);
+    await curatorPart(SOUTH, COPY);
+    await curatorPart(COPY, UNREAD);
+    await curatorPart(UNREAD, LOWER);
+    await curatorPart(LOWER, LOWEST);
+    const rows = await chainRows();
+    expect(rows).toMatchObject([{ whole_id: SITE, loop: false, places: 7 }]);
+    expect(rule.describe(rows[0])).toMatch(/^7 places deep: Rainforests of the Atsinanana \(parts fixture\) \(#9680\) › /);
+  });
+
+  it('names a loop as long as the walk goes, 32 places, once', async () => {
+    const ring = Array.from({ length: 32 }, (_, i) => 96801 + i);
+    try {
+      await pool.query(
+        `INSERT INTO experiences (id, source_id, external_id, name, location)
+         SELECT id, 11, 'curator-1-' || id, 'Ring ' || id, ST_SetSRID(ST_MakePoint(50.0, -15.0), 4326)
+           FROM unnest($1::int[]) AS id`,
+        [ring],
+      );
+      // Each place a part of the one before it, the first of the last.
+      await pool.query(
+        `INSERT INTO source_records (experience_id, whole_id, source_id, external_id, admission, curation_state, published_at)
+         SELECT part, whole, 11, 'curator-1-' || whole || part, 'admitted', 'verified', NOW()
+           FROM unnest($1::int[], $2::int[]) AS pair(whole, part)`,
+        [ring, [...ring.slice(1), ring[0]]],
+      );
+      const rows = (await pool.query<Record<string, unknown>>(rule.sql)).rows
+        .filter(row => ring.includes(Number(row.whole_id)));
+      expect(rows).toMatchObject([{ whole_id: ring[0], loop: true, places: 32 }]);
+    } finally {
+      await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [ring]);
+    }
+  });
+
+  it('names a loop of three places once', async () => {
+    await parcel(COPY, '9680-004', -15.70);
+    await curatorPart(NORTH, SOUTH);
+    await curatorPart(SOUTH, COPY);
+    await curatorPart(COPY, NORTH);
+    const rows = await chainRows();
+    expect(rows).toMatchObject([{ whole_id: NORTH, loop: true, places: 3 }]);
+    expect(rule.describe(rows[0])).toBe(
+      `A loop of 3 places: Parc National de Masoala (${NORTH}) (#${NORTH}) › Parc National de Masoala (${SOUTH}) (#${SOUTH}) › `
+      + `Parc National de Masoala (${COPY}) (#${COPY}) › Parc National de Masoala (${NORTH}) (#${NORTH})`,
+    );
   });
 });
