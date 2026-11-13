@@ -210,7 +210,9 @@ beside it. It is not a filter: the page takes it apart from the chips (`onShow`,
 `onChange`), so switching keeps the open row, and the queue's read is not keyed by
 it (`useReviewQueue`'s `filterKey`), so switching reads no list again. A marker
 opens its question by writing its `row`, as a click on a row does, and a question
-past the loaded pages is read the way a link to it is (below). The camera is not a
+past the loaded pages is read the way a link to it is (below). After an answer on the
+map the selection moves on to the nearest open question rather than the list's next row,
+still as a replace (`experience-map-ui.md` § The review queue on a map). The camera is not a
 parameter: a region chip frames the region by its stored `focusBbox` and
 `anchorPoint`, and without one the map frames every point it draws, so a link to
 `region=…&view=map` opens on that region. A crowded city's group is never read or

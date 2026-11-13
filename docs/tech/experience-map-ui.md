@@ -525,12 +525,30 @@ while the map is shown.
   (`fetchRegionAncestors`). Without a region chip, or for a region with no frame, the map frames
   every point with `frameGeoJson`, which measures across the antimeridian. It frames again when
   the chips change and never after an answer, so the camera stays on the quarter being worked.
-- **Under the map**, one line says how many open questions the chips select and that all are on
+  After an answer it pans to the next question's place, at the same zoom (`easeTo`), only where
+  that place is out of view (`pointInView`, which reads MapLibre's bounds in their own frame).
+- **Under the map**, after an answer, one line says where the next question is: *Next: another
+  question about this place.*, *Next: the nearest open question, 115 m away.* or *Next: a question
+  about another place at the same point.* (`stepLine`). The line goes once the selection leaves
+  that question, and a later Back to it does not bring the line back.
+  Then one line says how many open questions the chips select and that all are on
   the map. Where some have no point, it says how many, with a way to the list, which holds them.
   A legend names the kinds the map draws, a place's second kind included.
 
-After an answer the card moves on as the list's does, by the list's order. The ticks and the
-batch answers stay the list's: switching to the map clears the ticks, since a marker can open a
+**After an answer the map opens the nearest open question**, not the list's next row
+(`nextOnMap` in `queueMapData.ts`, through `useMapWalk`, which `ReviewPage`'s move-on effect asks). First comes another
+question about the same place, in the order its questions are listed. Else the first question of
+the place nearest to the answered one, by great-circle distance (`distanceMeters`,
+`@tyr/shared/moves`), among the points the map's read holds under the chips: in Rome the next
+square over rather than a row across the city. With none left, nothing opens, as the list does
+when it runs out. `useMapWalk` reads the map's query itself (`useQueueMapRead`, shared with the map, enabled only
+in map mode) and keeps the open question's point across the refresh that takes its place off the
+map. The answered question is left out by its key, so a read the answer has not
+refreshed yet never sends the curator back to it. The move is a replace, as the list's is
+(`addresses.md` § The review page). A row the map never had open, such as a link to a question
+answered meanwhile, moves on by the list's order, and the list's own move-on is unchanged.
+
+The ticks and the batch answers stay the list's: switching to the map clears the ticks, since a marker can open a
 question the list's loaded page does not hold, and on the map the bench always shows one card.
 While the chips change, the old markers stay drawn until the new read arrives, and open nothing.
 
