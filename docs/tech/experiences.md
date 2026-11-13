@@ -6064,9 +6064,9 @@ Maggiore, and crowds out 51 more of its churches.
     counted on OpenStreetMap, so a table that shows the column carries "Venues counted on
     OpenStreetMap · © OpenStreetMap contributors" under it (`VenueCreditLine`, ADR-0059 decision 3). The region's
     list puts the headings in each part's header, which from `sm` up sticks while the part scrolls,
-    and every row's figures under them; on a phone the table scrolls sideways instead. The place's circle puts the place's
-    own row first and marked, with the places around it below in the same columns, so each
-    figure stands above the ones it is compared with. Its count against the line is said once, in
+    and every row's figures under them; on a phone the table scrolls sideways instead. The place's circle lists the
+    place among the places around it in the same columns, at its own rank and marked there, so each
+    figure stands beside the ones it is compared with. Its count against the line is said once, in
     the card's sentence, not in a row. On a narrow screen the table scrolls sideways. What it is compared with is `crowding_above()` itself: the set `crowding_better()`
     counts, so the list and the count are one rule. On dev it took 4 ms around the Pantheon.
   - **The answer is a pin on the membership** (`source_records.crowding_pin`, written
@@ -6170,21 +6170,33 @@ Maggiore, and crowds out 51 more of its churches.
     - `PlaceView` is a place's circle: its card, with its picture and its credit as a line under it
       (ADR-0182), a press opening it at 960 px with the full credit (`PictureLightbox`), its article, the rule's reading with its exact count (`ruleReading`) and its
       own answers, about it alone; then every place of its type within the radius, the ones the
-      card's button counts, in their groups (`circleGroups.ts`, #2420): *better known, compared
-      with it*; *better known, not counted against it*, a neighbour scored above the place that the
-      rule leaves out because it holds works a reader is shown (ADR-0173) or a curator keeps it in
-      the shadow, its row saying which (`holdsWorks`, `pin`); *less known, not counted against it*,
-      scored at or below it; and *not measured yet*. Each is listed best known first, with its
-      distance, and opens its own circle. A neighbour the rule compares with the place stays in the
-      first group whatever the place's own score, so one a curator keeps on the list counts above a
-      place not measured yet too. A heading says what the rule found ("13
+      card's button counts, as one list by fame with the place itself at its own rank and marked
+      there (`circleRows` in `circleGroups.ts`, #2486): best known first, a tie broken by the
+      membership's id, the places not measured yet last (`byFame`). The order never reads which
+      place is open, so opening a neighbour from the table or the map moves only the mark: the rows
+      two circles share keep their order, a row at the edge of one radius and not the other comes
+      or goes without moving the rest, and the newly marked row is scrolled to its nearest edge only
+      where it is out of view. On dev on 2026-11-12 Alexanderplatz, Gendarmenmarkt and Potsdamer
+      Platz, 1.2 to 2.9 km apart, each held the same 27 admitted squares, themselves included. A row
+      above the place is better known and one below less known; a row says in words what the rule
+      does with it where its rank does not (`rowNote`, from the groups of #2420): a better-known
+      neighbour the rule leaves out because it holds works a reader is shown (ADR-0173) or a curator
+      keeps it in the shadow, "Not counted against it." with which (`holdsWorks`, `pin`); one a
+      curator keeps on the list that counts against the place from below; a tie, which the rule
+      never counts; a neighbour not compared because the place is not measured yet, never measured
+      or of a type its kind exempts; and one not measured yet. Each opens its own circle, with its
+      distance. The map's legend and each dot's hover name the same groups (`GROUP_WORDS`): *better
+      known, compared with it*; *better known, not counted against it*; *less known, not counted
+      against it*; *measured, not compared with it*; and *not measured yet*. A neighbour the rule
+      compares with the place is in the first group whatever the place's own score, so one a
+      curator keeps on the list counts above a place not measured yet too. A heading says what the rule found ("13
       better-known squares within 10 km. One other is less known." or "The best-known church within
       10 km.", and "One more better known is not counted." where the rule leaves one out). A place
       not measured yet is compared only with what a curator keeps on the list: its heading says so,
       with how many ("only the 2 a curator keeps on the list count above it", or "nothing is
       compared with it"), and when it will be measured, at the end of the run in progress (`measuringRun`, every run that is not a
-      dry run measures fame in its after-step) or of the next one, and its measured neighbours are
-      listed as *measured, not compared with it*. A place no run can measure, one whose membership's
+      dry run measures fame in its after-step) or of the next one, and each of its measured
+      neighbours says it is not compared until the place is measured. A place no run can measure, one whose membership's
       key is no Wikidata item (`measurableSql` in `services/sync/crowding.ts`, a church a curator
       made by hand), is never measured, and the window and its card say so (`measurable`). The circle also says how many of the better known
       it does not list (`comparedUnlisted`): "2 more better known are not listed here: outside your
@@ -6196,8 +6208,8 @@ Maggiore, and crowds out 51 more of its churches.
       in a place's circle, the radius as a dashed circle drawn on the sphere (`radiusCircle`) and
       framed, the place ringed and every other place in its group's look: what it is compared with
       marked, the better known it is not compared with ringed, the less known faded, the ones not
-      measured yet hollow. The legend names the groups
-      the list shows in the list's words, and a hover over a dot says its group. A hover over a
+      measured yet hollow. The legend names the circle's groups
+      (`GROUP_WORDS`), and a hover over a dot says its group. A hover over a
       region's dot says why the place stands where it does, a click opens its circle, and a row and its dot
       share the hovered membership. `@turf/turf`'s `circle` is not used: imported from the
       window's chunk, it put 19 kB into the visitor's entry chunk.
