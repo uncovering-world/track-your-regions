@@ -22,6 +22,7 @@ import type { Experience } from '../../api/experiences';
 import type { ActiveView } from '../../hooks/useDiscoverExperiences';
 import { useRegionLocations } from '../../hooks/useRegionLocations';
 import { buildExperienceMarkers, representablePlaces } from '../experienceMarkers/buildMarkers';
+import { ownPoint } from '../../utils/placePosition';
 import { DiscoverExperienceList } from './DiscoverExperienceList';
 import { DiscoverHoverCard } from './DiscoverHoverCard';
 import { useAuth } from '../../hooks/useAuth';
@@ -32,7 +33,7 @@ import { isWebGLAvailable } from '../../utils/webgl';
 import { SCENE_SOURCES, buildHighlightData, buildMarkerFeatures } from '../experienceMarkers/scene';
 import { useDiscoverMap } from './useDiscoverMap';
 import { useDiscoverHover } from './useDiscoverHover';
-import { frameGeoJson } from '../../utils/mapUtils';
+import { frameFocus, frameGeoJson } from '../../utils/mapUtils';
 import { foldLabel } from '@tyr/shared/labels';
 import { narrowToType, offeredType, typeChoices } from '../../utils/typeChoices';
 import type { RegionTail } from '../../hooks/useRegionTail';
@@ -139,8 +140,8 @@ export function DiscoverExperienceView({
 
   /**
    * Where an object is drawn, for the hover ring: its places, or the place's own
-   * point when the batch holds none of them — and nothing for an object made of
-   * parts then, which has no point of its own (#2122).
+   * point when the batch holds none of them — and nothing for a whole then,
+   * which has no point of its own (#2122).
    */
   const drawnCoordsRef = useRef((_expId: number): [number, number][] => []);
   drawnCoordsRef.current = (expId: number): [number, number][] => {
@@ -158,7 +159,8 @@ export function DiscoverExperienceView({
     }
     // The list's row, or the tail's for a card a crowded city leaves out (#2224).
     const exp = findExperience(expId);
-    return exp && !exp.has_parts ? [[exp.longitude, exp.latitude]] : [];
+    const own = exp ? ownPoint(exp) : null;
+    return own ? [own] : [];
   };
 
   /** The set this map last framed, so a redraw — or a reveal of lost places — does not re-frame. */
@@ -381,6 +383,10 @@ export function DiscoverExperienceView({
     return () => { map.off('load', updateData); };
   }, [typedExperiences, experienceSet, selectedExperienceId, locationsByExperience, locationsResolved, activeView?.kindId]);
 
+  // The frame of the selected whole's places, for a selection whose places
+  // did not arrive (#2122): the list's row or the tail's carries it.
+  const selectedFocus = selectedExperienceId == null ? undefined : findExperience(selectedExperienceId)?.focus;
+
   // ── Update highlight markers + delayed flyTo ──
   useEffect(() => {
     const map = mapRef.current;
@@ -439,17 +445,26 @@ export function DiscoverExperienceView({
       if (!selectedLocationsResolved) return;
       if (selectedFromMapIdRef.current === selectedExperienceId) return;
       if (flownForRef.current === selectedExperienceId) return;
+      // Nothing to frame yet: the places can settle empty, a failed fetch,
+      // before the row that carries the frame arrives, as a shared link's
+      // does. Latching now would refuse that frame when it comes.
+      const places = selectedExperienceLocations?.length ? selectedExperienceLocations : null;
+      if (!places && !selectedFocus) return;
       flownForRef.current = selectedExperienceId;
-      if (selectedExperienceLocations && selectedExperienceLocations.length > 0) {
-        if (selectedExperienceLocations.length === 1) {
+      if (places) {
+        if (places.length === 1) {
           map.flyTo({
-            center: [selectedExperienceLocations[0].lng, selectedExperienceLocations[0].lat],
+            center: [places[0].lng, places[0].lat],
             zoom: Math.max(map.getZoom(), 8),
             duration: 800,
           });
         } else {
-          frameGeoJson(map, pointsOf(selectedExperienceLocations), { padding: 60, maxZoom: 12, duration: 800 });
+          frameGeoJson(map, pointsOf(places), { padding: 60, maxZoom: 12, duration: 800 });
         }
+      } else {
+        // A whole whose places did not arrive: the frame the server measured
+        // over them, since it has no point of its own to fall back to (#2122).
+        frameFocus(map, selectedFocus, { padding: 60, maxZoom: 12, duration: 800 });
       }
     }, 350);
 
@@ -457,7 +472,7 @@ export function DiscoverExperienceView({
       clearTimeout(flyTimer);
       map.off('load', updateHighlight);
     };
-  }, [selectedExperienceLocations, selectedExperienceId, selectedLocationsResolved]);
+  }, [selectedExperienceLocations, selectedExperienceId, selectedLocationsResolved, selectedFocus]);
 
 
   const handleVisitedToggle = useCallback(

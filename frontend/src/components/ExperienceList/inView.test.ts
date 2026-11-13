@@ -73,10 +73,10 @@ describe('experienceIdsInView', () => {
   });
 
   it('keeps a whole whose parts the batch does not hold, which draws no pin to be out of view', () => {
-    // An object made of parts has no point of its own (#2122): with none of its
-    // parts at hand the map draws nothing for it, and the list keeps the row
-    // rather than hiding it for a pin that is nowhere.
-    const whole = { ...exp(1175, 100, 40), has_parts: true } as Experience;
+    // A whole has no point of its own (#2122): with none of its parts at hand
+    // the map draws nothing for it, and the list keeps the row rather than
+    // hiding it for a pin that is nowhere.
+    const whole = { ...exp(1175, 0, 0), has_parts: true, longitude: null, latitude: null } as Experience;
     expect(experienceIdsInView([whole], {}, PRAGUE).has(1175)).toBe(true);
     // Its parts at hand, it is in view where one of them is.
     expect(experienceIdsInView([whole], { 1175: [place(10, -5.99, 37.39)] }, PRAGUE).has(1175)).toBe(false);

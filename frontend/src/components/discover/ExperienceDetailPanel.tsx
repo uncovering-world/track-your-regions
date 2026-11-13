@@ -50,6 +50,7 @@ import { PlaceLinks } from '../shared/PlaceLinks';
 import { PlaceSubtitle, descriptionBeyondSubtitle } from '../shared/PlaceSubtitle';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
+import { NoPlaceShownNote } from '../shared/NoPlaceShownNote';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { CommemoratesLine } from '../shared/CommemoratesLine';
@@ -506,6 +507,8 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
         </Box>
         {/* Where the maps link leads only roughly, the panel says so (#1912). */}
         {displayLocations.length === 1 && <ApproximateLocationNote reason={displayLocations[0].approximate} />}
+        {/* A whole with no place on the map yet, which the map cannot show (#2122). */}
+        <NoPlaceShownNote place={experience} />
       </Box>
     </Box>
   );

@@ -168,7 +168,7 @@ export interface CodeExchanged {
 }
 
 /**
- * The frame a camera fits, [west, south, east, north], stored from `geometry_focus()`. West greater than east means the frame crosses the antimeridian.
+ * The frame a camera fits, [west, south, east, north], measured by `geometry_focus()`. West greater than east means the frame crosses the antimeridian.
  * @minItems 4
  * @maxItems 4
  */
@@ -2291,6 +2291,14 @@ export const ExperienceSearchResultExistence = {
 } as const;
 
 /**
+ * Where a whole is, measured over the places of it this caller is shown, as a region's frame is (#2122): the Struve Geodetic Arc from Hammerfest to the Black Sea. A whole has no coordinate of its own.
+ */
+export interface PlaceFocus {
+  bbox: FocusBbox;
+  anchorPoint: AnchorPoint;
+}
+
+/**
  * A region an object can be opened at, in a world view the caller may see.
  */
 export interface ExperienceRegionRef {
@@ -2345,8 +2353,15 @@ export interface ExperienceSearchResult {
   source_membership: ExperienceSearchResultSourceMembership;
   existence: ExperienceSearchResultExistence;
   missing_since: string | null;
-  longitude: number;
-  latitude: number;
+  /**
+     * Where a reader is sent: the place's own point, or the nearest of its points to its own coordinate. Null on a whole, which a reader is shown by its places (#2122).
+     * @nullable
+     */
+  longitude: number | null;
+  /** @nullable */
+  latitude: number | null;
+  /** Only on a whole a reader is shown a place of: the frame of its places, which a map frames it by while it holds none of them. */
+  focus?: PlaceFocus;
   relevance: number;
   /** Whether a crowded city crowds the place out of every list it is in (ADR-0172): ten better-known places of its kind and type lie within 10 km, or a curator who weighed them keeps it in the shadow (ADR-0180). It is opened from its region's tail, never from the list itself. */
   in_tail: boolean;
@@ -2578,8 +2593,15 @@ export interface Experience {
   in_danger: boolean;
   /** The year the site was listed in danger. Null where the listing carries no year. */
   danger_since: number | null;
-  longitude: number;
-  latitude: number;
+  /**
+     * Where a reader is sent: the place's own point, or the nearest of its points to its own coordinate. Null on a whole, which a reader is shown by its places (#2122).
+     * @nullable
+     */
+  longitude: number | null;
+  /** @nullable */
+  latitude: number | null;
+  /** Only on a whole a reader is shown a place of: the frame of its places, which a map frames it by while it holds none of them. */
+  focus?: PlaceFocus;
   kind_name: string;
   /**
      * The kind's display order, which the list orders by.
@@ -2870,8 +2892,15 @@ export interface ExperienceDetail {
   source_membership: ExperienceDetailSourceMembership;
   existence: ExperienceDetailExistence;
   missing_since: string | null;
-  longitude: number;
-  latitude: number;
+  /**
+     * Where a reader is sent: the place's own point, or the nearest of its points to its own coordinate. Null on a whole, which a reader is shown by its places (#2122).
+     * @nullable
+     */
+  longitude: number | null;
+  /** @nullable */
+  latitude: number | null;
+  /** Only on a whole a reader is shown a place of: the frame of its places, which a map frames it by while it holds none of them. */
+  focus?: PlaceFocus;
   /** The site's extent from OpenStreetMap, simplified past 5,000 vertices (ADR-0059). */
   boundary_geojson: MultiPolygon | null;
   /** @nullable */

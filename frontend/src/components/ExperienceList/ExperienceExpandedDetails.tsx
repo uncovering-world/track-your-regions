@@ -48,6 +48,7 @@ import { PlaceLinks } from '../shared/PlaceLinks';
 import { descriptionBeyondSubtitle } from '../shared/PlaceSubtitle';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
+import { NoPlaceShownNote } from '../shared/NoPlaceShownNote';
 import { ShareButton } from '../shared/ShareButton';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
@@ -382,6 +383,8 @@ function ExperienceExpandedDetailsComponent({
       </Box>
       {/* Where the maps link leads only roughly, the card says so (#1912). */}
       <ApproximateLocationNote reason={onlyPoint?.approximate} />
+      {/* A whole with no place on the map yet, which the map cannot show (#2122). */}
+      <NoPlaceShownNote place={experience} />
 
       {/* What comes from this site and where a traveller sees it — a site's
           counterpart of the works list below, which a site never has. */}

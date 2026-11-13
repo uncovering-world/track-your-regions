@@ -56,11 +56,11 @@ import { ExperienceMarkers } from './ExperienceMarkers';
 /**
  * The Prehistoric Pile Dwellings around the Alps as an archaeology tail's place
  * made of parts, with two of its pile-dwelling sites (See in Austria, Riesi in
- * Switzerland). The coordinate its row carries is no point a traveller goes to.
+ * Switzerland), and no coordinate of its own on its row.
  */
 const PILE_DWELLINGS = {
   id: 418, name: 'Prehistoric Pile Dwellings around the Alps', kind_name: 'Archaeology', kind_id: 5,
-  has_parts: true, longitude: 8.201, latitude: 47.317,
+  has_parts: true, longitude: null, latitude: null,
 } as Experience;
 
 /** A place of its own crowded out of Rome's archaeology. */

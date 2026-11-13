@@ -37,6 +37,7 @@ import { useFoldedCard, type FoldedInto } from './useFoldedCard';
 import type { AppAddress } from '../utils/appUrl';
 import { queryKeys } from '../api/queryKeys';
 import { byFame, shownInKind } from '../utils/placeKinds';
+import { ownPoint } from '../utils/placePosition';
 import { useRegionTail, type CrowdedOutCount } from './useRegionTail';
 import { kindlessLookup, kindlessOutcome, useKindlessCard } from './useKindlessCard';
 
@@ -375,11 +376,11 @@ export function useDiscoverExperiences() {
         externalRef: l.external_ref ?? undefined,
       }));
     }
-    // Fallback to the place's own coordinate; an object made of parts has none
-    // of its own to fall back to (#2122).
+    // Fallback to the place's own coordinate; a whole has none to fall back to
+    // (#2122), and the view frames it by its `focus` instead.
     const exp = findExperience(selectedExperienceId);
-    if (exp && !exp.has_parts) return [{ lng: exp.longitude, lat: exp.latitude }];
-    return null;
+    const own = exp ? ownPoint(exp) : null;
+    return own ? [{ lng: own[0], lat: own[1] }] : null;
   }, [selectedExperienceId, selectedLocationsData, findExperience]);
 
   /** What a row of the current level knows about itself: enough to be selected. */
