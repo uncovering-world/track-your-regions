@@ -295,10 +295,19 @@ describe('review address', () => {
       expect(parseReviewUrl('?run=98&row=nonsense')).toEqual({ ...EMPTY_REVIEW, runId: 98 });
     });
 
-    it('reads view=crowded only, anything else as the queue’s tab', () => {
+    it('reads view=crowded and view=map only, anything else as the queue’s list', () => {
       expect(parseReviewUrl('?view=crowded')).toEqual({ ...EMPTY_REVIEW, view: 'crowded' });
+      expect(parseReviewUrl('?view=map')).toEqual({ ...EMPTY_REVIEW, view: 'map' });
       expect(parseReviewUrl('?view=questions')).toEqual(EMPTY_REVIEW);
       expect(parseReviewUrl('?view=crowds')).toEqual(EMPTY_REVIEW);
+      expect(parseReviewUrl('?view=Map')).toEqual(EMPTY_REVIEW);
+    });
+
+    // The map is the queue's own tab drawn another way (#2477): the filters, the search and
+    // the open question are read beside it as they are beside the list, and no group is.
+    it('reads the map with the filters and the open question it carries over, never a group', () => {
+      expect(parseReviewUrl('?region=6737&kind=arrival&row=waiting:11586&view=map&crowd=7-9-square&place=4412'))
+        .toEqual({ ...EMPTY_REVIEW, regionId: 6737, kinds: ['arrival'], row: 'waiting:11586', view: 'map' });
     });
 
     it('reads a crowded city’s group on its own tab only, garbage as absent', () => {
@@ -399,6 +408,12 @@ describe('review address', () => {
       expect(crowdGroupOf(null)).toBeNull();
     });
 
+    it('writes the map after the open question, and a group never beside it', () => {
+      expect(buildReviewUrl({ ...EMPTY_REVIEW, view: 'map' })).toBe('/review?view=map');
+      expect(buildReviewUrl({ ...EMPTY_REVIEW, regionId: 6737, row: 'conflicts:88', view: 'map', crowd: '7-9-square' }))
+        .toBe('/review?region=6737&row=conflicts:88&view=map');
+    });
+
     it('writes a crowded city’s group only on its own tab', () => {
       expect(buildReviewUrl({ ...EMPTY_REVIEW, view: 'crowded' })).toBe('/review?view=crowded');
       expect(buildReviewUrl({ ...EMPTY_REVIEW, view: 'crowded', crowd: '8-4-holy site' })).toBe('/review?view=crowded&crowd=8-4-holy+site');
@@ -448,6 +463,8 @@ describe('review address', () => {
       { ...EMPTY_REVIEW, row: 'withdrawn:2' },
       { ...EMPTY_REVIEW, row: 'refused:3' },
       { ...EMPTY_REVIEW, row: 'missing:4' },
+      { ...EMPTY_REVIEW, view: 'map' },
+      { ...EMPTY_REVIEW, view: 'map', regionId: 6737, kinds: ['arrival'], row: 'waiting:11586' },
       { ...EMPTY_REVIEW, view: 'crowded' },
       { ...EMPTY_REVIEW, view: 'crowded', crowd: '7-9-square' },
       { ...EMPTY_REVIEW, view: 'crowded', crowd: 'none-4' },

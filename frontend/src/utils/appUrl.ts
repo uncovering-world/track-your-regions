@@ -249,8 +249,9 @@ export function legacyRedirect(pathname: string, search: string): string | null 
  * `GET /api/experiences/review/queue` already reads (`q`, `sort`, `source`,
  * `kind`, `region`, `run`, `aside`, and `row` for the selected card, which the
  * first read of a list sends as the queue's `row` so a link opens on its page, #843),
- * and two of the page's own: `view` for the tab open (#2282), and `crowd` for the
- * crowded city's group the *Crowded cities* tab shows, read only on that tab.
+ * and two of the page's own: `view` for the tab open (#2282) and the queue drawn
+ * on a map rather than as a list (#2477), and `crowd` for the crowded city's group
+ * the *Crowded cities* tab shows, read only on that tab.
  */
 export interface ReviewAddress {
   /** '' when absent. Trimmed and capped at 100 characters — the API's own `q` limit, enforced on both the read and the write. */
@@ -269,8 +270,11 @@ export interface ReviewAddress {
   showAside: boolean;
   /** ?row=waiting:11586 — `${kind}:${id}`, the QueueRow key. */
   row: string | null;
-  /** ?view=crowded — the tab open; `questions`, the queue, is the default and writes nothing. */
-  view: 'questions' | 'crowded';
+  /**
+   * ?view=crowded — the tab open, or ?view=map — the queue's tab with its questions on a map
+   * rather than listed (#2477). `questions`, the queue as a list, is the default and writes nothing.
+   */
+  view: 'questions' | 'map' | 'crowded';
   /** ?crowd=7-9-square — the crowded city's group open on that tab (`crowdKeyOf`); null on the queue's tab. */
   crowd: string | null;
   /** ?place=4412 — the place of that group open in its own circle, by its membership (#2358); null in the region's list. */
@@ -409,8 +413,9 @@ export function parseReviewUrl(search: string): ReviewAddress {
   const params = new URLSearchParams(search);
 
   const rawRegion = params.get('region');
-  // An unknown tab reads as the queue's; a group is read only on the tab that shows it.
-  const view = params.get('view') === 'crowded' ? 'crowded' : 'questions';
+  // An unknown tab reads as the queue's list; a group is read only on the tab that shows it.
+  const rawView = params.get('view');
+  const view = rawView === 'crowded' || rawView === 'map' ? rawView : 'questions';
   const crowd = view === 'crowded' ? readCrowd(params.get('crowd')) : null;
 
   return {
@@ -445,11 +450,17 @@ export function buildReviewUrl(a: ReviewAddress): string {
   if (a.runId !== null) parts.push(`run=${a.runId}`);
   if (a.showAside) parts.push('aside=show');
   if (a.row !== null) parts.push(`row=${a.row}`);
-  if (a.view === 'crowded') {
-    parts.push('view=crowded');
-    // Encoded as the search is: a type's space travels as `+`.
-    if (a.crowd !== null) parts.push(new URLSearchParams({ crowd: a.crowd }).toString());
-    if (a.crowd !== null && a.crowdPlace !== null) parts.push(`place=${a.crowdPlace}`);
-  }
+  parts.push(...viewParts(a));
   return parts.length > 0 ? `/review?${parts.join('&')}` : '/review';
+}
+
+/** The tab and what it shows: the map, or a crowded city's group and its place; nothing for the list. */
+function viewParts(a: ReviewAddress): string[] {
+  if (a.view === 'map') return ['view=map'];
+  if (a.view !== 'crowded') return [];
+  const parts = ['view=crowded'];
+  // Encoded as the search is: a type's space travels as `+`.
+  if (a.crowd !== null) parts.push(new URLSearchParams({ crowd: a.crowd }).toString());
+  if (a.crowd !== null && a.crowdPlace !== null) parts.push(`place=${a.crowdPlace}`);
+  return parts;
 }
