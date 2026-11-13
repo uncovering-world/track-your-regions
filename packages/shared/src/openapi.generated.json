@@ -26097,10 +26097,21 @@
             "description": "The year the site was listed in danger. Null where the listing carries no year."
           },
           "longitude": {
-            "type": "number"
+            "description": "Where a reader is sent: the place's own point, or the nearest of its points to its own coordinate. Null on a whole, which a reader is shown by its places (#2122).",
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "latitude": {
-            "type": "number"
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "focus": {
+            "description": "Only on a whole a reader is shown a place of: the frame of its places, which a map frames it by while it holds none of them.",
+            "$ref": "#/components/schemas/PlaceFocus"
           },
           "kind_name": {
             "type": "string"
@@ -26446,10 +26457,21 @@
             ]
           },
           "longitude": {
-            "type": "number"
+            "description": "Where a reader is sent: the place's own point, or the nearest of its points to its own coordinate. Null on a whole, which a reader is shown by its places (#2122).",
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "latitude": {
-            "type": "number"
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "focus": {
+            "description": "Only on a whole a reader is shown a place of: the frame of its places, which a map frames it by while it holds none of them.",
+            "$ref": "#/components/schemas/PlaceFocus"
           },
           "boundary_geojson": {
             "anyOf": [
@@ -27132,10 +27154,21 @@
             ]
           },
           "longitude": {
-            "type": "number"
+            "description": "Where a reader is sent: the place's own point, or the nearest of its points to its own coordinate. Null on a whole, which a reader is shown by its places (#2122).",
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "latitude": {
-            "type": "number"
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "focus": {
+            "description": "Only on a whole a reader is shown a place of: the frame of its places, which a map frames it by while it holds none of them.",
+            "$ref": "#/components/schemas/PlaceFocus"
           },
           "relevance": {
             "type": "number"
@@ -28475,7 +28508,7 @@
         "items": false,
         "minItems": 4,
         "maxItems": 4,
-        "description": "The frame a camera fits, [west, south, east, north], stored from `geometry_focus()`. West greater than east means the frame crosses the antimeridian."
+        "description": "The frame a camera fits, [west, south, east, north], measured by `geometry_focus()`. West greater than east means the frame crosses the antimeridian."
       },
       "FoundSuggestion": {
         "type": "object",
@@ -33644,6 +33677,23 @@
         ],
         "additionalProperties": false,
         "description": "What OpenStreetMap holds at a point: the object nearest it, at the level of a building (Nominatim's reverse lookup). Every field null where it holds nothing there. The data is OpenStreetMap contributors', under the ODbL."
+      },
+      "PlaceFocus": {
+        "type": "object",
+        "properties": {
+          "bbox": {
+            "$ref": "#/components/schemas/FocusBbox"
+          },
+          "anchorPoint": {
+            "$ref": "#/components/schemas/AnchorPoint"
+          }
+        },
+        "required": [
+          "bbox",
+          "anchorPoint"
+        ],
+        "additionalProperties": false,
+        "description": "Where a whole is, measured over the places of it this caller is shown, as a region's frame is (#2122): the Struve Geodetic Arc from Hammerfest to the Black Sea. A whole has no coordinate of its own."
       },
       "PlaceIdentifier": {
         "type": "object",

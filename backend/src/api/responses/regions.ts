@@ -12,18 +12,7 @@
  */
 
 import { z } from 'zod/v4';
-import { MultiPolygon } from './experiences.js';
-
-export const FocusBbox = z.tuple([z.number(), z.number(), z.number(), z.number()])
-  .describe(
-    'The frame a camera fits, [west, south, east, north], stored from `geometry_focus()`.'
-    + ' West greater than east means the frame crosses the antimeridian.',
-  );
-export type FocusBbox = z.infer<typeof FocusBbox>;
-
-export const AnchorPoint = z.tuple([z.number(), z.number()])
-  .describe('The centre of the focus frame, [lng, lat]: where the camera goes for a frame that crosses the antimeridian.');
-export type AnchorPoint = z.infer<typeof AnchorPoint>;
+import { AnchorPoint, FocusBbox, MultiPolygon } from './experiences.js';
 
 export const Region = z.strictObject({
   id: z.number().int(),

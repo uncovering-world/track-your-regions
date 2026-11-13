@@ -248,6 +248,27 @@ describe('readerPositionSql', () => {
     expect(readerPositionSql('x')).toContain('WHERE el_own.experience_id = x.id');
     expect(readerPositionSql('x')).toContain('WHERE el_prt.whole_id = x.id');
     expect(readerPositionSql('x')).toContain('ORDER BY el.location::geography <-> x.location::geography');
+    expect(readerPositionSql('x')).toContain('WHERE made_of.whole_id = x.id)');
+  });
+
+  it('answers a whole with no coordinate, and with the frame of its places (#2122)', () => {
+    // Seville's site is its three places, and no point of it stands for the
+    // other two: both axes are null on a whole, and only a whole has a frame.
+    const sql = readerPositionSql('e');
+    expect(sql).toMatch(/CASE WHEN NOT EXISTS \(SELECT 1 FROM experience_parts made_of WHERE made_of\.whole_id = e\.id\) THEN ST_X\([\s\S]*?END as longitude/);
+    expect(sql).toMatch(/CASE WHEN NOT EXISTS \(SELECT 1 FROM experience_parts made_of WHERE made_of\.whole_id = e\.id\) THEN ST_Y\([\s\S]*?END as latitude/);
+    expect(sql).toMatch(/CASE WHEN EXISTS \(SELECT 1 FROM experience_parts made_of WHERE made_of\.whole_id = e\.id\) THEN \(SELECT json_build_object[\s\S]*?END as focus$/);
+  });
+
+  it("frames a whole by the rule a region is framed by, over the places this caller is shown", () => {
+    const focus = readerPositionSql('e', '$2').split('THEN (SELECT json_build_object')[1];
+    expect(focus).toContain('FROM geometry_focus((SELECT ST_Collect(wf_el.location)');
+    // Its own points and its parts', gated as the nearest point is.
+    expect(focus).toContain('WHERE wf_el_own.experience_id = e.id');
+    expect(focus).toContain('WHERE wf_el_prt.whole_id = e.id');
+    expect(focus).toContain("wf_el.missing_since IS NULL");
+    expect(focus).toContain("wf_el.existence <> 'lost'");
+    expect(focus).toContain("($2::boolean OR wf_el.curation_state <> 'pending')");
   });
 });
 

@@ -13,7 +13,8 @@
 
 import { z } from 'zod/v4';
 import { OperationProgressAnswer } from './operation.js';
-import { AnchorPoint, AreaGeometry, FocusBbox } from './regions.js';
+import { AnchorPoint, FocusBbox } from './experiences.js';
+import { AreaGeometry } from './regions.js';
 
 // ---------------------------------------------------------------------------
 // One region's computation, streamed

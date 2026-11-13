@@ -13,7 +13,7 @@ import { analyzeUnionInputs, cleanUnion, clearUnionWork, unionCollected } from '
 import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
 import type { ComputeProgressEvent } from '../../api/responses/geometry.js';
 import type { computeSSEQuerySchema, regionIdParamSchema } from '../../types/index.js';
-import type { AnchorPoint, FocusBbox } from '../../api/responses/regions.js';
+import type { AnchorPoint, FocusBbox } from '../../api/responses/experiences.js';
 import { GEOMETRY_STATEMENT_TIMEOUT_MS } from './geometryTimeouts.js';
 import { isQueryCanceled } from '../../db/queryCanceled.js';
 

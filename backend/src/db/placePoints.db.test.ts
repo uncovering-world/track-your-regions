@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import { anchorToItsPoint, lockExperience } from './experienceWriter.js';
 import { setPointVerdict } from '../controllers/experience/experienceLocationWriter.js';
-import { pointsShownSql } from './placePoints.js';
+import { isWholeSql, pointsShownSql } from './placePoints.js';
 import { someoneVisitedPointSql } from './visits.js';
 import { getExperienceLocations, getRegionExperienceLocations } from '../controllers/experience/experienceLocationController.js';
 import { editLocation } from '../controllers/experience/locationEditController.js';
@@ -15,13 +15,13 @@ import { getVisitedIds, markVisited, unmarkVisited } from '../controllers/experi
 import { getReviewQueue } from '../controllers/experience/reviewQueueController.js';
 import { ReviewQueue } from '../api/responses/reviewQueue.js';
 import { catalogueAssertions } from '../controllers/admin/dataAssertions/catalogueAssertions.js';
-import { getExperience, getExperiencesByRegion } from '../controllers/experience/experienceQueryController.js';
+import { getExperience, getExperiencesByRegion, searchExperiences } from '../controllers/experience/experienceQueryController.js';
 import { queryComponentItems } from '../controllers/experience/reviewQueueComponentItems.js';
 import { getWorldPoints } from '../controllers/experience/worldPointsController.js';
 import { assignExperiencesToRegions, assignRegionsForExperiences } from '../services/sync/regionAssignmentService.js';
 import {
-  experienceLocationsQuerySchema, experiencesByRegionQuerySchema, regionLocationsQuerySchema, reviewQueueQuerySchema,
-  worldPointsQuerySchema,
+  experienceLocationsQuerySchema, experienceSearchQuerySchema, experiencesByRegionQuerySchema, regionLocationsQuerySchema,
+  reviewQueueQuerySchema, worldPointsQuerySchema,
 } from '../types/index.js';
 
 /**
@@ -817,5 +817,81 @@ describe('a part reads as a place (ADR-0100, #1425)', () => {
 
     await unmarkAllLocationsVisited({ params: { experienceId: KARNAK }, query: {}, caller: traveller() });
     expect((await pool.query(HELD, [userId])).rows).toEqual([]);
+  });
+});
+
+describe('a whole is framed by its places, and stands at none of them (#2122)', () => {
+  /**
+   * The site as the reads that position a place answer it: its own card and
+   * the search, and the region's list where `withList` asks for it. The list
+   * is asked only while the site's places stand where its region row put it.
+   */
+  async function readsOfSite(withList = false) {
+    const card = await getExperience({ params: { id: SITE }, caller: undefined });
+    const search = await searchExperiences({
+      query: experienceSearchQuerySchema.parse({ q: 'Ancient Thebes with its Necropolis (parts fixture)' }),
+    });
+    const reads = [card, search.results.find(r => r.id === SITE)];
+    if (!withList) return reads;
+    const list = await getExperiencesByRegion({
+      params: { regionId }, query: experiencesByRegionQuerySchema.parse({ includeChildren: 'false' }), caller: undefined,
+    });
+    return [...reads, list.experiences.find(e => e.id === SITE)];
+  }
+
+  it('asks whether a place is a whole as place_is_whole() answers it', async () => {
+    // The site is made of the two temples; the Temple of Karnak is made of nothing.
+    const { rows } = await pool.query<{ id: number; inline: boolean; called: boolean }>(
+      `SELECT e.id, ${isWholeSql('e.id')} AS inline, place_is_whole(e.id) AS called
+         FROM experiences e WHERE e.id = ANY($1::int[]) ORDER BY e.id`,
+      [[SITE, KARNAK]],
+    );
+    expect(rows).toEqual([{ id: SITE, inline: true, called: true }, { id: KARNAK, inline: false, called: false }]);
+  });
+
+  it('answers the site with no coordinate and the frame of the Luxor Temple and the Temple of Karnak', async () => {
+    const reads = await readsOfSite(true);
+    expect(reads).toHaveLength(3);
+    for (const read of reads) {
+      expect(read).toMatchObject({ longitude: null, latitude: null });
+      expect(read?.focus?.bbox).toEqual([32.639, 25.6995, 32.6573, 25.7188]);
+      expect(read?.focus?.anchorPoint[0]).toBeCloseTo(32.64815, 6);
+      expect(read?.focus?.anchorPoint[1]).toBeCloseTo(25.70915, 6);
+    }
+  });
+
+  it('frames a site whose places lie either side of the antimeridian as a window across it, through its anchor', async () => {
+    // Two places of Fiji either side of the 180th meridian: 0.9 degrees apart across it, not 359 across Greenwich.
+    await pool.query('UPDATE experience_locations SET location = ST_SetSRID(ST_MakePoint(179.5, -16.8), 4326) WHERE id = $1', [luxorPoint]);
+    await pool.query('UPDATE experience_locations SET location = ST_SetSRID(ST_MakePoint(-179.6, -16.5), 4326) WHERE id = $1', [karnakPoint]);
+    for (const read of await readsOfSite()) {
+      expect(read?.focus?.bbox).toEqual([179.5, -16.8, -179.6, -16.5]);
+      expect(read?.focus?.anchorPoint).toEqual([179.95, -16.65]);
+    }
+  });
+
+  it('frames the site by the places a reader is shown of it, and by none when it shows none', async () => {
+    await pool.query('UPDATE experience_locations SET missing_since = NOW() WHERE id = $1', [karnakPoint]);
+    const [row] = await readsOfSite();
+    expect(row?.focus?.bbox).toEqual([32.639, 25.6995, 32.639, 25.6995]);
+    await pool.query('UPDATE experience_locations SET missing_since = NOW() WHERE id = $1', [luxorPoint]);
+    const [none] = await readsOfSite();
+    expect(none).toMatchObject({ longitude: null, latitude: null });
+    expect(none).not.toHaveProperty('focus');
+  });
+
+  it('sends a place of its own to its own point, with no frame', async () => {
+    // The Temple of Karnak as a place of worship of its own, listed in the region beside its site.
+    await pool.query(
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
+      [KARNAK, KARNAK_ITEM],
+    );
+    const list = await getExperiencesByRegion({
+      params: { regionId }, query: experiencesByRegionQuerySchema.parse({ includeChildren: 'false' }), caller: undefined,
+    });
+    const karnak = list.experiences.find(e => e.id === KARNAK);
+    expect(karnak).toMatchObject({ longitude: 32.6573, latitude: 25.7188 });
+    expect(karnak).not.toHaveProperty('focus');
   });
 });

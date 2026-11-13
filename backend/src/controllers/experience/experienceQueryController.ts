@@ -425,6 +425,7 @@ export async function searchExperiences(
       m.missing_since,
       m.longitude,
       m.latitude,
+      m.focus,
       m.relevance,
       m.in_tail,
       -- Where this object can be opened. Published world views only: an
