@@ -10,9 +10,10 @@ import { VirtualRow } from './VirtualRow';
  * no layout, which is what keeps a hover cheap.
  */
 
-/** happy-dom has no ResizeObserver; this one only remembers what is watched. */
+/** happy-dom has no ResizeObserver; this one takes its callback as the real one does and only remembers what is watched. */
 class FakeResizeObserver {
   static readonly observed = new Set<Element>();
+  constructor(readonly callback: ResizeObserverCallback) {}
   observe(target: Element) { FakeResizeObserver.observed.add(target); }
   unobserve(target: Element) { FakeResizeObserver.observed.delete(target); }
   disconnect() { FakeResizeObserver.observed.clear(); }

@@ -60,6 +60,7 @@ import { inDangerLabel } from '../../utils/dangerLabel';
 import { queryKeys } from '../../api/queryKeys';
 import { VISIT_BUTTON_LABEL, offersWholeTick } from '../shared/visitWords';
 import { WholeVisitButton } from '../shared/WholeVisitButton';
+import { LazyTripsSection } from '../shared/lazyVisitTrips';
 
 interface ExperienceDetailPanelProps {
   experience: Experience;
@@ -358,6 +359,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             />
           </Box>
         )}
+
+        {/* The trips of the traveller's own visit, as on Map mode's card (#2120). */}
+        {isAuthenticated && <LazyTripsSection experienceId={experience.id} />}
 
         {/* Locations section */}
         {listsPlaces && (

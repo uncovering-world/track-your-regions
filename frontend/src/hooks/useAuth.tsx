@@ -4,6 +4,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useLayoutEffect,
   type ReactNode,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,9 +22,11 @@ import {
   type ChangePasswordInput,
 } from '../api/auth';
 import {
-  getAccessToken as getGlobalAccessToken, setAccessToken as setGlobalAccessToken, refreshSession, setRefreshSuccessListener,
+  getAccessToken as getGlobalAccessToken, getHeldAccount, setAccessToken as setGlobalAccessToken, refreshSession,
+  setHeldAccount, setRefreshSuccessListener,
 } from '../api/fetchUtils';
 import { queryKeys } from '../api/queryKeys';
+import { forgetTraveller } from '../components/shared/visitRemovals';
 
 // =============================================================================
 // JWT Payload Type
@@ -88,6 +91,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'admin';
   const isCurator = user?.role === 'curator' || user?.role === 'admin';
 
+  // Every change of who is signed in forgets what the last traveller left in
+  // this tab: the query cache, and the client state kept outside it — the
+  // Undo of their last untick (`forgetTraveller`). One function, so a new
+  // path that changes the identity cannot forget half of it.
+  const forgetIdentity = useCallback(() => {
+    queryClient.clear();
+    forgetTraveller();
+  }, [queryClient]);
+  // Whose session the tab holds, for a refresh and a call made with no token to
+  // be compared with (`getHeldAccount`), written once the user is committed.
+  useLayoutEffect(() => setHeldAccount(user?.id ?? null), [user]);
+
   // ==========================================================================
   // Token Refresh (cookie-based — no localStorage)
   // ==========================================================================
@@ -146,14 +161,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGlobalAccessToken(null);
       tokenExpiresAt = null;
       setUser(null);
-      // Mirror logout(): drop TanStack Query's cache so authenticated data
+      // Mirror logout(): forget what the traveller left, so authenticated data
       // isn't displayed after the session is forcibly expired (e.g. expired
       // refresh cookie detected mid-session).
-      queryClient.clear();
+      forgetIdentity();
     };
     window.addEventListener('auth:session-expired', handleExpired);
     return () => window.removeEventListener('auth:session-expired', handleExpired);
-  }, [queryClient]);
+  }, [forgetIdentity]);
 
   // Keep useAuth's local tokenExpiresAt + user state in sync with refreshes
   // triggered from outside the hook (ensureFreshToken before SSE, apiFetch
@@ -164,7 +179,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessToken = data.accessToken;
       const payload = parseToken(data.accessToken);
       if (payload) tokenExpiresAt = payload.exp * 1000;
+      // The refresh cookie is every tab's: a refresh can return the session
+      // another tab signed in. That is a change of who is signed in like any
+      // other, and forgets what the last traveller left here.
+      const held = getHeldAccount();
+      const changed = held !== null && held !== data.user.id;
+      setHeldAccount(data.user.id);
       setUser(data.user);
+      if (changed) {
+        forgetIdentity();
+        return;
+      }
       // The list is now cached per identity, so a login or logout no longer needs
       // this — the new identity simply addresses a different entry. What it still
       // covers is the case the key cannot see: a refresh that returns the same
@@ -173,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries({ queryKey: queryKeys.worldViews.all });
     });
     return () => setRefreshSuccessListener(null);
-  }, [queryClient]);
+  }, [queryClient, forgetIdentity]);
 
   // ==========================================================================
   // Auth Actions
@@ -192,9 +217,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setUser(response.user);
 
-    // Invalidate all cached queries to refetch with new auth state
-    queryClient.clear();
-  }, [queryClient]);
+    // A new identity: forget what the last one left (`forgetIdentity`)
+    forgetIdentity();
+  }, [forgetIdentity]);
 
   const register = useCallback(async (credentials: RegisterCredentials): Promise<{ message: string }> => {
     const response = await apiRegister(credentials);
@@ -215,9 +240,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setUser(response.user);
 
-    // Invalidate all cached queries to refetch with new auth state
-    queryClient.clear();
-  }, [queryClient]);
+    // A new identity: forget what the last one left (`forgetIdentity`)
+    forgetIdentity();
+  }, [forgetIdentity]);
 
   const changePassword = useCallback(async (input: ChangePasswordInput): Promise<string> => {
     const response = await apiChangePassword(input);
@@ -247,12 +272,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokenExpiresAt = null;
     setUser(null);
 
-    // Invalidate all cached queries to force refetch with new auth state
-    queryClient.clear();
+    // No identity: forget what the last one left (`forgetIdentity`)
+    forgetIdentity();
 
     // Then notify server (fire and forget) — server clears cookie
     await apiLogout(endingToken);
-  }, [queryClient]);
+  }, [forgetIdentity]);
 
   // ==========================================================================
   // Token Access
@@ -325,8 +350,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLastGoogleEmail(userProfile.email);
         }
 
-        // Invalidate all cached queries to refetch with new auth state
-        queryClient.clear();
+        // A new identity: forget what the last one left (`forgetIdentity`)
+        forgetIdentity();
 
         return true;
       }
@@ -335,7 +360,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     return false;
-  }, [queryClient]);
+  }, [forgetIdentity]);
 
   // Expose handleOAuthResult on window for the callback handler
   useEffect(() => {

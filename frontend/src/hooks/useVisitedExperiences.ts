@@ -12,6 +12,7 @@ import {
   unmarkExperienceVisited, unmarkLocationVisited, unmarkTreasureViewed,
 } from '../api/visited';
 import { queryKeys } from '../api/queryKeys';
+import { noteRemovedVisits, writeOrigin } from '../components/shared/visitRemovals';
 import type { VisitedStatus } from '../api/visited';
 
 /**
@@ -57,11 +58,15 @@ export function useVisitedExperiences(kindId?: number) {
     },
   });
 
-  // Unmark as visited mutation
+  // Unmark as visited mutation. Who unticked is taken as the untick starts
+  // (`writeOrigin`): the answer's callbacks see the latest render, which may
+  // be another traveller's by the time it arrives.
   const unmarkVisitedMutation = useMutation({
     mutationKey: queryKeys.visited.write,
     mutationFn: unmarkExperienceVisited,
-    onSuccess: () => {
+    onMutate: () => writeOrigin(user?.id),
+    onSuccess: (answer, _variables, origin) => {
+      noteRemovedVisits(answer.removed, queryClient, origin);
       invalidateVisitedStatus(queryClient);
     },
   });
@@ -114,7 +119,9 @@ export function useVisitedLocations(experienceId?: number) {
   const unmarkLocationVisitedMutation = useMutation({
     mutationKey: queryKeys.visited.write,
     mutationFn: unmarkLocationVisited,
-    onSuccess: () => {
+    onMutate: () => writeOrigin(user?.id),
+    onSuccess: (answer, _variables, origin) => {
+      noteRemovedVisits(answer.removed, queryClient, origin);
       invalidateVisitedStatus(queryClient);
     },
   });
@@ -134,7 +141,9 @@ export function useVisitedLocations(experienceId?: number) {
     mutationKey: queryKeys.visited.write,
     mutationFn: ({ experienceId, regionId }: { experienceId: number; regionId?: number }) =>
       unmarkAllLocationsVisited(experienceId, regionId),
-    onSuccess: () => {
+    onMutate: () => writeOrigin(user?.id),
+    onSuccess: (answer, _variables, origin) => {
+      noteRemovedVisits(answer.removed, queryClient, origin);
       invalidateVisitedStatus(queryClient);
     },
   });

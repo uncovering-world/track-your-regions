@@ -107,6 +107,54 @@ function secondsLeftOn(token: string): number {
 }
 
 /**
+ * The account a token names (`sub`, the user's id), or null for no token or
+ * one that cannot be read.
+ */
+function accountOf(token: string | null): number | null {
+  if (!token) return null;
+  try {
+    return jwtDecode<{ sub?: number }>(token).sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const ACCOUNT_CHANGED = 'Nothing was sent. Another tab signed in to a different account, and this tab now uses it.';
+
+// The account the tab holds: the signed-in traveller `useAuth` last committed,
+// or the one a refresh has just returned, and null for none. A call made with
+// no token in hand, as after a failed refresh, is made as this account.
+let heldAccount: number | null = null;
+
+export function setHeldAccount(account: number | null): void {
+  heldAccount = account;
+}
+
+export function getHeldAccount(): number | null {
+  return heldAccount;
+}
+
+/** The account a call is made as: the one its token names, or the tab's where it holds no token. */
+function accountMadeAs(): number | null {
+  return accountOf(accessToken) ?? heldAccount;
+}
+
+/**
+ * A request is sent as the account it was made by, and never as another. The
+ * refresh cookie is shared by every tab, so a refresh can return the session
+ * another tab signed in: a request the tab made as one traveller, a restored
+ * visit or a trip's date, would then be sent, or retried, as the other. The
+ * call fails instead, and `useAuth` forgets the first traveller on the same
+ * refresh (`forgetIdentity`). Only a tab that has held no account, as before
+ * the first refresh on page load, makes a call as no one, which any session
+ * may then take; a send with no token goes as no one.
+ */
+function refuseAnotherAccount(madeAs: number | null): void {
+  const sending = accountOf(accessToken);
+  if (madeAs !== null && sending !== null && sending !== madeAs) throw new Error(ACCOUNT_CHANGED);
+}
+
+/**
  * Ensure the access token is fresh (not expired or expiring within 60s).
  * Used before SSE connections where EventSource can't handle 401 retry.
  *
@@ -240,8 +288,10 @@ async function parseJsonResponse<T>(response: Response, noContent: () => T): Pro
 }
 
 async function authFetchParsed<T>(url: string, options: RequestInit | undefined, noContent: () => T): Promise<T> {
+  const madeAs = accountMadeAs();
   // Proactively refresh token before it expires (prevents 401 round-trip)
   await ensureFreshToken();
+  refuseAnotherAccount(madeAs);
 
   const response = await fetch(url, { ...options, headers: buildJsonHeaders(options) });
   if (response.status !== 401) return parseJsonResponse<T>(response, noContent);
@@ -255,6 +305,7 @@ async function authFetchParsed<T>(url: string, options: RequestInit | undefined,
     return parseJsonResponse<T>(response, noContent);
   }
 
+  refuseAnotherAccount(madeAs);
   const retryResponse = await fetch(url, { ...options, headers: buildJsonHeaders(options) });
   return parseJsonResponse<T>(retryResponse, noContent);
 }
@@ -297,6 +348,7 @@ export async function apiFetch<T>(path: string, options: ApiRequestInit = {}): P
   const noContent = () => undefined as T;
   if (tokenPolicy === 'session') return authFetchParsed<T>(url, request, noContent);
   if (tokenPolicy === 'strict') {
+    const madeAs = accountMadeAs();
     const token = await requireFreshToken();
     if (!token) {
       // The event the session policy fires on a dead session, so the app leaves the
@@ -304,6 +356,7 @@ export async function apiFetch<T>(path: string, options: ApiRequestInit = {}): P
       window.dispatchEvent(new CustomEvent('auth:session-expired'));
       throw new Error(SESSION_EXPIRED);
     }
+    refuseAnotherAccount(madeAs);
     return parseJsonResponse<T>(await fetch(url, { ...request, headers: buildJsonHeaders(init, token) }), noContent);
   }
   return parseJsonResponse<T>(await fetch(url, { ...request, headers: buildJsonHeaders(init) }), noContent);

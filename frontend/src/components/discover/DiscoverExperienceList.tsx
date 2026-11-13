@@ -36,6 +36,7 @@ import { TailPlace, TailRow } from '../ExperienceList/TailRow';
 import type { TailSection } from '../ExperienceList/tailRows';
 import type { TypeChoice } from '../../utils/typeChoices';
 import { typeLabelFor } from '../../utils/experienceTypes';
+import { LazyVisitRemovedLine } from '../shared/lazyVisitTrips';
 
 interface DiscoverExperienceRowProps {
   experience: Experience;
@@ -349,6 +350,9 @@ export function DiscoverExperienceList({
               </Button>
             )}
           </Box>
+
+          {/* The Undo of an untick that took trips with it (#2120). */}
+          <LazyVisitRemovedLine scope={`${activeView.regionId}:${activeView.kindId}`} />
 
           {/* The kind's types, each with how many of the list's rows it keeps (#589). */}
           {types.length > 0 && (

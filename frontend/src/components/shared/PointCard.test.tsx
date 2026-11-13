@@ -18,6 +18,10 @@ vi.mock('../../api/experienceCardQueries', () => ({
   }),
 }));
 
+vi.mock('./lazyVisitTrips', () => ({
+  LazyTripsSection: ({ experienceId }: { experienceId: number }) => <div>Trips of place {experienceId}</div>,
+}));
+
 import { PointCard } from './PointCard';
 import { fetchExperienceLocations } from '../../api/experiences';
 
@@ -39,8 +43,9 @@ function point(over: Record<string, unknown>) {
   };
 }
 
+// A part's point stands on the part's own place, which holds the traveller's visit and its trips.
 const RIESI = point({
-  id: 8189, name: 'Riesi', external_ref: '1363-002', ordinal: 2,
+  id: 8189, experience_id: 41802, name: 'Riesi', external_ref: '1363-002', ordinal: 2,
   image_url: 'https://commons.wikimedia.org/wiki/Special:FilePath/KAAG_Nachlass_Bosch_Seengen-Riesi_005.jpg',
   image_credit: { author: 'Kantonsarchäologie Aargau', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null },
   description: 'archaeological site in Seengen in the canton of Aargau, Switzerland',
@@ -178,6 +183,19 @@ describe('PointCard', () => {
     renderCard(8189, { visited: { isVisited: false, onToggle } });
     fireEvent.click(await screen.findByRole('checkbox', { name: 'I have been to Riesi' }));
     expect(onToggle).toHaveBeenCalled();
+  });
+
+  it("lists the traveller's trips to the part's own place, not the site's (#2120)", async () => {
+    renderCard(8189, { visited: { isVisited: true, onToggle: vi.fn() } });
+    expect(await screen.findByText('Trips of place 41802')).toBeInTheDocument();
+  });
+
+  it('lists no trips for a visitor who is not signed in, nor on an unread part', async () => {
+    renderCard(8189);
+    await screen.findByText('Riesi');
+    renderCard(9999, { visited: { isVisited: false, onToggle: vi.fn() } });
+    await screen.findByText('Unread');
+    expect(screen.queryByText(/^Trips of place/)).not.toBeInTheDocument();
   });
 
   it('holds the visit while a visit write of the traveller is on its way (#2120)', async () => {
