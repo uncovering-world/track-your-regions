@@ -21,11 +21,15 @@ import {
   LocationVisitUnmarked,
   TreasureViewMarked,
   TreasureViewUnmarked,
+  TripRemoved,
+  TripSaved,
   ViewedTreasureIds,
   VisitedExperienceIds,
   VisitedLocationIds,
   VisitedRegion,
   VisitedRegions,
+  VisitsRestored,
+  VisitTrips,
 } from '../api/responses/visited.js';
 import { authenticatedLimiter } from '../middleware/rateLimiter.js';
 import {
@@ -67,6 +71,8 @@ import {
   markTreasureViewed,
   unmarkTreasureViewed,
 } from '../controllers/experience/index.js';
+import { addTrip, changeTrip, getTrips, removeTrip, restoreVisits } from '../controllers/experience/tripController.js';
+import { restoreVisitsBodySchema, tripDateBodySchema, tripIdParamSchema } from '../types/trips.js';
 
 /** The fields every route here shares: the caller's own data. */
 const OWN = { access: 'signed-in', cache: 'no-store', limiter: authenticatedLimiter } as const;
@@ -155,6 +161,49 @@ export const userRoutes = [
     params: experienceIdParamSchema,
     response: ExperienceVisitUnmarked,
     handler: unmarkVisited,
+  }),
+
+  // =============================================================================
+  // A visit's trips, each with an approximate date (#2120, ADR-0202): the
+  // traveller's own data, never in a reader-facing read
+  // =============================================================================
+
+  defineRoute({
+    ...OWN, method: 'get', path: '/me/visited-experiences/:experienceId/trips',
+    summary: 'List the caller\'s trips to a place, newest first',
+    params: experienceIdParamSchema,
+    response: VisitTrips,
+    handler: getTrips,
+  }),
+  defineRoute({
+    ...OWN, method: 'post', path: '/me/visited-experiences/:experienceId/trips',
+    summary: 'Add a trip to a place, with its approximate date, ticking the place where it was not',
+    params: experienceIdParamSchema,
+    body: tripDateBodySchema,
+    response: TripSaved,
+    handler: addTrip,
+  }),
+  defineRoute({
+    ...OWN, method: 'patch', path: '/me/trips/:tripId',
+    summary: 'Change the date of one of the caller\'s trips',
+    params: tripIdParamSchema,
+    body: tripDateBodySchema,
+    response: TripSaved,
+    handler: changeTrip,
+  }),
+  defineRoute({
+    ...OWN, method: 'delete', path: '/me/trips/:tripId',
+    summary: 'Remove one of the caller\'s trips; the visit stays',
+    params: tripIdParamSchema,
+    response: TripRemoved,
+    handler: removeTrip,
+  }),
+  defineRoute({
+    ...OWN, method: 'post', path: '/me/visits/restore',
+    summary: 'Put back visits an untick removed, each with its trips: the untick\'s Undo',
+    body: restoreVisitsBodySchema,
+    response: VisitsRestored,
+    handler: restoreVisits,
   }),
 
   // =============================================================================

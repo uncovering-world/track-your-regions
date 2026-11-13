@@ -43,15 +43,60 @@ export const ExperienceVisitMarked = z.strictObject({
   experienceId: z.number().int(),
   experienceName: z.string(),
   id: z.number().int().describe('The visit\'s own row.'),
-  visited_at: timestamp,
+  marked_at: timestamp.describe('When the tick was made, not when the traveller was there: that is a trip\'s (#2120).'),
   notes: z.string().nullable(),
   rating: z.number().int().nullable(),
 }).describe('An object marked visited, or its visit renewed.');
 export type ExperienceVisitMarked = z.infer<typeof ExperienceVisitMarked>;
 
+/** A trip's date: a year, a month within it and a day within that, each null where not known (#2120). */
+const tripDateFields = {
+  year: z.number().int().nullable(),
+  month: z.number().int().nullable(),
+  day: z.number().int().nullable(),
+};
+
+export const Trip = z.strictObject({
+  id: z.number().int(),
+  ...tripDateFields,
+  createdAt: timestamp,
+}).describe('One trip to a place, with its approximate date: all three parts null is a trip whose date the traveller does not remember (#2120). Only its traveller reads it.');
+export type Trip = z.infer<typeof Trip>;
+
+export const VisitTrips = z.strictObject({
+  experienceId: z.number().int(),
+  visited: z.boolean().describe('Whether the traveller holds a visit on the place itself.'),
+  trips: z.array(Trip).describe('Newest first, a trip whose date is not known last.'),
+}).describe('A traveller\'s trips to one place.');
+export type VisitTrips = z.infer<typeof VisitTrips>;
+
+export const TripSaved = z.strictObject({
+  success: z.literal(true),
+  experienceId: z.number().int(),
+  trip: Trip,
+}).describe('A trip added, or its date changed.');
+export type TripSaved = z.infer<typeof TripSaved>;
+
+export const TripRemoved = z.strictObject({
+  success: z.literal(true),
+  experienceId: z.number().int(),
+  trip: Trip.describe('The trip as it stood, for its Undo, which adds it again.'),
+}).describe('A trip removed; the visit stays, with no date if it was the last.');
+export type TripRemoved = z.infer<typeof TripRemoved>;
+
+export const RemovedVisit = z.strictObject({
+  experienceId: z.number().int(),
+  markedAt: timestamp,
+  notes: z.string().nullable(),
+  rating: z.number().int().nullable(),
+  trips: z.array(z.strictObject(tripDateFields)),
+}).describe('A visit an untick removed, with its trips, given back whole so its Undo can restore it.');
+export type RemovedVisit = z.infer<typeof RemovedVisit>;
+
 export const ExperienceVisitUnmarked = z.strictObject({
   success: z.literal(true),
   experienceId: z.number().int(),
+  removed: z.array(RemovedVisit),
 }).describe('An object no longer marked visited.');
 export type ExperienceVisitUnmarked = z.infer<typeof ExperienceVisitUnmarked>;
 
@@ -69,7 +114,7 @@ export const LocationVisitMarked = z.strictObject({
   experienceId: z.number().int(),
   experienceName: z.string(),
   id: z.number().int().describe('The visit\'s own row.'),
-  visited_at: timestamp,
+  marked_at: timestamp.describe('When the tick was made, not when the traveller was there: that is a trip\'s (#2120).'),
   notes: z.string().nullable(),
 }).describe('A place marked visited, or its visit renewed.');
 export type LocationVisitMarked = z.infer<typeof LocationVisitMarked>;
@@ -78,6 +123,7 @@ export const LocationVisitUnmarked = z.strictObject({
   success: z.literal(true),
   locationId: z.number().int(),
   experienceId: z.number().int(),
+  removed: z.array(RemovedVisit),
 }).describe('A place no longer marked visited.');
 export type LocationVisitUnmarked = z.infer<typeof LocationVisitUnmarked>;
 
@@ -94,7 +140,14 @@ export const AllLocationsUnmarked = z.strictObject({
   experienceId: z.number().int(),
   regionId: z.number().int().nullable(),
   locationsUnmarked: z.number().int(),
+  removed: z.array(RemovedVisit),
 }).describe('Every place of an object, or of it within a region, no longer marked visited.');
+
+export const VisitsRestored = z.strictObject({
+  success: z.literal(true),
+  restored: z.number().int().describe('How many visits were restored with their trips.'),
+}).describe('Visits an untick removed, put back with their trips.');
+export type VisitsRestored = z.infer<typeof VisitsRestored>;
 export type AllLocationsUnmarked = z.infer<typeof AllLocationsUnmarked>;
 
 export const VisitedStatus = z.enum(VISITED_STATUSES)
@@ -108,7 +161,7 @@ export const LocationWithVisitedStatus = z.strictObject({
   longitude: z.number(),
   latitude: z.number(),
   isVisited: z.boolean(),
-  visitedAt: timestamp,
+  markedAt: timestamp.describe('When the tick on its place was made, not when the traveller was there.'),
   notes: z.string().nullable(),
 }).describe('One place of an object, with whether the reader has been there.');
 export type LocationWithVisitedStatus = z.infer<typeof LocationWithVisitedStatus>;

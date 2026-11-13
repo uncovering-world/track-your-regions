@@ -2830,17 +2830,46 @@ CREATE TABLE IF NOT EXISTS user_visited_experiences (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    visited_at TIMESTAMPTZ DEFAULT NOW(),
+    marked_at TIMESTAMPTZ DEFAULT NOW(),
     notes TEXT,
     rating INTEGER CHECK (rating >= 1 AND rating <= 5),
     UNIQUE(user_id, experience_id)
 );
+-- When the tick was made, never when the traveller was there: that is a
+-- trip's (#2120). A database made before the trips holds it as visited_at.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'user_visited_experiences' AND column_name = 'visited_at') THEN
+    ALTER TABLE user_visited_experiences RENAME COLUMN visited_at TO marked_at;
+  END IF;
+END $$;
 
 COMMENT ON TABLE user_visited_experiences IS 'A traveller''s visits, one row on each place they ticked: a part, a place, or a whole ticked as a whole. A whole is read as visited through its direct parts'' rows, never written; a row on a place a merge folded is kept for the undo and never read (#2120).';
 COMMENT ON COLUMN user_visited_experiences.rating IS 'Optional user rating from 1-5 stars';
 
 CREATE INDEX IF NOT EXISTS idx_user_visited_experiences_user ON user_visited_experiences(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_visited_experiences_experience ON user_visited_experiences(experience_id);
+
+-- A visit's trips (#2120, ADR-0202): each a time the traveller was there,
+-- with a date known to a day, a month, a year or not at all. Which of the
+-- three are set is the precision; all three empty is "I don't remember". A
+-- visit with no trip is a visit with no date. The traveller's own data: read
+-- and written only under /api/users/me.
+CREATE TABLE IF NOT EXISTS user_visit_trips (
+    id SERIAL PRIMARY KEY,
+    visit_id INTEGER NOT NULL REFERENCES user_visited_experiences(id) ON DELETE CASCADE,
+    year SMALLINT CHECK (year >= 1900),
+    month SMALLINT CHECK (month BETWEEN 1 AND 12),
+    day SMALLINT CHECK (day BETWEEN 1 AND 31),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (month IS NULL OR year IS NOT NULL),
+    CHECK (day IS NULL OR month IS NOT NULL),
+    -- A day the month has: make_date refuses 29 February 2023.
+    CHECK (day IS NULL OR make_date(year, month, day) IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_user_visit_trips_visit ON user_visit_trips(visit_id);
+COMMENT ON TABLE user_visit_trips IS 'A traveller''s trips to a place they visited, each with an approximate date: year, month and day each optional, a month only within a year and a day only within a month; all three empty is a trip they do not remember the date of (#2120, ADR-0202). Owner-only.';
 
 -- Sync audit log for tracking sync operations
 CREATE TABLE IF NOT EXISTS experience_sync_logs (

@@ -10,7 +10,9 @@ import { pool } from '../../db/index.js';
 import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
 import { claimablePlaceSql } from '../../db/readerPredicates.js';
 import { placeHasKindSql } from '../../db/membership.js';
-import { placeAtWriteSql, showsOwnPointSql, showsPartsSql, visitStatesSql } from '../../db/visits.js';
+import {
+  placeAtWriteSql, removedVisitsOf, removeVisits, showsOwnPointSql, showsPartsSql, visitStatesSql,
+} from '../../db/visits.js';
 import { computeVisitedStatus } from '@tyr/shared/visits';
 import { notFound } from '../../middleware/errorHandler.js';
 import type { experienceIdParamSchema, markVisitedBodySchema, visitedIdsQuerySchema } from '../../types/index.js';
@@ -57,14 +59,14 @@ export async function markVisited(
   // Upsert visited record, on the place as it stands when the row is
   // written: a share lock on it waits for a merge folding it to commit, and a
   // folded place takes no visit (#2120).
-  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'visited_at' | 'notes' | 'rating'>>(`
-    INSERT INTO user_visited_experiences (user_id, experience_id, notes, rating, visited_at)
+  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'marked_at' | 'notes' | 'rating'>>(`
+    INSERT INTO user_visited_experiences (user_id, experience_id, notes, rating, marked_at)
     ${placeAtWriteSql('$2', '$1, e.id, $3, $4, NOW()')}
     ON CONFLICT (user_id, experience_id) DO UPDATE SET
       notes = COALESCE($3, user_visited_experiences.notes),
       rating = COALESCE($4, user_visited_experiences.rating),
-      visited_at = NOW()
-    RETURNING id, visited_at, notes, rating
+      marked_at = NOW()
+    RETURNING id, marked_at, notes, rating
   `, [userId, experienceId, notes, rating]);
 
   if (result.rows.length === 0) throw notFound('Experience not found');
@@ -74,7 +76,7 @@ export async function markVisited(
     experienceId,
     experienceName: expResult.rows[0].name,
     id: visit.id,
-    visited_at: visit.visited_at?.toISOString() ?? null,
+    marked_at: visit.marked_at?.toISOString() ?? null,
     notes: visit.notes,
     rating: visit.rating,
   };
@@ -93,20 +95,16 @@ export async function markVisited(
 export async function unmarkVisited(
   { params: { experienceId }, caller }: { params: ExperienceParams; caller: Express.User },
 ): Promise<ExperienceVisitUnmarked> {
-  // The place read in the delete under a share lock, as every visit write
-  // reads what it writes for: a merge folding it commits first, and a folded
-  // place's visit, which the merge copied onto the survivor, stays (#2120).
-  const result = await pool.query(
-    `DELETE FROM user_visited_experiences v
-      USING (${placeAtWriteSql('$2', 'e.id', claimablePlaceSql())}) pl
-      WHERE v.user_id = $1 AND v.experience_id = pl.id
-      RETURNING v.id`,
-    [caller.id, experienceId]
-  );
-
-  if (result.rowCount === 0) throw notFound('Visit record not found');
-
-  return { success: true, experienceId };
+  // The place read as its visit is locked, under a share lock, as every visit
+  // write reads what it writes for: a merge folding it commits first, and a
+  // folded place's visit, which the merge copied onto the survivor, stays
+  // (#2120). The visit goes with its trips, which the answer carries so the
+  // untick can be undone in place (#2120).
+  const visit = `SELECT v.id FROM user_visited_experiences v
+      JOIN (${placeAtWriteSql('$2', 'e.id', claimablePlaceSql())}) pl ON v.experience_id = pl.id
+     WHERE v.user_id = $1 FOR UPDATE OF v`;
+  const rows = await removeVisits(visit, [caller.id, experienceId]);
+  return { success: true, experienceId, removed: removedVisitsOf(rows) };
 }
 
 /**

@@ -57,6 +57,9 @@ describe("migration 235 on the old cascade's rows on a whole", () => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      // Migration 235 was written for the visits table as it stood before
+      // migration 236 renamed its moment (#2120): give it that column back.
+      await client.query('ALTER TABLE user_visited_experiences RENAME COLUMN marked_at TO visited_at');
       await client.query(
         `CREATE TABLE IF NOT EXISTS user_visited_locations (
            id SERIAL PRIMARY KEY,

@@ -120,6 +120,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   user_new_badge_views: 'serving',
   user_viewed_treasures: 'serving',
   user_visited_experiences: 'serving',
+  user_visit_trips: 'serving',
   user_visited_regions: 'serving',
   users: 'serving',
   wikidata_cache_policy: 'workbench',

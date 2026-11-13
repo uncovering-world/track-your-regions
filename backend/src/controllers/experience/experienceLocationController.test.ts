@@ -111,6 +111,22 @@ function clientSql(client: ReturnType<typeof pinClient>): string[] {
   return client.query.mock.calls.map(call => String(call[0]));
 }
 
+/**
+ * The two statements of a removal of visits (#2120): the one that locks them
+ * and, after it, the one that counts and deletes them, whose snapshot then
+ * sees every trip committed on a visit the lock waited for.
+ */
+function lockThenDelete(): [string, string] {
+  const sent = sentSql();
+  const locks = sent.filter(sql => /FOR UPDATE OF v/.test(sql));
+  const deletes = sent.filter(sql => /DELETE FROM user_visited_experiences/i.test(sql));
+  expect(locks).toHaveLength(1);
+  expect(deletes).toHaveLength(1);
+  expect(locks[0]).not.toMatch(/DELETE FROM/i);
+  expect(sent.indexOf(locks[0])).toBeLessThan(sent.indexOf(deletes[0]));
+  return [locks[0], deletes[0]];
+}
+
 /** The one statement that reads the location table. */
 function locationRead(): string {
   // The read that finds the points, not the write that reads each point's place again.
@@ -270,7 +286,7 @@ describe('reads that show a point', () => {
  */
 function visitStatusRow(over: Record<string, unknown>): Record<string, unknown> {
   return {
-    name: null, ordinal: 0, longitude: 9.4, latitude: 47.5, visited_at: null, notes: null, cast_points: false, ...over,
+    name: null, ordinal: 0, longitude: 9.4, latitude: 47.5, marked_at: null, notes: null, cast_points: false, ...over,
   };
 }
 
@@ -336,7 +352,7 @@ describe('a visit outlives the point', () => {
   });
 
   it('clears only the visits on places whose points the traveller is shown', async () => {
-    mockedQuery.mockResolvedValue({ rows: [{ experience_id: 42, count: 0 }], rowCount: 1 });
+    mockedQuery.mockResolvedValue({ rows: [{ experience_id: 42, count: 0, marked_at: null, notes: null, rating: null, trips: [] }], rowCount: 1 });
 
     await answerRoute(deleteMarkAllLocations,
       { params: { experienceId: '42' }, query: {}, user: { id: 5 } } as never,
@@ -345,46 +361,54 @@ describe('a visit outlives the point', () => {
     // A click never clears a visit the traveller cannot see (#2120): a part
     // whose points were withdrawn or are unread keeps its visit. The place
     // itself, whose card the click is on, goes with the shown parts.
-    const deletes = sentSql().filter(sql => /DELETE FROM user_visited_experiences/i.test(sql));
-    expect(deletes).toHaveLength(1);
-    expect(deletes[0]).toContain(claimableToReaderSql());
-    expect(deletes[0]).toMatch(/SELECT place\.experience_id FROM place UNION SELECT shown\.experience_id FROM shown/);
-    expect(deletes[0]).toContain(claimablePlaceSql());
+    const [lock] = lockThenDelete();
+    expect(lock).toContain(claimableToReaderSql());
+    expect(lock).toMatch(/SELECT place\.experience_id FROM place UNION SELECT shown\.experience_id FROM shown/);
+    expect(lock).toContain(claimablePlaceSql());
     // Every place and point the delete takes back a visit for is read under a
     // share lock, as every visit write reads what it writes for.
-    expect(deletes[0]).toMatch(/FOR SHARE OF el\)/);
-    expect(deletes[0]).toMatch(/FOR SHARE OF e\)/);
+    expect(lock).toMatch(/FOR SHARE OF el\)/);
+    expect(lock).toMatch(/FOR SHARE OF e\)/);
   });
 
   it("reads the region's points under a share lock when it takes their visits back", async () => {
-    mockedQuery.mockResolvedValue({ rows: [{ experience_id: 42, count: 0 }], rowCount: 1 });
+    mockedQuery.mockResolvedValue({ rows: [{ experience_id: 42, count: 0, marked_at: null, notes: null, rating: null, trips: [] }], rowCount: 1 });
 
     await answerRoute(deleteMarkAllLocations,
       { params: { experienceId: '42' }, query: { regionId: '7' }, user: { id: 5 } } as never,
       makeRes() as never);
 
-    const deletes = sentSql().filter(sql => /DELETE FROM user_visited_experiences/i.test(sql));
-    expect(deletes).toHaveLength(1);
-    expect(deletes[0]).toMatch(/FOR SHARE OF el\)/);
-    expect(deletes[0]).not.toMatch(/FROM place/);
+    const [lock] = lockThenDelete();
+    expect(lock).toMatch(/FOR SHARE OF el\)/);
+    expect(lock).not.toMatch(/FROM place/);
   });
 
   it("takes back a tick on a point as its own place's visit, and nothing else", async () => {
+    const client = pinClient();
     mockedQuery.mockReset();
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ experience_id: 7, shown_by: 7 }, { experience_id: 7, shown_by: 42 }] })
-      .mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 });
+      .mockResolvedValueOnce({ rows: [] })           // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })  // the visit, locked
+      .mockResolvedValueOnce({
+        rows: [{ taken_visits: 1, taken_trips: 0, experience_id: 7, marked_at: null, notes: null, rating: null, trips: [] }],
+      })
+      .mockResolvedValueOnce({ rows: [] });          // COMMIT
 
     await answerRoute(deleteVisitedLocation,
       { params: { locationId: '70' }, user: { id: 5 } } as never, makeRes() as never);
 
     // A whole the point's place is a part of is read through the part
     // (#2120): nothing of the whole's is written or deleted here. The point's
-    // place is read in the delete, under the tick's share lock on the point.
-    const clears = sentSql().filter(sql => /DELETE FROM user_visited_experiences/i.test(sql));
-    expect(clears).toHaveLength(1);
-    expect(clears[0]).toMatch(/FROM experience_locations el[\s\S]*FOR SHARE OF el/);
-    expect(mockedQuery.mock.calls.at(-1)?.[1]).toEqual([5, 70]);
+    // place is read as its visit is locked, under the tick's share lock on
+    // the point, in the transaction that then deletes the visit it locked.
+    const [lock] = lockThenDelete();
+    expect(lock).toMatch(/FROM experience_locations el[\s\S]*FOR SHARE OF el/);
+    const onClient = client.query.mock.calls;
+    expect(onClient.map(call => String(call[0]))[0]).toBe('BEGIN');
+    expect(onClient[1][1]).toEqual([5, 70]);
+    expect(onClient[2][1]).toEqual([[3]]);
+    expect(onClient.at(-1)?.[0]).toBe('COMMIT');
     // Only a point the traveller is shown, as a tick is gated (#2120).
     expect(String(mockedQuery.mock.calls[0][0])).toContain(claimableToReaderSql());
   });
@@ -393,7 +417,7 @@ describe('a visit outlives the point', () => {
 describe('the visits a "mark all" writes and takes back', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [{ id: 1, experience_id: 42, count: 0 }], rowCount: 1 });
+    mockedQuery.mockResolvedValue({ rows: [{ id: 1, experience_id: 42, count: 0, marked: 1, marked_at: null, notes: null, rating: null, trips: [] }], rowCount: 1 });
   });
 
   it("writes the points' places in one statement, each read again as it is written", async () => {

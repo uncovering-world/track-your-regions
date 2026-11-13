@@ -96,7 +96,7 @@ beforeEach(async () => {
     await pool.query('INSERT INTO experience_treasure_placements (link_id, membership_id) VALUES ($1, $2)', [link.rows[0].id, membership]);
   }
   await pool.query(
-    `INSERT INTO user_visited_experiences (user_id, experience_id, visited_at, notes) VALUES ($1, $2, '2019-08-10', 'The oculus at noon')`,
+    `INSERT INTO user_visited_experiences (user_id, experience_id, marked_at, notes) VALUES ($1, $2, '2019-08-10', 'The oculus at noon')`,
     [travellerId, PANTHEON],
   );
 });

@@ -253,7 +253,7 @@ export async function markTreasureViewed(
       // lock every visit write takes: a venue a merge folds meanwhile takes no
       // visit.
       await pool.query(`
-        INSERT INTO user_visited_experiences (user_id, experience_id, visited_at)
+        INSERT INTO user_visited_experiences (user_id, experience_id, marked_at)
         ${placeAtWriteSql('$2', '$1, e.id, NOW()')}
         ON CONFLICT (user_id, experience_id) DO NOTHING
       `, [userId, experienceId]);

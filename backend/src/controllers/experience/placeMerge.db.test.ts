@@ -93,7 +93,7 @@ beforeEach(async () => {
     await pool.query('INSERT INTO experience_treasures (experience_id, treasure_id) VALUES ($1, $2)', [id, work.rows[0].id]);
   }
   await pool.query(
-    `INSERT INTO user_visited_experiences (user_id, experience_id, visited_at, notes, rating) VALUES
+    `INSERT INTO user_visited_experiences (user_id, experience_id, marked_at, notes, rating) VALUES
        ($1, $3, '2024-05-01', 'Mass on Sunday', 4),
        ($1, $4, '2019-08-10', 'The oculus at noon', 5),
        ($2, $4, '2022-03-03', NULL, NULL)`,
@@ -137,7 +137,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
 
     // The traveller who marked both: the earlier date, both notes, the later visit's rating.
     const twice = await pool.query(
-      'SELECT visited_at::date::text AS day, notes, rating FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2',
+      'SELECT marked_at::date::text AS day, notes, rating FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2',
       [twiceId, WORSHIP],
     );
     expect(twice.rows[0]).toEqual({ day: '2019-08-10', notes: 'Mass on Sunday\n\nThe oculus at noon', rating: 4 });
@@ -192,7 +192,7 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
     );
     expect(placements.rows).toEqual([{ experience_id: WORSHIP, placements: 1 }, { experience_id: SITE, placements: 1 }]);
     const visits = await pool.query(
-      `SELECT user_id, experience_id, visited_at::date::text AS day, notes, rating FROM user_visited_experiences
+      `SELECT user_id, experience_id, marked_at::date::text AS day, notes, rating FROM user_visited_experiences
         WHERE experience_id = ANY($1) ORDER BY user_id, experience_id`,
       [[WORSHIP, SITE]],
     );
@@ -307,6 +307,35 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
         { id: manualId, experience_id: SITE, assignment_type: 'manual' },
       ]);
     });
+  });
+
+  it("carries a folded visit's trips to the survivor's visit, and the undo takes back exactly those (#2120)", async () => {
+    const trip = (user: number, place: number, year: number, month: number | null = null) => pool.query(
+      `INSERT INTO user_visit_trips (visit_id, year, month)
+       SELECT id, $3, $4 FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2`,
+      [user, place, year, month],
+    );
+    const tripsOf = async (user: number, place: number) => (await pool.query<{ year: number; month: number | null }>(
+      `SELECT t.year, t.month FROM user_visit_trips t JOIN user_visited_experiences v ON v.id = t.visit_id
+        WHERE v.user_id = $1 AND v.experience_id = $2 ORDER BY t.year, t.month`,
+      [user, place],
+    )).rows.map(row => [row.year, row.month]);
+    // Twice was at the church in 2024 and at the site in August 2019; Once at the site in 2022.
+    await trip(twiceId, WORSHIP, 2024);
+    await trip(twiceId, SITE, 2019, 8);
+    await trip(onceId, SITE, 2022);
+
+    const merged = await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
+    expect(await tripsOf(twiceId, WORSHIP)).toEqual([[2019, 8], [2024, null]]);
+    expect(await tripsOf(onceId, WORSHIP)).toEqual([[2022, null]]);
+
+    // A trip Twice adds while the merge stands stays with the survivor.
+    await trip(twiceId, WORSHIP, 2025);
+    await undoMerge(merged.result!.mergeId, curatorId);
+    expect(await tripsOf(twiceId, WORSHIP)).toEqual([[2024, null], [2025, null]]);
+    expect(await tripsOf(onceId, WORSHIP)).toEqual([]);
+    expect(await tripsOf(twiceId, SITE)).toEqual([[2019, 8]]);
+    expect(await tripsOf(onceId, SITE)).toEqual([[2022, null]]);
   });
 
   it('refuses two places of one kind, and changes nothing', async () => {
