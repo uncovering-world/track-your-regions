@@ -4481,6 +4481,14 @@ CREATE INDEX IF NOT EXISTS idx_source_records_external_id
 CREATE INDEX IF NOT EXISTS idx_source_records_wikidata_items
     ON source_records USING GIN (wikidata_items) WHERE wikidata_items IS NOT NULL;
 
+-- Whether a place is made of parts (ADR-0203): a whole, which the registry
+-- never makes a Wikidata item's place and a merge never joins.
+CREATE OR REPLACE FUNCTION place_is_whole(p_place INTEGER)
+RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
+  SELECT EXISTS (SELECT 1 FROM experience_parts made_of WHERE made_of.whole_id = p_place)
+$$;
+COMMENT ON FUNCTION place_is_whole(INTEGER) IS 'Whether the place is made of parts, a whole (ADR-0203): read by place_identifier_claims(), so a whole claims no Wikidata item, and followed by trg_whole_identifiers_part_* when a place becomes one or stops being one.';
+
 -- Which live places carry each value, and whether each says the value is the
 -- place. The one statement of the rules (ADR-0143 decision 2), which the
 -- equal-item merge reads through the registry:
@@ -4491,11 +4499,15 @@ CREATE INDEX IF NOT EXISTS idx_source_records_wikidata_items
 -- of itself -- is its place unless another live place carries it the same way
 -- too, which makes it an ensemble's (the chapels and
 -- the village of Saint Thaddeus carry the monastery's). The World Heritage
--- source is source 1, whose ids are the sites' references.
+-- source is source 1, whose ids are the sites' references. A place made of
+-- parts claims no Wikidata item by any column (ADR-0203): a serial site is
+-- its parts on the ground, so an item it carries names the site, one of its
+-- parts or its ensemble, and is never followed to it or joined with another
+-- place. A curator's word still stands over the columns.
 CREATE OR REPLACE FUNCTION place_identifier_claims(p_scheme TEXT, p_values TEXT[])
 RETURNS TABLE (experience_id INTEGER, value TEXT, basis TEXT, claims BOOLEAN)
 LANGUAGE sql STABLE AS $$
-  SELECT m.experience_id, m.external_id::text, 'membership', true
+  SELECT m.experience_id, m.external_id::text, 'membership', NOT place_is_whole(m.experience_id)
     FROM source_records m
     JOIN experiences e ON e.id = m.experience_id AND e.merged_into_id IS NULL
    WHERE p_scheme = 'wikidata' AND m.external_id = ANY(p_values) AND m.external_id ~ '^Q[0-9]+$'
@@ -4505,6 +4517,7 @@ LANGUAGE sql STABLE AS $$
            AND (SELECT count(*) FROM experience_locations one_point
                  WHERE one_point.experience_id = m.experience_id
                    AND one_point.merged_into_id IS NULL AND one_point.missing_since IS NULL) = 1
+           AND NOT place_is_whole(m.experience_id)
     FROM source_records m
     JOIN experiences e ON e.id = m.experience_id AND e.merged_into_id IS NULL
     CROSS JOIN LATERAL unnest(m.wikidata_items) AS item
@@ -4520,6 +4533,7 @@ LANGUAGE sql STABLE AS $$
                         AND EXISTS (SELECT 1 FROM experience_locations other_point
                                      WHERE other_point.experience_id = other.experience_id
                                        AND other_point.merged_into_id IS NULL AND other_point.missing_since IS NULL))
+         AND NOT place_is_whole(rec.experience_id)
     FROM source_records rec
     JOIN experiences e ON e.id = rec.experience_id AND e.merged_into_id IS NULL
     CROSS JOIN LATERAL unnest(rec.wikidata_items) AS item
@@ -4788,7 +4802,9 @@ CREATE OR REPLACE TRIGGER trg_place_identifiers_point_update
   EXECUTE FUNCTION place_identifiers_follow_point();
 
 -- A part relation carries no identifier: a component's reference is its
--- record's (ADR-0198), which trg_place_identifiers_membership_* follow.
+-- record's (ADR-0198), which trg_place_identifiers_membership_* follow. Whether
+-- a place has parts decides its Wikidata claims (place_is_whole, ADR-0203),
+-- which trg_whole_identifiers_part_* follow, beside the region triggers.
 
 -- A curator's word refreshes its value: the row follows the word at once.
 CREATE OR REPLACE FUNCTION place_identifiers_follow_verdict() RETURNS trigger
@@ -5540,6 +5556,46 @@ CREATE TRIGGER trg_place_regions_part_delete
   AFTER DELETE ON experience_parts
   REFERENCING OLD TABLE AS old_parts
   FOR EACH STATEMENT EXECUTE FUNCTION place_regions_follow_parts();
+
+-- A place that becomes a whole, or stops being one, claims its Wikidata items
+-- differently (place_is_whole, ADR-0203), so its registry rows are refreshed:
+-- once per statement, and only for the wholes the statement made or unmade,
+-- so a run writing a site's forty parts refreshes the site once, with its
+-- first part, and never again while it keeps one. Named to fire after the
+-- region triggers above: a writer takes a place's region keys before the
+-- registry's, as the membership trigger after a part's record does.
+CREATE OR REPLACE FUNCTION place_identifiers_follow_wholes() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  changed INTEGER[];
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    -- A whole all of whose parts this statement wrote was none before it.
+    changed := ARRAY(SELECT DISTINCT n.whole_id FROM new_parts n
+                      WHERE NOT EXISTS (SELECT 1 FROM experience_parts held
+                                         WHERE held.whole_id = n.whole_id
+                                           AND held.id NOT IN (SELECT again.id FROM new_parts again)));
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    changed := ARRAY(SELECT DISTINCT o.whole_id FROM old_parts o WHERE NOT place_is_whole(o.whole_id));
+  END IF;
+  IF cardinality(changed) > 0 THEN
+    PERFORM refresh_place_identifiers_of(changed);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_whole_identifiers_part_insert ON experience_parts;
+CREATE TRIGGER trg_whole_identifiers_part_insert
+  AFTER INSERT ON experience_parts
+  REFERENCING NEW TABLE AS new_parts
+  FOR EACH STATEMENT EXECUTE FUNCTION place_identifiers_follow_wholes();
+DROP TRIGGER IF EXISTS trg_whole_identifiers_part_delete ON experience_parts;
+CREATE TRIGGER trg_whole_identifiers_part_delete
+  AFTER DELETE ON experience_parts
+  REFERENCING OLD TABLE AS old_parts
+  FOR EACH STATEMENT EXECUTE FUNCTION place_identifiers_follow_wholes();
 
 -- One row per build of a public dump (ADR-0101 decision 3): which dump, which
 -- file of which date, how it was read, whether it was verified, and what the
