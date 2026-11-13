@@ -6715,6 +6715,66 @@ export interface KeptOutOfKind {
   admission: KeptOutOfKindAdmission;
 }
 
+export interface PartWordBody {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  partId: number;
+  /** @maxLength 1000 */
+  note?: string;
+  /** The curator was told that this first part makes the whole a place made of parts, never merged and found by no item. */
+  makesWhole?: boolean;
+}
+
+/**
+ * What the word did: a part added, a kept-out place put back, or a part taken out.
+ */
+export type PartWordAnsweredAct = typeof PartWordAnsweredAct[keyof typeof PartWordAnsweredAct];
+
+
+export const PartWordAnsweredAct = {
+  added: 'added',
+  put_back: 'put_back',
+  taken_out: 'taken_out',
+} as const;
+
+/**
+ * A curator's word that a place is a part of a whole, or is taken out of it, from either place's card (#2118).
+ */
+export interface PartWordAnswered {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  wholeId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  partId: number;
+  /** What the word did: a part added, a kept-out place put back, or a part taken out. */
+  act: PartWordAnsweredAct;
+  /** Whether the place is a part of the whole now. */
+  standing: boolean;
+  /** Taken out while a source still names it: the curator's refusal keeps it out, and no run puts it back. */
+  keptOut: boolean;
+  /** The curator's record of the pair the word left standing; null where it withdrew the curator's record and the sources decide the pair again. */
+  recordId: number | null;
+  /** The place was the whole's first part: the whole is now a place made of parts. */
+  becameWhole: boolean;
+}
+
+export interface TakeOutPartBody {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  partId: number;
+  /** @maxLength 1000 */
+  note?: string;
+}
+
 export interface HandBackPinBody {
   /**
      * @maximum 2147483647
@@ -13285,6 +13345,86 @@ return apiFetch<KeptOutOfKind>(getPostExperiencesByIdKeepOutUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(keepOutOfKindBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdPartsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/parts`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Make a place a part of this place, or put back a part kept out; take it out with parts/take-out
+ */
+export const postExperiencesByIdParts = async (id: number,
+    partWordBody: PartWordBody, options?: Parameters<typeof apiFetch>[1]): Promise<PartWordAnswered> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<PartWordAnswered>(getPostExperiencesByIdPartsUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(partWordBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdPartsTakeOutUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/parts/take-out`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Take a place out of this place's parts; one a source still names is kept out until put back
+ */
+export const postExperiencesByIdPartsTakeOut = async (id: number,
+    takeOutPartBody: TakeOutPartBody, options?: Parameters<typeof apiFetch>[1]): Promise<PartWordAnswered> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<PartWordAnswered>(getPostExperiencesByIdPartsTakeOutUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(takeOutPartBody)
   }
 );}
 
