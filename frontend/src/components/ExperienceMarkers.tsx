@@ -7,9 +7,10 @@
  *   exp-extent    — the outline of the place the reader is hovering or has
  *                   selected, where the catalogue holds one (an archaeology
  *                   site's, from OpenStreetMap); painted under the markers
- *   exp-markers   — a marker per in-region place, or one at a place's own
- *                   coordinate while the batch holds none of its points (never
- *                   for an object made of parts); drives the heatmap below HEATMAP_MAX_ZOOM and
+ *   exp-markers   — a marker per in-region place, one for a point two listed
+ *                   objects show, or one at a place's own coordinate while the
+ *                   batch holds none of its points (never for an object made of
+ *                   parts); drives the heatmap below HEATMAP_MAX_ZOOM and
  *                   individual markers from it
  *   exp-highlight  — what the selected experience *shows* (`shownPlacesFor()`):
  *                   its in-region places, all of them when none is in region, or
@@ -183,10 +184,11 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
 
   // ── Declarative GeoJSON data for sources ──
 
-  // Main markers source data (excludes selected experience — shown via highlight instead)
+  // Main markers source data (excludes selected experience — shown via highlight
+  // instead — and a point it shows that another object lists too)
   const markersGeoJson = useMemo<GeoJSON.FeatureCollection>(() => buildMarkerFeatures(
     selectedExperienceId != null
-      ? markers.filter(m => m.experienceId !== selectedExperienceId)
+      ? markers.filter(m => !m.experienceIds.includes(selectedExperienceId))
       : markers,
   ), [markers, selectedExperienceId]);
 
@@ -288,7 +290,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     // Experience-level hover — every place of the object, because that is what
     // the row stands for. Ringing one of them was the old shape, when one of them
     // was all the map drew.
-    const objectMarkers = markersRef.current.filter(m => m.experienceId === expId);
+    // A point the object shares with another one's row is its place too.
+    const objectMarkers = markersRef.current.filter(m => m.experienceIds.includes(expId));
     const marker = objectMarkers[0];
     if (!marker) {
       // Nothing to show. Returning bare would leave the previous row's ring and
@@ -298,18 +301,20 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       setHoverPreview(null);
       return;
     }
+    // The row's own object names the card, whichever object the pin opens.
+    const exp = getExperienceById(expId) ?? marker.experience;
     setHoverPreview({
-      experienceId: marker.experienceId,
-      experienceName: marker.experience.name,
-      subtitle: marker.experience.subtitle,
+      experienceId: exp.id,
+      experienceName: exp.name,
+      subtitle: exp.subtitle,
       locationId: marker.locationId,
       locationName: marker.locationName,
-      kindName: placeKindNames(marker.experience),
-      kindId: marker.experience.kind_id,
-      treasureCount: marker.experience.treasure_count,
-      findsCount: marker.experience.finds_count,
-      imageUrl: marker.experience.image_url,
-      imageCredit: marker.experience.image_credit ?? null,
+      kindName: placeKindNames(exp),
+      kindId: exp.kind_id,
+      treasureCount: exp.treasure_count,
+      findsCount: exp.finds_count,
+      imageUrl: exp.image_url,
+      imageCredit: exp.image_credit ?? null,
       longitude: marker.longitude,
       latitude: marker.latitude,
     });

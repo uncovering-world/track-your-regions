@@ -320,6 +320,19 @@ function splitIconProperty(colors: readonly string[] | undefined): { icon?: stri
 }
 
 /**
+ * Whether a feature of the markers source is a pin of this object: the place it
+ * opens, or another object that lists the same point (`MarkerData.experienceIds`),
+ * as Seville's World Heritage site lists Seville Cathedral's.
+ */
+export function featureShowsExperience(
+  properties: GeoJSON.GeoJsonProperties | undefined, experienceId: number,
+): boolean {
+  if (properties?.experienceId === experienceId) return true;
+  const also = properties?.alsoOf;
+  return typeof also === 'string' && also.split(',').includes(String(experienceId));
+}
+
+/**
  * The markers source's payload: one feature per pin the builder made
  * (`buildExperienceMarkers`).
  */
@@ -343,6 +356,10 @@ export function buildMarkerFeatures(
         // marker, and nothing reads a property by that name — the handlers ask
         // for `experienceId`/`locationId`, the popup for the names.
         experienceId: m.experienceId,
+        // The other objects that list the point, comma-joined, since a feature's
+        // property comes back from `queryRenderedFeatures` as a scalar
+        // (`featureShowsExperience`). Absent on the pin of one object.
+        ...(m.experienceIds.length > 1 ? { alsoOf: m.experienceIds.slice(1).join(',') } : {}),
         locationId: m.locationId,
         name: m.locationName || m.experience.name,
         experienceName: m.experience.name,

@@ -41,7 +41,14 @@ export function representablePlaces(
 
 export interface MarkerData {
   id: string;
+  /** The place the pin opens: the point's own place where it is listed, else the object that lists it. */
   experienceId: number;
+  /**
+   * Every listed object the pin is a place of, the one it opens first. One
+   * point is one pin (#2122): Seville Cathedral is a place of worship of its own
+   * and a part of its World Heritage site, and both rows hover and select it.
+   */
+  experienceIds: readonly number[];
   locationId: number | null;
   experience: Experience;
   longitude: number;
@@ -51,9 +58,10 @@ export interface MarkerData {
   location?: ExperienceLocation | null;
   /**
    * The colour of each kind this pin shows, in the kinds' display order: the
-   * place's kinds among those the surface is showing (#1262). One colour is a
-   * plain pin; two or more different ones draw a disc split into one slice per
-   * kind (`scene.ts`, `splitPinIconFor`).
+   * place's kinds among those the surface is showing (#1262), and the kinds of
+   * every object the pin is a place of. One colour is a plain pin; two or more
+   * different ones draw a disc split into one slice per kind (`scene.ts`,
+   * `splitPinIconFor`).
    */
   kindColors?: string[];
 }
@@ -70,14 +78,29 @@ function shownKinds(
   shownKindNames: Set<string>,
   onlyKindId: number | null,
   kindTypes: ReadonlyMap<string, string>,
-): Array<{ kind_id: number; type: string | null }> {
-  const kinds = exp.kinds ?? [{ kind_id: exp.kind_id, kind_name: exp.kind_name || 'Experiences', type: exp.type }];
+): ShownKind[] {
+  const kinds = exp.kinds ?? [{
+    kind_id: exp.kind_id, kind_name: exp.kind_name || 'Experiences', kind_priority: exp.kind_priority, type: exp.type,
+  }];
   if (onlyKindId !== null) return kinds.filter(kind => kind.kind_id === onlyKindId);
   // A kind narrowed to one type in the list (#589) shows the place only as that type.
   const ofItsType = (kind: { kind_name: string; type: string | null }) =>
     !kindTypes.has(kind.kind_name) || kindTypes.get(kind.kind_name) === kind.type;
   if (shownKindNames.size > 0) return kinds.filter(kind => shownKindNames.has(kind.kind_name) && ofItsType(kind));
   return kinds.filter(ofItsType);
+}
+
+/** A kind as a pin shows it: which kind, its type there, and where it stands in the kinds' order. */
+interface ShownKind {
+  kind_id: number;
+  kind_priority: number;
+  type: string | null;
+}
+
+/** The kinds of a pin two objects draw: each once, in the kinds' order. */
+function mergedKinds(kinds: readonly ShownKind[]): ShownKind[] {
+  const byKind = new Map(kinds.map(kind => [kind.kind_id, kind]));
+  return [...byKind.values()].sort((a, b) => a.kind_priority - b.kind_priority || a.kind_id - b.kind_id);
 }
 
 /**
@@ -94,6 +117,7 @@ function standInMarkers(exp: Experience): Omit<MarkerData, 'kindColors'>[] {
   return [{
     id: String(exp.id),
     experienceId: exp.id,
+    experienceIds: [exp.id],
     locationId: null,
     experience: exp,
     longitude: exp.longitude,
@@ -112,6 +136,7 @@ function placeMarkers(exp: Experience, places: ExperienceLocation[], objectPoint
   return places.map(loc => ({
     id: `${exp.id}-${loc.id}`,
     experienceId: exp.id,
+    experienceIds: [exp.id],
     locationId: loc.id,
     experience: exp,
     longitude: loc.longitude,
@@ -122,6 +147,37 @@ function placeMarkers(exp: Experience, places: ExperienceLocation[], objectPoint
   }));
 }
 
+/** A pin as the builder gathers it, before its kinds become colours. */
+interface DrawnPin {
+  pin: Omit<MarkerData, 'kindColors'>;
+  kinds: ShownKind[];
+  merged: boolean;
+}
+
+/**
+ * Adds a pin, or folds it into the pin already drawn at its point. One point two
+ * listed objects show — a part that is a place of its own kind too — is one pin
+ * with both their kinds, and it opens the point's own place, the one not made
+ * of parts (#2122).
+ */
+function drawOnce(
+  drawn: DrawnPin[], byPoint: Map<number, DrawnPin>, pin: Omit<MarkerData, 'kindColors'>, kinds: ShownKind[],
+): void {
+  const earlier = pin.locationId === null ? undefined : byPoint.get(pin.locationId);
+  if (!earlier) {
+    const entry = { pin, kinds: [...kinds], merged: false };
+    drawn.push(entry);
+    if (pin.locationId !== null) byPoint.set(pin.locationId, entry);
+    return;
+  }
+  const ownFirst = earlier.pin.experience.has_parts && !pin.experience.has_parts;
+  earlier.pin = ownFirst
+    ? { ...pin, experienceIds: [pin.experienceId, ...earlier.pin.experienceIds] }
+    : { ...earlier.pin, experienceIds: [...earlier.pin.experienceIds, pin.experienceId] };
+  earlier.kinds.push(...kinds);
+  earlier.merged = true;
+}
+
 export function buildExperienceMarkers(
   experiences: Experience[],
   locationsByExperience: Record<number, ExperienceLocation[]>,
@@ -129,8 +185,6 @@ export function buildExperienceMarkers(
   onlyKindId: number | null = null,
   kindTypes: ReadonlyMap<string, string> = NO_KIND_TYPES,
 ): MarkerData[] {
-  const result: MarkerData[] = [];
-
   // No cap. A cap silently breaks the list-to-map hover for everything past it:
   // the highlight resolves an experience through this set and returns without a
   // sound when it is absent. A region with 200 experiences had hover working for
@@ -140,19 +194,23 @@ export function buildExperienceMarkers(
   // threshold; above it every place is drawn as its own marker. Hover costs one
   // scan of this array either way — it resolves markers directly rather than
   // searching what the map currently draws.
+  const drawn: DrawnPin[] = [];
+  const byPoint = new Map<number, DrawnPin>();
   for (const exp of experiences) {
     // One pin per place, drawn while any of its kinds is shown, in the colours
     // of the kinds it shows (#1245, #1262).
     const kinds = shownKinds(exp, expandedKindNames, onlyKindId, kindTypes);
     if (kinds.length === 0) continue;
-    const kindColors = kinds.map(kind => experienceColor(kind.kind_id, kind.type));
 
     const locations = locationsByExperience[exp.id];
     const pins = locations?.length
       ? placeMarkers(exp, representablePlaces(locations), locations.length)
       : standInMarkers(exp);
-    for (const pin of pins) result.push({ ...pin, kindColors });
+    for (const pin of pins) drawOnce(drawn, byPoint, pin, kinds);
   }
 
-  return result;
+  return drawn.map(({ pin, kinds, merged }) => ({
+    ...pin,
+    kindColors: (merged ? mergedKinds(kinds) : kinds).map(kind => experienceColor(kind.kind_id, kind.type)),
+  }));
 }

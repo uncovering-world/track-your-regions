@@ -23,7 +23,7 @@ import {
   sceneMarkerLayer,
   sceneHoverGlowLayer, sceneHoverRingLayer, sceneHighlightRingLayer, sceneHighlightPointLayer,
   EMPTY_FC, buildPointHoverData, buildPointsHoverData, buildSizedRing,
-  buildHighlightData, buildMarkerFeatures, splitPinIcon, splitPinIconFor, addSplitPinImages,
+  buildHighlightData, buildMarkerFeatures, featureShowsExperience, splitPinIcon, splitPinIconFor, addSplitPinImages,
 } from './scene';
 import { experienceColor } from '../../utils/kindColors';
 
@@ -145,7 +145,7 @@ describe('buildMarkerFeatures', () => {
   } as unknown as Experience;
 
   const pin: MarkerData = {
-    id: '12-34', experienceId: 12, locationId: 34, experience: louvre,
+    id: '12-34', experienceId: 12, experienceIds: [12], locationId: 34, experience: louvre,
     longitude: LOUVRE[0], latitude: LOUVRE[1], locationName: 'Cour Napoléon',
   };
 
@@ -161,6 +161,18 @@ describe('buildMarkerFeatures', () => {
       color: experienceColor(2, null),
       approximate: false,
     });
+  });
+
+  it('names the other objects a point is a place of, and answers for each (#2122)', () => {
+    // Seville Cathedral's pin opens the cathedral and is a place of Seville's
+    // World Heritage site too.
+    const cathedral = { ...pin, id: '13223-13546', experienceId: 13223, experienceIds: [13223, 1175], locationId: 13546 };
+    const properties = buildMarkerFeatures([cathedral]).features[0].properties;
+    expect(properties).toMatchObject({ experienceId: 13223, alsoOf: '1175' });
+    expect(featureShowsExperience(properties, 13223)).toBe(true);
+    expect(featureShowsExperience(properties, 1175)).toBe(true);
+    expect(featureShowsExperience(properties, 117)).toBe(false);
+    expect(featureShowsExperience(buildMarkerFeatures([pin]).features[0].properties, 1175)).toBe(false);
   });
 
   it('marks a pin the source placed only roughly, drawn as a ring (#1912)', () => {
@@ -183,7 +195,7 @@ describe('a pin that shows several kinds', () => {
 
   it('draws a split disc named by its colours over a plain disc of the first (#1262)', () => {
     const pin: MarkerData = {
-      id: '6214-1', experienceId: 6214, locationId: 1, experience: capitoline,
+      id: '6214-1', experienceId: 6214, experienceIds: [6214], locationId: 1, experience: capitoline,
       longitude: 12.48, latitude: 41.89, locationName: null, kindColors: [art, archaeology],
     };
     const properties = buildMarkerFeatures([pin]).features[0].properties!;
@@ -194,7 +206,7 @@ describe('a pin that shows several kinds', () => {
 
   it('draws a plain disc, with no split image, where it shows one kind', () => {
     const pin: MarkerData = {
-      id: '6214-1', experienceId: 6214, locationId: 1, experience: capitoline,
+      id: '6214-1', experienceId: 6214, experienceIds: [6214], locationId: 1, experience: capitoline,
       longitude: 12.48, latitude: 41.89, locationName: null, kindColors: [archaeology],
     };
     const properties = buildMarkerFeatures([pin]).features[0].properties!;

@@ -65,7 +65,7 @@ const pillarPin = feature(LAYER_MARKERS, { experienceId: 11671, locationId: 777,
 const serapeumDot = feature(LAYER_HIGHLIGHT_POINT, { locationId: 501, name: 'Serapeum of Alexandria' }, SERAPEUM);
 
 const markers: MarkerData[] = [{
-  id: '11671:777', experienceId: 11671, locationId: 777, experience: pillar,
+  id: '11671:777', experienceId: 11671, experienceIds: [11671], locationId: 777, experience: pillar,
   longitude: PILLAR[0], latitude: PILLAR[1], locationName: null,
 }];
 
