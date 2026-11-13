@@ -1,6 +1,6 @@
 # ADR-0028: A reader is positioned by places they can go to
 
-**Status:** Accepted — decision 2 narrowed by ADR-0095
+**Status:** Accepted — decision 2 narrowed by ADR-0095 and by [ADR-0205](0205-a-whole-has-no-coordinate-in-a-readers-answer-and-is-framed-by-its-places.md): a whole is given no coordinate, and is framed by its places
 
 **Date:** 2026-08-17
 
