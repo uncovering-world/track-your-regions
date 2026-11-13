@@ -253,6 +253,13 @@ migration:
   its `COMMIT` and leave the rest unwrapped. Write it to be re-runnable: a file
   the ledger did not record is applied again on the next run.
 
+`npm run check` applies a migration the branch adds to a database that holds
+rows before it merges: `db:migrate-on-rows` builds the base's schema, seeds the
+base's smoke fixture, applies the file and holds the result to a fresh database
+(`docs/tech/gates.md` § A migration on rows). It does not measure locks on real
+volumes, which `db/migrations/README.md` § The gate that applies a new
+migration to rows says when to measure by hand.
+
 A rename or a drop carries its readers with it, and
 `backend/src/db/statementNamesDeclaredColumns.test.ts` fails on the one it
 missed: every SQL string literal in `backend/src` is held to the columns

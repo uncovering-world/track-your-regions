@@ -66,9 +66,61 @@ constraint trigger (`source_records` carries two, the crowding triggers) holds
 the events of every row write until the commit, and Postgres refuses an
 `ALTER TABLE` or a `CREATE INDEX` on it while they are pending ("cannot ALTER
 TABLE ... because it has pending trigger events"). A database built from the
-schema never meets this, since no lane migrates a database that holds rows, so
-the order is the file's to keep: every change of shape first, then the
-backfill (232 is the example).
+schema never meets this, since its tables are empty, so the order is the file's
+to keep: every change of shape first, then the backfill (232 is the example).
+The gate below fails a file that breaks it, where the fixture holds rows in the
+table.
+
+## The gate that applies a new migration to rows
+
+`npm run db:migrate-on-rows` (`scripts/migrate-on-rows.mjs`, #2464) is a
+check-tier gate: `npm run check` runs it whenever a file here, `db/init/` or the
+image `docker-compose.yml` pins changes, and CI runs it in `Lint & Type Check`.
+It builds a throwaway database from the base's `db/init/`, seeds the base's
+smoke fixture into it, applies every file the change adds here the way the
+runner does, re-applies the head's `db/init/`, and compares the schema with a
+fresh database built from the head's. `docs/tech/gates.md` § A migration on rows
+has the mechanics.
+
+The gate applies an added file before it re-applies the head's `db/init/`, so a
+new file runs **before** the next re-application of `01-schema.sql`, as every
+file since 044 says it does. A file written to run only after it, whose guard
+refuses until the schema file has added its column or function — 032 and 033
+below were — cannot pass the gate and is not written any more: what it needs
+from the schema file goes into the file itself.
+
+What it proves:
+
+- **The file runs on a database that holds rows.** A statement that only fails
+  on rows — 232's ALTER TABLE after a backfill of a table with deferred
+  triggers, a constraint the rows violate, a premise the file asserts and the
+  rows break — fails the gate, named, with Postgres's error.
+- **The database lands on the schema file's schema.** After the file and the
+  re-application of `01-schema.sql`, every table, column (type, nullability,
+  default), constraint, index, trigger, function signature and extension is the
+  one a fresh database gets. A column left behind, a constraint under its old
+  name or a trigger the schema no longer declares fails it. Comments, function
+  bodies and column order are not compared.
+
+What it does not prove, and a hand-run on the development database is still
+owed for:
+
+- **Duration and locks on real volumes.** The fixture holds a handful of rows,
+  so a file finishes in a fraction of a second whatever it locks. 232 held an
+  exclusive lock on `source_records` for 61 seconds on the development
+  database, which no gate reports. A file that rewrites or locks a large table
+  is run there by hand first, inside a transaction that is rolled back, with
+  `lock_timeout` set, agreed with the dev stack's keeper.
+- **Rows the fixture does not hold.** The run prints, before each file, the
+  tables its text writes or alters and how many rows each held. A table that
+  held none is a warning: the file met no row there, so the rows the
+  development database holds are the only test it gets.
+- **The fixture's rows are made up.** A file that asserts a premise of the real
+  catalogue can fail on the fixture's own rows: on 2026-11-13, applying
+  everything from 231 on to the base before 232 stopped at 239, which refused
+  the fixture's records keyed `e2e-9001` that the fixture of that day still
+  wrote. Such a file either answers for the rows the base's fixture holds or
+  the fixture changes in an earlier pull request.
 
 ## A database that predates the ledger
 
