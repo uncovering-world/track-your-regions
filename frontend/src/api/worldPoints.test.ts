@@ -31,12 +31,11 @@ import mapInteractionsSource from '../components/regionMap/useMapInteractions.ts
 import worldPointInteractionsSource from '../components/experienceMarkers/useWorldPointInteractions.ts?raw';
 
 const overview: WorldPointsResponse = {
-  detail: 'overview', folded: false, count: 2, lng: [1, 2], lat: [3, 4],
+  detail: 'overview', count: 2, lng: [1, 2], lat: [3, 4],
 };
 
 const markers: WorldPointsResponse = {
   detail: 'markers',
-  folded: false,
   count: 2,
   lng: [1, 2],
   lat: [3, 4],
@@ -66,13 +65,6 @@ describe('worldPointsCollection', () => {
     expect(features[0].properties.locationId).toBe(10);
     expect(features[0].properties.experienceName).toBe('Sybaris');
     expect(features[1].properties.name).toBeNull();
-    expect(features[1].properties.locationCount).toBe(1);
-  });
-
-  it('carries the fold\'s count where the answer is folded', () => {
-    const folded = { ...markers, folded: true, locationCount: [28, 1] };
-    const features = worldPointsCollection(folded).features;
-    expect(features[0].properties.locationCount).toBe(28);
   });
 
   it("carries every kind of a place in several as text, and the icon the layer names (#1262)", () => {
@@ -143,7 +135,7 @@ describe('the identity agreement has one home', () => {
 });
 
 describe('the points request', () => {
-  const query: WorldPointsQuery = { kindId: null, detail: 'overview', folded: false, box: null };
+  const query: WorldPointsQuery = { kindId: null, detail: 'overview', box: null };
   // The URL the generated call sends, built by its own builder.
   const urlOf = (q: WorldPointsQuery) => `http://api${getGetExperiencesPointsUrl(worldPointsParams(q))}`;
   const paramsOf = (q: WorldPointsQuery) => new URL(urlOf(q)).searchParams;
@@ -157,11 +149,6 @@ describe('the points request', () => {
   it('names the kind only when there is one', () => {
     expect(paramsOf({ ...query, kindId: 5 }).get('kindId')).toBe('5');
     expect(paramsOf(query).has('kindId')).toBe(false);
-  });
-
-  it('names the fold only when it is on', () => {
-    expect(paramsOf({ ...query, folded: true }).get('folded')).toBe('true');
-    expect(paramsOf(query).has('folded')).toBe(false);
   });
 
   it('writes the box west, south, east, north — the order the endpoint reads', () => {

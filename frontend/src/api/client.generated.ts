@@ -2367,8 +2367,6 @@ export const PointsDetail = {
  */
 export interface WorldPointsResponse {
   detail: PointsDetail;
-  /** Echoed rather than assumed, so a layer cannot draw one fold with the other's data. */
-  folded: boolean;
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
@@ -2396,14 +2394,8 @@ export interface WorldPointsResponse {
   type?: (string | null)[];
   /** Markers only: every kind a place in more than one is offered in, in the kinds' display order; null for a place in one kind, which `kindId` names. */
   kinds?: WorldPointsResponseKindsItem[];
-  /** Markers, unfolded only: whether the source placed the point only roughly (#1912), which the pin draws as a ring. */
+  /** Markers only: whether the source placed the point only roughly (#1912), which the pin draws as a ring. */
   approximate?: boolean[];
-  /**
-     * Folded only: how many places the pin stands for, which is the badge's number.
-     * @items.minimum -9007199254740991
-     * @items.maximum 9007199254740991
-     */
-  locationCount?: number[];
 }
 
 /**
@@ -8302,7 +8294,6 @@ export type GetExperiencesPointsParams = {
   /** @maxLength 100 */
   bbox?: string;
   detail?: GetExperiencesPointsDetail;
-  folded?: GetExperiencesPointsFolded;
 };
 
 export type GetExperiencesPointsDetail = typeof GetExperiencesPointsDetail[keyof typeof GetExperiencesPointsDetail];
@@ -8311,14 +8302,6 @@ export type GetExperiencesPointsDetail = typeof GetExperiencesPointsDetail[keyof
 export const GetExperiencesPointsDetail = {
   overview: 'overview',
   markers: 'markers',
-} as const;
-
-export type GetExperiencesPointsFolded = typeof GetExperiencesPointsFolded[keyof typeof GetExperiencesPointsFolded];
-
-
-export const GetExperiencesPointsFolded = {
-  true: 'true',
-  false: 'false',
 } as const;
 
 export type GetExperiencesRegionCountsParams = {

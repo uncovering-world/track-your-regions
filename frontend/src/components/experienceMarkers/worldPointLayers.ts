@@ -4,7 +4,7 @@
  *
  * Everything about *how* a place is drawn is the region layer's, spread from
  * `layers.ts` rather than restated — the heatmap's tuned paint, the marker's
- * radius and its cross-fade with the heat, the count badge's offset and filter.
+ * radius and its cross-fade with the heat.
  * Two point layers on one map that disagreed about any of those would read as
  * two different things being shown. What this file changes is only what has to
  * change when the features come from the catalogue's own endpoint:
@@ -13,22 +13,14 @@
  *   and this one derives from the kind and the type (`kindColorExpression`,
  *   generated from the one palette — #814);
  * - the **intensity** of the heat, which is the one number a world of points
- *   cannot share with a region's;
- * - and **nothing about the fold**, which is the difference from the first
- *   build of this layer. A tile had to carry every place and flag the one each
- *   object folds to, because a tile is cached under its URL and must answer
- *   both states; the endpoint is asked for the state that is being drawn and
- *   answers only that. So there is no `['has', 'main']` filter here, and the
- *   folded World Heritage map is 1 272 points rather than 6 347 sent and 5 075
- *   filtered away.
+ *   cannot share with a region's.
  */
 
 import type { LayerProps } from 'react-map-gl/maplibre';
 import type { CircleLayerSpecification } from 'maplibre-gl';
 import type { WorldPointKinds, WorldPointsResponse } from '../../api/worldPoints';
 import {
-  HEATMAP_MAX_ZOOM, heatmapLayer, hoverGlowLayer, hoverRingLayer,
-  markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
+  HEATMAP_MAX_ZOOM, heatmapLayer, hoverGlowLayer, hoverRingLayer, markerLayer, markerSplitLayer,
 } from './layers';
 import { splitPinIconFor } from './scene';
 import { experienceColor, kindColorExpression } from '../../utils/kindColors';
@@ -58,13 +50,10 @@ const LAYER_WORLD_HEAT = 'world-points-heat';
 const LAYER_WORLD_MARKERS = 'world-points-markers';
 const LAYER_WORLD_SPLIT = 'world-points-split';
 const LAYER_WORLD_CAPPED = 'world-points-capped';
-const LAYER_WORLD_BADGE_BG = 'world-points-badge-bg';
-const LAYER_WORLD_BADGE_TEXT = 'world-points-badge-text';
 
 /**
- * Every layer a world pin can be drawn by, queried together: a pointer over the
- * badge is a pointer over the pin it belongs to, and a capped read's pins are
- * pins.
+ * Every layer a world pin can be drawn by, queried together: a capped read's
+ * pins are pins.
  *
  * **This list is what answers a pointer, so a drawable pin layer missing from
  * it is a pin that cannot be hovered and a click that falls through to the
@@ -76,13 +65,11 @@ const LAYER_WORLD_BADGE_TEXT = 'world-points-badge-text';
  * opening a place.
  *
  * Listing a layer the style does not currently hold costs nothing: both callers
- * ask `map.getLayer` per event, which is what the badge layers coming and going
- * with the fold already requires. So the rule is to list every pin layer this
+ * ask `map.getLayer` per event, which is what the pin layers coming and going
+ * with the tier already requires. So the rule is to list every pin layer this
  * module can produce, drawn or not.
  */
-export const WORLD_MARKER_LAYERS = [
-  LAYER_WORLD_MARKERS, LAYER_WORLD_SPLIT, LAYER_WORLD_CAPPED, LAYER_WORLD_BADGE_BG, LAYER_WORLD_BADGE_TEXT,
-] as const;
+export const WORLD_MARKER_LAYERS = [LAYER_WORLD_MARKERS, LAYER_WORLD_SPLIT, LAYER_WORLD_CAPPED] as const;
 
 /** What a layer of this source needs beyond the region layer's own definition. */
 const onSource = { source: SOURCE_WORLD_POINTS };
@@ -107,15 +94,6 @@ const onSource = { source: SOURCE_WORLD_POINTS };
  * where the markers do — by the time the heat is fading out at zoom 5 the two
  * layers are drawing the same thing again, and the numbers there have to agree
  * for the fade to look like one handover.
- *
- * **The ruler does not change with the fold**, and that is deliberate: folded,
- * the World Heritage map is drawn from 1 272 points instead of 6 347, so it
- * comes out five times fainter, and that faintness is the answer. Scaling the
- * intensity to compensate would make the two pictures incomparable and would
- * have to be a different factor per kind — 5 for World Heritage, 2.3 across all
- * kinds, 1 for the art museums, every one of which is a single place. One
- * ruler, so that "hotter" means "more to go to" in both states and the
- * difference between them is exactly the serial sites.
  */
 export const worldHeatmapLayer: LayerProps = {
   ...heatmapLayer,
@@ -138,7 +116,7 @@ const KIND_PIN_COLOURS: NonNullable<CircleLayerSpecification['paint']> = {
   'circle-stroke-color': ['case', ['==', ['get', 'approximate'], true], kindColorExpression(), '#ffffff'],
 };
 
-/** One pin per place, or — folded — one per object, at the place the catalogue answers with. */
+/** One pin per place: a serial site is its parts, never a pin of its own. */
 export const worldMarkerLayer: LayerProps = {
   ...markerLayer,
   id: LAYER_WORLD_MARKERS,
@@ -212,35 +190,8 @@ export const worldCappedMarkerLayer: LayerProps = {
   },
 };
 
-/**
- * The badge, reused whole, and only while the reader has folded something.
- *
- * It says "places this pin stands for", and its filter — `locationCount` above
- * one — is the region layer's own: an unfolded answer carries no such property
- * and the filter's `coalesce` reads that as one, so the filter alone would
- * already draw the badge exactly where there is something to say. That is why
- * the property carries the region layer's name rather than a word of this
- * endpoint's choosing.
- *
- * The fold is still asked, because a filter that matches nothing is not a layer
- * that costs nothing: these two are in the style, and the style is what the map
- * walks per tile and per frame. Unfolded is the state the map opens in and the
- * one its budgets are measured on, so the two layers it cannot use are two the
- * first screen does not carry — and the first screen is the one place this
- * layer's cost has been measured at all (#915; `docs/tech/performance.md`
- * carries the figures and says which build and which machine each came from,
- * which is why none is quoted here).
- */
-export function worldBadgeLayers(folded: boolean): LayerProps[] {
-  if (!folded) return [];
-  return [
-    { ...markerCountBadgeBgLayer, id: LAYER_WORLD_BADGE_BG, ...onSource },
-    { ...markerCountBadgeTextLayer, id: LAYER_WORLD_BADGE_TEXT, ...onSource },
-  ];
-}
-
 /** What an answer's own shape says about it, which is all these layers need. */
-export type DrawableAnswer = Pick<WorldPointsResponse, 'detail' | 'folded' | 'truncated'>;
+export type DrawableAnswer = Pick<WorldPointsResponse, 'detail' | 'truncated'>;
 
 /**
  * The layers an answer can actually be drawn through.
@@ -264,9 +215,6 @@ export type DrawableAnswer = Pick<WorldPointsResponse, 'detail' | 'folded' | 'tr
  *   named place and the overview carries no properties at all. Mounted against
  *   overview features it would be pins in the unknown colour that answer no
  *   pointer — which is the state the capped layer had to be taught to avoid.
- * - **The badge follows the answer's own fold**, not the control's: its count
- *   is a property of the features in hand, so an answer folded the other way
- *   simply has no count to draw.
  * - **A capped read replaces the heat with its own pins**, for the reason that
  *   layer's docblock gives.
  */
@@ -276,7 +224,7 @@ export function worldLayersFor(answer: DrawableAnswer | undefined): LayerProps[]
     answer.truncated ? worldCappedMarkerLayer : worldHeatmapLayer,
   ];
   if (answer.detail === 'markers') {
-    layers.push(worldMarkerLayer, worldSplitMarkerLayer, ...worldBadgeLayers(answer.folded));
+    layers.push(worldMarkerLayer, worldSplitMarkerLayer);
   }
   return layers;
 }

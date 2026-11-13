@@ -10,13 +10,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   SOURCE_WORLD_POINTS, WORLD_MARKER_LAYERS,
-  worldBadgeLayers, worldCappedMarkerLayer, worldHeatmapLayer, worldLayersFor,
+  worldCappedMarkerLayer, worldHeatmapLayer, worldLayersFor,
   worldMarkerLayer, worldHoverGlowLayer, worldHoverRingLayer,
   worldSplitMarkerLayer, worldSplitIconFor,
 } from './worldPointLayers';
 import {
   MARKER_FADE_START,
-  heatmapLayer, markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
+  heatmapLayer, markerLayer, markerSplitLayer,
 } from './layers';
 import { splitPinIcon } from './scene';
 import { experienceColor } from '../../utils/kindColors';
@@ -26,8 +26,7 @@ import { experienceColor } from '../../utils/kindColors';
  *
  * `LayerProps` is the union of every layer kind the style spec has, and only
  * some of them carry `paint`, `filter`, `layout` or a zoom range — so reading
- * any of those off the union needs a cast, the same one the fold's own filter
- * needs where it is built.
+ * any of those off the union needs a cast.
  */
 const asRecord = (layer: unknown) => layer as Record<string, unknown>;
 
@@ -64,33 +63,6 @@ describe('the world layer borrows the region layer\'s paint', () => {
   });
 });
 
-describe('what the first screen carries', () => {
-  it('mounts no badge layer until the reader has folded something', () => {
-    // The badge's own filter would already hide it — an unfolded answer carries
-    // no `locationCount` — but a layer with a filter that matches nothing is
-    // still a layer the style walks. Unfolded is the state the map opens in and
-    // the one its budgets are measured on.
-    expect(worldBadgeLayers(false)).toEqual([]);
-  });
-
-  it('mounts both of them once it has', () => {
-    const layers = worldBadgeLayers(true);
-    expect(layers).toHaveLength(2);
-    expect(layers.map(layer => asRecord(layer).source)).toEqual([SOURCE_WORLD_POINTS, SOURCE_WORLD_POINTS]);
-  });
-
-  it('leaves the badge\'s own filter and text to the region layer', () => {
-    // The property is called `locationCount` for this reason: a word of the
-    // endpoint's own would mean restating the filter here, which is how the two
-    // layers start disagreeing about what a count means.
-    const [background, text] = worldBadgeLayers(true).map(asRecord);
-    expect(background.filter).toEqual(asRecord(markerCountBadgeBgLayer).filter);
-    expect(text.filter).toEqual(asRecord(markerCountBadgeTextLayer).filter);
-    expect(asRecord(text.layout)['text-field'])
-      .toEqual(asRecord(asRecord(markerCountBadgeTextLayer).layout)['text-field']);
-  });
-});
-
 describe('the layer ids', () => {
   it('are the world layer\'s own, although the two layers are never mounted together', () => {
     // A duplicate layer id is a MapLibre error at add time, and "they cannot
@@ -98,7 +70,6 @@ describe('the layer ids', () => {
     const idOf = (layer: unknown) => String(asRecord(layer).id);
     const ids = [
       idOf(worldHeatmapLayer), idOf(worldMarkerLayer),
-      ...worldBadgeLayers(true).map(idOf),
       idOf(worldHoverGlowLayer), idOf(worldHoverRingLayer),
     ];
     expect(new Set(ids).size).toBe(ids.length);
@@ -116,7 +87,7 @@ describe('the layer ids', () => {
     // layer, so every pin would have fallen through to the region under it.
     // `useMapInteractions` returns false when nothing listed here is drawn,
     // which is what lets a click reach the map.
-    const pinLayers = [worldMarkerLayer, worldSplitMarkerLayer, worldCappedMarkerLayer, ...worldBadgeLayers(true)]
+    const pinLayers = [worldMarkerLayer, worldSplitMarkerLayer, worldCappedMarkerLayer]
       .map(layer => String(asRecord(layer).id));
     expect([...WORLD_MARKER_LAYERS].sort()).toEqual(pinLayers.sort());
   });
@@ -173,26 +144,20 @@ describe('worldLayersFor', () => {
   const pins = String(asRecord(worldMarkerLayer).id);
   const split = String(asRecord(worldSplitMarkerLayer).id);
   const capped = String(asRecord(worldCappedMarkerLayer).id);
-  const badges = worldBadgeLayers(true).map(layer => String(asRecord(layer).id));
 
   it('draws an overview through the heat alone — its features have no identity to pin', () => {
-    expect(ids({ detail: 'overview', folded: false })).toEqual([heat]);
+    expect(ids({ detail: 'overview' })).toEqual([heat]);
   });
 
   it('draws a markers answer through the heat and the pins, so the band cross-fades', () => {
     // Both span MARKER_FADE_START → HEATMAP_MAX_ZOOM on purpose; dropping either
     // inside the band makes the handover a cutoff instead of a fade.
-    expect(ids({ detail: 'markers', folded: false })).toEqual([heat, pins, split]);
-  });
-
-  it('adds the badges only when the answer itself is folded, not when the control is', () => {
-    expect(ids({ detail: 'markers', folded: true })).toEqual([heat, pins, split, ...badges]);
-    expect(ids({ detail: 'overview', folded: true })).toEqual([heat]);
+    expect(ids({ detail: 'markers' })).toEqual([heat, pins, split]);
   });
 
   it('replaces the heat with the capped pins when the read was capped', () => {
-    expect(ids({ detail: 'overview', folded: false, truncated: true })).toEqual([capped]);
-    expect(ids({ detail: 'markers', folded: false, truncated: true })).toEqual([capped, pins, split]);
+    expect(ids({ detail: 'overview', truncated: true })).toEqual([capped]);
+    expect(ids({ detail: 'markers', truncated: true })).toEqual([capped, pins, split]);
   });
 
   it('draws nothing at all without an answer, so the style stays empty until there is one', () => {
@@ -207,12 +172,8 @@ describe('worldLayersFor', () => {
     // missing `kindId` and nothing else on it looks at the feature — which is
     // exactly why it was allowed to draw identity-less pins. That is what makes
     // the previous tier safe to keep drawing while the next read is in flight.
-    for (const folded of [false, true]) {
-      for (const truncated of [undefined, true as const]) {
-        const drawn = ids({ detail: 'overview', folded, truncated });
-        expect(drawn).not.toContain(pins);
-        for (const badge of badges) expect(drawn).not.toContain(badge);
-      }
+    for (const truncated of [undefined, true as const]) {
+      expect(ids({ detail: 'overview', truncated })).not.toContain(pins);
     }
   });
 });

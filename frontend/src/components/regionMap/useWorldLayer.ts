@@ -1,11 +1,10 @@
 /**
- * The map's world layer: whether it is drawn, which kind it draws, and whether
- * it is folded (#910).
+ * The map's world layer: whether it is drawn, and which kind it draws (#910).
  *
  * Kept out of `RegionMapVT` because that component is already the map's chrome,
  * its four tile sources and its loading states; what this holds is one question
- * (is a region selected?) and two pieces of view state, one of which lives in
- * the address.
+ * (is a region selected?) and one piece of view state, which lives in the
+ * address.
  *
  * **The kind is in the address** (`?kind=`, `docs/tech/addresses.md`): a link to
  * the world map of Archaeology has to open on Archaeology, and the same
@@ -13,13 +12,9 @@
  * id in an address does — silently, once the kinds have answered, and only then:
  * an empty list is what stands in while the read is in flight, and treating it
  * as an answer would spend a shared link on a hiccup.
- *
- * **The fold is not.** It is a way of looking at the pins on the screen in front
- * of you, the same thing `useCollapsedExperiences` holds per region and per
- * surface, and Back through it would be a step nobody took.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '../../hooks/useNavigation';
 import { useAppAddress } from '../../hooks/useAppAddress';
@@ -35,14 +30,11 @@ export interface WorldLayerState {
   kinds: ExperienceKind[];
   /** The kind's own name, for the hover card; a point carries only the id. */
   kindNameOf: (kindId: number | null) => string | null;
-  folded: boolean;
-  toggleFold: () => void;
 }
 
 export function useWorldLayer(): WorldLayerState {
   const { selectedRegion, regionPending, isCustomWorldView } = useNavigation();
   const { address, go } = useAppAddress();
-  const [folded, setFolded] = useState(false);
 
   /**
    * A custom world view with nothing selected. Not the default world view: its
@@ -94,10 +86,8 @@ export function useWorldLayer(): WorldLayerState {
     [kinds],
   );
 
-  const toggleFold = useCallback(() => setFolded(value => !value), []);
-
   return useMemo(
-    () => ({ active, kindId, setKind, kinds, kindNameOf, folded, toggleFold }),
-    [active, kindId, setKind, kinds, kindNameOf, folded, toggleFold],
+    () => ({ active, kindId, setKind, kinds, kindNameOf }),
+    [active, kindId, setKind, kinds, kindNameOf],
   );
 }

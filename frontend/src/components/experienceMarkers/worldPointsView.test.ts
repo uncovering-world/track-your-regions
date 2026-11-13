@@ -120,26 +120,25 @@ describe('queryForView', () => {
   const world = { west: -180, south: -85, east: 180, north: 85 };
 
   it('asks for the whole world below the band, so panning there costs no request', () => {
-    const over = queryForView(null, false, 2, { west: -10, south: 35, east: 30, north: 60 });
-    expect(over).toEqual({ kindId: null, folded: false, detail: 'overview', box: null });
+    const over = queryForView(null, 2, { west: -10, south: 35, east: 30, north: 60 });
+    expect(over).toEqual({ kindId: null, detail: 'overview', box: null });
   });
 
   it('boxes the read once the pins are being drawn', () => {
-    const query = queryForView(1, true, 6, { west: 2, south: 45, east: 12, north: 51 });
+    const query = queryForView(1, 6, { west: 2, south: 45, east: 12, north: 51 });
     expect(query.detail).toBe('markers');
     expect(query.box).not.toBeNull();
     expect(query.kindId).toBe(1);
-    expect(query.folded).toBe(true);
   });
 
   it('carries no box at marker zoom over the whole world, which a wide screen can hold', () => {
-    expect(queryForView(null, false, MARKER_FADE_START, world).box).toBeNull();
+    expect(queryForView(null, MARKER_FADE_START, world).box).toBeNull();
   });
 });
 
 describe('sameQuestion', () => {
   const at = (box: { west: number; south: number; east: number; north: number } | null) => ({
-    kindId: 1, detail: 'markers' as const, folded: false, box,
+    kindId: 1, detail: 'markers' as const, box,
   });
   const paris = { west: 2, south: 48, east: 3, north: 49 };
   const berlin = { west: 13, south: 52, east: 14, north: 53 };
@@ -171,12 +170,11 @@ describe('sameQuestion', () => {
     expect(sameQuestion(at(null), at(null))).toBe(true);
   });
 
-  it('tells the kind, the tier and the fold apart', () => {
-    const base = { kindId: 1, detail: 'overview' as const, folded: false, box: null };
+  it('tells the kind and the tier apart', () => {
+    const base = { kindId: 1, detail: 'overview' as const, box: null };
     expect(sameQuestion(base, { ...base, kindId: 2 })).toBe(false);
     expect(sameQuestion(base, { ...base, kindId: null })).toBe(false);
     expect(sameQuestion(base, { ...base, detail: 'markers' })).toBe(false);
-    expect(sameQuestion(base, { ...base, folded: true })).toBe(false);
     expect(sameQuestion(base, { ...base })).toBe(true);
   });
 });

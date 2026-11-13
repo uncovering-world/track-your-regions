@@ -32,7 +32,6 @@ export interface PointsBox {
 export interface WorldPointsQuery {
   kindId: number | null;
   detail: PointsDetail;
-  folded: boolean;
   box: PointsBox | null;
 }
 
@@ -44,13 +43,6 @@ export interface WorldPointProperties {
   experienceName: string;
   kindId: number | null;
   type: string | null;
-  /**
-   * How many places this pin stands for; 1 unless the answer is folded.
-   *
-   * The region layer's own property name, so the badge that draws it
-   * (`markerCountBadgeBgLayer`) is reused rather than restated.
-   */
-  locationCount: number;
   /** Whether the source placed the point only roughly (#1912), drawn as a ring. */
   approximate?: boolean;
   /**
@@ -98,7 +90,6 @@ export function worldPointsParams(query: WorldPointsQuery): GetExperiencesPoints
   return {
     detail: query.detail,
     kindId: query.kindId ?? undefined,
-    folded: query.folded ? 'true' : undefined,
     bbox: box ? [box.west, box.south, box.east, box.north].join(',') : undefined,
   };
 }
@@ -154,7 +145,6 @@ export function worldPointsCollection(
           experienceName: answer.experienceName![index],
           kindId: answer.kindId![index],
           type: answer.type![index],
-          locationCount: answer.locationCount?.[index] ?? 1,
           // The scene's pin paint reads it: a ring for a point placed only roughly (#1912).
           approximate: answer.approximate?.[index] === true,
           ...(kinds ? { kindIds: kinds.map(kind => kind.kindId).join(',') } : {}),
