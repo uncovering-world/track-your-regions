@@ -51,8 +51,8 @@ import {
   answerFindSiteLinkRequest, getFindSiteCandidates, getFindSiteLinks,
 } from '../controllers/experience/findSiteLinksController.js';
 import { PublishWaitingResult } from '../api/responses/admin.js';
-import { PartWordAnswered } from '../api/responses/parts.js';
-import { partWordBodySchema, takeOutPartBodySchema } from '../types/partSchemas.js';
+import { PartCandidates, PartWordAnswered, PlaceParts } from '../api/responses/parts.js';
+import { partCandidatesQuerySchema, partWordBodySchema, takeOutPartBodySchema } from '../types/partSchemas.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
 import { separatePlaceMembership, undoPlaceSeparation } from '../controllers/experience/membershipSeparationController.js';
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
@@ -120,6 +120,8 @@ import {
   addPlaceToKind,
   addPart,
   takeOutPart,
+  listPlaceParts,
+  findPartCandidates,
   listPlaceKinds,
   listAdmissionPins,
   handBackPin,
@@ -788,6 +790,23 @@ export const experienceCurationRoutes = [
     body: addToKindBodySchema,
     response: KindAddedToPlace,
     handler: addPlaceToKind,
+  }),
+  // What a place's card shows of its parts and wholes, and the places a curator
+  // may add (#2118): reads, in the scope of the place.
+  defineRoute({
+    method: 'get', path: '/:id/parts', access: 'curator', cache: 'no-store',
+    summary: 'List a place\'s parts and the wholes it is a part of, with whose word makes each one',
+    params: idParamSchema,
+    response: PlaceParts,
+    handler: listPlaceParts,
+  }),
+  defineRoute({
+    method: 'get', path: '/:id/part-candidates', access: 'curator', cache: 'no-store',
+    summary: 'Find places to add as a part of a place, or wholes to add it to, nearest first',
+    params: idParamSchema,
+    query: partCandidatesQuerySchema,
+    response: PartCandidates,
+    handler: findPartCandidates,
   }),
   // A curator's word that a place is a part of a whole, or taken out of it
   // (#2118), from either place's card: a record in the whole and a log row on

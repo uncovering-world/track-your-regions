@@ -20,6 +20,7 @@ export * from './visitQuestionController.js';
 export * from './keepOutController.js';
 export * from './kindAddController.js';
 export * from './partRecordController.js';
+export * from './partRecordRead.js';
 export * from './arrivalKindController.js';
 export * from './admissionPinController.js';
 export * from './locationStateController.js';

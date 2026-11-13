@@ -320,7 +320,7 @@ export function curatorUnrestrictedScopeExists(
  * decision 6). `place` is an SQL expression naming the place's id; `$1` or `$4`
  * the curator, as for `curatorUnrestrictedScopeExists`.
  */
-export function curatorPlaceScopeExists(place: '$2' | 'e.id', user: '$1' | '$4' = '$1'): string {
+export function curatorPlaceScopeExists(place: '$2' | `${string}.id`, user: '$1' | '$4' = '$1'): string {
   return `
     EXISTS (
       SELECT 1 FROM curator_assignments ca
@@ -341,13 +341,15 @@ export function curatorPlaceScopeExists(place: '$2' | 'e.id', user: '$1' | '$4' 
  * from the other end, walking up from the row rather than down from the
  * assignments, so it needs no prelude and takes the user from whichever
  * parameter the list binds it as. The UI shows a curate affordance by it; the
- * server's own check on every write stays what decides.
+ * server's own check on every write stays what decides. `alias` names the
+ * row's experience where a list calls it something else than `e`.
  */
-export function canCurateExperienceSql(user: '$1' | '$4'): string {
-  return `(${curatorPlaceScopeExists('e.id', user)}
+export function canCurateExperienceSql(user: '$1' | '$4', alias = 'e'): string {
+  const place: `${string}.id` = `${alias}.id`;
+  return `(${curatorPlaceScopeExists(place, user)}
     OR EXISTS (
       WITH RECURSIVE up AS (
-        SELECT er_up.region_id AS id FROM experience_regions er_up WHERE er_up.experience_id = e.id
+        SELECT er_up.region_id AS id FROM experience_regions er_up WHERE er_up.experience_id = ${alias}.id
         UNION
         SELECT r_up.parent_region_id FROM regions r_up JOIN up ON r_up.id = up.id WHERE r_up.parent_region_id IS NOT NULL
       )

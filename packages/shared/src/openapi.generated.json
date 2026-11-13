@@ -15434,6 +15434,54 @@
       }
     },
     "/api/experiences/{id}/parts": {
+      "get": {
+        "operationId": "getExperiencesByIdParts",
+        "summary": "List a place's parts and the wholes it is a part of, with whose word makes each one",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceParts"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "operationId": "postExperiencesByIdParts",
         "summary": "Make a place a part of this place, or put back a part kept out; take it out with parts/take-out",
@@ -15476,6 +15524,78 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PartWordAnswered"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/part-candidates": {
+      "get": {
+        "operationId": "getExperiencesByIdPartCandidates",
+        "summary": "Find places to add as a part of a place, or wholes to add it to, nearest first",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "part",
+                "whole"
+              ]
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 100,
+              "pattern": "^[^\\u0000]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartCandidates"
                 }
               }
             }
@@ -32498,6 +32618,165 @@
         "additionalProperties": false,
         "description": "An overlap resolved by splitting the coarse division into its GADM children."
       },
+      "PartCandidates": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "part",
+              "whole"
+            ]
+          },
+          "near": {
+            "type": "boolean",
+            "description": "No name was asked: the places nearest the anchor, within a kilometre for parts."
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "place": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "kind_name": {
+                      "description": "The kind the place stands in, first by display order; null for a place in no kind of its own.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "waiting": {
+                      "type": "boolean",
+                      "description": "Every kind the place stands in waits for a curator: no reader is shown it yet."
+                    },
+                    "image_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "image_credit": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/ImageCredit"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Whose photograph the picture is, shown with it."
+                    },
+                    "longitude": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "latitude": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "subtitle",
+                    "kind_name",
+                    "waiting",
+                    "image_url",
+                    "image_credit",
+                    "longitude",
+                    "latitude"
+                  ],
+                  "additionalProperties": false
+                },
+                "distance_m": {
+                  "description": "Metres from the nearest of the whole's parts, or from the place itself.",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "near_name": {
+                  "description": "The part the distance is measured from; null where it is the place itself.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "taken": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "self",
+                        "already",
+                        "loop",
+                        "scope"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Why it cannot be chosen: the place itself, a part (or whole) already, a whole of the place at some level, or a place readers are offered outside the caller's scope. A place no reader is offered is listed only in scope."
+                },
+                "kept_out": {
+                  "type": "boolean",
+                  "description": "A curator keeps it out of the whole: choosing it puts it back."
+                },
+                "also_part_of": {
+                  "description": "Another whole it is a part of, which it stays a part of.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "place",
+                "distance_m",
+                "near_name",
+                "taken",
+                "kept_out",
+                "also_part_of"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "experienceId",
+          "role",
+          "near",
+          "candidates"
+        ],
+        "additionalProperties": false,
+        "description": "Places a curator may add as a part of a place, or wholes to add it to, nearest first (#2118)."
+      },
       "PartNotFound": {
         "type": "object",
         "properties": {
@@ -33563,6 +33842,385 @@
           "kept-out",
           "refused"
         ]
+      },
+      "PlaceParts": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "in_kind": {
+            "type": "boolean",
+            "description": "The place stands in a kind of its own, so its first part makes it a place made of parts."
+          },
+          "merged_onto": {
+            "type": "boolean",
+            "description": "Another place stands merged into it, so it takes no first part until the merge is undone."
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "place": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "kind_name": {
+                      "description": "The kind the place stands in, first by display order; null for a place in no kind of its own.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "waiting": {
+                      "type": "boolean",
+                      "description": "Every kind the place stands in waits for a curator: no reader is shown it yet."
+                    },
+                    "image_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "image_credit": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/ImageCredit"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Whose photograph the picture is, shown with it."
+                    },
+                    "longitude": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "latitude": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "subtitle",
+                    "kind_name",
+                    "waiting",
+                    "image_url",
+                    "image_credit",
+                    "longitude",
+                    "latitude"
+                  ],
+                  "additionalProperties": false
+                },
+                "in_scope": {
+                  "type": "boolean",
+                  "description": "The caller's scope reaches the other place, so the pair is theirs to answer; a place outside it is listed only while readers are offered it."
+                },
+                "standing": {
+                  "type": "boolean",
+                  "description": "The place is a part of the whole now; false on a row a curator keeps out."
+                },
+                "list": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "reference": {
+                          "type": "string",
+                          "description": "The reference the World Heritage list gives the line (\"383bis-001\")."
+                        },
+                        "name": {
+                          "description": "The name the list gives the line, where it is not the place's.",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "reference",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "UNESCO's list names the place among the whole's components."
+                },
+                "statement": {
+                  "type": "boolean",
+                  "description": "A Wikidata statement says the place is a part of the whole."
+                },
+                "curator": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "admission": {
+                          "type": "string",
+                          "enum": [
+                            "admitted",
+                            "refused"
+                          ],
+                          "description": "admitted: a curator made the place a part; refused: a curator keeps it out while a source names it."
+                        },
+                        "answered_at": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "by_you": {
+                          "type": "boolean",
+                          "description": "The caller gave the word last."
+                        },
+                        "note": {
+                          "description": "The curator's own words, kept in both places' histories.",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "admission",
+                        "answered_at",
+                        "by_you",
+                        "note"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "place",
+                "in_scope",
+                "standing",
+                "list",
+                "statement",
+                "curator"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Its parts, standing first, then the places a curator keeps out."
+          },
+          "wholes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "place": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "subtitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "kind_name": {
+                      "description": "The kind the place stands in, first by display order; null for a place in no kind of its own.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "waiting": {
+                      "type": "boolean",
+                      "description": "Every kind the place stands in waits for a curator: no reader is shown it yet."
+                    },
+                    "image_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "image_credit": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/ImageCredit"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Whose photograph the picture is, shown with it."
+                    },
+                    "longitude": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "latitude": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "subtitle",
+                    "kind_name",
+                    "waiting",
+                    "image_url",
+                    "image_credit",
+                    "longitude",
+                    "latitude"
+                  ],
+                  "additionalProperties": false
+                },
+                "in_scope": {
+                  "type": "boolean",
+                  "description": "The caller's scope reaches the other place, so the pair is theirs to answer; a place outside it is listed only while readers are offered it."
+                },
+                "standing": {
+                  "type": "boolean",
+                  "description": "The place is a part of the whole now; false on a row a curator keeps out."
+                },
+                "list": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "reference": {
+                          "type": "string",
+                          "description": "The reference the World Heritage list gives the line (\"383bis-001\")."
+                        },
+                        "name": {
+                          "description": "The name the list gives the line, where it is not the place's.",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "reference",
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "UNESCO's list names the place among the whole's components."
+                },
+                "statement": {
+                  "type": "boolean",
+                  "description": "A Wikidata statement says the place is a part of the whole."
+                },
+                "curator": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "admission": {
+                          "type": "string",
+                          "enum": [
+                            "admitted",
+                            "refused"
+                          ],
+                          "description": "admitted: a curator made the place a part; refused: a curator keeps it out while a source names it."
+                        },
+                        "answered_at": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "by_you": {
+                          "type": "boolean",
+                          "description": "The caller gave the word last."
+                        },
+                        "note": {
+                          "description": "The curator's own words, kept in both places' histories.",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "admission",
+                        "answered_at",
+                        "by_you",
+                        "note"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "place",
+                "in_scope",
+                "standing",
+                "list",
+                "statement",
+                "curator"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The wholes it is a part of, then the ones a curator keeps it out of."
+          }
+        },
+        "required": [
+          "experienceId",
+          "name",
+          "in_kind",
+          "merged_onto",
+          "parts",
+          "wholes"
+        ],
+        "additionalProperties": false,
+        "description": "A place's parts and the wholes it is a part of, with whose word makes each one, for the curator's card (#2118)."
       },
       "PlaceResult": {
         "type": "object",
