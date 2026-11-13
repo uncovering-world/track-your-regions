@@ -98,7 +98,14 @@ export const KIND_RANK: Record<QueueKind, number> = {
 export { QUEUE_KINDS, WAITING_SUBS };
 export type { QueueKind, WaitingSub };
 
-export interface QueueFilters {
+/**
+ * The filters that choose which open questions a curator is shown, however they
+ * are shown: the list pages and orders them (`queryQueueKeys`), the map draws
+ * every one of them (`reviewQueueMapController.ts`, #2477). One type and one
+ * binding (`scopedQuestionsSql`), so both read the same questions under the
+ * same chips.
+ */
+export interface QueueSelection {
   q?: string;
   sourceIds?: number[];
   /** `arrival` | `held` | `contents` select waiting rows carrying that sub-kind. */
@@ -107,6 +114,10 @@ export interface QueueFilters {
   regionId?: number | 'none';
   runId?: number;
   showAside?: boolean;
+}
+
+/** A selection as the list reads it: ordered, and one page of it. */
+export interface QueueFilters extends QueueSelection {
   sort: 'date' | 'question';
   cursor?: string;
   /**
@@ -623,17 +634,26 @@ export function likeParam(q: string): string {
   return `%${q.replace(/[\\%_]/g, (c) => '\\'.concat(c))}%`;
 }
 
-interface Bound {
+/** A selection's filters as predicates over `scoped k`, with their values bound. */
+export interface SelectionBound {
   source: string;
   kind: string;
   region: string;
   run: string;
   search: string;
   aside: string;
-  cursor: string;
   regionCte: string;
-  /** The bound id of the region `?region=` names, or `NULL` (#1920). */
+}
+
+/** The list's filters: the selection's, and where its page starts and how long it is. */
+interface Bound extends SelectionBound {
+  /**
+   * The bound id of the region `?region=` names, or `NULL` (#1920): the list's
+   * facets read it and the map's read does not, so only the list binds it, since
+   * Postgres refuses a statement sent a parameter no expression references.
+   */
   pickedRegion: string;
+  cursor: string;
   /** The linked row and the key before it, when a page opens at a row (#843); '' otherwise. */
   anchorCte: string;
   /** Whether a listed key comes before the page's first: asked only of a page that opened mid-list. */
@@ -641,18 +661,15 @@ interface Bound {
   limit: string;
 }
 
-/** Every filter as a predicate over `scoped k`, with its values bound. */
-function boundFilters(filters: QueueFilters, bind: (value: unknown) => string): Bound {
-  const kinds = filters.kinds ?? [];
+/** Every filter of a selection as a predicate over `scoped k`, with its values bound. */
+function boundSelection(selection: QueueSelection, bind: (value: unknown) => string): SelectionBound {
+  const kinds = selection.kinds ?? [];
   const top = kinds.filter(k => (QUEUE_KINDS as readonly string[]).includes(k));
   const subs = kinds.filter(k => (WAITING_SUBS as readonly string[]).includes(k));
-  const cursor = filters.cursor === undefined ? null : decodeCursor(filters.cursor);
-  const region = regionFilter(filters.regionId, bind);
-  const from = cursor === null && filters.from !== undefined ? decodeCursor(filters.from) : null;
-  const anchored = cursor === null && from === null && filters.row !== undefined;
-  const bound = {
-    source: filters.sourceIds?.length
-      ? `k.source_ids && ${bind(filters.sourceIds)}::int[]` : 'TRUE',
+  const region = regionFilter(selection.regionId, bind);
+  return {
+    source: selection.sourceIds?.length
+      ? `k.source_ids && ${bind(selection.sourceIds)}::int[]` : 'TRUE',
     // Both arrays, always, when a kind chip is set: the five top kinds are
     // matched by name and the three sub-kinds against a waiting row's `subs`,
     // and either list may be empty without the other losing its meaning.
@@ -661,19 +678,38 @@ function boundFilters(filters: QueueFilters, bind: (value: unknown) => string): 
           OR (k.kind = 'waiting' AND k.subs && ${bind(subs)}::text[]))` : 'TRUE',
     region: region.predicate,
     regionCte: region.cte,
-    pickedRegion: pickedRegionSql(filters.regionId, bind),
-    run: filters.runId === undefined ? 'TRUE' : runFilterSql(bind(filters.runId)),
-    search: filters.q === undefined ? 'TRUE' : `k.name ILIKE ${bind(likeParam(filters.q))} ESCAPE '\\'`,
-    aside: filters.showAside
+    run: selection.runId === undefined ? 'TRUE' : runFilterSql(bind(selection.runId)),
+    search: selection.q === undefined ? 'TRUE' : `k.name ILIKE ${bind(likeParam(selection.q))} ESCAPE '\\'`,
+    aside: selection.showAside
       ? 'TRUE'
       : `NOT EXISTS (SELECT 1 FROM curator_queue_set_aside sa
                       WHERE sa.user_id = ${USER_ID} AND sa.sync_log_id = k.run_id)`,
+  };
+}
+
+/**
+ * The chips' predicate over `scoped k`: the questions a selection lists. The
+ * search and the set-aside batches are not in it, since `scoped` has already
+ * applied them, and the facets each leave one chip of it out.
+ */
+export function selectedSql(f: SelectionBound): string {
+  return `${f.source} AND ${f.kind} AND ${f.region} AND ${f.run}`;
+}
+
+/** The list's filters: the selection's, bound first, then the page's own. */
+function boundFilters(filters: QueueFilters, selected: SelectionBound, bind: (value: unknown) => string): Bound {
+  const cursor = filters.cursor === undefined ? null : decodeCursor(filters.cursor);
+  const from = cursor === null && filters.from !== undefined ? decodeCursor(filters.from) : null;
+  const anchored = cursor === null && from === null && filters.row !== undefined;
+  const bound: Bound = {
+    ...selected,
+    pickedRegion: pickedRegionSql(filters.regionId, bind),
     cursor: 'TRUE',
     anchorCte: '',
     midway: 'false',
     limit: bind(filters.limit + 1),
   };
-  const listed = () => `${bound.source} AND ${bound.kind} AND ${bound.region} AND ${bound.run}`;
+  const listed = () => selectedSql(bound);
   if (from !== null || anchored) {
     bound.midway = `EXISTS (
       SELECT 1 FROM scoped k, (SELECT * FROM page_rows p ORDER BY ${orderSql(filters.sort, 'p.')} LIMIT 1) f
@@ -769,7 +805,7 @@ function resultSql(f: Bound, sort: 'date' | 'question'): string {
   return `
 SELECT (SELECT json_agg(p ORDER BY ${orderSql(sort, 'p.')}) FROM page_rows p) AS page,
        (SELECT count(*)::int FROM scoped k
-         WHERE ${f.source} AND ${f.kind} AND ${f.region} AND ${f.run}) AS total,
+         WHERE ${selectedSql(f)}) AS total,
        ${f.midway} AS midway,
        ${FACETS_JSON_SQL} AS facets`;
 }
@@ -848,18 +884,18 @@ export function queueScopeSql(isAdmin: boolean, of: 'place' | 'm.source_id'): st
 }
 
 /**
- * The keys of every open question this curator may be asked, filtered, ordered
- * and paged, with the count each chip would leave.
+ * The opening of every statement over the open questions: the union of their
+ * keys (`keys`), searched, without the batches this curator set aside
+ * (`scoped`), and the region subtree a region chip walks. What a reader of it
+ * lists is `selectedSql` of the returned filters over `scoped k`.
+ *
+ * Binds, in this order, the curated-key maps the conflict branch reads and the
+ * selection's values; `$1` must already be the curator's id, which the scope
+ * and the set-aside read.
  */
-export async function queryQueueKeys(
-  { userId, isAdmin, filters }: { userId: number; isAdmin: boolean; filters: QueueFilters },
-): Promise<{ keys: QueueKey[]; nextCursor: string | null; from: string | null; total: number; facets: QueueFacets }> {
-  const params: unknown[] = [userId];
-  const bind = (value: unknown): string => {
-    params.push(value);
-    return `$${params.length}`;
-  };
-
+export function scopedQuestionsSql(
+  isAdmin: boolean, selection: QueueSelection, bind: (value: unknown) => string,
+): { sql: string; selected: SelectionBound } {
   // The same scope the card statements carry, correlated on each row's own
   // source rather than on a request filter: the union spans sources.
   const scopeFilter = queueScopeSql(isAdmin, 'place');
@@ -868,7 +904,7 @@ export async function queryQueueKeys(
   const keyMap = bind(JSON.stringify(CURATED_KEY_BY_FIELD));
   const family = bind(JSON.stringify(CLAIM_KEY_BY_FAMILY));
   const claimKey = (field: string) => claimKeySql(field, keyMap, family);
-  const f = boundFilters(filters, bind);
+  const f = boundSelection(selection, bind);
 
   const sql = `${CURATOR_SCOPED_REGIONS_CTE}
 , keys AS (${conflictKeysSql(scopeFilter, claimKey)}
@@ -892,11 +928,31 @@ export async function queryQueueKeys(
   )
 , scoped AS (
     SELECT k.* FROM searched k WHERE ${f.aside}
-  )${f.regionCte}${regionRootsCte(USER_ID)}${f.anchorCte}
+  )${f.regionCte}`;
+  return { sql, selected: f };
+}
+
+/**
+ * The keys of every open question this curator may be asked, filtered, ordered
+ * and paged, with the count each chip would leave.
+ */
+export async function queryQueueKeys(
+  { userId, isAdmin, filters }: { userId: number; isAdmin: boolean; filters: QueueFilters },
+): Promise<{ keys: QueueKey[]; nextCursor: string | null; from: string | null; total: number; facets: QueueFacets }> {
+  const params: unknown[] = [userId];
+  const bind = (value: unknown): string => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  const scoped = scopedQuestionsSql(isAdmin, filters, bind);
+  const f = boundFilters(filters, scoped.selected, bind);
+
+  const sql = `${scoped.sql}${regionRootsCte(USER_ID)}${f.anchorCte}
 , page_rows AS (
     SELECT k.kind, k.rank, k.id, k.run_id, k.asked_at, k.subs
     FROM scoped k
-    WHERE ${f.source} AND ${f.kind} AND ${f.region} AND ${f.run} AND ${f.cursor}
+    WHERE ${selectedSql(f)} AND ${f.cursor}
     ORDER BY ${orderSql(filters.sort)}
     LIMIT ${f.limit}
   )${facetsSql(f, USER_ID, isAdmin ? 'TRUE' : 'w.is_public')}${resultSql(f, filters.sort)}`;
