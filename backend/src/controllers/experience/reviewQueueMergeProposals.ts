@@ -21,11 +21,26 @@ import type { QueryResult } from 'pg';
 import type { MergePair } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, kindRecordSql, partRecordSql, rowKindJoinSql } from '../../db/membership.js';
-import { answeringPlaceOfSql, partOfNameSql } from '../../db/placePoints.js';
+import { answeringPlaceOfSql, partOfNameSql, wholeOfSql } from '../../db/placePoints.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { termsOf } from '../../services/sync/subset/entities.js';
 import { mergeProposalOpenSql } from './reviewQueuePredicates.js';
+
+/**
+ * The kind a part with no kind of its own is shown under: its whole's. A
+ * serial site's part is in no kind, only in its whole
+ * (a record in a whole, ADR-0198), so the card of Regensburg's legionary
+ * fortress, a part of the Danube Limes, asks under World Heritage Sites, as a
+ * traveller finds it: the whole `wholeOfSql` names, which the card's site and
+ * its answer's scope name too. Joined as `wk` and `wkd`, only where
+ * `membership` found no kind.
+ */
+function wholeKindJoinSql(experience: string, membership: string): string {
+  const whole = wholeOfSql(experience + '.id');
+  return `LEFT JOIN experiences w ON ${membership}.kind_id IS NULL AND w.id = ${whole}
+      ${rowKindJoinSql('w', 'wk', 'wkd')}`;
+}
 
 /**
  * The names of the kinds a place's memberships put it in, in display order, as
@@ -144,13 +159,15 @@ type BarePair = Omit<MergePair, 'otherWikidataLabel' | 'otherWikidataDescription
 
 export async function queryMergeProposals(ids: number[]): Promise<QueryResult> {
   const result = await pool.query<{ merge_pairs: BarePair[] | null }>(`
-    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name, mk.type AS kind_type,
+    SELECT e.id, e.external_id, e.name,
+           COALESCE(mk.kind_id, wk.kind_id) AS kind_id, COALESCE(kd.name, wkd.name) AS kind_name, mk.type AS kind_type,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'merge-proposals' AS kind, NULL::jsonb AS proposed,
            ${ANCHOR_MEMBERSHIP} AS membership_id,
            ${PAIRS} AS merge_pairs
       FROM experiences e
       ${rowKindJoinSql('e', 'mk', 'kd')}
+      ${wholeKindJoinSql('e', 'mk')}
      WHERE e.id = ANY($1::int[])
        AND EXISTS (SELECT 1 FROM experience_merge_proposals p JOIN experiences b ON b.id = p.place_b
                     WHERE p.place_a = e.id AND ${mergeProposalOpenSql('p', 'e', 'b')})
