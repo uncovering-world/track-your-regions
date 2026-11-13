@@ -5,6 +5,7 @@ import {
   ListItemText,
   IconButton,
   CircularProgress,
+  Tooltip,
 } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
@@ -24,14 +25,12 @@ import { endsTextSelectionIn } from '../../utils/textSelection';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
 import { subscribeToHoverTarget, useHoverActions } from '../../hooks/useHoverContext';
 import {
-  KindIcon, PlacePin, RowItem, TitleRow, TitleText, VisitCheckbox, VisitIcon,
+  CountChip, KindIcon, PlacePin, RowItem, TitleRow, TitleText, VisitCheckbox, VisitIcon,
 } from './ExperienceListItem.styles';
-import { PlacesCountChip, foldLabel } from './PlacesCountChip';
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
 import { PointCard } from '../shared/PointCard';
 import { VisitStatusMark } from '../shared/VisitStatusMark';
 import type { LocationRowData } from './LocationRow';
-import { isFoldable } from '../experienceMarkers/buildMarkers';
 import type { VisitedStatus } from '../../api/visited';
 
 /**
@@ -89,14 +88,6 @@ export interface ExperienceListItemProps {
    */
   onTogglePlace: (experienceId: number, tick: boolean) => void;
   onLocationHover: (experienceId: number, locationId: number | null) => void;
-  /** This object is drawn as a single pin because the reader asked for that. */
-  isCollapsed: boolean;
-  /**
-   * Ask for the opposite of `isCollapsed`. Per object, never a mode: a reader
-   * looking at forty parts of one site wants that site as one pin and everything
-   * else left alone.
-   */
-  onToggleCollapse: (experienceId: number) => void;
   onCurate?: (experience: Experience) => void;
   /** The part of this object whose own card is open in place of the object's (#1271), or null. */
   selectedPointId?: number | null;
@@ -165,8 +156,6 @@ function ExperienceListItemComponent({
   onToggleAllLocations,
   onTogglePlace,
   onLocationHover,
-  isCollapsed,
-  onToggleCollapse,
   onCurate,
   selectedPointId = null,
   pointSteps = null,
@@ -244,12 +233,6 @@ function ExperienceListItemComponent({
   }, [locations]);
   const inRegionCount = inRegionLocations.length;
   const isMultiLocation = totalLocations > 1;
-  // Folding is only a question for an object that *draws* more than one pin: a
-  // site with five places of which one is in region is already one pin, and a
-  // chip offering to fold it would leave the map unchanged while a click on that
-  // ordinary pin unfolded instead of selecting.
-  const foldable = isFoldable(locations);
-  const foldTooltip = foldLabel(foldable, isCollapsed, inRegionCount || totalLocations, totalLocations);
 
   // The row's visited state is the place's own, read once for Map mode and
   // Discover alike: a visit to *Maman* in Bilbao marks it visited on Canada's
@@ -443,20 +426,16 @@ function ExperienceListItemComponent({
                   ratio it cannot know yet — `inRegionCount` would be 0 against
                   a denominator that arrived from somewhere else. */}
               {isMultiLocation && (
-                // The count is also the control: it is the one thing on the row
-                // that is about the object having several places, so the ask to
-                // draw them as one pin belongs on it rather than in a menu. The
-                // click is stopped here — the row's own click opens the card, and
-                // a reader collapsing a site did not ask for that too.
-                <PlacesCountChip
-                  label={!locationsResolved || inRegionCount === totalLocations
-                    ? String(totalLocations)
-                    : `${inRegionCount}/${totalLocations}`}
-                  tooltip={foldTooltip}
-                  foldable={foldable}
-                  folded={isCollapsed}
-                  onToggle={() => onToggleCollapse(experience.id)}
-                />
+                <Tooltip title={`${totalLocations} places`}>
+                  <CountChip
+                    label={!locationsResolved || inRegionCount === totalLocations
+                      ? String(totalLocations)
+                      : `${inRegionCount}/${totalLocations}`}
+                    size="small"
+                    variant="outlined"
+                    color="info"
+                  />
+                </Tooltip>
               )}
             </TitleRow>
           }

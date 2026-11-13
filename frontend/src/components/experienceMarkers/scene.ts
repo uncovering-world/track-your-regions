@@ -1,11 +1,11 @@
 /**
  * The one scene both experience maps draw: the sources, the layers and their
- * paint for a pin, its count badge, the selected object's highlight and the
- * hover ring, and the builders of the data those sources hold (#1132).
+ * paint for a pin, the selected object's highlight and the hover ring, and the
+ * builders of the data those sources hold (#1132).
  *
  * Map mode declares its layers in react-map-gl JSX and Discover calls MapLibre
  * directly, so the two had each their own copy of every value here — the ring's
- * orange and radii, the badge's offset, the highlight's red — and a change made
+ * orange and radii, the highlight's red — and a change made
  * in one file and missed in the other failed nothing. Each map now takes these
  * definitions and adds only what is genuinely its own: Map mode the minzoom and
  * the opacity ramps of its cross-fade with the heatmap (`layers.ts`), Discover
@@ -17,9 +17,7 @@
  * into the other's.
  */
 
-import type {
-  CircleLayerSpecification, FilterSpecification, SymbolLayerSpecification,
-} from 'maplibre-gl';
+import type { CircleLayerSpecification, SymbolLayerSpecification } from 'maplibre-gl';
 import type { MarkerData } from './buildMarkers';
 import { experienceColor } from '../../utils/kindColors';
 
@@ -34,28 +32,16 @@ export const SCENE_SOURCES = {
 export const LAYER_MARKERS = 'exp-markers-points';
 /** The split disc drawn over a pin that shows several kinds (#1262). */
 export const LAYER_MARKERS_SPLIT = 'exp-markers-split';
-export const LAYER_MARKER_COUNT_BADGE_BG = 'exp-marker-count-badge-bg';
-export const LAYER_MARKER_COUNT_BADGE_TEXT = 'exp-marker-count-badge-text';
 /**
- * The layers one pin is drawn with: its point, the split disc over a pin that
- * shows several kinds, and the badge that says how many places it stands for.
- * Queried together, because a pointer over any of them is a pointer over the
- * same pin.
+ * The layers one pin is drawn with: its point and the split disc over a pin
+ * that shows several kinds. Queried together, because a pointer over either is
+ * a pointer over the same pin.
  */
-export const MARKER_LAYERS = [
-  LAYER_MARKERS, LAYER_MARKERS_SPLIT, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT,
-] as const;
+export const MARKER_LAYERS = [LAYER_MARKERS, LAYER_MARKERS_SPLIT] as const;
 export const LAYER_HOVER_GLOW = 'exp-hover-glow';
 export const LAYER_HOVER_RING = 'exp-hover-ring';
 export const LAYER_HIGHLIGHT_RING = 'exp-highlight-ring';
 export const LAYER_HIGHLIGHT_POINT = 'exp-highlight-point';
-
-/**
- * A badge is drawn only on a pin that stands for more places than itself — a
- * folded pin, or a stand-in for places the batch does not hold. A place drawn as
- * itself carries a count of one, or none, and `coalesce` reads none as one.
- */
-const BADGE_FILTER: FilterSpecification = ['>', ['coalesce', ['get', 'locationCount'], 1], 1];
 
 // ── Layers ──
 
@@ -81,41 +67,6 @@ export const sceneMarkerLayer: CircleLayerSpecification = {
     'circle-radius': 6,
     'circle-stroke-width': ['case', ['==', ['get', 'approximate'], true], 3, 2],
     'circle-stroke-color': ['case', ['==', ['get', 'approximate'], true], ['get', 'color'], '#ffffff'],
-  },
-};
-
-export const sceneBadgeBgLayer: CircleLayerSpecification = {
-  id: LAYER_MARKER_COUNT_BADGE_BG,
-  type: 'circle',
-  source: SCENE_SOURCES.markers,
-  filter: BADGE_FILTER,
-  paint: {
-    'circle-color': '#0f172a',
-    'circle-radius': 8,
-    'circle-stroke-width': 1.5,
-    'circle-stroke-color': '#ffffff',
-    'circle-translate': [8, -8],
-    'circle-translate-anchor': 'viewport',
-  },
-};
-
-export const sceneBadgeTextLayer: SymbolLayerSpecification = {
-  id: LAYER_MARKER_COUNT_BADGE_TEXT,
-  type: 'symbol',
-  source: SCENE_SOURCES.markers,
-  filter: BADGE_FILTER,
-  layout: {
-    'text-field': ['to-string', ['get', 'locationCount']],
-    'text-size': 9,
-    'text-font': ['Open Sans Bold'],
-    'text-offset': [0.88, -0.88],
-    'text-anchor': 'center',
-    'text-allow-overlap': true,
-  },
-  paint: {
-    'text-color': '#ffffff',
-    'text-halo-color': '#0f172a',
-    'text-halo-width': 0.2,
   },
 };
 
@@ -195,10 +146,8 @@ export const sceneSplitMarkerLayer: SymbolLayerSpecification = {
   },
 };
 
-/** A pin's layers, bottom to top: the point, its split disc, then its badge over it. */
-export const SCENE_MARKER_ORDER = [
-  sceneMarkerLayer, sceneSplitMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
-] as const;
+/** A pin's layers, bottom to top: the point, then its split disc over it. */
+export const SCENE_MARKER_ORDER = [sceneMarkerLayer, sceneSplitMarkerLayer] as const;
 
 /** The image name of a split pin: its colours, in the kinds' display order. */
 const SPLIT_PIN_PREFIX = 'pin-split:';
@@ -349,9 +298,9 @@ export interface HighlightPlace {
 
 /**
  * The highlight's payload. `locationId` is what a dot's hover names to the
- * panel, so a dot that stands for no one place — a folded object's, or the
- * object's own point when none of its places is at hand — carries null, and the
- * listeners that hand the hover over read null as "no place to name".
+ * panel, so a dot that stands for no one place — a place's own coordinate when
+ * none of its points is at hand — carries null, and the listeners that hand the
+ * hover over read null as "no place to name".
  */
 export function buildHighlightData(places: ReadonlyArray<HighlightPlace>): GeoJSON.FeatureCollection {
   return {
@@ -392,8 +341,7 @@ export function buildMarkerFeatures(
       properties: {
         // No `id` here: the feature-level one above is what identifies a
         // marker, and nothing reads a property by that name — the handlers ask
-        // for `experienceId`/`locationId`, the popup for the names, the badge
-        // layers for `locationCount`.
+        // for `experienceId`/`locationId`, the popup for the names.
         experienceId: m.experienceId,
         locationId: m.locationId,
         name: m.locationName || m.experience.name,
@@ -405,17 +353,10 @@ export function buildMarkerFeatures(
         // (#1262), except a point placed only roughly, whose ring the disc would
         // cover: its card says so either way, and the ring is what a traveller
         // navigating by the map needs (#1912).
-        ...(m.folded !== true && m.location?.approximate != null ? {} : splitIconProperty(m.kindColors)),
-        // 1 for a place drawn as itself, the count only for a pin standing in
-        // for places it does not draw — which is what the badge means.
-        locationCount: m.locationCount,
-        // Whether this pin was drawn folded, which a click needs and cannot
-        // infer: a stand-in pin looks the same from the outside.
-        folded: m.folded === true,
+        ...(m.location?.approximate != null ? {} : splitIconProperty(m.kindColors)),
         // Whether the source placed the point only roughly (#1853), which the
-        // pin shows as a ring rather than a disc (#1912). A folded pin stands
-        // for the place, not for its point.
-        approximate: m.folded !== true && m.location?.approximate != null,
+        // pin shows as a ring rather than a disc (#1912).
+        approximate: m.location?.approximate != null,
       },
     })),
   };

@@ -8,8 +8,7 @@
  * refs and callbacks handed to it below.
  *
  * The behaviours it carries are rules, not details, and each was a defect once
- * (#558): a click tests `properties.folded` rather than inferring a folded pin
- * from its shape; the hover dedupes by `${experienceId}:${locationId}` so
+ * (#558): the hover dedupes by `${experienceId}:${locationId}` so
  * crossing an object's places moves the ring; a cluster click marks the move as
  * the reader's *before* `easeTo`, or the places-refit throws them back out; and a
  * click that came from the map records itself, so the delayed fly-to leaves the
@@ -33,8 +32,6 @@ export interface DiscoverMapWiring {
   mapContainerRef: React.RefObject<HTMLDivElement | null>;
   /** Filled with the instance, and cleared when it is removed. */
   mapRef: React.MutableRefObject<maplibregl.Map | null>;
-  /** Folding a pin the reader folded, read live by the click handler. */
-  toggleCollapsedRef: React.MutableRefObject<(id: number) => void>;
   /** The object whose selection came from the map, so the fly-to can stand down. */
   selectedFromMapIdRef: React.MutableRefObject<number | null>;
   /** Set when the reader moved the camera themself, including a cluster click. */
@@ -54,7 +51,6 @@ export interface DiscoverMapWiring {
 export function useDiscoverMap({
   mapContainerRef,
   mapRef,
-  toggleCollapsedRef,
   selectedFromMapIdRef,
   movedByReaderRef,
   mapHoverCallbackRef,
@@ -131,24 +127,12 @@ export function useDiscoverMap({
         const id = features[0].properties?.experienceId as number | undefined;
         if (id == null) return;
 
-        // A folded pin unfolds, exactly as in Map mode — the badge is what says
-        // there is something folded there, and this is the only action that pin
-        // can offer. The builder says which pins those are: this surface counts a
-        // different set for the control (see `drawnPlacesOfSelected`), so an
-        // object can be in the folded set while its pin is a stand-in, and
-        // inferring "folded" from the pin's shape would swallow that click.
-        if (features[0].properties?.folded === true) {
-          toggleCollapsedRef.current(id);
-          return;
-        }
-
         selectedFromMapIdRef.current = id;
         onSelectExperience(id);
       };
       // Once, not once per layer: maplibre creates a delegated listener per
-      // registration, so a click on the badge — whose circle and glyph occupy the
-      // same 8 px — ran this twice and undid itself, which on a folded pin meant
-      // its badge click did nothing. The handler queries `MARKER_LAYERS` itself.
+      // registration, so a click on a pin and the split disc over it ran this
+      // twice and undid itself. The handler queries `MARKER_LAYERS` itself.
       // See `docs/tech/maplibre-patterns.md` § One listener per registration.
       map.on('click', onMarkerClick);
 
@@ -233,12 +217,10 @@ export function useDiscoverMap({
         return map.queryRenderedFeatures(point, { layers: [LAYER_HIGHLIGHT_POINT] })[0] ?? null;
       };
 
-      // The badge is drawn `circle-translate: [8, -8]` over a point of radius 6,
-      // so a pin and its badge overlap only in part: moving from one onto the
-      // other makes MapLibre report a leave for the layer walked off, and
-      // clearing there takes the ring, the list highlight and the hover card off
-      // a pin the pointer is still on — the badge being exactly what a reader
-      // aims at to see what a fold is hiding. Only a leave delivered by a move
+      // A pin and its split disc are two layers over one place: moving from one
+      // onto the other makes MapLibre report a leave for the layer walked off,
+      // and clearing there takes the ring, the list highlight and the hover card
+      // off a pin the pointer is still on. Only a leave delivered by a move
       // may be trusted with its point: the other path is `mouseout`, which
       // carries the point the pointer left *from*. Map Mode's
       // `useMarkerInteractions` and `docs/tech/maplibre-patterns.md` § The rule
@@ -255,8 +237,8 @@ export function useDiscoverMap({
         // `mousemove` dedupes on a dot that has not changed, so leaving the ring
         // as it is would leave it on the pin the pointer has just left.
         const dot = fromAMove ? highlightDotAt(e.point) : null;
-        // Only a dot that names a place can hold the hand-over: the fold dot
-        // is the one highlight feature with `locationId: null`, and the
+        // Only a dot that names a place can hold the hand-over: a place's own
+        // point is the one highlight feature with `locationId: null`, and the
         // `mousemove` that would re-announce below is gated on the id — a ring
         // handed to it would be wiped by the store clear and never redrawn,
         // flashing once per crossing. For it the ring simply comes down, as it

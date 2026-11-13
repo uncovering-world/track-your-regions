@@ -79,7 +79,7 @@ export interface DiscoverHoverWiring {
    * crowded city's tail is in no batch, and its ring is drawn all the same.
    */
   findExperience: (id: number) => Experience | undefined;
-  /** Where an object is drawn — its places, or the one point a fold leaves. */
+  /** Where an object is drawn — its places, or a place's own point while none is at hand. */
   drawnCoordsRef: React.MutableRefObject<(expId: number) => [number, number][]>;
   /** The current selection, which the marker source deliberately does not hold. */
   selectedExpIdRef: React.MutableRefObject<number | null>;
@@ -218,9 +218,14 @@ export function useDiscoverHover({
 
     // Every point the object is drawn at, because that is what the card stands
     // for now — a serial site is its parts, and ringing one of thirteen left the
-    // other twelve unmarked. A folded object, and one whose places this region's
-    // batch does not hold, is one point: its own (ADR-0028 decision 2).
+    // other twelve unmarked. A place whose points this region's batch does not
+    // hold is one point, its own, and an object made of parts is then nothing
+    // to ring (#2122).
     const drawn = drawnCoordsRef.current(expId);
+    if (drawn.length === 0) {
+      hoverSource.setData(EMPTY_FC);
+      return;
+    }
     const coords: [number, number] = drawn[0];
 
     // A selected object has no feature in the marker source at all — it is
@@ -296,7 +301,7 @@ export function useDiscoverHover({
         })
         // supercluster throws "No cluster with the specified id" once the index
         // is rebuilt, and `source.setData` rebuilds it — which this view now does
-        // on five things, including the batch arriving and a fold. Such a bubble
+        // on four things, including the batch arriving. Such a bubble
         // simply contributes no ring; the alternative is an unhandled rejection.
         .catch(() => {})
         // Counted here rather than in `then`, or a rejection would leave

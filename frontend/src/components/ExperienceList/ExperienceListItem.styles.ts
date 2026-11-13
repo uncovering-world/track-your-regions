@@ -85,5 +85,4 @@ export const CountChip = styled(Chip)({
   height: 18,
   fontSize: '0.65rem',
   '& .MuiChip-label': { paddingLeft: 6, paddingRight: 6 },
-  '&[data-foldable="false"]': { cursor: 'default' },
 });

@@ -41,8 +41,6 @@ export function useInViewFilter(
    * only control that takes them back to it.
    */
   selectedExperienceId: number | null,
-  /** What this reader folded: the map draws each of those as one pin. */
-  collapsedExperienceIds: ReadonlySet<number>,
 ): InViewFilter {
   // Stored as *which region* the ask was made in, the same shape as `showLost`
   // in the context and for the same reason: it answers "let me see the rest of
@@ -54,9 +52,9 @@ export function useInViewFilter(
 
   const idsInView = useMemo(
     () => (viewBounds
-      ? experienceIdsInView(activeExperiences, locationsByExperience, viewBounds, collapsedExperienceIds)
+      ? experienceIdsInView(activeExperiences, locationsByExperience, viewBounds)
       : null),
-    [viewBounds, activeExperiences, locationsByExperience, collapsedExperienceIds],
+    [viewBounds, activeExperiences, locationsByExperience],
   );
 
   // A place counts once in each of its kinds, as its rows do (#1245).

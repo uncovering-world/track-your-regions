@@ -7,7 +7,7 @@
  * into the sources, and what a click or a hover means. The handlers stay there
  * because they read this component's refs and props.
  *
- * The pin, its badge, the highlight and the hover ring are the scene Map mode
+ * The pin, the highlight and the hover ring are the scene Map mode
  * draws too (`experienceMarkers/scene.ts`, #1132), added here as declared. What
  * this file adds is Discover's one difference: its markers source clusters, so
  * it holds the bubbles and their counts, and each pin layer is kept off the
@@ -28,8 +28,8 @@ export const NOT_CLUSTER: maplibregl.FilterSpecification = ['!', ['has', 'point_
 
 /**
  * A scene pin layer as this map draws it: the same layer, kept off the
- * clusters. A layer with a filter of its own (the badge's) keeps it, joined to
- * the not-a-cluster test.
+ * clusters. A layer with a filter of its own (the split disc's) keeps it, joined
+ * to the not-a-cluster test.
  */
 export function unclustered<L extends maplibregl.CircleLayerSpecification | maplibregl.SymbolLayerSpecification>(
   layer: L,
@@ -121,7 +121,7 @@ export function addDiscoverMapLayers(map: maplibregl.Map): void {
     paint: { 'text-color': '#ffffff' },
   });
 
-  // The pins and their badges, then the selection and the hover over them —
+  // The pins and their split discs, then the selection and the hover over them —
   // the scene's layers in the scene's order, the same as Map mode's.
   for (const layer of SCENE_MARKER_ORDER) map.addLayer(unclustered(layer));
   for (const layer of SCENE_OVERLAY_ORDER) map.addLayer(layer);

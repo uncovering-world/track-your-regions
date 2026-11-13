@@ -5,24 +5,20 @@
  *
  * The kinds' names are read only where a crowded kind has no place in the
  * region's list to name it — the kinds read the world layer already holds.
- * And the points of the tail's cards the reader opened, which the region's
- * batch leaves out (`useTailLocations`).
  */
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchExperienceKinds, type RegionExperienceLocation } from '../../api/experiences';
+import { fetchExperienceKinds } from '../../api/experiences';
 import { queryKeys } from '../../api/queryKeys';
 import type { RegionTail } from '../../hooks/useRegionTail';
 import type { KindTypeEntry } from '../../utils/kindTypeIndex';
 import type { KindGroup } from './kindRows';
 import { tailSections, withTailGroups, type TailKind, type TailSection } from './tailRows';
-import { useTailLocations } from './useTailLocations';
 
 const NO_KINDS: readonly TailKind[] = [];
 
 export function useListTails(opts: {
-  regionId: number | null;
   /** The list's groups before a type narrows them. */
   groups: KindGroup[];
   tail: RegionTail;
@@ -32,12 +28,8 @@ export function useListTails(opts: {
 }): {
   groups: KindGroup[];
   sections: ReadonlyMap<string, TailSection>;
-  /** By place id, the points of the tail's cards opened in this region. */
-  points: Readonly<Record<number, RegionExperienceLocation[]>>;
 } {
-  const { regionId, groups, tail, kindTypeIndex, kindTypes, selectedExperienceId } = opts;
-  const points = useTailLocations(regionId, tail.card?.id ?? null);
-
+  const { groups, tail, kindTypeIndex, kindTypes, selectedExperienceId } = opts;
   const kindIdsInRegion = useMemo(
     () => new Set([...kindTypeIndex.values()].map(entry => entry.kindId)),
     [kindTypeIndex],
@@ -74,5 +66,5 @@ export function useListTails(opts: {
     });
   }, [withTails, kinds, kindTypeIndex, kindTypes, tail.counts, tail.open, tail.places, tail.failed, tail.card, selectedExperienceId]);
 
-  return { groups: withTails, sections, points };
+  return { groups: withTails, sections };
 }

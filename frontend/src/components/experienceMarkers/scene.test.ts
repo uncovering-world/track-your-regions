@@ -14,13 +14,13 @@ import type { Experience } from '../../api/experiences';
 import type { MarkerData } from './buildMarkers';
 import {
   HEATMAP_MAX_ZOOM, MARKER_FADE_START,
-  markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
+  markerLayer, markerSplitLayer,
   hoverGlowLayer, hoverRingLayer, highlightRingLayer, highlightPointLayer,
   SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER,
 } from './layers';
 import {
   SCENE_SOURCES, SCENE_MARKER_ORDER, SCENE_OVERLAY_ORDER, MARKER_LAYERS,
-  sceneMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
+  sceneMarkerLayer,
   sceneHoverGlowLayer, sceneHoverRingLayer, sceneHighlightRingLayer, sceneHighlightPointLayer,
   EMPTY_FC, buildPointHoverData, buildPointsHoverData, buildSizedRing,
   buildHighlightData, buildMarkerFeatures, splitPinIcon, splitPinIconFor, addSplitPinImages,
@@ -58,8 +58,6 @@ function withoutFade(layer: LayerProps): Spec {
 describe("Map mode's pin layers", () => {
   const pairs: [string, LayerProps, object][] = [
     ['the point', markerLayer, sceneMarkerLayer],
-    ['the badge', markerCountBadgeBgLayer, sceneBadgeBgLayer],
-    ['the badge number', markerCountBadgeTextLayer, sceneBadgeTextLayer],
   ];
 
   it.each(pairs)('%s is the scene layer, and differs only by the cross-fade', (_name, mapMode, scene) => {
@@ -75,7 +73,7 @@ describe("Map mode's pin layers", () => {
   });
 
   it('are the scene pin layers, in the scene order', () => {
-    expect([markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer].map(l => spec(l).id))
+    expect([markerLayer, markerSplitLayer].map(l => spec(l).id))
       .toEqual(SCENE_MARKER_ORDER.map(l => l.id));
     expect(SCENE_MARKER_ORDER.map(l => l.id)).toEqual([...MARKER_LAYERS]);
   });
@@ -131,11 +129,11 @@ describe('buildHighlightData', () => {
   it('names each place, and null for a dot that stands for no one place', () => {
     const data = buildHighlightData([
       { coordinates: LOUVRE, locationId: 7, name: 'Louvre' },
-      { coordinates: [2.35, 48.85], locationId: null, name: 'Folded' },
+      { coordinates: [2.35, 48.85], locationId: null, name: null },
     ]);
     expect(data.features.map(f => f.properties)).toEqual([
       { locationId: 7, name: 'Louvre' },
-      { locationId: null, name: 'Folded' },
+      { locationId: null, name: null },
     ]);
     expect(data.features[0].geometry).toEqual({ type: 'Point', coordinates: LOUVRE });
   });
@@ -148,16 +146,7 @@ describe('buildMarkerFeatures', () => {
 
   const pin: MarkerData = {
     id: '12-34', experienceId: 12, locationId: 34, experience: louvre,
-    longitude: LOUVRE[0], latitude: LOUVRE[1], locationName: 'Cour Napoléon', locationCount: 1,
-  };
-  // A serial site folded to one pin: Aalto Works, thirteen places in Finland,
-  // at the point the catalogue answers with for the object.
-  const aalto = {
-    id: 40, name: 'Aalto Works', kind_id: 1, type: null, longitude: 25.73, latitude: 62.24,
-  } as unknown as Experience;
-  const folded: MarkerData = {
-    id: '40-collapsed', experienceId: 40, locationId: null, experience: aalto,
-    longitude: 25.73, latitude: 62.24, locationName: null, locationCount: 13, folded: true,
+    longitude: LOUVRE[0], latitude: LOUVRE[1], locationName: 'Cour Napoléon',
   };
 
   it('keys each pin by its place and carries what the handlers and layers read', () => {
@@ -170,16 +159,7 @@ describe('buildMarkerFeatures', () => {
       name: 'Cour Napoléon',
       experienceName: 'Louvre',
       color: experienceColor(2, null),
-      locationCount: 1,
-      folded: false,
       approximate: false,
-    });
-  });
-
-  it("names a folded pin after its object and says it is folded", () => {
-    const [feature] = buildMarkerFeatures([folded]).features;
-    expect(feature.properties).toMatchObject({
-      name: 'Aalto Works', locationId: null, locationCount: 13, folded: true,
     });
   });
 
@@ -187,9 +167,6 @@ describe('buildMarkerFeatures', () => {
     // The Longmen Grottoes' point, given to the whole minute 10 km from the caves.
     const longmen = { ...pin, location: { approximate: 'whole-minute' } as MarkerData['location'] };
     expect(buildMarkerFeatures([longmen]).features[0].properties).toMatchObject({ approximate: true });
-    // A folded pin stands for the place, not for its point.
-    expect(buildMarkerFeatures([{ ...folded, location: longmen.location }]).features[0].properties)
-      .toMatchObject({ approximate: false });
     // A place in two kinds keeps its ring rather than a split disc over it.
     const twoKinds = { ...longmen, kindColors: [experienceColor(1, null), experienceColor(4, null)] };
     expect(buildMarkerFeatures([twoKinds]).features[0].properties).not.toHaveProperty('icon');
@@ -207,7 +184,7 @@ describe('a pin that shows several kinds', () => {
   it('draws a split disc named by its colours over a plain disc of the first (#1262)', () => {
     const pin: MarkerData = {
       id: '6214-1', experienceId: 6214, locationId: 1, experience: capitoline,
-      longitude: 12.48, latitude: 41.89, locationName: null, locationCount: 1, kindColors: [art, archaeology],
+      longitude: 12.48, latitude: 41.89, locationName: null, kindColors: [art, archaeology],
     };
     const properties = buildMarkerFeatures([pin]).features[0].properties!;
 
@@ -218,7 +195,7 @@ describe('a pin that shows several kinds', () => {
   it('draws a plain disc, with no split image, where it shows one kind', () => {
     const pin: MarkerData = {
       id: '6214-1', experienceId: 6214, locationId: 1, experience: capitoline,
-      longitude: 12.48, latitude: 41.89, locationName: null, locationCount: 1, kindColors: [archaeology],
+      longitude: 12.48, latitude: 41.89, locationName: null, kindColors: [archaeology],
     };
     const properties = buildMarkerFeatures([pin]).features[0].properties!;
 

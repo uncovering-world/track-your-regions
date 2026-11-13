@@ -4,8 +4,6 @@ import { useInViewFilter } from './useInViewFilter';
 import type { ViewBounds } from '../../utils/viewBounds';
 import type { Experience } from '../../api/experiences';
 
-/** Nothing folded, which is every case here but the fold's own test. */
-const EMPTY: ReadonlySet<number> = new Set<number>();
 
 const exp = (id: number, longitude: number, latitude: number, kind = 'UNESCO') =>
   ({ id, name: `E${id}`, longitude, latitude, kind_name: kind } as Experience);
@@ -17,7 +15,7 @@ const REGION = [exp(1, 14.42, 50.087), exp(2, 2.35, 48.85), exp(3, 14.40, 50.09)
 const render = (bounds: ViewBounds | null, regionId: number | null = 7, selected: number | null = null) =>
   renderHook(
     (props: { bounds: ViewBounds | null; regionId: number | null; selected: number | null }) =>
-      useInViewFilter(REGION, {}, props.bounds, props.regionId, props.selected, EMPTY),
+      useInViewFilter(REGION, {}, props.bounds, props.regionId, props.selected),
     { initialProps: { bounds, regionId, selected } },
   );
 
@@ -91,7 +89,7 @@ describe('useInViewFilter', () => {
   it('reports each kind’s whole-region total, not the view’s', () => {
     const { result } = renderHook(() => useInViewFilter(
       [exp(1, 14.42, 50.087, 'UNESCO'), exp(2, 2.35, 48.85, 'UNESCO'), exp(3, 14.40, 50.09, 'Museums')],
-      {}, PRAGUE, 7, null, EMPTY,
+      {}, PRAGUE, 7, null,
     ));
     expect(result.current.totalByKind.get('UNESCO')).toBe(2);
     expect(result.current.totalByKind.get('Museums')).toBe(1);

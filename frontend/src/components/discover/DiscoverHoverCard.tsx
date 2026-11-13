@@ -5,8 +5,7 @@
  * as map mode's `HoverPreviewCard`: the preview changes on every marker the
  * pointer crosses, and when `DiscoverExperienceView` held it as state, each
  * change re-rendered the view that owns the map and every card in the list
- * (#573). Positioned in the bottom-left corner — which is why the fold chip
- * sits at the top centre, since the card would otherwise paint over it.
+ * (#573). Positioned in the bottom-left corner.
  */
 
 import { useState } from 'react';

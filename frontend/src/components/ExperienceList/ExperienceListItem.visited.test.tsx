@@ -65,8 +65,6 @@ function renderRow(visitedStatus: VisitedStatus, options: RowOptions = {}) {
           onToggleAllLocations={() => {}}
           onTogglePlace={options.onTogglePlace ?? (() => {})}
           onLocationHover={() => {}}
-          isCollapsed={false}
-          onToggleCollapse={() => {}}
         />
       </HoverProvider>
     </QueryClientProvider>,

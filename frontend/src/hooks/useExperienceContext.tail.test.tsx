@@ -14,13 +14,14 @@ import { MemoryRouter, useLocation } from 'react-router';
 import type { Experience } from '../api/experiences';
 import { ApiError } from '../api/fetchUtils';
 
-const { mockFetchByRegion, mockFetchOne, mockFetchTail } = vi.hoisted(() => ({
-  mockFetchByRegion: vi.fn(), mockFetchOne: vi.fn(), mockFetchTail: vi.fn(),
+const { mockFetchByRegion, mockFetchOne, mockFetchTail, mockFetchLocations } = vi.hoisted(() => ({
+  mockFetchByRegion: vi.fn(), mockFetchOne: vi.fn(), mockFetchTail: vi.fn(), mockFetchLocations: vi.fn(),
 }));
 vi.mock('../api/experiences', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/experiences')>();
   return {
     ...actual, fetchExperiencesByRegion: mockFetchByRegion, fetchExperience: mockFetchOne, fetchRegionTail: mockFetchTail,
+    fetchExperienceLocations: mockFetchLocations,
   };
 });
 
@@ -50,6 +51,14 @@ function useUnderTest() {
   return { ctx, at: `${location.pathname}${location.search}` };
 }
 
+/** Santa Sabina's one point, as its own read answers it with the region asked. */
+const ON_THE_AVENTINE = {
+  id: 2020, experience_id: SANTA_SABINA.id, name: null, external_ref: null, ordinal: 0,
+  longitude: 12.4800, latitude: 41.8845, approximate: false, created_at: '2026-10-01T00:00:00Z',
+  curated_fields: [], in_region: true, image_url: null, image_credit: null, wikipedia_url: null,
+  curation_state: 'auto',
+};
+
 const tailOf = (rows: Experience[]) => ({ experiences: rows, total: rows.length, limit: 5000, offset: 0 });
 
 describe('a card only the region\'s tail holds', () => {
@@ -62,6 +71,8 @@ describe('a card only the region\'s tail holds', () => {
     mockFetchOne.mockRejectedValue(new ApiError('Experience not found', 404, 'Experience not found', undefined));
     mockFetchTail.mockReset();
     mockFetchTail.mockResolvedValue(tailOf([SANTA_SABINA]));
+    mockFetchLocations.mockReset();
+    mockFetchLocations.mockResolvedValue({ experienceId: SANTA_SABINA.id, locations: [ON_THE_AVENTINE] });
   });
 
   it('keeps the card, resolves its place and opens its kind\'s tail', async () => {
@@ -129,5 +140,15 @@ describe('a card only the region\'s tail holds', () => {
 
     await waitFor(() => expect(result.current.ctx.tail.places.get(WORSHIP)).toEqual([SANTA_SABINA]));
     expect(mockFetchTail).toHaveBeenCalledWith(LAZIO, WORSHIP, false);
+    expect(mockFetchLocations).not.toHaveBeenCalled();
+  });
+
+  it('reads the open tail card\'s points once, for the list and the map alike', async () => {
+    const { result } = renderHook(useUnderTest, { wrapper: wrapperAt(`/wv/5/r/${LAZIO}/e/${SANTA_SABINA.id}`) });
+
+    await waitFor(() => expect(result.current.ctx.tailPoints[SANTA_SABINA.id]).toHaveLength(1));
+    expect(result.current.ctx.tailPoints[SANTA_SABINA.id][0]).toMatchObject({ id: 2020, longitude: 12.48, latitude: 41.8845 });
+    expect(mockFetchLocations).toHaveBeenCalledTimes(1);
+    expect(mockFetchLocations).toHaveBeenCalledWith(SANTA_SABINA.id, LAZIO);
   });
 });

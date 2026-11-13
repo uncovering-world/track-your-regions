@@ -21,9 +21,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { Experience } from '../../api/experiences';
 import type { ActiveView } from '../../hooks/useDiscoverExperiences';
 import { useRegionLocations } from '../../hooks/useRegionLocations';
-import { useCollapsedExperiences } from '../../hooks/useCollapsedExperiences';
 import { buildExperienceMarkers, representablePlaces } from '../experienceMarkers/buildMarkers';
-import { FoldPlacesControl } from '../experienceMarkers/FoldPlacesControl';
 import { DiscoverExperienceList } from './DiscoverExperienceList';
 import { DiscoverHoverCard } from './DiscoverHoverCard';
 import { useAuth } from '../../hooks/useAuth';
@@ -121,11 +119,6 @@ export function DiscoverExperienceView({
     // rows on show, so the extra points draw nothing until revealed, and
     // revealing asks for nothing new.
     useRegionLocations(activeView?.regionId ?? null, true, true);
-  // Discover holds its own folds: it is a separate reading of the region, and a
-  // fold is about what this reader is looking at now rather than a preference.
-  const { collapsedExperienceIds, toggleCollapsedExperience } =
-    useCollapsedExperiences(activeView?.regionId ?? null);
-
   /** Set when the reader themself moved the map — see the fit below. */
   const movedByReaderRef = useRef(false);
   /**
@@ -143,71 +136,30 @@ export function DiscoverExperienceView({
   const flownForRef = useRef<number | null>(null);
   /** The selection those two marks were made for — see the effect that clears them. */
   const flySelectionRef = useRef<number | null>(null);
-  /** The current folded selection, read by the once-created hover callback. */
-  const foldedSelectionRef = useRef<{ longitude: number; latitude: number } | null>(null);
 
   /**
-   * What the fold control offers to fold: the places this surface draws for the
-   * selected object — which is not the same set the marker source uses.
-   *
-   * Discover draws a selected object from its own per-experience fetch, every
-   * location it has, unfiltered by region; the marker source draws the region
-   * batch's representable places. Counting the batch here would have offered no
-   * control at all for an object with forty places of which one falls in this
-   * region — the reader looking at forty dots, which is exactly the sprawl the
-   * fold exists for — and said "Show all 12 places" where unfolding draws 40.
-   */
-  const drawnPlacesOfSelected = selectedExperienceLocations && selectedExperienceLocations.length > 0
-    ? selectedExperienceLocations.length
-    : representablePlaces(locationsByExperience[selectedExperienceId ?? -1]).length;
-  const placesOfSelected = selectedExperienceId == null ? 0 : drawnPlacesOfSelected;
-
-  /**
-   * Where an object is drawn, for the hover ring: its places, or the one point it
-   * is drawn as when folded or when the batch holds none of them. Held in a ref
-   * because `handleCardMouseEnter` is a long-lived callback and a fold taken a
-   * moment ago must be what it rings.
+   * Where an object is drawn, for the hover ring: its places, or the place's own
+   * point when the batch holds none of them — and nothing for an object made of
+   * parts then, which has no point of its own (#2122).
    */
   const drawnCoordsRef = useRef((_expId: number): [number, number][] => []);
   drawnCoordsRef.current = (expId: number): [number, number][] => {
-    // The list's row, or the tail's for a card a crowded city leaves out (#2224).
-    const exp = findExperience(expId);
-    const own: [number, number][] = exp ? [[exp.longitude, exp.latitude]] : [];
     // A selected object is not drawn from the region batch here — it leaves the
     // marker source and the highlight layer draws it from the per-experience
     // fetch, every place it has. Ringing the batch's set for it would mark one of
-    // forty dots, which is the thing this ring exists to stop. Folded, that layer
-    // draws the object's own coordinate, so the ring has to go there too: the
-    // batch would answer with the in-region place, which for an object whose
-    // places are mostly elsewhere is a different point entirely.
+    // forty dots, which is the thing this ring exists to stop.
     if (expId === selectedExpIdRef.current && selectedExperienceLocations
         && selectedExperienceLocations.length > 0) {
-      if (foldedSelectionRef.current) return own;
       return selectedExperienceLocations.map(loc => [loc.lng, loc.lat] as [number, number]);
     }
     const representable = representablePlaces(locationsByExperience[expId]);
-    // Folded only counts where folding is a question: one drawn place is one pin
-    // either way, and the marker source would keep drawing it there.
-    if (representable.length > 1 && collapsedExperienceIds.has(expId)) return own;
-    if (representable.length === 0) return own;
-    return representable.map(loc => [loc.longitude, loc.latitude] as [number, number]);
+    if (representable.length > 0) {
+      return representable.map(loc => [loc.longitude, loc.latitude] as [number, number]);
+    }
+    // The list's row, or the tail's for a card a crowded city leaves out (#2224).
+    const exp = findExperience(expId);
+    return exp && !exp.has_parts ? [[exp.longitude, exp.latitude]] : [];
   };
-
-  /**
-   * The selected object when this reader has folded it — the one point it is
-   * then drawn at, which is the coordinate the catalogue answers with (ADR-0028
-   * decision 2) rather than a centre derived here.
-   */
-  const foldedSelection = useMemo(() => {
-    if (selectedExperienceId == null || !collapsedExperienceIds.has(selectedExperienceId)) return null;
-    // The same test the control applies, on the same set it counts: one drawn
-    // place is one pin either way, and folding it would say something the map
-    // cannot show.
-    if (placesOfSelected < 2) return null;
-    const exp = findExperience(selectedExperienceId);
-    return exp ? { longitude: exp.longitude, latitude: exp.latitude, name: exp.name } : null;
-  }, [selectedExperienceId, collapsedExperienceIds, findExperience, placesOfSelected]);
-  foldedSelectionRef.current = foldedSelection;
 
   /** The set this map last framed, so a redraw — or a reveal of lost places — does not re-frame. */
   const fittedForRef = useRef<Experience[] | null | undefined>(null);
@@ -218,10 +170,6 @@ export function DiscoverExperienceView({
   /** The current selection, for the card-hover callback that is created once. */
   const selectedExpIdRef = useRef<number | null>(selectedExperienceId);
   selectedExpIdRef.current = selectedExperienceId;
-
-  // Read by the map's long-lived click handler, which is registered once.
-  const toggleCollapsedRef = useRef(toggleCollapsedExperience);
-  toggleCollapsedRef.current = toggleCollapsedExperience;
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -321,7 +269,6 @@ export function DiscoverExperienceView({
   useDiscoverMap({
     mapContainerRef,
     mapRef,
-    toggleCollapsedRef,
     selectedFromMapIdRef,
     movedByReaderRef,
     mapHoverCallbackRef,
@@ -343,15 +290,6 @@ export function DiscoverExperienceView({
       // After resize settles, re-center on selected experience locations
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        // A folded object is one point here as well. This is the fifth path that
-        // moves the camera for a selection, and framing every place of an object
-        // the reader asked to see as one pin would answer a window resize by
-        // spreading it back across three provinces.
-        const folded = foldedSelectionRef.current;
-        if (folded) {
-          map.easeTo({ center: [folded.longitude, folded.latitude], duration: 400 });
-          return;
-        }
         const locs = selectedLocsRef.current;
         if (locs && locs.length > 0) {
           if (locs.length === 1) {
@@ -389,22 +327,19 @@ export function DiscoverExperienceView({
       // (ADR-0028 decision 1, #558). Clusters of places are the honest thing to
       // cluster: a cluster of property locators counted sites nobody could visit.
       const markers = buildExperienceMarkers(
-        visibleExperiences, locationsByExperience, NO_KIND_FILTER, collapsedExperienceIds,
+        visibleExperiences, locationsByExperience, NO_KIND_FILTER,
         // A kind's view draws every pin in that kind's colour (#1262).
         activeView?.kindId ?? null);
 
       // The features Map mode builds from the same markers: the handlers
       // resolve an object through `properties.experienceId`, and the layer
-      // expressions read `color`, `locationCount` and `point_count`.
+      // expressions read `color` and `point_count`.
       const markerData = buildMarkerFeatures(markers);
       source.setData(markerData);
 
-      // Fit to a *new* set, not to every rebuild of one. The fold rebuilds these
-      // markers, and unfolding by clicking a folded pin selects nothing — so a
-      // fit gated only on "nothing selected" answered that click by animating out
-      // to the whole region: a reader zoomed into Aragón to look at the rock art
-      // clicked the pin to see its parts and was thrown back to Europe. The batch
-      // arriving is the milder version, two 800 ms animations where one belongs.
+      // Fit to a *new* set, not to every rebuild of one: the batch arriving
+      // rebuilds these markers, and a fit on every rebuild is two 800 ms
+      // animations where one belongs.
       //
       // The batch is not waited on, because `locationsResolved` is `data != null`
       // — false while it is pending and false *forever* if it fails, which would
@@ -413,9 +348,8 @@ export function DiscoverExperienceView({
       // when the places arrive: two animations on first load of a view rather
       // than a map that may never frame at all.
       //
-      // Closing a detail panel still re-frames the region, which is the one other
-      // thing this fit was doing: that is a reader saying "show me the set again",
-      // and dropping it with the fold would have been collateral.
+      // Closing a detail panel re-frames the set as well: that is a reader saying
+      // "show me the set again".
       const isNewSet = fittedForRef.current !== experienceSet;
       // The second fit waits on a separate, slower query, and the map is fully
       // interactive meanwhile — so it loses to a reader who has already moved it.
@@ -440,12 +374,12 @@ export function DiscoverExperienceView({
     }
     // Removed on cleanup, which matters because this effect re-runs on every
     // arrival before the map has loaded — the experiences query, the location
-    // batch, a fold taken early. Each would otherwise leave another closure
+    // batch, a selection made early. Each would otherwise leave another closure
     // attached, and on `load` they would all run in turn, each with its
     // own snapshot and each evaluating the fit.
     map.on('load', updateData);
     return () => { map.off('load', updateData); };
-  }, [typedExperiences, experienceSet, selectedExperienceId, locationsByExperience, collapsedExperienceIds, locationsResolved, activeView?.kindId]);
+  }, [typedExperiences, experienceSet, selectedExperienceId, locationsByExperience, locationsResolved, activeView?.kindId]);
 
   // ── Update highlight markers + delayed flyTo ──
   useEffect(() => {
@@ -469,20 +403,7 @@ export function DiscoverExperienceView({
       const source = map.getSource(SCENE_SOURCES.highlight) as maplibregl.GeoJSONSource | undefined;
       if (!source) return;
 
-      // A folded object is one point here too. The selected object is drawn by
-      // this layer rather than from the marker source, so a fold that stopped at
-      // the source would be undone by the act of selecting the row — which is
-      // exactly when a reader is looking at it.
-      if (foldedSelection) {
-        source.setData(buildHighlightData([{
-          coordinates: [foldedSelection.longitude, foldedSelection.latitude],
-          locationId: null,
-          name: foldedSelection.name,
-        }]));
-        return;
-      }
-
-      // A place without an id carries null, as the folded dot does: the dot is
+      // A place without an id carries null: the dot is
       // drawn, and its hover names no place, since the panel has no row to
       // light for one. Its index in the list stood in once, and the panel reads
       // that number as a location id — another place's, or nobody's.
@@ -507,10 +428,8 @@ export function DiscoverExperienceView({
     // takes the one they clicked off the screen — with its own pin gone from the
     // marker source in the same commit, there is nothing to click back to.
     //
-    // And skipped when the selection has not changed, which is what keeps a fold
-    // from moving the camera: folding the selected object, or folding an
-    // unrelated one, re-runs this effect — the memo returns a new object with the
-    // same values — and Map mode's chip moves nothing at all.
+    // And skipped when the selection has not changed, so a redraw of the same
+    // selection moves nothing.
     const flyTimer = setTimeout(() => {
       // Nothing to fly to yet: the set on hand is the one-point fallback, which
       // is indistinguishable from a genuine single place. Flying now frames that
@@ -521,13 +440,7 @@ export function DiscoverExperienceView({
       if (selectedFromMapIdRef.current === selectedExperienceId) return;
       if (flownForRef.current === selectedExperienceId) return;
       flownForRef.current = selectedExperienceId;
-      if (foldedSelection) {
-        map.flyTo({
-          center: [foldedSelection.longitude, foldedSelection.latitude],
-          zoom: Math.max(map.getZoom(), 8),
-          duration: 800,
-        });
-      } else if (selectedExperienceLocations && selectedExperienceLocations.length > 0) {
+      if (selectedExperienceLocations && selectedExperienceLocations.length > 0) {
         if (selectedExperienceLocations.length === 1) {
           map.flyTo({
             center: [selectedExperienceLocations[0].lng, selectedExperienceLocations[0].lat],
@@ -544,7 +457,7 @@ export function DiscoverExperienceView({
       clearTimeout(flyTimer);
       map.off('load', updateHighlight);
     };
-  }, [selectedExperienceLocations, foldedSelection, selectedExperienceId, selectedLocationsResolved]);
+  }, [selectedExperienceLocations, selectedExperienceId, selectedLocationsResolved]);
 
 
   const handleVisitedToggle = useCallback(
@@ -566,18 +479,7 @@ export function DiscoverExperienceView({
       {/* Map — always visible, takes remaining height */}
       <Box sx={{ flex: activeView ? '0 0 45%' : 1, minHeight: 200, position: 'relative' }}>
         {isWebGLAvailable() ? (
-          <>
-            <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
-
-            {/* The same fold the list offers, for a reader working on the map (#558) */}
-            {selectedExperienceId != null && (
-              <FoldPlacesControl
-                places={placesOfSelected}
-                folded={collapsedExperienceIds.has(selectedExperienceId)}
-                onToggle={() => toggleCollapsedExperience(selectedExperienceId)}
-              />
-            )}
-          </>
+          <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
         ) : (
           <MapUnavailable detail="The experiences below are the same ones the map would pin, and stay fully browsable." />
         )}

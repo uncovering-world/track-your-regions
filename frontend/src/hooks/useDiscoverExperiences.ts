@@ -375,9 +375,10 @@ export function useDiscoverExperiences() {
         externalRef: l.external_ref ?? undefined,
       }));
     }
-    // Fallback to experience's main coordinates
+    // Fallback to the place's own coordinate; an object made of parts has none
+    // of its own to fall back to (#2122).
     const exp = findExperience(selectedExperienceId);
-    if (exp) return [{ lng: exp.longitude, lat: exp.latitude }];
+    if (exp && !exp.has_parts) return [{ lng: exp.longitude, lat: exp.latitude }];
     return null;
   }, [selectedExperienceId, selectedLocationsData, findExperience]);
 

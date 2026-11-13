@@ -2,9 +2,9 @@
  * Shared hook for batch-fetching all experience locations in a region.
  *
  * Replaces N+1 individual fetchExperienceLocations calls with a single
- * batch request. Four consumers share it: ExperienceMarkers and ExperienceList
- * on the map, SelectedObjectFoldControl beside them, and DiscoverExperienceView —
- * which reads a different set, see `includeChildren` below.
+ * batch request. Map mode's markers and list read a region alone, and
+ * Discover's view and detail panel read it with its descendants — see
+ * `includeChildren` below.
  */
 
 import { useMemo } from 'react';

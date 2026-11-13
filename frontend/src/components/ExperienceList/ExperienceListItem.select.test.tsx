@@ -42,8 +42,6 @@ function renderRow(isSelected = false) {
           onToggleAllLocations={() => {}}
           onTogglePlace={() => {}}
           onLocationHover={() => {}}
-          isCollapsed={false}
-          onToggleCollapse={() => {}}
         />
       </HoverProvider>
     </QueryClientProvider>,

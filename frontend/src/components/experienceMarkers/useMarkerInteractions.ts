@@ -1,6 +1,6 @@
 /**
  * Everything a pointer on the map does to the markers: the popup, the hover
- * ring, the click that selects or unfolds.
+ * ring, the click that selects.
  *
  * Split out of `ExperienceMarkers`, which had grown past the size rule in
  * `docs/tech/development-guide.md`. This is the imperative half — MapLibre
@@ -58,7 +58,6 @@ export interface MarkerInteractionsParams {
    */
   openPart: (experienceId: number, locationId: number) => boolean;
   toggleSelectedExperience: (id: number) => void;
-  toggleCollapsedExperience: (id: number) => void;
   setHoveredFromMarker: (experienceId: number | null, locationId: number | null) => void;
   setHoverPreview: (preview: HoverPreview | null) => void;
   /** Writes the ring straight to the map's source, without a re-render. */
@@ -73,7 +72,6 @@ export function useMarkerInteractions({
   getLocation,
   openPart,
   toggleSelectedExperience,
-  toggleCollapsedExperience,
   setHoveredFromMarker,
   setHoverPreview,
   setHoverData,
@@ -89,9 +87,7 @@ export function useMarkerInteractions({
   setHoveredRef.current = setHoveredFromMarker;
   const selectedExpIdRef = useRef(selectedExperienceId);
   selectedExpIdRef.current = selectedExperienceId;
-  const toggleCollapsedRef = useRef(toggleCollapsedExperience);
-  toggleCollapsedRef.current = toggleCollapsedExperience;
-  // A ref for the same reason as the four above, and one worth naming: this one
+  // A ref for the same reason as the three above, and one worth naming: this one
   // is `useCallback(…, [experiences])`, so it changes whenever the region's
   // experiences do — a curation edit, a `showLost` toggle. As a dependency it
   // tore the listeners down and rebuilt them, which takes the popup and the
@@ -138,23 +134,6 @@ export function useMarkerInteractions({
         // hold: a part's dot opens that part's card (#1271).
         const selected = selectedExpIdRef.current;
         if (under.locationId != null && selected != null) openPartRef.current(selected, under.locationId);
-        return;
-      }
-
-      // A pin the reader folded is unfolded by clicking it, which is the way back
-      // from the only action the map offers on a folded object — and the badge is
-      // what says there is something to unfold. Selection is what a click means
-      // everywhere else, including on the badge of a pin standing in for places
-      // the region's batch has not loaded: there is nothing folded to unfold
-      // there, and selecting is what loads them.
-      //
-      // The test is the pin's own answer, not the id and not a shape that
-      // resembles a folded pin: `buildExperienceMarkers` says which pins it drew
-      // folded, and a stand-in pin — an object whose places the batch does not
-      // hold — has the same null `locationId` and count above one without being
-      // one. A click that unfolded that would visibly do nothing.
-      if (under.folded) {
-        toggleCollapsedRef.current(under.experienceId);
         return;
       }
 
@@ -260,9 +239,8 @@ export function useMarkerInteractions({
     const hoverKeyAt = (point: maplibregl.Point): string | null => hoverKeyOf(markerUnderPointer(map, point));
 
     // One leave handler for every layer here, because they all overlap and a
-    // leave from any of them can be a move onto another. A pin and its badge are
-    // two layers over one place — the badge is drawn `circle-translate: [8, -8]`
-    // from the point it belongs to — and the highlight dots of the selected
+    // leave from any of them can be a move onto another. A pin and its split
+    // disc are two layers over one place, and the highlight dots of the selected
     // object sit among the pins of the others, a dozen pixels away. Clearing on
     // such a leave takes the popup and the ring off something the pointer is
     // still on, or off the thing it has just arrived at: within one DOM
@@ -278,7 +256,7 @@ export function useMarkerInteractions({
     // a `mousemove` that no longer hits the layer, and a `mouseout` when the
     // pointer leaves the canvas — and the second carries the point it left
     // *from*, which is still over the pin when the thing it left onto is an
-    // overlay drawn above the map (the fold control, the region box, the zoom
+    // overlay drawn above the map (the region box, the zoom
     // buttons). Trusting the point there would keep the ring and the popup lit
     // for good: `mousein` is already false, so no further leave arrives until a
     // feature is entered again.
@@ -292,11 +270,9 @@ export function useMarkerInteractions({
     const attachHandlers = () => {
       if (MARKER_LAYERS.some(id => !map.getLayer(id))) return false;
       // Once on the map, not once per layer: a delegated listener is created per
-      // registration, so a click landing on two of these — which a badge click
-      // does, its circle and its glyph sitting on the same 8 px — ran this body
-      // twice and undid itself. On a folded pin that meant toggling the fold off
-      // and on again, so clicking the badge that says "folded" did nothing at
-      // all. The handler queries `MARKER_LAYERS` itself and returns when none
+      // registration, so a click landing on two of these — a pin and the split
+      // disc over it — ran this body twice and undid itself: a selection
+      // toggled on and off again. The handler queries `MARKER_LAYERS` itself and returns when none
       // answers, which is what makes one registration enough. `mousemove` stays
       // per layer because painting a ring twice is painting it once; `mouseleave`
       // stays per layer only because of the same-target check in
