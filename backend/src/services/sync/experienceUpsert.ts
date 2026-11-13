@@ -95,6 +95,7 @@ import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
 import { heldFacts, isKindFact, splitKindFacts, withOwnFacts } from './kindFacts.js';
 import { fieldsKeptAsStored, keptAsStored, reportedArticle } from './sourceView.js';
 import { catalogueName, type NamedRecord } from './nameTwins.js';
+import { withChosenCoordinate } from './itemCoordinate.js';
 
 export interface ExperienceUpsertParams {
   sourceId: number;
@@ -194,6 +195,8 @@ export interface UpsertOutcome {
    * called `former`, whose verdict is what cleared the flag.
    */
   returnedFromMissing: boolean;
+  /** The coordinate the run's record reports, chosen among the item's for the place: what its point is written at. */
+  location?: { lon: number; lat: number };
 }
 
 /**
@@ -301,6 +304,15 @@ function storedPlaceSql(place: string, externalId: string): string {
     FROM experiences e
     LEFT JOIN ${MEMBERSHIPS} sm ON sm.experience_id = e.id AND sm.source_id = $1 AND sm.external_id = ${externalId}
    WHERE e.id = ${place}`;
+}
+
+/**
+ * Whether the run's coordinate is chosen among its item's (ADR-0204): not for
+ * an anchor, which the run derives from the place's points (ADR-0095), nor for
+ * an edition, whose points are its casts (ADR-0145).
+ */
+function choosesItsCoordinate(params: ExperienceUpsertParams): boolean {
+  return !params.locationIsAnchor && !params.castPoints;
 }
 
 /**
@@ -521,8 +533,11 @@ async function previewUpsert(sent: ExperienceUpsertParams): Promise<UpsertOutcom
                      LIMIT 1)`, '$2'),
     [sent.sourceId, sent.externalId, identifyingItems(sent)],
   );
-  // Named as the run would name it (#1967).
-  const params = { ...sent, name: await catalogueName(pool, namedRecord(sent), result.rows[0]?.id ?? null) };
+  // Named as the run would name it (#1967), at the coordinate it would choose (ADR-0204).
+  const { record: params } = await withChosenCoordinate(
+    pool, result.rows[0]?.id ?? null,
+    { ...sent, name: await catalogueName(pool, namedRecord(sent), result.rows[0]?.id ?? null) }, choosesItsCoordinate(sent),
+  );
 
   if (result.rows.length === 0) {
     const incoming = snapshotFromParams(params, await incomingOutline(pool, params, null));
@@ -533,6 +548,7 @@ async function previewUpsert(sent: ExperienceUpsertParams): Promise<UpsertOutcom
       changeSet: computeChangeSet(null, incoming, [], false),
       nameSnapshot: params.name,
       returnedFromMissing: false,
+      location: { lon: params.lon, lat: params.lat },
     };
   }
 
@@ -568,6 +584,7 @@ async function previewUpsert(sent: ExperienceUpsertParams): Promise<UpsertOutcom
       ? (row.name as string)
       : written.name,
     returnedFromMissing: row.missing_since !== null || row.source_membership === 'former',
+    location: { lon: params.lon, lat: params.lat },
   };
 }
 
@@ -783,7 +800,12 @@ async function writeUnderLock(
     ?? await lockIdentifiedPlace(client, sent.sourceId, identifyingItems(sent));
   // The name the record is written under, a twin's suffix decided over the
   // whole catalogue (#1967); the label as sent is recorded on the membership.
-  const params = { ...sent, name: await catalogueName(client, namedRecord(sent), locked?.id ?? null) };
+  // Its coordinate is the item's the place's outline or other views pick
+  // (ADR-0204), read under the lock like the rest of the place.
+  const { record: params } = await withChosenCoordinate(
+    client, locked?.id ?? null,
+    { ...sent, name: await catalogueName(client, namedRecord(sent), locked?.id ?? null) }, choosesItsCoordinate(sent),
+  );
   const redirectedFrom = await moveMembershipKey(client, locked, params);
   // The row as it stands under that lock, and the hold decided on the same
   // snapshot. A second statement rather than columns of the locking one: a
@@ -1223,5 +1245,6 @@ async function writeUnderLock(
     // former — which is the only reason it stopped being flagged.
     returnedFromMissing: stored != null
       && (stored.missing_since != null || stored.source_membership === 'former'),
+    location: { lon: params.lon, lat: params.lat },
   };
 }

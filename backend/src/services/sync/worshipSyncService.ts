@@ -369,7 +369,7 @@ async function processPlace(
     ...(place.tier ? { tier: place.tier } : {}),
   };
 
-  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing, location } = await upsertExperienceRecord({
     sourceId: WORSHIP_SOURCE_ID,
     externalId: place.qid,
     name: place.label,
@@ -402,8 +402,10 @@ async function processPlace(
     // source proposes — and it is written where belonging is settled, after the
     // run's restore step (`markIconic`, admission.ts), so a cancelled run never
     // badges a row it did not re-admit (#760).
+    // At the coordinate the record reports, chosen among the item's for this place (ADR-0204).
     const written = await upsertSingleLocation(
-      experienceId, place.qid, place.lon, place.lat, { syncLogId: context.syncLogId, sourceId: WORSHIP_SOURCE_ID },
+      experienceId, place.qid, location?.lon ?? place.lon, location?.lat ?? place.lat,
+      { syncLogId: context.syncLogId, sourceId: WORSHIP_SOURCE_ID },
     );
     // Registered here rather than returned: `upsertVenueTreasures` runs after
     // this and can throw, and a returned field would be lost with it while the

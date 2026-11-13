@@ -409,7 +409,7 @@ async function upsertMuseumExperience(
   // Store remote Wikimedia URL directly (thumbnailing handled by frontend)
   const imageUrl = details.imageUrl || null;
 
-  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing, location } = await upsertExperienceRecord({
     sourceId: MUSEUM_SOURCE_ID,
     externalId: museum.qid,
     name: details.museumLabel,
@@ -444,8 +444,10 @@ async function upsertMuseumExperience(
     // field the source proposes — and it is written where belonging is settled, after the run's
     // restore step (`markIconic`, admission.ts), so a cancelled run never badges a row it did
     // not re-admit (#760).
+    // At the coordinate the record reports, chosen among the item's for this place (ADR-0204).
     const written = await upsertSingleLocation(
-      experienceId, museum.qid, details.lon!, details.lat!, { syncLogId: context.syncLogId, sourceId: MUSEUM_SOURCE_ID },
+      experienceId, museum.qid, location?.lon ?? details.lon!, location?.lat ?? details.lat!,
+      { syncLogId: context.syncLogId, sourceId: MUSEUM_SOURCE_ID },
     );
     // Registered here rather than returned: `upsertVenueTreasures` runs after
     // this and can throw, and a returned field would be lost with it while the
