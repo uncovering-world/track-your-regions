@@ -3,10 +3,12 @@
  * group in its own circle, beside the map that draws it. Its card shows what
  * the place is — its picture with its credit as a line, enlarged on a press
  * (ADR-0182), and its article — the rule's reading of it with its exact count, and its own
- * answers, which are about it alone. Below, a table (#2454): every place of
- * its type within the radius, the ones the card's button counts, as one list
- * by fame with the place itself at its own rank and marked there
- * (`circleRows`, #2486), each with its figures in the headings' columns
+ * answers, which are about it alone. Below, the window's one table
+ * (`CrowdingTable`, #2454, #2487): every place of its type within the radius,
+ * the ones the card's button counts, as one list by fame with the place itself
+ * at its own rank and marked there (`circleRows`, #2486), each drawn as the
+ * region's list draws it — its picture, its standing, its answers where the
+ * region's list holds it — with its figures in the headings' columns
  * (`FigureTable`, #2400) and its distance. A row above the place is better
  * known and one below less known; a row says in words what the rule does with
  * it where its rank does not (#2420). Each opens its own circle, and the order
@@ -15,21 +17,20 @@
  * table scrolls sideways.
  */
 
-import { useEffect, useRef, useState, type Ref } from 'react';
-import { alpha, Box, ButtonBase, Chip, Link, Paper, Stack, Typography } from '@mui/material';
-import type { Theme } from '@mui/material';
-import type { CrowdingAnswer, CrowdingPlaceView } from '../../../api/crowding';
+import { useEffect, useRef, useState } from 'react';
+import { Box, ButtonBase, Chip, Link, Paper, Stack, Typography } from '@mui/material';
+import type { CrowdingAnswer, CrowdingGroupPlace, CrowdingPlaceView } from '../../../api/crowding';
 import { extractImageUrl, toThumbnailUrl } from '../../../utils/imageUrl';
 import { safeHref } from '../../../utils/safeHref';
 import { ImageCreditLine } from '../../shared/ImageCreditLine';
 import { PictureLightbox } from '../../shared/PictureLightbox';
 import { ReaderEditionBeside } from '../../shared/WikipediaArticleLink';
 import { AnswerButtons } from './AnswerButtons';
-import { circleHeading, circleRows, type CircleRow } from './circleGroups';
+import { circleHeading, circleRows } from './circleGroups';
+import { CrowdingRow, CrowdingTable, STANDING_COLOR } from './CrowdingTable';
 import { drawnStanding, type Staging } from './crowdingStaging';
-import { FigureCells, FigureHeadings, figuresWidth, HOVERED_TINT, stickyName, VenueCreditLine, type FigureColumns } from './FigureTable';
-import { STANDING_COLOR } from './RegionList';
-import { distanceWords, nounOf, ruleReading, type RuleWords } from './rowWords';
+import { VenueCreditLine, type FigureColumns } from './FigureTable';
+import { distanceWords, nounOf, ruleReading, whyWords, type RuleWords } from './rowWords';
 
 /**
  * The place's picture at a card's size, its credit as a line under it (ADR-0182)
@@ -60,36 +61,6 @@ function Picture({ name, imageUrl, credit }: Pick<CrowdingPlaceView['place'], 'n
   );
 }
 
-/** The width the table keeps on a narrow screen, where it scrolls sideways rather than squeeze its columns. */
-const tableMinWidth = (columns: FigureColumns) => ({ xs: 'max-content', sm: `calc(${figuresWidth(columns)} + 28rem)` });
-
-/** A row's grid: its rank, its name, its figures, its standing and its distance. On a phone the name column is fixed, and held in view. */
-const rowGrid = (columns: FigureColumns) => ({
-  display: 'grid', alignItems: 'center', columnGap: 1,
-  gridTemplateColumns: {
-    xs: `2rem 10rem ${figuresWidth(columns)} 4.5rem 4.5rem`,
-    sm: `2rem minmax(10rem, 1fr) ${figuresWidth(columns)} 4.5rem 4.5rem`,
-  },
-});
-
-const OWN_TINT = (theme: Theme) => alpha(theme.palette.warning.main, 0.08);
-
-/** The table's heading row: the figures' headings with their hints, between the place's name and its distance. */
-function HeadingRow({ columns }: { columns: FigureColumns }) {
-  return (
-    <Box role="row" sx={{ ...rowGrid(columns), px: 1.5, pt: 1, pb: 0.5 }}>
-      <span />
-      <Typography role="columnheader" variant="caption" color="text.secondary" sx={stickyName()}>Place</Typography>
-      <FigureHeadings columns={columns} />
-      <span role="columnheader" aria-label="Where it stands" />
-      <Typography role="columnheader" variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>Distance</Typography>
-    </Box>
-  );
-}
-
-/** A neighbour's standing in words where it is not shown on the region page. */
-const STANDING_WORDS: Record<CrowdingPlaceView['around'][number]['standing'], string> = { shown: '', new: 'new', shadowed: 'shadowed' };
-
 /** Whether a row stands outside the screen or outside a box that scrolls around it. */
 function outOfView(row: HTMLElement): boolean {
   const { top, bottom } = row.getBoundingClientRect();
@@ -105,68 +76,14 @@ function outOfView(row: HTMLElement): boolean {
   return top < shownTop || bottom > shownBottom;
 }
 
-/**
- * A row of the circle at its rank: the place itself, marked, or a place around
- * it, its name opening its own circle and its note under the name. Either way
- * its figures and its distance stand in the headings' columns.
- */
-function CircleRowView({ row, columns, hovered, ownRef, onHover, onOpen }: {
-  row: CircleRow;
-  columns: FigureColumns;
-  hovered: boolean;
-  /** The open place's row, for the table to scroll to when another place opens. */
-  ownRef: Ref<HTMLDivElement>;
-  onHover: (membershipId: number | null) => void;
-  onOpen: (membershipId: number) => void;
-}) {
-  const signals = row.own ? row.place : row.entry;
-  let tint: ((theme: Theme) => string) | undefined;
-  if (row.own) tint = OWN_TINT;
-  else if (hovered) tint = HOVERED_TINT;
-  return (
-    <Box
-      ref={row.own ? ownRef : undefined}
-      onMouseEnter={() => onHover(signals.membershipId)}
-      onMouseLeave={() => onHover(null)}
-      role="row"
-      aria-label={row.own ? `${signals.name}, this place` : undefined}
-      sx={{ ...rowGrid(columns), px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: tint }}
-    >
-      {/* The rank is the rows' order, which a screen reader reads already. */}
-      <Typography aria-hidden variant="caption" color={row.own ? 'warning.dark' : 'text.secondary'} sx={{ fontVariantNumeric: 'tabular-nums' }}>
-        {row.rank ?? ''}
-      </Typography>
-      <Box role="rowheader" sx={stickyName(tint, { minWidth: 0 })}>
-        {row.own ? (
-          <>
-            <Typography variant="body2" fontWeight={500}>{signals.name}</Typography>
-            <Typography variant="caption" color="warning.dark" display="block">this place</Typography>
-          </>
-        ) : (
-          <>
-            <ButtonBase
-              onClick={() => onOpen(signals.membershipId)}
-              sx={{ typography: 'body2', justifyContent: 'flex-start', textAlign: 'left', '&:hover': { textDecoration: 'underline' } }}
-            >
-              {signals.name}
-            </ButtonBase>
-            {row.note && <Typography variant="caption" color="text.secondary" display="block">{row.note}</Typography>}
-          </>
-        )}
-      </Box>
-      <FigureCells columns={columns} signals={signals} strong={row.own} />
-      <Typography role="cell" variant="caption" color="text.secondary">
-        {row.own ? '' : STANDING_WORDS[row.entry.standing]}
-      </Typography>
-      <Typography role="cell" variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
-        {row.own ? '' : distanceWords(row.entry.distanceM)}
-      </Typography>
-    </Box>
-  );
-}
-
-export function PlaceView({ view, rule, staging, columns, frozen = false, hovered, onHover, onOpen, onAnswer }: {
+export function PlaceView({ view, places, rule, staging, columns, frozen = false, hovered, onHover, onOpen, onAnswer }: {
   view: CrowdingPlaceView;
+  /**
+   * The group's places, as the region's list holds them: a neighbour among them is drawn with its
+   * picture, its article and its answers; one outside the group's region, or past a list cut short,
+   * with its figures alone.
+   */
+  places: readonly CrowdingGroupPlace[];
   rule: RuleWords;
   staging: Staging;
   /** The table's columns: the fame and score, and the venues where the kind keeps them. */
@@ -176,10 +93,12 @@ export function PlaceView({ view, rule, staging, columns, frozen = false, hovere
   onHover: (membershipId: number | null) => void;
   /** A place around it clicked: its own circle opens. */
   onOpen: (membershipId: number) => void;
-  onAnswer: (answer: CrowdingAnswer) => void;
+  /** An answer staged for the open place, on its card, or for a place around it, in its row. */
+  onAnswer: (place: CrowdingGroupPlace, answer: CrowdingAnswer) => void;
 }) {
   const { place } = view;
   const rows = circleRows(view);
+  const byId = new Map(places.map(entry => [entry.membershipId, entry]));
   const ownRow = useRef<HTMLDivElement>(null);
   const shownPlace = useRef(place.membershipId);
   // Another place opened from the table or the map: the rows the two circles share keep their order, so the
@@ -214,7 +133,7 @@ export function PlaceView({ view, rule, staging, columns, frozen = false, hovere
             </Stack>
           )}
           <Typography variant="body2">{ruleReading(place, rule, view.typeExempt)}</Typography>
-          <AnswerButtons place={place} staging={staging} frozen={frozen} size="medium" onAnswer={onAnswer} />
+          <AnswerButtons place={place} staging={staging} frozen={frozen} size="medium" onAnswer={answer => onAnswer(place, answer)} />
           <Typography variant="caption" color="text.secondary">
             The answer is about {place.name} alone. Every other {nounOf(rule, 1)} keeps its own standing.
           </Typography>
@@ -225,18 +144,35 @@ export function PlaceView({ view, rule, staging, columns, frozen = false, hovere
         <Box sx={{ px: 1.5, py: 1, borderBottom: 1, borderColor: 'divider', bgcolor: 'action.hover' }}>
           <Typography variant="subtitle2" component="h3">{circleHeading(view, rule)}</Typography>
         </Box>
-        <Box role="table" aria-label="Its figures and the places around it" sx={{ overflowX: 'auto' }}>
-        <Box sx={{ minWidth: tableMinWidth(columns) }}>
-        <HeadingRow columns={columns} />
-        {rows.map(row => {
-          const id = row.own ? row.place.membershipId : row.entry.membershipId;
-          return (
-            <CircleRowView key={id} row={row} columns={columns} hovered={hovered === id} ownRef={ownRow}
-              onHover={onHover} onOpen={onOpen} />
-          );
-        })}
-        </Box>
-        </Box>
+        <CrowdingTable label="Its figures and the places around it" columns={columns} distance>
+          {rows.map(row => {
+            if (row.own) {
+              return (
+                <CrowdingRow
+                  key={place.membershipId} own rank={row.rank} rowRef={ownRow} standingWords
+                  place={{ ...place, drawn, signals: place }} shown={place} note={null} why={null} answers={null}
+                  distance="" columns={columns} hovered={false} onHover={onHover} onOpen={onOpen}
+                />
+              );
+            }
+            const { entry } = row;
+            const full = byId.get(entry.membershipId);
+            return (
+              <CrowdingRow
+                key={entry.membershipId} rank={row.rank} standingWords
+                place={{ ...entry, drawn: full ? drawnStanding(full, staging) : entry.standing, signals: entry }}
+                shown={full ?? null}
+                note={row.note}
+                why={full ? whyWords(full, rule, view.typeExempt) : null}
+                answers={full && (
+                  <AnswerButtons place={full} staging={staging} frozen={frozen} onAnswer={answer => onAnswer(full, answer)} />
+                )}
+                distance={distanceWords(entry.distanceM)}
+                columns={columns} hovered={hovered === entry.membershipId} onHover={onHover} onOpen={onOpen}
+              />
+            );
+          })}
+        </CrowdingTable>
         <VenueCreditLine columns={columns} />
         {unlisted > 0 && (
           <Typography variant="caption" color="text.secondary" display="block" sx={{ px: 1.5, py: 0.75 }}>

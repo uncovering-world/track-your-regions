@@ -21,7 +21,7 @@ const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }
 function placeView(view: CrowdingPlaceView) {
   return (
     <QueryClientProvider client={client}>
-      <PlaceView view={view} rule={rule} staging={new Map()} columns={figureColumns(berlinGroup.kind)}
+      <PlaceView view={view} places={berlinGroup.places} rule={rule} staging={new Map()} columns={figureColumns(berlinGroup.kind)}
         hovered={null} onHover={vi.fn()} onOpen={vi.fn()} onAnswer={vi.fn()} />
     </QueryClientProvider>
   );
@@ -30,7 +30,8 @@ function placeView(view: CrowdingPlaceView) {
 /** The table's rows below its headings, by the name that heads each. */
 function rowNames() {
   const table = within(screen.getByRole('table', { name: 'Its figures and the places around it' }));
-  return table.getAllByRole('rowheader').map(header => header.firstChild?.textContent);
+  // A row's name is its first button, or its text where it is the open place's own.
+  return table.getAllByRole('rowheader').map(header => header.querySelector('button, p')?.textContent);
 }
 
 const scrollIntoView = vi.fn();

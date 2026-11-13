@@ -71,13 +71,19 @@ async function inRegion() {
 /** The circle's rows, by the names that head them: the open place's own among them at its rank. */
 function circleNames() {
   const table = within(screen.getByRole('table', { name: 'Its figures and the places around it' }));
-  return table.getAllByRole('rowheader').map(header => header.firstChild?.textContent);
+  // A row's name is its first button, or its text where it is the open place's own.
+  return table.getAllByRole('rowheader').map(header => header.querySelector('button, p')?.textContent);
 }
 
 /** A place's row in the circle's table, by its name. */
 function circleRow(name: string) {
   const around = within(screen.getByRole('region', { name: 'The places around it' }));
   return within(around.getByRole('button', { name }).closest('[role="row"]') as HTMLElement);
+}
+
+/** The open place's card, above its circle: its own answers, which the rows below do not repeat. */
+function card() {
+  return within(screen.getByRole('heading', { name: 'Schloßplatz', level: 3 }).closest('.MuiPaper-root') as HTMLElement);
 }
 
 /** The region list's row of one place, by its name. */
@@ -100,10 +106,14 @@ describe("the region list's numbers (#2400)", () => {
     await inRegion();
 
     const list = within(screen.getByRole('region', { name: "The region's list" }));
-    // Each part of the list carries the figures' headings in its header, which sticks while the part scrolls.
-    const page = within(list.getByRole('rowgroup', { name: /^On the region page/ }));
-    expect(page.getAllByRole('columnheader').map(cell => cell.textContent))
-      .toEqual([expect.stringMatching(/^On the region page/), 'Readers a year', 'Editions', 'In Wikivoyage', 'Score', 'Venues']);
+    // One row of headings over the whole list, which sticks while it scrolls; the page's part and
+    // the tail are dividers inside the same table, never a second heading row (#2487).
+    const table = within(list.getByRole('table', { name: "The region's places and their figures" }));
+    expect(table.getAllByRole('columnheader').map(cell => cell.textContent))
+      .toEqual(['Place', 'Readers a year', 'Editions', 'In Wikivoyage', 'Score', 'Venues']);
+    expect(table.getByRole('heading', { name: /^On the region page/, level: 3 })).toBeInTheDocument();
+    expect(table.getByRole('heading', { name: 'Shadowed · 3, in the list’s tail', level: 3 })).toBeInTheDocument();
+    expect(list.queryAllByRole('rowgroup')).toHaveLength(0);
     const cells = (name: string) => rowOf(name).getAllByRole('cell').map(cell => cell.textContent);
     expect(cells('Alexanderplatz')).toEqual(['209,401', '47', 'yes', '0.95', '64']);
     expect(cells('Leipziger Platz')).toEqual(['—', '18', '—', '0.73', '—']);
@@ -204,23 +214,50 @@ describe('the window open on a place, as a way in opens it', () => {
 
     const table = within(screen.getByRole('table', { name: 'Its figures and the places around it' }));
     expect(table.getAllByRole('columnheader').map(cell => cell.textContent))
-      .toEqual(['Place', 'Readers a year', 'Editions', 'In Wikivoyage', 'Score', 'Venues', '', 'Distance']);
+      .toEqual(['Place', 'Readers a year', 'Editions', 'In Wikivoyage', 'Score', 'Venues', 'Distance']);
     const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map(cell => cell.textContent);
     // The place itself stands at its rank, 14th, marked, with no rule's count in it: the card's sentence says that once.
     const own = table.getByRole('row', { name: 'Schloßplatz, this place' });
-    expect(cells(own)).toEqual(['20,000', '17', 'yes', '0.70', '3', '', '']);
+    expect(cells(own)).toEqual(['20,000', '17', 'yes', '0.70', '3', '']);
     expect(own.firstChild).toHaveTextContent('14');
     expect(within(own).getByText('this place')).toBeInTheDocument();
     expect(table.getAllByRole('row').indexOf(own)).toBe(14);
     expect(screen.queryByText(/Better within/)).toBeNull();
     const rowOf = (name: string) => table.getByRole('button', { name }).closest('[role="row"]') as HTMLElement;
-    // Each place's name heads its row, and its figures stand in the headings' columns before its standing and distance.
+    // Each place's name heads its row, and its figures stand in the headings' columns before its distance.
     expect(within(rowOf('Alexanderplatz')).getByRole('rowheader')).toHaveTextContent('Alexanderplatz');
-    expect(cells(rowOf('Alexanderplatz'))).toEqual(['209,401', '47', 'yes', '0.95', '64', '', '0.7 km']);
+    expect(cells(rowOf('Alexanderplatz'))).toEqual(['209,401', '47', 'yes', '0.95', '64', '0.7 km']);
     // A place not read yet is a dash, never a zero, and its hint says so without a tab stop of its own.
     expect(cells(rowOf('Leipziger Platz')).slice(0, 5)).toEqual(['—', '18', '—', '0.73', '—']);
     expect(within(rowOf('Leipziger Platz')).getAllByLabelText('Not measured yet.')).toHaveLength(3);
     expect(within(rowOf('Leipziger Platz')).getAllByLabelText('Not measured yet.')[0]).not.toHaveAttribute('tabindex');
+  });
+
+  it('draws each place around it as the region’s list does: its picture and its answers where the group holds it (#2487)', async () => {
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    expect(circleRow('Alexanderplatz').getByRole('img', { name: 'Alexanderplatz' })).toHaveAttribute(
+      'src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg?width=120');
+    expect(circleRow('Alexanderplatz').getByRole('link', { name: 'Wikipedia' })).toBeInTheDocument();
+    // An answer in the circle is the same pin as in the region's list: one staging for both.
+    fireEvent.click(circleRow('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
+    expect(screen.getByText(/^1 answer staged: shadow Nollendorfplatz\./)).toBeInTheDocument();
+    await inRegion();
+    expect(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('draws a place around it the window holds no list for with its figures alone', async () => {
+    // A square across the region's border: within 10 km, and in no list the window has read.
+    const across = { ...schlossplatzCircle.around[0], membershipId: 990, experienceId: 1990, name: 'Volkspark Friedrichshain', score: 0.1 };
+    mockedPlace.mockResolvedValue({ ...schlossplatzCircle, around: [...schlossplatzCircle.around, across] });
+    renderWindow();
+    await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
+
+    const row = circleRow('Volkspark Friedrichshain');
+    expect(row.queryByRole('img')).toBeNull();
+    expect(row.getAllByRole('button')).toHaveLength(1);
+    expect(row.getAllByRole('cell').map(cell => cell.textContent).slice(0, 4)).toEqual(['209,401', '47', 'yes', '0.10']);
   });
 
   it('says what each heading counts, on hover and on keyboard focus (#2454)', async () => {
@@ -236,9 +273,9 @@ describe('the window open on a place, as a way in opens it', () => {
     renderWindow();
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show anyway' }));
-    expect(screen.getByRole('button', { name: 'Show anyway' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Keep shadowed' })).toBeInTheDocument();
+    fireEvent.click(card().getByRole('button', { name: 'Show anyway' }));
+    expect(card().getByRole('button', { name: 'Show anyway' })).toHaveAttribute('aria-pressed', 'true');
+    expect(card().getByRole('button', { name: 'Keep shadowed' })).toBeInTheDocument();
     expect(screen.getByText(/^1 answer staged: show Schloßplatz anyway\. The region page will show 12 squares/)).toBeInTheDocument();
   });
 
@@ -264,11 +301,11 @@ describe('the window open on a place, as a way in opens it', () => {
     renderWindow();
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
 
-    expect(screen.getByRole('img', { name: 'Schloßplatz' })).toHaveAttribute(
+    expect(card().getByRole('img', { name: 'Schloßplatz' })).toHaveAttribute(
       'src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg?width=250');
-    expect(screen.getByRole('link', { name: 'Wladyslaw Sojka' })).toBeInTheDocument();
+    expect(card().getByRole('link', { name: 'Wladyslaw Sojka' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Schloßplatz — enlarge the picture' }));
+    fireEvent.click(card().getByRole('button', { name: 'Schloßplatz — enlarge the picture' }));
     const enlarged = await screen.findByRole('dialog', { name: 'Schloßplatz' });
     expect(within(enlarged).getByRole('img', { name: 'Schloßplatz' })).toHaveAttribute(
       'src', 'https://commons.wikimedia.org/wiki/Special:FilePath/Berlin%20-%20Alexanderplatz1.jpg?width=960');
@@ -310,9 +347,12 @@ describe('the window open on a place, as a way in opens it', () => {
     renderWindow();
     await inRegion();
 
-    expect(screen.getByLabelText(
+    // The reason opens at the name it explains, inside the row, never away over the map (#2487).
+    const why = screen.getByLabelText(
       'Shadowed: 11 better-known squares stand within 10 km of it: Alexanderplatz, Potsdamer Platz, Gendarmenmarkt, …',
-    )).toBe(screen.getByTestId('crowding-place-12'));
+    );
+    expect(screen.getByTestId('crowding-place-12')).toContainElement(why);
+    expect(within(why).getByRole('button', { name: 'Leipziger Platz' })).toBeInTheDocument();
   });
 
   it('shows what each place is: its picture with its credit, and its article; a place without them shows neither (#2345)', async () => {
@@ -369,6 +409,8 @@ describe('the window open on a place, as a way in opens it', () => {
     // From a laptop's width the map stands beside the list, held just below the screen's top (#2487).
     expect(CROWDING_LAYOUT.mapPane).toEqual({ p: 2, position: { lg: 'sticky' }, top: { lg: 16 } });
     expect(CROWDING_LAYOUT.mapColumn).toMatchObject({ width: { xs: '100%', lg: 320, xl: 400 } });
+    // Below a laptop's width the list is the box the table's headings stick in.
+    expect(CROWDING_LAYOUT.list).toMatchObject({ overflow: { sm: 'auto', lg: 'visible' }, maxHeight: { sm: '75vh', lg: 'none' } });
   });
 });
 
@@ -388,7 +430,7 @@ describe('answers applied together', () => {
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show anyway' }));
+    fireEvent.click(card().getByRole('button', { name: 'Show anyway' }));
     await inRegion();
     fireEvent.click(rowOf('Rosa-Luxemburg-Platz').getByRole('button', { name: 'Publish' }));
     fireEvent.click(rowOf('Nollendorfplatz').getByRole('button', { name: 'Shadow' }));
@@ -424,7 +466,7 @@ describe('answers applied together', () => {
     renderWindow();
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Don’t take' }));
+    fireEvent.click(card().getByRole('button', { name: 'Don’t take' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
     expect(await screen.findByText('On the region page · 11, and 1 new that would be — best known first')).toBeInTheDocument();
   });
@@ -440,7 +482,7 @@ describe('answers applied together', () => {
     renderWindow();
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Don’t take' }));
+    fireEvent.click(card().getByRole('button', { name: 'Don’t take' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 answer' }));
     expect(await screen.findByText('On the region page · 11, and 1 new that would be — best known first')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Schloßplatz', level: 3 })).toBeNull();
