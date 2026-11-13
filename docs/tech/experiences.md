@@ -320,7 +320,8 @@ place another place stands merged into (the catalogue check `merge-onto-a-whole`
 for a place standing in a kind of its own unless the request says the curator was told (`makesWhole`);
 a part put back asks nothing, since the curator emptied the whole.
 Each act is one log row on each place (`part_added`, `part_taken_out`, `part_put_back`) with both
-names, the record, the curator's note and whether the whole became one.
+names, the record, the curator's note and whether the whole became one. The catalogue check
+`parts-in-a-loop-or-too-deep` holds the same rule over every relation, whoever wrote it.
 
 **A site's own line** (ADR-0200, #2118). Every line of the World Heritage list is a record. A line
 that is no part's — a site of one component, Kakadu National Park's `147quater-001`, or a component
