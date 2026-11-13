@@ -4,6 +4,7 @@ import {
   buildReviewUrl,
   cardUrl,
   crowdGroupOf,
+  crowdedPlaceUrl,
   crowdKeyOf,
   EMPTY_REVIEW,
   legacyRedirect,
@@ -391,8 +392,11 @@ describe('review address', () => {
       const crowded = { ...EMPTY_REVIEW, view: 'crowded' as const, crowd: '7-9-square' };
       expect(buildReviewUrl({ ...crowded, crowdPlace: 4412 })).toBe('/review?view=crowded&crowd=7-9-square&place=4412');
       expect(parseReviewUrl('?view=crowded&crowd=7-9-square&place=4412')).toEqual({ ...crowded, crowdPlace: 4412 });
-      expect(buildReviewUrl({ ...crowded, crowd: null, crowdPlace: 4412 })).toBe('/review?view=crowded');
-      expect(parseReviewUrl('?view=crowded&place=4412')).toEqual({ ...crowded, crowd: null });
+      // A place alone is how a card opens the tab (#2487); the tab writes the group in.
+      expect(buildReviewUrl({ ...crowded, crowd: null, crowdPlace: 4412 })).toBe('/review?view=crowded&place=4412');
+      expect(parseReviewUrl('?view=crowded&place=4412')).toEqual({ ...crowded, crowd: null, crowdPlace: 4412 });
+      expect(crowdedPlaceUrl(4412)).toBe('/review?view=crowded&place=4412');
+      expect(parseReviewUrl('?place=4412')).toEqual(EMPTY_REVIEW);
       expect(parseReviewUrl('?view=crowded&crowd=7-9-square&place=rome')).toEqual(crowded);
     });
 
