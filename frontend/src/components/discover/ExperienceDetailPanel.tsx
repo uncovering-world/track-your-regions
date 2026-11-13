@@ -54,6 +54,7 @@ import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { CommemoratesLine } from '../shared/CommemoratesLine';
 import { DescriptionText } from '../shared/DescriptionText';
+import { PartOfLine } from '../shared/PartOfLine';
 import { ContentsSection } from './ContentsSection';
 import { locationLabel, pointOfRow } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
@@ -316,6 +317,8 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
 
         {/* Description: the paragraph, the subtitle being under the name */}
         <DescriptionText text={description} source={experience.description_source} adapted={experience.description_adapted} mb={2} />
+        {/* The whole it is a part of, and how many places that is (#2118). */}
+        <PartOfLine partOf={details?.part_of} />
 
         {/* Date inscribed */}
         {details?.date_inscribed != null && (
