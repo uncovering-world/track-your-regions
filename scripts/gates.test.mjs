@@ -156,8 +156,10 @@ describe('what a change asks for', () => {
 
   it('asks the lanes that stand on a database, and no linter, for a migration', () => {
     // No lint, typecheck or web gate reads db/; the backend unit lane reads
-    // it as text and the stack lanes build on it.
+    // it as text, the stack lanes build on it, and the migration-on-rows gate
+    // applies it to a database that holds rows.
     expect(applying(['db/migrations/060-x.sql'])).toEqual([
+      'db:migrate-on-rows',
       'security:secrets',
       'lint:pointers',
       'lint:shrunk',
@@ -199,6 +201,25 @@ describe('what a change asks for', () => {
     }
     expect(applying(['db/migrations/060-x.sql'])).not.toContain('db:types');
     expect(applying(['backend/src/db/index.ts'])).not.toContain('db:types');
+  });
+
+  it('asks for a migration on rows where a migration, the schema or the image it runs on changes, and nowhere else', () => {
+    // Both ends of the migration path (#2464): the files applied, the db/init
+    // built from at the base and compared against at the head, the compose
+    // file that pins the image, and the gate's own script. The fixture runs on
+    // tsx from backend/node_modules, so it is a node setup.
+    for (const path of [
+      'db/migrations/060-x.sql',
+      'db/init/01-schema.sql',
+      'docker-compose.yml',
+      'scripts/migrate-on-rows.mjs',
+    ]) {
+      expect(applying([path]), path).toContain('db:migrate-on-rows');
+      expect(outputs([path]).job_check_node, path).toBe('true');
+    }
+    for (const path of ['db/migrations/README.md', 'backend/src/db/seed/e2eFixture.ts', 'backend/src/db/schema.generated.ts']) {
+      expect(applying([path]), path).not.toContain('db:migrate-on-rows');
+    }
   });
 
   it('asks the Python gates, and the Node scan that reads cv-python too, for a change under cv-python', () => {
@@ -445,7 +466,7 @@ describe('the map itself', () => {
     expect(inputsOf('db/gadm_levels.py')).toEqual(['database', 'db-python', 'prose']);
     expect(inputsOf('db/catalogue-coverage/kinds.jsonl')).toEqual(['coverage']);
     expect(inputsOf('backend/Dockerfile')).toEqual(['backend', 'docker']);
-    expect(inputsOf('docker-compose.yml')).toEqual(['compose', 'prose', 'schema']);
+    expect(inputsOf('docker-compose.yml')).toEqual(['compose', 'migrations', 'prose', 'schema']);
     expect(inputsOf('scripts/db-cli.sh')).toEqual(['prose', 'scripts', 'shell']);
     // Prose in no other class: an issue template, the ASVS checklist. The
     // pointer pass reads them, so a pointer added there runs the gate that
@@ -519,6 +540,7 @@ describe('the CI outputs', () => {
       'db-image': 'db/Dockerfile',
       coverage: 'db/catalogue-coverage/expectations/rome.jsonl',
       schema: 'db/init/01-schema.sql',
+      migrations: 'db/migrations/061-y.sql',
       'node-deps': 'backend/package-lock.json',
       docs: 'docs/tech/x.md',
       shell: 'tools/release.sh',

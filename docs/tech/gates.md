@@ -84,7 +84,7 @@ never from a head the branch was rewritten past.
 
 | Tier | What it holds | Owed locally | What runs it |
 | --- | --- | --- | --- |
-| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the generated row types against the schema, the docs pass, the line-pointer pass over every file that carries prose, the workflow lint, the fast security audits | before every commit | `npm run check` — `npm run check:all` forces every one |
+| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the generated row types against the schema, the migrations a change adds applied to a database that holds rows, the docs pass, the line-pointer pass over every file that carries prose, the workflow lint, the fast security audits | before every commit | `npm run check` — `npm run check:all` forces every one |
 | `test` | the unit lanes, Node and Python | before every commit, narrowed to the specs the change reaches | `TEST_REPORT_LOCAL=1 npm run gates -- run test --affected` (§ Running only the specs a change reaches) |
 | `scan` | the slow scans: Semgrep on both stacks, the Trivy image scan | no: CI runs them | `npm run security:all` — the `check` tier, then this one |
 | `stack` | build, smoke, the database lane, the API lane, Lighthouse: the lanes that stand a stack up | only a measurement marked `run here` | `npm run gates -- run stack` **lists** them as `run here`, `CI runs it` or `skip`, and exits 2; they are typed by hand |
@@ -253,7 +253,8 @@ What is and is not recorded:
   while the gate ran)`.
 - **A gate whose answer reads something outside the tree is never reused.** The
   dependency audits read advisory databases, Semgrep fetches its rule packs, Trivy
-  reads a vulnerability database, `api:breaking` reads the base's document, and
+  reads a vulnerability database, `api:breaking` reads the base's document,
+  `db:migrate-on-rows` builds the base's schema and seeds the base's fixture, and
   `lint:links` resolves links to files of every type while its class holds the
   Markdown only.
   The *Pass reused* column of the gates table below names each of them with its
@@ -424,8 +425,9 @@ target's own settings are its input in Nx, and asks for that gate alone:
   scan;
 - a tool guard (`scripts/require-node-tools.sh`, `scripts/require-py-tools.sh`,
   `scripts/require-python-312.sh`) asks for the gates whose script calls it,
-  `scripts/scan-image.sh` for the image scan and `scripts/scan-secrets.sh` for
-  the secrets scan;
+  `scripts/scan-image.sh` for the image scan, `scripts/scan-secrets.sh` for
+  the secrets scan and `scripts/migrate-on-rows.mjs` for the migration-on-rows
+  gate;
 - the root `package-lock.json` asks for the two gates that run a root tool,
   `lint:circular` and `lint:md`;
 - `docs/tech/gates.md`, `ci.yml` and the root `package.json` ask for
@@ -484,13 +486,14 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `database` | `/^db\/(?!catalogue-coverage\/.*\.jsonl$)/` | The schema, the migrations and the loaders: what a database is built from. The backend unit lane reads db/ through repoFile() — schema parity, the migration ledger, the trigger guards — and the stack lanes stand on it. No lint, typecheck or web gate reads it. |
 | `tiles` | `martin/` | Martin's configuration. The backend unit lane asserts on the tile sources it publishes, and the smoke and Lighthouse lanes draw them. |
 | `scripts` | `scripts/` | The repository's own scripts and their specs, whole: the tooling specs run in the backend unit lane, and two of its specs scan the tree for anything that switches the geometry triggers off. |
-| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|check-screen-allowance\.mjs\|check-shrunk-files\.mjs\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|gates-base\.mjs\|gates-run\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|match-snapshot\.sh\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|review-surface\.mjs\|scan-image\.sh\|scan-secrets\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
+| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|check-screen-allowance\.mjs\|check-shrunk-files\.mjs\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|gates-base\.mjs\|gates-run\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|match-snapshot\.sh\|migrate-on-rows\.mjs\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|review-surface\.mjs\|scan-image\.sh\|scan-secrets\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh\|test-migrate-on-rows\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
 | `compose` | `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | What the containers are: the dev and test stacks, the unit lanes' container shape and the variables they read. Every lane that runs in a container reads it; no lint or typecheck does. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/: the Python test lane runs their tests, check:py and Bandit read them with db/’s own configuration (#1736), and pip-audit reads the versions their image carries (#1782, db/requirements.txt). |
 | `db-image` | `db/Dockerfile` | The GADM loader image: what it carries is pinned in db/requirements.txt, which the dependency audit reads, so a change to the image asks for the audit and nothing else of the Python gates (#1782). |
 | `coverage` | `/^db\/catalogue-coverage\/.*\.jsonl$/` | The catalogue-coverage register, regions, survey lists and calibration lists (ADR-0081, #1864) are data with one reader, services/catalogueCoverage/files.ts, and one spec that reads the committed files whole, files.test.ts, in the backend unit lane. The load and the report read them from a command, and their specs use fixtures; no lint, build or stack lane sees a line of them. The Semgrep scan does, for a secret in what agents copied from the web. |
 | `schema` | `/^db\/init\//`, `docker-compose.yml`, `backend/src/db/schema.generated.ts`, `backend/src/db/generateSchemaTypes.ts`, `backend/src/db/schemaTypesRender.ts`, `backend/src/db/testDbName.ts`, `scripts/db-types.sh` | The generated row types are a function of what a fresh database is built from: the db/init directory the image applies on first start, the compose file that pins that image, the file the generator produces, the generator, the renderer, the guard it imports and its runner. The migrations are not — a fresh database never reads them, and the schema-to-migration parity test answers for those. |
+| `migrations` | `/^db\/migrations\/.*\.sql$/`, `/^db\/init\//`, `docker-compose.yml` | The two ends of a migration and what it runs on: the files a database that holds rows is migrated by, the db/init it is built from at the base and re-applied from at the head, and the compose file that pins the image. A migration is the only change that reaches a database through its rows, so it is asked of the gate that applies it to some (#2464). |
 | `node-deps` | `backend/package.json`, `backend/package-lock.json`, `frontend/package.json`, `frontend/package-lock.json`, `packages/shared/package.json`, `packages/shared/package-lock.json` | npm audit reads the three manifests and their lockfiles and nothing else, so a change of source code cannot alter its answer. |
 | `docs` | `/\.md$/` | Every tracked Markdown file, wherever it sits: the docs pass checks what renders and what a link points at, which is the same question in docs/, in a service’s README and in the root guides. |
 | `shell` | `/\.sh$/` | shellcheck reads the scripts themselves; nothing else changes its verdict. |
@@ -515,8 +518,9 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `lint:scripts` | check | `scripts`; reads `backend/eslint.config.mjs`, `backend/package-lock.json` | `npm run lint:scripts` | check | on the same inputs |
 | `lint:circular` | check | `backend`, `web`, `shared`; reads `.madgerc`, `package-lock.json`, `scripts/require-node-tools.sh` | `npm run lint:circular` | check | on the same inputs |
 | `db:types` | check | `schema` | `npm run db:types:check` | check | on the same inputs |
+| `db:migrate-on-rows` | check | `migrations`; reads `scripts/migrate-on-rows.mjs` | `npm run db:migrate-on-rows` | check | never: it builds the base's schema and seeds the base's fixture, neither of which is in this tree |
 | `security:deps` | check | `node-deps` | `npm run security:deps` | check | never: its answer reads an advisory database that changes while the tree does not |
-| `security:secrets` | check | `backend`, `web`, `shared`, `database`, `tiles`, `scripts`, `runners`, `compose`, `python`, `db-python`, `db-image`, `coverage`, `schema`, `node-deps`, `docs`, `shell`, `docker`, `workflows`, `prose`, `api-contract`; reads `.gitleaks.toml`, `scripts/scan-secrets.sh` | `npm run security:secrets` | check | on the same inputs |
+| `security:secrets` | check | `backend`, `web`, `shared`, `database`, `tiles`, `scripts`, `runners`, `compose`, `python`, `db-python`, `db-image`, `coverage`, `schema`, `migrations`, `node-deps`, `docs`, `shell`, `docker`, `workflows`, `prose`, `api-contract`; reads `.gitleaks.toml`, `scripts/scan-secrets.sh` | `npm run security:secrets` | check | on the same inputs |
 | `lint:shell` | check | `shell` | `npm run lint:shell` | check | on the same inputs |
 | `lint:docker` | check | `docker` | `npm run lint:docker` | check | on the same inputs |
 | `lint:actions` | check | `workflows` | `npm run lint:actions` | check | on the same inputs |
@@ -527,7 +531,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `api:client` | check | `api-contract`, `web`, `shared`, `node-deps` | `npm --prefix frontend run api:client:check` | check | on the same inputs |
 | `lint:pointers` | check | `prose` | `node scripts/lint-line-pointers.mjs` | check | on the same inputs |
 | `lint:allowance` | check | `backend`, `web`; reads `scripts/check-screen-allowance.mjs` | `node scripts/check-screen-allowance.mjs` | check | never: it compares each screen-text allowance with its count at the base and reads the branch's commit messages, neither of which is in this tree |
-| `lint:shrunk` | check | `backend`, `web`, `shared`, `database`, `tiles`, `scripts`, `runners`, `compose`, `python`, `db-python`, `db-image`, `coverage`, `schema`, `node-deps`, `docs`, `shell`, `docker`, `workflows`, `prose`, `api-contract` | `node scripts/check-shrunk-files.mjs` | check | never: it compares each file with its size at the base and reads the branch's commit messages, neither of which is in this tree |
+| `lint:shrunk` | check | `backend`, `web`, `shared`, `database`, `tiles`, `scripts`, `runners`, `compose`, `python`, `db-python`, `db-image`, `coverage`, `schema`, `migrations`, `node-deps`, `docs`, `shell`, `docker`, `workflows`, `prose`, `api-contract` | `node scripts/check-shrunk-files.mjs` | check | never: it compares each file with its size at the base and reads the branch's commit messages, neither of which is in this tree |
 | `check:py` | check | `python`, `db-python`; reads `scripts/require-py-tools.sh`, `scripts/require-python-312.sh` | `npm run check:py` | check | on the same inputs |
 | `security:py:bandit` | check | `python`, `db-python`; reads `scripts/require-py-tools.sh`, `scripts/require-python-312.sh` | `npm run security:py:bandit` | check | on the same inputs |
 | `security:py:deps` | check | `python`, `db-python`, `db-image`; reads `scripts/require-py-tools.sh`, `scripts/require-python-312.sh` | `npm run security:py:deps` | check | never: its answer reads an advisory database that changes while the tree does not |
@@ -941,6 +945,63 @@ curator's since 2026-10-31, when its coverage phase crossed sixty a minute from 
 headroom under the limiter for the curator routes the lane reads. A query
 parameter a route does not declare is refused with 400 (#1099, `development-guide.md` § API Layer),
 so the lane's findings are defects and its step fails the job.
+
+## A migration on rows
+
+Every other lane builds its database from `db/init/01-schema.sql`, so a file in
+`db/migrations/` used to run for the first time on the development database,
+after the merge. Migration 232 passed every check that way and then aborted
+there: its backfill updated rows of `source_records`, whose deferred crowding
+triggers hold an event per row until the commit, and an `ALTER TABLE` on the
+same table later in the transaction was refused with `cannot ALTER TABLE
+"source_records" because it has pending trigger events` (#2462). On an empty
+table no row queues an event. `db:migrate-on-rows`
+(`scripts/migrate-on-rows.mjs`, #2464) is the database that holds rows:
+
+- It runs whenever the `migrations` class moves: a file under `db/migrations/`,
+  `db/init/`, or the compose file that pins the image. A change that adds no
+  migration file passes with one line saying there was nothing to apply.
+- It stands a throwaway Postgres up on the image `docker-compose.yml` pins for
+  `db`, capped at 2 GB, on an ephemeral port of 127.0.0.1, and takes it down on
+  every exit. It reads neither `.env` nor `DB_PORT`, so it cannot reach the
+  development database.
+- It builds a database from the base's `db/init/` (the merge base with
+  `GATES_BASE`, the way the map settles it) and seeds the base's smoke fixture
+  into it, run from the base's own `backend/src/db/seed/` with this checkout's
+  installed modules, so the fixture fits the schema it is loaded into. The run
+  prints the tables the fixture fills and their rows, `source_records` among
+  them.
+- It applies each migration file the head holds and the base does not, in
+  filename order, as `scripts/db-migrate.sh` applies one: the file as it is, its
+  ledger row appended, one psql under `ON_ERROR_STOP=1`. A file that fails
+  stops the run, named, with Postgres's error. Before each file it prints the
+  tables the file's text writes or alters and how many rows each held; a table
+  that held none is a warning (the gate proved less there), never a failure.
+- It re-applies the head's `db/init/` to the migrated database, the other half
+  of the workflow (`db/migrations/README.md` § A database that predates the
+  ledger), and compares the result with a fresh database built from the same
+  files. The comparison is of catalogue lines, sorted (`SNAPSHOT_SQL`):
+  relations, each column's type, nullability and default, constraints, indexes,
+  triggers as `pg_get_triggerdef` states them, functions by signature, schemas
+  and extensions. Column order, comments, function bodies and view definitions
+  are out of its reach. A line one side holds and the other does not fails the
+  gate. What differed before the re-application is printed above it, for the
+  reader, since that part reaches a database only when the file is re-applied.
+
+It runs in the `check` tier, beside `db:types`, which stands a fresh Postgres up
+the same way; in CI it is a step of `Lint & Type Check` through `npm run check`,
+and the job's backend install (`job_check_node`) is the one the fixture needs.
+On 2026-11-13 a run took 40 to 60 s on the development machine, most of it
+building the schema three times.
+
+What it does not prove is how a file behaves on real volumes: the fixture holds
+a handful of rows, so a lock held for a minute on the development database (232
+held `source_records` exclusively for 61 s) takes a fraction of a second here.
+That stays a hand-run's, and `db/migrations/README.md` says when one is owed.
+Its own cases — 232's shape failing, the same backfill alone passing, and a
+constraint the schema does not declare failing the comparison — are
+`npm run test:migrate-on-rows` (`scripts/test-migrate-on-rows.sh`), a local test
+outside the map like `test:db-migrate`, since each case stands a database up.
 
 ## What the map does not reach
 
