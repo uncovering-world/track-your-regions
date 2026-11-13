@@ -142,10 +142,6 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
       ? [[id, world.experienceId?.[i]]] : []));
     expect(shown.sort()).toEqual([[luxorPoint, SITE], [karnakPoint, SITE]].sort());
 
-    const folded = await getWorldPoints({ query: worldPointsQuerySchema.parse({ detail: 'markers', folded: 'true' }) });
-    const site = (folded.experienceId ?? []).indexOf(SITE);
-    expect(folded.locationCount?.[site]).toBe(2);
-    expect(folded.experienceId).not.toContain(KARNAK);
   });
 
   it("reads both points as the site's own, counts them in the region's list, and names both on the curator's card", async () => {

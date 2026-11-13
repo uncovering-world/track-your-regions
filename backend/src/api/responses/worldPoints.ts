@@ -18,7 +18,6 @@ export type PointsDetail = z.infer<typeof PointsDetail>;
 
 export const WorldPointsResponse = z.strictObject({
   detail: PointsDetail,
-  folded: z.boolean().describe('Echoed rather than assumed, so a layer cannot draw one fold with the other\'s data.'),
   count: z.number().int(),
   truncated: z.literal(true).optional().describe(
     'Present only when the read hit its cap. A density picture built from a subset is wrong rather than incomplete,'
@@ -40,8 +39,6 @@ export const WorldPointsResponse = z.strictObject({
     .describe('Markers only: every kind a place in more than one is offered in, in the kinds\' display order;'
       + ' null for a place in one kind, which `kindId` names.'),
   approximate: z.array(z.boolean()).optional()
-    .describe('Markers, unfolded only: whether the source placed the point only roughly (#1912), which the pin draws as a ring.'),
-  locationCount: z.array(z.number().int()).optional()
-    .describe("Folded only: how many places the pin stands for, which is the badge's number."),
+    .describe('Markers only: whether the source placed the point only roughly (#1912), which the pin draws as a ring.'),
 }).describe('The map\'s points, one array per field, all of them the same length.');
 export type WorldPointsResponse = z.infer<typeof WorldPointsResponse>;

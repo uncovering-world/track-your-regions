@@ -274,7 +274,7 @@ export const experienceSearchQuerySchema = z.object({
  * because the interesting half of a box is the antimeridian rule rather than
  * its syntax, and that rule already has an owner.
  *
- * `detail` and `folded` are named rather than inferred: the handler receives
+ * `detail` is named rather than inferred: the handler receives
  * what Zod parsed, which strips whatever it does not name, so a
  * parameter missing here is a parameter the handler never sees — which is the
  * note `experiencesByRegionQuerySchema` below carries for `includeLost`, and
@@ -292,7 +292,6 @@ export const worldPointsQuerySchema = z.object({
       { message: 'bbox must be four numbers: west,south,east,north' })
     .optional(),
   detail: z.enum(POINTS_DETAILS).default('overview'),
-  folded: booleanStringSchema,
 });
 
 export const experiencesByRegionQuerySchema = z.object({

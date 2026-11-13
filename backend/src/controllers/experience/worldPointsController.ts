@@ -25,7 +25,6 @@
  * | read | points | bytes |
  * |---|---|---|
  * | overview, every kind | 8 830 | 37 kB |
- * | overview, every kind, folded | 3 755 | 18 kB |
  * | overview, one kind (World Heritage) | 6 347 | 26 kB |
  * | markers, the widest box a reader can ask for | 4 692 | 103 kB |
  * | markers, a central-European box | 1 470 | 33 kB |
@@ -119,40 +118,32 @@ interface PointRow {
   kind_id?: number | null;
   type?: string | null;
   kinds?: Array<{ kind_id: number; type: string | null }>;
-  location_count?: number;
   approximate?: boolean;
 }
 
 /**
- * The columns a tier selects, over the aliases the two query shapes share.
- *
- * `location` is the geometry column's owner — `el` unfolded, the fold's CTE
- * folded — so one list serves both. `kindsJoined` says the place's kinds are
- * joined as `wk` (`shownKindsByPlaceSql`) rather than read per row.
+ * The columns a tier selects from one arm of the points (`PLACE_POINT_ARMS`).
+ * `kindsJoined` says the place's kinds are joined as `wk`
+ * (`shownKindsByPlaceSql`) rather than read per row.
  */
-function selectSql(
-  detail: PointsDetail, folded: boolean, location: string, locationRow: string,
-  placeId = `${locationRow}.experience_id`, kindsJoined = false,
-): string {
-  const geometry = `${location}.location`;
+function selectSql(detail: PointsDetail, placeId: string, kindsJoined: boolean): string {
   const columns = [
-    `${coordinateSql('X', geometry, detail)} AS lng`,
-    `${coordinateSql('Y', geometry, detail)} AS lat`,
+    `${coordinateSql('X', 'el.location', detail)} AS lng`,
+    `${coordinateSql('Y', 'el.location', detail)} AS lat`,
   ];
-  if (folded) columns.push(`${location}.location_count`);
   if (detail === 'markers') {
     columns.push(
-      `${locationRow}.id AS location_id`,
+      'el.id AS location_id',
       `${placeId} AS experience_id`,
-      locationRow === 'folded' ? 'folded.name AS location_name' : `${pointNameSql(locationRow)} AS location_name`,
+      `${pointNameSql('el')} AS location_name`,
       'e.name AS experience_name',
       'm.kind_id',
       'm.type',
       kindsJoined ? `COALESCE(wk.kinds, '[]'::json) AS kinds` : `${placeKindsSql('e', true)} AS kinds`,
+      // Whether the source placed the point only roughly (#1912), which the pin
+      // draws as a ring.
+      'el.approximate IS NOT NULL AS approximate',
     );
-    // Whether the source placed the point only roughly (#1912), which the pin
-    // draws as a ring. A folded pin stands for its place, never for its point.
-    if (!folded) columns.push(`${locationRow}.approximate IS NOT NULL AS approximate`);
   }
   return columns.join(',\n        ');
 }
@@ -186,13 +177,11 @@ function readerGuardsSql(): string {
  * - kindId: only the places of this kind (optional; absent is every kind at once)
  * - bbox: west,south,east,north (optional; absent is the whole world)
  * - detail: overview (default) or markers
- * - folded: one point per object instead of one per place
  */
 export async function getWorldPoints(
   { query: q }: { query: z.output<typeof worldPointsQuerySchema> },
 ): Promise<WorldPointsResponse> {
   const detail: PointsDetail = q.detail;
-  const folded = q.folded === 'true';
   const kindId = q.kindId ?? null;
   const box = parseBbox(q.bbox);
 
@@ -229,82 +218,19 @@ export async function getWorldPoints(
   // kinds: read once a site, not once a point (#2301), since the per-row read
   // asked a site's memberships for each of its parts.
   const kindsJoined = (wholes: string | undefined) => detail === 'markers' && wholes !== undefined;
-  const unfolded = ({ from, placeId, wholes }: PlacePointArm): string => `SELECT
-        ${selectSql(detail, false, 'el', 'el', placeId, kindsJoined(wholes))}
+  const arm = ({ from, placeId, wholes }: PlacePointArm): string => `SELECT
+        ${selectSql(detail, placeId, kindsJoined(wholes))}
       FROM ${from}
       ${kindJoin}
       ${kindsJoined(wholes) ? `LEFT JOIN ${shownKindsByPlaceSql(wholes!)} wk ON wk.experience_id = e.id` : ''}
       WHERE ${where}`;
-  const query = folded
-    ? foldedQuery(detail, where, kindJoin)
-    : `${overPlacePoints(unfolded)}
+  const query = `${overPlacePoints(arm)}
       LIMIT ${MAX_POINTS + 1}`;
 
   // One more than the cap, so hitting it is distinguishable from filling it.
   const { rows } = await pool.query<PointRow>(query, params);
   const truncated = rows.length > MAX_POINTS;
-  return toColumns(truncated ? rows.slice(0, MAX_POINTS) : rows, detail, folded, truncated);
-}
-
-/**
- * One point per object, at the place the catalogue answers "where is this" with
- * (ADR-0028 decision 2, `readerPositionSql`) — so a folded pin here sits where
- * a region's folded pin sits.
- *
- * Two passes, because the fold is not a property of the box. The first names
- * the objects with at least one visible place inside it; the second reads
- * *every* visible place of those objects, since the nearest one may well lie
- * outside the box, and picks it. That a folded pin can therefore fall outside
- * the requested box is the same answer the list endpoint gives — a serial site
- * matched on a part inside a box is answered at the part nearest its anchor —
- * and the map asks with a margin around the viewport anyway.
- *
- * Nearest **in metres, on geography, never in degrees**: this catalogue holds
- * 42 multi-place objects above 60 degrees, among them Struve Geodetic Arc's 34
- * points reaching 70.7 N, where a degree of longitude is a third of a degree of
- * latitude. Degree ordering was measured picking a different place for six
- * objects and sending the reader further in every one. `el.id` breaks ties, so
- * the answer is total.
- *
- * The count is a window over the same un-joined set rather than an aggregate:
- * the kind's join is one row per place, the row's own membership or the
- * filtered kind's, and a count that read through a join of every membership
- * would count memberships. The final join is the same one, so a folded pin
- * carries the kind it was selected by.
- * DISTINCT ON then keeps the nearest row of each object, the window having
- * already seen all of them.
- *
- * The second pass asks only the two location-level questions: the object-level
- * ones and the kind are what the first pass selected the objects by.
- */
-function foldedQuery(detail: PointsDetail, where: string, kindJoin: string): string {
-  return `WITH matched AS (
-        SELECT DISTINCT experience_id FROM (
-          ${overPlacePoints(({ from, placeId }) => `SELECT ${placeId} AS experience_id
-          FROM ${from}
-          ${kindJoin}
-          WHERE ${where}`)}
-        ) shown
-      ), places AS (
-        ${overPlacePoints(({ from, placeId }) => `SELECT el.id, ${placeId} AS experience_id, el.location, ${pointNameSql('el')} AS name,
-          el.location::geography <-> e.location::geography AS off_anchor
-        FROM ${from}
-        JOIN matched ON matched.experience_id = ${placeId}
-        WHERE ${offeredLocationSql('el')}
-          AND ${publishedContentSql('el')}`)}
-      ), folded AS (
-        SELECT DISTINCT ON (experience_id)
-          id, experience_id, location, name,
-          count(*) OVER (PARTITION BY experience_id)::int AS location_count
-        FROM places
-        ORDER BY experience_id, off_anchor, id
-      )
-      SELECT
-        ${selectSql(detail, true, 'folded', 'folded')}
-      FROM folded
-      JOIN experiences e ON e.id = folded.experience_id
-      ${kindJoin}
-      LIMIT ${MAX_POINTS + 1}`;
+  return toColumns(truncated ? rows.slice(0, MAX_POINTS) : rows, detail, truncated);
 }
 
 /** One point's entry of `kinds`. */
@@ -333,19 +259,16 @@ function pointKinds(kinds: PointRow['kinds']): WorldPointKinds {
 function toColumns(
   rows: PointRow[],
   detail: PointsDetail,
-  folded: boolean,
   truncated = false,
 ): WorldPointsResponse {
   const count = rows.length;
   const answer: WorldPointsResponse = {
     detail,
-    folded,
     count,
     truncated: truncated ? true : undefined,
     lng: new Array<number>(count),
     lat: new Array<number>(count),
   };
-  if (folded) answer.locationCount = new Array<number>(count);
   if (detail === 'markers') {
     answer.locationId = new Array<number>(count);
     answer.experienceId = new Array<number>(count);
@@ -354,13 +277,12 @@ function toColumns(
     answer.kindId = new Array<number | null>(count);
     answer.type = new Array<string | null>(count);
     answer.kinds = new Array<WorldPointKinds>(count);
-    if (!folded) answer.approximate = new Array<boolean>(count);
+    answer.approximate = new Array<boolean>(count);
   }
   for (let index = 0; index < count; index += 1) {
     const row = rows[index];
     answer.lng[index] = row.lng;
     answer.lat[index] = row.lat;
-    if (answer.locationCount) answer.locationCount[index] = row.location_count ?? 1;
     if (answer.locationId) {
       answer.locationId[index] = row.location_id as number;
       (answer.experienceId as number[])[index] = row.experience_id as number;

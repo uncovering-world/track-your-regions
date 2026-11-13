@@ -16,11 +16,6 @@
  * that it does not carry names: a marker column leaking into it is 267 kB on
  * the map's first screen instead of 37 kB, and nothing on screen would look
  * wrong.
- *
- * **The fold's ordering**, in metres on geography. Degree ordering picks a
- * different place for six objects in this catalogue and sends the reader
- * further in every one of them, and the failure is invisible: a pin appears,
- * just in the wrong place.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -72,24 +67,6 @@ describe('getWorldPoints', () => {
     ])('asks whether %s', async (_question, fragment) => {
       const { sql } = await ask();
       expect(sql).toContain(fragment());
-    });
-
-    it('asks all four in the folded shape too, where the fold is a second pass', async () => {
-      const { sql } = await ask({ folded: 'true' });
-      for (const fragment of [offeredLocationSql('el'), publishedContentSql('el'),
-        hideLostSql('e'), placeShownSql('e')]) {
-        expect(sql).toContain(fragment);
-      }
-    });
-
-    it('reads every offered place of a matched object, not only those inside the box', async () => {
-      // The nearest place is what decides where a folded pin is drawn, and it
-      // may lie outside the box the reader asked about. The second pass is
-      // therefore joined on the matched objects rather than filtered by the
-      // box again — a box term inside the fold would move the pin.
-      const { sql } = await ask({ folded: 'true', bbox: '-10,35,30,60' });
-      const fold = sql.slice(sql.indexOf('folded AS ('));
-      expect(fold).not.toContain('ST_MakeEnvelope');
     });
   });
 
@@ -166,7 +143,6 @@ describe('getWorldPoints', () => {
 
     it("reads a marker's every kind, and the overview none (#1262)", async () => {
       expect((await ask({ detail: 'markers' })).sql).toContain(placeKindsSql('e', true));
-      expect((await ask({ detail: 'markers', folded: 'true' })).sql).toContain(placeKindsSql('e', true));
       expect((await ask()).sql).not.toContain(placeKindsSql('e', true));
     });
 
@@ -179,33 +155,9 @@ describe('getWorldPoints', () => {
       expect((await ask()).sql).not.toContain(' wk ');
     });
 
-    it("reads whether an unfolded marker's point is placed only roughly, and a folded or overview one's never (#1912)", async () => {
+    it("reads whether a marker's point is placed only roughly, and an overview one's never (#1912)", async () => {
       expect((await ask({ detail: 'markers' })).sql).toContain('el.approximate IS NOT NULL AS approximate');
-      expect((await ask({ detail: 'markers', folded: 'true' })).sql).not.toContain('approximate');
       expect((await ask()).sql).not.toContain('approximate');
-    });
-  });
-
-  describe('the fold', () => {
-    it('measures nearest in metres on geography, never in degrees', async () => {
-      const { sql } = await ask({ folded: 'true' });
-      expect(sql).toContain('el.location::geography <-> e.location::geography');
-    });
-
-    it('breaks a tie on the id, so the answer is total', async () => {
-      const { sql } = await ask({ folded: 'true' });
-      expect(sql).toMatch(/<-> e\.location::geography AS off_anchor/);
-      expect(sql).toMatch(/ORDER BY experience_id, off_anchor, id/);
-    });
-
-    it('counts the places over the un-joined set, so a second membership cannot inflate it', async () => {
-      // #755 gives a place two memberships. A count read through the kind's
-      // LEFT JOIN would then count memberships and label the badge with them.
-      const { sql } = await ask({ folded: 'true' });
-      const fold = sql.slice(sql.indexOf('folded AS ('), sql.indexOf('SELECT\n', sql.indexOf('folded AS (')));
-      expect(fold).toContain('count(*) OVER (PARTITION BY experience_id)');
-      expect(fold).toContain('FROM places');
-      expect(fold).not.toContain('LEFT JOIN source_records');
     });
   });
 
@@ -264,7 +216,6 @@ describe('getWorldPoints', () => {
       // anonymous request grows with the catalogue. The rate limiter bounds how
       // often a stranger may ask, not how much each ask costs.
       expect((await ask()).sql).toMatch(/LIMIT 20001$/);
-      expect((await ask({ folded: 'true' })).sql).toMatch(/LIMIT 20001$/);
       expect((await ask({ detail: 'markers' })).sql).toMatch(/LIMIT 20001$/);
     });
 
@@ -295,19 +246,15 @@ describe('getWorldPoints', () => {
     it('is columnar — one array per field, not an object per point', async () => {
       const body = await answer([{ lng: 1.5, lat: 2.5 }, { lng: 3.5, lat: 4.5 }]);
       expect(body).toEqual({
-        detail: 'overview', folded: false, count: 2, lng: [1.5, 3.5], lat: [2.5, 4.5],
+        detail: 'overview', count: 2, lng: [1.5, 3.5], lat: [2.5, 4.5],
       });
     });
 
-    it('echoes the fold it was asked for, so a layer cannot draw one with the other data', async () => {
-      const body = await answer([{ lng: 1, lat: 2, location_count: 7 }], { folded: 'true' });
-      expect(body.folded).toBe(true);
-      expect(body.locationCount).toEqual([7]);
-    });
-
-    it('carries no places column when nothing is folded — every point is its own place', async () => {
+    it('answers no fold, and refuses one asked for: every point is its own pin', async () => {
       const body = await answer([{ lng: 1, lat: 2 }]);
+      expect(body).not.toHaveProperty('folded');
       expect(body).not.toHaveProperty('locationCount');
+      await expect(answer([{ lng: 1, lat: 2 }], { folded: 'true' })).rejects.toThrow(/folded/);
     });
 
     it('keeps a missing point name as null rather than dropping the column out of step', async () => {

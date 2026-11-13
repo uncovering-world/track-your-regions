@@ -100,16 +100,12 @@ const BACKEND_TARGETS = [
     name: 'experience counts per region',
     url: `${API}/api/experiences/region-counts?worldViewId=${WORLD_VIEW}`,
   },
-  // The map's world layer (#910, ADR-0061). Three reads, because what each
-  // costs is decided by something different, and the first of the three is the
+  // The map's world layer (#910, ADR-0061). Two reads, because what each
+  // costs is decided by something different, and the first of the two is the
   // one on the first screen a visitor ever sees.
   {
     name: 'world points: overview, every kind (the map\'s first screen)',
     url: `${API}/api/experiences/points`,
-  },
-  {
-    name: 'world points: overview, every kind, folded',
-    url: `${API}/api/experiences/points?folded=true`,
   },
   // A box the size of the fade band's own viewport over the densest part of the
   // catalogue -- western and central Europe. The heaviest marker-tier read the
