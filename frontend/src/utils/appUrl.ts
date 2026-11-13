@@ -277,7 +277,11 @@ export interface ReviewAddress {
   view: 'questions' | 'map' | 'crowded';
   /** ?crowd=7-9-square — the crowded city's group open on that tab (`crowdKeyOf`); null on the queue's tab. */
   crowd: string | null;
-  /** ?place=4412 — the place of that group open in its own circle, by its membership (#2358); null in the region's list. */
+  /**
+   * ?place=4412 — the place open in its own circle, by its membership (#2358); null in the region's list.
+   * On its own, without `crowd`, it is how a review card or a curation dialog opens the tab (#2487):
+   * the tab reads the place's group and writes it in.
+   */
   crowdPlace: number | null;
 }
 
@@ -429,8 +433,8 @@ export function parseReviewUrl(search: string): ReviewAddress {
     row: readRow(params.get('row')),
     view,
     crowd,
-    // A place is read only within a group it belongs to.
-    crowdPlace: crowd === null ? null : readId(params.get('place')),
+    // A place is read on its own tab only, with its group or on its own until the tab names the group.
+    crowdPlace: view === 'crowded' ? readId(params.get('place')) : null,
   };
 }
 
@@ -461,6 +465,15 @@ function viewParts(a: ReviewAddress): string[] {
   const parts = ['view=crowded'];
   // Encoded as the search is: a type's space travels as `+`.
   if (a.crowd !== null) parts.push(new URLSearchParams({ crowd: a.crowd }).toString());
-  if (a.crowd !== null && a.crowdPlace !== null) parts.push(`place=${a.crowdPlace}`);
+  if (a.crowdPlace !== null) parts.push(`place=${a.crowdPlace}`);
   return parts;
+}
+
+/**
+ * The *Crowded cities* tab open on one place (#2487): what a review card's
+ * *Squares around* and a curation dialog's kind link to. The address names
+ * the place alone; the tab reads its group and writes it in, as a replace.
+ */
+export function crowdedPlaceUrl(membershipId: number): string {
+  return buildReviewUrl({ ...EMPTY_REVIEW, view: 'crowded', crowdPlace: membershipId });
 }
