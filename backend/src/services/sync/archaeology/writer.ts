@@ -204,7 +204,7 @@ async function processMuseum(
     ...creditPatch(item.qid, item.imageUrl),
   };
 
-  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing, location } = await upsertExperienceRecord({
     sourceId: ARCHAEOLOGY_SOURCE_ID,
     externalId: item.qid,
     name: item.label,
@@ -238,8 +238,10 @@ async function processMuseum(
     // admission is settled, after the run's restore step (`markIconic`,
     // admission.ts), so a cancelled run never badges a row it did not re-admit
     // (#760).
+    // At the coordinate the record reports, chosen among the item's for this place (ADR-0204).
     const written = await upsertSingleLocation(
-      experienceId, item.qid, item.lon, item.lat, { syncLogId: context.syncLogId, sourceId: ARCHAEOLOGY_SOURCE_ID },
+      experienceId, item.qid, location?.lon ?? item.lon, location?.lat ?? item.lat,
+      { syncLogId: context.syncLogId, sourceId: ARCHAEOLOGY_SOURCE_ID },
     );
     // Registered here rather than returned: `upsertVenueTreasures` runs after
     // this and can throw, and a returned field would be lost with it while the
@@ -323,7 +325,7 @@ async function processSite(
     ...creditPatch(item.qid, item.imageUrl),
   };
 
-  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing, location } = await upsertExperienceRecord({
     sourceId: ARCHAEOLOGY_SOURCE_ID,
     externalId: item.qid,
     name: item.label,
@@ -353,8 +355,10 @@ async function processSite(
   // Undefined on a preview, which writes no point and so has none to report.
   let locations: ContentsDelta | undefined;
   if (!context.dryRun) {
+    // At the coordinate the record reports, chosen among the item's for this place (ADR-0204).
     const written = await upsertSingleLocation(
-      experienceId, item.qid, item.lon, item.lat, { syncLogId: context.syncLogId, sourceId: ARCHAEOLOGY_SOURCE_ID },
+      experienceId, item.qid, location?.lon ?? item.lon, location?.lat ?? item.lat,
+      { syncLogId: context.syncLogId, sourceId: ARCHAEOLOGY_SOURCE_ID },
     );
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);

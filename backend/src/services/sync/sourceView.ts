@@ -65,9 +65,11 @@ export function reportedArticle(params: Pick<ViewRecord, 'metadata'>): string | 
  * (`viewSilencesSql`): either way the run's value is not the place's to take.
  *
  * Only views under another id ask (ADR-0085). Two sources that know the place by one
- * Wikidata item read one item, and every reader keeps one picture and one
- * coordinate of it (`preferredPicture`, `preferredCoordinate`), so where their
- * views differ one of them read the item before an edit the other has seen:
+ * Wikidata item read one item: every reader keeps one picture of it
+ * (`preferredPicture`), and a run writing the place chooses among the item's
+ * coordinates by one rule over the same evidence (`withChosenCoordinate`,
+ * `itemCoordinate.ts`, ADR-0204), so where their views differ one of them
+ * read the item before an edit the other has seen:
  * the newer reading is written, and nobody is asked (#1246). The question is
  * for sources that are different data — a World Heritage id beside a Wikidata
  * item, or a serial site's component beside the item its point is tied to

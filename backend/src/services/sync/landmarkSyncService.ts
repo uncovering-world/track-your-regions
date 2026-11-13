@@ -357,7 +357,7 @@ async function upsertLandmarkExperience(
   const anchor = casts ? medoidOf(casts) : landmark;
   const countryNames = countriesOf(landmark, casts, anchor);
 
-  const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
+  const { experienceId, changeSet, nameSnapshot, returnedFromMissing, location } = await upsertExperienceRecord({
     sourceId,
     externalId: landmark.qid,
     name: landmark.label,
@@ -393,7 +393,8 @@ async function upsertLandmarkExperience(
       ? await writeExperienceLocations(
         experienceId, casts.map(cast => ({ name: cast.name, externalRef: landmark.qid, lon: cast.lon, lat: cast.lat })), run,
       )
-      : await upsertSingleLocation(experienceId, landmark.qid, landmark.lon, landmark.lat, run);
+      // At the coordinate the record reports, chosen among the item's for this place (ADR-0204).
+      : await upsertSingleLocation(experienceId, landmark.qid, location?.lon ?? landmark.lon, location?.lat ?? landmark.lat, run);
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
