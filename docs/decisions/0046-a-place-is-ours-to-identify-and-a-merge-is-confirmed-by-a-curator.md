@@ -12,8 +12,9 @@ a third universal signal, one name's words all standing in the other's, proposes
 a place's identifiers are held on the place, in a registry, rather than on its memberships, and an
 equal identifier is found before a run creates a place, so it neither merges on its own nor waits as
 a proposal. Decision 7 narrowed by [ADR-0199](0199-a-visit-is-one-row-on-the-place-ticked-and-a-whole-is-read-through-its-parts.md):
-a visit to a part is read upward, never written there. Every
-other decision stands
+a visit to a part is read upward, never written there. Decision 2 narrowed by
+[ADR-0203](0203-a-place-made-of-parts-is-never-merged-and-claims-no-item.md): a place made of parts is never merged, on an equal item or otherwise.
+Every other decision stands
 
 ---
 

@@ -1,7 +1,7 @@
 # ADR-0143: A place is found by its identifiers before a run creates one
 
 **Date:** 2026-10-23
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0203](0203-a-place-made-of-parts-is-never-merged-and-claims-no-item.md): a place made of parts claims no Wikidata item by any column
 
 ---
 
