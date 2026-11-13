@@ -1,5 +1,5 @@
 /**
- * The crowded-city window (#2282, #2358) opened from Schloßplatz's card: the
+ * The crowded-city window (#2282, #2358, #2487) open on Schloßplatz, as the tab opens it from the place's card: the
  * place in its own circle within Berlin's squares, what it is compared with,
  * the way back to the region's list as Berlin's page shows it, each place's
  * picture, credit and article, the answers by standing, a hover's reason, the
@@ -8,9 +8,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createTheme } from '@mui/material';
 
 vi.mock('../../../api/crowdingAnswers', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../api/crowdingAnswers')>()),
@@ -22,8 +22,8 @@ vi.mock('../../../api/crowdingAnswers', async importOriginal => ({
 vi.mock('./CrowdingMap', () => ({ CrowdingMap: () => <div data-testid="crowding-map" />, CrowdingLegend: () => null }));
 
 import { answerCrowding, CrowdingPartlyApplied, fetchCrowdingGroup, fetchCrowdingPlace } from '../../../api/crowdingAnswers';
-import { crowdingLayout, HELD_MIN_HEIGHT } from './CrowdingWindow';
-import { CrowdingWindowDialog } from './CrowdingWindowDialog';
+import { CROWDING_LAYOUT, CrowdingWindow } from './CrowdingWindow';
+import type { Staging } from './crowdingStaging';
 import {
   ALEXANDERPLATZ_LOOK, berlinGroup, berlinSquares, NOLLENDORFPLATZ, ROSA_LUXEMBURG_PLATZ, SCHLOSSPLATZ, schlossplatzCircle,
 } from './crowdingFixtures';
@@ -31,17 +31,35 @@ import {
 const mockedGroup = vi.mocked(fetchCrowdingGroup);
 const mockedPlace = vi.mocked(fetchCrowdingPlace);
 const mockedAnswer = vi.mocked(answerCrowding);
-/** The theme's breakpoints are MUI's own. */
-const theme = createTheme();
 const TITLE = 'Berlin · Squares & streets · square';
 
-function renderWindow(onClose = vi.fn()) {
+/** The window as the tab frames it: the place open and the answers staged are the frame's to keep. */
+function Framed({ onApplied }: { onApplied: (lines: string[]) => void }) {
+  const [selected, setSelected] = useState<number | null>(SCHLOSSPLATZ);
+  const [staging, setStaging] = useState<Staging>(new Map());
+  return (
+    <CrowdingWindow
+      group={berlinGroup.group}
+      selected={selected}
+      onSelect={setSelected}
+      titleId="crowded-city-title"
+      staging={staging}
+      onStaging={setStaging}
+      onApplied={onApplied}
+      frame={({ heading, body, outcome, actions }) => (
+        <section aria-labelledby="crowded-city-title">{heading}{body}{outcome}<div>{actions}</div></section>
+      )}
+    />
+  );
+}
+
+function renderWindow(onApplied = vi.fn()) {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <CrowdingWindowDialog membershipId={SCHLOSSPLATZ} onClose={onClose} />
+      <Framed onApplied={onApplied} />
     </QueryClientProvider>,
   );
-  return onClose;
+  return onApplied;
 }
 
 /** The window open on the region's list, from the card's place. */
@@ -92,7 +110,7 @@ describe("the region list's numbers (#2400)", () => {
   });
 });
 
-describe('the window opened from a card', () => {
+describe('the window open on a place, as a way in opens it', () => {
   it('opens the card’s place in its own circle, within its region’s group', async () => {
     renderWindow();
 
@@ -348,27 +366,9 @@ describe('the window opened from a card', () => {
     await inRegion();
 
     expect(within(screen.getByTestId('crowding-map-pane')).getByTestId('crowding-map')).toBeInTheDocument();
-    expect(crowdingLayout('dialog', theme)).toEqual({
-      body: {},
-      mapPane: { p: 2, position: { md: 'sticky' }, top: { md: 0 } },
-      mapFrame: { height: 420 },
-      list: expect.objectContaining({ overflow: 'auto', minHeight: 0, maxHeight: { md: '65vh' } }),
-    });
-  });
-
-  it('holds a lower map over the list on a tall enough laptop screen, and beside it on the widest (#2345)', () => {
-    const held = '@media (min-width:900px) and (max-width:1535.95px) and (min-height:740px)';
-    expect(HELD_MIN_HEIGHT).toBe(740);
-    const page = crowdingLayout('page', theme);
-
-    expect(page.mapPane).toMatchObject({ position: { xl: 'sticky' }, top: { xl: 16 } });
-    expect(page.mapFrame).toEqual({ height: 420, [held]: { height: 'clamp(160px, calc(100vh - 573px), 280px)' } });
-    expect(page.body).toEqual({ [held]: { maxHeight: 'max(calc(100vh - 140px), 593px)' } });
-    expect(page.list).toEqual({
-      flexGrow: 1, minWidth: 0, minHeight: 0, overflow: 'auto', [held]: { minHeight: 137 },
-    });
-    expect(Object.keys(page.body as object)).toEqual([held]);
-    expect(page.mapPane).not.toHaveProperty('position.md');
+    // From a laptop's width the map stands beside the list, held just below the screen's top (#2487).
+    expect(CROWDING_LAYOUT.mapPane).toEqual({ p: 2, position: { lg: 'sticky' }, top: { lg: 16 } });
+    expect(CROWDING_LAYOUT.mapColumn).toMatchObject({ width: { xs: '100%', lg: 320, xl: 400 } });
   });
 });
 
@@ -384,7 +384,7 @@ describe('answers applied together', () => {
       outOfScope: 0,
       placementFailed: [],
     });
-    const onClose = renderWindow();
+    const onApplied = renderWindow();
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
 
@@ -410,9 +410,8 @@ describe('answers applied together', () => {
     // The staging is cleared and the city read again.
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
     await waitFor(() => expect(mockedGroup).toHaveBeenCalledTimes(2));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Close the window' }));
-    expect(onClose).toHaveBeenCalledWith(expect.stringContaining('Schloßplatz'));
+    // The tab is told what the answers did, to read the queue and the lists again.
+    expect(onApplied).toHaveBeenCalledWith(expect.arrayContaining([expect.stringContaining('Schloßplatz')]));
   });
 
   it('returns to the region’s list once the open place is not taken', async () => {

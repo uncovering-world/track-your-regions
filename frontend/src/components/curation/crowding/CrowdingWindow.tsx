@@ -15,16 +15,16 @@
  * places' circles and go with one Apply; the window then reads the city again
  * and says what each answer did, by name.
  *
- * One window, two frames: `CrowdingWindowDialog` draws it over a review card
- * or a place's curation dialog, open on the card's place, and the review
- * page's *Crowded cities* tab draws it in the page beside its list of groups.
- * The frame lays the parts out, owns the staging and says which place is open,
- * so a tab that unmounts the window keeps the answers and the address keeps
- * the place; this component reads, stages, applies and reports.
+ * One screen (#2487): the review page's *Crowded cities* tab draws it beside
+ * its list of groups, and a review card or a place's curation dialog links
+ * there, open on its place. The tab lays the parts out, owns the staging and
+ * says which place is open, so a tab that unmounts the window keeps the
+ * answers and the address keeps the place; this component reads, stages,
+ * applies and reports.
  */
 
 import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import { Alert, Box, Button, Link, Stack, Typography, useTheme, type SxProps, type Theme } from '@mui/material';
+import { Alert, Box, Button, Link, Stack, Typography, type SxProps, type Theme } from '@mui/material';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CrowdingAnswer, CrowdingAnswerRow, CrowdingGroup, CrowdingPlaceView } from '../../../api/crowding';
 import { answerCrowding, CrowdingPartlyApplied, fetchCrowdingGroup, fetchCrowdingPlace } from '../../../api/crowdingAnswers';
@@ -77,103 +77,22 @@ export interface CrowdingWindowParts {
   applying: boolean;
 }
 
-/** Where the map stands beside the list: a dialog from a medium width; a page pane, narrower, only on the widest. */
-function besideFrom(layout: 'dialog' | 'page'): 'md' | 'xl' {
-  return layout === 'dialog' ? 'md' : 'xl';
-}
-
-/** The room a page pane leaves under the map and the list for the Apply bar pinned to the screen's foot. */
-const APPLY_BAR_ROOM = 140;
-
-/**
- * What the laptop's held layout reckons a row of the list at, in pixels: a
- * place's name, its note, its article and its picture's credit, stacked
- * beside its answers, which wrap on a narrow pane.
- */
-const ROW_ROOM = 100;
-
-/** The list's header row. */
-const HEADER_ROOM = 37;
-
-/**
- * The map's pane held over the list on a laptop, less the map: its padding
- * and the legend, two lines where the pane is narrow.
- */
-const HELD_PANE_OVERHEAD = 12 + 8 + 40 + 12 + 24;
-
-/** The held map's height: as tall as the screen leaves room for, between the two. */
-const HELD_MAP_MIN = 160;
-const HELD_MAP_MAX = 280;
-
-/** Three rows under the list's header: what the held layout always leaves the list. */
-const THREE_ROWS_ROOM = HEADER_ROOM + 3 * ROW_ROOM;
-
-/**
- * What the held map's height is taken from the screen's: the Apply bar's
- * room, the pane around the map and three rows under the header, 573 px. The
- * map is the screen less that, so the list keeps its three rows until the map
- * is down to its least.
- */
-const HELD_MAP_LESS = APPLY_BAR_ROOM + HELD_PANE_OVERHEAD + THREE_ROWS_ROOM;
-
-/**
- * The screen's height from which a laptop holds the map over the list: the
- * least map with the pane around it, three rows under the header and the
- * Apply bar's room, 733 px, rounded up. A 1440 by 900 laptop shows about 780
- * inside the browser; a 1366 by 768 one, and a laptop at 200 % zoom (450 px),
- * would leave the list too little room, and fall back.
- */
-export const HELD_MIN_HEIGHT = Math.ceil((HELD_MAP_MIN + HELD_MAP_LESS) / 10) * 10;
-
-/** The fewest pixels the held list keeps, whatever the pane turns out to take: its header and one row. */
-const LIST_GUARD = HEADER_ROOM + ROW_ROOM;
-
 /**
  * How the window lays out its map and its list, so the map stays in view
  * while the list scrolls (#2345): a curator reading down Rome's churches
- * keeps the place's dot in sight.
- *
- * - Beside the list (a dialog from a medium width, a page pane on the widest
- *   screens), the map's pane is sticky within the column beside the list,
- *   which the row stretches to the list's height. In the page the review
- *   screen scrolls as a whole and its header scrolls away with it, so the
- *   pane holds just below the screen's top, as the list of cities beside it
- *   does; in a dialog it holds at the top of the dialog's content, which
- *   scrolls on a short screen.
- * - A page pane between a medium width and the widest, a laptop's, on a
- *   screen at least `HELD_MIN_HEIGHT` tall, stacks a lower map over the list,
- *   as tall as the screen leaves room for,
- *   and the two together stand no taller than the screen above the Apply bar:
- *   the list scrolls in its own box beneath the map, so its header row stays
- *   at the top of the list and no row passes under the map. Neither the map's
- *   height nor the cap ever leaves the list fewer than three rows, and the
- *   list keeps its header and a row whatever the pane takes.
- * - On a shorter laptop screen, and on a phone, the map stands over the list
- *   and scrolls with the rest: held there, it would leave the list no room.
+ * keeps the place's dot in sight. From a laptop's width the map stands beside
+ * the list, its pane sticky within the column the row stretches to the list's
+ * height, just below the screen's top as the page scrolls; the tab folds its
+ * list of groups to a bar meanwhile, so the two have the room (#2487). On a
+ * narrower screen the map stands over the list and scrolls with the rest.
  */
-export function crowdingLayout(layout: 'dialog' | 'page', theme: Theme): {
-  body: SxProps<Theme>;
-  mapPane: SxProps<Theme>;
-  mapFrame: SxProps<Theme>;
-  list: SxProps<Theme>;
-} {
-  const scrolls = { flexGrow: 1, minWidth: 0, minHeight: 0, overflow: 'auto' };
-  if (layout === 'dialog') {
-    return {
-      body: {},
-      mapPane: { p: 2, position: { md: 'sticky' }, top: { md: 0 } },
-      mapFrame: { height: 420 },
-      list: { ...scrolls, maxHeight: { md: '65vh' } },
-    };
-  }
-  const held = `${theme.breakpoints.between('md', 'xl')} and (min-height:${HELD_MIN_HEIGHT}px)`;
-  return {
-    body: { [held]: { maxHeight: `max(calc(100vh - ${APPLY_BAR_ROOM}px), ${HELD_PANE_OVERHEAD + HELD_MAP_MIN + THREE_ROWS_ROOM}px)` } },
-    mapPane: { p: 2, position: { xl: 'sticky' }, top: { xl: 16 }, [held]: { p: 1.5 } },
-    mapFrame: { height: 420, [held]: { height: `clamp(${HELD_MAP_MIN}px, calc(100vh - ${HELD_MAP_LESS}px), ${HELD_MAP_MAX}px)` } },
-    list: { ...scrolls, [held]: { minHeight: LIST_GUARD } },
-  };
-}
+export const CROWDING_LAYOUT = {
+  // Narrower on a laptop, so the table beside it keeps a name column a row's name, chip and article fit on.
+  mapColumn: { width: { xs: '100%', lg: 320, xl: 400 }, flexShrink: 0, borderRight: { lg: 1 }, borderColor: { lg: 'divider' } },
+  mapPane: { p: 2, position: { lg: 'sticky' }, top: { lg: 16 } },
+  mapFrame: { height: 420 },
+  list: { flexGrow: 1, minWidth: 0 },
+} as const satisfies Record<string, SxProps<Theme>>;
 
 /** The answers a request carried, by membership. */
 function sentAnswers(rows: readonly CrowdingAnswerRow[]): ReadonlyMap<number, CrowdingAnswer> {
@@ -215,8 +134,7 @@ function ruleOf(read: CrowdingGroup): RuleWords {
 }
 
 /** The map and, beside it, the region's list or the open place's card; or what stands in for them while they are read. */
-function WindowBody({ layout, read, circle, placeLoading, failed, inRegion, staging, hovered, onHover, onOpen, onAnswer }: {
-  layout: 'dialog' | 'page';
+function WindowBody({ read, circle, placeLoading, failed, inRegion, staging, hovered, onHover, onOpen, onAnswer }: {
   read: CrowdingGroup | undefined;
   /** The open place's circle; undefined on the region's list, or while it is first read. */
   circle: CrowdingPlaceView | undefined;
@@ -230,9 +148,6 @@ function WindowBody({ layout, read, circle, placeLoading, failed, inRegion, stag
   onOpen: (membershipId: number | null) => void;
   onAnswer: (place: Answerable, answer: CrowdingAnswer) => void;
 }) {
-  const theme = useTheme();
-  const beside = besideFrom(layout);
-  const placed = crowdingLayout(layout, theme);
   if (failed) {
     return (
       <Alert severity="error" sx={{ m: 2 }}>
@@ -250,20 +165,14 @@ function WindowBody({ layout, read, circle, placeLoading, failed, inRegion, stag
     ? { kind: 'place' as const, view: circle }
     : { kind: 'region' as const, places: read.places, rule, typeExempt: read.typeExempt };
   return (
-    <Stack direction={{ xs: 'column', [beside]: 'row' }} sx={placed.body}>
-      <Box
-        sx={{
-          width: { xs: '100%', [beside]: 440 }, flexShrink: 0,
-          borderRight: { [beside]: 1 }, borderColor: { [beside]: 'divider' },
-        }}
-      >
-        <Box data-testid="crowding-map-pane" sx={placed.mapPane}>
-          <CrowdingMap view={map} staging={staging} hovered={hovered} frame={placed.mapFrame} onHover={onHover} onOpen={onOpen} />
+    <Stack direction={{ xs: 'column', lg: 'row' }}>
+      <Box sx={CROWDING_LAYOUT.mapColumn}>
+        <Box data-testid="crowding-map-pane" sx={CROWDING_LAYOUT.mapPane}>
+          <CrowdingMap view={map} staging={staging} hovered={hovered} frame={CROWDING_LAYOUT.mapFrame} onHover={onHover} onOpen={onOpen} />
           <Box sx={{ mt: 1 }}><CrowdingLegend view={map} /></Box>
         </Box>
       </Box>
-      {/* In a dialog the list scrolls beside the map; in a page pane under it on a laptop, and on with the page on the widest. */}
-      <Box sx={placed.list}>
+      <Box sx={CROWDING_LAYOUT.list}>
         {map.kind === 'region' ? (
           <RegionList
             places={read.places} rule={rule} typeExempt={read.typeExempt} staging={staging} columns={columns}
@@ -311,7 +220,7 @@ function ApplyBar({ summary, limit, staged, applying, onReset, onApply }: {
 }
 
 export function CrowdingWindow({
-  group, selected, onSelect, titleId, staging, onStaging, onApplied, outcome: heldOutcome, onOutcome, onApplying, layout, frame,
+  group, selected, onSelect, titleId, staging, onStaging, onApplied, outcome: heldOutcome, onOutcome, onApplying, frame,
 }: {
   /** The group the window lists: a region, a kind and a type. */
   group: CrowdGroupRef;
@@ -331,8 +240,6 @@ export function CrowdingWindow({
   onOutcome?: (outcome: CrowdingOutcome | null) => void;
   /** Told when an Apply starts and ends, for a frame that holds the way out while one runs. */
   onApplying?: (applying: boolean) => void;
-  /** A dialog sets the map beside the list from a medium width; a page pane, narrower, only on the widest. */
-  layout: 'dialog' | 'page';
   frame: (parts: CrowdingWindowParts) => ReactNode;
 }) {
   const queryClient = useQueryClient();
@@ -408,7 +315,7 @@ export function CrowdingWindow({
   );
   const body = (
     <WindowBody
-      layout={layout} read={read} circle={circle} placeLoading={placeRead.isPlaceholderData}
+      read={read} circle={circle} placeLoading={placeRead.isPlaceholderData}
       failed={groupRead.error ?? (selected === null ? null : placeRead.error)} inRegion={selected === null}
       staging={staging} hovered={hovered} onHover={setHovered} onOpen={open} onAnswer={onAnswer}
     />

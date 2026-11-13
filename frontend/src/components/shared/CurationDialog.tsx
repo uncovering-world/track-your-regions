@@ -68,7 +68,7 @@ import { PlaceIdentifiers } from './PlaceIdentifiers';
 import { SiteFindQuestions } from './SiteFindQuestions';
 import { mayBeFindOrigin } from '../../utils/placeKinds';
 import { KindSeparation } from './KindSeparation';
-import { PlaceKinds, type CrowdingWindowOpener } from './PlaceKinds';
+import { PlaceKinds } from './PlaceKinds';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { tidyLabel } from '@tyr/shared/labels';
 import { SUBJECT_LINE_SOURCE_IDS } from '@tyr/shared/commemorates';
@@ -97,12 +97,6 @@ interface CurationDialogProps {
    */
   curatesRegion: boolean;
   onClose: () => void;
-  /**
-   * The crowded city's window a kind row opens (#2282), handed in by the dialog's lazy
-   * wrapper (`lazyCurationDialogs.tsx`, which says why it is not imported here). Absent, a
-   * kind row offers no window.
-   */
-  crowdingWindow?: CrowdingWindowOpener;
 }
 
 /**
@@ -203,7 +197,7 @@ function DescriptionAuthorship({ experience, description, adapted, onAdapted }: 
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
-function CurationDialogComponent({ experience, regionId, curatesRegion, onClose, crowdingWindow }: CurationDialogProps) {
+function CurationDialogComponent({ experience, regionId, curatesRegion, onClose }: CurationDialogProps) {
   const queryClient = useQueryClient();
   const typeOptions = typeOptionsFor(experience?.kind_id);
 
@@ -370,7 +364,7 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose,
       <DialogContent>
         {/* What the place is offered as, kind by kind, above what it is called (#2022).
             Keyed by the place: the next one opens with no kind half taken out. */}
-        <PlaceKinds key={`kinds-${experience.id}`} experienceId={experience.id} regionId={regionId} crowdingWindow={crowdingWindow} />
+        <PlaceKinds key={`kinds-${experience.id}`} experienceId={experience.id} regionId={regionId} unsavedEdits={form.dirty} />
 
         {/* Edit Section */}
         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>

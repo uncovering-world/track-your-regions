@@ -191,7 +191,7 @@ export function CrowdingLegend({ view }: { view: CrowdingMapView }) {
 
 export function CrowdingMap({ view, staging, hovered, frame: frameSx, onHover, onOpen }: {
   view: CrowdingMapView;
-  /** The map's height, lower where the window holds it over the list on a laptop (`crowdingLayout`). */
+  /** The map's frame, as the window lays it out (`CROWDING_LAYOUT`). */
   frame: SxProps<Theme>;
   staging: Staging;
   hovered: number | null;

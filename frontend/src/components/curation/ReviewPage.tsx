@@ -163,8 +163,12 @@ export function ReviewPage() {
     if (view === 'questions' && crowdStaged > 0) setLeavingCrowd(true);
     else go({ view, crowd: null });
   };
-  // A group opened opens on its region's list; a place opened in it is a step of its own (#2358).
-  const openCrowd = useCallback((crowd: string, opts?: { replace?: boolean }) => go({ crowd, crowdPlace: null }, opts), [go]);
+  // A group opened opens on its region's list; a place opened in it is a step of its own (#2358). The group a
+  // way in's place belongs to is written in beside the place, which stays open (#2487).
+  const openCrowd = useCallback(
+    (crowd: string, opts?: { replace?: boolean; place?: number }) => go({ crowd, crowdPlace: opts?.place ?? null }, opts),
+    [go],
+  );
   const openCrowdPlace = useCallback((crowdPlace: number | null) => go({ crowdPlace }), [go]);
 
   /**

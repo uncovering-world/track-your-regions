@@ -419,7 +419,7 @@ export function GatedSection({ group, heading, onDone }: {
       {arrival && <KindReadingLine experienceId={group.id} name={item.name} arrivingKindId={arrival.kind_id} />}
 
       {/* The place among its neighbours of its type (#2282), where its kind shows a crowded city. */}
-      <CrowdingWayIn item={item} onDone={onDone} />
+      <CrowdingWayIn item={item} />
 
       <PartPreviewDialog
         part={openPart}

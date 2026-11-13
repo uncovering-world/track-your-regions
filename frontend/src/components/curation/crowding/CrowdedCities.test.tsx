@@ -88,7 +88,7 @@ function renderTab(initial: string | null = null, initialPlace: number | null = 
       <CrowdedCities
         selected={selected}
         selectedPlace={place}
-        onSelect={(key, opts) => { onSelect(key, opts); setSelected(key); setPlace(null); }}
+        onSelect={(key, opts) => { onSelect(key, opts); setSelected(key); setPlace(opts?.place ?? null); }}
         onSelectPlace={id => { onSelectPlace(id); setPlace(id); }}
         stagings={stagings}
         onStagings={setStagings}
@@ -122,6 +122,9 @@ async function pick(chip: string, row: RegExp) {
 }
 
 const berlinOpen = () => screen.findByRole('heading', { name: BERLIN_TITLE, level: 2 });
+
+/** The list of groups unfolded from the bar it folds to beside an open group. */
+const unfold = () => fireEvent.click(screen.getByRole('button', { name: 'Show every crowded city' }));
 
 beforeEach(() => {
   mockedArrivals.mockReset();
@@ -166,8 +169,84 @@ describe('the crowded cities tab', () => {
 
     await waitFor(() => expect(mockedGroup).toHaveBeenCalledWith({ regionId: 5, kindId: 9, type: 'square' }));
     expect(onSelect).not.toHaveBeenCalled();
-    await screen.findByText('Berlin · squares');
+    // A group the address names opens with the list folded beside it (#2487).
+    await berlinOpen();
+    expect(screen.queryByRole('list', { name: 'Crowded cities' })).toBeNull();
+    unfold();
     expect(line('Berlin · squares')).not.toHaveClass('Mui-selected');
+  });
+
+  it('opens the place a way in names alone, in its own group, and writes the group in as a replace (#2487)', async () => {
+    const { onSelect } = renderTab(null, SCHLOSSPLATZ);
+
+    expect(await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 })).toBeInTheDocument();
+    expect(mockedPlace).toHaveBeenCalledWith(SCHLOSSPLATZ);
+    // The place's group, never the first one the list holds, and the place stays open in it.
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('7-9-square', { replace: true, place: SCHLOSSPLATZ });
+    expect(screen.getByRole('heading', { name: BERLIN_TITLE, level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Crowded cities' })).toBeNull();
+  });
+
+  it('says so when the place a way in names cannot be read, and opens no other group in its place', async () => {
+    mockedPlace.mockRejectedValue(new Error('Not found'));
+    const { onSelect } = renderTab(null, 999);
+
+    expect(await screen.findByText('Could not read the place: Not found')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Crowded cities' })).toBeInTheDocument();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(mockedGroup).not.toHaveBeenCalled();
+  });
+
+  it('shows the list on a phone where a way in’s place cannot be read (#2487)', async () => {
+    mockedPlace.mockRejectedValue(new Error('Not found'));
+    const matchMedia = vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
+      matches: query.includes('max-width'), media: query, onchange: null,
+      addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+    }));
+    try {
+      renderTab(null, 999);
+
+      expect(await screen.findByText('Could not read the place: Not found')).toBeInTheDocument();
+      expect(screen.getByRole('list', { name: 'Crowded cities' })).toBeInTheDocument();
+    } finally {
+      matchMedia.mockRestore();
+    }
+  });
+
+  it('opens a way in on the window on a phone, with the way back to the list (#2487)', async () => {
+    // A phone: every max-width query matches, so the tab shows one side at a time.
+    const matchMedia = vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
+      matches: query.includes('max-width'), media: query, onchange: null,
+      addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+    }));
+    try {
+      renderTab(null, SCHLOSSPLATZ);
+
+      expect(await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 })).toBeInTheDocument();
+      expect(screen.queryByRole('list', { name: 'Crowded cities' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'All crowded cities' }));
+      expect(screen.getByRole('list', { name: 'Crowded cities' })).toBeInTheDocument();
+    } finally {
+      matchMedia.mockRestore();
+    }
+  });
+
+  it('folds the list to a bar while a picked group is open, and unfolds it from the bar (#2487)', async () => {
+    renderTab();
+    await berlinOpen();
+    // Arriving on the tab with no group named, the curator reads the list first.
+    expect(screen.getByRole('list', { name: 'Crowded cities' })).toBeInTheDocument();
+
+    fireEvent.click(line('Rome · churches'));
+    expect(await screen.findByRole('heading', { name: ROME_TITLE, level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Crowded cities' })).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'Crowded cities' })).toHaveTextContent('Rome · churches');
+
+    unfold();
+    expect(line('Rome · churches')).toHaveClass('Mui-selected');
+    fireEvent.click(screen.getByRole('button', { name: 'Fold the list beside the open group' }));
+    expect(screen.queryByRole('list', { name: 'Crowded cities' })).toBeNull();
   });
 
   it('opens a place in its own circle on a click, as the address’s, and goes back to the region', async () => {
@@ -338,7 +417,8 @@ describe('the crowded cities tab', () => {
     const { onSelect } = renderTab('21-4-holy site');
 
     await waitFor(() => expect(mockedGroup).toHaveBeenCalledWith({ regionId: 21, kindId: 4, type: 'holy site' }));
-    await screen.findByText('Jerusalem · holy sites');
+    await screen.findByRole('heading', { name: ROME_TITLE, level: 2 });
+    unfold();
     expect(line('Jerusalem · holy sites')).toHaveClass('Mui-selected');
     expect(onSelect).not.toHaveBeenCalled();
   });

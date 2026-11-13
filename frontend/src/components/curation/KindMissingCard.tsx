@@ -84,7 +84,7 @@ function KindSection({ item, onDone }: { item: ReviewQueueItem; onDone: OnDone }
           False alarm — it stays under {kind}
         </Button>
       </Stack>
-      <CrowdingWayIn item={item} onDone={onDone} />
+      <CrowdingWayIn item={item} />
     </Stack>
   );
 }
