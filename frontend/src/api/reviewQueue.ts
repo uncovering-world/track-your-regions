@@ -2,18 +2,18 @@
  * Review queue API client
  *
  * The curator's review queue (ADR-0051): the page of open questions and the
- * shapes of its rows, a run's batch set aside and brought back, and a page of
- * rows answered at once (#852) — every endpoint under
- * `/api/experiences/review/`.
+ * shapes of its rows, the same questions as points on a map (#2477), a run's
+ * batch set aside and brought back, and a page of rows answered at once (#852)
+ * — every endpoint under `/api/experiences/review/`.
  */
 
 import type {
-  ReviewAnswer, ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside,
+  ReviewAnswer, ReviewAnswerResult, ReviewQueue, ReviewQueueMap, ReviewRegionSearchResults, RunSetAside,
 } from './client.generated';
 import {
-  deleteExperiencesReviewSetAsideBySyncLogId, getExperiencesReviewQueue, getExperiencesReviewRegionsSearch,
-  postExperiencesReviewAnswer, putExperiencesReviewSetAsideBySyncLogId,
-  type ReviewAnswerBodyRowsItem,
+  deleteExperiencesReviewSetAsideBySyncLogId, getExperiencesReviewQueue, getExperiencesReviewQueueMap,
+  getExperiencesReviewRegionsSearch, postExperiencesReviewAnswer, putExperiencesReviewSetAsideBySyncLogId,
+  type GetExperiencesReviewQueueMapParams, type ReviewAnswerBodyRowsItem,
 } from './client.generated';
 import type { ReviewAddress } from '../utils/appUrl';
 
@@ -22,9 +22,9 @@ import type { ReviewAddress } from '../utils/appUrl';
 // imports a call's answer from the module of the call.
 export type {
   AnsweredPoint, ChangedField, CountedWork, EarlierAnswer, FieldClaim, HeldPart, PendingPoint, PendingWork,
-  ProposedField, QueueFacets, RegionCrossing, QueueKind, QueueOrderEntry, RefusedPoint, RefusedWork, ReviewAnswer,
-  ReviewAnswerDid, ReviewAnswerResult, ReviewQueue, ReviewQueueItem, ReviewRegionSearchResult, ReviewRegionSearchResults,
-  RunSetAside, WaitingSub, WithdrawnPoint,
+  ProposedField, QueueFacets, QueueMapPlace, QueueMapQuestion, RegionCrossing, QueueKind, QueueOrderEntry, RefusedPoint,
+  RefusedWork, ReviewAnswer, ReviewAnswerDid, ReviewAnswerResult, ReviewQueue, ReviewQueueItem, ReviewQueueMap,
+  ReviewRegionSearchResult, ReviewRegionSearchResults, RunSetAside, WaitingSub, WithdrawnPoint,
 } from './client.generated';
 
 /**
@@ -45,6 +45,22 @@ export async function searchReviewRegions(query: string): Promise<ReviewRegionSe
  * `answeredWithdrawalsOffset` / `refusedPartsOffset` name them by this word.
  */
 export type ReviewQueueKind = 'keptOut' | 'answeredWithdrawals' | 'refusedParts';
+
+/**
+ * The chips of the review page's address in the query words both reads of the open
+ * questions take — the list's page and the map's points — so the two cannot select
+ * different questions. An empty chip sends nothing, and the generated call skips it.
+ */
+function selectionParams(params: ReviewAddress): GetExperiencesReviewQueueMapParams {
+  return {
+    q: params.q || undefined,
+    source: params.sourceIds.length > 0 ? params.sourceIds.join(',') : undefined,
+    kind: params.kinds.length > 0 ? params.kinds.join(',') : undefined,
+    region: params.regionId ?? undefined,
+    run: params.runId ?? undefined,
+    aside: params.showAside ? 'show' : undefined,
+  };
+}
 
 /**
  * What needs a curator's judgement, within their scope — a filtered,
@@ -69,12 +85,7 @@ export async function fetchReviewQueue(params: ReviewAddress & {
   // undefined one, so an empty address sends no query at all.
   return getExperiencesReviewQueue({
     sort: params.sort === 'question' ? 'question' : undefined,
-    q: params.q || undefined,
-    source: params.sourceIds.length > 0 ? params.sourceIds.join(',') : undefined,
-    kind: params.kinds.length > 0 ? params.kinds.join(',') : undefined,
-    region: params.regionId ?? undefined,
-    run: params.runId ?? undefined,
-    aside: params.showAside ? 'show' : undefined,
+    ...selectionParams(params),
     cursor: params.cursor || undefined,
     row: params.anchor || undefined,
     from: params.from || undefined,
@@ -83,6 +94,15 @@ export async function fetchReviewQueue(params: ReviewAddress & {
     answeredWithdrawalsOffset: params.answeredWithdrawalsOffset || undefined,
     refusedPartsOffset: params.refusedPartsOffset || undefined,
   });
+}
+
+/**
+ * Every open question the address's chips select, one entry per place with its point,
+ * and how many have no point to draw (#2477): the list's questions with no order and
+ * no page. The order, the open row and the tab are the page's and ask nothing here.
+ */
+export async function fetchReviewQueueMap(params: ReviewAddress): Promise<ReviewQueueMap> {
+  return getExperiencesReviewQueueMap(selectionParams(params));
 }
 
 /**

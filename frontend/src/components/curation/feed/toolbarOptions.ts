@@ -123,6 +123,17 @@ export function kindShort(key: string): string {
   return KIND_OPTIONS.find(o => o.key === key)?.short ?? key;
 }
 
+/** The colour the question chip draws a kind in (`KIND_COLOR`), a waiting one's by its sub-kind. */
+export function kindSwatch(key: string): string {
+  return KIND_OPTIONS.find(o => o.key === key)?.swatch ?? KIND_COLOR.missing;
+}
+
+/** Where a kind stands in the order the chip offers them, which is the order a curator works down. */
+export function kindRank(key: string): number {
+  const rank = KIND_OPTIONS.findIndex(o => o.key === key);
+  return rank < 0 ? KIND_OPTIONS.length : rank;
+}
+
 /** The address's `regionId` as a menu key, and back. `'none'` is the unplaced bucket. */
 function regionKey(id: number | null): string {
   return id === null ? 'none' : String(id);
