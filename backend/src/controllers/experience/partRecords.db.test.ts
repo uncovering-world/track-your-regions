@@ -10,7 +10,7 @@ import { claimPointItem } from './experienceLocationWriter.js';
 import { followTheirPoints } from '../../db/partFieldsWriter.js';
 import { listKinds } from './experienceQueryController.js';
 import { getSources } from '../admin/syncController.js';
-import { mergePlaces, undoMerge } from './placeMerge.js';
+import { mergePlaces, undoMerge, WHOLE_REFUSAL } from './placeMerge.js';
 import { writeExperienceLocations, type LocationWriteRun } from '../../services/sync/locationWriter.js';
 
 /**
@@ -540,7 +540,7 @@ describe('"part of" follows the records that claim it (ADR-0198 decision 5)', ()
     expect(await selfRecord()).toEqual([{ experience_id: WHOLE_SITE, whole_id: WHOLE_SITE }]);
   });
 
-  it("moves the parts' records with a whole a merge folds, and back on its undo", async () => {
+  it("refuses to fold a whole into another place, its parts' records staying in it (ADR-0203)", async () => {
     const parts = (await partsOf(BELFRIES)).map(part => part.part_id);
     const adminId = (await pool.query<{ id: number }>(
       `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'An admin', 'admin') RETURNING id`, [ADMIN],
@@ -560,13 +560,10 @@ describe('"part of" follows the records that claim it (ADR-0198 decision 5)', ()
     )).rows.map(row => row.whole_id);
 
     const outcome = await mergePlaces({ survivorId: BELFRIES_ELSEWHERE, foldedId: BELFRIES, mergedBy: adminId, reason: 'curator' });
-    expect(outcome.refusal).toBeUndefined();
-    expect(await wholesOf()).toEqual([BELFRIES_ELSEWHERE]);
-    expect((await recordsOf(BELFRIES_ELSEWHERE)).map(record => record.external_id)).toEqual([BRUGES.externalRef, MONS.externalRef]);
-
-    expect((await undoMerge(outcome.result!.mergeId, adminId)).refusal).toBeUndefined();
+    expect(outcome.refusal).toEqual({ status: 409, error: WHOLE_REFUSAL });
     expect(await wholesOf()).toEqual([BELFRIES]);
     expect((await recordsOf(BELFRIES)).map(record => record.external_id)).toEqual([BRUGES.externalRef, MONS.externalRef]);
+    expect(await recordsOf(BELFRIES_ELSEWHERE)).toEqual([]);
   });
 });
 

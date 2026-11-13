@@ -439,9 +439,12 @@ export async function moveSiteLineRecord(
 /**
  * Move the records whose whole is `from` into the whole `to` (ADR-0198): on a
  * merge, every record in the folded place as a whole; on its undo, the ones
- * the merge moved, named. A record the survivor's whole already holds of the
- * same source for the same place stays, since a source has one record of a
- * place in a whole. A record of the folded place in itself, which
+ * the merge moved, named. A place made of parts is never folded (ADR-0203),
+ * so what a merge moves now is the folded site's record of itself; an undo
+ * still moves back the parts' records of a merge made before that rule. A
+ * record the survivor's whole already holds of the same source for the same
+ * place stays, since a source has one record of a place in a whole. A record
+ * of the folded place in itself, which
  * `moveMemberships` has made a record of `to` in `from`, becomes a record of
  * `to` in itself, which claims no part (`refresh_part_relation`); left behind,
  * it would make the survivor a part of the place folded into it. The relation

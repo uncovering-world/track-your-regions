@@ -13,6 +13,10 @@
  * (`experience_merges.moved`), and the undo moves exactly that back: anything
  * written to the survivor after the merge stays with it.
  *
+ * A place made of parts is never merged, and two parts of one whole stay two
+ * places (ADR-0203, `partsBarMerge`): what is one place with another kind's
+ * place is one of the whole's parts.
+ *
  * Every write to a catalogue table goes through that table's writer module;
  * this module orders them and writes the merge's own record, the visits and the
  * log.
@@ -27,7 +31,7 @@ import { moveConflictDecisions } from './conflictDecisions.js';
 import { foldPoints, movePoints, unfoldPoints, type FoldedPoints } from './experienceLocationWriter.js';
 import { moveHeldDecisions } from './heldDecisions.js';
 import { moveMemberships, moveWholeRecords } from './membershipWriter.js';
-import { arePartAndWhole } from './partWriter.js';
+import { partsBarMerge } from './partWriter.js';
 import { followTheirPoints } from '../../db/partFieldsWriter.js';
 import { reopenMergedPair } from './mergeProposalAnswers.js';
 import { reopenSeparationsUndoneBy } from './separationReopening.js';
@@ -36,6 +40,11 @@ import { moveViewChoices } from './viewChoices.js';
 import { foldLinks, moveLinks, unfoldLinks, type FoldedLinks } from './workWriter.js';
 
 export type MergeReason = 'equal_wikidata_item' | 'curator';
+
+/** What a curator reads when a merge would join a place made of parts (ADR-0203). */
+export const WHOLE_REFUSAL = 'A place made of parts is never merged. Merge the part that is the same place instead.';
+/** What a curator reads when both places are parts of one place made of parts. */
+export const ONE_WHOLE_REFUSAL = 'Both places are parts of one place made of parts. Its parts are never merged.';
 
 /** A traveller's visit to the survivor as it stood before the merge reconciled it. */
 interface VisitSnapshot {
@@ -118,28 +127,20 @@ export async function mergePlaces(
     if (survivor.mergedInto !== null || folded.mergedInto !== null) {
       return await refuse({ status: 409, error: 'One of the two places has already been merged into another' });
     }
-    // A site's record of its own list line (ADR-0200) is no part's: two sites
-    // meet on their kind.
-    const shared = await client.query<{ kind_id: number | null }>(
-      `SELECT f.kind_id FROM ${MEMBERSHIPS} f
-         JOIN ${MEMBERSHIPS} s ON s.kind_id = f.kind_id
-                              OR (s.source_id = f.source_id AND s.whole_id <> s.experience_id
-                                  AND f.whole_id <> f.experience_id)
-        WHERE f.experience_id = $1 AND s.experience_id = $2`,
+    // ADR-0203: a place made of parts is never merged, and two parts of one
+    // whole stay two places. Asked first: a site and its own part, or a site
+    // holding a kind's record, would otherwise be refused as something else.
+    const barred = await partsBarMerge(client, survivor.lock, folded.lock);
+    if (barred === 'whole') return await refuse({ status: 409, error: WHOLE_REFUSAL });
+    if (barred === 'one-whole') return await refuse({ status: 409, error: ONE_WHOLE_REFUSAL });
+    const shared = await client.query(
+      `SELECT 1 FROM ${MEMBERSHIPS} f JOIN ${MEMBERSHIPS} s ON s.kind_id = f.kind_id
+        WHERE f.experience_id = $1 AND s.experience_id = $2 LIMIT 1`,
       [foldedId, survivorId],
     );
-    if (shared.rows.some(row => row.kind_id === null)) {
-      // Each is a serial site's part with its record in a whole (ADR-0156,
-      // ADR-0198): a merge of two parts waits for the clean-up of duplicate
-      // parts (#2119), which decides which record a merged part keeps.
-      return await refuse({ status: 409, error: 'Both places are components of World Heritage sites, which one place cannot be twice' });
-    }
-    if (shared.rows.length > 0) {
+    if ((shared.rowCount ?? 0) > 0) {
       // ADR-0086 decision 4: one place holds one membership per kind.
       return await refuse({ status: 409, error: 'Both places belong to the same kind, which one place cannot hold twice' });
-    }
-    if (await arePartAndWhole(client, survivor.lock, folded.lock)) {
-      return await refuse({ status: 409, error: 'One of the two places is part of the other, which is not one place' });
     }
 
     const record = await moveEverything(client, folded.lock, survivor.lock);
