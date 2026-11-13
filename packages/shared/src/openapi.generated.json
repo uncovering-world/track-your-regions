@@ -3674,6 +3674,271 @@
         }
       }
     },
+    "/api/users/me/visited-experiences/{experienceId}/trips": {
+      "get": {
+        "operationId": "getUsersMeVisitedExperiencesByExperienceIdTrips",
+        "summary": "List the caller's trips to a place, newest first",
+        "tags": [
+          "users"
+        ],
+        "description": "Requires a signed-in caller.",
+        "x-access": "signed-in",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experienceId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitTrips"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postUsersMeVisitedExperiencesByExperienceIdTrips",
+        "summary": "Add a trip to a place, with its approximate date, ticking the place where it was not",
+        "tags": [
+          "users"
+        ],
+        "description": "Requires a signed-in caller.",
+        "x-access": "signed-in",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experienceId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TripDateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripSaved"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/me/trips/{tripId}": {
+      "patch": {
+        "operationId": "patchUsersMeTripsByTripId",
+        "summary": "Change the date of one of the caller's trips",
+        "tags": [
+          "users"
+        ],
+        "description": "Requires a signed-in caller.",
+        "x-access": "signed-in",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tripId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TripDateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripSaved"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteUsersMeTripsByTripId",
+        "summary": "Remove one of the caller's trips; the visit stays",
+        "tags": [
+          "users"
+        ],
+        "description": "Requires a signed-in caller.",
+        "x-access": "signed-in",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tripId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripRemoved"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/me/visits/restore": {
+      "post": {
+        "operationId": "postUsersMeVisitsRestore",
+        "summary": "Put back visits an untick removed, each with its trips: the untick's Undo",
+        "tags": [
+          "users"
+        ],
+        "description": "Requires a signed-in caller.",
+        "x-access": "signed-in",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreVisitsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitsRestored"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/users/me/visited-locations/ids": {
       "get": {
         "operationId": "getUsersMeVisitedLocationsIds",
@@ -17902,13 +18167,20 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemovedVisit"
+            }
           }
         },
         "required": [
           "success",
           "experienceId",
           "regionId",
-          "locationsUnmarked"
+          "locationsUnmarked",
+          "removed"
         ],
         "additionalProperties": false,
         "description": "Every place of an object, or of it within a region, no longer marked visited."
@@ -26771,7 +27043,7 @@
             "maximum": 9007199254740991,
             "description": "The visit's own row."
           },
-          "visited_at": {
+          "marked_at": {
             "anyOf": [
               {
                 "type": "string",
@@ -26781,7 +27053,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "When the tick was made, not when the traveller was there: that is a trip's (#2120)."
           },
           "notes": {
             "type": [
@@ -26807,7 +27080,7 @@
           "experienceId",
           "experienceName",
           "id",
-          "visited_at",
+          "marked_at",
           "notes",
           "rating"
         ],
@@ -26825,11 +27098,18 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemovedVisit"
+            }
           }
         },
         "required": [
           "success",
-          "experienceId"
+          "experienceId",
+          "removed"
         ],
         "additionalProperties": false,
         "description": "An object no longer marked visited."
@@ -29641,7 +29921,7 @@
             "maximum": 9007199254740991,
             "description": "The visit's own row."
           },
-          "visited_at": {
+          "marked_at": {
             "anyOf": [
               {
                 "type": "string",
@@ -29651,7 +29931,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "When the tick was made, not when the traveller was there: that is a trip's (#2120)."
           },
           "notes": {
             "type": [
@@ -29667,7 +29948,7 @@
           "experienceId",
           "experienceName",
           "id",
-          "visited_at",
+          "marked_at",
           "notes"
         ],
         "additionalProperties": false,
@@ -29689,12 +29970,19 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemovedVisit"
+            }
           }
         },
         "required": [
           "success",
           "locationId",
-          "experienceId"
+          "experienceId",
+          "removed"
         ],
         "additionalProperties": false,
         "description": "A place no longer marked visited."
@@ -29735,7 +30023,7 @@
           "isVisited": {
             "type": "boolean"
           },
-          "visitedAt": {
+          "markedAt": {
             "anyOf": [
               {
                 "type": "string",
@@ -29745,7 +30033,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "When the tick on its place was made, not when the traveller was there."
           },
           "notes": {
             "type": [
@@ -29761,7 +30050,7 @@
           "longitude",
           "latitude",
           "isVisited",
-          "visitedAt",
+          "markedAt",
           "notes"
         ],
         "additionalProperties": false,
@@ -35770,6 +36059,105 @@
           }
         }
       },
+      "RemovedVisit": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "markedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trips": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "year": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "month": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "day": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "year",
+                "month",
+                "day"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "experienceId",
+          "markedAt",
+          "notes",
+          "rating",
+          "trips"
+        ],
+        "additionalProperties": false,
+        "description": "A visit an untick removed, with its trips, given back whole so its Undo can restore it."
+      },
       "ReorderSourcesBody": {
         "type": "object",
         "properties": {
@@ -35798,6 +36186,78 @@
         },
         "required": [
           "email"
+        ]
+      },
+      "RestoreVisitsBody": {
+        "type": "object",
+        "properties": {
+          "visits": {
+            "minItems": 1,
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "experienceId": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                "markedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "notes": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 2000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "rating": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 5
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "trips": {
+                  "maxItems": 10000,
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TripDateBody"
+                  }
+                }
+              },
+              "required": [
+                "experienceId",
+                "markedAt",
+                "notes",
+                "rating",
+                "trips"
+              ]
+            }
+          }
+        },
+        "required": [
+          "visits"
         ]
       },
       "ReviewAnswer": {
@@ -39877,6 +40337,168 @@
         "additionalProperties": false,
         "description": "A work no longer marked seen."
       },
+      "Trip": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "year",
+          "month",
+          "day",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "description": "One trip to a place, with its approximate date: all three parts null is a trip whose date the traveller does not remember (#2120). Only its traveller reads it."
+      },
+      "TripDateBody": {
+        "type": "object",
+        "properties": {
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "month": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "year",
+          "month",
+          "day"
+        ]
+      },
+      "TripRemoved": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "trip": {
+            "description": "The trip as it stood, for its Undo, which adds it again.",
+            "$ref": "#/components/schemas/Trip"
+          }
+        },
+        "required": [
+          "success",
+          "experienceId",
+          "trip"
+        ],
+        "additionalProperties": false,
+        "description": "A trip removed; the visit stays, with no date if it was the last."
+      },
+      "TripSaved": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "trip": {
+            "$ref": "#/components/schemas/Trip"
+          }
+        },
+        "required": [
+          "success",
+          "experienceId",
+          "trip"
+        ],
+        "additionalProperties": false,
+        "description": "A trip added, or its date changed."
+      },
       "UndoOperation": {
         "type": "string",
         "enum": [
@@ -40446,6 +41068,34 @@
         "additionalProperties": false,
         "description": "Jev's reading of what a visitor finds at a place arriving for a curator (#1768); never applied."
       },
+      "VisitTrips": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "visited": {
+            "type": "boolean",
+            "description": "Whether the traveller holds a visit on the place itself."
+          },
+          "trips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Trip"
+            },
+            "description": "Newest first, a trip whose date is not known last."
+          }
+        },
+        "required": [
+          "experienceId",
+          "visited",
+          "trips"
+        ],
+        "additionalProperties": false,
+        "description": "A traveller's trips to one place."
+      },
       "VisitedExperienceIds": {
         "type": "object",
         "properties": {
@@ -40590,6 +41240,27 @@
           "visited"
         ],
         "description": "How far through an object's places the reader is."
+      },
+      "VisitsRestored": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "restored": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How many visits were restored with their trips."
+          }
+        },
+        "required": [
+          "success",
+          "restored"
+        ],
+        "additionalProperties": false,
+        "description": "Visits an untick removed, put back with their trips."
       },
       "WaitingCounts": {
         "type": "object",

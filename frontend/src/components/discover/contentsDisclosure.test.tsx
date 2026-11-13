@@ -125,7 +125,7 @@ describe('the way into a serial site\'s places', () => {
           // never` also made the array assignable to anything, so a rename on the
           // interface would have gone through this file in silence.
           isVisited: visited.has(i + 1),
-          visitedAt: null,
+          markedAt: null,
           notes: null,
           curatedFields: claimOn === i + 1 ? ['location'] : undefined,
         }))}

@@ -84,7 +84,7 @@ function renderPlaces() {
         objectName="Rock Art of the Mediterranean Basin on the Iberian Peninsula"
         locations={names.map((name, i) => ({
           id: i + 1, name, latitude: 0, longitude: 0, ordinal: i,
-          isVisited: false, visitedAt: null, notes: null, curatedFields: undefined,
+          isVisited: false, markedAt: null, notes: null, curatedFields: undefined,
           // The last one stands for a part its source left unnamed: Rillo II's real
           // reference with its name left out, read by the reference (#1268).
           externalRef: name === null ? '874-758' : null,
@@ -161,7 +161,7 @@ describe('the places of a long serial site in groups (#1271)', () => {
   // reads it: four parts there, the rest in Aragón and Murcia.
   function renderGrouped() {
     const part = (id: number, name: string, regionPath: string, inRegion: boolean, hasPicture = false) => ({
-      id, name, latitude: 0, longitude: 0, ordinal: id, isVisited: false, visitedAt: null, notes: null,
+      id, name, latitude: 0, longitude: 0, ordinal: id, isVisited: false, markedAt: null, notes: null,
       curatedFields: undefined, externalRef: null, regionPath, inRegion, hasPicture,
     });
     const locations = [

@@ -10,7 +10,7 @@ describe('visited status of a place of several points (#2120)', () => {
   it('reads a site with one of its four parts visited as partly visited, point by point', async () => {
     vi.mocked(pool.query).mockResolvedValueOnce({ rows: [1, 2, 3, 4].map(id => ({
       location_id: id, name: `Part ${id}`, ordinal: id, longitude: id, latitude: id, ticked: false,
-      cast_points: false, visit_id: id === 1 ? id : null, visited_at: null, notes: null,
+      cast_points: false, visit_id: id === 1 ? id : null, marked_at: null, notes: null,
     })) } as never);
 
     const answer = await getExperienceVisitedStatus({ params: { id: 880 }, caller: { id: 7, role: 'user' } as Express.User });
@@ -24,7 +24,7 @@ describe('visited status of a place of several points (#2120)', () => {
   it("reads an edition visited from one visit, since every cast is the edition's own point (ADR-0145)", async () => {
     vi.mocked(pool.query).mockResolvedValueOnce({ rows: [1, 2, 3, 4].map(id => ({
       location_id: id, name: `Cast ${id}`, ordinal: id, longitude: id, latitude: id, ticked: true,
-      cast_points: true, visit_id: 9, visited_at: null, notes: null,
+      cast_points: true, visit_id: 9, marked_at: null, notes: null,
     })) } as never);
 
     const answer = await getExperienceVisitedStatus({ params: { id: 880 }, caller: { id: 7, role: 'user' } as Express.User });

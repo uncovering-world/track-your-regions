@@ -25,7 +25,9 @@ import {
   offeredLocationSql,
   publishedContentSql,
 } from '../../db/readerPredicates.js';
-import { liveVisitsSql, placeAtWriteSql, pointPlaceAtWriteSql } from '../../db/visits.js';
+import {
+  liveVisitsSql, placeAtWriteSql, pointPlaceAtWriteSql, removedVisitsOf, removeVisits, removeVisitsOn,
+} from '../../db/visits.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type {
   experienceIdParamSchema, idParamSchema, locationIdParamSchema, markAllLocationsQuerySchema,
@@ -133,13 +135,13 @@ export async function markLocationVisited(
 
   // The visit is the point's own place's (#2120): the part's for a part's
   // point, the place's for any other point, read again as it is written.
-  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'visited_at' | 'notes'>>(`
-    INSERT INTO user_visited_experiences (user_id, experience_id, notes, visited_at)
+  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'marked_at' | 'notes'>>(`
+    INSERT INTO user_visited_experiences (user_id, experience_id, notes, marked_at)
     ${pointPlaceAtWriteSql('ARRAY[$2::int]', '$1, el.experience_id, $3, NOW()')}
     ON CONFLICT (user_id, experience_id) DO UPDATE SET
       notes = COALESCE($3, user_visited_experiences.notes),
-      visited_at = NOW()
-    RETURNING id, visited_at, notes
+      marked_at = NOW()
+    RETURNING id, marked_at, notes
   `, [userId, locationId, notes]);
 
   // A merge folded the point while the tick was on its way.
@@ -152,7 +154,7 @@ export async function markLocationVisited(
     experienceId: location.shown_by,
     experienceName: location.shown_by_name,
     id: visit.id,
-    visited_at: visit.visited_at?.toISOString() ?? null,
+    marked_at: visit.marked_at?.toISOString() ?? null,
     notes: visit.notes,
   };
 }
@@ -183,15 +185,11 @@ export async function unmarkLocationVisited(
   // lock a tick takes: a merge moving the point commits first and the visit
   // taken back is the one the point now reads, and a point it folded clears
   // nothing (#2120).
-  const result = await pool.query(`
-    DELETE FROM user_visited_experiences v
-     USING (${pointPlaceAtWriteSql('ARRAY[$2::int]', 'el.experience_id')}) pt
-     WHERE v.user_id = $1 AND v.experience_id = pt.experience_id
-     RETURNING v.id
-  `, [caller.id, locationId]);
-  if (result.rowCount === 0) throw notFound('Visit record not found');
-
-  return { success: true, locationId, experienceId: locResult.rows[0].shown_by };
+  const visit = `SELECT v.id FROM user_visited_experiences v
+      JOIN (${pointPlaceAtWriteSql('ARRAY[$2::int]', 'el.experience_id')}) pt ON v.experience_id = pt.experience_id
+     WHERE v.user_id = $1 FOR UPDATE OF v`;
+  const rows = await removeVisits(visit, [caller.id, locationId]);
+  return { success: true, locationId, experienceId: locResult.rows[0].shown_by, removed: removedVisitsOf(rows) };
 }
 
 /**
@@ -255,7 +253,7 @@ export async function markAllLocationsVisited(
   const written = await pool.query<{ marked: number }>(`
     WITH points AS (${pointPlaceAtWriteSql('$2::int[]', 'el.experience_id')}),
     visits AS (
-      INSERT INTO user_visited_experiences (user_id, experience_id, visited_at)
+      INSERT INTO user_visited_experiences (user_id, experience_id, marked_at)
       SELECT $1, points.experience_id, NOW() FROM points
       ON CONFLICT (user_id, experience_id) DO NOTHING
     )
@@ -298,6 +296,7 @@ export async function unmarkAllLocationsVisited(
   const client = await pool.connect();
   let unusable: Error | undefined;
   let locationsUnmarked: number;
+  let removed: ReturnType<typeof removedVisitsOf>;
   try {
     await client.query('BEGIN');
 
@@ -311,12 +310,13 @@ export async function unmarkAllLocationsVisited(
     const places = regionId
       ? 'SELECT shown.experience_id FROM shown'
       : 'SELECT place.experience_id FROM place UNION SELECT shown.experience_id FROM shown';
-    const cleared = await client.query<{ experience_id: number }>(`
+    // Nothing is deleted where the Undo could not put it all back (#2120).
+    const cleared = await removeVisitsOn(client, `
       WITH shown AS (${shown})${regionId ? '' : `, place AS (${place})`}
-      DELETE FROM user_visited_experiences
-      WHERE user_id = $1 AND experience_id IN (${places})
-      RETURNING experience_id
+      SELECT v.id FROM user_visited_experiences v
+       WHERE v.user_id = $1 AND v.experience_id IN (${places}) FOR UPDATE OF v
     `, regionId ? [userId, experienceId, regionId] : [userId, experienceId]);
+    removed = cleared[0].taken_visits === 0 ? [] : removedVisitsOf(cleared);
 
     // How many of the place's points a reader is shown lost their tick.
     const counted = await client.query<{ count: number }>(`
@@ -324,7 +324,7 @@ export async function unmarkAllLocationsVisited(
         JOIN experience_locations el ON el.id = pp.location_id
        WHERE pp.place_id = $1 AND el.experience_id = ANY($2::int[])
          AND ${offeredLocationSql()} AND ${publishedContentSql('el')}
-    `, [experienceId, cleared.rows.map(row => row.experience_id)]);
+    `, [experienceId, removed.map(visit => visit.experienceId)]);
 
     await client.query('COMMIT');
     locationsUnmarked = counted.rows[0].count;
@@ -342,6 +342,7 @@ export async function unmarkAllLocationsVisited(
     experienceId,
     regionId,
     locationsUnmarked,
+    removed,
   };
 }
 
@@ -359,7 +360,7 @@ export async function getExperienceVisitedStatus(
   const result = await pool.query<
     Pick<ExperienceLocationsRow, 'name' | 'ordinal'> & Pick<ExperiencesRow, 'cast_points'>
     & { location_id: number; longitude: number; latitude: number; ticked: boolean }
-    & { visit_id: number | null; visited_at: UserVisitedExperiencesRow['visited_at']; notes: UserVisitedExperiencesRow['notes'] }
+    & { visit_id: number | null; marked_at: UserVisitedExperiencesRow['marked_at']; notes: UserVisitedExperiencesRow['notes'] }
   >(`
     SELECT
       el.id as location_id,
@@ -370,7 +371,7 @@ export async function getExperienceVisitedStatus(
       ST_X(el.location) as longitude,
       ST_Y(el.location) as latitude,
       uv.id as visit_id,
-      uv.visited_at,
+      uv.marked_at,
       uv.notes,
       EXISTS (SELECT 1 FROM ${liveVisitsSql('$2')} own WHERE own.experience_id = e.id) AS ticked
     FROM ${placePointsSql()} pp
@@ -411,7 +412,7 @@ export async function getExperienceVisitedStatus(
       longitude: r.longitude,
       latitude: r.latitude,
       isVisited: r.visit_id !== null,
-      visitedAt: r.visited_at?.toISOString() ?? null,
+      markedAt: r.marked_at?.toISOString() ?? null,
       notes: r.notes,
     })),
   };

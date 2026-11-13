@@ -49,7 +49,11 @@ export const ONE_WHOLE_REFUSAL = 'Both places are parts of one place made of par
 /** A traveller's visit to the survivor as it stood before the merge reconciled it. */
 interface VisitSnapshot {
   id: number;
-  /** As text, to the microsecond the column holds, so the undo can tell an untouched visit. */
+  /**
+   * `marked_at` as text, to the microsecond the column holds, so the undo can
+   * tell an untouched visit. Named as merge records written before the column
+   * was renamed (#2120) hold it.
+   */
   visited_at: string | null;
   notes: string | null;
   rating?: number | null;
@@ -59,6 +63,11 @@ interface VisitSnapshot {
 interface ReconciledVisits {
   inserted: VisitSnapshot[];
   updated: { before: VisitSnapshot; after: VisitSnapshot }[];
+  /**
+   * The trips the merge copied from a folded visit onto the survivor's (#2120):
+   * the undo removes exactly these. A merge recorded before trips copied none.
+   */
+  trips?: number[];
 }
 
 /** What a merge moved, which its undo moves back (ADR-0086 decision 1). */
@@ -264,7 +273,7 @@ async function moveManualAssignments(client: PoolClient, from: number, to: numbe
  */
 async function reconcileVisits(client: PoolClient, folded: number, survivor: number): Promise<ReconciledVisits> {
   const before = await client.query<VisitSnapshot>(
-    `SELECT s.id, s.visited_at::text AS visited_at, s.notes, s.rating
+    `SELECT s.id, s.marked_at::text AS visited_at, s.notes, s.rating
        FROM user_visited_experiences s
        JOIN user_visited_experiences f ON f.user_id = s.user_id AND f.experience_id = $1
       WHERE s.experience_id = $2`,
@@ -272,27 +281,40 @@ async function reconcileVisits(client: PoolClient, folded: number, survivor: num
   );
   const after = await client.query<VisitSnapshot>(
     `UPDATE user_visited_experiences s
-        SET visited_at = LEAST(s.visited_at, f.visited_at),
+        SET marked_at = LEAST(s.marked_at, f.marked_at),
             notes = ${joinedNotesSql('s', 'f')},
             rating = CASE WHEN s.rating IS NULL THEN f.rating
                           WHEN f.rating IS NULL OR f.rating = s.rating THEN s.rating
-                          WHEN f.visited_at > s.visited_at THEN f.rating
+                          WHEN f.marked_at > s.marked_at THEN f.rating
                           ELSE s.rating END
        FROM user_visited_experiences f
       WHERE f.user_id = s.user_id AND f.experience_id = $1 AND s.experience_id = $2
-      RETURNING s.id, s.visited_at::text AS visited_at, s.notes, s.rating`,
+      RETURNING s.id, s.marked_at::text AS visited_at, s.notes, s.rating`,
     [folded, survivor],
   );
   const inserted = await client.query<VisitSnapshot>(
-    `INSERT INTO user_visited_experiences (user_id, experience_id, visited_at, notes, rating)
-     SELECT f.user_id, $2, f.visited_at, f.notes, f.rating
+    `INSERT INTO user_visited_experiences (user_id, experience_id, marked_at, notes, rating)
+     SELECT f.user_id, $2, f.marked_at, f.notes, f.rating
        FROM user_visited_experiences f
       WHERE f.experience_id = $1
         AND NOT EXISTS (SELECT 1 FROM user_visited_experiences s WHERE s.experience_id = $2 AND s.user_id = f.user_id)
-     RETURNING id, visited_at::text AS visited_at, notes, rating`,
+     RETURNING id, marked_at::text AS visited_at, notes, rating`,
     [folded, survivor],
   );
-  return { inserted: inserted.rows, updated: pairUp(before.rows, after.rows) };
+  // Every trip of a folded visit, onto the survivor's visit the statements
+  // above left the traveller with: two trips on one date stay two, since a
+  // trip is a time they were there, not a date (#2120, ADR-0202).
+  const trips = await client.query<{ id: number }>(
+    `INSERT INTO user_visit_trips (visit_id, year, month, day, created_at)
+     SELECT s.id, ft.year, ft.month, ft.day, ft.created_at
+       FROM user_visited_experiences f
+       JOIN user_visit_trips ft ON ft.visit_id = f.id
+       JOIN user_visited_experiences s ON s.user_id = f.user_id AND s.experience_id = $2
+      WHERE f.experience_id = $1
+     RETURNING id`,
+    [folded, survivor],
+  );
+  return { inserted: inserted.rows, updated: pairUp(before.rows, after.rows), trips: trips.rows.map(row => row.id) };
 }
 
 function pairUp(before: VisitSnapshot[], after: VisitSnapshot[]): ReconciledVisits['updated'] {
@@ -465,15 +487,22 @@ async function moveEverythingBack(
  * a note or a rating a traveller added afterwards stays with the place.
  */
 async function restoreVisits(client: PoolClient, record: MergeRecord): Promise<void> {
-  const unchanged = 'visited_at IS NOT DISTINCT FROM $2::timestamptz AND notes IS NOT DISTINCT FROM $3 '
+  const unchanged = 'marked_at IS NOT DISTINCT FROM $2::timestamptz AND notes IS NOT DISTINCT FROM $3 '
     + 'AND rating IS NOT DISTINCT FROM $4::int';
   const values = (visit: VisitSnapshot) => [visit.visited_at, visit.notes, visit.rating ?? null];
+  // The trips the merge copied go first; a copy then goes only while it holds
+  // no trip the traveller added since, which stays with it (#2120).
+  await client.query('DELETE FROM user_visit_trips WHERE id = ANY($1::int[])', [record.visits.trips ?? []]);
   for (const copy of record.visits.inserted) {
-    await client.query(`DELETE FROM user_visited_experiences WHERE id = $1 AND ${unchanged}`, [copy.id, ...values(copy)]);
+    await client.query(
+      `DELETE FROM user_visited_experiences v WHERE v.id = $1 AND ${unchanged}
+         AND NOT EXISTS (SELECT 1 FROM user_visit_trips t WHERE t.visit_id = v.id)`,
+      [copy.id, ...values(copy)],
+    );
   }
   for (const { before, after } of record.visits.updated) {
     await client.query(
-      `UPDATE user_visited_experiences SET visited_at = $5, notes = $6, rating = $7 WHERE id = $1 AND ${unchanged}`,
+      `UPDATE user_visited_experiences SET marked_at = $5, notes = $6, rating = $7 WHERE id = $1 AND ${unchanged}`,
       [before.id, ...values(after), ...values(before)],
     );
   }

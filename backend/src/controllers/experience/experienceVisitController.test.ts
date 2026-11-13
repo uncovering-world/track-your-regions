@@ -18,7 +18,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
-  pool: { query: vi.fn() },
+  pool: { query: vi.fn(), connect: vi.fn() },
+  rollbackQuietly: vi.fn(),
 }));
 
 import { pool } from '../../db/index.js';
@@ -32,6 +33,7 @@ const postVisitedExperience = routeAt(userRoutes, '/me/visited-experiences/:expe
 const deleteVisitedExperience = routeAt(userRoutes, '/me/visited-experiences/:experienceId', 'delete');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
+const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
 
 function makeRes() {
   return { json: vi.fn(), status: vi.fn().mockReturnThis() };
@@ -82,7 +84,7 @@ describe('markVisited — #520', () => {
   it('writes the visit once the row passes the gate', async () => {
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ id: 281, name: 'Published Site' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 9, visited_at: new Date('2026-01-01T00:00:00.000Z'), notes: null, rating: null }] });
+      .mockResolvedValueOnce({ rows: [{ id: 9, marked_at: new Date('2026-01-01T00:00:00.000Z'), notes: null, rating: null }] });
     const res = makeRes();
 
     await answerRoute(postVisitedExperience,
@@ -106,15 +108,33 @@ describe('unmarkVisited', () => {
   beforeEach(() => mockedQuery.mockReset());
 
   it('takes back the place\'s own visit, reading the place under a share lock and only while a reader may be shown it', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 9 }], rowCount: 1 });
+    const release = vi.fn();
+    mockedConnect.mockResolvedValueOnce({ query: mockedQuery, release });
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] })           // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })  // the visit, locked
+      .mockResolvedValueOnce({
+        rows: [{ taken_visits: 1, taken_trips: 0, experience_id: 281, marked_at: null, notes: null, rating: null, trips: [] }],
+      })
+      .mockResolvedValueOnce({ rows: [] });          // COMMIT
 
     await answerRoute(deleteVisitedExperience,
       { params: { experienceId: '281' }, user: { id: 5 } } as never, makeRes() as never);
 
-    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toMatch(/DELETE FROM user_visited_experiences[\s\S]*FOR SHARE OF e/);
-    expect(sql).toContain(claimablePlaceSql());
+    const calls = mockedQuery.mock.calls as [string, unknown[]?][];
+    expect(calls.map(([sql]) => sql)).toEqual(['BEGIN', expect.any(String), expect.any(String), 'COMMIT']);
+    // The place and the visit locked by a statement of their own; the delete,
+    // held to what an Undo puts back, is the next statement, so its snapshot
+    // sees every trip committed on the visit while the lock waited (#2120).
+    const [lock, params] = calls[1];
+    const [remove, ids] = calls[2];
+    expect(lock).toMatch(/FOR SHARE OF e[\s\S]*FOR UPDATE OF v/);
+    expect(lock).not.toMatch(/DELETE FROM/);
+    expect(lock).toContain(claimablePlaceSql());
     expect(params).toEqual([5, 281]);
+    expect(remove).toMatch(/DELETE FROM user_visited_experiences/);
+    expect(ids).toEqual([[3]]);
+    expect(release).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -1202,12 +1202,22 @@ export interface UserViewedTreasuresRow {
   notes: string | null;
 }
 
+/** The table `user_visit_trips`. */
+export interface UserVisitTripsRow {
+  id: number;
+  visit_id: number;
+  year: number | null;
+  month: number | null;
+  day: number | null;
+  created_at: Date;
+}
+
 /** The table `user_visited_experiences`. */
 export interface UserVisitedExperiencesRow {
   id: number;
   user_id: number;
   experience_id: number;
-  visited_at: Date | null;
+  marked_at: Date | null;
   notes: string | null;
   rating: number | null;
 }
@@ -1503,6 +1513,7 @@ export const RELATION_SCHEMAS = {
   user_auth_providers: "public",
   user_new_badge_views: "public",
   user_viewed_treasures: "public",
+  user_visit_trips: "public",
   user_visited_experiences: "public",
   user_visited_regions: "public",
   users: "public",

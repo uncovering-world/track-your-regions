@@ -12,8 +12,12 @@
  * merge's undo and never read.
  */
 
+import type { PoolClient } from 'pg';
+import { pool, rollbackQuietly } from './index.js';
 import { pointsShownSql } from './placePoints.js';
 import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
+import { badRequest, notFound } from '../middleware/errorHandler.js';
+import { RESTORE_LIMITS, TOO_MUCH_TO_UNDO } from '../types/trips.js';
 
 /**
  * Whether the place `place` is a whole a reader is shown by its parts: one of
@@ -113,4 +117,130 @@ export function placeAtWriteSql(place: string, columns: string, where = 'TRUE'):
   return `SELECT ${columns} FROM experiences e
      WHERE e.id = ${place} AND e.merged_into_id IS NULL AND ${where}
      FOR SHARE OF e`;
+}
+
+/**
+ * Newest first, as a place's card lists its trips: by date, a trip whose date
+ * is not known last, and among equal dates the one entered last first.
+ * `trip` names the `user_visit_trips` alias.
+ */
+export function tripOrderSql(trip = 'tr'): string {
+  return `${trip}.year DESC NULLS LAST, ${trip}.month DESC NULLS LAST, ${trip}.day DESC NULLS LAST,
+          ${trip}.created_at DESC, ${trip}.id DESC`;
+}
+
+/**
+ * The trip `trip` (an int expression) of the traveller `user`, with `columns`
+ * of it (`ot`) and of its visit (`ov`), read as it is changed or removed:
+ * under a share lock on the visit, so an untick or a merge of that visit
+ * commits first, and only on a place no merge folded. Another traveller's
+ * trip, or none, is no row: the caller answers 404 and says nothing more
+ * (#2120).
+ */
+export function ownTripAtWriteSql(user: string, trip: string, columns: string): string {
+  return `SELECT ${columns} FROM user_visit_trips ot
+     JOIN user_visited_experiences ov ON ov.id = ot.visit_id
+     JOIN experiences ov_place ON ov_place.id = ov.experience_id
+    WHERE ot.id = ${trip} AND ov.user_id = ${user} AND ov_place.merged_into_id IS NULL
+    FOR SHARE OF ov`;
+}
+
+/**
+ * The removal of the traveller's visits `visits` (an int[] expression of
+ * their `id`s, locked by an earlier statement of the same transaction), as the
+ * tail of a `WITH`: it deletes them only while what it takes fits what its
+ * Undo puts back (`RESTORE_LIMITS`), so a removal never deletes a visit its
+ * Undo would refuse (#2120). One statement answers a row per removed visit,
+ * with its trips as a JSON list of their dates, read in the statement that
+ * deletes their visit, which still sees them (their cascade runs after it);
+ * and on every row, or on one row when nothing was removed, how many visits
+ * and trips the removal would take (`taken_visits`, `taken_trips`). Run by
+ * `removeVisitsOn`, never on its own.
+ */
+export function removeVisitsSql(visits: string): string {
+  return `target AS (SELECT unnest(${visits}) AS id),
+    size AS (
+      SELECT (SELECT count(*)::int FROM target) AS taken_visits,
+             (SELECT count(*)::int FROM user_visit_trips tt WHERE tt.visit_id IN (SELECT id FROM target)) AS taken_trips),
+    gone AS (
+      DELETE FROM user_visited_experiences v USING target, size
+       WHERE v.id = target.id
+         AND size.taken_visits <= ${RESTORE_LIMITS.visits} AND size.taken_trips <= ${RESTORE_LIMITS.trips}
+       RETURNING v.id, v.experience_id, v.marked_at, v.notes, v.rating)
+    SELECT size.taken_visits, size.taken_trips, removed.*
+      FROM size LEFT JOIN (
+        SELECT gone.experience_id, gone.marked_at, gone.notes, gone.rating,
+               COALESCE((SELECT json_agg(json_build_object('year', rt.year, 'month', rt.month, 'day', rt.day)
+                                         ORDER BY ${tripOrderSql('rt')})
+                           FROM user_visit_trips rt WHERE rt.visit_id = gone.id), '[]'::json) AS trips
+          FROM gone) removed ON true`;
+}
+
+/**
+ * Remove the traveller's visits that `target` selects (a query of their
+ * `id`s with `params`, ending `FOR UPDATE OF v`), on `client` inside its open
+ * transaction, answering `removeVisitsSql`'s rows (#2120). Two statements:
+ * the first takes the locks, the second counts what it takes and deletes it.
+ * Not one: a statement reads the snapshot it started with, and a lock it
+ * waits for is granted after that, so a trip an `addTrip` committed on the
+ * visit while the untick waited would be missing from the count and from
+ * `removed` and still go with its visit by the cascade, beyond its Undo. The
+ * second statement starts once every visit is held, so it sees every trip
+ * committed before, and no trip can be added or changed under a held visit.
+ */
+export async function removeVisitsOn(
+  client: PoolClient, target: string, params: unknown[],
+): Promise<RemovedVisitRow[]> {
+  const held = await client.query<{ id: number }>(target, params);
+  const result = await client.query<RemovedVisitRow>(
+    `WITH ${removeVisitsSql('$1::int[]')}`, [held.rows.map(row => row.id)],
+  );
+  return result.rows;
+}
+
+/** `removeVisitsOn` in a transaction of its own: the untick of one place or one point. */
+export async function removeVisits(target: string, params: unknown[]): Promise<RemovedVisitRow[]> {
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    const rows = await removeVisitsOn(client, target, params);
+    await client.query('COMMIT');
+    return rows;
+  } catch (error) {
+    // A client whose ROLLBACK also failed is destroyed, not pooled.
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
+}
+
+/** A row of `removeVisitsSql`: a removed visit, or none, with what the removal would take. */
+export interface RemovedVisitRow {
+  taken_visits: number;
+  taken_trips: number;
+  experience_id: number | null;
+  marked_at: Date | null;
+  notes: string | null;
+  rating: number | null;
+  trips: { year: number | null; month: number | null; day: number | null }[] | null;
+}
+
+/**
+ * The visits a removal took, in the answer's shape (`RemovedVisit`), or its
+ * refusal: 404 where there was nothing to remove, and 400 in words where it
+ * would take more than an Undo puts back, having deleted nothing.
+ */
+export function removedVisitsOf(rows: RemovedVisitRow[]) {
+  const { taken_visits: visits, taken_trips: trips } = rows[0];
+  if (visits === 0) throw notFound('Visit record not found');
+  if (visits > RESTORE_LIMITS.visits || trips > RESTORE_LIMITS.trips) throw badRequest(TOO_MUCH_TO_UNDO);
+  return rows.map(row => ({
+    experienceId: row.experience_id as number,
+    markedAt: row.marked_at?.toISOString() ?? null,
+    notes: row.notes,
+    rating: row.rating,
+    trips: row.trips ?? [],
+  }));
 }

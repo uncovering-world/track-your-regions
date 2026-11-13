@@ -1480,10 +1480,33 @@ export interface ExperienceVisitMarked {
      * @maximum 9007199254740991
      */
   id: number;
-  visited_at: string | null;
+  /** When the tick was made, not when the traveller was there: that is a trip's (#2120). */
+  marked_at: string | null;
   /** @nullable */
   notes: string | null;
   rating: number | null;
+}
+
+export type RemovedVisitTripsItem = {
+  year: number | null;
+  month: number | null;
+  day: number | null;
+};
+
+/**
+ * A visit an untick removed, with its trips, given back whole so its Undo can restore it.
+ */
+export interface RemovedVisit {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  markedAt: string | null;
+  /** @nullable */
+  notes: string | null;
+  rating: number | null;
+  trips: RemovedVisitTripsItem[];
 }
 
 /**
@@ -1496,6 +1519,104 @@ export interface ExperienceVisitUnmarked {
      * @maximum 9007199254740991
      */
   experienceId: number;
+  removed: RemovedVisit[];
+}
+
+/**
+ * One trip to a place, with its approximate date: all three parts null is a trip whose date the traveller does not remember (#2120). Only its traveller reads it.
+ */
+export interface Trip {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  year: number | null;
+  month: number | null;
+  day: number | null;
+  createdAt: string | null;
+}
+
+/**
+ * A traveller's trips to one place.
+ */
+export interface VisitTrips {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /** Whether the traveller holds a visit on the place itself. */
+  visited: boolean;
+  /** Newest first, a trip whose date is not known last. */
+  trips: Trip[];
+}
+
+export interface TripDateBody {
+  year: number | null;
+  month: number | null;
+  day: number | null;
+}
+
+/**
+ * A trip added, or its date changed.
+ */
+export interface TripSaved {
+  success: true;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  trip: Trip;
+}
+
+/**
+ * A trip removed; the visit stays, with no date if it was the last.
+ */
+export interface TripRemoved {
+  success: true;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /** The trip as it stood, for its Undo, which adds it again. */
+  trip: Trip;
+}
+
+export type RestoreVisitsBodyVisitsItem = {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  experienceId: number;
+  markedAt: string | null;
+  notes: string | null;
+  rating: number | null;
+  /** @maxItems 10000 */
+  trips: TripDateBody[];
+};
+
+export interface RestoreVisitsBody {
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     */
+  visits: RestoreVisitsBodyVisitsItem[];
+}
+
+/**
+ * Visits an untick removed, put back with their trips.
+ */
+export interface VisitsRestored {
+  success: true;
+  /**
+     * How many visits were restored with their trips.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  restored: number;
 }
 
 /**
@@ -1550,7 +1671,8 @@ export interface LocationVisitMarked {
      * @maximum 9007199254740991
      */
   id: number;
-  visited_at: string | null;
+  /** When the tick was made, not when the traveller was there: that is a trip's (#2120). */
+  marked_at: string | null;
   /** @nullable */
   notes: string | null;
 }
@@ -1570,6 +1692,7 @@ export interface LocationVisitUnmarked {
      * @maximum 9007199254740991
      */
   experienceId: number;
+  removed: RemovedVisit[];
 }
 
 /**
@@ -1600,7 +1723,8 @@ export interface LocationWithVisitedStatus {
   longitude: number;
   latitude: number;
   isVisited: boolean;
-  visitedAt: string | null;
+  /** When the tick on its place was made, not when the traveller was there. */
+  markedAt: string | null;
   /** @nullable */
   notes: string | null;
 }
@@ -1665,6 +1789,7 @@ export interface AllLocationsUnmarked {
      * @maximum 9007199254740991
      */
   locationsUnmarked: number;
+  removed: RemovedVisit[];
 }
 
 /**
@@ -10680,6 +10805,175 @@ export const deleteUsersMeVisitedExperiencesByExperienceId = async (experienceId
     method: 'DELETE'
 
 
+  }
+);}
+
+
+
+export const getGetUsersMeVisitedExperiencesByExperienceIdTripsUrl = (experienceId: number,) => {
+
+
+
+
+  return `/api/users/me/visited-experiences/${encodeURIComponent(String(experienceId))}/trips`
+}
+
+/**
+ * Requires a signed-in caller.
+ * @summary List the caller's trips to a place, newest first
+ */
+export const getUsersMeVisitedExperiencesByExperienceIdTrips = async (experienceId: number, options?: Parameters<typeof apiFetch>[1]): Promise<VisitTrips> => {
+
+  return apiFetch<VisitTrips>(getGetUsersMeVisitedExperiencesByExperienceIdTripsUrl(experienceId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getPostUsersMeVisitedExperiencesByExperienceIdTripsUrl = (experienceId: number,) => {
+
+
+
+
+  return `/api/users/me/visited-experiences/${encodeURIComponent(String(experienceId))}/trips`
+}
+
+/**
+ * Requires a signed-in caller.
+ * @summary Add a trip to a place, with its approximate date, ticking the place where it was not
+ */
+export const postUsersMeVisitedExperiencesByExperienceIdTrips = async (experienceId: number,
+    tripDateBody: TripDateBody, options?: Parameters<typeof apiFetch>[1]): Promise<TripSaved> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<TripSaved>(getPostUsersMeVisitedExperiencesByExperienceIdTripsUrl(experienceId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(tripDateBody)
+  }
+);}
+
+
+
+export const getPatchUsersMeTripsByTripIdUrl = (tripId: number,) => {
+
+
+
+
+  return `/api/users/me/trips/${encodeURIComponent(String(tripId))}`
+}
+
+/**
+ * Requires a signed-in caller.
+ * @summary Change the date of one of the caller's trips
+ */
+export const patchUsersMeTripsByTripId = async (tripId: number,
+    tripDateBody: TripDateBody, options?: Parameters<typeof apiFetch>[1]): Promise<TripSaved> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<TripSaved>(getPatchUsersMeTripsByTripIdUrl(tripId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(tripDateBody)
+  }
+);}
+
+
+
+export const getDeleteUsersMeTripsByTripIdUrl = (tripId: number,) => {
+
+
+
+
+  return `/api/users/me/trips/${encodeURIComponent(String(tripId))}`
+}
+
+/**
+ * Requires a signed-in caller.
+ * @summary Remove one of the caller's trips; the visit stays
+ */
+export const deleteUsersMeTripsByTripId = async (tripId: number, options?: Parameters<typeof apiFetch>[1]): Promise<TripRemoved> => {
+
+  return apiFetch<TripRemoved>(getDeleteUsersMeTripsByTripIdUrl(tripId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export const getPostUsersMeVisitsRestoreUrl = () => {
+
+
+
+
+  return `/api/users/me/visits/restore`
+}
+
+/**
+ * Requires a signed-in caller.
+ * @summary Put back visits an untick removed, each with its trips: the untick's Undo
+ */
+export const postUsersMeVisitsRestore = async (restoreVisitsBody: RestoreVisitsBody, options?: Parameters<typeof apiFetch>[1]): Promise<VisitsRestored> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<VisitsRestored>(getPostUsersMeVisitsRestoreUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(restoreVisitsBody)
   }
 );}
 
