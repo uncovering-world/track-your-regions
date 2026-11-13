@@ -1,7 +1,8 @@
 /**
  * The review queue's map (#2477) as data: what each marker is drawn with, which place is
- * the open question's, and the kinds the legend names, built from the map's read
- * (`fetchReviewQueueMap`). Pure, so the component is only layout and the map's events.
+ * the open question's, the kinds the legend names and the question the map walks to after
+ * an answer, built from the map's read (`fetchReviewQueueMap`). Pure, so the component is
+ * only layout and the map's events.
  *
  * A marker is a place, never a question: the read answers one entry per place, with its
  * questions in the class order the list sorts by, and a place several kinds ask about is
@@ -10,7 +11,9 @@
  * legend and in a marker's short list.
  */
 
+import { distanceMeters } from '@tyr/shared/moves';
 import type { QueueMapPlace, QueueMapQuestion } from '../../../api/reviewQueue';
+import { distanceLabel } from '../../../utils/moveDescription';
 import { kindRank, kindShort, kindSwatch } from '../feed/toolbarOptions';
 import { rowKeyOf } from '../queueRows';
 
@@ -115,4 +118,63 @@ export function spreadOf(places: readonly QueueMapPlace[]): GeoJSON.Feature<GeoJ
     properties: {},
     geometry: { type: 'MultiPoint', coordinates: places.map(place => [place.lon, place.lat]) },
   };
+}
+
+/** The question just answered on the map, and where its place stands: where the walk starts. */
+export interface MapOrigin {
+  row: string;
+  placeId: number;
+  lon: number;
+  lat: number;
+}
+
+/** Where the map walks after an answer: the question it opens, its place's point and how far it is. */
+export interface MapStep {
+  row: string;
+  placeId: number;
+  lon: number;
+  lat: number;
+  /** Another question about the place just answered, which comes before any other place. */
+  samePlace: boolean;
+  meters: number;
+}
+
+/**
+ * The question the map opens after an answer: another question about the same place first,
+ * in the order its questions are listed, else the first question of the nearest place, by
+ * great-circle distance. Null when the map holds no other open question.
+ *
+ * The answered question is left out by its key, so a read the answer has not refreshed yet,
+ * which still holds it, never sends the curator back to it.
+ */
+export function nextOnMap(places: readonly QueueMapPlace[], from: MapOrigin): MapStep | null {
+  const firstOpen = (place: QueueMapPlace) => place.questions.find(question => questionRow(place, question) !== from.row);
+  const stepTo = (place: QueueMapPlace, question: QueueMapQuestion, meters: number): MapStep => ({
+    row: questionRow(place, question),
+    placeId: place.placeId,
+    lon: place.lon,
+    lat: place.lat,
+    samePlace: place.placeId === from.placeId,
+    meters,
+  });
+
+  const here = places.find(place => place.placeId === from.placeId);
+  const another = here && firstOpen(here);
+  if (here && another) return stepTo(here, another, 0);
+
+  let nearest: MapStep | null = null;
+  for (const place of places) {
+    const question = place.placeId === from.placeId ? undefined : firstOpen(place);
+    if (!question) continue;
+    const meters = distanceMeters(from.lon, from.lat, place.lon, place.lat);
+    if (!nearest || meters < nearest.meters) nearest = stepTo(place, question, meters);
+  }
+  return nearest;
+}
+
+/** What the line under the map says after the map walked on: where the next question is. */
+export function stepLine(step: MapStep): string {
+  if (step.samePlace) return 'Next: another question about this place.';
+  if (Math.round(step.meters) === 0) return 'Next: a question about another place at the same point.';
+  return `Next: the nearest open question, ${distanceLabel(step.meters)} away.`;
 }
