@@ -15,13 +15,15 @@ import {
   hideLostSql,
   experienceOfferedToReaderSql,
   readableByIdSql,
+  placeOrPartOfferedSql,
   lifecycleSelectSql,
   readerPositionSql,
   readerRegionMembershipSql,
 } from '../../db/readerPredicates.js';
 import { includeLost } from './includeLost.js';
 import {
-  descriptionAdaptedSql, descriptionSourceSql, KINDS, MEMBERSHIPS, placeKindsSql, placeShownSql, rowKindJoinSql, rowKindSelectSql,
+  descriptionAdaptedSql, descriptionSourceSql, KINDS, MEMBERSHIPS, placeKindsSql, placeOfferedSql, placeShownSql,
+  rowKindJoinSql, rowKindSelectSql,
 } from '../../db/membership.js';
 import { wholeOfSql } from '../../db/placePoints.js';
 import { inscriptionFactsSql } from '../../db/inscription.js';
@@ -155,6 +157,17 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       -- card opens it at (ADR-0100).
       pw.id AS part_of_id,
       pw.name AS part_of_name,
+      -- How many of the whole's places a reader is shown, while a reader may
+      -- be sent to the whole: the part's own card says "Part of … · 3 places"
+      -- (#2118), and counts no part a curator has not passed.
+      CASE WHEN pw.id IS NOT NULL AND ${placeOfferedSql('pw')} THEN
+        (SELECT count(*)::int FROM experience_parts whole_part
+           JOIN experiences wpe ON wpe.id = whole_part.part_id
+          WHERE whole_part.whole_id = pw.id AND ${placeOrPartOfferedSql('wpe')}) END AS part_of_places,
+      -- And what a link to the whole is built from (ADR-0042): the kind it is
+      -- shown under and the regions it is placed in.
+      wm.kind_id AS part_of_kind_id,
+      CASE WHEN pw.id IS NOT NULL THEN ${readerRegionsJsonSql('pw.id')} END AS part_of_regions,
       -- A point of its own a reader may see: on a whole, the point a tick
       -- on which is the whole's own visit (#2120).
       ${showsOwnPointSql('e.id')} AS has_own_point,

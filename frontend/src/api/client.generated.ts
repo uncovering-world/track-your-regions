@@ -2791,6 +2791,12 @@ export type ExperienceDetailPartOf = {
   name: string;
   /** The part's own point: the id its whole's card opens it at. */
   point_id: number | null;
+  /** How many of the whole's places a reader is shown, while a reader may be sent to the whole; null where none may be (#2118). */
+  places: number | null;
+  /** The kind the whole is shown under, which a link to it in Discover needs. */
+  kind_id: number | null;
+  /** The regions a link to the whole is built from (ADR-0042). */
+  regions: ExperienceRegionRef[];
 } | null;
 
 /**

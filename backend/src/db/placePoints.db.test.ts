@@ -623,6 +623,8 @@ describe('a part reads as a place (ADR-0100, #1425)', () => {
       part_of: { id: SITE, name: 'Ancient Thebes with its Necropolis (parts fixture)', point_id: karnakPoint },
     });
     expect((await getExperience({ params: { id: SITE }, caller: undefined })).part_of).toBeNull();
+    // The visitor's "Part of … · N places" counts the parts a reader is shown (#2118).
+    expect(card.part_of?.places).toBe(1);
     const own = await getExperienceLocations({ params: { id: KARNAK }, query: experienceLocationsQuerySchema.parse({}), caller: undefined });
     expect(own.locations.map(l => l.id)).toEqual([karnakPoint]);
   });
