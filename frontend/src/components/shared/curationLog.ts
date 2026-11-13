@@ -148,6 +148,12 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // A curator's answer to a crowded city (#2282, ADR-0180): the place kept in
   // the list, kept in the shadow, or handed back to the rule.
   crowding_answered: { label: 'Crowding answered', color: BLUE },
+  // A curator's word on a place in a whole (#2118), on both places' histories:
+  // a part added, green like a put-back; taken out, red like a kept-out row;
+  // and put back after it was kept out.
+  part_added: { label: 'Part added', color: GREEN },
+  part_taken_out: { label: 'Part taken out', color: RED },
+  part_put_back: { label: 'Part put back', color: GREEN },
   // A pin released, with the rule's verdict written in its place: one an
   // unread batch answer made (#1365, ADR-0096), or one a curator let the rule
   // decide once a run asked about it again (#1367). Red like a kept-out row,
@@ -547,7 +553,24 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   find_site_answered: d => formatFindSiteAnswered(d),
   crowding_answered: d => formatCrowdingAnswered(d),
   identifier_settled: d => formatIdentifierSettled(d),
+  part_added: d => formatPartWord(d),
+  part_taken_out: d => formatPartWord(d),
+  part_put_back: d => formatPartWord(d),
 };
+
+/**
+ * A curator's word on a place in a whole (#2118), the same line on both
+ * places' histories: which place, in which whole, what it did to the whole and
+ * the curator's own words.
+ */
+function formatPartWord(d: Record<string, unknown>): string | null {
+  if (typeof d.partName !== 'string' || typeof d.wholeName !== 'string') return null;
+  const parts = [`${d.partName} in ${d.wholeName}`];
+  if (d.keptOut === true) parts.push('kept out while a source still names it');
+  if (d.becameWhole === true) parts.push(`${d.wholeName} became a place made of parts`);
+  if (typeof d.note === 'string' && d.note.trim()) parts.push(`"${d.note.trim()}"`);
+  return parts.join(' · ');
+}
 
 export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (!entry.details) return null;

@@ -3451,6 +3451,9 @@ export const CurationLogEntryAction = {
   kind_added: 'kind_added',
   find_site_answered: 'find_site_answered',
   crowding_answered: 'crowding_answered',
+  part_added: 'part_added',
+  part_taken_out: 'part_taken_out',
+  part_put_back: 'part_put_back',
 } as const;
 
 /**

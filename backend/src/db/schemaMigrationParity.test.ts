@@ -144,10 +144,11 @@ const splitMigration = collapse(renamedSince(splitMigrationRaw));
 
 /**
  * The sources a fresh database publishes from on arrival (#2335): the World
- * Heritage list, UNESCO's own official list, and the record of its components,
- * which no run of its own writes. Every other seeded source is gated.
+ * Heritage list, UNESCO's own official list, the record of its components,
+ * which no run of its own writes, and a curator's word on a part (#2118),
+ * read already. Every other seeded source is gated.
  */
-const UNGATED_SOURCES = ['UNESCO World Heritage Sites', 'World Heritage components'];
+const UNGATED_SOURCES = ['UNESCO World Heritage Sites', 'World Heritage components', 'Curators'];
 
 /** Where 018 constrained the state column: the object and its three parts. */
 const STATE_TABLES = ['experiences', 'experience_locations', 'experience_treasures', 'treasures'];
@@ -291,11 +292,13 @@ describe('the curation gate exists in both schema homes', () => {
     // The column has no default: a seed that left it out would fail on a fresh
     // database, and one that named the wrong scheme would hold its records to
     // the wrong shape. The World Heritage list knows a property by its number
-    // and a component by its reference; every other seeded source is a
-    // Wikidata one.
+    // and a component by its reference, a curator's word carries a curator's
+    // key, and every other seeded source is a Wikidata one.
     for (const seed of sourceSeeds) {
       const name = /VALUES \( (?:\d+, )?'([^']+)'/.exec(seed)![1];
-      const schemes: Record<string, string> = { 'UNESCO World Heritage Sites': 'whc-site', 'World Heritage components': 'whc-component' };
+      const schemes: Record<string, string> = {
+        'UNESCO World Heritage Sites': 'whc-site', 'World Heritage components': 'whc-component', Curators: 'curator',
+      };
       const scheme = schemes[name] ?? 'wikidata';
       expect(seed, `${name} declares no id scheme`).toContain('kind_id, id_scheme)');
       expect(seed, `${name} is seeded under another scheme`).toContain(`, '${scheme}' ) ON CONFLICT`);
@@ -480,6 +483,9 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // A site's curator said whether a find comes from the site (#2242): a
     // proposal confirmed or refused, or a confirmed link taken back.
     'find_site_answered', 'crowding_answered',
+    // A curator's word on a place in a whole (#2118): a part added, taken
+    // out, or put back after it was kept out, on both places' histories.
+    'part_added', 'part_taken_out', 'part_put_back',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
@@ -923,7 +929,7 @@ describe('a kind and a membership exist in both schema homes', () => {
     // holds a source to one or the other.
     for (const seed of sourceSeeds) {
       expect(seed).toContain('kind_id');
-      expect(seed).toMatch(/\(SELECT id FROM experience_kinds WHERE name = '[^']+'\)|, NULL, 'whc-component' \)/);
+      expect(seed).toMatch(/\(SELECT id FROM experience_kinds WHERE name = '[^']+'\)|, NULL, '(whc-component|curator)' \)/);
     }
     expect(splitMigration).toContain('ALTER TABLE experience_sources ALTER COLUMN kind_id SET NOT NULL');
     expect(schema).toContain(
