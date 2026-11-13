@@ -41,7 +41,7 @@ const STANDING_LOOK: Record<DrawnStanding, Look> = {
 };
 
 /**
- * In a place's circle, one look for each group its list names (`circleGroups`,
+ * In a place's circle, one look for each of its groups (`circleGroups`,
  * #2420), and the place itself. A place not measured yet is hollow, so it
  * reads apart from a less-known one without its colour.
  */
@@ -164,7 +164,7 @@ function Swatch({ look, label }: { look: Look; label: string }) {
 
 /**
  * The map's legend, so the colours read the same on the map and in the list:
- * in a place's circle, the groups its list names, in the list's words.
+ * in a place's circle, the circle's groups, in the words a dot's hover says.
  */
 export function CrowdingLegend({ view }: { view: CrowdingMapView }) {
   const groups = view.kind === 'place' ? circleGroups(view.view) : null;
