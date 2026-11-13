@@ -36,9 +36,9 @@ import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
 const TOOL_SCRIPTS = [
   'affected-specs.mjs', 'board.sh', 'catalogue-coverage.sh', 'check-screen-allowance.mjs', 'check-shrunk-files.mjs', 'ci-graph-measure.mjs', 'db-cli.sh', 'db-migrate.sh',
   'db-types.sh', 'gate-cache.mjs', 'gates.mjs', 'gates-base.mjs', 'gates-run.mjs', 'lib/db-env.sh', 'lint-line-pointers.mjs',
-  'match-snapshot.sh', 'openapi-breaking.mjs', 'require-node-tools.sh', 'require-py-tools.sh',
+  'match-snapshot.sh', 'migrate-on-rows.mjs', 'openapi-breaking.mjs', 'require-node-tools.sh', 'require-py-tools.sh',
   'require-python-312.sh', 'review-surface.mjs', 'scan-image.sh', 'scan-secrets.sh', 'setup.sh',
-  'setup-integrations.sh', 'test-db-migrate.sh',
+  'setup-integrations.sh', 'test-db-migrate.sh', 'test-migrate-on-rows.sh',
 ].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
 /**
@@ -180,6 +180,16 @@ export const INPUTS = [
       + ' and the schema-to-migration parity test answers for those.',
   },
   {
+    id: 'migrations',
+    paths: [/^db\/migrations\/.*\.sql$/, /^db\/init\//, 'docker-compose.yml'],
+    note:
+      'The two ends of a migration and what it runs on: the files a database'
+      + ' that holds rows is migrated by, the db/init it is built from at the base'
+      + ' and re-applied from at the head, and the compose file that pins the'
+      + ' image. A migration is the only change that reaches a database through'
+      + ' its rows, so it is asked of the gate that applies it to some (#2464).',
+  },
+  {
     id: 'node-deps',
     paths: [
       'backend/package.json',
@@ -270,6 +280,7 @@ const BASE_DOCUMENT = "it compares with the base's OpenAPI document, which is no
 const VULNERABILITY_DATABASE = 'Trivy reads a vulnerability database and a base image that move under the same tree';
 const LINK_TARGETS = 'lychee resolves links to files of every type, and its input class holds the Markdown only';
 const BASE_SIZES = "it compares each file with its size at the base and reads the branch's commit messages, neither of which is in this tree";
+const BASE_TREE = "it builds the base's schema and seeds the base's fixture, neither of which is in this tree";
 const BASE_ALLOWANCES = "it compares each screen-text allowance with its count at the base and reads the branch's commit messages, neither of which is in this tree";
 
 /**
@@ -321,6 +332,12 @@ export const GATES = [
   // `npm run db:types` fails here. `node` because the generator runs from
   // backend/node_modules; the database is Docker, which every runner has.
   { id: 'db:types', tier: 'check', inputs: ['schema'], command: ['npm', 'run', 'db:types:check'], job: 'check', setup: 'node' },
+  // Applies the migrations a change adds to a database built from the base's
+  // schema and seeded with the base's smoke fixture, then holds it to a fresh
+  // one (#2464): a migration that only fails on rows fails here, not on the
+  // development database after the merge. `node` because the fixture runs on
+  // tsx from backend/node_modules; the database is Docker.
+  { id: 'db:migrate-on-rows', tier: 'check', inputs: ['migrations'], command: ['npm', 'run', 'db:migrate-on-rows'], job: 'check', setup: 'node', uncached: BASE_TREE, config: ['scripts/migrate-on-rows.mjs'] },
   { id: 'security:deps', tier: 'check', inputs: ['node-deps'], command: ['npm', 'run', 'security:deps'], job: 'check', setup: 'node', uncached: ADVISORIES },
   // gitleaks over every file git tracks (ADR-0108, #1504): a generic
   // credential in any file type, which Semgrep's p/secrets and GitHub's own
