@@ -12392,18 +12392,6 @@
                 "markers"
               ]
             }
-          },
-          {
-            "in": "query",
-            "name": "folded",
-            "schema": {
-              "default": "false",
-              "type": "string",
-              "enum": [
-                "true",
-                "false"
-              ]
-            }
           }
         ],
         "responses": {
@@ -42153,10 +42141,6 @@
           "detail": {
             "$ref": "#/components/schemas/PointsDetail"
           },
-          "folded": {
-            "type": "boolean",
-            "description": "Echoed rather than assumed, so a layer cannot draw one fold with the other's data."
-          },
           "count": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -42272,25 +42256,15 @@
             }
           },
           "approximate": {
-            "description": "Markers, unfolded only: whether the source placed the point only roughly (#1912), which the pin draws as a ring.",
+            "description": "Markers only: whether the source placed the point only roughly (#1912), which the pin draws as a ring.",
             "type": "array",
             "items": {
               "type": "boolean"
-            }
-          },
-          "locationCount": {
-            "description": "Folded only: how many places the pin stands for, which is the badge's number.",
-            "type": "array",
-            "items": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
             }
           }
         },
         "required": [
           "detail",
-          "folded",
           "count",
           "lng",
           "lat"
