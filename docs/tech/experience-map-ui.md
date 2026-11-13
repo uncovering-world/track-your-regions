@@ -483,6 +483,57 @@ two claims put a place, not what stands at either point, so a dialog that names 
 Both are a curator's: each asks a third party on the product's behalf, so both endpoints are
 `curator` and a reader's dialog, which names no places, asks nothing.
 
+## The review queue on a map
+
+The curator's review page can draw its open questions on a map instead of listing them
+(#2477, `view=map`, `docs/tech/addresses.md` § The review page). The map takes the list's
+column, and the card stays where it is. The map is `ReviewQueueMap`
+(`components/curation/queueMap/`), its own lazy chunk (`LazyReviewQueueMap`), mounted only
+while the map is shown.
+
+- **What it reads.** `fetchReviewQueueMap` (`api/reviewQueue.ts`) asks
+  `GET /api/experiences/review/queue/map` with the toolbar's chips, in the query words the
+  list's page is asked with (one `selectionParams` builds both). The answer is every open
+  question the chips select, one entry per place with its point, and how many questions have
+  no point. Its query key is under `queryKeys.curation.reviewQueueAll`, so the refresh after an
+  answer takes the answered question off the map as it takes it off the list.
+- **What it draws** (`queueMapLayers.ts`). Map Mode's layers over two sources of its own:
+  `heatmapLayer` below `HEATMAP_MAX_ZOOM`, `markerLayer` fading in across the same band, and
+  the count badge, each spread with only its id, its source and what the badge counts changed
+  (§ Density instead of clusters, § One scene, two maps). One marker per place, never per
+  question. Its feature `id` is the place's id, unique per feature, which a click reads back.
+  The open question's place is a second source drawn with the scene's highlight ring and pin,
+  with no fade, so it is marked at every zoom, the heat's included.
+- **Colour and words** (`queueMapData.ts`). A marker takes its first question's colour, in the
+  class order the list sorts by. A kind's colour and word are the Question chip's
+  (`kindSwatch`, `kindShort` in `feed/toolbarOptions.ts`, from `KIND_COLOR`), a waiting
+  question's by its sub-kind: an arrival green, unread contents teal, a held change blue. The
+  chip, the legend and a place's short list therefore name a kind alike.
+- **A click.** Through react-map-gl's `interactiveLayerIds`: the pin, its badge and the selected
+  pin. A place with one question opens its card by writing the list's key of its row into the
+  address (`rowKeyOf` in `queueRows.ts`, so a conflict reads `conflicts:88`). A place with
+  several opens a popover listing them, each with its chip word and colour, and picking one
+  opens it. A click that lands on several places, as the whole of Rome does under one pin when
+  Lazio is framed, brings the map closer to them (`frameGeoJson`) rather than opening the one
+  drawn on top; places a closer view would not separate are listed together, by place: those on one
+  and the same point, and any under one pin once the map is as close as it frames (zoom 14), such as
+  a square and the fountain in it. An open list reads the current answer, so a question answered
+  meanwhile leaves it. Under the heat only the open question's pin is clickable, at every zoom, and the
+  fading pins answer a click from the zoom they start to show.
+- **The camera** is not stored. A region chip frames the region by its stored `focusBbox` and
+  `anchorPoint` through `smartFitBounds`, read from the last of its ancestors
+  (`fetchRegionAncestors`). Without a region chip, or for a region with no frame, the map frames
+  every point with `frameGeoJson`, which measures across the antimeridian. It frames again when
+  the chips change and never after an answer, so the camera stays on the quarter being worked.
+- **Under the map**, one line says how many open questions the chips select and that all are on
+  the map. Where some have no point, it says how many, with a way to the list, which holds them.
+  A legend names the kinds the map draws, a place's second kind included.
+
+After an answer the card moves on as the list's does, by the list's order. The ticks and the
+batch answers stay the list's: switching to the map clears the ticks, since a marker can open a
+question the list's loaded page does not hold, and on the map the bench always shows one card.
+While the chips change, the old markers stay drawn until the new read arrives, and open nothing.
+
 ## The list answers about the view, not about the region
 
 Zoomed into Prague, the list used to answer a different question from the map: it listed the region alphabetically, so a reader looking at one city read a list running from *Historic Centre of Prague* to *Wikipedia Monument* — 661 objects for Europe, ordered by their initials (#553). It now lists what the map is showing.
