@@ -261,6 +261,14 @@ record carries no gate: it is never pending and opens no card. Nothing reads it 
   (`admission.ts`) and the catalogue checks `place-without-membership` and
   `membership-source-disagrees-with-row`; the coverage report's matches leave a site's record of
   its own line out (`siteLineRecordSql`), which is neither a kind nor a work.
+- A reader of a place's records that would count a record in a whole as a kind takes a
+  record-kind predicate; most need none, since they read through a state, a pointer or an id a
+  record in a whole never holds, and no lint can tell the two apart.
+  `backend/src/db/kindRecordReaders.db.test.ts` holds every place reader on its list (`READERS`)
+  to it by writing a site's record of itself and a part's record in its whole and reading again,
+  and a new place reader is added to that list. The run's own read of another kind admitting the
+  item's place (`services/sync/admission.ts`) takes `kindRecordSql` and is outside the list,
+  which holds the readers a curator's or a traveller's screen reads through.
 - Two parts of one whole are refused as one place, and parts of two different wholes may merge,
   each keeping its record in its own whole (`partsBarMerge`, `partWriter.ts`,
   [ADR-0203](../decisions/0203-a-place-made-of-parts-is-never-merged-and-claims-no-item.md) decision 4).
