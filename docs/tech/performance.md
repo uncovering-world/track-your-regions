@@ -1219,6 +1219,48 @@ key.
 | world points, markers, Europe box, World Heritage | 3 406, 75 716 B | 3 406, 75 795 B (brotli's own variance on a body 15 B shorter) |
 | by-region list, locations, counts per region (Europe, 6737) | 346 362 / 270 693 / 327 B | the same |
 
+### One row per point — 2026-11-14
+
+#2122 made the world points endpoint answer one row per point: a point a place's own arm and its
+whole's both read is one pin, under the place it belongs to, with the kinds of both rows. The
+statement is the one before the change with the point's id added to both tiers and the arm to
+the markers, and the handler drops a point's second row (`onePerPoint` in
+`worldPointsController.ts`), so the rows come in the order the arms answer them, as before.
+Measured as the record above, on the branch without the fold (2026-11-13) and on this one
+(2026-11-14, against a catalogue that had moved by a few points):
+
+| read | before | after | why |
+|---|---|---|---|
+| world points, overview, every kind (the first screen) | 8 969 points, 37 827 B | 8 782, 37 212 B | 203 points both arms read (a part that is a place of its own kind, Seville Cathedral; a site that is a part of another, the Historic Centre of Zacatecas on the Camino Real) |
+| world points, overview, World Heritage | 6 356, 26 070 B | 6 352, 26 050 B | 4 points two sites list |
+| world points, markers, Europe box | 4 788, 106 367 B | 4 691, 105 436 B | 102 points both arms read, now one row with the kinds of both (Seville Cathedral: World Heritage and Places of worship) |
+| world points, markers, Europe box, World Heritage | 3 406, 75 795 B | 3 405, 75 764 B | one point two sites list (the City of Bath and the Great Spa Towns) |
+| by-region list, locations, counts per region (Europe, 6737) | 346 362 / 270 693 / 327 B | the same | not touched |
+
+The first build resolved the doubled points in the statement: the union as a `MATERIALIZED`
+CTE, `DISTINCT ON` the point and, on the markers, a window gathering a point's kinds. The latency
+probe on the development stack (idle, 30 runs) put it at a p50 of 54 ms against 45 ms on `main`
+for the overview, 109 against 96 ms for the markers in the Europe box and 174 against 140 ms for
+the markers of the whole world. All of it was the collecting and the sorting of some 9 000 rows,
+of which 2 % were doubled: the overview's plan materialised the union (8 985 rows) and sorted it
+by point, and the markers' sorted it twice with the kinds' JSON in each row (3 MB in memory).
+Resolving only the doubled points in SQL was tried too, with the parts' arm leaving out a point
+whose own place the read draws (`NOT EXISTS`), and cost more than the sort: a probe of the place's
+memberships for each of 5 542 part rows, and a plan that turned parallel and paid for the workers.
+
+`EXPLAIN (ANALYZE, TIMING OFF)` of the statement each build sends, read-only on the development
+database, 31 runs twice, p50 of the execution time (JIT is off there, and every plan's cost is
+under `jit_above_cost`), with the handler's own time over the same rows:
+
+| read | main | the first build | this one | handler, first build / this one |
+|---|---|---|---|---|
+| world points, overview, every kind | 19.1–26.2 ms | 26.6–27.2 ms | 19.5 ms | 0.1 / 1.1 ms |
+| world points, markers, Europe box | 50.1–50.4 ms | 57.8 ms | 49.9–50.4 ms | 1.7 / 1.4 ms |
+| world points, markers, every kind | 73.5–74.2 ms | 92.1–92.4 ms | 73.3–73.8 ms | 3.4 / 2.5 ms |
+
+`main`'s overview has two plans a run can get, 19 and 26 ms. The handler's millisecond on the
+overview is the map of 9 000 point ids that finds the doubled ones.
+
 ## Budgets and the ratchet rule
 
 | Budget | Level | Value | Set from |
