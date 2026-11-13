@@ -20,6 +20,7 @@ vi.mock('../../api/experienceCardQueries', () => ({
 
 vi.mock('./lazyVisitTrips', () => ({
   LazyTripsSection: ({ experienceId }: { experienceId: number }) => <div>Trips of place {experienceId}</div>,
+  LazyVisitDateLine: () => null,
 }));
 
 import { PointCard } from './PointCard';

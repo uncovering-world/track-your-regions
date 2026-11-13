@@ -32,6 +32,7 @@ import { PointCard } from '../shared/PointCard';
 import { VisitStatusMark } from '../shared/VisitStatusMark';
 import type { LocationRowData } from './LocationRow';
 import type { VisitedStatus } from '../../api/visited';
+import { LazyVisitDateLine } from '../shared/lazyVisitTrips';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -515,6 +516,7 @@ function ExperienceListItemComponent({
           isRejected={isRejected}
         />
       )}
+      {showCheckbox && <LazyVisitDateLine at={experience.id} />}
     </Box>
   );
 }

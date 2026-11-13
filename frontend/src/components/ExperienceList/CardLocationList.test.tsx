@@ -9,6 +9,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { HoverProvider } from '../../hooks/useHoverContext';
 import { CardLocationList } from './CardLocationList';
 
+// The date line under a row reads who is signed in: no one, here.
+vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: false, user: null }) }));
+
 const place = (id: number, name: string, regionPath: string | null, hasPicture = false) => ({
   id, name, externalRef: null, ordinal: id, isVisited: false, latitude: 47, longitude: 8, hasPicture, regionPath,
 });

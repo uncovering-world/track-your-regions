@@ -11,7 +11,7 @@ import { useTrips } from './useTrips';
 const NO_DATE: TripDateBody = { year: null, month: null, day: null };
 
 /** The quick choices "Add a trip" opens, each a date as of today in the traveller's own calendar. */
-function quickDates(now: Date): { label: string; date: TripDateBody | 'year' | 'pick' }[] {
+export function quickDates(now: Date): { label: string; date: TripDateBody | 'year' | 'pick' }[] {
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   const dayOf = (d: Date): TripDateBody => ({ year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() });
