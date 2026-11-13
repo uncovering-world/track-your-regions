@@ -54,6 +54,14 @@ export const COMPONENT_SOURCE_ID = 10;
 /** The World Heritage list, the source whose membership of a site its components' records answer to. */
 export const WORLD_HERITAGE_SOURCE_ID = 1;
 
+/**
+ * Curators, the source of a curator's own word that a place is a part of a
+ * whole or is kept out of it (#2118): seeded under this id by migration 246.
+ * Its record decides the pair alone (`refresh_part_relation`, ADR-0198
+ * decision 5).
+ */
+export const CURATOR_SOURCE_ID = 11;
+
 const INNER = 'km';
 
 /**

@@ -103,6 +103,20 @@
  *   so every refresh its moves set off takes keys it already holds. The
  *   derivation itself takes no lock and writes a relation only under the
  *   object locks of the record's writer.
+ * - A curator's word on a part (`partRecordController.ts`, #2118) refuses a
+ *   loop and a chain over four places by reading `experience_parts` beyond
+ *   the two places it locks, so two words on disjoint pairs could each pass
+ *   and make a chain too deep together: with B→Z→C standing, A→B and C→D
+ *   are four places each and take no region key in common, and both leave
+ *   A→B→Z→C→D, five. Every
+ *   such word takes one transaction-level key first (`PART_WORDS_LOCK`),
+ *   after its two object locks and before the region keys, and reads the
+ *   chains in the statement after it: a second word waits for the first and
+ *   is judged on what it committed. One key serialises them all, since they
+ *   are a curator's presses, seconds apart at most. No other writer takes it,
+ *   and none waits for it while holding what a holder waits for: the holder's
+ *   objects are locked before it, and the region keys after it are never
+ *   held by a writer that then asks for an object.
  *
  * **Then the mode: `FOR NO KEY UPDATE`, not `FOR UPDATE`.** It self-conflicts, so
  * two writers on one object still serialise, and it still blocks an UPDATE or a
@@ -143,3 +157,10 @@
  * alike, so the order above is one the curator's writes cannot break.
  */
 export const OBJECT_LOCK = 'FOR NO KEY UPDATE';
+
+/**
+ * The transaction-level advisory key every curator's word on a part takes
+ * (`pg_advisory_xact_lock(PART_WORDS_LOCK, 0)`), after its object locks and
+ * before the region keys: the order above, § A curator's word on a part.
+ */
+export const PART_WORDS_LOCK = 2118;

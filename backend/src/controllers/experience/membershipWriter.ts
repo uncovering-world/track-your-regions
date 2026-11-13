@@ -3,7 +3,10 @@
  * its reason, the curator's pin on it, its gate state and the held proposal's
  * pointer — under the place's lock (ADR-0077 decision 4, #1148).
  *
- * The curator's crowding pin (ADR-0180) is written here too, and by no run.
+ * The curator's crowding pin (ADR-0180) is written here too, and by no run,
+ * and so is a curator's word that a place is a part of a whole or kept out of
+ * it (#2118): a record of the Curators source in the whole, under both
+ * places' locks.
  *
  * The table's writers are a closed list the backend lint names
  * (`MEMBERSHIP_WRITE_RULES`), spelled or through `${MEMBERSHIPS}`: this module
@@ -27,7 +30,7 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
-import { MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
+import { CURATOR_SOURCE_ID, MEMBERSHIPS, componentRecordSql } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
@@ -468,6 +471,68 @@ export async function moveWholeRecords(
     [from.id, to.id, only ?? null],
   );
   return result.rows.map(row => row.id);
+}
+
+/**
+ * A curator's word on `part` in `whole` (#2118), as a record of the Curators
+ * source in the whole beside the sources' records of the pair: `admitted`
+ * makes the place a part, `refused` keeps it out while a source still names
+ * it. The relation follows the record (`parts_follow_records()`), and a
+ * curator's record decides the pair alone (ADR-0198 decision 5), so no run
+ * undoes it.
+ *
+ * One record per curator source, whole and place
+ * (`source_records_one_per_whole`): a second word on the pair rewrites the
+ * first, keeping its id and key. A new record's key is a curator's own,
+ * `curator-<curator>-<record id>`, from the one `nextval` the id takes, so no
+ * source listing can name it and two writes never share one. Read and published at
+ * once: a person's word waits for no one. Under both places' object locks,
+ * taken in id order (`lockTwoExperiences`), and the region keys the relation's
+ * refresh reaches (`lock_place_regions`), so the order stays objects, keys,
+ * rows (`db/locks.ts`). Answers the record's id.
+ */
+export async function setCuratorPartRecord(
+  client: PoolClient,
+  whole: LockedExperience,
+  part: LockedExperience,
+  admission: 'admitted' | 'refused',
+  curatorId: number,
+): Promise<number> {
+  const written = await client.query<{ id: number }>(
+    `INSERT INTO ${MEMBERSHIPS} AS rec (
+       id, experience_id, whole_id, source_id, external_id,
+       admission, admission_answered_at, curated_fields, curation_state, published_at
+     )
+     SELECT n::int, $2, $1, ${CURATOR_SOURCE_ID}, 'curator-' || $3::int || '-' || n,
+            $4::text, NOW(), '["admission"]'::jsonb, 'verified', NOW()
+       FROM nextval(pg_get_serial_sequence('${MEMBERSHIPS}', 'id')) AS n
+     ON CONFLICT (source_id, whole_id, experience_id) DO UPDATE
+        SET admission = EXCLUDED.admission, admission_answered_at = NOW(), updated_at = NOW()
+     RETURNING rec.id`,
+    [whole.id, part.id, curatorId, admission],
+  );
+  return written.rows[0].id;
+}
+
+/**
+ * Withdraw a curator's word on `part` in `whole` (#2118): what the sources'
+ * records of the pair say stands again — a place no source names leaves the
+ * whole, and one a source names is a part again. Under the same locks as
+ * `setCuratorPartRecord`. Answers the id withdrawn, or null where there was
+ * none.
+ */
+export async function withdrawCuratorPartRecord(
+  client: PoolClient,
+  whole: LockedExperience,
+  part: LockedExperience,
+): Promise<number | null> {
+  const withdrawn = await client.query<{ id: number }>(
+    `DELETE FROM ${MEMBERSHIPS}
+      WHERE source_id = ${CURATOR_SOURCE_ID} AND whole_id = $1 AND experience_id = $2
+      RETURNING id`,
+    [whole.id, part.id],
+  );
+  return withdrawn.rows[0]?.id ?? null;
 }
 
 /**

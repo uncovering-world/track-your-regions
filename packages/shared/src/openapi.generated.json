@@ -15337,6 +15337,126 @@
         }
       }
     },
+    "/api/experiences/{id}/parts": {
+      "post": {
+        "operationId": "postExperiencesByIdParts",
+        "summary": "Make a place a part of this place, or put back a part kept out; take it out with parts/take-out",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartWordBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartWordAnswered"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/parts/take-out": {
+      "post": {
+        "operationId": "postExperiencesByIdPartsTakeOut",
+        "summary": "Take a place out of this place's parts; one a source still names is kept out until put back",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakeOutPartBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartWordAnswered"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/admission-pin/hand-back": {
       "post": {
         "operationId": "postExperiencesByIdAdmissionPinHandBack",
@@ -32277,6 +32397,87 @@
         "additionalProperties": false,
         "description": "The serial World Heritage site a place is a component of (#2158), the whole the near-places card names too (#1250)."
       },
+      "PartWordAnswered": {
+        "type": "object",
+        "properties": {
+          "wholeId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "partId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "act": {
+            "type": "string",
+            "enum": [
+              "added",
+              "put_back",
+              "taken_out"
+            ],
+            "description": "What the word did: a part added, a kept-out place put back, or a part taken out."
+          },
+          "standing": {
+            "type": "boolean",
+            "description": "Whether the place is a part of the whole now."
+          },
+          "keptOut": {
+            "type": "boolean",
+            "description": "Taken out while a source still names it: the curator's refusal keeps it out, and no run puts it back."
+          },
+          "recordId": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The curator's record of the pair the word left standing; null where it withdrew the curator's record and the sources decide the pair again."
+          },
+          "becameWhole": {
+            "type": "boolean",
+            "description": "The place was the whole's first part: the whole is now a place made of parts."
+          }
+        },
+        "required": [
+          "wholeId",
+          "partId",
+          "act",
+          "standing",
+          "keptOut",
+          "recordId",
+          "becameWhole"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's word that a place is a part of a whole, or is taken out of it, from either place's card (#2118)."
+      },
+      "PartWordBody": {
+        "type": "object",
+        "properties": {
+          "partId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "makesWhole": {
+            "description": "The curator was told that this first part makes the whole a place made of parts, never merged and found by no item.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "partId"
+        ]
+      },
       "PasswordChanged": {
         "type": "object",
         "properties": {
@@ -40307,6 +40508,23 @@
         },
         "required": [
           "item"
+        ]
+      },
+      "TakeOutPartBody": {
+        "type": "object",
+        "properties": {
+          "partId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "partId"
         ]
       },
       "TokenUsage": {
