@@ -406,7 +406,7 @@ chapters:
       desc: "Sensitive data not stored in browser storage unencrypted"
       level: 1
       status: pass
-      notes: "Refresh token in httpOnly cookie (not accessible to JS). Access token in memory. Only non-sensitive data (last-used email, theme, a signed-out visitor's maps app as tyr.mapsApp, #1604, and reading languages as tyr.readingLanguages, #2209) in localStorage, and the world view last open as tyr.lastWorldViewId in sessionStorage (#2474: a world view id, public, read by the review page's links). Fixed 2026-02-10"
+      notes: "Refresh token in httpOnly cookie (not accessible to JS). Access token in memory. Only non-sensitive data (last-used email, theme, a signed-out visitor's maps app as tyr.mapsApp, #1604, and reading languages as tyr.readingLanguages, #2209) in localStorage, and the world view last open as tyr.lastWorldViewId in sessionStorage (#2474: a world view id, public, read by the review page's links). Fixed 2026-02-10. Authenticated data the web keeps outside the query cache is forgotten with it on every change of who is signed in (sign-in, email verification, OAuth, sign-out, an expired session: forgetIdentity in useAuth.tsx): the visits a traveller's last untick removed, held in memory for its Undo, which also records its owner and answers no one else (#2120). A refresh that returns another account than the tab held, as after a sign-in in another tab, counts as such a change, and apiFetch sends no request, nor retries one, under another account than the one that made it (refuseAnotherAccount in fetchUtils.ts)"
     V14.3.2:
       desc: "Sufficient anti-caching response header fields so sensitive data is not cached in browsers"
       level: 2

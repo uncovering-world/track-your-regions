@@ -403,6 +403,9 @@ The frontend automatically:
 - Attempts silent refresh on page load via cookie
 - Automatically refreshes tokens on 401 responses
 - Attaches `Authorization` header to all API requests
+- Forgets what the last traveller left in the tab on every change of who is signed in — signing in, verifying an email, OAuth, signing out, an expired session — through one function (`forgetIdentity` in `useAuth.tsx`): the query cache, and the traveller's state kept outside it (`forgetTraveller` in `components/shared/visitRemovals.ts`: the visits their last untick removed, held for its Undo). That state also records whose it is and answers no one else
+- Treats a refresh that returns another account than the tab held as such a change: the refresh cookie is every tab's, so a refresh can return the session another tab signed in, and the refresh listener in `useAuth` forgets the last traveller then too
+- Never sends a request as another account than the one it was made by: `apiFetch` (`fetchUtils.ts`) reads the account the token names (`sub`) as the call starts and again before each send, and when a refresh inside the call has brought another account's token, the call fails with nothing sent (`refuseAnotherAccount`), whether the refresh came before the request or after its 401. A call made with no token in hand, as after a failed refresh that leaves the user signed in, is made as the account the tab holds (`getHeldAccount`, written by `useAuth` once a user is committed and by its refresh listener), so a refresh that answers anyone else refuses its retry too; only a tab that has held no account, before its first refresh on page load, makes a call as no one
 
 ### Using the Auth Hook
 

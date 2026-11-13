@@ -6678,6 +6678,34 @@ the survivor's visit, two trips on one date staying two, and its undo removes ex
 (`reconcileVisits`, `restoreVisits` in `placeMerge.ts`); a copy the undo would take away stays while it
 holds a trip the traveller added since.
 
+On screen the trips are a section of the place's card in both modes, and of a part's own card
+(`PointCard`), which lists the part's place's trips, where the traveller was (`TripsSection`, in the lazy
+chunk `components/shared/trips/visitTrips.tsx`, `LazyTripsSection`, keyed on the traveller and the place
+so nothing of one place reaches the next a card steps to), shown while the place itself is visited:
+*Your trips*, newest first, each date by `formatApproximateDate` ("12 Nov", "March 2022", "2015", "Date
+not remembered"); a date changed in its own line (`TripDateEditor`: a year, then a month and a day,
+*Any month* and *Any day* leaving them out, *I don't remember* saving no date); *Add a trip* opening
+quick choices (Today, Yesterday, This month, A year…, Pick a date, I don't remember); a removed trip
+answered, once the removal is written, by "The March 2022 trip is removed · Undo", which adds it again,
+and forgotten, with any date being changed, when the place is unticked. A date's line and the choices close once their write is done,
+and a removed trip's Undo goes once the trip is back, so a write that fails loses neither, and the section says "Your trips were not changed. Try again." until the next write starts (`failed` from `useTrips`). An untick
+whose answer removed a trip leaves "Visit removed, with its 2 trips · Undo" at the top of the list it
+was made from (`visitRemovals.ts` holds the last one, `LazyVisitRemovedLine` draws it; a batch reads "3
+visits removed, with their 5 trips"), until the next visit write or another region. The next visit write
+is seen by the store itself, which watches the query client for the next mutation carrying
+`queryKeys.visited.write` to start, whichever control made it; the region is given to the removal by
+the list that first draws it, before the line's chunk arrives (`drawRemovalIn`), so a list remounted on
+the same region keeps it and one showing another region drops it. The removal is the traveller's own:
+it records whose untick made it, from the untick's start (`writeOrigin`), and answers no one else;
+every change of who is signed in forgets it (`forgetTraveller`, from `useAuth`'s `forgetIdentity`), and
+an untick answered after such a change keeps nothing. The Undo puts every visit of the untick back with
+its trips in one request, the one visit write that leaves the line in place (`UNDOES_REMOVAL` in its
+`meta`), reading the visits as the signed-in traveller may see them (`removedVisitsOf`): held while it
+runs, gone once the visits are back, offered again if it fails, with "Your visits were not put back. Try
+again." under it. Every trip write carries
+`queryKeys.visited.write`, so every visit control waits on it, and refreshes the visits and the trips
+(`invalidateVisitedStatus`).
+
 One of these filters `admission` and the rest do not, and the split is the line in § Lifecycle
 filtering rather than an oversight. `visited-status` describes an experience to a reader — its
 points and how many of them they have reached — so it 404s for a refused row, like every by-id read
