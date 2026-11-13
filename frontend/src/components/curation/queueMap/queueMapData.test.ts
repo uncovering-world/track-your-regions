@@ -8,8 +8,8 @@ import { describe, expect, it } from 'vitest';
 import type { QueueMapPlace } from '../../../api/reviewQueue';
 import { KIND_COLOR } from '../queueRows';
 import {
-  chipKindOf, legendKinds, placeOfRow, questionColor, questionCount, questionRow, questionWord, queueMarkers,
-  selectedMarker, spreadOf,
+  chipKindOf, legendKinds, nextOnMap, placeOfRow, questionColor, questionCount, questionRow, questionWord,
+  queueMarkers, selectedMarker, spreadOf, stepLine, type MapOrigin,
 } from './queueMapData';
 
 /** A place two kinds ask about: a conflict first, then a held change. */
@@ -27,6 +27,16 @@ const BORGHESE: QueueMapPlace = {
   placeId: 2011, lon: 12.49218, lat: 41.91420,
   questions: [{ kind: 'waiting', subs: ['contents'] }],
 };
+/** A church on the square behind the Pantheon, the place nearest to it here. */
+const SOPRA_MINERVA: QueueMapPlace = {
+  placeId: 3307, lon: 12.47778, lat: 41.89778,
+  questions: [{ kind: 'missing', subs: [] }],
+};
+
+/** The Pantheon's point, with the question just answered there. */
+const answeredAtPantheon = (row: string): MapOrigin => ({
+  row, placeId: PANTHEON.placeId, lon: PANTHEON.lon, lat: PANTHEON.lat,
+});
 
 describe('a question’s word and colour', () => {
   it('names a waiting question by its sub-kind, as the Question chip does', () => {
@@ -101,5 +111,47 @@ describe('the legend and the count', () => {
   it('frames every point as one shape, and nothing when there is none', () => {
     expect(spreadOf([PANTHEON, BORGHESE])?.geometry.coordinates).toEqual([[12.47685, 41.89861], [12.49218, 41.9142]]);
     expect(spreadOf([])).toBeNull();
+  });
+});
+
+describe('where the map walks after an answer', () => {
+  it('opens the same place’s next question first, in the order its questions are listed', () => {
+    const step = nextOnMap([SOPRA_MINERVA, PANTHEON, SANTA_PRASSEDE], answeredAtPantheon('conflicts:4120'));
+
+    expect(step).toMatchObject({ row: 'waiting:4120', placeId: 4120, samePlace: true, meters: 0 });
+  });
+
+  it('opens the nearest place’s first question once the place has none left', () => {
+    // The read refreshed: the Pantheon is off the map, and the walk starts from where it stood.
+    const step = nextOnMap([SANTA_PRASSEDE, BORGHESE, SOPRA_MINERVA], answeredAtPantheon('waiting:4120'));
+
+    expect(step).toMatchObject({ row: 'missing:3307', placeId: 3307, samePlace: false });
+    expect(step?.meters).toBeGreaterThan(100);
+    expect(step?.meters).toBeLessThan(130);
+  });
+
+  it('never goes back to the question just answered, on a read the answer has not refreshed', () => {
+    // The Pantheon still holds the answered question, and nothing else.
+    const stale = [{ ...PANTHEON, questions: [PANTHEON.questions[1]] }, SANTA_PRASSEDE, SOPRA_MINERVA];
+
+    expect(nextOnMap(stale, answeredAtPantheon('waiting:4120'))?.row).toBe('missing:3307');
+  });
+
+  it('opens nothing when the map holds no other open question', () => {
+    const stale = [{ ...PANTHEON, questions: [PANTHEON.questions[1]] }];
+
+    expect(nextOnMap(stale, answeredAtPantheon('waiting:4120'))).toBeNull();
+    expect(nextOnMap([], answeredAtPantheon('waiting:4120'))).toBeNull();
+  });
+
+  it('says where the next question is', () => {
+    const at = (meters: number, samePlace = false) => ({
+      row: 'missing:3307', placeId: 3307, lon: 0, lat: 0, samePlace, meters,
+    });
+
+    expect(stepLine(at(0, true))).toBe('Next: another question about this place.');
+    expect(stepLine(at(114.6))).toBe('Next: the nearest open question, 115 m away.');
+    expect(stepLine(at(1807.4))).toBe('Next: the nearest open question, 1.8 km away.');
+    expect(stepLine(at(0.2))).toBe('Next: a question about another place at the same point.');
   });
 });
