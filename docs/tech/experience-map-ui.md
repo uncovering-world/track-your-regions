@@ -121,6 +121,36 @@ A row's visited state is the place's own, from one read for the whole list, `use
 
 A place of no parts is ticked and unticked by its checkbox, as in Discover. A whole (`has_parts`) shows its state as a mark that is not a control (`VisitStatusMark`): no pointer, not focusable, read out as *Visited*, *Partly visited* or *Not visited*, and a click on it opens the row like any other; nothing else stands beside it. On the open card (`CardLocationList`), beside *In this region: k/n visited*, *Mark all in region* shows while a place of it in the region is unticked and *Unmark all in region* while one is ticked, as text buttons whose accessible names start with those words and name the place; both send the region and leave the places outside it alone, so the Struve Arc in Moldova's list offers only its point in Moldova. Discover's panel, which reaches every place of the whole, says *Mark all* and *Unmark all*. Its parts are ticked one by one on the card. On a whole that shows no point of its own (`offersWholeTick`), the card also holds the whole's own tick, *Visited, not sure which part* (`WholeVisitButton`): one visit on the whole that names no part, and taking it back leaves the parts. On a whole that shows one, such as the City of Graz, that point's checkbox is the whole's own tick. Every control here that writes a visit waits while any visit write of the traveller is on its way (`useVisitWritePending`). Below the card's actions, a signed-in traveller sees *Your trips*, the trips of their own visit to the place, and a part's own card (`PointCard`) shows the part's (`LazyTripsSection`, `docs/tech/experiences.md` § User visits), and an untick that removed trips leaves one line with an Undo above the list's rows (`LazyVisitRemovedLine`).
 
+### The date offered after a tick
+
+A tick by a signed-in traveller opens one line under the row that made it, never a dialog, and the tick
+never waits for it (#2120; the rules are `docs/tech/experiences.md` § User visits). In Map mode the row is
+the place's own: the list row (`ExperienceListItem`), a part's row in the open card (`LocationRow`) and a
+part's own card (`PointCard`). In Discover it is the list row, also for a part ticked in the panel or on
+its own card (`useVisitedLocations`' `lineAt`), and there the line names the part. The shell's store
+holds which row it stands under (`lineAt` in `visitRemovals.ts`: a place's id, a point's id negated),
+each row subscribed to its own boolean (`LazyVisitDateLine`); the line itself is `VisitDateLine` in the
+trips chunk, fetched on the first tick.
+
+- On a trip: "Visited today, 12 Nov · Change", today already saved. *Change* turns the line into "When
+  were you here?" with the quick choices of the card's *Add a trip* (Today, Yesterday, This month, A
+  year…, Pick a date, I don't remember), and Escape closes them.
+- In past travels: "When were you here?" with this year and the three before it, *Earlier…* (the date
+  editor) and *I don't remember*; after a year, "Visited in 2015. Using 2015 for the next places ·
+  Change". A tick far from the place that set the year asks again with "2015, like Pantheon" first.
+  *Today* there makes the session a trip again: the next ticks say "Visited today" with no question,
+  until a tick too far, too soon, or a burst of ticks asks again.
+- A batch says how many places it covers: "3 places visited today, 12 Nov", "When were you at these 3
+  places?".
+- The cross closes the line: a date it showed stays saved, a question it asked saves none. *Don't ask
+  in this session* closes it and opens no line for 12 hours, or until the tab closes or who is signed in
+  changes if that comes first, a reload keeping it; on a trip today
+  is still saved for each tick, and shown on the place's card.
+
+Only the newest tick keeps a line; an untick closes it, and so does a change of who is signed in, the line being the ticking traveller's alone. The sentence is a `role="status"` region, so
+it is read out once when the line opens or changes; every choice is a button, held by
+`useVisitWritePending()` while a visit write is on its way, and no focus moves.
+
 ### Lifecycle and what the map draws
 
 Experiences a curator recorded as `lost` are absent from the markers, because the batch above
