@@ -1200,6 +1200,25 @@ Postgres. The overview figures are all smaller than the ones quoted further up
 this section, which were taken at three decimals — the marker ones are
 unchanged, since only the overview tier was cut. They belong in the next full run's table.
 
+### No fold — 2026-11-13
+
+#2122 took the fold out of the world layer and out of both region maps. The latency probe lost
+its row *world points: overview, every kind, folded* with the parameter it asked for
+(`scripts/perf-api.mjs`); no budget names that read. Measured read-only on the development
+catalogue, each read's handler called on `main` (9f9cdb213) and on the branch against the same
+database, the body sized as `respond()` sends it (brotli quality 4, the API's own): every
+remaining read answers the same rows in the same order, without the 15-byte `"folded":false,`
+key.
+
+| read | main | branch |
+|---|---|---|
+| world points, overview, every kind (the first screen) | 8 969 points, 37 847 B | 8 969, 37 827 B |
+| world points, overview, folded | 3 874 points, 18 816 B | refused (400) |
+| world points, overview, World Heritage | 6 356, 26 113 B | 6 356, 26 070 B |
+| world points, markers, Europe box | 4 788, 106 480 B | 4 788, 106 367 B |
+| world points, markers, Europe box, World Heritage | 3 406, 75 716 B | 3 406, 75 795 B (brotli's own variance on a body 15 B shorter) |
+| by-region list, locations, counts per region (Europe, 6737) | 346 362 / 270 693 / 327 B | the same |
+
 ## Budgets and the ratchet rule
 
 | Budget | Level | Value | Set from |

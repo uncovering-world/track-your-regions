@@ -7,7 +7,7 @@ This document describes how experience markers work in both map surfaces:
   region's read (§ The world layer, below)
 - Map Mode: `frontend/src/components/RegionMapVT.tsx` + `frontend/src/components/ExperienceMarkers.tsx`
   (the sources, the layers and the list→map hover), with every MapLibre listener on the markers —
-  the popup, the hover ring, the click that folds or selects — in
+  the popup, the hover ring, the click that selects — in
   `frontend/src/components/experienceMarkers/useMarkerInteractions.ts`
 - Discover Mode: `frontend/src/components/discover/DiscoverExperienceView.tsx`, which owns the
   selection and the camera and delegates the rest to one file each: `useDiscoverMap.ts` (the map
@@ -15,8 +15,8 @@ This document describes how experience markers work in both map surfaces:
   `discoverMapLayers.ts` (the sources and layers, its clusters added to the shared scene) and
   `DiscoverExperienceList.tsx` (the windowed rows)
 - The scene both draw: `frontend/src/components/experienceMarkers/scene.ts` — the pin, its
-  badge, the highlight and the hover ring, with the data they are drawn from (§ One scene, two
-  maps)
+  split disc, the highlight and the hover ring, with the data they are drawn from (§ One scene,
+  two maps)
 - Shared interaction state: `frontend/src/hooks/useExperienceContext.tsx`, and hover alone in
   `frontend/src/hooks/useHoverContext.tsx` — see § What a hover is allowed to re-render. Both
   surfaces ride that store now (#573): `ExperienceProvider` mounts its provider for Map mode, and
@@ -115,7 +115,7 @@ and the ring is drawn by `useDiscoverHover`'s subscription, which holds the coor
 
 ## Batch location data
 
-`ExperienceMarkers`, `ExperienceList`, `SelectedObjectFoldControl` and `DiscoverExperienceView` consume `useRegionLocations(regionId, includeLost, includeChildren)` — a shared React Query hook that fetches all locations for all experiences in the region via a single `GET /api/experiences/by-region/:regionId/locations` call (5-min staleTime). This replaces the previous N+1 pattern where each component individually fetched `GET /api/experiences/:id/locations` per experience. All three arguments are part of the query key. `includeChildren` defaults to `false` — Map mode's readers, `ExperienceMarkers`, `ExperienceList` and `SelectedObjectFoldControl`, take that default; `DiscoverExperienceView` passes `true`, because it lists a region *and* its descendants. Those are different sets rather than different views of one. Every row of the batch carries `curated_fields`, the fields a curator has claimed on the place, so a row can say *pin corrected* rather than showing a moved pin as the source's (#583) — carried through the batch's hand-built row, since the first cut selected the column and dropped it there. Discover's panel reads the object's own locations instead and joins the claim onto its visited-status rows by id, so a signed-in reader's row says it as anyone else's does.
+`ExperienceMarkers`, `ExperienceList` and `DiscoverExperienceView` consume `useRegionLocations(regionId, includeLost, includeChildren)` — a shared React Query hook that fetches all locations for all experiences in the region via a single `GET /api/experiences/by-region/:regionId/locations` call (5-min staleTime). This replaces the previous N+1 pattern where each component individually fetched `GET /api/experiences/:id/locations` per experience. All three arguments are part of the query key. `includeChildren` defaults to `false` — Map mode's readers, `ExperienceMarkers` and `ExperienceList`, take that default; `DiscoverExperienceView` passes `true`, because it lists a region *and* its descendants. Those are different sets rather than different views of one. Every row of the batch carries `curated_fields`, the fields a curator has claimed on the place, so a row can say *pin corrected* rather than showing a moved pin as the source's (#583) — carried through the batch's hand-built row, since the first cut selected the column and dropped it there. Discover's panel reads the object's own locations instead and joins the claim onto its visited-status rows by id, so a signed-in reader's row says it as anyone else's does.
 
 A row's visited state is the place's own, from one read for the whole list, `useVisitedExperiences().visitedStatusOf(id)` (#2120, `docs/tech/experiences.md` § User visits), as Discover's list draws it: a place of no parts shows a checkbox, ticked or not, and a whole shows a status mark, *Visited* when every place of it is visited and *Partly visited* when some are or the whole was ticked. A serial site partly visited is partly visited in every region's list it is in. Its points' ticks read the global `useVisitedLocations().isLocationVisited(locationId)` rather than per-experience `useExperienceVisitedStatus()` calls, further reducing API calls from ~150 to 0 for visited status.
 
@@ -138,32 +138,28 @@ rule itself.
 
 **Every place, not one of them** ([#558](https://github.com/uncovering-world/track-your-regions/issues/558), ADR-0028 decision 1). A serial nomination *is* its parts, and the map used to draw one of them: Gondwana Rainforests was a single dot 171 km from any component, and the Rock Art of the Mediterranean Basin one dot for 734 rock shelters. `buildExperienceMarkers()` now emits a marker per place a reader may go to, and both surfaces call it — Map Mode and Discover cannot disagree about what an object is. Measured on Europe with the World Heritage kind expanded, which is the set both surfaces were reading: its **467 objects drew 467 markers and now draw 3463**. The whole region holds 661 offered objects over 3725 visible places in the database (3531 of them under UNESCO); the app draws fewer than the raw count because an object with any in-region place draws only those. The Rock Art of the Mediterranean Basin contributes 734 of the 3463, the Frontiers of the Roman Empire 420 and Aalto Works 13. Panning at marker zoom holds a **59.9 FPS median** (p95 50 ms, worst frame 83 ms) with 1698 of them drawn.
 
+**An object made of parts has no pin of its own** (#2122). Seville's World Heritage site is its three places — the cathedral, the Alcázar, the Archivo de Indias — and nothing is drawn for the site itself: not a pin at a coordinate of its own, not a pin standing in for its parts before the region's batch has loaded them, not a dot for it on selection. Only the map merges parts on zoom-out: Map mode's heatmap below `HEATMAP_MAX_ZOOM` and Discover's clusters. A place that is not made of parts keeps its own coordinate as the pin while the batch holds none of its points (`standInMarkers`).
+
 **A pin shows the kinds of its place that the surface is showing** (#1262). `buildExperienceMarkers()` gives each pin `kindColors`: the colours of the place's kinds among those shown — the open groups' in Map Mode, the one kind of Discover's `?kind=` view, every kind otherwise — in the kinds' display order. One colour is the plain disc. Two or more different ones add a split disc over it, one slice per kind, named by its colours (`splitPinIconFor`, the feature's `icon`; the world layer asks the same rule) and drawn on first use by a `styleimagemissing` listener each map registers (`addSplitPinImages`, `scene.ts`); its layer (`sceneSplitMarkerLayer`) is one of the pin's interactive layers, and the plain disc under it is what shows if no canvas can draw the image. Once its two rows are one place, the Capitoline Museums are half blue and half brown with every kind shown, and plain brown in Archaeology. Every place has one kind until a merge (#1247), so every pin is plain today.
 
-**A pin the source placed only roughly is a ring** (#1912). `buildMarkerFeatures` carries `approximate` on a pin whose point the World Heritage list gave only to the whole minute or on a point several components share (`experience_locations.approximate`, #1853), and the scene's pin layer (`sceneMarkerLayer`) draws it white with a thicker ring in the kind's colour rather than a disc: "about here", so a traveller does not navigate to the Longmen Grottoes' point, 10 km from the caves, as if it were exact. A folded pin stands for its place and is never a ring; the world layer rings its pins too (below). A place shown in several kinds keeps the ring rather than its split disc (#1262), which would cover it: the ring is what a traveller navigating by the map needs. The rows and cards say why (`ApproximateLocationNote`, `utils/approximateLocation.ts`): the point's own card and a place of one point in full, a row of a card listing many with the focusable word *approximate location* beside whatever the row says already (a claim, or where a place outside the region lies), its reason in the tooltip, unless a curator placed the point. A curator's placement clears the mark and the ring with it.
+**A pin the source placed only roughly is a ring** (#1912). `buildMarkerFeatures` carries `approximate` on a pin whose point the World Heritage list gave only to the whole minute or on a point several components share (`experience_locations.approximate`, #1853), and the scene's pin layer (`sceneMarkerLayer`) draws it white with a thicker ring in the kind's colour rather than a disc: "about here", so a traveller does not navigate to the Longmen Grottoes' point, 10 km from the caves, as if it were exact. The world layer rings its pins too (below). A place shown in several kinds keeps the ring rather than its split disc (#1262), which would cover it: the ring is what a traveller navigating by the map needs. The rows and cards say why (`ApproximateLocationNote`, `utils/approximateLocation.ts`): the point's own card and a place of one point in full, a row of a card listing many with the focusable word *approximate location* beside whatever the row says already (a claim, or where a place outside the region lies), its reason in the tooltip, unless a curator placed the point. A curator's placement clears the mark and the ring with it.
 
-The world layer draws the same disc, and the same ring for a point placed only roughly: its unfolded markers read carries `approximate` (#1912), and `KIND_PIN_COLOURS` (`worldPointLayers.ts`) reads the ring's colour off the kind as the layer reads its disc's. Its markers read carries `kinds` — every kind of a place offered in more than one, null for the rest, so the column costs next to nothing (163 bytes gzipped over 5 580 points of Europe on 2026-10-05) — and `worldPointsCollection` turns a point's kinds into its `kindIds` property, as text since `queryRenderedFeatures` hands properties back as scalars, and its `icon`, which `worldSplitIconFor` names on the map of every kind only; `worldSplitMarkerLayer` draws it, listed in `WORLD_MARKER_LAYERS` so the disc answers the pointer. The hover card names every kind of the place on both layers — "Art Museums · Archaeology" (`placeKindNames`, `utils/placeKinds.ts`; the world layer's hover reads the names of `kindIds` through `kindNameOf`) — whichever kind the map is showing.
+The world layer draws the same disc, and the same ring for a point placed only roughly: its markers read carries `approximate` (#1912), and `KIND_PIN_COLOURS` (`worldPointLayers.ts`) reads the ring's colour off the kind as the layer reads its disc's. Its markers read carries `kinds` — every kind of a place offered in more than one, null for the rest, so the column costs next to nothing (163 bytes gzipped over 5 580 points of Europe on 2026-10-05) — and `worldPointsCollection` turns a point's kinds into its `kindIds` property, as text since `queryRenderedFeatures` hands properties back as scalars, and its `icon`, which `worldSplitIconFor` names on the map of every kind only; `worldSplitMarkerLayer` draws it, listed in `WORLD_MARKER_LAYERS` so the disc answers the pointer. The hover card names every kind of the place on both layers — "Art Museums · Archaeology" (`placeKindNames`, `utils/placeKinds.ts`; the world layer's hover reads the names of `kindIds` through `kindNameOf`) — whichever kind the map is showing.
 
 A marker feature's handlers resolve the object through `properties.experienceId` and the place through `properties.locationId`, on both surfaces: both build their features with `buildMarkerFeatures`. Its top-level `id` is the place's key, `${experienceId}-${locationId}`, and nothing reads it back — MapLibre parses a string id to its leading integer, so for MapLibre every place of an object carries the object's id, and neither marker source reads feature-state (`maplibre-patterns.md` § Where a feature's id comes from). Discover promotes no id either: `properties.experienceId` is the experience, so promoting it would key every place of an object the same. The hover dedupe is keyed by place for the same reason: keyed by object, the ring and popup stayed on the first part the pointer touched while it crossed the other thirty-nine. A row's hover rings **every** place of its object — in Discover, where the source is clustered, that means a ring on each of its drawn pins plus one on each cluster bubble holding the rest, since a bubble sits at its members' centroid rather than at any of them.
 
-**The fold: one object, back to one pin.** Drawing every place is right by default and wrong for a few rows — the Rock Art of the Mediterranean Basin and the Roman limes own a third of the 3463 pins Europe's UNESCO kind draws — so a reader can fold *one object* and leave its neighbours drawn. The ask lives on the object: a chip at the top of the map for the selected object, a click on a folded pin to unfold it, and — in Map Mode — the count chip on a list row, filled when folded. Discover's rows carry a plain count instead, so a fold is asked for there by selecting the object and using the map's chip. It is held per region and per surface by `useCollapsedExperiences(regionId)`, derived rather than reset by an effect; Map Mode and Discover hold their own, because two readings of a region are two sessions of looking.
-
-A folded object is drawn at the coordinate the catalogue answers with — the place nearest its own published point (ADR-0028 decision 2) — so folding never invents a centre.
-
-**Which places an object draws is shared; what a fold means to a given surface is not.** `representablePlaces()` and `isFoldable()` in `buildMarkers.ts` are the shared half, and a caller asks whichever it needs — the count, the test, or both — rather than re-deriving the in-region preference for itself. The fold is applied by each caller, because the surfaces genuinely differ: in Map Mode `shownPlacesFor()` answers `null` for "draw the object's own point" and the highlight layer and the list-click fly-to both read it, so a fold survives selecting the row — without that, selecting would put an object's parts back, since a selected object leaves the marker source and is drawn by the highlight layer. In Discover the selected object is drawn from its own per-experience fetch instead, so its fold control, its hover ring and its highlight all read *that* set, and its marker source reads the region batch. A caller that borrows another's coordinate set gets the wrong answer for exactly the objects this feature is about.
-
-**What the count badge means** is "places this pin stands for", which is `locationCount > 1` on the feature. A place drawn as itself stands for itself alone and carries none; a folded pin and a pin standing in for places the region batch has not loaded carry the count. That badge is the only thing that tells a *reader* a folded object from a single-placed one — the two are otherwise the same dot. A click handler must not read it that way: a stand-in pin has the same null `locationId` and the same count above one without being folded, so `MarkerData.folded` says which pins the builder drew folded and both surfaces test that flag. Inferring it from the badge is what made a click on such a pin drop the fold, select nothing and visibly do nothing.
+**Which places an object draws is one rule.** `representablePlaces()` in `buildMarkers.ts` answers it — the places in this region, or all of them when none is — and the builder, the highlight, the list-click fly-to and the list's view filter ask it rather than re-deriving the in-region preference. In Discover the selected object is drawn from its own per-experience fetch instead, so its hover ring and its highlight read *that* set, and its marker source reads the region batch.
 
 Map Mode uses four GeoJSON sources:
 
 - `exp-extent`: the outline of one place — whichever is hovered, else whichever is selected — where the catalogue holds one, which today means an Archaeology site's excavation boundary as OpenStreetMap drew it (ADR-0059). Mounted **first**, so its 15% wash and its 2 px outline are added before every marker layer and nothing the reader clicks is painted over; the outline takes the object's own pin colour, carried on the feature. Set on selection, and on a hover that has *rested* — 150 ms, and only for a place whose kind can have an outline at all (`hasExtent`), since the only way to find one is the single-experience read and that route sits under `publicReadLimiter`. Cleared when the pointer leaves and when the selection goes; a place with no boundary draws nothing. The card carries the same fact in words, with the credit ODbL asks for (`ExtentLine`)
-- `exp-markers`: the in-region places, unclustered — one marker each, or a single folded marker for an object the reader folded, or a single stand-in marker for an object whose places the batch does not hold. Below `HEATMAP_MAX_ZOOM` (5) it draws as a density heatmap — which now measures where the *places* are rather than where their objects were pinned; from that zoom it draws as individual markers
-- `exp-highlight`: the places the selected experience *shows* — `shownPlacesFor()`, so a folded object is one point here as well, and otherwise its in-region places or all of them when none is in region, matching the marker fallback below, so a hand-assigned experience does not vanish the moment it is selected — or the experience's own point when no locations have loaded for it at all, which is the common case in a region fetched without descendants. Selecting removes the marker from `exp-markers`, so without that last case the act of selecting made the experience disappear
+- `exp-markers`: the in-region places, unclustered — one marker each, or one at a place's own coordinate while the batch holds none of its points (never for an object made of parts). Below `HEATMAP_MAX_ZOOM` (5) it draws as a density heatmap — which now measures where the *places* are rather than where their objects were pinned; from that zoom it draws as individual markers
+- `exp-highlight`: the places the selected experience *shows* — `shownPlacesFor()`: its in-region places or all of them when none is in region, matching the marker fallback below, so a hand-assigned experience does not vanish the moment it is selected — or the experience's own point when no locations have loaded for it at all, which is the common case in a region fetched without descendants; nothing for an object made of parts then. Selecting removes the marker from `exp-markers`, so without that last case the act of selecting made the experience disappear
 - `exp-hover`: hover ring/glow
 
-For an experience with no in-region place at all, every place it has is drawn instead. That state is what a curator's manual assignment produces: `assignExperienceToRegion` writes `experience_regions` alone, and the reason to assign by hand is that spatial containment missed the point. Skipping those left the row without a marker, so hovering it painted nothing and left the previously hovered row's ring standing in for it — `updateHoverFromList` now clears the ring when it finds no marker rather than returning bare. `representablePlaces()` is that rule, and every surface asks it through that one function rather than re-deriving it. Selected experience markers are removed from `exp-markers` and rendered via `exp-highlight` instead — which follows the same fold, or selecting a folded object would put its parts back.
+For an experience with no in-region place at all, every place it has is drawn instead. That state is what a curator's manual assignment produces: `assignExperienceToRegion` writes `experience_regions` alone, and the reason to assign by hand is that spatial containment missed the point. Skipping those left the row without a marker, so hovering it painted nothing and left the previously hovered row's ring standing in for it — `updateHoverFromList` now clears the ring when it finds no marker rather than returning bare. `representablePlaces()` is that rule, and every surface asks it through that one function rather than re-deriving it. Selected experience markers are removed from `exp-markers` and rendered via `exp-highlight` instead.
 
-Map Mode builds a marker for every place — `buildExperienceMarkers()` in `components/experienceMarkers/buildMarkers.ts`, a pure function of the experiences, their locations, the expanded kind set and the folds this surface holds for this region (`collapsedExperienceIds`). It used to stop at 100 and show an on-map indicator saying so. The cap was removed because it silently disabled the list→map hover past it: the highlight resolves an experience through the marker set, and returns without a sound when it is absent, so in a 200-experience region half the rows hovered to nothing. The heatmap is what makes the full set affordable to render below its threshold.
+Map Mode builds a marker for every place — `buildExperienceMarkers()` in `components/experienceMarkers/buildMarkers.ts`, a pure function of the experiences, their locations and the expanded kind set. It used to stop at 100 and show an on-map indicator saying so. The cap was removed because it silently disabled the list→map hover past it: the highlight resolves an experience through the marker set, and returns without a sound when it is absent, so in a 200-experience region half the rows hovered to nothing. The heatmap is what makes the full set affordable to render below its threshold.
 
 ### Density instead of clusters
 
@@ -179,18 +175,18 @@ The handover is a cross-fade, not a threshold. `minzoom` cannot express one — 
 
 Removing clustering removed the only asynchronous path in the hover: `getClusterLeaves` was what made an answer arrive after the pointer had moved on, and the ownership-token machinery existed solely to discard those stale answers. A list hover now paints the ring on the marker's own point directly — `updateHoverFromList` takes no map handle at all, which also removed a guard that had started skipping the "clear the ring" branch whenever the map was not ready yet.
 
-Discover Mode still uses clustering (cluster circles, count labels, fold badge, hover ring, selected-location highlights) with a dedicated map instance and imperative MapLibre event wiring — the heatmap is Map Mode only. Its clusters count **places** since #558: measured on the same set as above — UNESCO in Europe — 467 objects draw the same 3463 points, the largest clusters reading 843 over central Europe and 526 over the Balkans. What a cluster label counts is rendered features rather than places represented, which are the same number until a reader folds something: a folded object contributes one feature to the cluster while its own badge still says how many places it stands for. A cluster of one-point-per-object counted sites; a cluster of places counts what a reader zooming in is about to be shown.
+Discover Mode still uses clustering (cluster circles, count labels, hover ring, selected-location highlights) with a dedicated map instance and imperative MapLibre event wiring — the heatmap is Map Mode only. Its clusters count **places** since #558: measured on the same set as above — UNESCO in Europe — 467 objects draw the same 3463 points, the largest clusters reading 843 over central Europe and 526 over the Balkans. A cluster label counts rendered features. A cluster of one-point-per-object counted sites; a cluster of places counts what a reader zooming in is about to be shown.
 
 ### One scene, two maps
 
-Map Mode declares its layers in react-map-gl JSX and Discover calls MapLibre on its own map instance, but what they draw is one declaration (#1132): `components/experienceMarkers/scene.ts`. It holds the three source ids (`SCENE_SOURCES`: `exp-markers`, `exp-highlight`, `exp-hover` — the same on both maps, which are separate instances), the layer ids (`LAYER_MARKERS`, `MARKER_LAYERS`, `LAYER_HIGHLIGHT_POINT` and the rest), the layers with their paint — the pin, its split disc for a place shown in several kinds, its count badge with its `locationCount > 1` filter, the highlight's red ring and dot, the hover's orange glow and ring — and the order they are painted in: the pin, its split disc and its badge (`SCENE_MARKER_ORDER`), then the selection and the hover over it (`SCENE_OVERLAY_ORDER`). It also holds the builders of what those sources carry: `buildMarkerFeatures` for the markers, `buildHighlightData` for the selection (a dot that names no one place carries a null `locationId`), `buildPointHoverData` / `buildPointsHoverData` for the rings, `buildSizedRing` for a ring sized to sit outside a drawn bubble, and `EMPTY_FC` to clear.
+Map Mode declares its layers in react-map-gl JSX and Discover calls MapLibre on its own map instance, but what they draw is one declaration (#1132): `components/experienceMarkers/scene.ts`. It holds the three source ids (`SCENE_SOURCES`: `exp-markers`, `exp-highlight`, `exp-hover` — the same on both maps, which are separate instances), the layer ids (`LAYER_MARKERS`, `MARKER_LAYERS`, `LAYER_HIGHLIGHT_POINT` and the rest), the layers with their paint — the pin, its split disc for a place shown in several kinds, the highlight's red ring and dot, the hover's orange glow and ring — and the order they are painted in: the pin and its split disc (`SCENE_MARKER_ORDER`), then the selection and the hover over it (`SCENE_OVERLAY_ORDER`). It also holds the builders of what those sources carry: `buildMarkerFeatures` for the markers, `buildHighlightData` for the selection (a dot that names no one place carries a null `locationId`), `buildPointHoverData` / `buildPointsHoverData` for the rings, `buildSizedRing` for a ring sized to sit outside a drawn bubble, and `EMPTY_FC` to clear.
 
 Each map adds only what is its own, declared where it is added rather than as a copy:
 
 - **Map Mode's cross-fade with the heatmap.** `layers.ts` spreads the scene's pin layers and adds a `minzoom` at `MARKER_FADE_START` and the opacity ramp across the band (§ Density instead of clusters). The selection and hover layers it takes as they stand, and `worldPointLayers.ts` spreads `layers.ts` in turn.
 - **Discover's clustering.** `discoverMapLayers.ts` clusters the markers source, adds the bubbles and their counts (`LAYER_CLUSTERS`, `LAYER_CLUSTER_COUNT`), and keeps each scene pin layer off the aggregates with `unclustered()`, which joins `NOT_CLUSTER` to the layer's own filter.
 
-Both maps' listeners name layers and sources by these constants rather than by string literals. `scene.test.ts` holds Map Mode's layers to the scene with only the cross-fade added, `discover/discoverMapLayers.test.ts` holds Discover's to it with only the clustering added, and `ExperienceMarkers.order.test.tsx` holds Map Mode's mount order to the scene's order. A change to the ring's size or the badge's offset is therefore made once, in `scene.ts`, and either map drifting from it fails one of those specs.
+Both maps' listeners name layers and sources by these constants rather than by string literals. `scene.test.ts` holds Map Mode's layers to the scene with only the cross-fade added, `discover/discoverMapLayers.test.ts` holds Discover's to it with only the clustering added, and `ExperienceMarkers.order.test.tsx` holds Map Mode's mount order to the scene's order. A change to the ring's size or the highlight's red is therefore made once, in `scene.ts`, and either map drifting from it fails one of those specs.
 
 ## The world layer: a kind's places before a region is chosen
 
@@ -224,7 +220,7 @@ restarted. Through the endpoint the read is a React Query key that `invalidateEx
 clears, and a verdict was measured showing up in the very next request.
 
 **Two tiers and one build.** Below the marker band a point is a coordinate — 37 kB brotli for
-every kind at once, 18 kB folded — and at and above it a point carries its identity, its name,
+every kind at once — and at and above it a point carries its identity, its name,
 its kind and its type. `worldPointsView.ts` decides which tier and how much world: the
 overview is always the whole world, so panning there is one cache entry and no request, while
 the marker tier is boxed to the viewport snapped outward to a quarter of its span, which is
@@ -234,10 +230,9 @@ becomes the `FeatureCollection` MapLibre is handed.
 
 | | a region's markers | the world layer |
 |---|---|---|
-| where the features come from | `useRegionLocations`, one batch per region | `GET /api/experiences/points`, one read per kind, tier, fold and box |
+| where the features come from | `useRegionLocations`, one batch per region | `GET /api/experiences/points`, one read per kind, tier and box |
 | what decides the colour | `experienceColor`, per marker, as a property | `kindColorExpression`, the same rule as a MapLibre expression |
 | a place in several kinds | a split disc over the open groups' kinds (`kindColors`) | a split disc over every kind on the map of every kind (`worldSplitIconFor`), its plain pin's colour on a map of one |
-| the fold | per object, held per region (`useCollapsedExperiences`) | the whole map at once, and the server's answer rather than a filter |
 | the hover card | name, its subtitle (`PlaceSubtitle`, #1795), place, every kind, picture and credit — a part's own picture where it has one, else its site's, said beside the credit (`pointPicture`, #1270) | name, place, every kind; the picture and its credit once the pointer rests on the pin (`PICTURE_REST_MS`), from `GET /api/experiences/:id/picture?locationId=` — the same choice as a region's card, a part's own picture where it has one, else its site's, said beside the credit (`pointPicture`), cached per place; no subtitle, which the world points read does not carry |
 | a click | selects the object in the list | opens it where this world view holds it (ADR-0042) |
 
@@ -266,23 +261,21 @@ which turns the band's cross-fade into a hard cutoff and pays the style churn th
 mounting gate exists to avoid, per crossing rather than once per load — so it
 keeps drawing, through whatever can read it:
 
-| the answer in hand | heat | pins | badge |
-|---|---|---|---|
-| overview | yes | no — its features carry no identity | no |
-| markers | yes | yes | only if the answer itself is folded |
-| capped | replaced by the capped pins | as above | as above |
+| the answer in hand | heat | pins |
+|---|---|---|
+| overview | yes | no — its features carry no identity |
+| markers | yes | yes |
+| capped | replaced by the capped pins | as above |
 
 The heat takes either tier because density needs only coordinates; a pin takes
 only the markers tier because a pin is a claim about a named place. A boxed
 markers answer feeding the heat inside the band draws density for the viewport
-and its margin, which is all that is on screen. And the badge follows the
-*answer's* fold rather than the control's, since the count is a property of the
-features in hand.
+and its margin, which is all that is on screen.
 
 One consequence a reader should expect: **switching the kind keeps the previous
 kind's points on screen for the round trip**, the way panning keeps the previous
-box. Nothing in the client could do otherwise — an answer echoes the tier and the
-fold it was built for, never the kind it was asked for — and the pins it draws
+box. Nothing in the client could do otherwise — an answer echoes the tier it was
+built for, never the kind it was asked for — and the pins it draws
 are true places either way.
 
 **What a capped read draws, and why it is not the heat.** The endpoint bounds one
@@ -300,32 +293,18 @@ inheriting the band's zoom range would leave the map blank with nothing saying
 why. Unreachable on the catalogue as it stands (20 000 against 8 842 places on 2026-09-22): this is what
 the map does on the day the tier design is outgrown.
 
-**The fold is the read, and it reaches the heat.** Asked for a folded map the endpoint
-answers one point per object, at its *reader position* — the place nearest its own published
-point, ADR-0028 decision 2, which is where a region's folded pin already sits — so there is no
-flag on a feature and no filter on a layer. That is the one thing this layer does differently
-from the tile build it replaced, which had to carry every place and mark one of them because a
-tile is cached under its URL and must answer both states. It reaches the heat because that is
-where the distortion shows first:
-the Rock Art of the Mediterranean Basin is one site and 734 rock shelters, and unfolded they
-saturate eastern Spain from Valencia to the Pyrenees at zoom 4, long before a pin is drawn.
-The ramp does **not** change with the fold: folded, World Heritage draws one point per site instead
-of one per component (1 272 against 6 347 on 2026-09-22) and comes out about five times fainter, and that faintness is the answer rather than
-a fault — compensating would need a different factor per kind (5 for World Heritage, 2.3
-across all kinds, 1 for the art museums, every one of which is a single place) and would make
-the two pictures incomparable.
+**No fold: a serial site is its places, merged only by the heat.** The Rock Art of the
+Mediterranean Basin is one site and 758 rock shelters, and they saturate eastern Spain from
+Valencia to the Pyrenees at zoom 4, long before a pin is drawn. That is the picture of places,
+which is what this layer draws: a site has no coordinate of its own to fold its places onto
+(#2122), and a reader zooming in meets the shelters one by one. Seville at world zoom is a warm
+spot in the heat and at city zoom its three places, each its own pin.
 
 **Which kind is on the map is in the address** (`?kind=`, [addresses.md](addresses.md)), so a
-link to the world map of Archaeology opens on Archaeology; the fold is not, because it is a
-way of looking at what is on the screen rather than a place. Both controls are
-`WorldLayerControls`, and they are one **band**: the kind chips, each in the colour its pins
-are drawn in, and the fold chip beside them, wrapping with them. Not the top-centre slot the
-per-object fold floats in — that slot is free only while a region's card holds the top-left
-corner, which is exactly what this layer does not have. Floated here, the centred chip
-crossed the kind chips on any map pane under about 873 px and, at the higher z-index, took
-the click with it; a row that wraps has no width at which its own members overlap. The two
-folds are never on screen together anyway, because choosing a region is what ends this
-layer.
+link to the world map of Archaeology opens on Archaeology. The control is
+`WorldLayerControls`, one **band** of kind chips, each in the colour its pins are drawn in,
+wrapping at the top left, where a region's card stands once one is chosen: a row that wraps has
+no width at which its own members overlap.
 
 **A click is a way in rather than a selection**, because there is no list to select into. It
 asks the object's own read which regions will hold it and opens it at the smallest one in the
@@ -337,8 +316,8 @@ flown to instead, so no pin on this map is a dead click.
 **The region under a pin stands aside for it**, in the click handler and in the hover handler
 alike: `onAWorldPoint` asks the map what is under the point, and `useMapInteractions` returns
 without selecting a region or naming one in the tooltip. It asks the map rather than reading
-`event.features` because the badge layers exist only while the reader has folded, so listing
-them as interactive would name layers the style does not hold.
+`event.features` because the pin layers exist only at the tiers that draw pins, so listing
+them as interactive would name layers the style does not always hold.
 
 **It stands aside only for a pin that can answer**, and the two sides ask the same question:
 a feature with no `experienceId` does not claim the gesture. That matters because the overview
@@ -360,7 +339,7 @@ writing another world view's address.
 - **Hover and click answer the same feature** (#1916): both read `markerUnderPointer()` (`experienceMarkers/markerUnderPointer.ts`), the topmost pin or highlight dot under the pointer among the layers the style holds, and `hoverKeyOf()` is the one key space the hover dedupes in. The selected object's dots are drawn over the other objects' pins, so where the two overlap — the Serapeum of Alexandria's dot over Pompey's Pillar's pin at city zoom — the hover card names the dot's place and a click opens it, rather than the click asking the pins first and opening the place the card did not name. One `mousemove` handler serves the pin layers and the dot layer alike, so the order the layers' handlers were registered in no longer decides what the card says
 - Hover list card -> hover ring on the marker's own point, whether or not it is currently drawn (below the heatmap threshold the heat is what shows there instead). The row is memoised and its props are held stable so this costs one row's render rather than the region's: the handlers are declared once in `ExperienceList` rather than per row, each row registers its own scroll ref instead of being wrapped in a `<Box>` the parent rebuilds, and the hover itself is read where it is drawn rather than passed down — see § What a hover is allowed to re-render. Measured at 200 experiences: 2460 ms per hover before, 15 ms after
 - Click a **part's** pin, or a dot of the open object's places -> that part's own card (#1271), opened with its object's card in one write (`openPart` in `ExperienceMarkers`, `openPointRef` in `useDiscoverMap`). A part is one of several places of its object; the one pin of a museum is the museum and keeps the rule below
-- Click marker -> toggle selected experience, and **keep the view** — except a *folded* pin, whose click unfolds the object and selects nothing: the pin is one named place now, so framing all of the object's places would take the one the reader clicked off the screen
+- Click marker -> toggle selected experience, and **keep the view**: the pin is one named place, so framing all of the object's places would take the one the reader clicked off the screen
 - Multi-location selected **from the list** -> fit bounds to all its shown points, or to all of them when none is in region — the same qualifier the marker and highlight rules carry. A list click means "take me to it" and a map click means "this one, here", which is why only one of them re-frames
 - Curator on a place's row (Map mode's `LocationRow`, Discover's `PanelLocationRow`) -> a button named for the place, shown only for the row under the pointer, the one holding keyboard focus or the one lit from the map — and on every row of a device that cannot hover (`@media (hover: none)`), where the row's actions, the copy and maps controls with it, stay shown (opacity, not display, so it stays in the tab order — thirty rows do not carry thirty pencils), opens `PointPreviewDialog` on `PointCorrection` — the same dialog the review page and the object screen open, because a place is corrected wherever a curator whose scope reaches it is looking at one (#583, #613). The way in is one function per object, bound in `ExperienceListItem` beside `handleCurate` and handed down unchanged, since the row is memoised (§ What a hover is allowed to re-render); the closure over the row is made inside the row, where it costs that row's render alone. A save invalidates the region batch, so the marker moves. A place outside the region gets the button too. The single place has no row on a card and is reached through the object screen (`CurationPlaces`)
 
@@ -498,9 +477,10 @@ while the map is shown.
   no point. Its query key is under `queryKeys.curation.reviewQueueAll`, so the refresh after an
   answer takes the answered question off the map as it takes it off the list.
 - **What it draws** (`queueMapLayers.ts`). Map Mode's layers over two sources of its own:
-  `heatmapLayer` below `HEATMAP_MAX_ZOOM`, `markerLayer` fading in across the same band, and
-  the count badge, each spread with only its id, its source and what the badge counts changed
-  (§ Density instead of clusters, § One scene, two maps). One marker per place, never per
+  `heatmapLayer` below `HEATMAP_MAX_ZOOM` and `markerLayer` fading in across the same band,
+  each spread with only its id and its source changed (§ Density instead of clusters, § One
+  scene, two maps), and a badge of its own counting a place's questions where it has several,
+  fading in with the pin by the same ramp (`MARKER_FADE_IN`). One marker per place, never per
   question. Its feature `id` is the place's id, unique per feature, which a click reads back.
   The open question's place is a second source drawn with the scene's highlight ring and pin,
   with no fade, so it is marked at every zoom, the heat's included.
@@ -559,7 +539,7 @@ Zoomed into Prague, the list used to answer a different question from the map: i
 The mechanism is small because the data is already here: a region arrives in one response of up to `WHOLE_REGION_LIMIT` rows — whole for every region today, and incomplete above that ceiling, as § Shared state model says — and its locations in one batch (`useRegionLocations`), so this is a pass over memory rather than a fetch per movement — Europe's 3725 locations take on the order of 0.1 ms. It buys no speed: after windowing (below) the list mounts ~18 rows whatever the model holds. The gain is entirely in what the list *means*.
 
 - **`RegionMapVT` publishes the view on `moveend`**, into `viewBounds` on the experience context, and once on `load` so the first list is already the view's. Never on `move`: re-sorting during a pan rearranges what the reader is in the middle of reading.
-- **`experienceIdsInView()` (`ExperienceList/inView.ts`) asks the same points the map draws**, in the builder's own three branches: the stand-in pin at the object's own coordinate when the batch holds no place for it, that same coordinate when this reader has folded an object whose places are more than one, and otherwise each of `representablePlaces()`. Anything else would let the list hide a row whose pin the reader can see, or keep a row whose pin is elsewhere — fold the Rock Art of the Mediterranean Basin and the map draws one pin, so the list follows that pin rather than its 734 shelters. Unfolded, an object is in view when **any** of its places is, which is what a planner looking at a city means by "here".
+- **`experienceIdsInView()` (`ExperienceList/inView.ts`) asks the same points the map draws**, in the builder's own branches: each of `representablePlaces()`, and the place's own coordinate when the batch holds none of its points. Anything else would let the list hide a row whose pin the reader can see, or keep a row whose pin is elsewhere. An object is in view when **any** of its places is, which is what a planner looking at a city means by "here" — the Rock Art of the Mediterranean Basin as soon as one of its shelters is on screen. An object made of parts with none of them at hand has no pin to be out of view, and is kept (#2122).
 - **The longitude test works in the box's own frame**, because MapLibre's boxes are not shaped like this repository's. `LngLatBounds.extend` assigns `Math.min`/`Math.max` on longitude, so `getBounds()` always answers `west <= east`, and the corners come from `pointLocation` unwrapped around the transform's centre — a view straddling the dateline is `{west: 175, east: 185}`, and panning on past it gives `{west: 170, east: 210}`. Meanwhile the API returns places in `[-180, 180]`, and MapLibre draws world copies, so a place at `-179` has a pin on that screen. `pointInView` therefore measures the width from `west` eastwards and shifts the point into `[west, west + 360)` before comparing — which also answers the `west > east` form `focus_bbox` and the `bbox` parameter use, so one of those can be passed straight in. A literal `west <= lng && lng <= east` empties the list beside a screen full of pins, which is the failure this feature exists to remove.
 - **`useInViewFilter` holds the way back**: "12 more in this region — show them all", shown only when the view is hiding something. What hides the control is the count itself: when the view holds every one of the region's objects, `outsideView` is zero and nothing renders — which is what happens whenever the reader is zoomed out far enough, without any zoom threshold being consulted. No mode to remember, and nothing keyed to `HEATMAP_MAX_ZOOM`. The ask is stored as *which region* it was made in, the same shape as `showLost`, so it cannot follow the reader into the next region.
 - **Kind headers carry both numbers** while filtering — "World Heritage Sites (12 of 467)" — because one number cannot say both what is here and that the region holds more.
@@ -717,17 +697,20 @@ second-order list of their own, never mixed into a group's rows (#2201).
   in the tail. A crowded kind with no group to end — none of its places shown in the region, or the
   selected place's kind — gets an empty group (`withTailGroups`).
 - **Its points.** The region's batch of points answers for the shown places only, so a tail's card
-  reads its own (`useTailLocations`): the place's own read with `in_region` asked of the region,
-  once its card opens, never one per row — every such read is under the limiter the list's own
-  reads share. A card opened once keeps its points for as long as the cache does; a tail row never
-  opened has none in hand, and its visited box stays disabled as every row's is until its points
-  settle. A visit marked from a tail's card is recorded and counts toward nothing (ADR-0172
+  reads its own (`useTailLocations`, held by the experience provider as `tailPoints`, which the list
+  and the map both read): the place's own read with `in_region` asked of the region, once its card
+  opens, never one per row — every such read is under the limiter the list's own reads share. A
+  card opened once keeps its points for as long as the cache does; a tail row never opened has none
+  in hand, and its visited box stays disabled as every row's is until its points settle. A visit marked from a tail's card is recorded and counts toward nothing (ADR-0172
   decision 5).
 - **The map.** While a tail is open and its group is, `ExperienceMarkers` draws its places
-  (`tailPins`, `hooks/useRegionTail.ts`) beside the list's, each as one pin at the point its row
-  carries, since the batch holds none of its points; a place the list already holds is not drawn
-  twice. The selected tail place is highlighted at the same point and flown to, through
-  `getExperienceById`. A multi-point place in a tail is drawn as that one pin.
+  (`tailPins`, `hooks/useRegionTail.ts`) beside the list's, with the points of the tail's opened
+  cards beside the batch's. A place whose card was never opened is one pin at the point its row
+  carries, since the batch holds none of its points; a place made of parts has no such point
+  (#2122), so it is drawn by its parts once its card has been opened and by nothing before. A
+  place the list already holds is not drawn twice. The selected tail place is resolved through
+  `getExperienceById` and highlighted by the same rule: at its points once they are in hand, at
+  its own point before that, and not at all while a place made of parts has none in hand.
 
 ### Discover's tail
 
@@ -792,7 +775,7 @@ Both Map mode and Discover mode render hover cards as React `<Box>` overlays pos
 
 Map mode (`regionMap/HoverPreviewCard.tsx`): positioned by marker screen location (left/right and top/bottom) to avoid covering the hovered marker. Its own component and its own subscriber to the hover store, so the map is not one: `RegionMapVT` used to read the preview and render this inline, which meant a mouse move across a list of places re-rendered the whole map. It still needs the map — only the map can say where on screen the described point currently is — and takes `mapRef`/`mapLoaded` as props for that.
 
-Discover mode (`discover/DiscoverHoverCard.tsx`): positioned in the bottom-left corner of the map — which is why the fold chip sits at the top centre (`FoldPlacesControl`), since the card would otherwise paint over it. Its own component and its own subscriber to the hover store, for the same reason as Map mode's: rendered inline by `DiscoverExperienceView`, every marker the pointer crossed re-rendered the component that owns the map. On marker hover, `useDiscoverHover` looks up the experience in the `experiences` array by the marker's `experienceId` and writes the preview into the store. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
+Discover mode (`discover/DiscoverHoverCard.tsx`): positioned in the bottom-left corner of the map. Its own component and its own subscriber to the hover store, for the same reason as Map mode's: rendered inline by `DiscoverExperienceView`, every marker the pointer crossed re-rendered the component that owns the map. On marker hover, `useDiscoverHover` looks up the experience in the `experiences` array by the marker's `experienceId` and writes the preview into the store. Uses `extractImageUrl()` + `toThumbnailUrl()` for image thumbnails. Both use `objectFit: 'contain'` with `maxHeight` to handle portrait-oriented images without severe cropping.
 
 ## What the map reads at each level
 

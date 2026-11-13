@@ -341,7 +341,7 @@ questions above* does not ask: the curator asked for the top.
 | `frontend/src/hooks/useNavigation.tsx` | The world view: reads it from the address, writes it with `push` / `replace` / `none` per case |
 | `frontend/src/hooks/useExperienceContext.tsx` | Map mode's open card and open part, derived from the address, and the arrival the list focuses |
 | `frontend/src/hooks/useDiscoverExperiences.ts` | Discover's level, kind, card and part, all derived from the shared region and the address |
-| `frontend/src/components/regionMap/useWorldLayer.ts` | The map's world layer: whether it is drawn, the kind it draws (from the address, degraded there), and the fold, which is deliberately not in the address |
+| `frontend/src/components/regionMap/useWorldLayer.ts` | The map's world layer: whether it is drawn, and the kind it draws (from the address, degraded there) |
 | `frontend/src/components/Header.tsx` | Carries the place across Map ↔ Discover |
 
 Nothing else reads `useSearchParams` or calls `navigate` for app state. The

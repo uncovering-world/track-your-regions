@@ -326,7 +326,6 @@ components/
 │   ├── CardLocationList.tsx  ← the open card's lists of places, and their caps
 │   ├── GroupHeader.tsx
 │   ├── LocationRow.tsx       ← one place inside an open card
-│   ├── PlacesCountChip.tsx   ← the count, and the fold it offers
 │   ├── RejectedSection.tsx
 │   ├── VisitedStatusButton.tsx
 │   ├── useInViewFilter.ts    ← which rows the map's view leaves
@@ -336,8 +335,7 @@ components/
 ├── ExperienceMarkers.tsx     ← a region's markers: sources, layers, list→map hover
 ├── WorldExperiencePoints.tsx ← the catalogue's own points, before a region is chosen
 ├── experienceMarkers/        ← what came out of ExperienceMarkers: the pins and the pointer
-│   ├── buildMarkers.ts       ← one marker per place a reader may go to
-│   ├── FoldPlacesControl.tsx ← the fold chip, floating for one object and inline for the world
+│   ├── buildMarkers.ts       ← one marker per point a reader may go to
 │   ├── layers.ts
 │   ├── useExtentLayer.ts     ← the outline of the place being looked at (ADR-0059)
 │   ├── worldPointLayers.ts   ← the world layer's own: the region layer's paint over its read
