@@ -23,8 +23,10 @@
  *   their parts, and a point whose own place is one of them.
  *
  * A read about one place that comes from an outer row takes the arms as well:
- * `pointsShownSql` is them as a table of the place's points, and
- * `somePointShownSql` as a test that one of them meets a condition.
+ * `pointsShownSql` is them as a table of the place's points,
+ * `somePointShownSql` as a test that one of them meets a condition,
+ * `isWholeSql` as whether the place is a whole, and `wholeFocusSql` as the
+ * frame of a whole's points.
  *
  * Read the other way, from a point to the places that show it:
  * `withWholesSql` adds the wholes of given places, `wholeOfSql` names the
@@ -226,6 +228,44 @@ export function pointsShownSql(place: string, point = 'el'): string {
         SELECT ${ofPart}.* FROM experience_parts ${link}
           JOIN experience_locations ${ofPart} ON ${ofPart}.experience_id = ${link}.part_id
          WHERE ${link}.whole_id = ${place}) AS ${point}`;
+}
+
+/**
+ * Whether the place `place` is made of parts, a whole: `place_is_whole()`
+ * (ADR-0203) as an expression, for a read that asks it of every row.
+ *
+ * Its body rather than a call, because Postgres inlines no SQL function whose
+ * body holds a subquery: a call is a function invocation of its own on every
+ * evaluation, while the EXISTS is an index-only probe of `experience_parts`'
+ * (whole_id, part_id) key. `placePoints.db.test.ts` holds the two to the same
+ * answer.
+ */
+export function isWholeSql(place: string): string {
+  return `EXISTS (SELECT 1 FROM experience_parts made_of WHERE made_of.whole_id = ${place})`;
+}
+
+/**
+ * Where the whole `place` is (#2122), as a json object `{bbox, anchorPoint}`
+ * over the points it shows that `shown` admits (a predicate over the point
+ * alias it is given), or NULL where it shows none. A whole has no coordinate
+ * of its own: a reader is sent to its places, and a map frames it by them.
+ *
+ * Measured by `geometry_focus()`, the one rule a region's frame is measured
+ * by, so a whole whose places lie either side of the antimeridian is a
+ * window across it (`west > east`, with the anchor in it) rather than the
+ * world, and one spread past `near_global_deg()` keeps the plain box. Nothing
+ * in TypeScript decides it again (`regionFocusAntimeridian.test.ts`). Its
+ * degrees are sent to six places, about 11 cm, since what `geometry_focus()`
+ * snaps to 1e-9 comes out of the float arithmetic as `37.383833333000005`.
+ */
+export function wholeFocusSql(place: string, shown: (point: string) => string): string {
+  const degrees = (value: string) => `round(${value}::numeric, 6)`;
+  return `(SELECT json_build_object(
+             'bbox', json_build_array(${['west', 'south', 'east', 'north'].map(edge => degrees(`wf.${edge}`)).join(', ')}),
+             'anchorPoint', json_build_array(${degrees('wf.center_lng')}, ${degrees('wf.center_lat')}))
+           FROM geometry_focus((SELECT ST_Collect(wf_el.location) FROM ${pointsShownSql(place, 'wf_el')}
+                                 WHERE ${shown('wf_el')})) wf
+          WHERE wf.west IS NOT NULL)`;
 }
 
 /**

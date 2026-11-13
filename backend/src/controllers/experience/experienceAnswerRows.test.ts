@@ -16,7 +16,7 @@ const ACROPOLIS: ExperienceDetailRow = {
   subtitle: null, description: 'citadel on a rocky outcrop above Athens', description_source: null, description_adapted: false, type: 'site',
   country_codes: ['GR'], country_names: ['Greece'], image_url: null, image_credit: null, metadata: { sitelinks: 120 }, date_inscribed: '1987',
   created_at: new Date('2026-09-13T10:00:00.000Z'), updated_at: new Date('2026-09-14T11:30:00.000Z'),
-  source_membership: 'present', existence: 'extant', missing_since: null, longitude: 23.7263, latitude: 37.9715,
+  source_membership: 'present', existence: 'extant', missing_since: null, longitude: 23.7263, latitude: 37.9715, focus: null,
   boundary_geojson: { type: 'MultiPolygon', coordinates: [[[[23.72, 37.97], [23.73, 37.97], [23.73, 37.98], [23.72, 37.97]]]] },
   area_km2: 0.03, kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, source_name: 'Archaeology',
   source_description: null, kinds: [ACROPOLIS_IN_ARCHAEOLOGY],
@@ -76,20 +76,38 @@ describe('experienceDetailOf', () => {
   });
 });
 
+/** The Acropolis as a region's list reads it. */
+const ACROPOLIS_ROW: ExperienceListRow = {
+  id: 14723, external_id: 'Q131013', name: 'Acropolis of Athens', subtitle: null, description: null, description_source: null, description_adapted: false, type: 'site',
+  kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, kinds: null, country_codes: ['GR'], country_names: ['Greece'],
+  image_url: null, image_credit: null, created_at: null, latitude: 37.9715, longitude: 23.7263, focus: null,
+  in_danger: false, danger_since: null, location_count: 1, cast_points: false, has_parts: false, treasure_count: 0, finds_count: 6,
+  source_membership: 'present', existence: 'extant', missing_since: null, is_new: false,
+};
+
 describe('experienceOf', () => {
   it('writes the curator-only rejection keys as absent for a reader', () => {
-    const row: ExperienceListRow = {
-      id: 14723, external_id: 'Q131013', name: 'Acropolis of Athens', subtitle: null, description: null, description_source: null, description_adapted: false, type: 'site',
-      kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, kinds: null, country_codes: ['GR'], country_names: ['Greece'],
-      image_url: null, image_credit: null, created_at: null, latitude: 37.9715, longitude: 23.7263,
-      in_danger: false, danger_since: null, location_count: 1, cast_points: false, has_parts: false, treasure_count: 0, finds_count: 6,
-      source_membership: 'present', existence: 'extant', missing_since: null, is_new: false,
-    };
-    const wire = JSON.parse(JSON.stringify(experienceOf(row)));
+    const wire = JSON.parse(JSON.stringify(experienceOf(ACROPOLIS_ROW)));
     expect(wire).not.toHaveProperty('is_rejected');
     expect(wire).not.toHaveProperty('created_at');
     // No kind offered to this caller is an empty list, never a missing key.
     expect(wire.kinds).toEqual([]);
+    expect(Experience.safeParse(wire).success).toBe(true);
+    // A place that is not a whole pays no bytes for a frame it has none of.
+    expect(wire).not.toHaveProperty('focus');
+  });
+
+  it('sends a whole with no coordinate and the frame of its places (#2122)', () => {
+    // Seville's site is the cathedral, the Alcázar and the Archivo de Indias:
+    // its row is framed by the three, and stands at none of them.
+    const seville = { bbox: [-5.993096, 37.383833, -5.991556, 37.385742], anchorPoint: [-5.992326, 37.384788] };
+    const row = {
+      ...ACROPOLIS_ROW, id: 1175, name: 'Cathedral, Alcázar and Archivo de Indias in Seville', has_parts: true,
+      longitude: null, latitude: null, focus: { ...seville, extra: 1 } as unknown as ExperienceListRow['focus'],
+    };
+    const wire = JSON.parse(JSON.stringify(experienceOf(row)));
+    expect(wire).toMatchObject({ longitude: null, latitude: null, focus: seville });
+    expect(wire.focus).not.toHaveProperty('extra');
     expect(Experience.safeParse(wire).success).toBe(true);
   });
 });

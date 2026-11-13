@@ -12,8 +12,7 @@
 import type {
   AdministrativeDivision, DivisionGeometry, DivisionSearchResult,
 } from '../../api/responses/divisions.js';
-import type { MultiPolygon } from '../../api/responses/experiences.js';
-import type { AnchorPoint, FocusBbox } from '../../api/responses/regions.js';
+import type { AnchorPoint, FocusBbox, MultiPolygon } from '../../api/responses/experiences.js';
 import type { AdministrativeDivisionsRow } from '../../db/schema.generated.js';
 import { FOCUS_JSON_COLUMNS } from './focusColumns.js';
 

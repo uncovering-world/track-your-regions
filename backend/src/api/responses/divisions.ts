@@ -11,8 +11,7 @@
  */
 
 import { z } from 'zod/v4';
-import { MultiPolygon } from './experiences.js';
-import { AnchorPoint, FocusBbox } from './regions.js';
+import { AnchorPoint, FocusBbox, MultiPolygon } from './experiences.js';
 
 export const AdministrativeDivision = z.strictObject({
   id: z.number().int(),

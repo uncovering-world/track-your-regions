@@ -12,7 +12,7 @@
 
 import type {
   CommemoratedSubject, Experience, ExperienceDetail, ExperienceRegionRef, ExperienceSearchResult, ExperienceTreasure, ImageCredit,
-  LinkedPlace, PlaceKind, SiteFind, WorkVenue,
+  LinkedPlace, PlaceFocus, PlaceKind, SiteFind, WorkVenue,
 } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { TextSource } from '@tyr/shared/textCredits';
@@ -82,8 +82,28 @@ function kindsOf(kinds: PlaceKind[] | null): PlaceKind[] {
   }));
 }
 
+/**
+ * Where a place is, as `readerPositionSql` selects it: its coordinate, and on a
+ * whole the frame of its places under `focus` (#2122). The key is left out on
+ * every other row, so a place that is not a whole pays no bytes for it.
+ */
+function positionOf(row: PlacePosition): Pick<Experience, 'longitude' | 'latitude' | 'focus'> {
+  return {
+    longitude: row.longitude,
+    latitude: row.latitude,
+    ...(row.focus ? { focus: { bbox: row.focus.bbox, anchorPoint: row.focus.anchorPoint } } : {}),
+  };
+}
+
+/** The three columns of `readerPositionSql`: null on both axes for a whole, and its frame where it shows a place. */
+interface PlacePosition {
+  longitude: number | null;
+  latitude: number | null;
+  focus: PlaceFocus | null;
+}
+
 /** A region list row, after `withDangerFields`. */
-export interface ExperienceListRow {
+export interface ExperienceListRow extends PlacePosition {
   id: number;
   external_id: string;
   name: string;
@@ -101,8 +121,6 @@ export interface ExperienceListRow {
   image_url: string | null;
   image_credit: ImageCredit | null;
   created_at: Date | null;
-  latitude: number;
-  longitude: number;
   in_danger: boolean;
   danger_since: number | null;
   location_count: number;
@@ -139,8 +157,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     image_credit: creditOf(row.image_credit),
     in_danger: row.in_danger,
     danger_since: row.danger_since,
-    longitude: row.longitude,
-    latitude: row.latitude,
+    ...positionOf(row),
     kind_name: row.kind_name,
     kind_priority: row.kind_priority,
     kinds: kindsOf(row.kinds),
@@ -161,7 +178,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
 }
 
 /** The object's own read, before its regions are added. */
-export interface ExperienceDetailRow {
+export interface ExperienceDetailRow extends PlacePosition {
   id: number;
   source_id: number;
   external_id: string;
@@ -183,8 +200,6 @@ export interface ExperienceDetailRow {
   source_membership: Membership;
   existence: Existence;
   missing_since: Date | null;
-  longitude: number;
-  latitude: number;
   boundary_geojson: ExperienceDetail['boundary_geojson'];
   area_km2: number | null;
   kind_id: number;
@@ -227,8 +242,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     source_membership: row.source_membership,
     existence: row.existence,
     missing_since: iso(row.missing_since),
-    longitude: row.longitude,
-    latitude: row.latitude,
+    ...positionOf(row),
     boundary_geojson: row.boundary_geojson,
     area_km2: row.area_km2,
     kind_id: row.kind_id,
@@ -249,7 +263,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
 }
 
 /** One answer of the search, as its final SELECT lists it. */
-export interface SearchRow {
+export interface SearchRow extends PlacePosition {
   id: number;
   name: string;
   description: string | null;
@@ -266,8 +280,6 @@ export interface SearchRow {
   source_membership: Membership;
   existence: Existence;
   missing_since: Date | null;
-  longitude: number;
-  latitude: number;
   relevance: number;
   in_tail: boolean;
   regions: ExperienceRegionRef[];
@@ -291,8 +303,7 @@ export function searchResultOf(row: SearchRow): ExperienceSearchResult {
     source_membership: row.source_membership,
     existence: row.existence,
     missing_since: iso(row.missing_since),
-    longitude: row.longitude,
-    latitude: row.latitude,
+    ...positionOf(row),
     relevance: row.relevance,
     in_tail: row.in_tail,
     regions: row.regions,

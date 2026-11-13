@@ -9,7 +9,8 @@
  * column the SELECT gains reaches a reader only once the schema names it.
  */
 
-import type { AnchorPoint, FocusBbox, Region, RegionSearchResult } from '../../api/responses/regions.js';
+import type { AnchorPoint, FocusBbox } from '../../api/responses/experiences.js';
+import type { Region, RegionSearchResult } from '../../api/responses/regions.js';
 import type { RegionImportStateRow, RegionsRow } from '../../db/schema.generated.js';
 
 /** The frame and anchor as JSON arrays, for a row aliased `cg`. */

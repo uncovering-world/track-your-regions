@@ -202,6 +202,26 @@ export type PlaceKind = z.infer<typeof PlaceKind>;
 const placeKinds = z.array(PlaceKind)
   .describe('Every kind the place is offered in, in display order (#1245). Empty where none is offered to this caller.');
 
+export const FocusBbox = z.tuple([z.number(), z.number(), z.number(), z.number()])
+  .describe(
+    'The frame a camera fits, [west, south, east, north], measured by `geometry_focus()`.'
+    + ' West greater than east means the frame crosses the antimeridian.',
+  );
+export type FocusBbox = z.infer<typeof FocusBbox>;
+
+export const AnchorPoint = z.tuple([z.number(), z.number()])
+  .describe('The centre of the focus frame, [lng, lat]: where the camera goes for a frame that crosses the antimeridian.');
+export type AnchorPoint = z.infer<typeof AnchorPoint>;
+
+export const PlaceFocus = z.strictObject({
+  bbox: FocusBbox,
+  anchorPoint: AnchorPoint,
+}).describe(
+  'Where a whole is, measured over the places of it this caller is shown, as a region\'s frame is (#2122):'
+  + ' the Struve Geodetic Arc from Hammerfest to the Black Sea. A whole has no coordinate of its own.',
+);
+export type PlaceFocus = z.infer<typeof PlaceFocus>;
+
 export const Experience = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
@@ -229,8 +249,15 @@ export const Experience = z.strictObject({
   in_danger: z.boolean(),
   danger_since: z.number().int().nullable()
     .describe('The year the site was listed in danger. Null where the listing carries no year.'),
-  longitude: z.number(),
-  latitude: z.number(),
+  longitude: z.number().nullable().describe(
+    'Where a reader is sent: the place\'s own point, or the nearest of its points to its own coordinate. Null on a whole,'
+    + ' which a reader is shown by its places (#2122).',
+  ),
+  latitude: z.number().nullable(),
+  focus: PlaceFocus.optional().describe(
+    'Only on a whole a reader is shown a place of: the frame of its places, which a map frames it by while it holds'
+    + ' none of them.',
+  ),
   kind_name: z.string(),
   kind_priority: z.number().int().describe("The kind's display order, which the list orders by."),
   kinds: placeKinds,
@@ -347,8 +374,15 @@ export const ExperienceDetail = z.strictObject({
   source_membership: SourceMembership,
   existence: Existence,
   missing_since: timestamp,
-  longitude: z.number(),
-  latitude: z.number(),
+  longitude: z.number().nullable().describe(
+    'Where a reader is sent: the place\'s own point, or the nearest of its points to its own coordinate. Null on a whole,'
+    + ' which a reader is shown by its places (#2122).',
+  ),
+  latitude: z.number().nullable(),
+  focus: PlaceFocus.optional().describe(
+    'Only on a whole a reader is shown a place of: the frame of its places, which a map frames it by while it holds'
+    + ' none of them.',
+  ),
   boundary_geojson: MultiPolygon.nullable()
     .describe("The site's extent from OpenStreetMap, simplified past 5,000 vertices (ADR-0059)."),
   area_km2: z.number().nullable(),
@@ -397,8 +431,15 @@ export const ExperienceSearchResult = z.strictObject({
   source_membership: SourceMembership,
   existence: Existence,
   missing_since: timestamp,
-  longitude: z.number(),
-  latitude: z.number(),
+  longitude: z.number().nullable().describe(
+    'Where a reader is sent: the place\'s own point, or the nearest of its points to its own coordinate. Null on a whole,'
+    + ' which a reader is shown by its places (#2122).',
+  ),
+  latitude: z.number().nullable(),
+  focus: PlaceFocus.optional().describe(
+    'Only on a whole a reader is shown a place of: the frame of its places, which a map frames it by while it holds'
+    + ' none of them.',
+  ),
   relevance: z.number(),
   in_tail: z.boolean().describe(
     'Whether a crowded city crowds the place out of every list it is in (ADR-0172): ten better-known places of its kind'
