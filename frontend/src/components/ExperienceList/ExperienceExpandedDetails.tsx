@@ -52,6 +52,7 @@ import { SiteFindsList } from './SiteFindsList';
 import { VisitedStatusButton } from './VisitedStatusButton';
 import { VISIT_BUTTON_LABEL, offersWholeTick } from '../shared/visitWords';
 import { WholeVisitButton } from '../shared/WholeVisitButton';
+import { LazyTripsSection } from '../shared/lazyVisitTrips';
 import { useVisitedExperiences } from '../../hooks/useVisitedExperiences';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
@@ -513,6 +514,9 @@ function ExperienceExpandedDetailsComponent({
           </Tooltip>
         )}
       </Box>
+
+      {/* The trips of the traveller's own visit, newest first, each with its date (#2120). */}
+      {isAuthenticated && showCheckbox && <LazyTripsSection experienceId={experience.id} />}
     </Box>
   );
 }

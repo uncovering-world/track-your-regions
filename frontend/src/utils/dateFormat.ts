@@ -22,6 +22,31 @@ export function formatDateTime(dateStr: string | null): string {
   return date.toLocaleString(undefined, { ...dayOf(date), hour: '2-digit', minute: '2-digit' });
 }
 
+/** A trip's date as the traveller gave it: a year, a month within it, a day within that, each optional. */
+export interface ApproximateDay {
+  year: number | null;
+  month: number | null;
+  day: number | null;
+}
+
+/**
+ * A trip's date as precisely as it is known (#2120), in the reader's locale:
+ * "12 Nov" (or "12 Nov 2025" in another year), "March 2022", "2015", and
+ * "Date not remembered" for a trip whose date the traveller does not know.
+ */
+export function formatApproximateDate({ year, month, day }: ApproximateDay): string {
+  if (year === null) return 'Date not remembered';
+  if (month === null) return String(year);
+  const date = new Date(year, month - 1, day ?? 1);
+  if (day === null) return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return date.toLocaleDateString(undefined, dayOf(date));
+}
+
+/** The months of a year by name in the reader's locale, January first: what a month select lists. */
+export function monthNames(): string[] {
+  return Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleDateString(undefined, { month: 'long' }));
+}
+
 /** An ISO date as the day it falls on, "1 October", in the reader's locale. */
 export function formatDay(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString(undefined, { day: 'numeric', month: 'long' });

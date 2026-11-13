@@ -118,6 +118,8 @@ export function invalidateVisitedStatus(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: queryKeys.visited.experiencesAll });
   queryClient.invalidateQueries({ queryKey: queryKeys.visited.locationsAll });
   queryClient.invalidateQueries({ queryKey: queryKeys.visited.statusAll });
+  // A tick or an untick makes or takes a visit, and its trips with it (#2120).
+  queryClient.invalidateQueries({ queryKey: queryKeys.visited.tripsAll });
 }
 
 /**

@@ -9,7 +9,7 @@
  * - Multi-location support: shows location count and expandable locations
  */
 
-import { useCallback, useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import {
   outsideViewLabel, rowKey, rowEstimate,
   flattenGroups, expansionForSelection, rowIndexByExperienceId, experienceIdsInVisibleRange,
@@ -17,6 +17,7 @@ import {
 } from './ExperienceList/utils';
 import { useInViewFilter } from './ExperienceList/useInViewFilter';
 import { useListScrollAnchor } from './ExperienceList/useListScrollAnchor';
+import { useListStart } from './ExperienceList/useListStart';
 import { cardAboveGroups, echoRows, groupByEveryKind } from './ExperienceList/kindRows';
 import { useOpenedKind } from './ExperienceList/useOpenedKind';
 import { GroupHeader } from './ExperienceList/GroupHeader';
@@ -62,6 +63,7 @@ import { useSeenWindowIds } from '../hooks/useSeenWindowIds';
 import { queryKeys } from '../api/queryKeys';
 import { groupParts } from '../utils/partGroups';
 import { CARD_BROWSE_THRESHOLD } from './ExperienceList/CardLocationList';
+import { LazyVisitRemovedLine } from './shared/lazyVisitTrips';
 
 interface ExperienceListProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -354,21 +356,10 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     [flatRows],
   );
 
-  // Where the list starts inside the scroll container, which is not its top: a
-  // curator gets the "add a kind" box above it (47 px on Europe). The
-  // virtualiser counts its range and `scrollToIndex` from the container's top,
-  // so it is given that distance, and a row scrolled to "start" lands at the
-  // container's top rather than that far below it (#556).
-  // `offsetTop` counts from the nearest positioned ancestor, which is why
-  // `RegionDescriptionSection` makes the scroll container `position: relative`.
-  // Measured after the commit that changes what sits above the list, rather
-  // than read during render, so a hover's re-render forces no layout.
-  const listRef = useRef<HTMLUListElement>(null);
-  const [scrollMargin, setScrollMargin] = useState(0);
+  // Where the list starts inside the scroll container, which is not its top
+  // (`useListStart`, #556).
+  const { aboveRef: aboveListRef, listRef, listStart: scrollMargin } = useListStart<HTMLDivElement, HTMLUListElement>();
   const nothingInView = listedExperiences.length === 0 && activeExperiences.length > 0;
-  useLayoutEffect(() => {
-    setScrollMargin(listRef.current?.offsetTop ?? 0);
-  }, [experiencesLoading, hasCuratorScope, regionId, nothingInView]);
 
   const virtualizer = useVirtualizer({
     count: flatRows.length,
@@ -677,31 +668,38 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   return (
     <Box>
-      {/* Curator: Add experience of a new kind */}
-      {hasCuratorScope && regionId && (
-        <Box sx={{ p: 1, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<AssignIcon />}
-            onClick={() => setAddDialogState({ open: true, defaultTab: 0 })}
-          >
-            Add experience of a new kind
-          </Button>
-        </Box>
-      )}
+      {/* What stands above the windowed list, in one box whose size moves the
+          list's start (`useListStart`). */}
+      <Box ref={aboveListRef}>
+        {/* Curator: Add experience of a new kind */}
+        {hasCuratorScope && regionId && (
+          <Box sx={{ p: 1, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AssignIcon />}
+              onClick={() => setAddDialogState({ open: true, defaultTab: 0 })}
+            >
+              Add experience of a new kind
+            </Button>
+          </Box>
+        )}
 
-      {/* Panned away from everything. Said in words rather than left as blank
-          space, because an empty list under a region's name reads as "this region
-          is empty" — which is false, and the notice below carries the count and
-          the way back (#553). */}
-      {nothingInView && (
-        <Box sx={{ px: 2, py: 1.5 }}>
-          <Typography variant="body2" color="text.secondary">
-            Nothing in this view.
-          </Typography>
-        </Box>
-      )}
+        {/* Panned away from everything. Said in words rather than left as blank
+            space, because an empty list under a region's name reads as "this region
+            is empty" — which is false, and the notice below carries the count and
+            the way back (#553). */}
+        {nothingInView && (
+          <Box sx={{ px: 2, py: 1.5 }}>
+            <Typography variant="body2" color="text.secondary">
+              Nothing in this view.
+            </Typography>
+          </Box>
+        )}
+
+        {/* The Undo of an untick that took trips with it (#2120). */}
+        <LazyVisitRemovedLine scope={regionId} />
+      </Box>
 
       {/* The windowed list. Its height is the virtualiser's estimate of the whole
           sequence, so the scrollbar means what it always did, while only the rows

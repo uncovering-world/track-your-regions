@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateTime, formatRelativeTime, formatTimeLeft } from './dateFormat';
+import { formatApproximateDate, formatDateTime, formatRelativeTime, formatTimeLeft } from './dateFormat';
 
 /** A time left said the way a person says it (#1467). */
 describe('formatTimeLeft', () => {
@@ -34,5 +34,27 @@ describe('a date on screen', () => {
 
   it('falls back from a relative time to the day in words', () => {
     expect(formatRelativeTime(`${lastYear}-03-01T12:00:00Z`)).toContain(month(`${lastYear}-03-01T12:00:00Z`));
+  });
+});
+
+describe("a trip's date as precisely as it is known (#2120)", () => {
+  const month = (y: number, m: number) => new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  it('says a year alone as the year', () => {
+    expect(formatApproximateDate({ year: 2015, month: null, day: null })).toBe('2015');
+  });
+
+  it('says a month as the month and its year, in words', () => {
+    expect(formatApproximateDate({ year: 2022, month: 3, day: null })).toBe(month(2022, 3));
+  });
+
+  it('says a day as a day and a month, with the year only in another year', () => {
+    const thisYear = new Date().getFullYear();
+    expect(formatApproximateDate({ year: thisYear, month: 11, day: 12 })).not.toContain(String(thisYear));
+    expect(formatApproximateDate({ year: 2015, month: 5, day: 12 })).toContain('2015');
+  });
+
+  it('says a trip with no date in words', () => {
+    expect(formatApproximateDate({ year: null, month: null, day: null })).toBe('Date not remembered');
   });
 });
