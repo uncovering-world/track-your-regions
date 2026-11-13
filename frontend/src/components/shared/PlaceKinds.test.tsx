@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PlaceKindStanding } from '../../api/curation';
 
@@ -18,16 +19,6 @@ vi.mock('../../api/curation', () => ({
   setExperienceAdmission: vi.fn(),
   addToKind: vi.fn(),
 }));
-
-/** The crowded city's window, as the row opens it: on which membership, and what it reports on close. */
-function CrowdingWindowStub({ membershipId, onClose }: { membershipId: number; onClose: (message?: string) => void }) {
-  return (
-    <div data-testid="crowding-window">
-      {`around ${membershipId}`}
-      <button type="button" onClick={() => onClose('1 place kept in the list: Schloßplatz.')}>apply and close</button>
-    </div>
-  );
-}
 
 import { addToKind, fetchPlaceKinds, keepOutOfKind, setExperienceAdmission } from '../../api/curation';
 import { PlaceKinds } from './PlaceKinds';
@@ -45,12 +36,14 @@ const ARCHAEOLOGY: PlaceKindStanding = {
   ...WORSHIP, membershipId: 5039, kindId: 5, kindName: 'Archaeology', type: null,
 };
 
-function show(experienceId = 13761) {
+function show(experienceId = 13761, unsavedEdits = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <QueryClientProvider client={client}>
-      <PlaceKinds experienceId={experienceId} regionId={5} crowdingWindow={CrowdingWindowStub} />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <PlaceKinds experienceId={experienceId} regionId={5} unsavedEdits={unsavedEdits} />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -62,7 +55,7 @@ describe("a place's kinds on its curation dialog", () => {
     mockedAdd.mockReset();
   });
 
-  it('opens the crowded city’s window from a kind that shows a crowded city’s best known', async () => {
+  it('links a kind that shows a crowded city’s best known to the Crowded cities tab, open on the place (#2487)', async () => {
     // Schloßplatz in Berlin: a square of Squares & streets, 22 squares within 10 km, and in Public art, which has no rule.
     const SQUARES: PlaceKindStanding = {
       ...WORSHIP, membershipId: 14, kindId: 9, kindName: 'Squares & streets', type: 'square',
@@ -72,15 +65,20 @@ describe("a place's kinds on its curation dialog", () => {
     mockedKinds.mockResolvedValue({ kinds: [SQUARES, PUBLIC_ART], addable: [] });
     show(1014);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Squares around (22)' }));
-    expect(screen.getAllByRole('button', { name: /around \(/ })).toHaveLength(1);
-    expect(screen.getByTestId('crowding-window')).toHaveTextContent('around 14');
+    expect(await screen.findByRole('link', { name: 'Squares around (22)' })).toHaveAttribute('href', '/review?view=crowded&place=14');
+    expect(screen.getAllByRole('link', { name: /around \(/ })).toHaveLength(1);
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'apply and close' }));
-    expect(screen.queryByTestId('crowding-window')).toBeNull();
-    expect(screen.getByText('1 place kept in the list: Schloßplatz.')).toBeTruthy();
-    // The kinds are read again: an answer can publish the place or move it to the shadow.
-    await waitFor(() => expect(mockedKinds).toHaveBeenCalledTimes(2));
+  it('holds the crowded city’s link while the dialog has unsaved edits, which leaving would drop (#2487)', async () => {
+    const SQUARES: PlaceKindStanding = {
+      ...WORSHIP, membershipId: 14, kindId: 9, kindName: 'Squares & streets', type: 'square',
+      crowding: { limit: 10, radiusKm: 10, around: 22, shadowed: true, outrankedBy: 13, measured: true, betterKnown: 15, measuringRun: null, measurable: true },
+    };
+    mockedKinds.mockResolvedValue({ kinds: [SQUARES], addable: [] });
+    show(1014, true);
+
+    expect(await screen.findByRole('button', { name: 'Squares around (22)' })).toBeDisabled();
+    expect(screen.queryByRole('link', { name: 'Squares around (22)' })).toBeNull();
   });
 
   it('lists each kind with its type and where it stands', async () => {

@@ -3,7 +3,6 @@ import type { CurationDialog } from './CurationDialog';
 import type { AddExperienceDialog } from './AddExperienceDialog';
 import { lazyChunk } from '../../utils/lazyChunk';
 import { ChunkBoundary } from './ChunkBoundary';
-import { LazyCrowdingWindow } from '../curation/crowding/LazyCrowdingWindow';
 
 const CurationDialogChunk = lazyChunk(() => import('./CurationDialog').then(m => ({ default: m.CurationDialog })));
 const AddExperienceDialogChunk = lazyChunk(() => import('./AddExperienceDialog').then(m => ({ default: m.AddExperienceDialog })));
@@ -22,10 +21,7 @@ export function LazyCurationDialog(props: ComponentProps<typeof CurationDialog>)
   if (!props.experience) return null;
   return (
     <ChunkBoundary>
-      {/* Handed in rather than imported by the dialog: a dialog chunk that imports the
-          shell's lazy helpers makes Rolldown re-cut the startup chunks, moving the code the
-          shell shares with the dialog into the entry chunk (#2282). */}
-      <CurationDialogChunk crowdingWindow={LazyCrowdingWindow} {...props} />
+      <CurationDialogChunk {...props} />
     </ChunkBoundary>
   );
 }

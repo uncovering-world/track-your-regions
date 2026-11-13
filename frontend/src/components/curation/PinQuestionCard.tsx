@@ -155,7 +155,7 @@ function PinSection({ item, membershipId, question, heading, onDone }: {
           {admits ? 'Let the rule decide — admit it' : 'Let the rule decide — keep it out'}
         </Button>
       </Stack>
-      <CrowdingWayIn item={item} onDone={onDone} />
+      <CrowdingWayIn item={item} />
     </Stack>
   );
 }

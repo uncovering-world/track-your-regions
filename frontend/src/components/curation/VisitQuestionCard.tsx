@@ -130,7 +130,7 @@ function VisitSection({ item, membershipId, question, heading, onDone }: {
           Keep it
         </Button>
       </Stack>
-      <CrowdingWayIn item={item} onDone={onDone} />
+      <CrowdingWayIn item={item} />
     </Stack>
   );
 }

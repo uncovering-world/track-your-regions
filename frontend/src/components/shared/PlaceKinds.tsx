@@ -11,13 +11,15 @@
  * with the override every pinned refusal has. An arrival and a rule's refusal
  * are answered on the review page, and say so. A kind no run offers the place
  * in is added at the foot (`PlaceKindAdd`, #2035), and an added one says who
- * added it. A kind that shows a crowded city's best known offers the crowded
- * city's window on the place's membership — "Squares around (22)", #2282 —
- * as the place's review card does, over this dialog.
+ * added it. A kind that shows a crowded city's best known links to the
+ * crowded city's window on the place's membership — "Squares around (22)",
+ * #2282 — as the place's review card does: the review page's *Crowded
+ * cities* tab, open on the place (`crowdedPlaceUrl`, #2487).
  */
 
-import { useState, type ComponentType } from 'react';
-import { Alert, Box, Button, Chip, Stack, TextField, Typography } from '@mui/material';
+import { useState } from 'react';
+import { Link as RouterLink } from 'react-router';
+import { Alert, Box, Button, Chip, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import { alpha, type Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -30,9 +32,7 @@ import { typeLabelFor } from '../../utils/experienceTypes';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { PlaceKindAdd } from './PlaceKindAdd';
 import { aroundLabel } from '../curation/crowding/crowdingWords';
-
-/** The crowded city's window over the dialog, open on one membership's group with it selected: `LazyCrowdingWindow`, handed in. */
-export type CrowdingWindowOpener = ComponentType<{ membershipId: number; onClose: (message?: string) => void }>;
+import { crowdedPlaceUrl } from '../../utils/appUrl';
 
 /** The line under a kind's name: its type, then where it stands. */
 function standingLine(kind: PlaceKindStanding): string {
@@ -70,18 +70,20 @@ function useKindSettled(experienceId: number, regionId: number | null): () => vo
   };
 }
 
-function KindRow({ experienceId, kind, onlyOffered, regionId, crowdingWindow: CrowdingWindow }: {
+/** Why the crowded city's link is held while the dialog's form has edits: following it closes the dialog. */
+const LEAVE_HELD = 'Save or discard your edits first: this opens the Crowded cities tab and closes the dialog.';
+
+function KindRow({ experienceId, kind, onlyOffered, regionId, unsavedEdits }: {
   experienceId: number;
   kind: PlaceKindStanding;
   /** Whether this is the one kind that offers the place: taken out, readers see it nowhere. */
   onlyOffered: boolean;
   regionId: number | null;
-  crowdingWindow?: CrowdingWindowOpener;
+  /** The dialog's form has edits a link away would drop without asking. */
+  unsavedEdits: boolean;
 }) {
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState('');
-  const [around, setAround] = useState(false);
-  const [applied, setApplied] = useState<string | null>(null);
   const settled = useKindSettled(experienceId, regionId);
   const takeOut = useMutation({
     mutationFn: () => keepOutOfKind(experienceId, { membershipId: kind.membershipId, note: note.trim() || undefined }),
@@ -126,8 +128,21 @@ function KindRow({ experienceId, kind, onlyOffered, regionId, crowdingWindow: Cr
             </>
           )}
         </Box>
-        {kind.crowding && CrowdingWindow && (
-          <Button size="small" variant="outlined" color="inherit" onClick={() => setAround(true)} sx={{ flexShrink: 0 }}>
+        {kind.crowding && unsavedEdits && (
+          // A disabled button takes no hover, so the hint hangs on its wrapper.
+          <Tooltip title={LEAVE_HELD}>
+            <span>
+              <Button size="small" variant="outlined" color="inherit" disabled sx={{ flexShrink: 0 }}>
+                {aroundLabel({ kind_id: kind.kindId, kind_name: kind.kindName, kind_type: kind.type }, kind.crowding)}
+              </Button>
+            </span>
+          </Tooltip>
+        )}
+        {kind.crowding && !unsavedEdits && (
+          <Button
+            size="small" variant="outlined" color="inherit" component={RouterLink} to={crowdedPlaceUrl(kind.membershipId)}
+            sx={{ flexShrink: 0 }}
+          >
             {aroundLabel({ kind_id: kind.kindId, kind_name: kind.kindName, kind_type: kind.type }, kind.crowding)}
           </Button>
         )}
@@ -176,28 +191,16 @@ function KindRow({ experienceId, kind, onlyOffered, regionId, crowdingWindow: Cr
         </Stack>
       )}
       {failed && <Alert severity="error" sx={{ py: 0, mt: 1 }}>{(failed as Error).message}</Alert>}
-      {applied && <Alert severity="success" onClose={() => setApplied(null)} sx={{ py: 0, mt: 1 }}>{applied}</Alert>}
-      {around && CrowdingWindow && (
-        <CrowdingWindow
-          membershipId={kind.membershipId}
-          onClose={message => {
-            setAround(false);
-            if (!message) return;
-            setApplied(message);
-            settled();
-          }}
-        />
-      )}
     </Box>
   );
 }
 
 /** The Kinds section of a place's curation dialog; nothing until its kinds are read. */
-export function PlaceKinds({ experienceId, regionId, crowdingWindow }: {
+export function PlaceKinds({ experienceId, regionId, unsavedEdits = false }: {
   experienceId: number;
   regionId: number | null;
-  /** The crowded city's window a kind row opens (#2282); absent, no row offers it. */
-  crowdingWindow?: CrowdingWindowOpener;
+  /** The dialog's form has edits: the crowded city's link, which leaves the dialog, waits until they are saved. */
+  unsavedEdits?: boolean;
 }) {
   const kinds = useQuery({
     queryKey: queryKeys.curation.placeKinds(experienceId),
@@ -226,7 +229,7 @@ export function PlaceKinds({ experienceId, regionId, crowdingWindow }: {
             kind={kind}
             onlyOffered={kind.state === 'offered' && offered === 1}
             regionId={regionId}
-            crowdingWindow={crowdingWindow}
+            unsavedEdits={unsavedEdits}
           />
         ))}
         {addable.length > 0 && (
