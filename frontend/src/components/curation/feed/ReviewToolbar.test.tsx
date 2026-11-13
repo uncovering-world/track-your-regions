@@ -83,6 +83,7 @@ function renderToolbar(over: {
   total?: number;
 } = {}) {
   const onChange = vi.fn();
+  const onShow = vi.fn();
   const onSetAside = vi.fn();
   const onBringBack = vi.fn();
   renderWithClient(
@@ -91,11 +92,14 @@ function renderToolbar(over: {
       facets={{ ...FACETS, ...over.facets }}
       total={over.total ?? 1633}
       onChange={onChange}
+      onShow={onShow}
       onSetAside={onSetAside}
       onBringBack={onBringBack}
     />,
   );
-  return { onChange, onSetAside, onBringBack };
+  return {
+    onChange, onShow, onSetAside, onBringBack,
+  };
 }
 
 /** Opens a chip's menu by the word the chip starts with — its picked values follow it. */
@@ -426,7 +430,9 @@ describe('ReviewToolbar', () => {
   it('does not report a search Clear all has just cleared', () => {
     vi.useFakeTimers();
     try {
-      const rest = { facets: FACETS, total: 1633, onSetAside: vi.fn(), onBringBack: vi.fn() };
+      const rest = {
+        facets: FACETS, total: 1633, onShow: vi.fn(), onSetAside: vi.fn(), onBringBack: vi.fn(),
+      };
       const typed = vi.fn();
       const { rerender } = renderWithClient(
         <ReviewToolbar address={EMPTY_REVIEW} onChange={typed} {...rest} />,
@@ -517,7 +523,9 @@ describe('ReviewToolbar', () => {
     // as `CologneCathedral`.
     vi.useFakeTimers();
     try {
-      const rest = { facets: FACETS, total: 1633, onSetAside: vi.fn(), onBringBack: vi.fn() };
+      const rest = {
+        facets: FACETS, total: 1633, onShow: vi.fn(), onSetAside: vi.fn(), onBringBack: vi.fn(),
+      };
       const onChange = vi.fn();
       const { rerender } = renderWithClient(
         <ReviewToolbar address={EMPTY_REVIEW} onChange={onChange} {...rest} />,
@@ -543,7 +551,9 @@ describe('ReviewToolbar', () => {
     // characters, so a 101-character paste would be truncated back into the box.
     vi.useFakeTimers();
     try {
-      const rest = { facets: FACETS, total: 1633, onSetAside: vi.fn(), onBringBack: vi.fn() };
+      const rest = {
+        facets: FACETS, total: 1633, onShow: vi.fn(), onSetAside: vi.fn(), onBringBack: vi.fn(),
+      };
       const onChange = vi.fn();
       const long = 'x'.repeat(101);
       const { rerender } = renderWithClient(
@@ -586,6 +596,28 @@ describe('ReviewToolbar', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
+  // The map is the same questions drawn another way (#2477): reported apart from the
+  // filters, so the page never reads it as a different list.
+  it('switches between the list and the map without touching a filter', () => {
+    const { onChange, onShow } = renderToolbar({ address: { kinds: ['arrival'], row: 'waiting:88213' } });
+
+    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Map' }));
+    expect(onShow).toHaveBeenCalledWith('map');
+    // The selected mode clicked again asks for nothing.
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+    expect(onShow).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('shows the map pressed on the map, and goes back to the list from it', () => {
+    const { onShow } = renderToolbar({ address: { view: 'map' } });
+
+    expect(screen.getByRole('button', { name: 'Map' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+    expect(onShow).toHaveBeenCalledWith('questions');
+  });
+
   it('offers Clear all only once something is on', () => {
     renderToolbar();
 
@@ -615,6 +647,7 @@ describe('ReviewToolbar', () => {
         facets={undefined}
         total={0}
         onChange={vi.fn()}
+        onShow={vi.fn()}
         onSetAside={vi.fn()}
         onBringBack={vi.fn()}
       />,

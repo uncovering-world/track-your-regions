@@ -8,6 +8,10 @@
  * of evidence. Splitting them is not decoration: the evidence is what makes a list
  * necessary.
  *
+ * The list's column can show the same questions on a map instead (#2477, `view=map`): the
+ * card stays where it is, and a marker opens it the way a row does, by the address's `row`.
+ * The ticks and the batch answers stay the list's.
+ *
  * What the page decides is smaller than it was. **The address owns the filters, the order
  * and the selected row** (ADR-0051 decision 5) — the toolbar reports a change, this page
  * writes it into the URL through `useReviewAddress`, and the URL is what the query is
@@ -52,6 +56,7 @@ import { answerVerb, lostOfferedFor } from './selection/answerWords';
 import { PinnedAnswers } from '../shared/AdmissionPins';
 import { LazyCrowdedCities } from './crowding/LazyCrowdedCities';
 import { LeaveStagedDialog } from './crowding/LeaveStagedDialog';
+import { LazyReviewQueueMap } from './queueMap/LazyReviewQueueMap';
 import { useShadowedArrivals } from './crowding/useShadowedArrivals';
 import type { GroupStagings } from './crowding/crowdedGroups';
 
@@ -96,6 +101,26 @@ function useBenchRow(shown: QueueRow | undefined, row: string | null, looking: b
   return shown ?? (looking && last?.key === row ? last : undefined);
 }
 
+/**
+ * What an answered block says when a chip it does not follow is set. The search and the
+ * source chip narrow the answered blocks as they narrow the questions; the region, the run
+ * and the kind of question do not, since they choose among open questions and these are
+ * answers (`getReviewQueue`). Said where a block is open and one of those is set, so a
+ * narrowed page never reads as though they reached it. Null when none is set.
+ */
+function unfilteredNote(address: ReviewAddress): string | null {
+  const unreached = [
+    address.regionId !== null && 'the region',
+    address.runId !== null && 'the run',
+    address.kinds.length > 0 && 'the kind of question',
+  ].filter((name): name is string => Boolean(name));
+  if (unreached.length === 0) return null;
+  const phrase = unreached.length > 1
+    ? unreached.slice(0, -1).join(', ') + ' and ' + unreached.at(-1)
+    : unreached[0];
+  return `Not narrowed by ${phrase} you chose — only the search and the source reach this block.`;
+}
+
 /** A tab's name and, once read, how much waits under it. */
 function TabLabel({ name, count }: { name: string; count: number | undefined }) {
   return (
@@ -116,7 +141,10 @@ export function ReviewPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const queue = useReviewQueue(address);
   const { rows, total } = queue;
-  const questionsOpen = address.view === 'questions';
+  // The queue's tab, listed or on a map (#2477): the same questions, read and selected alike.
+  const questionsOpen = address.view !== 'crowded';
+  const mapOpen = address.view === 'map';
+  const tab: 'questions' | 'crowded' = questionsOpen ? 'questions' : 'crowded';
 
   /**
    * The *Crowded cities* tab (#2282): its count, read here for the tab's label, and the
@@ -129,8 +157,8 @@ export function ReviewPage() {
   const [crowdStagings, setCrowdStagings] = useState<GroupStagings>(new Map());
   const crowdStaged = [...crowdStagings.values()].reduce((sum, staging) => sum + staging.size, 0);
   const [leavingCrowd, setLeavingCrowd] = useState(false);
-  const openTab = (view: ReviewAddress['view']) => {
-    if (view === address.view) return;
+  const openTab = (view: typeof tab) => {
+    if (view === tab) return;
     if (view === 'questions' && crowdStaged > 0) setLeavingCrowd(true);
     else go({ view, crowd: null });
   };
@@ -181,6 +209,9 @@ export function ReviewPage() {
   useEffect(() => {
     if (selectedIndex >= 0) lastIndex.current = selectedIndex;
   }, [selectedIndex, queue.filterKey]);
+
+  // A place's name, where the list has loaded a row of it: the map's short list names it.
+  const placeName = useCallback((placeId: number) => rows.find(r => r.id === placeId)?.name, [rows]);
 
   const onBench = useBenchRow(
     selectedIndex >= 0 ? rows[selectedIndex] : undefined, address.row, queue.settling || queue.stale,
@@ -284,6 +315,12 @@ export function ReviewPage() {
       + 'the filters changed, so the list it was ticked on is a different one.');
   }, []);
   const selection = useRowSelection(rows, queue.filterKey, onSelectionCleared);
+  // Batch answers are the list's. The map opens one question at a time, and may open one the
+  // list's page does not hold, so it holds no ticks however it is reached: the switch, Back or Forward.
+  const clearSelection = selection.clear;
+  useEffect(() => {
+    if (mapOpen) clearSelection();
+  }, [mapOpen, clearSelection]);
   const tickedRows = rows.filter(row => selection.keys.has(row.key));
   const answering = useAnswerSelection({
     address, rows: tickedRows, selection, total, pageSize: queue.pageSize, facets: queue.facets, setNotice,
@@ -309,21 +346,7 @@ export function ReviewPage() {
     );
   };
 
-  // The search and the source chip narrow the answered blocks as they narrow the questions;
-  // the region, the run and the kind of question do not, since they choose among open
-  // questions and these are answers (`getReviewQueue`). Said where a block is open and one
-  // of those is set, so a narrowed page never reads as though they reached it.
-  const unreached = [
-    address.regionId !== null && 'the region',
-    address.runId !== null && 'the run',
-    address.kinds.length > 0 && 'the kind of question',
-  ].filter((name): name is string => Boolean(name));
-  const unreachedPhrase = unreached.length > 1
-    ? unreached.slice(0, -1).join(', ') + ' and ' + unreached.at(-1)
-    : unreached[0];
-  const unfiltered = unreached.length === 0
-    ? null
-    : `Not narrowed by ${unreachedPhrase} you chose — only the search and the source reach this block.`;
+  const unfiltered = unfilteredNote(address);
 
   /**
    * The three lists of answered work, which are not questions and do not join `rows`.
@@ -418,8 +441,8 @@ export function ReviewPage() {
       )}
 
       <Tabs
-        value={address.view}
-        onChange={(_, view: ReviewAddress['view']) => openTab(view)}
+        value={tab}
+        onChange={(_, view: typeof tab) => openTab(view)}
         aria-label="What to review"
         sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}
       >
@@ -469,6 +492,8 @@ export function ReviewPage() {
             facets={queue.facets}
             total={total}
             onChange={onFilterChange}
+            // Not a filter: the same list drawn another way, so the open row stays.
+            onShow={view => go({ view })}
             onSetAside={runId => runAside(setRunAside(runId), `Could not set run ${runId} aside`)}
             onBringBack={runId => runAside(bringRunBack(runId), `Could not bring run ${runId} back`)}
           />
@@ -490,44 +515,65 @@ export function ReviewPage() {
                   the card rendered far above the viewport — the curator clicked and the screen
                   appeared not to react. The list keeps its own scrollbar, and the bench sticks
                   to the top, so the answer to a click is always where the click was. */}
-              <Box
-                sx={{
-                  // 400, not 320: a row carries an object's name and, under it, its kind
-                  // and what is being asked of it. At 320 both truncate after a few words —
-                  // "Cultural Landscape and Archaeolo…" over "UNESCO World Heritage Sites ·
-                  // holds a change: …" — which leaves the list unable to do the one thing it
-                  // is for, which is telling one question from the next without opening it.
-                  width: { xs: '100%', md: 400 },
-                  flexShrink: 0,
-                  maxHeight: { xs: 320, md: 'calc(100vh - 220px)' },
-                  overflowY: 'auto',
-                  position: { md: 'sticky' },
-                  top: { md: 16 },
-                }}
-              >
-                <ReviewQueueList
-                  rows={rows}
-                  selected={selected}
-                  onSelect={key => go({ row: key })}
-                  sort={address.sort}
-                  today={dayOf(new Date().toISOString())}
-                  hasMore={queue.hasMore}
-                  startsPastTop={queue.startsPastTop}
-                  onTop={() => { lastIndex.current = 0; queue.openAtTop(); }}
-                  loadingMore={queue.loadingMore}
-                  onMore={queue.more}
-                  total={total}
-                  stale={queue.stale}
-                  selection={selection}
-                />
-              </Box>
+              {mapOpen ? (
+                <Box
+                  sx={{
+                    // Wider than the list: a map of a city reads at this width, and the card keeps the rest.
+                    width: { xs: '100%', md: 440, lg: 520 },
+                    flexShrink: 0,
+                    pr: { md: 2 },
+                    mb: { xs: 2, md: 0 },
+                    position: { md: 'sticky' },
+                    top: { md: 16 },
+                  }}
+                >
+                  <LazyReviewQueueMap
+                    address={address}
+                    placeName={placeName}
+                    onOpen={key => go({ row: key })}
+                    onShowList={() => go({ view: 'questions' })}
+                  />
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    // 400, not 320: a row carries an object's name and, under it, its kind
+                    // and what is being asked of it. At 320 both truncate after a few words —
+                    // "Cultural Landscape and Archaeolo…" over "UNESCO World Heritage Sites ·
+                    // holds a change: …" — which leaves the list unable to do the one thing it
+                    // is for, which is telling one question from the next without opening it.
+                    width: { xs: '100%', md: 400 },
+                    flexShrink: 0,
+                    maxHeight: { xs: 320, md: 'calc(100vh - 220px)' },
+                    overflowY: 'auto',
+                    position: { md: 'sticky' },
+                    top: { md: 16 },
+                  }}
+                >
+                  <ReviewQueueList
+                    rows={rows}
+                    selected={selected}
+                    onSelect={key => go({ row: key })}
+                    sort={address.sort}
+                    today={dayOf(new Date().toISOString())}
+                    hasMore={queue.hasMore}
+                    startsPastTop={queue.startsPastTop}
+                    onTop={() => { lastIndex.current = 0; queue.openAtTop(); }}
+                    loadingMore={queue.loadingMore}
+                    onMore={queue.more}
+                    total={total}
+                    stale={queue.stale}
+                    selection={selection}
+                  />
+                </Box>
+              )}
               <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                 {/* The selected row — kept while it is looked for after an answer moved it —
                     or nothing for the one render before the effect above picks the next one. Falling back to `rows[0]` would flash the top of the
                     list as the answer to a click somewhere else. With more than one row
                     ticked the bench sums the selection instead (#852); one tick, or none,
                     and the card is what it always was. */}
-                {tickedRows.length > 1 || selection.allMatching
+                {!mapOpen && (tickedRows.length > 1 || selection.allMatching)
                   ? (
                     <SelectionSummary
                       rows={tickedRows}
@@ -548,19 +594,22 @@ export function ReviewPage() {
             </Stack>
           )}
 
-          <SelectionBar
-            rows={tickedRows}
-            allMatching={selection.allMatching}
-            reach={answering.reach}
-            lost={lost}
-            total={total}
-            progress={answering.progress}
-            onAnswer={answering.answer}
-            onClear={selection.clear}
-          />
+          {/* The batch answers are the list's: the map opens one question at a time. */}
+          {!mapOpen && (
+            <SelectionBar
+              rows={tickedRows}
+              allMatching={selection.allMatching}
+              reach={answering.reach}
+              lost={lost}
+              total={total}
+              progress={answering.progress}
+              onAnswer={answering.answer}
+              onClear={selection.clear}
+            />
+          )}
           {/* Room under the columns for the bar, which is page-fixed: without it the
               last rows of a long list sit behind it. */}
-          {batchOpen && <Box sx={{ height: 96 }} />}
+          {!mapOpen && batchOpen && <Box sx={{ height: 96 }} />}
 
           {/* Asked once: past one page and for all matching — otherwise the count is on
               the bar and every answer can be undone from the foot of this page. Names what

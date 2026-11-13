@@ -9,6 +9,9 @@
  * text, which is debounced: a request per keystroke would be a request per
  * keystroke over the whole union.
  *
+ * Beside the order, the switch between the list and the map (#2477): the same questions
+ * drawn two ways, which the page writes into the address as `view` and never as a filter.
+ *
  * The counts are never computed here. Each is the server's own facet, counted
  * over the union under every *other* filter, so a chip states what picking it
  * would leave rather than what is already on screen; before the facets arrive
@@ -30,7 +33,7 @@ import { kindOptions, kindShort, regionOptions, sourceOptions } from './toolbarO
 import { SEARCH_DEBOUNCE_MS, useRegionChipSearch } from './useRegionChipSearch';
 
 export function ReviewToolbar({
-  address, facets, total, onChange, onSetAside, onBringBack,
+  address, facets, total, onChange, onShow, onSetAside, onBringBack,
 }: {
   address: ReviewAddress;
   /** Undefined until the first page answers: the chips are there, the counts are not. */
@@ -43,6 +46,11 @@ export function ReviewToolbar({
    * the function form makes the second build on the first (`useReviewAddress`).
    */
   onChange: (next: ReviewPatch) => void;
+  /**
+   * The questions listed or on a map (#2477). Not a filter: the same questions either way,
+   * so it is reported apart from `onChange`, which a page reads as a change of list.
+   */
+  onShow: (view: 'questions' | 'map') => void;
   onSetAside: (runId: number) => void;
   onBringBack: (runId: number) => void;
 }) {
@@ -173,6 +181,16 @@ export function ReviewToolbar({
         >
           <ToggleButton value="date" sx={{ textTransform: 'none', px: 1.5 }}>Newest first</ToggleButton>
           <ToggleButton value="question" sx={{ textTransform: 'none', px: 1.5 }}>By question</ToggleButton>
+        </ToggleButtonGroup>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          aria-label="How the questions are shown"
+          value={address.view === 'map' ? 'map' : 'questions'}
+          onChange={(_, next: 'questions' | 'map' | null) => { if (next) onShow(next); }}
+        >
+          <ToggleButton value="questions" sx={{ textTransform: 'none', px: 1.5 }}>List</ToggleButton>
+          <ToggleButton value="map" sx={{ textTransform: 'none', px: 1.5 }}>Map</ToggleButton>
         </ToggleButtonGroup>
       </Box>
 
