@@ -1,7 +1,7 @@
 # ADR-0198: Every source's record of a place is one row, in a kind or in a whole
 
 **Date:** 2026-11-12
-**Status:** Accepted — decision 3 narrowed by [ADR-0200](0200-every-line-of-the-world-heritage-list-is-a-record-and-holds-its-points-item.md): a site's own list line is World Heritage components' record of the site in itself, which holds the line's item
+**Status:** Accepted — decision 3 narrowed by [ADR-0200](0200-every-line-of-the-world-heritage-list-is-a-record-and-holds-its-points-item.md): a site's own list line is World Heritage components' record of the site in itself, which holds the line's item; decision 6 answered by [ADR-0203](0203-a-place-made-of-parts-is-never-merged-and-claims-no-item.md): two parts of one whole are never merged, and parts of two wholes may be, each keeping its record in its own whole
 **Issue:** [#2118](https://github.com/uncovering-world/track-your-regions/issues/2118), Epic #2115
 **Narrows:** [ADR-0156](0156-a-virtual-kind-holds-how-a-source-knows-a-part.md) decisions 1 and 2,
 [ADR-0100](0100-a-serial-sites-components-are-places-part-of-the-site.md) decisions 1 and 3
