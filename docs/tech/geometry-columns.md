@@ -502,6 +502,17 @@ Where the answer lives (#674):
   trigger adds nothing; after the snap, Russia, Oceania and Kiribati measure
   compact on their own, and the only divisions that are wide either way are the
   two Antarctica rows.
+- **Measured on read, for a whole's places.** A place made of parts has no
+  coordinate of its own (#2122), and its row carries `focus`, the frame of the
+  places the caller is shown of it: `wholeFocusSql` (`backend/src/db/placePoints.ts`)
+  hands their points, collected, to `geometry_focus()` inside the list, card and
+  search reads (`readerPositionSql`). No box is stored, since the places a
+  reader is shown move with every run and every verdict. On Europe's list of
+  1 943 rows, 177 of them wholes, the frames cost about 10 ms of a 133 ms read,
+  less the 3 ms a whole's nearest point no longer costs (2026-11-13). A stored
+  frame, refreshed with the regions, is the way out if that grows.
+  The web frames it with `frameFocus` (`mapUtils.ts`) while it holds none of the
+  places, and the places with `frameGeoJson` once it does.
 - **`focusFromGeoJson()`** (`frontend/src/utils/mapUtils.ts`), for what exists
   only in the client — a boundary being drawn, a cut in progress, a combined
   selection of several divisions. The same rule, with a one-way shift, so it
