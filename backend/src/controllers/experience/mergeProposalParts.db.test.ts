@@ -17,7 +17,9 @@ import type { MergePair } from '../../api/responses/reviewQueue.js';
 const CATHEDRAL = 9750;
 const SITE = 9751;
 const PART = 9752;
-const PLACES = [CATHEDRAL, SITE, PART];
+/** A second part of the site, under a lower id than the cathedral row, so its card is the part's own. */
+const BAPTISTERY = 9749;
+const PLACES = [BAPTISTERY, CATHEDRAL, SITE, PART];
 const CURATOR = '00000000-0000-4000-8000-000000009750';
 const ITEM = 'Q1152972';
 let curatorId = 0;
@@ -101,6 +103,27 @@ describe("a serial site's part proposed as one place with another kind's row (#1
       otherId: PART, otherKinds: [], otherPartOf: 'Historical Monuments of Mtskheta (fixture)', otherWikidataItem: ITEM,
       anchorPartOf: null, anchorKinds: ['Places of worship'],
     });
+  });
+
+  it("asks a part's own card under its site's kind, a part being in no kind of its own", async () => {
+    await place(BAPTISTERY, 'Svetitskhoveli Baptistery', null, 44.72150);
+    // Its record in the site, in World Heritage components, under a reference of the fixture's own ids.
+    await pool.query(
+      `INSERT INTO source_records (experience_id, whole_id, source_id, external_id)
+       SELECT $2, $1, s.id, $3 FROM experience_sources s WHERE s.name = 'World Heritage components'`,
+      [SITE, BAPTISTERY, `${SITE}-${String(BAPTISTERY % 1000).padStart(3, '0')}`],
+    );
+    await pool.query(
+      `INSERT INTO experience_merge_proposals (place_a, place_b, distance_m, name_similarity, exact, reach_m)
+       VALUES ($1, $2, 40, 0.8, false, 300)`,
+      [BAPTISTERY, CATHEDRAL],
+    );
+    const { rows } = await queryMergeProposals([BAPTISTERY]);
+    const worldHeritage = await pool.query<{ id: number; name: string }>(
+      `SELECT k.id, k.name FROM experience_kinds k JOIN experience_sources s ON s.kind_id = k.id
+        WHERE s.name = 'UNESCO World Heritage Sites'`,
+    );
+    expect(rows[0]).toMatchObject({ id: BAPTISTERY, kind_id: worldHeritage.rows[0].id, kind_name: worldHeritage.rows[0].name, kind_type: null });
   });
 
   it('makes one place of the two, the part relation moving onto the row that stays', async () => {
