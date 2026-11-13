@@ -11,7 +11,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchReviewQueue, setRunAside, bringRunBack } from './reviewQueue';
+import {
+  fetchReviewQueue, fetchReviewQueueMap, setRunAside, bringRunBack,
+} from './reviewQueue';
 import { EMPTY_REVIEW, type ReviewAddress } from '../utils/appUrl';
 
 describe('fetchReviewQueue', () => {
@@ -73,6 +75,55 @@ describe('fetchReviewQueue', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const url = new URL(String(fetchSpy.mock.calls[0][0]));
     expect(url.pathname).toBe('/api/experiences/review/queue');
+    expect(url.search).toBe('');
+  });
+});
+
+/**
+ * `fetchReviewQueueMap` asks the map's read (#2477) with the list's own chips and
+ * nothing of the page's: no order, no open row, no tab, no cursor.
+ */
+describe('fetchReviewQueueMap', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ places: [], unplaced: 0 }),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('writes the chips as the list writes them, and the page’s own words not at all', async () => {
+    await fetchReviewQueueMap({
+      ...EMPTY_REVIEW,
+      q: 'memorial',
+      sort: 'question',
+      sourceIds: [1, 3],
+      kinds: ['arrival', 'refused'],
+      regionId: 6737,
+      runId: 98,
+      showAside: true,
+      row: 'waiting:11586',
+      view: 'map',
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const url = new URL(String(fetchSpy.mock.calls[0][0]));
+    expect(url.pathname).toBe('/api/experiences/review/queue/map');
+    expect(url.search).toBe('?q=memorial&source=1%2C3&kind=arrival%2Crefused&region=6737&run=98&aside=show');
+  });
+
+  it('sends nothing for an empty address', async () => {
+    await fetchReviewQueueMap({ ...EMPTY_REVIEW, view: 'map' });
+
+    const url = new URL(String(fetchSpy.mock.calls[0][0]));
+    expect(url.pathname).toBe('/api/experiences/review/queue/map');
     expect(url.search).toBe('');
   });
 });

@@ -96,6 +96,15 @@ export function serverRowOf(key: string | null): string | null {
   return server && /^\d+$/.test(id ?? '') ? `${server}:${id}` : null;
 }
 
+/**
+ * A question in the server's words (`conflict`, the place's id) as the list keys its row,
+ * `conflicts:88`: what the address's `row` names, so a question the map holds opens the
+ * same card a click on its row does (#2477).
+ */
+export function rowKeyOf(kind: QueueOrderEntry['kind'], id: number): string {
+  return `${ROW_KIND[kind]}:${id}`;
+}
+
 const warnedKeys = new Set<string>();
 
 /** A key `order` named that no hydrated row answers to — logged once per key, never thrown on. */
