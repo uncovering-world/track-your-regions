@@ -424,7 +424,7 @@ describe('the visits a "mark all" writes and takes back', () => {
     mockedQuery.mockReset();
     mockedQuery
       .mockResolvedValueOnce({ rows: [{ id: 1, experience_id: 42 }, { id: 2, experience_id: 43 }, { id: 3, experience_id: 43 }] })
-      .mockResolvedValueOnce({ rows: [{ marked: 3 }] });
+      .mockResolvedValueOnce({ rows: [{ marked: 3, ticked: [] }] });
     const res = makeRes();
 
     await answerRoute(postMarkAllLocations,
@@ -529,10 +529,13 @@ describe('the single-mark write and the visited-ids read — #520', () => {
       res as never,
     );
 
-    // The place is read again with the write, under a share lock on the
-    // point: a merge that folded it in between leaves nothing to write (#2120).
+    // The place is read again in the write's own statement, under a share
+    // lock on the point, and the visit is written from that read: a merge
+    // that folded it in between leaves nothing to write (#2120).
     const [write, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
-    expect(write).toMatch(/INSERT INTO user_visited_experiences[\s\S]*FROM experience_locations el[\s\S]*FOR SHARE OF el/);
+    expect(write).toMatch(
+      /WITH point AS \(SELECT[\s\S]*FROM experience_locations el[\s\S]*FOR SHARE OF el\),[\s\S]*INSERT INTO user_visited_experiences[\s\S]*FROM point/,
+    );
     expect(params).toEqual([5, 99, null]);
     expect(res.status).toHaveBeenCalledWith(404);
   });

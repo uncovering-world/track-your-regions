@@ -3890,6 +3890,102 @@
         }
       }
     },
+    "/api/users/me/trips": {
+      "post": {
+        "operationId": "postUsersMeTrips",
+        "summary": "Add one trip with one date to each of several places the caller has visited: the date offered after a tick",
+        "tags": [
+          "users"
+        ],
+        "description": "Requires a signed-in caller.",
+        "x-access": "signed-in",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddTripsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripsDated"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putUsersMeTrips",
+        "summary": "Give several of the caller's trips new dates at once",
+        "tags": [
+          "users"
+        ],
+        "description": "Requires a signed-in caller.",
+        "x-access": "signed-in",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeTripsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripsDated"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/users/me/visits/restore": {
       "post": {
         "operationId": "postUsersMeVisitsRestore",
@@ -17921,6 +18017,28 @@
           "kindId"
         ]
       },
+      "AddTripsBody": {
+        "type": "object",
+        "properties": {
+          "experienceIds": {
+            "minItems": 1,
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "date": {
+            "$ref": "#/components/schemas/TripDateBody"
+          }
+        },
+        "required": [
+          "experienceIds",
+          "date"
+        ]
+      },
       "AddableKind": {
         "type": "object",
         "properties": {
@@ -18346,13 +18464,21 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "ticked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TickedPlace"
+            },
+            "description": "The places the marking gave a visit they did not have, each at the first of its points marked."
           }
         },
         "required": [
           "success",
           "experienceId",
           "regionId",
-          "locationsMarked"
+          "locationsMarked",
+          "ticked"
         ],
         "additionalProperties": false,
         "description": "Every place of an object, or of it within a region, marked visited."
@@ -19552,6 +19678,36 @@
         "required": [
           "currentPassword",
           "newPassword"
+        ]
+      },
+      "ChangeTripsBody": {
+        "type": "object",
+        "properties": {
+          "trips": {
+            "minItems": 1,
+            "maxItems": 10000,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                "date": {
+                  "$ref": "#/components/schemas/TripDateBody"
+                }
+              },
+              "required": [
+                "id",
+                "date"
+              ]
+            }
+          }
+        },
+        "required": [
+          "trips"
         ]
       },
       "ChangedField": {
@@ -27297,6 +27453,13 @@
                 "type": "null"
               }
             ]
+          },
+          "ticked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TickedPlace"
+            },
+            "description": "The place, when the tick gave it a visit it did not have: none when it only renewed one."
           }
         },
         "required": [
@@ -27306,7 +27469,8 @@
           "id",
           "marked_at",
           "notes",
-          "rating"
+          "rating",
+          "ticked"
         ],
         "additionalProperties": false,
         "description": "An object marked visited, or its visit renewed."
@@ -30163,6 +30327,13 @@
               "string",
               "null"
             ]
+          },
+          "ticked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TickedPlace"
+            },
+            "description": "The point's own place, at the point, when the tick gave it a visit it did not have: none when it only renewed one."
           }
         },
         "required": [
@@ -30173,7 +30344,8 @@
           "experienceName",
           "id",
           "marked_at",
-          "notes"
+          "notes",
+          "ticked"
         ],
         "additionalProperties": false,
         "description": "A place marked visited, or its visit renewed."
@@ -33888,6 +34060,19 @@
               }
             ],
             "description": "How the account signs in: a password, or an OAuth provider."
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the account was made: a new traveller's first ticks are mostly past travels (#2120). Null where no time was recorded, an account then read as not new."
           }
         },
         "required": [
@@ -33898,7 +34083,8 @@
           "role",
           "avatarUrl",
           "emailVerified",
-          "authProvider"
+          "authProvider",
+          "createdAt"
         ],
         "additionalProperties": false,
         "description": "The signed-in account, as the app shows it: never a hash, a provider id or a token."
@@ -40527,6 +40713,34 @@
           "partId"
         ]
       },
+      "TickedPlace": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "Where the tick was: the point ticked, or the place's own point for a tick on the place."
+          },
+          "latitude": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "experienceId",
+          "name",
+          "longitude",
+          "latitude"
+        ],
+        "additionalProperties": false,
+        "description": "A place a tick gave a visit it did not have."
+      },
       "TokenUsage": {
         "type": "object",
         "properties": {
@@ -40899,6 +41113,42 @@
         ],
         "additionalProperties": false,
         "description": "A trip added, or its date changed."
+      },
+      "TripsDated": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "trips": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "experienceId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "trip": {
+                  "$ref": "#/components/schemas/Trip"
+                }
+              },
+              "required": [
+                "experienceId",
+                "trip"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "success",
+          "trips"
+        ],
+        "additionalProperties": false,
+        "description": "Trips added to several places at once, or several trips given one date: what the offer of a date after a tick writes (#2120)."
       },
       "UndoOperation": {
         "type": "string",

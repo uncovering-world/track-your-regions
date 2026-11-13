@@ -36,6 +36,7 @@ export const PublicUser = z.strictObject({
   avatarUrl: z.string().nullable(),
   emailVerified: z.boolean(),
   authProvider: z.enum(AUTH_PROVIDERS).nullable().describe('How the account signs in: a password, or an OAuth provider.'),
+  createdAt: timestamp.nullable().describe("When the account was made: a new traveller's first ticks are mostly past travels (#2120). Null where no time was recorded, an account then read as not new."),
 }).describe('The signed-in account, as the app shows it: never a hash, a provider id or a token.');
 export type PublicUser = z.infer<typeof PublicUser>;
 

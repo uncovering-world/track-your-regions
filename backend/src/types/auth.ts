@@ -27,7 +27,8 @@ export interface User {
   authProvider: AuthProvider | null;
   providerId: string | null;
   emailVerified: boolean;
-  createdAt: Date;
+  /** Null where the row records no time: the column allows it, and nothing reads an account without one as new. */
+  createdAt: Date | null;
   lastSeenAt: Date;
 }
 

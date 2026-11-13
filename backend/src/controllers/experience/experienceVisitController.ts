@@ -5,13 +5,15 @@
  */
 
 import type { z } from 'zod/v4';
-import type { ExperienceVisitMarked, ExperienceVisitUnmarked, VisitedExperienceIds } from '../../api/responses/visited.js';
+import type {
+  ExperienceVisitMarked, ExperienceVisitUnmarked, TickedPlace, VisitedExperienceIds,
+} from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
 import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
 import { claimablePlaceSql } from '../../db/readerPredicates.js';
 import { placeHasKindSql } from '../../db/membership.js';
 import {
-  placeAtWriteSql, removedVisitsOf, removeVisits, showsOwnPointSql, showsPartsSql, visitStatesSql,
+  placeAtWriteSql, removedVisitsOf, removeVisits, showsOwnPointSql, showsPartsSql, tickedPlaceJsonSql, visitStatesSql,
 } from '../../db/visits.js';
 import { computeVisitedStatus } from '@tyr/shared/visits';
 import { notFound } from '../../middleware/errorHandler.js';
@@ -50,23 +52,25 @@ export async function markVisited(
   //
   // A part of a serial site is a place a traveller visits (ADR-0100 decision
   // 5): offered where its whole is. The whole reads it from the part (#2120).
-  const expResult = await pool.query<Pick<ExperiencesRow, 'name'>>(
-    `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${claimablePlaceSql()}`,
+  const expResult = await pool.query<Pick<ExperiencesRow, 'name'> & { ticked: TickedPlace }>(
+    `SELECT e.id, e.name, ${tickedPlaceJsonSql('e')} AS ticked FROM experiences e WHERE e.id = $1 AND ${claimablePlaceSql()}`,
     [experienceId],
   );
   if (expResult.rows.length === 0) throw notFound('Experience not found');
 
   // Upsert visited record, on the place as it stands when the row is
   // written: a share lock on it waits for a merge folding it to commit, and a
-  // folded place takes no visit (#2120).
-  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'marked_at' | 'notes' | 'rating'>>(`
+  // folded place takes no visit (#2120). Only a visit the tick made answers
+  // the place in `ticked`, as for "Mark all": a tick that renews one, as from
+  // a stale tab, offers no date for a visit the traveller already had.
+  const result = await pool.query<Pick<UserVisitedExperiencesRow, 'id' | 'marked_at' | 'notes' | 'rating'> & { inserted: boolean }>(`
     INSERT INTO user_visited_experiences (user_id, experience_id, notes, rating, marked_at)
     ${placeAtWriteSql('$2', '$1, e.id, $3, $4, NOW()')}
     ON CONFLICT (user_id, experience_id) DO UPDATE SET
       notes = COALESCE($3, user_visited_experiences.notes),
       rating = COALESCE($4, user_visited_experiences.rating),
       marked_at = NOW()
-    RETURNING id, marked_at, notes, rating
+    RETURNING id, marked_at, notes, rating, (xmax = 0) AS inserted
   `, [userId, experienceId, notes, rating]);
 
   if (result.rows.length === 0) throw notFound('Experience not found');
@@ -79,6 +83,7 @@ export async function markVisited(
     marked_at: visit.marked_at?.toISOString() ?? null,
     notes: visit.notes,
     rating: visit.rating,
+    ticked: visit.inserted ? [expResult.rows[0].ticked] : [],
   };
 }
 

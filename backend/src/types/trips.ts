@@ -64,3 +64,27 @@ export const restoreVisitsBodySchema = z.object({
 }).refine(body => body.visits.reduce((sum, visit) => sum + visit.trips.length, 0) <= RESTORE_LIMITS.trips, {
   message: RESTORE_TOO_MUCH,
 });
+
+/**
+ * One date for several places the traveller has just ticked: the offer's
+ * answer (#2120). The places are a set: each takes one trip, so a place
+ * named twice still takes one, the route adding one trip per place.
+ */
+export const addTripsBodySchema = z.object({
+  experienceIds: z.array(bodyRowIdSchema).min(1).max(RESTORE_LIMITS.visits),
+  date: tripDateBodySchema,
+});
+
+/** A trip named twice in one change of dates, in words. */
+export const TRIP_NAMED_TWICE = 'Each trip can be given only one new date';
+
+/**
+ * New dates for several of the traveller's trips at once: the offer's
+ * "Change" (#2120). Each trip once, since one statement writes them all and
+ * two dates for one trip would leave which of them stays undefined.
+ */
+export const changeTripsBodySchema = z.object({
+  trips: z.array(z.object({ id: bodyRowIdSchema, date: tripDateBodySchema })).min(1).max(RESTORE_LIMITS.trips),
+}).refine(body => new Set(body.trips.map(trip => trip.id)).size === body.trips.length, {
+  message: TRIP_NAMED_TWICE,
+});

@@ -38,6 +38,19 @@ export const VisitedExperienceIds = z.strictObject({
 }).describe('The objects the reader has visited, and which of them only in part.');
 export type VisitedExperienceIds = z.infer<typeof VisitedExperienceIds>;
 
+/**
+ * A place a tick gave a visit it did not have (#2120): its id and name, and
+ * where the traveller ticked it, which is what the offer of a date after a
+ * tick reads to tell a trip from a backfill.
+ */
+export const TickedPlace = z.strictObject({
+  experienceId: z.number().int(),
+  name: z.string(),
+  longitude: z.number().describe('Where the tick was: the point ticked, or the place\'s own point for a tick on the place.'),
+  latitude: z.number(),
+}).describe('A place a tick gave a visit it did not have.');
+export type TickedPlace = z.infer<typeof TickedPlace>;
+
 export const ExperienceVisitMarked = z.strictObject({
   success: z.literal(true),
   experienceId: z.number().int(),
@@ -46,6 +59,7 @@ export const ExperienceVisitMarked = z.strictObject({
   marked_at: timestamp.describe('When the tick was made, not when the traveller was there: that is a trip\'s (#2120).'),
   notes: z.string().nullable(),
   rating: z.number().int().nullable(),
+  ticked: z.array(TickedPlace).describe('The place, when the tick gave it a visit it did not have: none when it only renewed one.'),
 }).describe('An object marked visited, or its visit renewed.');
 export type ExperienceVisitMarked = z.infer<typeof ExperienceVisitMarked>;
 
@@ -76,6 +90,12 @@ export const TripSaved = z.strictObject({
   trip: Trip,
 }).describe('A trip added, or its date changed.');
 export type TripSaved = z.infer<typeof TripSaved>;
+
+export const TripsDated = z.strictObject({
+  success: z.literal(true),
+  trips: z.array(z.strictObject({ experienceId: z.number().int(), trip: Trip })),
+}).describe('Trips added to several places at once, or several trips given one date: what the offer of a date after a tick writes (#2120).');
+export type TripsDated = z.infer<typeof TripsDated>;
 
 export const TripRemoved = z.strictObject({
   success: z.literal(true),
@@ -116,6 +136,7 @@ export const LocationVisitMarked = z.strictObject({
   id: z.number().int().describe('The visit\'s own row.'),
   marked_at: timestamp.describe('When the tick was made, not when the traveller was there: that is a trip\'s (#2120).'),
   notes: z.string().nullable(),
+  ticked: z.array(TickedPlace).describe("The point's own place, at the point, when the tick gave it a visit it did not have: none when it only renewed one."),
 }).describe('A place marked visited, or its visit renewed.');
 export type LocationVisitMarked = z.infer<typeof LocationVisitMarked>;
 
@@ -132,6 +153,7 @@ export const AllLocationsMarked = z.strictObject({
   experienceId: z.number().int(),
   regionId: z.number().int().nullable().describe('The region the marking was limited to, or null for the whole object.'),
   locationsMarked: z.number().int(),
+  ticked: z.array(TickedPlace).describe('The places the marking gave a visit they did not have, each at the first of its points marked.'),
 }).describe('Every place of an object, or of it within a region, marked visited.');
 export type AllLocationsMarked = z.infer<typeof AllLocationsMarked>;
 

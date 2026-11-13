@@ -146,6 +146,31 @@ export function ownTripAtWriteSql(user: string, trip: string, columns: string): 
 }
 
 /**
+ * The rows `columns` of the traveller `user`'s own visits on the places
+ * `places` (an int[] expression), read as a trip is written on them: under a
+ * share lock on the visit, so an untick committing meanwhile is waited for
+ * and its visit left out, and only on a place no merge folded (#2120).
+ */
+export function ownVisitsAtWriteSql(user: string, places: string, columns: string): string {
+  return `SELECT ${columns} FROM user_visited_experiences ov
+     JOIN experiences ov_place ON ov_place.id = ov.experience_id
+    WHERE ov.user_id = ${user} AND ov.experience_id = ANY(${places}) AND ov_place.merged_into_id IS NULL
+    FOR SHARE OF ov`;
+}
+
+/**
+ * The place `e` a tick gave a visit, as the answer's `TickedPlace` (#2120):
+ * what the offer of a date after a tick reads. `at` is where the tick was, a
+ * point geometry: the point ticked, or the place's own for a tick on the
+ * place, since a point of a place such as the Struve Geodetic Arc can stand
+ * hundreds of kilometres from the place's own.
+ */
+export function tickedPlaceJsonSql(e: string, at = `${e}.location`): string {
+  return `json_build_object('experienceId', ${e}.id, 'name', ${e}.name,
+            'longitude', ST_X(${at}), 'latitude', ST_Y(${at}))`;
+}
+
+/**
  * The removal of the traveller's visits `visits` (an int[] expression of
  * their `id`s, locked by an earlier statement of the same transaction), as the
  * tail of a `WITH`: it deletes them only while what it takes fits what its

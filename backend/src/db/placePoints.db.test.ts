@@ -256,12 +256,31 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
   it('records a tick on the part on the part alone, and the site reads it partly visited (#1428, #2120)', async () => {
     const marked = await markLocationVisited({ params: { locationId: karnakPoint }, body: {}, caller: traveller() });
     expect(marked).toMatchObject({ locationId: karnakPoint, experienceId: KARNAK });
+    // The visit is the part's, and so is the place the date offer reads.
+    expect(marked.ticked).toEqual([expect.objectContaining({ experienceId: KARNAK, name: 'Temple of Karnak (parts fixture)' })]);
     expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: KARNAK }]);
     expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
       .toMatchObject({ visitedStatus: 'partial', visitedLocations: 1, totalLocations: 2 });
 
     await unmarkLocationVisited({ params: { locationId: karnakPoint }, caller: traveller() });
     expect((await pool.query(HELD, [userId])).rows).toEqual([]);
+  });
+
+  it("answers a point's tick at the point, once, and a place's own tick at the place (#2120)", async () => {
+    // A point of the site far from the site's own, as the Struve Geodetic Arc's run from Hammerfest to the Danube:
+    // the Philae temples at Aswan, some 180 km up the Nile from the site's point.
+    const philaePoint = await point(SITE, 'Philae (parts fixture)', '87-003', 32.8844, 24.0255, regionId);
+    const marked = await markLocationVisited({ params: { locationId: philaePoint }, body: {}, caller: traveller() });
+    expect(marked.ticked).toEqual([{ experienceId: SITE, name: 'Ancient Thebes with its Necropolis (parts fixture)',
+      longitude: 32.8844, latitude: 24.0255 }]);
+    // A tick again, as from a stale tab, renews the visit and gives no place a visit it did not have.
+    expect((await markLocationVisited({ params: { locationId: philaePoint }, body: {}, caller: traveller() })).ticked)
+      .toEqual([]);
+    expect((await markVisited({ params: { experienceId: SITE }, body: {}, caller: traveller() })).ticked).toEqual([]);
+
+    await unmarkVisited({ params: { experienceId: SITE }, caller: traveller() });
+    expect((await markVisited({ params: { experienceId: SITE }, body: {}, caller: traveller() })).ticked)
+      .toEqual([expect.objectContaining({ experienceId: SITE, longitude: 32.6396, latitude: 25.7188 })]);
   });
 
   it("raises the site's card for its part's unread point (#1428)", async () => {
@@ -642,7 +661,14 @@ describe('a part reads as a place (ADR-0100, #1425)', () => {
       params: { experienceId: SITE }, query: {}, caller: traveller(),
     });
     expect(marked.locationsMarked).toBe(2);
+    // Each place at the first of its points marked: the site at the Luxor Temple, the part at its own.
+    expect(marked.ticked).toEqual([
+      { experienceId: SITE, name: 'Ancient Thebes with its Necropolis (parts fixture)', longitude: 32.6390, latitude: 25.6995 },
+      { experienceId: KARNAK, name: 'Temple of Karnak (parts fixture)', longitude: 32.6573, latitude: 25.7188 },
+    ].sort((a, b) => a.experienceId - b.experienceId));
     expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }, { experience_id: KARNAK }]);
+    // Marking them again gives no place a visit it did not have: no date to offer.
+    expect((await markAllLocationsVisited({ params: { experienceId: SITE }, query: {}, caller: traveller() })).ticked).toEqual([]);
     expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
       .toMatchObject({ visitedStatus: 'visited', visitedLocations: 2 });
 

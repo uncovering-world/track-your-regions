@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { RESTORE_LIMITS, restoreVisitsBodySchema, tripDateBodySchema } from './trips.js';
+import {
+  RESTORE_LIMITS, TRIP_NAMED_TWICE, changeTripsBodySchema, restoreVisitsBodySchema, tripDateBodySchema,
+} from './trips.js';
 
 describe("a trip's date as a request carries it (#2120)", () => {
   it('takes a day, a month, a year or nothing at all', () => {
@@ -43,5 +45,14 @@ describe("a trip's date as a request carries it (#2120)", () => {
         'An Undo puts back at most 1,000 visits and 10,000 trips at once',
       );
     }
+  });
+
+  it('refuses a change of dates naming one trip twice, whose two dates one statement could not tell apart', () => {
+    const date = (year: number) => ({ year, month: null, day: null });
+    expect(changeTripsBodySchema.safeParse({ trips: [{ id: 7, date: date(2015) }, { id: 8, date: date(2015) }] }).success)
+      .toBe(true);
+    const twice = changeTripsBodySchema.safeParse({ trips: [{ id: 7, date: date(2015) }, { id: 7, date: date(2016) }] });
+    expect(twice.success).toBe(false);
+    expect(twice.error?.issues.map(issue => issue.message)).toEqual([TRIP_NAMED_TWICE]);
   });
 });

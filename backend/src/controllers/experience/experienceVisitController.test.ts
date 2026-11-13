@@ -83,8 +83,11 @@ describe('markVisited — #520', () => {
 
   it('writes the visit once the row passes the gate', async () => {
     mockedQuery
-      .mockResolvedValueOnce({ rows: [{ id: 281, name: 'Published Site' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 9, marked_at: new Date('2026-01-01T00:00:00.000Z'), notes: null, rating: null }] });
+      .mockResolvedValueOnce({ rows: [{
+        id: 281, name: 'Published Site',
+        ticked: { experienceId: 281, name: 'Published Site', longitude: 12.4768, latitude: 41.8986 },
+      }] })
+      .mockResolvedValueOnce({ rows: [{ id: 9, marked_at: new Date('2026-01-01T00:00:00.000Z'), notes: null, rating: null, inserted: true }] });
     const res = makeRes();
 
     await answerRoute(postVisitedExperience,
