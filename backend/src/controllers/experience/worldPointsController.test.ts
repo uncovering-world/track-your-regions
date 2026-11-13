@@ -16,6 +16,10 @@
  * that it does not carry names: a marker column leaking into it is 267 kB on
  * the map's first screen instead of 37 kB, and nothing on screen would look
  * wrong.
+ *
+ * **One row per point**, whichever arm reads it: a part that is a place of
+ * another kind too is read by its own arm and by its whole's, and two rows
+ * would be two pins on one spot, with the heat counting it twice.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -161,6 +165,63 @@ describe('getWorldPoints', () => {
     });
   });
 
+  describe('one row per point', () => {
+    it("reads the point on both tiers, and on the markers the arm, own points first", async () => {
+      for (const detail of ['overview', 'markers']) {
+        const [own, parts] = (await ask({ detail })).sql.split('UNION ALL');
+        expect(own).toContain('el.id AS location_id');
+        expect(parts).toContain('el.id AS location_id');
+      }
+      const [own, parts] = (await ask({ detail: 'markers' })).sql.split('UNION ALL');
+      expect(own).toContain('0 AS arm');
+      expect(parts).toContain('1 AS arm');
+      expect((await ask()).sql).not.toContain('AS arm');
+    });
+
+    it('streams the arms as the database plans them: no collected union, no sort by point', async () => {
+      // Resolving the doubled points in the statement collected the union and
+      // sorted it by point, a fifth of the overview's time for 2 % of its rows.
+      for (const detail of ['overview', 'markers']) {
+        const { sql } = await ask({ detail });
+        expect(sql).not.toContain('MATERIALIZED');
+        expect(sql).not.toContain('DISTINCT ON (d.');
+        expect(sql).toMatch(/\)\s+LIMIT 20001$/);
+      }
+    });
+
+    const seville = { lng: -5.99, lat: 37.39, location_id: 13546, location_name: 'Seville Cathedral', approximate: false };
+    const ownRow = { ...seville, arm: 0, experience_id: 13223, experience_name: 'Seville Cathedral', kind_id: 4,
+      type: 'cathedral', kinds: [{ kind_id: 4, type: 'cathedral', kind_priority: 4 }] };
+    const siteRow = { ...seville, arm: 1, experience_id: 9001, experience_name: 'Cathedral, Alcázar and Archivo de Indias in Seville',
+      kind_id: 1, type: 'cultural', kinds: [{ kind_id: 1, type: 'cultural', kind_priority: 1 }] };
+
+    it("draws a point both arms read once, as the place's own, with the kinds of both in the kinds' order", async () => {
+      // Seville Cathedral, a place of worship and a part of its World Heritage
+      // site: the site's row comes first here, and the cathedral's still wins.
+      const body = await answer([siteRow, { lng: 1, lat: 2, location_id: 7, arm: 0, experience_id: 5, experience_name: 'Another place', kinds: [] }, ownRow],
+        { detail: 'markers' });
+      expect(body.count).toBe(2);
+      expect(body.locationId).toEqual([13546, 7]);
+      expect(body.experienceId).toEqual([13223, 5]);
+      expect(body.kindId).toEqual([4, null]);
+      expect(body.kinds).toEqual([[{ kindId: 1, type: 'cultural' }, { kindId: 4, type: 'cathedral' }], null]);
+    });
+
+    it('draws a part two wholes show, and no kind of its own, for the whole of the lower id', async () => {
+      const higher = { ...siteRow, experience_id: 9002, experience_name: 'Higher', kinds: [{ kind_id: 1, type: 'cultural', kind_priority: 1 }] };
+      const body = await answer([higher, siteRow], { detail: 'markers' });
+      expect(body.experienceId).toEqual([9001]);
+      expect(body.kinds).toEqual([null]);
+    });
+
+    it('counts a point both arms read once in the heat too', async () => {
+      const body = await answer([{ lng: -5.99, lat: 37.39, location_id: 13546 }, { lng: 1, lat: 2, location_id: 7 },
+        { lng: -5.99, lat: 37.39, location_id: 13546 }]);
+      expect(body.count).toBe(2);
+      expect(body.lng).toEqual([-5.99, 1]);
+    });
+  });
+
   describe('nothing a caller typed reaches the SQL as text', () => {
     // This endpoint is the widest anonymous read the product has, and its SQL is
     // built by concatenating fragments — so the guard worth pinning is that the
@@ -228,7 +289,7 @@ describe('getWorldPoints', () => {
     it('says so when it truncates, rather than drawing part of the world in silence', async () => {
       // A density picture built from a subset is wrong rather than incomplete,
       // so this can never be a silent LIMIT.
-      const rows = Array.from({ length: 20001 }, (_unused, index) => ({ lng: index / 1000, lat: 1 }));
+      const rows = Array.from({ length: 20001 }, (_unused, index) => ({ lng: index / 1000, lat: 1, location_id: index }));
       const body = await answer(rows);
       expect(body.truncated).toBe(true);
       expect(body.count).toBe(20000);
@@ -244,7 +305,7 @@ describe('getWorldPoints', () => {
 
   describe('the answer', () => {
     it('is columnar — one array per field, not an object per point', async () => {
-      const body = await answer([{ lng: 1.5, lat: 2.5 }, { lng: 3.5, lat: 4.5 }]);
+      const body = await answer([{ lng: 1.5, lat: 2.5, location_id: 1 }, { lng: 3.5, lat: 4.5, location_id: 2 }]);
       expect(body).toEqual({
         detail: 'overview', count: 2, lng: [1.5, 3.5], lat: [2.5, 4.5],
       });

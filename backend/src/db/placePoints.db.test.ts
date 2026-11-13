@@ -147,6 +147,24 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
 
   });
 
+  it('draws a part that is a place of another kind too as one pin, with both kinds (#2122)', async () => {
+    // Seville Cathedral's shape: a place of worship of its own and a part of its
+    // site, read by the point's own arm and by the site's.
+    await pool.query(
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.id = 4`,
+      [KARNAK, KARNAK_ITEM],
+    );
+    const world = await getWorldPoints({ query: worldPointsQuerySchema.parse({ detail: 'markers' }) });
+    const at = (world.locationId ?? []).flatMap((id, i) => (id === karnakPoint ? [i] : []));
+    expect(at).toHaveLength(1);
+    expect(world.experienceId?.[at[0]]).toBe(KARNAK);
+    expect(world.kinds?.[at[0]]?.map(kind => kind.kindId).sort()).toEqual([1, 4]);
+    // The heat counts the spot once too: the overview answers as many points.
+    const overview = await getWorldPoints({ query: worldPointsQuerySchema.parse({}) });
+    expect(overview.count).toBe(world.count);
+  });
+
   it("reads both points as the site's own, counts them in the region's list, and names both on the curator's card", async () => {
     const own = await getExperienceLocations({
       params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,

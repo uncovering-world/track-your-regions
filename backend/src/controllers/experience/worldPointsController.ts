@@ -108,32 +108,43 @@ function coordinateSql(axis: 'X' | 'Y', column: string, detail: PointsDetail): s
   return `round(ST_${axis}(${column})::numeric, ${DECIMALS[detail]})::float8`;
 }
 
+/** One kind of a place as a row of the points carries it. */
+interface PointKind { kind_id: number; type: string | null; kind_priority?: number }
+
 interface PointRow {
   lng: number;
   lat: number;
-  location_id?: number;
+  location_id: number;
+  /** Which arm of `PLACE_POINT_ARMS` read the row, on the markers: 0 the place's own points, 1 a whole's parts'. */
+  arm?: number;
   experience_id?: number;
   location_name?: string | null;
   experience_name?: string;
   kind_id?: number | null;
   type?: string | null;
-  kinds?: Array<{ kind_id: number; type: string | null }>;
+  kinds?: PointKind[];
   approximate?: boolean;
 }
 
 /**
  * The columns a tier selects from one arm of the points (`PLACE_POINT_ARMS`).
- * `kindsJoined` says the place's kinds are joined as `wk`
- * (`shownKindsByPlaceSql`) rather than read per row.
+ *
+ * Every row carries the point's id, and a marker the arm that read it (0, the
+ * place's own points; 1, a whole's parts' points), because one point is read
+ * by both arms where a part is a place of another kind as well (Seville
+ * Cathedral, a place of worship and a part of its World Heritage site), and the
+ * answer draws it once (`onePerPoint`). `kindsJoined` says the place's kinds
+ * are joined as `wk` (`shownKindsByPlaceSql`) rather than read per row.
  */
-function selectSql(detail: PointsDetail, placeId: string, kindsJoined: boolean): string {
+function selectSql(detail: PointsDetail, arm: number, placeId: string, kindsJoined: boolean): string {
   const columns = [
     `${coordinateSql('X', 'el.location', detail)} AS lng`,
     `${coordinateSql('Y', 'el.location', detail)} AS lat`,
+    'el.id AS location_id',
   ];
   if (detail === 'markers') {
     columns.push(
-      'el.id AS location_id',
+      `${arm} AS arm`,
       `${placeId} AS experience_id`,
       `${pointNameSql('el')} AS location_name`,
       'e.name AS experience_name',
@@ -219,7 +230,7 @@ export async function getWorldPoints(
   // asked a site's memberships for each of its parts.
   const kindsJoined = (wholes: string | undefined) => detail === 'markers' && wholes !== undefined;
   const arm = ({ from, placeId, wholes }: PlacePointArm): string => `SELECT
-        ${selectSql(detail, placeId, kindsJoined(wholes))}
+        ${selectSql(detail, wholes === undefined ? 0 : 1, placeId, kindsJoined(wholes))}
       FROM ${from}
       ${kindJoin}
       ${kindsJoined(wholes) ? `LEFT JOIN ${shownKindsByPlaceSql(wholes!)} wk ON wk.experience_id = e.id` : ''}
@@ -230,7 +241,58 @@ export async function getWorldPoints(
   // One more than the cap, so hitting it is distinguishable from filling it.
   const { rows } = await pool.query<PointRow>(query, params);
   const truncated = rows.length > MAX_POINTS;
-  return toColumns(truncated ? rows.slice(0, MAX_POINTS) : rows, detail, truncated);
+  const points = onePerPoint(rows, detail);
+  return toColumns(points.length > MAX_POINTS ? points.slice(0, MAX_POINTS) : points, detail, truncated);
+}
+
+/**
+ * Before a row of a point both arms read: the place's own (arm 0) before its
+ * whole's, and among two wholes the lower id.
+ */
+function drawnBefore(a: PointRow, b: PointRow): number {
+  return (a.arm ?? 0) - (b.arm ?? 0) || (a.experience_id ?? 0) - (b.experience_id ?? 0);
+}
+
+/**
+ * One row per point, whichever arms read it.
+ *
+ * A point both arms read is one pin with every kind of the place: the place's
+ * own row is kept, so the pin opens the part's card (Seville Cathedral's, not
+ * the site's), with the kinds of every row, which `pointKinds` puts in the
+ * kinds' order. A place that is a part of two wholes and shown in no kind of
+ * its own is drawn for the whole of the lower id, so the answer is total.
+ * Without this the map drew two pins on one spot, 101 of them in the Europe box
+ * on 2026-11-13, and the heat counted the spot twice.
+ *
+ * The overview drops a point's second row, whose coordinates are the first's.
+ *
+ * Here rather than in the statement, because a point is rarely read twice (203
+ * of the overview's 8 985 rows on 2026-11-14): resolving them in SQL collected
+ * the union and sorted it by point, a fifth more time on the overview, where
+ * this is one pass that keeps each point where its first row came and sorts
+ * only the rows of a point read twice (`docs/tech/performance.md` § One row
+ * per point).
+ */
+function onePerPoint(rows: PointRow[], detail: PointsDetail): PointRow[] {
+  const at = new Map<number, number>();
+  const points: PointRow[] = [];
+  const doubled = new Map<number, PointRow[]>();
+  for (const row of rows) {
+    const index = at.get(row.location_id);
+    if (index === undefined) {
+      at.set(row.location_id, points.length);
+      points.push(row);
+    } else if (detail === 'markers') {
+      const read = doubled.get(index);
+      if (read) read.push(row);
+      else doubled.set(index, [points[index], row]);
+    }
+  }
+  for (const [index, read] of doubled) {
+    read.sort(drawnBefore);
+    points[index] = { ...read[0], kinds: read.flatMap(row => row.kinds ?? []) };
+  }
+  return points;
 }
 
 /** One point's entry of `kinds`. */
@@ -240,12 +302,18 @@ type WorldPointKinds = NonNullable<WorldPointsResponse['kinds']>[number];
  * Every kind a place is offered in, for a place in more than one, and null for
  * the rest (#1262): the pin of a place in several kinds is split by them and
  * its hover card names them all, while a place in one kind needs nothing past
- * `kindId`, which is every place until a merge (#1247) — so the field is a run
- * of nulls, which costs next to nothing on the wire.
+ * `kindId`, as most do — so the field is mostly nulls, which cost next to
+ * nothing on the wire.
  */
 function pointKinds(kinds: PointRow['kinds']): WorldPointKinds {
-  if (!kinds || kinds.length < 2) return null;
-  return kinds.map(kind => ({ kindId: kind.kind_id, type: kind.type }));
+  if (!kinds) return null;
+  // A point both arms read carries both rows' kinds (`onePerPoint`): each once,
+  // in the kinds' order, as one row's already are.
+  const byKind = new Map(kinds.map(kind => [kind.kind_id, kind]));
+  if (byKind.size < 2) return null;
+  return [...byKind.values()]
+    .sort((a, b) => (a.kind_priority ?? 0) - (b.kind_priority ?? 0) || a.kind_id - b.kind_id)
+    .map(kind => ({ kindId: kind.kind_id, type: kind.type }));
 }
 
 /**
@@ -284,7 +352,7 @@ function toColumns(
     answer.lng[index] = row.lng;
     answer.lat[index] = row.lat;
     if (answer.locationId) {
-      answer.locationId[index] = row.location_id as number;
+      answer.locationId[index] = row.location_id;
       (answer.experienceId as number[])[index] = row.experience_id as number;
       (answer.name as (string | null)[])[index] = row.location_name ?? null;
       (answer.experienceName as string[])[index] = row.experience_name as string;
