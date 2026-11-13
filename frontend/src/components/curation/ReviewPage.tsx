@@ -57,6 +57,7 @@ import { PinnedAnswers } from '../shared/AdmissionPins';
 import { LazyCrowdedCities } from './crowding/LazyCrowdedCities';
 import { LeaveStagedDialog } from './crowding/LeaveStagedDialog';
 import { LazyReviewQueueMap } from './queueMap/LazyReviewQueueMap';
+import { useMapWalk } from './queueMap/useMapWalk';
 import { useShadowedArrivals } from './crowding/useShadowedArrivals';
 import type { GroupStagings } from './crowding/crowdedGroups';
 
@@ -213,6 +214,9 @@ export function ReviewPage() {
   // A place's name, where the list has loaded a row of it: the map's short list names it.
   const placeName = useCallback((placeId: number) => rows.find(r => r.id === placeId)?.name, [rows]);
 
+  // On the map, the question after an answer is the nearest open one the map holds.
+  const { step: mapStep, nextAfterAnswer } = useMapWalk(address, selected, mapOpen);
+
   const onBench = useBenchRow(
     selectedIndex >= 0 ? rows[selectedIndex] : undefined, address.row, queue.settling || queue.stale,
   );
@@ -229,11 +233,13 @@ export function ReviewPage() {
   // `queue.settling` holds it while a row that left the loaded pages is looked for: a row
   // that only moved keeps its card (#1779), and only an answered one hands over.
   // Only on the queue's tab: the other tab's address is not the queue's to correct.
+  // On the map the question that takes the answered one's place is not the list's next row
+  // but the nearest open one the map holds (`useMapWalk`), and nothing once the map holds none.
   useEffect(() => {
     if (!questionsOpen || queue.stale || queue.settling || rows.length === 0 || selected !== null) return;
-    const next = nextSelection(rows, lastIndex.current);
+    const next = nextAfterAnswer(() => nextSelection(rows, lastIndex.current));
     if (next !== undefined) go({ row: next }, { replace: true });
-  }, [rows, selected, go, queue.stale, queue.settling, questionsOpen]);
+  }, [rows, selected, go, queue.stale, queue.settling, questionsOpen, nextAfterAnswer]);
 
   // A change that names a different list clears the row with it: the question the curator
   // had open was chosen out of a list that no longer exists, and the effect above picks the
@@ -532,6 +538,7 @@ export function ReviewPage() {
                     placeName={placeName}
                     onOpen={key => go({ row: key })}
                     onShowList={() => go({ view: 'questions' })}
+                    step={mapStep}
                   />
                 </Box>
               ) : (
