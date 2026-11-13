@@ -59,13 +59,16 @@ import { answerMergeProposals } from '../controllers/experience/mergeProposalCon
 import { takeBackMergeProposalAnswer } from '../controllers/experience/mergeProposalTakeBackController.js';
 import { askNamesakes } from '../controllers/experience/pointNamesakesController.js';
 import { searchReviewRegions } from '../controllers/experience/reviewRegionSearchController.js';
+import { getReviewQueueMap } from '../controllers/experience/reviewQueueMapController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { getWebsiteChecks } from '../controllers/experience/websiteChecksController.js';
 import { searchCommemorationSubjects } from '../controllers/experience/commemorationSearch.js';
 import { getPictureClasses } from '../controllers/experience/pictureClassesController.js';
 import { getRegionTail } from '../controllers/experience/experienceTailController.js';
-import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
+import {
+  ReviewAnswerResult, ReviewQueue, ReviewQueueMap, ReviewRegionSearchResults, RunSetAside,
+} from '../api/responses/reviewQueue.js';
 import { CrowdingAnswered, CrowdingGroup, CrowdingPlaceView, ShadowedArrivals } from '../api/responses/crowding.js';
 import {
   ExperienceDetail,
@@ -157,6 +160,7 @@ import {
   answerMergeProposalsBodySchema,
   mergeProposalParamsSchema,
   reviewQueueQuerySchema,
+  reviewQueueMapQuerySchema,
   reviewRegionSearchQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
@@ -505,6 +509,15 @@ export const experienceCurationRoutes = [
     query: reviewQueueQuerySchema,
     response: ReviewQueue,
     handler: getReviewQueue,
+  }),
+  // The same open questions under the same chips, every one with its place's
+  // point and no page (#2477): what the review page draws in its map mode.
+  defineRoute({
+    method: 'get', path: '/review/queue/map', access: 'curator', cache: 'no-store',
+    summary: 'List every open review question under the queue\'s filters, grouped by place, with the place\'s point',
+    query: reviewQueueMapQuerySchema,
+    response: ReviewQueueMap,
+    handler: getReviewQueueMap,
   }),
   // A curator's own "not now" on a run's whole batch (ADR-0051 decision 4), and
   // the way back — `reviewQueueSetAside.ts` has the reasoning, including why

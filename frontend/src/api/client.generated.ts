@@ -5138,6 +5138,49 @@ export interface ReviewQueue {
 }
 
 /**
+ * One open question about the place. Its key is `kind:placeId`, as the list names a row (ADR-0051).
+ */
+export interface QueueMapQuestion {
+  kind: QueueKind;
+  /** The gated sub-kinds a `waiting` question groups, as on `QueueOrderEntry`. */
+  subs: WaitingSub[];
+}
+
+/**
+ * A place with open questions under the filters, drawn as one marker.
+ */
+export interface QueueMapPlace {
+  /**
+     * The place every question here is about: the id in each question's key.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  placeId: number;
+  /** The place's point, to five decimals (about a metre). */
+  lon: number;
+  lat: number;
+  /**
+     * Its open questions, in the class order the list sorts by.
+     * @minItems 1
+     */
+  questions: QueueMapQuestion[];
+}
+
+/**
+ * The curator's open questions under the queue's filters, as points on a map (#2477).
+ */
+export interface ReviewQueueMap {
+  /** Every place with an open question under the filters, unpaged, by id. */
+  places: QueueMapPlace[];
+  /**
+     * Open questions under the filters whose place has no point to draw.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  unplaced: number;
+}
+
+/**
  * A run's batch set aside for this curator, or brought back (ADR-0051 decision 4).
  */
 export interface RunSetAside {
@@ -8481,6 +8524,39 @@ export type GetExperiencesReviewQueueSort = typeof GetExperiencesReviewQueueSort
 export const GetExperiencesReviewQueueSort = {
   date: 'date',
   question: 'question',
+} as const;
+
+export type GetExperiencesReviewQueueMapParams = {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   * @pattern ^[^\u0000]*$
+   */
+  q?: string;
+  /**
+   * @maxLength 200
+   * @pattern ^\d+(,\d+)*$
+   */
+  source?: string;
+  /**
+   * @maxLength 200
+   * @pattern ^[a-z]+(-[a-z]+)*(,[a-z]+(-[a-z]+)*)*$
+   */
+  kind?: string;
+  region?: 'none' | number;
+  /**
+   * @maximum 2147483647
+   * @exclusiveMinimum 0
+   */
+  run?: number;
+  aside?: GetExperiencesReviewQueueMapAside;
+};
+
+export type GetExperiencesReviewQueueMapAside = typeof GetExperiencesReviewQueueMapAside[keyof typeof GetExperiencesReviewQueueMapAside];
+
+
+export const GetExperiencesReviewQueueMapAside = {
+  show: 'show',
 } as const;
 
 export type GetExperiencesReviewCrowdingGroupParams = {
@@ -12342,6 +12418,38 @@ export const getGetExperiencesReviewQueueUrl = (params?: GetExperiencesReviewQue
 export const getExperiencesReviewQueue = async (params?: GetExperiencesReviewQueueParams, options?: Parameters<typeof apiFetch>[1]): Promise<ReviewQueue> => {
 
   return apiFetch<ReviewQueue>(getGetExperiencesReviewQueueUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesReviewQueueMapUrl = (params?: GetExperiencesReviewQueueMapParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/review/queue/map?${stringifiedParams}` : `/api/experiences/review/queue/map`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary List every open review question under the queue's filters, grouped by place, with the place's point
+ */
+export const getExperiencesReviewQueueMap = async (params?: GetExperiencesReviewQueueMapParams, options?: Parameters<typeof apiFetch>[1]): Promise<ReviewQueueMap> => {
+
+  return apiFetch<ReviewQueueMap>(getGetExperiencesReviewQueueMapUrl(params),
   {
     ...options,
     method: 'GET'

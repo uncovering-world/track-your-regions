@@ -680,6 +680,15 @@ export const reviewQueueQuerySchema = z.object({
 });
 
 /**
+ * The queue's chips without its order or its pages: what the map of the open
+ * questions takes (#2477). Picked from the list's schema rather than restated,
+ * so each chip is bounded and spelled as the list's is.
+ */
+export const reviewQueueMapQuerySchema = reviewQueueQuerySchema.pick({
+  q: true, source: true, kind: true, region: true, run: true, aside: true,
+});
+
+/**
  * A lifecycle verdict, for an object or for one point inside it.
  *
  * One schema for both endpoints because it is one question — delisted, gone, or

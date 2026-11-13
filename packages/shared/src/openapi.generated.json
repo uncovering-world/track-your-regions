@@ -13833,6 +13833,110 @@
         }
       }
     },
+    "/api/experiences/review/queue/map": {
+      "get": {
+        "operationId": "getExperiencesReviewQueueMap",
+        "summary": "List every open review question under the queue's filters, grouped by place, with the place's point",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[^\\u0000]*$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^\\d+(,\\d+)*$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[a-z]+(-[a-z]+)*(,[a-z]+(-[a-z]+)*)*$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "none"
+                },
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "run",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          {
+            "in": "query",
+            "name": "aside",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "show"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueueMap"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/review/set-aside/{syncLogId}": {
       "put": {
         "operationId": "putExperiencesReviewSetAsideBySyncLogId",
@@ -34167,6 +34271,61 @@
         ],
         "description": "The class of an open question, which a batch answer names a row by."
       },
+      "QueueMapPlace": {
+        "type": "object",
+        "properties": {
+          "placeId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The place every question here is about: the id in each question's key."
+          },
+          "lon": {
+            "type": "number",
+            "description": "The place's point, to five decimals (about a metre)."
+          },
+          "lat": {
+            "type": "number"
+          },
+          "questions": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueueMapQuestion"
+            },
+            "description": "Its open questions, in the class order the list sorts by."
+          }
+        },
+        "required": [
+          "placeId",
+          "lon",
+          "lat",
+          "questions"
+        ],
+        "additionalProperties": false,
+        "description": "A place with open questions under the filters, drawn as one marker."
+      },
+      "QueueMapQuestion": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/QueueKind"
+          },
+          "subs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WaitingSub"
+            },
+            "description": "The gated sub-kinds a `waiting` question groups, as on `QueueOrderEntry`."
+          }
+        },
+        "required": [
+          "kind",
+          "subs"
+        ],
+        "additionalProperties": false,
+        "description": "One open question about the place. Its key is `kind:placeId`, as the list names a row (ADR-0051)."
+      },
       "QueueOrderEntry": {
         "type": "object",
         "properties": {
@@ -37467,6 +37626,30 @@
         ],
         "additionalProperties": false,
         "description": "An object waiting on a curator, or one a curator can take a verdict back from."
+      },
+      "ReviewQueueMap": {
+        "type": "object",
+        "properties": {
+          "places": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueueMapPlace"
+            },
+            "description": "Every place with an open question under the filters, unpaged, by id."
+          },
+          "unplaced": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Open questions under the filters whose place has no point to draw."
+          }
+        },
+        "required": [
+          "places",
+          "unplaced"
+        ],
+        "additionalProperties": false,
+        "description": "The curator's open questions under the queue's filters, as points on a map (#2477)."
       },
       "ReviewRegionSearchResult": {
         "type": "object",

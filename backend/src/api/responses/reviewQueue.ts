@@ -1,8 +1,8 @@
 /**
  * What the review queue client's calls answer (ADR-0066): the success bodies of
  * the endpoints `frontend/src/api/reviewQueue.ts` calls, declared once. That is
- * the queue itself, a run's batch set aside and brought back, and a page of rows
- * answered at once (#852).
+ * the queue itself, its open questions as points on a map (#2477), a run's batch
+ * set aside and brought back, and a page of rows answered at once (#852).
  *
  * Each exported schema is the type of the same name in the web's generated client, and
  * the handler sends its body through `respond()`, which holds it to the schema.
@@ -669,6 +669,26 @@ export const ReviewQueue = z.strictObject({
   }).describe('The one cursor the open kinds share, beside the three offsets the answered lists page by.'),
 }).describe("A page of the curator's review queue (ADR-0051).");
 export type ReviewQueue = z.infer<typeof ReviewQueue>;
+
+export const QueueMapQuestion = z.strictObject({
+  kind: QueueKind,
+  subs: z.array(WaitingSub).describe('The gated sub-kinds a `waiting` question groups, as on `QueueOrderEntry`.'),
+}).describe('One open question about the place. Its key is `kind:placeId`, as the list names a row (ADR-0051).');
+export type QueueMapQuestion = z.infer<typeof QueueMapQuestion>;
+
+export const QueueMapPlace = z.strictObject({
+  placeId: z.number().int().describe('The place every question here is about: the id in each question\'s key.'),
+  lon: z.number().describe('The place\'s point, to five decimals (about a metre).'),
+  lat: z.number(),
+  questions: z.array(QueueMapQuestion).min(1).describe('Its open questions, in the class order the list sorts by.'),
+}).describe('A place with open questions under the filters, drawn as one marker.');
+export type QueueMapPlace = z.infer<typeof QueueMapPlace>;
+
+export const ReviewQueueMap = z.strictObject({
+  places: z.array(QueueMapPlace).describe('Every place with an open question under the filters, unpaged, by id.'),
+  unplaced: z.number().int().describe('Open questions under the filters whose place has no point to draw.'),
+}).describe("The curator's open questions under the queue's filters, as points on a map (#2477).");
+export type ReviewQueueMap = z.infer<typeof ReviewQueueMap>;
 
 export const RunSetAside = z.strictObject({
   syncLogId: z.number().int(),

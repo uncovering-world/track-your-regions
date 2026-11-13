@@ -165,6 +165,11 @@ different handler under the same path.
 Checked again, and cheaper than the nine statements it replaced (a page of 25 with
 its facets in 296 ms cold and 148 ms warm against about 590 ms, on the development
 catalogue of 2026-09-07), still with nothing after the read.
+`/review/queue/map` (#2477) joins it on the same check: one statement over the same
+union under the same chips, every question rather than a page, writing nothing and
+with nothing after the read. The union held 15,709 open questions on the development
+catalogue of 2026-11-13 and was read in 1.0 s, the same union the queue's facets count
+on every request.
 
 `POST /api/experiences/locations/:locationId/state` — a curator's verdict on one
 point of an object (ADR-0026) — carries `authenticatedLimiter`, and it is worth
