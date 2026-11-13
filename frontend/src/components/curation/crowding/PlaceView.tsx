@@ -3,16 +3,19 @@
  * group in its own circle, beside the map that draws it. Its card shows what
  * the place is — its picture with its credit as a line, enlarged on a press
  * (ADR-0182), and its article — the rule's reading of it with its exact count, and its own
- * answers, which are about it alone. Below, a table (#2454): the place's own
- * row first and marked, then every place of its type within the radius, the
- * ones the card's button counts, in their groups (`circleGroups`, #2420): the
- * better known it is compared with, the less known, and the ones not measured
- * yet. Each is listed best known first, with its figures in the headings'
- * columns (`FigureTable`, #2400) and its distance, and each opens its own
- * circle. On a narrow screen the table scrolls sideways.
+ * answers, which are about it alone. Below, a table (#2454): every place of
+ * its type within the radius, the ones the card's button counts, as one list
+ * by fame with the place itself at its own rank and marked there
+ * (`circleRows`, #2486), each with its figures in the headings' columns
+ * (`FigureTable`, #2400) and its distance. A row above the place is better
+ * known and one below less known; a row says in words what the rule does with
+ * it where its rank does not (#2420). Each opens its own circle, and the order
+ * is the same in every circle, so opening a neighbour moves only the mark: its
+ * row is scrolled to only where it is out of view. On a narrow screen the
+ * table scrolls sideways.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState, type Ref } from 'react';
 import { alpha, Box, ButtonBase, Chip, Link, Paper, Stack, Typography } from '@mui/material';
 import type { Theme } from '@mui/material';
 import type { CrowdingAnswer, CrowdingPlaceView } from '../../../api/crowding';
@@ -22,7 +25,7 @@ import { ImageCreditLine } from '../../shared/ImageCreditLine';
 import { PictureLightbox } from '../../shared/PictureLightbox';
 import { ReaderEditionBeside } from '../../shared/WikipediaArticleLink';
 import { AnswerButtons } from './AnswerButtons';
-import { CIRCLE_GROUPS, circleGroups, circleHeading, GROUP_WORDS, uncountedReason } from './circleGroups';
+import { circleHeading, circleRows, type CircleRow } from './circleGroups';
 import { drawnStanding, type Staging } from './crowdingStaging';
 import { FigureCells, FigureHeadings, figuresWidth, HOVERED_TINT, stickyName, VenueCreditLine, type FigureColumns } from './FigureTable';
 import { STANDING_COLOR } from './RegionList';
@@ -84,57 +87,79 @@ function HeadingRow({ columns }: { columns: FigureColumns }) {
   );
 }
 
-/** The place itself, first and marked, so each of its figures stands above the ones it is compared with. */
-function OwnRow({ place, columns }: { place: CrowdingPlaceView['place']; columns: FigureColumns }) {
-  return (
-    <Box role="row" aria-label={`${place.name}, this place`} sx={{ ...rowGrid(columns), px: 1.5, py: 0.75, bgcolor: OWN_TINT, borderBottom: 1, borderColor: 'divider' }}>
-      <Typography aria-hidden variant="caption" color="warning.dark">this</Typography>
-      <Typography role="rowheader" variant="body2" fontWeight={500} sx={stickyName(OWN_TINT)}>{place.name}</Typography>
-      <FigureCells columns={columns} signals={place} strong />
-      <span role="cell" />
-      <span role="cell" />
-    </Box>
-  );
-}
-
 /** A neighbour's standing in words where it is not shown on the region page. */
 const STANDING_WORDS: Record<CrowdingPlaceView['around'][number]['standing'], string> = { shown: '', new: 'new', shadowed: 'shadowed' };
 
-/** A place around it: its rank in its group, its name opening its own circle, its figures and its distance. */
-function NeighbourRow({ entry, index, reason, columns, hovered, onHover, onOpen }: {
-  entry: CrowdingPlaceView['around'][number];
-  index: number;
-  /** Why the rule does not count it, where it is better known and still not counted. */
-  reason?: string;
+/** Whether a row stands outside the screen or outside a box that scrolls around it. */
+function outOfView(row: HTMLElement): boolean {
+  const { top, bottom } = row.getBoundingClientRect();
+  let shownTop = 0;
+  let shownBottom = window.innerHeight;
+  for (let box = row.parentElement; box; box = box.parentElement) {
+    const { overflowY } = window.getComputedStyle(box);
+    if (overflowY !== 'auto' && overflowY !== 'scroll') continue;
+    const edges = box.getBoundingClientRect();
+    shownTop = Math.max(shownTop, edges.top);
+    shownBottom = Math.min(shownBottom, edges.bottom);
+  }
+  return top < shownTop || bottom > shownBottom;
+}
+
+/**
+ * A row of the circle at its rank: the place itself, marked, or a place around
+ * it, its name opening its own circle and its note under the name. Either way
+ * its figures and its distance stand in the headings' columns.
+ */
+function CircleRowView({ row, columns, hovered, ownRef, onHover, onOpen }: {
+  row: CircleRow;
   columns: FigureColumns;
   hovered: boolean;
+  /** The open place's row, for the table to scroll to when another place opens. */
+  ownRef: Ref<HTMLDivElement>;
   onHover: (membershipId: number | null) => void;
   onOpen: (membershipId: number) => void;
 }) {
+  const signals = row.own ? row.place : row.entry;
+  let tint: ((theme: Theme) => string) | undefined;
+  if (row.own) tint = OWN_TINT;
+  else if (hovered) tint = HOVERED_TINT;
   return (
     <Box
-      onMouseEnter={() => onHover(entry.membershipId)}
+      ref={row.own ? ownRef : undefined}
+      onMouseEnter={() => onHover(signals.membershipId)}
       onMouseLeave={() => onHover(null)}
       role="row"
-      sx={{ ...rowGrid(columns), px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: hovered ? 'action.selected' : undefined }}
+      aria-label={row.own ? `${signals.name}, this place` : undefined}
+      sx={{ ...rowGrid(columns), px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: tint }}
     >
       {/* The rank is the rows' order, which a screen reader reads already. */}
-      <Typography aria-hidden variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>{index + 1}</Typography>
-      <Box role="rowheader" sx={stickyName(hovered ? HOVERED_TINT : undefined, { minWidth: 0 })}>
-        <ButtonBase
-          onClick={() => onOpen(entry.membershipId)}
-          sx={{ typography: 'body2', justifyContent: 'flex-start', textAlign: 'left', '&:hover': { textDecoration: 'underline' } }}
-        >
-          {entry.name}
-        </ButtonBase>
-        {reason && <Typography variant="caption" color="text.secondary" display="block">{reason}</Typography>}
+      <Typography aria-hidden variant="caption" color={row.own ? 'warning.dark' : 'text.secondary'} sx={{ fontVariantNumeric: 'tabular-nums' }}>
+        {row.rank ?? ''}
+      </Typography>
+      <Box role="rowheader" sx={stickyName(tint, { minWidth: 0 })}>
+        {row.own ? (
+          <>
+            <Typography variant="body2" fontWeight={500}>{signals.name}</Typography>
+            <Typography variant="caption" color="warning.dark" display="block">this place</Typography>
+          </>
+        ) : (
+          <>
+            <ButtonBase
+              onClick={() => onOpen(signals.membershipId)}
+              sx={{ typography: 'body2', justifyContent: 'flex-start', textAlign: 'left', '&:hover': { textDecoration: 'underline' } }}
+            >
+              {signals.name}
+            </ButtonBase>
+            {row.note && <Typography variant="caption" color="text.secondary" display="block">{row.note}</Typography>}
+          </>
+        )}
       </Box>
-      <FigureCells columns={columns} signals={entry} />
+      <FigureCells columns={columns} signals={signals} strong={row.own} />
       <Typography role="cell" variant="caption" color="text.secondary">
-        {STANDING_WORDS[entry.standing]}
+        {row.own ? '' : STANDING_WORDS[row.entry.standing]}
       </Typography>
       <Typography role="cell" variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
-        {distanceWords(entry.distanceM)}
+        {row.own ? '' : distanceWords(row.entry.distanceM)}
       </Typography>
     </Box>
   );
@@ -154,7 +179,17 @@ export function PlaceView({ view, rule, staging, columns, frozen = false, hovere
   onAnswer: (answer: CrowdingAnswer) => void;
 }) {
   const { place } = view;
-  const groups = circleGroups(view);
+  const rows = circleRows(view);
+  const ownRow = useRef<HTMLDivElement>(null);
+  const shownPlace = useRef(place.membershipId);
+  // Another place opened from the table or the map: the rows the two circles share keep their order, so the
+  // table stays where it is, and the newly marked row is scrolled to only where it is out of view.
+  useEffect(() => {
+    if (shownPlace.current === place.membershipId) return;
+    shownPlace.current = place.membershipId;
+    const row = ownRow.current;
+    if (row && outOfView(row)) row.scrollIntoView({ block: 'nearest' });
+  }, [place.membershipId]);
   const articleHref = safeHref(place.wikipediaUrl);
   const drawn = drawnStanding(place, staging);
   // What the rule counts above it and the circle does not list: new arrivals outside the caller's
@@ -193,23 +228,13 @@ export function PlaceView({ view, rule, staging, columns, frozen = false, hovere
         <Box role="table" aria-label="Its figures and the places around it" sx={{ overflowX: 'auto' }}>
         <Box sx={{ minWidth: tableMinWidth(columns) }}>
         <HeadingRow columns={columns} />
-        <OwnRow place={place} columns={columns} />
-        {CIRCLE_GROUPS.filter(group => groups[group].length > 0).map(group => (
-          <Box key={group} role="rowgroup" aria-label={GROUP_WORDS[group]}>
-            <Box role="row">
-              <Box role="cell" sx={{ display: 'inline-block', position: 'sticky', left: 0 }}>
-                <Typography variant="overline" component="h4" color="text.secondary" sx={{ px: 1.5, pt: 1, lineHeight: 1.6 }}>
-                  {`${GROUP_WORDS[group]} · ${groups[group].length}`}
-                </Typography>
-              </Box>
-            </Box>
-            {groups[group].map((entry, index) => (
-              <NeighbourRow key={entry.membershipId} entry={entry} index={index}
-                reason={group === 'uncounted' ? uncountedReason(entry) : undefined} columns={columns} hovered={hovered === entry.membershipId}
-                onHover={onHover} onOpen={onOpen} />
-            ))}
-          </Box>
-        ))}
+        {rows.map(row => {
+          const id = row.own ? row.place.membershipId : row.entry.membershipId;
+          return (
+            <CircleRowView key={id} row={row} columns={columns} hovered={hovered === id} ownRef={ownRow}
+              onHover={onHover} onOpen={onOpen} />
+          );
+        })}
         </Box>
         </Box>
         <VenueCreditLine columns={columns} />

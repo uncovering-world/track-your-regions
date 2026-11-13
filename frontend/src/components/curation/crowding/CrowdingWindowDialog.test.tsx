@@ -50,6 +50,18 @@ async function inRegion() {
   await screen.findByText(/^On the region page · /);
 }
 
+/** The circle's rows, by the names that head them: the open place's own among them at its rank. */
+function circleNames() {
+  const table = within(screen.getByRole('table', { name: 'Its figures and the places around it' }));
+  return table.getAllByRole('rowheader').map(header => header.firstChild?.textContent);
+}
+
+/** A place's row in the circle's table, by its name. */
+function circleRow(name: string) {
+  const around = within(screen.getByRole('region', { name: 'The places around it' }));
+  return within(around.getByRole('button', { name }).closest('[role="row"]') as HTMLElement);
+}
+
 /** The region list's row of one place, by its name. */
 function rowOf(name: string) {
   const { membershipId } = berlinSquares.find(place => place.name === name)!;
@@ -93,17 +105,21 @@ describe('the window opened from a card', () => {
 
     const around = within(screen.getByRole('region', { name: 'The places around it' }));
     expect(around.getByText('13 better-known squares within 10 km. One other is less known.')).toBeInTheDocument();
-    const compared = within(around.getByRole('rowgroup', { name: 'better known, compared with it' }));
-    expect(compared.getByRole('button', { name: 'Alexanderplatz' })).toBeInTheDocument();
-    expect(compared.getByText('0.7 km')).toBeInTheDocument();
-    expect(compared.queryByRole('button', { name: 'Kulturforum' })).toBeNull();
-    // The button counts every square around, so the circle names the ones the rule does not count against it too.
-    const less = within(around.getByRole('rowgroup', { name: 'less known, not counted against it' }));
-    expect(less.getByRole('button', { name: 'Kulturforum' })).toBeInTheDocument();
+    // One list by fame (#2486): the thirteen it is compared with above it, the less known below, with no group headings.
+    expect(circleNames()).toEqual([
+      'Alexanderplatz', 'Potsdamer Platz', 'Gendarmenmarkt', 'Pariser Platz', 'Bebelplatz', 'Lustgarten', 'Breitscheidplatz',
+      'Platz der Republik', 'Nollendorfplatz', 'Hackescher Markt', 'Frankfurter Tor', 'Leipziger Platz', 'Rosa-Luxemburg-Platz',
+      'Schloßplatz', 'Kulturforum',
+    ]);
+    expect(around.queryAllByRole('rowgroup')).toHaveLength(0);
+    expect(circleRow('Alexanderplatz').getByText('0.7 km')).toBeInTheDocument();
+    // Its rank says what the rule does with each of them, so neither row needs a note.
+    expect(circleRow('Alexanderplatz').queryByText(/counted|compared/)).toBeNull();
+    expect(circleRow('Kulturforum').queryByText(/counted|compared/)).toBeNull();
     expect(around.getByText(/^For the rule to show it, fewer than 10 squares better known than it/)).toBeInTheDocument();
   });
 
-  it('lists a better-known neighbour the rule leaves out apart from the less known, with its reason (#2420)', async () => {
+  it('marks a better-known neighbour the rule leaves out in its row, with its reason (#2420, #2486)', async () => {
     // A square holding works a reader is shown, scored above Schloßplatz: ADR-0173 never counts it against another.
     mockedPlace.mockResolvedValue({
       ...schlossplatzCircle,
@@ -117,14 +133,12 @@ describe('the window opened from a card', () => {
     const around = within(screen.getByRole('region', { name: 'The places around it' }));
     expect(around.getByText('13 better-known squares within 10 km. One more better known is not counted. One other is less known.'))
       .toBeInTheDocument();
-    const uncounted = within(around.getByRole('rowgroup', { name: 'better known, not counted against it' }));
-    expect(uncounted.getByRole('button', { name: 'Museum Island square' })).toBeInTheDocument();
-    expect(uncounted.getByText('It holds works readers are shown.')).toBeInTheDocument();
-    expect(within(around.getByRole('rowgroup', { name: 'less known, not counted against it' })).queryByRole('button', { name: 'Museum Island square' }))
-      .toBeNull();
+    // Above the place by its fame, between Gendarmenmarkt and Pariser Platz, and said not to count.
+    expect(circleNames().slice(2, 5)).toEqual(['Gendarmenmarkt', 'Museum Island square', 'Pariser Platz']);
+    expect(circleRow('Museum Island square').getByText('Not counted against it. It holds works readers are shown.')).toBeInTheDocument();
   });
 
-  it('lists a neighbour a curator keeps on the list as compared with a place not measured yet', async () => {
+  it('says in its row that a neighbour a curator keeps on the list counts against a place not measured yet', async () => {
     mockedPlace.mockResolvedValue({
       ...schlossplatzCircle,
       place: { ...schlossplatzCircle.place, score: null, outrankedBy: null, ruleCrowded: false },
@@ -135,8 +149,8 @@ describe('the window opened from a card', () => {
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
 
     const around = within(screen.getByRole('region', { name: 'The places around it' }));
-    expect(within(around.getByRole('rowgroup', { name: 'better known, compared with it' })).getByRole('button', { name: 'Alexanderplatz' }))
-      .toBeInTheDocument();
+    expect(circleRow('Alexanderplatz').getByText('Counted against it. A curator keeps it on the list.')).toBeInTheDocument();
+    expect(circleRow('Potsdamer Platz').getByText('Not compared until Schloßplatz is measured.')).toBeInTheDocument();
     expect(around.getByText('Not measured yet: only the one a curator keeps on the list counts above it until the next sync run ends.'))
       .toBeInTheDocument();
     expect(around.queryByText(/nothing is compared/)).toBeNull();
@@ -160,14 +174,13 @@ describe('the window opened from a card', () => {
     expect(around.getByText('Not measured yet: nothing is compared with it until the run of Squares & streets in progress ends.'))
       .toBeInTheDocument();
     expect(around.queryByText(/better-known|best-known/)).toBeNull();
-    expect(around.queryByRole('rowgroup', { name: 'better known, compared with it' })).toBeNull();
-    expect(within(around.getByRole('rowgroup', { name: 'measured, not compared with it' })).getByRole('button', { name: 'Alexanderplatz' }))
-      .toBeInTheDocument();
-    expect(within(around.getByRole('rowgroup', { name: 'not measured yet' })).getByRole('button', { name: 'Marx-Engels-Forum' }))
-      .toBeInTheDocument();
+    // The measured ones first, each saying it is not compared; the place and the other one not measured yet last.
+    expect(circleNames().slice(-3)).toEqual(['Kulturforum', 'Schloßplatz', 'Marx-Engels-Forum']);
+    expect(circleRow('Alexanderplatz').getByText('Not compared until Schloßplatz is measured.')).toBeInTheDocument();
+    expect(circleRow('Marx-Engels-Forum').getByText('Not measured yet.')).toBeInTheDocument();
   });
 
-  it("shows the place's figures first in a table, and each place around it in the same columns (#2400, #2454)", async () => {
+  it("shows the place's figures at its rank in a table, and each place around it in the same columns (#2400, #2454, #2486)", async () => {
     renderWindow();
     await screen.findByRole('heading', { name: 'Schloßplatz', level: 3 });
 
@@ -175,11 +188,14 @@ describe('the window opened from a card', () => {
     expect(table.getAllByRole('columnheader').map(cell => cell.textContent))
       .toEqual(['Place', 'Readers a year', 'Editions', 'In Wikivoyage', 'Score', 'Venues', '', 'Distance']);
     const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map(cell => cell.textContent);
-    // The place itself is the first row, marked, with no rule's count in it: the card's sentence says that once.
-    expect(cells(table.getByRole('row', { name: 'Schloßplatz, this place' }))).toEqual(['20,000', '17', 'yes', '0.70', '3', '', '']);
+    // The place itself stands at its rank, 14th, marked, with no rule's count in it: the card's sentence says that once.
+    const own = table.getByRole('row', { name: 'Schloßplatz, this place' });
+    expect(cells(own)).toEqual(['20,000', '17', 'yes', '0.70', '3', '', '']);
+    expect(own.firstChild).toHaveTextContent('14');
+    expect(within(own).getByText('this place')).toBeInTheDocument();
+    expect(table.getAllByRole('row').indexOf(own)).toBe(14);
     expect(screen.queryByText(/Better within/)).toBeNull();
-    const compared = within(screen.getByRole('rowgroup', { name: 'better known, compared with it' }));
-    const rowOf = (name: string) => compared.getByRole('button', { name }).closest('[role="row"]') as HTMLElement;
+    const rowOf = (name: string) => table.getByRole('button', { name }).closest('[role="row"]') as HTMLElement;
     // Each place's name heads its row, and its figures stand in the headings' columns before its standing and distance.
     expect(within(rowOf('Alexanderplatz')).getByRole('rowheader')).toHaveTextContent('Alexanderplatz');
     expect(cells(rowOf('Alexanderplatz'))).toEqual(['209,401', '47', 'yes', '0.95', '64', '', '0.7 km']);

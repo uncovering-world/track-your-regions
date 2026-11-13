@@ -4,7 +4,8 @@
  * cut to the places the tests need — the ten on the page, Leipziger Platz
  * shadowed, Frankfurter Tor and Schloßplatz new and shadowed by the rule,
  * Rosa-Luxemburg-Platz new and shown by it, and the Kulturforum's square
- * holding works, which takes no pin — and Schloßplatz in its own circle.
+ * holding works, which takes no pin — and any of them in its own circle,
+ * Schloßplatz's first.
  */
 
 import type {
@@ -44,7 +45,10 @@ const LISTED = [
 const TOP_THREE = LISTED.slice(0, 3);
 
 export const ALEXANDERPLATZ = 1;
+export const POTSDAMER_PLATZ = 2;
+export const GENDARMENMARKT = 3;
 export const NOLLENDORFPLATZ = 9;
+export const HACKESCHER_MARKT = 10;
 export const FRANKFURTER_TOR = 11;
 export const LEIPZIGER_PLATZ = 12;
 export const ROSA_LUXEMBURG_PLATZ = 13;
@@ -103,19 +107,31 @@ function around(place: CrowdingGroupPlace, compared: boolean, distanceM: number)
   };
 }
 
+/**
+ * A square in its own circle: every better-known square it is compared with,
+ * and the rest of the squares around, but for the ones `beyond` leaves outside
+ * its radius.
+ */
+export function berlinCircle(membershipId: number, beyond: readonly number[] = []): CrowdingPlaceView {
+  const place = berlinSquares.find(square => square.membershipId === membershipId)!;
+  const better = (other: CrowdingGroupPlace) =>
+    other.score !== null && place.score !== null && other.score > place.score && !other.holdsWorks;
+  return {
+    place,
+    group: berlinGroup.group,
+    kind: berlinGroup.kind,
+    typeExempt: false,
+    around: berlinSquares
+      .filter(other => other.membershipId !== membershipId && !beyond.includes(other.membershipId))
+      .map((other, index) => around(other, better(other), 700 + index * 300)),
+    comparedUnlisted: 0,
+    measuringRun: null,
+    measurable: true,
+  };
+}
+
 /** Schloßplatz in its own circle: the thirteen better known above it, and the rest of the squares around. */
-export const schlossplatzCircle: CrowdingPlaceView = {
-  place: berlinSquares.find(place => place.membershipId === SCHLOSSPLATZ)!,
-  group: berlinGroup.group,
-  kind: berlinGroup.kind,
-  typeExempt: false,
-  around: berlinSquares
-    .filter(place => place.membershipId !== SCHLOSSPLATZ)
-    .map((place, index) => around(place, place.score !== null && place.score > 0.7 && !place.holdsWorks, 700 + index * 300)),
-  comparedUnlisted: 0,
-  measuringRun: null,
-  measurable: true,
-};
+export const schlossplatzCircle: CrowdingPlaceView = berlinCircle(SCHLOSSPLATZ);
 
 /** The review page's crowded cities: Berlin's squares and Rome's churches. */
 export const BERLIN_SQUARES: ShadowedArrivalsGroup = {
