@@ -100,6 +100,41 @@ describe('an object made of several places', () => {
   });
 });
 
+describe('a point two listed objects show', () => {
+  // Seville Cathedral, a place of worship of its own and a part of Seville's
+  // World Heritage site: the region's batch lists its point under both.
+  const kind = (kind_id: number, kind_name: string, kind_priority: number, type: string) => ({
+    kind_id, kind_name, kind_priority, type, source_id: kind_id, external_id: 'Q', source_membership: 'present' as const,
+  });
+  const site = makeExperience(1175, {
+    has_parts: true, kind_id: 1, type: 'cultural', kinds: [kind(1, 'World Heritage Sites', 1, 'cultural')],
+  });
+  const cathedral = makeExperience(13223, {
+    has_parts: false, kind_id: 4, type: 'cathedral', kinds: [kind(4, 'Places of worship', 4, 'cathedral')],
+  });
+  const point = makeLocation(13546, { longitude: -5.9931, latitude: 37.3858 });
+  const alcazar = makeLocation(12007, { longitude: -5.9910, latitude: 37.3833 });
+  const locations = { 1175: [point, alcazar], 13223: [point] };
+
+  it('is one pin, opening the place the point is its own, with both kinds', () => {
+    for (const order of [[site, cathedral], [cathedral, site]]) {
+      const markers = buildExperienceMarkers(order, locations, new Set());
+      const atPoint = markers.filter(m => m.locationId === 13546);
+      expect(atPoint).toHaveLength(1);
+      expect(atPoint[0].experienceId).toBe(13223);
+      expect([...atPoint[0].experienceIds].sort((a, b) => a - b)).toEqual([1175, 13223]);
+      // In the kinds' order, whichever row came first.
+      expect(atPoint[0].kindColors).toEqual([experienceColor(1, 'cultural'), experienceColor(4, 'cathedral')]);
+    }
+    expect(buildExperienceMarkers([site, cathedral], locations, new Set())).toHaveLength(2);
+  });
+
+  it('keeps one kind where the surface shows one', () => {
+    const markers = buildExperienceMarkers([site, cathedral], locations, new Set(['Places of worship']));
+    expect(markers.map(m => [m.experienceId, m.experienceIds])).toEqual([[13223, [13223]]]);
+  });
+});
+
 describe('buildExperienceMarkers', () => {
   it('builds a marker for every experience, past the hundredth', () => {
     // The regression: `experiences.slice(0, 100)`. Europe carries 200 in the

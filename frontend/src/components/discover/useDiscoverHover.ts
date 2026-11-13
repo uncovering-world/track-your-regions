@@ -25,7 +25,7 @@ import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContex
 import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../../hooks/useHoverContext';
 import { clusterRadiusFor, LAYER_CLUSTERS } from './discoverMapLayers';
 import {
-  SCENE_SOURCES, LAYER_MARKERS, EMPTY_FC,
+  SCENE_SOURCES, LAYER_MARKERS, EMPTY_FC, featureShowsExperience,
   buildPointHoverData, buildPointsHoverData, buildSizedRing,
 } from '../experienceMarkers/scene';
 import { pointInView } from '../../utils/viewBounds';
@@ -54,7 +54,7 @@ function pinRingsFor(map: maplibregl.Map, expId: number): [number, number][] {
   // below.
   const byPosition = new Map<string, [number, number]>();
   for (const f of map.queryRenderedFeatures({ layers: [LAYER_MARKERS] })) {
-    if (f.properties?.experienceId !== expId) continue;
+    if (!featureShowsExperience(f.properties, expId)) continue;
     const coordinates = (f.geometry as GeoJSON.Point).coordinates as [number, number];
     const key = coordinates.map(c => c.toFixed(6)).join(',');
     if (!byPosition.has(key)) byPosition.set(key, coordinates);
@@ -295,7 +295,7 @@ export function useDiscoverHover({
       source.getClusterLeaves(clusterId, pointCount, 0)
         .then(leaves => {
           if (generation !== hoverGenerationRef.current) return;
-          if (leaves.some(leaf => leaf.properties?.experienceId === expId)) {
+          if (leaves.some(leaf => featureShowsExperience(leaf.properties, expId))) {
             clusterRings.push(clusterRing(cluster));
           }
         })
