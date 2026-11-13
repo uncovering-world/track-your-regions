@@ -38,3 +38,4 @@ and says so in its first lines.
 | [2026-11-10 — How established guides write for screens, and how this project's screens compare](2026-11-10-how-established-guides-write-for-screens.md) | #2432, #2433, #1506 |
 | [2026-11-10 — A walked street read from the venues around it](2026-11-10-a-walked-street-read-from-the-venues-around-it.md) | #2311, ADR-0192 |
 | [2026-11-12 — Which dedications a monument's lead states, and how they resolve to an item](2026-11-12-dedications-stated-in-a-lead.md) | #2435 |
+| [2026-11-13 — How map-and-list review tools let a person work a queue on a map](2026-11-13-a-review-queue-worked-on-a-map.md) | #2477 |
