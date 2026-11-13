@@ -75,6 +75,7 @@ import { coverageAssertions } from './coverageAssertions.js';
 import { divisionTreeAssertions } from './divisionTreeAssertions.js';
 import { objectAssertions } from './objectAssertions.js';
 import { identifierAssertions } from './identifierAssertions.js';
+import { partAssertions } from './partAssertions.js';
 import { roughPointAssertions } from './roughPointAssertions.js';
 import { workAssertions } from './workAssertions.js';
 import { regionGeometryAssertions } from './regionGeometryAssertions.js';
@@ -646,6 +647,7 @@ const pictureTheProductMayNotShow: CatalogueAssertion = {
 export const catalogueAssertions: CatalogueAssertion[] = [
   withdrawnBesideItsReplacement,
   twoOfferedPlacesAtOneReference,
+  ...partAssertions,
   listedWithNowhereToGo,
   visitsOnPlacesNoReaderIsShown,
   ...unplacedAssertions,
