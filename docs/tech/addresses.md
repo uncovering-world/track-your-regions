@@ -23,6 +23,7 @@ implemented, and the rules that keep it honest. The decision behind it is
 | `/?wv=5`, `/discover?wv=5` | The form links carried before #644 — honoured, then rewritten in place |
 | `/review` | The curator's review feed, nothing narrowed — a page rather than a place; see § The review page |
 | `/review?sort=question&q=cologne&source=1,3&kind=held&region=6737&run=98&aside=show&row=waiting:126` | …that feed's whole working set: the order, the search, the `source`, `kind`, `region` and `run` filters, the set-aside batches shown, and the question open on the right — on the catalogue of 2026-09-07, Cologne Cathedral's held proposal from run 98 |
+| `/review?region=6737&row=waiting:126&view=map` | The same questions on a map instead of listed (#2477), framed on the region, with the card of the question open beside it — see § The review page |
 | `/review?view=crowded&crowd=7-9-square` | The review page's *Crowded cities* tab, open on Berlin's squares as Berlin's page shows them, in the crowded city's window; `&place=4412` opens one of them in its own circle — see § The review page |
 
 Two rules decide where a piece of state goes:
@@ -182,6 +183,7 @@ decision 5.
 | `run=98` | The run that asked |
 | `aside=show` | Show the batches this curator has set aside, which are otherwise out of the list. Picking a set-aside run in the Run chip turns it on with the filter, in one write: that chip counts its runs before the set-aside rows are dropped, so the batch it offers would otherwise be filtered to a list the page hides |
 | `row=waiting:126` | The question open on the right, by the list's own key |
+| `view=map` | The queue's questions on a map instead of listed (#2477), written after `row`. `questions`, the list, is the default and writes nothing |
 | `view=crowded` | The *Crowded cities* tab (#2282). `questions`, the queue, is the default and writes nothing; any other value reads as it |
 | `crowd=7-9-square` | The crowded city's group open on that tab: its leaf region (`none` for arrivals no world view places), its kind and its type where it has one (`crowdKeyOf`), so `none-4` and `12-7-bell-tower` read too. A type's words are separated by one space, written `+` as the search's are: Places of worship's holy sites in a region read `crowd=21-4-holy+site`. Read and written only with `view=crowded` |
 | `place=4412` | The place of that group open in its own circle (#2358), by its membership in the group's kind: the circle a curator answers one place in. Read and written only with a `crowd` |
@@ -200,6 +202,19 @@ group by itself, where `crowd` names none, is a replace, as `row` is. Opening
 *Questions* drops `crowd` and `place`. The tab's Region and Kind chips are not parameters: they
 narrow a list of a few groups for the curator at the screen, and the group open is
 what a link has to reopen.
+
+**The map is the queue drawn another way, and keeps the queue's** (#2477). The
+toolbar's *List / Map* switch writes `view=map` as a push, so Back returns to the
+list, and the filters, the search, the order and the open `row` stay in the address
+beside it. It is not a filter: the page takes it apart from the chips (`onShow`, not
+`onChange`), so switching keeps the open row, and the queue's read is not keyed by
+it (`useReviewQueue`'s `filterKey`), so switching reads no list again. A marker
+opens its question by writing its `row`, as a click on a row does, and a question
+past the loaded pages is read the way a link to it is (below). The camera is not a
+parameter: a region chip frames the region by its stored `focusBbox` and
+`anchorPoint`, and without one the map frames every point it draws, so a link to
+`region=…&view=map` opens on that region. A crowded city's group is never read or
+written beside `view=map`.
 
 **The ticks are not a parameter** (#852). A curator can tick many rows and answer them
 at once, and the ticks are deliberately transient — component state, cleared when a
@@ -267,7 +282,7 @@ where the curator left it.
 
 **Degradation is silent here too.** A value that does not parse — `region=europe`,
 `row=conflict:88`, `kind=nonsense`, `crowd=berlin-9`, `place=rome` — reads as absent and the rest
-of the address still applies; `view=crowds` opens *Questions*. The leniency runs on into the endpoint the address is asked with:
+of the address still applies; `view=crowds` opens *Questions* as a list. The leniency runs on into the endpoint the address is asked with:
 a filter word the server's vocabulary does not know is dropped rather than
 answered 400, and a `cursor` it cannot read opens the first page.
 
