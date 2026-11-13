@@ -20,7 +20,8 @@ const ACROPOLIS: ExperienceDetailRow = {
   boundary_geojson: { type: 'MultiPolygon', coordinates: [[[[23.72, 37.97], [23.73, 37.97], [23.73, 37.98], [23.72, 37.97]]]] },
   area_km2: 0.03, kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, source_name: 'Archaeology',
   source_description: null, kinds: [ACROPOLIS_IN_ARCHAEOLOGY],
-  part_of_id: null, part_of_name: null, part_of_point_id: null, has_own_point: true,
+  part_of_id: null, part_of_name: null, part_of_point_id: null, part_of_places: null, part_of_kind_id: null, part_of_regions: null,
+  has_own_point: true,
 };
 
 describe('experienceDetailOf', () => {
@@ -37,8 +38,13 @@ describe('experienceDetailOf', () => {
 
   it('names the site a part belongs to and the point its card opens it at, and nothing for a place of its own', () => {
     expect(experienceDetailOf(ACROPOLIS, []).part_of).toBeNull();
-    const karnak = experienceDetailOf({ ...ACROPOLIS, part_of_id: 153, part_of_name: 'Ancient Thebes with its Necropolis', part_of_point_id: 40211 }, []);
-    expect(karnak.part_of).toEqual({ id: 153, name: 'Ancient Thebes with its Necropolis', point_id: 40211 });
+    const karnak = experienceDetailOf({
+      ...ACROPOLIS, part_of_id: 153, part_of_name: 'Ancient Thebes with its Necropolis', part_of_point_id: 40211, part_of_places: 2,
+      part_of_kind_id: 1, part_of_regions: [],
+    }, []);
+    expect(karnak.part_of).toEqual({
+      id: 153, name: 'Ancient Thebes with its Necropolis', point_id: 40211, places: 2, kind_id: 1, regions: [],
+    });
     expect(ExperienceDetail.safeParse(JSON.parse(JSON.stringify(karnak))).success).toBe(true);
   });
 

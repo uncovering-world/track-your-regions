@@ -194,6 +194,9 @@ export interface ExperienceDetailRow {
   part_of_id: number | null;
   part_of_name: string | null;
   part_of_point_id: number | null;
+  part_of_places: number | null;
+  part_of_kind_id: number | null;
+  part_of_regions: ExperienceRegionRef[] | null;
   has_own_point: boolean;
 }
 
@@ -235,7 +238,10 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     regions,
     part_of: row.part_of_id === null || row.part_of_name === null
       ? null
-      : { id: row.part_of_id, name: row.part_of_name, point_id: row.part_of_point_id },
+      : {
+        id: row.part_of_id, name: row.part_of_name, point_id: row.part_of_point_id, places: row.part_of_places,
+        kind_id: row.part_of_kind_id, regions: row.part_of_regions ?? [],
+      },
     has_own_point: row.has_own_point,
   };
 }

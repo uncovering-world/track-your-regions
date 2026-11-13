@@ -26468,12 +26468,48 @@
                       }
                     ],
                     "description": "The part's own point: the id its whole's card opens it at."
+                  },
+                  "places": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "How many of the whole's places a reader is shown, while a reader may be sent to the whole; null where none may be (#2118)."
+                  },
+                  "kind_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The kind the whole is shown under, which a link to it in Discover needs."
+                  },
+                  "regions": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ExperienceRegionRef"
+                    },
+                    "description": "The regions a link to the whole is built from (ADR-0042)."
                   }
                 },
                 "required": [
                   "id",
                   "name",
-                  "point_id"
+                  "point_id",
+                  "places",
+                  "kind_id",
+                  "regions"
                 ],
                 "additionalProperties": false
               },

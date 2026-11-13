@@ -324,7 +324,10 @@ names, the record, the curator's note and whether the whole became one. The card
 and wholes with whose word makes each (`GET /:id/parts`, `partRecordRead.ts`: the list's reference and
 the name it gives the line, a Wikidata statement, the curator's word with its note) and searches the
 places near the whole's parts, or near the place itself while it has none, within a kilometre, or by
-name (`GET /:id/part-candidates`). The catalogue check
+name (`GET /:id/part-candidates`). A visitor reads it on a part's own card: `part_of.places` on
+`GET /:id` counts the whole's parts a reader is shown while the whole is offered
+(`placeOrPartOfferedSql`), so a part waiting for a curator is not counted, and `part_of.kind_id` and
+`part_of.regions` are what a link to the whole is built from (ADR-0042). The catalogue check
 `parts-in-a-loop-or-too-deep` holds the same rule over every relation, whoever wrote it.
 
 **A site's own line** (ADR-0200, #2118). Every line of the World Heritage list is a record. A line

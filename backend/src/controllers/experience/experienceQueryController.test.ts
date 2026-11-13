@@ -51,6 +51,9 @@ const EXPERIENCE_ROW = {
   part_of_id: null,
   part_of_name: null,
   part_of_point_id: null,
+  part_of_places: null,
+  part_of_kind_id: null,
+  part_of_regions: null,
   has_own_point: true,
 };
 

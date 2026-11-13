@@ -362,6 +362,11 @@ export const ExperienceDetail = z.strictObject({
     name: z.string(),
     point_id: z.number().int().nullable()
       .describe("The part's own point: the id its whole's card opens it at."),
+    places: z.number().int().nullable().describe(
+      'How many of the whole\'s places a reader is shown, while a reader may be sent to the whole; null where none may be (#2118).',
+    ),
+    kind_id: z.number().int().nullable().describe('The kind the whole is shown under, which a link to it in Discover needs.'),
+    regions: z.array(ExperienceRegionRef).describe('The regions a link to the whole is built from (ADR-0042).'),
   }).nullable()
     .describe('The site this place is a part of (ADR-0100): the Temple of Karnak of Ancient Thebes. A part with no kind of its own is shown under its whole\'s kind.'),
   has_own_point: z.boolean().describe(
