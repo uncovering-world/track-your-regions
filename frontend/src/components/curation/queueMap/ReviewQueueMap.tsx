@@ -4,9 +4,9 @@
  * list's, opened the way a row opens it: by writing the question's key into the address's
  * `row`, which the page reads whether a row or a marker wrote it.
  *
- * - **What it reads.** `fetchReviewQueueMap` under the address's chips, keyed under
- *   `reviewQueueAll`, so the refresh an answer makes takes the answered question off the
- *   map as it takes it off the list.
+ * - **What it reads.** `fetchReviewQueueMap` under the address's chips (`useQueueMapRead`,
+ *   which the page shares to walk on after an answer), keyed under `reviewQueueAll`, so the
+ *   refresh an answer makes takes the answered question off the map as it takes it off the list.
  * - **What it draws** (`queueMapLayers.ts`). Map mode's own layers: heat below
  *   `HEATMAP_MAX_ZOOM`, a pin per place above it in its first question's colour, a badge
  *   counting a place's questions where it has more than one, and the open question's
@@ -17,35 +17,39 @@
  *   frame (`smartFitBounds`); otherwise, or where the region has none, the map frames
  *   every point (`frameGeoJson`, which measures across the antimeridian). It frames again
  *   when the chips change, never after an answer, so the camera stays where the curator
- *   is working.
- * - **Under it**, one line: how many open questions the chips select, and that all are
- *   on the map or how many have no point, with the way to the list. Then the legend.
+ *   is working. After an answer the page opens the nearest open question (`nextOnMap`), and
+ *   the map pans to its place, at the same zoom, only when the place is out of view.
+ * - **Under it**, after an answer, where the next question is: this place's, or the nearest
+ *   and how far. Then how many open questions the chips select, and that all are on the map
+ *   or how many have no point, with the way to the list. Then the legend.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Box, Button, List, ListItemButton, ListItemText, Popover, Stack, Typography,
 } from '@mui/material';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   Layer, NavigationControl, Source, type MapLayerMouseEvent, type MapRef,
 } from 'react-map-gl/maplibre';
-import { fetchReviewQueueMap, type QueueMapPlace } from '../../../api/reviewQueue';
+import type { QueueMapPlace } from '../../../api/reviewQueue';
 import { fetchRegionAncestors } from '../../../api/regions';
 import { queryKeys } from '../../../api/queryKeys';
 import { MAP_STYLE, OSM_ATTRIBUTION_CONTROL } from '../../../constants/mapStyles';
 import type { ReviewAddress } from '../../../utils/appUrl';
 import { frameGeoJson, smartFitBounds } from '../../../utils/mapUtils';
+import { pointInView } from '../../../utils/viewBounds';
 import { plural } from '../../../utils/plural';
 import { GuardedMap } from '../../shared/GuardedMap';
 import {
   legendKinds, placeOfRow, queueMarkers, questionColor, questionCount, questionRow, questionWord, selectedMarker,
-  spreadOf,
+  spreadOf, stepLine, type MapStep,
 } from './queueMapData';
 import {
   QUESTION_PIN_LAYERS, SOURCE_QUESTIONS, SOURCE_SELECTED, questionBadgeBgLayer, questionBadgeTextLayer,
   questionHeatLayer, questionPinLayer, selectedPinLayer, selectedRingLayer,
 } from './queueMapLayers';
+import { useQueueMapRead } from './useQueueMapRead';
 
 /** The closest the points are framed: a chip that leaves one place shows it among its streets. */
 const SPREAD_MAX_ZOOM = 14;
@@ -88,28 +92,20 @@ export function QueueMapLine({ count, unplaced, onShowList }: {
   );
 }
 
-export function ReviewQueueMap({ address, placeName, onOpen, onShowList }: {
+export function ReviewQueueMap({
+  address, placeName, onOpen, onShowList, step = null,
+}: {
   address: ReviewAddress;
   /** A place's name where the list has loaded a row of it, for the short list's heading. */
   placeName: (placeId: number) => string | undefined;
   /** Opens a question's card, by the list's key of its row. */
   onOpen: (row: string) => void;
   onShowList: () => void;
+  /** Where the map walked after the last answer, while the question it opened is open. */
+  step?: MapStep | null;
 }) {
-  const {
-    q, sourceIds, kinds, regionId, runId, showAside,
-  } = address;
-  const chips = useMemo(() => ({
-    q, sourceIds, kinds, regionId, runId, showAside,
-  }), [q, sourceIds, kinds, regionId, runId, showAside]);
-  const chipsKey = JSON.stringify(chips);
-
-  const { data, isError, isPlaceholderData } = useQuery({
-    queryKey: queryKeys.curation.reviewQueue('map', chips),
-    queryFn: () => fetchReviewQueueMap(address),
-    // A chip changed keeps the points it had until the new ones arrive, as the list does.
-    placeholderData: keepPreviousData,
-  });
+  const { regionId } = address;
+  const { read: { data, isError, isPlaceholderData }, chipsKey } = useQueueMapRead(address);
 
   // The region a chip names, by the frame the database stored for it: the last of its
   // ancestors is the region itself.
@@ -156,6 +152,19 @@ export function ReviewQueueMap({ address, placeName, onOpen, onShowList }: {
     frameGeoJson(map.current, spreadOf(data.places), { padding: 40, duration: 400, maxZoom: SPREAD_MAX_ZOOM });
     framedFor.current = chipsKey;
   }, [loaded, chipsKey, framedRegion, ancestors, regionFailed, regionFocus, data, isPlaceholderData]);
+
+  // A walk after an answer keeps the camera: the map pans to the next place, at the same zoom,
+  // only when that place is out of view. Once per walk, so a re-render does not pull the map back.
+  const walked = useRef<MapStep | null>(null);
+  useEffect(() => {
+    if (!loaded || !map.current || step === null || walked.current === step) return;
+    walked.current = step;
+    const bounds = map.current.getBounds();
+    const view = {
+      west: bounds.getWest(), south: bounds.getSouth(), east: bounds.getEast(), north: bounds.getNorth(),
+    };
+    if (!pointInView(step.lon, step.lat, view)) map.current.easeTo({ center: [step.lon, step.lat], duration: 400 });
+  }, [loaded, step]);
 
   const [pointer, setPointer] = useState(false);
   const [picking, setPicking] = useState<Picking | null>(null);
@@ -259,6 +268,9 @@ export function ReviewQueueMap({ address, placeName, onOpen, onShowList }: {
 
       {isError && data && (
         <Alert severity="warning">The map could not refresh. It shows the questions as they were.</Alert>
+      )}
+      {step && (
+        <Typography variant="body2" role="status">{stepLine(step)}</Typography>
       )}
       {data && (
         <QueueMapLine count={questionCount(data.places, data.unplaced)} unplaced={data.unplaced} onShowList={onShowList} />

@@ -1,7 +1,7 @@
 /**
  * The review queue's map (#2477), with the map mocked: what it is handed to draw, what
  * a click on a place opens, the short list of a place several questions are about, the
- * line under the map, and where the camera goes. The markers' own data is
+ * line under the map, the line after a walk to the next question, and where the camera goes. The markers' own data is
  * `queueMapData.test.ts`'s.
  */
 
@@ -18,17 +18,33 @@ import { EMPTY_REVIEW, type ReviewAddress } from '../../../utils/appUrl';
 import type { QueueMapPlace, ReviewQueueMap as QueueMapRead } from '../../../api/reviewQueue';
 
 /** What the mocked map was last handed, so a test can click it as MapLibre would. */
-const { theMap, mockFetchMap, mockAncestors } = vi.hoisted(() => ({
-  theMap: { props: {} as Record<string, unknown>, zoom: 3 },
-  mockFetchMap: vi.fn(),
-  mockAncestors: vi.fn(),
-}));
+const { theMap, mockFetchMap, mockAncestors } = vi.hoisted(() => {
+  const state = {
+    props: {} as Record<string, unknown>,
+    zoom: 3,
+    // The view the camera shows, west to east and south to north: central Rome.
+    view: [12.46, 41.89, 12.49, 41.905],
+    easeTo: vi.fn(),
+    getBounds: () => ({
+      getWest: () => state.view[0],
+      getSouth: () => state.view[1],
+      getEast: () => state.view[2],
+      getNorth: () => state.view[3],
+    }),
+  };
+  return { theMap: state, mockFetchMap: vi.fn(), mockAncestors: vi.fn() };
+});
 
 vi.mock('react-map-gl/maplibre', async () => {
   const { forwardRef, useEffect, useImperativeHandle } = await import('react');
   const MapGL = forwardRef(function MapGL(props: Record<string, unknown> & { children?: ReactNode }, ref) {
     theMap.props = props;
-    useImperativeHandle(ref, () => ({ getMap: () => ({ id: 'the-map' }), getZoom: () => theMap.zoom }));
+    useImperativeHandle(ref, () => ({
+      getMap: () => ({ id: 'the-map' }),
+      getZoom: () => theMap.zoom,
+      getBounds: theMap.getBounds,
+      easeTo: theMap.easeTo,
+    }));
     const { onLoad } = props as { onLoad?: () => void };
     useEffect(() => { onLoad?.(); }, [onLoad]);
     return <div data-testid="the-map">{props.children}</div>;
@@ -53,6 +69,7 @@ vi.mock('../../../utils/mapUtils', async (importOriginal) => ({
 
 import { frameGeoJson, smartFitBounds } from '../../../utils/mapUtils';
 import { ReviewQueueMap } from './ReviewQueueMap';
+import type { MapStep } from './queueMapData';
 
 /** Two places in Rome, their ids and questions made up: one two kinds ask about, and one arrival. */
 const PANTHEON: QueueMapPlace = {
@@ -115,6 +132,8 @@ beforeEach(() => {
   vi.spyOn(webgl, 'isWebGLAvailable').mockReturnValue(true);
   mockFetchMap.mockReset().mockResolvedValue(ROME);
   theMap.zoom = 3;
+  theMap.view = [12.46, 41.89, 12.49, 41.905];
+  theMap.easeTo.mockReset();
   mockAncestors.mockReset();
   vi.mocked(frameGeoJson).mockReset();
   vi.mocked(smartFitBounds).mockReset();
@@ -202,6 +221,42 @@ describe('the review queue’s map', () => {
     expect(await screen.findByText('3 questions about 2 places here')).toBeInTheDocument();
     expect(frameGeoJson).not.toHaveBeenCalled();
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('says where the walk after an answer went, and pans to a place out of view at the same zoom', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = (step: MapStep | null) => (
+      <QueryClientProvider client={client}>
+        <ReviewQueueMap
+          address={{ ...EMPTY_REVIEW, view: 'map', row: step?.row ?? 'conflicts:4120' }}
+          placeName={() => undefined}
+          onOpen={vi.fn()}
+          onShowList={vi.fn()}
+          step={step}
+        />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(view(null));
+    await screen.findByTestId('source-review-questions');
+    expect(screen.queryByText(/^Next:/)).toBeNull();
+
+    // The Pantheon's other question, on the point the camera already shows: no move.
+    rerender(view({
+      row: 'waiting:4120', placeId: 4120, lon: PANTHEON.lon, lat: PANTHEON.lat, samePlace: true, meters: 0,
+    }));
+    expect(await screen.findByText('Next: another question about this place.')).toBeInTheDocument();
+    expect(theMap.easeTo).not.toHaveBeenCalled();
+
+    // Santa Prassede, east of the view: the map pans to it and keeps its zoom.
+    vi.mocked(frameGeoJson).mockClear();
+    rerender(view({
+      row: 'waiting:88213', placeId: 88213, lon: SANTA_PRASSEDE.lon, lat: SANTA_PRASSEDE.lat, samePlace: false, meters: 1807,
+    }));
+    expect(await screen.findByText('Next: the nearest open question, 1.8 km away.')).toBeInTheDocument();
+    expect(theMap.easeTo).toHaveBeenCalledTimes(1);
+    expect(theMap.easeTo).toHaveBeenCalledWith({ center: [SANTA_PRASSEDE.lon, SANTA_PRASSEDE.lat], duration: 400 });
+    expect(frameGeoJson).not.toHaveBeenCalled();
+    expect(smartFitBounds).not.toHaveBeenCalled();
   });
 
   it('drops from an open list a question a refresh no longer holds', async () => {

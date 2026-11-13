@@ -1,8 +1,9 @@
 /**
  * The review queue's map mode (#2477), as the page wires it: the toolbar's switch is a
  * push that keeps the filters and the open row, the map takes the list's column while
- * the card stays, a marker opens a card the way a row does, and Back returns to the list.
- * What the map itself draws is `queueMap/ReviewQueueMap.test.tsx`'s.
+ * the card stays, a marker opens a card the way a row does, Back returns to the list, and
+ * an answer on the map opens the nearest open question the map holds. What the map itself
+ * draws is `queueMap/ReviewQueueMap.test.tsx`'s, and the walk's own rule `queueMapData.test.ts`'s.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -11,11 +12,12 @@ import type { ComponentProps } from 'react';
 
 vi.mock('../../utils/queryInvalidation', () => ({ invalidateExperiences: vi.fn() }));
 
-const { mockedFetch } = vi.hoisted(() => ({ mockedFetch: vi.fn() }));
+const { mockedFetch, mockedFetchMap } = vi.hoisted(() => ({ mockedFetch: vi.fn(), mockedFetchMap: vi.fn() }));
 
 vi.mock('../../api/crowding', () => ({ fetchShadowedArrivals: vi.fn(async () => ({ groups: [] })) }));
 vi.mock('../../api/reviewQueue', () => ({
   fetchReviewQueue: async (params: unknown) => shaped(await mockedFetch(params)),
+  fetchReviewQueueMap: mockedFetchMap,
   setRunAside: vi.fn(),
   bringRunBack: vi.fn(),
 }));
@@ -32,23 +34,52 @@ vi.mock('../../api/experiences', () => ({ fetchExperience: vi.fn() }));
 // The map's own chunk, as the page hands it the address and the way to open a card.
 vi.mock('./queueMap/LazyReviewQueueMap', () => ({
   LazyReviewQueueMap: ({
-    address, placeName, onOpen, onShowList,
+    address, placeName, onOpen, onShowList, step,
   }: ComponentProps<typeof import('./queueMap/ReviewQueueMap').ReviewQueueMap>) => (
     <div data-testid="the-map">
       {`open: ${address.row ?? 'none'}; kinds: ${address.kinds.join(',') || 'any'}; place 77: ${placeName(77) ?? '?'}`}
+      {step && <p>{`walked to ${step.row}`}</p>}
       <button type="button" onClick={() => onOpen(`missing:${MISSING.id}`)}>open the missing place</button>
       <button type="button" onClick={onShowList}>show the list</button>
     </div>
   ),
 }));
 
+import { setExperienceState } from '../../api/curation';
 import {
   shaped, renderQueue, at, navType, goBack, MISSING, CONFLICT,
 } from './reviewQueueFixtures';
 
 beforeEach(() => {
   mockedFetch.mockReset().mockResolvedValue({ missing: [MISSING], conflicts: [CONFLICT], limit: 25 });
+  mockedFetchMap.mockReset().mockResolvedValue({ places: [], unplaced: 0 });
+  vi.mocked(setExperienceState).mockReset().mockResolvedValue({ experienceId: 77 } as never);
 });
+
+/**
+ * Four places gone from their source, listed 77, 78, 79, 80, and where they stand in Rome:
+ * 77 at the Pantheon, 80 on the square behind it, 79 across the city at Santa Prassede, 78
+ * at the Vatican. Answering 77 sends the list to 78, its next row, and the map to 80, the nearest.
+ */
+const site = (id: number) => ({ ...MISSING, id, name: `Site ${id}` });
+const point = (placeId: number, lon: number, lat: number) => ({
+  placeId, lon, lat, questions: [{ kind: 'missing', subs: [] }],
+});
+const ROME = {
+  places: [
+    point(77, 12.47685, 41.89861), point(78, 12.45332, 41.90219),
+    point(79, 12.49845, 41.89622), point(80, 12.47778, 41.89778),
+  ],
+  unplaced: 0,
+};
+
+/** The list before the answer, and after it without 77; the map's read never refreshes. */
+function answeringSite77() {
+  mockedFetch.mockReset()
+    .mockResolvedValueOnce({ missing: [site(77), site(78), site(79), site(80)], limit: 25 })
+    .mockResolvedValue({ missing: [site(78), site(79), site(80)], limit: 25 });
+  mockedFetchMap.mockResolvedValue(ROME);
+}
 
 describe('the review queue’s map mode', () => {
   it('switches to the map as a push that keeps the filters and the open row, and Back returns to the list', async () => {
@@ -125,5 +156,41 @@ describe('the review queue’s map mode', () => {
     fireEvent.click(screen.getByRole('button', { name: 'show the list' }));
     await waitFor(() => expect(at()).toBe(`/review?row=conflicts:${CONFLICT.id}`));
     expect(navType()).toBe('PUSH');
+  });
+
+  it('opens the nearest open question on the map after an answer, by replace, whatever the list’s order', async () => {
+    answeringSite77();
+    renderQueue('/review?row=missing:77&view=map');
+    expect(await screen.findByRole('heading', { name: /Site 77/ })).toBeInTheDocument();
+    await waitFor(() => expect(mockedFetchMap).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+
+    // Site 80 stands about 115 m away, while the list's next row, 78, is across the Tiber.
+    // The map's read still holds 77, the question just answered, and the walk passes it by.
+    expect(await screen.findByRole('heading', { name: /Site 80/ })).toBeInTheDocument();
+    await waitFor(() => expect(at()).toBe('/review?row=missing:80&view=map'));
+    expect(navType()).toBe('REPLACE');
+    expect(screen.getByText('walked to missing:80')).toBeInTheDocument();
+
+    // A marker opened since, and Back to 80, is not the walk: its line does not come back.
+    fireEvent.click(screen.getByRole('button', { name: 'open the missing place' }));
+    await waitFor(() => expect(screen.queryByText('walked to missing:80')).toBeNull());
+    goBack();
+    await waitFor(() => expect(at()).toBe('/review?row=missing:80&view=map'));
+    expect(screen.queryByText(/walked to/)).toBeNull();
+  });
+
+  it('moves on by the list’s order in the list, and reads no map', async () => {
+    answeringSite77();
+    renderQueue('/review?row=missing:77');
+    expect(await screen.findByRole('heading', { name: /Site 77/ })).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+
+    expect(await screen.findByRole('heading', { name: /Site 78/ })).toBeInTheDocument();
+    await waitFor(() => expect(at()).toBe('/review?row=missing:78'));
+    expect(navType()).toBe('REPLACE');
+    expect(mockedFetchMap).not.toHaveBeenCalled();
   });
 });
