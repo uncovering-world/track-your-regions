@@ -22,11 +22,14 @@ vi.mock('../api/auth', () => ({
 }));
 vi.mock('../components/shared/trips/visitTrips', () => ({
   default: (props: { part: string }) => <p>{`chunk: ${props.part}`}</p>,
+  forgetOffer: () => {},
 }));
 
 import { getHeldAccount, refreshSession, setAccessToken } from '../api/fetchUtils';
 import { LazyVisitRemovedLine } from '../components/shared/lazyVisitTrips';
-import { clearRemovedVisits, noteRemovedVisits, removedVisitsOf, writeOrigin } from '../components/shared/visitRemovals';
+import {
+  clearRemovedVisits, dateLineAt, noteRemovedVisits, OFFER_SILENCE_KEY, removedVisitsOf, showDateLine, writeOrigin,
+} from '../components/shared/visitRemovals';
 import { AuthProvider, useAuth } from './useAuth';
 
 /** An access token `useAuth` can read: only its expiry is looked at. */
@@ -110,6 +113,19 @@ describe("the Undo of a traveller's untick and the next sign-in", () => {
     expect(auth.user?.id).toBe(8);
     expect(screen.queryByText('chunk: removed')).toBeNull();
     expect(removedVisitsOf(7)).toBeNull();
+  });
+
+  it("forgets the date line and its silence when a refresh returns another tab's traveller", async () => {
+    renderTab();
+    await waitFor(() => expect(auth.isLoading).toBe(false));
+    await signIn(7);
+    act(() => showDateLine(9461, 7));
+    sessionStorage.setItem(OFFER_SILENCE_KEY, JSON.stringify({ owner: 7, until: Date.now() + 3_600_000 }));
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => traveller(8) })));
+    await act(async () => { await refreshSession(); });
+    expect(dateLineAt()).toBeNull();
+    expect(sessionStorage.getItem(OFFER_SILENCE_KEY)).toBeNull();
   });
 
   it('stays when a refresh returns the same traveller', async () => {

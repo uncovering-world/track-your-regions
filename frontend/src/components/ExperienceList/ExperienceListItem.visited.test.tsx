@@ -14,6 +14,9 @@ import type { Experience, RegionExperienceLocation } from '../../api/experiences
 import type { VisitedStatus } from '../../api/visited';
 import { ExperienceListItem } from './ExperienceListItem';
 
+// The date line under a row reads who is signed in: no one, here.
+vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: false, user: null }) }));
+
 const BILBAO = 101;
 const OTTAWA = 102;
 const RUDI = 201;

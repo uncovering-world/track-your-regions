@@ -121,7 +121,8 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
     unmarkLocationVisited,
     markAllLocations,
     unmarkAllLocations,
-  } = useVisitedLocations();
+    // A part's tick here is dated on the object's row in Discover's list (#2120).
+  } = useVisitedLocations(undefined, experience.id);
   const {
     visitedStatus,
     castPoints,

@@ -36,7 +36,7 @@ import { TailPlace, TailRow } from '../ExperienceList/TailRow';
 import type { TailSection } from '../ExperienceList/tailRows';
 import type { TypeChoice } from '../../utils/typeChoices';
 import { typeLabelFor } from '../../utils/experienceTypes';
-import { LazyVisitRemovedLine } from '../shared/lazyVisitTrips';
+import { LazyVisitDateLine, LazyVisitRemovedLine } from '../shared/lazyVisitTrips';
 
 interface DiscoverExperienceRowProps {
   experience: Experience;
@@ -80,6 +80,7 @@ export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
 }: DiscoverExperienceRowProps) {
   const isHovered = useHoverSelector(s => s.hoveredExperienceId === experience.id);
   return (
+    <>
     <ExperienceCard
       experience={experience}
       isVisited={isVisited}
@@ -94,6 +95,8 @@ export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
       visitDisabled={visitDisabled}
       onCurate={canCurate ? () => onCurate(experience) : undefined}
     />
+    {showCheckbox && <LazyVisitDateLine at={experience.id} />}
+    </>
   );
 });
 

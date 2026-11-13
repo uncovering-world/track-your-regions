@@ -15,7 +15,7 @@ export function DiscoverPointCard({ experience, pointId, onBack, onOpenPoint, on
   onPointGone: () => void;
 }) {
   const { isAuthenticated } = useAuth();
-  const { isLocationVisited, markLocationVisited, unmarkLocationVisited } = useVisitedLocations(experience.id);
+  const { isLocationVisited, markLocationVisited, unmarkLocationVisited } = useVisitedLocations(experience.id, experience.id);
   const visitWritePending = useVisitWritePending();
   const visited = isLocationVisited(pointId);
   return (

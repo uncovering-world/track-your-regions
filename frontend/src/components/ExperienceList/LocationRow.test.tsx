@@ -14,6 +14,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { HoverProvider } from '../../hooks/useHoverContext';
 import { LocationRow, type LocationRowData } from './LocationRow';
 
+// The date line under a row reads who is signed in: no one, here.
+vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: false, user: null }) }));
+
 /** One of the pile dwellings around the Alps, as the card lists it. */
 const see: LocationRowData = {
   id: 4418, name: 'See', externalRef: '1363-061', ordinal: 0, isVisited: false, latitude: 47.5, longitude: 9.4,

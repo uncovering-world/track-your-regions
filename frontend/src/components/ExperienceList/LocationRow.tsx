@@ -30,6 +30,7 @@ import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
 import type { ExperienceLocation } from '../../api/experiences';
 import { claimLabel } from '../../utils/placeClaims';
 import { resolveLocationColor } from './utils';
+import { LazyVisitDateLine } from '../shared/lazyVisitTrips';
 
 /**
  * A row's second line: what it says already (a curator's claim, or where a
@@ -262,6 +263,7 @@ function LocationRowComponent({
           }}
         />
       </ListItem>
+      {showCheckbox && <LazyVisitDateLine at={-location.id} />}
     </Box>
   );
 }
