@@ -3926,6 +3926,27 @@ VALUES (
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
 
+-- Curators: a curator's own word that a place is a part of a whole, or is
+-- kept out of it, as a record in the whole beside the sources' (ADR-0198
+-- decision 5, #2118). Written by nothing but the card's part writer
+-- (setCuratorPartRecord, membershipWriter.ts), under a curator's key of its
+-- own (curator-<user>-<record>). It fills no kind and has no run and no gate:
+-- a curator's word is read already, and no run undoes it.
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id, id_scheme)
+VALUES (
+    11,
+    'Curators',
+    'A curator''s own word that a place is a part of a whole, or is kept out of it, given on the place''s card',
+    NULL,
+    '{}'::jsonb,
+    11,
+    false,
+    NULL,
+    'curator'
+)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
+
 -- Every source names the kind it fills (ADR-0045 decision 3). Filled by name
 -- for a database whose rows predate the column -- the museum source under
 -- either of its names. A source whose records place a part in a whole fills
@@ -4261,7 +4282,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     -- Null on the catalogue's own merge alone (ADR-0086): the check below.
     curator_id INTEGER REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back', 'kind_added', 'find_site_answered', 'crowding_answered')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back', 'kind_added', 'find_site_answered', 'crowding_answered', 'part_added', 'part_taken_out', 'part_put_back')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -4281,7 +4302,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back', 'kind_added', 'find_site_answered', 'crowding_answered'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back', 'kind_added', 'find_site_answered', 'crowding_answered', 'part_added', 'part_taken_out', 'part_put_back'));
 
 -- An existing database's NOT NULL goes with migration 076; a fresh one never had it.
 -- Two acts are the catalogue's own and name no curator: a merge of two places
