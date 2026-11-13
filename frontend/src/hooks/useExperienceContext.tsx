@@ -19,12 +19,14 @@
 import { createContext, useContext, useState, useMemo, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
-import { fetchExperiencesByRegion, type Experience, type ImageCredit } from '../api/experiences';
+import {
+  fetchExperiencesByRegion, type Experience, type ImageCredit, type RegionExperienceLocation,
+} from '../api/experiences';
 import { useAppAddress } from './useAppAddress';
-import { useCollapsedExperiences } from './useCollapsedExperiences';
 import { useFoldedCard } from './useFoldedCard';
 import { HoverProvider } from './useHoverContext';
 import { useRegionTail, type RegionTail } from './useRegionTail';
+import { useTailLocations } from './useTailLocations';
 import type { ViewBounds } from '../utils/viewBounds';
 import { effectiveKindTypes, kindTypeIndex, type KindTypeEntry } from '../utils/kindTypeIndex';
 import { queryKeys } from '../api/queryKeys';
@@ -111,10 +113,12 @@ interface ExperienceContextType {
    * where only a tail holds it (`useRegionTail`).
    */
   tail: RegionTail;
-
-  /** Objects this reader asked to see as a single pin rather than as their places. */
-  collapsedExperienceIds: ReadonlySet<number>;
-  toggleCollapsedExperience: (id: number) => void;
+  /**
+   * By place id, the points of the tail's cards opened in this region, which the
+   * region's batch leaves out (`useTailLocations`): what a tail's row is read
+   * over, and what the map draws a tail's place made of parts by.
+   */
+  tailPoints: Readonly<Record<number, RegionExperienceLocation[]>>;
 
   /**
    * The artwork the pointer is over, shown as an overlay on the map.
@@ -195,10 +199,6 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     [regionId],
   );
 
-  // Per object, per region, and never a mode — see the hook for why, and for why
-  // Discover holds its own rather than sharing this one.
-  const { collapsedExperienceIds, toggleCollapsedExperience } = useCollapsedExperiences(regionId);
-
   // Fetch experiences for the selected region
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.experiences.byRegion(regionId, showLost),
@@ -239,6 +239,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   const tail = useRegionTail({
     regionId, counts: data?.crowdedOut, selectedExperienceId, listHoldsSelected,
   });
+  const tailPoints = useTailLocations(regionId, tail.card?.id ?? null);
   const cardMissing = address !== null && onAddressedRegion && data !== undefined
     && selectedExperienceId !== null && !listHoldsSelected && tail.settled && tail.card === null;
   const foldedInto = useFoldedCard(selectedExperienceId, cardMissing);
@@ -376,11 +377,10 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     kindTypeIndex: typeIndex,
     setKindType,
     tail,
-    collapsedExperienceIds,
-    toggleCollapsedExperience,
+    tailPoints,
     artworkPreview,
     setArtworkPreview,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, selectedPointId, openPoint, closePoint, dropPoint, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedKindNames, kindTypes, typeIndex, setKindType, tail, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, selectedPointId, openPoint, closePoint, dropPoint, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedKindNames, kindTypes, typeIndex, setKindType, tail, tailPoints, artworkPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>

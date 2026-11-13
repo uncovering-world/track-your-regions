@@ -4,21 +4,25 @@
  * The region's batch of points (`useRegionLocations`) answers for the places
  * the list shows, and a crowded-out place is not one (ADR-0172). A tail row
  * still needs its points: they are what its visited box and its card's places
- * are read over. So the open card's points are read on their own, from the
- * place's own read with `in_region` asked of the region, once its card opens —
- * one request where the card already makes two, never one per row, since every
- * one of them is under the limiter the list's own reads share. A card opened
- * once keeps its points for as long as the cache does, so its row keeps its
- * box after it folds; a row never opened has no points in hand, and its box
- * waits, as every row's does until the batch settles.
+ * are read over, and what the map draws a place made of parts by, since such a
+ * place has no point of its own (#2122). Map mode's experience provider holds
+ * them, so the list and the map read one answer.
+ *
+ * The open card's points are read on their own, from the place's own read with
+ * `in_region` asked of the region, once its card opens — one request where the
+ * card already makes two, never one per row, since every one of them is under
+ * the limiter the list's own reads share. A card opened once keeps its points
+ * for as long as the cache does, so its row keeps its box after it folds and
+ * the map keeps its pins; a row never opened has no points in hand, and its
+ * box waits, as every row's does until the batch settles.
  */
 
 import { useMemo, useState } from 'react';
 import { useQueries, type QueryObserverResult } from '@tanstack/react-query';
 import {
   fetchExperienceLocations, type ExperienceLocationsResponse, type RegionExperienceLocation,
-} from '../../api/experiences';
-import { queryKeys } from '../../api/queryKeys';
+} from '../api/experiences';
+import { queryKeys } from '../api/queryKeys';
 
 /** Stable, so `useQueries` hands back the same array while no answer changes. */
 const answersOf = (results: Array<QueryObserverResult<ExperienceLocationsResponse>>) => results.map(r => r.data);

@@ -93,8 +93,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     kindTypeIndex,
     setKindType,
     tail,
-    collapsedExperienceIds,
-    toggleCollapsedExperience,
+    tailPoints: tailLocations,
   } = useExperienceContext();
   // Hover is a store, not state, and this component reads none of its values:
   // they change on every mouse move, and this render builds the whole list —
@@ -195,7 +194,6 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     showWholeRegion, toggleWholeRegion, totalByKind,
   } = useInViewFilter(
     activeExperiences, locationsByExperience, viewBounds, regionId, selectedExperienceId,
-    collapsedExperienceIds,
   );
 
   const unrejectMutation = useMutation({
@@ -235,8 +233,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // home its card opens in, the rest are echoes (`kindRows.ts`).
   const kindGroups = useMemo(() => groupByEveryKind(listedExperiences), [listedExperiences]);
   // With each kind's tail, the row that ends its group (ADR-0172, #2201).
-  const { groups: allGroups, sections: tails, points: tailLocations } = useListTails({
-    regionId, groups: kindGroups, tail, kindTypeIndex, kindTypes, selectedExperienceId,
+  const { groups: allGroups, sections: tails } = useListTails({
+    groups: kindGroups, tail, kindTypeIndex, kindTypes, selectedExperienceId,
   });
   // A kind's group narrowed to the type its chips chose, the pins with it (#589).
   const groups = useMemo(
@@ -634,8 +632,6 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       isAboveGroups={aboveGroups}
       locationRefs={locationRefs}
       itemRefs={echo ? echoRefs : itemRefs}
-      isCollapsed={collapsedExperienceIds.has(exp.id)}
-      onToggleCollapse={toggleCollapsedExperience}
       showCheckbox={isAuthenticated}
       isLoading={isMutating}
       onHover={handleHover}

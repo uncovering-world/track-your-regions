@@ -7,7 +7,7 @@
  * specific failure, and those reasons are kept with the property rather than in
  * the component, so a future edit meets them where the value is.
  *
- * The pin, its badge, the highlight and the hover ring are not declared here
+ * The pin, the highlight and the hover ring are not declared here
  * but in `scene.ts`, which Discover draws from as well (#1132). What this file
  * adds to them is Map mode's own: the heatmap they cross-fade with. The extent
  * outline is Map mode's alone and stays here whole.
@@ -17,15 +17,14 @@ import type { LayerProps } from 'react-map-gl/maplibre';
 import type { ExpressionSpecification } from 'maplibre-gl';
 import {
   SCENE_SOURCES, EMPTY_FC,
-  sceneMarkerLayer, sceneSplitMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
+  sceneMarkerLayer, sceneSplitMarkerLayer,
   sceneHoverGlowLayer, sceneHoverRingLayer, sceneHighlightRingLayer, sceneHighlightPointLayer,
 } from './scene';
 
 // What the rest of Map mode imports from here, declared once in the scene.
 export {
   EMPTY_FC, buildPointHoverData, buildPointsHoverData,
-  LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT,
-  MARKER_LAYERS, LAYER_HIGHLIGHT_POINT,
+  LAYER_MARKERS, MARKER_LAYERS, LAYER_HIGHLIGHT_POINT,
 } from './scene';
 
 /**
@@ -169,10 +168,10 @@ export const heatmapLayer: HeatmapLayerProps = {
 
 /**
  * The pins fade in across the band the heat fades out over. The ramp is one
- * value for every pin layer, so the point, its badge and the badge's number
- * arrive together.
+ * value for every pin layer, so the point and its split disc arrive together,
+ * and so does whatever another map draws on a pin.
  */
-const FADE_IN: ExpressionSpecification = ['interpolate', ['linear'], ['zoom'],
+export const MARKER_FADE_IN: ExpressionSpecification = ['interpolate', ['linear'], ['zoom'],
   MARKER_FADE_START, 0, HEATMAP_MAX_ZOOM, 1];
 
 /**
@@ -191,8 +190,8 @@ export const markerLayer: CircleLayerProps = {
   minzoom: MARKER_FADE_START,
   paint: {
     ...sceneMarkerLayer.paint,
-    'circle-opacity': FADE_IN,
-    'circle-stroke-opacity': FADE_IN,
+    'circle-opacity': MARKER_FADE_IN,
+    'circle-stroke-opacity': MARKER_FADE_IN,
   },
 };
 
@@ -200,26 +199,7 @@ export const markerLayer: CircleLayerProps = {
 export const markerSplitLayer: SymbolLayerProps = {
   ...sceneSplitMarkerLayer,
   minzoom: MARKER_FADE_START,
-  paint: { 'icon-opacity': FADE_IN },
-};
-
-export const markerCountBadgeBgLayer: CircleLayerProps = {
-  ...sceneBadgeBgLayer,
-  minzoom: MARKER_FADE_START,
-  paint: {
-    ...sceneBadgeBgLayer.paint,
-    'circle-opacity': FADE_IN,
-    'circle-stroke-opacity': FADE_IN,
-  },
-};
-
-export const markerCountBadgeTextLayer: SymbolLayerProps = {
-  ...sceneBadgeTextLayer,
-  minzoom: MARKER_FADE_START,
-  paint: {
-    ...sceneBadgeTextLayer.paint,
-    'text-opacity': FADE_IN,
-  },
+  paint: { 'icon-opacity': MARKER_FADE_IN },
 };
 
 // The selection and the hover are the scene's as they stand: nothing about them

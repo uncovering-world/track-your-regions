@@ -43,10 +43,9 @@ vi.mock('../hooks/useExperienceContext', async (importOriginal) => ({
     clearFlyTo: () => {},
     getExperienceById: () => undefined,
     expandedKindNames: new Set<string>(),
-    collapsedExperienceIds: new Set<number>(),
-    toggleCollapsedExperience: () => {},
     showLost: false,
     tail: { places: new Map() },
+    tailPoints: {},
   }),
 }));
 
@@ -82,7 +81,7 @@ describe('the order Map mode mounts its sources in', () => {
     const { layers } = draw();
     const at = (id: string) => layers.indexOf(id);
     expect(at('exp-extent-fill')).toBeGreaterThanOrEqual(0);
-    for (const above of ['exp-markers-points', 'exp-marker-count-badge-bg', 'exp-highlight-point', 'exp-hover-ring']) {
+    for (const above of ['exp-markers-points', 'exp-highlight-point', 'exp-hover-ring']) {
       expect(at('exp-extent-fill')).toBeLessThan(at(above));
       expect(at('exp-extent-line')).toBeLessThan(at(above));
     }

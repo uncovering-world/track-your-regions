@@ -72,39 +72,13 @@ describe('experienceIdsInView', () => {
     expect([...ids].sort()).toEqual([1, 3]);
   });
 
-  it('follows the pin when the reader has folded an object', () => {
-    // A fold means "draw this as one thing", and the builder then draws it at the
-    // object's own coordinate. Testing its places instead would keep the Rock Art
-    // of the Mediterranean Basin listed whenever any of its 734 shelters is in
-    // view while the map draws one pin elsewhere — and drop an object whose
-    // single pin is on screen.
-    const folded = new Set([1]);
-    const away = experienceIdsInView(
-      [exp(1, 100, 40)],
-      { 1: [place(10, 14.42, 50.087), place(11, 14.40, 50.09)] },
-      PRAGUE,
-      folded,
-    );
-    expect(away.has(1)).toBe(false);
-
-    const here = experienceIdsInView(
-      [exp(1, 14.42, 50.087)],
-      { 1: [place(10, 100, 40), place(11, 2.35, 48.85)] },
-      PRAGUE,
-      folded,
-    );
-    expect(here.has(1)).toBe(true);
-  });
-
-  it('ignores a fold where folding is not a question', () => {
-    // One drawn place is one pin either way, which is the same test the builder
-    // and the fold control apply — so the object stays where its place is.
-    const ids = experienceIdsInView(
-      [exp(1, 100, 40)],
-      { 1: [place(10, 14.42, 50.087)] },
-      PRAGUE,
-      new Set([1]),
-    );
-    expect(ids.has(1)).toBe(true);
+  it('keeps a whole whose parts the batch does not hold, which draws no pin to be out of view', () => {
+    // An object made of parts has no point of its own (#2122): with none of its
+    // parts at hand the map draws nothing for it, and the list keeps the row
+    // rather than hiding it for a pin that is nowhere.
+    const whole = { ...exp(1175, 100, 40), has_parts: true } as Experience;
+    expect(experienceIdsInView([whole], {}, PRAGUE).has(1175)).toBe(true);
+    // Its parts at hand, it is in view where one of them is.
+    expect(experienceIdsInView([whole], { 1175: [place(10, -5.99, 37.39)] }, PRAGUE).has(1175)).toBe(false);
   });
 });

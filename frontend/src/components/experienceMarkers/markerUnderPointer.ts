@@ -27,10 +27,8 @@ export type MarkerUnderPointer =
   | {
     kind: 'pin';
     experienceId: number;
-    /** The place the pin draws; null for a folded pin or a stand-in for places the batch does not hold. */
+    /** The place the pin draws; null for a pin at a place's own coordinate, whose points the batch does not hold. */
     locationId: number | null;
-    /** Whether the builder drew it folded — the pin's own answer, never inferred from its badge. */
-    folded: boolean;
     name: string;
     coordinates: [number, number];
   }
@@ -64,7 +62,6 @@ function readFeature(feature: MapGeoJSONFeature): MarkerUnderPointer | null {
     kind: 'pin',
     experienceId,
     locationId,
-    folded: props.folded === true,
     name: String(props.experienceName || props.name || ''),
     coordinates,
   };

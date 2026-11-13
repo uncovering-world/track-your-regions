@@ -7,20 +7,20 @@
  *   exp-extent    — the outline of the place the reader is hovering or has
  *                   selected, where the catalogue holds one (an archaeology
  *                   site's, from OpenStreetMap); painted under the markers
- *   exp-markers   — a marker per in-region place, or one folded marker for an
- *                   object the reader folded, or one stand-in marker for an
- *                   object whose places the batch does not hold; drives the
- *                   heatmap below HEATMAP_MAX_ZOOM and individual markers from it
+ *   exp-markers   — a marker per in-region place, or one at a place's own
+ *                   coordinate while the batch holds none of its points (never
+ *                   for an object made of parts); drives the heatmap below HEATMAP_MAX_ZOOM and
+ *                   individual markers from it
  *   exp-highlight  — what the selected experience *shows* (`shownPlacesFor()`):
  *                   its in-region places, all of them when none is in region, or
- *                   its own point when it is folded or none has loaded (red dots)
+ *                   its own point when none has loaded (red dots)
  *   exp-hover      — hover ring/glow (orange)
  *
  * Interaction model (imperative via useMap(), in `useMarkerInteractions`):
  *   - Hover marker on map  → popup + orange ring + highlight list item
  *   - Hover card in list   → orange ring on map
  *   - Click marker         → toggle selected experience in list, and keep the
- *                            view; on a *folded* pin it unfolds and selects nothing
+ *                            view
  *   - Click list item      → fly-to marker location(s)
  */
 
@@ -31,7 +31,7 @@ import { buildExperienceMarkers, representablePlaces } from './experienceMarkers
 import {
   SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER, SOURCE_EXTENT,
   EMPTY_FC, buildPointHoverData, buildPointsHoverData,
-  heatmapLayer, markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
+  heatmapLayer, markerLayer, markerSplitLayer,
   hoverGlowLayer, hoverRingLayer, highlightRingLayer, highlightPointLayer,
   extentFillLayer, extentLineLayer,
 } from './experienceMarkers/layers';
@@ -101,18 +101,24 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     getExperienceById,
     expandedKindNames,
     kindTypes,
-    collapsedExperienceIds,
-    toggleCollapsedExperience,
     showLost,
     tail,
+    tailPoints,
   } = useExperienceContext();
   // Only the setters and the store. This component draws the markers, so a
   // re-render here reconciles every `<Source>` and `<Layer>` react-map-gl holds;
   // it reacts to a hover in an effect instead, and never renders for one.
   const { store: hoverStore, setHoveredFromMarker, setHoverPreview } = useHoverActions();
 
-  // Batch-fetch all locations for all experiences in the region (single request)
-  const { locationsByExperience } = useRegionLocations(regionId, showLost);
+  // Batch-fetch all locations for all experiences in the region (single request),
+  // with the points of the tail's cards the reader opened, which the batch leaves
+  // out: the list reads the same answer (`useTailLocations`), and a tail's place
+  // made of parts is drawn by them, having no point of its own (#2122).
+  const { locationsByExperience: regionPoints } = useRegionLocations(regionId, showLost);
+  const locationsByExperience = useMemo(
+    () => ({ ...tailPoints, ...regionPoints }),
+    [tailPoints, regionPoints],
+  );
 
   /**
    * The hover ring, written straight to the map rather than held as state.
@@ -144,18 +150,19 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   }, []);
 
   // ── One marker per place a reader may go to (ADR-0028 decision 1, #558) ──
-  // An object folded by this reader is one marker instead, at the coordinate the
-  // catalogue answers with; a selected object leaves this set and is drawn by the
-  // highlight layer below, which follows the same rule.
+  // A selected object leaves this set and is drawn by the highlight layer below,
+  // which follows the same rule.
   //
-  // An open tail's places are drawn too, at the point each row carries — the
-  // region batch leaves them out (ADR-0172, #2201) — while the tail is open and
-  // its group is.
+  // An open tail's places are drawn too, while the tail is open and its group
+  // is; the region batch leaves them out (ADR-0172, #2201). One whose card was
+  // opened is drawn by that card's points in the region (`tailPoints`), a place
+  // made of parts by them alone; any other is one pin at the point its row
+  // carries.
   const markers = useMemo(
     () => buildExperienceMarkers(
       [...experiences, ...tailPins(experiences, tail.places)],
-      locationsByExperience, expandedKindNames, collapsedExperienceIds, null, kindTypes),
-    [experiences, tail.places, locationsByExperience, expandedKindNames, collapsedExperienceIds, kindTypes],
+      locationsByExperience, expandedKindNames, null, kindTypes),
+    [experiences, tail.places, locationsByExperience, expandedKindNames, kindTypes],
   );
 
   // The outline of whichever place the reader is looking at, written straight
@@ -184,27 +191,18 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   ), [markers, selectedExperienceId]);
 
   /**
-   * The places an object shows on the map, or `null` for "draw its own point".
-   *
-   * `null` covers two cases that want the same answer. An object whose places the
-   * region batch does not hold — the common one in a continent fetched without
-   * descendants — has nothing else to draw. And an object this reader folded has
-   * places, deliberately undrawn: folding that stopped at the marker source would
-   * be undone by selecting the row, since a selected object is drawn by the
-   * highlight layer instead. Both land on the coordinate the catalogue answers
-   * with (ADR-0028 decision 2), which is where the folded pin already sits.
+   * The places an object shows on the map, or `null` for "draw its own point":
+   * an object whose places the region batch does not hold — the common one in a
+   * continent fetched without descendants — has nothing else to draw.
    *
    * The in-region preference is the marker builder's, for the same reason: an
    * experience assigned by hand has no in-region place, and filtering to none
    * would leave the row with a marker until it was clicked and nothing after.
    */
   const shownPlacesFor = useCallback((experienceId: number): ExperienceLocation[] | null => {
-    const locations = locationsByExperience[experienceId];
-    const representable = representablePlaces(locations);
-    if (representable.length === 0) return null;
-    if (collapsedExperienceIds.has(experienceId) && representable.length > 1) return null;
-    return representable;
-  }, [locationsByExperience, collapsedExperienceIds]);
+    const representable = representablePlaces(locationsByExperience[experienceId]);
+    return representable.length === 0 ? null : representable;
+  }, [locationsByExperience]);
 
   // Highlight source data (the places of the selected experience)
   const highlightGeoJson = useMemo<GeoJSON.FeatureCollection>(() => {
@@ -213,9 +211,10 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     const shown = shownPlacesFor(selectedExperienceId);
     if (!shown) {
       const exp = getExperienceById(selectedExperienceId);
-      if (!exp) return EMPTY_FC;
-      // The object's own point stands for no one place and carries no name of
-      // its own, like the folded pin; the popup reads the object (#1917).
+      // An object made of parts has no point of its own to draw (#2122).
+      if (!exp || exp.has_parts) return EMPTY_FC;
+      // The place's own point stands for no one place and carries no name of
+      // its own; the popup reads the place (#1917).
       return buildHighlightData([
         { coordinates: [exp.longitude, exp.latitude], locationId: null, name: null },
       ]);
@@ -259,7 +258,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     getLocation,
     openPart,
     toggleSelectedExperience,
-    toggleCollapsedExperience,
     setHoveredFromMarker,
     setHoverPreview,
     setHoverData,
@@ -282,12 +280,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     // Specific location (from an expanded experience): the point lives on the
     // highlight layer rather than in the markers source, so the ring goes on
     // that location rather than on the experience's primary marker.
-    //
-    // Not when the object is folded, though: the card's location list stays open
-    // and keeps reporting hovers, while the map is drawing one dot at the object's
-    // own coordinate — ringing the row's own place would put an orange ring on
-    // empty map. `shownPlacesFor` answering `null` is exactly that state, and the
-    // object-level branch below rings what is drawn.
     if (locId != null && shownPlacesFor(expId) !== null
       && tryHoverSpecificLocation(expId, locId, locationsByExpRef.current, getExperienceById, setHoverPreview, setHoverData)) {
       return;
@@ -362,9 +354,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       const map = mapRef.getMap();
 
       // The same rule the highlight layer uses, so what a list click frames is
-      // what the map is drawing — including a folded object, which is flown to as
-      // the single point it is drawn as rather than to bounds around parts nobody
-      // can see. A map click frames nothing; see the comment above this effect.
+      // what the map is drawing. A map click frames nothing; see the comment
+      // above this effect.
       const flyLocs = shownPlacesFor(flyToExperienceId) ?? [];
 
       if (flyLocs.length > 1) {
@@ -385,9 +376,11 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
           duration: 800,
         });
       } else {
-        // Locations not loaded yet — fall back to experience coordinates
+        // Its places not loaded yet: a place flies to its own coordinate. An
+        // object made of parts has none, and the map draws nothing for it while
+        // none of its parts is at hand, so it frames nothing (#2122).
         const exp = getExperienceById(flyToExperienceId);
-        if (exp) {
+        if (exp && !exp.has_parts) {
           map.flyTo({
             center: [exp.longitude, exp.latitude],
             zoom: Math.max(map.getZoom(), 8),
@@ -423,8 +416,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
         <Layer {...heatmapLayer} />
         <Layer {...markerLayer} />
         <Layer {...markerSplitLayer} />
-        <Layer {...markerCountBadgeBgLayer} />
-        <Layer {...markerCountBadgeTextLayer} />
       </Source>
 
       {/* Highlight source — selected experience locations (red dots/rings) */}

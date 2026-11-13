@@ -28,7 +28,6 @@ import { HoverPreviewCard } from './regionMap/HoverPreviewCard';
 import { HoveredRegionTooltip } from './regionMap/HoveredRegionTooltip';
 import { ExperienceMarkers } from './ExperienceMarkers';
 import { WorldExperiencePoints } from './WorldExperiencePoints';
-import { SelectedObjectFoldControl } from './experienceMarkers/FoldPlacesControl';
 import { WorldLayerControls } from './regionMap/WorldLayerControls';
 import { MapUnavailable } from './shared/MapUnavailable';
 import { ArtworkPreviewOverlay } from './regionMap/ArtworkPreviewOverlay';
@@ -467,11 +466,6 @@ export function RegionMapVT() {
 
       {/* The work under the pointer, at a size worth looking at, credited. */}
       <ArtworkPreviewOverlay preview={artworkPreview} />
-
-      {/* The map's own way to fold one object back into a single pin (#558) */}
-      {isExploring && isCustomWorldView && selectedRegion && (
-        <SelectedObjectFoldControl regionId={selectedRegion.id} />
-      )}
 
       {/* Which kind the world layer draws (#910) */}
       {world.active && <WorldLayerControls world={world} />}

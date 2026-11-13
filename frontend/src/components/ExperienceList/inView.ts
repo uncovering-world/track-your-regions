@@ -27,34 +27,26 @@ import { pointInView, type ViewBounds } from '../../utils/viewBounds';
  *
  * Any point, not all of them: a serial nomination — the Rock Art of the
  * Mediterranean Basin draws 734 shelters in Europe — is here as soon as one of
- * them is on screen, which is what a planner looking at a city means by "here". Unless the reader folded it, in which case the map draws that object as
- * one pin and this follows the pin.
+ * them is on screen, which is what a planner looking at a city means by "here".
  *
- * The three branches are `buildExperienceMarkers`' three, in its order, because
- * agreeing with the map is the whole point of this module.
+ * The branches are `buildExperienceMarkers`' own, because agreeing with the map
+ * is the whole point of this module: a place's own coordinate while the batch
+ * holds none of its points, and nothing at all for an object made of parts
+ * then (#2122) — which no view can leave out, as a missing view leaves out
+ * nothing.
  */
 export function experienceIdsInView(
   experiences: Experience[],
   locationsByExperience: Record<number, ExperienceLocation[]>,
   bounds: ViewBounds,
-  /** What this reader folded back into a single pin, at the object's own point. */
-  collapsedExperienceIds: ReadonlySet<number> = new Set<number>(),
 ): Set<number> {
   const ids = new Set<number>();
   for (const exp of experiences) {
-    const locations = locationsByExperience[exp.id];
-    const places = representablePlaces(locations);
-    // Two ways an object is drawn at its own coordinate rather than at its
-    // places: the stand-in pin, when this batch holds none of them, and a fold —
-    // which the builder honours only where folding is a question at all, since
-    // one drawn place is one pin either way.
-    const drawnAsOnePin = places.length === 0
-      || (collapsedExperienceIds.has(exp.id) && places.length > 1);
-    if (drawnAsOnePin) {
-      if (pointInView(exp.longitude, exp.latitude, bounds)) ids.add(exp.id);
-      continue;
-    }
-    if (places.some(loc => pointInView(loc.longitude, loc.latitude, bounds))) ids.add(exp.id);
+    const places = representablePlaces(locationsByExperience[exp.id]);
+    const inView = places.length > 0
+      ? places.some(loc => pointInView(loc.longitude, loc.latitude, bounds))
+      : exp.has_parts || pointInView(exp.longitude, exp.latitude, bounds);
+    if (inView) ids.add(exp.id);
   }
   return ids;
 }

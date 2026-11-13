@@ -22,7 +22,7 @@ function feature(layer: string, properties: Record<string, unknown>, coordinates
 
 const serapeumDot = feature(LAYER_HIGHLIGHT_POINT, { locationId: 501, name: 'Serapeum of Alexandria' }, SERAPEUM);
 const pillarPin = feature(LAYER_MARKERS, {
-  experienceId: 13927, locationId: 777, experienceName: "Pompey's Pillar", locationCount: 1,
+  experienceId: 13927, locationId: 777, experienceName: "Pompey's Pillar",
 }, PILLAR);
 
 /** A map that holds `present` of the layers and answers the query with `under`, top first. */
@@ -46,17 +46,15 @@ describe('markerUnderPointer', () => {
     expect(hoverKeyOf(under)).toBe('highlight:501');
   });
 
-  it('answers the pin where it is alone, with its fold stated and never inferred', () => {
+  it('answers the pin where it is alone', () => {
     const { map } = fakeMap(POINTER_LAYERS, [pillarPin]);
     expect(markerUnderPointer(map, point)).toEqual({
-      kind: 'pin', experienceId: 13927, locationId: 777, folded: false, name: "Pompey's Pillar", coordinates: PILLAR,
+      kind: 'pin', experienceId: 13927, locationId: 777, name: "Pompey's Pillar", coordinates: PILLAR,
     });
-    // A folded pin says so itself; a stand-in with the same count does not.
-    const folded = feature(LAYER_MARKERS, { experienceId: 7, locationId: null, locationCount: 40, folded: true, experienceName: 'Via Appia' }, PILLAR);
-    const standIn = feature(LAYER_MARKERS, { experienceId: 7, locationId: null, locationCount: 40, experienceName: 'Via Appia' }, PILLAR);
-    expect(markerUnderPointer(fakeMap(POINTER_LAYERS, [folded]).map, point)).toMatchObject({ kind: 'pin', folded: true, locationId: null });
-    expect(markerUnderPointer(fakeMap(POINTER_LAYERS, [standIn]).map, point)).toMatchObject({ kind: 'pin', folded: false, locationId: null });
-    expect(hoverKeyOf({ kind: 'pin', experienceId: 7, locationId: null, folded: true, name: '', coordinates: PILLAR })).toBe('7:');
+    // A pin at a place's own coordinate names no point.
+    const own = feature(LAYER_MARKERS, { experienceId: 7, locationId: null, experienceName: 'Victory Arch' }, PILLAR);
+    expect(markerUnderPointer(fakeMap(POINTER_LAYERS, [own]).map, point)).toMatchObject({ kind: 'pin', locationId: null });
+    expect(hoverKeyOf({ kind: 'pin', experienceId: 7, locationId: null, name: '', coordinates: PILLAR })).toBe('7:');
   });
 
   it('names only the layers the style holds, and asks nothing when it holds none', () => {

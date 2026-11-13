@@ -1,9 +1,10 @@
 /**
- * The layers the review queue's map draws (#2477): Map mode's own, over this map's
- * sources (`experienceMarkers/layers.ts`). The heat below `HEATMAP_MAX_ZOOM`, the pin
- * fading in across the same band, and its count badge are those definitions with only
- * their id, their source and what the badge counts changed: a question's colour rides on
- * the feature as a kind's does there (#814), and the paint is shared rather than restated.
+ * The layers the review queue's map draws (#2477): Map mode's heat and pin over this map's
+ * sources (`experienceMarkers/layers.ts`), the heat below `HEATMAP_MAX_ZOOM` and the pin
+ * fading in across the same band, spread with only their id and their source changed: a
+ * question's colour rides on the feature as a kind's does there (#814), and the paint is
+ * shared rather than restated. The count badge is this map's own: it counts the questions
+ * a place holds.
  *
  * The open question's place has a source of its own, without the fade: it is drawn as
  * selected at every zoom, the heat's included, as Map mode's highlight is.
@@ -12,7 +13,7 @@
 import type { LayerProps } from 'react-map-gl/maplibre';
 import type { FilterSpecification } from 'maplibre-gl';
 import {
-  heatmapLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer, markerLayer,
+  heatmapLayer, markerLayer, MARKER_FADE_IN, MARKER_FADE_START,
 } from '../../experienceMarkers/layers';
 import { sceneHighlightRingLayer, sceneMarkerLayer } from '../../experienceMarkers/scene';
 
@@ -38,16 +39,48 @@ export const questionPinLayer: CircleLayerProps = {
   ...markerLayer, id: LAYER_PIN, source: SOURCE_QUESTIONS,
 };
 
+/**
+ * The count of a place's questions: a dark disc at the pin's upper right with the number
+ * in white, fading in with the pin it sits on.
+ */
 export const questionBadgeBgLayer: CircleLayerProps = {
-  ...markerCountBadgeBgLayer, id: LAYER_BADGE_BG, source: SOURCE_QUESTIONS, filter: SEVERAL,
+  id: LAYER_BADGE_BG,
+  type: 'circle',
+  source: SOURCE_QUESTIONS,
+  filter: SEVERAL,
+  minzoom: MARKER_FADE_START,
+  paint: {
+    'circle-color': '#0f172a',
+    'circle-radius': 8,
+    'circle-stroke-width': 1.5,
+    'circle-stroke-color': '#ffffff',
+    'circle-translate': [8, -8],
+    'circle-translate-anchor': 'viewport',
+    'circle-opacity': MARKER_FADE_IN,
+    'circle-stroke-opacity': MARKER_FADE_IN,
+  },
 };
 
 export const questionBadgeTextLayer: SymbolLayerProps = {
-  ...markerCountBadgeTextLayer,
   id: LAYER_BADGE_TEXT,
+  type: 'symbol',
   source: SOURCE_QUESTIONS,
   filter: SEVERAL,
-  layout: { ...markerCountBadgeTextLayer.layout, 'text-field': ['to-string', ['get', 'count']] },
+  minzoom: MARKER_FADE_START,
+  layout: {
+    'text-field': ['to-string', ['get', 'count']],
+    'text-size': 9,
+    'text-font': ['Open Sans Bold'],
+    'text-offset': [0.88, -0.88],
+    'text-anchor': 'center',
+    'text-allow-overlap': true,
+  },
+  paint: {
+    'text-color': '#ffffff',
+    'text-halo-color': '#0f172a',
+    'text-halo-width': 0.2,
+    'text-opacity': MARKER_FADE_IN,
+  },
 };
 
 const LAYER_SELECTED_PIN = 'review-question-selected-pin';

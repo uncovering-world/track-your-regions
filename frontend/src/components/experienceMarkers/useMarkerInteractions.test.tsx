@@ -65,8 +65,8 @@ const pillarPin = feature(LAYER_MARKERS, { experienceId: 11671, locationId: 777,
 const serapeumDot = feature(LAYER_HIGHLIGHT_POINT, { locationId: 501, name: 'Serapeum of Alexandria' }, SERAPEUM);
 
 const markers: MarkerData[] = [{
-  id: '11671:777', experienceId: 11671, locationId: 777, experience: pillar, longitude: PILLAR[0], latitude: PILLAR[1],
-  locationName: null, locationCount: 1,
+  id: '11671:777', experienceId: 11671, locationId: 777, experience: pillar,
+  longitude: PILLAR[0], latitude: PILLAR[1], locationName: null,
 }];
 
 const point = { x: 10, y: 10 };
@@ -77,7 +77,6 @@ describe('useMarkerInteractions', () => {
   const setHoveredFromMarker = vi.fn();
   const openPart = vi.fn(() => false);
   const toggleSelectedExperience = vi.fn();
-  const toggleCollapsedExperience = vi.fn();
   beforeEach(() => vi.clearAllMocks());
 
   function mount(under: () => MapGeoJSONFeature[]) {
@@ -91,7 +90,6 @@ describe('useMarkerInteractions', () => {
       getLocation: () => undefined,
       openPart,
       toggleSelectedExperience,
-      toggleCollapsedExperience,
       setHoveredFromMarker,
       setHoverPreview,
       setHoverData: vi.fn(),
