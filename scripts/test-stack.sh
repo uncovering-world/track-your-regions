@@ -493,11 +493,14 @@ cmd_full() {
 # the fixture's accounts. The accounts are read from the fixture module in the
 # backend container, so their credentials are stated once, where they are
 # seeded; scripts/api-contract.mjs signs in with them and runs Schemathesis.
+# A part's name (scripts/api-contract.mjs PARTS) runs that part alone, as one
+# CI job does; with none, every part runs in turn on this one stack.
 # Like the lanes test-report.mjs runs, it tears the stack down however it
 # ends - a startup, the seed or the accounts failing under `set -e` included -
 # unless TEST_REPORT_KEEP_ENV=1 keeps it for a later lane; an EXIT trap keeps
 # the lane's own exit status.
 run_api_contract() {
+  local part="${1:-}"
   if [ "${TEST_REPORT_KEEP_ENV:-0}" != "1" ]; then
     trap cmd_down EXIT
   fi
@@ -507,7 +510,7 @@ run_api_contract() {
   # A failed lane prints the backend's last lines before the stack goes: a
   # request that took the backend down is otherwise only "fetch failed".
   local status=0
-  node scripts/api-contract.mjs --url "http://localhost:${BACKEND_PORT}" --accounts "$accounts" || status=$?
+  node scripts/api-contract.mjs --url "http://localhost:${BACKEND_PORT}" --accounts "$accounts" ${part:+--part "$part"} || status=$?
   if [ "$status" -ne 0 ]; then
     echo "API contract failed: the backend's last ${READINESS_LOG_LINES} lines follow"
     compose ps backend || true
@@ -534,7 +537,7 @@ Commands:
   run-e2e-smoke           Internal: run smoke E2E tests
   run-e2e-full            Internal: run full E2E tests
   run-perf                Internal: run the Lighthouse lane against the production build
-  run-api-contract        Run Schemathesis against the backend, as each fixture account (reads only)
+  run-api-contract [part] Run Schemathesis against the backend, as each fixture account (reads only); a part alone if named
   help                    Show this help
 
 Environment overrides:
@@ -589,7 +592,7 @@ case "${1:-help}" in
     run_perf "$2"
     ;;
   run-api-contract)
-    run_api_contract
+    run_api_contract "${2:-}"
     ;;
   help|--help|-h) cmd_help ;;
   *)

@@ -1083,7 +1083,7 @@ hot reads), or CI reported a lane red and it is being reproduced on its own
 npm run security:all   # the fast gates, then the slow Semgrep and Trivy scans the change asks for
 npm run test:e2e:smoke # isolated test stack, seeded fixture, Playwright smoke
 npm run test:db        # the database-backed backend specs, inside the same stack (a real Postgres, not the mocked pool)
-npm run test:api       # Schemathesis against the same stack's backend, as each fixture account, reads only
+npm run test:api       # Schemathesis against the same stack's backend, as each fixture account, reads only (`-- curator-1-of-3`: one CI part)
 npm run perf:local     # the production build on the dev stack's own data: size, Lighthouse, the probe
 ```
 

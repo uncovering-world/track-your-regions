@@ -568,16 +568,37 @@ jobs:
     # No FRONTEND_MODE: the lane reads the backend alone, and the dev server
     # answers the stack's readiness wait sooner than a build does.
     #
+    # Cut into parts, one job each on a stack of its own (#2513): the paced
+    # runs take as long as they have requests, and the job had reached
+    # 28 min 32 s of its 30 on run 43533554237 (2026-11-14) — the curator's
+    # run alone 1 146 s, the traveller's 363 s, the anonymous, admin and
+    # outside runs 90 s together, the stack's start and seed 100 s. The
+    # curator's routes are cut into shards; the other runs share a part.
+    # Each part is a check of its own, named after the part
+    # (`API Contract (curator-1-of-3)`), and the matrix lists exactly the
+    # parts `PARTS` in scripts/api-contract.mjs names, which
+    # scripts/api-contract.test.mjs holds it to.
+    #
     # Not a required check until the maintainer lists it: the repository's
     # merge rule already asks for every check that ran to be green
     # (docs/tech/gates.md § Before merging).
-    name: API Contract
+    name: API Contract (${{ matrix.part }})
     runs-on: ubuntu-latest
     needs: [changes]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_api_contract == 'true') }}
-    # The lane's four runs and its stack's own start: 20 min 19 s on run
-    # 41321297786 (2026-11-01), the first run of this job.
-    timeout-minutes: 30
+    strategy:
+      # Every part reports, so one red part does not hide what the others found.
+      fail-fast: false
+      matrix:
+        part: [anonymous-traveller-admin, curator-1-of-3, curator-2-of-3, curator-3-of-3]
+    # Each part's runs as measured on the test stack on 2026-11-14 (#2513),
+    # plus about 2 minutes for the job's setup and its stack: about 11 1/2
+    # minutes for the shared part (the traveller's run 486 s of it) and 9 to
+    # 10 for each curator shard (the curator's routes 1 268 s in all, about
+    # 25 s a weight). A curator route adds about half a minute to its shard.
+    # A part that passes 15 minutes, as long as Lighthouse takes, is the sign
+    # to cut it once more.
+    timeout-minutes: 20
     env:
       DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
     steps:
@@ -604,7 +625,9 @@ jobs:
       # service under test installs its own dependencies inside its image,
       # and Schemathesis runs from its own pinned image.
       - name: Run the API contract lane
-        run: npm run test:api
+        env:
+          PART: ${{ matrix.part }}
+        run: npm run test:api -- "$PART"
 
   perf:
     # Lighthouse against the production build, served inside the same
