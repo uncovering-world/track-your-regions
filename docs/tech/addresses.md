@@ -186,7 +186,7 @@ decision 5.
 | `view=map` | The queue's questions on a map instead of listed (#2477), written after `row`. `questions`, the list, is the default and writes nothing |
 | `view=crowded` | The *Crowded cities* tab (#2282). `questions`, the queue, is the default and writes nothing; any other value reads as it |
 | `crowd=7-9-square` | The crowded city's group open on that tab: its leaf region (`none` for arrivals no world view places), its kind and its type where it has one (`crowdKeyOf`), so `none-4` and `12-7-bell-tower` read too. A type's words are separated by one space, written `+` as the search's are: Places of worship's holy sites in a region read `crowd=21-4-holy+site`. Read and written only with `view=crowded` |
-| `place=4412` | The place of that group open in its own circle (#2358), by its membership in the group's kind: the circle a curator answers one place in. Read and written only with a `crowd` |
+| `place=4412` | The place of that group open in its own circle (#2358), by its membership in the group's kind: the circle a curator answers one place in. Read and written only with `view=crowded`. Alone, without a `crowd`, it is how a review card's *Squares around* and a curation dialog's kind open the tab (`crowdedPlaceUrl`, #2487): the tab reads the place's group and writes it in beside the place |
 
 **The tab is a parameter, and keeps the queue's** (#2282). Opening *Crowded cities*
 is a push, and the filters, the order and the open `row` stay in the address beside
@@ -198,7 +198,9 @@ place in its circle, and returning to the list from it, are pushes too, so Back
 steps from a church to Lazio's churches. A group the address names opens whether or
 not the list of groups holds it (#2358): a group whose last arrival was answered
 still has its region's list, and a link opens any group. The tab opening its first
-group by itself, where `crowd` names none, is a replace, as `row` is. Opening
+group by itself, where `crowd` names none, is a replace, as `row` is; so is writing in
+the group of a place a way in named alone, which keeps the place open, so Back from the
+tab returns to the card the curator followed. Opening
 *Questions* drops `crowd` and `place`. The tab's Region and Kind chips are not parameters: they
 narrow a list of a few groups for the curator at the screen, and the group open is
 what a link has to reopen.
