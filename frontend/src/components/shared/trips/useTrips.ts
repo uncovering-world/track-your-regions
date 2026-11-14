@@ -4,6 +4,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { queryKeys } from '../../../api/queryKeys';
 import { invalidateVisitedStatus } from '../../../utils/queryInvalidation';
 import { clearRemovedVisits, removedVisitsOf, UNDOES_REMOVAL } from '../visitRemovals';
+import { dropHeldGuesses } from './dateOffer';
 import {
   addTrip, changeTrip, fetchTrips, removeTrip, restoreVisits, type TripDateBody,
 } from '../../../api/trips';
@@ -33,15 +34,22 @@ export function useTrips(experienceId: number) {
     mutationFn: (date: TripDateBody) => addTrip(experienceId, date),
     ...written,
   });
+  // A trip dated or removed here is the traveller's own word: the offer never asks about it as a guess.
+  const settled = (tripId: number) => {
+    dropHeldGuesses(guess => guess.trip !== tripId);
+    written.onSuccess();
+  };
   const change = useMutation({
     mutationKey: queryKeys.visited.write,
     mutationFn: ({ tripId, date }: { tripId: number; date: TripDateBody }) => changeTrip(tripId, date),
     ...written,
+    onSuccess: (_answer, { tripId }) => settled(tripId),
   });
   const remove = useMutation({
     mutationKey: queryKeys.visited.write,
     mutationFn: removeTrip,
     ...written,
+    onSuccess: (_answer, tripId) => settled(tripId),
   });
   return { trips: trips.data, add: add.mutate, change: change.mutate, remove: remove.mutate, failed };
 }

@@ -6,8 +6,9 @@
 import { describe, expect, it } from 'vitest';
 import { formatApproximateDate } from '../../../utils/dateFormat';
 import {
-  FRESH_SESSION, answerOffer, askSentence, askYears, distanceKm, offerForTick, savedSentence, signalsPast, silence,
-  type OfferLine, type OfferSession, type Tick,
+  FRESH_SESSION, answerGuesses, answerOffer, askSentence, askYears, distanceKm, dropGuesses, guessedToday, guessesSentence,
+  movedSentence, noteGuesses, offerForTick, savedSentence, signalsPast, silence,
+  type Guess, type OfferLine, type OfferSession, type Tick,
 } from './dateOffer';
 
 const at = (hour: number, minute: number) => new Date(2026, 10, 12, hour, minute).getTime();
@@ -19,6 +20,9 @@ const COLOSSEUM = place('Colosseum', 41.8902, 12.4922);
 const KINKAKUJI = place('Kinkaku-ji', 35.0394, 135.7292);
 const UFFIZI = place('Uffizi Gallery', 43.7678, 11.2553);
 const DUOMO = place('Florence Cathedral', 43.7731, 11.2560);
+const PRADO = place('Museo del Prado', 40.4138, -3.6921);
+const THYSSEN = place('Museo Thyssen-Bornemisza', 40.4160, -3.6949);
+const REINA_SOFIA = place('Museo Reina Sofía', 40.4086, -3.6943);
 
 const tick = (where: ReturnType<typeof place>, time: number, count = 1): Tick => ({ ...where, time, count });
 const day = (y: number, m: number, d: number) => ({ year: y, month: m, day: d });
@@ -146,5 +150,94 @@ describe('the date offered after a tick (#2120)', () => {
       session = next.session;
     }
     expect(offerForTick(session, tick(COLOSSEUM, at(10, 10)), created, null).line?.kind).toBe('ask');
+  });
+
+  describe('C: a wrong guess of today, asked about once', () => {
+    /** A tick on the sofa as the offer makes it, its today-trip saved as `trip`. */
+    function onTheSofa(session: OfferSession, where: ReturnType<typeof place>, time: number, trip: number) {
+      const ticked = offerForTick(session, tick(where, time), null, null);
+      const guess: Guess = { ...where, trip, place: trip, time, date: ticked.save! };
+      return { ...ticked, session: ticked.guessed ? noteGuesses(ticked.session, [guess]) : ticked.session };
+    }
+
+    it('asks about the Prado and the Thyssen, saved as today, when Kinkaku-ji is ticked ten minutes later', () => {
+      const prado = onTheSofa(FRESH_SESSION, PRADO, at(21, 0), 81);
+      const thyssen = onTheSofa(prado.session, THYSSEN, at(21, 2), 82);
+      expect([prado.guessed, thyssen.guessed]).toEqual([true, true]);
+      expect(says(thyssen.line, at(21, 2))).toBe(`Visited today, ${NOV_12}`);
+
+      const kyoto = offerForTick(thyssen.session, tick(KINKAKUJI, at(21, 12)), null, null);
+      expect(kyoto.today?.map(g => g.trip)).toEqual([81, 82]);
+      expect(guessesSentence(kyoto.today!, at(21, 12)))
+        .toBe('Museo del Prado and Museo Thyssen-Bornemisza were saved as today. When were you there?');
+      // The tick's own question waits below it: Kinkaku-ji is not dated today either.
+      expect(kyoto).toMatchObject({ save: null, line: { kind: 'ask' }, session: { mode: 'past', askedAboutToday: true } });
+
+      // 2019 is carried from Madrid: Kyoto, 10,000 km away, is offered it first rather than given it.
+      const answered = answerGuesses(kyoto.session, kyoto.today!, year(2019));
+      expect(movedSentence(kyoto.today!, year(2019))).toBe('Moved to 2019: Museo del Prado and Museo Thyssen-Bornemisza');
+      const fushimi = offerForTick(answered, tick(KINKAKUJI, at(21, 13)), null, null);
+      expect(says(fushimi.line, at(21, 13))).toBe('When were you here? | 2019, like Museo del Prado | 2026 | 2025 | 2024');
+    });
+
+    it('asks once a session: a second signal later asks nothing about today', () => {
+      const prado = onTheSofa(FRESH_SESSION, PRADO, at(21, 0), 81);
+      const kyoto = offerForTick(prado.session, tick(KINKAKUJI, at(21, 10)), null, null);
+      expect(kyoto.today).toHaveLength(1);
+      // "Today" for Kinkaku-ji: a trip again; Himeji Castle two hours on, 100 km away, is saved as today on a guess.
+      const back = answerOffer(kyoto.session, kyoto.line!, day(2026, 11, 12), KINKAKUJI, at(21, 11)).session;
+      const himeji = onTheSofa(back, place('Himeji Castle', 34.8394, 134.6939), at(23, 20), 83);
+      expect(himeji.guessed).toBe(true);
+      const rome = offerForTick(himeji.session, tick(PANTHEON, at(23, 30)), null, null);
+      expect(rome.session.mode).toBe('past');
+      expect(rome.today).toBeNull();
+    });
+
+    it('does not ask about a today-trip saved more than 2 hours before the signal', () => {
+      const prado = onTheSofa(FRESH_SESSION, PRADO, at(18, 0), 81);
+      const thyssen = onTheSofa(prado.session, THYSSEN, at(20, 30), 82);
+      const kyoto = offerForTick(thyssen.session, tick(KINKAKUJI, at(21, 0)), null, null);
+      expect(kyoto.today?.map(g => g.trip)).toEqual([82]);
+      expect(guessesSentence(kyoto.today!, at(21, 0))).toBe('Museo Thyssen-Bornemisza was saved as today. When were you there?');
+      // None within the 2 hours: the signal asks only the tick's own question, and can still ask later.
+      const late = offerForTick(prado.session, tick(KINKAKUJI, at(20, 30)), null, null);
+      expect(late).toMatchObject({ today: null, session: { askedAboutToday: false } });
+    });
+
+    it('never asks about a date the traveller set: an answer followed nearby, or a trip dated by hand', () => {
+      // "Yesterday" on the Prado's line: the Thyssen follows that answer, which is no guess.
+      const prado = onTheSofa(FRESH_SESSION, PRADO, at(21, 0), 81);
+      const changed = answerOffer(dropGuesses(prado.session, g => g.trip !== 81), prado.line!, day(2026, 11, 11), PRADO, at(21, 1));
+      const thyssen = onTheSofa(changed.session, THYSSEN, at(21, 2), 82);
+      expect(thyssen).toMatchObject({ save: day(2026, 11, 11), guessed: false });
+      expect(offerForTick(thyssen.session, tick(KINKAKUJI, at(21, 10)), null, null).today).toBeNull();
+
+      // The Reina Sofía, guessed, then dated on its card: dropped, so nothing is left to ask about.
+      const sofia = onTheSofa(FRESH_SESSION, REINA_SOFIA, at(21, 0), 84);
+      const dated = dropGuesses(sofia.session, g => g.trip !== 84);
+      expect(offerForTick(dated, tick(KINKAKUJI, at(21, 10)), null, null).today).toBeNull();
+    });
+
+    it('names the date of a guess saved before midnight, since that is what its trip holds', () => {
+      // The Prado at 23:50 on 12 Nov, the Thyssen at 00:02 and Kinkaku-ji at 00:05 on 13 Nov.
+      const prado = onTheSofa(FRESH_SESSION, PRADO, at(23, 50), 81);
+      const thyssen = onTheSofa(prado.session, THYSSEN, at(24, 2), 82);
+      expect([prado.save, thyssen.save]).toEqual([day(2026, 11, 12), day(2026, 11, 13)]);
+      const kyoto = offerForTick(thyssen.session, tick(KINKAKUJI, at(24, 5)), null, null);
+      expect(guessesSentence(kyoto.today!, at(24, 5)))
+        .toBe(`Museo del Prado was saved as ${NOV_12}, Museo Thyssen-Bornemisza as today. When were you there?`);
+      expect(guessesSentence(kyoto.today!.slice(0, 1), at(24, 5))).toBe(`Museo del Prado was saved as ${NOV_12}. When were you there?`);
+      expect(guessedToday(kyoto.today!, at(24, 5))).toBe(false);
+      expect(guessedToday(kyoto.today!.slice(1), at(24, 5))).toBe(true);
+    });
+
+    it('names two places and counts the rest, and says when an answer has no date', () => {
+      const guess = (label: string, trip: number): Guess => ({ ...PRADO, label, trip, place: trip, time: at(21, 0), date: day(2026, 11, 12) });
+      const three = [guess('Museo del Prado', 81), guess('Museo Thyssen-Bornemisza', 82), guess('Museo Reina Sofía', 84)];
+      expect(guessesSentence(three, at(21, 10)))
+        .toBe('Museo del Prado, Museo Thyssen-Bornemisza and 1 more place were saved as today. When were you there?');
+      expect(movedSentence(three.slice(0, 1), { year: null, month: null, day: null }))
+        .toBe('Date not remembered for Museo del Prado');
+    });
   });
 });

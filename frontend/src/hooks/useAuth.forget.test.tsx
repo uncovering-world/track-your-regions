@@ -23,6 +23,7 @@ vi.mock('../api/auth', () => ({
 vi.mock('../components/shared/trips/visitTrips', () => ({
   default: (props: { part: string }) => <p>{`chunk: ${props.part}`}</p>,
   forgetOffer: () => {},
+  forgetGuessesOn: () => {},
 }));
 
 import { getHeldAccount, refreshSession, setAccessToken } from '../api/fetchUtils';

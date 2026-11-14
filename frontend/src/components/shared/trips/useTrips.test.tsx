@@ -1,20 +1,22 @@
 /**
  * A place's trip writes (#2120): whether the last one failed, for the
- * section to say so, until the next one starts.
+ * section to say so, until the next one starts, and that a trip dated or
+ * removed on the card is never asked about as the offer's guess.
  */
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTrips } from './useTrips';
+import { FRESH_SESSION, forgetSession, readSession, writeSession } from './dateOffer';
 
-const api = vi.hoisted(() => ({ add: vi.fn(), change: vi.fn() }));
+const api = vi.hoisted(() => ({ add: vi.fn(), change: vi.fn(), remove: vi.fn() }));
 vi.mock('../../../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: true, user: { id: 7 } }) }));
 vi.mock('../../../api/trips', () => ({
   fetchTrips: async (experienceId: number) => ({ experienceId, visited: true, trips: [] }),
   addTrip: api.add,
   changeTrip: api.change,
-  removeTrip: vi.fn(),
+  removeTrip: api.remove,
   restoreVisits: vi.fn(),
 }));
 
@@ -34,5 +36,19 @@ describe("a place's trip writes", () => {
     api.change.mockResolvedValue({ success: true });
     act(() => result.current.change({ tripId: 1, date: MARCH_2022 }));
     await waitFor(() => expect(result.current.failed).toBe(false));
+  });
+
+  it('take a trip dated or removed on the card out of the guesses the offer would ask about', async () => {
+    const guess = (trip: number) => ({ trip, place: 9461, label: 'Uffizi Gallery', lat: 43.77, lon: 11.26, time: 0, date: MARCH_2022 });
+    writeSession({ ...FRESH_SESSION, guesses: [guess(1), guess(2), guess(3)] }, 7);
+    const { result } = renderHook(() => useTrips(9461), { wrapper });
+
+    api.change.mockResolvedValue({ success: true });
+    act(() => result.current.change({ tripId: 1, date: MARCH_2022 }));
+    api.remove.mockResolvedValue({ success: true });
+    await waitFor(() => expect(readSession(7).guesses.map(g => g.trip)).toEqual([2, 3]));
+    act(() => result.current.remove(2));
+    await waitFor(() => expect(readSession(7).guesses.map(g => g.trip)).toEqual([3]));
+    forgetSession();
   });
 });

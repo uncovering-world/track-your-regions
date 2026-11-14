@@ -87,10 +87,12 @@ function keepRemoval(next: Removal | null, client?: QueryClient): void {
 /**
  * Kept by every untick's answer: the visits it removed, if any held a trip,
  * until `client` starts the next visit write. An untick also closes the date
- * line. An untick of an earlier sign-in keeps nothing.
+ * line, and hands its places to the offer, which asks about no date it
+ * guessed on them. An untick of an earlier sign-in keeps nothing.
  */
 export function noteRemovedVisits(removed: RemovedVisit[], client: QueryClient, origin: WriteOrigin | undefined): void {
   if (!isCurrentOrigin(origin)) return;
+  onRemoved?.(removed.map(visit => visit.experienceId));
   const withTrips = removed.some(visit => visit.trips.length > 0);
   keepRemoval(withTrips ? { visits: removed, owner: origin.owner, scope: UNDRAWN } : null, client);
   line = null;
@@ -103,6 +105,7 @@ export function clearRemovedVisits(): void {
 }
 
 let forgetOffer: (() => void) | undefined;
+let onRemoved: ((places: number[]) => void) | undefined;
 
 /** Who is signed in changed: nothing the last traveller's visit writes left stays. */
 export function forgetTraveller(): void {
@@ -143,10 +146,15 @@ export function noteTicked(at: number, ticked: TickedPlace[], client: QueryClien
   if (ticked.length && isCurrentOrigin(origin)) onTick?.(at, ticked, client, origin);
 }
 
-/** The offer's side, set by `lazyVisitTrips.tsx`: what a tick opens, and how the offer forgets its traveller. */
-export function handleTicks(handler: TickHandler, forget: () => void): void {
+/**
+ * The offer's side, set by `lazyVisitTrips.tsx`: what a tick opens, how the
+ * offer forgets its traveller, and the places an untick removed, whose
+ * guessed dates it no longer asks about.
+ */
+export function handleTicks(handler: TickHandler, forget: () => void, removed: (places: number[]) => void): void {
   onTick = handler;
   forgetOffer = forget;
+  onRemoved = removed;
 }
 
 /** Which row the date line stands under, and whose tick opened it, set by the offer; null closes it. */

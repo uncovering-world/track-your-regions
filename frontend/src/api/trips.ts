@@ -41,6 +41,14 @@ export async function addTrips(experienceIds: number[], date: TripDateBody): Pro
   return postUsersMeTrips({ experienceIds, date });
 }
 
+/**
+ * The offer's question about the dates it guessed, and its Undo: each trip
+ * moved to its `date` only while it still holds `from`, in one request.
+ */
+export async function moveTrips(moves: { id: number; date: TripDateBody; from: TripDateBody }[]): Promise<TripsDated> {
+  return putUsersMeTrips({ trips: moves });
+}
+
 /** The offer's "Change": the trips its line saved, all given one new date in one request. */
 export async function changeTrips(tripIds: number[], date: TripDateBody): Promise<TripsDated> {
   return putUsersMeTrips({ trips: tripIds.map(id => ({ id, date })) });

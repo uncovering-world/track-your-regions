@@ -7,17 +7,29 @@
 import { useSyncExternalStore } from 'react';
 import { MutationObserver, type QueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../../api/queryKeys';
-import { addTrips, changeTrips, type TickedPlace, type TripDateBody, type TripsDated } from '../../../api/trips';
+import { addTrips, changeTrips, moveTrips, type TickedPlace, type TripDateBody, type TripsDated } from '../../../api/trips';
 import { invalidateVisitedStatus } from '../../../utils/queryInvalidation';
 import { dateLineAt, isCurrentOrigin, showDateLine, type WriteOrigin } from '../visitRemovals';
 import {
-  answerOffer, forgetSession, offerForTick, readSession, silence, writeSession, type OfferLine, type Spot,
+  answerGuesses, answerOffer, dropGuesses, dropHeldGuesses, forgetSession, noteGuesses, offerForTick, readSession,
+  silence, writeSession, type Guess, type OfferLine, type OfferSession, type Spot,
 } from './dateOffer';
+
+/**
+ * The question about the dates the offer guessed, asked once a session before
+ * the tick's own (#773): the guesses while it asks, then what its answer moved
+ * with the year it carried and the one carried before, for its Undo.
+ */
+export type GuessesLine =
+  | { kind: 'ask'; guesses: Guess[] }
+  | { kind: 'moved'; moved: Guess[]; date: TripDateBody; carried: OfferSession['carried']; before: OfferSession['carried'] };
 
 /** The line on screen: under which row, what it says, and the places and trips its answer moves. */
 export interface CurrentOffer {
   at: number;
   line: OfferLine;
+  /** Asked before the line's own question when the tick turned a trip into past travels. */
+  guesses: GuessesLine | null;
   /** The place the line was opened for last: its name, and where the next answer counts from. */
   where: Spot & { label: string };
   places: number[];
@@ -53,25 +65,42 @@ function write(client: QueryClient, run: () => Promise<TripsDated>): Promise<Tri
 }
 
 /**
+ * Whether a write's answer may reach the line on screen: the same row, the
+ * same tick, a sign-in still current. Another line opened meanwhile, under
+ * the same row or another traveller's, is left as it is.
+ */
+const mine = (offer: CurrentOffer): boolean =>
+  current?.at === offer.at && current.origin === offer.origin && isCurrentOrigin(offer.origin);
+
+/**
  * Save `date` on the line's places: a new trip on each place that has none
  * from this line yet, the line's own trips moved otherwise. A write that
  * fails closes the line, which would otherwise name a date nobody saved.
+ * Trips saved on the offer's own guess of today (`guessed`, the tick's
+ * places) are kept in the session to be asked about, whether or not the
+ * line is still open.
  */
-async function saveOn(offer: CurrentOffer, date: TripDateBody): Promise<void> {
-  // The write's answer reaches only the line it was made for: the same row,
-  // the same tick, a sign-in still current. Another line opened meanwhile,
-  // under the same row or another traveller's, is left as it is.
-  const mine = () => current?.at === offer.at && current.origin === offer.origin && isCurrentOrigin(offer.origin);
+async function saveOn(offer: CurrentOffer, date: TripDateBody, guessed?: TickedPlace[]): Promise<void> {
   let answer: TripsDated;
   try {
     answer = offer.trips.length
       ? await write(offer.client, () => changeTrips(offer.trips, date))
       : await write(offer.client, () => addTrips(offer.places, date));
   } catch {
-    if (mine()) show(null);
+    if (mine(offer)) show(null);
     return;
   }
-  if (!mine() || !current) return;
+  if (guessed && isCurrentOrigin(offer.origin)) {
+    const time = Date.now();
+    const guesses = answer.trips.flatMap(({ experienceId, trip }) => {
+      const place = guessed.find(p => p.experienceId === experienceId);
+      return place
+        ? [{ trip: trip.id, place: experienceId, label: place.name, lat: place.latitude, lon: place.longitude, time, date }]
+        : [];
+    });
+    writeSession(noteGuesses(readSession(offer.owner), guesses), offer.owner);
+  }
+  if (!mine(offer) || !current) return;
   // The batch leaves out a place unticked meanwhile: the line says only what
   // was saved, and closes when nothing was.
   const saved = answer.trips;
@@ -98,16 +127,20 @@ export function offerDate(at: number, ticked: TickedPlace[], client: QueryClient
   const pending = current && dateLineAt() !== null && current.line.kind === 'ask' ? current : null;
   // An account with no recorded sign-up time is read as not new.
   const created = createdAt ? Date.parse(createdAt) : null;
-  const { session, save, line } = offerForTick(readSession(owner), tick, created, pending?.line ?? null);
+  const { session, save, guessed, line, today } = offerForTick(readSession(owner), tick, created, pending?.line ?? null);
   writeSession(session, owner);
   const places = ticked.map(p => p.experienceId);
+  // The question about the guessed dates, still unanswered, moves down with the line's own.
+  const unanswered = pending?.guesses?.kind === 'ask' ? pending.guesses : null;
+  const guesses: GuessesLine | null = today ? { kind: 'ask', guesses: today } : unanswered;
   const offer: CurrentOffer = {
     at, client, owner, origin, places: pending && line ? [...pending.places, ...places] : places, trips: [],
     where: { lat: tick.lat, lon: tick.lon, label: tick.label },
     line: line ?? { kind: 'ask', count: 0, first: null },
+    guesses,
   };
   show(line ? offer : null);
-  if (save) void saveOn(offer, save);
+  if (save) void saveOn(offer, save, guessed ? ticked : undefined);
 }
 
 /** The line on screen while its tick's sign-in is still the current one: a choice on any other stores and writes nothing. */
@@ -118,10 +151,79 @@ export function answerDate(date: TripDateBody): void {
   const live = liveOffer();
   if (!live) return;
   const { session, line } = answerOffer(readSession(live.owner), live.line, date, live.where, Date.now());
-  writeSession(session, live.owner);
+  // The traveller has said when for the line's own trips: they are no longer a guess.
+  writeSession(dropGuesses(session, g => !live.trips.includes(g.trip)), live.owner);
   const offer = { ...live, line };
   show(offer);
   void saveOn(offer, date);
+}
+
+/** The tick's own question, offering first the year carried now, as a tick far from the place that set it is. */
+const offeringFirst = (line: OfferLine, carried: OfferSession['carried']): OfferLine =>
+  (line.kind === 'ask' ? { ...line, first: carried && { year: carried.year, label: carried.label } } : line);
+
+/**
+ * The answer to the question about the guessed dates: every one of them moved
+ * to `date`, each only while it still holds the date guessed, so a date the
+ * traveller set meanwhile, here or in another tab, stays. The line then says
+ * what moved, with an Undo, above the tick's own question, which offers
+ * the year first; nothing moved, or a write that fails, leaves the tick's
+ * own question alone.
+ */
+export async function answerGuessedDates(date: TripDateBody): Promise<void> {
+  const live = liveOffer();
+  if (live?.guesses?.kind !== 'ask') return;
+  const { guesses } = live.guesses;
+  let answer: TripsDated;
+  try {
+    answer = await write(live.client, () => moveTrips(guesses.map(g => ({ id: g.trip, date, from: g.date }))));
+  } catch {
+    if (mine(live) && current) show({ ...current, guesses: null });
+    return;
+  }
+  if (!mine(live) || !current) return;
+  const moved = guesses.filter(g => answer.trips.some(t => t.trip.id === g.trip));
+  if (!moved.length) return show({ ...current, guesses: null });
+  const before = readSession(live.owner);
+  const after = answerGuesses(before, moved, date);
+  writeSession(after, live.owner);
+  show({
+    ...current,
+    line: offeringFirst(current.line, after.carried),
+    guesses: { kind: 'moved', moved, date, carried: after.carried, before: before.carried },
+  });
+}
+
+/** "Today is right": the guessed dates stay, and the tick's own question is asked. */
+export function keepGuessedDates(): void {
+  const live = liveOffer();
+  if (live) show({ ...live, guesses: null });
+}
+
+/**
+ * The Undo of that answer: each trip it moved back to the date guessed, only
+ * while it still holds the answer, and the year it carried taken back if no
+ * later answer replaced it. A write that fails leaves the Undo to try again.
+ */
+export async function undoGuessedDates(): Promise<void> {
+  const live = liveOffer();
+  if (live?.guesses?.kind !== 'moved') return;
+  const { moved, date, carried, before } = live.guesses;
+  try {
+    await write(live.client, () => moveTrips(moved.map(g => ({ id: g.trip, date: g.date, from: date }))));
+  } catch {
+    return;
+  }
+  if (!mine(live) || !current) return;
+  const session = readSession(live.owner);
+  if (session.carried !== carried) return show({ ...current, guesses: null });
+  writeSession({ ...session, carried: before }, live.owner);
+  show({ ...current, line: offeringFirst(current.line, before), guesses: null });
+}
+
+/** Places unticked: the trips guessed on them went with their visits, and are never asked about. */
+export function forgetGuessesOn(places: number[]): void {
+  dropHeldGuesses(g => !places.includes(g.place));
 }
 
 /** The cross: the line goes; a date it showed stays saved, a question it asked saves none. */

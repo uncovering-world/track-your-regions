@@ -3,7 +3,9 @@
  * browser tab keeps, so the mock's sequences are walked by a spec without a
  * screen. A tick is taken as made on the spot, and today saved at once,
  * unless a signal says the traveller is filling in past travels; then the
- * line asks for a year and carries the answer to the next nearby ticks.
+ * line asks for a year and carries the answer to the next nearby ticks. The
+ * signal that ends a trip asks once a session about the dates it guessed in
+ * the hours before (`today`), since those were likely past travels too.
  */
 import type { TripDateBody } from '../../../api/trips';
 import { formatApproximateDate } from '../../../utils/dateFormat';
@@ -18,6 +20,12 @@ export interface Spot { lat: number; lon: number }
 
 /** One tick as the offer reads it: when, where, how many places, and the place's name. */
 export interface Tick extends Spot { time: number; count: number; label: string }
+
+/**
+ * A trip the offer dated today on its own guess, the traveller having said
+ * nothing about it: what a wrong guess is asked about (#773, 2026-11-12).
+ */
+export interface Guess extends Spot { trip: number; place: number; label: string; time: number; date: TripDateBody }
 
 export interface OfferSession {
   /** On a trip now, or filling in past travels: past until the traveller answers "Today". */
@@ -35,10 +43,15 @@ export interface OfferSession {
   /** In past travels, the year the last answer set and the place that set it. */
   carried: (Spot & { year: number; label: string }) | null;
   silencedUntil: number;
+  /** On a trip, the dates saved as today on the offer's own guess within WRONG_GUESS_HOURS. */
+  guesses: Guess[];
+  /** The guesses were asked about: at most once a session. */
+  askedAboutToday: boolean;
 }
 
 export const FRESH_SESSION: OfferSession = {
   mode: 'trip', saidToday: false, ticks: [], follow: null, carried: null, silencedUntil: 0,
+  guesses: [], askedAboutToday: false,
 };
 
 /** What the line under the newest tick says: a date it saved, or a question. */
@@ -78,42 +91,82 @@ export function signalsPast(session: OfferSession, tick: Tick, createdAt: number
 }
 
 /**
+ * The guesses a tick asks about (`today`), when it turns a trip into past
+ * travels with the line not silenced: those within WRONG_GUESS_HOURS, once a
+ * session. A guess older than that was most likely made on the spot, and is
+ * dropped. With the session's guesses and whether it has asked, after it.
+ */
+function guessesAsked(
+  session: OfferSession, time: number, past: boolean, silenced: boolean,
+): Pick<OfferSession, 'guesses' | 'askedAboutToday'> & { today: Guess[] | null } {
+  const kept = session.guesses.filter(g => time - g.time <= OFFER.WRONG_GUESS_HOURS * HOUR);
+  const asks = past && !silenced && session.mode === 'trip' && !session.askedAboutToday && kept.length > 0;
+  return asks
+    ? { guesses: [], askedAboutToday: true, today: kept }
+    : { guesses: kept, askedAboutToday: session.askedAboutToday, today: null };
+}
+
+/**
  * What a tick does: the session after it, the date saved for its places (null
- * saves none), and the line shown under it (null shows none). `pending` is a
- * question still unanswered on the line: it moves down to this tick, and its
- * answer will cover every place ticked since the last answer.
+ * saves none), whether that date is the offer's own guess of today, the line
+ * shown under it (null shows none), and the guesses to ask about first, when
+ * this tick is the signal that turns a trip into past travels (`today`, at
+ * most once a session). `pending` is a question still unanswered on the
+ * line: it moves down to this tick, and its answer will cover every place
+ * ticked since the last answer.
  */
 export function offerForTick(
   session: OfferSession, tick: Tick, createdAt: number | null, pending: OfferLine | null,
-): { session: OfferSession; save: TripDateBody | null; line: OfferLine | null } {
+): { session: OfferSession; save: TripDateBody | null; guessed: boolean; line: OfferLine | null; today: Guess[] | null } {
   const past = session.mode === 'past' || signalsPast(session, tick, session.saidToday ? null : createdAt);
   const recent = session.ticks.filter(t => tick.time - t.time <= OFFER.MANY_TICKS_MINUTES * 60_000);
+  const silenced = tick.time < session.silencedUntil;
+  const { today, ...asked } = guessesAsked(session, tick.time, past, silenced);
   const next: OfferSession = {
     ...session,
     mode: past ? 'past' : 'trip',
     ticks: [...(recent.length ? recent : session.ticks.slice(-1)), { time: tick.time, lat: tick.lat, lon: tick.lon }],
+    ...asked,
   };
-  const silenced = tick.time < session.silencedUntil;
+  const base = { session: next, save: null, guessed: false, today };
   if (pending?.kind === 'ask' && !silenced) {
-    return { session: next, save: null, line: { ...pending, count: pending.count + tick.count } };
+    return { ...base, line: { ...pending, count: pending.count + tick.count } };
   }
   if (!past) {
     const follow = session.follow && distanceKm(session.follow, tick) <= OFFER.NEARBY_KM ? session.follow.date : null;
     const date = follow ?? dayOf(tick.time);
-    return { session: next, save: date, line: silenced ? null : { kind: 'saved', date, count: tick.count, carried: null } };
+    const line: OfferLine | null = silenced ? null : { kind: 'saved', date, count: tick.count, carried: null };
+    return { ...base, save: date, guessed: !follow, line };
   }
   // In past travels a date nobody saw is a guess: a silenced line saves none.
-  if (silenced) return { session: next, save: null, line: null };
+  if (silenced) return { ...base, line: null };
   const carried = session.carried;
   if (carried && distanceKm(carried, tick) <= OFFER.CARRIED_YEAR_KM) {
     const date = { year: carried.year, month: null, day: null };
-    return { session: next, save: date, line: { kind: 'saved', date, count: tick.count, carried: carried.year } };
+    return { ...base, save: date, line: { kind: 'saved', date, count: tick.count, carried: carried.year } };
   }
-  return {
-    session: next,
-    save: null,
-    line: { kind: 'ask', count: tick.count, first: carried && { year: carried.year, label: carried.label } },
-  };
+  return { ...base, line: { kind: 'ask', count: tick.count, first: carried && { year: carried.year, label: carried.label } } };
+}
+
+/** The trips the offer has just saved on its own guess of today, kept to be asked about if past travels show. */
+export function noteGuesses(session: OfferSession, guesses: Guess[]): OfferSession {
+  return { ...session, guesses: [...session.guesses, ...guesses] };
+}
+
+/** The guesses `keep` refuses are the traveller's now, or gone: their dates are never asked about. */
+export function dropGuesses(session: OfferSession, keep: (guess: Guess) => boolean): OfferSession {
+  return { ...session, guesses: session.guesses.filter(keep) };
+}
+
+/**
+ * The answer to the question about the guessed dates: a year is carried to
+ * the next ticks, with the first guessed place as the one that set it, as an
+ * answer in past travels is. The session stays in past travels, since the
+ * tick that asked is one, and the guesses were dropped when it asked.
+ */
+export function answerGuesses(session: OfferSession, guesses: Guess[], date: TripDateBody): OfferSession {
+  const [{ lat, lon, label }] = guesses;
+  return date.year === null ? session : { ...session, carried: { lat, lon, year: date.year, label } };
 }
 
 /**
@@ -161,6 +214,43 @@ export function savedSentence(line: Extract<OfferLine, { kind: 'saved' }>, now: 
   return `${visited}${when}${using}`;
 }
 
+/** Up to two places by name, then how many more: "Museo del Prado, Museo Thyssen-Bornemisza and 1 more place". */
+function namePlaces(labels: string[]): string {
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels[0]}, ${labels[1]} and ${plural(labels.length - 2, 'more place')}`;
+}
+
+/** Whether every guessed date is still today: the window of guesses can cross midnight. */
+export function guessedToday(guesses: Guess[], now: number): boolean {
+  return guesses.every(g => sameDate(g.date, dayOf(now)));
+}
+
+/**
+ * The question about the guessed dates: "Museo del Prado and Museo
+ * Thyssen-Bornemisza were saved as today. When were you there?". A guess
+ * from before midnight names its date, "Museo del Prado was saved as 13 Nov,
+ * Museo Thyssen-Bornemisza as today", since that is what its trip holds.
+ */
+export function guessesSentence(guesses: Guess[], now: number): string {
+  const byDate: Guess[][] = [];
+  for (const g of guesses) {
+    const group = byDate.find(([first]) => sameDate(first.date, g.date));
+    if (group) group.push(g);
+    else byDate.push([g]);
+  }
+  const as = (group: Guess[]) => (sameDate(group[0].date, dayOf(now)) ? 'today' : formatApproximateDate(group[0].date));
+  const [first, ...rest] = byDate;
+  const others = rest.map(group => `, ${namePlaces(group.map(g => g.label))} as ${as(group)}`).join('');
+  return `${namePlaces(first.map(g => g.label))} ${first.length === 1 ? 'was' : 'were'} saved as ${as(first)}${others}. When were you there?`;
+}
+
+/** What its answer moved: "Moved to 2019: Museo del Prado and Museo Thyssen-Bornemisza". */
+export function movedSentence(guesses: Guess[], date: TripDateBody): string {
+  const names = namePlaces(guesses.map(g => g.label));
+  return date.year === null ? `Date not remembered for ${names}` : `Moved to ${formatApproximateDate(date)}: ${names}`;
+}
+
 /** What an asking line says: "When were you here?", or for a batch "When were you at these 3 places?". */
 export function askSentence(line: Extract<OfferLine, { kind: 'ask' }>): string {
   return line.count > 1 ? `When were you at these ${line.count} places?` : 'When were you here?';
@@ -187,9 +277,9 @@ function storedSilence(owner: number): number {
 
 /**
  * The session of the traveller `owner` (#2120). Its ticks, mode, followed
- * answer and carried year live in this module's memory, so a reload starts
- * a fresh session and the tab's storage holds no place or time of a tick
- * (ASVS V14.3.3). Only "Don't ask in this session" is kept in
+ * answer, carried year and guessed trips live in this module's memory, so a
+ * reload starts a fresh session and the tab's storage holds no place or time
+ * of a tick (ASVS V14.3.3). Only "Don't ask in this session" is kept in
  * `sessionStorage`, as the time it lasts until and whose it is, so a reload
  * keeps it; the tab closing ends it. A session kept for another traveller is
  * not theirs, and every change of who is signed in forgets both
@@ -198,6 +288,14 @@ function storedSilence(owner: number): number {
 export function readSession(owner: number): OfferSession {
   const session = held?.owner === owner ? held.session : FRESH_SESSION;
   return { ...session, silencedUntil: Math.max(session.silencedUntil, storedSilence(owner)) };
+}
+
+/**
+ * Trips the traveller dated on a place's card, or places they unticked: the
+ * session no longer counts those trips as the offer's guesses.
+ */
+export function dropHeldGuesses(keep: (guess: Guess) => boolean): void {
+  if (held) held = { ...held, session: dropGuesses(held.session, keep) };
 }
 
 export function writeSession(session: OfferSession, owner: number): void {

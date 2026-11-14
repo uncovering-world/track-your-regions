@@ -15,7 +15,7 @@ const chunk = vi.hoisted(() => {
 });
 vi.mock('./trips/visitTrips', async () => {
   await chunk.arrived;
-  return { default: () => null, offerDate: chunk.offerDate, forgetOffer: chunk.forgetOffer };
+  return { default: () => null, offerDate: chunk.offerDate, forgetOffer: chunk.forgetOffer, forgetGuessesOn: () => {} };
 });
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: true, user: { id: 7 } }) }));
 
