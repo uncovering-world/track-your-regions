@@ -73,7 +73,7 @@
       "name": "trips editor chunk (gzip)",
       "path": "dist/assets/visitTrips-*.js",
       "gzip": true,
-      "limit": "2.35 kB"
+      "limit": "4.75 kB"
     },
     {
       "name": "stylesheet (gzip)",

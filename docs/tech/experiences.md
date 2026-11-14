@@ -6777,6 +6777,43 @@ answers none, as *Mark all* run again does (`xmax = 0` on the upsert). With the 
 a date for the visit just made, and tell a trip from a backfill by where and when the ticks were, without
 reading the places again; `POST /trips` and `PUT /trips` write such dates, one request for a batch.
 
+**A date is offered after every tick** (#2120, the mock's scenarios A, B and D). The shell hands each
+tick's `ticked` places to the trips chunk (`noteTicked` in `visitRemovals.ts`, handled by `lazyVisitTrips.tsx`), which applies the rules of
+`components/shared/trips/dateOffer.ts`: pure functions over a session the chunk keeps in memory, so a
+reload starts a fresh one and the tab's storage never holds where or when a traveller ticked. Only *Don't
+ask in this session* is stored, in `sessionStorage` as the time it lasts until and whose it is
+(`OFFER_SILENCE_KEY`, `tyr.tripOfferSilence`): `SILENCE_HOURS`, 12 hours, or until the tab closes or who
+is signed in changes if that comes first, a reload keeping it; a private window that
+refuses it keeps the silence in memory, and the tick never waits. The session and the line are the
+ticking traveller's: the tick's own start names them (`writeOrigin`), a session kept for another account
+is read as a fresh one, the line is drawn for no one else (`useDateLineAt`), and every change of who is
+signed in removes both (`forgetTraveller`). Every step that comes after the tick's own start checks again
+that its sign-in is the current one (`isCurrentOrigin`): the chunk arriving, before the offer is made,
+and a choice on the line, before it stores or writes anything. A traveller forgotten meanwhile is offered
+nothing, so no date goes out under the account signed in since. A trip write's answer reaches only the
+line it was made for (the same row, the same tick, a sign-in still current), and the line says only what
+was saved: a place the batch left out, as one unticked in another tab meanwhile, drops from its count,
+and a line nothing was saved for closes.
+A tick is taken as made on the spot, and today is saved at once by the request after it (`POST /trips`),
+unless any one signal says the traveller is filling in past travels: two ticks farther apart than
+`JUMP_KM` faster than `SPEED_KMH` allows, each where it was made (the first of `ticked`: a point's tick
+at the point), `MANY_TICKS` within `MANY_TICKS_MINUTES`, or the account's first `NEW_ACCOUNT_HOURS`
+(`PublicUser.createdAt`; an account with none recorded is not new). Then the session stays in past
+travels until the traveller answers *Today* (decided on #773, 2026-11-14), and the line asks for a year,
+saves nothing until it is answered, and carries the answer to the next ticks within
+`CARRIED_YEAR_KM` of the place that set it; a tick farther away asks again with that year first. On a
+trip, a tick within `NEARBY_KM` of the last answered place follows that answer. *Today* in past travels
+makes the session a trip again from the tick it answers (`answerOffer`): the ticks counted so far are
+dropped but that one, so the jump and the burst are measured from it, the carried year goes, and the
+account's first hours no longer count (`saidToday`), the traveller having said outright where they are.
+The next ticks are dated today with no question until a jump or a burst moves the session back to past
+travels, which asks again. An unanswered question
+moves down to the newest tick and its answer covers every place ticked since; a batch is one line and
+one answer. The thresholds are starting values, to be tuned on use, in `offerThresholds.ts`; nothing
+about a traveller's pace leaves the tab. The line, its writes and its session are
+`offerRuntime.ts`, and its words `VisitDateLine` (§ The date offered after a tick in
+`docs/tech/experience-map-ui.md`).
+
 One of these filters `admission` and the rest do not, and the split is the line in § Lifecycle
 filtering rather than an oversight. `visited-status` describes an experience to a reader — its
 points and how many of them they have reached — so it 404s for a refused row, like every by-id read

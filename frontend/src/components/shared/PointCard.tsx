@@ -39,7 +39,7 @@ import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks'
 import { safeHref } from '../../utils/safeHref';
 import { CopyNameButton } from './CopyButton';
 import { OpenInMapsLink } from './OpenInMapsLink';
-import { LazyTripsSection } from './lazyVisitTrips';
+import { LazyTripsSection, LazyVisitDateLine } from './lazyVisitTrips';
 import { ApproximateLocationNote } from './ApproximateLocationNote';
 import { ImageCreditLine } from './ImageCreditLine';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
@@ -294,6 +294,7 @@ export function PointCard({
         )}
         {/* The trips are the part's own place's, where the traveller was: Sanahin
             Monastery's, not the site's (#2120). */}
+        {visited && !unread && <LazyVisitDateLine at={-pointId} />}
         {visited && !unread && <LazyTripsSection experienceId={point.experience_id} />}
       </Box>
     </Box>

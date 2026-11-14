@@ -12,7 +12,7 @@ import {
   unmarkExperienceVisited, unmarkLocationVisited, unmarkTreasureViewed,
 } from '../api/visited';
 import { queryKeys } from '../api/queryKeys';
-import { noteRemovedVisits, writeOrigin } from '../components/shared/visitRemovals';
+import { noteRemovedVisits, noteTicked, writeOrigin } from '../components/shared/visitRemovals';
 import type { VisitedStatus } from '../api/visited';
 
 /**
@@ -53,7 +53,9 @@ export function useVisitedExperiences(kindId?: number) {
   const markVisitedMutation = useMutation({
     mutationKey: queryKeys.visited.write,
     mutationFn: markExperienceVisited,
-    onSuccess: () => {
+    onMutate: () => writeOrigin(user?.id, user?.createdAt),
+    onSuccess: (answer, experienceId, origin) => {
+      noteTicked(experienceId, answer.ticked, queryClient, origin);
       invalidateVisitedStatus(queryClient);
     },
   });
@@ -87,9 +89,11 @@ export function useVisitedExperiences(kindId?: number) {
 }
 
 /**
- * Hook for managing location-level visited status (multi-location experiences)
+ * Hook for managing location-level visited status (multi-location experiences).
+ * `lineAt` is the row the date offered after a point's tick stands under,
+ * where it is not the point's own (#2120): Discover's list row of the object.
  */
-export function useVisitedLocations(experienceId?: number) {
+export function useVisitedLocations(experienceId?: number, lineAt?: number) {
   const { isAuthenticated, user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -110,7 +114,9 @@ export function useVisitedLocations(experienceId?: number) {
   const markLocationVisitedMutation = useMutation({
     mutationKey: queryKeys.visited.write,
     mutationFn: markLocationVisited,
-    onSuccess: () => {
+    onMutate: () => writeOrigin(user?.id, user?.createdAt),
+    onSuccess: (answer, locationId, origin) => {
+      noteTicked(lineAt ?? -locationId, answer.ticked, queryClient, origin);
       invalidateVisitedStatus(queryClient);
     },
   });
@@ -131,7 +137,9 @@ export function useVisitedLocations(experienceId?: number) {
     mutationKey: queryKeys.visited.write,
     mutationFn: ({ experienceId, regionId }: { experienceId: number; regionId?: number }) =>
       markAllLocationsVisited(experienceId, regionId),
-    onSuccess: () => {
+    onMutate: () => writeOrigin(user?.id, user?.createdAt),
+    onSuccess: (answer, { experienceId }, origin) => {
+      noteTicked(experienceId, answer.ticked, queryClient, origin);
       invalidateVisitedStatus(queryClient);
     },
   });
