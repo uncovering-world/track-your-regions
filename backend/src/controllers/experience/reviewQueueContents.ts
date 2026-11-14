@@ -36,7 +36,7 @@ import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
 import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
-import { answeringPlaceSql, pointOfPartSql, pointsShownSql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointOfComponentSql, pointsShownSql } from '../../db/placePoints.js';
 import { someoneVisitedPointSql } from '../../db/visits.js';
 
 /**
@@ -450,7 +450,7 @@ export async function queryWithdrawn(
   // component's number to another, so Western Tien-Shan's Karabastau area,
   // dropped as 1490-003, is not "35 km away now" as the Boraldaitau area that
   // number names now (#2182).
-  const sameComponentSql = `(CASE WHEN ${pointOfPartSql('el')}
+  const sameComponentSql = `(CASE WHEN ${pointOfComponentSql('el')}
                          THEN moved.experience_id = el.experience_id
                               OR (moved.external_ref IS NOT DISTINCT FROM el.external_ref
                                   AND name_match_key(moved.name) = name_match_key(el.name))

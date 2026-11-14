@@ -279,13 +279,18 @@ export function pointNameAsHeldSql(point = 'el'): string {
   return pointNameBySql(point, placeHoldsKindSql('prt_name.id'));
 }
 
-/** A point's name, `kinded` saying over `prt_name` whether its part names itself. */
+/**
+ * A point's name, `kinded` saying over `prt_name` whether its part names
+ * itself. A part no list names (a curator's, a Wikidata statement's) is called
+ * by its own name: only a component's name can be its site's with the
+ * reference.
+ */
 function pointNameBySql(point: string, kinded: string): string {
   const own = `CASE WHEN NOT names_nothing(${point}.name) THEN ${point}.name END`;
   return `CASE WHEN ${pointOfPartSql(point)}
                THEN (SELECT CASE WHEN ${kinded} THEN COALESCE(${own}, prt_name.name)
                                  WHEN NOT names_nothing(${point}.name) OR prt_name.curated_fields ? 'name'
-                                      OR prt_name.metadata ? 'wikipediaUrl'
+                                      OR prt_name.metadata ? 'wikipediaUrl' OR NOT ${pointOfComponentSql(point)}
                                  THEN prt_name.name END
                        FROM experiences prt_name WHERE prt_name.id = ${point}.experience_id)
                ELSE ${own} END`;
@@ -412,10 +417,25 @@ export function itemHeldSql(item: string): string {
 }
 
 /**
- * The point `point` is the point of a serial site's part, whose own row holds
- * its picture, subtitle and article (ADR-0156 decision 3): what a reader shows
- * and a writer writes for such a point is the part row's, never the point's.
+ * The point `point` is the point of a part of a whole, whose own row holds its
+ * picture, subtitle and article (ADR-0156 decision 3): what a reader shows and
+ * a curator corrects for such a point is the part row's, never the point's.
+ * Whoever made it a part: UNESCO's list, a Wikidata statement or a curator's
+ * word. The Giralda, which a curator put into Seville's site, is listed among
+ * the site's places by its name and shows its own picture (#2531).
  */
 export function pointOfPartSql(point = 'el'): string {
-  return `EXISTS (SELECT 1 FROM experience_parts pop WHERE pop.part_id = ${point}.experience_id AND pop.reason = 'component')`;
+  return `EXISTS (SELECT 1 FROM experience_parts pop WHERE pop.part_id = ${point}.experience_id)`;
+}
+
+/**
+ * The point `point` is the point of a component of a serial site, a part the
+ * World Heritage list names: what a run of the list writes from it (the
+ * part's name, coordinate and reference, its picture, subtitle and article
+ * from the component's item, a held proposal about it) is written for such a
+ * point only. A part a curator or a Wikidata statement made is not the list's
+ * to write.
+ */
+export function pointOfComponentSql(point = 'el'): string {
+  return `EXISTS (SELECT 1 FROM experience_parts poc WHERE poc.part_id = ${point}.experience_id AND poc.reason = 'component')`;
 }

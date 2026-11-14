@@ -17,7 +17,10 @@
  * site's lock, or under its own where it holds a kind of its own
  * (`answeringPlaceSql`), and the writer takes either. A point whose place is no
  * part writes nothing here: its own content stays the point's
- * (`experienceLocationWriter.ts`). The site's view (`writePartListings`) names
+ * (`experienceLocationWriter.ts`). A part a curator or a Wikidata statement
+ * made takes a curator's correction of its fields, as a component does, but
+ * only a component is named, placed and numbered for its point
+ * (`partFollowsSql`), which is the list's. The site's view (`writePartListings`) names
  * a part by its record and writes only the records of the locked site's
  * parts.
  */
@@ -28,7 +31,7 @@ import {
   COMPONENT_SOURCE_ID, MEMBERSHIPS, WORLD_HERITAGE_SOURCE_ID, componentRecordSql, partRecordSql, placeHoldsKindSql,
   siteMembershipSql,
 } from './membership.js';
-import { pointOfPartSql, pointRecordSql, shownBySql } from './placePoints.js';
+import { pointOfComponentSql, pointOfPartSql, pointRecordSql, shownBySql } from './placePoints.js';
 import { publishedContentSql } from './readerPredicates.js';
 
 /** A field of a part this module writes, named as a place's claim and a held proposal name it. */
@@ -117,7 +120,7 @@ export async function writePartFields(
 }
 
 /**
- * The parts whose point the filter `pointFilter` keeps, over `el`, as rows
+ * The components whose point the filter `pointFilter` keeps, over `el`, as rows
  * `(part_id, name, location, external_ref, point_id)` of what each is to hold (ADR-0100,
  * ADR-0156): the name the part is called for its point (`component_part_name`:
  * the list's name; where that names nothing, the part's own English article,
@@ -146,7 +149,7 @@ export function partFollowsSql(pointFilter: string): string {
                  pt.location, pt.external_ref, pt.id AS point_id
             FROM (SELECT DISTINCT ON (el.experience_id) el.id, el.experience_id, el.name, el.location, el.external_ref
                     FROM experience_locations el
-                   WHERE el.merged_into_id IS NULL AND ${pointOfPartSql('el')} AND ${pointFilter}
+                   WHERE el.merged_into_id IS NULL AND ${pointOfComponentSql('el')} AND ${pointFilter}
                    ORDER BY el.experience_id, el.missing_since IS NULL DESC,
                             ${publishedContentSql('el')} DESC, el.id) pt
             JOIN experiences part ON part.id = pt.experience_id

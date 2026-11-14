@@ -61,7 +61,7 @@ import {
 } from '../../../db/readerPredicates.js';
 import { MEMBERSHIPS, placeHoldsKindSql } from '../../../db/membership.js';
 import {
-  answeringPlaceSql, pointOfPartSql, pointsShownSql,
+  answeringPlaceSql, pointOfComponentSql, pointsShownSql,
 } from '../../../db/placePoints.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { heldFieldRefusedSql, heldPartRefusedSql } from '../../experience/heldDecisions.js';
@@ -541,7 +541,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
           FROM experience_locations el
           JOIN experiences shown ON shown.id = el.experience_id
          WHERE shown.image_url IS NOT NULL AND shown.image_url <> '' AND el.merged_into_id IS NULL
-           AND ${pointOfPartSql('el')} AND NOT ${placeHoldsKindSql('el.experience_id')}
+           AND ${pointOfComponentSql('el')} AND NOT ${placeHoldsKindSql('el.experience_id')}
            AND ${drawableHostSql('shown.image_url')}
            AND shown.metadata->>'imageCredit' IS NULL
          ORDER BY 1, 3`,

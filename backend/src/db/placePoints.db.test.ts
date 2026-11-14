@@ -6,6 +6,7 @@ import { pointsShownSql } from './placePoints.js';
 import { someoneVisitedPointSql } from './visits.js';
 import { getExperienceLocations, getRegionExperienceLocations } from '../controllers/experience/experienceLocationController.js';
 import { editLocation } from '../controllers/experience/locationEditController.js';
+import { addPart } from '../controllers/experience/partRecordController.js';
 import {
   getExperienceVisitedStatus, getVisitedLocationIds, markAllLocationsVisited, markLocationVisited,
   unmarkAllLocationsVisited, unmarkLocationVisited,
@@ -40,6 +41,8 @@ const KARNAK_ITEM = 'Q9891001';
 /** Another site with a part of its own, so a read that confuses whose parts are whose counts too many. */
 const OTHER_SITE = 9892;
 const OTHER_PART = 9893;
+/** A place of a kind of its own a curator's word makes a part of the site, as the Giralda of Seville's. */
+const TOWER = 9894;
 const TRAVELLER = '00000000-0000-4000-8000-000000009890';
 const ADMIN = '00000000-0000-4000-8000-000000009891';
 /** A world view of its own holding Karnak's region, so the site reaches it only through its part. */
@@ -54,7 +57,7 @@ let luxorPoint = 0;
 let karnakPoint = 0;
 
 async function clear(): Promise<void> {
-  await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[SITE, KARNAK, OTHER_SITE, OTHER_PART]]);
+  await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[SITE, KARNAK, OTHER_SITE, OTHER_PART, TOWER]]);
   await pool.query('DELETE FROM users WHERE uuid = ANY($1::text[])', [[TRAVELLER, ADMIN]]);
   await pool.query('DELETE FROM regions WHERE world_view_id = $1', [KARNAK_WORLD_VIEW]);
   await pool.query('DELETE FROM world_views WHERE id = $1', [KARNAK_WORLD_VIEW]);
@@ -529,6 +532,97 @@ describe("a part's point with no name of its own (#1924)", () => {
       params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
     });
     expect(own.locations.find(l => l.id === karnakPoint)?.name).toBe('Great Temple of Amun');
+  });
+});
+
+describe("a part a curator's word made (#2531)", () => {
+  const TOWER_PICTURE = 'http://commons.wikimedia.org/wiki/Special:FilePath/Tower%20fixture.jpg';
+  const TOWER_CREDIT = { author: 'E.4', license: 'CC0', detailsUrl: 'https://commons.wikimedia.org/wiki/File:Tower_fixture.jpg' };
+  const TOWER_ARTICLE = 'https://en.wikipedia.org/wiki/Tower_fixture';
+  let towerPoint = 0;
+
+  /**
+   * The Giralda's shape: a tower Towers holds, its point placed by that kind
+   * with no name of its own, which a curator puts into the site by a word on
+   * its card. `state` is its Towers record's.
+   */
+  async function curatorsPart(state: 'verified' | 'pending'): Promise<void> {
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location, image_url, metadata)
+       VALUES ($1, 7, 'Q9894001', 'Tower of the site (parts fixture)', ST_SetSRID(ST_MakePoint(32.6580, 25.7190), 4326), $2,
+               jsonb_build_object('imageCredit', $3::jsonb, 'wikipediaUrl', $4::text))`,
+      [TOWER, TOWER_PICTURE, JSON.stringify(TOWER_CREDIT), TOWER_ARTICLE],
+    );
+    await pool.query(
+      `INSERT INTO source_records (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q9894001', $2::text, CASE WHEN $2::text = 'verified' THEN NOW() END
+         FROM experience_sources s WHERE s.id = 7`,
+      [TOWER, state],
+    );
+    towerPoint = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location, curation_state)
+       VALUES ($1, NULL, 'Q9894001', 3, ST_SetSRID(ST_MakePoint(32.6580, 25.7190), 4326), 'auto') RETURNING id`,
+      [TOWER],
+    )).rows[0].id;
+    await pool.query(
+      `INSERT INTO experience_location_regions (location_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
+      [towerPoint, regionId],
+    );
+    await addPart({
+      params: { id: SITE }, body: { partId: TOWER }, caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+    const relation = await pool.query('SELECT reason FROM experience_parts WHERE whole_id = $1 AND part_id = $2', [SITE, TOWER]);
+    expect(relation.rows).toEqual([{ reason: 'curator' }]);
+  }
+
+  /** The site's points as its own read lists them, by id: name, picture, credit, article, and whether a part's. */
+  async function siteRead(): Promise<Map<number, unknown>> {
+    const own = await getExperienceLocations({
+      params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    return new Map(own.locations.map(l => [l.id, {
+      name: l.name, image_url: l.image_url, image_credit: l.image_credit, wikipedia_url: l.wikipedia_url, is_part: l.is_part,
+    }]));
+  }
+
+  it("lists it among the site's places by its name, with its picture and article, on every reader's read", async () => {
+    await curatorsPart('verified');
+
+    const own = await siteRead();
+    expect(own.get(towerPoint)).toEqual({
+      name: 'Tower of the site (parts fixture)', image_url: TOWER_PICTURE, image_credit: TOWER_CREDIT,
+      wikipedia_url: TOWER_ARTICLE, is_part: true,
+    });
+    // UNESCO's component and the site's own point read as they did.
+    expect(own.get(karnakPoint)).toEqual({
+      name: 'Temple of Karnak (parts fixture)', image_url: null, image_credit: null, wikipedia_url: null, is_part: true,
+    });
+    expect(own.get(luxorPoint)).toEqual({
+      name: 'Luxor Temple', image_url: null, image_credit: null, wikipedia_url: null, is_part: false,
+    });
+
+    for (const query of [{}, { includeChildren: 'false' }]) {
+      const { locationsByExperience } = await getRegionExperienceLocations({
+        params: { regionId }, query: regionLocationsQuerySchema.parse(query),
+      });
+      expect(locationsByExperience[SITE]?.find(l => l.id === towerPoint)).toMatchObject({
+        name: 'Tower of the site (parts fixture)', image_url: TOWER_PICTURE, image_credit: TOWER_CREDIT,
+      });
+    }
+    const world = await getWorldPoints({ query: worldPointsQuerySchema.parse({ detail: 'markers' }) });
+    expect(world.name?.[(world.locationId ?? []).indexOf(towerPoint)]).toBe('Tower of the site (parts fixture)');
+    const status = await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() });
+    expect(status.locations.find(l => l.id === towerPoint)?.name).toBe('Tower of the site (parts fixture)');
+  });
+
+  it('calls it by its own name while its kind waits for a curator, never by the site with a reference', async () => {
+    await curatorsPart('pending');
+    // With no article to be named for, as most such places are.
+    await pool.query("UPDATE experiences SET metadata = metadata - 'wikipediaUrl' WHERE id = $1", [TOWER]);
+
+    expect((await siteRead()).get(towerPoint)).toMatchObject({
+      name: 'Tower of the site (parts fixture)', image_url: TOWER_PICTURE, is_part: true,
+    });
   });
 });
 

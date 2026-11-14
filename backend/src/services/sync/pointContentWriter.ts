@@ -41,7 +41,7 @@ import { proposeHeldParts } from './heldProposalPointer.js';
 import type { ImageCredit } from './imageCredit.js';
 import type { LocationWriteRun } from './locationWriter.js';
 import type { ContentItemChange } from './types.js';
-import { pointItemClaimedSql, pointOfPartSql, shownBySql } from '../../db/placePoints.js';
+import { pointItemClaimedSql, pointOfComponentSql, shownBySql } from '../../db/placePoints.js';
 
 /** What the source offers one component: a picture, the credit fetched for it, a subtitle and an article. */
 export interface PointContent {
@@ -180,7 +180,7 @@ export async function writePointContents(
          JOIN incoming i ON lower(el.external_ref) = lower(i.ref)
          JOIN experiences part ON part.id = el.experience_id
         WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND el.missing_since IS NULL AND el.merged_into_id IS NULL
-          AND ${pointOfPartSql('el')}
+          AND ${pointOfComponentSql('el')}
           -- A point whose item a curator chose (#1272) shows what that item
           -- gives its part, written when it was chosen: the run's contents are
           -- read off the items its index resolves, which never include that
