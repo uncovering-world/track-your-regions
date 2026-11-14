@@ -305,6 +305,9 @@ export const CommemoratedSubject = z.strictObject({
   qid: z.string().describe('The subject\'s Wikidata item.'),
   label: z.string(),
   article_url: z.string().nullable().describe('Its English Wikipedia article, or null where it has none.'),
+  role: z.string().nullable().describe(
+    'The form the work shows it in, without "as" (#2485): the Neptune Fountain shows the Rhine as `women`. Null where none is said.',
+  ),
 }).describe('One person or event a place commemorates (#2144), or a person or figure a work depicts (#2404, #2436).');
 export type CommemoratedSubject = z.infer<typeof CommemoratedSubject>;
 

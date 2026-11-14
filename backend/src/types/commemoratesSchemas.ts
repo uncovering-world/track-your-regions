@@ -6,7 +6,7 @@
 
 import { z } from 'zod/v4';
 import { tidyLabel } from '@tyr/shared/labels';
-import { MAX_COMMEMORATED_SUBJECTS } from '@tyr/shared/commemorates';
+import { MAX_COMMEMORATED_SUBJECTS, MAX_SUBJECT_ROLE_LENGTH, tidyRole } from '@tyr/shared/commemorates';
 import {
   ENGLISH_WIKIPEDIA_ARTICLE_MESSAGE, isEnglishWikipediaArticleUrl, normalizeStorableUrl,
 } from './urlSafety.js';
@@ -19,7 +19,10 @@ const LABEL_MAX = 250;
  * Wikidata item, its label as the card shows it, tidied as every stored name is
  * (`tidyLabel`), and its English Wikipedia article or null. The article is
  * Wikidata's English sitelink or nothing (`isEnglishWikipediaArticleUrl`), so
- * no other host, protocol or page reaches the card's link.
+ * no other host, protocol or page reaches the card's link. A role, the form the
+ * work shows it in (#2485), is stored as `tidyRole` keeps it, without "as" and
+ * at most `MAX_SUBJECT_ROLE_LENGTH` characters; one left empty is no role, and
+ * is stored as none (`curatorList`).
  */
 const commemoratedSubjectSchema = z.strictObject({
   item: z.string().regex(/^Q[1-9]\d*$/, 'A subject is a Wikidata item, Q followed by its number'),
@@ -29,6 +32,7 @@ const commemoratedSubjectSchema = z.strictObject({
     .transform(normalizeStorableUrl)
     .pipe(z.string().max(2000))
     .nullable(),
+  role: z.string().transform(tidyRole).pipe(z.string().max(MAX_SUBJECT_ROLE_LENGTH)).optional(),
 });
 
 /**

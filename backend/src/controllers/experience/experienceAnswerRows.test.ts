@@ -52,10 +52,20 @@ describe('experienceDetailOf', () => {
     // The Lincoln Memorial (Q213559) commemorates Abraham Lincoln (Q91).
     const lincoln = { item: 'Q91', label: 'Abraham Lincoln', articleUrl: 'https://en.wikipedia.org/wiki/Abraham_Lincoln', extra: 1 };
     const memorial = experienceDetailOf({ ...ACROPOLIS, metadata: { commemorates: { via: 'commemorates', subjects: [lincoln] } } }, []);
-    expect(memorial.commemorates).toEqual([{ qid: 'Q91', label: 'Abraham Lincoln', article_url: 'https://en.wikipedia.org/wiki/Abraham_Lincoln' }]);
+    expect(memorial.commemorates).toEqual([
+      { qid: 'Q91', label: 'Abraham Lincoln', article_url: 'https://en.wikipedia.org/wiki/Abraham_Lincoln', role: null },
+    ]);
     expect(ExperienceDetail.safeParse(JSON.parse(JSON.stringify(memorial))).success).toBe(true);
     expect(experienceDetailOf(ACROPOLIS, []).commemorates).toEqual([]);
     expect(experienceDetailOf({ ...ACROPOLIS, metadata: null }, []).commemorates).toEqual([]);
+  });
+
+  it('serves the form a figure is shown in where the line says one (#2485)', () => {
+    // The Lady Godiva equestrian statue (Q17540305) depicts Lady Godiva (Q106077) as an equestrian (Q2730732).
+    const godiva = { item: 'Q106077', label: 'Lady Godiva', articleUrl: null, role: 'equestrian' };
+    const statue = experienceDetailOf({ ...ACROPOLIS, metadata: { depicts: { via: 'depicts', subjects: [godiva] } } }, []);
+    expect(statue.depicts).toEqual([{ qid: 'Q106077', label: 'Lady Godiva', article_url: null, role: 'equestrian' }]);
+    expect(ExperienceDetail.safeParse(JSON.parse(JSON.stringify(statue))).success).toBe(true);
   });
 
   it('serves each kind of the place by its declared keys only', () => {

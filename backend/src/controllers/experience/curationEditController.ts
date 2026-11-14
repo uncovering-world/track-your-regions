@@ -138,12 +138,16 @@ function metadataPatchOf(payload: EditPayload): Record<string, unknown> | null {
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
-/** The value a curator's list of subjects is stored as, or undefined where the edit does not touch it. */
+/**
+ * The value a curator's list of subjects is stored as, or undefined where the
+ * edit does not touch it. A role travels with its subject (#2485), and one left
+ * empty is stored as none, the shape a subject without a role always had.
+ */
 function curatorList(subjects: CommemoratedSubject[] | undefined): Commemorates | undefined {
   if (subjects === undefined) return undefined;
   return {
     via: CURATOR_COMMEMORATION,
-    subjects: subjects.map(({ item, label, articleUrl }) => ({ item, label, articleUrl })),
+    subjects: subjects.map(({ item, label, articleUrl, role }) => ({ item, label, articleUrl, ...(role ? { role } : {}) })),
   };
 }
 

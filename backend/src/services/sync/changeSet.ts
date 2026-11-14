@@ -330,11 +330,12 @@ export const METADATA_SET_KEYS: ReadonlySet<string> = new Set(['creators']);
 
 /**
  * The metadata keys whose two values are the same when they name the same
- * items: whom a place commemorates (#2144) and the people and figures a work
- * depicts (#2404, #2436). A label or an article Wikidata
- * re-words, or another step of the reading naming the same people, is no
- * change a curator is asked about (`sameSubjects`); nor is a run that reads
- * nobody where a curator's list names nobody.
+ * items in the same roles: whom a place commemorates (#2144) and the people
+ * and figures a work depicts (#2404, #2436, #2485). A label or an article
+ * Wikidata re-words, or another step of the reading naming the same people, is
+ * no change a curator is asked about (`sameSubjects`); nor is a run that reads
+ * nobody where a curator's list names nobody. A role gained or lost is one,
+ * since the card words it.
  */
 const ITEM_SET_KEYS: ReadonlySet<string> = new Set(['commemorates', 'depicts']);
 

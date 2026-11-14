@@ -555,6 +555,13 @@ describe('whom a place commemorates, which is a set of items (#2144)', () => {
     expect(computeChangeSet(monument(), both, [], HELD).heldFields.map(f => f.field)).toContain('metadata.commemorates');
   });
 
+  it('holds a role a reading gains or loses, as the card words it differently (#2485)', () => {
+    const plain = monument({ via: 'depicts', subjects: [POZHARSKY, MININ] });
+    const roled = monument({ via: 'depicts', subjects: [{ ...POZHARSKY, role: 'warrior' }, MININ] });
+    expect(rows(plain, roled)).toHaveLength(1);
+    expect(rows(roled, plain)).toHaveLength(1);
+  });
+
   describe("a curator's list, claimed", () => {
     const CLAIM = ['metadata.commemorates'];
     const every = (before: ExperienceSnapshot, after: ExperienceSnapshot, gate = HELD) => {
@@ -570,6 +577,16 @@ describe('whom a place commemorates, which is a set of items (#2144)', () => {
       const run = monument({ via: 'depicts', subjects: [POZHARSKY, MININ] });
       expect(every(curated, run)).toEqual({ conflicts: ['metadata.commemorates'], other: [] });
       expect(every(curated, run, false)).toEqual({ conflicts: ['metadata.commemorates'], other: [] });
+    });
+
+    it('keeps the form a curator gave a figure against a run reading the figure without it (#2485)', () => {
+      // A curator's "Dmitry Pozharsky as a warrior" is not the run's plain one: the run's
+      // reading is filed as a conflict against the curator's line, never taken as the same.
+      const curated = monument({ via: 'curator', subjects: [{ ...POZHARSKY, role: 'warrior' }, MININ] });
+      const run = monument({ via: 'depicts', subjects: [POZHARSKY, MININ] });
+      expect(every(curated, run)).toEqual({ conflicts: ['metadata.commemorates'], other: [] });
+      expect(every(curated, monument({ via: 'depicts', subjects: [{ ...POZHARSKY, role: 'warrior' }, MININ] })))
+        .toEqual({ conflicts: [], other: [] });
     });
 
     it('raises nothing where the run names the same people in its own words and step', () => {

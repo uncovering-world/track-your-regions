@@ -21050,12 +21050,20 @@
               "string",
               "null"
             ]
+          },
+          "role": {
+            "description": "The form the work shows it in, without \"as\" (#2485): the Neptune Fountain shows the Rhine as `women`. Null where none is said.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "qid",
           "label",
-          "article_url"
+          "article_url",
+          "role"
         ],
         "additionalProperties": false,
         "description": "One person or event a place commemorates (#2144), or a person or figure a work depicts (#2404, #2436)."
@@ -25831,6 +25839,9 @@
                     "string",
                     "null"
                   ]
+                },
+                "role": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -25859,6 +25870,9 @@
                     "string",
                     "null"
                   ]
+                },
+                "role": {
+                  "type": "string"
                 }
               },
               "required": [

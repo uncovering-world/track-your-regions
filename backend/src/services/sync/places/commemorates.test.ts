@@ -43,7 +43,8 @@ import type { SparqlFn } from '../wikidataQueries.js';
 import { MAX_COMMEMORATED_SUBJECTS } from '@tyr/shared/commemorates';
 import {
   categoryTitles, CONCERNING_CATEGORIES, fetchSubjectClaims, fetchSubjectKinds, MAX_DEDICATED_FIGURES, MEMORIALS_CATEGORY, readCommemorates,
-  readingOfPlace, STATUES_CATEGORY, withoutPlace, type CommemorationWiki, type FiledSubjects, type ResolvedArticle, type SubjectClaims, type SubjectKind,
+  readingOfPlace, STATUES_CATEGORY, withoutPlace, withRoles, type CommemorationWiki, type FiledSubjects, type PlaceReading, type ResolvedArticle,
+  type SubjectClaims, type SubjectKind,
 } from './commemorates.js';
 import { namedInPlace } from './placeNames.js';
 import type { Lead } from './warNarrowing.js';
@@ -99,6 +100,10 @@ const ATATURK_BUST = 'Q900000003';
 const TRITON = 'Q148030';
 const OCEANUS = 'Q161419';
 
+// The Lady Godiva equestrian statue (Q17540305) depicts Lady Godiva (Q106077) as an equestrian (Q2730732), read on 2026-11-12 (#2485).
+const GODIVA_STATUE = 'Q17540305';
+const GODIVA = 'Q106077';
+
 // A dedication only the lead states (#2472): the Shaheed Minar in Dhaka (Q2425991) and the Bengali language movement (Q1975418).
 const SHAHEED_MINAR = 'Q2425991';
 const LANGUAGE_MOVEMENT = 'Q1975418';
@@ -118,6 +123,7 @@ const figure = (label: string): SubjectKind => ({ ...NOT, label, figure: true })
 
 const KINDS = new Map<string, SubjectKind>([
   [LINCOLN, person('Abraham Lincoln')],
+  [GODIVA, person('Lady Godiva')],
   [PATEL, person('Sardar Vallabhbhai Patel')],
   [ARMINIUS, person('Arminius')],
   [ALEXANDER_I, person('Alexander I of Russia')],
@@ -355,6 +361,7 @@ describe('reading the places of a run', () => {
       [TREVI_FOUNTAIN, claims({ depicts: [TRITON, OCEANUS] })],
       [CHRIST_THE_REDEEMER, claims({ mainSubjects: [JESUS] })],
       [ATATURK_BUST, claims({ depicts: [REPUBLIC_FOUNDERS[0]] })],
+      [GODIVA_STATUE, claims({ depicts: [GODIVA], roles: { [GODIVA]: 'equestrian' } })],
     ]));
     vi.mocked(subsetSubjectKinds).mockImplementation(async (ids) => new Map(ids.flatMap((id) => (KINDS.has(id) ? [[id, KINDS.get(id)!] as const] : []))));
     vi.mocked(subsetEnglishArticles).mockImplementation(async (ids) => new Map(ids.flatMap((id) => (ARTICLES.has(id) ? [[id, ARTICLES.get(id)!] as const] : []))));
@@ -499,6 +506,18 @@ describe('reading the places of a run', () => {
     expect(found.get(shrine)?.commemorates?.subjects.map((s) => s.item)).toEqual([PILGRIMAGE]);
   });
 
+  it('carries the form a depicts statement shows its figure in, on the line the figure stands on (#2485)', async () => {
+    const found = await readCommemorates([
+      { qid: GODIVA_STATUE, articleUrl: null, label: 'Lady Godiva equestrian statue' },
+      { qid: NELSONS_COLUMN, articleUrl: null },
+    ], subsetOnlyDoor(), wiki({}, {}));
+    // Lady Godiva is a person the statue shows, so the reading names her as its dedication, with her role.
+    expect(found.get(GODIVA_STATUE)?.commemorates).toEqual({
+      via: 'depicts', subjects: [{ item: GODIVA, label: 'Lady Godiva', articleUrl: null, role: 'equestrian' }],
+    });
+    expect(found.get(NELSONS_COLUMN)?.commemorates?.subjects[0]).not.toHaveProperty('role');
+  });
+
   it('asks no category of a place with no English article', async () => {
     const read = wiki({}, {});
     const found = await readCommemorates([{ qid: HERMANNSDENKMAL, articleUrl: null }], subsetOnlyDoor(), read);
@@ -527,7 +546,30 @@ describe('the live twins', () => {
     expect(answer.get(ALEXANDER_COLUMN)?.namedAfter).toEqual([ALEXANDER_I]);
     expect(answer.get(HERMANNSDENKMAL)?.mainSubjects).toEqual([ARMINIUS]);
     expect(answer.get(HIROSHIMA_PEACE_MEMORIAL)?.significantEvents).toEqual([BOMBING_OF_HIROSHIMA]);
+    expect(answer.get(NELSONS_COLUMN)?.roles).toBeUndefined();
     expect(subsetSubjectClaims).not.toHaveBeenCalled();
+  });
+
+  it("read the role a depicts statement names, by the role's English label, in the same question (#2485)", async () => {
+    const sparql = vi.fn<SparqlFn>(async () => [
+      { e: entity(GODIVA_STATUE), depicts: entity(GODIVA) },
+      { e: entity(GODIVA_STATUE), shown: entity(GODIVA), role: entity('Q2730732'), roleLabel: { value: 'equestrian' } },
+    ]);
+    const answer = await fetchSubjectClaims(sparql, [GODIVA_STATUE]);
+    expect(answer.get(GODIVA_STATUE)).toMatchObject({ depicts: [GODIVA], roles: { [GODIVA]: 'equestrian' } });
+    expect(sparql).toHaveBeenCalledTimes(1);
+    expect(sparql.mock.calls[0][0]).toContain('pq:P3831');
+    expect(sparql.mock.calls[0][0]).toContain('wikibase:BestRank');
+  });
+
+  it('take the lowest role id where a figure has two, whatever order the rows come in (#2485)', async () => {
+    // Equestrian (Q2730732) and woman (Q467): the answer has no row order, so the role must not follow it.
+    const equestrian = { e: entity(GODIVA_STATUE), shown: entity(GODIVA), role: entity('Q2730732'), roleLabel: { value: 'equestrian' } };
+    const woman = { e: entity(GODIVA_STATUE), shown: entity(GODIVA), role: entity('Q467'), roleLabel: { value: 'woman' } };
+    for (const rows of [[equestrian, woman], [woman, equestrian]]) {
+      const answer = await fetchSubjectClaims(vi.fn<SparqlFn>(async () => rows), [GODIVA_STATUE]);
+      expect(answer.get(GODIVA_STATUE)?.roles).toEqual({ [GODIVA]: 'woman' });
+    }
   });
 
   it('read what each value is, and no label the service answers with an id', async () => {
@@ -555,6 +597,22 @@ describe('the live twins', () => {
     const answer = await fetchSubjectKinds(sparql, [JESUS, WW2]);
     expect(answer.get(JESUS)).toEqual(holy('Jesus Christ'));
     expect(answer.get(WW2)).toEqual(KINDS.get(WW2));
+  });
+});
+
+describe('the form a work shows its figures in (#2485)', () => {
+  const reading = (): PlaceReading => ({
+    commemorates: null, depicts: { via: 'depicts', subjects: [{ item: GODIVA, label: 'Lady Godiva', articleUrl: null }] },
+  });
+
+  it('gives each figure the role its statement names, and leaves a reading without roles as it was', () => {
+    expect(withRoles(reading(), { [GODIVA]: 'equestrian' }).depicts?.subjects[0].role).toBe('equestrian');
+    expect(withRoles(reading(), undefined)).toEqual(reading());
+    expect(withRoles(reading(), { [NELSON]: 'admiral' })).toEqual(reading());
+  });
+
+  it('takes no role longer than a card can say', () => {
+    expect(withRoles(reading(), { [GODIVA]: 'e'.repeat(61) })).toEqual(reading());
   });
 });
 

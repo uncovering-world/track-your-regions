@@ -60,6 +60,11 @@
  * Quixote and Sancho Panza. A horse, a lion or a sword is no one. This never
  * changes the dedication.
  *
+ * A `P180` statement may say in what form the work shows its figure, by its
+ * `P3831` *object of statement has role* (#2485): the Lady Godiva statue in
+ * Coventry shows Lady Godiva as an equestrian. The role item's English label
+ * goes on that figure, on whichever line it stands (`withRoles`).
+ *
  * Statements are read at their best rank, in the item's order; a category's
  * subjects by item id. A person is `P31` human (Q5); an event carries a point
  * in time (`P585`), a start (`P580`) or an end (`P582`). A value with no label
@@ -77,8 +82,8 @@
  */
 
 import {
-  DEPICTION_STEPS, MAX_COMMEMORATED_SUBJECTS, type CommemoratedSubject, type Commemorates, type CommemorationStep, type Depicts,
-  type DepictionStep,
+  DEPICTION_STEPS, MAX_COMMEMORATED_SUBJECTS, MAX_SUBJECT_ROLE_LENGTH, tidyRole, type CommemoratedSubject, type Commemorates,
+  type CommemorationStep, type Depicts, type DepictionStep,
 } from '@tyr/shared/commemorates';
 import { chunk, fetchEnglishArticles, values, type SparqlFn } from '../wikidataQueries.js';
 import {
@@ -114,7 +119,16 @@ export interface SubjectClaims {
   depicts: string[];
   /** `P793` significant event, which may narrow a war the reading names (`warNarrowing.ts`). */
   significantEvents: string[];
+  /**
+   * The form each depicted item is shown in, by item, where the `P180`
+   * statement's `P3831` *object of statement has role* names one with an
+   * English label (#2485): Lady Godiva → equestrian.
+   */
+  roles?: Record<string, string>;
 }
+
+/** The claims that list items, each read from a column of the live answer. */
+type ClaimList = Exclude<keyof SubjectClaims, 'roles'>;
 
 /** What a value is: its label, whether it is a person or an event, and whether it is a holy figure. */
 export interface SubjectKind {
@@ -343,10 +357,17 @@ export function readingOfPlace(
 }
 
 /** Which binding of the live answer each list of a place's claims is read from. */
-const CLAIM_COLUMNS: ReadonlyArray<[string, keyof SubjectClaims]> = [
+const CLAIM_COLUMNS: ReadonlyArray<[string, ClaimList]> = [
   ['commemorates', 'commemorates'], ['subject', 'mainSubjects'], ['namesake', 'namedAfter'], ['depicts', 'depicts'],
   ['happened', 'significantEvents'],
 ];
+
+/**
+ * The role item behind each role a place's live claims hold, by the item shown:
+ * the live answer has no row order, so the lowest role id wins, as in the
+ * subset reading, and a run does not flip a role between two it names.
+ */
+const roleItemOf = new WeakMap<SubjectClaims, Map<string, string>>();
 
 /** What one row of the live answer adds to its place's claims: one statement. */
 function addClaim(claims: SubjectClaims, row: SparqlBinding): void {
@@ -354,6 +375,16 @@ function addClaim(claims: SubjectClaims, row: SparqlBinding): void {
     const value = extractQid(row[column]?.value ?? '');
     if (isQid(value)) claims[list].push(value);
   }
+  const shown = extractQid(row.shown?.value ?? '');
+  const role = extractQid(row.role?.value ?? '');
+  const label = row.roleLabel?.value;
+  if (!isQid(shown) || !isQid(role) || !label) return;
+  const chosen = roleItemOf.get(claims) ?? new Map<string, string>();
+  const current = chosen.get(shown);
+  if (current !== undefined && byItem(current, role) <= 0) return;
+  chosen.set(shown, role);
+  roleItemOf.set(claims, chosen);
+  claims.roles = { ...claims.roles, [shown]: label };
 }
 
 /** The claims of each place, as `subsetSubjectClaims` answers; a place that names none has no entry. */
@@ -362,10 +393,14 @@ export async function fetchSubjectClaims(sparql: SparqlFn, qids: string[]): Prom
   const out = new Map<string, SubjectClaims>();
   for (const batch of chunk(qids, BATCH)) {
     const rows = await sparql(`
-      SELECT ?e ?commemorates ?subject ?namesake ?depicts ?happened WHERE {
+      SELECT ?e ?commemorates ?subject ?namesake ?depicts ?happened ?shown ?role ?roleLabel WHERE {
         VALUES ?e { ${values(batch)} }
         { ?e wdt:P547 ?commemorates } UNION { ?e wdt:P921 ?subject } UNION { ?e wdt:P138 ?namesake } UNION { ?e wdt:P180 ?depicts }
         UNION { ?e wdt:P793 ?happened }
+        UNION {
+          ?e p:P180 ?statement . ?statement a wikibase:BestRank ; ps:P180 ?shown ; pq:P3831 ?role .
+          ?role rdfs:label ?roleLabel . FILTER(LANG(?roleLabel) = "en")
+        }
       }`, { kind: 'edges', label: `whom or what ${batch.length} places commemorate` });
     for (const row of rows) {
       const qid = extractQid(row.e?.value ?? '');
@@ -543,7 +578,30 @@ export async function readCommemorates(
   await narrowWarReadings(places, out, claims, { kinds: known, articles }, wiki, kindsOf);
   if (leads) await readLeadDedications(places, out, { kinds: known, articles }, wiki, kindsOf, leads);
   for (const reading of out.values()) withoutDedicated(reading);
+  for (const [qid, reading] of out) out.set(qid, withRoles(reading, claims.get(qid)?.roles));
   return out;
+}
+
+/**
+ * The reading with each subject the place's `P180` shows in a role carrying
+ * it (#2485), on whichever line it stands: Lady Godiva is the person the
+ * statue in Coventry is raised for, and the form it shows her in is still
+ * what its *depicts* statement says. A role longer than a short phrase is no
+ * role a card can say, and is left out.
+ */
+export function withRoles(reading: PlaceReading, roles: Readonly<Record<string, string>> | undefined): PlaceReading {
+  if (!roles) return reading;
+  const roled = <T extends Commemorates | Depicts>(value: T | null): T | null => {
+    if (!value) return value;
+    return {
+      ...value,
+      subjects: value.subjects.map((subject) => {
+        const role = tidyRole(Object.hasOwn(roles, subject.item) ? roles[subject.item] : '');
+        return role && role.length <= MAX_SUBJECT_ROLE_LENGTH ? { ...subject, role } : subject;
+      }),
+    };
+  };
+  return { ...reading, commemorates: roled(reading.commemorates), depicts: roled(reading.depicts) };
 }
 
 /**

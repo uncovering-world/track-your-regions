@@ -45,24 +45,25 @@ export interface Terms {
 
 /**
  * Each entity's label and description in the first of the label service's
- * languages that has one, as `SERVICE wikibase:label` answers; kept entities
- * and the labels ring both have theirs in `wikidata_labels`.
+ * languages that has one, as `SERVICE wikibase:label` answers, or of the
+ * languages asked for; kept entities and the labels ring both have theirs in
+ * `wikidata_labels`.
  */
-export async function termsOf(ids: string[]): Promise<Map<string, Terms>> {
+export async function termsOf(ids: string[], languages: readonly string[] = LANGUAGES): Promise<Map<string, Terms>> {
   const out = new Map<string, Terms>();
   if (!ids.length) return out;
   const result = await pool.query<{ id: string; language: string; label: string | null; description: string | null }>(
     'SELECT id, language, label, description FROM wikidata_labels WHERE id = ANY($1::text[]) AND language = ANY($2::text[])',
-    [ids, LANGUAGES],
+    [ids, languages],
   );
   const byId = new Map<string, Map<string, { label: string | null; description: string | null }>>();
   for (const row of result.rows) {
     if (!byId.has(row.id)) byId.set(row.id, new Map());
     byId.get(row.id)!.set(row.language, row);
   }
-  for (const [id, languages] of byId) {
+  for (const [id, byLanguage] of byId) {
     const first = (field: 'label' | 'description') =>
-      LANGUAGES.map(language => languages.get(language)?.[field] ?? null).find(value => value !== null) ?? null;
+      languages.map(language => byLanguage.get(language)?.[field] ?? null).find(value => value !== null) ?? null;
     out.set(id, { label: first('label'), description: first('description') });
   }
   return out;

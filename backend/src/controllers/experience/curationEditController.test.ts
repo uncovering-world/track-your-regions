@@ -637,6 +637,17 @@ describe('editExperience and whom a place commemorates (#2144)', () => {
     expect(audited()['metadata.depicts']).toEqual({ old: before, new: { via: 'curator', subjects: [VISHNU, GARUDA] } });
   });
 
+  it('stores the form each figure is shown in with it, and an emptied role as none (#2485)', async () => {
+    // The Lady Godiva equestrian statue (Q17540305) depicts Lady Godiva (Q106077) as an equestrian.
+    const GODIVA = { item: 'Q106077', label: 'Lady Godiva', articleUrl: null };
+    queueQueries({ lockedCurated: [], lockedRow: { metadata: { depicts: { via: 'depicts', subjects: [GODIVA] } } } });
+
+    await editWith({ depicts: [{ ...GODIVA, role: 'as equestrian' }, { ...GARUDA, role: ' ' }] }).done;
+
+    expect(patch()).toEqual({ depicts: { via: 'curator', subjects: [{ ...GODIVA, role: 'equestrian' }, GARUDA] } });
+    expect(updatedClaims()).toEqual(['metadata.depicts']);
+  });
+
   it('moves a subject from one line to the other in one edit, both lines claimed (#2421)', async () => {
     // A holy figure the reading put under Commemorates, listed under Depicts instead.
     queueQueries({ lockedCurated: [], lockedRow: { metadata: { commemorates: { via: 'statues-category', subjects: [GARUDA] } } } });
