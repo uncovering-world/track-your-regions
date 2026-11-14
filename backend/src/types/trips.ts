@@ -82,10 +82,17 @@ export const TRIP_NAMED_TWICE = 'Each trip can be given only one new date';
 /**
  * New dates for several of the traveller's trips at once: the offer's
  * "Change" (#2120). Each trip once, since one statement writes them all and
- * two dates for one trip would leave which of them stays undefined.
+ * two dates for one trip would leave which of them stays undefined. `from`
+ * moves a trip only while it still holds that date: the offer's question
+ * about the dates it guessed, and its Undo, move only what nobody has
+ * changed since, in this tab or another.
  */
 export const changeTripsBodySchema = z.object({
-  trips: z.array(z.object({ id: bodyRowIdSchema, date: tripDateBodySchema })).min(1).max(RESTORE_LIMITS.trips),
+  trips: z.array(z.object({
+    id: bodyRowIdSchema,
+    date: tripDateBodySchema,
+    from: tripDateBodySchema.optional().describe('The date the trip must still hold to be moved: a trip changed since is left out.'),
+  })).min(1).max(RESTORE_LIMITS.trips),
 }).refine(body => new Set(body.trips.map(trip => trip.id)).size === body.trips.length, {
   message: TRIP_NAMED_TWICE,
 });

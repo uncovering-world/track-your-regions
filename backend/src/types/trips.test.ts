@@ -55,4 +55,12 @@ describe("a trip's date as a request carries it (#2120)", () => {
     expect(twice.success).toBe(false);
     expect(twice.error?.issues.map(issue => issue.message)).toEqual([TRIP_NAMED_TWICE]);
   });
+
+  it('takes the date a trip must still hold to be moved, held to the same rules as the new one', () => {
+    const date = (year: number, month: number | null = null, day: number | null = null) => ({ year, month, day });
+    expect(changeTripsBodySchema.safeParse({ trips: [{ id: 7, date: date(2019), from: date(2026, 11, 14) }] }).success)
+      .toBe(true);
+    expect(changeTripsBodySchema.safeParse({ trips: [{ id: 7, date: date(2019), from: date(2026, 2, 30) }] }).success)
+      .toBe(false);
+  });
 });
