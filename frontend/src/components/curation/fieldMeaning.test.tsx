@@ -454,4 +454,14 @@ describe('whom a place commemorates (#2144)', () => {
       .toBe('Added: Vishnu. Listed by a curator.');
     expect(said('metadata.depicts', { via: 'curator', subjects: [] })).toBe('no figure named');
   });
+
+  it('words the form a figure is shown in, and says when only that changed (#2485)', () => {
+    // The Lady Godiva equestrian statue (Q17540305) depicts Lady Godiva (Q106077) as an equestrian.
+    const GODIVA = { item: 'Q106077', label: 'Lady Godiva', articleUrl: null };
+    const roled = { via: 'depicts', subjects: [{ ...GODIVA, role: 'equestrian' }] };
+    expect(said('metadata.depicts', roled)).toBe('Lady Godiva as equestrian');
+    expect(change('metadata.depicts', { via: 'depicts', subjects: [GODIVA] }, roled))
+      .toBe('Shown now: Lady Godiva as equestrian. Read from Wikidata’s “depicts”, someone the work shows.');
+    expect(change('metadata.depicts', roled, { via: 'curator', subjects: [GODIVA] })).toBe('Shown now: Lady Godiva, no longer as equestrian. Listed by a curator.');
+  });
 });

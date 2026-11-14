@@ -13,6 +13,13 @@
  * form (`useEditForm`), which sends it whole; an empty list is a value too,
  * the curator's word that the place commemorates nobody.
  *
+ * A figure the work shows in some form carries it as its role (#2485). The
+ * *Depicts* field has a "Shown as" box beside the search: every figure added
+ * while it holds a role takes that role, and the box keeps it for the next
+ * one, so the Neptune Fountain's four rivers are added under "women" with the
+ * role typed once. The chips are grouped by role, and each group and chip can
+ * change or drop its role (`SubjectRoleGroups`).
+ *
  * Each option shows the item's description under its label, so two people of
  * one name are told apart before one is picked. Wikidata is asked through the
  * product's own endpoint once the curator pauses typing, never from the
@@ -20,10 +27,9 @@
  */
 
 import { useState } from 'react';
-import { Autocomplete, Box, Chip, IconButton, TextField, Tooltip, Typography } from '@mui/material';
-import CancelIcon from '@mui/icons-material/Cancel';
-import SwapVertIcon from '@mui/icons-material/SwapVert';
+import { Autocomplete, Box, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import { MAX_SUBJECT_ROLE_LENGTH, tidyRole } from '@tyr/shared/commemorates';
 import {
   searchCommemorationSubjects,
   type CommemorationCandidate,
@@ -31,8 +37,9 @@ import {
 } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { SubjectRoleGroups, withRole } from './SubjectRoleGroups';
 
-/** One subject as the edit sends it: its Wikidata item, its label and its English article. */
+/** One subject as the edit sends it: its Wikidata item, its label, its English article and its role where it has one. */
 export type CommemoratedSubjectValue = EditExperienceBodyCommemoratesItem;
 
 /** The shortest name the endpoint searches for. */
@@ -43,9 +50,9 @@ const SEARCH_DELAY_MS = 300;
 /** The two lines a card can carry, and each one's words. */
 export type SubjectLine = 'commemorates' | 'depicts';
 
-const LINE_WORDS: Record<SubjectLine, { heading: string; none: string; add: string }> = {
-  commemorates: { heading: 'Commemorates', none: 'Nobody named', add: 'Add a person or event' },
-  depicts: { heading: 'Depicts', none: 'No figure named', add: 'Add a figure' },
+const LINE_WORDS: Record<SubjectLine, { heading: string; none: string; add: string; asksRole: boolean }> = {
+  commemorates: { heading: 'Commemorates', none: 'Nobody named', add: 'Add a person or event', asksRole: false },
+  depicts: { heading: 'Depicts', none: 'No figure named', add: 'Add a figure', asksRole: true },
 };
 
 function noOptionsText(query: string, failed: boolean): string {
@@ -67,6 +74,8 @@ export function CommemoratesField({ line = 'commemorates', subjects, elsewhere =
   disabled?: boolean;
 }) {
   const [input, setInput] = useState('');
+  // Kept after each figure is added, so the figures that share a role are entered under one.
+  const [role, setRole] = useState('');
   const words = LINE_WORDS[line];
   const other = LINE_WORDS[line === 'commemorates' ? 'depicts' : 'commemorates'].heading;
   const query = useDebouncedValue(input.trim(), SEARCH_DELAY_MS);
@@ -82,71 +91,71 @@ export function CommemoratesField({ line = 'commemorates', subjects, elsewhere =
 
   const add = (candidate: CommemorationCandidate | null) => {
     if (!candidate || listed.has(candidate.item)) return;
-    onChange([...subjects, { item: candidate.item, label: candidate.label, articleUrl: candidate.articleUrl }]);
+    onChange([...subjects, withRole({ item: candidate.item, label: candidate.label, articleUrl: candidate.articleUrl }, role)]);
     setInput('');
   };
 
   return (
     <Box>
       <Typography variant="body2" sx={{ mb: 0.5 }}>{words.heading}</Typography>
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+      <Box sx={{ mb: 1 }}>
         {subjects.length === 0 ? (
           <Typography variant="caption" color="text.secondary">{words.none}</Typography>
-        ) : subjects.map(subject => (
-          <Box key={subject.item} sx={{ display: 'inline-flex', alignItems: 'center' }}>
-            <Chip
-              label={subject.label}
-              title={subject.item}
-              size="small"
-              variant="outlined"
-              disabled={disabled}
-              onDelete={() => onChange(subjects.filter(kept => kept.item !== subject.item))}
-              deleteIcon={<CancelIcon titleAccess={`Remove ${subject.label}`} />}
-            />
-            {onMove && (
-              <Tooltip title={`Move to ${other}`}>
-                <IconButton size="small" disabled={disabled} aria-label={`Move ${subject.label} to ${other}`} onClick={() => onMove(subject)}>
-                  <SwapVertIcon fontSize="inherit" />
-                </IconButton>
-              </Tooltip>
-            )}
-          </Box>
-        ))}
-      </Box>
-      <Autocomplete<CommemorationCandidate>
-        options={options}
-        value={null}
-        inputValue={input}
-        onInputChange={(_event, value, reason) => setInput(reason === 'reset' ? '' : value)}
-        onChange={(_event, candidate) => add(candidate)}
-        // The endpoint has already searched; the field filters nothing out itself.
-        filterOptions={candidates => candidates}
-        getOptionLabel={candidate => candidate.label}
-        isOptionEqualToValue={(candidate, other) => candidate.item === other.item}
-        loading={search.isFetching}
-        noOptionsText={noOptionsText(query, search.isError)}
-        disabled={disabled}
-        size="small"
-        fullWidth
-        renderOption={(props, candidate) => (
-          <li {...props} key={candidate.item}>
-            <Box>
-              <Typography variant="body2">{candidate.label}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {candidate.description ? `${candidate.description} · ${candidate.item}` : candidate.item}
-              </Typography>
-            </Box>
-          </li>
+        ) : (
+          <SubjectRoleGroups subjects={subjects} onChange={onChange} onMove={onMove} other={other}
+            typedRole={tidyRole(role)} disabled={disabled} />
         )}
-        renderInput={params => (
+      </Box>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'flex-start' }}>
+        <Autocomplete<CommemorationCandidate>
+          sx={{ flex: '1 1 14rem' }}
+          options={options}
+          value={null}
+          inputValue={input}
+          onInputChange={(_event, value, reason) => setInput(reason === 'reset' ? '' : value)}
+          onChange={(_event, candidate) => add(candidate)}
+          // The endpoint has already searched; the field filters nothing out itself.
+          filterOptions={candidates => candidates}
+          getOptionLabel={candidate => candidate.label}
+          isOptionEqualToValue={(candidate, other) => candidate.item === other.item}
+          loading={search.isFetching}
+          noOptionsText={noOptionsText(query, search.isError)}
+          disabled={disabled}
+          size="small"
+          fullWidth
+          renderOption={(props, candidate) => (
+            <li {...props} key={candidate.item}>
+              <Box>
+                <Typography variant="body2">{candidate.label}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {candidate.description ? `${candidate.description} · ${candidate.item}` : candidate.item}
+                </Typography>
+              </Box>
+            </li>
+          )}
+          renderInput={params => (
+            <TextField
+              {...params}
+              label={words.add}
+              error={!!error}
+              helperText={error ?? 'Found on Wikidata by name'}
+            />
+          )}
+        />
+        {words.asksRole && (
           <TextField
-            {...params}
-            label={words.add}
-            error={!!error}
-            helperText={error ?? 'Found on Wikidata by name'}
+            label="Shown as"
+            value={role}
+            onChange={event => setRole(event.target.value)}
+            placeholder="women"
+            helperText="Given to each figure you add"
+            disabled={disabled}
+            size="small"
+            sx={{ flex: '1 0 10rem' }}
+            slotProps={{ htmlInput: { maxLength: MAX_SUBJECT_ROLE_LENGTH } }}
           />
         )}
-      />
+      </Box>
     </Box>
   );
 }

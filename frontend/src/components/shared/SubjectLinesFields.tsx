@@ -3,7 +3,8 @@
  * whom the place commemorates (#2144) and, where the card can carry the line,
  * what the work depicts (#2421). A subject stands on one line: moved, it leaves
  * its list and joins the other's end, so Garuda read as commemorated is listed
- * under *Depicts* instead. Both lists are the dialog's form values, sent whole.
+ * under *Depicts* instead, with the role it carries. Both lists are the
+ * dialog's form values, sent whole.
  */
 import { CommemoratesField, type CommemoratedSubjectValue, type SubjectLine } from './CommemoratesField';
 
@@ -20,9 +21,17 @@ export function moveBetweenLines(lines: Lines, from: SubjectLine, subject: Comme
   } as Lines;
 }
 
-/** One line's subjects as the detail read serves them, in the shape the edit sends. */
-export function subjectValues(read: readonly { qid: string; label: string; article_url: string | null }[] | undefined): CommemoratedSubjectValue[] {
-  return (read ?? []).map(subject => ({ item: subject.qid, label: subject.label, articleUrl: subject.article_url }));
+/**
+ * One line's subjects as the detail read serves them, in the shape the edit
+ * sends: a role only where the subject has one (#2485), so a line without
+ * roles compares and sends as it always did.
+ */
+export function subjectValues(
+  read: readonly { qid: string; label: string; article_url: string | null; role?: string | null }[] | undefined,
+): CommemoratedSubjectValue[] {
+  return (read ?? []).map(subject => ({
+    item: subject.qid, label: subject.label, articleUrl: subject.article_url, ...(subject.role ? { role: subject.role } : {}),
+  }));
 }
 
 export function SubjectLinesFields({ lines, errors, onChange, showsDepicts, disabled }: {
