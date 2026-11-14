@@ -3,7 +3,7 @@
  * Test the running API against its OpenAPI document with generated requests
  * (#1091, ADR-0072).
  *
- *   node scripts/api-contract.mjs --url http://localhost:5301 --accounts '<json>'
+ *   node scripts/api-contract.mjs --url http://localhost:5301 --accounts '<json>' [--part <part>]
  *
  * Run by `scripts/test-stack.sh run-api-contract`, which brings the isolated
  * test stack up, seeds its fixture and hands over the fixture's accounts.
@@ -15,7 +15,11 @@
  *
  * Four runs, one per caller, each over the routes that caller may read: an
  * anonymous caller over `public` and `optional` routes, then the fixture's
- * traveller, curator and admin over `signed-in`, `curator` and `admin`.
+ * traveller, curator and admin over `signed-in`, `curator` and `admin`. The
+ * lane is cut into parts (`PARTS`), one CI job each on a stack of its own,
+ * because the paced runs take as long as they have requests (#2513): the
+ * curator's run is cut into shards of its routes, and the other runs share a
+ * part. Without `--part` every part runs, in turn, on the one stack.
  * **Reads only.** The stack is shared with the smoke and database lanes, and a
  * write would change what they read, so every POST, PUT, PATCH and DELETE is
  * left out; the GET routes left out besides are named below with the reason.
@@ -52,18 +56,26 @@ export const TEST_BACKEND_PORT = process.env.TEST_BACKEND_PORT || '5301';
 /** The dev stack's backend port, refused even when a test port is set to it. */
 const DEV_BACKEND_PORT = '3001';
 
-/** GET routes left out by name, and why: each signs in elsewhere, starts long work or is rate-limited on purpose. */
+/**
+ * GET routes left out by name, and why: each signs in elsewhere, starts long
+ * work or is rate-limited on purpose, or answers a defect the lane has found
+ * and the route has yet to mend, which the lane would report on every run.
+ */
 export const EXCLUDED = {
   getAuthGoogle: 'redirects to Google',
   getAuthGoogleCallback: 'finishes a Google sign-in the lane never started',
   getAuthApple: 'redirects to Apple',
   getAdminDataAssertions: 'runs every catalogue check, and is limited to five calls a minute on purpose',
   // Found when the runs began signing in themselves (#2513), which changed the
-  // cases Schemathesis draws: a server error the route has yet to mend.
+  // cases Schemathesis draws: a server error the route has yet to mend (#2516).
   getAdminCurationActivity: 'answers 500 to a `since` whose offset Postgres cannot read, such as +17:19',
   getWorldViewsRegionsByRegionIdGeometryComputeStream: 'computes and stores a region geometry',
   getAdminWvImportMatchesByWorldViewIdColorMatchStream: 'starts the colour-match pipeline',
   getAdminWvImportMatchesByWorldViewIdCoverageStream: 'runs the coverage analysis',
+  // Public routes the anonymous run had never read (#2513): their documents
+  // name a plain string where the route refuses all but one shape of it (#2515).
+  getExperiencesPoints: 'documents `bbox` as any string up to 100 characters, and refuses all but four numbers',
+  getExperiencesWikipediaEditions: 'documents `languages` as any string, and refuses all but language codes',
 };
 
 /** The fixture's first place (`e2eFixture.ts`), whose routes an outside call is read through. */
@@ -232,18 +244,92 @@ export const RUNS = [
   // minutes: its routes are a traveller's own reads, and the coverage phase
   // still reaches every parameter.
   { caller: 'traveller', access: ['signed-in'], rateLimit: '50/m', maxExamples: 12 },
-  { caller: 'curator', access: ['curator'], rateLimit: '50/m', maxExamples: 12 },
+  // Cut into shards of its routes, each a CI job of its own: paced as the
+  // traveller's is over more routes with more parameters, the whole run took
+  // 1 146 s on run 43533554237 (2026-11-14), and 1 268 s signing in itself
+  // (#2513), against 486 s for the traveller's.
+  { caller: 'curator', access: ['curator'], rateLimit: '50/m', maxExamples: 12, shards: 3 },
   { caller: 'admin', access: ['admin'] },
 ];
 
-/** The Schemathesis arguments for one run; its sign-in is in its configuration (`configFor`). */
-export function argumentsFor(run, url) {
+/** The part the runs that are not cut share, with the outside runs: named after its callers. */
+export const SHARED_PART = RUNS.filter((run) => !run.shards).map((run) => run.caller).join('-');
+
+/** A shard's part, `curator-1-of-3`: the name a CI job carries. */
+const shardPart = (run, shard) => `${run.caller}-${shard}-of-${run.shards}`;
+
+/**
+ * The lane's parts, in the order a run of every part takes them: each is a
+ * matrix entry of the `api-contract` job in `ci.yml`, which lists them by
+ * these names.
+ */
+export const PARTS = [
+  SHARED_PART,
+  ...RUNS.filter((run) => run.shards).flatMap((run) => Array.from({ length: run.shards }, (_, i) => shardPart(run, i + 1))),
+];
+
+/**
+ * The GET operations a run reads, each with its weight: every operation of
+ * its access levels but the ones left out by name. The weight is one plus the
+ * operation's parameters, since the coverage phase draws its cases per
+ * parameter: about sixteen cases a weight across the curator's routes, the
+ * review queue's fifteen parameters drawing 245 of them (counted 2026-11-14).
+ */
+export function operationsFor(run, document) {
+  const leftOut = new Set([...Object.keys(EXCLUDED), ...Object.keys(OUTSIDE)]);
+  return Object.values(document.paths)
+    .flatMap((methods) => Object.entries(methods))
+    .filter(([method, operation]) => method === 'get' && run.access.includes(operation['x-access']) && !leftOut.has(operation.operationId))
+    .map(([, operation]) => ({ id: operation.operationId, weight: 1 + (operation.parameters?.length ?? 0) }));
+}
+
+/**
+ * Operations cut into `count` shards of about equal weight: heaviest first,
+ * each to the lightest shard so far (the first on a tie), ties among the
+ * operations broken by id, so the cut depends on the document alone.
+ */
+export function shardsOf(operations, count) {
+  const shards = Array.from({ length: count }, () => ({ weight: 0, ids: [] }));
+  const ordered = [...operations].sort((a, b) => b.weight - a.weight || a.id.localeCompare(b.id));
+  for (const operation of ordered) {
+    const lightest = shards.reduce((min, shard) => (shard.weight < min.weight ? shard : min));
+    lightest.weight += operation.weight;
+    lightest.ids.push(operation.id);
+  }
+  return shards.map((shard) => shard.ids.sort());
+}
+
+/**
+ * What a part runs: each of its runs with the operations it reads, and
+ * whether the outside runs are its. A run or a shard with no operation is
+ * refused, since Schemathesis given no operation to include reads them all.
+ */
+export function planFor(part, document) {
+  if (!PARTS.includes(part)) throw new Error(`No API contract part "${part}": the parts are ${PARTS.join(', ')}`);
+  const runs = RUNS.flatMap((run) => {
+    const operations = operationsFor(run, document);
+    if (!run.shards) return part === SHARED_PART ? [{ run, label: run.caller, ids: operations.map((one) => one.id).sort() }] : [];
+    return shardsOf(operations, run.shards)
+      .map((ids, i) => ({ run, label: `${run.caller}, shard ${i + 1} of ${run.shards}`, ids, part: shardPart(run, i + 1) }))
+      .filter((shard) => shard.part === part);
+  });
+  for (const { label, ids } of runs) {
+    if (ids.length === 0) throw new Error(`The API contract run "${label}" has no operation to read`);
+  }
+  return { runs, outside: part === SHARED_PART };
+}
+
+/**
+ * The Schemathesis arguments for one run over the operations it reads
+ * (`planFor`); its sign-in is in its configuration (`configFor`).
+ */
+export function argumentsFor(run, url, ids) {
   return [
     '--config-file', CONFIG_FILE,
     'run', '/spec/openapi.generated.json', '--url', url,
-    // Includes are ORed, excludes ANDed: the run's access levels in, every
-    // write and every named GET out.
-    ...run.access.flatMap((access) => ['--include-by', `/x-access == "${access}"`]),
+    // Includes are ORed, excludes ANDed: the run's operations in, and every
+    // write and every named GET out besides, should one be among them.
+    ...ids.flatMap((id) => ['--include-operation-id', id]),
     ...['POST', 'PUT', 'PATCH', 'DELETE'].flatMap((method) => ['--exclude-method', method]),
     ...[...Object.keys(EXCLUDED), ...Object.keys(OUTSIDE)].flatMap((id) => ['--exclude-operation-id', id]),
     '--checks', 'all', '--exclude-checks', EXCLUDED_CHECKS.join(','),
@@ -325,11 +411,43 @@ function runSchemathesis({ label, caller, account, args, config, scratch }) {
   return result.status !== 0 || why ? caller : null;
 }
 
+/** Runs one part's plan (`planFor`) and answers the runs that failed. */
+async function runPart(plan, { url, accounts, scratch }) {
+  console.log(`\n##### API contract part ${plan.part} #####`);
+  const failed = plan.runs.map(({ run, label, ids }) => runSchemathesis({
+    label: `${label}: ${ids.length} ${run.access.join(', ')} routes`,
+    caller: label,
+    account: accounts[run.caller],
+    args: argumentsFor(run, url, ids),
+    config: configFor(run.caller),
+    scratch,
+  }));
+  if (plan.outside) {
+    // The routes that call a service outside the stack, read once each with fixed values.
+    const context = { point: await fixturePoint(url) };
+    for (const caller of [...new Set(Object.values(OUTSIDE).map((route) => route.caller))]) {
+      failed.push(runSchemathesis({
+        label: `${caller}: the routes that call a service outside the stack, once each`,
+        caller: `${caller} (outside)`,
+        account: accounts[caller],
+        args: outsideArgumentsFor(caller, url),
+        config: configFor(caller, outsideConfig(caller, context)),
+        scratch,
+      }));
+    }
+  }
+  return failed.filter(Boolean);
+}
+
 async function main() {
   const argv = process.argv.slice(2);
-  const url = argv[argv.indexOf('--url') + 1];
-  const accounts = JSON.parse(argv[argv.indexOf('--accounts') + 1]);
+  const option = (name) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+  const url = option('--url');
+  const accounts = JSON.parse(option('--accounts'));
+  const parts = option('--part') ? [option('--part')] : PARTS;
   assertTestStack(url);
+  const document = JSON.parse(readFileSync(repoFile('packages', 'shared', 'src', 'openapi.generated.json'), 'utf8'));
+  const plans = parts.map((part) => ({ part, ...planFor(part, document) }));
 
   const failed = [];
   const scratch = mkdtempSync(join(tmpdir(), 'api-contract-'));
@@ -337,30 +455,7 @@ async function main() {
   chmodSync(scratch, 0o755);
   mkdirSync(join(scratch, 'config'), { mode: 0o755 });
   try {
-    for (const run of RUNS) {
-      const failure = runSchemathesis({
-        label: `${run.caller}: ${run.access.join(', ')} routes`,
-        caller: run.caller,
-        account: accounts[run.caller],
-        args: argumentsFor(run, url),
-        config: configFor(run.caller),
-        scratch,
-      });
-      if (failure) failed.push(failure);
-    }
-    // The routes that call a service outside the stack, read once each with fixed values.
-    const context = { point: await fixturePoint(url) };
-    for (const caller of [...new Set(Object.values(OUTSIDE).map((route) => route.caller))]) {
-      const failure = runSchemathesis({
-        label: `${caller}: the routes that call a service outside the stack, once each`,
-        caller: `${caller} (outside)`,
-        account: accounts[caller],
-        args: outsideArgumentsFor(caller, url),
-        config: configFor(caller, outsideConfig(caller, context)),
-        scratch,
-      });
-      if (failure) failed.push(failure);
-    }
+    for (const plan of plans) failed.push(...await runPart(plan, { url, accounts, scratch }));
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

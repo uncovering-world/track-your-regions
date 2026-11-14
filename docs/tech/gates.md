@@ -642,8 +642,10 @@ Three things about that line are load-bearing.
   would skip the required contexts — `Lint & Type Check`, `Security Scan`,
   `Unit Tests`, `E2E Smoke` and `Performance (Lighthouse)`, the last two
   required since #1099 made the API contract lane, then a step of `E2E Smoke`,
-  blocking (the lane's own job since #2219, `API Contract`, is required once the
-  maintainer lists it; until then the merge rule of § Before merging holds it)
+  blocking (the lane's own job since #2219, four checks since #2513, one per
+  part — `API Contract (anonymous-traveller-admin)` and `API Contract
+  (curator-1-of-3)` to `(curator-3-of-3)` — is required once the maintainer
+  lists them; until then the merge rule of § Before merging holds it)
   — each would report Success, and the pull request would be mergeable with
   nothing run on it.
 - **No job waits on another but `Changes`.** The build, the smoke lane and
@@ -655,7 +657,7 @@ Three things about that line are load-bearing.
   the same required check (ADR-0062 decision 2).
 
 **Every job that pulls or builds through Docker Hub logs in first** (`Lint & Type Check`, `Security
-Scan`, `Trivy Image Scan`, `E2E Smoke`, `API Contract`, `Performance (Lighthouse)`;
+Scan`, `Trivy Image Scan`, `E2E Smoke`, each part of `API Contract`, `Performance (Lighthouse)`;
 `docker/login-action`, pinned by commit). Anonymous pulls count against a budget every GitHub-hosted runner behind one address
 shares, and on 2026-10-09 a busy hour drew `toomanyrequests` on `redocly/cli`, `lycheeverse/lychee`,
 `semgrep/semgrep` and the test stack's `node:22-alpine` in one afternoon, failing four jobs on a
@@ -700,7 +702,9 @@ run. The `api-contract` job runs `npm run test:api`, the API contract lane
 (§ The API contract), on a stack of its own, beside the smoke job rather than
 as a step after its lanes (#2219): it reads `job_api_contract`, a job-level key
 as `job_smoke` is, and the lane's own script stands the stack up, seeds it and
-takes it down (§ The job graph says what the split bought).
+takes it down (§ The job graph says what the split bought). The job is a matrix
+of the lane's parts (#2513), one runner and one stack each, and every part reads
+the same key, so the map runs or skips them together.
 
 A scheduled run (`on: schedule`, weekly) has no base, so the `Changes` job sends
 the zero sha and every gate applies — see the calendar under *What the map does
@@ -845,6 +849,34 @@ sets the run's wall-clock time rather than the sum. Measured on the pull request
 created, against about 26 minutes for the smoke job alone before. Each job's `timeout-minutes`
 states the measurement it was set from in its comment.
 
+**The API contract lane in four parts — 2026-11-14** (#2513). On its own the job grew with
+every curator route, since its paced runs take as long as they have requests, and on run
+43533554237 it took 28 min 32 s of its 30. The time went to the paced runs, read off that run's
+log:
+
+| Phase | Time |
+|-------|------|
+| the job's setup, the stack's start and its seed | 1 min 44 s |
+| anonymous run, 983 cases, unpaced | 12 s |
+| traveller run, 334 cases at 50 a minute: coverage 181 s, fuzzing 182 s | 363 s |
+| curator run, 980 cases at 50 a minute: coverage 965 s, fuzzing 181 s | 1 146 s |
+| admin run, 3 342 cases, unpaced | 26 s |
+| the two outside runs | 31 s |
+
+Pull request #2511 added two curator reads (about 76 cases, 117 s), and its job was cancelled at
+the limit with every run passing (run 43535134060). `authenticatedLimiter` counts per address in
+each backend, so two runs side by side on one stack would share its sixty a minute and gain
+nothing: the parts run on runners of their own, each standing up its own stack, about two minutes
+a part. A run that signs in itself also draws more cases: measured on the test stack the same day,
+the traveller's run took 486 s and the curator's 1 268 s, the two curator shards of a first cut
+726 s and 542 s. The curator's routes are therefore cut into three shards of about equal weight
+(`shardsOf`), about 25 s a weight, and the other runs share a part. That makes about 11 1/2
+minutes for the shared part and 9 to 10 for each curator shard, under the 15 to 16 minutes
+`Performance (Lighthouse)` takes, so the run's wall-clock time is Lighthouse's again, for about six
+more runner-minutes than one job. Two shards would have cost two runner-minutes less, and left the
+heavier one at about 14 minutes, a route or two from Lighthouse. A curator route adds about half a
+minute to its shard, and a part that passes Lighthouse is the sign to cut it once more.
+
 The OpenAPI document (`packages/shared/src/openapi.generated.json`, ADR-0072) is what a native
 client is generated from, so a change to it can break a client that was built against the
 previous one: a path removed, a response field removed or narrowed, a request field newly
@@ -899,7 +931,7 @@ generates.
 
 `npm run test:api` (`scripts/test-stack.sh run-api-contract`, `scripts/api-contract.mjs`, #1091)
 holds the running backend to the document, in CI in a job of its own, `API Contract`, beside the
-smoke job (#2219, § The job graph). Schemathesis, pinned by digest, generates requests from
+smoke job (#2219, § The job graph), cut into parts, one check each (#2513, below). Schemathesis, pinned by digest, generates requests from
 the document, valid ones and deliberately invalid ones, and fails on:
 - an undocumented 500;
 - a response that does not match its schema, or a content type the document does not name;
@@ -941,6 +973,24 @@ backend's port included:
   curation activity read: a `since` whose offset Postgres cannot read, such as `+17:19`, which the
   route's schema accepts. That read is left out by name in `EXCLUDED` until the route refuses such
   an offset.
+- **Four parts, one CI job each** (#2513). `PARTS` in `scripts/api-contract.mjs` names them:
+  `anonymous-traveller-admin`, which also holds the outside runs, and `curator-1-of-3` to
+  `curator-3-of-3`, the curator's routes cut in three. The CI job is a matrix of exactly those names,
+  which `scripts/api-contract.test.mjs` holds it to, and each part shows as a check of its own,
+  `API Contract (<part>)`, with a limit of 20 minutes. A run reads its operations by id, worked out
+  from the document: every GET of its caller's access but the ones left out by name. A curator
+  shard takes the heaviest operation still unplaced into the lightest shard, an operation weighing
+  one plus its parameters, since the coverage phase draws about sixteen cases a weight. A new
+  route therefore joins a shard by itself, and the cut depends on the document alone. `npm run
+  test:api` runs every part in turn on one stack, and `npm run test:api -- curator-1-of-3` runs
+  that part alone, as its CI job does. Selecting by id also mends a gap: Schemathesis keeps only
+  the last of several `--include-by` options, so the anonymous run, which named `public` and
+  `optional`, had read the `optional` routes alone, and none of the seven `public` GET routes.
+  Five of them joined the lane with #2513: `/health`, the search, the kinds, a place's picture and
+  its finds. The other two are left out by name in `EXCLUDED` until their documents say what they
+  refuse: the points read documents `bbox` as any string and refuses all but four numbers, and the
+  Wikipedia editions read documents `languages` as any string and refuses all but language codes,
+  so a request the document allows is answered 400.
 - **Reads only.** Locally the stack may be the one the smoke and database lanes read, and a write
   would change what they read. The GET routes that cannot be read at all are left out by name,
   each with its reason, in `EXCLUDED`. `scripts/api-contract.test.mjs` fails on a name the document

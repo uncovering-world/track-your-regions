@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import {
-  argumentsFor, assertTestStack, configFor, CREDENTIAL_VARIABLES, EXCLUDED, OUTSIDE, outsideArgumentsFor, outsideConfig,
-  reportFailure, RUNS, SCHEMATHESIS,
+  argumentsFor, assertTestStack, configFor, CREDENTIAL_VARIABLES, EXCLUDED, operationsFor, OUTSIDE, outsideArgumentsFor,
+  outsideConfig, PARTS, planFor, reportFailure, RUNS, SCHEMATHESIS, shardsOf, SHARED_PART,
 } from './api-contract.mjs';
 import { repoFile } from './repo-root.mjs';
 
@@ -25,20 +26,63 @@ describe('the API contract lane', () => {
     expect(RUNS.flatMap((run) => run.access).sort()).toEqual([...levels].sort());
   });
 
-  it('runs reads only: every write method is excluded, and the run\'s levels included', () => {
-    const args = argumentsFor(RUNS[0], 'http://localhost:5301');
+  it('runs reads only: every write method is excluded, and the run\'s operations included by id', () => {
+    const args = argumentsFor(RUNS[0], 'http://localhost:5301', ['getHealth', 'getWorldViews']);
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
       expect(args.join(' ')).toContain(`--exclude-method ${method}`);
     }
-    expect(args).toContain('/x-access == "public"');
-    expect(args).toContain('/x-access == "optional"');
+    expect(args.join(' ')).toContain('--include-operation-id getHealth --include-operation-id getWorldViews');
+    // Schemathesis keeps only the last of several --include-by, which once left
+    // the public routes out of the anonymous run while it named both levels.
+    expect(args).not.toContain('--include-by');
   });
 
   it('keeps the traveller\'s and the curator\'s runs under the authenticated limit, which the environment cannot raise', () => {
     for (const caller of ['traveller', 'curator']) {
       const run = RUNS.find((one) => one.caller === caller);
-      expect(argumentsFor(run, 'http://localhost:5301').join(' ')).toContain('--rate-limit 50/m');
+      expect(argumentsFor(run, 'http://localhost:5301', ['getAuthMe']).join(' ')).toContain('--rate-limit 50/m');
     }
+  });
+
+  describe('the parts, one CI job each (#2513)', () => {
+    const plans = PARTS.map((part) => planFor(part, document));
+    const read = plans.flatMap((plan) => plan.runs.flatMap(({ run, ids }) => ids.map((id) => `${run.caller} ${id}`)));
+
+    it('read every GET operation of each run\'s levels exactly once, the ones left out by name aside', () => {
+      const expected = RUNS.flatMap((run) => operations
+        .filter((one) => one.method === 'get' && run.access.includes(one.access) && !EXCLUDED[one.id] && !OUTSIDE[one.id])
+        .map((one) => `${run.caller} ${one.id}`));
+      expect(read.sort()).toEqual(expected.sort());
+      expect(new Set(read).size).toBe(read.length);
+    });
+
+    it('cut the curator\'s routes into shards of about equal weight, every shard reading some', () => {
+      const curator = RUNS.find((run) => run.caller === 'curator');
+      const weights = operationsFor(curator, document);
+      const totals = shardsOf(weights, curator.shards)
+        .map((ids) => ids.reduce((sum, id) => sum + weights.find((one) => one.id === id).weight, 0));
+      expect(totals).toHaveLength(curator.shards);
+      expect(Math.max(...totals) - Math.min(...totals)).toBeLessThanOrEqual(Math.max(...weights.map((one) => one.weight)));
+      expect(shardsOf([{ id: 'b', weight: 3 }, { id: 'a', weight: 3 }, { id: 'c', weight: 1 }], 2)).toEqual([['a', 'c'], ['b']]);
+    });
+
+    it('give the outside runs to the shared part alone', () => {
+      expect(plans.filter((plan) => plan.outside)).toEqual([planFor(SHARED_PART, document)]);
+      expect(SHARED_PART).toBe('anonymous-traveller-admin');
+    });
+
+    it('refuse a part that does not exist, and a shard with nothing to read, which Schemathesis would read as everything', () => {
+      expect(() => planFor('curator-4-of-3', document)).toThrow(/No API contract part/);
+      expect(() => planFor('curator-1-of-3', { paths: {} })).toThrow(/no operation to read/);
+    });
+
+    it('are the matrix of the api-contract job in ci.yml, so each part is a check a pull request shows', () => {
+      const workflow = parse(readFileSync(repoFile('.github', 'workflows', 'ci.yml'), 'utf8'));
+      const job = workflow.jobs['api-contract'];
+      expect(job.strategy.matrix.part).toEqual(PARTS);
+      expect(job.strategy['fail-fast']).toBe(false);
+      expect(job.name).toBe('API Contract (${{ matrix.part }})');
+    });
   });
 
   describe('a signed-in run\'s token (#2513)', () => {
@@ -47,7 +91,7 @@ describe('the API contract lane', () => {
         const config = configFor(run.caller);
         expect(config).toContain('[auth.dynamic.openapi.bearer]\npath = "/api/auth/login"');
         expect(config).toContain('extract_selector = "/accessToken"');
-        expect(argumentsFor(run, 'http://localhost:5301')).not.toContain('-H');
+        expect(argumentsFor(run, 'http://localhost:5301', ['getAuthMe'])).not.toContain('-H');
       }
       expect(configFor('anonymous')).not.toContain('[auth');
     });
@@ -62,7 +106,7 @@ describe('the API contract lane', () => {
     it('fails every run, the outside ones too, on an operation that answered only 401 or 403', () => {
       for (const run of RUNS) expect(configFor(run.caller)).toContain('[warnings]\nfail-on = ["missing_auth"]');
       expect(configFor('curator', outsideConfig('curator', { point: 42 }))).toContain('fail-on = ["missing_auth"]');
-      for (const args of [argumentsFor(RUNS[2], 'http://localhost:5301'), outsideArgumentsFor('admin', 'http://localhost:5301')]) {
+      for (const args of [argumentsFor(RUNS[2], 'http://localhost:5301', ['getAuthMe']), outsideArgumentsFor('admin', 'http://localhost:5301')]) {
         expect(args.slice(0, 2)).toEqual(['--config-file', '/config/schemathesis.toml']);
         expect(args.join(' ')).toContain('--report json --report-json-path /report/report.json');
       }
@@ -103,9 +147,12 @@ describe('the API contract lane', () => {
     });
 
     it('are left out of every generated run', () => {
-      for (const run of RUNS) {
-        const args = argumentsFor(run, 'http://localhost:5301').join(' ');
-        for (const id of Object.keys(OUTSIDE)) expect(args).toContain(`--exclude-operation-id ${id}`);
+      for (const plan of PARTS.map((part) => planFor(part, document))) {
+        for (const { run, ids } of plan.runs) {
+          for (const id of Object.keys(OUTSIDE)) expect(ids).not.toContain(id);
+          const args = argumentsFor(run, 'http://localhost:5301', ids).join(' ');
+          for (const id of Object.keys(OUTSIDE)) expect(args).toContain(`--exclude-operation-id ${id}`);
+        }
       }
     });
 
