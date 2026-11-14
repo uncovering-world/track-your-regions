@@ -971,8 +971,10 @@ backend's port included:
   seven to nine of them were counted as covered under a warning. A run that signs in itself also
   draws other cases than one handed a header, and the admin run's new cases found a 500 in the
   curation activity read: a `since` whose offset Postgres cannot read, such as `+17:19`, which the
-  route's schema accepts. That read is left out by name in `EXCLUDED` until the route refuses such
-  an offset.
+  route's schema accepted. Every instant a request names is now held to what the database reads,
+  years 1 to 9999 and an offset of at most 14 hours, and parsed to UTC before a query sees it
+  (`instantSchema` in `backend/src/types/instants.ts`, #2516); the document carries the rule as a
+  pattern, and the read is back in the lane.
 - **Four parts, one CI job each** (#2513). `PARTS` in `scripts/api-contract.mjs` names them:
   `anonymous-traveller-admin`, which also holds the outside runs, and `curator-1-of-3` to
   `curator-3-of-3`, the curator's routes cut in three. The CI job is a matrix of exactly those names,
