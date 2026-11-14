@@ -216,6 +216,8 @@ services/
   }
   ```
 
+  `inTransaction` (`db/index.ts`) is that shape for a piece of work handed a client — `await inTransaction(async client => { ... })` — and is what a new transaction reaches for first; the writers of `regions` have their own, `inRegionTransaction`, which hands over a `RegionTx`.
+
   Respond *after* the `finally`, not inside the `try` — a `res.json()` before the release leaves the connection out on any path that throws between the two. `rollbackQuietly` (`db/index.ts`) is what keeps a failing ROLLBACK from replacing the error the caller needs to see, and its return value is the argument `release()` needs to destroy a client that can no longer be trusted. The rule is enforced: `no-restricted-syntax` in `backend/eslint.config.mjs` fails the lint on `pool.query('BEGIN' | 'COMMIT' | 'ROLLBACK' | 'SAVEPOINT' | 'RELEASE' …)`, because the prose form of it lived in a comment for months while four call sites went on doing it (#532).
 
 ### Backend Gotchas
