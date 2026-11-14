@@ -249,6 +249,19 @@ describe('an edit of whom a place commemorates (#2144)', () => {
     expect(line).not.toContain('[object Object]');
     expect(line).toBe('metadata.commemorates: "Dmitry Pozharsky, Kuzma Minin" → "(nobody)"');
   });
+
+  it('keeps the whole line, so a change of role alone still reads as one (#2485)', () => {
+    // The Neptune Fountain's four rivers: the role stands past the fortieth character.
+    const rivers = (role: string) => ({ via: 'curator', subjects: ['Rhine', 'Elbe', 'Oder', 'Vistula'].map(
+      label => ({ item: label, label, articleUrl: null, role }),
+    ) });
+    const line = formatLogDetails(entry('edited', {
+      'metadata.depicts': { old: { ...rivers('women'), subjects: [{ item: 'Neptune', label: 'Neptune', articleUrl: null }, ...rivers('women').subjects] },
+        new: { ...rivers('men'), subjects: [{ item: 'Neptune', label: 'Neptune', articleUrl: null }, ...rivers('men').subjects] } },
+    })) as string;
+
+    expect(line).toBe('metadata.depicts: "Neptune; Rhine, Elbe, Oder and Vistula as women" → "Neptune; Rhine, Elbe, Oder and Vistula as men"');
+  });
 });
 
 describe('an edit that replaced or removed the picture', () => {

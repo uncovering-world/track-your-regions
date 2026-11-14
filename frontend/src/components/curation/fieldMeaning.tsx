@@ -28,7 +28,9 @@ import type { ReactNode } from 'react';
 import { Chip, Link, Stack, Tooltip } from '@mui/material';
 import { isEmptyValue } from '@tyr/shared/equality';
 import { placeFieldUnseen } from '@tyr/shared/placeFields';
-import { commemoratesOf, depictsOf, type CommemorationVia } from '@tyr/shared/commemorates';
+import {
+  commemoratesOf, depictsOf, subjectLineParts, type CommemoratedSubject, type CommemorationVia,
+} from '@tyr/shared/commemorates';
 import type { ImageCredit } from '../../api/experiences';
 import type { ChangedField } from '../../api/reviewQueue';
 import { parseCriteria } from '../../utils/unescoCriteria';
@@ -323,16 +325,13 @@ function depictsLabel(value: unknown): ReactNode {
   return subjectsLabel(depictsOf(value)?.subjects) ?? 'no figure named';
 }
 
-function subjectsLabel(subjects: readonly { item: string; label: string; articleUrl: string | null }[] | undefined): ReactNode {
+/** The subjects as the card words them, each role after its figures (#2485). */
+function subjectsLabel(subjects: readonly CommemoratedSubject[] | undefined): ReactNode {
   if (!subjects?.length) return null;
-  return subjects.map((subject, i) => {
-    const href = safeHref(subject.articleUrl);
-    return (
-      <span key={subject.item}>
-        {i > 0 && ', '}
-        {href ? <ExternalLink href={href}>{subject.label}</ExternalLink> : subject.label}
-      </span>
-    );
+  return subjectLineParts(subjects).map((part, i) => {
+    if ('text' in part) return <span key={`text-${i}`}>{part.text}</span>;
+    const href = safeHref(part.subject.articleUrl);
+    return <span key={part.subject.item}>{href ? <ExternalLink href={href}>{part.subject.label}</ExternalLink> : part.subject.label}</span>;
   });
 }
 
@@ -346,15 +345,22 @@ function describeDepicts(before: unknown, after: unknown): string | null {
   return describeSubjects(depictsOf(before), depictsOf(after));
 }
 
-function describeSubjects(was: { via: CommemorationVia; subjects: { item: string; label: string }[] } | null,
+function describeSubjects(was: { via: CommemorationVia; subjects: CommemoratedSubject[] } | null,
   is: typeof was): string | null {
   const names = (value: typeof was, others: typeof was) => (value?.subjects ?? [])
     .filter(subject => !(others?.subjects ?? []).some(other => other.item === subject.item)).map(subject => subject.label);
   const added = names(is, was);
   const removed = names(was, is);
+  // A figure on both sides whose form changed (#2485): what it is shown as now.
+  const recast = (is?.subjects ?? []).flatMap((subject) => {
+    const before = was?.subjects.find(other => other.item === subject.item);
+    if (!before || (before.role ?? '') === (subject.role ?? '')) return [];
+    return [subject.role ? `${subject.label} as ${subject.role}` : `${subject.label}, no longer as ${before.role}`];
+  });
   const parts = [];
   if (added.length) parts.push(`Added: ${added.join(', ')}.`);
   if (removed.length) parts.push(`Removed: ${removed.join(', ')}.`);
+  if (recast.length) parts.push(`Shown now: ${recast.join(', ')}.`);
   if (is) parts.push(`${COMMEMORATION_SOURCE[is.via]}.`);
   return parts.length ? parts.join(' ') : null;
 }

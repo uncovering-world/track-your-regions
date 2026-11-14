@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../api/curation', () => ({
@@ -14,7 +14,7 @@ vi.mock('../../api/curation', () => ({
 }));
 
 import { searchCommemorationSubjects } from '../../api/curation';
-import { CommemoratesField, type CommemoratedSubjectValue } from './CommemoratesField';
+import { CommemoratesField, type CommemoratedSubjectValue, type SubjectLine } from './CommemoratesField';
 
 const mockedSearch = searchCommemorationSubjects as unknown as ReturnType<typeof vi.fn>;
 
@@ -23,12 +23,13 @@ const POZHARSKY = { item: 'Q15756', label: 'Dmitry Pozharsky', articleUrl: 'http
 const MININ = { item: 'Q469785', label: 'Kuzma Minin', articleUrl: null };
 
 /** The field with its list held as the dialog's form holds it, and every list it sent. */
-function renderField(initial: CommemoratedSubjectValue[], elsewhere: CommemoratedSubjectValue[] = []) {
+function renderField(initial: CommemoratedSubjectValue[], elsewhere: CommemoratedSubjectValue[] = [], line: SubjectLine = 'commemorates') {
   const sent: CommemoratedSubjectValue[][] = [];
   function Held() {
     const [subjects, setSubjects] = useState(initial);
     return (
       <CommemoratesField
+        line={line}
         subjects={subjects}
         elsewhere={elsewhere}
         onChange={(next) => { sent.push(next); setSubjects(next); }}
@@ -115,5 +116,72 @@ describe('CommemoratesField', () => {
     fireEvent.change(box, { target: { value: 'L' } });
     await new Promise(resolve => setTimeout(resolve, 400));
     expect(mockedSearch).not.toHaveBeenCalled();
+  });
+
+  describe('the form each figure is shown in (#2485)', () => {
+    // The Lady Godiva equestrian statue (Q17540305) depicts Lady Godiva (Q106077) as an equestrian.
+    const GODIVA = { item: 'Q106077', label: 'Lady Godiva', articleUrl: null };
+
+    /** Types a name in the search and picks the option it finds. */
+    async function addBySearch(name: string) {
+      const box = screen.getByLabelText('Add a figure');
+      box.focus();
+      fireEvent.change(box, { target: { value: name } });
+      fireEvent.click(await screen.findByRole('option', { name: accessible => accessible.includes(name) }));
+      await waitFor(() => expect(box).toHaveValue(''));
+    }
+
+    it('gives every figure added while "Shown as" holds a role that role, and keeps the box filled', async () => {
+      mockedSearch.mockImplementation(async (query: string) => [POZHARSKY, MININ, GODIVA]
+        .filter(subject => subject.label.includes(query))
+        .map(subject => ({ ...subject, description: null })));
+      const sent = renderField([GODIVA], [], 'depicts');
+
+      fireEvent.change(screen.getByLabelText('Shown as'), { target: { value: 'as  warriors ' } });
+      await addBySearch('Pozharsky');
+      await addBySearch('Minin');
+
+      expect(sent.at(-1)).toEqual([GODIVA, { ...POZHARSKY, role: 'warriors' }, { ...MININ, role: 'warriors' }]);
+      expect(screen.getByLabelText('Shown as')).toHaveValue('as  warriors ');
+      expect(screen.getByRole('group', { name: 'Shown as warriors' })).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: 'No role' })).toBeInTheDocument();
+    });
+
+    it('asks no role on the line of whom a place commemorates', () => {
+      renderField([MININ]);
+      expect(screen.queryByLabelText('Shown as')).toBeNull();
+    });
+
+    it("sets, changes and clears one figure's role from its menu", () => {
+      const sent = renderField([GODIVA, { ...MININ, role: 'warrior' }], [], 'depicts');
+
+      fireEvent.click(screen.getByRole('button', { name: 'What Lady Godiva is shown as' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'as warrior' }));
+      expect(sent.at(-1)).toEqual([{ ...GODIVA, role: 'warrior' }, { ...MININ, role: 'warrior' }]);
+
+      fireEvent.change(screen.getByLabelText('Shown as'), { target: { value: 'equestrian' } });
+      fireEvent.click(screen.getByRole('button', { name: 'What Lady Godiva is shown as' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'as equestrian' }));
+      expect(sent.at(-1)).toEqual([{ ...GODIVA, role: 'equestrian' }, { ...MININ, role: 'warrior' }]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'What Kuzma Minin is shown as' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'No role' }));
+      // No role is no key, the shape a subject without one always had.
+      expect(sent.at(-1)?.[1]).toEqual(MININ);
+    });
+
+    it("renames a group's role for every figure in it, and takes it off them all", () => {
+      const sent = renderField([{ ...POZHARSKY, role: 'warrior' }, { ...MININ, role: 'warrior' }, GODIVA], [], 'depicts');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Rename the role warrior' }));
+      const rename = within(screen.getByRole('group', { name: 'Shown as warrior' })).getByLabelText('Role of these figures');
+      fireEvent.change(rename, { target: { value: 'heroes' } });
+      fireEvent.keyDown(rename, { key: 'Enter' });
+      expect(sent.at(-1)).toEqual([{ ...POZHARSKY, role: 'heroes' }, { ...MININ, role: 'heroes' }, GODIVA]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Take the role heroes off these figures' }));
+      expect(sent.at(-1)).toEqual([POZHARSKY, MININ, GODIVA]);
+      expect(screen.queryByRole('group', { name: 'No role' })).toBeNull();
+    });
   });
 });

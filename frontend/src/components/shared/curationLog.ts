@@ -29,7 +29,7 @@
  */
 
 import { POINT_VERDICT_ACTIONS, type CurationLogAction } from '@tyr/shared/curationLog';
-import { commemoratesOf } from '@tyr/shared/commemorates';
+import { commemoratesOf, subjectLineParts } from '@tyr/shared/commemorates';
 import { fieldLabel } from '../curation/fieldMeaning';
 import { plural } from '../../utils/plural';
 import { creators } from '../../utils/creatorList';
@@ -250,9 +250,14 @@ function truncate40(value: unknown): string {
   // as no credit at all, and is called what that is called.
   if (isImageCredit(value)) return creditSentence(value) ?? '(empty)';
   // Whom a place commemorates is an object too (#2144): the names, as the card
-  // says them, and a curator's empty list as the nobody it means.
+  // says them with each role after its figures (#2485), whole rather than cut at
+  // forty, since a role stands at the end of its group and a change of role
+  // alone would otherwise read as no change; and a curator's empty list as the
+  // nobody it means.
   const commemorated = commemoratesOf(value);
-  if (commemorated) value = commemorated.subjects.map(subject => subject.label).join(', ') || '(nobody)';
+  if (commemorated) {
+    return subjectLineParts(commemorated.subjects).map(part => ('text' in part ? part.text : part.subject.label)).join('') || '(nobody)';
+  }
   // Absent rather than falsy. `metadata.inDanger` is a boolean and the counters are
   // numbers, so a source proposal this catalogue really receives — `inDanger: false`,
   // `artworkCount: 0` — read as "(empty)" under `value || …`, which is not what the row
