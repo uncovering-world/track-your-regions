@@ -142,6 +142,15 @@ trips chunk, fetched on the first tick.
   until a tick too far, too soon, or a burst of ticks asks again.
 - A batch says how many places it covers: "3 places visited today, 12 Nov", "When were you at these 3
   places?".
+- A wrong guess, once a session: a tick that turns a trip into past travels while places were saved as
+  today in the last 2 hours first asks "Museo del Prado and Museo Thyssen-Bornemisza were saved as
+  today. When were you there?" (two places by name, then "and 1 more place"), with the years of past
+  travels, *Earlier…*, *I don't remember* and *Today is right*. An answer says "Moved to 2019: Museo
+  del Prado and Museo Thyssen-Bornemisza · Undo" above the tick's own question, which offers "2019,
+  like Museo del Prado" first when the tick is far from them; a place dated meanwhile is left out of
+  that sentence. *Today is right* moves nothing and asks the tick's own question. A place saved
+  before midnight is named with the date its trip holds, "Museo del Prado was saved as 13 Nov,
+  Museo Thyssen-Bornemisza as today", and the choice that keeps the dates is then *That's right*.
 - The cross closes the line: a date it showed stays saved, a question it asked saves none. *Don't ask
   in this session* closes it and opens no line for 12 hours, or until the tab closes or who is signed in
   changes if that comes first, a reload keeping it; on a trip today

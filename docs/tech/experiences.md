@@ -6795,7 +6795,7 @@ answers none, as *Mark all* run again does (`xmax = 0` on the upsert). With the 
 a date for the visit just made, and tell a trip from a backfill by where and when the ticks were, without
 reading the places again; `POST /trips` and `PUT /trips` write such dates, one request for a batch.
 
-**A date is offered after every tick** (#2120, the mock's scenarios A, B and D). The shell hands each
+**A date is offered after every tick** (#2120, the mock's scenarios A to D). The shell hands each
 tick's `ticked` places to the trips chunk (`noteTicked` in `visitRemovals.ts`, handled by `lazyVisitTrips.tsx`), which applies the rules of
 `components/shared/trips/dateOffer.ts`: pure functions over a session the chunk keeps in memory, so a
 reload starts a fresh one and the tab's storage never holds where or when a traveller ticked. Only *Don't
@@ -6825,7 +6825,20 @@ makes the session a trip again from the tick it answers (`answerOffer`): the tic
 dropped but that one, so the jump and the burst are measured from it, the carried year goes, and the
 account's first hours no longer count (`saidToday`), the traveller having said outright where they are.
 The next ticks are dated today with no question until a jump or a burst moves the session back to past
-travels, which asks again. An unanswered question
+travels, which asks again. **A wrong guess is asked about once a session** (decided on #773, 2026-11-12):
+the session keeps in memory each trip the offer dated today on its own guess (`guesses`), a tick on a
+trip with no answer to follow, and drops it once the traveller dates it on the line or on the place's
+card, removes it, or unticks the place (`noteRemovedVisits` hands the places over). The tick whose
+signal turns a trip into past travels asks first about those saved within `WRONG_GUESS_HOURS`, two
+hours (an older one was likely made on the spot), and never again in the session (`askedAboutToday`).
+One answer moves them all with `PUT /trips`, each named with the date guessed as its `from`, so a
+trip dated meanwhile, in this tab or another, keeps its date and is not among those the line says it
+moved; a year is carried from the first of them, as an answer in past travels is. Its *Undo* sends each
+moved trip back to the date guessed, with the answer as its `from`, and takes back the carried year
+unless a later answer replaced it. The previous dates are the session's own, since it wrote them;
+the server checks them rather than reporting them, so neither the move nor its Undo overwrites a
+date set elsewhere. *Today is right* moves nothing, and reads *That's right* when a guess was
+saved before midnight, its date named in the question (`guessesSentence`). An unanswered question
 moves down to the newest tick and its answer covers every place ticked since; a batch is one line and
 one answer. The thresholds are starting values, to be tuned on use, in `offerThresholds.ts`; nothing
 about a traveller's pace leaves the tab. The line, its writes and its session are
