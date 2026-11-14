@@ -122,20 +122,28 @@ export async function addTrips(
 
 /**
  * Give several of the caller's trips new dates at once: the offer's "Change"
- * over every place its line covers (#2120)
+ * over every place its line covers, and its question about the dates it
+ * guessed with that question's Undo (#2120)
  * PUT /api/users/me/trips
  *
- * Another traveller's trip, or one gone meanwhile, is left out of the answer.
+ * Another traveller's trip, one gone meanwhile, or one that no longer holds
+ * the date its `from` names is left out of the answer and keeps its date.
+ * The date is compared on the row being written, so a change committed
+ * meanwhile is the one compared.
  */
 export async function changeTrips(
   { body, caller }: { body: z.output<typeof changeTripsBodySchema>; caller: Express.User },
 ): Promise<TripsDated> {
-  const dates = body.trips.map(({ id, date }) => ({ id, ...date }));
+  const dates = body.trips.map(({ id, date, from }) => ({
+    id, ...date, guarded: from !== undefined, from_year: from?.year, from_month: from?.month, from_day: from?.day,
+  }));
   const result = await pool.query<TripRow & { experience_id: number }>(`
     UPDATE user_visit_trips t SET year = d.year, month = d.month, day = d.day
-      FROM jsonb_to_recordset($3::jsonb) AS d(id int, year int, month int, day int),
+      FROM jsonb_to_recordset($3::jsonb)
+             AS d(id int, year int, month int, day int, guarded boolean, from_year int, from_month int, from_day int),
            (${ownTripAtWriteSql('$1', 'ANY($2::int[])', 'ot.id, ov.experience_id')}) own
      WHERE t.id = d.id AND own.id = d.id
+       AND (NOT d.guarded OR (t.year, t.month, t.day) IS NOT DISTINCT FROM (d.from_year, d.from_month, d.from_day))
      RETURNING own.experience_id, t.id, t.year, t.month, t.day, t.created_at
   `, [caller.id, dates.map(date => date.id), JSON.stringify(dates)]);
   return { success: true, trips: result.rows.map(row => ({ experienceId: row.experience_id, trip: tripOf(row) })) };

@@ -212,7 +212,7 @@ export const userRoutes = [
   }),
   defineRoute({
     ...OWN, method: 'put', path: '/me/trips',
-    summary: 'Give several of the caller\'s trips new dates at once',
+    summary: 'Give several of the caller\'s trips new dates at once, a trip with a `from` only while it still holds that date',
     body: changeTripsBodySchema,
     response: TripsDated,
     handler: changeTrips,

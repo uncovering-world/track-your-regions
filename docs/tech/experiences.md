@@ -6739,7 +6739,7 @@ traveller's trip, or a place the caller has no visit on, out of its answer:
 | `PATCH /trips/:tripId`, `DELETE /trips/:tripId` | changes a trip's date; removes a trip, answering it for an Undo that adds it again; the visit stays |
 | `POST /visits/restore` | puts back visits an untick removed, each with its trips, in one transaction; at most 1,000 visits and 10,000 trips (`RESTORE_LIMITS`), any of them on one visit |
 | `POST /trips` | adds one trip with one date to each of several places the caller has a visit on, a place named twice taking one; a place unticked meanwhile, or whose visit holds 365 trips, is left out of the answer and never ticked (`ownVisitsAtWriteSql`) |
-| `PUT /trips` | gives several of the caller's trips new dates in one statement, each trip named once or the request answers 400; another traveller's trip, or one removed meanwhile, is left out of the answer (`ownTripAtWriteSql`) |
+| `PUT /trips` | gives several of the caller's trips new dates in one statement, each trip named once or the request answers 400; another traveller's trip, or one removed meanwhile, is left out of the answer (`ownTripAtWriteSql`), and so is a trip named with a `from` that no longer holds that date, compared on the row being written, so a date changed in another tab meanwhile stays |
 
 Each write reads the place or the visit it writes for inside its own statement under a share lock
 (`placeAtWriteSql`, `ownTripAtWriteSql`, `ownVisitsAtWriteSql`). Every untick, of a place, a point or all of a place's places,

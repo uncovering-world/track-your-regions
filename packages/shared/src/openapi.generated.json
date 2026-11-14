@@ -3940,7 +3940,7 @@
       },
       "put": {
         "operationId": "putUsersMeTrips",
-        "summary": "Give several of the caller's trips new dates at once",
+        "summary": "Give several of the caller's trips new dates at once, a trip with a `from` only while it still holds that date",
         "tags": [
           "users"
         ],
@@ -19840,6 +19840,10 @@
                   "maximum": 2147483647
                 },
                 "date": {
+                  "$ref": "#/components/schemas/TripDateBody"
+                },
+                "from": {
+                  "description": "The date the trip must still hold to be moved: a trip changed since is left out.",
                   "$ref": "#/components/schemas/TripDateBody"
                 }
               },

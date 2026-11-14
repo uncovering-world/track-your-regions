@@ -1639,6 +1639,8 @@ export type ChangeTripsBodyTripsItem = {
      */
   id: number;
   date: TripDateBody;
+  /** The date the trip must still hold to be moved: a trip changed since is left out. */
+  from?: TripDateBody;
 };
 
 export interface ChangeTripsBody {
@@ -11462,7 +11464,7 @@ export const getPutUsersMeTripsUrl = () => {
 
 /**
  * Requires a signed-in caller.
- * @summary Give several of the caller's trips new dates at once
+ * @summary Give several of the caller's trips new dates at once, a trip with a `from` only while it still holds that date
  */
 export const putUsersMeTrips = async (changeTripsBody: ChangeTripsBody, options?: Parameters<typeof apiFetch>[1]): Promise<TripsDated> => {
 

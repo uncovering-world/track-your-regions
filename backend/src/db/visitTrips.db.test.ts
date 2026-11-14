@@ -126,6 +126,24 @@ describe("a visit's trips (#2120)", () => {
     expect(await dates(travellerId)).toEqual([[2016, 5, null], [null, null, null]]);
   });
 
+  it('moves a trip named with the date it holds, and leaves one changed meanwhile as it is', async () => {
+    // The offer guessed today for the Uffizi; another tab then set 2015 on one of its two trips.
+    const guessed = await add(travellerId, date(2026, 11, 14));
+    const changed = await add(travellerId, date(2026, 11, 14));
+    await changeTrip({ params: { tripId: changed.trip.id }, body: date(2015), caller: caller(travellerId) });
+
+    const moves = [guessed, changed].map(({ trip }) => ({ id: trip.id, date: date(2019), from: date(2026, 11, 14) }));
+    const moved = await changeTrips({ body: { trips: moves }, caller: caller(travellerId) });
+    expect(moved.trips.map(t => t.trip.id)).toEqual([guessed.trip.id]);
+    expect(await dates(travellerId)).toEqual([[2019, null, null], [2015, null, null]]);
+
+    // The Undo moves back only what still holds the answer: 2015 stays.
+    const back = [guessed, changed].map(({ trip }) => ({ id: trip.id, date: date(2026, 11, 14), from: date(2019) }));
+    expect((await changeTrips({ body: { trips: back }, caller: caller(travellerId) })).trips.map(t => t.trip.id))
+      .toEqual([guessed.trip.id]);
+    expect(await dates(travellerId)).toEqual([[2026, 11, 14], [2015, null, null]]);
+  });
+
   it('takes a trip up to the 365th, and refuses the next in words', async () => {
     const { trip } = await add(travellerId, date(2000));
     await pool.query(
