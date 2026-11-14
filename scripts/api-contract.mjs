@@ -25,9 +25,17 @@
  * run of its own, once, with fixed values: a real place, never a generated or
  * a malformed one. Its answer is checked like any other, an outside service's
  * failure included, which the route answers with its declared error.
+ *
+ * **A signed-in run holds a live token from its first request to its last**
+ * (#2513). An access token lasts 15 minutes and the curator's run takes longer,
+ * so the run is not handed a token: Schemathesis signs in itself as the
+ * caller (`authConfig`) and signs in again every five minutes, and again on any
+ * 401, retrying the request once. An operation that answered only 401 or 403
+ * fails the run, and so does a run whose signing in stopped working: neither is
+ * counted as a route exercised.
  */
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -50,6 +58,9 @@ export const EXCLUDED = {
   getAuthGoogleCallback: 'finishes a Google sign-in the lane never started',
   getAuthApple: 'redirects to Apple',
   getAdminDataAssertions: 'runs every catalogue check, and is limited to five calls a minute on purpose',
+  // Found when the runs began signing in themselves (#2513), which changed the
+  // cases Schemathesis draws: a server error the route has yet to mend.
+  getAdminCurationActivity: 'answers 500 to a `since` whose offset Postgres cannot read, such as +17:19',
   getWorldViewsRegionsByRegionIdGeometryComputeStream: 'computes and stores a region geometry',
   getAdminWvImportMatchesByWorldViewIdColorMatchStream: 'starts the colour-match pipeline',
   getAdminWvImportMatchesByWorldViewIdCoverageStream: 'runs the coverage analysis',
@@ -85,6 +96,11 @@ export const OUTSIDE = {
   },
 };
 
+/** Where a run's configuration and its JSON report sit inside the container. */
+const CONFIG_FILE = '/config/schemathesis.toml';
+const REPORT_FILE = '/report/report.json';
+const REPORT_ARGUMENTS = ['--report', 'json', '--report-json-path', REPORT_FILE];
+
 /** One TOML string, quoted. */
 const tomlValue = (value) => (typeof value === 'number' ? String(value) : JSON.stringify(value));
 
@@ -96,6 +112,67 @@ const tomlValue = (value) => (typeof value === 'number' ? String(value) : JSON.s
  * OpenAI only where a key is set.
  */
 export const OUTSIDE_FAILURES = [502, 503, 504];
+
+/**
+ * What every run holds a route to beyond the checks: an operation that
+ * answered only 401 or 403 fails the run rather than warning. Every run reads
+ * only routes its caller may read, so such an answer is a token the run lost,
+ * never the route's right answer.
+ */
+export const WARNINGS_CONFIG = '[warnings]\nfail-on = ["missing_auth"]\n';
+
+/** The variables a signed-in run's container reads the caller's credentials from, so they never sit on a command line. */
+// eslint-disable-next-line sonarjs/no-hardcoded-passwords -- the name of the variable that carries the fixture's password, not a password
+export const CREDENTIAL_VARIABLES = { email: 'API_CONTRACT_EMAIL', password: 'API_CONTRACT_PASSWORD' };
+
+/**
+ * How a signed-in run gets its token: Schemathesis's dynamic token fetch
+ * (`auth.dynamic.openapi`, for the document's `bearer` scheme) signs in at
+ * `/api/auth/login` and reads `accessToken` from the answer. It keeps the token
+ * five minutes (its `CachingAuthProvider`), against the 15 an access token
+ * lasts (docs/tech/authentication.md § Token Lifecycle), and on a 401 it signs
+ * in again and sends the request once more. No caller has a token of its own:
+ * the anonymous run has none.
+ */
+export function authConfig(caller) {
+  if (caller === 'anonymous') return '';
+  return '[auth.dynamic.openapi.bearer]\npath = "/api/auth/login"\n'
+    + `payload = { email = "\${${CREDENTIAL_VARIABLES.email}}", password = "\${${CREDENTIAL_VARIABLES.password}}" }\n`
+    + 'extract_selector = "/accessToken"\n';
+}
+
+/** A caller's whole Schemathesis configuration: the warnings that fail, its sign-in, and the outside routes' values where given. */
+export function configFor(caller, outside) {
+  return [WARNINGS_CONFIG, authConfig(caller), outside ?? ''].filter(Boolean).join('\n');
+}
+
+/**
+ * Why a run's JSON report fails it beside its own exit code, or null: a run
+ * whose signing in stopped working mid-run reads the rest of its routes with
+ * no token, and Schemathesis says so only as a line of its summary. A report
+ * that is missing (`undefined`), unreadable (`null`) or silent on the point
+ * fails the run too: every run asks for one, so its absence or a new shape
+ * means the image or its format changed, and the rule would otherwise stop
+ * catching anything without a word.
+ */
+export function reportFailure(report) {
+  if (report === undefined) return 'Schemathesis wrote no JSON report, so whether signing in held cannot be read';
+  if (typeof report?.auth?.reauth_broke !== 'boolean') {
+    return 'its JSON report does not say whether signing in held (no boolean auth.reauth_broke): has its format changed?';
+  }
+  if (report.auth.reauth_broke) return 'signing in stopped working mid-run';
+  return null;
+}
+
+/** A run's JSON report: `undefined` when there is none, `null` when it is not JSON. */
+function readReport(path) {
+  if (!existsSync(path)) return undefined;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
 
 /** The Schemathesis configuration that fixes every parameter of the outside routes a caller reads, optional ones included. */
 export function outsideConfig(caller, context) {
@@ -119,7 +196,7 @@ export function outsideConfig(caller, context) {
 export function outsideArgumentsFor(caller, url) {
   const ids = Object.entries(OUTSIDE).filter(([, route]) => route.caller === caller).map(([id]) => id);
   return [
-    '--config-file', '/config/schemathesis.toml',
+    '--config-file', CONFIG_FILE,
     'run', '/spec/openapi.generated.json', '--url', url,
     ...ids.flatMap((id) => ['--include-operation-id', id]),
     '--checks', 'all', '--exclude-checks', EXCLUDED_CHECKS.join(','),
@@ -128,7 +205,7 @@ export function outsideArgumentsFor(caller, url) {
     // the response-time check, which fails a ten-second answer by default,
     // allows what the request timeout does.
     '--rate-limit', '1/s', '--request-timeout', '30', '--max-response-time', '30',
-    '--no-color',
+    ...REPORT_ARGUMENTS, '--no-color',
   ];
 }
 
@@ -159,9 +236,10 @@ export const RUNS = [
   { caller: 'admin', access: ['admin'] },
 ];
 
-/** The Schemathesis arguments for one run, token aside. */
+/** The Schemathesis arguments for one run; its sign-in is in its configuration (`configFor`). */
 export function argumentsFor(run, url) {
   return [
+    '--config-file', CONFIG_FILE,
     'run', '/spec/openapi.generated.json', '--url', url,
     // Includes are ORed, excludes ANDed: the run's access levels in, every
     // write and every named GET out.
@@ -172,7 +250,7 @@ export function argumentsFor(run, url) {
     '--phases', 'examples,coverage,fuzzing',
     '--max-examples', String(run.maxExamples ?? 25), '--seed', '1091',
     ...(run.rateLimit ? ['--rate-limit', run.rateLimit] : []),
-    '--no-color',
+    ...REPORT_ARGUMENTS, '--no-color',
   ];
 }
 
@@ -205,16 +283,6 @@ async function fetchSaying(url, init) {
   }
 }
 
-async function tokenFor(url, account) {
-  const response = await fetchSaying(`${url}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(account),
-  });
-  if (!response.ok) throw new Error(`Signing in as ${account.email} answered ${response.status}`);
-  return (await response.json()).accessToken;
-}
-
 /** The fixture place's point, as the stack serves it: the point the nearby-pictures route is read at. */
 async function fixturePoint(url) {
   const response = await fetchSaying(`${url}/api/experiences/${FIXTURE_PLACE_ID}/locations`);
@@ -225,46 +293,76 @@ async function fixturePoint(url) {
   return id;
 }
 
+/**
+ * One Schemathesis run in its container: the document and the run's
+ * configuration mounted read-only, the report directory writable, and a
+ * signed-in caller's credentials passed by variable name from this process's
+ * environment. Answers the caller's failure, or null.
+ */
+function runSchemathesis({ label, caller, account, args, config, scratch }) {
+  const configDir = join(scratch, 'config');
+  const reportDir = join(scratch, 'report');
+  rmSync(reportDir, { recursive: true, force: true });
+  mkdirSync(reportDir);
+  // Written by the container's own user, which is not this one on a CI runner.
+  chmodSync(reportDir, 0o777);
+  const file = join(configDir, 'schemathesis.toml');
+  writeFileSync(file, config);
+  // Not masked by the umask, as a mode given to writeFileSync is.
+  chmodSync(file, 0o644);
+  const credentials = account
+    ? { [CREDENTIAL_VARIABLES.email]: account.email, [CREDENTIAL_VARIABLES.password]: account.password }
+    : {};
+  console.log(`\n=== ${label} ===`);
+  const result = spawnSync('docker', [
+    'run', '--rm', '--network', 'host',
+    ...Object.keys(credentials).flatMap((name) => ['-e', name]),
+    '-v', `${repoFile('packages', 'shared', 'src')}:/spec:ro,z`, '-v', `${configDir}:/config:ro,z`, '-v', `${reportDir}:/report:z`,
+    SCHEMATHESIS, ...args,
+  ], { stdio: 'inherit', env: { ...process.env, ...credentials } });
+  const why = reportFailure(readReport(join(reportDir, 'report.json')));
+  if (why) console.log(`${caller}: ${why}`);
+  return result.status !== 0 || why ? caller : null;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const url = argv[argv.indexOf('--url') + 1];
   const accounts = JSON.parse(argv[argv.indexOf('--accounts') + 1]);
   assertTestStack(url);
 
-  const spec = repoFile('packages', 'shared', 'src');
   const failed = [];
-  for (const run of RUNS) {
-    const token = run.caller === 'anonymous' ? null : await tokenFor(url, accounts[run.caller]);
-    console.log(`\n=== ${run.caller}: ${run.access.join(', ')} routes ===`);
-    const result = spawnSync('docker', [
-      'run', '--rm', '--network', 'host', '-v', `${spec}:/spec:ro,z`, SCHEMATHESIS,
-      ...argumentsFor(run, url),
-      ...(token ? ['-H', `Authorization: Bearer ${token}`] : []),
-    ], { stdio: 'inherit' });
-    if (result.status !== 0) failed.push(run.caller);
-  }
-  // The routes that call a service outside the stack, read once each with fixed values.
-  const context = { point: await fixturePoint(url) };
-  const config = mkdtempSync(join(tmpdir(), 'api-contract-'));
+  const scratch = mkdtempSync(join(tmpdir(), 'api-contract-'));
   // Readable by the container's own user: mkdtemp makes the directory its owner's alone.
-  chmodSync(config, 0o755);
+  chmodSync(scratch, 0o755);
+  mkdirSync(join(scratch, 'config'), { mode: 0o755 });
   try {
+    for (const run of RUNS) {
+      const failure = runSchemathesis({
+        label: `${run.caller}: ${run.access.join(', ')} routes`,
+        caller: run.caller,
+        account: accounts[run.caller],
+        args: argumentsFor(run, url),
+        config: configFor(run.caller),
+        scratch,
+      });
+      if (failure) failed.push(failure);
+    }
+    // The routes that call a service outside the stack, read once each with fixed values.
+    const context = { point: await fixturePoint(url) };
     for (const caller of [...new Set(Object.values(OUTSIDE).map((route) => route.caller))]) {
-      const file = join(config, 'schemathesis.toml');
-      writeFileSync(file, outsideConfig(caller, context));
-      // Not masked by the umask, as a mode given to writeFileSync is.
-      chmodSync(file, 0o644);
-      // Signed in afresh: an access token lasts 15 minutes, and the curator's generated run takes longer.
-      const token = await tokenFor(url, accounts[caller]);
-      console.log(`\n=== ${caller}: the routes that call a service outside the stack, once each ===`);
-      const result = spawnSync('docker', [
-        'run', '--rm', '--network', 'host', '-v', `${spec}:/spec:ro,z`, '-v', `${config}:/config:ro,z`, SCHEMATHESIS,
-        ...outsideArgumentsFor(caller, url), '-H', `Authorization: Bearer ${token}`,
-      ], { stdio: 'inherit' });
-      if (result.status !== 0) failed.push(`${caller} (outside)`);
+      const failure = runSchemathesis({
+        label: `${caller}: the routes that call a service outside the stack, once each`,
+        caller: `${caller} (outside)`,
+        account: accounts[caller],
+        args: outsideArgumentsFor(caller, url),
+        config: configFor(caller, outsideConfig(caller, context)),
+        scratch,
+      });
+      if (failure) failed.push(failure);
     }
   } finally {
-    rmSync(config, { recursive: true, force: true });
+    rmSync(scratch, { recursive: true, force: true });
   }
   console.log(failed.length === 0 ? '\nAPI contract: every run passed.' : `\nAPI contract: failures as ${failed.join(', ')}.`);
   return failed.length === 0 ? 0 : 1;

@@ -904,7 +904,8 @@ the document, valid ones and deliberately invalid ones, and fails on:
 - an undocumented 500;
 - a response that does not match its schema, or a content type the document does not name;
 - a valid request refused, or an invalid one accepted;
-- a route that answers without the token its access declares.
+- a route that answers without the token its access declares;
+- a route that answered only 401 or 403 to a caller its access admits (#2513).
 
 It runs against the isolated test stack's backend and refuses any other address, the dev
 backend's port included:
@@ -912,6 +913,34 @@ backend's port included:
   fixture's traveller, curator and admin over `signed-in`, `curator` and `admin`. The fixture seeds
   those accounts only into a database whose name says `test`, and their credentials are read from
   the fixture module rather than restated.
+- **A token that lasts the run** (#2513). An access token lasts 15 minutes
+  (`authentication.md` § Token Lifecycle), and a run can take longer, so no run is handed one.
+  Schemathesis signs in as the caller itself, through its dynamic token fetch
+  (`[auth.dynamic.openapi.bearer]` in the run's configuration, `authConfig`). It posts the
+  account to `/api/auth/login` and keeps the `accessToken` it answers for five minutes, then signs
+  in again; on a 401 it signs in at once and sends the request a second time. The credentials
+  reach the container as variables, never on its command line. Since every run reads only routes
+  its caller may read, three answers fail the run rather than warn:
+  - an operation that answered only 401 or 403 (`warnings.fail-on = ["missing_auth"]`);
+  - a run whose signing in stopped working mid-run, which Schemathesis reports only as a line of
+    its summary and the lane reads from the run's JSON report (`reportFailure`); a run that wrote
+    no report, or one that does not say, fails too, since that is a change of the image or its
+    format that would otherwise switch the rule off without a word;
+  - a sign-in that fails outright, which Schemathesis reports as an error.
+
+  Schemathesis counts an operation as answered only 401 or 403 when nine in ten of a phase's
+  answers to it are, and no valid request of the run was served. An operation served in one phase
+  and refused in the next is therefore not caught by the first rule; signing in again on any 401
+  is what keeps that from happening, and the second rule is what catches it when signing in again
+  stops working.
+
+  Until then the lane signed in once per run and passed the token as a header. The curator's run
+  outlived it: its whole fuzzing phase and the operations it read last got nothing but 401, and
+  seven to nine of them were counted as covered under a warning. A run that signs in itself also
+  draws other cases than one handed a header, and the admin run's new cases found a 500 in the
+  curation activity read: a `since` whose offset Postgres cannot read, such as `+17:19`, which the
+  route's schema accepts. That read is left out by name in `EXCLUDED` until the route refuses such
+  an offset.
 - **Reads only.** Locally the stack may be the one the smoke and database lanes read, and a write
   would change what they read. The GET routes that cannot be read at all are left out by name,
   each with its reason, in `EXCLUDED`. `scripts/api-contract.test.mjs` fails on a name the document

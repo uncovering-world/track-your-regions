@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  argumentsFor, assertTestStack, EXCLUDED, OUTSIDE, outsideArgumentsFor, outsideConfig, RUNS, SCHEMATHESIS,
+  argumentsFor, assertTestStack, configFor, CREDENTIAL_VARIABLES, EXCLUDED, OUTSIDE, outsideArgumentsFor, outsideConfig,
+  reportFailure, RUNS, SCHEMATHESIS,
 } from './api-contract.mjs';
 import { repoFile } from './repo-root.mjs';
 
@@ -38,6 +39,49 @@ describe('the API contract lane', () => {
       const run = RUNS.find((one) => one.caller === caller);
       expect(argumentsFor(run, 'http://localhost:5301').join(' ')).toContain('--rate-limit 50/m');
     }
+  });
+
+  describe('a signed-in run\'s token (#2513)', () => {
+    it('is fetched by Schemathesis itself, signing in as the caller, never handed over as a header that expires', () => {
+      for (const run of RUNS.filter((one) => one.caller !== 'anonymous')) {
+        const config = configFor(run.caller);
+        expect(config).toContain('[auth.dynamic.openapi.bearer]\npath = "/api/auth/login"');
+        expect(config).toContain('extract_selector = "/accessToken"');
+        expect(argumentsFor(run, 'http://localhost:5301')).not.toContain('-H');
+      }
+      expect(configFor('anonymous')).not.toContain('[auth');
+    });
+
+    it('signs in with credentials read from the environment, so no password sits on a command line', () => {
+      const config = configFor('curator');
+      expect(config).toContain(`email = "\${${CREDENTIAL_VARIABLES.email}}"`);
+      expect(config).toContain(`password = "\${${CREDENTIAL_VARIABLES.password}}"`);
+      expect(config).not.toMatch(/e2e-curator-password|@e2e\.test/);
+    });
+
+    it('fails every run, the outside ones too, on an operation that answered only 401 or 403', () => {
+      for (const run of RUNS) expect(configFor(run.caller)).toContain('[warnings]\nfail-on = ["missing_auth"]');
+      expect(configFor('curator', outsideConfig('curator', { point: 42 }))).toContain('fail-on = ["missing_auth"]');
+      for (const args of [argumentsFor(RUNS[2], 'http://localhost:5301'), outsideArgumentsFor('admin', 'http://localhost:5301')]) {
+        expect(args.slice(0, 2)).toEqual(['--config-file', '/config/schemathesis.toml']);
+        expect(args.join(' ')).toContain('--report json --report-json-path /report/report.json');
+      }
+    });
+
+    it('fails a run whose signing in stopped working mid-run, which Schemathesis only reports', () => {
+      expect(reportFailure({ auth: { reauth_count: 3, reauth_broke: true } })).toMatch(/stopped working/);
+      expect(reportFailure({ auth: { reauth_count: 1, reauth_broke: false } })).toBeNull();
+    });
+
+    it('fails a run that wrote no JSON report, rather than reading the missing file as a pass', () => {
+      expect(reportFailure(undefined)).toMatch(/wrote no JSON report/);
+    });
+
+    it('fails a run whose report does not say whether signing in held, as after a change of its format', () => {
+      for (const report of [null, {}, { auth: {} }, { auth: { reauth_broke: 'false' } }, { reauth_broke: false }]) {
+        expect(reportFailure(report), JSON.stringify(report)).toMatch(/does not say whether signing in held/);
+      }
+    });
   });
 
   it('refuses anything but the test stack\'s own backend on this machine', () => {
