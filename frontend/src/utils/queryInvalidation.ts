@@ -32,6 +32,9 @@ export function invalidateExperiences(
   queryClient.invalidateQueries({ queryKey: queryKeys.discover.experiencesAll });
   queryClient.invalidateQueries({ queryKey: queryKeys.discover.regionCountsAll });
   queryClient.invalidateQueries({ queryKey: queryKeys.experiences.all });
+  // Manual curation can change the current side of a pending proposal, its
+  // claims, or which questions remain. Refresh the list and map together.
+  queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll });
   // The map's world layer (#910), unscoped on purpose: it is keyed on the kind,
   // the tier and the box, and a curator's verdict is not. Any of the
   // writes that reach this helper can change what it draws — a refused
