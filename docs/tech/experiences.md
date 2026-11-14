@@ -2514,7 +2514,9 @@ by their first part (`ru-RU` → `ru`, so `['en-US', 'ru']` reads English alone)
 ending in English (`utils/readingLanguages.ts`,
 `hooks/useReadingLanguages.tsx`). A link asks through `useReaderEdition`
 (`components/shared/WikipediaArticleLink.tsx`), which gathers every link of one render into one
-request per list of languages, at most a hundred articles each (`api/wikipediaEditions.ts`), and
+request per list of languages, at most a hundred articles each and each closed before its query
+string passes 7,000 encoded characters (`QUERY_BUDGET` in `api/wikipediaEditions.ts`, #2526: a hundred
+Cyrillic titles would pass the request line a server reads and be answered 431), and
 names the edition it opens: *Wikipedia (ru)*. The place card (`PlaceLinks`), a part's row
 (`PointArticleLink`), a work's row (`ArtworksList`) and a part's card (`PointCard`) read it; a
 work no run has asked about keeps Wikidata's redirect. A curator's card keeps the English article
