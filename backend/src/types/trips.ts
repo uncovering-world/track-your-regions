@@ -6,6 +6,7 @@
 import { z } from 'zod/v4';
 import { isValidTripDate } from '@tyr/shared/approximateDates';
 import { bodyRowIdSchema, rowIdSchema } from './rowId.js';
+import { instantSchema } from './instants.js';
 
 /**
  * A trip's date as the traveller gives it (#2120): a year, a month within
@@ -56,7 +57,7 @@ export const TOO_MUCH_TO_UNDO = 'This would remove more than 1,000 visits or 10,
 export const restoreVisitsBodySchema = z.object({
   visits: z.array(z.object({
     experienceId: bodyRowIdSchema,
-    markedAt: z.iso.datetime({ offset: true }).nullable(),
+    markedAt: instantSchema.nullable(),
     notes: z.string().max(2000).nullable(),
     rating: z.number().int().min(1).max(5).nullable(),
     trips: z.array(tripDateBodySchema).max(RESTORE_LIMITS.trips, RESTORE_TOO_MUCH),
