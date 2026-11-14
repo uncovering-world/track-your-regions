@@ -72,10 +72,6 @@ export const EXCLUDED = {
   getWorldViewsRegionsByRegionIdGeometryComputeStream: 'computes and stores a region geometry',
   getAdminWvImportMatchesByWorldViewIdColorMatchStream: 'starts the colour-match pipeline',
   getAdminWvImportMatchesByWorldViewIdCoverageStream: 'runs the coverage analysis',
-  // Public routes the anonymous run had never read (#2513): their documents
-  // name a plain string where the route refuses all but one shape of it (#2515).
-  getExperiencesPoints: 'documents `bbox` as any string up to 100 characters, and refuses all but four numbers',
-  getExperiencesWikipediaEditions: 'documents `languages` as any string, and refuses all but language codes',
 };
 
 /** The fixture's first place (`e2eFixture.ts`), whose routes an outside call is read through. */
