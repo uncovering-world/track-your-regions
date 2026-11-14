@@ -66,9 +66,6 @@ export const EXCLUDED = {
   getAuthGoogleCallback: 'finishes a Google sign-in the lane never started',
   getAuthApple: 'redirects to Apple',
   getAdminDataAssertions: 'runs every catalogue check, and is limited to five calls a minute on purpose',
-  // Found when the runs began signing in themselves (#2513), which changed the
-  // cases Schemathesis draws: a server error the route has yet to mend (#2516).
-  getAdminCurationActivity: 'answers 500 to a `since` whose offset Postgres cannot read, such as +17:19',
   getWorldViewsRegionsByRegionIdGeometryComputeStream: 'computes and stores a region geometry',
   getAdminWvImportMatchesByWorldViewIdColorMatchStream: 'starts the colour-match pipeline',
   getAdminWvImportMatchesByWorldViewIdCoverageStream: 'runs the coverage analysis',
