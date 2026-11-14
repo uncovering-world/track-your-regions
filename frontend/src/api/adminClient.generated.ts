@@ -6267,6 +6267,10 @@ export type GetAdminUsersSearchParams = {
 };
 
 export type GetAdminImageProxyParams = {
+  /**
+   * @maxLength 2000
+   * @pattern ^https:\/\/(?:commons|upload)\.wikimedia\.org(?:\/(?:[A-Za-z0-9._~!$&'()*+,;=:@-]|%[0-7][0-9A-Fa-f]|%(?:[Cc][2-9A-Fa-f]|[Dd][0-9A-Fa-f])%[89ABab][0-9A-Fa-f]|%[Ee]0%[ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ee][1-9A-Ca-cEeFf]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ee][Dd]%[89][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ff]0%[9ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ff][1-3]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ff]4%8[0-9A-Fa-f]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f])*)*(?:\?(?:[A-Za-z0-9._~!$&'()*+,;=:@/?-]|%[0-7][0-9A-Fa-f]|%(?:[Cc][2-9A-Fa-f]|[Dd][0-9A-Fa-f])%[89ABab][0-9A-Fa-f]|%[Ee]0%[ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ee][1-9A-Ca-cEeFf]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ee][Dd]%[89][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ff]0%[9ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ff][1-3]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f]|%[Ff]4%8[0-9A-Fa-f]%[89ABab][0-9A-Fa-f]%[89ABab][0-9A-Fa-f])*)?$
+   */
   url: string;
 };
 
