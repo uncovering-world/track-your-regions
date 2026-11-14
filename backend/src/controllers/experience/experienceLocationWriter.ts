@@ -27,7 +27,7 @@ import { MEMBERSHIPS, placeHoldsKindSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 import { pointAnsweredBySql, unreadPointSql } from './waitingCounts.js';
-import { pointOfPartSql, shownBySql } from '../../db/placePoints.js';
+import { pointOfComponentSql, shownBySql } from '../../db/placePoints.js';
 import {
   followTheirPoints, isPartField, writePartFields, writePartItems, type PartField, type PartWrite,
 } from '../../db/partFieldsWriter.js';
@@ -402,8 +402,8 @@ export async function claimPointItem(
   item: string,
   content: ClaimedItemContent,
 ): Promise<{ recorded: boolean; pictured: boolean }> {
-  const point = await client.query<PartRowHeld & { of_part: boolean }>(
-    `SELECT ${pointOfPartSql('el')} AS of_part, ${placeHoldsKindSql('el.experience_id')} AS kinded,
+  const point = await client.query<PartRowHeld & { of_component: boolean }>(
+    `SELECT ${pointOfComponentSql('el')} AS of_component, ${placeHoldsKindSql('el.experience_id')} AS kinded,
             part.curated_fields AS part_claims, NULLIF(part.image_url, '') AS part_image,
             NULLIF(part.subtitle, '') AS part_subtitle, NULLIF(part.metadata ->> 'wikipediaUrl', '') AS part_article
        FROM experience_locations el JOIN experiences part ON part.id = el.experience_id
@@ -416,7 +416,7 @@ export async function claimPointItem(
   // list line (ADR-0156 decision 2, ADR-0200).
   const recorded = await writePartItems(client, lock, [{ pointId: locationId, item, claim: 'add' }]);
   if (recorded.length === 0) return { recorded: false, pictured: false };
-  if (!row.of_part) return { recorded: true, pictured: false };
+  if (!row.of_component) return { recorded: true, pictured: false };
   // A part's picture, subtitle and article are its own row's (ADR-0156
   // decision 3).
   const fields = partFieldsOfItem(row, content);
@@ -478,8 +478,8 @@ export async function releasePointItem(
   lock: LockedExperience,
   locationId: number,
 ): Promise<ReleasedField[]> {
-  const point = await client.query<{ of_part: boolean; kinded: boolean }>(
-    `SELECT ${pointOfPartSql('el')} AS of_part, ${placeHoldsKindSql('el.experience_id')} AS kinded
+  const point = await client.query<{ of_component: boolean; kinded: boolean }>(
+    `SELECT ${pointOfComponentSql('el')} AS of_component, ${placeHoldsKindSql('el.experience_id')} AS kinded
        FROM experience_locations el WHERE el.id = $1 AND ${shownBySql('el', 'ARRAY[$2::int]')}`,
     [locationId, lock.id],
   );
@@ -490,7 +490,7 @@ export async function releasePointItem(
   // A part that holds a kind of its own keeps every value on its row: its kind
   // writes them too, so none of them is known to be the confirmation's. A
   // point of any other place held nothing beside the item (#2117).
-  if (!point.rows[0].of_part || point.rows[0].kinded) return [];
+  if (!point.rows[0].of_component || point.rows[0].kinded) return [];
   return releasePartFields(client, lock, locationId);
 }
 

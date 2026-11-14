@@ -24,7 +24,7 @@
 
 import type { PoolClient } from 'pg';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
-import { pointOfPartSql } from '../../db/placePoints.js';
+import { pointOfComponentSql } from '../../db/placePoints.js';
 import { tidyLabel } from '@tyr/shared/labels';
 import { heldRowKey, tidyNameValue, type HeldAnswer, type HeldRowRef } from './heldDecisions.js';
 import { namedRowReached, selectedFilter, type HeldSelection } from './heldSelection.js';
@@ -155,7 +155,7 @@ async function lockPart(
     // claimed on the part's own row (ADR-0156 decision 3), which the site's lock
     // this transaction holds guards for every writer of it.
     const part = await client.query<{ claims: string[] | null; own_claims: string[] }>(
-      `SELECT CASE WHEN ${pointOfPartSql('el')} THEN part.curated_fields END AS claims, el.curated_fields AS own_claims
+      `SELECT CASE WHEN ${pointOfComponentSql('el')} THEN part.curated_fields END AS claims, el.curated_fields AS own_claims
          FROM experience_locations el JOIN experiences part ON part.id = el.experience_id
         WHERE el.id = $1`,
       [row.id],

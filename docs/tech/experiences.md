@@ -377,6 +377,20 @@ Tarraco's 875-012 reads "Roman villa of Centcelles", a section of the Via Appia 
 markers and a signed-in reader's visited-status read, which Discover takes its rows' names from, read
 it; the curator's reads keep the point's name as the source wrote it, which is what a curator corrects.
 
+A part a curator's word or a Wikidata statement made is read the same way (#2531): its point is a
+part's (`pointOfPartSql`, any relation of `experience_parts`), called by the part's name, with the
+part's picture, subtitle and article, and a curator corrects them on the part's row
+(`locationEditController.ts`, `writePartFields`): the Giralda, a tower in a kind of its own that a
+curator puts into Seville's site, is listed among the site's places as "Giralda". No list names such a
+part, so where it shows no kind of its own
+it is called by its own name, never by its site's with a reference. What the World Heritage run writes
+from its list is written for a component only (`pointOfComponentSql`): a part's name, coordinate and
+reference from its point (`partFollowsSql`), its picture, subtitle and article from the component's
+item (`pointContentWriter.ts`, `claimPointItem`, `releasePointItem`), a held proposal about it
+(`publishHeldParts.ts`), a withdrawn component's replacement (`queryWithdrawn`) and the catalogue
+check of a part's uncredited picture. On the development catalogue on 2026-11-14, 5,643 points of
+5,620 parts were components', and no relation had another reason.
+
 A visit to a component is recorded on its part, as a place visit in `user_visited_experiences`: a
 merge with another kind's place reconciles it as any two places' visits. Nothing is written for the
 site, which reads its parts' visits (#2120, § User visits): Map mode, Discover and the site's
