@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../api/queryKeys';
 import { invalidateExperiences, invalidateAfterBatchPublication } from './queryInvalidation';
 
 function makeClient() {
@@ -23,6 +24,20 @@ function makeClient() {
 }
 
 describe('invalidateExperiences', () => {
+  it('refreshes pending questions, answered pages and the queue map after a manual edit', () => {
+    const client = new QueryClient();
+    const keys = ['questions', 'answered', 'map'].map(view =>
+      queryKeys.curation.reviewQueue(view, { q: 'Baalbek' }));
+    for (const key of keys) client.setQueryData(key, { name: 'Baalbek' });
+
+    invalidateExperiences(client, { experienceId: 42 });
+
+    for (const key of keys) {
+      expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    }
+    client.clear();
+  });
+
   it('reaches the location batch for the region', () => {
     const { client, keys } = makeClient();
 
