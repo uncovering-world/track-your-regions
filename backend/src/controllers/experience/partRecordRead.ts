@@ -72,7 +72,7 @@ function nearBoxSql(target: string, point: string, metres: string): string {
 }
 
 /** Who asks, as a statement binds it: the caller's id, and whether the caller is an admin. */
-interface CallerParams { user: '$1' | '$4'; admin: string }
+export interface CallerParams { user: '$1' | '$4'; admin: string }
 
 /**
  * The caller's scope reaches the place `alias`, so a word on it is theirs to
@@ -87,9 +87,10 @@ function inScopeSql(alias: string, { user, admin }: CallerParams): string {
  * The places a caller may be shown on these sections, over the experience
  * `alias`: one a reader is offered (`placeOrPartOfferedSql`), or one in the
  * caller's scope, as a place read shows a curator an unread place only in
- * scope (ADR-0025). An unread place outside it is left out.
+ * scope (ADR-0025). An unread place outside it is left out. The write's
+ * refusals name places by the same rule (`partRecordController.ts`).
  */
-function shownToCallerSql(alias: string, caller: CallerParams): string {
+export function shownToCallerSql(alias: string, caller: CallerParams): string {
   return `(${placeOrPartOfferedSql(alias)} OR ${inScopeSql(alias, caller)})`;
 }
 

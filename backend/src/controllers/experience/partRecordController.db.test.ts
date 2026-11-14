@@ -340,6 +340,33 @@ describe("the sections' reads in a curator's scope", () => {
     expect(everyone.find(row => row.place.id === HERE_UNREAD)).toMatchObject({ near_name: 'Zixiao Palace (fixture)' });
   });
 
+  it("names in a refusal's chain only the places the caller may see, and counts a hidden one (#2522)", async () => {
+    await regions();
+    // Zixiao Palace, unread and in Hubei, over the Seville site, over its
+    // cathedral, over the Giralda: four places, which an admin may make.
+    await add(ELSEWHERE_UNREAD, SITE, { makesWhole: true });
+    await add(CATHEDRAL, GIRALDA, { makesWhole: true });
+    // The annex under the Giralda would be a fifth, by a curator whose scope
+    // reaches both places of the word and not the palace.
+    const refusalOf = async (caller: Express.User) => {
+      const refused = await add(GIRALDA, HERE_UNREAD, { makesWhole: true }, caller).then(() => null, (error: unknown) => error);
+      expect(refused).toMatchObject({ statusCode: 409, body: expect.objectContaining({ code: 'too-deep' }) });
+      return (refused as { body: { chain: (string | null)[]; error: string } }).body;
+    };
+    const below = ['Cathedral, Alcázar and Archivo de Indias in Seville (fixture)', 'Seville Cathedral (fixture)',
+      'Giralda (fixture)', 'Zixiao annex (fixture)'];
+
+    const mine = await refusalOf(curator());
+    expect(mine.chain).toEqual([null, ...below]);
+    expect(JSON.stringify(mine)).not.toContain('Zixiao Palace (fixture)');
+    expect(mine.error).toContain('The chain passes through 1 unpublished place you do not curate.');
+
+    const everyone = await refusalOf(admin());
+    expect(everyone.chain).toEqual(['Zixiao Palace (fixture)', ...below]);
+    expect(everyone.error).not.toContain('you do not curate');
+    expect(await relation(GIRALDA, HERE_UNREAD)).toBeNull();
+  });
+
   it("lists a whole's parts the caller may see, and says which are outside the caller's scope", async () => {
     await regions();
     await add(SITE, ELSEWHERE_UNREAD);
