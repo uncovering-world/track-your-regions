@@ -987,10 +987,11 @@ backend's port included:
   the last of several `--include-by` options, so the anonymous run, which named `public` and
   `optional`, had read the `optional` routes alone, and none of the seven `public` GET routes.
   Five of them joined the lane with #2513: `/health`, the search, the kinds, a place's picture and
-  its finds. The other two are left out by name in `EXCLUDED` until their documents say what they
-  refuse: the points read documents `bbox` as any string and refuses all but four numbers, and the
-  Wikipedia editions read documents `languages` as any string and refuses all but language codes,
-  so a request the document allows is answered 400.
+  its finds. The other two joined once their documents said what they accept (#2515): the points
+  read's `bbox` carries the pattern of four numbers and the Wikipedia editions read's `languages`
+  the pattern of a list of language codes, so the lane draws only requests the routes read. A query
+  parameter the handler parses beyond its type carries such a pattern in its schema
+  (`backend/src/types/queryPatterns.ts`), no wider than the route's own reading.
 - **Reads only.** Locally the stack may be the one the smoke and database lanes read, and a write
   would change what they read. The GET routes that cannot be read at all are left out by name,
   each with its reason, in `EXCLUDED`. `scripts/api-contract.test.mjs` fails on a name the document

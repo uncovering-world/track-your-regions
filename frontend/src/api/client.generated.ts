@@ -8675,9 +8675,13 @@ export type GetExperiencesWikipediaEditionsParams = {
    * @minItems 1
    * @maxItems 100
    * @items.maxLength 1000
+   * @items.pattern ^https:\/\/en\.wikipedia\.org\/wiki\/[A-Za-z0-9_.~-]{1,90}$
    */
   articles: string[];
-  /** @maxLength 200 */
+  /**
+   * @maxLength 200
+   * @pattern ^[a-z]{2,3}(-[a-z0-9]{2,12})*(?:,[a-z]{2,3}(-[a-z0-9]{2,12})*){0,9}$
+   */
   languages: string;
 };
 
@@ -8687,7 +8691,10 @@ export type GetExperiencesPointsParams = {
    * @exclusiveMinimum 0
    */
   kindId?: number;
-  /** @maxLength 100 */
+  /**
+   * @maxLength 100
+   * @pattern ^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d{1,2})?,-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d{1,2})?,-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d{1,2})?,-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d{1,2})?$
+   */
   bbox?: string;
   detail?: GetExperiencesPointsDetail;
 };
@@ -8979,7 +8986,6 @@ export type GetExperiencesByIdFindLinksCandidatesParams = {
   /**
    * @minLength 2
    * @maxLength 100
-   * @pattern ^[^\u0000]*$
    */
   q: string;
 };
