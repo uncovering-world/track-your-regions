@@ -15,7 +15,8 @@ import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
 import { instantSchema } from './instants.js';
-import { isStorableHttpUrl, pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE, STORABLE_HTTP_URL_MESSAGE } from './urlSafety.js';
+import { ARTICLE_PATTERN, BBOX_PATTERN, commonsFileUrlSchema, LANGUAGES_PATTERN, TWO_SEARCHED } from './queryPatterns.js';
+import { isStorableHttpUrl, STORABLE_HTTP_URL_MESSAGE } from './urlSafety.js';
 import { commemoratesListSchema } from './commemoratesSchemas.js';
 import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
 import { QUEUE_KINDS } from '../controllers/experience/reviewQueueVocabulary.js';
@@ -192,7 +193,7 @@ export const findSiteLinkParamsSchema = z.object({
 
 /** A curator's search for a find to link to a site by hand (#2242): part of its name. */
 export const findSiteCandidatesQuerySchema = z.object({
-  q: searchText(2, 100).transform(v => v.trim()).pipe(z.string().min(2)),
+  q: searchText(2, 100).regex(TWO_SEARCHED).transform(v => v.trim()).pipe(z.string().min(2)),
 });
 
 /** A curator's answer on a find's link to a site: it comes from there, or it does not. */
@@ -291,7 +292,7 @@ export const worldPointsQuerySchema = z.object({
   bbox: z.string().max(100)
     .refine(value => parseBbox(value) !== null,
       { message: 'bbox must be four numbers: west,south,east,north' })
-    .optional(),
+    .meta({ pattern: BBOX_PATTERN.source }).optional(),
   detail: z.enum(POINTS_DETAILS).default('overview'),
 });
 
@@ -455,9 +456,9 @@ export const myPreferencesBodySchema = z.strictObject({
 export const wikipediaEditionsQuerySchema = z.object({
   articles: z.preprocess(
     value => (Array.isArray(value) ? value : [value]),
-    z.array(z.string().max(1000)).min(1).max(100),
+    z.array(z.string().max(1000).meta({ pattern: ARTICLE_PATTERN.source })).min(1).max(100),
   ),
-  languages: z.string().max(200).transform(value => value.split(',').filter(Boolean))
+  languages: z.string().max(200).meta({ pattern: LANGUAGES_PATTERN.source }).transform(value => value.split(',').filter(Boolean))
     .pipe(z.array(z.string().regex(READING_LANGUAGE)).min(1).max(MAX_READING_LANGUAGES)),
 });
 
@@ -1643,6 +1644,4 @@ export type SearchQuery = z.infer<typeof searchQuerySchema>;
  * `*.wikipedia.org` host. A refused first address is a 400; `fetchPicture`
  * holds every hop after it.
  */
-export const imageProxyQuerySchema = z.object({
-  url: z.string().refine((value) => pictureFetchUrl(value) !== null, { message: PICTURE_FETCH_URL_MESSAGE }),
-});
+export const imageProxyQuerySchema = z.object({ url: commonsFileUrlSchema });

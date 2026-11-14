@@ -7,6 +7,7 @@
 
 import { z } from 'zod/v4';
 import { searchText } from './index.js';
+import { TWO_SEARCHED } from './queryPatterns.js';
 import { bodyRowIdSchema } from './rowId.js';
 
 /**
@@ -29,7 +30,7 @@ export const partWordBodySchema = z.object({
  */
 export const partCandidatesQuerySchema = z.object({
   role: z.enum(['part', 'whole']),
-  q: searchText(2, 100).transform(v => v.trim()).pipe(z.string().min(2)).optional(),
+  q: searchText(2, 100).regex(TWO_SEARCHED).transform(v => v.trim()).pipe(z.string().min(2)).optional(),
 });
 
 /** A place taken out of the whole `:id` (#2118): the place and why, kept in both places' histories. */
