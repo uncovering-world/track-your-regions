@@ -38,3 +38,26 @@ export async function rollbackQuietly(client: PoolClient): Promise<Error | undef
     return error instanceof Error ? error : new Error(String(error));
   }
 }
+
+/**
+ * Run `work` as one transaction on one client of its own
+ * (`docs/tech/development-guide.md` § A transaction is pinned to one client,
+ * always): committed when it returns, rolled back when it throws, its error
+ * rethrown, and the client released either way — as unusable when the
+ * rollback itself failed, so an open transaction never goes back to the pool.
+ */
+export async function inTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    const result = await work(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
+}
