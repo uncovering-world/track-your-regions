@@ -5637,22 +5637,22 @@ The live API does not say which titles it redirected, so that door takes every a
 own.
 
 **Where it is stored.** `metadata.commemorates` on the place, `{ via, subjects: [{ item, label,
-articleUrl }] }`, with `via` naming the step that answered (`COMMEMORATION_STEPS` in
+articleUrl, role? }] }` (the role below), with `via` naming the step that answered (`COMMEMORATION_STEPS` in
 `@tyr/shared/commemorates`), one of the war narrowings (`WarNarrowing`: `war-narrowed-by-event`,
 `war-narrowed-by-lead`, `war-narrowed-to-person`) where one replaced its war, or `curator`
 (`CURATOR_COMMEMORATION`) for a curator's list. What a work depicts is
 `metadata.depicts` in the same shape, its `via` one of `DEPICTION_STEPS` (`depictsOf`): written
-by the same runs, kept by the same rule (`WRITTEN_BY_SOURCES`), compared by its items
-(`sameSubjects`), served as `ExperienceDetail.depicts` and drawn as "Depicts: …" by the same
+by the same runs, kept by the same rule (`WRITTEN_BY_SOURCES`), compared by its items and
+their roles (`sameSubjects`), served as `ExperienceDetail.depicts` and drawn as "Depicts: …" by the same
 line (`CommemoratesLine` with `word="Depicts"`). A curator corrects it as they correct
 *Commemorates* (#2421, below), and their list is `{ via: 'curator', subjects }` there too. It is
 absent where no step names anyone and no curator listed anyone. It is a field of the place,
 shown (`@tyr/shared/placeFields`): a memorial church keeps it under Places of worship whichever kind's
 run read it. The object read serves it as `ExperienceDetail.commemorates`, `[{ qid, label,
-article_url }]`, empty where the place holds none (`commemoratedOf` in `experienceAnswerRows.ts`).
+article_url, role }]`, empty where the place holds none (`commemoratedOf` in `experienceAnswerRows.ts`).
 
 **The gate.** Under a gated source a new, changed or removed value is a held proposal, as a website
-is. Two values are the same when they name the same items (`sameSubjects`, read by
+is. Two values are the same when they name the same items in the same roles (`sameSubjects`, read by
 `sameMetadataValue` in `changeSet.ts`): a label or an article Wikidata re-words, another order, or
 another step naming the same people proposes nothing. The review card names the subjects as the
 card does and says who a proposal adds and drops and which step read them (`metadata.commemorates`
@@ -5680,8 +5680,8 @@ tidied as every stored name is and within Wikidata's limit on one, and an articl
 `urlSafety.ts`), each item once. `editExperience` stores `{ via: 'curator', subjects }` and claims
 `metadata.commemorates` in `curated_fields` as it claims a website, under the place's lock, with
 the old and new lists on the `edited` row of the curation log, which the history names
-(`curationLog.ts`); a held proposal of the field is answered by the items it names
-(`sameAsProposed` in `heldSettledByEdit.ts`).
+(`curationLog.ts`); a held proposal of the field is answered by the items it names and
+their roles (`sameAsProposed` in `heldSettledByEdit.ts`).
 
 *Depicts* is corrected the same way (#2421). The dialog shows its field on a place a source that
 reads it holds, Public art or Monuments & memorials, or where the line is already there
@@ -5715,10 +5715,55 @@ key: a claim holds only a key the stored row carries (`claimedMetadataKeys` in `
 "nobody" has to be a value for the next run to keep it. `commemoratesOf` answers that value with
 an empty list where a reading's empty list is none; it names nobody, so the card draws no line, the
 object read serves no subject and `sameSubjects` reads it as no value. A run comparing a claimed
-list compares it by its items as it does an unclaimed one (`sameMetadataValue`): the same people in
+list compares it by its items and their roles as it does an unclaimed one (`sameMetadataValue`): the same people in
 a run's own words or step raise nothing, nor does a run reading nobody against a curator's nobody,
 and a run naming someone else is filed as the curator's (`curatedConflicts`) while the upsert puts
 the claimed value back.
+
+**The form a figure is shown in** (#2485). A subject may carry a role, stored without the "as"
+the card puts before it: `{ item, label, articleUrl, role }`, the role a short phrase of at most
+`MAX_SUBJECT_ROLE_LENGTH` characters such as `women` or `equestrian`. A subject without one has
+no `role` key, the shape every row stored before roles had, and reads as it always did
+(`commemoratesOf`, `depictsOf`, which tidy a stored role with `tidyRole`). The object read serves
+it as `role` on each subject, null where none is said.
+
+- *Where a run reads it.* The Public art and Monuments & memorials run reads it from the `P3831`
+  *object of statement has role* qualifier on the place's best-rank `P180` statement, named by
+  the role item's English label: off the subset's claims and its `wikidata_labels` rows
+  (`subsetSubjectClaims` in `subset/commemorates.ts`), and in the same query where the run asks
+  the live service (`fetchSubjectClaims`). `withRoles` in `places/commemorates.ts` puts it on
+  the figure on whichever line the figure stands, after the narrowings and the lead. Where a
+  figure's statements name more than one role with an English label, both readings take the
+  lowest item id, so a role does not change with the order statements come in. The labels ring
+  is filled from the main values of the items the subset keeps, never from a qualifier, so a
+  role item the subset neither keeps nor holds as such a value has no English label there and
+  names no role on the subset run, where the live service could name one; nor does a label
+  longer than the limit. Wikidata rarely states one: the Lady Godiva equestrian statue in Coventry
+  (Q17540305) depicts Lady Godiva (Q106077) as an *equestrian* (Q2730732). She is a person, so
+  the reading names her as the statue's dedication, and the role goes with her there.
+- *How the card says it.* `subjectLineParts` in `@tyr/shared/commemorates` words a line. The
+  figures without a role come first, listed with commas. Each role's figures follow in the order
+  its first figure is listed, the last joined with "and" and the role after them. A semicolon
+  parts the groups: "Depicts: Neptune, Triton; Rhine, Elbe, Oder and Vistula as women" on the
+  Neptune Fountain in Berlin, "Commemorates: Lady Godiva as equestrian" on her statue.
+  `CommemoratesLine`, the review card (`fieldMeaning.tsx`) and the curation log
+  (`curationLog.ts`) all read it. A line with a role is never folded, since folding would cut a
+  group from its role. A line without one folds after `SHOWN_FOLDED` names as before.
+- *How a curator sets it.* The *Depicts* field has a "Shown as" box beside its search
+  (`CommemoratesField`). Every figure added while the box holds a role takes that role, and the
+  box keeps it for the next figure, so the fountain's four rivers are added under "women" with
+  the role typed once. The chips of either line are grouped by role (`SubjectRoleGroups`). A
+  chip's "as…" menu gives it another role the line holds, the one typed in the box, or none. A
+  group's heading renames the role for all its figures, or takes it off them. The edit holds
+  the role to `tidyRole` and the limit (`commemoratesSchemas.ts`), and `curatorList` stores an
+  emptied one as none. A figure moved to the other line keeps its role.
+- *How it is compared.* A role is part of the subject: `sameSubjects` compares a line by item
+  and role. A curator's "Lady Godiva as equestrian" is therefore not the run's plain "Lady
+  Godiva". An edit refuses a held proposal that lacks the curator's role (`sameAsProposed` in
+  `heldSettledByEdit.ts`), so it is not offered again. A run reading the figure without the role
+  beside the curator's claimed line is filed as a conflict, and the upsert keeps the curator's
+  value. A role a reading gains or loses on an unclaimed line is a held change like any other,
+  and the review card says "Shown now: …" when only a role changed.
 
 **The search** (`GET /api/experiences/commemorates/search?q=`, `searchCommemorationSubjects` in
 `commemorationSearch.ts`) is the curator's (`requireCurator`, `searchLimiter`), since it asks
