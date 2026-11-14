@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
-import { DEITY, OCCURRENCE, subsetSubjectKinds, WAR } from './commemorates.js';
+import { DEITY, OCCURRENCE, subsetSubjectClaims, subsetSubjectKinds, WAR } from './commemorates.js';
 
 /**
  * What each subject of the reading is, read from the local Wikidata subset
@@ -37,6 +37,10 @@ const NATIONAL_PERSONIFICATION = 'Q1142281';
 const PERSONIFICATION = 'Q207174';
 const LA_GITANILLA = 'Q555967';
 const WRITTEN_WORK = 'Q47461344';
+// The Lady Godiva equestrian statue in Coventry depicts Lady Godiva as an equestrian (#2485), read on 2026-11-12.
+const GODIVA_STATUE = 'Q17540305';
+const GODIVA = 'Q106077';
+const EQUESTRIAN = 'Q2730732';
 /** The Buddha's canonization status on the subset (2026-11-09): thaumaturge. */
 const THAUMATURGE = 'Q1349880';
 
@@ -60,6 +64,12 @@ const ENTITIES: Record<string, { label: string; claims: Record<string, unknown[]
   [SANCHO]: { label: 'Sancho Panza', claims: { P31: [{ id: `${SANCHO}$1`, value: LITERARY_CHARACTER }] } },
   [GERMANIA]: { label: 'Germania', claims: { P31: [{ id: `${GERMANIA}$1`, value: NATIONAL_PERSONIFICATION }] } },
   [LA_GITANILLA]: { label: 'La gitanilla', claims: { P31: [{ id: `${LA_GITANILLA}$1`, value: WRITTEN_WORK }] } },
+  [GODIVA_STATUE]: {
+    label: 'Lady Godiva equestrian statue',
+    claims: { P180: [{ id: `${GODIVA_STATUE}$1`, value: GODIVA, qualifiers: { P3831: [EQUESTRIAN] } }] },
+  },
+  [GODIVA]: { label: 'Lady Godiva', claims: { P31: [{ id: `${GODIVA}$1`, value: HUMAN }] } },
+  [EQUESTRIAN]: { label: 'equestrian', claims: {} },
   [WW2]: {
     label: 'World War II',
     claims: {
@@ -159,5 +169,14 @@ describe('what a subject of the reading is, read from the subset (#2404)', () =>
   it('reads an item with dates that is no occurrence as none (#2412)', async () => {
     const kinds = await subsetSubjectKinds([WESTERPLATTE]);
     expect(kinds.get(WESTERPLATTE)).toMatchObject({ event: true, occurrence: false, span: { from: 19390901, to: 19390907 } });
+  });
+});
+
+describe('the form a work shows a figure in, read from the subset (#2485)', () => {
+  it("reads the role a depicts statement names, by the role item's English label", async () => {
+    const claims = await subsetSubjectClaims([GODIVA_STATUE, SANCHO]);
+    expect(claims.get(GODIVA_STATUE)).toMatchObject({ depicts: [GODIVA], roles: { [GODIVA]: 'equestrian' } });
+    // A place whose statements name no role carries none.
+    expect(claims.get(SANCHO)?.roles).toBeUndefined();
   });
 });

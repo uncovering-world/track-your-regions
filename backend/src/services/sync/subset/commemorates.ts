@@ -9,10 +9,20 @@
  * none and is sorted by id. A value the subset did not keep is neither a human
  * nor an event here, where the live service could say it is one; its label is
  * still read, from the labels ring.
+ *
+ * The form a `P180` statement shows its item in, its `P3831` *object of
+ * statement has role* qualifier, is read off the same best-rank statement and
+ * named by the role item's English label (#2485). Where more than one role
+ * has a label, the lowest item id is taken, as the live reading takes it, so a
+ * role never changes with the order statements are listed in. The labels ring
+ * holds a role item only when the subset keeps it, or holds it as the main
+ * value of an item it keeps: it is never filled from a qualifier. A role item
+ * outside both has no English label here and names no role, where the live
+ * reading could name one.
  */
 
 import { entitiesOf, termsOf } from './entities.js';
-import { bestStatements, itemsOf } from './values.js';
+import { bestStatements, itemOf, itemsOf } from './values.js';
 import { subsetClassTree } from './kit.js';
 import { CLASSICAL_MYTHOLOGY_CLASSES } from '../publicArt/classes.js';
 import { pool } from '../../../db/index.js';
@@ -54,9 +64,26 @@ const HUMAN = 'Q5';
 /** What makes a value an event: it happened at a time (`P585`), or started (`P580`) or ended (`P582`). */
 const EVENT_TIMES = ['P585', 'P580', 'P582'] as const;
 
-/** The best-rank items each place names as whom it commemorates, its main subject, its namesake, what it depicts and its significant events. */
+/** The role items the best-rank `P180` statements name for each item, by that item, lowest id first. */
+function roleItemsOf(statements: CompactStatement[] | undefined): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const statement of bestStatements(statements)) {
+    const shown = itemOf(statement.value);
+    const roles = (statement.qualifiers?.P3831 ?? []).map(itemOf).filter((item): item is string => item !== null);
+    if (shown && roles.length) out.set(shown, [...(out.get(shown) ?? []), ...roles]);
+  }
+  for (const roles of out.values()) roles.sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+  return out;
+}
+
+/**
+ * The best-rank items each place names as whom it commemorates, its main
+ * subject, its namesake, what it depicts and its significant events, and the
+ * role each depicted item is shown in where its statement names one.
+ */
 export async function subsetSubjectClaims(ids: string[]): Promise<Map<string, SubjectClaims>> {
   const out = new Map<string, SubjectClaims>();
+  const roleItems = new Map<string, Map<string, string[]>>();
   for (const [id, { entity }] of await entitiesOf(ids)) {
     const { claims } = entity;
     out.set(id, {
@@ -66,6 +93,16 @@ export async function subsetSubjectClaims(ids: string[]): Promise<Map<string, Su
       depicts: itemsOf(bestStatements(claims.P180)),
       significantEvents: itemsOf(bestStatements(claims.P793)),
     });
+    const roles = roleItemsOf(claims.P180);
+    if (roles.size) roleItems.set(id, roles);
+  }
+  const labels = await termsOf([...new Set([...roleItems.values()].flatMap((roles) => [...roles.values()].flat()))], ['en']);
+  for (const [id, roles] of roleItems) {
+    const named = [...roles].flatMap(([shown, candidates]) => {
+      const label = candidates.map((role) => labels.get(role)?.label).find(Boolean);
+      return label ? [[shown, label] as const] : [];
+    });
+    if (named.length) out.set(id, { ...out.get(id)!, roles: Object.fromEntries(named) });
   }
   return out;
 }

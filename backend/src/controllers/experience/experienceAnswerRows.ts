@@ -55,7 +55,9 @@ function depictedOf(metadata: Record<string, unknown> | null): CommemoratedSubje
 }
 
 function servedSubjects(subjects: StoredSubject[] | undefined): CommemoratedSubject[] {
-  return (subjects ?? []).map(subject => ({ qid: subject.item, label: subject.label, article_url: subject.articleUrl }));
+  return (subjects ?? []).map(subject => ({
+    qid: subject.item, label: subject.label, article_url: subject.articleUrl, role: subject.role ?? null,
+  }));
 }
 
 /** Where a find was dug up, as `metadata.foundAt` stores it, key by key. */

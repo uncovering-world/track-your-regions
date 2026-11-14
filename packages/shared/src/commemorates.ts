@@ -12,9 +12,9 @@
  * those names, the linked article two language models both read from the
  * lead of its English Wikipedia article as its dedication (#2472)
  * (`backend/src/services/sync/places/commemorates.ts`). Two values are the same
- * when they name the same items (`sameSubjects`): a label or an article
- * Wikidata re-words, or another step naming the same people, changes nothing
- * a curator is asked about.
+ * when they name the same items in the same roles (`sameSubjects`): a label or
+ * an article Wikidata re-words, or another step naming the same people,
+ * changes nothing a curator is asked about.
  *
  * A curator corrects the list from the place's curation dialog and the value is
  * then theirs (`via: 'curator'`, `CURATOR_COMMEMORATION`), claimed as a website
@@ -40,6 +40,14 @@
  * myth and legend, a personification. The Republic Monument in Istanbul
  * commemorates none of its five founders and depicts all five. Nobody the
  * dedication names is named again.
+ *
+ * A subject may carry the form the work shows it in (#2485), its role, stored
+ * without the "as" the card puts before it: the Neptune Fountain in Berlin
+ * shows the Rhine, the Elbe, the Oder and the Vistula as women, and the Lady
+ * Godiva statue in Coventry shows Lady Godiva as an equestrian. A run reads it
+ * from Wikidata's *object of statement has role* on the place's *depicts*
+ * statement, a curator types it, and the card names it after the figures that
+ * share it (`subjectLineParts`). A subject without one reads as it always has.
  */
 
 /**
@@ -110,11 +118,19 @@ export type WarNarrowing = typeof WARS_NARROWED_BY_EVENT | typeof WARS_NARROWED_
 /** Who named a stored value's subjects: a step of the reading, a narrowing of its war, or a curator. */
 export type CommemorationVia = CommemorationStep | WarNarrowing | typeof CURATOR_COMMEMORATION;
 
-/** One subject: its Wikidata item, its label, and its English Wikipedia article where it has one. */
+/** The longest role a subject carries: a short phrase, "women" or "equestrian", never a sentence. */
+export const MAX_SUBJECT_ROLE_LENGTH = 60;
+
+/**
+ * One subject: its Wikidata item, its label, its English Wikipedia article
+ * where it has one, and the form the work shows it in where one is said.
+ */
 export interface CommemoratedSubject {
   item: string;
   label: string;
   articleUrl: string | null;
+  /** The role, without "as" (#2485): `women`, `equestrian`. Absent, never empty, where none is said. */
+  role?: string;
 }
 
 /** What `metadata.commemorates` holds: the subjects, and the step or the curator that named them. */
@@ -143,10 +159,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** One stored subject, key by key, or null where it names no item or no label. */
+/**
+ * A role as it is stored (#2485): its spaces tidied, and the "as" a curator may
+ * type before it taken off, since the card says it. Empty where nothing is left.
+ */
+export function tidyRole(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().replace(/^as\s+/i, '');
+}
+
+/** One stored subject, key by key, or null where it names no item or no label; a role only where one is said. */
 function subjectOf(value: unknown): CommemoratedSubject | null {
   if (!isRecord(value) || typeof value.item !== 'string' || typeof value.label !== 'string' || !value.label) return null;
-  return { item: value.item, label: value.label, articleUrl: typeof value.articleUrl === 'string' ? value.articleUrl : null };
+  const subject = { item: value.item, label: value.label, articleUrl: typeof value.articleUrl === 'string' ? value.articleUrl : null };
+  const role = typeof value.role === 'string' ? tidyRole(value.role) : '';
+  return role ? { ...subject, role } : subject;
 }
 
 /**
@@ -192,13 +218,59 @@ export function onBothLines(commemorates: unknown, depicts: unknown): string[] {
   return subjectItems(commemorates).filter(item => depicted.has(item));
 }
 
+/** Each subject a stored value names, as its item and its role: what `sameSubjects` compares. */
+function subjectKeys(value: unknown): Set<string> {
+  return new Set(commemoratesOf(value)?.subjects.map(subject => `${subject.item} ${subject.role ?? ''}`) ?? []);
+}
+
 /**
- * Whether two stored values name the same items, whatever their order, labels,
- * articles or step: a curator's empty list and no value both name nobody. A
- * stored `metadata.depicts` is compared the same way, its steps being steps of
- * the reading.
+ * Whether two stored values name the same items in the same roles, whatever
+ * their order, labels, articles or step: a curator's empty list and no value
+ * both name nobody. A stored `metadata.depicts` is compared the same way, its
+ * steps being steps of the reading. A role is part of the subject (#2485): a
+ * curator's "the Rhine as women" is not the run's plain "the Rhine", so a
+ * reading without the role never reads as the line the curator saved.
  */
 export function sameSubjects(a: unknown, b: unknown): boolean {
-  const [left, right] = [new Set(subjectItems(a)), new Set(subjectItems(b))];
-  return left.size === right.size && [...left].every(item => right.has(item));
+  const [left, right] = [subjectKeys(a), subjectKeys(b)];
+  return left.size === right.size && [...left].every(key => right.has(key));
+}
+
+/** What a subject must carry to be grouped by its role: the read's `role: null` and the stored shape's absent role alike. */
+export interface RoledSubject {
+  role?: string | null;
+}
+
+/**
+ * The subjects by role (#2485): those without one first, then each role in the
+ * order its first figure is listed, each group's figures in their own order.
+ */
+export function subjectGroups<T extends RoledSubject>(subjects: readonly T[]): { role: string | null; subjects: T[] }[] {
+  const groups = new Map<string, T[]>([['', []]]);
+  for (const subject of subjects) {
+    const role = subject.role ?? '';
+    groups.set(role, [...(groups.get(role) ?? []), subject]);
+  }
+  return [...groups].filter(([, members]) => members.length).map(([role, members]) => ({ role: role || null, subjects: members }));
+}
+
+/** One piece of a subject line: a subject the reader's surface names its own way, or the words between. */
+export type SubjectLinePart<T> = { subject: T } | { text: string };
+
+/**
+ * A line of subjects as a card words it (#2485): "Neptune, Triton; Rhine,
+ * Elbe, Oder and Vistula as women". The figures without a role come first,
+ * listed with commas as the line always listed them. Each role's figures
+ * follow, the last joined with "and" and the role after them. A semicolon
+ * parts the groups, since a group holds commas of its own.
+ */
+export function subjectLineParts<T extends RoledSubject>(subjects: readonly T[]): SubjectLinePart<T>[] {
+  return subjectGroups(subjects).flatMap((group, g) => {
+    const last = group.subjects.length - 1;
+    const names = group.subjects.flatMap((subject, i): SubjectLinePart<T>[] => {
+      if (i === 0) return [{ subject }];
+      return [{ text: group.role && i === last ? ' and ' : ', ' }, { subject }];
+    });
+    return [...(g > 0 ? [{ text: '; ' }] : []), ...names, ...(group.role ? [{ text: ` as ${group.role}` }] : [])];
+  });
 }

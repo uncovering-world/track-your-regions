@@ -2813,6 +2813,11 @@ export interface CommemoratedSubject {
      * @nullable
      */
   article_url: string | null;
+  /**
+     * The form the work shows it in, without "as" (#2485): the Neptune Fountain shows the Rhine as `women`. Null where none is said.
+     * @nullable
+     */
+  role: string | null;
 }
 
 /**
@@ -3308,6 +3313,7 @@ export type EditExperienceBodyCommemoratesItem = {
   label: string;
   /** @nullable */
   articleUrl: string | null;
+  role?: string;
 };
 
 export type EditExperienceBodyDepictsItem = {
@@ -3316,6 +3322,7 @@ export type EditExperienceBodyDepictsItem = {
   label: string;
   /** @nullable */
   articleUrl: string | null;
+  role?: string;
 };
 
 export interface EditExperienceBody {

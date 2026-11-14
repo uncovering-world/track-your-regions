@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { commemoratesOf, depictsOf, onBothLines, sameSubjects } from './commemorates.js';
+import {
+  commemoratesOf, depictsOf, onBothLines, sameSubjects, subjectGroups, subjectLineParts, tidyRole, type SubjectLinePart,
+} from './commemorates.js';
 
 // The Monument to Minin and Pozharsky (Q187531) depicts Dmitry Pozharsky (Q15756) and Kuzma Minin (Q469785).
 const POZHARSKY = { item: 'Q15756', label: 'Dmitry Pozharsky', articleUrl: 'https://en.wikipedia.org/wiki/Dmitry_Pozharsky' };
@@ -72,5 +74,61 @@ describe('a subject on both lines (#2421)', () => {
     expect(onBothLines({ via: 'statues-category', subjects: [GARUDA] }, { via: 'curator', subjects: [VISHNU, GARUDA] })).toEqual(['Q188676']);
     expect(onBothLines({ via: 'curator', subjects: [GARUDA] }, { via: 'main-subject', subjects: [VISHNU] })).toEqual([]);
     expect(onBothLines(undefined, { via: 'curator', subjects: [] })).toEqual([]);
+  });
+});
+
+// The Lady Godiva equestrian statue (Q17540305) depicts Lady Godiva (Q106077),
+// and its statement names her role: equestrian (Q2730732).
+const GODIVA = { item: 'Q106077', label: 'Lady Godiva', articleUrl: 'https://en.wikipedia.org/wiki/Lady_Godiva' };
+
+describe('the form a figure is shown in (#2485)', () => {
+  it('reads a stored role, tidied, and a subject without one as it always read', () => {
+    expect(depictsOf({ via: 'depicts', subjects: [{ ...GODIVA, role: ' equestrian ' }] }))
+      .toEqual({ via: 'depicts', subjects: [{ ...GODIVA, role: 'equestrian' }] });
+    expect(depictsOf({ via: 'depicts', subjects: [GODIVA] })?.subjects[0]).not.toHaveProperty('role');
+    // An empty role and one that is no text are no role.
+    expect(depictsOf({ via: 'curator', subjects: [{ ...GODIVA, role: '  ' }] })?.subjects[0]).not.toHaveProperty('role');
+    expect(depictsOf({ via: 'curator', subjects: [{ ...GODIVA, role: 7 }] })?.subjects[0]).not.toHaveProperty('role');
+  });
+
+  it('stores a role without the "as" the card puts before it', () => {
+    expect(tidyRole('  as   women ')).toBe('women');
+    expect(tidyRole('As women')).toBe('women');
+    expect(tidyRole('ascetic')).toBe('ascetic');
+    expect(tidyRole('   ')).toBe('');
+  });
+
+  it("never reads a curator's role as the same line as a reading without it", () => {
+    const curators = { via: 'curator', subjects: [{ ...GODIVA, role: 'equestrian' }] };
+    expect(sameSubjects(curators, { via: 'depicts', subjects: [GODIVA] })).toBe(false);
+    expect(sameSubjects(curators, { via: 'depicts', subjects: [{ ...GODIVA, role: 'rider' }] })).toBe(false);
+    expect(sameSubjects(curators, { via: 'depicts', subjects: [{ ...GODIVA, label: 'Godiva', role: 'equestrian' }] })).toBe(true);
+    // Two rows stored before roles existed compare as they always did.
+    expect(sameSubjects({ via: 'depicts', subjects: [GODIVA] }, { via: 'curator', subjects: [{ ...GODIVA, articleUrl: null }] })).toBe(true);
+  });
+
+  // The Neptune Fountain in Berlin (Q650657): Neptune and a triton, and four
+  // women who are the rivers of Prussia. Figures stand in by name here.
+  const fountain = [
+    { label: 'Neptune' }, { label: 'Rhine', role: 'women' }, { label: 'Triton', role: null },
+    { label: 'Elbe', role: 'women' }, { label: 'Oder', role: 'women' }, { label: 'Vistula', role: 'women' },
+  ];
+  const words = <T extends { label: string }>(parts: SubjectLinePart<T>[]) =>
+    parts.map(part => ('text' in part ? part.text : part.subject.label)).join('');
+
+  it('groups the figures by role, those without one first, then each role as its first figure comes', () => {
+    expect(subjectGroups(fountain).map(group => [group.role, group.subjects.map(subject => subject.label)])).toEqual([
+      [null, ['Neptune', 'Triton']],
+      ['women', ['Rhine', 'Elbe', 'Oder', 'Vistula']],
+    ]);
+    expect(subjectGroups([])).toEqual([]);
+  });
+
+  it('words the line with each role after its figures', () => {
+    expect(words(subjectLineParts(fountain))).toBe('Neptune, Triton; Rhine, Elbe, Oder and Vistula as women');
+    expect(words(subjectLineParts([{ label: 'Lady Godiva', role: 'equestrian' }]))).toBe('Lady Godiva as equestrian');
+    expect(words(subjectLineParts([{ label: 'Rhine', role: 'women' }, { label: 'Elbe', role: 'women' }]))).toBe('Rhine and Elbe as women');
+    // A line without roles reads as it always has.
+    expect(words(subjectLineParts<{ label: string; role?: string }>([{ label: 'Neptune' }, { label: 'Triton' }, { label: 'Medusa' }]))).toBe('Neptune, Triton, Medusa');
   });
 });

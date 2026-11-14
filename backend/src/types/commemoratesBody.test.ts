@@ -41,6 +41,15 @@ describe("a curator's list of whom a place commemorates", () => {
     expect(parse([subject]).success).toBe(false);
   });
 
+  it('takes the form a figure is shown in, tidied and without the "as" the card adds (#2485)', () => {
+    // The Lady Godiva equestrian statue depicts Lady Godiva (Q106077) as an equestrian.
+    const godiva = { item: 'Q106077', label: 'Lady Godiva', articleUrl: null };
+    expect(parse([{ ...godiva, role: '  as  equestrian ' }]).data?.commemorates).toEqual([{ ...godiva, role: 'equestrian' }]);
+    expect(parse([godiva]).data?.commemorates).toEqual([godiva]);
+    expect(parse([{ ...godiva, role: 'e'.repeat(61) }]).success).toBe(false);
+    expect(parse([{ ...godiva, role: 7 }]).success).toBe(false);
+  });
+
   it('refuses one subject named twice', () => {
     expect(parse([LINCOLN, { ...LINCOLN, label: 'Lincoln' }]).success).toBe(false);
   });

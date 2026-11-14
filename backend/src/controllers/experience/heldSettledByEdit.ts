@@ -57,9 +57,11 @@ export interface HeldSettled {
 /**
  * Whether what the curator stored is what the run proposed: names as stored,
  * nothing as nothing, and whom a place commemorates or what it depicts by the
- * items it names (`sameSubjects`), since the curator's list is stored as theirs.
+ * items it names and the role of each (`sameSubjects`), since the curator's list
+ * is stored as theirs. A run's reading without the role a curator gave a figure
+ * is refused, so it is not offered again over the curator's line (#2485).
  */
-function sameAsProposed(field: string, proposed: unknown, stored: unknown): boolean {
+export function sameAsProposed(field: string, proposed: unknown, stored: unknown): boolean {
   if (field === 'metadata.commemorates' || field === 'metadata.depicts') return sameSubjects(proposed, stored);
   if (isEmptyValue(proposed) && isEmptyValue(stored)) return true;
   return jsonEquals(tidyNameValue(field, proposed), tidyNameValue(field, stored));
