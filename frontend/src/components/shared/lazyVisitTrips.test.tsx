@@ -2,7 +2,8 @@
  * The trips chunk's loader (#2120): nothing is drawn, and nothing fetched,
  * until there is an untick to undo or a tick to date; then the chunk draws
  * the line, for the traveller whose write it was, the Undo under the region
- * the list showed and the date line under the one row it belongs to.
+ * the list showed and the date line under the one row it belongs to. An
+ * untick's places reach the chunk's offer, which drops its guesses on them.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
@@ -12,8 +13,11 @@ import {
   clearRemovedVisits, forgetTraveller, handleTicks, noteRemovedVisits, noteTicked, removedVisitsOf, showDateLine, writeOrigin,
 } from './visitRemovals';
 
+const forgetGuessesOn = vi.hoisted(() => vi.fn());
 vi.mock('./trips/visitTrips', () => ({
   default: (props: { part: string }) => <p>{`chunk: ${props.part}`}</p>,
+  forgetGuessesOn,
+  forgetOffer: () => {},
 }));
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: true, user: { id: 7 } }) }));
 
@@ -33,6 +37,20 @@ describe('the Undo line through its lazy chunk', () => {
     render(<LazyVisitRemovedLine scope={6737} />);
     act(() => noteRemovedVisits([withTrips], client, writeOrigin(7)));
     expect(await screen.findByText('chunk: removed')).toBeTruthy();
+  });
+
+  it('hands the places an untick removed to the offer, which asks about no date guessed on them', async () => {
+    render(<LazyVisitRemovedLine scope={6737} />);
+    act(() => noteRemovedVisits([withTrips], client, writeOrigin(7)));
+    await screen.findByText('chunk: removed');
+    expect(forgetGuessesOn).toHaveBeenLastCalledWith([9461]);
+
+    // An untick of an earlier sign-in hands over nothing.
+    forgetGuessesOn.mockClear();
+    const earlier = writeOrigin(7);
+    act(() => forgetTraveller());
+    act(() => noteRemovedVisits([withTrips], client, earlier));
+    expect(forgetGuessesOn).not.toHaveBeenCalled();
   });
 
   it("draws nothing of another traveller's untick", () => {
@@ -71,7 +89,7 @@ describe('the date line through its lazy chunk', () => {
 describe("a tick's answer", () => {
   it('opens nothing when it arrives after the traveller who ticked was forgotten', () => {
     const opened = vi.fn();
-    handleTicks(opened, () => {});
+    handleTicks(opened, () => {}, () => {});
     const place = { experienceId: 9461, name: 'Uffizi', latitude: 43.77, longitude: 11.26 };
     const origin = writeOrigin(7);
     noteTicked(9461, [place], client, origin);

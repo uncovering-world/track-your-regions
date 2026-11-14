@@ -17,6 +17,8 @@ export const OFFER = {
   NEARBY_KM: 50,
   /** In past travels, a tick farther than this from the place that set the year asks again. */
   CARRIED_YEAR_KM: 1000,
+  /** A signal of past travels asks about the dates saved as today on a guess this recent; older ones were likely on the spot. */
+  WRONG_GUESS_HOURS: 2,
   /** "Don't ask in this session" lasts this long, or until the tab closes. */
   SILENCE_HOURS: 12,
 } as const;

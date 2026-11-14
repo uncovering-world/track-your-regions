@@ -3,7 +3,7 @@ import { TripsSection } from './TripsSection';
 import { VisitDateLine } from './VisitDateLine';
 import { VisitRemovedLine } from './VisitRemovedLine';
 
-export { forgetOffer, offerDate } from './offerRuntime';
+export { forgetGuessesOn, forgetOffer, offerDate } from './offerRuntime';
 
 export type VisitTripsPart =
   | { part: 'trips'; experienceId: number }

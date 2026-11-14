@@ -3,7 +3,9 @@
  * by the request after the tick, "Change" opening the quick choices in the
  * line and Escape closing them, the cross and "Don't ask in this session",
  * and a question in past travels. Every control waits on a visit write. The
- * line and the session are the ticking traveller's own.
+ * line and the session are the ticking traveller's own. On the sofa, the
+ * Prado and the Thyssen saved as today are asked about once when Kinkaku-ji
+ * is ticked ten minutes later.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -11,13 +13,20 @@ import { QueryClient } from '@tanstack/react-query';
 
 const addTrips = vi.fn();
 const changeTrips = vi.fn();
+const moveTrips = vi.fn();
 let pending = false;
-vi.mock('../../../api/trips', () => ({ addTrips: (...args: unknown[]) => addTrips(...args), changeTrips: (...args: unknown[]) => changeTrips(...args) }));
+vi.mock('../../../api/trips', () => ({
+  addTrips: (...args: unknown[]) => addTrips(...args),
+  changeTrips: (...args: unknown[]) => changeTrips(...args),
+  moveTrips: (...args: unknown[]) => moveTrips(...args),
+}));
 vi.mock('../../../hooks/useVisitedExperiences', () => ({ useVisitWritePending: () => pending }));
 
 import { VisitDateLine } from './VisitDateLine';
-import { closeOffer, forgetOffer, offerDate, useCurrentOffer } from './offerRuntime';
-import { dateLineAt, forgetTraveller, OFFER_SILENCE_KEY, writeOrigin } from '../visitRemovals';
+import { closeOffer, forgetGuessesOn, forgetOffer, offerDate, useCurrentOffer } from './offerRuntime';
+import { readSession } from './dateOffer';
+import { formatApproximateDate } from '../../../utils/dateFormat';
+import { dateLineAt, forgetTraveller, handleTicks, OFFER_SILENCE_KEY, writeOrigin } from '../visitRemovals';
 
 const PANTHEON = { experienceId: 9001, name: 'Pantheon', latitude: 41.8986, longitude: 12.4769 };
 const savedTrip = (id: number, year: number | null, month: number | null, day: number | null) =>
@@ -195,3 +204,152 @@ describe('the line under the newest tick', () => {
     expect(seen).toBeNull();
   });
 });
+
+describe('a wrong guess of today, asked about once', () => {
+  const PRADO = { experienceId: 9101, name: 'Museo del Prado', latitude: 40.4138, longitude: -3.6921 };
+  const THYSSEN = { experienceId: 9102, name: 'Museo Thyssen-Bornemisza', latitude: 40.4160, longitude: -3.6949 };
+  const KINKAKUJI = { experienceId: 9103, name: 'Kinkaku-ji', latitude: 35.0394, longitude: 135.7292 };
+  const START = new Date(2026, 10, 14, 21, 0).getTime();
+  const TODAY = { year: 2026, month: 11, day: 14 };
+  const Y2019 = { year: 2019, month: null, day: null };
+  const tripOf = (experienceId: number) => experienceId + 1000;
+  const dated = (ids: number[], d: unknown) =>
+    ({ success: true, trips: ids.map(id => ({ experienceId: id - 1000, trip: { id, ...(d as object), createdAt: null } })) });
+
+  beforeEach(() => {
+    addTrips.mockImplementation(async (ids: number[], d: unknown) => dated(ids.map(tripOf), d));
+    moveTrips.mockReset().mockImplementation(async (moves: { id: number; date: unknown }[]) =>
+      dated(moves.map(m => m.id), moves[0].date));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    handleTicks(() => {}, () => {}, () => {});
+  });
+
+  /** A tick `minutes` after nine in the evening, its today-trip written. */
+  async function tickAt(place: typeof PRADO, minutes: number) {
+    vi.spyOn(Date, 'now').mockReturnValue(START + minutes * 60_000);
+    await act(async () => offerDate(place.experienceId, [place], new QueryClient(), writeOrigin(7)));
+  }
+  /** The Prado and the Thyssen ticked on the sofa, each saved as today. */
+  async function sofa() {
+    await tickAt(PRADO, 0);
+    render(<VisitDateLine />);
+    await tickAt(THYSSEN, 2);
+    await waitFor(() => expect(readSession(7).guesses.map(g => g.trip)).toEqual([tripOf(9101), tripOf(9102)]));
+  }
+  const status = () => screen.getAllByRole('status').map(el => el.textContent);
+  /** "Earlier…", 2019 in the year select, and Save. */
+  async function answer2019() {
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier…' }));
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Year' }));
+    fireEvent.click(screen.getByRole('option', { name: '2019' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })); });
+  }
+
+  it('asks about the two Madrid places when Kinkaku-ji is ticked, moves both with one answer, and puts both back', async () => {
+    await sofa();
+    await tickAt(KINKAKUJI, 12);
+    expect(status()).toEqual(['Museo del Prado and Museo Thyssen-Bornemisza were saved as today. When were you there?']);
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
+
+    await answer2019();
+    expect(moveTrips).toHaveBeenCalledWith([
+      { id: tripOf(9101), date: Y2019, from: TODAY }, { id: tripOf(9102), date: Y2019, from: TODAY },
+    ]);
+    await waitFor(() => expect(status()).toEqual([
+      'Moved to 2019: Museo del Prado and Museo Thyssen-Bornemisza', 'When were you here?',
+    ]));
+    // Kinkaku-ji's own question, 10,000 km from Madrid, offers 2019 first.
+    expect(screen.getByRole('button', { name: '2019, like Museo del Prado' })).toBeTruthy();
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Undo' })); });
+    expect(moveTrips).toHaveBeenLastCalledWith([
+      { id: tripOf(9101), date: TODAY, from: Y2019 }, { id: tripOf(9102), date: TODAY, from: Y2019 },
+    ]);
+    await waitFor(() => expect(status()).toEqual(['When were you here?']));
+    expect(screen.queryByRole('button', { name: '2019, like Museo del Prado' })).toBeNull();
+  });
+
+  it('keeps today on "Today is right", asks the tick\'s own question, and never asks about today again', async () => {
+    await sofa();
+    await tickAt(KINKAKUJI, 12);
+    fireEvent.click(screen.getByRole('button', { name: 'Today is right' }));
+    expect(status()).toEqual(['When were you here?']);
+    expect(moveTrips).not.toHaveBeenCalled();
+    expect(readSession(7)).toMatchObject({ askedAboutToday: true, guesses: [] });
+  });
+
+  it('names the date a guess from before midnight holds, and offers "That\'s right" for it', async () => {
+    // The Prado at 23:50 is saved as 14 Nov; Kinkaku-ji is ticked at 00:05, on 15 Nov.
+    await tickAt(PRADO, 170);
+    render(<VisitDateLine />);
+    await waitFor(() => expect(readSession(7).guesses.map(g => g.date)).toEqual([TODAY]));
+    await tickAt(KINKAKUJI, 185);
+    expect(status()).toEqual([`Museo del Prado was saved as ${formatApproximateDate(TODAY)}. When were you there?`]);
+    expect(screen.queryByRole('button', { name: 'Today is right' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: "That's right" }));
+    expect(status()).toEqual(['When were you here?']);
+    expect(moveTrips).not.toHaveBeenCalled();
+  });
+
+  it('says only what moved: a place dated in another tab meanwhile is left out', async () => {
+    await sofa();
+    await tickAt(KINKAKUJI, 12);
+    moveTrips.mockImplementationOnce(async () => dated([tripOf(9101)], Y2019));
+    await answer2019();
+    await waitFor(() => expect(status()[0]).toBe('Moved to 2019: Museo del Prado'));
+  });
+
+  it('never asks about a date the traveller chose on the line', async () => {
+    await tickAt(PRADO, 0);
+    render(<VisitDateLine />);
+    await waitFor(() => expect(readSession(7).guesses).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Yesterday' })); });
+    expect(readSession(7).guesses).toEqual([]);
+    await tickAt(KINKAKUJI, 12);
+    expect(status()).toEqual(['When were you here?']);
+  });
+
+  it('asks nothing when who is signed in changed between the guesses and the signal', async () => {
+    // Wired as the shell wires the chunk: forgetting the traveller forgets the session.
+    handleTicks(() => {}, forgetOffer, () => {});
+    await sofa();
+    act(() => forgetTraveller());
+    await tickAt(KINKAKUJI, 12);
+    render(<VisitDateLine />);
+    expect(screen.queryByText(/saved as today/)).toBeNull();
+    // Kinkaku-ji opens the new session, on a trip: its own today is the only guess held.
+    await waitFor(() => expect(readSession(7).guesses.map(g => g.trip)).toEqual([tripOf(9103)]));
+  });
+
+  it('writes nothing for an answer given after who is signed in changed', async () => {
+    await sofa();
+    await tickAt(KINKAKUJI, 12);
+    // An answer on the line after the change: nothing goes out.
+    act(() => forgetTraveller());
+    await answer2019();
+    expect(moveTrips).not.toHaveBeenCalled();
+  });
+
+  it('keeps nothing of a move whose answer arrives after who is signed in changed', async () => {
+    await sofa();
+    await tickAt(KINKAKUJI, 12);
+    let answerMove: () => void = () => {};
+    moveTrips.mockImplementationOnce(() => new Promise(resolve => { answerMove = () => resolve(dated([tripOf(9101)], Y2019)); }));
+    await answer2019();
+    act(() => forgetTraveller());
+    await act(async () => answerMove());
+    expect(screen.queryByText(/Moved to/)).toBeNull();
+    expect(readSession(7).carried).toBeNull();
+  });
+
+  it('drops the guesses on places an untick removed', async () => {
+    await sofa();
+    forgetGuessesOn([THYSSEN.experienceId]);
+    await tickAt(KINKAKUJI, 12);
+    expect(status()).toEqual(['Museo del Prado was saved as today. When were you there?']);
+  });
+});
+

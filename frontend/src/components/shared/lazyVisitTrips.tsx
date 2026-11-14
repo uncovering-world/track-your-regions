@@ -51,10 +51,11 @@ export function LazyVisitDateLine({ at }: { at: number }) {
 // `at`. Nothing waits on it: the tick is already written, and a chunk that
 // does not arrive dates nothing. Handed over through the store, which the
 // tick's hook reads, so the hook imports nothing the chunk imports back.
-// Forgetting a traveller drops the offer on screen where the chunk is there.
+// Forgetting a traveller drops the offer on screen where the chunk is there,
+// and an untick drops the dates the offer guessed on the places it removed.
 // A traveller forgotten while the chunk was on its way is not offered a date:
 // the origin is checked again once it arrives, before anything is stored or
 // written.
 handleTicks((at, ticked, client, origin) => {
   loadVisitTrips().then(m => { if (isCurrentOrigin(origin)) m.offerDate(at, ticked, client, origin); }, () => {});
-}, () => arrived?.forgetOffer());
+}, () => arrived?.forgetOffer(), places => arrived?.forgetGuessesOn(places));
