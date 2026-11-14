@@ -6150,57 +6150,57 @@ Maggiore, and crowds out 51 more of its churches.
   - **The curator's side** lives in `frontend/src/components/curation/crowding/`:
     - `CrowdingWayIn` is the way in on a review card of a membership (`GatedSection`,
       `PinQuestionCard`, `VisitQuestionCard`, `KindMissingCard`). It reads the card's `crowding`
-      and nothing else, so no card reads the window before a curator opens it. The button says
+      and nothing else, so no card reads the window before a curator follows it. The button says
       "Squares around (22)" from `around`. On a shadowed place, `shadowLine` (`crowdingWords.ts`)
       says "Shadowed in Squares & streets: 13 better-known squares within 10 km outrank it" from
-      `outrankedBy`. The window opens on the region's list of the place's group with the place
-      open in its circle, which names them. A place's curation dialog offers the same button on
-      each kind row that carries `crowding` (`PlaceKinds`), opening the window over the dialog on
-      that membership. The dialog's lazy wrapper (`LazyCurationDialog`) hands it
-      `LazyCrowdingWindow` rather than the dialog importing it: a dialog chunk that imports the
-      shell's lazy helpers makes Rolldown re-cut the startup chunks, moving the code the shell
-      shares with the dialog into the entry chunk.
-    - `CrowdingWindow` is the window, drawn in one of two frames: `CrowdingWindowDialog` over a
-      review card, its own chunk behind `LazyCrowdingWindow`, so the review queue's chunk carries
-      only the ways in, and the *Crowded cities* tab's pane, in the page. The dialog reads the
-      card's place first, for the group it is listed under, and keeps the place open in its own
-      state; the tab keeps it in the address. The window reads, stages, applies and reports, and
-      hands its parts — heading, map and list or card, report, Apply — to its frame, which lays
-      them out and keeps the staging. A dialog sets the map beside the list from a medium width
-      and scrolls the list on its own; a pane, narrower, only on the widest screens, where the
-      list runs on with the page; from a medium width an Apply bar is pinned to the foot of the
-      screen. The map stays in view while the list scrolls (`crowdingLayout`, #2345). Beside the
-      list its pane is sticky: in the page it holds just below the top, as the list of groups
-      beside it does, since the review page's header scrolls away with the page; in a dialog at
-      the top of the dialog's content, which scrolls on a short screen. A page pane on a laptop,
-      from a medium width to the widest, stacks a lower map over the list and stands no taller
-      than the screen above the Apply bar, so the list scrolls in its own box beneath the map, its
-      header row at the box's top and no row passing under the map. The map is as tall as the
-      screen leaves room for, between 160 and 280 px, and the layout holds only on a screen tall
-      enough for the least map with its pane, the header and three rows of the list and the Apply
-      bar (`HELD_MIN_HEIGHT`), which a 1440 by 900 laptop is; neither the map's height nor the cap
-      ever leaves the list fewer than three rows, and the list keeps its header and a row whatever
-      the pane takes. A shorter laptop screen (1366 by 768, or a laptop at 200 % zoom) and a phone
-      stand the map over the list, and both scroll with the page.
-    - `RegionList` is the region's list: "On the region page · 18, and 11 new that would be — best
-      known first", then "Shadowed · 28, in the list's tail", a new arrival where the rule would put
-      it once passed (`listPart`) and counted apart in the page's header, since the page shows it
-      only once a curator passes it; the tail holds a curator's shadow pins as well as the rule's. Each row shows what its place is (`PlaceCell`, #2345): the
-      place's picture as a 48 px `DenseThumbnail` of its 120 px `Special:FilePath` copy, its credit
-      the © badge on it, a press opening it at 960 px with the full credit (ADR-0182), the badge and
-      the press drawn only while the thumbnail is on screen and taken away with a picture that fails
-      to load, and a *Wikipedia* link to its
-      article with the reader's edition beside it (`ReaderEditionBeside`), as the review card
-      links it. A row whose place holds no picture or no article omits it. Under the name, a note
-      (`placeNote`: "the best known here", "11 better known within 10 km"), and beside it the
-      answers its standing takes (`AnswerButtons`). A hover says why the place stands where it
-      does (`whyWords`: "Shadowed: 11 better-known squares stand within 10 km of it:
-      Alexanderplatz, Potsdamer Platz, Gendarmenmarkt, …"), and a click on its name opens its
-      circle.
+      `outrankedBy`. The button is a link to the *Crowded cities* tab open on the place
+      (`crowdedPlaceUrl` in `utils/appUrl.ts`, #2487), which shows the region's list of the
+      place's group with the place open in its circle, which names them; Back returns to the card.
+      A place's curation dialog offers the same link on each kind row that carries `crowding`
+      (`PlaceKinds`), on that membership, and Back returns to the page the dialog stood on, with
+      the dialog closed. While the dialog's form holds edits the link is held, disabled with a hint
+      to save or discard them first, since following it would drop them without asking.
+    - `CrowdingWindow` is the window, one screen: the tab's pane (#2487). It reads, stages,
+      applies and reports, and hands its parts — heading, map and list or card, report, Apply — to
+      the tab, which lays them out and keeps the staging. From a laptop's width the map stands
+      beside the list and its pane is sticky, just below the screen's top, since the review page's
+      header scrolls away with the page (`CROWDING_LAYOUT`, #2345); the tab folds its list of
+      groups to a bar meanwhile, so the two have the room a dialog had. The map's column is
+      320 px on a laptop and 400 px from the widest screens: at 1440 px wide the table beside it
+      keeps a name column of about 270 px, where at 400 px it was 208 and a row of New York's
+      squares ran to four lines. On a narrower screen the map stands over the list: from a
+      tablet's width the list scrolls in a box of its own (`CROWDING_LAYOUT.list`, below), and on
+      a phone both scroll with the page. From a medium width an Apply bar is pinned to the foot of
+      the screen.
+    - `CrowdingTable` is the window's one table: the region's list and a place's circle are drawn
+      by the same row (`CrowdingRow`) under one row of headings that sticks while the rows scroll:
+      from a tablet's width to a laptop's the list scrolls in a box of its own, 75 % of the
+      screen's height, and the headings stick within it; from a laptop's width the page scrolls
+      and they stick at the screen's top. On a phone they scroll with the page.
+      A row is its rank, the place's picture as a 40 px `DenseThumbnail` of its 120 px
+      `Special:FilePath` copy, its credit the © badge on it, a press opening it at 960 px with the
+      full credit (ADR-0182), the badge and the press drawn only while the thumbnail is on screen
+      and taken away with a picture that fails to load; the name, a button that opens its circle,
+      with its standing as a compact chip (*New*, and in a circle *Shadowed*; a staged answer adds
+      where it moves the place), a note where its rank does not say what the rule does with it,
+      and a *Wikipedia* link to its article with the reader's edition beside it
+      (`ReaderEditionBeside`); the answers its standing takes (`AnswerButtons`) at the end of that
+      line, wrapping under the name where the row is too narrow for them; then its figures in the headings' columns (`FigureTable`) and, in a circle, its
+      distance. A row whose place holds no picture or no article omits it, keeping the picture's
+      room. Why the place stands where it stands opens at its name, on hover and on keyboard focus
+      (`whyWords`), never over the map. A part of the list is a labelled divider inside the table,
+      not a second heading row. On a phone the table scrolls sideways with the name held in view.
+    - `RegionList` is the region's list, in that table: the divider "On the region page · 18, and
+      11 new that would be — best known first", then "Shadowed · 28, in the list's tail", a new
+      arrival where the rule would put it once passed (`listPart`) and counted apart in the page's
+      divider, since the page shows it only once a curator passes it; the tail holds a curator's
+      shadow pins as well as the rule's. A row's note is `placeNote` ("the best known here", "11
+      better known within 10 km"), and its hint `whyWords` ("Shadowed: 11 better-known squares
+      stand within 10 km of it: Alexanderplatz, Potsdamer Platz, Gendarmenmarkt, …").
     - `PlaceView` is a place's circle: its card, with its picture and its credit as a line under it
       (ADR-0182), a press opening it at 960 px with the full credit (`PictureLightbox`), its article, the rule's reading with its exact count (`ruleReading`) and its
-      own answers, about it alone; then every place of its type within the radius, the ones the
-      card's button counts, as one list by fame with the place itself at its own rank and marked
+      own answers, about it alone; then, in the window's table, every place of its type within the
+      radius, the ones the card's button counts, as one list by fame with the place itself at its own rank and marked
       there (`circleRows` in `circleGroups.ts`, #2486): best known first, a tie broken by the
       membership's id, the places not measured yet last (`byFame`). The order never reads which
       place is open, so opening a neighbour from the table or the map moves only the mark: the rows
@@ -6215,7 +6215,9 @@ Maggiore, and crowds out 51 more of its churches.
       curator keeps on the list that counts against the place from below; a tie, which the rule
       never counts; a neighbour not compared because the place is not measured yet, never measured
       or of a type its kind exempts; and one not measured yet. Each opens its own circle, with its
-      distance. The map's legend and each dot's hover name the same groups (`GROUP_WORDS`): *better
+      distance. A neighbour the group's list holds is drawn as that list draws it, with its
+      picture, article and answers, which stage the same pin as its row there; one across the
+      region's border, which no list the window has read holds, keeps its figures alone. The map's legend and each dot's hover name the same groups (`GROUP_WORDS`): *better
       known, compared with it*; *better known, not counted against it*; *less known, not counted
       against it*; *measured, not compared with it*; and *not measured yet*. A neighbour the rule
       compares with the place is in the first group whatever the place's own score, so one a
@@ -6254,8 +6256,8 @@ Maggiore, and crowds out 51 more of its churches.
       its places' circles, and one Apply sends them all (`answerCrowding` in
       `api/crowdingAnswers.ts`, a hundred to a request). The window then re-reads every group and
       circle and the shadowed arrivals, returns to the region's list where its place was not
-      taken, and hands the report to its frame: the dialog passes it to its opener on close, and
-      the tab has the page refresh the queue and the lists at once.
+      taken, and hands the report to the tab, which has the page refresh the queue and the lists at
+      once.
     - `CrowdedCities` is the review page's *Crowded cities* tab (`view=crowded`,
       `docs/tech/addresses.md` § The review page), a chunk of its own behind `LazyCrowdedCities`,
       fetched when the tab is opened: the review page carries the two tabs, their counts, the
@@ -6281,7 +6283,14 @@ Maggiore, and crowds out 51 more of its churches.
       Apply answered stays open with its report, and a link opens any group; `groupShown` opens
       the first group the chips keep where the address names none or one they hide, as a replace,
       so a chip changes what is open. The place open in its circle is the
-      address's `place`, a push. On a narrow screen one side shows at a time.
+      address's `place`, a push. A way in names the place alone (`crowdedPlaceUrl`): the tab reads
+      the place (`useWayInGroup`), writes its group in beside it as a replace, and opens nothing
+      while it reads, nor where the place cannot be read, which it says. While a group is open
+      the list of groups folds to a 56 px bar with the group's name and a button that unfolds it
+      (`sidesShown`); it starts folded when the address names a group or a place, and unfolded
+      when the curator arrives on the tab with neither. On a narrow screen one side shows at a
+      time, the window first where the address names a group or a place, so a way in followed on
+      a phone opens on the place.
     - The tab's staged answers are kept by group (`GroupStagings`, `crowdedGroups.ts`) and by the
       review page, so Back off the tab keeps them. A window stages into its own group, and its
       Apply sends that group's only: nothing staged in Berlin goes with Rome's Apply. A group left,
