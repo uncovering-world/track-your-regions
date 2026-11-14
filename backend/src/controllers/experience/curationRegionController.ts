@@ -2,11 +2,13 @@
  * A curator's word on where a place belongs: refusing it from a region or taking
  * the refusal back, and assigning it to a region by hand or taking that back.
  * Each takes its region from the request and checks the curator's scope on it.
+ * Each writes its change and the curation-log row that records it in one
+ * transaction (`inTransaction`), so an act is never done and left unlogged.
  */
 
 import type { z } from 'zod/v4';
 import type { RegionMembershipResult } from '../../api/responses/curation.js';
-import { pool, rollbackQuietly } from '../../db/index.js';
+import { inTransaction, pool } from '../../db/index.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import type {
   assignExperienceBodySchema, idAndRegionIdParamSchema, idParamSchema, rejectExperienceBodySchema, unrejectExperienceBodySchema,
@@ -42,19 +44,19 @@ export async function rejectExperience(
     throw createError('You do not have curator permissions for this region', 403);
   }
 
-  // Upsert rejection
-  await pool.query(`
-    INSERT INTO experience_rejections (experience_id, region_id, rejected_by, reason)
-    VALUES ($1, $2, $3, $4)
-    ON CONFLICT (experience_id, region_id)
-    DO UPDATE SET rejected_by = $3, reason = $4, created_at = NOW()
-  `, [experienceId, regionId, userId, reason || null]);
+  await inTransaction(async client => {
+    await client.query(`
+      INSERT INTO experience_rejections (experience_id, region_id, rejected_by, reason)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (experience_id, region_id)
+      DO UPDATE SET rejected_by = $3, reason = $4, created_at = NOW()
+    `, [experienceId, regionId, userId, reason || null]);
 
-  // Log the action
-  await pool.query(`
-    INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
-    VALUES ($1, $2, 'rejected', $3, $4)
-  `, [experienceId, userId, regionId, reason ? JSON.stringify({ reason }) : null]);
+    await client.query(`
+      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
+      VALUES ($1, $2, 'rejected', $3, $4)
+    `, [experienceId, userId, regionId, reason ? JSON.stringify({ reason }) : null]);
+  });
 
   return { success: true, experienceId, regionId };
 }
@@ -84,20 +86,20 @@ export async function unrejectExperience(
     throw createError('You do not have curator permissions for this region', 403);
   }
 
-  const result = await pool.query(
-    'DELETE FROM experience_rejections WHERE experience_id = $1 AND region_id = $2 RETURNING id',
-    [experienceId, regionId],
-  );
+  await inTransaction(async client => {
+    const result = await client.query(
+      'DELETE FROM experience_rejections WHERE experience_id = $1 AND region_id = $2 RETURNING id',
+      [experienceId, regionId],
+    );
+    if (result.rowCount === 0) {
+      throw notFound('No rejection found for this experience in this region');
+    }
 
-  if (result.rowCount === 0) {
-    throw notFound('No rejection found for this experience in this region');
-  }
-
-  // Log the action
-  await pool.query(`
-    INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id)
-    VALUES ($1, $2, 'unrejected', $3)
-  `, [experienceId, userId, regionId]);
+    await client.query(`
+      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id)
+      VALUES ($1, $2, 'unrejected', $3)
+    `, [experienceId, userId, regionId]);
+  });
 
   return { success: true, experienceId, regionId };
 }
@@ -133,13 +135,7 @@ export async function assignExperienceToRegion(
     throw notFound('Region not found');
   }
 
-  // Pin all three writes (assignment upsert, rejection clear, audit log) to a
-  // single client so they form a real transaction — pg.Pool's pool.query()
-  // can pick a different client per call, so BEGIN/COMMIT against the pool
-  // does not actually wrap the intermediate queries.
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  await inTransaction(async client => {
     // Insert manual assignment (or update to manual if auto already exists).
     // A curator's row is one readers find (ADR-0197), whatever the automatic
     // row it replaces said.
@@ -161,14 +157,7 @@ export async function assignExperienceToRegion(
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id)
       VALUES ($1, $2, 'added_to_region', $3)
     `, [experienceId, userId, regionId]);
-
-    await client.query('COMMIT');
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 
   return { success: true, experienceId, regionId };
 }
@@ -196,13 +185,9 @@ export async function unassignExperienceFromRegion(
   }
 
   // The withdrawal, the rows it gives back and the audit row stand or fall
-  // together, on one client: a refresh that failed after a committed delete
-  // would leave the curator's row gone and its removal unlogged.
-  const client = await pool.connect();
-  let unusable: Error | undefined;
-  try {
-    await client.query('BEGIN');
-
+  // together: a refresh that failed after a committed delete would leave the
+  // curator's row gone and its removal unlogged.
+  await inTransaction(async client => {
     // The place's keys before its row (ADR-0197, db/locks.ts): the refresh
     // below needs them, and a refresh already holding them may be waiting
     // for the row this delete would hold.
@@ -230,15 +215,7 @@ export async function unassignExperienceFromRegion(
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id)
       VALUES ($1, $2, 'removed_from_region', $3)
     `, [experienceId, userId, regionId]);
-
-    await client.query('COMMIT');
-  } catch (error) {
-    // A client whose ROLLBACK also failed must be destroyed, not pooled.
-    unusable = await rollbackQuietly(client);
-    throw error;
-  } finally {
-    client.release(unusable);
-  }
+  });
 
   return { success: true, experienceId, regionId };
 }
@@ -270,23 +247,24 @@ export async function removeExperienceFromRegion(
     throw createError('You do not have curator permissions for this region', 403);
   }
 
-  // Remove the region assignment (any type: auto or manual)
-  const result = await pool.query(
-    'DELETE FROM experience_regions WHERE experience_id = $1 AND region_id = $2 RETURNING id',
-    [experienceId, regionId],
-  );
+  // The removal and its log row stand or fall together (#2465).
+  await inTransaction(async client => {
+    // Remove the region assignment (any type: auto or manual)
+    const result = await client.query(
+      'DELETE FROM experience_regions WHERE experience_id = $1 AND region_id = $2 RETURNING id',
+      [experienceId, regionId],
+    );
+    if (result.rowCount === 0) {
+      throw notFound('Experience is not assigned to this region');
+    }
 
-  if (result.rowCount === 0) {
-    throw notFound('Experience is not assigned to this region');
-  }
+    // Keep rejection row — it acts as a guard if spatial recompute re-adds the experience.
 
-  // Keep rejection row — it acts as a guard if spatial recompute re-adds the experience.
-
-  // Log the action
-  await pool.query(`
-    INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id)
-    VALUES ($1, $2, 'removed_from_region', $3)
-  `, [experienceId, userId, regionId]);
+    await client.query(`
+      INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id)
+      VALUES ($1, $2, 'removed_from_region', $3)
+    `, [experienceId, userId, regionId]);
+  });
 
   return { success: true, experienceId, regionId };
 }

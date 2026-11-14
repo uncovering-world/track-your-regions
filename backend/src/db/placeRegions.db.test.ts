@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PoolClient } from 'pg';
-import { unassignExperienceFromRegion } from '../controllers/experience/curationRegionController.js';
+import {
+  rejectExperience, removeExperienceFromRegion, unassignExperienceFromRegion, unrejectExperience,
+} from '../controllers/experience/curationRegionController.js';
 import { pool } from './index.js';
 import { MEMBERSHIPS } from './membership.js';
 import { assignExperiencesToRegions, assignRegionsForExperiences } from '../services/sync/regionAssignmentService.js';
@@ -42,6 +44,7 @@ const REFUSING_TRIGGER = 'fixture_9640_refuse_museum_row';
 
 async function clear(): Promise<void> {
   await pool.query(`DROP TRIGGER IF EXISTS ${REFUSING_TRIGGER} ON experience_regions`);
+  await pool.query(`DROP TRIGGER IF EXISTS ${REFUSING_TRIGGER} ON experience_curation_log`);
   await pool.query(`DROP FUNCTION IF EXISTS ${REFUSING_TRIGGER}()`);
   await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [PLACES]);
   await pool.query('DELETE FROM users WHERE uuid = $1', [CURATOR]);
@@ -438,6 +441,57 @@ describe("a place's regions (ADR-0197)", () => {
       `SELECT 1 FROM experience_curation_log WHERE experience_id = $1 AND action = 'removed_from_region'`, [MUSEUM],
     );
     expect(logged.rowCount).toBe(0);
+  });
+
+  /** Runs `act` while the curation log refuses `action` about the museum, as a failed insert would. */
+  async function withLogRefusing(action: string, act: () => Promise<unknown>): Promise<void> {
+    await pool.query(
+      `CREATE FUNCTION ${REFUSING_TRIGGER}() RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN RAISE EXCEPTION 'fixture refuses the log row'; END $$`,
+    );
+    await pool.query(
+      `CREATE TRIGGER ${REFUSING_TRIGGER} BEFORE INSERT ON experience_curation_log
+       FOR EACH ROW WHEN (NEW.experience_id = ${MUSEUM} AND NEW.action = '${action}')
+       EXECUTE FUNCTION ${REFUSING_TRIGGER}()`,
+    );
+    try {
+      await expect(act()).rejects.toThrow(/fixture refuses the log row/);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${REFUSING_TRIGGER} ON experience_curation_log`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${REFUSING_TRIGGER}()`);
+    }
+  }
+
+  it('keeps the place in the region when the log of its removal fails (#2465)', async () => {
+    const curator = await pool.query<{ id: number }>(
+      `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'admin') RETURNING id`, [CURATOR],
+    );
+    const before = await rows(MUSEUM);
+
+    await withLogRefusing('removed_from_region', () => removeExperienceFromRegion({
+      params: { id: MUSEUM, regionId: LEAF_A }, caller: { id: curator.rows[0].id, role: 'admin' } as Express.User,
+    }));
+
+    expect(await rows(MUSEUM)).toEqual(before);
+    expect(before.map(([region]) => region)).toContain(LEAF_A);
+  });
+
+  it('refuses no place from a region, and keeps a refusal, when the log of either fails (#2465)', async () => {
+    const curator = await pool.query<{ id: number }>(
+      `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'admin') RETURNING id`, [CURATOR],
+    );
+    const caller = { id: curator.rows[0].id, role: 'admin' } as Express.User;
+    const refusals = async () => (await pool.query(
+      'SELECT region_id FROM experience_rejections WHERE experience_id = $1', [MUSEUM],
+    )).rows.map(row => row.region_id);
+
+    await withLogRefusing('rejected', () => rejectExperience({ params: { id: MUSEUM }, body: { regionId: LEAF_A }, caller }));
+    expect(await refusals()).toEqual([]);
+
+    await rejectExperience({ params: { id: MUSEUM }, body: { regionId: LEAF_A }, caller });
+    await withLogRefusing('unrejected', () => unrejectExperience({ params: { id: MUSEUM }, body: { regionId: LEAF_A }, caller }));
+    expect(await refusals()).toEqual([LEAF_A]);
+    await pool.query('DELETE FROM experience_rejections WHERE experience_id = $1', [MUSEUM]);
   });
 
   it("waits for a refresh holding the place's key before withdrawing a curator's row, so the two never deadlock", async () => {
