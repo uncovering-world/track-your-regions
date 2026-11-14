@@ -51,6 +51,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { isReadableInstant } from '../../types/instants.js';
 import type { QueueFacets, QueueOrderEntry } from '../../api/responses/reviewQueue.js';
 import { EMPTY_FACETS, FACETS_JSON_SQL, facetsSql, regionRootsCte } from './reviewQueueFacets.js';
 import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './reviewQueueVocabulary.js';
@@ -168,8 +169,9 @@ export function decodeCursor(s: string): Cursor | null {
     if (!Number.isInteger(rank) || !Number.isInteger(id)) return null;
     // A date the database will refuse is refused here instead: the value is
     // bound as `$n::timestamptz`, so `{"askedAt":"garbage"}` in someone's
-    // address bar would be a 500 rather than the first page.
-    if (askedAt !== null && (typeof askedAt !== 'string' || Number.isNaN(Date.parse(askedAt)))) {
+    // address bar, or an offset Postgres cannot read, would be a 500 rather
+    // than the first page (`isReadableInstant`, #2516).
+    if (askedAt !== null && (typeof askedAt !== 'string' || !isReadableInstant(askedAt))) {
       return null;
     }
     return { askedAt: askedAt as string | null, rank: rank as number, id: id as number };

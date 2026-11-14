@@ -14,6 +14,7 @@ import { foldLabel, tidyLabel } from '@tyr/shared/labels';
 import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
+import { instantSchema } from './instants.js';
 import { isStorableHttpUrl, pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE, STORABLE_HTTP_URL_MESSAGE } from './urlSafety.js';
 import { commemoratesListSchema } from './commemoratesSchemas.js';
 import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
@@ -1316,8 +1317,8 @@ export const curatorActivityQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   action: z.enum(CURATION_LOG_ACTIONS).optional(),
   regionId: rowIdSchema.optional(),
-  since: z.iso.datetime({ offset: true }).optional(),
-  before: z.iso.datetime({ offset: true }).optional(),
+  since: instantSchema.optional(),
+  before: instantSchema.optional(),
 });
 
 /** The feed across every curator: the same filters, and one author to narrow to. */
