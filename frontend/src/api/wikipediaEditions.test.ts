@@ -25,9 +25,33 @@ describe('fetchReaderEdition (#2209)', () => {
 
   it('sends a list of more than a hundred articles in batches', async () => {
     getEditions.mockResolvedValue({ editions: [] });
-    await Promise.all(Array.from({ length: 150 }, (_, i) => fetchReaderEdition(`${ALTES}_${i}`, ['ru'])));
+    // Short titles, so the count closes each batch before the length does.
+    await Promise.all(Array.from({ length: 150 }, (_, i) => fetchReaderEdition(`https://en.wikipedia.org/wiki/A${i}`, ['ru'])));
     expect(getEditions).toHaveBeenCalledTimes(2);
     expect(getEditions.mock.calls[0][0].articles).toHaveLength(100);
+  });
+
+  it('closes a batch before its query passes what a server reads, however long the titles (#2526)', async () => {
+    getEditions.mockResolvedValue({ editions: [] });
+    // A Russian title percent-encodes to six characters a letter: a hundred of these would be some 33 kB.
+    const longTitles = Array.from({ length: 100 }, (_, i) => `https://en.wikipedia.org/wiki/${'Пергамский_алтарь_'.repeat(3)}${i}`);
+    const answers = await Promise.all(longTitles.map(article => fetchReaderEdition(article, ['ru'])));
+
+    expect(answers.every(answer => answer === null)).toBe(true);
+    expect(getEditions.mock.calls.length).toBeGreaterThan(1);
+    const sent = getEditions.mock.calls.flatMap(([query]) => query.articles as string[]);
+    expect(sent).toEqual(longTitles);
+    for (const [query] of getEditions.mock.calls) {
+      const length = new URLSearchParams((query.articles as string[]).map(article => ['articles', article])).toString().length;
+      expect(length).toBeLessThanOrEqual(7000);
+    }
+  });
+
+  it('asks for an article once however many links show it, and answers every one of them', async () => {
+    getEditions.mockResolvedValue({ editions: [{ article: ALTES, url: 'https://ru.wikipedia.org/wiki/x', language: 'ru' }] });
+    const answers = await Promise.all([fetchReaderEdition(ALTES, ['ru']), fetchReaderEdition(ALTES, ['ru'])]);
+    expect(getEditions).toHaveBeenCalledWith({ articles: [ALTES], languages: 'ru' });
+    expect(answers).toEqual([{ url: 'https://ru.wikipedia.org/wiki/x', language: 'ru' }, { url: 'https://ru.wikipedia.org/wiki/x', language: 'ru' }]);
   });
 
   it('lets a failure reach the link, which keeps its English article', async () => {
