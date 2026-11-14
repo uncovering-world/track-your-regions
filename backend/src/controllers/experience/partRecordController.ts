@@ -52,6 +52,7 @@ import type { partWordBodySchema, takeOutPartBodySchema } from '../../types/part
 import { resolveExperienceScope } from './experienceScope.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { setCuratorPartRecord, withdrawCuratorPartRecord } from './membershipWriter.js';
+import { shownToCallerSql, type CallerParams } from './partRecordRead.js';
 
 type PartWord = z.output<typeof partWordBodySchema>;
 type TakeOut = z.output<typeof takeOutPartBodySchema>;
@@ -77,8 +78,9 @@ interface PairState {
   whole_in_kind: boolean;
   whole_merged_onto: boolean;
   loop: boolean;
-  above: string[];
-  below: string[];
+  /** The longest chain above the whole and below the part, by name; null for a place the caller may not be shown. */
+  above: (string | null)[];
+  below: (string | null)[];
 }
 
 export async function addPart(
@@ -87,7 +89,7 @@ export async function addPart(
   },
 ): Promise<PartWordAnswered> {
   const authority = await authorityOver(caller, wholeId, body.partId);
-  return settle(await underLocks(wholeId, body.partId, (client, locks, state) =>
+  return settle(await underLocks(wholeId, body.partId, caller, (client, locks, state) =>
     addWithin(client, locks, state, authority, body)));
 }
 
@@ -97,7 +99,7 @@ export async function takeOutPart(
   },
 ): Promise<PartWordAnswered> {
   const authority = await authorityOver(caller, wholeId, body.partId);
-  return settle(await underLocks(wholeId, body.partId, (client, locks, state) =>
+  return settle(await underLocks(wholeId, body.partId, caller, (client, locks, state) =>
     takeOutWithin(client, locks, state, authority, body)));
 }
 
@@ -148,6 +150,7 @@ export async function holdPartWords(client: PoolClient): Promise<void> {
 async function underLocks(
   wholeId: number,
   partId: number,
+  caller: Express.User,
   within: Within,
 ): Promise<{ result?: PartWordAnswered; refusal?: AnswerRefusal }> {
   const client = await pool.connect();
@@ -167,7 +170,7 @@ async function underLocks(
     }
     await holdPartWords(client);
     await client.query('SELECT lock_place_regions(ARRAY[$1::int, $2::int])', [wholeId, partId]);
-    const state = await readPair(client, wholeId, partId);
+    const state = await readPair(client, wholeId, partId, caller);
     const outcome = await within(client, { whole: whole.lock, part: part.lock }, state);
     if ('refusal' in outcome) return await refuse(outcome.refusal);
     await client.query('COMMIT');
@@ -185,9 +188,14 @@ async function underLocks(
  * it and how many sources' records claim it, whether the whole is one yet, and
  * the chains a new relation would join — the wholes above the whole, the
  * parts below the place, each the longest, by name, and whether the whole is
- * already under the place (a loop).
+ * already under the place (a loop). A place of a chain is named only where
+ * the caller may be shown it (`shownToCallerSql`), as the reads of a place's
+ * parts name one: an unread place outside the caller's scope is null, so a
+ * refusal counts it and never names it (#2522).
  */
-async function readPair(client: PoolClient, wholeId: number, partId: number): Promise<PairState> {
+async function readPair(client: PoolClient, wholeId: number, partId: number, caller: Express.User): Promise<PairState> {
+  // $3 says whether the caller is an admin, $4 is the caller.
+  const asked: CallerParams = { user: '$4', admin: '$3::boolean' };
   const read = await client.query<PairState>(
     `WITH RECURSIVE above AS (
        SELECT $1::int AS id, ARRAY[$1::int] AS chain
@@ -213,13 +221,25 @@ async function readPair(client: PoolClient, wholeId: number, partId: number): Pr
             EXISTS (SELECT 1 FROM ${MEMBERSHIPS} own WHERE own.experience_id = $1 AND ${kindRecordSql('own')}) AS whole_in_kind,
             EXISTS (SELECT 1 FROM experience_merges m WHERE m.survivor_id = $1 AND m.undone_at IS NULL) AS whole_merged_onto,
             EXISTS (SELECT 1 FROM below WHERE id = $1) AS loop,
-            ARRAY(SELECT e.name FROM longest_above, unnest(longest_above.chain) WITH ORDINALITY AS c(id, n)
+            ARRAY(SELECT CASE WHEN ${shownToCallerSql('e', asked)} THEN e.name END
+                    FROM longest_above, unnest(longest_above.chain) WITH ORDINALITY AS c(id, n)
                     JOIN experiences e ON e.id = c.id ORDER BY c.n) AS above,
-            ARRAY(SELECT e.name FROM longest_below, unnest(longest_below.chain) WITH ORDINALITY AS c(id, n)
+            ARRAY(SELECT CASE WHEN ${shownToCallerSql('e', asked)} THEN e.name END
+                    FROM longest_below, unnest(longest_below.chain) WITH ORDINALITY AS c(id, n)
                     JOIN experiences e ON e.id = c.id ORDER BY c.n) AS below`,
-    [wholeId, partId],
+    [wholeId, partId, caller.role === 'admin', caller.id],
   );
   return read.rows[0];
+}
+
+/**
+ * What a too-deep refusal says of the places of its chain the caller may not
+ * be shown: how many, never which (#2522).
+ */
+function hiddenInChain(chain: readonly (string | null)[]): string {
+  const hidden = chain.filter(name => name === null).length;
+  if (hidden === 0) return '';
+  return ` The chain passes through ${hidden} unpublished ${hidden === 1 ? 'place' : 'places'} you do not curate.`;
 }
 
 /** The refusals an add meets before it writes, or null where none does. */
@@ -234,7 +254,8 @@ function addRefusal(state: PairState, makesWhole: boolean): AnswerRefusal | null
   if (chain.length > MOST_LEVELS) {
     return {
       status: 409, code: 'too-deep', chain,
-      error: `It would sit ${chain.length} levels down, and ${MOST_LEVELS} is the most. Add it to a whole higher up the chain.`,
+      error: `It would sit ${chain.length} levels down, and ${MOST_LEVELS} is the most. Add it to a whole higher up the chain.`
+        + hiddenInChain(chain),
     };
   }
   if (!state.whole_has_parts && state.whole_merged_onto) {
