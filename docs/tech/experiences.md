@@ -286,7 +286,22 @@ component's shape (`followTheirPoints`), and a point reads the record under its 
 compared as the run compares it, case aside (`823-001B`), before the earliest whole's
 (`pointRecordSql`). Migration 232 turned each part's membership of the virtual kind World Heritage components,
 which ADR-0156 had keyed by the relation, into its relation's record, and deleted the kind. The
-record carries no gate: it is never pending and opens no card. Nothing reads it as a kind:
+record carries its part's gate (ADR-0213, #2123): `curation_state` says whether a curator has
+read the part, `admission` whether one turned it down (the shape of a curator's no to an arrival,
+"kept out by a curator"), `missing_since` and `source_membership` whether the list still gives
+its line. A new part's record is written in its point's state (`part_site_components()`): pending
+where the site's source holds its new points for a curator. While the review queue and the run
+still write the points, the record follows the points of its line, the ones the site's own record
+in a kind placed or nothing did (`is_part_line_point()`), through `refresh_part_record_gates()`
+on every statement that writes a point and on a record that moves to another place: read once
+one of them is published, turned down while none is and every one still asked about is refused,
+missing and former once all of them are. *Lost* stays the part's own. Migration 250 writes it on
+every part's record: on the development catalogue (2026-11-15, a dry run of its rule) 75 parts nobody has read, Wudang's
+45 among them, and 13 withdrawn lines, 11 judged former. The readers still ask the points; the
+predicates the record is asked by are `partRecordShownSql` (`readerPredicates.ts`),
+`partRecordUnreadSql` and `partRecordWithdrawnSql` (`membership.ts`), and the catalogue check
+`part-gate-out-of-step` holds the two readings to each other until the points go (#2124). The
+record opens no card of its own. Nothing reads it as a kind:
 - `backend/src/db/membership.ts` states the test: `kindRecordSql` (`kind_id IS NOT NULL`) over a
   record or a source, composed into `membershipOfferedSql`, the place-level forms, the kind a row is
   shown under, a place's sources and `placeHoldsKindSql`, which is what "a part that holds a kind of
@@ -298,7 +313,11 @@ record carries no gate: it is never pending and opens no card. Nothing reads it 
   `pointRecordSql` (`placePoints.ts`) the one a point reads: under the point's reference, else the
   earliest whole's; a site's own point reads the site's record only under its own reference.
 - It is never composed into `membershipAdmittedSql` or `membershipVisibleSql`, which a reader negates
-  to find a refused or an unread membership.
+  to find a refused or an unread membership. Since a part's record carries the part's gate, the
+  questions that negate them about a membership ask for a record in a kind themselves: an arrival
+  (`arrivalOpenSql`, `arrivalWaitingSql`, which the queue's keys, the counts by source, *Publish
+  all waiting* and the visit and kind suggestions compose) and a rule's refusal
+  (`refusedOpenSql`). A pending part record is its site's question, never an arrival.
 - The kinds a traveller browses (`listKinds`), the admin panel's sources, the review queue's source
   chips, *Add to a kind…*, a curator's new place and the coverage register read only kinds, and no
   kind holds a part's record.
