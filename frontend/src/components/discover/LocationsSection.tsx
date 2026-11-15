@@ -44,6 +44,7 @@ import { foldLabel } from '@tyr/shared/labels';
 import { filterParts, groupParts } from '../../utils/partGroups';
 import type { LocationWithVisitedStatus } from '../../api/visited';
 import { PointArticleLink } from '../shared/PointArticleLink';
+import type { VisitCount } from '../shared/visitWords';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 
@@ -84,6 +85,8 @@ interface LocationsSectionProps {
   objectName: string;
   locations: PanelLocation[];
   totalCount: number;
+  /** The place's count, the one its row shows (`cardVisitCount`): none on an edition or a whole of one place. */
+  visitCount: VisitCount | null;
   isAuthenticated: boolean;
   onMarkLocation: (id: number) => void;
   onUnmarkLocation: (id: number) => void;
@@ -107,6 +110,7 @@ export function LocationsSection({
   objectName,
   locations,
   totalCount,
+  visitCount,
   isAuthenticated,
   onMarkLocation,
   onUnmarkLocation,
@@ -121,8 +125,6 @@ export function LocationsSection({
   const [searchText, setSearchText] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { store } = useHoverActions();
-
-  const visitedCount = locations.filter((l) => l.isVisited).length;
 
   const [photoOnly, setPhotoOnly] = useState(false);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set([IN_REGION_GROUP]));
@@ -230,9 +232,13 @@ export function LocationsSection({
         <Typography variant="subtitle2" sx={{ fontWeight: 600, flex: 1 }}>
           Locations ({totalCount})
         </Typography>
-        {isAuthenticated && (
-          <Typography variant="caption" color={visitedCount === totalCount ? 'success.main' : 'text.secondary'}>
-            {visitedCount}/{totalCount} visited
+        {isAuthenticated && visitCount && (
+          <Typography
+            variant="caption"
+            aria-label={visitCount.name}
+            color={visitCount.share === 1 ? 'success.main' : 'text.secondary'}
+          >
+            {visitCount.text} visited
           </Typography>
         )}
         {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}

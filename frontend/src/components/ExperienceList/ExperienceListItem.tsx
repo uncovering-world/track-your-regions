@@ -32,6 +32,8 @@ import { PointCard } from '../shared/PointCard';
 import { VisitStatusMark } from '../shared/VisitStatusMark';
 import type { LocationRowData } from './LocationRow';
 import type { VisitedStatus } from '../../api/visited';
+import type { WholeProgress } from '@tyr/shared/visits';
+import { placesCount, wholeCountLabel, type VisitCount } from '../shared/visitWords';
 import { LazyVisitDateLine } from '../shared/lazyVisitTrips';
 
 /**
@@ -55,6 +57,11 @@ export interface ExperienceListItemProps {
    * some of its parts visited is partly visited in every region's list.
    */
   visitedStatus: VisitedStatus;
+  /**
+   * How far through the whole the traveller is (`useVisitedExperiences().progressOf`,
+   * ADR-0206), absent where they have not been: the row's "1 of 34".
+   */
+  progress?: WholeProgress;
   isSelected: boolean;
   /**
    * The row is one of the selected place's echoes: its card is open elsewhere —
@@ -143,6 +150,7 @@ function ExperienceListItemComponent({
   locationsResolved,
   isLocationVisited,
   visitedStatus,
+  progress,
   isSelected,
   isMarked = false,
   isAboveGroups = false,
@@ -228,12 +236,6 @@ function ExperienceListItemComponent({
 
   // Use batch locations from parent (shared hook) — no per-item fetch
   const totalLocations = locations?.length ?? (experience.location_count ?? 0);
-  const inRegionLocations = useMemo(() => {
-    if (!locations) return [];
-    return locations.filter(l => l.in_region);
-  }, [locations]);
-  const inRegionCount = inRegionLocations.length;
-  const isMultiLocation = totalLocations > 1;
 
   // The row's visited state is the place's own, read once for Map mode and
   // Discover alike: a visit to *Maman* in Bilbao marks it visited on Canada's
@@ -243,6 +245,14 @@ function ExperienceListItemComponent({
   // A whole is ticked by its parts, on its card, so its row shows the state
   // and ticks nothing (#2120).
   const isWhole = experience.has_parts;
+  // One count on the row, the same in every region's list: a whole's over its
+  // leaves, "1 of 34" for the Struve Arc in Moldova's list after a station in
+  // Finland; any other place's how many places it is shown at, an edition's
+  // casts among them, each of which is the work. How many of them lie in this
+  // region is the open card's to say.
+  let count: VisitCount | null = null;
+  if (isWhole && !experience.cast_points) count = wholeCountLabel(experience.leaf_count, progress, showCheckbox);
+  else if (totalLocations > 1) count = placesCount(totalLocations);
 
   /**
    * The card's hover handler, bound to this experience once rather than per render.
@@ -422,20 +432,9 @@ function ExperienceListItemComponent({
                   }}
                 />
               )}
-              {/* While the batch is unresolved the row shows the plain count it
-                  already has from the experience, rather than an in-region
-                  ratio it cannot know yet — `inRegionCount` would be 0 against
-                  a denominator that arrived from somewhere else. */}
-              {isMultiLocation && (
-                <Tooltip title={`${totalLocations} places`}>
-                  <CountChip
-                    label={!locationsResolved || inRegionCount === totalLocations
-                      ? String(totalLocations)
-                      : `${inRegionCount}/${totalLocations}`}
-                    size="small"
-                    variant="outlined"
-                    color="info"
-                  />
+              {count && (
+                <Tooltip title={count.name}>
+                  <CountChip label={count.text} size="small" variant="outlined" color="info" />
                 </Tooltip>
               )}
             </TitleRow>

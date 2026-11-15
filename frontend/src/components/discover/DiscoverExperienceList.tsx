@@ -20,6 +20,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import type { WholeProgress } from '@tyr/shared/visits';
 import type { Experience } from '../../api/experiences';
 import type { ActiveView } from '../../hooks/useDiscoverExperiences';
 import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../../hooks/useHoverContext';
@@ -43,6 +44,8 @@ interface DiscoverExperienceRowProps {
   isVisited: boolean;
   /** Visited in part: a serial site with some of its places visited (#2120). */
   isPartlyVisited: boolean;
+  /** How far through the whole the traveller is (ADR-0206), absent where they have not been. */
+  progress?: WholeProgress;
   isSelected: boolean;
   showCheckbox: boolean;
   /** A visit write is on its way: the checkbox waits for it (#2120). */
@@ -68,6 +71,7 @@ export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
   experience,
   isVisited,
   isPartlyVisited,
+  progress,
   isSelected,
   showCheckbox,
   visitDisabled,
@@ -85,6 +89,7 @@ export const DiscoverExperienceRow = memo(function DiscoverExperienceRow({
       experience={experience}
       isVisited={isVisited}
       isPartlyVisited={isPartlyVisited}
+      progress={progress}
       isHovered={isHovered}
       isSelected={isSelected}
       onClick={() => onSelect(experience.id)}
@@ -166,6 +171,8 @@ interface DiscoverExperienceListProps {
   isAuthenticated: boolean;
   visitedIds: Set<number>;
   partialIds: Set<number>;
+  /** A whole's progress over its leaves (`useVisitedExperiences().progressOf`). */
+  progressOf: (experienceId: number) => WholeProgress | undefined;
   /** A visit write of this traveller is on its way: every row's checkbox waits for it (#2120). */
   visitWritePending: boolean;
   selectedExperienceId: number | null;
@@ -200,6 +207,7 @@ export function DiscoverExperienceList({
   isAuthenticated,
   visitedIds,
   partialIds,
+  progressOf,
   visitWritePending,
   selectedExperienceId,
   onBack,
@@ -441,6 +449,7 @@ export function DiscoverExperienceList({
                       experience={exp}
                       isVisited={visitedIds.has(exp.id)}
                       isPartlyVisited={partialIds.has(exp.id)}
+                      progress={progressOf(exp.id)}
                       isSelected={selectedExperienceId === exp.id}
                       showCheckbox={isAuthenticated}
                       visitDisabled={visitWritePending}

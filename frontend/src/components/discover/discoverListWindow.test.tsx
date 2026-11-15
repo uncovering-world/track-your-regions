@@ -122,6 +122,7 @@ function renderList(
         isAuthenticated={false}
         visitedIds={new Set()}
         partialIds={new Set()}
+        progressOf={() => undefined}
         visitWritePending={false}
         selectedExperienceId={null}
         onBack={noop}
